@@ -1,0 +1,7 @@
+PLACEHOLDER — replace this file with a PNG icon
+
+Expected file: mixed.png  (delete this .txt file when you add the .png)
+Recommended size: 128x128px, transparent background
+
+This icon represents:
+Hybrid — some digital pages, some scanned

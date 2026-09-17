@@ -1,0 +1,11 @@
+{
+  "summary_id": "v18212_iq2_xxs",
+  "overall_score": 6,
+  "factual_consistency_score": 5,
+  "coverage_score": 7,
+  "clarity_score": 8,
+  "hallucinations_detected": 4,
+  "critical_omissions_detected": 3,
+  "verdict": "FAIL",
+  "justification": "The summary is well-structured and covers many key theorists, but it contains multiple factual hallucinations (e.g., the number 92 for Freud's use of 'identity', misattribution of Mahler's view on gender identity consolidation) and omits critical introductory context and core conceptual elements, leading to a failure of factual consistency."
+}

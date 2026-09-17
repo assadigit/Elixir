@@ -1,0 +1,153 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markitdown-pro"
+# V18.3 (Phase 1.4): version is dynamic — read from the VERSION file.
+# This makes VERSION the single source of truth (was stale at 18.2.21).
+dynamic = ["version"]
+description = "MarkItDown Pro Ultimate — PDF to Markdown with AI summarization"
+# V18.3 (Phase 1.5): tighten to >=3.12,<3.13 (PySide6 not yet confirmed for 3.13).
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+# V18.2.21 (Phase 1.2/1.4): runtime deps that were previously only in
+# requirements.txt. Declaring them here lets `uv lock` capture them in
+# uv.lock for reproducible installs. Pydantic is used by structured_io.py
+# (optional — degrades to manual validation when absent). Tenacity is used
+# by retry.py (optional — degrades to linear retry when absent).
+dependencies = [
+    "PySide6>=6.6.0",
+    "pypdf>=4.3.0",
+    "pdf2image>=1.17.0",
+    "pdfplumber>=0.11.0",
+    "markitdown[all]>=0.1.0",
+    "pytesseract>=0.3.10",
+    "wordninja>=1.0.0",
+    "tiktoken>=0.7.0",
+    "python-docx>=1.1.0",
+    "requests>=2.31.0",
+    "Pillow>=10.4.0",
+    "PyYAML>=6.0.1",
+    "rapidfuzz>=3.0.0",
+    "numpy>=1.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pre-commit>=4.0.0",
+]
+# V18.2.21 (Phase 1.4): Retry consolidation — optional runtime dep used by
+# core/llm/retry.py. If absent, retry.py degrades to a 2-attempt LINEAR retry
+# with a WARNING logged at import. See requirements.txt for install notes.
+retry = ["tenacity>=8.2.0"]
+# V18.2.21 (Phase 1.2): Structured output — optional runtime dep used by
+# core/llm/structured_io.py. If absent, validation degrades to a manual
+# shape check. Pydantic v2 is the 2026 standard.
+structured = ["pydantic>=2.5.0"]
+# Convenience extra that pulls both Phase 1 enhancements.
+full = ["markitdown-pro[retry,structured]"]
+
+# V18.3 (Phase 1.4): read version from the VERSION file (single source of truth).
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[tool.ruff]
+# V18.20.3.12: py310 → py312 — the codebase uses 3.12-only f-string syntax and the rig runs 3.12.14 (the stale py310 target made ruff flag valid code as syntax errors)
+target-version = "py312"
+line-length = 100
+extend-exclude = ["test_data", "assets", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501", "B008", "SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"ui_qt/**/*.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+# V18.2.18 (B3): Tightened — disallow bare `Any` in generics + flag
+# unreachable code. The ConversionContext Protocol (core/pipeline/
+# conversion_context.py) is the typed replacement for `converter: Any`
+# in phase modules. Full migration is gradual (see conversion_context.py).
+disallow_any_generics = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+exclude = "test_data/|assets/|scripts/diagnostic\\.py"
+
+[[tool.mypy.overrides]]
+module = "PySide6.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fitz.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pdfplumber.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sentence_transformers.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rapidfuzz.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tiktoken.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "markitdown.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "wordninja.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = ["-ra", "--strict-markers", "--cov=core", "--cov=utils", "--cov-report=term-missing"]
+asyncio_mode = "auto"
+# V18.15.4.3: register markers so `--strict-markers` doesn't reject them.
+# Enables `pytest -m "not slow"`, `pytest -m integration`, etc. without code changes.
+markers = [
+    "integration: multi-module flow tests (slower, may touch filesystem)",
+    "slow: tests that take >2s on a warm machine",
+    "regression: version-anchored regression tests (test_v18_*_*.py)",
+    "characterization: byte-for-byte stability gates for extracted modules",
+    "gpu: tests requiring a real GPU (currently none — all mocked)",
+]
+
+[tool.coverage.run]
+source = ["core", "utils"]
+omit = ["*/test_data/*", "*/assets/*", "*/scripts/*"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", 'if __name__ == .__main__.:', "if TYPE_CHECKING:"]

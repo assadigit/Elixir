@@ -1,0 +1,101 @@
+"""V18.20.4.8 (P6 / O-a5): single canonical structural-stopwords module.
+
+Fixes W-a5 (SWOT V18.20.4.0): three hand-curated stopword lists lived as
+inline literals in three files and had drifted apart. This module is now
+the ONE place that defines them (single source of truth); the three former
+sites import from here.
+
+Drift verdict (P6 diff, AST-extracted from the V18.20.4.7 tree):
+
+  ================================  ======  ===========  =============================
+  Former site                        Entries  Case        Filter semantics
+  ================================  ======  ===========  =============================
+  ``scholar_reflection.py:144``      66      Capitalized  theorist-name false-positive
+  ``summarizer.py:875``               93      lowercase   keyword-coverage function words
+  ``text_preprocessor_impl.py:211``  112      lowercase   concept filtering
+  ================================  ======  ===========  =============================
+
+  (the third literal contained the word ``goes`` twice — 112 literal
+  entries, 111 unique; the duplication is removed here)
+
+Pairwise overlaps: A∩B = 35, A∩C = 37, B∩C = 68 (lowercased); the union of
+all three is 164 lowercased words and none of the three equals it.
+
+Union decision: the three lists are NOT three drifted copies of one list —
+they differ in case convention AND in filter semantics. A literal
+"union-replace-all-3" would change filtering behavior at every site and
+would weaken the scholar theorist-judge (honesty machinery): capitalized
+real surnames such as "Say", "Tell", "Key", "Time" would newly be filtered
+as non-theorists, silently dropping real citations from verification. Per
+the house rules (surgical fixes; never weaken honesty machinery), this
+module therefore owns the three sets AS-IS (byte-identical membership),
+with the union documented above and NOT materialized as a live set. The
+duplicated ``goes`` entry is gone; the per-site behavior is unchanged.
+
+V18.15.3.2 exemption (documented, per D5 in summarizer.py): these are
+grammatical / structural function words and false-positive name filters,
+NOT content dictionaries — the source text remains the only content
+dictionary. Same exemption class as ``_STRUCTURAL_STOPWORDS`` in
+``postcheck_detectors.py``.
+"""
+from __future__ import annotations
+
+# Concept stopwords — common words that shouldn't be "concepts".
+# Formerly ``text_preprocessor_impl._CONCEPT_STOPWORDS`` (~line 211,
+# which contained the duplicated goes entry).
+CONCEPT_STOPWORDS = frozenset((
+    "the", "a", "an", "and", "or", "but", "to", "in",
+    "on", "at", "for", "of", "with", "by", "from", "is",
+    "was", "are", "were", "be", "been", "have", "has", "had",
+    "this", "that", "these", "those", "it", "its", "they", "them",
+    "their", "we", "us", "our", "you", "your", "he", "him",
+    "his", "she", "her", "i", "me", "my", "if", "then",
+    "when", "where", "why", "how", "all", "each", "every", "some",
+    "such", "no", "not", "only", "own", "same", "so", "than",
+    "too", "very", "just", "also", "now", "here", "there", "what",
+    "which", "who", "chapter", "part", "section", "book", "author", "note",
+    "tip", "point", "key", "important", "remember", "opportunity", "time", "person",
+    "people", "way", "thing", "things", "get", "got", "make", "made",
+    "take", "went", "goes", "come", "came", "see", "saw", "know",
+    "knew", "think", "thought", "say", "said", "tell", "told",
+))
+
+# Structural function words — grammatical glue for the keyword-coverage
+# fallback path. Formerly ``summarizer.Summarizer._STRUCTURAL_FUNCTION_WORDS``.
+STRUCTURAL_FUNCTION_WORDS = frozenset((
+    "the", "a", "an", "and", "or", "but", "of", "in",
+    "on", "at", "to", "for", "with", "from", "by", "as",
+    "is", "are", "was", "were", "be", "been", "being", "have",
+    "has", "had", "do", "did", "does", "will", "would", "could",
+    "should", "may", "might", "can", "this", "that", "these", "those",
+    "it", "its", "he", "she", "they", "we", "you", "i",
+    "his", "her", "their", "our", "your", "my", "me", "him",
+    "them", "us", "which", "who", "whom", "what", "when", "where",
+    "how", "why", "if", "than", "then", "so", "also", "not",
+    "no", "nor", "only", "very", "more", "most", "much", "many",
+    "some", "any", "each", "every", "all", "both", "other", "another",
+    "same", "such", "few", "less", "least",
+))
+
+# Theorist-name stopwords — capitalized words that the "Surname (year)"
+# regex captures but that are never surnames (determiners, pronouns, and
+# sentence-starting adverbs that grab the next word of a compound name).
+# Formerly the local ``_stopwords`` set in ``scholar_reflection.py``.
+# Case-sensitive ON PURPOSE: the regex only matches ``[A-Z][a-z]+`` names.
+THEORIST_NAME_STOPWORDS = frozenset((
+    "The", "This", "These", "Those", "A", "An", "In", "While",
+    "When", "If", "It", "Its", "He", "She", "His", "Her",
+    "They", "Their", "We", "Our", "You", "Your", "Page", "Chapter",
+    "Figure", "Table", "Note", "See", "As", "For", "Of", "To",
+    "And", "But", "Or", "On", "At", "By", "With", "From",
+    "About", "Into", "Over", "Under", "Later", "Also", "Then", "However",
+    "Moreover", "Furthermore", "Additionally", "Similarly", "Finally", "First", "Second", "Third",
+    "Thus", "Hence", "Therefore", "Indeed", "Notably", "Specifically", "Accordingly", "Consequently",
+    "Meanwhile", "Subsequently",
+))
+
+__all__ = [
+    "CONCEPT_STOPWORDS",
+    "STRUCTURAL_FUNCTION_WORDS",
+    "THEORIST_NAME_STOPWORDS",
+]

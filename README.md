@@ -1,0 +1,400 @@
+# 📚 MarkItDown Pro
+
+> 🚀 **Turn any book into a full learning kit — locally, privately, and with an 8-layer anti-hallucination engine.**
+
+A PySide6 desktop application that converts **PDF / EPUB / DOCX / TXT / HTML** into **19 output types** — Markdown, per-chapter summaries, keypoints, flashcards, podcast scripts **+ audio**, Obsidian knowledge bases, study guides, mind maps, Q&A, glossaries, cheatsheets, agent skills, and more — with AI summarisation and **EN ↔ FA translation**.
+
+Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports local LLMs (**Ollama**) *and* cloud APIs (**OpenRouter, OpenAI-compatible, Claude, FreeLLMAPI**).
+
+![Version](https://img.shields.io/badge/version-18.20.4.10-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-2973%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+
+---
+
+## 🌟 Why MarkItDown Pro?
+
+- 🔒 **Local-first & private** — runs 100% offline with Ollama. Your books never leave your machine unless *you* choose a cloud provider.
+- 🛡️ **Anti-hallucination engine** — 8 defensive layers (deterministic + LLM-based) verify every bullet against the source before it ships.
+- 📦 **19 output types** from one conversion — from a one-page executive briefing to a full Obsidian knowledge base.
+- 🎙️ **Podect-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS for English, Piper for Farsi).
+- 🌐 **Bilingual** — full English ↔ Farsi translation pipeline (NLLB-200 or TranslateGemma).
+- 🖥️ **VRAM-aware** — estimates context windows and VRAM budgets from your actual GPU, and (as of V18.20.4.10) **fails fast** instead of warn-and-continue when a model won't fit.
+- 🧪 **2,973 passing tests** — a characterization-test safety net pins every behavior before refactors touch it.
+
+---
+
+## 🚀 Quick Start
+
+### 1️⃣ Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2️⃣ System dependencies (Windows)
+
+| Tool | Purpose | Link |
+|---|---|---|
+| 🔍 **Tesseract OCR** | Fallback OCR (+ Persian `fas` pack) | [UB-Mannheim builds](https://github.com/UB-Mannheim/tesseract/wiki) → install to `C:\Program Files\Tesseract-OCR` |
+| 📄 **Poppler** | PDF page rendering | [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases) |
+| 🦙 **Ollama** | Local LLM server | [ollama.com](https://ollama.com) |
+| 🔊 **Piper** *(optional)* | Farsi TTS | [piper](https://github.com/rhasspy/piper) → extract to `C:\piper_windows_amd64\piper\` |
+| 🗣️ **NeuTTS-Air GGUF** *(optional)* | English TTS | place `.gguf` in `G:\Program Files\neutts-air\models\` |
+| 🧪 **langextract** *(optional)* | Scientific Evidence Map output | `pip install langextract` |
+
+### 3️⃣ Pull Ollama models
+
+```bash
+ollama pull qwen3-vl:8b                              # 🖼️ OCR (or use OlmOCR-2-7B)
+ollama pull Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M    # 🧠 Summarisation (primary)
+ollama pull translategemma-4b-it:q5_k_m              # 🌐 Translation backup (optional)
+```
+
+### 4️⃣ Configure paths (first run)
+
+After first launch, open `~/.markitdown_pro/settings.json`:
+
+```json
+{
+  "paths": {
+    "tesseract": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+    "poppler":   "C:\\poppler-24.08.0\\Library\\bin",
+    "piper":     "C:\\piper_windows_amd64\\piper\\piper.exe",
+    "neutts_gguf": "G:\\Program Files\\neutts-air\\models\\neutts-air-Q8_0.gguf"
+  }
+}
+```
+
+> 💡 Leave `poppler` as `""` if it's already in your system PATH.
+
+### 5️⃣ Run it! 🎉
+
+```bash
+python main.py
+```
+
+Or double-click **`run_app.bat`** on Windows.
+
+---
+
+## 🧠 How It Works
+
+```
+PDF / EPUB / DOCX / TXT / HTML
+  │
+  ├─ 💻 Digital pages  →  markitdown extraction  →  clean Markdown
+  └─ 📷 Scanned pages  →  OCR cascade            →  clean Markdown
+       (markitdown → OlmOCR-2-7B / Qwen3-VL → PaddleOCR → Tesseract)
+          │
+          ▼
+   🔧 Hyphenation repair + paragraph joining + header/footer removal
+          │
+          ▼
+   📑 TOC segmentation  (heading patterns + LLM fallback + token fallback)
+          │   └─ V18.20.4.10: metadata-children exclusion, bounded merge,
+          │      nearest-following page markers, monster-segment gate
+          ▼
+   ✅ Chapter selection (optional)
+          │
+          ▼
+   🔍 Concept extraction (deterministic — guides the LLM, no hallucination)
+          │
+          ▼
+   🤖 LLM summarisation (Ollama 9B or cloud)
+       │  ├─ 🧹 Thinking-strip + narrative filter
+       │  ├─ 🗳️ B3 multi-sample dedup (3 temperatures, voting)
+       │  ├─ 📊 Quality scorer (0–100)
+       │  ├─ 🔢 Numeric verification
+       │  ├─ ⚖️ Content Judge grounding (langextract + LLM-as-judge)
+       │  ├─ ♻️ Recovery pass (resurrects high-overlap bullets)
+       │  └─ 🗺️ Map-Reduce for oversized chapters
+       │      └─ V18.20.4.10: wall-clock budget + loud abort — never a silent stall
+          │
+          ▼
+   📌 Keypoints + Simplified keypoints
+          │
+          ▼
+   📦 15 Output Studio generators
+          │
+          ▼
+   🌐 Translation (EN ↔ FA, NLLB-200 or TranslateGemma)  [optional]
+          │
+          ▼
+   🔊 TTS audio (NeuTTS / Piper)  [optional]
+```
+
+---
+
+## 📦 The 19 Output Types
+
+### 🎯 4 Core outputs (always available)
+
+| Output | Description |
+|---|---|
+| 📝 **Per-chapter Summaries** | Executive (150–200 words) + thorough (800–1200 words) per chapter |
+| 🔑 **Keypoints** | Bullet points extracted from each chapter |
+| ✨ **Simplified Keypoints** | Jargon-free version (simplification pass) |
+| 📄 **DOCX Report** | Formatted Word document with TOC |
+
+### 🎨 15 Output Studio extras (opt-in)
+
+| Output | Description | Default |
+|---|---|:---:|
+| 📊 Executive Briefing | One-page synthesis of the whole book | ✅ on |
+| 🎙️ Podcast Script | 2-host conversational script (text only) | ✅ on |
+| 🃏 Flashcards | Anki-compatible TSV + readable MD | ✅ on |
+| 🧩 Packets of Knowledge | Clustered keypoints synthesised into cohesive paragraphs | ⬜ off |
+| 🗂️ Obsidian Knowledge Base | Linked notes with YAML frontmatter + wikilinks | ⬜ off |
+| 📖 Study Guide | Objectives, glossary, Q&A, self-check | ⬜ off |
+| 📱 Social Media Pack | X thread + LinkedIn + hashtags | ⬜ off |
+| 🕸️ Mind Map | Mermaid mindmap + outline (deterministic, no LLM) | ⬜ off |
+| 🎧 Podcast Audio | TTS audio (EN → NeuTTS, FA → Piper) | ⬜ off |
+| 🧪 Scientific Evidence Map | Interactive HTML with langextract verbatim grounding | ⬜ off |
+| ❓ Q&A Study Questions | Self-test questions + answers per chapter | ⬜ off |
+| 📚 Glossary | All terms + definitions extracted from the book | ⬜ off |
+| 🧠 Patterns / Techniques | Recurring methods + frameworks across chapters | ⬜ off |
+| 📋 Cheatsheet | One-page quick-reference of key facts | ⬜ off |
+| 🤖 Agent Skill | Package the book as a ClawHub-style installable `SKILL.md` | ⬜ off |
+
+> 🗄️ The output list is driven by `core/outputs/registry.py` — the single source of truth shared by the wizard, output-types dialog, settings dialog, and controller.
+
+---
+
+## 📁 Output Structure
+
+```
+output/
+└── MyBook/
+    ├── markdown/            ← 📝 full book + per-chapter MD (RAG-friendly)
+    ├── summaries/           ← 📃 aggregated + per-chapter summaries
+    ├── keypoints/           ← 🔑 keypoints + simplified keypoints
+    ├── briefing/            ← 📊 Executive Briefing      (if enabled)
+    ├── podcast/             ← 🎙️ script + audio          (if enabled)
+    ├── flashcards/          ← 🃏 .md + .tsv             (if enabled)
+    ├── packets/             ← 🧩 Packets of Knowledge    (if enabled)
+    ├── obsidian/            ← 🗂️ Obsidian KB             (if enabled)
+    ├── study_guide/         ← 📖 Study Guide             (if enabled)
+    ├── social/              ← 📱 Social Media Pack       (if enabled)
+    ├── mindmap/             ← 🕸️ Mind Map                (if enabled)
+    ├── evidence/            ← 🧪 Evidence Map            (if enabled)
+    ├── qa/  glossary/  patterns/  cheatsheet/  skill/    (if enabled)
+    ├── fa/                  ← 🌐 Farsi translations      (if enabled)
+    ├── logs/
+    │   ├── conversion.log.md
+    │   ├── quality_report.json
+    │   └── drops.jsonl      ← 🧾 full quarantine audit trail
+    └── .checkpoint.json     ← ⏯️ crash-safe resume state
+```
+
+---
+
+## 🤖 LLM Providers
+
+| Provider | Setting | Notes |
+|---|---|---|
+| 🦙 **Ollama** *(default)* | `summarisation.provider = "ollama"` | Local, free, offline. RTX 3060 12GB handles 9B Q4 models at 128k context. |
+| ☁️ **OpenRouter** | `"openai_compat"` | Cloud, pay-per-token. Default model: `google/gemini-2.5-flash-preview:free` |
+| 🔌 **OpenAI-compatible** | `"openai_compat"` | Any OpenAI-API-compatible endpoint (LM Studio, vLLM, …) |
+| 🟣 **Claude (Anthropic)** | `"claude"` | Direct Anthropic API. Model: `claude-3-5-sonnet-20241022` |
+| 🆓 **FreeLLMAPI** | `"freellmapi"` | Local proxy at `localhost:3001` |
+
+> ⚠️ Cloud API keys are stored in `~/.markitdown_pro/settings.json` in **plaintext** — keyring migration is on the roadmap.
+
+## 🌐 Translation (EN ↔ FA)
+
+- **NLLB-200-600M** *(default)* — HuggingFace, deterministic NMT, no API cost
+- **TranslateGemma-4B-Q5** *(backup)* — Ollama, context-aware, slower
+
+Per-output translation selection: choose which outputs (chapter summaries, keypoints, podcast, …) to translate after conversion.
+
+---
+
+## 🛡️ Anti-Hallucination Defense (8 Layers)
+
+Every summary bullet must survive all eight gates:
+
+1. 🧷 **Concept injection** — deterministic keyword extraction guides the LLM
+2. 🔢 **Numeric verification** — fabricated numbers/misquotes are dropped
+3. 🧹 **Thinking-strip** — `<think…` leakage + reasoning-process bullets removed
+4. 📖 **Narrative filter** — story bullets with no concept indicator dropped
+5. 📏 **F4 source-overlap** — <25% content-word overlap → drop
+6. 🧮 **Phase 2.2 semantic fact-check** — embedding similarity <0.5 → drop
+7. ⚖️ **Content Judge** — LLM-as-judge grounding
+8. 🔬 **langextract verbatim grounding** — deterministic claim extraction
+
+### ♻️ Bullet Preservation & Quarantine
+
+Every drop is logged to `logs/drops.jsonl` with the bullet text, the pipeline stage that dropped it, the threshold applied, and the measured source-overlap. A **recovery pass** resurrects any quarantined bullet with >30% source overlap.
+
+- 🐢 **Conservative mode** (Wizard → Advanced) disables all drops except thinking/prompt-leakage — all would-be drops still logged for audit.
+- 🔍 The **Quarantine tab** in the UI shows every dropped bullet with a **Restore** button.
+
+### 🧮 Embedder (Phase 2.2 back-end)
+
+| Model | Format | Size | Setting |
+|-------|--------|------|---------|
+| `BAAI/bge-small-en-v1.5` *(default)* | HF safetensors | ~130 MB | `embedding.model` |
+| `qwen3-embed` | Ollama GGUF (0.6B) | ~600 MB | `embedding.model` |
+
+V18.2.44-hardened: a silently-broken backend (zero/NaN vectors) is caught at load time and degrades to Jaccard word-overlap with one loud WARNING — never a silent false 0% coverage. Full details: [`docs/EMBEDDERS.md`](docs/EMBEDDERS.md).
+
+Optional-mode knobs:
+
+```json
+{
+  "embedding": {
+    "enabled": false,     // true = gold-standard semantic path (default)
+    "fallback": "skip",   // "jaccard" = lexical fallback, "skip" = omit Phase 2.2
+    "model": "BAAI/bge-small-en-v1.5"
+  }
+}
+```
+
+---
+
+## 🔥 VRAM Guardian (new in V18.20.4.10)
+
+A real-world incident (a 257-page book on a 12GB GPU with a 20.2GB model) produced a **4-root-cause hotfix**:
+
+| Fix | What changed |
+|---|---|
+| 📊 **Honest token estimates** | Chapter count now comes from the PDF outline first (was: a regex that counted *any* short numbered line → ~5M-token estimates, ~7× inflated) |
+| 📑 **Metadata-children exclusion** | Outline levels that only repeat author names on the same page as real chapters are no longer treated as chapters (the "97 essays became 97 *author* segments" bug) |
+| 🧱 **Bounded short-segment merge** | Short chapters merge up to `2 × min_pages`, then a new group starts — the whole-book "monster segment" cascade is structurally impossible now |
+| 🗺️ **Map-Reduce rails** | Wall-clock budget for the whole map phase (`local.map_phase_max_seconds`, default 1800s) → a chapter **fails loudly** instead of silently grinding for days |
+| ⚡ **VRAM fail-fast** | `local.vram_overbudget_policy` ∈ `ask` *(default — wizard asks with **Abort preselected**)* / `abort` / `proceed`. Queue & service starts (no UI to ask) always abort with guidance. No more warn-and-continue. |
+
+---
+
+## ⚙️ Key Settings
+
+Settings file: `~/.markitdown_pro/settings.json`
+
+| Key | Default | Description |
+|---|---|---|
+| `ocr.primary_model` | `qwen3-vl:8b` | Ollama model for OCR |
+| `summarisation.provider` | `ollama` | `ollama` / `openai_compat` / `claude` / `freellmapi` |
+| `summarisation.model` | `Qwythos-9B-…` | Ollama model for summaries |
+| `summarisation.max_context_tokens` | `131072` | Context window (auto-detected from VRAM) |
+| `summarisation.coverage_threshold` | `0.70` | Min keyword coverage (auto-lowered to 0.60 after 3 retries) |
+| `grounding.enabled` | `true` | langextract verbatim grounding |
+| `embedding.enabled` | `true` | Gate the semantic fact-check path |
+| `embedding.fallback` | `"jaccard"` | `"jaccard"` (lexical) or `"skip"` (omit Phase 2.2) |
+| `local.vram_overbudget_policy` | `"ask"` | `ask` / `abort` / `proceed` — enforced before extraction |
+| `local.map_phase_max_seconds` | `1800` | Wall-clock budget for a map-reduce map phase |
+| `translation.backend` | `nllb` | `nllb` / `translategemma` |
+| `paths.*` | *(system paths)* | tesseract, poppler, piper, neutts_gguf |
+| `outputs.*` (15 keys) | varies | Output Studio toggles |
+
+---
+
+## 🧰 Technology
+
+| Component | Technology |
+|---|---|
+| 🖥️ GUI | PySide6 6.11 (Qt for Python) |
+| 📄 PDF extraction | markitdown (primary), pypdf (fallback) |
+| 📷 OCR | OlmOCR-2-7B / Qwen3-VL via Ollama, PaddleOCR, Tesseract |
+| 🧠 Summarisation | Ollama 9B (Qwythos-9B) or cloud APIs |
+| 🌐 Translation | NLLB-200-600M (HuggingFace), TranslateGemma-4B (Ollama) |
+| 🔊 TTS | NeuTTS-Air (Ollama GGUF), Piper |
+| 📝 DOCX | python-docx |
+| 🔢 Tokens | tiktoken |
+| 🌍 HTTP | requests (proxy-proof) |
+| 🔬 Grounding | langextract (Google) |
+
+---
+
+## 🧪 Development & Testing
+
+```bash
+# ▶️ Run the app
+python main.py
+
+# 🧪 Full test suite (2,973 tests, ~117s headless)
+python -m pytest tests/ --no-cov -q
+
+# 🧹 Lint
+ruff check .
+
+# 🏆 Golden-master audit (requires bun + z-ai-web-dev-sdk)
+pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
+```
+
+**Current gate (V18.20.4.10):** `2973 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 117.39s`
+*(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
+
+### 🏗️ Project Layout
+
+```
+MarkItDown-Pro/
+├── main.py                  ← 🚪 entry point + crash reporting
+├── controller.py            ← 🎛️ orchestration bridge (UI ⇄ core)
+├── core/
+│   ├── pdf/                 ← 📄 extraction, TOC, layout, footnotes, math
+│   ├── segmentation/        ← 📑 TOC / heading / semantic / token segmenters
+│   ├── summarisation/       ← 🧠 the 8-layer pipeline + map-reduce
+│   ├── llm/                 ← 🤖 providers, dispatcher, cache, retry, taxonomy
+│   ├── translation/         ← 🌐 EN↔FA engines + glossary + validator
+│   ├── tts/                 ← 🔊 NeuTTS / Piper / Qwen / VibeVoice engines
+│   ├── ocr/                 ← 📷 OCR cascade + prescan
+│   ├── outputs/             ← 📦 all 19 output generators + registry
+│   ├── pipeline/            ← ⚙️ converter, checkpoints, token estimator
+│   ├── obs/                 ← 👁️ manifest, tracing, progress, remediation
+│   └── system/              ← 🛡️ preflight, supervisor, thermal, hardware
+├── ui_qt/                   🖥️  PySide6 views, wizard steps, components
+├── prompts/                 ← ✍️ all LLM prompt templates (versioned)
+├── tests/                   ← 🧪 2,973-test characterization suite
+├── docs/                    ← 📚 EMBEDDERS, models, evaluation framework
+├── installer/               ← 📦 Inno Setup script
+└── utils/                   ← 🔧 settings, logging, atomic IO, text quality
+```
+
+---
+
+## 📊 Project Status
+
+**Current version: V18.20.4.10** — the P0 hotfix for the "97 Things Every Programmer Should Know" pipeline stall (4 root causes: outline level selection, short-segment merge cascade, position-0 fallback, VRAM warn-and-continue). Full story in [`CHANGELOG.md`](CHANGELOG.md).
+
+### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
+
+A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 strengths, every claim checked at file:line level):
+
+| Category | ✅ Fixed | 🟡 Partial | ❌ Open | 🔴 Regressed |
+|---|:---:|:---:|:---:|:---:|
+| **Overall (99 findings)** | **55** | **15** | **29** | **0** |
+| Strengths (S1–S22) hold | **22 / 22** ✅ | — | — | — |
+
+- 🧪 Test gate independently reproduced: `2947 passed / 0 failed` at V18.20.4.9 (env-accounted exact match), now `2973` after the V18.20.4.10 hotfix (+26 regression pins).
+- 🏆 All 10 self-identified top-priority SWOT items: **fixed and verified**.
+- 📈 56% of all findings fully fixed; 71% counting partials — with **zero regressions** across the decompositions of V18.20.4.1–.4.9.
+
+### 🗺️ Roadmap (prioritized from the audit's open items)
+
+1. 🐛 **`find_analysis_for_heading` heading-ignored bug** — `deterministic_analyzer.py:996-1058` returns the *first* analysis file tree-wide; now unmasked by the V18.20.4.10 segmentation fix, this would inject segment-001's analysis into every chapter of a multi-segment book. **Next fix.**
+2. 🔌 **Unify ~10 hand-rolled LLM call stacks** into `llm_dispatcher` (timeouts, retries, caching become consistent everywhere).
+3. 🧵 **Close parallel-stage shared-state races** (`summarizer.py` shared heading state × `drops.jsonl`).
+4. 📢 **Raise buried logs** — quality-report failures still log at DEBUG.
+5. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext).
+6. 🧹 **Model-literal cleanup** (`gemma3:12b` × 3 sites, `qwen3-vl:8b` postprocess fallback).
+7. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871).
+
+### ⚠️ Known Issues
+
+1. `summarizer.py` is still a large orchestrator (~4,700 lines) — decomposition continues behind the characterization-test net.
+2. `[space/fix]` post-check occasionally splits correct compound words ("thereby" → "the reby"); auto-corrected by `[extra_space/fix]`.
+3. The V18.20.4.9 user-machine pre-chunk stall was environmental (not reproduced in-sandbox); V18.20.4.10 bounds and surfaces it if it recurs.
+4. `PromptContext` + `build_primary_prompt` remain in `prompt_assembly.py` unused (V18.6.3 crash pattern — kept frozen deliberately).
+
+---
+
+## 📜 History & Changelog
+
+- 📋 [`CHANGELOG.md`](CHANGELOG.md) — every release, incident, and fix with full evidence
+- 📖 [`Project-History.md`](Project-History.md) — the long-form development story
+- 🧭 [`NEW_SESSION_PROMPT.md`](NEW_SESSION_PROMPT.md) — working agreements for AI-assisted sessions
+
+---
+
+## 📄 License
+
+Personal use. See project files for details.

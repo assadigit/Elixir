@@ -1,0 +1,15 @@
+{
+  "description": "Expected bullets after the Conservative-mode filter pipeline (academic golden file). ALL 7 grounded bullets survive AND the backtick-quoted bullet is dropped (thinking/prompt-leakage filters are always active even in conservative mode). The drop count may be higher than normal mode because conservative mode also logs would-be-drops that it keeps.",
+  "mode": "conservative",
+  "expected_surviving_bullets": [
+    "Memantine is an NMDA receptor antagonist approved for moderate-to-severe Alzheimer's disease since 2003.",
+    "The drug reduces calcium influx into neurons by approximately 40%.",
+    "A 24-week randomized controlled trial enrolled 252 patients with moderate-to-severe Alzheimer's disease.",
+    "Memantine treatment led to a 50% improvement in cognitive scores compared to placebo.",
+    "The treatment causes meaningful functional stabilization in 65% of participants.",
+    "Common adverse effects were dizziness at 7%, headache at 6%, and constipation at 5%.",
+    "The evidence indicates that early intervention leads to better outcomes for patients."
+  ],
+  "expected_dropped_count_min": 2,
+  "expected_dropped_reasons_contains": ["thinking_process", "backtick_words"]
+}

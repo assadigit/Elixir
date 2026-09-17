@@ -1,0 +1,31 @@
+# MarkItDown Pro — pinned dependency lockfile (V18.3 Phase 1.6)
+# Generated from a working install. Use `pip install -r requirements.lock`
+# for a reproducible environment with exact versions.
+# Source: requirements.txt (floors) + this lockfile (pins).
+#
+# NOTE: Two system-level installs are also required on Windows:
+#   1. Tesseract-OCR:  https://github.com/UB-Mannheim/tesseract/wiki
+#   2. Poppler:        https://github.com/oschwartz10612/poppler-windows/releases
+#      (set paths.poppler in ~/.markitdown_pro/settings.json)
+# Verify at launch via: core.system.verify_environment.verify_system_dependencies()
+
+PyPDF2==3.0.1
+PyYAML==6.0.3
+RapidFuzz==3.14.3
+numpy-financial==1.0.0
+numpy==2.1.3
+openapi-pydantic==0.5.1
+pdf2image==1.17.0
+pdfplumber==0.11.9
+pillow==11.3.0
+pydantic-settings==2.13.1
+pydantic==2.12.5
+pydantic_core==2.41.5
+pypdf==6.6.0
+pypdfium2==5.7.0
+pytesseract==0.3.13
+python-docx==1.2.0
+requests-cache==1.3.1
+requests==2.32.5
+tenacity==9.1.4
+tiktoken==0.14.0

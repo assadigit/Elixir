@@ -1,0 +1,11 @@
+{
+  "summary_id": "v1828_iq2_xxs",
+  "overall_score": 7,
+  "factual_consistency_score": 8,
+  "coverage_score": 6,
+  "clarity_score": 8,
+  "hallucinations_detected": 2,
+  "critical_omissions_detected": 3,
+  "verdict": "PASS",
+  "justification": "The summary is largely accurate and well-structured, covering most key theorists and concepts. However, it contains minor factual slips and significant omissions of critical context and detailed theories, preventing a higher score."
+}

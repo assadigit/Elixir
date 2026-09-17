@@ -1,0 +1,5 @@
+Two-column papers, journals, conference proceedings
+xpected file: academic_paper.png  (delete this .txt file when you add the .png)
+Recommended size: 128x128px, transparent background
+
+This icon represents:

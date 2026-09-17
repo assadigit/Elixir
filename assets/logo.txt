@@ -1,0 +1,7 @@
+PLACEHOLDER — replace this file with a PNG logo
+
+Expected file: logo.png  (delete this .txt file when you add the .png)
+Recommended size: 200x40px (or any aspect ratio that looks good at 26px height)
+Transparent background recommended
+
+This logo appears in the top bar of the app (instead of the default book icon).

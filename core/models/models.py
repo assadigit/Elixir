@@ -1,0 +1,394 @@
+"""Core data classes, enums, and type definitions for the entire application."""
+
+# ── Enums ─────────────────────────────────────────────────────────────────────
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+class OcrEngine(str, Enum):
+    """Which OCR engine was used for a page."""
+    QWEN_VL    = "qwen3-vl"
+    TESSERACT  = "tesseract"
+    MARKITDOWN = "markitdown"
+    NONE       = "none"
+
+
+class PdfRecommendation(str, Enum):
+    """Recommended strategy after PDF analysis."""
+    LLM_OCR = "llm_ocr"    # Use Qwen3-VL for all pages
+    NO_OCR  = "no_ocr"     # Use extracted text directly
+    HYBRID  = "hybrid"     # OCR only on scanned pages
+
+
+class SegmentStrategy(str, Enum):
+    """Strategy used to split document into segments."""
+    AUTO     = "auto"      # Automatically choose best
+    HEADING  = "heading"   # Markdown headings or Persian patterns
+    KEYWORD  = "keyword"   # User-defined keywords/regex
+    SEMANTIC = "semantic"  # LLM-based boundary detection
+    TOKEN    = "token"     # Split by token count
+
+
+# ── Analysis & OCR ────────────────────────────────────────────────────────────
+
+@dataclass
+class PageAnalysis:
+    """Analysis result for a single PDF page."""
+    page_num: int
+    is_scanned: bool
+    extracted_text_preview: str
+    recommended_action: str
+
+
+@dataclass
+class PdfAnalysisResult:
+    """Overall PDF analysis."""
+    total_pages: int
+    scanned_pages: list[int]
+    text_pages: list[int]
+    recommendation: PdfRecommendation
+    per_page: list[PageAnalysis]
+
+
+@dataclass
+class OcrResult:
+    """Result of OCR on a single page."""
+    page_num: int
+    text: str
+    success: bool
+    engine_used: OcrEngine
+    error_msg: str = ""
+
+
+# ── Segmentation ──────────────────────────────────────────────────────────────
+
+@dataclass
+class Segment:
+    """A generic segment (chapter or page-group chunk)."""
+    heading: str
+    content: str
+    start_page: int
+    end_page: int
+    segment_type: str = "chapter"           # "chapter", "chunk", or "gap"
+    original_markdown: str | None = None
+    # V18.3.3 (F1): aliases — headings of segments that were MERGED into this
+    # one by _merge_short_segments. Preserves the lost headings so the chapter
+    # matcher can still find them. E.g. if "Dedication" was merged into
+    # "Title Page", the segment has heading="Title Page" + aliases=["Dedication"].
+    # The matcher checks both heading AND aliases when matching user selections.
+    aliases: list = None  # type: ignore  # populated by _merge_short_segments
+
+    def __post_init__(self):
+        if self.aliases is None:
+            self.aliases = []
+
+    @property
+    def all_headings(self) -> list:
+        """V18.3.3: the heading + all aliases — every name this segment is known by."""
+        return [self.heading] + (self.aliases or [])
+
+    @property
+    def is_gap(self) -> bool:
+        """V18.3.3 (F5): True if this is a gap segment (no real content, not matchable)."""
+        return self.segment_type == "gap" or self.heading.startswith("Gap (")
+
+
+# ── Summarisation ─────────────────────────────────────────────────────────────
+
+@dataclass
+class SummaryResult:
+    """Two-level summary for a segment."""
+    chapter_heading: str
+    executive_summary: str
+    thorough_summary: str
+    bullet_points: list[str] = field(default_factory=list)
+    success: bool = True
+    error_msg: str = ""
+    model_used: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # V13.38.0: Additive sections — anti-hallucination-verified distinctions + tensions
+    key_distinctions: str = ""
+    theoretical_tensions: str = ""
+    # V13.41.0: Scholar reflections — meta-cognitive gap analysis
+    scholar_reflections: str = ""
+    # V18.20.3.5: deterministic recall-floor numbers measured on the FINAL
+    # set (see core/summarisation/recall_floor.py). Consumed by the quality
+    # report and the end-of-conversion diagnostic so they print real
+    # numbers instead of "?".
+    recall_floor: dict | None = None
+    # V18.20.3.7: output provenance — which conversion produced this
+    # summary. Stamped by the Summarizer (one run_id per conversion) and
+    # rendered into every output file by render_summary_markdown /
+    # complete_sentinel (see core/system/provenance.py). Empty strings =
+    # legacy/unstamped (tests, pre-.3.7 files parsed by chapter_resume).
+    run_id: str = ""
+    app_version: str = ""
+    run_started: str = ""
+
+
+# ── Conversion Request / Result ───────────────────────────────────────────────
+
+@dataclass
+class ConversionRequest:
+    """All parameters needed to run a conversion."""
+    input_path: Path
+    output_dir: Path
+    password: str | None = None
+
+    # PDF analysis override
+    override_recommendation: PdfRecommendation | None = None
+
+    # OCR settings
+    use_llm_ocr: bool = True
+    primary_ocr_model: str = "qwen3-vl:8b"
+    fallback_ocr_model: str = "qwen3-vl:8b"
+    auto_detect_scanned: bool = True
+    force_ocr_all_pages: bool = False
+    image_max_size: int = 1200
+    ocr_retries: int = 2
+
+    # Post-processing
+    clean_markdown: bool = True
+    fix_missing_spaces: bool = False
+    token_saver: bool = True
+    remove_page_number_headings: bool = True
+    convert_separators_to_comments: bool = False
+
+    # Segmentation
+    segment_strategy: str | SegmentStrategy = "auto"
+    custom_keywords: list[str] = field(default_factory=list)
+    custom_regex_patterns: list[str] = field(default_factory=list)
+    page_group_size: int = 10
+    chunk_by_page_groups: bool = True
+    token_limit_per_segment: int = 1200
+    enable_semantic_segmentation: bool = True
+
+    # Summarisation
+    generate_summaries: bool = False
+    summarisation_model: str = "gemma3:12b"
+    summarisation_max_context_tokens: int = 131072   # V10.12.6: raised 16k → 64k (RTX 3060 12GB can handle 64k for 9B Q4)
+    summarisation_max_output_tokens: int = 4096     # increased default
+    summarisation_cache_enabled: bool = False
+
+    # DOCX
+    generate_docx: bool = False
+    docx_author: str = "MarkItDown Pro"
+    docx_include_toc: bool = True
+    docx_font: str = "Helvetica"
+
+    # Performance
+    max_workers: int = 2   # NEW: parallel summarisation workers
+
+    # ── Pre-flight VRAM acknowledgment (V18.20.4.10 / P0-c) ────────────────
+    # Set to True ONLY by an interactive user action (the wizard's
+    # "Proceed anyway" button on the VRAM-overbudget dialog). The converter
+    # enforces ``local.vram_overbudget_policy``: an overbudget plan without
+    # this acknowledgment fails fast with VramOverbudgetError instead of
+    # warn-and-continue.
+    vram_overbudget_acknowledged: bool = False
+
+    # ── Manual segmentation override ──────────────────────────────────────
+    manual_segments: list[tuple[int, int]] | None = None
+
+    # ── Quality Controls ──────────────────────────────────────────────────
+    temperature: float = 0.2
+    self_consistency: bool = False
+    fast_model: str = "gemma3:12b"
+    heavy_model: str = ""  # disabled by default
+    # ── V16.0.9: 4-mode model architecture ──────────────────────────────
+    # "single_local" — one LOCAL model (Ollama/LM Studio) does everything
+    # "dual_local"   — heavy local + fast local model (both via Ollama)
+    # "single_api"   — one CLOUD API model does everything
+    # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
+    # Legacy "single" is accepted for backward compat (mapped → "single_local").
+    model_architecture: str = "single_local"
+    fast_model: str = ""               # small/fast LOCAL model for simple tasks
+    fast_model_temperature: float = 0.1  # V16.0.8: LFM2.5 recommends 0.1
+    fast_model_context: int = 131072  # V16.0.8: LFM2.5 max 128K context
+    fast_api_url: str = ""             # API URL for dual_api mode (fast cloud model)
+    fast_api_key: str = ""             # API key for dual_api mode (fast cloud model)
+    fast_api_model: str = ""           # Model name for dual_api mode (fast cloud model)
+    coverage_threshold: float = 0.50  # lowered to 50%
+    # V15.1.0: Over-delivery — keep improving coverage past the minimum threshold
+    overdeliver_enabled: bool = True   # default ON
+    overdeliver_target: float = 1.0     # V15.1.1: 100% (the more the better)
+    b3_voting_enabled: bool = False     # V15.1.1: disabled (damages depth)
+
+    # V3.5.0: Separate model for simplified keypoints — enables sequential
+    # model loading (unload summarization model, load simplification model).
+    # If empty, falls back to fast_model or summarisation_model.
+    simplification_model: str = ""
+
+    # ── Page range selection ──────────────────────────────────────────────
+    page_range_start: int | None = None
+    page_range_end: int | None = None
+
+    # ── Chapter selection (list of chapter titles to include) ────────────
+    selected_chapters: list[str] | None = None
+
+    # ── Advanced document handling ────────────────────────────────────────
+    extract_tables: bool = False
+    extract_math: bool = False
+    layout_analysis: bool = False
+    table_extraction_method: str = "camelot"  # or "tabula"
+    math_model: str = "pix2tex"               # or "latex-ocr"
+
+    # ── Source Type & Quick Mode ──────────────────────────────────────────
+    # V3.10.0: Expanded source types for content-type presets
+    # "normal_book" — non-fiction (default)
+    # "academic_paper" — formal academic with citations, section numbering
+    # "self_help" — motivational, action-oriented, exercises
+    # "philosophy" — dense, abstract, long paragraphs, preserve nuance
+    # "catalogue" — product listings, skip summarization
+    source_type: str = "normal_book"
+    include_executive_summary: bool = True
+    include_thorough_summary: bool = True
+    include_keypoints: bool = True
+
+    # ── Content Filter toggle ─────────────────────────────────────────────
+    enable_content_filter: bool = True
+
+    # ── Academic Rigor flag ───────────────────────────────────────────────
+    academic_rigor: bool = False
+
+    # ── Simplified Keypoints Digest (Sprint 2) ────────────────────────────
+    simplified_keypoints_enabled: bool = False
+
+    # ── V10.28.0 (Sprint 1): Conservative drop mode ──────────────────────
+    # When True, the summariser disables every bullet-drop site EXCEPT the
+    # thinking-process / prompt-leakage filter (_filter_thinking_bullets'
+    # THINKING_STARTS / BACKTICK_WORDS / INTERNAL_MARKERS / PROMPT_LEAKAGE
+    # checks).  Specifically:
+    #   - F4 source-overlap drop        → disabled (logged to quarantine only)
+    #   - Phase 2.2 semantic fact-check → disabled (logged to quarantine only)
+    #   - B3 multi-sample dedup merge   → disabled (duplicates kept)
+    #   - Content Judge grounding drop  → disabled (logged to quarantine only)
+    #   - Quality scorer threshold drop → disabled (all bullets kept)
+    # This guarantees that in Conservative mode the output bullet count is
+    # ≥ the raw LLM output count (zero drops except thinking-filter), which
+    # is the Sprint 1 exit criterion.  Every drop that *would have* happened
+    # is still recorded in the quarantine log so the user can audit it.
+    conservative_drops: bool = False
+
+    # ── Sprint 3 – Vision OCR for Figures ────────────────────────────────
+    extract_figure_text: bool = False
+
+    # ── V4.1.0: Output Studio — opt-in output types ─────────────────────
+    # Each flag gates one optional output generator in core/outputs/.
+    # Defaults are False at the model level; the settings layer
+    # (build_request_from_ui) supplies sensible per-output defaults so the
+    # 3 V4.0.0 outputs stay on by default and the 4 new ones are opt-in.
+    output_briefing: bool = False       # B3: one-page synthesis (.Briefing.md)
+    output_podcast: bool = False        # B1: 2-host conversational script (.Podcast.md)
+    output_flashcards: bool = False     # B2: Anki TSV + readable MD (.Flashcards.*)
+    output_packets: bool = False        # V7.3.0: Packets of Knowledge (clusters + synthesis)
+    output_obsidian: bool = False       # V4.1: Obsidian KB — MD + YAML + wikilinks
+    output_study_guide: bool = False    # V4.1: structured study guide (.StudyGuide.md)
+    output_social: bool = False         # V4.1: social media pack (.Social.md)
+    output_mindmap: bool = False        # V4.1: Mermaid mindmap + MD outline (.MindMap.md)
+    output_tts: bool = False            # V4.2: podcast audio via TTS (.Podcast.wav)
+    output_evidence_map: bool = False   # V10.1.0: Scientific Evidence Map (langextract)
+    output_qa: bool = False             # V10.17.0: Q&A study questions
+    output_glossary: bool = False        # V10.20.0: Glossary
+    output_patterns: bool = False        # V10.20.0: Patterns/Techniques
+    output_cheatsheet: bool = False      # V10.20.0: Cheatsheet
+    output_skill: bool = False            # V10.21.0: Agent Skill (SKILL.md)
+    compact_summaries: bool = False       # V10.20.0: Density mode (~1000 tokens/chapter)
+    # V10.35.0 (Sprint 8/9): New outputs
+    output_epub: bool = False             # V10.35.0: EPUB output (annotated)
+    output_quote_bank: bool = False       # V10.35.0: Quote bank
+
+    @property
+    def layout_reorder_enabled(self) -> bool:
+        return self.source_type == "academic_paper"
+
+    # V10.21.0 (B2): Nested config views — read-only grouped access to the
+    # 115 flat fields.  Each property returns a frozen dataclass built from
+    # the flat fields.  New code can use `request.ocr.primary_model` instead
+    # of `request.primary_ocr_model`.  Old code keeps working unchanged.
+    @property
+    def ocr(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["ocr"]
+
+    @property
+    def postprocess(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["postprocess"]
+
+    @property
+    def segmentation(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["segmentation"]
+
+    @property
+    def summarization(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["summarization"]
+
+    @property
+    def outputs(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["outputs"]
+
+    @property
+    def quality(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["quality"]
+
+    @property
+    def advanced(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["advanced"]
+
+    @property
+    def selection(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["selection"]
+
+    @property
+    def docx_config(self):
+        from core.models.config_views import build_config_views
+        return build_config_views(self)["docx"]
+
+    def get_segment_strategy_enum(self) -> SegmentStrategy:
+        if isinstance(self.segment_strategy, SegmentStrategy):
+            return self.segment_strategy
+        try:
+            return SegmentStrategy(self.segment_strategy)
+        except ValueError:
+            return SegmentStrategy.AUTO
+
+
+@dataclass
+class ConversionResult:
+    """Result of a conversion operation."""
+    success: bool
+    error_msg: str = ""
+    full_markdown_path: Path | None = None
+    chapters_folder: Path | None = None
+    chunks_folder: Path | None = None
+    docx_path: Path | None = None
+    # V18.20.3.6: pages THIS conversion actually covered — the selected-
+    # chapter / page-range page count when a selection was active, else the
+    # document's total.  (Was always the whole-PDF total, so a single
+    # 18-page chapter of a 397-page book reported "Pages processed: 397".)
+    pages_processed: int = 0
+    chapters_detected: int = 0
+    chunks_created: int = 0
+    summaries_generated: int = 0
+    segments: list[Segment] = field(default_factory=list)
+    summaries: list[SummaryResult] = field(default_factory=list)
+    log_file_path: Path | None = None
+    warnings: list[str] = field(default_factory=list)
+
+
+# ── Callback type aliases ──────────────────────────────────────────────────────
+
+ProgressCallback = Callable[[float], None]
+StatusCallback   = Callable[[str], None]
+LogCallback      = Callable[[str, str], None]

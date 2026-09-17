@@ -1,0 +1,11 @@
+{
+  "summary_id": "identity_origins_summary",
+  "overall_score": 7,
+  "factual_consistency_score": 7,
+  "coverage_score": 7,
+  "clarity_score": 8,
+  "hallucinations_detected": 2,
+  "critical_omissions_detected": 3,
+  "verdict": "PASS",
+  "justification": "The summary demonstrates good factual consistency with the source text, covering most major theorists and concepts accurately. However, it contains a few instances of added details not explicitly present in the source (like specific numbers about Freud's usage of 'identity') and gives disproportionate attention to some minor contributors. The summary misses some critical contextual elements about the clinical importance of identity disturbance and doesn't adequately explain the distinction between identity diffusion and identity crisis. Despite these issues, the summary maintains a clear logical structure and captures the essential content of the chapter, warranting a passing grade."
+}

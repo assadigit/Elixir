@@ -1,0 +1,417 @@
+{
+  "patterns": {
+    "chapter": {
+      "en": [
+        "chapter\\s+\\d+",
+        "chapter\\s+[IVX]+",
+        "ch\\s*\\d+",
+        "chapter\\s*\\d+\\s*[:.]",
+        "chapter\\s+\\d+\\s*[:.]\\s*[A-Z]",
+        "^chapter\\s+",
+        "chapter\\s+[A-Z]",
+        "chapter\\s+one",
+        "chapter\\s+two",
+        "chapter\\s+three",
+        "chapter\\s+four",
+        "chapter\\s+five",
+        "chapter\\s+six",
+        "chapter\\s+seven",
+        "chapter\\s+eight",
+        "chapter\\s+nine",
+        "chapter\\s+ten",
+        "chap\\.\\s+\\d+",
+        "ch\\s*\\d+\\s*[:.]"
+      ],
+      "fa": [
+        "فصل\\s+\\d+",
+        "فصل\\s+[۰-۹]+",
+        "فصل\\s+[IVX]+",
+        "فصل\\s+[الف-ی]+",
+        "^فصل\\s+",
+        "فصل\\s+یک",
+        "فصل\\s+دو",
+        "فصل\\s+سه",
+        "فصل\\s+چهار",
+        "فصل\\s+پنج",
+        "فصل\\s+شش",
+        "فصل\\s+هفت",
+        "فصل\\s+هشت",
+        "فصل\\s+نه",
+        "فصل\\s+ده"
+      ]
+    },
+    "part": {
+      "en": [
+        "part\\s+\\d+",
+        "part\\s+[IVX]+",
+        "part\\s+\\d+\\s*[:.]",
+        "part\\s+[IVX]+\\s*[:.]",
+        "part\\s+[A-Z]",
+        "part\\s+one",
+        "part\\s+two",
+        "part\\s+three",
+        "part\\s+four",
+        "part\\s+five",
+        "part\\s+six",
+        "part\\s+seven",
+        "part\\s+eight",
+        "part\\s+nine",
+        "part\\s+ten",
+        "pt\\.\\s+\\d+",
+        "pt\\s*\\d+"
+      ],
+      "fa": [
+        "بخش\\s+\\d+",
+        "بخش\\s+[IVX]+",
+        "بخش\\s+[الف-ی]+",
+        "بخش\\s+یک",
+        "بخش\\s+دو",
+        "بخش\\s+سه",
+        "بخش\\s+چهار",
+        "بخش\\s+پنج",
+        "بخش\\s+شش",
+        "بخش\\s+هفت",
+        "بخش\\s+هشت",
+        "بخش\\s+نه",
+        "بخش\\s+ده"
+      ]
+    },
+    "section": {
+      "en": [
+        "section\\s+\\d+",
+        "section\\s+[IVX]+",
+        "sec\\s*\\d+",
+        "section\\s+\\d+\\s*[:.]",
+        "section\\s+[A-Z]",
+        "section\\s+one",
+        "section\\s+two",
+        "section\\s+three",
+        "section\\s+four",
+        "section\\s+five",
+        "sect\\.\\s+\\d+",
+        "§\\s*\\d+"
+      ],
+      "fa": [
+        "قسمت\\s+\\d+",
+        "قسمت\\s+[IVX]+",
+        "بند\\s+\\d+",
+        "مبحث\\s+\\d+"
+      ]
+    },
+    "appendix": {
+      "en": [
+        "appendix\\s+[A-Z]",
+        "appendix\\s+\\d+",
+        "appendix\\s+[IVX]+",
+        "appendix\\s+[A-Z]\\s*[:.]",
+        "app\\s+[A-Z]",
+        "appendix\\s+one",
+        "appendix\\s+two",
+        "appendix\\s+three"
+      ],
+      "fa": [
+        "پیوست\\s+\\d+",
+        "پیوست\\s+[IVX]+",
+        "ضمیمه\\s+\\d+"
+      ]
+    },
+    "numbered": {
+      "en": [
+        "^\\d+\\s*[-–—]\\s+[A-Z]",
+        "^\\d+\\.\\s+[A-Z]",
+        "^\\d+\\s+[A-Z][a-z]",
+        "^\\d+\\s*[-–—]\\s+[A-Z][a-z]",
+        "^\\d+\\.\\d+\\s+[A-Z]",
+        "^\\d+\\.\\d+\\.\\s+[A-Z]"
+      ],
+      "fa": [
+        "^\\d+\\s*[-–—]\\s+",
+        "^\\d+\\.\\s+",
+        "^\\d+\\.\\d+\\s+"
+      ]
+    },
+    "part_roman": {
+      "en": [
+        "^part\\s+[IVX]+",
+        "^part\\s+[IVX]+\\s*[:.]",
+        "^part\\s+[IVX]+\\s+of\\s+[IVX]+",
+        "^part\\s+[IVX]+\\s*[-–—]"
+      ],
+      "fa": [
+        "^بخش\\s+[IVX]+"
+      ]
+    },
+    "chapter_roman": {
+      "en": [
+        "^chapter\\s+[IVX]+",
+        "^chapter\\s+[IVX]+\\s*[:.]"
+      ],
+      "fa": [
+        "^فصل\\s+[IVX]+"
+      ]
+    },
+    "introduction": {
+      "en": [
+        "^introduction$",
+        "^introduction\\s*[:.]",
+        "introduction\\s+to",
+        "general\\s+introduction",
+        "intro\\.",
+        "^intro$"
+      ],
+      "fa": [
+        "^مقدمه$",
+        "^مقدمه\\s*[:.]",
+        "^درآمد$",
+        "^پیشگفتار$",
+        "^آغاز$"
+      ]
+    },
+    "conclusion": {
+      "en": [
+        "^conclusion$",
+        "^conclusion\\s*[:.]",
+        "concluding\\s+remarks",
+        "summary\\s+and\\s+conclusion",
+        "conclusions?",
+        "^epilogue$",
+        "^afterword$",
+        "^postscript$",
+        "^coda$"
+      ],
+      "fa": [
+        "^نتیجه$",
+        "^نتیجه گیری$",
+        "^پایان$",
+        "^خاتمه$",
+        "^سخن آخر$"
+      ]
+    },
+    "preface": {
+      "en": [
+        "^preface$",
+        "^preface\\s*[:.]",
+        "^foreword$",
+        "^foreword\\s*[:.]",
+        "^prologue$",
+        "^prologue\\s*[:.]",
+        "^preamble$"
+      ],
+      "fa": [
+        "^پیشگفتار$",
+        "^پیشگفتار\\s*[:.]",
+        "^سخن ناشر$",
+        "^یادداشت مترجم$",
+        "^سخن مؤلف$"
+      ]
+    },
+    "acknowledgments": {
+      "en": [
+        "^acknowledgments$",
+        "^acknowledgements$",
+        "^thanks$",
+        "^appreciation$"
+      ],
+      "fa": [
+        "^سپاسگزاری$",
+        "^تقدیر$",
+        "^تشکر$",
+        "^قدردانی$"
+      ]
+    },
+    "references": {
+      "en": [
+        "^references$",
+        "^bibliography$",
+        "^works\\s+cited$",
+        "^further\\s+reading$",
+        "^sources$",
+        "^notes$",
+        "^endnotes$"
+      ],
+      "fa": [
+        "^منابع$",
+        "^مراجع$",
+        "^کتابنامه$",
+        "^منابع و مآخذ$"
+      ]
+    },
+    "index": {
+      "en": [
+        "^index$"
+      ],
+      "fa": [
+        "^نمایه$",
+        "^فهرست اعلام$",
+        "^فهرست موضوعی$"
+      ]
+    },
+    "glossary": {
+      "en": [
+        "^glossary$",
+        "^terminology$",
+        "^terms$"
+      ],
+      "fa": [
+        "^واژه‌نامه$",
+        "^اصطلاحات$"
+      ]
+    },
+    "table_of_contents": {
+      "en": [
+        "^contents$",
+        "^table\\s+of\\s+contents$",
+        "^toc$"
+      ],
+      "fa": [
+        "^فهرست$",
+        "^فهرست مطالب$"
+      ]
+    },
+    "dedication": {
+      "en": [
+        "^dedication$",
+        "^to\\s+"
+      ],
+      "fa": [
+        "^تقدیم$",
+        "^تقدیم به$"
+      ]
+    },
+    "copyright": {
+      "en": [
+        "^copyright$",
+        "^©"
+      ],
+      "fa": [
+        "^کپی رایت$"
+      ]
+    },
+    "abstract": {
+      "en": [
+        "^abstract$",
+        "^summary$"
+      ],
+      "fa": [
+        "^چکیده$",
+        "^خلاصه$"
+      ]
+    },
+    "keywords": {
+      "en": [
+        "^keywords$"
+      ],
+      "fa": [
+        "^کلیدواژه$",
+        "^واژگان کلیدی$"
+      ]
+    },
+    "volume": {
+      "en": [
+        "volume\\s+\\d+",
+        "vol\\.\\s+\\d+",
+        "volume\\s+[IVX]+"
+      ],
+      "fa": [
+        "جلد\\s+\\d+",
+        "جلد\\s+[IVX]+"
+      ]
+    },
+    "book": {
+      "en": [
+        "book\\s+\\d+",
+        "book\\s+[IVX]+"
+      ],
+      "fa": [
+        "کتاب\\s+\\d+"
+      ]
+    },
+    "unit": {
+      "en": [
+        "unit\\s+\\d+",
+        "unit\\s+[IVX]+"
+      ],
+      "fa": [
+        "واحد\\s+\\d+"
+      ]
+    },
+    "lesson": {
+      "en": [
+        "lesson\\s+\\d+",
+        "lesson\\s+[IVX]+"
+      ],
+      "fa": [
+        "درس\\s+\\d+"
+      ]
+    },
+    "topic": {
+      "en": [
+        "topic\\s+\\d+"
+      ],
+      "fa": [
+        "موضوع\\s+\\d+"
+      ]
+    },
+    "module": {
+      "en": [
+        "module\\s+\\d+"
+      ],
+      "fa": [
+        "مدول\\s+\\d+"
+      ]
+    },
+    "stage": {
+      "en": [
+        "stage\\s+\\d+"
+      ],
+      "fa": [
+        "مرحله\\s+\\d+"
+      ]
+    },
+    "phase": {
+      "en": [
+        "phase\\s+\\d+"
+      ],
+      "fa": [
+        "فاز\\s+\\d+"
+      ]
+    },
+    "step": {
+      "en": [
+        "step\\s+\\d+"
+      ],
+      "fa": [
+        "گام\\s+\\d+"
+      ]
+    },
+    "level": {
+      "en": [
+        "level\\s+\\d+"
+      ],
+      "fa": [
+        "سطح\\s+\\d+"
+      ]
+    },
+    "act": {
+      "en": [
+        "act\\s+[IVX]+",
+        "act\\s+\\d+"
+      ],
+      "fa": [
+        "پرده\\s+\\d+"
+      ]
+    },
+    "scene": {
+      "en": [
+        "scene\\s+\\d+"
+      ],
+      "fa": [
+        "صحنه\\s+\\d+"
+      ]
+    }
+  },
+  "language_detection": {
+    "default": "en"
+  },
+  "fallback_heading": "Introduction"
+}

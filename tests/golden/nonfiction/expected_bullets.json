@@ -1,0 +1,14 @@
+{
+  "description": "Expected bullets after the Normal-mode filter pipeline (nonfiction golden file). The 6 grounded bullets survive; the thinking-process bullet (#7, starts with 'Analyze') is dropped.",
+  "mode": "normal",
+  "expected_surviving_bullets": [
+    "Casing is the systematic observation of a location to develop a mental map of entrances and exits.",
+    "The operative should avoid staring and use quick glances that capture details without drawing attention.",
+    "Establishing a baseline is essential before observing deviations in activity patterns.",
+    "A baseline is the normal pattern of activity in the environment.",
+    "Mirroring is a technique where the operative subtly matches the body language of the subject.",
+    "The operative should mirror posture, gesture frequency, and speech pace."
+  ],
+  "expected_dropped_count_min": 1,
+  "expected_dropped_reasons_contains": ["thinking", "thinking_process"]
+}

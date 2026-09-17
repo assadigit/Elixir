@@ -1,0 +1,11 @@
+{
+  "summary_id": "v18215",
+  "overall_score": 7,
+  "factual_consistency_score": 6,
+  "coverage_score": 8,
+  "clarity_score": 8,
+  "hallucinations_detected": 4,
+  "critical_omissions_detected": 3,
+  "verdict": "FAIL",
+  "justification": "The summary contains several factual errors and hallucinations, including incorrect attributions of concepts to theorists and undue prominence given to minor figures, which compromises its factual consistency."
+}

@@ -1,0 +1,11 @@
+{
+  "summary_id": "v18210_iq2_xxs",
+  "overall_score": 8,
+  "factual_consistency_score": 8,
+  "coverage_score": 7,
+  "clarity_score": 9,
+  "hallucinations_detected": 2,
+  "critical_omissions_detected": 3,
+  "verdict": "PASS",
+  "justification": "The summary is highly accurate and well-structured but contains minor factual inaccuracies and omits some critical points."
+}

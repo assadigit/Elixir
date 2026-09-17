@@ -1,0 +1,11 @@
+{
+  "summary_id": "v1826_iq2_xxs",
+  "overall_score": 9,
+  "factual_consistency_score": 9,
+  "coverage_score": 8,
+  "clarity_score": 10,
+  "hallucinations_detected": 0,
+  "critical_omissions_detected": 3,
+  "verdict": "PASS",
+  "justification": "The summary is highly accurate, well-structured, and comprehensive, capturing the vast majority of key information. It contains no factual hallucinations. It is only marked down slightly on coverage for omitting three critical conceptual points: the inherent two-sidedness of identity, the synthesis of Freud's implicit view, and Mahler's two specific conditions for ego organization."
+}
