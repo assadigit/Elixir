@@ -484,7 +484,10 @@ class TestProvenanceModule:
     def test_get_app_version_reads_version_file(self):
         v = provenance.get_app_version()
         assert v and v != "unknown"
-        assert re.match(r"^\d+\.\d+\.\d+", v), v
+        # V0.01 (versioning reset): Elixir versions on its own two-part line
+        # (0.01, 0.02, ...). The pin stays dotted-numeric (rejects "unknown"
+        # and garbage) but no longer assumes >= 3 parts (legacy 18.x form).
+        assert re.match(r"^\d+(?:\.\d+)+", v), v
 
     def test_complete_sentinel_forms(self):
         assert provenance.complete_sentinel("") == "<!-- COMPLETE -->"

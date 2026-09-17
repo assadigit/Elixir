@@ -1,5 +1,13 @@
 # New Session Prompt — Elixir V18.15.2.1 (God-Class Extraction Continuation)
 
+> **⚠️ ARCHIVED SESSION PROMPT (V18.15.2.1 era) — kept for historical context only.**
+> The version references and paths below predate both the rebrand-era work and the
+> **versioning reset**. Current state: the app is **Elixir**, and since **V0.01** it
+> versions on its own two-part line — **V0.01 = legacy V18.20.4.12 content repackaged**
+> (the legacy `V18.x` line ended there; mapping table in `CHANGELOG.md`'s V0.01 entry).
+> Do **not** treat "V18.15.2.1", the god-class-extraction agenda, or the paths below as
+> current. For the current state, read `CHANGELOG.md` top-down and `README.md`.
+
 I'm continuing development of **Elixir**, an LLM-based book summarization
 desktop app (PySide6 + Ollama) running on Windows 10 with an RTX 3060 12GB GPU.
 The current version is **V18.15.2.1** — this is the **gold standard** base version

@@ -19,17 +19,17 @@
 ;        --hidden-import "PySide6.QtCore" --hidden-import "PySide6.QtWidgets" --hidden-import "PySide6.QtGui" ^
 ;        main.py
 ;   3. Compile this .iss file with Inno Setup Compiler (iscc.exe)
-;   4. The output is dist/Elixir_Setup_V13.26.0.exe
+;   4. The output is dist/Elixir_Setup_V0.01.exe (V0.01: tracks the VERSION file)
 
 [Setup]
 AppName=Elixir
-AppVersion=13.26.0
+AppVersion=0.01
 AppPublisher=Elixir
 DefaultDirName={autopf}\Elixir
 DefaultGroupName=Elixir
 DisableProgramGroupPage=yes
 OutputDir=dist
-OutputBaseFilename=Elixir_Setup_V13.26.0
+OutputBaseFilename=Elixir_Setup_V0.01
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern

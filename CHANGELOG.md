@@ -1,5 +1,39 @@
 # Changelog
 
+## V0.01 — VERSIONING RESET: Elixir starts its own version line (content = legacy V18.20.4.12, zero code changes)
+
+> **⚠️ READ THIS FIRST if you're tracking versions — the scheme changed here.**
+> Elixir (rebranded from "MarkItDown Pro" in legacy V18.20.4.11) **no longer continues the
+> legacy `V18.x` version line.** From this release on, the app versions on its own line:
+> **V0.01 → V0.02 → V0.03 → …** (two-part hundredths: `0.01`, `0.02`, … `0.10`, `0.11`, …).
+> The legacy line ends at **V18.20.4.12** — and this V0.01 release is that exact content,
+> repackaged under the new scheme. **Nothing else changed.**
+
+**Status: versioning-only release — no code, prompt, output-format, or behavior changes.**
+Test gate: identical to V18.20.4.12 (`3279 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed` — re-verified for this release).
+
+**What changed (mechanical, single-source):**
+
+- **`VERSION` file** (the single source of truth — every consumer reads it as an opaque string): `18.20.4.12` → `0.01`. Window title (`Elixir · v0.01`), About dialog, conversion banner, provenance stamps, and the segmentation debug line pick it up automatically — verified: all consumers (`provenance.get_app_version`, `app.py`/`about_system_dialog.py` `_app_version`, `converter_impl._get_app_version`, `segmentation.py`) treat it as an opaque string with no 4-part assumptions.
+- **`installer/Elixir.iss`**: `AppVersion` and `OutputBaseFilename` were stale at `13.26.0` (last touched in the V13 era) → now `0.01` / `Elixir_Setup_V0.01.exe`, tracking the VERSION file.
+- **`tests/test_v182037_audit_fixes.py`**: the one version-format pin (`^\d+\.\d+\.\d+`, assumed ≥3 dotted parts) relaxed to `^\d+(?:\.\d+)+` — intent unchanged (dotted-numeric, rejects `"unknown"`/garbage), now accepts the two-part Elixir scheme. This was the only test in the suite pinning the version format (all other version strings in tests are historical `# V…` change-tags).
+- **`README.md`** (version badge, gate line, "Current version" paragraph) and **`NEW_SESSION_PROMPT.md`** (archived-banner note) now state the reset explicitly.
+
+**Deliberately NOT changed (history stays history):**
+
+- In-code `# V18.x` change tags, test file names (`test_v1820412_*.py`, …), and all older changelog entries keep their legacy version tags — they record WHEN each change shipped, in the version line that was current at the time. Rewriting them would falsify history and break the file:line evidence chain of every audit.
+- `Project-History.md` (frozen pre-V18.20 log), `_MANIFEST_VERSION` in chapter_checkpoint.py (checkpoint schema version), and `_ENGINE_VERSION` in neutts_engine.py (NeuTTS engine version) are unrelated versioned things — untouched.
+
+**Mapping table (legacy ↔ Elixir):**
+
+| Legacy line ("MarkItDown Pro" → rebrand era) | Elixir line |
+|---|---|
+| V18.20.4.9 (SWOT audit baseline) | — (pre-reset) |
+| V18.20.4.10 (P0 hotfix: stall + estimator + VRAM) | — (pre-reset) |
+| V18.20.4.11 (THE ELIXIR REBRAND + top-6 fixes) | — (pre-reset) |
+| **V18.20.4.12** (SWOT Tier-1 + hygiene batch, commit `f55daa6`) | **V0.01** ← you are here (identical content) |
+| — | V0.02 (next release) |
+
 ## V18.20.4.12 — The SWOT Tier-1 + hygiene batch: blind-shutdown verification, scholar truncation retry, unified 404 semantics, Qwen-gated /no_think, log rotation, settings batching, live progress JSON, atomic outputs, de-magic
 
 **Status: 12 fixes (3 Tier-1 defects + 9 hygiene items, all from the V18.20.4.9 SWOT re-audit, user-prioritized).** **Test gate: `3279 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed`** (V18.20.4.11 baseline 3083/0 — **+196 tests across 5 new files, zero regressions**; the 1 xpassed is the documented order-fragile GPU-temp-cache flake since V18.20.3.8).
