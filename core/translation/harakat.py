@@ -24,7 +24,9 @@ import logging
 import re
 from collections.abc import Callable
 
-import requests
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
+# response extraction (replaces bare requests.post + deep-index parse).
+from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -365,10 +367,10 @@ class HarakatGenerator:
         }
 
         url = f"{self.endpoint}/chat/completions"
-        resp = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+        # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse.
+        resp = session_for_url(url).post(url, json=payload, headers=headers, timeout=self.timeout)
         resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
+        content = extract_openai_content(resp.json())
         content = _strip_think_blocks(content)
 
         # Strip leading "متن اعراب‌گذاری شده:" if echoed

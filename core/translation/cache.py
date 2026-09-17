@@ -4,7 +4,7 @@ Caches translation results keyed by (text_hash, source_lang, target_lang,
 model_hash). If a chunk was already translated and validated, skip it
 entirely — saves hours on re-runs and crash recovery.
 
-Cache location: ``~/.markitdown_pro/translation_cache/``
+Cache location: ``~/.elixir/translation_cache/``
 Cache format: JSON files named ``{hash}.json`` containing::
 
     {
@@ -37,7 +37,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_CACHE_DIR = Path.home() / ".markitdown_pro" / "translation_cache"
+_CACHE_DIR = Path.home() / ".elixir" / "translation_cache"
 
 #: V10.33.0 (Sprint 5.4): Maximum number of cache entries (FIFO eviction).
 #: The V10.27.0 audit found the cache was unbounded — this cap prevents

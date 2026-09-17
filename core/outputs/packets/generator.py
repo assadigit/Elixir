@@ -893,6 +893,14 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         """
         import requests
 
+        # V18.20.4.11 (P3 / O-c5): pooled transport — the tuple timeout,
+        # stream=True and the 2-attempt retry loop below are UNCHANGED (they
+        # were lost 3 times by rewrites; this edit only swaps the per-call
+        # bare requests.post for the shared session selected by endpoint
+        # locality, and closes each streamed response so the pooled
+        # connection is returned clean instead of leaking pool slots).
+        from utils.network import session_for_url
+
         from utils.settings import Settings
         s = Settings()
 
@@ -914,10 +922,16 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                         "temperature": temperature,
                         "stream": True,
                     }
-                    resp = requests.post(f"{api_url}/chat/completions", json=payload,
-                                         headers=headers, timeout=timeout, stream=True)
-                    resp.raise_for_status()
-                    content = self._parse_openai_stream(resp)
+                    resp = session_for_url(api_url).post(f"{api_url}/chat/completions", json=payload,
+                                                          headers=headers, timeout=timeout, stream=True)
+                    try:
+                        resp.raise_for_status()
+                        content = self._parse_openai_stream(resp)
+                    finally:
+                        # V18.20.4.11 (P3 / O-c5): pooled-session streaming —
+                        # close ALWAYS (fully-consumed = reused; error =
+                        # discarded) instead of leaking a pool connection.
+                        resp.close()
                 else:
                     # Ollama — use native /api/generate for better timeout handling
                     api_url = s.get("summarisation.endpoint", "http://localhost:11434/v1")
@@ -929,9 +943,12 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                             "stream": True,
                             "options": {"temperature": temperature},
                         }
-                        resp = requests.post(native_url, json=payload, timeout=timeout, stream=True)
-                        resp.raise_for_status()
-                        content = self._parse_ollama_stream(resp)
+                        resp = session_for_url(native_url).post(native_url, json=payload, timeout=timeout, stream=True)
+                        try:
+                            resp.raise_for_status()
+                            content = self._parse_ollama_stream(resp)
+                        finally:
+                            resp.close()  # V18.20.4.11 (P3): pooled-stream close
                     else:
                         payload = {
                             "model": model,
@@ -939,10 +956,13 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                             "temperature": temperature,
                             "stream": True,
                         }
-                        resp = requests.post(f"{api_url}/chat/completions", json=payload,
-                                             timeout=timeout, stream=True)
-                        resp.raise_for_status()
-                        content = self._parse_openai_stream(resp)
+                        resp = session_for_url(api_url).post(f"{api_url}/chat/completions", json=payload,
+                                                             timeout=timeout, stream=True)
+                        try:
+                            resp.raise_for_status()
+                            content = self._parse_openai_stream(resp)
+                        finally:
+                            resp.close()  # V18.20.4.11 (P3): pooled-stream close
 
                 # Strip <think> blocks
                 content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()

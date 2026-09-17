@@ -109,7 +109,7 @@ class TestF6StampDiagnostic:
         """Book-level files stamp line 1 — also missed by the old line-2
         peek."""
         text = (
-            "<!-- generated-by: MarkItDown Pro v18.20.3.10"
+            "<!-- generated-by: Elixir v18.20.3.10"
             " | run_id=20260831-140000-feed0000"
             " | started=2026-08-31T14:00:00"
             " | bullets=41 -->\n\n# Book summary\n\nbody\n"

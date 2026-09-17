@@ -197,7 +197,7 @@ class OutputScannerView(QWidget):
         # Summary line
         if r.layout == "unknown":
             self.summary_lbl.setText(
-                "⚠️ This folder doesn't look like a MarkItDown Pro output directory."
+                "⚠️ This folder doesn't look like a Elixir output directory."
             )
             self.summary_lbl.setStyleSheet(f"color: {p.warning};")
             return

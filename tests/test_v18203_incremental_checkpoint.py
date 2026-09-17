@@ -63,7 +63,7 @@ class _StubCheckpoint:
 
 class _StubRequest:
     generate_docx = True
-    docx_author = "MarkItDown Pro"
+    docx_author = "Elixir"
     docx_include_toc = True
 
     def __init__(self, p: Path):

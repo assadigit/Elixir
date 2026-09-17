@@ -19,7 +19,7 @@ first run, then ZERO on every subsequent run.
 Architecture (mirrors :mod:`core.llm.response_cache`):
 
   - **In-memory** ``OrderedDict[text_hash -> np.ndarray]`` (fast lookup).
-  - **Disk-persisted** JSONL at ``~/.markitdown_pro/embed_cache.jsonl``
+  - **Disk-persisted** JSONL at ``~/.elixir/embed_cache.jsonl``
     (append-only, one JSON line per entry: ``{"key": hash, "dim": N,
     "vec": [float, ...]}``). Survives app restarts.
   - **Thread-safe** via ``threading.Lock`` (concurrent ``ThreadPoolExecutor``
@@ -61,7 +61,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # V18.2.24: disk persistence location -- matches response_cache.py convention.
-_CACHE_FILE = Path.home() / ".markitdown_pro" / "embed_cache.jsonl"
+_CACHE_FILE = Path.home() / ".elixir" / "embed_cache.jsonl"
 
 # V18.2.24: default FIFO cap. 5000 entries x ~1.5KB = ~7.5MB in memory.
 # Embeddings are deterministic given (text, model), so the same vector never
@@ -97,7 +97,7 @@ class EmbeddingCache:
         self._lock = threading.Lock()
         self._persist = persist_to_disk
         # V18.2.24: allow tests to pass a tmp_path; default to the standard
-        # ``~/.markitdown_pro/embed_cache.jsonl`` location. response_cache.py
+        # ``~/.elixir/embed_cache.jsonl`` location. response_cache.py
         # uses a module-level constant; adding the constructor param here is
         # a minor testability improvement that doesn't change prod behavior.
         self._cache_file: Path = (

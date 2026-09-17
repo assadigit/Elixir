@@ -30,7 +30,7 @@ class TempFileManager:
     _shared: Optional["TempFileManager"] = None
 
     def __init__(self, base_dir: Path | None = None):
-        self.base_dir = base_dir or Path(tempfile.gettempdir()) / "markitdown_pro"
+        self.base_dir = base_dir or Path(tempfile.gettempdir()) / "elixir"
         self.base_dir.mkdir(exist_ok=True, parents=True)
         self.files: list[Path] = []
         self._cleaned = False

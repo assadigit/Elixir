@@ -5,7 +5,7 @@ Supports two backends with a unified `.encode()` interface:
 1. ``SentenceTransformerBackend`` — HuggingFace safetensors format
    (bge-small, bge-base, MiniLM, e5, nomic HF, etc.). Loads via
    sentence-transformers, runs locally, cached at
-   ``~/.markitdown_pro/models/<name>/``.
+   ``~/.elixir/models/<name>/``.
 
 2. ``OllamaEmbedBackend`` — GGUF format loaded via Ollama
    (Qwen3-Embedding-0.6B-GGUF, nomic-embed-text-v1.5-GGUF, etc.).

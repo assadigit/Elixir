@@ -30,7 +30,7 @@ from core.system.bootstrap import Bootstrap, BootstrapError
 class TestBootstrapRun:
     def test_run_executes_all_steps(self, tmp_path):
         """All 4 steps should run in order."""
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         app_dir = tmp_path / "app"
         app_dir.mkdir()
@@ -48,7 +48,7 @@ class TestBootstrapRun:
 
     def test_failing_step_doesnt_block_subsequent(self, tmp_path):
         """A BootstrapError in one step is caught; later steps still run."""
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         app_dir = tmp_path / "app"
         app_dir.mkdir()
@@ -67,7 +67,7 @@ class TestBootstrapRun:
 
     def test_unexpected_exception_caught(self, tmp_path):
         """Even non-BootstrapError exceptions are caught (defense-in-depth)."""
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         app_dir = tmp_path / "app"
         app_dir.mkdir()
@@ -82,7 +82,7 @@ class TestBootstrapRun:
 
     def test_run_never_raises(self, tmp_path):
         """run() must never raise — app must always start."""
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         app_dir = tmp_path / "app"
         app_dir.mkdir()
@@ -122,7 +122,7 @@ class TestCleanPycache:
 
 class TestRefreshPrompts:
     def test_deletes_prompts_dir(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         prompts = user_dir / "prompts"
         prompts.mkdir(parents=True)
         (prompts / "default.md").write_text("x")
@@ -131,7 +131,7 @@ class TestRefreshPrompts:
         assert not prompts.exists()
 
     def test_no_prompts_dir_no_error(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         b = Bootstrap(user_dir, app_dir=tmp_path)
         b._refresh_prompts()  # should not raise
@@ -139,7 +139,7 @@ class TestRefreshPrompts:
 
 class TestMigrateSettings:
     def test_raises_max_output_tokens(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         settings_file = user_dir / "settings.json"
         settings_file.write_text(json.dumps({
@@ -152,7 +152,7 @@ class TestMigrateSettings:
         assert data["summarisation"]["max_output_tokens"] == 16000
 
     def test_resets_grounding_ollama_model(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         settings_file = user_dir / "settings.json"
         settings_file.write_text(json.dumps({
@@ -168,7 +168,7 @@ class TestMigrateSettings:
         assert data["grounding"]["timeout_sec"] == 600
 
     def test_does_not_reset_already_correct(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         settings_file = user_dir / "settings.json"
         original = {
@@ -182,13 +182,13 @@ class TestMigrateSettings:
         assert data == original  # no changes, no write needed
 
     def test_no_settings_file_no_error(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         b = Bootstrap(user_dir, app_dir=tmp_path)
         b._migrate_settings()  # should not raise
 
     def test_corrupt_settings_raises_bootstrap_error(self, tmp_path):
-        user_dir = tmp_path / ".markitdown_pro"
+        user_dir = tmp_path / ".elixir"
         user_dir.mkdir()
         settings_file = user_dir / "settings.json"
         settings_file.write_text("{not valid json}")

@@ -7,36 +7,36 @@
 ;   - Added scripts/ to PyInstaller data list
 ;   - Fixed Ollama detection: now checks HKCU (user-mode) in addition to HKLM
 ;   - Desktop icon defaults to CHECKED (was unchecked)
-;   - Creates ~/.markitdown_pro/ directory on install
+;   - Creates ~/.elixir/ directory on install
 ;   - Updated build instructions with all required --add-data flags
 ;
 ; Build instructions:
 ;   1. pip install pyinstaller
-;   2. pyinstaller --noconfirm --onedir --windowed --name "MarkItDownPro" ^
+;   2. pyinstaller --noconfirm --onedir --windowed --name "Elixir" ^
 ;        --add-data "core;core" --add-data "utils;utils" --add-data "ui_qt;ui_qt" ^
 ;        --add-data "config;config" --add-data "prompts;prompts" --add-data "assets;assets" ^
 ;        --add-data "scripts;scripts" ^
 ;        --hidden-import "PySide6.QtCore" --hidden-import "PySide6.QtWidgets" --hidden-import "PySide6.QtGui" ^
 ;        main.py
 ;   3. Compile this .iss file with Inno Setup Compiler (iscc.exe)
-;   4. The output is dist/MarkItDownPro_Setup_V13.26.0.exe
+;   4. The output is dist/Elixir_Setup_V13.26.0.exe
 
 [Setup]
-AppName=MarkItDown Pro Ultimate
+AppName=Elixir
 AppVersion=13.26.0
-AppPublisher=MarkItDown Pro
-DefaultDirName={autopf}\MarkItDown Pro
-DefaultGroupName=MarkItDown Pro
+AppPublisher=Elixir
+DefaultDirName={autopf}\Elixir
+DefaultGroupName=Elixir
 DisableProgramGroupPage=yes
 OutputDir=dist
-OutputBaseFilename=MarkItDownPro_Setup_V13.26.0
+OutputBaseFilename=Elixir_Setup_V13.26.0
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=lowest
-UninstallDisplayIcon={app}\MarkItDownPro.exe
+UninstallDisplayIcon={app}\Elixir.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -46,15 +46,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"
 
 [Files]
-Source: "dist\MarkItDownPro\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\Elixir\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\MarkItDown Pro"; Filename: "{app}\MarkItDownPro.exe"
-Name: "{group}\Uninstall MarkItDown Pro"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\MarkItDown Pro"; Filename: "{app}\MarkItDownPro.exe"; Tasks: desktopicon
+Name: "{group}\Elixir"; Filename: "{app}\Elixir.exe"
+Name: "{group}\Uninstall Elixir"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Elixir"; Filename: "{app}\Elixir.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\MarkItDownPro.exe"; Description: "Launch MarkItDown Pro"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Elixir.exe"; Description: "Launch Elixir"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function InitializeSetup(): Boolean;
@@ -84,7 +84,7 @@ begin
 
   if not OllamaFound then
   begin
-    if MsgBox('Ollama is not detected. MarkItDown Pro requires Ollama for local LLM summarization.' + #13#10 + #13#10 + 'Would you like to download it now?', mbConfirmation, MB_YESNO) = IDYES then
+    if MsgBox('Ollama is not detected. Elixir requires Ollama for local LLM summarization.' + #13#10 + #13#10 + 'Would you like to download it now?', mbConfirmation, MB_YESNO) = IDYES then
     begin
       ShellExec('open', 'https://ollama.com/download', '', '', SW_SHOW, ewNoWait, ResultCode);
     end;
@@ -92,7 +92,7 @@ begin
 
   // V13.26.0: Pre-create the user config directory so the app can write
   // settings.json on first launch without directory-creation race conditions.
-  UserConfigDir := ExpandConstant('{userappdata}\.markitdown_pro');
+  UserConfigDir := ExpandConstant('{userappdata}\.elixir');
   if not DirExists(UserConfigDir) then
   begin
     CreateDir(UserConfigDir);
@@ -110,7 +110,7 @@ begin
   // InitializeSetup's CreateDir didn't persist for some reason).
   if CurStep = ssPostInstall then
   begin
-    UserConfigDir := ExpandConstant('{userappdata}\.markitdown_pro');
+    UserConfigDir := ExpandConstant('{userappdata}\.elixir');
     if not DirExists(UserConfigDir) then
     begin
       CreateDir(UserConfigDir);

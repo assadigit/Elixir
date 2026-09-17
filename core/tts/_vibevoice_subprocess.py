@@ -123,7 +123,7 @@ else:
 # V11.59.0: Log the EARLY CUDA status (before vibevoice/transformers)
 try:
     import datetime as _dt
-    _probe_log = Path.home() / ".markitdown_pro" / "gpu_probe.log"
+    _probe_log = Path.home() / ".elixir" / "gpu_probe.log"
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     with open(_probe_log, "a", encoding="utf-8") as _f:
         _f.write(f"\n{'='*60}\n")

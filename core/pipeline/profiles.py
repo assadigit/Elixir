@@ -4,7 +4,7 @@ Allows users to save their current wizard settings as a named profile
 (e.g., "Psychology Book", "Academic Paper") and switch between them
 with one click — instead of walking through 10 wizard steps each time.
 
-Profiles are stored in ``~/.markitdown_pro/profiles/`` as JSON files::
+Profiles are stored in ``~/.elixir/profiles/`` as JSON files::
 
     {
         "name": "Psychology Book",
@@ -27,7 +27,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path.home() / ".markitdown_pro" / "profiles"
+_PROFILES_DIR = Path.home() / ".elixir" / "profiles"
 
 
 def _ensure_dir() -> Path:

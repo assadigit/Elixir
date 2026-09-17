@@ -25,7 +25,9 @@ import logging
 import re
 from collections.abc import Callable
 
-import requests
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
+# response extraction (replaces bare requests.post + deep-index parse).
+from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -287,10 +289,12 @@ class Translator:
         }
 
         url = f"{self.endpoint}/chat/completions"
-        resp = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+        # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse — a
+        # malformed provider payload now flows into this method's existing
+        # error handling as "" instead of an opaque KeyError.
+        resp = session_for_url(url).post(url, json=payload, headers=headers, timeout=self.timeout)
         resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
+        content = extract_openai_content(resp.json())
 
         # Strip <think> blocks (safety net even with /no_think)
         content = _strip_think_blocks(content)

@@ -29,11 +29,11 @@ shorter and the output-saving logic is testable independently.
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from dataclasses import dataclass
 from typing import Any
 
+from core.common.heading_utils import segment_filename_slug
 from core.models import Segment
 from core.postprocess.cleaner import MarkdownCleaner
 
@@ -195,9 +195,11 @@ def run_output_save(
     segments_folder.mkdir(parents=True, exist_ok=True)
 
     for idx, seg in enumerate(segments, 1):
-        _h = re.sub(r"[\t\r\n]+", " ", seg.heading)
-        _h = re.sub(r" {2,}", " ", _h).strip()
-        safe = re.sub(r"[^\w\s\-]", "", _h).strip()[:60] or f"segment_{idx:03d}"
+        # V18.20.4.11 (P1): shared slug helper (core.common.heading_utils) —
+        # byte-identical transformation, single source of truth;
+        # deterministic_analyzer.find_analysis_for_heading uses the SAME
+        # helper to map a chapter heading back to its segment/analysis files.
+        safe = segment_filename_slug(seg.heading) or f"segment_{idx:03d}"
         seg_file = segments_folder / f"{idx:03d}_{safe}.md"
         content = converter._strip_page_markers(seg.content) if clean_markers else seg.content
         seg_text = ""
@@ -221,9 +223,10 @@ def run_output_save(
         from core.preprocessing.deterministic_analyzer import analyze_segment_file
         analysis_count = 0
         for idx, seg in enumerate(segments, 1):
-            _h = re.sub(r"[\t\r\n]+", " ", seg.heading)
-            _h = re.sub(r" {2,}", " ", _h).strip()
-            safe = re.sub(r"[^\w\s\-]", "", _h).strip()[:60] or f"segment_{idx:03d}"
+            # V18.20.4.11 (P1): shared slug helper — must stay in lockstep
+            # with the segment-write loop above so the analysis lands next
+            # to ITS segment file (same transformation, one implementation).
+            safe = segment_filename_slug(seg.heading) or f"segment_{idx:03d}"
             seg_file = segments_folder / f"{idx:03d}_{safe}.md"
             if seg_file.exists():
                 try:

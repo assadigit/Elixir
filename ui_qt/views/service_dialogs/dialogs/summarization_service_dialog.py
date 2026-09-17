@@ -496,7 +496,7 @@ class SummarizationServiceDialog(QDialog):
 
     # V13.25.0 (P1.2): Prompt building now delegates to PromptManager.
     # Previously had 3 hardcoded prompt templates (fast/standard/thorough)
-    # that bypassed the user's custom prompts in ~/.markitdown_pro/prompts/.
+    # that bypassed the user's custom prompts in ~/.elixir/prompts/.
     # Now uses the same prompt bank the Summarizer uses — user's custom
     # prompts work, anti-hallucination language is built in, content-type
     # presets are respected.
@@ -507,7 +507,7 @@ class SummarizationServiceDialog(QDialog):
 
         V13.25.0: Delegates to ``PromptManager.render("default", ...)`` —
         the same prompt bank the Summarizer uses. User's custom prompts in
-        ``~/.markitdown_pro/prompts/default.md`` are respected.
+        ``~/.elixir/prompts/default.md`` are respected.
 
         The prompt bank template produces XML-tagged output
         (``<executive_summary>``, ``<bullet_points>``, ``<thorough_summary>``)
@@ -531,7 +531,7 @@ class SummarizationServiceDialog(QDialog):
         rendered = pm.render("default", heading, input_text, lang)
         if not rendered:
             # Fallback: minimal prompt (shouldn't happen — PromptManager
-            # copies built-ins to ~/.markitdown_pro/prompts/ on first run)
+            # copies built-ins to ~/.elixir/prompts/ on first run)
             rendered = (
                 "You are an expert summariser.\n\n"
                 f"Summarising: \"{heading}\"\n\n"

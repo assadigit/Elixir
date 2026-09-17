@@ -25,7 +25,7 @@ the ThreadPoolExecutor summariser) don't double-load.
 
 V15.0.0 changes:
   - ``get_embed_model()`` now uses a **persistent local model directory**
-    (``~/.markitdown_pro/models/<model_name>/``) so the model is downloaded
+    (``~/.elixir/models/<model_name>/``) so the model is downloaded
     only ONCE and then loaded from disk (100% offline) on every subsequent
     launch.
   - A 60-second download timeout prevents the 15-minute hang that occurred
@@ -163,7 +163,7 @@ def get_embed_model(model_name: str = "") -> Any | None:
         ``/api/embeddings`` endpoint. The GGUF must be registered as an
         Ollama model first (``ollama create``).
       - Otherwise → uses ``sentence-transformers`` (HF safetensors format,
-        cached at ``~/.markitdown_pro/models/<name>/``).
+        cached at ``~/.elixir/models/<name>/``).
 
     Device resolution (``settings.embedding.device``, HF backend only):
       - ``"auto"``  — cuda if available AND VRAM headroom > 0.6 GB, else CPU
@@ -222,7 +222,7 @@ def get_embed_model(model_name: str = "") -> Any | None:
         # (Slash-separated repo ids like ``org/model`` would map to
         # ``org--model`` to stay a single directory, but the default model
         # has no slash so this is a no-op for it.)
-        _model_dir = Path.home() / ".markitdown_pro" / "models" / model_name.replace("/", "--")
+        _model_dir = Path.home() / ".elixir" / "models" / model_name.replace("/", "--")
         _is_saved = (_model_dir / "config.json").exists() or (
             _model_dir / "model_config.json"
         ).exists()

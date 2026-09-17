@@ -7,6 +7,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+# V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
+# default-model literals (de-duplication only — values byte-identical to
+# the previous inline literals). model_taxonomy is a leaf module (imports
+# only ``re``); core.llm's package init pulls model_manager → utils only,
+# so there is no import cycle with this module.
+from core.llm.model_taxonomy import (
+    DEFAULT_FALLBACK_OCR_MODEL,
+    LEGACY_DEFAULT_MODEL,
+)
+
 logger = logging.getLogger(__name__)
 class OcrEngine(str, Enum):
     """Which OCR engine was used for a page."""
@@ -144,8 +154,10 @@ class ConversionRequest:
 
     # OCR settings
     use_llm_ocr: bool = True
-    primary_ocr_model: str = "qwen3-vl:8b"
-    fallback_ocr_model: str = "qwen3-vl:8b"
+    # V18.20.4.11 (P2): literals → core.llm.model_taxonomy constants
+    # (values unchanged: "qwen3-vl:8b").
+    primary_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
+    fallback_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
     auto_detect_scanned: bool = True
     force_ocr_all_pages: bool = False
     image_max_size: int = 1200
@@ -169,14 +181,16 @@ class ConversionRequest:
 
     # Summarisation
     generate_summaries: bool = False
-    summarisation_model: str = "gemma3:12b"
+    # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
+    # (value unchanged: "gemma3:12b" — the LEGACY sentinel default).
+    summarisation_model: str = LEGACY_DEFAULT_MODEL
     summarisation_max_context_tokens: int = 131072   # V10.12.6: raised 16k → 64k (RTX 3060 12GB can handle 64k for 9B Q4)
     summarisation_max_output_tokens: int = 4096     # increased default
     summarisation_cache_enabled: bool = False
 
     # DOCX
     generate_docx: bool = False
-    docx_author: str = "MarkItDown Pro"
+    docx_author: str = "Elixir"
     docx_include_toc: bool = True
     docx_font: str = "Helvetica"
 
@@ -197,7 +211,12 @@ class ConversionRequest:
     # ── Quality Controls ──────────────────────────────────────────────────
     temperature: float = 0.2
     self_consistency: bool = False
-    fast_model: str = "gemma3:12b"
+    # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
+    # (value unchanged: "gemma3:12b"). NOTE: this field is re-declared (and
+    # shadowed by "" ) at the V16.0.9 model-architecture block below — the
+    # dataclass takes the LATER default; the wiring here preserves the
+    # historical literal for the shadowed declaration, byte-identical.
+    fast_model: str = LEGACY_DEFAULT_MODEL
     heavy_model: str = ""  # disabled by default
     # ── V16.0.9: 4-mode model architecture ──────────────────────────────
     # "single_local" — one LOCAL model (Ollama/LM Studio) does everything

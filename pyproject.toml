@@ -3,11 +3,11 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "markitdown-pro"
+name = "elixir"
 # V18.3 (Phase 1.4): version is dynamic — read from the VERSION file.
 # This makes VERSION the single source of truth (was stale at 18.2.21).
 dynamic = ["version"]
-description = "MarkItDown Pro Ultimate — PDF to Markdown with AI summarization"
+description = "Elixir — PDF to Markdown with AI summarization"
 # V18.3 (Phase 1.5): tighten to >=3.12,<3.13 (PySide6 not yet confirmed for 3.13).
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
@@ -52,7 +52,7 @@ retry = ["tenacity>=8.2.0"]
 # shape check. Pydantic v2 is the 2026 standard.
 structured = ["pydantic>=2.5.0"]
 # Convenience extra that pulls both Phase 1 enhancements.
-full = ["markitdown-pro[retry,structured]"]
+full = ["elixir[retry,structured]"]
 
 # V18.3 (Phase 1.4): read version from the VERSION file (single source of truth).
 [tool.setuptools.dynamic]

@@ -98,7 +98,7 @@ Started at: 2026-08-17T17:46:39.283024
 
 [17:47:06] [INFO]   Layout analysis: False
 
-[17:47:06] [INFO]   DOCX author: MarkItDown Pro, TOC: True
+[17:47:06] [INFO]   DOCX author: Elixir, TOC: True
 
 [17:47:06] [INFO]   Output paths (V7.5 subfolders):
 

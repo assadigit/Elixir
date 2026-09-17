@@ -41,9 +41,9 @@ _UI_QT = _project_root / "ui_qt"
 
 # The shipped pre-split reference (the O-b2 move happened after .4.5).
 _REF_ZIP = _project_root.parent.parent / "download" / (
-    "MarkItDown-Pro-V18.20.4.5.zip")
+    "Elixir-V18.20.4.5.zip")
 _REF_MEMBER = (
-    "MarkItDown-Pro-V18.20.4.5/ui_qt/views/service_dialogs/base_dialog.py")
+    "Elixir-V18.20.4.5/ui_qt/views/service_dialogs/base_dialog.py")
 
 # The 11 service dialogs, each in its own module (the O-b2 split map).
 _DIALOG_TO_FILE = {

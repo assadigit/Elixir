@@ -44,8 +44,8 @@ _UI_QT = _project_root / "ui_qt"
 
 # The shipped pre-split reference (the O-b1 move happened after .4.5).
 _REF_ZIP = _project_root.parent.parent / "download" / (
-    "MarkItDown-Pro-V18.20.4.5.zip")
-_REF_MEMBER = "MarkItDown-Pro-V18.20.4.5/ui_qt/views/wizard_view.py"
+    "Elixir-V18.20.4.5.zip")
+_REF_MEMBER = "Elixir-V18.20.4.5/ui_qt/views/wizard_view.py"
 
 # Every top-level class the pre-split wizard_view.py defined, and its
 # new home module (the O-b1 decomposition map).
@@ -638,7 +638,7 @@ class TestWb20DeadBranchRemoved:
     def test_toggle_theme_still_refreshes_the_live_views(self):
         """The deletion must not take the LIVE refreshes with it:
         convert_view always, the three lazily-created views guarded."""
-        body = _method_src(_APP, "_toggle_theme", "MarkItDownProWindow")
+        body = _method_src(_APP, "_toggle_theme", "ElixirWindow")
         assert "self.convert_view.refresh_theme()" in body
         for guarded in ("self.queue_view", "self.output_scanner_view",
                         "self.quarantine_view"):

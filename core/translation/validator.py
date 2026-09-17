@@ -25,7 +25,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-import requests
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
+# response extraction (replaces bare requests.post + deep-index parse).
+from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -430,11 +432,14 @@ class TranslationValidator:
 
         try:
             url = f"{self.endpoint}/chat/completions"
-            resp = requests.post(url, json=payload, headers=headers,
-                                 timeout=self.timeout)
+            # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse —
+            # the SCORE regex below already handles "" (no-match → fallback
+            # patterns → 1.0 default), so a malformed payload degrades the
+            # same way an empty one always did.
+            resp = session_for_url(url).post(url, json=payload, headers=headers,
+                                             timeout=self.timeout)
             resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"].strip()
+            content = extract_openai_content(resp.json())
 
             # V9.0.0 P3-9: fix brittle SCORE regex — match only on the SCORE
             # line (line-anchored), not the first float anywhere in the text.

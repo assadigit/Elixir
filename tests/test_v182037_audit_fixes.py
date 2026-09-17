@@ -504,7 +504,7 @@ class TestProvenanceModule:
             "18.20.3.7", "20260831-021017-ab12cd34",
             "2026-08-31T02:10:17", 41,
         )
-        assert c.startswith("<!-- generated-by: MarkItDown Pro v18.20.3.7")
+        assert c.startswith("<!-- generated-by: Elixir v18.20.3.7")
         parsed = provenance.parse_provenance(f"# Summary: X\n\n{c}\n\nbody")
         assert parsed["app_version"] == "18.20.3.7"
         assert parsed["run_id"] == "20260831-021017-ab12cd34"
@@ -589,7 +589,7 @@ class TestRendererProvenance:
             app_version="18.20.3.7",
             run_started="2026-08-31T02:10:17",
         ))
-        assert "generated-by: MarkItDown Pro v18.20.3.7" in md
+        assert "generated-by: Elixir v18.20.3.7" in md
         assert "run_id=20260831-021017-ab12cd34" in md
         assert "bullets=2" in md
         assert md.rstrip().endswith("<!-- COMPLETE run_id=20260831-021017-ab12cd34 -->")

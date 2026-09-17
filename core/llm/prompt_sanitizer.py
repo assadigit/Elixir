@@ -2,7 +2,7 @@
 
 The core vulnerability
 ----------------------
-MarkItDown Pro ingests untrusted PDF text and injects it verbatim into LLM
+Elixir ingests untrusted PDF text and injects it verbatim into LLM
 prompts via ``{{text}}`` substitution::
 
     ### INPUT ###

@@ -24,12 +24,15 @@ No chapter-specific logic, no hardcoded terms, no overfitting.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
 from collections import Counter, defaultdict
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+
+from core.common.heading_utils import segment_filename_slug
 
 logger = logging.getLogger(__name__)
 
@@ -993,23 +996,136 @@ def _list_analysis_files(output_dir: Path) -> list:
     _ANALYSIS_SCAN_CACHE[key] = (dir_mtime, files)
     return files
 
+# V18.20.4.11 (P1): heading-aware analysis lookup. Previously
+# find_analysis_for_heading IGNORED its heading parameter and returned the
+# FIRST readable *_analysis.md file tree-wide — in multi-segment books (the
+# norm since the V18.20.4.10 segmentation fixes) EVERY chapter therefore got
+# segment-001's analysis injected: wrong-chapter authors/keywords polluted
+# prompts, coverage probes, gap-fill, the recall floor and the thorough-
+# theorist floor. The helpers below implement the matching ladder.
+
+def _analysis_segment_stem(analysis_path: Path) -> str:
+    """V18.20.4.11 (P1): analysis file stem minus its TRAILING _analysis
+    marker (= the segment file's stem, as written by output_save). Unlike
+    the former ``.replace("_analysis", "")`` this leaves an embedded
+    ``_analysis`` (a heading that literally contains that word) intact."""
+    stem = analysis_path.stem
+    if stem.endswith("_analysis"):
+        return stem[: -len("_analysis")]
+    return stem
+
+
+def _select_analysis_for_heading(analysis_files, heading, log_fn=None):
+    """V18.20.4.11 (P1): pick THIS heading's analysis file among many.
+
+    Matching ladder (see find_analysis_for_heading):
+      1. exact slug   — segment_filename_slug(heading) vs the file stem
+                        (``{idx:03d}_{slug}`` or bare ``{slug}``); >1 hit
+                        (duplicate chapter headings) → WARNING + first
+                        (deterministic, no worse than the old first-match)
+      2. fuzzy        — difflib ratio ≥ 0.75, normalized heading vs
+                        stem-minus-index; ties → first + WARNING
+      3. no match     → (None, "no-match") — caller FAILS CLOSED
+
+    Never raises; returns (Path, method) or (None, reason).
+    """
+    # V18.20.4.11 (P1): iterate in NAME order, not rglob/filesystem order —
+    # "the first" candidate must be deterministic across platforms (rglob
+    # yields scandir order, which differs between ext4/tmpfs/APFS). With the
+    # zero-padded {idx:03d} prefix, name order == segment order.
+    ordered = sorted(analysis_files, key=lambda p: p.name)
+    slug = segment_filename_slug(heading or "")
+
+    # ── 1. exact slug match ──
+    candidates = []
+    if slug:
+        _pat = re.compile(rf"^\d+_{re.escape(slug)}$")
+        for f in ordered:
+            stem = _analysis_segment_stem(f)
+            if _pat.match(stem) or stem == slug:
+                candidates.append(f)
+    if len(candidates) == 1:
+        if log_fn:
+            log_fn(f"    [V17.5] Analysis for '{heading}' → {candidates[0].name} (match: exact slug)", "INFO")
+        return candidates[0], "exact-slug"
+    if len(candidates) > 1:
+        if log_fn:
+            log_fn(
+                f"    [V17.5] ⚠️ AMBIGUOUS analysis match for heading '{heading}': "
+                f"{len(candidates)} files share the same segment slug "
+                f"({', '.join(f.name for f in candidates)}) — using the first",
+                "WARNING",
+            )
+        return candidates[0], "slug-ambiguous"
+
+    # ── 2. fuzzy fallback (near-miss headings: whitespace/case drift) ──
+    norm_h = re.sub(r"\s+", " ", (heading or "").strip().lower())
+    if norm_h:
+        best = None
+        best_ratio = 0.0
+        tied = False
+        for f in ordered:
+            stem_n = re.sub(r"^\d+_", "", _analysis_segment_stem(f), count=1)
+            stem_n = re.sub(r"\s+", " ", stem_n.replace("_", " ").strip().lower())
+            if not stem_n:
+                continue
+            ratio = difflib.SequenceMatcher(None, norm_h, stem_n).ratio()
+            if ratio > best_ratio:
+                best, best_ratio, tied = f, ratio, False
+            elif ratio == best_ratio and best is not None:
+                tied = True
+        if best is not None and best_ratio >= 0.75:
+            if tied:
+                if log_fn:
+                    log_fn(
+                        f"    [V17.5] ⚠️ fuzzy analysis match for heading '{heading}' "
+                        f"is TIED at {best_ratio:.2f} — using first: {best.name}",
+                        "WARNING",
+                    )
+                return best, "fuzzy-tied"
+            if log_fn:
+                log_fn(f"    [V17.5] Analysis for '{heading}' → {best.name} (match: fuzzy {best_ratio:.2f})", "INFO")
+            return best, "fuzzy"
+
+    # ── 3. fail-closed ──
+    if log_fn:
+        log_fn(
+            f"    [V17.5] ⚠️ No analysis matches heading '{heading}' "
+            f"({len(analysis_files)} candidates found) — injecting NOTHING "
+            f"(fail-closed: a missing analysis degrades gracefully, a "
+            f"wrong-chapter analysis is hallucination fuel)",
+            "WARNING",
+        )
+    return None, "no-match"
+
+
 def find_analysis_for_heading(output_dir, heading: str, log_fn=None) -> tuple[str, str]:
-    """V17.5: Find the deterministic analysis for a given chapter heading.
+    """V17.5/V18.20.4.11: Find the deterministic analysis for a given chapter heading.
 
-    This replaces the fragile heading-to-filename matching that failed in V17.4.
-    Instead of matching heading text to filenames (which breaks on special chars,
-    path differences, etc.), this function:
+    V18.20.4.11 (P1): the ``heading`` parameter is now USED (V17.5 ignored
+    it and returned the FIRST readable *_analysis.md tree-wide — every
+    chapter in a multi-segment book got segment-001's analysis). Matching
+    ladder, in order:
 
-    1. Searches the ENTIRE output directory tree for *_analysis.md files
-    2. For each analysis file found, checks if the corresponding segment file
-       exists (same stem without _analysis suffix)
-    3. Returns the FIRST match (there's typically only one segment per chapter)
-
-    This is content-agnostic and doesn't depend on the heading text at all.
+    1. No analysis files anywhere → ("", "") (unchanged).
+    2. Exactly ONE analysis file → returned regardless of heading
+       (legacy single-segment behavior; preserves all V17.5-era pins).
+    3. MULTIPLE files → exact slug match on
+       ``segment_filename_slug(heading)`` (the same transformation
+       output_save uses to name ``{idx:03d}_{slug}.md`` / its
+       ``_analysis.md`` twin): 1 hit wins; >1 hits (duplicate chapter
+       headings) → WARNING + first (deterministic).
+    4. No slug hit → difflib fuzzy fallback (ratio ≥ 0.75) on the
+       normalized heading vs stem-minus-index; ties → first + WARNING.
+    5. Still nothing → LOUD WARNING + ("", "") — FAIL-CLOSED: a missing
+       analysis degrades gracefully (probes report unavailable per the S1
+       fail-soft design) while a wrong-chapter analysis is hallucination
+       fuel. (V17.5 injected the first file = wrong-chapter content.)
 
     Args:
         output_dir: the conversion output directory (Path or str)
-        heading: the chapter heading (UNUSED in V17.5 — kept for API compat)
+        heading: the chapter heading (USED since V18.20.4.11 — matched
+            against the segment-filename slug produced by output_save)
         log_fn: optional log callback(msg, level)
 
     Returns:
@@ -1038,24 +1154,41 @@ def find_analysis_for_heading(output_dir, heading: str, log_fn=None) -> tuple[st
     if log_fn:
         log_fn(f"    [V17.5] Found {len(analysis_files)} analysis file(s): {[f.name for f in analysis_files]}", "DEBUG")
 
-    # Return the first one (there's typically only one segment per chapter)
-    for analysis_path in analysis_files:
-        # The segment file is the same name without _analysis suffix
-        segment_stem = analysis_path.stem.replace("_analysis", "")
-        segment_path = analysis_path.parent / f"{segment_stem}.md"
+    # V18.20.4.11 (P1): heading-aware selection. Single analysis file →
+    # legacy behavior (it is THE analysis for the whole run — single-
+    # segment books, all V17.5-era expectations). Multiple files → the
+    # matching ladder in _select_analysis_for_heading; no match → FAIL
+    # CLOSED ("", "") rather than injecting another chapter's analysis.
+    if len(analysis_files) == 1:
+        selected = analysis_files[0]
+        method = "single-file"
+    else:
+        selected, method = _select_analysis_for_heading(analysis_files, heading, log_fn=log_fn)
+        if selected is None:
+            # _select_analysis_for_heading already logged the LOUD WARNING.
+            return "", ""
 
-        try:
-            analysis_text = analysis_path.read_text(encoding="utf-8")
-            if analysis_text:
-                if log_fn:
-                    log_fn(f"    [V17.5] Using analysis: {analysis_path.name} ({len(analysis_text)} chars), segment: {segment_path.name}", "DEBUG")
-                return str(segment_path), analysis_text
-        except Exception as e:
-            if log_fn:
-                log_fn(f"    [V17.5] Failed to read {analysis_path.name}: {e}", "WARNING")
-            continue
+    # The segment file is the same name without the trailing _analysis marker
+    segment_stem = _analysis_segment_stem(selected)
+    segment_path = selected.parent / f"{segment_stem}.md"
 
-    return "", ""
+    try:
+        analysis_text = selected.read_text(encoding="utf-8")
+    except Exception as e:
+        if log_fn:
+            log_fn(f"    [V17.5] Failed to read {selected.name}: {e}", "WARNING")
+        return "", ""
+    if not analysis_text:
+        # V18.20.4.11 (P1): empty selected analysis → fail-closed (the old
+        # loop skipped it and silently fell through to the NEXT chapter's
+        # file — same wrong-content class as the heading bug).
+        if log_fn and method != "single-file":
+            log_fn(f"    [V17.5] ⚠️ Selected analysis file is empty: {selected.name} — injecting NOTHING", "WARNING")
+        return "", ""
+
+    if log_fn:
+        log_fn(f"    [V17.5] Using analysis: {selected.name} ({len(analysis_text)} chars), segment: {segment_path.name}", "DEBUG")
+    return str(segment_path), analysis_text
 
 
 def analysis_exists(output_dir, log_fn=None) -> bool:

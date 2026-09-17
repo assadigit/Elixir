@@ -54,8 +54,8 @@ class OpenAICompatProvider(LLMProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         if "openrouter" in self.base_url:
-            headers["HTTP-Referer"] = "https://markitdown-pro.local"
-            headers["X-Title"] = "MarkItDown Pro Ultimate"
+            headers["HTTP-Referer"] = "https://elixir.local"
+            headers["X-Title"] = "Elixir"
 
         payload = {
             "model": _model,

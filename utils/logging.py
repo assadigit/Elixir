@@ -1,5 +1,5 @@
 """
-Logging system for MarkItDown Pro Ultimate.
+Logging system for Elixir.
 Provides structured, verbose logging for all phases of conversion,
 including per-chapter timings, token counts, and model usage.
 """
@@ -86,11 +86,11 @@ class StructuredJsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def get_structured_logger(name: str = "MarkItDownPro") -> logging.Logger:
+def get_structured_logger(name: str = "Elixir") -> logging.Logger:
     """Return a logger that emits structured JSON to ``structured.jsonl``.
 
-    The JSONL handler is attached to the root ``MarkItDownPro`` logger by
-    ``setup_main_logger()``; child loggers (``MarkItDownPro.core.summariser``,
+    The JSONL handler is attached to the root ``Elixir`` logger by
+    ``setup_main_logger()``; child loggers (``Elixir.core.summariser``,
     etc.) inherit it automatically.  This helper is the canonical entry point
     for new code that wants structured logging::
 
@@ -101,19 +101,19 @@ def get_structured_logger(name: str = "MarkItDownPro") -> logging.Logger:
     The ``extra`` dict is folded into the JSON record under the ``extra`` key.
     """
     logger = logging.getLogger(name)
-    if not logging.getLogger("MarkItDownPro").handlers:
+    if not logging.getLogger("Elixir").handlers:
         setup_main_logger()
     return logger
 
 
 # ── Main logger setup ──────────────────────────────────────────────────────
 def setup_main_logger() -> logging.Logger:
-    log_dir = Path.home() / ".markitdown_pro"
+    log_dir = Path.home() / ".elixir"
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "system.log"
     structured_log_file = log_dir / "structured.jsonl"
 
-    logger = logging.getLogger("MarkItDownPro")
+    logger = logging.getLogger("Elixir")
     logger.setLevel(logging.DEBUG)
     if logger.hasHandlers():
         logger.handlers.clear()
@@ -199,8 +199,8 @@ def apply_module_log_levels(settings_overrides: dict[str, str] | None = None) ->
 
     For each module, sets the log level on the corresponding Python logger.
     Module names are matched as suffixes of the full logger name:
-    - "packets" matches "MarkItDownPro.core.outputs.packets"
-    - "summarizer" matches "MarkItDownPro.core.summarisation.summarizer"
+    - "packets" matches "Elixir.core.outputs.packets"
+    - "summarizer" matches "Elixir.core.summarisation.summarizer"
 
     This lets the user crank up packets logging (DEBUG) while silencing OCR
     noise (WARNING) during debugging.
@@ -223,11 +223,11 @@ def apply_module_log_levels(settings_overrides: dict[str, str] | None = None) ->
         for name in list(logging.Logger.manager.loggerDict.keys()):
             if name.endswith(module_suffix) or module_suffix in name:
                 logging.getLogger(name).setLevel(level)
-        # Also set on the short name (e.g. "packets" → "MarkItDownPro.packets")
-        logging.getLogger(f"MarkItDownPro.{module_suffix}").setLevel(level)
+        # Also set on the short name (e.g. "packets" → "Elixir.packets")
+        logging.getLogger(f"Elixir.{module_suffix}").setLevel(level)
 
     # Log what we did (at DEBUG so it doesn't spam)
-    root = logging.getLogger("MarkItDownPro")
+    root = logging.getLogger("Elixir")
     if root.handlers:
         root.debug(f"Per-module log levels applied: {levels}")
 
@@ -245,7 +245,7 @@ def get_module_level(module_name: str) -> int:
 
 
 def get_main_logger() -> logging.Logger:
-    logger = logging.getLogger("MarkItDownPro")
+    logger = logging.getLogger("Elixir")
     if not logger.handlers:
         setup_main_logger()
     return logger

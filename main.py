@@ -3,7 +3,7 @@
 import logging
 
 logger = logging.getLogger(__name__)
-"""MarkItDown Pro Ultimate — entry point.
+"""Elixir — entry point.
 
 Launches the PySide6 UI (``ui_qt``).
 
@@ -16,6 +16,7 @@ import os
 import shutil
 import sys
 from pathlib import Path as _P  # V18.2.22: module-level for Bootstrap call
+from utils.settings import user_data_dir  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
 
 # V18.2.37 (CRITICAL fix): ensure new .py files are loaded, not stale .pyc.
 # On Windows, deleting __pycache__ while the process is running can crash
@@ -56,7 +57,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 # ── V18.20.3.3 (crash fix #5): arm crash visibility BEFORE the torch import ────
 # faulthandler + threading.excepthook → native-crash / thread-death evidence in
-# ~/.markitdown_pro/ (V18.20.3 died with zero trace). Best-effort, never raises.
+# ~/.elixir/ (V18.20.3 died with zero trace). Best-effort, never raises.
 try:
     from core.system.crash_visibility import arm_crash_visibility
     arm_crash_visibility()
@@ -91,7 +92,7 @@ except Exception as _e:
 # Write the probe result to a startup log (best-effort).
 try:
     import datetime as _dt
-    _probe_log = _P.home() / ".markitdown_pro" / "gpu_probe.log"
+    _probe_log = user_data_dir() / "gpu_probe.log"  # earliest disk touch → runs the rebrand migration
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     with open(_probe_log, "a", encoding="utf-8") as _f:
         _f.write(f"\n{'='*60}\n")
@@ -145,7 +146,7 @@ def _check_dependencies() -> list[str]:
 
 def _show_missing_deps_error(missing: list[str]) -> None:
     msg = (
-        "MarkItDown Pro could not start because the following\n"
+        "Elixir could not start because the following\n"
         "Python packages are not installed:\n\n"
         + "\n".join(f"  • {p}" for p in missing)
         + "\n\nFix: open a terminal and run:\n"
@@ -197,7 +198,7 @@ def _install_excepthook() -> None:
             _extra_lines = None
             try:
                 from pathlib import Path as _P
-                _log_file = _P.home() / ".markitdown_pro" / "system.log"
+                _log_file = _P.home() / ".elixir" / "system.log"
                 if _log_file.exists():
                     # Read last 200 lines efficiently (don't load whole file)
                     with open(_log_file, encoding="utf-8", errors="replace") as _f:
@@ -250,7 +251,7 @@ if __name__ == "__main__":
     # run() never raises — one failing step doesn't block the others.
     try:
         from core.system.bootstrap import Bootstrap
-        Bootstrap(_P.home() / ".markitdown_pro", app_dir=_P(__file__).resolve().parent).run()
+        Bootstrap(user_data_dir(), app_dir=_P(__file__).resolve().parent).run()
     except Exception as _e:
         logger.debug("bootstrap skipped: %s: %s", type(_e).__name__, _e)
 

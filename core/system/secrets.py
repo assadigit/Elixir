@@ -2,7 +2,7 @@
 
 Before V10.34.0, all 6 API keys (OpenAI-compat, Claude, FreeLLMAPI,
 grounding cloud, translation cloud, TTS cloud) were stored in plaintext
-in ``~/.markitdown_pro/settings.json``.  Anyone with read access to that
+in ``~/.elixir/settings.json``.  Anyone with read access to that
 file could steal the keys.
 
 This module provides ``get_secret()`` / ``set_secret()`` that use the OS
@@ -30,7 +30,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # The service name used in the OS keychain.
-_KEYCHAIN_SERVICE = "MarkItDownPro"
+# V18.20.4.11 (rebrand): renamed MarkItDownPro → Elixir. Secrets stored
+# under the legacy service are still FOUND (read-fallback in get_secret
+# below) and re-stored under the new name on first read — no orphaned
+# credentials, no re-entry required.
+_KEYCHAIN_SERVICE = "Elixir"
+_LEGACY_KEYCHAIN_SERVICE = "MarkItDownPro"  # pre-rebrand keychain service — read-fallback source (do NOT rename)
 
 # Try to import keyring (optional dep)
 try:
@@ -77,6 +82,20 @@ def get_secret(path: str, settings: Any, default: str = "") -> str:
             value = _keyring.get_password(_KEYCHAIN_SERVICE, path)
             if value is not None:
                 return value
+            # V18.20.4.11 (rebrand): not under the new service — try the
+            # legacy Elixir service; if found, re-store under the
+            # new name (one-time keychain migration, best-effort).
+            try:
+                legacy_value = _keyring.get_password(_LEGACY_KEYCHAIN_SERVICE, path)
+            except Exception:
+                legacy_value = None
+            if legacy_value is not None:
+                try:
+                    _keyring.set_password(_KEYCHAIN_SERVICE, path, legacy_value)
+                    logger.info("Keychain rebrand migration: re-stored '%s' under the Elixir service.", path)
+                except Exception:
+                    pass  # best-effort — the legacy entry still works via the fallback above
+                return legacy_value
             # Not in keychain — check settings.json (migration opportunity)
             plaintext = settings.get(path, "")
             if plaintext:

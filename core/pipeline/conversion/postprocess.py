@@ -34,6 +34,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+# V18.20.4.11 (P2 / W-a7 partial): single source of truth for the request-side
+# OCR fallback literal (de-duplication only — value byte-identical).
+from core.llm.model_taxonomy import DEFAULT_FALLBACK_OCR_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -439,7 +443,9 @@ def run_postprocess(
         try:
             from core.pdf import VisionFigureExtractor
             model = request.primary_ocr_model  # OlmOCR by default
-            fallback = request.fallback_ocr_model or "qwen3-vl:8b"
+            # V18.20.4.11 (P2): literal → model_taxonomy constant (value
+            # unchanged: "qwen3-vl:8b", the request-side fallback default).
+            fallback = request.fallback_ocr_model or DEFAULT_FALLBACK_OCR_MODEL
             extractor = VisionFigureExtractor(
                 pdf_path=request.input_path,
                 model_name=model,

@@ -1,6 +1,6 @@
 # Embedder Reference & Configuration (V18.4)
 
-This document covers the **embedding models** used by MarkItDown Pro's
+This document covers the **embedding models** used by Elixir's
 semantic-similarity path (Phase 2.2 — the content-judge coverage /
 grounding / hallucination check) and the **optional-mode knobs** added in
 V18.4 that let you disable or degrade that path explicitly.
@@ -22,7 +22,7 @@ V18.4 that let you disable or degrade that path explicitly.
 
 ## 1. Recommended embedders
 
-MarkItDown Pro's embedder backend (`core/llm/embedder_backend.py`) supports
+Elixir's embedder backend (`core/llm/embedder_backend.py`) supports
 two formats, auto-selected from the model name. Both are production-viable;
 pick based on whether you already run Ollama.
 
@@ -37,7 +37,7 @@ pick based on whether you already run Ollama.
   `all-MiniLM-L6-v2` with zero recalibration risk)
 - **Device:** `auto` → CUDA if >0.6 GB VRAM free, else CPU (~1–3 s/batch on
   CPU, <0.5 s on GPU)
-- **Caching:** downloaded ONCE to `~/.markitdown_pro/models/BAAI--bge-small-en-v1.5/`
+- **Caching:** downloaded ONCE to `~/.elixir/models/BAAI--bge-small-en-v1.5/`
   then loaded 100 % offline on every subsequent launch. 60 s download
   timeout prevents hub-hang.
 
@@ -209,7 +209,7 @@ The embedder smoke-test failed at load time. Common causes:
 
 1. **Ollama model not pulled** → `ollama pull <model>` (for GGUF backends).
 2. **HF model download timed out** → run the app once with internet to
-   seed `~/.markitdown_pro/models/`; subsequent runs are offline.
+   seed `~/.elixir/models/`; subsequent runs are offline.
 3. **CUDA forward-pass OOM** (MiniLM on some drivers) → switch to
    `BAAI/bge-small-en-v1.5`, or set `"embedding.device": "cpu"`.
 4. **sentence-transformers not installed** → `pip install sentence-transformers>=2.7.0`.
@@ -252,7 +252,7 @@ Instruct-mode hard constraint).
 |------|------|
 | `core/llm/embedder_backend.py` | `SentenceTransformerBackend`, `OllamaEmbedBackend`, `EmbedderUnavailable`, both `smoke_test()` implementations, `is_ollama_embed_model()`, `create_embedder()`. |
 | `core/llm/model_singletons.py` | `get_embed_model()` lazy singleton (loads + smoke-tests the backend once), `is_embedder_healthy()`, `_resolve_embed_device()`. |
-| `core/llm/embedding_cache.py` | On-disk embedding cache (`~/.markitdown_pro/embed_cache/`) — avoids re-embedding the same text across chapters. |
+| `core/llm/embedding_cache.py` | On-disk embedding cache (`~/.elixir/embed_cache/`) — avoids re-embedding the same text across chapters. |
 | `core/summarisation/content_judge.py` | `_semantic_similarity()`, `EmbeddingDisabled`, `_embedding_settings()`, `ContentJudge.judge()` Q1 coverage loop, `_check_coverage_batched()`. |
 | `core/llm/llm_provider.py` | `OllamaProvider.smoke_test()` (V18.4) — the LLM-side twin of the embedder smoke-test. |
 | `utils/settings.py` | `embedding.*` defaults (`enabled`, `fallback`, `model`, `device`, `cache_enabled`, `load_mode`, `threshold_scale`). |

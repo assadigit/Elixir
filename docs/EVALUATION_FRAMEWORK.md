@@ -1,6 +1,6 @@
 # Evaluation Framework — Four-Pillar Expert Fact-Checker
 
-> **This file is the standing evaluation framework for MarkItDown Pro summary audits.**
+> **This file is the standing evaluation framework for Elixir summary audits.**
 > Provided by the project owner (2026-08-31 session) as the permanent, reusable
 > evaluation prompt. Do NOT ask for it again — it lives here and ships with every
 > version. The ground-truth source chapter for the standing test book
@@ -101,7 +101,7 @@ Output a valid JSON object at the very end of your response with the following e
   recall-floor line ("theorists X/Y, conclusion items Z/W") is the honest
   coverage number; the LLM judge's claim-recall measures a different thing.
 - Verify file provenance BEFORE auditing: since V18.20.3.7 every summary file
-  self-identifies with a `<!-- generated-by: MarkItDown Pro v<version> |
+  self-identifies with a `<!-- generated-by: Elixir v<version> |
   run_id=… | started=… | bullets=N -->` comment (chapter files: line 3, after
   title+blank; book files: line 1), and the sentinel is `<!-- COMPLETE
   run_id=… -->`. Locate the stamp with the whole-text parser

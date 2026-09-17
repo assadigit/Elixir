@@ -256,7 +256,7 @@ class OCRService:
             "  ❌ Poppler not found — OCR for image pages is disabled.\n"
             "  To fix: download Poppler for Windows from\n"
             "  https://github.com/oschwartz10612/poppler-windows/releases\n"
-            "  Extract it, then set paths.poppler in ~/.markitdown_pro/settings.json\n"
+            "  Extract it, then set paths.poppler in ~/.elixir/settings.json\n"
             "  Example:  \"paths\": { \"poppler\": \"C:\\\\poppler-24.08.0\\\\Library\\\\bin\" }",
             "WARNING",
         )

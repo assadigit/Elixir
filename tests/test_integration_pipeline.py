@@ -214,7 +214,7 @@ def integration_setup(tmp_path):
     output_dir.mkdir()
 
     # Override Settings to use a temp settings file (avoid touching the user's)
-    settings_dir = tmp_path / ".markitdown_pro"
+    settings_dir = tmp_path / ".elixir"
     settings_dir.mkdir()
 
     # Reset the Settings singleton so it picks up the new paths

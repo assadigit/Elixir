@@ -35,6 +35,13 @@ from collections.abc import Callable
 
 import requests
 
+# V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
+# default-model literal (de-duplication only — value byte-identical).
+from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
+# response extraction (replaces the bare requests.post + deep-index parse).
+from utils.network import extract_openai_content, session_for_url
+
 logger = logging.getLogger(__name__)
 
 LogFn = Callable[[str, str], None]
@@ -356,10 +363,12 @@ class TextNormalizer:
         }
 
         url = f"{self.endpoint}/chat/completions"
-        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse — a
+        # malformed provider payload now returns "" (deterministic fallback
+        # path) instead of raising KeyError.
+        resp = session_for_url(url).post(url, json=payload, headers=headers, timeout=60)
         resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
+        content = extract_openai_content(resp.json())
 
         # Strip any <think> blocks the model might have included
         content = re.sub(r"<think>.*?</think>", "", content,
@@ -402,10 +411,12 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
         model = s.get("summarisation.model", "")
 
     # V4.7.24: If model is empty or a known-bad default, auto-discover
-    if not model or model in ("qwen2.5:3b", "gemma3:12b", ""):
+    # V18.20.4.11 (P2): "gemma3:12b" literal → model_taxonomy constant
+    # (value unchanged — the LEGACY sentinel default counts as known-bad).
+    if not model or model in ("qwen2.5:3b", LEGACY_DEFAULT_MODEL, ""):
         try:
-            import requests
-            resp = requests.get(f"{s.get_ollama_url()}/api/tags", timeout=5)  # V18.20.4.3 (W-c9): canonical URL
+            _tags_url = f"{s.get_ollama_url()}/api/tags"
+            resp = session_for_url(_tags_url).get(_tags_url, timeout=5)  # V18.20.4.3 (W-c9): canonical URL; V18.20.4.11: pooled
             if resp.status_code == 200:
                 models = resp.json().get("models", [])
                 if models:

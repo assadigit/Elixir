@@ -95,7 +95,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
             title="Model not installed",
             message=(
                 f"The model '{model_name}' is not installed in Ollama. "
-                f"MarkItDown Pro needs it to generate summaries."
+                f"Elixir needs it to generate summaries."
                 if model_name
                 else "The configured model is not installed in Ollama."
             ),
@@ -165,7 +165,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
             severity="error",
             title="Can't reach Ollama",
             message=(
-                "MarkItDown Pro can't connect to the Ollama server. The "
+                "Elixir can't connect to the Ollama server. The "
                 "model server may not be running, or the port may be wrong."
             ),
             action="Start Ollama (run `ollama serve` or open the Ollama app).",
@@ -215,7 +215,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
             f"An unexpected error occurred: {exc_type}. "
             f"Check the conversion log for details."
         ),
-        action="Check the log at ~/.markitdown_pro/system.log",
+        action="Check the log at ~/.elixir/system.log",
         action_type="command",
         technical=technical,
     )

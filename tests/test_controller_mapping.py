@@ -100,7 +100,7 @@ class _StubController:
         ("summarisation_max_output_tokens",  "summarisation_max_output_tokens",  "summarisation.max_output_tokens", 4096, None),
         ("summarisation_cache_enabled", "summarisation_cache_enabled", "summarisation.cache_enabled", False, None),
         ("generate_docx",               "generate_docx",               "docx.enabled", False, None),
-        ("docx_author",                 "docx_author",                 "docx.author", "MarkItDown Pro", None),
+        ("docx_author",                 "docx_author",                 "docx.author", "Elixir", None),
         ("docx_include_toc",            "docx_include_toc",            "docx.include_toc", True, None),
         ("max_workers",                 "max_workers",                 "summarisation.max_workers", 2, None),
         ("temperature",                 "temperature",                 "summarisation.temperature", 0.2, None),

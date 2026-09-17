@@ -10,7 +10,7 @@ This module provides a persistent disk cache keyed by
 .npy). Lookups are O(1) disk reads; misses fall through to the model and
 store the result.
 
-Thread-safe (file-lock per cache entry). Backed by ``~/.markitdown_pro/
+Thread-safe (file-lock per cache entry). Backed by ``~/.elixir/
 embed_cache/<model_dir>/`` so switching models doesn't invalidate the old
 cache (entries are namespaced by model).
 
@@ -32,8 +32,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Cache root — ~/.markitdown_pro/embed_cache/
-_CACHE_ROOT: Path = Path.home() / ".markitdown_pro" / "embed_cache"
+# Cache root — ~/.elixir/embed_cache/
+_CACHE_ROOT: Path = Path.home() / ".elixir" / "embed_cache"
 
 # Per-entry file lock (prevents two threads writing the same .npy simultaneously)
 _locks: dict = {}
@@ -72,7 +72,7 @@ class EmbedCache:
     The cache is **append-only** — entries are never evicted automatically.
     For a typical 20-chapter book with ~1000 unique sentences, the cache
     grows by ~3 MB (1000 × 768-dim × 4 bytes). Users can clear it manually
-    by deleting the ``~/.markitdown_pro/embed_cache/`` directory.
+    by deleting the ``~/.elixir/embed_cache/`` directory.
     """
 
     def __init__(self, cache_root: Path | None = None) -> None:

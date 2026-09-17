@@ -206,7 +206,7 @@ class TestPromptManagerIntegration:
     def test_text_variable_sanitized(self, tmp_path):
         from core.summarisation.prompt_manager import PromptManager
         # Create a minimal template in the user prompts dir
-        user_dir = Path.home() / ".markitdown_pro" / "prompts"
+        user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer.md"
         try:
@@ -230,7 +230,7 @@ class TestPromptManagerIntegration:
 
     def test_src_text_variable_sanitized(self, tmp_path):
         from core.summarisation.prompt_manager import PromptManager
-        user_dir = Path.home() / ".markitdown_pro" / "prompts"
+        user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer2.md"
         try:
@@ -253,7 +253,7 @@ class TestPromptManagerIntegration:
     def test_no_crash_on_missing_text(self):
         """render_template must not crash if text/src_text are absent."""
         from core.summarisation.prompt_manager import PromptManager
-        user_dir = Path.home() / ".markitdown_pro" / "prompts"
+        user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer3.md"
         try:

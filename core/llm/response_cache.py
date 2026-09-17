@@ -17,7 +17,7 @@ entirely.  This is especially valuable for:
 V10.36.0: The cache is now **disk-persisted** — it survives app restarts.
 On startup, the disk cache is loaded into memory.  On every ``put()``,
 the entry is also written to disk (append-only JSONL at
-``~/.markitdown_pro/response_cache.jsonl``).  The disk cache has the same
+``~/.elixir/response_cache.jsonl``).  The disk cache has the same
 FIFO cap as the in-memory cache (1000 entries).
 
 Thread-safety: the cache uses a lock so concurrent workers (ThreadPoolExecutor)
@@ -34,7 +34,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_CACHE_FILE = Path.home() / ".markitdown_pro" / "response_cache.jsonl"
+_CACHE_FILE = Path.home() / ".elixir" / "response_cache.jsonl"
 
 
 class ResponseCache:

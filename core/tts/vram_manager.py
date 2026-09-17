@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import logging
 
-import requests
-
 from core.tts.engine import LogFn
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport (canonical URL resolver
+# unchanged — see the W-c9 source pins in test_v182043_p2_settings_integrity).
+from utils.network import session_for_url
 
 # Approximate VRAM needed by each TTS engine's GPU component.
 # NeuTTS codec: ~1.5 GB. Kokoro model: ~0.5 GB. Piper: 0 (CPU binary).
@@ -99,7 +100,9 @@ class VRAMManager:
         Returns a list of model names. Empty if Ollama is not running.
         """
         try:
-            resp = requests.get(f"{_ollama_base_url()}/api/ps", timeout=5)
+            # V18.20.4.11 (P3 / O-c5): pooled transport; canonical URL kept.
+            _ps_url = f"{_ollama_base_url()}/api/ps"
+            resp = session_for_url(_ps_url).get(_ps_url, timeout=5)
             if resp.status_code == 200:
                 models = resp.json().get("models", [])
                 return [m.get("name", "") for m in models if m.get("name")]
@@ -129,7 +132,7 @@ class VRAMManager:
                 self.log(f"  🧹 Unloading Ollama model: {model}", "INFO")
                 # Ollama doesn't have a direct "unload" API, but sending
                 # a generate request with keep_alive=0 unloads the model.
-                resp = requests.post(
+                resp = session_for_url(_ollama_base_url()).post(
                     f"{_ollama_base_url()}/api/generate",
                     json={
                         "model": model,

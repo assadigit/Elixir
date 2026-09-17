@@ -72,7 +72,7 @@ LICENSE
 ═══════════════════════════════════════════════════════════════════════════
 
 langextract is Apache-2.0 (Google).  See https://github.com/google/langextract
-This wrapper is part of MarkItDown Pro Ultimate.
+This wrapper is part of Elixir.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""V18.2.22 (Phase 2.1) — Bootstrap: ordered startup lifecycle for MarkItDown Pro.
+"""V18.2.22 (Phase 2.1) — Bootstrap: ordered startup lifecycle for Elixir.
 
 Extracts the 90+ lines of inline startup logic from ``main.py``'s
 ``if __name__ == "__main__":`` block into a clean, testable class with
@@ -23,7 +23,7 @@ After:
     if __name__ == "__main__":
         _check_dependencies()
         _install_excepthook()
-        Bootstrap(Path.home() / ".markitdown_pro").run()
+        Bootstrap(Path.home() / ".elixir").run()
         from ui_qt.app import run; run()
 
 Each step is a method that can be unit-tested independently. The ``run``
@@ -55,19 +55,19 @@ class BootstrapError(Exception):
 
 
 class Bootstrap:
-    """Ordered startup lifecycle for MarkItDown Pro.
+    """Ordered startup lifecycle for Elixir.
 
     Usage::
 
         from core.system.bootstrap import Bootstrap
         from pathlib import Path
-        Bootstrap(Path.home() / ".markitdown_pro").run()
+        Bootstrap(Path.home() / ".elixir").run()
 
     Each step is a separate method so it can be unit-tested. The ``run``
     method calls them in order, catching ``BootstrapError`` per-step.
 
     Args:
-        user_dir: the ``~/.markitdown_pro`` directory.
+        user_dir: the ``~/.elixir`` directory.
         app_dir: the application source root (for pycache cleanup).
             Defaults to the parent of this file's parent's parent
             (core/system/bootstrap.py → project root).
@@ -165,7 +165,7 @@ class Bootstrap:
     def _refresh_prompts(self) -> None:
         """Delete user prompt copies so they get refreshed from built-ins.
 
-        The user prompts directory (``~/.markitdown_pro/prompts/``) is a mirror
+        The user prompts directory (``~/.elixir/prompts/``) is a mirror
         of the built-in ``prompts/`` tree. On each startup we delete the user
         copies so the latest built-ins are always used (not stale copies from
         a previous version).

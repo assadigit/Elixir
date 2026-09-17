@@ -1196,13 +1196,19 @@ def generate_podcast_script(
 
     import requests
 
+    # V18.20.4.11 (P3 / O-c5): pooled transport — every LLM/endpoint call in
+    # this module goes through the shared session selected by endpoint
+    # locality (localhost → no-proxy pooled, cloud → proxy-trusting pooled).
+    # Same timeouts/status handling as before; connection reuse added.
+    from utils.network import session_for_url as _session_for_url
+
     def _call_ollama(prompt_text: str) -> str:
         """Call Ollama and return the response text.
 
         V11.37.2: better error reporting for 404 (model not found).
         """
         try:
-            resp = requests.post(
+            resp = _session_for_url(ollama_url).post(
                 f"{ollama_url}/api/generate",
                 json={
                     "model": model,
@@ -1230,7 +1236,7 @@ def generate_podcast_script(
             # List available models to help the user
             available = []
             try:
-                tags_resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
+                tags_resp = _session_for_url(ollama_url).get(f"{ollama_url}/api/tags", timeout=5)
                 if tags_resp.status_code == 200:
                     available = [m.get("name", "")
                                  for m in tags_resp.json().get("models", [])]
@@ -1474,7 +1480,9 @@ def _generate_podcast_title(lines: list[ScriptLine], ollama_url: str,
     """
     import re
 
-    import requests
+    # V18.20.4.11 (P3 / O-c5): pooled transport — same session selection
+    # as _call_ollama above (localhost → no-proxy pooled, cloud → pooled).
+    from utils.network import session_for_url as _session_for_url
     # Build a summary of the script content for the LLM
     script_text = " ".join(l.text for l in lines[:10])[:500]
     prompt = (
@@ -1489,7 +1497,7 @@ def _generate_podcast_title(lines: list[ScriptLine], ollama_url: str,
         "Title:"
     )
     try:
-        resp = requests.post(
+        resp = _session_for_url(ollama_url).post(
             f"{ollama_url}/api/generate",
             json={
                 "model": model,

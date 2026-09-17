@@ -45,6 +45,8 @@ import re
 
 __all__ = [
     "LOW_BIT_TOKENS",
+    "LEGACY_DEFAULT_MODEL",          # V18.20.4.11 (P2): legacy "gemma3:12b" sentinel
+    "DEFAULT_FALLBACK_OCR_MODEL",    # V18.20.4.11 (P2): "qwen3-vl:8b" request-side OCR default
     "is_low_bit_quant",
     "is_iq2_s",
     "param_count_b",
@@ -74,6 +76,37 @@ LOW_BIT_TOKENS: tuple[str, ...] = (
     "q2_",       # generic 2-bit prefix (catches q2_k, q2_s, AND iq2_* via substring)
     "q1_",       # generic 1-bit prefix (catches q1_0, etc.)
 )
+
+
+# ── Legacy default-model sentinels (V18.20.4.11 / P2 / W-a7 partial) ────────
+#
+# Single source of truth for the legacy default-model string literals that
+# were previously duplicated across the codebase (core/models/models.py ×4
+# dataclass fields, core/summarisation/summarizer.py:614,
+# core/summarisation/fast_llm.py:106, core/tts/normalizer.py:405,
+# core/pipeline/conversion/postprocess.py:442). This is DE-DUPLICATION ONLY —
+# every wired site keeps its exact value (zero behavior change).
+#
+# NOTE: ``LEGACY_DEFAULT_MODEL`` is a LEGACY SENTINEL, never a
+# recommendation. It means "no explicit model configured":
+#   - fast_llm.py treats it as "no real fast model available" and routes
+#     fast tasks to the primary model;
+#   - core/tts/normalizer.py treats it as a known-bad default and
+#     auto-discovers a model from the Ollama daemon.
+# Do NOT use it as a default for new features.
+LEGACY_DEFAULT_MODEL: str = "gemma3:12b"
+
+# ``ConversionRequest`` dataclass default for the OCR model fields
+# (core/models/models.py primary_ocr_model / fallback_ocr_model) and the
+# figure-text-extraction request fallback
+# (core/pipeline/conversion/postprocess.py:442).
+#
+# KNOWN MISMATCH (flagged, deliberately NOT unified here): the OCR SERVICE
+# defaults in utils/settings.py ("ocr.primary_model" /
+# "ocr.fallback_model") are OlmOCR-2-7B variants while the REQUEST-side
+# default is qwen3-vl:8b — unifying the VALUES is a behavior change that
+# requires user sign-off and is out of scope for this literal cleanup.
+DEFAULT_FALLBACK_OCR_MODEL: str = "qwen3-vl:8b"
 
 
 # ── Predicates ─────────────────────────────────────────────────────────────

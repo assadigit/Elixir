@@ -30,11 +30,11 @@ themselves (``preflight_check._is_importable`` and
 
 ARMED ARTIFACTS
 ===============
-  - ``~/.markitdown_pro/faulthandler.log``  — native-crash dumps (all
+  - ``~/.elixir/faulthandler.log``  — native-crash dumps (all
     threads' stacks) for SIGSEGV / SIGABRT / SIGFPE / stack overflow /
     Windows access violations, plus a startup header per run so runs are
     easy to tell apart.
-  - ``~/.markitdown_pro/thread_crash.log``  — one block per background
+  - ``~/.elixir/thread_crash.log``  — one block per background
     thread death: timestamp, thread name, exception type, full traceback.
     The default stderr print is preserved on top (console launches look
     unchanged).
@@ -55,7 +55,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-_HOME_DIR = Path.home() / ".markitdown_pro"
+_HOME_DIR = Path.home() / ".elixir"
 FAULTHANDLER_LOG = _HOME_DIR / "faulthandler.log"
 THREAD_CRASH_LOG = _HOME_DIR / "thread_crash.log"
 
@@ -144,7 +144,7 @@ def _thread_excepthook(args: Any) -> None:
     the app was launched without a console.
 
     Preserves the default stderr print, then appends a block to
-    ``~/.markitdown_pro/thread_crash.log``.  Never raises.
+    ``~/.elixir/thread_crash.log``.  Never raises.
     """
     # 1. Preserve the default behaviour (formatted print to stderr).
     try:
@@ -188,7 +188,7 @@ def arm_crash_visibility() -> dict:
     ``main.py`` calls this BEFORE the first torch import so that a native
     DLL crash during any heavy import (torch / transformers / PySide6 /
     sentence_transformers) still leaves a full faulting-thread stack in
-    ``~/.markitdown_pro/faulthandler.log``.
+    ``~/.elixir/faulthandler.log``.
 
     Returns ``{"faulthandler": bool, "thread_excepthook": bool}``.
     """

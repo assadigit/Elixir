@@ -29,9 +29,53 @@ from utils.settings_schema import (
 logger = logging.getLogger(__name__)
 
 
+# ── V18.20.4.11 (rebrand): user-data directory + one-time migration ─────────
+# The app was renamed Elixir → Elixir; the user-data directory moved
+# ~/.elixir → ~/.elixir. user_data_dir() is the SINGLE choke point:
+# on first call it migrates the legacy directory (shutil.move — instant on
+# the same filesystem) so settings, cached models, prompts, and secrets all
+# survive the rebrand. Idempotent, thread-safe, and NEVER raises (a failed
+# migration logs a WARNING and the app starts with fresh settings — the
+# legacy directory is left untouched, so nothing is lost).
+_USER_DIR_NAME = ".elixir"
+_LEGACY_USER_DIR_NAME = ".markitdown_pro"  # pre-rebrand name — migration source (do NOT rename)
+_user_dir_lock = threading.Lock()
+_user_dir_resolved = False
+
+
+def user_data_dir() -> Path:
+    """Return the app's user-data directory (~/.elixir), migrating the
+    legacy ~/.elixir on first call (V18.20.4.11 rebrand)."""
+    global _user_dir_resolved
+    new_dir = Path.home() / _USER_DIR_NAME
+    if _user_dir_resolved:
+        return new_dir
+    with _user_dir_lock:
+        if _user_dir_resolved:
+            return new_dir
+        legacy = Path.home() / _LEGACY_USER_DIR_NAME
+        try:
+            if not new_dir.exists() and legacy.exists():
+                shutil.move(str(legacy), str(new_dir))
+                logger.info(
+                    "Elixir rebrand: migrated user data %s → %s (settings, "
+                    "models, caches, prompts preserved)",
+                    legacy, new_dir,
+                )
+        except Exception:
+            logger.warning(
+                "Elixir rebrand: user-data migration %s → %s failed — "
+                "starting fresh (legacy directory left untouched)",
+                legacy, new_dir,
+                exc_info=True,
+            )
+        _user_dir_resolved = True
+    return new_dir
+
+
 class Settings:
     _instance: Optional["Settings"] = None
-    _settings_dir: Path = Path.home() / ".markitdown_pro"
+    _settings_dir: Path = user_data_dir()
     _settings_file: Path = _settings_dir / "settings.json"
     # DI hook: tests can set this to a mock Settings instance.
     _test_override: Optional["Settings"] = None
@@ -331,7 +375,7 @@ class Settings:
             "generate_keypoints": True,
             "docx": {
                 "enabled":     True,   # V13.34.0: enabled by default
-                "author":      "MarkItDown Pro",
+                "author":      "Elixir",
                 "include_toc": True,
                 "font":        "Helvetica",
                 "theme":       "apple",
@@ -506,7 +550,7 @@ class Settings:
                 "fallback":            "jaccard",  # "jaccard" | "skip"
                 "model":               "nomic-embed-text",  # V18.15.1: switched from BAAI/bge-small-en-v1.5 (HF, needs sentence_transformers) to nomic-embed-text (Ollama, just needs `ollama pull nomic-embed-text`). This fixes the "embedder unhealthy" issue — Ollama is already running, no extra Python packages needed.
                 "device":              "auto",  # "auto" = cuda if >0.6 GB free, else cpu
-                "cache_enabled":       True,   # on-disk embedding cache (~/.markitdown_pro/embed_cache/)
+                "cache_enabled":       True,   # on-disk embedding cache (~/.elixir/embed_cache/)
                 "load_mode":           "resident",  # "resident" | "sequential" (sequential for 8B embedders)
                 # Threshold scale factor: multiplies all similarity thresholds
                 # in core/summarisation/thresholds.py. 1.0 = use defaults.

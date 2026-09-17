@@ -73,7 +73,7 @@ class EPUBGenerator(OutputGeneratorBase):
         book.set_identifier(f"markitdown-{book_title}")
         book.set_title(book_title)
         book.set_language("en")
-        book.add_author("MarkItDown Pro")
+        book.add_author("Elixir")
 
         # Table of contents
         toc = []
@@ -176,7 +176,7 @@ class EPUBGenerator(OutputGeneratorBase):
     <dc:identifier id="bookid">{book_id}</dc:identifier>
     <dc:title>{book_title}</dc:title>
     <dc:language>en</dc:language>
-    <dc:creator>MarkItDown Pro</dc:creator>
+    <dc:creator>Elixir</dc:creator>
   </metadata>
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>

@@ -117,7 +117,11 @@ class OutputGeneratorBase:
     def _call_openai_compat(self, prompt: str, temp: float, max_tokens: int,
                             base_url=None, api_key=None, model=None) -> str | None:
         """Call OpenAI-compatible API."""
-        import requests
+        # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse
+        # (replaces bare requests.post + deep-index; a malformed provider
+        # payload now returns "" → falsy → callers treat as failure, same
+        # as the old KeyError → except → None path but without the noise).
+        from utils.network import extract_openai_content, session_for_url
         base_url = base_url or self.api_base_url
         api_key = api_key or self.api_key
         model = model or self.cloud_model
@@ -131,9 +135,9 @@ class OutputGeneratorBase:
             "max_tokens": max_tokens,
         }
         try:
-            resp = requests.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
+            resp = session_for_url(base_url).post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
+            return extract_openai_content(resp.json())
         except Exception as e:
             self.log(f"  ⚠️ API call failed: {e}", "WARNING")
             return None

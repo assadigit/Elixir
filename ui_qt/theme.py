@@ -12,7 +12,7 @@ V7.4.0 overhaul.  Design language:
 
 The ThemeManager owns the palette, generates the complete QSS for the active
 mode (dark/light), persists the choice to
-``~/.markitdown_pro/ui_theme.json``, loads any bundled Inter weights, and
+``~/.elixir/ui_theme.json``, loads any bundled Inter weights, and
 applies everything to a QApplication.
 """
 
@@ -779,7 +779,7 @@ class ThemeManager:
     """
 
     def __init__(self) -> None:
-        self.settings_file = Path.home() / ".markitdown_pro" / "ui_theme.json"
+        self.settings_file = Path.home() / ".elixir" / "ui_theme.json"
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)
         self._mode: str = self._load_mode()
         self._app: QApplication | None = None

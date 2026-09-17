@@ -65,7 +65,7 @@ _ESPEAK_NG_DATA_SUBDIR = "espeak-ng-data"
 
 def _default_model_dir() -> Path:
     """Where to cache downloaded sherpa-onnx models."""
-    return Path.home() / ".markitdown_pro" / "sherpa_persian_models"
+    return Path.home() / ".elixir" / "sherpa_persian_models"
 
 
 def _download_and_extract(url: str, dest_dir: Path, log) -> Path:

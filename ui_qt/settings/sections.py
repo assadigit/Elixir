@@ -1018,7 +1018,7 @@ class AiPromptSection(QGroupBox):
         f.addRow("", btn_row)
 
         # Hint
-        hint = QLabel("Prompts are stored in ~/.markitdown_pro/prompts/. Changes apply on the next conversion.")
+        hint = QLabel("Prompts are stored in ~/.elixir/prompts/. Changes apply on the next conversion.")
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
         f.addRow("", hint)
@@ -1461,7 +1461,7 @@ class OutputGenerateSection(QGroupBox):
             checked=controller.get_setting("docx.enabled", False),
         )
         self.author_edit = labeled_line(
-            controller.get_setting("docx.author", "MarkItDown Pro"),
+            controller.get_setting("docx.author", "Elixir"),
             placeholder="Author name for the DOCX metadata",
         )
         self.toc_cb = labeled_checkbox(
@@ -1485,7 +1485,7 @@ class OutputGenerateSection(QGroupBox):
         c = self.controller
         self.summaries_cb.setChecked(c.get_setting("summarisation.enabled", False))
         self.docx_cb.setChecked(c.get_setting("docx.enabled", False))
-        self.author_edit.setText(c.get_setting("docx.author", "MarkItDown Pro"))
+        self.author_edit.setText(c.get_setting("docx.author", "Elixir"))
         self.toc_cb.setChecked(c.get_setting("docx.include_toc", True))
 
 

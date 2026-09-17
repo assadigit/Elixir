@@ -366,9 +366,9 @@ class TestWb8EnginesRecheckOffload:
 
 class TestWb12MergeOffload:
     def test_merge_runs_in_a_worker_not_the_slot(self):
-        body = _strip_comments(_method(_APP, "MarkItDownProWindow",
+        body = _strip_comments(_method(_APP, "ElixirWindow",
                                        "_open_merge_dialog"))
-        work = _inner_fn(_method(_APP, "MarkItDownProWindow",
+        work = _inner_fn(_method(_APP, "ElixirWindow",
                                  "_open_merge_dialog"), "_work")
         assert "merge_books(book_dirs, Path(output_folder), log_callback=None)" \
             in _strip_comments(work)
@@ -377,7 +377,7 @@ class TestWb12MergeOffload:
             ""), "merge_books must live inside the worker closure only"
 
     def test_spawn_shape_ref_guard_and_both_handlers(self):
-        body = _strip_comments(_method(_APP, "MarkItDownProWindow",
+        body = _strip_comments(_method(_APP, "ElixirWindow",
                                        "_open_merge_dialog"))
         assert "SimpleWorker(_work)" in body
         assert "self._merge_worker = w" in body
@@ -391,13 +391,13 @@ class TestWb12MergeOffload:
             "SimpleWorker(_work)")
 
     def test_finished_handler_reenables_and_keeps_identical_boxes(self):
-        done = _strip_comments(_method(_APP, "MarkItDownProWindow",
+        done = _strip_comments(_method(_APP, "ElixirWindow",
                                        "_on_merge_finished"))
         assert "self.merge_btn.setEnabled(True)" in done
         assert '"Merge complete"' in done
         assert '"Merge failed"' in done
         assert '"No summaries found to merge."' in done
-        fail = _strip_comments(_method(_APP, "MarkItDownProWindow",
+        fail = _strip_comments(_method(_APP, "ElixirWindow",
                                        "_on_merge_failed"))
         assert "self.merge_btn.setEnabled(True)" in fail, (
             "W-b18 class: the failed handler must re-enable too"
@@ -405,7 +405,7 @@ class TestWb12MergeOffload:
         assert '"Merge error"' in fail
 
     def test_failure_logs_traceback_before_the_box(self):
-        work = _inner_fn(_method(_APP, "MarkItDownProWindow",
+        work = _inner_fn(_method(_APP, "ElixirWindow",
                                  "_open_merge_dialog"), "_work")
         assert "exc_info=True" in work, (
             "W-b17 crash-visibility: the traceback must be logged BEFORE "
@@ -462,12 +462,12 @@ class TestWb18rOllamaCheck:
 
     def test_worker_ref_and_failed_wiring(self):
         body = _strip_comments(_method(
-            _APP, "MarkItDownProWindow", "_warn_ollama"))
+            _APP, "ElixirWindow", "_warn_ollama"))
         assert "self._ollama_check_worker = w" in body
         assert "w.failed.connect(self._on_ollama_check_failed)" in body
         assert "w.start()" in body
         handler = _strip_comments(_method(
-            _APP, "MarkItDownProWindow", "_on_ollama_check_failed"))
+            _APP, "ElixirWindow", "_on_ollama_check_failed"))
         assert "logger.warning" in handler
 
     def test_no_bare_spawn_remains(self):
@@ -767,7 +767,7 @@ class TestTb4DpiDeadAssignment:
 class TestTb6RetireOnClose:
     def test_close_event_stops_and_waits(self):
         src = _strip_comments(_method(
-            _APP, "MarkItDownProWindow", "closeEvent"))
+            _APP, "ElixirWindow", "closeEvent"))
         assert "self._retire_conversion_workers()" in src
         # retire happens AFTER the cancel request, BEFORE the settings save.
         cancel = src.find("self.queue_view.stop()")
@@ -777,7 +777,7 @@ class TestTb6RetireOnClose:
 
     def test_retire_helper_shape(self):
         body = _strip_comments(_method(
-            _APP, "MarkItDownProWindow", "_retire_conversion_workers"))
+            _APP, "ElixirWindow", "_retire_conversion_workers"))
         # the two daemon writer threads (queue + controller conversion).
         assert '"_worker_thread"' in body
         assert '"current_conversion_thread"' in body
@@ -798,7 +798,7 @@ class TestTb6RetireOnClose:
         assert "self._worker_thread" in src
 
     def test_retire_park_warning(self):
-        body = _method(_APP, "MarkItDownProWindow",
+        body = _method(_APP, "ElixirWindow",
                        "_retire_conversion_workers")
         assert "logger.warning" in body
 

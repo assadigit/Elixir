@@ -1,7 +1,7 @@
 """Main application window — slim top bar + single focused conversion screen.
 
   ┌──────────────────────────────────────────────────────────────┐
-  │  ◆ MarkItDown Pro ·  PDF → Markdown + Summaries     [🧰][⚙]  │  top bar
+  │  ◆ Elixir ·  PDF → Markdown + Summaries     [🧰][⚙]  │  top bar
   ├──────────────────────────────────────────────────────────────┤
   │                                                              │
   │            ( ConvertView — the two flows + CTA )             │  scrollable
@@ -49,16 +49,16 @@ from utils.geometry import restored_geometry_is_visible
 logger = logging.getLogger(__name__)
 
 
-_GEOMETRY_FILE = Path.home() / ".markitdown_pro" / "window_geometry.json"
+_GEOMETRY_FILE = Path.home() / ".elixir" / "window_geometry.json"
 
 
-class MarkItDownProWindow(QMainWindow):
+class ElixirWindow(QMainWindow):
     """Top-level window for the PySide6 UI."""
 
     def __init__(self, controller: Controller) -> None:
         super().__init__()
         self.controller = controller
-        self.setWindowTitle(f"MarkItDown Pro Ultimate  ·  v{self._app_version()}")
+        self.setWindowTitle(f"Elixir  ·  v{self._app_version()}")
         # V13.31.0 (#3): 20% smaller default — was 760x540, now 608x432.
         # More compact per user request.
         self.setMinimumSize(560, 400)
@@ -103,7 +103,7 @@ class MarkItDownProWindow(QMainWindow):
             brand.setPixmap(icon("book", p.accent, 18).pixmap(18, 18))
         lay.addWidget(brand)
 
-        title = QLabel("MarkItDown Pro")
+        title = QLabel("Elixir")
         title.setObjectName("H3")  # V7.4.0: H2→H3 for compact top bar
         lay.addWidget(title)
 
@@ -738,7 +738,7 @@ class MarkItDownProWindow(QMainWindow):
 # V18.1 (B6): single-instance lock state. Held at module scope so the
 # QLocalServer isn't garbage-collected (which would close the socket and
 # silently allow a second instance to start).
-_INSTANCE_KEY = "markitdown_pro_single_instance_v18"
+_INSTANCE_KEY = "elixir_single_instance_v18"
 _lock_server = None
 _lock_socket = None
 
@@ -789,8 +789,8 @@ def run() -> None:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("MarkItDown Pro Ultimate")
-    app.setOrganizationName("MarkItDownPro")
+    app.setApplicationName("Elixir")
+    app.setOrganizationName("Elixir")
 
     # V18.1 (B6): enforce single-instance — launching twice can corrupt the
     # same output dir / Ollama model state. Must come AFTER QApplication is
@@ -800,6 +800,6 @@ def run() -> None:
     theme_manager.apply(app)
 
     controller = Controller()
-    window = MarkItDownProWindow(controller)
+    window = ElixirWindow(controller)
     window.show()
     sys.exit(app.exec())

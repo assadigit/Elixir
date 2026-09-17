@@ -47,6 +47,82 @@ def get_shared_session() -> requests.Session:
     return _SHARED_SESSION
 
 
+# V18.20.4.11 (P3 / O-c5): shared CLOUD session — the transport-unification
+# counterpart of the no-proxy local session. Unlike the local session
+# (trust_env=False + empty proxies, because a misconfigured HTTP_PROXY must
+# never break localhost Ollama), cloud endpoints (OpenRouter / OpenAI /
+# Anthropic / any /v1 API) legitimately go through corporate proxies, so
+# this one TRUSTS the environment. Pooled + process-lifetime, thread-safe
+# for concurrent simple requests. Before this, every cloud call site built
+# its own bare ``requests.post`` (new TCP session per call, zero reuse).
+_CLOUD_SESSION: requests.Session | None = None
+_CLOUD_SESSION_LOCK = threading.Lock()
+
+
+def get_shared_cloud_session() -> requests.Session:
+    """Return the process-lifetime shared cloud (proxy-trusting) session."""
+    global _CLOUD_SESSION
+    if _CLOUD_SESSION is None:
+        with _CLOUD_SESSION_LOCK:
+            if _CLOUD_SESSION is None:
+                _CLOUD_SESSION = requests.Session()  # trust_env=True (default)
+    return _CLOUD_SESSION
+
+
+def session_for_url(url: str) -> requests.Session:
+    """V18.20.4.11 (P3 / O-c5): pick the shared session by endpoint locality.
+
+    Localhost URLs (localhost / 127.0.0.1 / [::1] / 0.0.0.0, any port) → the
+    no-proxy pooled session (proxy-immune, as ``safe_ollama_request`` has
+    always been). Everything else → the pooled cloud session (proxy-trusting).
+
+    This is the ONE routing rule every LLM HTTP call site uses so transport
+    behavior is uniform tree-wide: pooling + correct proxy handling, while
+    each site keeps its OWN timeout / retry / status-handling semantics.
+    """
+    try:
+        host = (url or "").split("://", 1)[-1].split("/", 1)[0]
+        if host.startswith("["):
+            # IPv6 literal: [::1]:11434 → ::1
+            host = host[1:].split("]", 1)[0]
+        else:
+            host = host.split(":", 1)[0]
+        host = host.strip().lower()
+    except Exception:
+        host = ""
+    if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return get_shared_session()
+    return get_shared_cloud_session()
+
+
+def extract_openai_content(data) -> str:
+    """V18.20.4.11 (P3 / O-c5): safe deep-index for OpenAI-compat responses.
+
+    The old one-liner ``data["choices"][0]["message"]["content"].strip()``
+    (duplicated across 6+ call sites) raised KeyError/IndexError/TypeError
+    on every provider that returned an error payload, a truncated body, or
+    an unexpected schema — leaving sites that had no outer guard crashed
+    and sites that DID have one with a masked real error. Returns "" on any
+    shape mismatch; the caller decides what "" means (retry / fallback /
+    fail-soft), same as an empty-but-valid response.
+    """
+    if not isinstance(data, dict):
+        return ""
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ""
+    message = first.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if not isinstance(content, str):
+        return ""
+    return content.strip()
+
+
 def safe_ollama_request(
     method: str,
     url: str,

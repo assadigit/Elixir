@@ -48,7 +48,7 @@ PERSIAN_VITS_MODELS = [
 
 def _default_model_dir() -> Path:
     """Where to cache downloaded Persian VITS models."""
-    return Path.home() / ".markitdown_pro" / "persian_vits_models"
+    return Path.home() / ".elixir" / "persian_vits_models"
 
 
 class PersianVitsEngine(TTSEngine):

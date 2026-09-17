@@ -61,8 +61,8 @@ _SETTINGS = _project_root / "utils" / "settings.py"
 
 # The shipped pre-change reference (the P5-2b moves happened after .4.6).
 _REF_ZIP = _project_root.parent.parent / "download" / (
-    "MarkItDown-Pro-V18.20.4.6.zip")
-_REF_ROOT = "MarkItDown-Pro-V18.20.4.6/"
+    "Elixir-V18.20.4.6.zip")
+_REF_ROOT = "Elixir-V18.20.4.6/"
 
 
 # ── helpers (headless-safe: source text + AST only, by name) ──────────────

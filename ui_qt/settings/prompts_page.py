@@ -757,7 +757,7 @@ class PromptsPage(QWidget):
 
     def save(self) -> None:
         """Called when settings dialog saves. Prompt changes are already
-        persisted to settings.json + ~/.markitdown_pro/prompts/ in real-time,
+        persisted to settings.json + ~/.elixir/prompts/ in real-time,
         so nothing extra needed here."""
         pass
 

@@ -3,7 +3,7 @@
 We generate a short, pleasant two-note rising chime (C5 → E5 → G5 major
 triad arpeggio) as a 16-bit PCM WAV in memory and play it via Qt's
 ``QSoundEffect`` (low-latency, runs on the UI thread without blocking).
-The WAV is cached on disk under ``~/.markitdown_pro/sounds/`` so it's only
+The WAV is cached on disk under ``~/.elixir/sounds/`` so it's only
 synthesised once.
 
 If audio output is unavailable (headless server, no audio device), the call
@@ -20,7 +20,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QSoundEffect
 
-_SOUNDS_DIR = Path.home() / ".markitdown_pro" / "sounds"
+_SOUNDS_DIR = Path.home() / ".elixir" / "sounds"
 
 
 def _synth_chime(path: Path, notes=(523.25, 659.25, 783.99), note_ms=180, sr=44100) -> None:

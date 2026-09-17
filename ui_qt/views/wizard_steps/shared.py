@@ -112,7 +112,7 @@ class WizardState:
     remove_page_number_headings: bool = True
     convert_separators_to_comments: bool = False
     # Step 7b: Fine-tuning — DOCX (2)
-    docx_author: str = "MarkItDown Pro"
+    docx_author: str = "Elixir"
     docx_include_toc: bool = True
     # Step 7b: Fine-tuning — Quality controls (4)
     self_consistency: bool = False

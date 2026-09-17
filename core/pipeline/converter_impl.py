@@ -187,7 +187,7 @@ class Converter:
         # log_callback.
         try:
             from utils.logging import get_structured_logger
-            slog = get_structured_logger("MarkItDownPro.converter")
+            slog = get_structured_logger("Elixir.converter")
             log_level = getattr(__import__("logging"), level.upper(), None)
             if log_level is None:
                 log_level = 20  # INFO
@@ -1735,7 +1735,11 @@ class Converter:
                 try:
                     self._generate_quality_report(segments, summaries)
                 except Exception as e:
-                    self._log(f"  ⚠️ Quality report generation failed: {e}", "DEBUG")
+                    # V18.20.4.11 (P2 / W-a12): raised DEBUG → WARNING — the
+                    # quality report now feeds the coverage chain (W-a2) and
+                    # the end-of-conversion diagnostic summary; its failure
+                    # is user-visible degradation, not an invisible detail.
+                    self._log(f"  ⚠️ Quality report generation failed: {e}", "WARNING")
 
             # V10.17.0 (G4): A/B comparison disabled — produced an unused
             # JSON file that nobody reads. V18.20.4.7 (P5 / W-a13): the
@@ -1754,7 +1758,7 @@ class Converter:
             # version header now reads from VERSION file (was stale
             # "V7.5.1" hardcoded).
             self._log("", "INFO")
-            self._log(f"━━━ MarkItDown Pro v{self._get_app_version()} Conversion Diagnostic Summary ━━━", "INFO")
+            self._log(f"━━━ Elixir v{self._get_app_version()} Conversion Diagnostic Summary ━━━", "INFO")
             self._log(f"  Book: {book_title}", "INFO")
             self._log(f"  Total pages: {total_pages}", "INFO")
             # V18.20.3.6: when a chapter selection / page range limited the

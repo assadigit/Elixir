@@ -37,6 +37,9 @@ from core.common import (
 )
 from core.llm import ModelManager, ModelType
 from utils.logging import get_main_logger
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport (localhost → no-proxy
+# pooled session, cloud → proxy-trusting pooled session).
+from utils.network import session_for_url
 from utils.settings import Settings
 
 logger = get_main_logger()
@@ -331,9 +334,10 @@ class TocExtractor:
         )
         if not prompt:
             return None
-        import requests
         try:
-            response = requests.post(
+            # V18.20.4.11 (P3 / O-c5): pooled transport — same timeout (120s)
+            # and status handling; connection reuse added.
+            response = session_for_url(self._ollama_base_url).post(
                 f"{self._ollama_base_url}/api/generate",
                 json={"model": self._llm_model, "prompt": prompt, "stream": False},
                 timeout=120

@@ -65,12 +65,12 @@ def setup_main_logger_gated(structured: bool | None = None) -> logging.Logger:
     if structured is None:
         structured = is_structured_logging_enabled()
 
-    log_dir = Path.home() / ".markitdown_pro"
+    log_dir = Path.home() / ".elixir"
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "system.log"
     structured_log_file = log_dir / "structured.jsonl"
 
-    logger = logging.getLogger("MarkItDownPro")
+    logger = logging.getLogger("Elixir")
     logger.setLevel(logging.DEBUG)
     if logger.hasHandlers():
         logger.handlers.clear()

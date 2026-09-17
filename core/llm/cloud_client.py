@@ -74,6 +74,10 @@ def test_cloud_connection(
 
     import requests
 
+    # V18.20.4.11 (P3 / O-c5): pooled transport — cloud connectivity probe;
+    # same granular status/error reporting, connection reuse added.
+    from utils.network import extract_openai_content, session_for_url
+
     url = f"{base.rstrip('/')}/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -81,8 +85,8 @@ def test_cloud_connection(
     }
     # Some routers (e.g. OpenRouter) like a referer/title header; harmless elsewhere.
     if "openrouter" in base.lower():
-        headers["HTTP-Referer"] = "https://markitdown-pro.local"
-        headers["X-Title"] = "MarkItDown Pro Ultimate"
+        headers["HTTP-Referer"] = "https://elixir.local"
+        headers["X-Title"] = "Elixir"
 
     payload = {
         "model": model,
@@ -92,7 +96,7 @@ def test_cloud_connection(
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        resp = session_for_url(url).post(url, headers=headers, json=payload, timeout=timeout)
     except requests.exceptions.ConnectionError as e:
         return False, f"Connection failed: {e}"
     except requests.exceptions.Timeout:
@@ -114,10 +118,12 @@ def test_cloud_connection(
     if not resp.ok:
         return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
 
-    try:
-        content = resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return False, f"Unexpected response shape: {e}"
+    # V18.20.4.11 (P3 / O-c5): shape-safe extraction — a 200 with an
+    # unexpected body reports the SAME clear failure as the old except,
+    # without the crash-shaped message.
+    content = extract_openai_content(resp.json())
+    if not content:
+        return False, "Unexpected response shape (no choices[0].message.content)"
 
     # A successful response — even if the model didn't say exactly "OK"
     preview = content[:60] + ("…" if len(content) > 60 else "")

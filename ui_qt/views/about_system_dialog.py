@@ -95,7 +95,7 @@ class AboutSystemDialog(QDialog):
         al = QVBoxLayout(about)
         al.setSpacing(4)
         ver = self._app_version()
-        al.addWidget(QLabel(f"<b>MarkItDown Pro Ultimate</b>  ·  v{ver}"))
+        al.addWidget(QLabel(f"<b>Elixir</b>  ·  v{ver}"))
         al.addWidget(QLabel("Local AI-powered PDF → Markdown + DOCX converter."))
         al.addWidget(QLabel("All processing happens on your machine — no API costs."))
         al.addWidget(QLabel("GUI: PySide6 (Qt 6)."))
@@ -184,7 +184,7 @@ class AboutSystemDialog(QDialog):
         ver = self._app_version()
         lines: list[str] = []
         lines.append("APPLICATION")
-        lines.append(f"  MarkItDown Pro Ultimate  v{ver}")
+        lines.append(f"  Elixir  v{ver}")
         lines.append(f"  OS: {platform.system()} {platform.release()}")
         lines.append(f"  Python: {platform.python_version()}")
         lines.append("")

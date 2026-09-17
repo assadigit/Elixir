@@ -88,7 +88,8 @@ class TestCallClaude:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response):
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
             result = call_claude(
                 prompt="test prompt",
                 max_tokens=4096,
@@ -108,7 +109,8 @@ class TestCallClaude:
         mock_response.json.return_value = {"content": []}
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response):
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
             result = call_claude(
                 prompt="test prompt",
                 max_tokens=4096,
@@ -130,7 +132,9 @@ class TestCallClaude:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response) as mock_post:
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
+            mock_post = _sfu.return_value.post
             call_claude(
                 prompt="test",
                 max_tokens=16000,  # above the 8192 cap
@@ -163,7 +167,8 @@ class TestCallOpenAICompat:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response):
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
             result = call_openai_compat(
                 prompt="test prompt",
                 base_url="https://api.openai.com/v1",
@@ -188,7 +193,9 @@ class TestCallOpenAICompat:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response) as mock_post:
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
+            mock_post = _sfu.return_value.post
             call_openai_compat(
                 prompt="test",
                 base_url="https://openrouter.ai/api/v1",
@@ -203,8 +210,8 @@ class TestCallOpenAICompat:
                 log=lambda m, l: None,
             )
         headers = mock_post.call_args[1]['headers']
-        assert headers['HTTP-Referer'] == "https://markitdown-pro.local"
-        assert headers['X-Title'] == "MarkItDown Pro Ultimate"
+        assert headers['HTTP-Referer'] == "https://elixir.local"
+        assert headers['X-Title'] == "Elixir"
 
     def test_empty_response_returns_none(self):
         """Should return None on empty response after retries."""
@@ -215,7 +222,8 @@ class TestCallOpenAICompat:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch('core.summarisation.llm_dispatcher._requests.post', return_value=mock_response):
+        with patch('core.summarisation.llm_dispatcher.session_for_url') as _sfu:
+            _sfu.return_value.post.return_value = mock_response
             result = call_openai_compat(
                 prompt="test",
                 base_url="https://api.openai.com/v1",

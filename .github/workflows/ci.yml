@@ -1,4 +1,4 @@
-# MarkItDown Pro — CI Pipeline
+# Elixir — CI Pipeline
 # V18.10 (Phase 6.7): GitHub Actions matrix — ruff + mypy + pytest --cov-fail-under=30
 #
 # This workflow runs on every push/PR to main. It gates releases on:

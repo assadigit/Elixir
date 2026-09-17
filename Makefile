@@ -28,7 +28,7 @@ run:
 	$(PYTHON) main.py
 
 build:
-	$(PYTHON) -m PyInstaller --noconfirm markitdown_pro.spec
+	$(PYTHON) -m PyInstaller --noconfirm elixir.spec
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +

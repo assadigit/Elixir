@@ -8,7 +8,7 @@ from tests/test_v1820313_thorough_floor.py; no Qt, no network, no GPU):
       is BYTE-IDENTICAL to the pre-split V18.20.4.6 zip's summarizer.py
       (ast.get_source_segment, decorators included in the check for the
       @staticmethod pair). The reference zip is
-      download/MarkItDown-Pro-V18.20.4.6.zip; the verbatim comparisons
+      download/Elixir-V18.20.4.6.zip; the verbatim comparisons
       skip (not fail) when it is absent.
   (b) O-a2 — Summarizer inherits both mixins; the 6 methods resolve
       through the MRO onto the mixin classes; the methods are GONE from
@@ -67,9 +67,9 @@ _EXT_IMPORTER = _project_root / "core" / "pipeline" / "conversion" / "summarizat
 
 # The shipped pre-split reference (the P5-2a moves happened after .4.6).
 _REF_ZIP = _project_root.parent.parent / "download" / (
-    "MarkItDown-Pro-V18.20.4.6.zip")
-_REF_MEMBER_SUM = "MarkItDown-Pro-V18.20.4.6/core/summarisation/summarizer.py"
-_REF_MEMBER_PA = "MarkItDown-Pro-V18.20.4.6/core/summarisation/prompt_assembly.py"
+    "Elixir-V18.20.4.6.zip")
+_REF_MEMBER_SUM = "Elixir-V18.20.4.6/core/summarisation/summarizer.py"
+_REF_MEMBER_PA = "Elixir-V18.20.4.6/core/summarisation/prompt_assembly.py"
 
 _MOVED_TO_ADDITIVE = (
     "_ensure_conclusion_bullets",

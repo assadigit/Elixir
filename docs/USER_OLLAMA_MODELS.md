@@ -1,11 +1,11 @@
 # User Ollama Models Reference
 
-This document lists the Ollama models referenced by MarkItDown Pro's default
+This document lists the Ollama models referenced by Elixir's default
 settings. It exists so users (and the V13.45.4 regression test) can verify the
 exact model-name strings the app expects.
 
 All four models below are pulled from `utils/settings.py` defaults. They are
-**defaults only** — every one can be overridden in `~/.markitdown_pro/settings.json`
+**defaults only** — every one can be overridden in `~/.elixir/settings.json`
 or via the UI's model-selection fields. The app is model-agnostic: any Ollama-
 served model with a matching name will be used.
 
@@ -70,7 +70,7 @@ ollama pull OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest
 ```
 
 If a tag is unavailable, pull the closest available quant and update the
-matching key in `~/.markitdown_pro/settings.json` (or the UI). The app reads
+matching key in `~/.elixir/settings.json` (or the UI). The app reads
 model names verbatim — no normalization is performed.
 
 ## Why these defaults?

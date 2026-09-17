@@ -1,7 +1,7 @@
 """V3.9.0 Reading List & Progress Tracking.
 
 Tracks which books have been summarized, their concept coverage, and
-provides a library dashboard. Stored in ~/.markitdown_pro/library.json
+provides a library dashboard. Stored in ~/.elixir/library.json
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_LIBRARY_FILE = Path.home() / ".markitdown_pro" / "library.json"
+_LIBRARY_FILE = Path.home() / ".elixir" / "library.json"
 
 
 class LibraryManager:

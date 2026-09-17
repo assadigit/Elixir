@@ -24,7 +24,7 @@ future extraction is a safe, byte-for-byte-equivalent refactor:
 
 These tests are TEST-ONLY (no production code changed). They construct a real
 ``Summarizer`` with a ``_FakeSettings`` stand-in (so they're hermetic — no
-dependency on ``~/.markitdown_pro/settings.json``) and assert the resulting
+dependency on ``~/.elixir/settings.json``) and assert the resulting
 instance attributes.
 
 Run: ``pytest tests/test_group_b_characterization.py -v``
@@ -73,7 +73,7 @@ class _FakeSettings:
     """Stand-in for ``utils.settings.Settings``.
 
     Returns controlled values from ``.get(key, default)`` so tests are hermetic
-    (no dependency on ``~/.markitdown_pro/settings.json``). The defaults below
+    (no dependency on ``~/.elixir/settings.json``). The defaults below
     give ``is_local=True`` (provider=ollama) and a non-zero timeout/deadline so
     the IQ2_S/IQ2_XXS override branches are exercisable.
     """
@@ -100,7 +100,7 @@ def _make_summarizer(monkeypatch, model="gemma3:12b", settings_overrides=None, *
     Patches BOTH ``core.summarisation.summarizer.Settings`` (the top-level
     import used at __init__ line 394) AND ``utils.settings.Settings`` (re-imported
     at __init__ line 437 for per-model temperature enforcement). Without both
-    patches the real Settings() would read ~/.markitdown_pro/settings.json and
+    patches the real Settings() would read ~/.elixir/settings.json and
     the tests would be filesystem-state-dependent.
     """
     fake = _FakeSettings(settings_overrides)

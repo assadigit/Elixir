@@ -1,6 +1,6 @@
 """Prompt Bank — user-editable prompt templates for summarisation & outputs.
 
-Prompts are stored as ``.md`` files in ``~/.markitdown_pro/prompts/`` (user copies)
+Prompts are stored as ``.md`` files in ``~/.elixir/prompts/`` (user copies)
 and ``prompts/`` (built-in presets).  Each file uses ``{{variable}}`` placeholders
 that are substituted by :meth:`PromptManager.render` / :meth:`PromptManager.render_template`.
 
@@ -15,7 +15,7 @@ V16.0.4 (PROMPT-OVERHAUL) extensions:
   ``academic.md`` / ``technical.md`` / ``creative.md`` / ``simplified_default.md``
   presets.
 * Recursive user-dir seeding — on first run the entire builtin tree (including
-  subdirectories) is mirrored into ``~/.markitdown_pro/prompts/``.
+  subdirectories) is mirrored into ``~/.elixir/prompts/``.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ _BUILTIN_CANDIDATES = [
 ]
 _BUILTIN_DIR = next((p for p in _BUILTIN_CANDIDATES if p.exists()), _BUILTIN_CANDIDATES[0])
 # User-customised prompts live here (copied from builtins on first run)
-_USER_DIR = Path.home() / ".markitdown_pro" / "prompts"
+_USER_DIR = Path.home() / ".elixir" / "prompts"
 
 _DEFAULT_PROMPT_NAME = "default"
 

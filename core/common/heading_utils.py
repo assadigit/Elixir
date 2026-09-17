@@ -206,3 +206,41 @@ def get_heading_candidates(
         if is_likely_heading(line):
             candidates.append((line_no, line.strip()))
     return candidates
+
+
+# V18.20.4.11 (P1): shared segment-filename slug helper. The heading→filename
+# transformation lived as duplicated inline regexes in
+# core/pipeline/conversion/output_save.py (segment write + deterministic-
+# analysis write), and deterministic_analyzer.find_analysis_for_heading needs
+# the SAME transformation to map a chapter heading back to its own
+# *_analysis.md file — previously the heading was ignored and the FIRST
+# analysis file tree-wide was injected into EVERY chapter (wrong-chapter
+# authors/keywords in prompts, coverage probes, gap-fill and the floors).
+# One canonical implementation; output_save keeps only its idx-dependent
+# ``segment_{idx:03d}`` fallback at the call site.
+def segment_filename_slug(heading: str) -> str:
+    """Mirror output_save's heading→segment-filename slug (V18.20.4.11).
+
+    Byte-identical to the former inline computation in
+    core/pipeline/conversion/output_save.py (order of operations included):
+
+        _h = re.sub(r"[\\t\\r\\n]+", " ", heading)
+        _h = re.sub(r" {2,}", " ", _h).strip()
+        safe = re.sub(r"[^\\w\\s\\-]", "", _h).strip()[:60]
+
+    The caller composes the filename as ``{idx:03d}_{safe}.md`` (analysis:
+    ``{idx:03d}_{safe}_analysis.md``) and falls back to
+    ``segment_{idx:03d}`` when this returns "" (heading collapses to
+    nothing after sanitisation).
+
+    Args:
+        heading: the raw segment heading (may contain tabs/newlines,
+            special characters, arbitrary length).
+
+    Returns:
+        The sanitised slug, at most 60 chars; "" when the heading is empty
+        or consists entirely of removable characters.
+    """
+    _h = re.sub(r"[\t\r\n]+", " ", heading or "")
+    _h = re.sub(r" {2,}", " ", _h).strip()
+    return re.sub(r"[^\w\s\-]", "", _h).strip()[:60]

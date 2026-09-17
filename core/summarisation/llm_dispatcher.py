@@ -47,7 +47,7 @@ from typing import Any
 import requests as _requests
 
 from core.llm.retry import retry_llm_call
-from utils.network import safe_ollama_request
+from utils.network import extract_openai_content, safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -432,8 +432,8 @@ def call_openai_compat(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if "openrouter" in base_url:
-        headers["HTTP-Referer"] = "https://markitdown-pro.local"
-        headers["X-Title"] = "MarkItDown Pro Ultimate"
+        headers["HTTP-Referer"] = "https://elixir.local"
+        headers["X-Title"] = "Elixir"
 
     payload = {
         "model": model,
@@ -457,9 +457,17 @@ def call_openai_compat(
             f"    {icon} {label} ({model}) t={temp:.2f} attempt…",
             "INFO",
         )
-        resp = _requests.post(url, headers=headers, json=payload, timeout=timeout)
+        # V18.20.4.11 (P3 / O-c5): pooled cloud session (proxy-trusting for
+        # cloud endpoints, no-proxy for localhost /v1 endpoints) replaces the
+        # bare per-call ``_requests.post`` — same timeout, same retries, plus
+        # connection reuse. The deep-index choices[0] parse is replaced by
+        # the shared shape-safe extract_openai_content: a malformed/error
+        # payload now flows into the SAME empty-response retry path as an
+        # empty-but-valid response (previously it raised straight to the
+        # outer except → None, skipping the retry).
+        resp = session_for_url(url).post(url, headers=headers, json=payload, timeout=timeout)
         resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"].strip()
+        text = extract_openai_content(resp.json())
         if not text:
             # Empty response — raise ConnectionError so the decorator retries
             # (preserves old "log empty + sleep + retry" behavior).
@@ -528,7 +536,8 @@ def call_claude(
             f"    🧠 Claude ({claude_model}) t={temperature:.2f} attempt…",
             "INFO",
         )
-        resp = _requests.post(url, headers=headers, json=payload, timeout=180)
+        # V18.20.4.11 (P3 / O-c5): pooled session (see call_openai_compat).
+        resp = session_for_url(url).post(url, headers=headers, json=payload, timeout=180)
         resp.raise_for_status()  # → HTTPError for 401/429/5xx
         data = resp.json()
         # Claude returns content as a list of text blocks

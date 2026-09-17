@@ -50,6 +50,9 @@ from pathlib import Path
 
 import requests
 
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport.
+from utils.network import session_for_url
+
 logger = logging.getLogger(__name__)
 
 # ── Type aliases ──────────────────────────────────────────────────────
@@ -371,7 +374,9 @@ class TranslationEngine:
                 "num_ctx": 8192,
             },
         }
-        resp = requests.post(
+        # V18.20.4.11 (P3 / O-c5): pooled transport — same timeout, same
+        # 404 → ModelNotFoundError handling; connection reuse added.
+        resp = session_for_url(self.ollama_url).post(
             f"{self.ollama_url}/api/generate", json=payload,
             timeout=self.TIMEOUT,
         )

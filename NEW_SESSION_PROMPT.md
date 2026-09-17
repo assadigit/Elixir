@@ -1,6 +1,6 @@
-# New Session Prompt — MarkItDown Pro V18.15.2.1 (God-Class Extraction Continuation)
+# New Session Prompt — Elixir V18.15.2.1 (God-Class Extraction Continuation)
 
-I'm continuing development of **MarkItDown Pro**, an LLM-based book summarization
+I'm continuing development of **Elixir**, an LLM-based book summarization
 desktop app (PySide6 + Ollama) running on Windows 10 with an RTX 3060 12GB GPU.
 The current version is **V18.15.2.1** — this is the **gold standard** base version
 for this session. The god-class extraction is the primary agenda.
@@ -20,7 +20,7 @@ V18.10.1). **12 of 15 extraction targets** are done. The target is ~3000 lines.
 - **Embedder**: `nomic-embed-text` via Ollama (WORKING since V18.15.2 — no sentence_transformers needed)
 - **Test chapter**: "Broken Structures" Salman Akhtar, Ch.1 "IDENTITY AND ITS ORIGINS"
   (~6,425 words, 9,139 tokens) — trust-ground at `audit/trust-ground/001_1_..._source.md`
-- **App source**: `/home/z/my-project/upload/extracted/MarkItDown-Pro-V18.3.6/`
+- **App source**: `/home/z/my-project/upload/extracted/Elixir-V18.3.6/`
   (folder name is V18.3.6 but `VERSION` file says `18.15.2.1` — known quirk)
 
 ## Current gold-standard metrics (V18.15.2.1)

@@ -29,6 +29,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core.llm import ModelManager
+# V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
+# default-model literal (de-duplication only — value byte-identical).
+from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
 
 # V18.2.21 (Phase 2.4-retry): consolidated retry decorator + typed exceptions.
 # Replaces the 4 duplicated `for attempt in range(self.retries + 1)` loops
@@ -470,7 +473,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         Has filesystem side effects (mkdir for cache_dir + load_prompt for prompt bank).
         """
         # Cache for Map-Reduce mini-summaries (resumable)
-        self.cache_dir = Path.home() / ".markitdown_pro" / "summary_cache"
+        self.cache_dir = Path.home() / ".elixir" / "summary_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # Map-Reduce parameters
         self.MAP_CHUNK_TOKENS = 4000
@@ -491,6 +494,12 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         language: str = "en",
         claim_extractor: Any | None = None,
     ):
+        # V18.20.4.11 (P2 / W-a1, T-a3): per-worker chapter-context store —
+        # see the property shims right after __init__. MUST be the FIRST
+        # assignment: sub-constructors (notably _init_thermal_guard, which
+        # writes self._chapter_deadline_start) already touch the
+        # thread-local-backed attributes.
+        self._chapter_tls = threading.local()
         # V18.17.0.1 (Phase 2b): Runtime basics extracted to sub-constructor.
         self._init_runtime_basics(request, log_callback, language, claim_extractor)
 
@@ -521,6 +530,133 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # _init_map_reduce_and_prompts (which read self.primary_model +
         # self.heavy_model).
         self._init_quality_params(settings)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # V18.20.4.11 (P2 / W-a1, T-a3): per-worker chapter context (thread-local)
+    # ─────────────────────────────────────────────────────────────────────────
+    # ``summarize_chapters`` runs ``process_chapter`` → ``_summarize_inner``
+    # on ThreadPoolExecutor WORKER threads while every chapter writes its
+    # context onto the single shared Summarizer instance. With >1 workers
+    # those attributes RACE (the SWOT-21 shared-state inventory, deferred
+    # there as "a per-worker thread-local is the full fix"):
+    #   - ``_current_heading`` is read 6× by bullet_pipeline.py for
+    #     drops.jsonl chapter attribution → with >1 workers, drop records
+    #     could carry the WRONG chapter name;
+    #   - ``_primary_thorough_cot_nuked`` / ``_primary_exec_cot_nuked`` /
+    #     ``_thorough_is_synthetic`` are per-chapter flags whose :2853-2858
+    #     reset was designed to stop chapter N leaking into chapter N+1 —
+    #     but the reset itself raced under concurrency;
+    #   - ``_last_coverage`` cross-contaminated the self-review skip
+    #     decision (bullet_pipeline reads it per chapter);
+    #   - ``_chapter_deadline_start`` measured every chapter from the MOST
+    #     RECENT submission (under-approximation, admitted in the old
+    #     submission-loop comment).
+    #
+    # The 7 attributes below are converted to property shims backed by a
+    # per-instance ``threading.local`` — NO call-site changes: every
+    # existing read/write syntax (``self._current_heading = heading``,
+    # ``getattr(s, "_current_heading", "")``) works unchanged, and the
+    # getters NEVER raise AttributeError (they getattr-with-default inside,
+    # matching each reader's previous fallback value).
+    #
+    # Thread-affinity audit (why each attribute is safe to localize):
+    #   - ALL readers/writers run on the chapter-processing thread.
+    #     ``_summarize_inner`` writes them at its top and reads them in the
+    #     postchecks re-derivation block (same call frame);
+    #     bullet_pipeline / filter_thinking / multi_sample / gap_filler read
+    #     them from within that frame; ``_deadline_exceeded`` and
+    #     ``_map_reduce_summarize`` are likewise called only from inside
+    #     chapter processing. No post-futures MAIN-thread reader exists
+    #     (verified tree-wide grep — ui_qt/, controller and
+    #     conversion/summarization.py never touch these attrs).
+    #   - The SEQUENTIAL path (max_workers == 1) is unchanged: the main
+    #     thread both writes (summarize_chapters, pre-call) and reads
+    #     (``_summarize_inner`` runs on the same thread) — TLS resolves to
+    #     the same slot naturally.
+    #   - ``_chapter_deadline_start``: the parallel-path stamp moved INTO
+    #     ``process_chapter`` (each worker stamps at pickup — exact
+    #     per-chapter elapsed time, strictly more correct than the old
+    #     under-approximation). A main-thread-only pre-submit write would
+    #     leave workers seeing the None default = deadline silently
+    #     disabled (that would be a regression, not a fix).
+    #   - bullet_pipeline.py needs NO changes: its ``getattr(s, ...)``
+    #     reads resolve through these properties transparently.
+    _TLS_CREATE_LOCK = threading.Lock()
+
+    def _chapter_tls_store(self) -> threading.local:
+        """This instance's thread-local chapter-context store (V18.20.4.11).
+
+        Created eagerly in ``__init__``; the lazy double-checked path below
+        only serves test harnesses that build the Summarizer via
+        ``object.__new__`` (bypassing ``__init__``, the established
+        characterization-test pattern) — where the first access can happen
+        on a worker thread, hence the lock.
+        """
+        tls = getattr(self, "_chapter_tls", None)
+        if tls is None:
+            with Summarizer._TLS_CREATE_LOCK:
+                tls = getattr(self, "_chapter_tls", None)
+                if tls is None:
+                    tls = threading.local()
+                    self._chapter_tls = tls
+        return tls
+
+    @property
+    def _source_text(self) -> str:
+        return getattr(self._chapter_tls_store(), "source_text", "")
+
+    @_source_text.setter
+    def _source_text(self, value: str) -> None:
+        self._chapter_tls_store().source_text = value
+
+    @property
+    def _current_heading(self) -> str:
+        return getattr(self._chapter_tls_store(), "current_heading", "")
+
+    @_current_heading.setter
+    def _current_heading(self, value: str) -> None:
+        self._chapter_tls_store().current_heading = value
+
+    @property
+    def _primary_thorough_cot_nuked(self) -> bool:
+        return getattr(self._chapter_tls_store(), "primary_thorough_cot_nuked", False)
+
+    @_primary_thorough_cot_nuked.setter
+    def _primary_thorough_cot_nuked(self, value: bool) -> None:
+        self._chapter_tls_store().primary_thorough_cot_nuked = value
+
+    @property
+    def _primary_exec_cot_nuked(self) -> bool:
+        return getattr(self._chapter_tls_store(), "primary_exec_cot_nuked", False)
+
+    @_primary_exec_cot_nuked.setter
+    def _primary_exec_cot_nuked(self, value: bool) -> None:
+        self._chapter_tls_store().primary_exec_cot_nuked = value
+
+    @property
+    def _thorough_is_synthetic(self) -> bool:
+        return getattr(self._chapter_tls_store(), "thorough_is_synthetic", False)
+
+    @_thorough_is_synthetic.setter
+    def _thorough_is_synthetic(self, value: bool) -> None:
+        self._chapter_tls_store().thorough_is_synthetic = value
+
+    @property
+    def _last_coverage(self) -> float:
+        return getattr(self._chapter_tls_store(), "last_coverage", 0.0)
+
+    @_last_coverage.setter
+    def _last_coverage(self, value: float) -> None:
+        self._chapter_tls_store().last_coverage = value
+
+    @property
+    def _chapter_deadline_start(self) -> float | None:
+        return getattr(self._chapter_tls_store(), "chapter_deadline_start", None)
+
+    @_chapter_deadline_start.setter
+    def _chapter_deadline_start(self, value: float | None) -> None:
+        self._chapter_tls_store().chapter_deadline_start = value
+
 
     # ─────────────────────────────────────────────────────────────────────────
     # V18.19.3.0 (Phase 2f): Group B — quality params, academic rigor, per-model
@@ -611,7 +747,9 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             self.request.summarisation_max_context_tokens = auto_ctx
 
         # Primary model
-        self.primary_model = self.request.summarisation_model or "gemma3:12b"
+        # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
+        # (value unchanged: the LEGACY sentinel default "gemma3:12b").
+        self.primary_model = self.request.summarisation_model or LEGACY_DEFAULT_MODEL
 
         # IQ2_S/IQ2_XXS overrides
         # V18.20.1.0 (D9): constants centralized to core.llm.iq2_s_profile.
@@ -1381,10 +1519,14 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                 "DEBUG",
             )
         except Exception as _ckpt_e:
+            # V18.20.4.11 (P2 / W-a12): raised DEBUG → WARNING — a lost
+            # checkpoint silently breaks crash-resume (the whole point of
+            # the V18.20.1.2 checkpoint), and the user must know. The
+            # logger.debug trace stays; only the self.log LEVEL changes.
             self.log(
                 f"    ⚠️ V18.20.1.2: {label} checkpoint save failed "
                 f"(non-fatal): {_ckpt_e}",
-                "DEBUG",
+                "WARNING",
             )
             logger.debug("%s checkpoint failed: %s: %s",
                          label, type(_ckpt_e).__name__, _ckpt_e)
@@ -3063,6 +3205,17 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             except Exception as _cot_e:
                 logger.debug("parse-time CoT gate crashed (non-fatal): %s: %s",
                              type(_cot_e).__name__, _cot_e)
+                # V18.20.4.11 (P2 / W-a12): the CoT gate is anti-hallucination
+                # machinery — a crashed gate silently re-admits CoT narrative
+                # as "summary" text. The DEBUG-only trace made that invisible
+                # in every real-rig log. Keep the debug trace, ADD a visible
+                # WARNING (honesty-machinery failures must be LOUD).
+                self.log(
+                    f"    ⚠️ V18.20.4.11: parse-time CoT gate crashed (non-fatal — "
+                    f"gate skipped for this chapter): "
+                    f"{type(_cot_e).__name__}: {_cot_e}",
+                    "WARNING",
+                )
 
             # ── Compute coverage ────────────────────────────────────────────
             _bps = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
@@ -4027,6 +4180,17 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             except Exception as _rr_e:
                 logger.debug("thorough-judge re-run failed (non-fatal): %s: %s",
                              type(_rr_e).__name__, _rr_e)
+                # V18.20.4.11 (P2 / W-a12): the re-run exists to make the
+                # logged thorough-coverage verdict HONEST (V18.20.3.2 P0-1c);
+                # a crashed re-run silently reverts to the dishonest verdict
+                # the fix was built to remove. Keep the debug trace, ADD a
+                # visible WARNING (honesty-machinery failures must be LOUD).
+                self.log(
+                    f"    ⚠️ V18.20.4.11: thorough-judge re-run failed (non-fatal — "
+                    f"shipped-thorough coverage unverified for this chapter): "
+                    f"{type(_rr_e).__name__}: {_rr_e}",
+                    "WARNING",
+                )
             # V18.19.2.2 (Audit Fix 2b): Same gap can hit exec — if run_post_checks
             # truncated exec to empty (CoT detected on exec, postchecks.py:208) but
             # thorough survived, fall back exec from thorough. Symmetric with the
@@ -4598,6 +4762,18 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
 
         def process_chapter(idx: int, chap: dict[str, str]) -> tuple[int, SummaryResult]:
             """Wrapper to process a single chapter and return its index."""
+            # V18.20.4.11 (P2 / W-a1): stamp the per-chapter deadline start ON
+            # THE WORKER THREAD. The V18.20.2.0 (SWOT A8) fix set it on the
+            # MAIN thread immediately before each executor.submit against a
+            # SHARED attribute, so concurrent workers all measured from the
+            # MOST RECENT submission (under-approximation — the old comment
+            # there already deferred "a per-worker thread-local is the full
+            # fix"). Now that _chapter_deadline_start is a thread-local
+            # property shim, each worker stamps its own start at pickup:
+            # EXACT per-chapter elapsed time, and the watchdog stays ENABLED
+            # (a main-thread-only write would leave workers seeing the None
+            # default = deadline silently disabled — a regression, not a fix).
+            self._chapter_deadline_start = time.time()
             try:
                 result = self._summarize_inner(
                     chap["heading"], chap["content"],
@@ -4619,23 +4795,11 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
             for i, chap in enumerate(chapters):
-                # V18.20.2.0 (SWOT A8): per-chapter deadline start — set
-                # immediately before each future submission so the
-                # _deadline_exceeded watchdog (and the optional-phase skips
-                # it gates: scholar reflection, semantic dedup, consolidation,
-                # bullet expansion) is no longer silently DISABLED in parallel
-                # mode (previously only the sequential loop set it, so the
-                # attribute stayed None and every deadline check returned
-                # False).
-                # APPROXIMATION for max_workers > 1: this is a single shared
-                # instance attribute, so concurrent workers all see the MOST
-                # RECENT submission's timestamp — chapters submitted earlier
-                # get their elapsed time measured from a later start
-                # (under-approximation; the watchdog fires late, never early).
-                # On the target hardware max_workers is forced to 1, where
-                # this is exact. A per-worker thread-local is the full fix
-                # (deferred with the SWOT finding-21 shared-state inventory).
-                self._chapter_deadline_start = time.time()
+                # V18.20.2.0 (SWOT A8): per-chapter deadline start — now
+                # stamped INSIDE process_chapter on the worker thread itself
+                # (V18.20.4.11 / W-a1 thread-local fix; see the comment
+                # there for why a pre-submit main-thread write no longer
+                # works now that the attribute is thread-local).
                 futures[executor.submit(process_chapter, i, chap)] = i
 
             for future in concurrent.futures.as_completed(futures):

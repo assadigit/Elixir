@@ -73,7 +73,7 @@ class TestGoldenPathPipeline:
         from core.llm.prompt_sanitizer import is_untrusted_wrapped
         from core.summarisation.prompt_manager import PromptManager
 
-        user_dir = Path.home() / ".markitdown_pro" / "prompts"
+        user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         template = user_dir / "_e2e_test.md"
         try:
@@ -244,7 +244,7 @@ class TestGoldenPathPipeline:
         """
         # 1. Render a sanitized prompt
         from core.summarisation.prompt_manager import PromptManager
-        user_dir = Path.home() / ".markitdown_pro" / "prompts"
+        user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         template = user_dir / "_e2e_golden.md"
         try:

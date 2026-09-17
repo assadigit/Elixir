@@ -32,6 +32,10 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+# V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
+# default-model literal (de-duplication only — value byte-identical).
+from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
+
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
 RequestLike = Any
@@ -103,7 +107,10 @@ def call_fast_llm(
 
     if arch == "dual_local":
         fast_model = getattr(request, "fast_model", "") or ""
-        if not fast_model or fast_model == "gemma3:12b":
+        # V18.20.4.11 (P2): literal → model_taxonomy constant (value
+        # unchanged). The sentinel means "legacy default = no real fast model
+        # configured" — route to the primary model.
+        if not fast_model or fast_model == LEGACY_DEFAULT_MODEL:
             return call_llm_with_empty_retry(
                 prompt, temperature=temperature, max_tokens=max_tokens,
             )

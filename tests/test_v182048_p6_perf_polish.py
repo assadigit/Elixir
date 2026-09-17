@@ -702,6 +702,17 @@ class TestOc3TocLlmCache:
     class _RespFail:
         status_code = 500
 
+    class _FakeSession:
+        """V18.20.4.11 (P3 / O-c5): stands in for the pooled session returned
+        by session_for_url — same .post(url, json=, timeout=) surface the
+        runtime transport now uses (was: bare requests.post)."""
+
+        def __init__(self, post_fn):
+            self._post_fn = post_fn
+
+        def post(self, url, json=None, timeout=None):
+            return self._post_fn(url, json=json, timeout=timeout)
+
     @staticmethod
     def _extractor(pdf, md, lines):
         from core.pdf.adaptive_toc import AdaptiveTOCExtractor
@@ -714,8 +725,8 @@ class TestOc3TocLlmCache:
 
     @pytest.fixture()
     def toc_env(self, tmp_path, monkeypatch):
+        import core.pdf.adaptive_toc as at_mod
         import core.summarisation.prompt_manager as pm_mod
-        import requests
         import utils.settings as us
 
         pdf = tmp_path / "book.pdf"
@@ -728,7 +739,13 @@ class TestOc3TocLlmCache:
             posts.append((url, json, timeout))
             return TestOc3TocLlmCache._RespOK()
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        # V18.20.4.11 (P3 / O-c5): adaptive_toc now calls the pooled session
+        # (session_for_url(url).post(...)) instead of bare requests.post —
+        # same interception, same recorded (url, json, timeout) tuples.
+        monkeypatch.setattr(
+            at_mod, "session_for_url",
+            lambda url: TestOc3TocLlmCache._FakeSession(_fake_post),
+        )
         monkeypatch.setattr(pm_mod, "PromptManager", self._FakePM)
         monkeypatch.setattr(us, "Settings", self._FakeSettings)
         lines = md.read_text(encoding="utf-8").splitlines()
@@ -789,7 +806,7 @@ class TestOc3TocLlmCache:
         assert len(posts) == 2, "a changed input file must re-extract"
 
     def test_failures_are_not_cached(self, toc_env, monkeypatch):
-        import requests
+        import core.pdf.adaptive_toc as at_mod
 
         pdf, md, lines, posts = toc_env
         posts.clear()
@@ -798,7 +815,10 @@ class TestOc3TocLlmCache:
             posts.append(url)
             return self._RespFail()
 
-        monkeypatch.setattr(requests, "post", _failing_post)
+        monkeypatch.setattr(
+            at_mod, "session_for_url",
+            lambda url: TestOc3TocLlmCache._FakeSession(_failing_post),
+        )
         ex = self._extractor(pdf, md, lines)
         assert ex._extract_with_llm() is None
         assert ex._extract_with_llm() is None
@@ -819,8 +839,8 @@ class TestOc3TocLlmCache:
     def test_instance_without_pdf_path_bypasses_cache(self, monkeypatch):
         """P2-test compatibility: object.__new__ instances with only md_lines
         must bypass the cache (no pdf_path attribute) and never crash."""
+        import core.pdf.adaptive_toc as at_mod
         import core.summarisation.prompt_manager as pm_mod
-        import requests
         import utils.settings as us
 
         posts = []
@@ -831,9 +851,14 @@ class TestOc3TocLlmCache:
             def json(self):
                 return {"response": "[]"}  # no parseable TOC -> None
 
+        # V18.20.4.11 (P3 / O-c5): pooled-session interception (was
+        # bare requests.post).
         monkeypatch.setattr(
-            requests, "post", lambda url, json=None, timeout=None: (
-                posts.append(url) or _RespNoToc(),
+            at_mod, "session_for_url",
+            lambda url: TestOc3TocLlmCache._FakeSession(
+                lambda url, json=None, timeout=None: (
+                    posts.append(url) or _RespNoToc(),
+                ),
             ),
         )
         monkeypatch.setattr(pm_mod, "PromptManager", self._FakePM)

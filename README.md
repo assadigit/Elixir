@@ -1,4 +1,4 @@
-# 📚 MarkItDown Pro
+# 📚 Elixir
 
 > 🚀 **Turn any book into a full learning kit — locally, privately, and with an 8-layer anti-hallucination engine.**
 
@@ -6,19 +6,23 @@ A PySide6 desktop application that converts **PDF / EPUB / DOCX / TXT / HTML** i
 
 Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports local LLMs (**Ollama**) *and* cloud APIs (**OpenRouter, OpenAI-compatible, Claude, FreeLLMAPI**).
 
-![Version](https://img.shields.io/badge/version-18.20.4.10-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-2973%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+> 🧪 **Previously "MarkItDown Pro"?** You're in the right place — the app was **rebranded to Elixir** in V18.20.4.11. On first launch your `~/.markitdown_pro` directory (settings, cached models, prompts, keychain secrets) is **migrated automatically** to `~/.elixir`. Nothing to do, nothing lost.
+>
+> ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
+
+![Version](https://img.shields.io/badge/version-18.20.4.11-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3083%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
-## 🌟 Why MarkItDown Pro?
+## 🌟 Why Elixir?
 
 - 🔒 **Local-first & private** — runs 100% offline with Ollama. Your books never leave your machine unless *you* choose a cloud provider.
 - 🛡️ **Anti-hallucination engine** — 8 defensive layers (deterministic + LLM-based) verify every bullet against the source before it ships.
 - 📦 **19 output types** from one conversion — from a one-page executive briefing to a full Obsidian knowledge base.
-- 🎙️ **Podect-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS for English, Piper for Farsi).
+- 🎙️ **Podcast-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS for English, Piper for Farsi).
 - 🌐 **Bilingual** — full English ↔ Farsi translation pipeline (NLLB-200 or TranslateGemma).
 - 🖥️ **VRAM-aware** — estimates context windows and VRAM budgets from your actual GPU, and (as of V18.20.4.10) **fails fast** instead of warn-and-continue when a model won't fit.
-- 🧪 **2,973 passing tests** — a characterization-test safety net pins every behavior before refactors touch it.
+- 🧪 **3,000+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it.
 
 ---
 
@@ -51,7 +55,7 @@ ollama pull translategemma-4b-it:q5_k_m              # 🌐 Translation backup (
 
 ### 4️⃣ Configure paths (first run)
 
-After first launch, open `~/.markitdown_pro/settings.json`:
+After first launch, open `~/.elixir/settings.json`:
 
 ```json
 {
@@ -197,7 +201,7 @@ output/
 | 🟣 **Claude (Anthropic)** | `"claude"` | Direct Anthropic API. Model: `claude-3-5-sonnet-20241022` |
 | 🆓 **FreeLLMAPI** | `"freellmapi"` | Local proxy at `localhost:3001` |
 
-> ⚠️ Cloud API keys are stored in `~/.markitdown_pro/settings.json` in **plaintext** — keyring migration is on the roadmap.
+> ⚠️ Cloud API keys are stored in `~/.elixir/settings.json` in **plaintext** — keyring migration is on the roadmap.
 
 ## 🌐 Translation (EN ↔ FA)
 
@@ -267,7 +271,7 @@ A real-world incident (a 257-page book on a 12GB GPU with a 20.2GB model) produc
 
 ## ⚙️ Key Settings
 
-Settings file: `~/.markitdown_pro/settings.json`
+Settings file: `~/.elixir/settings.json`
 
 | Key | Default | Description |
 |---|---|---|
@@ -310,7 +314,7 @@ Settings file: `~/.markitdown_pro/settings.json`
 # ▶️ Run the app
 python main.py
 
-# 🧪 Full test suite (2,973 tests, ~117s headless)
+# 🧪 Full test suite (3,000+ tests, ~117s headless)
 python -m pytest tests/ --no-cov -q
 
 # 🧹 Lint
@@ -320,13 +324,12 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (V18.20.4.10):** `2973 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 117.39s`
-*(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
+**Current gate (V18.20.4.11):** `3083 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 120s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
 
 ### 🏗️ Project Layout
 
 ```
-MarkItDown-Pro/
+Elixir/
 ├── main.py                  ← 🚪 entry point + crash reporting
 ├── controller.py            ← 🎛️ orchestration bridge (UI ⇄ core)
 ├── core/
@@ -343,7 +346,7 @@ MarkItDown-Pro/
 │   └── system/              ← 🛡️ preflight, supervisor, thermal, hardware
 ├── ui_qt/                   🖥️  PySide6 views, wizard steps, components
 ├── prompts/                 ← ✍️ all LLM prompt templates (versioned)
-├── tests/                   ← 🧪 2,973-test characterization suite
+├── tests/                   ← 🧪 3,000+-test characterization suite
 ├── docs/                    ← 📚 EMBEDDERS, models, evaluation framework
 ├── installer/               ← 📦 Inno Setup script
 └── utils/                   ← 🔧 settings, logging, atomic IO, text quality
@@ -353,7 +356,7 @@ MarkItDown-Pro/
 
 ## 📊 Project Status
 
-**Current version: V18.20.4.10** — the P0 hotfix for the "97 Things Every Programmer Should Know" pipeline stall (4 root causes: outline level selection, short-segment merge cascade, position-0 fallback, VRAM warn-and-continue). Full story in [`CHANGELOG.md`](CHANGELOG.md).
+**Current version: V18.20.4.11 — "Elixir"** — the rebrand release. Formerly *MarkItDown Pro*: the app, its `~/.elixir` data directory (auto-migrated), keychain service, logs, and installer are all Elixir now — plus this release closes the top-6 audit findings: per-heading analysis lookup (wrong-chapter injection fix), the parallel-chapter thread-local race fix, four buried DEBUG logs raised to WARNING, model-literal single-sourcing, response-parser fallback logging, and tree-wide LLM transport unification (pooled sessions + shape-safe parsing). Full story in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 
@@ -370,13 +373,16 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 
 ### 🗺️ Roadmap (prioritized from the audit's open items)
 
-1. 🐛 **`find_analysis_for_heading` heading-ignored bug** — `deterministic_analyzer.py:996-1058` returns the *first* analysis file tree-wide; now unmasked by the V18.20.4.10 segmentation fix, this would inject segment-001's analysis into every chapter of a multi-segment book. **Next fix.**
-2. 🔌 **Unify ~10 hand-rolled LLM call stacks** into `llm_dispatcher` (timeouts, retries, caching become consistent everywhere).
-3. 🧵 **Close parallel-stage shared-state races** (`summarizer.py` shared heading state × `drops.jsonl`).
-4. 📢 **Raise buried logs** — quality-report failures still log at DEBUG.
-5. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext).
-6. 🧹 **Model-literal cleanup** (`gemma3:12b` × 3 sites, `qwen3-vl:8b` postprocess fallback).
-7. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871).
+1. ✅ ~~`find_analysis_for_heading` heading-ignored bug~~ — **fixed in V18.20.4.11** (per-heading matching ladder, fail-closed)
+2. ✅ ~~Unify ~10 hand-rolled LLM call stacks~~ — **fixed in V18.20.4.11** (pooled sessions tree-wide, shape-safe parsing; per-site retry folding remains future work)
+3. ✅ ~~Close parallel-stage shared-state races~~ — **fixed in V18.20.4.11** (thread-local chapter context, all 7 attributes)
+4. ✅ ~~Raise buried logs~~ — **fixed in V18.20.4.11** (4 sites now WARNING)
+5. ✅ ~~Model-literal cleanup~~ — **fixed in V18.20.4.11** (model_taxonomy single source)
+6. ✅ ~~response_parser silent fallbacks~~ — **fixed in V18.20.4.11** (full ladder logging)
+7. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext)
+8. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
+9. 🧾 **Keyring migration bootstrap** (`_migrate_secrets`) — verify on the rig
+10. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
 
 ### ⚠️ Known Issues
 

@@ -264,7 +264,7 @@ class Controller:
         under the request's output dir (resume / early-death case).  When
         none exists (the crash happened before the Converter created one),
         writes a standalone ``conversion_crash_<timestamp>.md`` into
-        ``~/.markitdown_pro/crash_reports/`` instead — the evidence ALWAYS
+        ``~/.elixir/crash_reports/`` instead — the evidence ALWAYS
         lands in a file, never only in a UI viewer that dies with the
         wizard.  Returns a human-readable note for the failure dialog, or
         "" when nothing could be written.  Never raises.
@@ -306,7 +306,7 @@ class Controller:
 
         # (b) standalone crash file next to the crash zips
         try:
-            _dir = _P.home() / ".markitdown_pro" / "crash_reports"
+            _dir = _P.home() / ".elixir" / "crash_reports"
             _dir.mkdir(parents=True, exist_ok=True)
             _target = _dir / f"conversion_crash_{_dt.now().strftime('%Y%m%d_%H%M%S')}.md"
             with open(_target, "a", encoding="utf-8") as _f:
@@ -678,7 +678,7 @@ class Controller:
         ("summarisation_max_output_tokens",  "summarisation_max_output_tokens",  "summarisation.max_output_tokens", 4096, None),
         ("summarisation_cache_enabled", "summarisation_cache_enabled", "summarisation.cache_enabled", False, None),
         ("generate_docx",               "generate_docx",               "docx.enabled", False, None),
-        ("docx_author",                 "docx_author",                 "docx.author", "MarkItDown Pro", None),
+        ("docx_author",                 "docx_author",                 "docx.author", "Elixir", None),
         ("docx_include_toc",            "docx_include_toc",            "docx.include_toc", True, None),
         ("max_workers",                 "max_workers",                 "summarisation.max_workers", 2, None),
         ("temperature",                 "temperature",                 "summarisation.temperature", 0.2, None),

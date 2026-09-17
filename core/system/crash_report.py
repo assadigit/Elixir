@@ -6,7 +6,7 @@ When the app hits an unhandled exception, this module collects:
   - The last 200 lines of the conversion log (if available)
   - System info (Python version, OS, GPU if detectable)
 
-...and zips them into ``~/.markitdown_pro/crash_reports/crash_YYYYMMDD_HHMMSS.zip``.
+...and zips them into ``~/.elixir/crash_reports/crash_YYYYMMDD_HHMMSS.zip``.
 
 This gives the user a single file they can attach to a bug report,
 instead of having to manually find + redact the log + settings.
@@ -30,8 +30,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_CRASH_DIR = Path.home() / ".markitdown_pro" / "crash_reports"
-_SETTINGS_FILE = Path.home() / ".markitdown_pro" / "settings.json"
+_CRASH_DIR = Path.home() / ".elixir" / "crash_reports"
+_SETTINGS_FILE = Path.home() / ".elixir" / "settings.json"
 
 # Keys whose values must be redacted (never appear in the crash bundle).
 # V18.1 (S4): substring match (case-insensitive) so the list catches

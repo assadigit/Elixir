@@ -1,6 +1,6 @@
 """V18.3 (Phase 1.7): Launch-time verification of system-level dependencies.
 
-MarkItDown Pro depends on two Windows system-level tools that are NOT pip
+Elixir depends on two Windows system-level tools that are NOT pip
 packages and cannot be auto-installed:
 
   1. **Tesseract-OCR** — used by ``pytesseract`` for OCR on scanned PDFs.
@@ -158,7 +158,7 @@ def check_poppler() -> DependencyIssue | None:
             "Download Poppler for Windows from "
             "https://github.com/oschwartz10612/poppler-windows/releases, "
             "extract it, and set paths.poppler in "
-            "~/.markitdown_pro/settings.json to the extracted folder "
+            "~/.elixir/settings.json to the extracted folder "
             "(the one containing the 'bin' subfolder)."
         ),
     )

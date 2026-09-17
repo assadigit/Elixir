@@ -1,4 +1,4 @@
-# MarkItDown Pro Ultimate — Python dependencies
+# Elixir — Python dependencies
 # Install with:  pip install -r requirements.txt
 #
 # NOTE: Two system-level installs are also required on Windows:
@@ -8,7 +8,7 @@
 #   2. Poppler for Windows (needed by pdf2image):
 #      https://github.com/oschwartz10612/poppler-windows/releases
 #      Extract and note the path to its 'bin' folder, then set
-#      paths.poppler in ~/.markitdown_pro/settings.json
+#      paths.poppler in ~/.elixir/settings.json
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core dependencies (required)

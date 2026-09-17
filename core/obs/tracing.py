@@ -100,7 +100,7 @@ def _get_tracer() -> Any | None:
             )
             trace.set_tracer_provider(provider)
 
-        _tracer = trace.get_tracer("markitdown-pro", "18.2.25")
+        _tracer = trace.get_tracer("elixir", "18.2.25")
         return _tracer
     except Exception as exc:
         logger.debug("tracing init failed: %s: %s", type(exc).__name__, exc)

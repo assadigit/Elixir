@@ -31,9 +31,9 @@ _CHUNK_SIZE = 1024 * 1024  # 1 MB
 def get_checksum_cache_path() -> Path:
     """Return the path to the checksum cache file.
 
-    Stored in ``~/.markitdown_pro/gguf_checksums.json``.
+    Stored in ``~/.elixir/gguf_checksums.json``.
     """
-    cache_dir = Path.home() / ".markitdown_pro"
+    cache_dir = Path.home() / ".elixir"
     cache_dir.mkdir(exist_ok=True)
     return cache_dir / "gguf_checksums.json"
 

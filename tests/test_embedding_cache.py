@@ -109,7 +109,7 @@ def isolated_singleton(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Embed
     """Replace the module-level singleton with an isolated instance.
 
     Tests that call ``cached_encode`` (which uses the singleton) should use
-    this fixture so they don't pollute the real ``~/.markitdown_pro/embed_cache.jsonl``.
+    this fixture so they don't pollute the real ``~/.elixir/embed_cache.jsonl``.
     """
     cache = EmbeddingCache(
         max_entries=5000,

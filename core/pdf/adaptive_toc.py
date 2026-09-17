@@ -27,6 +27,10 @@ import pypdf
 from markitdown import MarkItDown
 from rapidfuzz import fuzz
 
+# V18.20.4.11 (P3 / O-c5): pooled LLM transport (localhost → no-proxy
+# pooled session, cloud → proxy-trusting pooled session).
+from utils.network import session_for_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -218,7 +222,7 @@ class AdaptiveTOCExtractor:
         if not prompt:
             return None
         # Call Ollama
-        import requests
+        # V18.20.4.11 (P3 / O-c5): local `import requests` removed — unused after the pooled-transport swap
         # V18.20.4.3 (P2 / W-c7 + W-c9): this was the ONLY requests call
         # in the tree with NO timeout (a half-open connection hung the TOC
         # stage forever - no cancel path reaches it), a hardcoded model
@@ -254,7 +258,10 @@ class AdaptiveTOCExtractor:
             )
             return _cached
         try:
-            response = requests.post(
+            # V18.20.4.11 (P3 / O-c5): pooled transport - same timeout
+            # (bounded by ocr.timeout per W-c7) and same status handling;
+            # connection reuse added.
+            response = session_for_url(_url).post(
                 f"{_url}/api/generate",
                 json={"model": _model, "prompt": prompt, "stream": False},
                 timeout=_timeout,

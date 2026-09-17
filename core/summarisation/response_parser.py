@@ -104,6 +104,12 @@ def strip_thinking(text: str) -> str:
     # Remove "thinking process:" prefixes
     cleaned = _THINKING_PROCESS_RE.sub('', cleaned)
 
+    # V18.20.4.11 (P1 / T-a2): instrument the stripping — this module's
+    # logger existed but was never used and every strip/fallback was
+    # silent. Measured BEFORE the cosmetic final .strip() so whitespace-only
+    # inputs don't false-alarm: only think-block/tag/CoT-cut removals count.
+    _len_before = len(text)
+
     # V18.2.12: Strip plain-text CoT leakage before the first XML tag.
     # The model sometimes leaks reasoning as plain text before <executive_summary>.
     _first_tag = re.search(
@@ -123,6 +129,18 @@ def strip_thinking(text: str) -> str:
         _is_cot = any(re.search(p, _before, re.IGNORECASE) for p in _cot_patterns)
         if _is_cot and len(_before) > 50:
             cleaned = cleaned[_first_tag.start():]
+
+    # V18.20.4.11 (P1 / T-a2): pathological removal → WARNING with counts.
+    # >50% of a response consumed by think-blocks/CoT means the model
+    # leaked reasoning past /no_think (or a cut response was mostly
+    # reasoning). Two len() calls, no content logged (privacy + size).
+    _len_after = len(cleaned)
+    if _len_after * 2 < _len_before:
+        logger.warning(
+            "strip_thinking removed >50%% of text: %d -> %d chars "
+            "(possible CoT/thinking leak past /no_think)",
+            _len_before, _len_after,
+        )
 
     return cleaned.strip()
 
@@ -293,6 +311,13 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
 
                 if exec_summary.strip() or bullet_points or thorough.strip():
                     # Strip all artifacts from extracted content
+                    # V18.20.4.11 (P1 / T-a2): routine trace of the winning
+                    # path — counts only, content never logged above DEBUG.
+                    logger.debug(
+                        "parse_response: JSON path OK (%d bullets, exec %d "
+                        "chars, thorough %d chars)",
+                        len(bullet_points), len(exec_summary), len(thorough),
+                    )
                     exec_summary = strip_thinking(exec_summary)
                     exec_summary = strip_markup_tags(exec_summary)
                     exec_summary = strip_reasoning_leaks(exec_summary)
@@ -317,10 +342,42 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
                         "key_distinctions": key_distinctions,
                         "theoretical_tensions": tensions,
                     }
-            except json.JSONDecodeError:
-                pass
+                # V18.20.4.11 (P1 / T-a2): JSON parsed but every core field
+                # empty → the universal parser gets a chance. Routine-ish
+                # (the model emitted JSON-shaped nothing) → DEBUG.
+                logger.debug(
+                    "parse_response: JSON parsed but all core fields empty "
+                    "→ universal parser (%d chars)",
+                    len(cleaned),
+                )
+            except json.JSONDecodeError as _jde:
+                # V18.20.4.11 (P1 / T-a2): was a bare silent ``pass``. The
+                # JSON → universal transition is a normal salvage (the
+                # universal parser handles tagged/plain content), so DEBUG
+                # with the reason + size; content head only at DEBUG, capped.
+                logger.debug(
+                    "parse_response: JSON decode failed (%s: %s) → universal "
+                    "parser (%d chars, head=%r)",
+                    type(_jde).__name__, _jde.msg, len(cleaned), cleaned[:80],
+                )
+        else:
+            # V18.20.4.11 (P1 / T-a2): looked like JSON but no JSON object
+            # found at all → universal parser. DEBUG (routine salvage).
+            logger.debug(
+                "parse_response: no JSON object found in %d-char response → "
+                "universal parser",
+                len(cleaned),
+            )
 
     # Universal parser
+    # V18.20.4.11 (P1 / T-a2): the ROUTINE path for most models (tagged or
+    # plain text — the structured/JSON route is disabled by default since
+    # V18.15.3) — one DEBUG line naming the transition + input size.
+    if not (academic_rigor or looks_like_json):
+        logger.debug(
+            "parse_response: non-JSON response (%d chars) → universal parser",
+            len(cleaned),
+        )
     return _parse_universal(cleaned)
 
 
@@ -329,6 +386,10 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     exec_sum = ""
     bullets: list[str] = []
     thorough = ""
+    # V18.20.4.11 (P1 / T-a2): which rung of the bullet ladder produced the
+    # bullets — used for the one-line DEBUG trace at the end (routine), so
+    # parser debugging no longer requires guessing the path.
+    _bp_src = "none"
 
     # Step A: Extract executive_summary
     em = re.search(
@@ -346,17 +407,23 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     if bm:
         bullets_block = bm.group(1).strip()
         bullets = extract_bullets_from_block(bullets_block)
+        if bullets:
+            _bp_src = "<bullet_points> block"
 
     # Step C: Try <point>/<bullet>/<finding> tags
     if not bullets:
         point_matches = re.findall(r'<point>\s*(.*?)\s*</point>', cleaned, re.DOTALL | re.IGNORECASE)
         if point_matches:
             bullets = [p.strip() for p in point_matches if p.strip() and len(p.strip()) > 5]
+            if bullets:
+                _bp_src = "<point> tags"
 
     if not bullets:
         bullet_matches = re.findall(r'<bullet>\s*(.*?)\s*</bullet>', cleaned, re.DOTALL | re.IGNORECASE)
         if bullet_matches:
             bullets = [b.strip() for b in bullet_matches if b.strip() and len(b.strip()) > 5]
+            if bullets:
+                _bp_src = "<bullet> tags"
 
     if not bullets:
         finding_matches = re.findall(
@@ -364,16 +431,21 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
         )
         if finding_matches:
             bullets = [c.strip() for c in finding_matches if c.strip() and len(c.strip()) > 5]
+            if bullets:
+                _bp_src = "<claim> tags"
 
     # Step D: Find • / - / * lines anywhere
     if not bullets:
         bullets = extract_bullets_from_text(cleaned)
+        if bullets:
+            _bp_src = "plain-text bullet markers"
 
     # Step E: Extract from exec_sum if no bullets found
     if not bullets and exec_sum:
         bullets = extract_bullets_from_text(exec_sum)
         if bullets:
             exec_sum = ""
+            _bp_src = "exec_summary text"
 
     # Step F: Extract thorough_summary
     tm = re.search(
@@ -446,6 +518,26 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     tensions = strip_thinking(tensions)
     tensions = strip_markup_tags(tensions)
     tensions = strip_reasoning_leaks(tensions)
+
+    # V18.20.4.11 (P1 / T-a2): make the ladder's outcome visible. Routine
+    # result → one DEBUG line (winning rung + counts). Degenerate outcome
+    # (non-empty input, ALL fields empty) → WARNING: the downstream salvage
+    # (bullet_pipeline) also has nothing to work with, and this used to be
+    # completely silent. Counts only — no content at WARNING.
+    if cleaned and cleaned.strip():
+        if not (exec_sum.strip() or bullets or thorough.strip()
+                or key_distinctions.strip() or tensions.strip()):
+            logger.warning(
+                "universal parser: non-empty input (%d chars) produced ZERO "
+                "content (exec/bullets/thorough/additive sections all empty)",
+                len(cleaned),
+            )
+        else:
+            logger.debug(
+                "universal parser: %d bullets (via %s), exec %d chars, "
+                "thorough %d chars",
+                len(bullets), _bp_src, len(exec_sum), len(thorough),
+            )
 
     return {
         "executive_summary": exec_sum,
@@ -551,4 +643,22 @@ def extract_sentences_as_bullets(text: str, max_bullets: int = 15) -> list[str]:
         bullets.append(sent)
         if len(bullets) >= max_bullets:
             break
+    # V18.20.4.11 (P1 / T-a2): this is the LAST rung of the parse ladder —
+    # its only production caller (bullet_pipeline's salvage) reaches it
+    # after every structured parser AND plain-text extraction found
+    # nothing. Both outcomes are exceptional, hence WARNING with counts
+    # (no content): salvaged (the ladder degraded to sentence-splitting)
+    # and zero-yield (degenerate input even for the fallback).
+    if bullets:
+        logger.warning(
+            "sentence fallback: salvaged %d bullets from %d chars "
+            "(structured parsers found none)",
+            len(bullets), len(text),
+        )
+    else:
+        logger.warning(
+            "sentence fallback: %d-char input yielded 0 bullets "
+            "(no qualifying sentence found)",
+            len(text),
+        )
     return bullets
