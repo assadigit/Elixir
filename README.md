@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.01-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3279%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.02-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3307%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -326,7 +326,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.01):** `3279 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 121s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; V0.01 is content-identical to legacy V18.20.4.12 — versioning-only reset)*
+**Current gate (Elixir V0.02):** `3307 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 121s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
 
 ### 🏗️ Project Layout
 
@@ -358,7 +358,7 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: Elixir V0.01 — "The versioning reset."** With the rebrand complete, Elixir no longer continues the legacy MarkItDown Pro `V18.x` line — from here on it's **V0.01 → V0.02 → …** (two-part hundredths). **V0.01 is content-identical to the final legacy release, V18.20.4.12 "The SWOT Tier-1 + hygiene batch"** — 12 fixes in one release: post-completion shutdown/sleep now verifies the OS command (loud WARNING + platform hint instead of failing silently overnight), scholar gap-fill gets a truncation continuation retry, the "model not pulled" 404 is handled one way tree-wide (canonical `ollama pull` hint), `/no_think` is Qwen-gated, diagnostic logs rotate at 1 MiB, `Settings.batch()` coalesces disk writes, the live quality dashboard reads structured JSON (regex fallback kept), HF offline env flags are scoped to the load, the qwythos magic is single-sourced (fixing two genuine 404-default bugs — lowercase + non-empero tags), `engine_cache.clear_cache()` became the graceful app-shutdown hook, output generators write atomically (disk-full can't leave partial files), and book-derived jargon left the comments — see the V18.20.4.12 entry in the changelog for all of it, and V18.20.4.11 for the rebrand story. Historical `V18.x` tags in code comments and test names are records of when those changes shipped and stay as-is. Full evidence in [`CHANGELOG.md`](CHANGELOG.md).
+**Current version: Elixir V0.02 — "The false-success fix."** Selecting specific chapters can no longer end in a silent empty success: the chapter selector no longer lists per-chapter author/annotation bookmarks as chapters (the shared metadata-children rule, plus fixed page ranges), segmentation is selection-aware (the TOC is restricted to your picks BEFORE segmenting — no phantom segments, no merge contamination, and a 2-chapter selection is accepted instead of falling into the heading/semantic cascade), the front-matter skip is disabled for sections you explicitly picked, and a zero-summary completion under a selection is now a **hard failure** with an actionable message (previously: "✅ Conversion complete." with empty outputs). Full-book runs are unchanged. See the V0.02 changelog entry for the full real-rig incident RCA. Versioning: since **V0.01** Elixir versions on its own two-part line — V0.01 = the final legacy release (V18.20.4.12 "The SWOT Tier-1 + hygiene batch") repackaged; the mapping table is in the V0.01 changelog entry. Full evidence in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 

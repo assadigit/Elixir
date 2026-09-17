@@ -132,49 +132,66 @@ def run_summarization(
         log("  ⏭️ Content filter disabled – keeping all pages.", "INFO")
 
     # ── Skip reference/supplementary sections from summarization ─────
-    _skip_patterns = [
-        (r'^references\s*$', 'references'),
-        (r'^bibliography\s*$', 'bibliography'),
-        (r'^works cited\s*$', 'works cited'),
-        (r'^supplementary', 'supplementary materials'),
-        (r'^appendix', 'appendix'),
-        (r'^supporting information', 'supporting information'),
-        (r'^acknowledg', 'acknowledgements'),
-        # V10.24.0: Add dedication, preface, foreword, copyright, table of contents
-        # These sections are too short for meaningful summarization and produce
-        # garbage output (the LLM has < 100 tokens of source → hallucinates).
-        (r'^dedication', 'dedication'),
-        (r'^preface', 'preface'),
-        (r'^foreword', 'foreword'),
-        (r'^copyright', 'copyright'),
-        (r'^table of contents', 'table of contents'),
-        (r'^about the author', 'about the author'),
-        (r'^index\s*$', 'index'),
-    ]
-    _filtered_segments = []
-    _skipped_count = 0
-    for seg in segments:
-        heading_lower = seg.heading.strip().lower()
-        should_skip = False
-        for pattern, label in _skip_patterns:
-            if re.match(pattern, heading_lower):
-                log(
-                    f"  ⏭️ Skipping '{seg.heading[:50]}' from summarization ({label})",
-                    "INFO",
-                )
-                should_skip = True
-                _skipped_count += 1
-                break
-        if not should_skip:
-            _filtered_segments.append(seg)
-    if _skipped_count > 0:
+    # V0.02 (false-success RCA): when the user EXPLICITLY selected chapters,
+    # this skip is DISABLED. The real incident: the user's two selected
+    # chapters were absorbed into a 'Preface' segment by Layer-3 merging
+    # (full-TOC segmentation on a partial extraction — fixed in
+    # segmentation.py), the skip list then matched the merged segment's
+    # heading → 0 summaries → "✅ Conversion complete." A section the user
+    # deliberately picked is never "non-content" — and a deliberately
+    # selected Preface/Foreword must be summarized too.
+    if request.selected_chapters:
         log(
-            f"  📋 Skipped {_skipped_count} reference/supplementary section(s) from summarization",
+            f"  ⏭️ Chapter selection active ({len(request.selected_chapters)} "
+            f"title(s)) — front-matter skip disabled (selected sections are "
+            f"always summarized).",
             "INFO",
         )
-        segments_for_summary = _filtered_segments
-    else:
         segments_for_summary = segments
+    else:
+        _skip_patterns = [
+            (r'^references\s*$', 'references'),
+            (r'^bibliography\s*$', 'bibliography'),
+            (r'^works cited\s*$', 'works cited'),
+            (r'^supplementary', 'supplementary materials'),
+            (r'^appendix', 'appendix'),
+            (r'^supporting information', 'supporting information'),
+            (r'^acknowledg', 'acknowledgements'),
+            # V10.24.0: Add dedication, preface, foreword, copyright, table of contents
+            # These sections are too short for meaningful summarization and produce
+            # garbage output (the LLM has < 100 tokens of source → hallucinates).
+            (r'^dedication', 'dedication'),
+            (r'^preface', 'preface'),
+            (r'^foreword', 'foreword'),
+            (r'^copyright', 'copyright'),
+            (r'^table of contents', 'table of contents'),
+            (r'^about the author', 'about the author'),
+            (r'^index\s*$', 'index'),
+        ]
+        _filtered_segments = []
+        _skipped_count = 0
+        for seg in segments:
+            heading_lower = seg.heading.strip().lower()
+            should_skip = False
+            for pattern, label in _skip_patterns:
+                if re.match(pattern, heading_lower):
+                    log(
+                        f"  ⏭️ Skipping '{seg.heading[:50]}' from summarization ({label})",
+                        "INFO",
+                    )
+                    should_skip = True
+                    _skipped_count += 1
+                    break
+            if not should_skip:
+                _filtered_segments.append(seg)
+        if _skipped_count > 0:
+            log(
+                f"  📋 Skipped {_skipped_count} reference/supplementary section(s) from summarization",
+                "INFO",
+            )
+            segments_for_summary = _filtered_segments
+        else:
+            segments_for_summary = segments
 
     # ── Build ClaimExtractor for Layer 8 (langextract) grounding ─────
     _claim_extractor = None

@@ -1670,6 +1670,23 @@ class Converter:
             # "✅ Conversion complete." and returned success=True even though
             # every downstream phase had (or should have) been skipped.
             _cancelled = self.cancel_event.is_set()
+
+            # V0.02 (false-success RCA): ZERO chapters entered summarization.
+            # The V18.2.4 guard above requires ``summaries`` to be non-empty —
+            # when every segment is filtered out BEFORE the summarizer (the
+            # real incident: the user's selected chapters were merged into a
+            # 'Preface' segment, the front-matter skip dropped it),
+            # ``summaries == []`` sailed past it into "✅ Conversion complete."
+            # with empty outputs. With an explicit chapter selection that is a
+            # hard failure (the user asked for specific chapters and got
+            # nothing); without one it stays a success (markdown/DOCX are
+            # still produced) but is announced with a loud WARNING instead
+            # of silence.
+            _zero_summaries = (
+                not summaries and bool(self.request.generate_summaries)
+                and not _cancelled
+            )
+            _selection_active = bool(self.request.selected_chapters)
             if _all_failed:
                 self._update_status("Conversion FAILED — all chapters returned empty")
                 self._log("❌ Conversion FAILED: all chapters returned empty responses.", "ERROR")
@@ -1680,6 +1697,33 @@ class Converter:
                     f"Try: ollama pull <model>, or switch to a less aggressive quant (IQ2_M "
                     f"instead of IQ2_XXS), or raise temperature to 1.0.",
                     "ERROR",
+                )
+            elif _zero_summaries and _selection_active:
+                self._update_status("Conversion FAILED — no selected chapters summarized")
+                self._log(
+                    f"❌ Conversion FAILED: none of the {len(self.request.selected_chapters)} "
+                    f"selected chapter(s) produced a summary — the selection "
+                    f"matched no summarizable section (every surviving segment "
+                    f"was skipped as front/reference matter). No summary "
+                    f"outputs were written.",
+                    "ERROR",
+                )
+                self._log(
+                    "   Try: re-open the chapter selector and re-pick chapters "
+                    "(per-chapter author/annotation bookmarks are no longer "
+                    "listed), or convert the whole book.",
+                    "ERROR",
+                )
+            elif _zero_summaries:
+                self._update_status("Conversion completed!")
+                self._log("✅ Conversion complete.", "SUCCESS")
+                self._log(
+                    "   ⚠️ Zero sections were summarized — every segment was "
+                    "skipped as front/reference matter while summaries were "
+                    "requested. Markdown/DOCX outputs were still written; if "
+                    "you expected chapter summaries, disable the content "
+                    "filter or select chapters explicitly.",
+                    "WARNING",
                 )
             elif _cancelled:
                 self._update_status("Conversion cancelled")
@@ -2079,12 +2123,25 @@ class Converter:
                 # summarization.py:94): success=False +
                 # error_msg="Cancelled by user".  ConversionResult has no
                 # dedicated cancelled field, so no new plumbing is invented.
-                success=(not _all_failed if summaries else True) and not _cancelled,
+                # V0.02 (false-success RCA): an explicit chapter selection
+                # that summarized NOTHING is also a failure — the old
+                # ``(not _all_failed if summaries else True)`` treated an
+                # empty ``summaries`` list as unconditionally successful.
+                success=(
+                    (not _all_failed if summaries else True)
+                    and not _cancelled
+                    and not (_zero_summaries and _selection_active)
+                ),
                 error_msg=("Cancelled by user" if _cancelled else
                            ("All chapters returned empty responses — model may not be installed, "
                             "VRAM insufficient, or quantization too aggressive. "
                             "Try: ollama pull <model>, use IQ2_M instead of IQ2_XXS, "
-                            "or raise temperature to 1.0.") if _all_failed else None),
+                            "or raise temperature to 1.0.") if _all_failed else
+                           (f"None of the {len(self.request.selected_chapters)} selected chapter(s) "
+                            f"were summarized — the selection matched no summarizable section. "
+                            f"Re-pick chapters in the selector (per-chapter author bookmarks "
+                            f"are no longer listed) or convert the whole book."
+                            if (_zero_summaries and _selection_active) else None)),
                 full_markdown_path=self.full_markdown_path,
                 chapters_folder=self.chapters_folder if self.chapters_folder.exists() else None,
                 chunks_folder=self.chunks_folder   if self.chunks_folder.exists()   else None,

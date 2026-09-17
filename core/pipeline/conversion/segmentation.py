@@ -206,10 +206,57 @@ def run_segmentation(
                         log(f"  ⚠️ Ultra-Precise TOC failed: {_e}", "DEBUG")
 
     # Pass the TOC result (or raw entries) to the segmenter
+    # V0.02 (false-success RCA): when the user selected specific chapters,
+    # restrict the TOC BEFORE segmentation so the segmenter only creates
+    # segments for the selected chapters. Previously the FULL TOC was
+    # segmented against the selection's extracted pages — for "97 Things"
+    # (198 outline entries, 6 extracted pages) that produced ~97 phantom
+    # "no marker" segments which Layer-3 merged into the real chapters
+    # (the user's chapters were absorbed into 'Preface', the content filter
+    # skipped it → 0 summaries → "✅ Conversion complete" false success).
+    # Metadata-children levels (per-chapter author bookmarks) are dropped
+    # first — the same rule the segmenter's Layer 1 and the selection dialog
+    # apply — so a selected author name can never pull annotation entries
+    # back into the segmentation.
+    _seg_toc = toc_result if toc_result else toc_entries
+    if request.selected_chapters and _seg_toc is not None:
+        from core.models import TOCResult
+        from core.segmentation.chapter_matcher import filter_toc_entries_for_selection
+        from core.segmentation.segmenter import compute_metadata_child_levels
+
+        _toc_list = _seg_toc.entries if isinstance(_seg_toc, TOCResult) else _seg_toc
+        # 1) drop metadata-children levels (levels whose entries ≥80% start
+        #    on the same page as a shallower level — the authors pattern)
+        _by_level: dict[int, list] = {}
+        for _e in _toc_list:
+            _p = _e[1] if isinstance(_e, (tuple, list)) else getattr(_e, "page", None)
+            if _p is None or _p <= 0:
+                continue
+            _lvl = _e[2] if (isinstance(_e, (tuple, list)) and len(_e) > 2) else getattr(_e, "level", 0)
+            _by_level.setdefault(_lvl, []).append((_e[0] if isinstance(_e, (tuple, list)) else getattr(_e, "title", ""), _p))
+        _mc = compute_metadata_child_levels(_by_level)
+        if _mc:
+            _mc_levels = set(_mc)
+            _toc_list = [
+                _e for _e in _toc_list
+                if (_e[2] if (isinstance(_e, (tuple, list)) and len(_e) > 2) else getattr(_e, "level", 0)) not in _mc_levels
+            ]
+            log(
+                f"  [Selection] Dropped metadata-children level(s) "
+                f"{sorted(_mc_levels)} from the selection TOC "
+                f"(same-page author/annotation bookmarks).",
+                "DEBUG",
+            )
+        # 2) keep only entries matching the selection
+        _toc_list, _dropped = filter_toc_entries_for_selection(
+            _toc_list, request.selected_chapters, log
+        )
+        _seg_toc = _toc_list  # a plain list — Segmenter accepts it (elements keep their type/line info)
+
     segmenter = Segmenter(
         request,
         log_callback=log,
-        toc_entries=toc_result if toc_result else toc_entries,
+        toc_entries=_seg_toc,
     )
     segments = segmenter.segment(raw_markdown, total_pages, page_markers)
 

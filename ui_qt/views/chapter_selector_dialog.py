@@ -42,6 +42,8 @@ class ChapterSelectorDialog(QDialog):
         self.resize(500, 500)  # V7.4.0: was 560x560 — compact
         self._input_file: Path | None = None
         self._chapter_data: list[dict[str, Any]] = []
+        # V0.02: metadata-children bookmarks hidden from the list (hint text)
+        self._hidden_metadata_count: int = 0
         # V7.7.0: output dir for resume detection (which chapters are already done)
         self._output_dir = output_dir
 
@@ -167,17 +169,55 @@ class ChapterSelectorDialog(QDialog):
             if not toc:
                 self._detect_failed.emit("No table of contents found in this PDF.")
                 return
+
+            # V0.02 (false-success RCA): drop "metadata children" outline
+            # levels BEFORE listing — the SAME rule the segmenter's Layer 1
+            # applies (single source: compute_metadata_child_levels). For
+            # "97 Things" this hides the 97 per-chapter AUTHOR bookmarks:
+            # they were listed as selectable "chapters", users picked them
+            # alongside the real titles, and the polluted selection could
+            # end up summarizing nothing while the pipeline reported
+            # success. Also fixes the page ranges: a title whose next
+            # (child) bookmark shares its start page previously showed as
+            # spanning to the END OF THE BOOK (end = total).
+            from core.segmentation.segmenter import compute_metadata_child_levels
+            _by_level: dict[int, list] = {}
+            for e in toc:
+                _p = e[1] if isinstance(e, (tuple, list)) else getattr(e, "page", None)
+                if _p is None or _p <= 0:
+                    continue
+                _lvl = e[2] if (isinstance(e, (tuple, list)) and len(e) > 2) else getattr(e, "level", 0)
+                _h = e[0] if isinstance(e, (tuple, list)) else getattr(e, "title", "")
+                _by_level.setdefault(_lvl, []).append((_h, _p))
+            _excluded = compute_metadata_child_levels(_by_level)
+            _hidden = 0
+            if _excluded:
+                _excluded_levels = set(_excluded)
+                _before = len(toc)
+                toc = [
+                    e for e in toc
+                    if (e[2] if (isinstance(e, (tuple, list)) and len(e) > 2)
+                        else getattr(e, "level", 0)) not in _excluded_levels
+                ]
+                _hidden = _before - len(toc)
+
             entries: list[tuple[str, int, int]] = []
             for i, (heading, page) in enumerate(toc):
                 start = page if 0 < page <= total else 0
                 if i + 1 < len(toc):
                     nxt = toc[i + 1][1]
-                    end = nxt - 1 if nxt > start else total
+                    # V0.02: same-page (or out-of-order) neighbour → this
+                    # chapter occupies just its start page — NOT the rest of
+                    # the book (was: end = total).
+                    end = nxt - 1 if nxt > start else start
                 else:
                     end = total
                 if start > end:
                     end = start
                 entries.append((heading, start, end))
+            # stash the hidden count for _populate's hint BEFORE the emit
+            # (queued signal — the slot runs on the main thread afterwards)
+            self._hidden_metadata_count = _hidden
             self._detect_done.emit(entries, total)
         except Exception as e:  # noqa: BLE001
             self._detect_failed.emit(str(e))
@@ -261,6 +301,9 @@ class ChapterSelectorDialog(QDialog):
             self._chapter_data.append({"heading": heading, "var": var, "row": row})
 
         hint_text = f"{len(entries)} chapters detected · {total_pages} pages"
+        _hidden = getattr(self, "_hidden_metadata_count", 0)
+        if _hidden > 0:
+            hint_text += f" · {_hidden} author/annotation bookmark(s) hidden"
         if done_count > 0:
             hint_text += f" · {done_count} already done (will skip if Resume on)"
         self.hint.setText(hint_text)

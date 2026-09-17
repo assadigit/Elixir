@@ -1,5 +1,37 @@
 # Changelog
 
+## V0.02 — The false-success fix: chapter selection can no longer "complete" with zero summaries (real-rig incident)
+
+> **The incident (real-rig log, Elixir V0.01, 97 Things Every Programmer Should Know):**
+> the user selected 2 chapters ('Act with Prudence', 'Apply Functional Programming
+> Principles') — the wizard's chapter list showed per-chapter AUTHOR bookmarks as
+> selectable "chapters" too, so 4 entries went in. Page derivation gave the two TITLE
+> entries zero pages (their next outline entry shares their page), the author entries
+> yielded pages 28-31, and the ±1 boundary pulled in p.27 ('Preface') + p.32 (an
+> unselected chapter). The segmenter then ran on the FULL 198-entry TOC against the
+> 6 extracted pages → ~97 phantom "no marker" segments → Layer-3 merging absorbed the
+> user's chapters INTO 'Preface' → the selection filter kept the merged 'Preface' →
+> the front-matter skip dropped it from summarization → **0 summaries, yet
+> "✅ Conversion complete."** + an empty DOCX + a library entry. The V18.2.4
+> zero-content guard never fired because it requires a non-empty `summaries` list —
+> and the success expression treated `summaries == []` as unconditionally successful.
+
+**Status: 4 fixes + 1 test-infra hardening, +28 tests.** **Test gate: `3307 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed`** (V0.01 baseline 3279/0 — **+28 tests, zero regressions**; the 1 xpassed is the documented order-fragile GPU-temp-cache flake since V18.20.3.8).
+
+**The fixes:**
+
+**1. FIX 1 — the chapter selector no longer lists author/annotation bookmarks as chapters.** The V18.20.4.10 metadata-children exclusion (segmenter Layer 1) now has a shared single source — `compute_metadata_child_levels()` extracted to module level in `segmenter.py` — and the selection DIALOG applies the same rule before listing (`chapter_selector_dialog.py`): the 97 per-chapter author bookmarks of "97 Things" are hidden (hint shows the hidden count), and the same-page page-range bug is fixed (a title whose next bookmark shares its page displayed as "p.28–257"; now "p.28"). Layer-1 behavior is byte-identical (log text pinned; all 26 .4.10 pins green).
+
+**2. FIX 2 — segmentation is selection-aware.** `run_segmentation` now restricts the TOC BEFORE the segmenter runs when a chapter selection is active (`conversion/segmentation.py`): metadata-children levels are dropped first (same shared rule), then `filter_toc_entries_for_selection()` (NEW, `chapter_matcher.py` — heading-text matching only: exact → chapter-number → word-overlap → fuzzy; the page-based fallback is deliberately NOT used pre-segmentation, a spurious page match would shrink the TOC to a wrong chapter) keeps only entries matching the selection. No match → TOC unchanged (the post-segmentation filter's keep-all fallback stays the safety net). And the segmenter's `≥ MIN_TOC_SEGMENTS (3)` acceptance gates became selection-aware (`_segments_meet_minimum()`): N segments for N explicitly-picked chapters is the correct answer — a 2-chapter selection must not be rejected into the heading/semantic fallback cascade that scrambled the selection in the incident.
+
+**3. FIX 3 — the front-matter skip is disabled under an explicit selection** (`conversion/summarization.py`): a section the user deliberately picked is never "non-content" — and a deliberately selected Preface/Foreword must be summarized too. The full-book skip list is unchanged (V10.24.0 shape pinned).
+
+**4. FIX 4 — zero-summaries completion is loud** (`converter_impl.py`): `_zero_summaries` (0 summaries while summaries were requested, not cancelled) under an active selection is a **hard failure** — status "Conversion FAILED — no selected chapters summarized", ERROR logs with the count + actionable advice, `success=False` + a specific error_msg through the existing failure plumbing (same path as cancellations). Without a selection it stays a success (markdown/DOCX are still produced) but now logs a loud WARNING instead of silence. The old `success=(not _all_failed if summaries else True)` — which treated an empty summaries list as unconditionally successful — is gone.
+
+**5. Test-infra hardening (root-caused during the gate):** `test_summarizer.py`'s module teardown popped `tiktoken`/`utils.token_counter` from `sys.modules` and its re-import failed on tiktoken-less environments — destroying the FUNCTIONAL stub `conftest.py` installs before all tests, so every later fresh `import tiktoken` raised ModuleNotFoundError and later files' Segmenter/TokenEstimator tests failed depending on import order (the order-fragile trio + a 15-test pair poisoning, reproducible on the V0.01 baseline). The teardown now re-installs the same functional stub conftest pins when the real package is absent. Pair + full-suite orderings both green.
+
+**What this does NOT change:** full-book conversions (no selection) are byte-identical in behavior — the pre-filter, the selection-aware gates, and the front-matter-skip bypass all activate only under `request.selected_chapters`; the zero-summaries WARNING branch is log-only.
+
 ## V0.01 — VERSIONING RESET: Elixir starts its own version line (content = legacy V18.20.4.12, zero code changes)
 
 > **⚠️ READ THIS FIRST if you're tracking versions — the scheme changed here.**

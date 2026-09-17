@@ -108,8 +108,37 @@ def _unstub_modules_after_tests():
         import tiktoken  # noqa: F401  — re-import the real package
 
         import utils.token_counter  # noqa: F401  — re-import the real module
-    except Exception:  # pragma: no cover - defensive
-        pass
+    except Exception:
+        # V0.02 (test-infra): no real tiktoken in this environment — the
+        # pops above just destroyed the FUNCTIONAL stub that conftest.py
+        # installed before any test ran. Without restoring it, every LATER
+        # fresh ``import tiktoken`` (``utils.token_counter`` at call time —
+        # e.g. token_estimator's function-local import) raises
+        # ModuleNotFoundError: later files' Segmenter/TokenEstimator tests
+        # then fail depending on who re-imports first (the order-fragile
+        # test_v1820410 trio / 15-test pair poisoning). Re-install the same
+        # functional stub conftest.py pins (whitespace-split encoder).
+        import importlib.util as _ilu
+        import types as _types
+        if _ilu.find_spec("tiktoken") is None:
+            _tk = _types.ModuleType("tiktoken")
+
+            class _TkEnc:
+                def encode(self, s, disallowed_special=()):  # noqa: D401
+                    return (s or "").split()
+
+                def decode(self, tokens):  # noqa: D401
+                    return " ".join(str(t) for t in tokens)
+
+            _tk.Encoding = _TkEnc
+            _tk.get_encoding = lambda *a, **k: _TkEnc()
+            _tk.encoding_for_model = lambda *a, **k: _TkEnc()
+            sys.modules["tiktoken"] = _tk
+            del _TkEnc
+        try:
+            import utils.token_counter  # noqa: F401  — now importable again
+        except Exception:  # pragma: no cover - defensive
+            pass
 
 # Now we can import the quarantine module + the summarizer module.
 # We load summarizer.py via importlib to control the import, but it will

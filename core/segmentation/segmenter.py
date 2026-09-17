@@ -82,6 +82,47 @@ _STOPWORDS = frozenset({
 })
 
 
+def compute_metadata_child_levels(by_level: dict[int, list]) -> dict[int, tuple[int, int]]:
+    """V0.02 (false-success RCA): the metadata-children exclusion rule, extracted
+    from ``_filter_to_chapter_level`` so the chapter-selection DIALOG applies
+    the SAME rule when listing selectable chapters (single source of truth).
+
+    A deeper outline level whose entries mostly (≥80%) START ON THE SAME PAGE
+    as a shallower level's entries is a per-parent annotation level — the
+    classic case is "97 Things Every Programmer Should Know", where every
+    chapter-title bookmark (level 0) has an author-name bookmark (level 1) on
+    the SAME page. Listing those in the chapter selector let users "select"
+    authors as chapters — the selected author entries then polluted page
+    derivation and the selection could end up summarizing nothing while the
+    pipeline still reported success (see the V0.02 changelog).
+
+    Args:
+        by_level: mapping ``level → list of (title, page, …)`` sequences
+            (only index 1 — the page — is read; extra elements ignored).
+            Built exactly like ``_filter_to_chapter_level`` builds it.
+
+    Returns:
+        ``{excluded_level: (same_page_count, total_entries)}`` in ascending
+        level order. Never contains level 0 (a level-0 entry can never be a
+        "child" of anything shallower — defensive, same as the inline code).
+    """
+    _shallow_pages: set[int] = set()
+    _excluded: dict[int, tuple[int, int]] = {}
+    for _lvl in sorted(by_level.keys()):
+        _entries = by_level[_lvl]
+        if _shallow_pages and _entries:
+            _same_page = sum(1 for e in _entries if e[1] in _shallow_pages)
+            if _same_page >= 0.8 * len(_entries):
+                _excluded[_lvl] = (_same_page, len(_entries))
+                # Do NOT feed this level's pages forward as shallow pages —
+                # an excluded annotation level must not "protect" deeper
+                # real levels from exclusion (same as the inline rule).
+                continue
+        _shallow_pages.update(e[1] for e in _entries)
+    _excluded.pop(0, None)
+    return _excluded
+
+
 class Segmenter:
     def __init__(
         self,
@@ -240,27 +281,19 @@ class Segmenter:
         # the first section of each chapter shares the chapter's start page
         # (≪80%). The Parts/Chapters shape also survives: a chapter start
         # page rarely equals a part start page.
-        _shallow_pages: set[int] = set()
-        _excluded_levels: set[int] = set()
-        for _lvl in sorted(by_level.keys()):
-            _entries = by_level[_lvl]
-            if _shallow_pages and _entries:
-                _same_page = sum(1 for e in _entries if e[1] in _shallow_pages)
-                if _same_page >= 0.8 * len(_entries):
-                    _excluded_levels.add(_lvl)
-                    self.log(
-                        f"  [Segmenter] Layer 1: level {_lvl} excluded — "
-                        f"{_same_page}/{len(_entries)} entries start on the same "
-                        f"page as a shallower bookmark (metadata children such as "
-                        f"per-chapter author names, not chapters).",
-                        "INFO",
-                    )
-                    continue  # do NOT feed this level's pages forward as shallow pages
-            _shallow_pages.update(e[1] for e in _entries)
-        if _excluded_levels and 0 in _excluded_levels:
-            # Level 0 itself can never be a "child" of anything shallower —
-            # defensive: never let the loop above exclude level 0.
-            _excluded_levels.discard(0)
+        # V0.02: the rule now lives in ``compute_metadata_child_levels``
+        # (module level above) — shared with the chapter-selection dialog —
+        # behavior byte-identical.
+        _mc_excluded = compute_metadata_child_levels(by_level)
+        for _lvl, (_mc_sp, _mc_tot) in _mc_excluded.items():
+            self.log(
+                f"  [Segmenter] Layer 1: level {_lvl} excluded — "
+                f"{_mc_sp}/{_mc_tot} entries start on the same "
+                f"page as a shallower bookmark (metadata children such as "
+                f"per-chapter author names, not chapters).",
+                "INFO",
+            )
+        _excluded_levels: set[int] = set(_mc_excluded)
 
         def _is_real_chapter(title: str) -> bool:
             """True if the title looks like a real chapter (not front-matter)."""
@@ -1485,6 +1518,22 @@ class Segmenter:
     # Main entry point (Phase 2.2 – Priority Cascade with located TOC support)
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _segments_meet_minimum(self, segments) -> bool:
+        """V0.02 (false-success RCA): the ≥ ``MIN_TOC_SEGMENTS`` acceptance
+        gates exist to reject garbage TOC segmentations on FULL-BOOK runs
+        (a TOC that yields 1-2 accidental segments is usually wrong). When
+        the user EXPLICITLY selected chapters, N segments for N picks is the
+        correct answer — a 2-chapter selection must not be rejected into the
+        fallback cascade, which re-segments by headings/semantics and can
+        scramble the selection (the incident: selected chapters absorbed
+        into a 'Preface' segment → skipped as front matter → 0 summaries →
+        "✅ Conversion complete")."""
+        if not segments:
+            return False
+        if len(segments) >= MIN_TOC_SEGMENTS:
+            return True
+        return bool(getattr(self.request, "selected_chapters", None))
+
     def segment(self, markdown_text, total_pages, page_markers) -> list[Segment]:
         # 0. Manual segments (highest priority)
         if self.request.manual_segments is not None and len(self.request.manual_segments) > 0:
@@ -1520,7 +1569,8 @@ class Segmenter:
             if chapter_entries and len(chapter_entries) >= 1:  # V13.33.0: >=1 (not >=2) — user may select 1 chapter
                 self.log("[Segmenter] Attempting chapter-level segmentation\u2026", "INFO")
                 segments = self._segment_by_chapters(markdown_text, total_pages, page_markers, chapter_entries)
-                if segments and len(segments) >= MIN_TOC_SEGMENTS:
+                # V0.02: selection-aware acceptance (see _segments_meet_minimum)
+                if self._segments_meet_minimum(segments):
                     segments = self._merge_short_chapters(segments)
                     segments = self._enforce_contiguity(segments, total_pages, markdown_text, page_markers)
                     for s in segments: self._recalc_page_bounds(s)
@@ -1568,7 +1618,7 @@ class Segmenter:
             _has_empty_segments = any(
                 count_tokens(s.content) < 50 for s in (segments or [])
             )
-            if segments and len(segments) >= MIN_TOC_SEGMENTS and not _has_empty_segments:
+            if self._segments_meet_minimum(segments) and not _has_empty_segments:
                 segments = self._apply_toc_headings(segments)
                 # ── Merge duplicate headings and short segments ──────────
                 segments = self._merge_duplicate_headings(segments)
@@ -1595,7 +1645,8 @@ class Segmenter:
         if len(self.toc_entries) >= 2:
             self.log("[Segmenter] Attempting TOC-driven segmentation (with fuzzy search)…", "INFO")
             segments = self._segment_by_toc(markdown_text, total_pages, page_markers)
-            if segments and len(segments) >= MIN_TOC_SEGMENTS:
+            # V0.02: selection-aware acceptance (see _segments_meet_minimum)
+            if self._segments_meet_minimum(segments):
                 segments = self._apply_toc_headings(segments)
                 segments = self._merge_duplicate_headings(segments)
                 segments = self._merge_short_segments(segments)

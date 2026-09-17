@@ -314,3 +314,96 @@ class ChapterMatcher:
             deduped = deduped[:max_results]
 
         return deduped
+
+
+def filter_toc_entries_for_selection(
+    toc_entries: list,
+    selected_titles: list[str],
+    log=None,
+) -> tuple[list, int]:
+    """V0.02 (false-success RCA): restrict a TOC entry list to the user's
+    chapter selection — used BEFORE segmentation so the segmenter only
+    creates segments for chapters the user actually picked.
+
+    Why: with a chapter selection active, the extraction phase only extracts
+    the selected chapters' pages — but the segmenter still received the FULL
+    TOC. For "97 Things" (198 outline entries, 6 extracted pages) that
+    produced ~97 phantom "no marker" segments which Layer-3 then merged into
+    the real chapters, contaminating the selection (the user's chapters were
+    absorbed into a 'Preface' segment that the content filter then skipped —
+    0 summaries, yet the pipeline reported "✅ Conversion complete").
+
+    Matching uses :class:`ChapterMatcher` — the same rules as the
+    post-segmentation selection filter (exact → chapter-number → word
+    overlap → fuzzy → page), so both stages agree (V18.3.3 F4 principle).
+
+    Args:
+        toc_entries: homogeneous list of TOCEntry objects or (heading, page)
+            tuples (whatever the caller feeds the Segmenter — elements are
+            returned as-is, never rebuilt).
+        selected_titles: the user's selected chapter titles.
+        log: optional ``log(message, level)`` callback for DEBUG/WARNING
+            lines.
+
+    Returns:
+        ``(filtered_entries, dropped_count)``. If NO selected title matches
+        any entry, returns ``(toc_entries, 0)`` UNCHANGED — the post-
+        segmentation filter's "no matches → keep all" fallback remains the
+        safety net (never make the pipeline summarize less than it would
+        have).
+    """
+
+    def _entry_heading(e) -> str:
+        return e[0] if isinstance(e, (tuple, list)) else getattr(e, "title", "") or ""
+
+    def _entry_page(e):
+        return e[1] if isinstance(e, (tuple, list)) else getattr(e, "page", None)
+
+    if not toc_entries or not selected_titles:
+        return toc_entries, 0
+
+    _dbg = (lambda msg: log(msg, "DEBUG")) if log else (lambda msg: None)
+    _warn = (lambda msg: log(msg, "WARNING")) if log else (lambda msg: None)
+
+    # Match selected titles against TOC-entry dicts using HEADING-TEXT
+    # matching only (exact → chapter-number → word-overlap → fuzzy — the
+    # same ladder ``match()`` uses). The PAGE-BASED fallback is deliberately
+    # NOT used here: it exists for post-segmentation matching (a selected
+    # title whose segment was renamed by merging is found via its TOC page),
+    # but pre-segmentation a spurious page match would SHRINK the TOC to a
+    # wrong chapter — far worse than not filtering at all.
+    matcher = ChapterMatcher()  # no toc_entries → page fallback impossible
+    _toc_dicts = []
+    for e in toc_entries:
+        _p = _entry_page(e)
+        _toc_dicts.append({
+            "heading": _entry_heading(e),
+            "start_page": _p,
+            "end_page": _p,
+            "aliases": [],
+            "segment_type": "chapter",
+        })
+    _matched_headings: set[str] = set()
+    for _sel in selected_titles:
+        for _d in _toc_dicts:
+            _m, _score = matcher._match_segment_heading(_d, _sel)
+            if _m:
+                _matched_headings.add(_normalize(_d["heading"]))
+    if not _matched_headings:
+        _warn(
+            "  [Selection] No TOC entries matched the selected chapters — "
+            "segmenting the full TOC (post-segmentation filter stays active)."
+        )
+        return toc_entries, 0
+
+    filtered = [
+        e for e in toc_entries
+        if _normalize(_entry_heading(e)) in _matched_headings
+    ]
+    dropped = len(toc_entries) - len(filtered)
+    _dbg(
+        f"  [Selection] TOC restricted to selection: kept {len(filtered)} "
+        f"of {len(toc_entries)} entries ({dropped} unselected dropped before "
+        f"segmentation — no phantom segments, no merge contamination)."
+    )
+    return filtered, dropped
