@@ -27,6 +27,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +190,8 @@ class PacketsLectureGenerator(OutputGeneratorBase):
         lecture = self._strip_thinking(response)
         output_path = output_dir / f"{book_title}.Packets.Lecture.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
+        atomic_write_text(
+            output_path,
             f"# Lecture: {book_title}\n\n"
             f"> Single-host educational narrative · generated from Packets of Knowledge\n\n---\n\n"
             f"{lecture}\n",

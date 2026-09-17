@@ -27,6 +27,10 @@ import re
 from pathlib import Path
 from typing import Literal
 
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
+
 logger = logging.getLogger(__name__)
 
 OutputFormat = Literal[".md", ".docx", ".pdf"]
@@ -408,7 +412,8 @@ def write_output(
                 quality=quality,
                 model=model,
             )
-        out_path.write_text(text, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(out_path, text, encoding="utf-8")
         return True, f"Wrote {out_path.name} ({len(text):,} chars)"
 
     if fmt == ".docx":
@@ -417,7 +422,8 @@ def write_output(
             return True, f"Wrote {out_path.name}"
         # Fallback: write .md next to the requested .docx
         fallback = out_path.with_suffix(".md")
-        fallback.write_text(text, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(fallback, text, encoding="utf-8")
         return False, f"python-docx unavailable — wrote {fallback.name} instead"
 
     if fmt == ".pdf":
@@ -425,9 +431,11 @@ def write_output(
         if ok:
             return True, f"Wrote {out_path.name}"
         fallback = out_path.with_suffix(".md")
-        fallback.write_text(text, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(fallback, text, encoding="utf-8")
         return False, f"PDF backend unavailable — wrote {fallback.name} instead"
 
     # Unknown format → default to .md
-    out_path.write_text(text, encoding="utf-8")
+    # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+    atomic_write_text(out_path, text, encoding="utf-8")
     return True, f"Wrote {out_path.name} (unknown fmt, used .md)"

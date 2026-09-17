@@ -30,6 +30,9 @@ from pathlib import Path
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
 from core.tts.engine import TTSRouter, detect_language
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 # Regex for "Host A:" / "Host B:" / "HostA:" / "A:" prefixes.
 
@@ -138,7 +141,8 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         # Save the intro script for reference (so the user can see what was spoken)
         script_path = output_dir / f"{book_title}.IntroPodcast.md"
         script_path.parent.mkdir(parents=True, exist_ok=True)
-        script_path.write_text(
+        atomic_write_text(
+            script_path,
             f"# Intro Podcast Script: {book_title}\n\n"
             f"> 2-host introduction (~4-6 min) · generated from executive briefing\n\n---\n\n"
             f"{script}\n",

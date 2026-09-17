@@ -28,6 +28,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
+# V18.20.4.12 (W-b15): structured progress line — the wizard's live quality
+# dashboard parses this JSON line (JSON-first) instead of regex-matching
+# the human "📊 Progress:" wording; the human line stays byte-identical.
+from core.common.progress_events import progress_json_line
+
 from core.llm import ModelManager
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
@@ -390,9 +395,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             self.log(f"  ⚠️ Heavy model enabled – forcing max_workers from {self.max_workers} to 1 to prevent OOM.", "WARNING")
             self.max_workers = 1
         model_lower = (self.primary_model or "").lower()
-        if any(k in model_lower for k in ("14b", "14B", "32b", "32B", "70b", "70B")):
+        # V18.20.4.12 (W-a10): dropped dead uppercase entries — model_lower is lowercased
+        if any(k in model_lower for k in ("14b", "32b", "70b")):
             safe_max = 1
-        elif any(k in model_lower for k in ("9b", "9B", "8b", "8B", "12b", "12B", "13b", "13B")):
+        elif any(k in model_lower for k in ("9b", "8b", "12b", "13b")):
             safe_max = 2
         else:
             safe_max = 4
@@ -4728,6 +4734,14 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                     # progress during the long summarization phase.
                     _bp_count = len(_result.bullet_points) if _result.bullet_points else 0
                     _exec_len = len(_result.executive_summary) if _result.executive_summary else 0
+                    # V18.20.4.12 (W-b15): structured progress line — the
+                    # wizard's live quality dashboard parses this JSON-first
+                    # (core/common/progress_events.py); the human line below
+                    # stays byte-identical as the old-log fallback source.
+                    self.log(
+                        progress_json_line(idx, total, _bp_count, _exec_len),
+                        "DEBUG",
+                    )
                     self.log(
                         f"  📊 Progress: {idx}/{total} done | "
                         f"{_bp_count} bullets | {_exec_len:,} chars exec summary",

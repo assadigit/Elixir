@@ -325,7 +325,14 @@ Scanner will replace this notice with the full interactive evidence map.</p>
                 f"  🗺️⚠️ Atomic write failed ({_e}); trying direct write.",
                 "WARNING",
             )
-            html_path.write_text(html, encoding="utf-8")
+            # V18.20.4.12 (T-c3): this fallback is DELIBERATELY non-atomic —
+            # it is the last resort AFTER atomic_write_text already failed,
+            # so repeating temp+replace would just fail the same way (e.g.
+            # temp-file perms, fsync-unsupported mounts).  Spelled as an
+            # explicit open()/write() pair (semantics identical to the old
+            # Path.write_text) so the non-atomic intent stays visible.
+            with html_path.open("w", encoding="utf-8") as _f:
+                _f.write(html)
 
     def _render_html(
         self,

@@ -32,9 +32,12 @@ V15.0.0 changes:
     when the HuggingFace hub was slow or unreachable. On timeout the model
     returns ``None`` (graceful degradation — semantic features disabled but
     the app keeps running).
-  - After a successful load (from disk OR download) ``HF_HUB_OFFLINE`` and
-    ``TRANSFORMERS_OFFLINE`` are set to ``"1"`` so no network call is ever
-    attempted again for the rest of the session.
+  - V18.20.4.12 (W-c17): ``HF_HUB_OFFLINE`` / ``TRANSFORMERS_OFFLINE`` are
+    scoped to the offline from-disk load ONLY — snapshotted before, set to
+    ``"1"``, and restored afterwards on success AND on failure.  (They
+    used to stay set for the rest of the session after a successful load,
+    silently forcing any LATER HuggingFace network access in-process —
+    e.g. downloading a different model — offline.)
   - Added the missing ``from pathlib import Path`` import — this also
     fixes the ``NameError: name 'Path' is not defined`` crash that V13.45.5
     hit inside ``_semantic_dedup_bullets()`` (Improvement 3).
@@ -70,6 +73,43 @@ _lock = threading.Lock()
 # connection. The user explicitly requested: "make it download from
 # internet if cached version wasn't available (on the first run)."
 _EMBED_DOWNLOAD_TIMEOUT_SECONDS = 300
+
+
+# ── V18.20.4.12 (W-c17): offline-env snapshot/restore ──────────────────────
+#
+# The from-disk load in ``get_embed_model`` sets HF_HUB_OFFLINE /
+# TRANSFORMERS_OFFLINE so the SentenceTransformer constructor can never
+# phone home for a model we already have on disk.  The flags used to stay
+# set process-wide after a successful load, which silently forced ALL
+# later HuggingFace network access in-process (e.g. downloading a
+# different model) offline.  These helpers scope the flags to the load:
+# snapshot the prior state, set, restore afterwards — success or failure.
+
+
+def _snapshot_offline_env() -> dict:
+    """Capture the current values of the two HuggingFace offline env vars.
+
+    Returns ``{key: prior_value_or_None}`` — ``None`` means "was unset".
+    """
+    return {
+        "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
+        "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
+    }
+
+
+def _restore_offline_env(snapshot: dict) -> None:
+    """Restore the offline env vars captured by ``_snapshot_offline_env``.
+
+    Keys that were previously unset are removed (popped); keys that had a
+    prior value are restored to it — the user's own environment survives a
+    failed load untouched.  (The pre-V18.20.4.12 failure path popped the
+    keys unconditionally, which also CLOBBERED a user-set value.)
+    """
+    for _key, _prior in snapshot.items():
+        if _prior is None:
+            os.environ.pop(_key, None)
+        else:
+            os.environ[_key] = _prior
 
 
 def _resolve_embed_device() -> str:
@@ -229,6 +269,11 @@ def get_embed_model(model_name: str = "") -> Any | None:
 
         if _is_saved:
             # Load from disk — 100% offline, instant.
+            # V18.20.4.12 (W-c17): the offline flags are scoped to THIS load
+            # (snapshot → set → restore in ``finally``).  They used to stay
+            # set process-wide after success, silently forcing all later
+            # HuggingFace network access offline for the rest of the session.
+            _offline_snapshot = _snapshot_offline_env()
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
             try:
@@ -265,9 +310,14 @@ def get_embed_model(model_name: str = "") -> Any | None:
                     "Failed to load local model from %s: %s: %s — attempting fresh download",
                     _model_dir, type(exc).__name__, exc,
                 )
-                # Reset the env flags so the download path isn't forced offline.
-                os.environ.pop("HF_HUB_OFFLINE", None)
-                os.environ.pop("TRANSFORMERS_OFFLINE", None)
+                # The offline flags are restored by the ``finally`` below, so
+                # the download path is NOT forced offline — and the user's
+                # own pre-existing flags (if any) survive the failure.
+            finally:
+                # V18.20.4.12 (W-c17): restore the prior env state on BOTH
+                # paths — success (the ``return`` above) and failure (the
+                # ``except`` above falls through to the download path).
+                _restore_offline_env(_offline_snapshot)
 
         # Not saved locally (or disk load failed) — try a fresh download.
         # V18.15: Added a retry — if the first download attempt fails (timeout
@@ -341,10 +391,12 @@ def get_embed_model(model_name: str = "") -> Any | None:
                 )
 
             _embed_model_name = model_name
-            # Lock the process into offline mode from here on — the model
-            # is loaded, no further hub traffic is needed.
-            os.environ["HF_HUB_OFFLINE"] = "1"
-            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            # V18.20.4.12 (W-c17): the process-wide offline lock that used to
+            # be set here (HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE = "1") is
+            # REMOVED — the flags are now scoped to the offline from-disk
+            # load only (see the ``_is_saved`` branch above).  Leaving them
+            # set here silently forced all later HuggingFace network access
+            # (e.g. downloading a different model) offline for the session.
             # V18.2.44 (Next Step #5): wrap + smoke-test the freshly-downloaded
             # model too (same protection as the from-disk path above).
             from core.llm.embedder_backend import SentenceTransformerBackend

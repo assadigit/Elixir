@@ -88,6 +88,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
+# model used by the Pass-1 zero-extraction retry below (value byte-identical
+# to the inline literal it replaces).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
 # Lazy imports — langextract is optional.  We never import it at module load
 # so the app boots even if the library isn't pip-installed.
 # The actual import happens inside _ensure_langextract().
@@ -719,7 +724,9 @@ class ClaimExtractor:
         _raw_extractions = getattr(result_doc, "extractions", []) or []
         if not _raw_extractions:
             # V13.45.5: Try Qwythos model as fallback
-            _qwythos_model = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M-empero-v3:latest"
+            # V18.20.4.12 (W-a10): inline literal → model_taxonomy constant
+            # (de-magic only — same string value, zero behavior change).
+            _qwythos_model = RIG_FALLBACK_MODEL
             _current_model = backend_kwargs.get("model_id", "") if backend == GroundingBackend.OLLAMA else ""
             if backend == GroundingBackend.OLLAMA and _current_model != _qwythos_model:
                 self.log(

@@ -17,6 +17,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,8 @@ class QuoteBankGenerator(OutputGeneratorBase):
                     lines.append("---")
                     lines.append("")
 
-            out_path.write_text("\n".join(lines), encoding="utf-8")
+            # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+            atomic_write_text(out_path, "\n".join(lines), encoding="utf-8")
             total = sum(len(q) for _, q in all_quotes)
             self.log(f"  ✅ Quote bank: {total} quotes from {len(all_quotes)} chapters → {out_path.name}", "INFO")
             return out_path

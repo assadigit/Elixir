@@ -934,32 +934,106 @@ def execute_post_completion_action(
     # For shutdown/sleep/hibernate — execute the platform command
     log(f"  ⏳ {action.capitalize()} in {delay_seconds}s…", "INFO")
 
+    # V18.20.4.12 (W-c15/T-c5): each branch used to fire a blind
+    # ``subprocess.Popen`` and never check the result.  The command lists
+    # below are byte-identical to the old Popen args — only the execution
+    # (bounded wait + honest rc/stderr reporting) is new; see
+    # ``_run_post_completion_command``.
     if action == "shutdown":
         if sys.platform == "win32":
             # Windows: shutdown /s /t <seconds>
-            subprocess.Popen(["shutdown", "/s", "/t", str(delay_seconds)])
+            cmd = ["shutdown", "/s", "/t", str(delay_seconds)]
         elif sys.platform == "darwin":
             # macOS: no built-in delayed shutdown; use shutdown directly
-            subprocess.Popen(["sudo", "shutdown", "-h", "+1"])
+            cmd = ["sudo", "shutdown", "-h", "+1"]
         else:
             # Linux: shutdown -h +<minutes>
-            subprocess.Popen(["shutdown", "-h", f"+{max(1, delay_seconds // 60)}"])
+            cmd = ["shutdown", "-h", f"+{max(1, delay_seconds // 60)}"]
     elif action == "sleep":
         if sys.platform == "win32":
             # Windows: rundll32 powrprof.dll,SetSuspendState 0,1,0
-            subprocess.Popen([
-                "rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"
-            ])
+            cmd = ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"]
         elif sys.platform == "darwin":
-            subprocess.Popen(["pmset", "sleepnow"])
+            cmd = ["pmset", "sleepnow"]
         else:
-            subprocess.Popen(["systemctl", "suspend"])
+            cmd = ["systemctl", "suspend"]
     elif action == "hibernate":
         if sys.platform == "win32":
-            subprocess.Popen([
-                "rundll32.exe", "powrprof.dll,SetSuspendState", "1,1,0"
-            ])
+            cmd = ["rundll32.exe", "powrprof.dll,SetSuspendState", "1,1,0"]
         elif sys.platform == "darwin":
-            subprocess.Popen(["pmset", "hibernatenow"])
+            cmd = ["pmset", "hibernatenow"]
         else:
-            subprocess.Popen(["systemctl", "hibernate"])
+            cmd = ["systemctl", "hibernate"]
+    else:
+        # Unknown action — nothing to execute (pre-V18.20.4.12 the dispatch
+        # silently fell through the if/elif chain without running anything;
+        # preserve that behaviour).
+        return
+
+    _run_post_completion_command(action, cmd, log)
+
+
+def _run_post_completion_command(action: str, cmd: list[str], log: LogFn) -> None:
+    """Run one shutdown/sleep/hibernate command and report the outcome honestly.
+
+    V18.20.4.12 (W-c15/T-c5): replaces the old fire-and-forget
+    ``subprocess.Popen`` which never checked the return code — a macOS
+    ``sudo shutdown`` without a TTY fails INSTANTLY and silently, so the
+    user's overnight machine simply stayed on with no trace in the log.
+    We now wait (bounded) for the command and report:
+
+      - rc == 0        → INFO "scheduled/initiated successfully"
+      - rc != 0        → LOUD WARNING: returncode + stderr (first ~200
+                         chars; verbatim on Windows) + ONE actionable
+                         platform hint
+      - TimeoutExpired → NOT a failure (see the handler below)
+
+    Any other exception (e.g. FileNotFoundError for a missing binary)
+    propagates to the caller exactly as the old Popen did — the wizard's
+    call site already wraps this in try/except.
+    """
+    import sys
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        # NOT a failure: ``rundll32 powrprof.dll,SetSuspendState`` can block
+        # indefinitely while the machine is ALREADY suspending, and killing
+        # the spawner process (which subprocess.run does on timeout) is
+        # harmless but unnecessary — the suspend was likely initiated at
+        # the OS level.  We simply stop waiting and treat it as scheduled.
+        log(
+            f"  ℹ️ {action.capitalize()} command still running after 20s "
+            f"(suspend was likely initiated at the OS level — treating as scheduled)",
+            "INFO",
+        )
+        return
+
+    if result.returncode == 0:
+        log(f"  ✅ {action.capitalize()} scheduled/initiated successfully", "INFO")
+        return
+
+    stderr_text = (result.stderr or "").strip()
+    if sys.platform == "win32":
+        # Windows: no single obvious hint — the VERBATIM stderr is the
+        # diagnosis (e.g. "Command failed: 1190 (A system shutdown has
+        # already been scheduled.)" (1190), shutdown error 1314, etc.).
+        stderr_part = stderr_text or "(empty)"
+        hint = ""
+    else:
+        stderr_part = stderr_text[:200] or "(empty)"
+        if sys.platform == "darwin":
+            hint = (
+                " — hint: sudo needs a TTY — grant passwordless shutdown in "
+                "sudoers (`youruser ALL=(ALL) NOPASSWD: /sbin/shutdown`) "
+                "or use the Quit action"
+            )
+        else:
+            hint = (
+                " — hint: shutdown requires root — use `systemctl poweroff` "
+                "polkit or run as root"
+            )
+    log(
+        f"  ⚠️ {action.capitalize()} FAILED (rc={result.returncode}): "
+        f"{' '.join(cmd)} — stderr: {stderr_part}{hint}",
+        "WARNING",
+    )

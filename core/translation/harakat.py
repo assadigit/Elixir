@@ -24,6 +24,11 @@ import logging
 import re
 from collections.abc import Callable
 
+# V18.20.4.12 (W-a11): /no_think gated on Qwen-family models via the
+# shared helper — the directive is a Qwen3 soft-switch; for other models
+# (e.g. the default TranslateGemma) it is prompt pollution.
+from core.summarisation.filter_thinking import qwen_no_think
+
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
 # response extraction (replaces bare requests.post + deep-index parse).
 from utils.network import extract_openai_content, session_for_url
@@ -352,8 +357,14 @@ class HarakatGenerator:
         """
         prompt = _HARAKAT_PROMPT.replace("{text}", text)
 
+        # V18.20.4.12 (W-a11): /no_think gated on Qwen-family via the shared
+        # helper — was an unconditional "/no_think\n" prefix whenever
+        # ``no_think`` was enabled, regardless of model (the directive is a
+        # Qwen3 soft-switch; the ``<think/>``-block strip below stays as the
+        # safety net for every model). Gated on the model THIS call uses
+        # (``model_override`` when present — the fallback retry model).
         if self.no_think:
-            prompt = "/no_think\n" + prompt
+            prompt = qwen_no_think(prompt, model_override or self.model)
 
         headers = {"Content-Type": "application/json"}
         if self.api_key:

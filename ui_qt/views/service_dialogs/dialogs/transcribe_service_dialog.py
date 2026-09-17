@@ -25,6 +25,10 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
 
+# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
+# model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
 )
@@ -135,7 +139,11 @@ class TranscribeServiceDialog(QDialog):
         llm_row.addWidget(_QL("Summary model (Ollama):"))
         self.llm_combo = _QCB()
         self.llm_combo.setEditable(True)
-        self.llm_combo.addItem("Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest")
+        # V18.20.4.12 (W-a10): was the NON-empero variant
+        # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest" — a KNOWN-BAD tag
+        # that 404s on the rig; RIG_FALLBACK_MODEL is the working tag
+        # (the combo refreshes from /api/tags when Ollama answers).
+        self.llm_combo.addItem(RIG_FALLBACK_MODEL)
         llm_row.addWidget(self.llm_combo, 1)
         self.refresh_btn = _QPB("🔄")
         self.refresh_btn.setToolTip("Refresh Ollama models")

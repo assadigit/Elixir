@@ -71,6 +71,37 @@ def _stamp() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ── V18.20.4.12 (W-c14): append-only log rotation ──────────────────────────
+
+
+def rotate_log_if_large(path: Path, max_bytes: int = 1_048_576) -> None:
+    """Rotate an append-only diagnostic log once it grows past ``max_bytes``.
+
+    V18.20.4.12 (W-c14): the crash-path logs (``faulthandler.log``,
+    ``thread_crash.log`` — and ``main.py``'s ``gpu_probe.log``, which
+    imports this helper) are opened in append mode on every launch /
+    every background-thread death and were NEVER rotated, so they grow
+    without bound for the lifetime of the install.  Call this immediately
+    before opening a log for append: when the existing file exceeds
+    ``max_bytes`` it is renamed to ``<name><suffix>.old`` (single
+    generation — the previous ``.old`` copy is replaced on each
+    rotation), so the fresh append starts from a small file while the
+    most recent megabyte of crash evidence survives.
+
+    NEVER raises — same best-effort contract as the rest of this module:
+    these are crash-path logs, so rotation must not be able to break the
+    crash handler or boot.  Stdlib-only (``os`` + ``pathlib``), like the
+    rest of the module.
+    """
+    try:
+        if path.stat().st_size > max_bytes:
+            os.replace(path, path.with_suffix(path.suffix + ".old"))
+    except Exception:
+        # Missing file, unreadable, or a race with another writer — all
+        # fine: the caller just opens the log in append mode as usual.
+        pass
+
+
 # ── Layer 1: faulthandler (native crashes) ─────────────────────────────────
 
 
@@ -89,6 +120,8 @@ def arm_faulthandler(log_path: Path = FAULTHANDLER_LOG) -> bool:
     global _fh_file
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        # V18.20.4.12 (W-c14): rotate the append-only crash log before open.
+        rotate_log_if_large(log_path)
         _fh_file = open(log_path, "a", encoding="utf-8")
         _fh_file.write(
             f"\n{'=' * 60}\n"
@@ -158,6 +191,8 @@ def _thread_excepthook(args: Any) -> None:
     # 2. Persist to the crash log file.
     try:
         THREAD_CRASH_LOG.parent.mkdir(parents=True, exist_ok=True)
+        # V18.20.4.12 (W-c14): rotate the append-only crash log before open.
+        rotate_log_if_large(THREAD_CRASH_LOG)
         with open(THREAD_CRASH_LOG, "a", encoding="utf-8") as f:
             f.write(_format_thread_death(args))
     except Exception:
@@ -207,6 +242,7 @@ __all__ = [
     "arm_thread_excepthook",
     "arm_crash_visibility",
     "is_crash_visibility_armed",
+    "rotate_log_if_large",
     "FAULTHANDLER_LOG",
     "THREAD_CRASH_LOG",
 ]

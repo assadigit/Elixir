@@ -62,6 +62,9 @@ import re
 from pathlib import Path
 
 from core.models import SummaryResult
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 
 def write_chapters_md(
@@ -126,7 +129,7 @@ def write_chapters_md(
         lines.append("")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(output_path, "\n".join(lines), encoding="utf-8")
     return output_path
 
 

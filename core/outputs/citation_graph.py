@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from core.models import SummaryResult
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +131,6 @@ def generate_citation_graph(
     md_content = "\n".join(md_lines)
     output_path = output_dir / f"{book_title}.Citations.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(md_content, encoding="utf-8")
+    atomic_write_text(output_path, md_content, encoding="utf-8")
     log(f"  📊 Citation graph: {len(all_citations)} citations → {output_path.name}", "INFO")
     return output_path

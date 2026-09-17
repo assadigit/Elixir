@@ -45,6 +45,9 @@ from core.podcast.script_generator import (
     ScriptResult,
     generate_podcast_script,
 )
+# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
+# model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 
 
 logger = logging.getLogger(__name__)
@@ -177,9 +180,15 @@ class PodcastMakerView(QWidget):
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         # V11.37.2: use default model from settings
+        # V18.20.4.12 (W-a10): was the NON-empero variant
+        # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest" — a KNOWN-BAD tag
+        # that 404s on the rig (utils/settings.py:989-990 documents the
+        # mismatch); RIG_FALLBACK_MODEL is the working tag. Only reached
+        # when settings are empty AND Ollama is unreachable (combo
+        # refreshes from /api/tags otherwise).
         default_model = self.controller.get_setting(
             "summarisation.model",
-            "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest")
+            RIG_FALLBACK_MODEL)
         self.model_combo.addItem(default_model)
         model_row.addWidget(self.model_combo, 1)
         self.refresh_models_btn = QPushButton("🔄 Refresh")

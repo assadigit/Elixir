@@ -155,7 +155,46 @@ def get_piper_engine(
 
 
 def clear_cache() -> None:
-    """Clear all cached engines (frees VRAM)."""
+    """Clear all cached engines (frees VRAM).
+
+    V18.20.4.12 (W-c12): each cached engine is now GRACEFULLY torn down
+    BEFORE its cache slot is dropped. The old body was a bare
+    ``_engines.clear()`` — teardown was left to ``__del__`` at
+    GC/interpreter-exit time, which is unreliable during module teardown
+    (engine globals may already be gone) and kept the subprocesses + VRAM
+    alive until then. Every engine in this package owns a never-raise
+    teardown invoked from its own ``__del__`` (NeuTTSEngine.
+    ``_cleanup_process``: quit JSON → wait(5) → kill; Qwen/VibeVoice/
+    Sherpa ``_cleanup``: shared-base graceful quit → kill); we call the
+    same hooks EAGERLY here. Public names (close/quit/stop/shutdown) are
+    tried first so foreign engine objects (tests, future engines) are
+    honoured too; the first hook found wins so an engine exposing several
+    is never torn down twice. A stuck engine can NEVER raise past this
+    function — per-engine failures are logged and the cache is cleared
+    regardless.
+    """
+    for key, engine in list(_engines.items()):
+        try:
+            torn_down = False
+            for name in ("close", "quit", "stop", "shutdown",
+                         "_cleanup_process", "_cleanup"):
+                hook = getattr(engine, name, None)
+                if callable(hook):
+                    hook()
+                    torn_down = True
+                    break
+            if not torn_down:
+                logger.debug(
+                    "cached engine %r (%s) exposes no teardown hook — "
+                    "dropping reference only",
+                    key, type(engine).__name__,
+                )
+        except Exception as e:
+            logger.warning(
+                "TTS engine cache: teardown of %r failed (%s: %s) — "
+                "dropping the reference anyway",
+                key, type(e).__name__, e,
+            )
     _engines.clear()
     logger.info("TTS engine cache cleared")
 

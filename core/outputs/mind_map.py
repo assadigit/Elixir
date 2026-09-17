@@ -30,6 +30,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 # Caps to keep the mind map readable. A 200-node mind map is unusable.
 
@@ -131,7 +134,7 @@ class MindMapGenerator(OutputGeneratorBase):
         output_path = output_dir / f"{book_title}.MindMap.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
         try:
-            output_path.write_text(md, encoding="utf-8")
+            atomic_write_text(output_path, md, encoding="utf-8")
         except Exception as e:
             self.log(f"  ⚠️ Mind map: failed to write file: {e}", "WARNING")
             return None

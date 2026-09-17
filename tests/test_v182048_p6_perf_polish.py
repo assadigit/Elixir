@@ -533,7 +533,11 @@ class TestWa4DispatcherMigration:
         assert b._call_ollama("hello", no_think=True, max_predict=512) == "ok"
         assert captured["method"] == "POST"
         assert captured["url"] == "http://localhost:11434/api/generate"
-        assert captured["payload"]["prompt"] == "/no_think\nhello"
+        # V18.20.4.12 (W-a11): gated on Qwen — was unconditional
+        # ("/no_think\nhello"); "mymodel" is not Qwen-family, so the prompt
+        # ships clean (the Qwen counterpart is pinned in
+        # tests/test_v1820412_b_semantics.py).
+        assert captured["payload"]["prompt"] == "hello"
         assert captured["payload"]["options"]["num_predict"] == 512
         assert captured["payload"]["options"]["num_ctx"] == 8192
         assert captured["payload"]["options"]["temperature"] == 0.1

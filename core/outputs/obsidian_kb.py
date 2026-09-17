@@ -37,6 +37,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 # ── Windows reserved names we must avoid as filenames ─────────────────────
 
@@ -333,7 +336,8 @@ class ObsidianKBGenerator(OutputGeneratorBase):
 
         content = "\n".join(frontmatter) + "\n\n" + "\n".join(lines)
         try:
-            note_path.write_text(content, encoding="utf-8")
+            # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+            atomic_write_text(note_path, content, encoding="utf-8")
         except Exception as e:
             self.log(
                 f"  ⚠️ Obsidian KB: failed to write {note_path.name}: {e}",
@@ -486,5 +490,6 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         lines.append("")
 
         content = "\n".join(frontmatter) + "\n\n" + "\n".join(lines)
-        index_path.write_text(content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(index_path, content, encoding="utf-8")
         return index_path

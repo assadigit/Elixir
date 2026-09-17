@@ -47,6 +47,8 @@ __all__ = [
     "LOW_BIT_TOKENS",
     "LEGACY_DEFAULT_MODEL",          # V18.20.4.11 (P2): legacy "gemma3:12b" sentinel
     "DEFAULT_FALLBACK_OCR_MODEL",    # V18.20.4.11 (P2): "qwen3-vl:8b" request-side OCR default
+    "RIG_FALLBACK_MODEL",            # V18.20.4.12 (W-a10): rig-tuned qwythos fallback tag
+    "KNOWN_BAD_MODEL_ALIASES",       # V18.20.4.12 (W-a10): names that 404 — never default to these
     "is_low_bit_quant",
     "is_iq2_s",
     "param_count_b",
@@ -107,6 +109,39 @@ LEGACY_DEFAULT_MODEL: str = "gemma3:12b"
 # default is qwen3-vl:8b — unifying the VALUES is a behavior change that
 # requires user sign-off and is out of scope for this literal cleanup.
 DEFAULT_FALLBACK_OCR_MODEL: str = "qwen3-vl:8b"
+
+
+# ── Rig-tuned fallback model + known-bad aliases (V18.20.4.12 / W-a10) ──────
+#
+# The user's rig-tuned fallback model (V13.45.5 user request: "before going
+# to fallback, lets try qwythos model"). The CAPITALIZED ``-empero-v3`` form
+# is the tag actually installed in the user's Ollama daemon (Ollama tags are
+# case-sensitive). Used by:
+#   - core/grounding/claim_extractor.py — the Pass-1 zero-extraction retry
+#     (behavior byte-identical; previously an inline literal);
+#   - the service dialogs + podcast maker — as the UI default when settings
+#     are empty and Ollama is unreachable (V18.20.4.12: previously they
+#     defaulted to the NON-empero variant below, which 404s — genuine bug).
+# NOTE: this is a RIG-SPECIFIC personal model, not a recommendation for
+# other installs — dialogs overwrite it with the live /api/tags list as
+# soon as Ollama answers.
+RIG_FALLBACK_MODEL: str = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M-empero-v3:latest"
+
+# Model names that 404 on the rig and must NEVER be used as a default:
+#   - the non-empero variant (wrong tag — utils/settings.py:989-990
+#     documents it as "the model that doesn't exist in Ollama");
+#   - the lowercase empero form (right tag, wrong case — Ollama tags are
+#     case-sensitive; this was packets/generator.py's pre-V18.20.4.12
+#     default and 404ed on every install).
+# settings migrations and dialog defaults must never resolve to these;
+# the tuple exists so future code can guard with
+# ``model in KNOWN_BAD_MODEL_ALIASES``. utils/settings.py's
+# model_temperatures KEYS deliberately keep listing them (config DATA for
+# users who genuinely have those tags — untouched by W-a10).
+KNOWN_BAD_MODEL_ALIASES: tuple[str, ...] = (
+    "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest",
+    "qwythos-9b-claude-mythos-5-1m-q4_k_m-empero-v3:latest",
+)
 
 
 # ── Predicates ─────────────────────────────────────────────────────────────

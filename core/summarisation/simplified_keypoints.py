@@ -23,6 +23,10 @@ from docx.shared import Inches, Pt, RGBColor
 from core.llm import ModelManager, ModelType
 from core.llm.retry import retry_llm_call
 from core.models import ConversionRequest, SummaryResult
+# V18.20.4.12 (W-a11): /no_think gated on Qwen-family models via the
+# shared helper — the directive is a Qwen3 soft-switch; for other models
+# it is prompt pollution.
+from core.summarisation.filter_thinking import qwen_no_think
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -190,9 +194,12 @@ class SimplifiedKeypointsBuilder:
         # V3.2.1: /no_think directive for single-bullet mode — suppresses
         # the thinking model's internal reasoning. Safe for trivial tasks
         # like translating one sentence. Dramatically reduces generation time.
+        # V18.20.4.12 (W-a11): gated on Qwen-family via the shared helper —
+        # was an unconditional "/no_think\n" prefix (the directive is a
+        # Qwen3 soft-switch; prompt pollution for other models).
         actual_prompt = prompt
         if no_think:
-            actual_prompt = "/no_think\n" + prompt
+            actual_prompt = qwen_no_think(prompt, self.model)
 
         num_predict = max_predict if max_predict else self.max_output_tokens_per_batch
 

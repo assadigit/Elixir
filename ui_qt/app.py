@@ -683,6 +683,15 @@ class ElixirWindow(QMainWindow):
         except Exception:
             logger.debug("settings save on close failed", exc_info=True)
         self._save_geometry()
+        # V18.20.4.12 (W-c12): release cached TTS engines (subprocesses +
+        # VRAM) before process teardown. Never-raise: shutdown must not be
+        # blocked by a stuck engine (engines have their own quit→wait→kill
+        # teardown contract).
+        try:
+            from core.tts.engine_cache import clear_cache
+            clear_cache()
+        except Exception:
+            pass
         super().closeEvent(event)
 
     def _retire_conversion_workers(self, wait_ms: int = 2000) -> None:

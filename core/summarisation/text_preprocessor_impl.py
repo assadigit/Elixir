@@ -182,13 +182,14 @@ def remove_headers_footers(text: str) -> str:
 # A5: Definition / Concept Extraction
 # ════════════════════════════════════════════════════════════════════════════
 
-# V3.2.1: Broadened patterns to catch lowercase quoted terms like 'focus base'.
-# The book uses single-quoted lowercase jargon: 'focus base', 'hourglass
-# conversation', 'warm introduction', 'hit list', etc. The old patterns
-# required uppercase first letter — missed everything.
+# V3.2.1: Broadened patterns to catch lowercase quoted jargon terms.
+# Some books use single-quoted lowercase multi-word jargon (book-specific
+# vocabulary the author coins and reuses). The old patterns required
+# uppercase first letter — missed everything.
 
 # Pattern 1: Quoted terms (single or double quotes, curly quotes) — 1-4 words
-# This is the primary pattern. Catches: 'focus base', "Hourglass Conversation"
+# This is the primary pattern. Catches lowercase jargon phrases and
+# Capitalized multi-word concept names alike.
 _QUOTED_TERM_PATTERN = re.compile(
     r'["\u201c\u2018]([a-zA-Z][a-zA-Z]+(?:\s+[a-zA-Z]+){0,3})["\u201d\u2019]'
 )
@@ -414,8 +415,8 @@ def extract_ngram_keywords(text: str, n: int = 18) -> list[str]:
     """Extract top-n content keywords using unigrams + bigrams + trigrams.
 
     Replaces the old single-word keyword extraction. Bigrams and trigrams
-    capture multi-word concepts like "focus base", "hourglass conversation",
-    "warm introduction" that single-word extraction misses entirely.
+    capture multi-word concepts (book-specific jargon phrases, capitalized
+    concept names) that single-word extraction misses entirely.
 
     Returns a ranked list of keyword strings (may be 1, 2, or 3 words).
     """

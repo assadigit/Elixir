@@ -24,6 +24,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 # ── Word-count estimation ─────────────────────────────────────────────────
 # Spoken English averages ~150 words/minute. Used for target-length prompts
@@ -554,7 +557,7 @@ class PodcastGenerator(OutputGeneratorBase):
         # Keep only Host A/B dialogue lines + plain narration.
         cleaned = self._strip_stage_directions(script)
         path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
-        path.write_text(header + cleaned.strip() + "\n", encoding="utf-8")
+        atomic_write_text(path, header + cleaned.strip() + "\n", encoding="utf-8")
         self.log(f"  ✅ Podcast script saved: {path.name}", "SUCCESS")
 
     # V7.6.0 R6: strip bracketed stage directions + music cues from the script.

@@ -18,6 +18,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from core.models import ConversionRequest, SummaryResult
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +249,8 @@ class ExecutiveBriefingGenerator(OutputGeneratorBase):
 
         output_path = output_dir / f"{book_title}.Briefing.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Executive briefing saved to: {output_path}", "SUCCESS")
         return output_path
 
@@ -333,7 +337,8 @@ class PodcastScriptGenerator(OutputGeneratorBase):
 
         output_path = output_dir / f"{book_title}.Podcast.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Podcast script saved to: {output_path}", "SUCCESS")
         return output_path
 
@@ -529,7 +534,8 @@ class FlashcardGenerator(OutputGeneratorBase):
                 md_content += f"- 🛡️ **Evidence:** \"{evidence[:300]}\"\n"
             md_content += "\n---\n\n"
 
-        md_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(md_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Flashcards (readable) saved to: {md_path}", "SUCCESS")
 
         # V10.22.1: Also export as .apkg if genanki is available
@@ -695,7 +701,8 @@ class QAGenerator(OutputGeneratorBase):
         md_content = "\n".join(md_lines)
         output_path = output_dir / f"{book_title}.StudyQuestions.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Q&A saved to: {output_path}", "SUCCESS")
         return output_path
 

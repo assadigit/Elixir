@@ -16,8 +16,14 @@ from collections.abc import Callable
 import requests as _requests
 
 from core.llm.llm_provider_impl import LLMProvider, _get_keep_alive
+# V18.20.4.12 (T-c7): ModelNotFound404Error moved to the shared
+# core/llm/model_errors.py module — imported here (and re-exported for
+# compat, matching the historical ``from core.llm.ollama_provider import
+# ModelNotFound404Error`` pattern) so the raise site below, the outer
+# handler, and every external importer share ONE class + ONE canonical
+# ``ollama pull`` message.
+from core.llm.model_errors import ModelNotFound404Error  # noqa: F401 — re-export for compat
 from core.llm.retry import (
-    ModelNotFound404Error,
     OllamaOOMError,
     OllamaTimeoutError,
     ThinkingModeViolation,

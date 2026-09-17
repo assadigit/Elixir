@@ -17,6 +17,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +96,8 @@ class GlossaryGenerator(OutputGeneratorBase):
         md_content = "\n".join(md_lines)
         output_path = output_dir / f"{book_title}.Glossary.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Glossary: {len(entries)} terms → {output_path.name}", "SUCCESS")
         return output_path
 
@@ -198,7 +202,8 @@ class PatternsGenerator(OutputGeneratorBase):
         md_content = "\n".join(md_lines)
         output_path = output_dir / f"{book_title}.Patterns.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Patterns: {len(patterns)} patterns → {output_path.name}", "SUCCESS")
         return output_path
 
@@ -276,7 +281,8 @@ class CheatsheetGenerator(OutputGeneratorBase):
 
         output_path = output_dir / f"{book_title}.Cheatsheet.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Cheatsheet → {output_path.name}", "SUCCESS")
         return output_path
 
@@ -351,6 +357,7 @@ class AgentSkillGenerator(OutputGeneratorBase):
         md_content = "\n".join(md_lines)
         output_path = output_dir / f"{book_title}.SKILL.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md_content, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
+        atomic_write_text(output_path, md_content, encoding="utf-8")
         self.log(f"  ✅ Agent Skill → {output_path.name}", "SUCCESS")
         return output_path

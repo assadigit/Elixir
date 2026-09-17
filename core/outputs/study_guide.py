@@ -30,6 +30,9 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +100,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
         output_path = output_dir / f"{book_title}.StudyGuide.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
         try:
-            output_path.write_text(md, encoding="utf-8")
+            atomic_write_text(output_path, md, encoding="utf-8")
         except Exception as e:
             self.log(f"  ⚠️ Study guide: failed to write file: {e}", "WARNING")
             return None

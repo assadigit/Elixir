@@ -206,7 +206,9 @@ def run_output_save(
         if include_frontmatter:
             seg_text += converter._chapter_frontmatter(seg, idx, len(segments), book_title, source_name, detected_lang)
         seg_text += f"# {seg.heading}\n\n{content}"
-        seg_file.write_text(seg_text, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial
+        # segment file behind (same helper as the full-markdown write above).
+        atomic_write_text(seg_file, seg_text, encoding="utf-8")
 
     log(f"📂 {len(segments)} segment files → {segments_folder}")
 

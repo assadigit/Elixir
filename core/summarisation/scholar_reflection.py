@@ -293,6 +293,82 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
             or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
         )
 
+        # V18.20.4.12 (O-a4): ONE additive continuation retry — ports the
+        # V18.20.3.2 additive mass-truncation retry shape (additive_sections
+        # P1-e: ONE retry, additive result) to the scholar call. History:
+        # the .3.1/.3.2/.3.4/.3.7/.3.8/.3.14 rig runs repeatedly hit the
+        # 6144-token cap mid-gap-analysis, and the only remedy was the
+        # verdict-qualification below (the verdict can't be trusted) — the
+        # analysis CONTENT was still lost. When truncation is detected
+        # (provider flag OR tag heuristic), issue ONE continuation call
+        # (the original prompt + a short suffix pointing the model at where
+        # its output stopped), concatenate the continuation onto the
+        # response (additive — the parse below then sees the completed
+        # sections), and re-evaluate truncation on the COMBINED text (the
+        # provider flag is re-read AFTER the second call — the ContextVar
+        # is consume-on-read). Still truncated after the one retry → the
+        # EXISTING parse + verdict-qualification path runs UNCHANGED. A
+        # retry crash falls back to the original single-parse path
+        # (fail-open, WARNING). ONE retry max — no sleeps, no budget
+        # changes; max_tokens stays 6144.
+        if _response_truncated:
+            log(
+                "    \U0001f4dc Scholar response truncated \u2014 one additive "
+                "continuation retry (V18.20.4.12 / O-a4)",
+                "INFO",
+            )
+            try:
+                _cont_prompt = (
+                    prompt
+                    + "\n\nCONTINUATION REQUEST: your previous response was "
+                    "cut off at the output token cap before it completed. "
+                    "Continue EXACTLY where the previous output stopped \u2014 "
+                    "do NOT repeat any content you already produced, and "
+                    "close all open section tags (</scholar_reflections>, "
+                    "</gap_fill_bullets>). Your previous output ended with:\n\n"
+                    + raw[-2000:]
+                )
+                _cont = call_fast_llm(
+                    _cont_prompt, temperature=temperature, max_tokens=6144,
+                )
+                if _cont:
+                    _cont = strip_thinking(_cont)
+                    _combined = raw + "\n" + _cont
+                    # Re-read the provider flag AFTER the second call (the
+                    # ContextVar is consume-on-read) + re-run the tag
+                    # heuristic on the COMBINED text.
+                    try:
+                        from core.llm.call_meta import consume_call_truncated
+                        _provider_truncated = consume_call_truncated()
+                    except Exception:  # pragma: no cover — flag must never break the stage
+                        _provider_truncated = False
+                    _rl = _combined.lower()
+                    _has_refl_open = '<scholar_reflections>' in _rl
+                    _has_refl_close = '</scholar_reflections>' in _rl
+                    _has_gf_open = '<gap_fill_bullets>' in _rl
+                    _has_gf_close = '</gap_fill_bullets>' in _rl
+                    _still_truncated = (
+                        _provider_truncated
+                        or (_has_gf_open and not _has_gf_close)
+                        or (not _has_gf_open
+                            and not (_has_refl_open and _has_refl_close))
+                    )
+                    raw = _combined
+                    _response_truncated = _still_truncated
+            except Exception as _cont_e:
+                # Fail-open: the original single-parse path (with its
+                # verdict qualification) runs on the FIRST response.
+                log(
+                    f"    \u26a0\ufe0f Scholar continuation retry failed \u2014 "
+                    f"falling back to the single-parse path (non-fatal): "
+                    f"{_cont_e}",
+                    "WARNING",
+                )
+                logger.debug(
+                    "scholar continuation retry failed: %s: %s",
+                    type(_cont_e).__name__, _cont_e,
+                )
+
         # Parse the <scholar_reflections> section (identification)
         srm = re.search(
             r'<scholar_reflections>\s*(.*?)(?:</scholar_reflections>|<gap_fill_bullets>|$)',

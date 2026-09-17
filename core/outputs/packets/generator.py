@@ -20,6 +20,9 @@ from typing import Any
 from core.models import SummaryResult
 
 from core.outputs.packets.models import LogFn, Packet, PacketCollection
+# V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
+# can no longer leave a truncated .md behind (temp file + os.replace).
+from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +184,8 @@ class PacketGenerator:
 
         # One-page distillation
         one_page_path = output_dir / f"{book_title}.Packets.OnePage.md"
-        one_page_path.write_text(one_page, encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave partial output
+        atomic_write_text(one_page_path, one_page, encoding="utf-8")
         output_paths.append(one_page_path)
         self.log(f"  ✅ One-page distillation: {one_page_path.name}", "SUCCESS")
 
@@ -684,8 +688,13 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         # Call LLM for combined synthesis + TL;DR (1 call) and importance (1 call).
         try:
             from utils.settings import Settings
+            # V18.20.4.12 (W-a10): was lowercase qwythos literal — 404s
+            # (case-sensitive tag) on every install incl. the rig; sentinel
+            # default per the V18.20.4.3 unification (LEGACY_DEFAULT_MODEL =
+            # "no explicit model configured", core/llm/model_taxonomy.py).
+            from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
             s = Settings()
-            model = s.get("summarisation.model", "qwythos-9b-claude-mythos-5-1m-q4_k_m-empero-v3:latest")
+            model = s.get("summarisation.model", LEGACY_DEFAULT_MODEL)
             provider = s.get("summarisation.provider", "ollama")
             temperature = 0.1
 
@@ -900,6 +909,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         # locality, and closes each streamed response so the pooled
         # connection is returned clean instead of leaking pool slots).
         from utils.network import session_for_url
+        # V18.20.4.12 (T-c7): shared 404 detection + canonical pull hint
+        # (single source with the providers — core/llm/model_errors.py).
+        from core.llm.model_errors import is_model_not_found, model_not_found_hint
 
         from utils.settings import Settings
         s = Settings()
@@ -976,6 +988,21 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                     self.log(f"    ⏱️ LLM timeout (attempt {attempt+1}/{max_retries}), retrying...", "WARNING")
                     continue
                 self.log(f"    ❌ LLM timed out after {max_retries} attempts", "WARNING")
+                return None
+            except requests.exceptions.HTTPError as e:
+                # V18.20.4.12 (T-c7): 404 = model not pulled — log the
+                # canonical actionable hint (previously this fell into the
+                # blanket ``except Exception`` below and printed only a raw
+                # "404 Client Error" line with no pull guidance; the .4.0
+                # SWOT cited exactly that). Cloud providers keep the raw
+                # error — `ollama pull` advice is wrong for OpenRouter etc.
+                # Control flow unchanged: HTTP errors still return None on
+                # the FIRST attempt (no retry), exactly as before.
+                _status = getattr(getattr(e, "response", None), "status_code", None)
+                if provider != "cloud" and is_model_not_found(_status, str(e)):
+                    self.log(f"    ❌ {model_not_found_hint(model)}", "WARNING")
+                else:
+                    self.log(f"    ❌ LLM call failed: {e}", "WARNING")
                 return None
             except Exception as e:
                 self.log(f"    ❌ LLM call failed: {e}", "WARNING")
@@ -1393,7 +1420,8 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 lines.append(f"   → Next: [{next_packet.title}]")
             lines.append("")
 
-        path.write_text("\n".join(lines), encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave partial output
+        atomic_write_text(path, "\n".join(lines), encoding="utf-8")
 
     def _format_packet(self, packet: Packet) -> str:
         """Format a single packet as markdown.
@@ -1557,7 +1585,8 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                     lines.append(f"    P{packet.index} -.-> P{ref}")
 
         lines.append("```")
-        path.write_text("\n".join(lines), encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave partial output
+        atomic_write_text(path, "\n".join(lines), encoding="utf-8")
 
     # ── Step 10: Coverage report (V13.19.0 Fix 4) ────────────────────
 
@@ -1642,4 +1671,5 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             lines.append("## ⚠️ Orphan bullets (in packets but not in input)")
             lines.extend(orphan_lines[:20])
 
-        path.write_text("\n".join(lines), encoding="utf-8")
+        # V18.20.4.12 (T-c3): atomic — disk-full can't leave partial output
+        atomic_write_text(path, "\n".join(lines), encoding="utf-8")

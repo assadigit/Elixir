@@ -362,16 +362,55 @@ class TestTruncationAwareScholarVerdict:
     def test_provider_flag_qualifies_verdict(self):
         # Even a well-formed-looking response must be qualified when the
         # provider reports done_reason=length (the authoritative signal).
+        # V18.20.4.12 (O-a4) update: the scholar stage now issues ONE
+        # additive continuation retry when truncation is detected, so the
+        # provider flag must be simulated on EVERY call (exactly like the
+        # real provider marks it per response). Truncated on BOTH calls →
+        # the COMBINED text is still qualified; first-call truncation that
+        # the continuation repairs → the combined verdict is TRUSTED (the
+        # recovered content is the point of the retry).
         from core.llm.call_meta import mark_call_truncated
-        _, calls = self._run_scholar(
-            "<scholar_reflections>none</scholar_reflections>")
-        # baseline: clean verdict without the flag
+        from core.summarisation.scholar_reflection import scholar_reflection
+
+        class _PM:
+            def render_template(self, name, **kw):
+                return "PROMPT"
+
+        def _run_marked(llm_response, flags):
+            log_calls = []
+            script = list(flags)
+
+            def _llm(prompt, **kw):
+                mark_call_truncated(script.pop(0) if script else False)
+                return llm_response
+
+            result = {"bullet_points": ["b1"], "executive_summary": "e",
+                      "thorough_summary": "t"}
+            scholar_reflection(
+                "Ch", "src", result,
+                max_context_tokens=32768,
+                language="en",
+                temperature=0.7,
+                prompt_manager=_PM(),
+                recover_vram=lambda *a, **k: None,
+                call_fast_llm=_llm,
+                strip_thinking=lambda s: s,
+                log=lambda m, l="INFO": log_calls.append((m, l)),
+            )
+            return result, log_calls
+
+        resp = "<scholar_reflections>none</scholar_reflections>"
+        # baseline: clean verdict without the flag (single call, no retry)
+        _, calls = _run_marked(resp, [False])
         assert not any("VERDICT UNRELIABLE" in m for m, _ in calls)
-        mark_call_truncated(True)
-        _, calls = self._run_scholar(
-            "<scholar_reflections>none</scholar_reflections>")
+        # provider reports truncation on BOTH calls → combined still qualified
+        _, calls = _run_marked(resp, [True, True])
         warnings = [m for m, l in calls if l == "WARNING"]
         assert any("VERDICT UNRELIABLE" in w for w in warnings)
+        # NEW V18.20.4.12 (O-a4): first call truncated, continuation
+        # completes (flag clear) → the combined verdict is trusted
+        _, calls = _run_marked(resp, [True, False])
+        assert not any("VERDICT UNRELIABLE" in m for m, _ in calls)
 
     def test_contextvar_round_trip(self):
         from core.llm.call_meta import consume_call_truncated, mark_call_truncated

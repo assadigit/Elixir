@@ -35,6 +35,10 @@ from typing import Any
 
 from core.models import ConversionResult, SummaryResult
 from core.summarisation import Summarizer
+# V18.20.4.12 (W-a11): /no_think gated on Qwen-family models via the
+# shared helper — the directive is a Qwen3 soft-switch; for other models
+# it is prompt pollution.
+from core.summarisation.filter_thinking import qwen_no_think
 
 # V18.20.2.0 (SWOT A30): module-level import — the per-chapter write loop
 # previously imported this INSIDE the loop body, which left the name
@@ -568,8 +572,13 @@ def run_summarization(
                         "INFO",
                     )
             def _llm_call_fn(prompt):
-                # V16.0.4: Add /no_think prefix for ALL models + nudge retry on empty
-                _actual_prompt = "/no_think\n\n" + prompt
+                # V18.20.4.12 (W-a11): /no_think is now GATED on Qwen-family
+                # models via the shared ``qwen_no_think`` helper — was the
+                # V16.0.4 unconditional "/no_think\n\n" prefix "for ALL
+                # models" (prompt pollution for non-Qwen models; the
+                # directive is a Qwen3 soft-switch). The empty-response
+                # nudge retry below is UNTOUCHED.
+                _actual_prompt = qwen_no_think(prompt, _summ_model)
                 try:
                     _result = _provider.complete(
                         prompt=_actual_prompt,

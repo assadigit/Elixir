@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
 
+# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
+# model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
 from ui_qt.views.service_dialogs.dialogs.shared import (
     PlainTextTextEdit,
     _confirm_close_with_running_worker,
@@ -67,7 +71,13 @@ class SummarizationServiceDialog(QDialog):
     """
 
     # Default model used when settings has nothing and Ollama is unreachable.
-    _DEFAULT_MODEL = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest"
+    # V18.20.4.12 (W-a10): was the NON-empero variant
+    # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest" — a KNOWN-BAD tag that
+    # 404s on the rig (utils/settings.py:989-990 documents the mismatch vs
+    # the actual installed ...-empero-v3 tag). RIG_FALLBACK_MODEL is the
+    # working rig tag; the combo is overwritten with the live /api/tags
+    # list as soon as Ollama answers.
+    _DEFAULT_MODEL = RIG_FALLBACK_MODEL
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
         super().__init__(parent)

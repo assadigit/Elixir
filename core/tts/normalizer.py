@@ -38,6 +38,9 @@ import requests
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
+# V18.20.4.12 (T-c7): shared 404 detection + the canonical `ollama pull`
+# hint (single source with the LLM providers — see core/llm/model_errors.py).
+from core.llm.model_errors import is_model_not_found, model_not_found_hint
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
 # response extraction (replaces the bare requests.post + deep-index parse).
 from utils.network import extract_openai_content, session_for_url
@@ -367,6 +370,20 @@ class TextNormalizer:
         # malformed provider payload now returns "" (deterministic fallback
         # path) instead of raising KeyError.
         resp = session_for_url(url).post(url, json=payload, headers=headers, timeout=60)
+        # V18.20.4.12 (T-c7): the pre-emptive auto-discovery in
+        # create_normalizer_from_settings covers empty/known-bad DEFAULTS,
+        # but an explicitly-configured model that isn't pulled still 404s
+        # here — surface the canonical actionable hint at WARNING (the
+        # generic handler in _normalize_chunk only sees "404 Client Error"
+        # with no pull guidance). Control flow unchanged: raise_for_status
+        # still raises and the deterministic-fallback + failure-count
+        # disable logic in _normalize_chunk still applies unchanged.
+        if is_model_not_found(resp.status_code):
+            logger.warning(
+                "TTS normalization: %s — falling back to deterministic "
+                "number expansion for this segment",
+                model_not_found_hint(self.model),
+            )
         resp.raise_for_status()
         content = extract_openai_content(resp.json())
 
@@ -436,6 +453,10 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
                     # Save it so future calls don't re-discover
                     s.set("tts.normalize_model", model)
         except Exception as _e:
+            # V18.20.4.12 (T-c7): /api/tags discovery failure is
+            # Ollama-down (transient) or a wrong-URL config — it is NOT the
+            # model-missing case (a listing endpoint doesn't 404 for an
+            # unpulled model), so it stays at DEBUG per the T-c7 brief.
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
     if not model:

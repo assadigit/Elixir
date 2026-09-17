@@ -10,7 +10,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-18.20.4.11-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3083%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-18.20.4.12-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3279%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -324,7 +324,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (V18.20.4.11):** `3083 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 120s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
+**Current gate (V18.20.4.12):** `3279 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 121s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
 
 ### 🏗️ Project Layout
 
@@ -356,7 +356,7 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: V18.20.4.11 — "Elixir"** — the rebrand release. Formerly *MarkItDown Pro*: the app, its `~/.elixir` data directory (auto-migrated), keychain service, logs, and installer are all Elixir now — plus this release closes the top-6 audit findings: per-heading analysis lookup (wrong-chapter injection fix), the parallel-chapter thread-local race fix, four buried DEBUG logs raised to WARNING, model-literal single-sourcing, response-parser fallback logging, and tree-wide LLM transport unification (pooled sessions + shape-safe parsing). Full story in [`CHANGELOG.md`](CHANGELOG.md).
+**Current version: V18.20.4.12 — "The SWOT Tier-1 + hygiene batch"** — 12 fixes in one release: post-completion shutdown/sleep now verifies the OS command (loud WARNING + platform hint instead of failing silently overnight), scholar gap-fill gets a truncation continuation retry, the "model not pulled" 404 is handled one way tree-wide (canonical `ollama pull` hint), `/no_think` is Qwen-gated, diagnostic logs rotate at 1 MiB, `Settings.batch()` coalesces disk writes, the live quality dashboard reads structured JSON (regex fallback kept), HF offline env flags are scoped to the load, the qwythos magic is single-sourced (fixing two genuine 404-default bugs — lowercase + non-empero tags), `engine_cache.clear_cache()` became the graceful app-shutdown hook, output generators write atomically (disk-full can't leave partial files), and book-derived jargon left the comments. See V18.20.4.11 below for the rebrand story. Full evidence in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 
@@ -379,10 +379,13 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 4. ✅ ~~Raise buried logs~~ — **fixed in V18.20.4.11** (4 sites now WARNING)
 5. ✅ ~~Model-literal cleanup~~ — **fixed in V18.20.4.11** (model_taxonomy single source)
 6. ✅ ~~response_parser silent fallbacks~~ — **fixed in V18.20.4.11** (full ladder logging)
-7. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext)
-8. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
-9. 🧾 **Keyring migration bootstrap** (`_migrate_secrets`) — verify on the rig
-10. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
+7. ✅ ~~Blind post-completion shutdown/sleep~~ — **fixed in V18.20.4.12** (rc/stderr verified, loud WARNING + platform hint)
+8. ✅ ~~Scholar gap-fill parse-once/drop-tail~~ — **fixed in V18.20.4.12** (one additive continuation retry)
+9. ✅ ~~404 handled three ways~~ — **fixed in V18.20.4.12** (shared `model_errors` module, canonical pull hint)
+10. ✅ ~~Hygiene nine-pack~~ — **fixed in V18.20.4.12** (/no_think Qwen-gated, log rotation, Settings.batch(), progress JSON, HF offline scoped, qwythos de-magic + two 404-default bug fixes, engine_cache shutdown hook, atomic output writes, comment de-jargon)
+11. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext; the Elixir keychain service exists — pure wiring)
+12. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
+13. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
 
 ### ⚠️ Known Issues
 

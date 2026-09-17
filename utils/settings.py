@@ -14,9 +14,10 @@ import json
 import logging
 import shutil
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from utils.atomic_io import atomic_write_json
 from utils.settings_schema import (
@@ -95,6 +96,12 @@ class Settings:
         self._settings_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()  # V9.0.0: thread-safe settings access
         self._data: dict[str, Any] = self._load()
+        # V18.20.4.12 (W-c19): batch()-mode bookkeeping — nesting depth of
+        # batch() contexts and whether any set() write is deferred. See
+        # batch(). (batch()/set() also getattr-guard these defensively for
+        # instances built without this __init__.)
+        self._batch_depth: int = 0
+        self._batch_dirty: bool = False
 
     @staticmethod
     def _defaults() -> dict[str, Any]:
@@ -1222,7 +1229,74 @@ class Settings:
                     target[key] = {}
                 target = target[key]
             target[keys[-1]] = value
+            # V18.20.4.12 (W-c19): inside an active batch() the disk write
+            # is DEFERRED — the in-memory mutation above is already done
+            # (get()/snapshot() see the new value immediately) and ONE
+            # coalesced save() fires at the outermost batch() exit.
+            # getattr-defensive: instances built without __init__ (the
+            # object.__new__ harness pattern) must not crash here.
+            if getattr(self, "_batch_depth", 0) > 0:
+                self._batch_dirty = True
+                return True
         return self.save()
+
+    @contextmanager
+    def batch(self) -> Iterator["Settings"]:
+        """V18.20.4.12 (W-c19): defer disk writes — N set() calls coalesce
+        into ONE save. Nested-safe (depth counter). Default set() behavior
+        OUTSIDE a batch is UNCHANGED (immediate save). On exception the
+        batch still saves what was set (matches set()'s per-write
+        persistence semantics — partial progress survives), then re-raises.
+
+        Each set() inside the block mutates in-memory only; the outermost
+        exit performs ONE save() for the whole block, so writing N settings
+        costs ONE atomic-write + fsync instead of N (save() rewrites the
+        whole settings.json, so a loop of bare set() calls was N full-file
+        writes). set() returns True inside a batch (the write is accepted;
+        the eventual exit-save result is the batch's, and save() itself
+        stays fail-soft/never-raises).
+
+        Thread-safety: depth/dirty bookkeeping reuses the existing
+        ``self._lock`` (RLock) — coherent with set()/get()/save(). A set()
+        from another thread while a batch is active on this instance is
+        ALSO deferred and flushed by the batch exit.
+
+        Usage::
+
+            with settings.batch():
+                settings.set("a.b", 1)
+                settings.set("c.d", 2)   # → exactly ONE save() at exit
+        """
+        # getattr-defensive: instances built without __init__ (the
+        # object.__new__ harness pattern) must not crash here.
+        with self._lock:
+            self._batch_depth = getattr(self, "_batch_depth", 0) + 1
+            if self._batch_depth == 1:
+                # Fresh outermost batch — clear any stale dirty flag so an
+                # empty batch performs no save. (A stale flag can only come
+                # from a previous exit interrupted mid-reset, i.e. never in
+                # practice — this is belt-and-braces, like set()'s guard.)
+                self._batch_dirty = False
+        try:
+            yield self
+        finally:
+            # try/finally shape: BOTH the normal path and an in-block
+            # exception run this block — the dirty flag is flushed (save)
+            # and the exception then propagates naturally out of the
+            # with-statement. save() never raises (fail-soft), so it can't
+            # mask the in-block exception.
+            flush = False
+            with self._lock:
+                self._batch_depth = max(
+                    0, getattr(self, "_batch_depth", 1) - 1
+                )
+                if self._batch_depth == 0 and getattr(
+                    self, "_batch_dirty", False
+                ):
+                    self._batch_dirty = False
+                    flush = True
+            if flush:
+                self.save()  # outside the lock — same shape as set()
 
     def snapshot(self) -> dict[str, Any]:
         """V18.20.4.3 (P2 / W-c3): locked deep-copy of the settings store.

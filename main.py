@@ -59,7 +59,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 # faulthandler + threading.excepthook → native-crash / thread-death evidence in
 # ~/.elixir/ (V18.20.3 died with zero trace). Best-effort, never raises.
 try:
-    from core.system.crash_visibility import arm_crash_visibility
+    from core.system.crash_visibility import arm_crash_visibility, rotate_log_if_large
     arm_crash_visibility()
 except Exception as _e:
     print(f"[V18.20.3.3] crash-visibility arm failed: {type(_e).__name__}: {_e}")
@@ -94,6 +94,7 @@ try:
     import datetime as _dt
     _probe_log = user_data_dir() / "gpu_probe.log"  # earliest disk touch → runs the rebrand migration
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
+    rotate_log_if_large(_probe_log)  # V18.20.4.12 (W-c14): rotate before append — never raises
     with open(_probe_log, "a", encoding="utf-8") as _f:
         _f.write(f"\n{'='*60}\n")
         _f.write(f"{_dt.datetime.now().isoformat()}\n")
@@ -108,8 +109,7 @@ try:
 except Exception:
     pass
 
-# Expose the probe for the UI to read.
-def get_startup_cuda_probe() -> dict:
+def get_startup_cuda_probe() -> dict:  # Expose the probe for the UI to read.
     """Return the early torch CUDA probe result (run before PySide6)."""
     return dict(_TORCH_CUDA_PROBE)
 

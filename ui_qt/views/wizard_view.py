@@ -51,6 +51,11 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+# V18.20.4.12 (W-b15): JSON-first structured progress parse — the Summarizer
+# emits an ``ELIXIR_PROGRESS {...}`` line per completed chapter
+# (core/common/progress_events.py); the regex fallbacks in _on_log stay
+# for older logs.
+from core.common.progress_events import parse_progress_line
 from core.models import ConversionResult
 from ui_qt.controller_bridge import QtControllerBridge
 from ui_qt.theme import theme_manager
@@ -919,12 +924,36 @@ class WizardView(QDialog):
     def _on_log(self, msg: str, level: str = "INFO") -> None:
         self.step9.log_viewer.append(msg, level)
 
+        # V18.20.4.12 (W-b15): JSON-FIRST structured progress — the
+        # Summarizer emits an ``ELIXIR_PROGRESS {...}`` line immediately
+        # before the human "📊 Progress:" line (see
+        # core/common/progress_events.py). Parsing the structured line
+        # removes the wording-coupling of the regex fallbacks below, which
+        # now run ONLY for messages that are NOT structured progress lines
+        # (back-compat with older logs). An unusable payload (missing /
+        # non-int keys) degrades to the regex paths too.
+        _pd = parse_progress_line(msg)
+        if _pd is not None:
+            try:
+                done, total, bullets = int(_pd["done"]), int(_pd["total"]), int(_pd["bullets"])
+            except (KeyError, TypeError, ValueError):
+                _pd = None
+        if _pd is not None:
+            if hasattr(self.step9, "quality_label"):
+                self.step9.quality_label.setText(
+                    f"Quality: {done}/{total} chapters done | {bullets} bullets total"
+                )
+            if hasattr(self.step9, "chapter_status_label"):
+                self.step9.chapter_status_label.setText(
+                    f"Chapters: {done}/{total} " + "✅" * min(done, 8) + "🔄"
+                )
+
         # V10.21.0: Update quality dashboard from log messages
         # (W-b14: module-level compiled regex — was ``import re`` + two
         # recompiles per log line. The JSON-first structured source lands
         # at completion via _update_quality_dashboard_from_report, W-b15;
         # this log-string parse stays as the LIVE-progress fallback.)
-        if hasattr(self.step9, "quality_label"):
+        if _pd is None and hasattr(self.step9, "quality_label"):
             m = _PROGRESS_RE.search(msg)
             if m:
                 done, total, bullets = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -933,7 +962,7 @@ class WizardView(QDialog):
                 )
 
         # V10.21.0: Update chapter status indicator
-        if hasattr(self.step9, "chapter_status_label"):
+        if _pd is None and hasattr(self.step9, "chapter_status_label"):
             if "Chapter" in msg and "complete" in msg:
                 m = _CHAPTER_RE.search(msg)
                 if m:

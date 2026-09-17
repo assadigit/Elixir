@@ -117,6 +117,15 @@ from typing import Any, TypeVar
 
 import requests as _requests
 
+# V18.20.4.12 (T-c7): ModelNotFound404Error moved to the shared
+# core/llm/model_errors.py module (detection + canonical message unified
+# tree-wide). Re-exported here so every existing importer
+# (async_provider, ollama_provider, tests) keeps working with ZERO
+# changes — ``from core.llm.retry import ModelNotFound404Error`` still
+# resolves, and ``classify_ollama_exception`` below isinstance-checks the
+# same shared class.
+from core.llm.model_errors import ModelNotFound404Error  # noqa: F401 — re-export (in __all__)
+
 logger = logging.getLogger(__name__)
 
 # V18.2.21 (Phase 1.4): tenacity is an optional dependency. The module-level
@@ -151,24 +160,11 @@ __all__ = [
 
 # ── Exception classes ───────────────────────────────────────────────────────
 
-
-class ModelNotFound404Error(RuntimeError):
-    """Ollama returned HTTP 404 (model not pulled). Non-retryable.
-
-    V18.2.21: pulled out of the inline ``if status == 404: return None``
-    branch in ``OllamaProvider.complete`` so the ``@retry_llm_call`` decorator
-    can classify it uniformly via ``classify_ollama_exception``. Pulling a
-    model is a user action (``ollama pull <model>``), not a transient error.
-    """
-
-    def __init__(self, model: str, detail: str = "") -> None:
-        self.model = model
-        self.detail = detail
-        msg = f"Model '{model}' not found in Ollama (HTTP 404)"
-        if detail:
-            msg += f": {detail}"
-        msg += f" — run `ollama pull {model}`"
-        super().__init__(msg)
+# NOTE (V18.20.4.12 / T-c7): ``ModelNotFound404Error`` is now defined in
+# ``core/llm/model_errors.py`` (see the import + comment above). It was
+# defined here from V18.2.21 until V18.20.4.12; the move is invisible to
+# importers because this module re-exports the shared class and keeps it
+# in ``__all__``.
 
 
 class OllamaTimeoutError(RuntimeError):
