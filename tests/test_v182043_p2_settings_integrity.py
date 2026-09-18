@@ -26,7 +26,9 @@ run's output):
 - **W-c7:** the ``adaptive_toc.py`` LLM call was the only ``requests``
   call in the tree with NO timeout (half-open connection → TOC stage
   hung forever, no cancel path) + a hardcoded model not installed on
-  the rig. Now: timeout + model + URL from Settings.
+  the rig. Now: timeout + model + URL from Settings. (The W-c7 test
+  section was removed in V0.08 / P2 together with the dead
+  ``adaptive_toc.py`` module.)
 - **W-c1:** ``config/models.json`` (V10.15.0 "configurable registry")
   had ZERO readers and disagreed with the live defaults; the request-
   builder fallbacks (``qwen3-vl:8b`` / ``gemma3:12b``) named models the
@@ -80,7 +82,6 @@ _CONTROLLER = _project_root / "controller.py"
 _SETTINGS = _project_root / "utils" / "settings.py"
 _DIALOG = _project_root / "ui_qt" / "settings" / "settings_dialog.py"
 _SECTIONS = _project_root / "ui_qt" / "settings" / "sections.py"
-_ADAPTIVE_TOC = _project_root / "core" / "pdf" / "adaptive_toc.py"
 _TOC_EXTRACTOR = _project_root / "core" / "pdf" / "toc_extractor.py"
 _NEW_OUTPUTS = _project_root / "core" / "outputs" / "new_outputs.py"
 _VISION_FIG = _project_root / "core" / "pdf" / "vision_figure_extractor.py"
@@ -322,22 +323,16 @@ class TestWb7FastModelDoubleWrite:
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c7 — adaptive_toc timeout + model from settings
+#
+# V0.08 (P2 dead-code removal): the TestWc7AdaptiveToc class (4 tests)
+# and its helpers were deleted together with core/pdf/adaptive_toc.py
+# (production-dead module). _FakeSettings is KEPT below — it is shared
+# by the W-c9 URL-unification tests.
 # ═══════════════════════════════════════════════════════════════════════════
 
-class _FakeResp:
-    status_code = 200
-
-    def json(self):
-        return {"response": "[]"}  # no TOC entries — fine, we assert the CALL
-
-
-class _FakePromptManager:
-    def render_template(self, *a, **k):
-        return "PROMPT-BODY"
-
-
 class _FakeSettings:
-    """Duck-typed Settings for the adaptive_toc resolution block."""
+    """Duck-typed Settings (originally built for the adaptive_toc
+    resolution block; now shared by the W-c9 URL-unification tests)."""
 
     store: dict = {}
 
@@ -349,106 +344,6 @@ class _FakeSettings:
 
     def get_ollama_url(self):
         return "http://ollama-rig:11500"
-
-
-def _toc_extractor_instance():
-    from core.pdf.adaptive_toc import AdaptiveTOCExtractor
-
-    ex = object.__new__(AdaptiveTOCExtractor)  # skip PDF/markdown loading
-    ex.md_lines = [f"line {i}" for i in range(50)]
-    return ex
-
-
-def _patch_pooled_post(monkeypatch, fake_post):
-    """V18.20.4.11 (P3 / O-c5): adaptive_toc now calls the pooled session
-    (session_for_url(url).post(...)) instead of bare requests.post — same
-    interception surface, same (url, json, timeout) recording."""
-    import core.pdf.adaptive_toc as at_mod
-
-    class _Sess:
-        def post(self, url, json=None, timeout=None):
-            return fake_post(url, json=json, timeout=timeout)
-
-    monkeypatch.setattr(at_mod, "session_for_url", lambda url: _Sess())
-
-
-class TestWc7AdaptiveToc:
-    def test_call_gets_timeout_model_url_from_settings(self, monkeypatch):
-        import core.summarisation.prompt_manager as pm_mod
-
-        monkeypatch.setattr(pm_mod, "PromptManager", _FakePromptManager)
-        _FakeSettings.store = {
-            "summarisation.fast_model": "fast-model-x:latest",
-            "summarisation.model": "main-model:latest",
-            "ocr.timeout": 90,
-        }
-        monkeypatch.setattr("utils.settings.Settings", _FakeSettings)
-
-        calls: dict = {}
-
-        def _fake_post(url, json=None, timeout=None):
-            calls.update(url=url, json=json, timeout=timeout)
-            return _FakeResp()
-
-        _patch_pooled_post(monkeypatch, _fake_post)
-
-        ex = _toc_extractor_instance()
-        ex._extract_with_llm()
-        assert calls["url"] == "http://ollama-rig:11500/api/generate"
-        assert calls["json"]["model"] == "fast-model-x:latest"
-        assert calls["timeout"] == 90, (
-            "the adaptive-TOC LLM call must be bounded by ocr.timeout (W-c7 — "
-            "it was the only requests call in the tree with NO timeout)"
-        )
-
-    def test_fast_model_falls_back_to_summarisation_model(self, monkeypatch):
-        import core.summarisation.prompt_manager as pm_mod
-
-        monkeypatch.setattr(pm_mod, "PromptManager", _FakePromptManager)
-        _FakeSettings.store = {"summarisation.model": "main-model:latest"}
-        monkeypatch.setattr("utils.settings.Settings", _FakeSettings)
-
-        calls: dict = {}
-
-        def _fake_post(url, json=None, timeout=None):
-            calls.update(url=url, json=json, timeout=timeout)
-            return _FakeResp()
-
-        _patch_pooled_post(monkeypatch, _fake_post)
-
-        ex = _toc_extractor_instance()
-        ex._extract_with_llm()
-        assert calls["json"]["model"] == "main-model:latest"
-
-    def test_settings_failure_falls_back_fail_soft(self, monkeypatch):
-        import core.summarisation.prompt_manager as pm_mod
-
-        monkeypatch.setattr(pm_mod, "PromptManager", _FakePromptManager)
-
-        class _BrokenSettings:
-            def __init__(self):
-                raise RuntimeError("settings unavailable")
-
-        monkeypatch.setattr("utils.settings.Settings", _BrokenSettings)
-
-        calls: dict = {}
-
-        def _fake_post(url, json=None, timeout=None):
-            calls.update(url=url, json=json, timeout=timeout)
-            return _FakeResp()
-
-        _patch_pooled_post(monkeypatch, _fake_post)
-
-        ex = _toc_extractor_instance()
-        ex._extract_with_llm()  # must not raise
-        assert calls["url"] == "http://localhost:11434/api/generate"
-        assert calls["json"]["model"] == "llama3.1:8b"
-        assert calls["timeout"] == 120
-
-    def test_post_call_has_timeout_kwarg(self):
-        src = _strip_comments(_src(_ADAPTIVE_TOC))
-        assert "timeout=_timeout" in src
-        assert '"http://localhost:11434/api/generate"' not in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -87,8 +87,10 @@ class TestRebrandSweepComplete:
         DEPENDENCY — imports and requirements entries keep its name."""
         reqs = (_REPO / "requirements.txt").read_text(encoding="utf-8")
         assert "markitdown" in reqs
-        at = (_REPO / "core/pdf/adaptive_toc.py").read_text(encoding="utf-8")
-        assert "from markitdown import MarkItDown" in at
+        # (V0.08 / P2: the module-level markitdown import in
+        # core/pdf/adaptive_toc.py was removed with that dead module; the
+        # live lazy import sites are core/ocr/service.py and
+        # core/pdf/toc_extractor.py.)
 
     def test_runtime_identity_is_elixir(self):
         app = (_REPO / "ui_qt/app.py").read_text(encoding="utf-8")

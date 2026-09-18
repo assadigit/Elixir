@@ -24,7 +24,9 @@ effects, every external call site monkeypatched):
   - **O-a8 / W-a9** — ``max_tokens`` is part of the response-cache key;
     same text + different max_tokens can no longer collide.
   - **O-c3** — adaptive-TOC LLM result cache (per-process, FIFO-capped,
-    fail-soft, entry copies).
+    fail-soft, entry copies). REMOVED in V0.08 (P2): the adaptive_toc
+    module was dead code — see the tombstone note at the bottom of this
+    file.
 
 Run: pytest tests/test_v182048_p6_perf_polish.py -v
 """
@@ -32,7 +34,6 @@ from __future__ import annotations
 
 import ast
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -41,20 +42,11 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-# Stub the optional heavy deps exactly like tests/test_v182043_p2_settings_integrity.py
-# (markitdown is not installed in this sandbox; the stub keeps the eager
-# core.pdf.adaptive_toc import loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = None
-    sys.modules["markitdown"] = _md
-
 # ── Source paths ────────────────────────────────────────────────────────────
 
 _DA = _project_root / "core" / "preprocessing" / "deterministic_analyzer.py"
 _SK = _project_root / "core" / "summarisation" / "simplified_keypoints.py"
 _RC = _project_root / "core" / "llm" / "response_cache.py"
-_AT = _project_root / "core" / "pdf" / "adaptive_toc.py"
 _SW = _project_root / "core" / "summarisation" / "structural_stopwords.py"
 _TPI = _project_root / "core" / "summarisation" / "text_preprocessor_impl.py"
 _SUM = _project_root / "core" / "summarisation" / "summarizer.py"
@@ -652,225 +644,9 @@ class TestOa8CacheKey:
 
 # ═══════════════════════════════════════════════════════════════════════════
 # O-c3 — adaptive-TOC LLM result cache
+#
+# V0.08 (P2 dead-code removal): the TestOc3TocLlmCache class (8 tests) was
+# deleted together with core/pdf/adaptive_toc.py — the module was
+# production-dead (AdaptiveTOCExtractor had zero production callers; the
+# live TOC pipeline uses toc_extractor.py + core.models TOCEntry/TOCResult).
 # ═══════════════════════════════════════════════════════════════════════════
-
-_TOC_JSON = {
-    "response": (
-        '[{"title": "Chapter One", "page": 1}, {"title": "Chapter Two", "page": 5},'
-        ' {"title": "Chapter Three", "page": 9}, {"title": "Chapter Four", "page": 13},'
-        ' {"title": "Chapter Five", "page": 17}]'
-    )
-}
-
-
-class TestOc3TocLlmCache:
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        from core.pdf.adaptive_toc import clear_toc_llm_cache
-
-        clear_toc_llm_cache()
-        yield
-        clear_toc_llm_cache()
-
-    def test_source_pins(self):
-        src = _strip_comments(_src(_AT))
-        assert "_TOC_LLM_RESULT_CACHE" in src
-        assert "def _toc_llm_cache_key(" in src
-        assert "def _toc_llm_cache_get(" in src
-        assert "def _toc_llm_cache_put(" in src
-        assert "def clear_toc_llm_cache() -> int:" in src
-        assert "_LLM_WINDOW_LINES = 2000" in src
-        assert "front = self.md_lines[:_LLM_WINDOW_LINES]" in src
-        # the LLM call is still bounded (W-c7 pin re-asserted)
-        assert "timeout=_timeout" in src
-
-    class _FakePM:
-        def render_template(self, *a, **k):
-            return "PROMPT-BODY"
-
-    class _FakeSettings:
-        store = {"summarisation.fast_model": "fast-m", "ocr.timeout": 90}
-
-        def get(self, p, d=None):
-            return self.store.get(p, d)
-
-        def get_ollama_url(self):
-            return "http://ollama-rig:11500"
-
-    class _RespOK:
-        status_code = 200
-
-        def json(self):
-            return _TOC_JSON
-
-    class _RespFail:
-        status_code = 500
-
-    class _FakeSession:
-        """V18.20.4.11 (P3 / O-c5): stands in for the pooled session returned
-        by session_for_url — same .post(url, json=, timeout=) surface the
-        runtime transport now uses (was: bare requests.post)."""
-
-        def __init__(self, post_fn):
-            self._post_fn = post_fn
-
-        def post(self, url, json=None, timeout=None):
-            return self._post_fn(url, json=json, timeout=timeout)
-
-    @staticmethod
-    def _extractor(pdf, md, lines):
-        from core.pdf.adaptive_toc import AdaptiveTOCExtractor
-
-        ex = AdaptiveTOCExtractor.__new__(AdaptiveTOCExtractor)
-        ex.pdf_path = pdf
-        ex.md_path = md
-        ex.md_lines = lines
-        return ex
-
-    @pytest.fixture()
-    def toc_env(self, tmp_path, monkeypatch):
-        import core.pdf.adaptive_toc as at_mod
-        import core.summarisation.prompt_manager as pm_mod
-        import utils.settings as us
-
-        pdf = tmp_path / "book.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        md = tmp_path / "book.md"
-        md.write_text("# C1\n\n# C2\n", encoding="utf-8")
-        posts = []
-
-        def _fake_post(url, json=None, timeout=None):
-            posts.append((url, json, timeout))
-            return TestOc3TocLlmCache._RespOK()
-
-        # V18.20.4.11 (P3 / O-c5): adaptive_toc now calls the pooled session
-        # (session_for_url(url).post(...)) instead of bare requests.post —
-        # same interception, same recorded (url, json, timeout) tuples.
-        monkeypatch.setattr(
-            at_mod, "session_for_url",
-            lambda url: TestOc3TocLlmCache._FakeSession(_fake_post),
-        )
-        monkeypatch.setattr(pm_mod, "PromptManager", self._FakePM)
-        monkeypatch.setattr(us, "Settings", self._FakeSettings)
-        lines = md.read_text(encoding="utf-8").splitlines()
-        yield pdf, md, lines, posts
-
-    def test_second_call_hits_cache_no_second_llm_call(self, toc_env):
-        from core.pdf.adaptive_toc import AdaptiveTOCExtractor  # noqa: F401
-
-        pdf, md, lines, posts = toc_env
-        ex = self._extractor(pdf, md, lines)
-        r1 = ex._extract_with_llm()
-        assert len(posts) == 1 and r1 and len(r1) == 5
-        assert posts[0][0] == "http://ollama-rig:11500/api/generate"
-        r2 = ex._extract_with_llm()
-        assert len(posts) == 1, "unchanged input must NOT re-extract (O-c3)"
-        assert [e.title for e in r2] == [e.title for e in r1]
-
-    def test_cached_entries_are_copies(self, toc_env):
-        pdf, md, lines, posts = toc_env
-        ex = self._extractor(pdf, md, lines)
-        r1 = ex._extract_with_llm()
-        r2 = ex._extract_with_llm()
-        assert r1[0] is not r2[0]
-        # caller-side mutation (locate_headings does this) must not poison
-        r1[0].title = "MUTATED"
-        r1[0].confidence = -1.0
-        r1[0].page = None
-        r3 = ex._extract_with_llm()
-        assert r3[0].title == "Chapter One"
-        assert r3[0].confidence == 0.9 and r3[0].page == 1
-        assert len(posts) == 1
-
-    def test_model_change_misses(self, toc_env, monkeypatch):
-        pdf, md, lines, posts = toc_env
-        ex = self._extractor(pdf, md, lines)
-        assert ex._extract_with_llm()
-        assert len(posts) == 1
-        self._FakeSettings.store = {
-            "summarisation.fast_model": "OTHER-MODEL", "ocr.timeout": 90,
-        }
-        ex2 = self._extractor(pdf, md, lines)
-        assert ex2._extract_with_llm()
-        assert len(posts) == 2, "a different model must re-extract"
-
-    def test_input_mtime_change_misses(self, toc_env):
-        import time as _t
-
-        pdf, md, lines, posts = toc_env
-        ex = self._extractor(pdf, md, lines)
-        assert ex._extract_with_llm()
-        assert len(posts) == 1
-        _t.sleep(0.01)  # ensure a distinct mtime_ns
-        md.write_text("# C1 changed\n\n# C2\n", encoding="utf-8")
-        ex2 = self._extractor(
-            pdf, md, md.read_text(encoding="utf-8").splitlines(),
-        )
-        assert ex2._extract_with_llm()
-        assert len(posts) == 2, "a changed input file must re-extract"
-
-    def test_failures_are_not_cached(self, toc_env, monkeypatch):
-        import core.pdf.adaptive_toc as at_mod
-
-        pdf, md, lines, posts = toc_env
-        posts.clear()
-
-        def _failing_post(url, json=None, timeout=None):
-            posts.append(url)
-            return self._RespFail()
-
-        monkeypatch.setattr(
-            at_mod, "session_for_url",
-            lambda url: TestOc3TocLlmCache._FakeSession(_failing_post),
-        )
-        ex = self._extractor(pdf, md, lines)
-        assert ex._extract_with_llm() is None
-        assert ex._extract_with_llm() is None
-        assert len(posts) == 2, "a transient failure must retry, not be remembered"
-
-    def test_clear_hook_forces_reextraction(self, toc_env):
-        from core.pdf.adaptive_toc import clear_toc_llm_cache
-
-        pdf, md, lines, posts = toc_env
-        ex = self._extractor(pdf, md, lines)
-        assert ex._extract_with_llm()
-        assert ex._extract_with_llm()
-        assert len(posts) == 1
-        assert clear_toc_llm_cache() == 1  # one cached entry for this input
-        assert ex._extract_with_llm()
-        assert len(posts) == 2, "clear_toc_llm_cache() must force re-extraction"
-
-    def test_instance_without_pdf_path_bypasses_cache(self, monkeypatch):
-        """P2-test compatibility: object.__new__ instances with only md_lines
-        must bypass the cache (no pdf_path attribute) and never crash."""
-        import core.pdf.adaptive_toc as at_mod
-        import core.summarisation.prompt_manager as pm_mod
-        import utils.settings as us
-
-        posts = []
-
-        class _RespNoToc:
-            status_code = 200
-
-            def json(self):
-                return {"response": "[]"}  # no parseable TOC -> None
-
-        # V18.20.4.11 (P3 / O-c5): pooled-session interception (was
-        # bare requests.post).
-        monkeypatch.setattr(
-            at_mod, "session_for_url",
-            lambda url: TestOc3TocLlmCache._FakeSession(
-                lambda url, json=None, timeout=None: (
-                    posts.append(url) or _RespNoToc(),
-                ),
-            ),
-        )
-        monkeypatch.setattr(pm_mod, "PromptManager", self._FakePM)
-        monkeypatch.setattr(us, "Settings", self._FakeSettings)
-        from core.pdf.adaptive_toc import AdaptiveTOCExtractor
-
-        ex = AdaptiveTOCExtractor.__new__(AdaptiveTOCExtractor)
-        ex.md_lines = [f"line {i}" for i in range(50)]
-        assert ex._extract_with_llm() is None
-        assert ex._extract_with_llm() is None
-        assert len(posts) == 2, "no pdf_path -> no cache key -> real call each time"

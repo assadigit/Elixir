@@ -1,6 +1,5 @@
 import logging
 
-from .adaptive_toc import AdaptiveTOCExtractor, TOCEntry, TOCResult
 from .analyzer import PdfAnalyzer
 from .content_filter import ContentFilter
 from .layout_analyzer import LayoutAnalyzer
