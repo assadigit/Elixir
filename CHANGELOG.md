@@ -1,5 +1,59 @@
 # Changelog
 
+## V0.10 — The 220k window, end to end: context as data, strategy as math
+
+> **The change (P5 + P6, the context-adaptation core):** the pipeline now
+> ADAPTS to the model's context window instead of ignoring it. V0.06 could
+> resolve only 4 hardcoded, mutually-contradictory context numbers
+> (settings 32768 / factory 65536 / VRAM ladder / name caps) and answered
+> "does it fit?" four inconsistent ways (40000 / 12000 / 12000+14000 /
+> ctx−out−700). Nothing ever asked the model what it supported.
+
+**V0.09 (P5) — context window as DATA:**
+- `core/llm/registry.py`: ModelRegistry — capability from settings
+  overrides > Ollama /api/show probe > Modelfile num_ctx > static table >
+  name hints (`-220k`) > backend defaults; local backends capped at
+  220,144; API backends uncapped (1M-class for e.g. "deepseek v4 flash");
+  max_output rules per user spec (Ollama 8192; llama.cpp from its 65k
+  config). The rig's Ternary-Bonsai-2-27B* resolves to 220,000 on
+  llama.cpp.
+- `core/llm/context_budget.py`: tokenizer-aware fit math (tiktoken
+  cl100k_base) replacing every chars//4 heuristic (Ollama adaptive
+  context, llama.cpp fit) — the old heuristic over-counted repetitive
+  text ~2x and under-counted CJK.
+- Wiring: byte-identical at today's defaults (settings value wins);
+  the registry can only RAISE the computed window; ctx_clamp/IQ2_S caps
+  remain the post-cap layer.
+
+**V0.10 (P6) — the strategy engine:**
+- `core/summarisation/strategy.py`: `decide_strategy` — a PURE function
+  of (src_tokens, window, output_target). At window ≤ 32768 it reproduces
+  the legacy thresholds EXACTLY (map-reduce > 40000; B4 > 12000; chunked
+  > 12000 ∧ out < 14000; chunk 4000; overlap 0.10) — byte-identical
+  behavior for every existing model. Above 32768 the adaptive math
+  activates: single-pass while the source fits (window − output −
+  1212), map-reduce beyond with chunks scaling as window/8 (220k →
+  27,500-token chunks), B4 and chunked-output disabled (their
+  truncation-avoidance purpose vanishes when the source fits).
+- Wired at all 4 dispatch sites with one INFO line per chapter stating
+  the chosen strategy and the numbers (rig-visible evidence).
+
+**Effect on the 220k rig (Ternary-Bonsai 2 27B via llama.cpp):**
+chapters up to ~210k tokens go SINGLE-PASS (previously > 40k forced
+map-reduce at 4k chunks); a 60k chapter: 1 primary call instead of a
+15-chunk map-reduce; b4 gap-filling for 12-40k chapters eliminated;
+truncation-driven multi-round gap-fill loops disappear. Fewer calls,
+faster end-to-end, with every anti-hallucination layer retained.
+
+**Also in this range: V0.07 (output-richness restoration — the three
+user-reported regressions) and V0.08 (1,560 dead LOC removed).**
+
+Suite: 3658 passed / 24 skipped / 1 xpassed / 0 failed (V0.06 baseline
+was 3526 passed + 2 failed + 2 deselected; every phase since has kept
+the suite green with zero deselects).
+
+# Changelog
+
 ## V0.08 — P2 dead code removal (~1,560 LOC) + re-export hygiene
 
 > **The change (internal, no behavior):** the P2 audit pass deleted verified
