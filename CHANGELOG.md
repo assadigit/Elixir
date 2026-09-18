@@ -1,5 +1,42 @@
 # Changelog
 
+## V0.08 — P2 dead code removal (~1,560 LOC) + re-export hygiene
+
+> **The change (internal, no behavior):** the P2 audit pass deleted verified
+> production-dead code and made three re-export facades explicit. The test
+> suite shrank by exactly the 21 orphaned tests of the deleted modules
+> (3,543 → 3,522 passing, 0 failed, no live test lost).
+
+**Dead modules removed (6, zero production import sites, repo-grep verified):**
+`core/ocr/tesseract_ocr.py` (127 LOC — OCR service uses inline pytesseract),
+`core/pipeline/book_queue.py` (99), `core/pipeline/streaming_writes.py` (130),
+`core/pipeline/wizard_logic.py` (109, test-only),
+`core/validation/advanced_validator.py` (260), and
+`core/pdf/adaptive_toc.py` (590 — zero production callers; the live TOC
+pipeline uses `toc_extractor.py` + `core.models` TOCEntry/TOCResult; also
+removes the only module-level markitdown import in `core/`).
+
+**Dead prompt templates removed (4, zero render sites):**
+`two_pass_extract`, `two_pass_synthesize`, `f3_simplify`, `f3_simplify_retry`
+(the two-pass pipeline no longer exists; PromptManager sync is rglob-based,
+so no code change was needed).
+
+**Dead code blocks removed (4):** the V18.6-era `if False:`
+academic-rigor gap-fill in `summarizer.py` (superseded by the 3-Tier
+coverage guarantee); `_extract_key_quotes` (always returned `[]` since
+V16.0.2) and its zero-effect plumbing through
+`map_reduce.section_map_reduce`; the `_build_thorough_followup` and
+`_build_missing_keywords_reprompt` delegates (zero live callers; the
+underlying `prompt_assembly` functions stay — pinned exports);
+`multi_sample.py`'s `_skip_b3_dedup = True` dead branch (skipped since
+V13.40.3).
+
+**Hygiene:** star-import re-export facades made explicit
+(`text_preprocessor`, `postchecks`, `content_judge` — ruff F405 count on
+those files: 72 → 0; stdlib leakage from the impl modules no longer
+re-exported); `prompt_manager.py`'s two `print()` re-sync notices now use
+the module logger.
+
 ## V0.07 — The output-richness restoration: V18's density back, without V18's padding
 
 > **The change (user-reported regressions, MarkItDown V18 → Elixir V0.06):**
