@@ -39,12 +39,23 @@ if str(_project_root) not in sys.path:
 
 # ── Stub tiktoken (same as test_summarizer.py) ──────────────────────────────
 
+# P0 (test-infra): NEVER displace an already-imported module. conftest.py
+# pins the real tiktoken + utils.token_counter before any test module is
+# imported; the old unconditional swaps poisoned every xdist worker that
+# merely COLLECTED this file (un-stub fixtures only fire when this file's
+# own tests run in that worker), and the swap was split-brained (package
+# attribute vs sys.modules resolution — see conftest.py's pin comment).
+_STUBBED: list[str] = []
+
 
 def _stub_module(name: str, **attrs):
+    if name in sys.modules:
+        return sys.modules[name]  # real/pinned module wins — no swap, no leak
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
     sys.modules[name] = mod
+    _STUBBED.append(name)
     return mod
 
 
@@ -64,29 +75,27 @@ _stub_module("utils.token_counter", count_tokens=lambda t: max(1, len(str(t).spl
 @pytest.fixture(scope="module", autouse=True)
 def _unstub_modules_after_tests():
     yield
-    for _name in (
-        "tiktoken",
-        "tiktoken_ext",
-        "tiktoken_ext.openai_public",
-        "utils.token_counter",
-    ):
+    # P0: only remove what THIS module actually installed (see _STUBBED).
+    # Under pytest (conftest pins the real modules) this is always empty.
+    for _name in _STUBBED:
         sys.modules.pop(_name, None)
-    try:
-        import tiktoken  # noqa: F401  — re-import the real package
-
-        import utils.token_counter  # noqa: F401  — re-import the real module
-    except Exception:  # pragma: no cover - defensive
-        pass
+    _STUBBED.clear()
 
 # ── Load quarantine + summarizer modules ────────────────────────────────────
 
-_q_spec = importlib.util.spec_from_file_location(
-    "core.summarisation.quarantine",
-    _project_root / "core" / "summarisation" / "quarantine.py",
-)
-_q_mod = importlib.util.module_from_spec(_q_spec)
-sys.modules[_q_spec.name] = _q_mod
-_q_spec.loader.exec_module(_q_mod)
+# P0 (test-infra): if the real module is already imported, use it as-is —
+# re-execing a fresh instance into sys.modules created a second module
+# object (identity split: isinstance/class-attribute checks against the
+# other instance silently break in other tests).
+_q_mod = sys.modules.get("core.summarisation.quarantine")
+if _q_mod is None:
+    _q_spec = importlib.util.spec_from_file_location(
+        "core.summarisation.quarantine",
+        _project_root / "core" / "summarisation" / "quarantine.py",
+    )
+    _q_mod = importlib.util.module_from_spec(_q_spec)
+    sys.modules[_q_spec.name] = _q_mod
+    _q_spec.loader.exec_module(_q_mod)
 QuarantineLog = _q_mod.QuarantineLog
 
 _SUMMARIZER_OK = False
@@ -106,13 +115,20 @@ try:
     from core.system.ollama_supervisor import OllamaSupervisor  # noqa: F401
     from utils.network import safe_ollama_request  # noqa: F401
     from utils.settings import Settings  # noqa: F401
-    _spec = importlib.util.spec_from_file_location(
-        "core.summarisation.summarizer",
-        _project_root / "core" / "summarisation" / "summarizer.py",
-    )
-    _SUMMARIZER_MOD = importlib.util.module_from_spec(_spec)
-    sys.modules[_spec.name] = _SUMMARIZER_MOD
-    _spec.loader.exec_module(_SUMMARIZER_MOD)
+    # P0 (test-infra): reuse the already-imported summarizer when present —
+    # re-execing a fresh instance under the same sys.modules name created a
+    # second class identity (split-brain for every other test file).
+    _existing = sys.modules.get("core.summarisation.summarizer")
+    if _existing is not None:
+        _SUMMARIZER_MOD = _existing
+    else:
+        _spec = importlib.util.spec_from_file_location(
+            "core.summarisation.summarizer",
+            _project_root / "core" / "summarisation" / "summarizer.py",
+        )
+        _SUMMARIZER_MOD = importlib.util.module_from_spec(_spec)
+        sys.modules[_spec.name] = _SUMMARIZER_MOD
+        _spec.loader.exec_module(_SUMMARIZER_MOD)
     _SUMMARIZER_OK = True
 except Exception as _e:
     _SUMMARIZER_IMPORT_ERROR = _e

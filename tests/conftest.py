@@ -44,6 +44,31 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# ── P0 (test-infra): pin real PROJECT modules against import-time swaps ──────
+# Root cause of the flaky xdist ``test_primary_call`` chunking failures:
+# test files (test_bullet_pipeline_golden.py, test_summarizer.py) used to
+# replace ``sys.modules["utils.token_counter"]`` (and tiktoken) UNCONDITION-
+# ALLY at module level. Under xdist every worker imports ALL test modules at
+# collection, but their un-stub fixtures only fire when that file's own tests
+# run in that worker — so a worker that merely collected the stubbing file
+# kept the stub for the whole session. Worse, the swap is SPLIT-BRAINED:
+# ``import utils.token_counter as x`` binds the REAL module via the package
+# attribute (``getattr(utils, "token_counter")``), while call-time
+# ``from utils.token_counter import count_tokens`` resolves the STUB from
+# sys.modules — so monkeypatches landed on one module while production code
+# read the other (token counts silently became word counts → chunking,
+# map-reduce and budget gates mis-evaluated, order-dependently).
+# Fix: conftest is imported by pytest BEFORE any test module, so pinning the
+# real project module here makes every ``if name not in sys.modules``-guarded
+# stub in test files a guaranteed no-op in every pytest invocation.
+if "utils.token_counter" not in sys.modules:
+    try:
+        import utils.token_counter as _tc_pin  # noqa: F401
+
+        _tc_pin.count_tokens("warmup")  # force lazy _ENCODER init NOW
+    except Exception:  # pragma: no cover - defensive
+        pass
+
 
 @pytest.fixture
 def tmp_output_dir(tmp_path: Path) -> Path:

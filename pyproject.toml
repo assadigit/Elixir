@@ -77,7 +77,9 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.10"
+# P0 fix: was "3.10" while runtime/AST is 3.12 — the 3.10 target crashes
+# mypy on numpy>=2.2 stubs (make typecheck broken). Align with requires-python.
+python_version = "3.12"
 strict = false
 warn_return_any = true
 warn_unused_configs = true

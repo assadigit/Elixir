@@ -404,11 +404,15 @@ class TestWb3BridgeBehavior:
         from ui_qt.controller_bridge import QtControllerBridge
         bridge = QtControllerBridge()
         calls: list[str] = []
-        bridge.connect_log(lambda msg, level: calls.append(msg))
-        bridge.connect_log(lambda msg, level: calls.append(msg))  # re-run
+
+        def slot(msg: str, level: str) -> None:
+            calls.append(msg)
+
+        bridge.connect_log(slot)
+        bridge.connect_log(slot)  # re-run with the SAME slot (W-b3 "Convert again")
         bridge.emit_log("one", "INFO")
         assert calls == ["one"], (
-            "a repeated connect_* must not duplicate delivery (W-b3)"
+            "a repeated connect_* of the same slot must not duplicate delivery (W-b3)"
         )
 
     def test_different_slots_both_deliver(self, app):

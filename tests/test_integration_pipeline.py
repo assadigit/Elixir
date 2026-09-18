@@ -513,6 +513,12 @@ class TestPipelineIntegration:
         from core.pipeline.conversion.output_runner import run_output_studio
 
         # Create a mock request with all outputs enabled
+        # NOTE (P0 test-hygiene fix): ALL output_* flags must be set
+        # explicitly. MagicMock auto-creates missing attributes as truthy,
+        # which silently enabled the quote-bank / agent-skill / qa / glossary
+        # / patterns / cheatsheet / epub generators; their MagicMock paths
+        # then made atomic_write_text() dump junk "MagicMock/…" files into
+        # the CWD (project root) on every full-suite run.
         mock_request = MagicMock()
         mock_request.output_briefing = True
         mock_request.output_podcast = True
@@ -524,17 +530,23 @@ class TestPipelineIntegration:
         mock_request.output_social = False
         mock_request.output_mindmap = False
         mock_request.output_evidence_map = False
+        mock_request.output_qa = False
+        mock_request.output_glossary = False
+        mock_request.output_patterns = False
+        mock_request.output_cheatsheet = False
+        mock_request.output_skill = False
+        mock_request.output_epub = False
+        mock_request.output_quote_bank = False
 
-        # Mock the output generator classes
-        mock_paths = MagicMock()
-        mock_paths.briefing_dir = integration_setup["output_dir"] / "briefing"
-        mock_paths.briefing_dir.mkdir(parents=True, exist_ok=True)
-        mock_paths.podcast_dir = integration_setup["output_dir"] / "podcast"
-        mock_paths.podcast_dir.mkdir(parents=True, exist_ok=True)
-        mock_paths.flashcards_dir = integration_setup["output_dir"] / "flashcards"
-        mock_paths.flashcards_dir.mkdir(parents=True, exist_ok=True)
-        mock_paths.podcast_script = MagicMock()
-        mock_paths.podcast_script.exists = MagicMock(return_value=True)
+        # Use a REAL OutputPaths instance (rooted in the tmp output dir) so
+        # every *_dir attribute resolves to a real, writable Path — hermetic
+        # and future-proof (new outputs can't reintroduce the junk-file bug).
+        from core.pipeline.output_paths import OutputPaths
+
+        real_paths = OutputPaths(root=integration_setup["output_dir"], stem="test_book")
+        real_paths.briefing_dir.mkdir(parents=True, exist_ok=True)
+        real_paths.podcast_dir.mkdir(parents=True, exist_ok=True)
+        real_paths.flashcards_dir.mkdir(parents=True, exist_ok=True)
 
         with patch("utils.network.safe_ollama_request", side_effect=_mock_safe_ollama_request):
             results = run_output_studio(
@@ -542,7 +554,7 @@ class TestPipelineIntegration:
                 summaries=summaries,
                 segments=[],
                 book_title="test_book",
-                paths=mock_paths,
+                paths=real_paths,
                 log=lambda msg, level: None,
                 update_status=lambda s: None,
                 judge_results=None,

@@ -45,12 +45,24 @@ if str(_project_root) not in sys.path:
 # We stub the ones that crash on import in the sandbox.
 
 
+# P0 (test-infra): NEVER displace an already-imported module. conftest.py
+# pins the real tiktoken + utils.token_counter before any test module is
+# imported; the old unconditional swaps poisoned every xdist worker that
+# merely COLLECTED this file (un-stub fixtures only fire when this file's
+# own tests run in that worker), and the swap was split-brained (package
+# attribute vs sys.modules resolution — see conftest.py's pin comment).
+_STUBBED: list[str] = []
+
+
 def _stub_module(name: str, **attrs):
-    """Create a stub module and register it in sys.modules."""
+    """Create a stub module — but NEVER displace a real/pinned module."""
+    if name in sys.modules:
+        return sys.modules[name]  # real/pinned module wins — no swap, no leak
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
     sys.modules[name] = mod
+    _STUBBED.append(name)
     return mod
 
 
@@ -94,51 +106,16 @@ _stub_module("sentence_transformers.util")
 @pytest.fixture(scope="module", autouse=True)
 def _unstub_modules_after_tests():
     yield
-    for _name in (
-        "tiktoken",
-        "tiktoken_ext",
-        "tiktoken_ext.openai_public",
-        "utils.token_counter",
-        "sentence_transformers",
-        "sentence_transformers.SentenceTransformer",
-        "sentence_transformers.util",
-    ):
+    # P0 (test-infra): only remove what THIS module actually installed (see
+    # the _STUBBED registry in _stub_module). Under pytest, conftest.py pins
+    # the real tiktoken + utils.token_counter before test modules import, so
+    # this is always empty and the real modules are never popped/re-imported.
+    # The old unconditional pop+re-import destroyed conftest's pins and
+    # created fresh module instances (identity splits) even when this file
+    # had installed nothing.
+    for _name in _STUBBED:
         sys.modules.pop(_name, None)
-    try:
-        import tiktoken  # noqa: F401  — re-import the real package
-
-        import utils.token_counter  # noqa: F401  — re-import the real module
-    except Exception:
-        # V0.02 (test-infra): no real tiktoken in this environment — the
-        # pops above just destroyed the FUNCTIONAL stub that conftest.py
-        # installed before any test ran. Without restoring it, every LATER
-        # fresh ``import tiktoken`` (``utils.token_counter`` at call time —
-        # e.g. token_estimator's function-local import) raises
-        # ModuleNotFoundError: later files' Segmenter/TokenEstimator tests
-        # then fail depending on who re-imports first (the order-fragile
-        # test_v1820410 trio / 15-test pair poisoning). Re-install the same
-        # functional stub conftest.py pins (whitespace-split encoder).
-        import importlib.util as _ilu
-        import types as _types
-        if _ilu.find_spec("tiktoken") is None:
-            _tk = _types.ModuleType("tiktoken")
-
-            class _TkEnc:
-                def encode(self, s, disallowed_special=()):  # noqa: D401
-                    return (s or "").split()
-
-                def decode(self, tokens):  # noqa: D401
-                    return " ".join(str(t) for t in tokens)
-
-            _tk.Encoding = _TkEnc
-            _tk.get_encoding = lambda *a, **k: _TkEnc()
-            _tk.encoding_for_model = lambda *a, **k: _TkEnc()
-            sys.modules["tiktoken"] = _tk
-            del _TkEnc
-        try:
-            import utils.token_counter  # noqa: F401  — now importable again
-        except Exception:  # pragma: no cover - defensive
-            pass
+    _STUBBED.clear()
 
 # Now we can import the quarantine module + the summarizer module.
 # We load summarizer.py via importlib to control the import, but it will
@@ -176,25 +153,36 @@ try:
     from utils.network import safe_ollama_request  # noqa: F401
     from utils.settings import Settings  # noqa: F401
 
-    _spec = importlib.util.spec_from_file_location(
-        "core.summarisation.summarizer",
-        _project_root / "core" / "summarisation" / "summarizer.py",
-    )
-    _SUMMARIZER_MOD = importlib.util.module_from_spec(_spec)
-    sys.modules[_spec.name] = _SUMMARIZER_MOD
-    _spec.loader.exec_module(_SUMMARIZER_MOD)
+    # P0 (test-infra): reuse the already-imported summarizer when present —
+    # re-execing a fresh instance under the same sys.modules name created a
+    # second class identity (split-brain for every other test file).
+    _existing = sys.modules.get("core.summarisation.summarizer")
+    if _existing is not None:
+        _SUMMARIZER_MOD = _existing
+    else:
+        _spec = importlib.util.spec_from_file_location(
+            "core.summarisation.summarizer",
+            _project_root / "core" / "summarisation" / "summarizer.py",
+        )
+        _SUMMARIZER_MOD = importlib.util.module_from_spec(_spec)
+        sys.modules[_spec.name] = _SUMMARIZER_MOD
+        _spec.loader.exec_module(_SUMMARIZER_MOD)
     _SUMMARIZER_OK = True
 except Exception as _e:
     _SUMMARIZER_IMPORT_ERROR = _e
 
 # Always import the quarantine module directly (it's pure stdlib).
-_q_spec = importlib.util.spec_from_file_location(
-    "core.summarisation.quarantine",
-    _project_root / "core" / "summarisation" / "quarantine.py",
-)
-_q_mod = importlib.util.module_from_spec(_q_spec)
-sys.modules[_q_spec.name] = _q_mod
-_q_spec.loader.exec_module(_q_mod)
+# P0 (test-infra): reuse the already-imported module when present (identity
+# preservation — same rationale as the summarizer load above).
+_q_mod = sys.modules.get("core.summarisation.quarantine")
+if _q_mod is None:
+    _q_spec = importlib.util.spec_from_file_location(
+        "core.summarisation.quarantine",
+        _project_root / "core" / "summarisation" / "quarantine.py",
+    )
+    _q_mod = importlib.util.module_from_spec(_q_spec)
+    sys.modules[_q_spec.name] = _q_mod
+    _q_spec.loader.exec_module(_q_mod)
 QuarantineLog = _q_mod.QuarantineLog
 
 

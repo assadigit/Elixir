@@ -134,11 +134,15 @@ class TestIsTracingEnabled:
 
     def test_caches_result(self):
         from core.obs import tracing
+        old = tracing._tracing_enabled
         tracing._tracing_enabled = True
-        # Should return cached without reading settings
-        with patch("utils.settings.Settings") as mock:
-            assert tracing.is_tracing_enabled() is True
-            mock.assert_not_called()
+        try:
+            # Should return cached without reading settings
+            with patch("utils.settings.Settings") as mock:
+                assert tracing.is_tracing_enabled() is True
+                mock.assert_not_called()
+        finally:
+            tracing._tracing_enabled = old  # restore — no state leak into later tests
 
 
 class TestGetTracer:
@@ -150,9 +154,26 @@ class TestGetTracer:
             assert _get_tracer() is None
 
     def test_caches_tracer(self):
-        from core.obs.tracing import _get_tracer, _tracer
-        # After first call, tracer is cached
-        assert _tracer is not None or not _get_tracer()  # either cached or init failed
+        """_get_tracer returns the cached tracer as-is, without re-initializing.
+
+        Hermetic: saves/restores both globals. The old version asserted
+        ``_tracer is not None or not _get_tracer()`` — with opentelemetry
+        installed and a leaked ``_tracing_enabled=True`` (from
+        test_caches_result), ``_get_tracer()`` really initialized a tracer,
+        making the second disjunct False and the assertion order-dependent.
+        """
+        from core.obs import tracing
+        old_enabled = tracing._tracing_enabled
+        old_tracer = tracing._tracer
+        sentinel = object()
+        try:
+            tracing._tracing_enabled = True
+            tracing._tracer = sentinel
+            # Cached tracer must be returned as-is; no OTel init attempted
+            assert tracing._get_tracer() is sentinel
+        finally:
+            tracing._tracing_enabled = old_enabled
+            tracing._tracer = old_tracer
 
 
 class TestSpanNames:
