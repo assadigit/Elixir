@@ -3,10 +3,12 @@ garbled-token artifacts that low-bit quantization (IQ2_XXS, 2.1 bits/param)
 introduces into generated summaries.
 
 V18.18.0.0 (Phase 2c): Detector functions + constants extracted to
-``postcheck_detectors.py``. This module retains the dataclasses (Issue,
-PostCheckReport), the orchestrator (run_post_checks), helpers (_snippet,
-_is_subsequence), and re-exports everything from postcheck_detectors for
-backward compatibility.
+``postcheck_detectors.py``. This module retains the orchestrator
+(run_post_checks) and helpers (_snippet, _is_subsequence), and re-exports
+the public detector API from postcheck_detectors for backward
+compatibility. V0.08 (P2 hygiene): the wildcard re-export was replaced by
+an explicit import — transitive stdlib leakage (``logging``/``re``/
+``dataclass``/``date``/``field``) is no longer re-exported.
 
 All existing imports ``from core.summarisation.postchecks import X`` continue
 to work unchanged.
@@ -23,9 +25,10 @@ from core.summarisation.post_processing import (  # V18.20.3.4 (RC-1)
     is_truncated,
 )
 
-# V18.18.0.0 (Phase 2c): Re-export everything from postcheck_detectors
-from core.summarisation.postcheck_detectors import *  # noqa: F401, F403
-
+# V18.18.0.0 (Phase 2c): Re-export the public detector API.
+# V0.08 (P2): explicit imports (was ``import *``) — intentional re-exports,
+# ruff F401 suppressed; consumed by the orchestrator below and by importers
+# of this backward-compat facade.
 # Explicit imports for underscore-prefixed names (not exported by *)
 # V18.20.3.12: noqa: F401 added — these are intentional re-exports consumed by
 # tests (test_citations_regex, test_postcheck_fragment_merge_fix, test_v18219);
@@ -55,11 +58,34 @@ from core.summarisation.postcheck_detectors import (  # noqa: F401
     _VERB_STOPWORDS,
     _VOWEL,
     _VOWEL_LESS_LONG_RE,
+    MAX_YEAR,
+    MIN_YEAR,
+    Issue,
+    PostCheckReport,
     _author_in_source,
     _is_legitimate_inflection,
     _is_subsequence,
     _snippet,
+    detect_attribution_subject_swap,
+    detect_citation_coverage_gap,
+    detect_cot_narrative,
+    detect_dropped_digit_years,
+    detect_dropped_letter_garble,
+    detect_exec_bullet_inconsistency,
+    detect_extra_spaces,
+    detect_garbled_tokens,
+    detect_grammatical_incoherence,
+    detect_hedge_loss,
+    detect_inconsistency,
+    detect_interpretive_leaps,
+    detect_missing_spaces,
     detect_parenthetical_promotion,  # V18.20.3.2 (audit N4 / P1-a)
+    detect_prompt_leakage,
+    detect_pronoun_mismatch,
+    detect_word_fragment_merge,
+    validate_years,
+    verify_attribution,
+    verify_bold_name_attribution,
 )
 
 logger = logging.getLogger(__name__)

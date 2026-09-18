@@ -9,12 +9,17 @@ unchanged.
 The module-level mutable state (``_SPACY_NLP``, ``_warned_no_embed_model``)
 is also re-exported — patches on ``text_preprocessor._SPACY_NLP`` etc.
 will work because they point to the same object.
+
+V0.08 (P2 hygiene): the wildcard re-export was replaced by an explicit
+import of the full public API — the re-export surface is now reviewable,
+and transitive stdlib leakage (``logging``/``re``/``Counter``) from the
+impl module is no longer re-exported.
 """
 from __future__ import annotations
 
-# Re-export everything from the implementation module
-from core.summarisation.text_preprocessor_impl import *  # noqa: F401, F403
-
+# V0.08 (P2): explicit re-export of the impl module's public API
+# (was: ``from text_preprocessor_impl import *``). Intentional re-exports —
+# ruff F401 suppressed per the docstring contract above.
 # Explicit re-exports for underscore-prefixed names (not exported by *)
 # V18.20.3.12: noqa: F401 added — intentional re-exports (docstring contract:
 # "all existing imports ... continue to work unchanged"); the safe ruff
@@ -24,7 +29,7 @@ from core.summarisation.text_preprocessor_impl import *  # noqa: F401, F403
 # _normalize_heading, _extract_section_headings, _extract_conclusion_lists,
 # _extract_position_weighted_concepts, _llm_assisted_concept_extraction,
 # _filter_concepts_by_source (all underscore-prefixed functions)
-from core.summarisation.text_preprocessor_impl import (  # noqa: F401  # noqa: F401
+from core.summarisation.text_preprocessor_impl import (  # noqa: F401
     _ACADEMIC_TERM_PATTERNS,
     _AUTHOR_YEAR_PATTERN,
     _CALLOUT_PATTERN,
@@ -54,6 +59,7 @@ from core.summarisation.text_preprocessor_impl import (  # noqa: F401  # noqa: F
     _SPACY_LANG,
     _SPACY_NLP,
     _SUPPORTING_INDICATORS,
+    DeterministicPreprocessor,
     _bullet_similarity,
     _extract_conclusion_lists,
     _extract_position_weighted_concepts,
@@ -67,6 +73,43 @@ from core.summarisation.text_preprocessor_impl import (  # noqa: F401  # noqa: F
     _normalize_heading,
     _tokenize,
     _warned_no_embed_model,
+    assess_reading_level,
+    check_cross_section_redundancy,
+    check_exec_summary_coherence,
+    classify_bullet,
+    compute_bullet_confidence,
+    compute_source_overlap,
+    count_syllables,
+    detect_sections,
+    extract_academic_terms,
+    extract_all_concepts,
+    extract_callouts,
+    extract_citations,
+    extract_concepts_rich,
+    extract_definitions,
+    extract_figure_descriptions,
+    extract_implicit_concepts,
+    extract_named_entities,
+    extract_ngram_keywords,
+    extract_reference_list,
+    find_source_excerpt,
+    find_source_page,
+    flesch_kincaid_grade,
+    get_all_ner_entities,
+    normalize_sentence_boundaries,
+    order_bullets_by_topic,
+    remove_headers_footers,
+    repair_hyphenation,
+    score_bullet_complexity,
+    score_chapter_difficulty,
+    score_ocr_quality,
+    semantic_fact_check,
+    should_skip_simplification,
+    smart_paragraph_joining,
+    truncate_summary,
+    validate_summary_length,
+    verify_numbers_and_quotes,
+    vocabulary_overlap_score,
 )
 
 # Try to re-export bracket citation patterns (may not exist)

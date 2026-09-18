@@ -75,12 +75,14 @@ class PromptManager:
     def _ensure_user_dir(self) -> None:
         """V17.0.0: ALWAYS re-sync built-in prompts to user dir on every run.
         No version check, no conditions — just overwrite everything.
-        Uses print() (not logger) so it shows in the conversion log.
+        V0.08 (P2): logs via the module logger (was print()) so re-syncs land
+        in the app log (stderr console + rotating file handlers) like the rest
+        of core.
         """
         import shutil as _shutil
         _USER_DIR.mkdir(parents=True, exist_ok=True)
         if not _BUILTIN_DIR.exists():
-            print(f"[PromptManager] WARNING: built-in dir {_BUILTIN_DIR} does not exist!", flush=True)
+            logger.warning("PromptManager: built-in dir %s does not exist!", _BUILTIN_DIR)
             return
         _copied = 0
         for _src in _BUILTIN_DIR.rglob("*.md"):
@@ -89,7 +91,7 @@ class PromptManager:
             _dest.parent.mkdir(parents=True, exist_ok=True)
             _shutil.copy2(_src, _dest)
             _copied += 1
-        print(f"[PromptManager] Re-synced {_copied} built-in prompts to {_USER_DIR}", flush=True)
+        logger.info("PromptManager: re-synced %d built-in prompts to %s", _copied, _USER_DIR)
 
 
     # ------------------------------------------------------------------ #
