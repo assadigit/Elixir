@@ -24,15 +24,15 @@ INSTRUCTIONS:
 OUTPUT FORMAT:
 
 <executive_summary>
-A 150-250 word overview of the chapter's narrative arc, themes, and significance.
+A {{exec_words}} overview of the chapter's narrative arc (scales to this chapter's length), themes, and significance.
 </executive_summary>
 
 <bullet_points>
-A list of 15-30 key observations about plot, character, theme, and craft. One per line, prefixed with "- ". Include page citations: - Observation here (p.N)
+A list of {{bullet_range}} key observations (the count scales to this chapter's length) about plot, character, theme, and craft. One per line, prefixed with "- ". Include page citations: - Observation here (p.N)
 </bullet_points>
 
 <thorough_summary>
-An 800-1200 word literary analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover plot, character development, themes, and writing craft.
+A {{thorough_words}} literary analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover plot, character development, themes, and writing craft. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it — write less if the chapter states less.
 </thorough_summary>
 
 <key_distinctions>

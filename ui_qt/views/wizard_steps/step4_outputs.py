@@ -60,8 +60,13 @@ class Step4Outputs(WizardStep):
         # now declared WizardState fields — getattr fallback removed.
         core_items = [
             ("generate_summaries", "Per-chapter summaries", self.state.generate_summaries),
-            ("include_executive_summary", "  Executive summary (150-200 words)", self.state.include_executive_summary),
-            ("include_thorough_summary", "  Thorough summary (800-1200 words)", self.state.include_thorough_summary),
+            # V0.05 (rig audit F9b): the labels no longer promise absolute
+            # word counts — every section target now SCALES to each
+            # chapter's length (a summary section is never longer than a
+            # fraction of its source). Promising "800-1200 words" here
+            # while the engine scales down would be dishonest UI.
+            ("include_executive_summary", "  Executive summary (short overview, scaled to chapter)", self.state.include_executive_summary),
+            ("include_thorough_summary", "  Thorough summary (detailed prose, scaled to chapter)", self.state.include_thorough_summary),
             ("include_keypoints", "Keypoints (bullet points)", self.state.include_keypoints),
             ("simplified_keypoints_enabled", "Simplified keypoints (jargon-free)", self.state.simplified_keypoints_enabled),
             ("compact_summaries", "📦 Compact summaries (~1000 tokens/chapter)", self.state.compact_summaries),

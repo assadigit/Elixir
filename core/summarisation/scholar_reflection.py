@@ -76,6 +76,7 @@ def scholar_reflection(
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn | None = None,
     log: LogCallback | None = None,
+    bullet_cap: int | None = None,
 ) -> None:
     """V13.41.0: Meta-cognitive reflection — the LLM reviews its own summary for gaps.
 
@@ -532,6 +533,42 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                                     f"unfiltered): {_fe}",
                                     "WARNING",
                                 )
+                        # V0.06 (rig audit F4-b — GENERAL RULE: the source-
+                        # scaled bullet budget is a HARD CAP at every
+                        # insertion site): the scholar gap-fill merges at
+                        # most (cap - existing) new bullets. The V0.05 rig
+                        # added 13/22/8/10 gap-fill bullets on top of
+                        # chapters already at their source-scaled target
+                        # (19/18/14/12 shipped vs 5-7/5-7/6-9/5-8) — the
+                        # surplus was near-duplicate restatement. When the
+                        # budget is full the addition is skipped and logged
+                        # honestly; with partial room only the first
+                        # ``room`` grounded bullets merge.
+                        _cap_sg = int(bullet_cap) if isinstance(
+                            bullet_cap, (int, float)
+                        ) and bullet_cap else 0
+                        if _cap_sg > 0:
+                            _room_sg = _cap_sg - len(existing_bps)
+                            if _room_sg <= 0:
+                                log(
+                                    f"    \u2702\ufe0f V0.06: bullet budget reached "
+                                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
+                                    f"gap-fill merge SKIPPED ({len(new_bullets)} "
+                                    f"grounded bullet(s) not merged; the summary "
+                                    f"stays at its source-scaled target).",
+                                    "INFO",
+                                )
+                                new_bullets = []
+                            elif len(new_bullets) > _room_sg:
+                                log(
+                                    f"    \u2702\ufe0f V0.06: bullet budget allows "
+                                    f"{_room_sg} more bullet(s) "
+                                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
+                                    f"gap-fill trimmed from {len(new_bullets)} "
+                                    f"to {_room_sg}.",
+                                    "INFO",
+                                )
+                                new_bullets = new_bullets[:_room_sg]
                         if new_bullets:
                             result["bullet_points"] = list(existing_bps) + new_bullets
                             gap_bullets_added = len(new_bullets)
@@ -597,6 +634,7 @@ def scholar_reflection_gapfill_only(
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn | None = None,
     log: LogCallback | None = None,
+    bullet_cap: int | None = None,
 ) -> None:
     """V18.2 (audit Fix 2): Run gap-fill ONLY, suppress the reflections text.
 
@@ -632,6 +670,7 @@ def scholar_reflection_gapfill_only(
         strip_thinking=strip_thinking,
         filter_thinking_bullets=filter_thinking_bullets,
         log=log,
+        bullet_cap=bullet_cap,  # V0.06 (F4-b): hard budget, same as full path
     )
     # Suppress the reflections text section (keep the gap-fill bullets)
     if "scholar_reflections" in result:

@@ -99,15 +99,15 @@ Chapter content:
 Output ONLY the five XML sections below. No preamble, no commentary, no thinking process, no markdown code fences.
 
 <executive_summary>
-A 150-250 word overview of the chapter's main concepts and conclusions.
+A {{exec_words}} overview of the chapter's main concepts and conclusions. (The target scales to this chapter's length — never pad to reach it.)
 </executive_summary>
 
 <bullet_points>
-A comprehensive list of 20-40 distinct key takeaways. One bullet per line, each prefixed with "- ". Each bullet must express a CONCEPT, PRINCIPLE, or ACTIONABLE INSIGHT — not a narrative event. Cover every section of the chapter.
+A comprehensive list of {{bullet_range}} distinct key takeaways (the count scales to this chapter's length — do NOT fragment or pad). One bullet per line, each prefixed with "- ". Each bullet must express a CONCEPT, PRINCIPLE, or ACTIONABLE INSIGHT — not a narrative event. Cover every section of the chapter.
 </bullet_points>
 
 <thorough_summary>
-An 800-1200 word detailed analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover all key concepts, frameworks, and examples from the chapter. If you approach the output limit, close </thorough_summary> at a clean sentence boundary (a later dedicated call completes the analysis) — never leave the section cut mid-sentence.
+A {{thorough_words}} detailed analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover all key concepts, frameworks, and examples from the chapter. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it — write less if the chapter states less. If you approach the output limit, close </thorough_summary> at a clean sentence boundary (a later dedicated call completes the analysis) — never leave the section cut mid-sentence.
 </thorough_summary>
 
 <key_distinctions>

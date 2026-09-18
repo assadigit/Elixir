@@ -515,8 +515,14 @@ def section_map_reduce(
     merged_bullets = consolidate_duplicate_claims(all_bullets)
     log(f"    \U0001f527 Dedup consolidation: {len(all_bullets)} \u2192 {len(merged_bullets)} bullets (merged {len(all_bullets) - len(merged_bullets)} duplicates)", "INFO")
 
-    merged_exec = ' '.join(all_execs)[:2000]
-    merged_thorough = '\n\n'.join(all_thoroughs)[:6000]
+    # V0.06 (rig audit F1-e): the "None" placeholder is a FORMAT token — a
+    # section that answered "None" contributes nothing to the merge (the
+    # V0.05 rig shipped a literal "None" line inside a merged section).
+    def _real(txt: str) -> bool:
+        return bool(txt and txt.strip() and txt.strip().lower() not in ("none", "n/a", "null"))
+
+    merged_exec = ' '.join(e for e in all_execs if _real(e))[:2000]
+    merged_thorough = '\n\n'.join(t for t in all_thoroughs if _real(t))[:6000]
 
     # ── V13.44.0 Idea #3: Thematic Synthesis Pass ──
     # V13.44.3: Always run for cloud APIs (no thermal concern).
@@ -533,8 +539,9 @@ def section_map_reduce(
             merged_thorough = synthesized_thorough
 
     # V13.38.0: Merge the new additive sections (concatenate non-empty)
-    merged_distinctions = '\n'.join(d for d in all_distinctions if d and d.strip())[:3000]
-    merged_tensions = '\n'.join(t for t in all_tensions if t and t.strip())[:3000]
+    # V0.06 (F1-e): "None" placeholders excluded here too.
+    merged_distinctions = '\n'.join(d for d in all_distinctions if _real(d))[:3000]
+    merged_tensions = '\n'.join(t for t in all_tensions if _real(t))[:3000]
 
     # V16.0.2: key_quotes is now empty (disabled). No injection needed.
     # merged_bullets already contains the B4 claims with supporting evidence.

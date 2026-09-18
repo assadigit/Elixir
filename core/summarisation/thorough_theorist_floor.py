@@ -34,6 +34,7 @@ class SummarizerThoroughFloorMixin:
         content: str,
         thorough: str,
         analysis: str,
+        scaled_target_hi: int | None = None,
     ) -> str:
         """V18.20.3.13 (Phase 5 / W7+O3): thorough-theorist floor + ONE targeted gap-fill.
 
@@ -108,6 +109,21 @@ class SummarizerThoroughFloorMixin:
             if self._deadline_exceeded("thorough theorist floor gap-fill"):
                 return thorough
             _tf_words = len((thorough or "").split())
+            # V0.05 (rig audit F9b): BUDGET GATE — the 150-300-word append is
+            # skipped when the thorough already meets its SOURCE-SCALED target
+            # (``scaled_target_hi`` from length_policy.thorough_target). The
+            # V0.04 rig's short chapters were padded past their sources by
+            # exactly this append; a summary section never grows beyond its
+            # scaled ceiling to chase a name that the bullets already carry.
+            if scaled_target_hi is not None and _tf_words >= int(scaled_target_hi):
+                self.log(
+                    f"    ⏭️  V0.05: Thorough gap-fill skipped — thorough "
+                    f"({_tf_words} words) already meets its source-scaled "
+                    f"target ({scaled_target_hi} words); the missing "
+                    f"contributor(s) are covered by the bullets/recall floor",
+                    "INFO",
+                )
+                return thorough
             if _tf_words < 50:
                 # A stub thorough (empty/exec-copy/degenerate) cannot be
                 # safely extended with "continuation" prose — report and

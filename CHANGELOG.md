@@ -1,5 +1,490 @@
 # Changelog
 
+## V0.06 — Deliverables that honor the contract, the budget, and the reader
+
+> **The change (second rig audit):** the V0.05 rig run (97-Things,
+> llama.cpp + Ternary-Bonsai-2-27B, `Outputs: exec_summary, keypoints,
+> docx`) shipped with the user's three observations — (1) "it again
+> created thorough summary", (2) "quarantine log is not needed in docx
+> output (keep it for your logs)", (3) "full chapter content is
+> redundant, it repeated twice" — plus the audit's own findings: 19/18/
+> 15/14/12 bullets against source-scaled targets of 5-7/5-7/6-9/6-9/5-8,
+> critique bullets shipped inside Key Takeaways (flagged by the
+> consistency checker but never dropped), quotes duplicated inside single
+> bullets, and Source Excerpts restating bullets. Every fix below is a
+> GENERAL rule; the book is only the test that exposed it.
+
+**Design rules for this batch (all GENERAL, book-agnostic):**
+1. **The output selection is a CONTRACT, enforced at THREE layers.** V0.05
+   gated generation only; the response parser's leftover fallback then
+   assigned the unrequested `<key_distinctions>`/`<theoretical_tensions>`
+   blocks (plus the literal "None" placeholder) to `thorough_summary` and
+   every renderer was flag-blind — a "Thorough Summary" the user unchecked
+   shipped anyway (its content: the additive sections run together). Now:
+   (a) the parser's leftover can only contain genuinely unclaimed content
+   (additive-section blocks removed); (b) `_summarize_inner` discards
+   unrequested sections at PARSE time and at SummaryResult CONSTRUCTION;
+   (c) `SummaryResult` carries the include flags and EVERY renderer
+   (chapter markdown, DOCX, book summary `<details>`) requires flag-on
+   AND content. "None" is a format token, never content (whole-field and
+   trailing-token hygiene; the map-reduce merge filters it too).
+2. **The source-scaled bullet budget is a HARD CAP at every insertion
+   site** (`length_policy.bullet_cap` = the same `bullet_target().hi`
+   every prompt uses): Tier-2 gap-fill is skipped at cap (and trimmed to
+   the remaining room — no LLM calls whose output cannot ship), the
+   scholar gap-fill merges at most (cap − existing) bullets, quarantine
+   recovery resurrects nothing past the cap, and a ship-time trim
+   (primary bullets first, remediation bullets trimmed) backstops every
+   path. Coverage shortfall below the cap is logged honestly — never
+   padded away.
+3. **Pipeline bookkeeping never ships in the deliverable.** The quarantine
+   record stays in `logs/drops.jsonl` (where the QuarantineLog has written
+   every entry all along) + one count line in the conversion log; the
+   appendix is no longer attached to `SummaryResult` and its render blocks
+   (markdown + DOCX) are deleted.
+4. **A deliverable never lists the same content block twice.** The book
+   summary's global "📌 All Key Takeaways" concatenation is gone (each
+   chapter's takeaways appear exactly once, under their own heading; the
+   aggregate view is the keypoints deliverable). The DOCX "Original
+   Chapter Content (first 2000 chars)" preview — which duplicated short
+   chapters ENTIRELY above the full render — is gone, and so is the
+   closing "Global Key Takeaways" page (both dead methods removed).
+5. **Critique bullets are detected structurally and never ship.** Three
+   new forms (on top of V0.05's headline/artifact-subject/attribution
+   set): the TRAILING critique-label `"<topic> omitted/missing/…:
+   "<quote>""`, the ADVICE form `"The summary should…"`, and
+   NEGATED-ENUMERATION vs the artifact (`"…not fully enumerated in the
+   summary…"`, `"…omitted from the detailed examples…"`). All eight rig
+   leaks are pinned as fixtures; six rig content bullets (incl. quoted
+   evidence) are pinned as must-PASS.
+6. **A bullet states its claim once.** A trailing quoted span that is
+   already embedded in the bullet (normalized containment) is stripped;
+   a trailing quoted `"By <Author>"` byline echo is stripped outright
+   (attribution metadata, not content). Non-duplicate trailing quotes
+   (the evidence) are kept. The scholar prompt now demands at most ONE
+   short quote per bullet and forbids byline quotes.
+7. **Tier-3 excerpts are re-validated against the FINAL summary at ship
+   time** — an excerpt whose quoted sentence a shipped bullet already
+   paraphrases (content-token containment ≥ 0.55) or that is ≥ 75%
+   covered by the combined summary text is dropped (the rig shipped
+   excerpts duplicating bullets added AFTER the excerpt was recorded).
+   Excerpt sentences never open with a duplicate of their own chapter
+   heading (the PDF-extraction title echo), and internal blank-line
+   artifacts are collapsed.
+8. **Honest logs.** Budget-skip/trim, excerpt-prune, and quarantine-count
+   decisions all log one INFO line each; nothing silently disappears.
+
+**Files touched:** `core/summarisation/response_parser.py` (leftover +
+None hygiene), `core/summarisation/summarizer.py` (parse gate,
+construction gate + flag stamping, quarantine de-attach, ship-time budget
++ excerpt prune, `_prune_covered_excerpts`, heading-echo strip,
+`build_book_summary` single-listing + flag gates, budget-threaded
+delegates), `core/models/models.py` (render-contract flags on
+SummaryResult), `core/summarisation/length_policy.py` (`bullet_cap`),
+`core/summarisation/coverage_guarantee.py` (Tier-2 cap),
+`core/summarisation/scholar_reflection.py` (gap-fill cap),
+`core/summarisation/quarantine_recovery.py` (recovery cap),
+`core/summarisation/map_reduce.py` (None-join filter),
+`core/summarisation/post_processing.py` (three critique forms),
+`core/summarisation/postchecks.py` (quote-dedupe + byline strip),
+`core/pipeline/chapter_checkpoint.py` (render flag gates, quarantine
+render removed), `core/docx/builder.py` (flag gates, quarantine render
+removed, preview + global-takeaways + dead methods removed),
+`prompts/summarisation/scholar_reflection.md` (quote rules).
+
+**Expected behavior on the SAME rig selection** (`exec_summary,
+keypoints, docx`): no Thorough Summary anywhere (chapter files, book
+file, DOCX); no Quarantine Log in any deliverable; each chapter's
+takeaways exactly once in the book summary; chapter content exactly once
+in the DOCX; ~5-9 bullets per chapter (source-scaled), primary-first; no
+critique bullets; no duplicated quotes or byline echoes; excerpts only
+for genuinely uncovered sentences.
+
+**Tests:** 36 new (`tests/test_v006_rig_audit_fixes.py` — the rig's
+verbatim leaks as fixtures) + 3 updated pins (quarantine render
+reversal, DOCX gate literals, per-chapter DOCX table-text extraction).
+Gate: **3510 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed**
+(V0.05 baseline 3474 + 36, zero regressions).
+
+---
+
+## V0.05 — Summaries that honor the user's selection and their source's length
+
+> **The change (rig audit):** the first llama.cpp run (V0.04) produced
+> excellent comprehension but shipped two user-visible defects the output
+> audit traced to the ENGINE, not the model: (1) a **Thorough Summary the
+> user never asked for** — the wizard recorded `Outputs: exec_summary,
+> keypoints, docx` (no thorough) yet every file contained one, because the
+> `include_*` output-selection flags were logged by settings_logger but
+> NEVER enforced by the prompt builder, the expansion machinery, or the
+> renderers; and (2) **thorough sections 1.55-2.76x longer than their
+> chapters** (549-940-word "summaries" of 321-441-word chapters) — three
+> absolute-length engines forced it: the prompts demanded "800-1200 word"
+> thorough sections and "20-40" bullets regardless of source length, an
+> 800-word floor fired a DEDICATED EXPANSION CALL whenever the model
+> sensibly wrote less, and a <30-bullet floor fired another expansion.
+> Instructing a model to exceed its source is hallucination-by-instruction:
+> the rig's thorough sections contain invented elaborations the sources
+> never state.
+
+**Design rules for this batch (all GENERAL, book-agnostic):**
+1. **A summary section may never be instructed to exceed a fraction of its
+   source.** Every length target now SCALES via
+   `core/summarisation/length_policy.py` (thorough ≤ ~45% of the source and
+   ≤1200; exec ≤ ~20% and ≤250; one bullet per ~50 source words, 4-40).
+   The scaled numbers ride the templates ({{placeholders}}), the inline
+   prompts, the dedicated expansion calls, the F1 truncation caps, the
+   theorist-floor append gate, and json-mode hints — plus a backstop regex
+   that rewrites the legacy absolute ranges in user-edited templates.
+2. **The user's output selection is the contract, end-to-end.**
+   `include_thorough_summary` / `include_executive_summary` /
+   `include_keypoints` now gate: the prompt's section specs (template strip
+   + explicit OUTPUT SECTIONS override; inline builders; the chunked
+   override; json-mode), the dedicated thorough/bullet expansion calls, the
+   exec-from-thorough and final re-derivation fallbacks, the markdown
+   renderer, the DOCX builder, and the resume completeness criterion
+   (no empty headings; a legitimately unchecked section is simply absent).
+3. **UTF-8 is pinned on every provider decode** (llama.cpp sends
+   charset-less `text/event-stream`; requests' latin-1 default turned every
+   typographic char into mojibake — 15 sites across 5/6 rig files).
+4. **Self-assessment critique is detected STRUCTURALLY** (headline
+   "Missing <determiner>…:" + artifact-subject {the summary, It, the gap, …}
+   × a coverage-verb family + "…does not appear in the summary" + attribution
+   labels) at BOTH filter layers, with scholar-prompt hardening — the 11
+   leaked rig bullets all match; content bullets pass.
+5. **ONE coverage matcher everywhere** (the V0.03-normalized
+   `_keyword_covered` now drives the Tier-2/Tier-3 trigger lists — a
+   paraphrase-covered concept no longer re-triggers remediation or false
+   "not covered" claims); **the remediation unit is the SENTENCE**
+   (keywords resolving to one source sentence consolidate into ONE framed
+   excerpt; excerpt dedupe keys on the normalized sentence, not the
+   keyword-dominated frame).
+6. **Verbatim excerpts are exactly one sentence** (the splitter now breaks
+   before digits/typographic quotes after terminal punctuation — no more
+   glued numbered-list continuations).
+7. **A byline is attribution content, full stop** (the ANTHOLOGY block
+   fires at ≥2; a single-byline chapter gets its own ATTRIBUTION block —
+   the old ≥2 threshold could never fire for per-chapter anthology
+   segments).
+8. **Ship-time near-duplicate removal** (normalized token-set containment
+   ≥0.8 with plural tolerance — keep first, quarantine the rest) and
+   **verbatim quote verification** (model-typed quoted spans ≥4 words are
+   normalized-substring-checked against the source; a failing span ships as
+   a paraphrase with its quotes stripped instead of a misquote).
+9. **Run-scoped output** — at run start, pre-existing summary/log artifacts
+   move to `_archive/<timestamp>/` with one log line (resume runs skip
+   this); nothing from an old run ships beside the new one.
+10. **Honest UI** — the wizard's Step-4 labels no longer promise absolute
+    word counts the engine no longer demands ("scaled to chapter"), and the
+    F1 stage logs the per-section compression ratio, WARNING when a section
+    is in expansion territory (>1.5x its scaled target AND >60% of the
+    source).
+
+Also fixed en passant: the chunked-prompt override no longer eats the
+chapter content (the old to-end-of-string replacement consumed everything
+after the output-format block on real prompts), and the resume parser no
+longer forces an endless re-summarize loop for runs with a disabled section.
+
+**Status: 9 fix areas across the engine + transport + UI, +58 tests.**
+**Test gate: `3474 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed`**
+(V0.04 baseline 3416/0 — **+58 tests, zero regressions**; the 1 xpassed is
+the documented order-fragile GPU-temp-cache flake since V18.20.3.8).
+
+**Expected rig behavior for the SAME 10-chapter selection:** no mojibake;
+zero critique bullets in Key Takeaways; no Thorough Summary at all (the
+user's selection); exec ~40-90 words, bullets ~5-9 per chapter (scaled);
+at most one framed excerpt per source sentence with truthful "not covered"
+framing; every chapter's author named in prose; no near-duplicate bullets;
+the output folder contains only this run's artifacts; the log shows the
+per-chapter compression ratios.
+
+**The changes:**
+- NEW `core/summarisation/length_policy.py` — the single source of truth
+  for every section length target (pure functions of the source word
+  count) + the prompt LENGTH BUDGET block + the expansion-ratio audit +
+  the legacy-absolute backstop.
+- `core/llm/llamacpp_provider.py` — `_pin_utf8()` on every decode site
+  (SSE stream, non-streaming JSON, error bodies, model list).
+- `core/summarisation/summarizer.py` — flags read in `_build_prompt`
+  (template spec-strip + OUTPUT SECTIONS override + scaled inline
+  formats + LENGTH BUDGET on both paths); the 800-word floor →
+  `thorough_target(source).lo`; the <30-bullet expansion →
+  `bullet_target(source).lo`; exec-from-thorough / last-resort /
+  final-re-derivation gated on the flags; theorist floor budget-gated;
+  byline attribution at ≥1; sentence-keyed excerpt dedupe + per-sentence
+  keyword consolidation; digit/quote sentence boundaries.
+- `core/summarisation/prompt_assembly.py` — all five builders scale to the
+  source; chunked override is flag-aware and stops at `Chapter content:`.
+- `core/summarisation/prompt_manager.py` — scaled-placeholder
+  substitution + backstop on every rendered template.
+- `core/summarisation/coverage_guarantee.py` — the normalized matcher
+  drives the Tier-2 and Tier-3 trigger lists.
+- `core/summarisation/post_processing.py` — structural self-assessment
+  detector (5 forms) behind the existing `is_summary_self_assessment`
+  (both filter layers inherit it).
+- `core/summarisation/postchecks.py` — ship-time near-duplicate removal
+  (plural-tolerant token-set containment) + verbatim quote verification.
+- `core/summarisation/bullet_pipeline.py` — F1 caps scale to the source;
+  honest ratio log.
+- `core/summarisation/thorough_theorist_floor.py` — the append respects
+  the scaled ceiling.
+- `core/pipeline/chapter_checkpoint.py` — no empty headings (sections
+  render only with content; full summaries byte-identical to legacy).
+- `core/pipeline/chapter_resume.py` — completeness = any one core section
+  (no endless re-summarize for disabled sections).
+- `core/pipeline/converter_impl.py` — `_archive_stale_run_artifacts()`
+  (run-scoped output, resume-aware).
+- `core/docx/builder.py` — DOCX sections render only with content.
+- `core/llm/structured_io.py` — json-mode hints scale; schema
+  descriptions carry no absolutes.
+- `prompts/` — default/academic/technical/creative/default_lowbit/
+  two_pass_synthesize carry {{scaled}} placeholders + the compression
+  contract; scholar_reflection forbids the critique subject forms.
+- `ui_qt/views/wizard_steps/step4_outputs.py` — honest labels.
+- NEW `tests/test_v005_rig_audit_fixes.py` (58 tests) — the 11 leaked
+  critique bullets + false-positive guards, UTF-8 transport round-trips
+  (streaming/non-streaming/probe) + decode-site source pins, the scaled
+  targets/budget/backstop/templates, flag enforcement (prompt/chunked/
+  render/DOCX/resume/wizard), the normalized Tier-2 no-refire replay, the
+  3-keywords-1-excerpt consolidation, digit boundaries, single-byline
+  attribution, near-dup removal, misquote→paraphrase, and the archiver
+  (stale/resume/clean).
+
+## V0.04 — The llama.cpp backend: first non-Ollama local LLM, wired end-to-end
+
+> **The change (rig):** the primary LLM is no longer served by Ollama. A local
+> `llama-server` (llama.cpp) now hosts **Ternary-Bonsai-2-27B-Instruct-Vision**
+> at `http://127.0.0.1:8080/v1` with a **65,536-token context window** and a
+> **12,288-token output cap** (a 27B ternary/1.58-bit model — ~8 GB weights,
+> much denser and smarter than the old quants, and correspondingly slower).
+> This release makes that server a first-class backend: config, connectivity,
+> the processing wizard, and the token budgets all speak llama.cpp natively.
+
+**Design rule for this batch (same as V0.02/V0.03): GENERAL rules — nothing is
+hardcoded to this one model.** Spinbox ceilings are UI conveniences, not model
+policy; a provider that knows its window makes the request FIT instead of
+assuming server-side clamping; migrations flip defaults only when they sit
+untouched. The Bonsai numbers are the regression fixtures, not the rules.
+
+**Status: 1 new provider + backend wiring + wizard/settings surfaces, +55 tests.**
+**Test gate: `3416 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed`** (V0.03 baseline
+3361/0 — **+55 tests, zero regressions**; the 1 xpassed is the documented order-fragile
+GPU-temp-cache flake since V18.20.3.8).
+
+**Verified connectivity:** the full stack (Settings → `create_provider("llamacpp")` →
+`call_via_llm_provider` → streaming chat completion) was exercised end-to-end against a
+faithful llama-server mock on the rig's exact endpoint `127.0.0.1:8080/v1` — migration,
+factory, dispatch, JSON mode, the 16k-floor-vs-12k-cap fit, the two-stage connection probe,
+and model discovery all pass live (see `tests/test_v004_llamacpp.py` + `tests/mock_llamacpp_server.py`).
+
+**The changes:**
+
+**1. `LlamaCppProvider` (core/llm/llamacpp_provider.py) — streaming-first, budget-fitting.**
+Not "just another OpenAI-compat endpoint"; three llama.cpp realities drove a dedicated
+provider. (a) **Streaming is the default generation path** — a dense 27B at 2–6 tok/s can
+legitimately run a 12k-token output for 30–60 minutes; a non-streaming POST would hit even
+a generous client timeout while the server is still generating, so `complete()` always
+requests `stream: true` and accumulates SSE deltas (the read timeout applies PER CHUNK —
+a healthy long generation can never time out client-side; a non-streaming retry with a
+budget-derived wall-clock timeout covers SSE-hostile proxies). (b) **The request FITS the
+window** — `fit_max_tokens()` clamps to `min(requested, model output cap, n_ctx − prompt
+estimate − 512 margin)` with every clamp logged; the academic-rigor 16000-token floor can
+no longer 400 a 12288-cap model, and the floor never inflates a deliberate tiny probe
+(a 3-token smoke-test request stays 3). (c) **Faithful error surfaces** — llama.cpp's
+`{"error": {…}}` shapes are parsed into actionable messages: auth rejected (started with
+`--api-key`), model not served (404), and the "request exceeds the available context size"
+400 names the fix (raise the server's `-c` or lower the model-context setting). `api_key`
+defaults to `"local"` (sent as `Authorization: Bearer local`; ignored unless the server
+enforces it). JSON mode maps to `response_format: {"type": "json_object"}`.
+
+**2. Settings: the `llamacpp_*` block + a one-time activation migration.**
+New keys (single source of truth read by the factory, the wizard, and the Settings
+dialog): `summarisation.llamacpp_base_url` (`http://127.0.0.1:8080/v1`),
+`llamacpp_api_key` (`local`), `llamacpp_model` (`Ternary-Bonsai-2-27B-Instruct-Vision`),
+`llamacpp_context_tokens` (65536), `llamacpp_max_output_tokens` (12288). Fresh installs
+default to the llamacpp provider; existing installs migrate **only when still sitting at
+the untouched `ollama` default** — an explicit lmstudio/cloud choice is never overridden,
+and the `llamacpp_activation_done` flag guarantees a user who later switches back to
+Ollama is never re-flipped. The migration also lifts `max_context_tokens`
+32768→65536 and clamps `max_output_tokens` 16000→12288 (the old default EXCEEDS the new
+model's output cap), each only at the old defaults — custom values survive. The V18.1
+legacy floor (`max_output_tokens < 16000 → 16000`) is now guarded to skip the llamacpp
+provider: legacy migrations must not fight newer backend-specific caps on every load.
+
+**3. Summarizer + pipeline dispatch.** `Summarizer._call_llm` routes `provider ==
+"llamacpp"` through `_call_via_llm_provider("llamacpp", …)`; the backend's own configured
+model always wins over a possibly-stale request model (saved wizard profiles, old
+checkpoints). `is_local` includes llamacpp (VRAM recovery, thermal guards, local timeouts
+apply to llama-server exactly as to Ollama); the concept-extraction path in
+`conversion/summarization.py` builds the llamacpp provider instead of an Ollama-shaped
+call; `structured_io.supports_json_mode` admits llamacpp; the dispatcher applies the
+caller's endpoint overrides through the provider's REAL attribute names (the legacy
+openai_compat `_base_url` branch is inert dead code — documented as a known follow-up,
+deliberately untouched to avoid changing openai_compat behavior in this batch).
+
+**4. The wizard (Step 5) accepts the new numbers — and shows the backend.**
+The Local-backend combo gains **llama.cpp server**; a config box (URL / API key / model
+name / **Test connection**) appears for it (built by the new `LlamaCppConfigMixin` in
+`ui_qt/components/llamacpp_config.py` — the O-b1 per-step line budget stays intact:
+step5_models.py 960 lines). The heavy-context spinbox range widened **4096–131072 →
+1024–262144** (a GUI ceiling must never cap a model's real window; 65536 and 200k-class
+models both fit) and a NEW **Heavy model output** spinbox (256–65536, step 1024) makes the
+12k output budget first-class at the model step (previously only Step 7b exposed it, from
+a stale 8192 state default). Switching backends aligns the untouched spin values with the
+backend's model defaults (llama.cpp → 65k/12k; back to Ollama → the persisted
+summarisation values) — a user-customised number always survives. Model discovery is
+backend-aware: llama.cpp lists the server's loaded models via `GET /v1/models`
+(worker-safe, with the configured-model fallback when the server lists nothing).
+`_load_settings_into_state` now loads the persisted token budgets into the wizard state —
+the old hardcoded 32768/8192 state defaults used to MASK a 65k/12k settings.json, so the
+wizard showed 32k no matter what was configured. Step 7b's fine-tune spinboxes
+(1000–128000 ctx / 256–32768 out) already admit the new numbers — verified by pins.
+
+**5. Settings dialog (AI → Local model).** The backend combo gains **llama.cpp server**
+(the llamacpp provider shows it even when the legacy `ai.backend` key still says
+"Ollama"), model listing goes through the same `/v1/models` helper, and `save()` no
+longer unconditionally writes `summarisation.provider = "ollama"` — the old write
+silently clobbered the llamacpp backend on EVERY Settings save.
+
+**6. VRAM calculator: the ternary (1.58-bit) weight class.** `Ternary`/`tn23` names now
+parse to a 0.31 bytes/param multiplier. Without the class, a 27B ternary fell back to
+the Q4_K_M multiplier — an ~18–20 GB estimate (bogus "overbudget" verdict in the wizard's
+VRAM budget) for a model whose weights are ~8.4 GB. (At 65k context the estimate grows
+by the app's fp16-KV architecture math — that part is the KV cache, not the quant class;
+use llama.cpp's q8_0 KV cache to halve it if the budget complains.)
+
+**Operational notes for the rig:**
+- Start the server with the full window, e.g.
+  `llama-server -m Ternary-Bonsai-2-27B-Instruct-Vision.gguf -c 65536 --port 8080`
+  (the wizard's llama.cpp box shows this hint). The app's per-call output budget is
+  clamped to 12288 automatically.
+- llama.cpp caches the common prompt prefix between calls (chapter prompts share the
+  book-context prefix → warm calls are much faster than the first).
+- The provider's HTTP timeout honours `local.http_timeout_sec` (default 600) per stream
+  chunk — but the whole point of the streaming path is that a healthy generation never
+  hits it. If you ever see timeouts on a LIVE stream, raise that setting.
+- **OCR unchanged:** the OCR service still uses your Ollama OCR model (it has its own
+  Ollama-shaped pipeline). Keep Ollama installed for OCR; llama.cpp serves the LLM paths.
+- The transcribe service also still targets Ollama by design (separate service dialog).
+
+**Known follow-ups (NOT in this batch):** the inert `_base_url`/`_api_key` override
+branch for openai_compat in `call_via_llm_provider` (freellmapi calls silently go to
+`api_base_url` instead of the freellmapi URL — pre-existing, unchanged); OCR-via-llama.cpp
+(the Bonsai is a Vision model; wiring the OCR service's image-content path to
+`/v1/chat/completions` would let Ollama go entirely); dual-local mode with a second
+llama.cpp server for the fast model.
+
+
+## V0.03 — The rig-audit fixes: quality machinery stops damaging good summaries (real-rig ground-truth audit)
+
+> **The incident (real-rig run, Elixir V0.02, 97 Things Every Software Architect Should Know):**
+> the run completed end-to-end and produced every artifact — but a ground-truth comparison
+> of the shipped outputs against the source markdown found the deliverable damaged by the
+> pipeline's own quality machinery. The model's raw summarization was faithful (≈95% content
+> coverage, zero real hallucinations) — then the system: (P0-1) auto-"repaired" 12 of 13 valid
+> paraphrase words into different source words ('contrast'→'contract', 'teams'→'beams',
+> 'skill'→'still', 'simply'→'simple'… — the rule assumed any non-source word at edit-distance-1
+> from a source word is a garble); (P0-2) force-inserted a mid-quote fragment of the source's
+> ANTI-PATTERN answer as the book's final "key takeaway"; (P0-3) scored a faithful chapter at
+> 53% coverage because the metric matched n-grams by raw substring (hyphen variants, paraphrases
+> and plural forms failed) — then "remediated" the false failure with the garbage above;
+> (P0-4) merged 7 of 10 explicitly-selected numbered essays into 2 mislabeled mega-segments
+> ("This chapter presents eight core principles" under thing 1's title), leaked the next
+> unselected chapter's first page via the ±1 boundary overlap, and glued 8 of 10 essay titles
+> into body text (the RAG markdown had exactly 2 headings); (P1-5) erased authorship entirely
+> (zero author names in an 8-author anthology extract); (P1-6) stamped `bullets=2` on a
+> 70-bullet book summary and logged "marked ⚠️" markers that were never written.
+
+**Design rule for this whole batch: GENERAL fixes only — nothing is tuned to the test book.**
+The rig shapes appear in tests purely as regression fixtures; every rule is content-agnostic
+(English lexicon, paragraph corroboration, complete-sentence validation, TOC-page arithmetic,
+byline regex, honest counters). A different book exercises the same rules.
+
+**Status: 4 P0 + 2 P1 fixes, +54 tests, +1 vendored data file (English lexicon, 126,761 words).**
+**Test gate: `3361 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed`** (V0.02 baseline
+3307/0 — **+54 tests, zero regressions**; the 1 xpassed is the documented order-fragile
+GPU-temp-cache flake since V18.20.3.8).
+
+**The fixes:**
+
+**1. P0-1 — the dropped-letter auto-repair is DISABLED by default and guarded when enabled.**
+The RC-3 rule (V18.20.3.4) auto-replaced any non-source token that had exactly one
+edit-distance-1 source "candidate". That is false for every real English word the model
+legitimately coins ('causes', 'teams', 'contrast'…). V0.03: the repair is **off by default**
+(setting `summarisation.dropped_letter_auto_repair`, UI toggle in Settings → Quality,
+tooltip explains the incident) and when explicitly enabled a repair additionally requires
+ALL of: **(a)** the token is NOT a valid English word per a vendored lexicon
+(`core/summarisation/data/english_lexicon.txt.gz`, 126,761 frequency-filtered words — the
+general-language resource this rule always needed; the old stoplist/inflection/suffix proxies
+stay as extra layers), **(b)** *nearest-paragraph corroboration* — the candidate lives in a
+source paragraph achieving maximal content-word overlap with the summary sentence being
+repaired (every observed false repair attracted its candidate from a DIFFERENT essay),
+**(c)** strict single-candidate uniqueness **counting inflection partners** (the
+'skill'→'still' corruption happened because 'skills' was excluded as an "inflection",
+leaving 'still' spuriously unique), and **(d)** a repeated-token guard (a word used twice in
+the summary is deliberate vocabulary). Flags (log-only) always run; a valid dictionary word
+is no longer even flagged. The true 'emergs'→'emerges' class still repairs under these guards.
+
+**2. P0-2 — Tier-3 force-insert redesigned into framed "Source Excerpts".** The old
+implementation appended raw source slices as KEY TAKEAWAYS (`- **{kw}**: {sent}`). The rig
+shipped a 3-line mid-quote fragment of the wrong answer as the final takeaway of the book.
+V0.03: excerpts go to a NEW `SummaryResult.source_excerpts` field rendered as a separate,
+clearly-labelled section ("Source Excerpts (auto-inserted)" with an explicit "not the
+summarizer's advice" note) in the chapter .md, the crash checkpoints and the DOCX — and
+NEVER into `bullet_points`. Only **complete sentences** are eligible (capital start, terminal
+punctuation, ≥40 chars, balanced quotes); fragments are rejected with a DEBUG trace. The
+3-tier machinery counts existing excerpts toward coverage so a keyword already covered by an
+excerpt cannot re-trigger Tier-2/Tier-3.
+
+**3. P0-3 — coverage matching is normalized and parts-tolerant.** `compute_coverage` matched
+30 n-grams + 25 concepts by raw substring after whitespace-collapse. V0.03 adds hyphen→space
+normalization on both sides, simple plural tolerance, and — for multi-word keywords —
+all-content-parts-present matching (order-free, the same lenient rule gap-fill source lookup
+already used). 'hamster wheels' now matches 'hamster-wheel shifts'; 'system crashing' matches
+"system will come crashing down". Substring matches remain a subset of the new rule, so
+nothing that passed before can newly fail — the metric stops crying wolf on faithful
+summaries, which was the trigger for the P0-2 damage.
+
+**4. P0-4 — an explicit chapter selection IS the requested structure.** Four general fixes:
+(i) **Layer-3 short-segment merging is skipped entirely when a selection is active**
+(`_merge_short_chapters` — the rig's 10 selected essays became 2 mislabeled mega-segments;
+full-book runs keep the merge as protection against 1-page TOC fragments); (ii) **same-page
+TOC entries are deduped before page-range derivation** (`_derive_page_ranges_from_toc` — an
+author bookmark sharing its chapter's page collapsed the chapter to ZERO pages: the V0.02
+false-success precondition); (iii) **the ±1 boundary overlap is not applied to TOC-derived
+ranges** (`conversion/extraction.py` — TOC boundaries are exact; the overlap bled the next
+unselected chapter's first page into the extract, and thing 10's entire essay flowed into
+"chapter 9"); (iv) **every TOC boundary inside a segment becomes a real `##` heading**
+(`insert_toc_boundary_headings`, `output_save.py` — anchored on the `<!-- original page N -->`
+markers; same-page entries dedupe keep-first; boundaries without markers are never guessed)
+so RAG chunking can find every section, and the last selected entry's `end_page` is the last
+extracted page rather than the whole-book tail (`_segment_by_chapters`).
+
+**5. P1-5 — anthology bylines are detected and attributed.** NEW `extract_bylines()`
+(`deterministic_analyzer.py`): a general whole-line `By <Name>` regex (1–4 capitalized
+tokens, apostrophes/hyphens/periods supported). Bylines land in a new `## Section Bylines`
+block of the deterministic analysis (which the V17.2 prepend already feeds to the model),
+and `_build_prompt` injects an `ANTHOLOGY ATTRIBUTION` instruction when a chapter carries
+≥2 distinct bylines ("Attribute each idea to the author the source credits… do NOT collapse
+multi-author sections into anonymous prose") — on both prompt paths (template render and the
+inline academic f-string). Single-byline texts are covered by the existing THEORIST COVERAGE
+instruction.
+
+**6. P1-6 — deliverable metadata tells the truth.** (i) the book-summary provenance stamp
+carries the REAL deduped bullet count (`build_book_summary(stats=…)` out-param; the rig
+stamped `bullets=2` — the chapter count — on a 70-bullet file); (ii) the fact-check log no
+longer claims "marked ⚠️" (V13.33.2 removed the marker four releases ago; the log lied) —
+it now says "kept unmarked (conservative; see Quarantine Log appendix + drops.jsonl)"; same
+fix for the Guardrail-A message; (iii) NEW per-chapter **Quarantine Log appendix**
+(`SummaryResult.quarantine_appendix`): every bullet the quality pipeline dropped or
+kept-with-concerns for that chapter, rendered into the chapter .md and DOCX (stage +
+disposition + reason + excerpt, capped at 25 + pointer to drops.jsonl); the quarantine
+recording sites that omitted the chapter tag now carry it (`verify_bullets` via the
+Summarizer delegate, additive-section verification, Guardrail A, self-review).
+
+**Updated settings:** `summarisation.dropped_letter_auto_repair` (default **False**; UI
+toggle in Settings → Quality). No other setting changed.
+
 ## V0.02 — The false-success fix: chapter selection can no longer "complete" with zero summaries (real-rig incident)
 
 > **The incident (real-rig log, Elixir V0.01, 97 Things Every Programmer Should Know):**

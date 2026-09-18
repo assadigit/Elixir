@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.02-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3307%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.06-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3510%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -326,7 +326,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.02):** `3307 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 121s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
+**Current gate (Elixir V0.06):** `3510 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 157s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
 
 ### 🏗️ Project Layout
 
@@ -358,7 +358,7 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: Elixir V0.02 — "The false-success fix."** Selecting specific chapters can no longer end in a silent empty success: the chapter selector no longer lists per-chapter author/annotation bookmarks as chapters (the shared metadata-children rule, plus fixed page ranges), segmentation is selection-aware (the TOC is restricted to your picks BEFORE segmenting — no phantom segments, no merge contamination, and a 2-chapter selection is accepted instead of falling into the heading/semantic cascade), the front-matter skip is disabled for sections you explicitly picked, and a zero-summary completion under a selection is now a **hard failure** with an actionable message (previously: "✅ Conversion complete." with empty outputs). Full-book runs are unchanged. See the V0.02 changelog entry for the full real-rig incident RCA. Versioning: since **V0.01** Elixir versions on its own two-part line — V0.01 = the final legacy release (V18.20.4.12 "The SWOT Tier-1 + hygiene batch") repackaged; the mapping table is in the V0.01 changelog entry. Full evidence in [`CHANGELOG.md`](CHANGELOG.md).
+**Current version: Elixir V0.06 — "Deliverables that honor the contract, the budget, and the reader."** The second llama.cpp rig run exposed what single-layer enforcement misses: the V0.05 flag gates were all generation-side, but the response parser's leftover fallback smuggled unrequested additive-section content into `thorough_summary` (shipped as a junk "Thorough Summary" to a user who unchecked it) — so the contract is now enforced at THREE layers (parse-time discard, result-construction, render-time flags on every renderer: chapter .md, DOCX, book summary). The bullet budget became a HARD CAP at every insertion site (Tier-2 gap-fill, scholar gap-fill, quarantine recovery) plus ship time — the rig shipped 19/18/15/14/12 bullets against 5-7/5-7/6-9/6-9/5-8 targets. Pipeline bookkeeping left the deliverables (quarantine → logs/drops.jsonl only); a deliverable never lists the same content block twice (book "All Key Takeaways" concat, DOCX 2000-char preview + "Global Key Takeaways" page all removed); critique bullets ("X omitted: …", "The summary should…", "…not fully enumerated in the summary…") are detected structurally and dropped at ship time; duplicated quotes/byline echoes are stripped; Tier-3 excerpts are re-validated against the final summary and never open with a heading echo. See the V0.06 changelog entry for the full design notes.
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 

@@ -35,6 +35,7 @@ def recover_quarantined(
     *,
     quarantine: QuarantineLike,
     log: LogCallback = None,
+    bullet_cap: int | None = None,
 ) -> list[str]:
     """Re-scan the quarantine and resurrect high-overlap bullets.
 
@@ -50,6 +51,10 @@ def recover_quarantined(
     Dedup-aware: a resurrected bullet that is a near-duplicate of one already
     in ``bullets`` is skipped (we don't want to resurrect a bullet that was
     already kept under a different wording).
+
+    V0.06 (rig audit F4-b): ``bullet_cap`` (the source-scaled budget from
+    length_policy.bullet_cap) is a HARD CAP — resurrection stops when the
+    chapter is at its cap (``None``/``<= 0`` = uncapped, legacy behaviour).
     """
     log = log or _noop_log
     try:
@@ -85,8 +90,21 @@ def recover_quarantined(
     existing_norms = [
         re.sub(r'[^\w\s]', '', str(b).lower()).strip() for b in bullets
     ]
+    # V0.06 (F4-b): the source-scaled bullet budget is a hard cap at this
+    # insertion site too — no resurrection past the cap.
+    _cap_qr = int(bullet_cap) if isinstance(bullet_cap, (int, float)) and bullet_cap else 0
     added = 0
     for entry in resurrected:
+        if _cap_qr > 0 and len(bullets) >= _cap_qr:
+            if added == 0:
+                log(
+                    f"    \u267b\ufe0f  V0.06: bullet budget reached "
+                    f"({len(bullets)}/{_cap_qr}) — quarantine recovery pass "
+                    f"re-inserted nothing (eligible entries stay in "
+                    f"logs/drops.jsonl).",
+                    "INFO",
+                )
+            break
         bp = entry.bullet
         if not bp or bp.strip() in [b.strip() for b in bullets]:
             continue

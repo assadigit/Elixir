@@ -247,6 +247,7 @@ class TestShipTimeQuarantine:
             executive_summary="Exec.",
             thorough_summary=F7_TYPO_THOROUGH,
             source_text=SOURCE_EXCERPT,
+            auto_repair_garble=True,  # V0.03 (P0-1): repair is opt-in now
         )
         joined = " ".join(report.bullets) + " " + report.thorough_summary
         assert "oedipal" in joined
@@ -266,8 +267,9 @@ class TestDroppedLetterAutoRepair:
     def test_edipal_repaired(self):
         import re as _re
         text = "The phallic/edipal phase is when the preliminary identity forms."
+        # V0.03 (P0-1): auto_repair must be EXPLICITLY enabled (default off).
         fixed, issues = detect_dropped_letter_garble(
-            text, "bullet[0]", SOURCE_EXCERPT
+            text, "bullet[0]", SOURCE_EXCERPT, auto_repair=True
         )
         assert "oedipal" in fixed
         # Word-boundary check: "oedipal" contains the substring "edipal",
@@ -278,8 +280,9 @@ class TestDroppedLetterAutoRepair:
     def test_capitalized_garble_preserves_case(self):
         import re as _re
         text = "Edipal resolution begins in the phallic phase."
+        # V0.03 (P0-1): auto_repair must be EXPLICITLY enabled (default off).
         fixed, issues = detect_dropped_letter_garble(
-            text, "bullet[1]", SOURCE_EXCERPT
+            text, "bullet[1]", SOURCE_EXCERPT, auto_repair=True
         )
         assert "Oedipal" in fixed
         assert not _re.search(r"(?<!\w)Edipal(?!\w)", fixed)

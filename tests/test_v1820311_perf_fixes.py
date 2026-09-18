@@ -232,8 +232,12 @@ class TestThoroughContinuation:
             ["Bullet one."],
         )
         assert "DRAFT FROM THE PRIMARY PASS" not in prompt
-        # the classic contract is unchanged
-        assert "800-1200 word" in prompt
+        # V0.05 (F9b): the classic contract is unchanged EXCEPT the word
+        # target, which now scales to the source (this fixture is ~100
+        # words → a ~45-word target) — never the absolute 800-1200.
+        import re as _re
+        assert _re.search(r"\b\d+-\d+ word thorough summary", prompt)
+        assert "800-1200" not in prompt
 
     def test_empty_draft_is_inert(self):
         prompt = build_dedicated_thorough_prompt(

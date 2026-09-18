@@ -63,6 +63,15 @@ _QUANT_MULTIPLIERS: dict[str, float] = {
     "iq3_m":   0.33,
     "iq4_xs":  0.40,
     "iq4_nl":  0.45,
+    # ── V0.04: ternary (1.58-bit / BitNet-style) weights ──
+    # Ternary packs weights at ~1.58 bits ≈ 0.20 raw bytes/param; with
+    # scales/zero-points and f16 embeddings the effective GGUF footprint
+    # of e.g. a 27B ternary lands ≈ 8 GB → ≈ 0.31 bytes/param. Without
+    # this class the calculator fell back to the Q4_K_M multiplier (0.58),
+    # estimating a 27B ternary at ~18 GB — a bogus "overbudget" verdict
+    # for a model that actually fits a 12 GB card.
+    "ternary": 0.31,
+    "tn23":    0.31,   # common ternary tag suffix (e.g. …-tn23.gguf)
     # ── Standard K-quants ──
     "q4_0": 0.55,
     "q4_1": 0.58,
@@ -124,7 +133,10 @@ def _parse_quantization(model_name: str) -> tuple[str, float]:
 
     # Check for explicit quantization tags (order matters — check longer/more-specific first).
     # V18.1: IQ quants checked first (they're longer than their Q counterparts).
-    for tag in ["iq2_xxs", "iq2_xs", "iq2_s", "iq2_m",
+    # V0.04: ternary FIRST — "Ternary-Bonsai-2-27B…" must not fall through
+    # to the Q4_K_M default (see the _QUANT_MULTIPLIERS note above).
+    for tag in ["ternary", "tn23",
+                "iq2_xxs", "iq2_xs", "iq2_s", "iq2_m",
                 "iq3_xxs", "iq3_xs", "iq3_s", "iq3_m",
                 "iq4_xs", "iq4_nl",
                 "q5_k_xl", "q5_k_m", "q5_k_s", "q4_k_m", "q4_k_s",

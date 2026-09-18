@@ -639,6 +639,20 @@ def call_via_llm_provider(
             provider._base_url = base_url
         if provider_type == "openai_compat" and api_key:
             provider._api_key = api_key
+        # V0.04: llama.cpp — apply the endpoint overrides through the REAL
+        # attribute names (LlamaCppProvider exposes base_url/api_key, not
+        # the underscore-prefixed names the openai_compat branch targets —
+        # that legacy branch is inert dead code and is left untouched; see
+        # the known-follow-ups note in CHANGELOG V0.04). The Summarizer
+        # passes the same values create_provider already read from the
+        # llamacpp_* settings, so this is a no-op in practice — it exists
+        # so an explicit per-call endpoint override can never be silently
+        # dropped for the new backend.
+        if provider_type == "llamacpp":
+            if base_url and hasattr(provider, "base_url"):
+                provider.base_url = base_url.rstrip("/")
+            if api_key and hasattr(provider, "api_key"):
+                provider.api_key = api_key
         _log(f"    🤖 {model} (t={temp:.2f}) via llm_provider.{provider_type}…", "INFO")
         result = provider.complete(
             prompt=prompt,

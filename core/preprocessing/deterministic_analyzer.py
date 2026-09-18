@@ -797,6 +797,48 @@ def count_citations_per_section(md_text: str, headings: list[dict]) -> list[dict
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# V0.03 (P1-5): Section byline extraction — the anthology attribution signal
+# ─────────────────────────────────────────────────────────────────────────────
+
+# A standalone byline: "By" + 1–4 capitalized name tokens (letters,
+# apostrophes, hyphens, periods — covers "O'Brien", "Jean-Pierre",
+# "St. John"), optional trailing period. Must occupy the WHOLE line —
+# "by the way..." mid-sentence never matches (case + whole-line anchors).
+_BYLINE_RE = re.compile(
+    r"^By\s+([A-Z][A-Za-z.'’\u2019-]*(?:\s+[A-Z][A-Za-z.'’\u2019-]*){0,3})\.?\s*$",
+    re.MULTILINE,
+)
+
+
+def extract_bylines(md_text: str) -> list[str]:
+    """V0.03 (P1-5): extract standalone ``By <Name>`` bylines, in order.
+
+    Anthologies and essay collections credit each section with its own
+    byline. Returns the deduped names in order of first appearance. GENERAL
+    pattern only — no name lists, no book-specific tuning. A "byline" that
+    is a whole-line ``By ...`` construction with capitalized name tokens.
+    """
+    if not md_text:
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for m in _BYLINE_RE.finditer(md_text):
+        name = m.group(1).strip().rstrip(".")
+        # Skip degenerate matches ("By The" — a single capitalized token is
+        # rarely a name; require ≥2 tokens OR a known-name shape is NOT
+        # assumed — keep it simple: 1-token bylines are kept only if the
+        # token is ≥4 chars, e.g. "By Voltaire").
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main analyzer — runs all extractors + formats output
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -816,6 +858,7 @@ def run_deterministic_analysis(md_text: str) -> str:
     block_quotes = extract_block_quotes(md_text)
     section_words = count_words_per_section(md_text, headings)
     section_citations = count_citations_per_section(md_text, headings)
+    bylines = extract_bylines(md_text)  # V0.03 (P1-5)
 
     total_words = len(md_text.split())
     total_lines = len(md_text.split("\n"))
@@ -862,6 +905,17 @@ def run_deterministic_analysis(md_text: str) -> str:
         lines.append("")
         for i, (author, count, years) in enumerate(author_counts, 1):
             lines.append(f"{i}. **{author}** ({count} mentions): {years}")
+        lines.append("")
+
+    # V0.03 (P1-5, real-rig audit): section bylines. Anthology books credit
+    # each essay with a standalone "By <Name>" line. The V0.02 rig summaries
+    # erased authorship entirely (zero author names in an 8-author extract)
+    # — for anthologies, attribution IS core content. GENERAL pattern: a
+    # line consisting solely of "By" + a 1–4 token capitalized name.
+    if bylines:
+        lines.append("## Section Bylines (anthology authors — attribute ideas to these authors)")
+        for i, name in enumerate(bylines, 1):
+            lines.append(f"{i}. {name}")
         lines.append("")
 
     if numbered_lists:

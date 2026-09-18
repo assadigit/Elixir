@@ -125,8 +125,11 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
         content, re.DOTALL,
     )
     executive_summary = exec_match.group(1).strip() if exec_match else ""
-    if not executive_summary:
-        return None  # incomplete — treat as not done
+    # V0.05 (F9a): no single section is individually REQUIRED anymore — the
+    # user's output-selection flags are enforced end-to-end, so a legitimately
+    # unchecked section (exec, keypoints, or thorough) is simply ABSENT from
+    # the file. The completeness criterion moves to the combined check below:
+    # at least ONE of the three core sections must have content.
 
     # Extract bullet points
     bullets_match = re.search(
@@ -141,16 +144,21 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
                 bp = line[2:].strip()
                 if bp:
                     bullet_points.append(bp)
-    # A chapter with no bullets is suspicious — treat as not done
-    if not bullet_points:
-        return None
-
     # Extract thorough summary
     thorough_match = re.search(
         r"##\s+Thorough Summary\s*\n(.*?)(?=\n##\s+|\Z)",
         content, re.DOTALL,
     )
     thorough_summary = thorough_match.group(1).strip() if thorough_match else ""
+
+    # V0.05 (F9a) combined completeness check: at least ONE core section
+    # (executive / takeaways / thorough) must carry content. A file with
+    # NONE of them is corrupt or truncated — treat as not done so the
+    # chapter is reprocessed. (Previously bullets alone were mandatory,
+    # which forced an endless re-summarize loop for a keypoints-disabled
+    # run even though its exec/thorough sections were complete.)
+    if not executive_summary and not bullet_points and not thorough_summary:
+        return None
 
     return SummaryResult(
         chapter_heading=heading,

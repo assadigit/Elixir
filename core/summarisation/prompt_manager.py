@@ -227,6 +227,38 @@ class PromptManager:
                             type(exc).__name__, exc,
                         )
             template = template.replace("{{" + key + "}}", value)
+        # V0.05 (rig audit F9b): source-relative length placeholders + the
+        # legacy-absolute-number backstop. When the caller passed the chapter
+        # ``text`` (every summarisation prompt does), the scaled targets are
+        # computed from it and substituted; templates without the placeholders
+        # and user-edited copies still carrying the old absolute ranges
+        # ("800-1200 word", "20-40 distinct", …) get them replaced with the
+        # scaled numbers — the expansion-by-instruction class can never
+        # re-enter through an edited template.
+        if "text" in variables and variables.get("text"):
+            try:
+                from core.summarisation.length_policy import (
+                    apply_backstop,
+                    bullet_range_phrase,
+                    count_source_words,
+                    exec_words_phrase,
+                    thorough_words_phrase,
+                )
+                _sw = count_source_words(str(variables["text"]))
+                _scaled = {
+                    "exec_words": exec_words_phrase(_sw),
+                    "bullet_range": bullet_range_phrase(_sw),
+                    "thorough_words": thorough_words_phrase(_sw),
+                }
+                for _pk, _pv in _scaled.items():
+                    template = template.replace("{{" + _pk + "}}", _pv)
+                template = apply_backstop(template, _sw)
+            except Exception as _lp_e:
+                logger.debug(
+                    "length-policy substitution skipped (%s: %s) — template"
+                    " rendered unchanged",
+                    type(_lp_e).__name__, _lp_e,
+                )
         return template
 
     def get_default(self) -> str:

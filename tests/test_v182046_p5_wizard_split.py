@@ -608,7 +608,9 @@ class TestP4ContractsSurvive:
         ref, a re-entrancy guard, and the button disabled in-flight."""
         path = _STEPS / "step5_models.py"
         body = _method_src(path, "_refresh_models", "Step5Models")
-        assert "SimpleWorker(self._get_models)" in body
+        # V0.04: backend-dispatched worker fn (llamacpp | ollama) — the
+        # W-b11 shape (SimpleWorker + kept ref) is what's pinned.
+        assert "SimpleWorker(worker_fn)" in body
         assert "self._models_worker = SimpleWorker" in body
         assert ".finished.connect(self._on_models_loaded)" in body
         assert ".failed.connect(self._on_models_failed)" in body

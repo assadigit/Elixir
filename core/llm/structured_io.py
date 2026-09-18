@@ -85,15 +85,15 @@ class SummarySchema(BaseModel):  # type: ignore[misc, valid-type]
     """
 
     executive_summary: str = Field(
-        ..., description="150-250 word overview of the chapter's main concepts."
+        ..., description="Source-scaled overview of the chapter's main concepts."
     )
     bullet_points: list[str] = Field(
         ...,
-        description="20-40 distinct key takeaways, one per item.",
+        description="Source-scaled distinct key takeaways, one per item.",
     )
     thorough_summary: str = Field(
         ...,
-        description="800-1200 word detailed analysis as flowing prose.",
+        description="Source-scaled detailed analysis as flowing prose.",
     )
     key_distinctions: str | None = Field(
         None,
@@ -144,24 +144,51 @@ def supports_json_mode(provider: str, model: str) -> bool:
         return True
     if provider_l == "claude":
         return True
+    # V0.04: llama.cpp server supports the OpenAI ``response_format:
+    # {"type": "json_object"}`` request (llama-server, 2024+ builds); the
+    # provider maps json_mode onto it exactly like openai_compat.
+    if provider_l == "llamacpp":
+        return True
     return False
 
 
-def build_json_instruction(schema_cls: type) -> str:
+def build_json_instruction(schema_cls: type, source_words: int | None = None) -> str:
     """Build a JSON-formatting instruction to append to the prompt.
 
     Tells the model to output a JSON object matching the schema. Kept short
     so it doesn't bloat the context window for low-VRAM models.
+
+    V0.05 (rig audit F9b): the length hints scale to the source via
+    ``length_policy`` when ``source_words`` is provided (the old fixed
+    "150-250 word" / "20-40" / "800-1200 word" hints carried the
+    expansion-by-instruction defect); without it they degrade to a
+    source-relative phrasing with no absolute numbers.
     """
     if schema_cls is SummarySchema:
+        try:
+            from core.summarisation.length_policy import (
+                bullet_range_phrase,
+                exec_words_phrase,
+                thorough_words_phrase,
+            )
+            if source_words:
+                _exec_hint = exec_words_phrase(int(source_words))
+                _bullet_hint = f"{bullet_range_phrase(int(source_words))} distinct key takeaways"
+                _thorough_hint = f"{thorough_words_phrase(int(source_words))} detailed analysis"
+            else:
+                raise ValueError  # fall through to the source-relative wording
+        except Exception:
+            _exec_hint = "source-scaled overview"
+            _bullet_hint = "source-scaled distinct key takeaways"
+            _thorough_hint = "source-scaled detailed analysis"
         return (
             "\n\n### OUTPUT FORMAT (JSON) ###\n"
             "Output ONLY a JSON object with these keys (no markdown, no "
             "code fences, no commentary):\n"
             "{\n"
-            '  "executive_summary": "150-250 word overview",\n'
-            '  "bullet_points": ["bullet 1", "bullet 2", ...],\n'
-            '  "thorough_summary": "800-1200 word detailed analysis",\n'
+            f'  "executive_summary": "{_exec_hint}",\n'
+            f'  "bullet_points": ["{_bullet_hint}", ...],\n'
+            f'  "thorough_summary": "{_thorough_hint}",\n'
             '  "key_distinctions": "2-5 distinctions, or null",\n'
             '  "theoretical_tensions": "2-4 tensions, or null"\n'
             "}\n"

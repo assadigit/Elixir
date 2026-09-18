@@ -488,9 +488,11 @@ class TestQueueOwnerPins:
 class TestWizardAsyncModelsPins:
     def test_refresh_models_uses_simple_worker(self):
         body = _func_src(_STEP5_MODELS, "_refresh_models", "Step5Models")
-        assert "SimpleWorker(self._get_models)" in body, (
-            "the 5s-timeout Ollama HTTP fetch must run on a SimpleWorker "
-            "(W-b11)"
+        # V0.04: the worker fn is now backend-dispatched (worker_fn =
+        # llamacpp_fetch_models | self._get_models) — the W-b11 intent is
+        # that the FETCH runs on a SimpleWorker, whichever fn it is.
+        assert "SimpleWorker(worker_fn)" in body, (
+            "the 5s-timeout HTTP fetch must run on a SimpleWorker (W-b11)"
         )
         assert "self._models_worker = SimpleWorker" in body
         assert ".finished.connect(self._on_models_loaded)" in body
@@ -553,8 +555,14 @@ class TestWizardAsyncModelsPins:
     def test_get_models_stays_the_pure_worker_fn(self):
         body = _func_src(_STEP5_MODELS, "_get_models", "Step5Models")
         assert "DependencyChecker().get_ollama_models()" in body
-        # widget-free: the fn must not touch any combo/button
-        assert "combo" not in body
+        # widget-free: the fn must not ACCESS widgets — no combo/button
+        # METHOD CALLS (V0.04: the fn reads plain snapshot attributes
+        # stashed by _refresh_models on the main thread; its docstring
+        # merely MENTIONS the combo, which the old literal 'combo'
+        # substring pin false-positived on).
+        assert ".currentData()" not in body
+        assert ".currentText()" not in body
+        assert ".text()" not in body
         assert "refresh_btn" not in body
 
 

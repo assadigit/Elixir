@@ -182,6 +182,9 @@ def verify_additive_sections(
                     reason="Item could not be source-grounded - likely fabricated",
                     source_overlap=0.0,
                     actually_dropped=True,
+                    # V0.03 (P1-6): the heading IS the chapter — tag it so the
+                    # per-chapter Quarantine Log appendix can attribute drops.
+                    chapter=heading or "",
                 )
 
         if dropped_items:
@@ -492,6 +495,80 @@ def semantic_dedup_bullets(
 # ── compute_coverage (extracted verbatim from Summarizer V13.32.8/V18.2.19) ──
 
 
+# ── V0.03 (P0-3, real-rig audit): normalized keyword matching ───────────────
+#
+# The V0.02 rig run scored a faithful ~95%-coverage chapter summary at 53%
+# because coverage matched frequency-ranked n-grams by RAW SUBSTRING:
+#   - hyphenation variants failed ('hamster-wheel shifts' vs keyword
+#     'hamster wheels'),
+#   - paraphrases failed ('system crashing' vs 'system will come crashing
+#     down'),
+#   - junk bigrams ('like server') failed even though both parts were
+#     present everywhere.
+# The metric measured "did the summary repeat the exact n-gram", not "does
+# the summary talk about the concept" — and the resulting false FAIL
+# triggered the Tier-2/Tier-3 remediation that damaged the deliverable.
+#
+# GENERAL matching rule (V0.03): normalize hyphens→spaces + collapse
+# whitespace on both sides; then a keyword is covered when
+#   (a) the full normalized phrase appears, OR
+#   (b) for multi-word keywords, ALL content parts (≥4 chars, not
+#       structural function words) appear with simple plural tolerance —
+#       the same lenient parts rule _find_source_sentence already uses for
+#       gap-fill source lookup, now applied consistently to the metric.
+# Substring matches remain a subset of this rule, so nothing that passed
+# before can newly fail.
+_HYPHEN_WS_RE = re.compile(r"[-\u2010\u2011\u2012\u2013\u2014]+")
+_WS_RE = re.compile(r"\s+")
+
+
+def _normalize_for_coverage(s: str) -> str:
+    """Lowercase, hyphens→spaces, collapse whitespace (V0.03 P0-3)."""
+    return _WS_RE.sub(" ", _HYPHEN_WS_RE.sub(" ", (s or "").lower())).strip()
+
+
+def _part_present(part: str, normalized_summary: str) -> bool:
+    """Word-boundary presence with simple plural tolerance (V0.03 P0-3)."""
+    if f" {part} " in normalized_summary or normalized_summary.startswith(part + " ") \
+            or normalized_summary.endswith(" " + part):
+        return True
+    # Simple plural tolerance: 'wheels' matches 'wheel', 'wheel' matches 'wheels'.
+    variants = set()
+    if part.endswith("s") and len(part) > 3:
+        variants.add(part[:-1])
+    else:
+        variants.add(part + "s")
+    for v in variants:
+        if f" {v} " in normalized_summary or normalized_summary.startswith(v + " ") \
+                or normalized_summary.endswith(" " + v):
+            return True
+    return False
+
+
+def _keyword_covered(keyword: str, normalized_summary: str) -> bool:
+    """V0.03 (P0-3): normalized, parts-tolerant keyword coverage test."""
+    nk = _normalize_for_coverage(keyword)
+    if not nk:
+        return True
+    if nk in normalized_summary:
+        return True
+    parts = [p for p in nk.split() if len(p) >= 4]
+    if len(parts) < 2:
+        # Single content word (or no ≥4-char parts): substring already
+        # tested above; try word-boundary plural tolerance.
+        word = parts[0] if parts else nk.split()[0] if nk.split() else nk
+        return _part_present(word, normalized_summary)
+    # Multi-word: every content part must be present (order-free).
+    try:
+        from core.summarisation.structural_stopwords import STRUCTURAL_FUNCTION_WORDS
+        content = [p for p in parts if p not in STRUCTURAL_FUNCTION_WORDS]
+    except Exception:
+        content = parts
+    if not content:
+        content = parts
+    return all(_part_present(p, normalized_summary) for p in content)
+
+
 def compute_coverage(
     source: str,
     summary: str,
@@ -545,17 +622,20 @@ def compute_coverage(
 
     if not keywords:
         return 1.0
-    # V13.37.0: Normalize whitespace in both summary and concepts before
-    # matching. The old code (sl = summary.lower()) failed when concepts
-    # contained newlines from PDF table extraction.
-    sl = re.sub(r'\s+', ' ', summary).strip().lower()
-    keyword_found = sum(1 for k in keywords if k in sl)
+    # V13.37.0 → V0.03 (P0-3): normalize whitespace AND hyphens on both
+    # sides, then match via the parts-tolerant rule (see
+    # _keyword_covered). The old raw-substring match (sl = summary.lower())
+    # failed on hyphenation variants and paraphrases — scoring a faithful
+    # ~95%-coverage rig chapter at 53% and triggering the remediation that
+    # damaged the deliverable.
+    sl = _normalize_for_coverage(summary)
+    keyword_found = sum(1 for k in keywords if _keyword_covered(k, sl))
     keyword_coverage = keyword_found / len(keywords)
 
     # Concept-based coverage (uses cached concepts)
     if concepts:
-        # V13.37.0: Normalize concept whitespace too (newline → space)
-        concept_found = sum(1 for c in concepts if re.sub(r'\s+', ' ', c).strip().lower() in sl)
+        # V13.37.0 → V0.03 (P0-3): same normalized, parts-tolerant match.
+        concept_found = sum(1 for c in concepts if _keyword_covered(c, sl))
         concept_coverage = concept_found / len(concepts)
         return max(keyword_coverage, concept_coverage)  # V13.32.8: MAX not weighted avg
 
@@ -571,6 +651,7 @@ def verify_bullets(
     verify_windows_cache: dict[str, list],
     quarantine: QuarantineLike | None = None,
     log: LogCallback | None = None,
+    chapter: str = "",
 ) -> list[str]:
     """A3: Deterministic fact-checking — verify each bullet against source.
 
@@ -663,14 +744,20 @@ def verify_bullets(
                     stage="Layer A: Deterministic fact-check (verify_bullets)",
                     reason=f"rapidfuzz partial_ratio {best_score:.0f}% < {VERIFY_THRESHOLD:.0f}%",
                     source_overlap=best_score / 100.0,
-                    actually_dropped=False,  # bullet is kept but marked ⚠️
+                    actually_dropped=False,  # bullet is kept (conservative)
+                    # V0.03 (P1-6): chapter tag for the per-chapter appendix.
+                    chapter=chapter or "",
                 )
 
     if unverified > 0:
-        # V13.27.0 P2.3: Fixed log message — was "< 35%", now matches the actual threshold
+        # V13.27.0 P2.3 → V0.03 (P1-6): the message claimed "marked ⚠️" for
+        # four releases after V13.33.2 stopped writing the marker. The
+        # bullets are KEPT with no user-facing marker; the audit trail is
+        # the chapter's Quarantine Log appendix + logs/drops.jsonl.
         _log(
             f"    🔍 Fact-check: {verified} verified, {unverified} unverified "
-            f"(best-score < {VERIFY_THRESHOLD:.0f}%) — marked ⚠️, logged to quarantine",
+            f"(best-score < {VERIFY_THRESHOLD:.0f}%) — kept unmarked "
+            f"(conservative; see Quarantine Log appendix + drops.jsonl)",
             "WARNING"
         )
     else:

@@ -33,19 +33,19 @@ Chapter content:
 Output EXACTLY these five XML sections and nothing else:
 
 <executive_summary>
-A 150-250 word overview of the chapter's main concepts.
+A {{exec_words}} overview of the chapter's main concepts.
 </executive_summary>
 
 <bullet_points>
-A comprehensive list of 20-40 distinct key takeaways. One bullet per line,
+A comprehensive list of {{bullet_range}} distinct key takeaways (the count scales to this chapter's length). One bullet per line,
 prefixed with "- ".
 </bullet_points>
 
 <thorough_summary>
-An 800-1200 word detailed analysis written as FLOWING PROSE PARAGRAPHS
+A {{thorough_words}} detailed analysis written as FLOWING PROSE PARAGRAPHS
 (not bullet points, not one-sentence-per-line). Organise into 4-6
 paragraphs, each with a clear topic sentence followed by 3-5 supporting
-sentences. Use transitional phrases between paragraphs. Cover all concepts.
+sentences. Use transitional phrases between paragraphs. Cover all concepts. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it.
 </thorough_summary>
 
 <key_distinctions>

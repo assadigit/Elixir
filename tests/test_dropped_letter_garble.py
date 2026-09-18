@@ -150,26 +150,37 @@ class TestEdgeCases:
         assert len(issues) == 0
 
     def test_unambiguous_garble_auto_repaired(self):
-        """V18.20.3.4 (RC-3, audit v182033): when exactly ONE source word is
-        at edit distance 1, the token is AUTO-REPAIRED (severity='fix') —
-        the 'edipal'→'oedipal' class the V18.20.3.3 run shipped as a typo."""
+        """V18.20.3.4 (RC-3) → V0.03 (P0-1): when exactly ONE source word is
+        at edit distance 1 AND auto_repair is EXPLICITLY enabled, the token
+        is auto-repaired (severity='fix') — the 'emergs'→'emerges' class.
+        V0.03: the repair is OFF by default (rig audit: 12/13 repairs
+        corrupted valid words); this test pins the guarded machinery."""
         source = "Self-constancy emerges at approximately two years."
         text = "The emergs of identity is key."
+        # Default: OFF — flag only, text untouched.
         result, issues = detect_dropped_letter_garble(text, "exec", source)
+        assert result == text
+        assert any(i.severity == "flag" for i in issues)
+        # Explicitly enabled: the guarded repair fires (non-word + unique
+        # candidate + single-paragraph corroboration all pass).
+        result, issues = detect_dropped_letter_garble(
+            text, "exec", source, auto_repair=True)
         assert result == "The emerges of identity is key."
         assert any(
-            i.severity == "fix" and "auto-repaired" in i.detail
+            i.severity == "fix" and "auto-repair" in i.detail
             for i in issues
         )
 
     def test_ambiguous_garble_text_unchanged(self):
         """V18.20.3.4 (RC-3): with MULTIPLE edit-distance-1 candidates the
         reconstruction is ambiguous — the text stays unchanged and the
-        issue stays flag-only (the human/LLM decides downstream)."""
+        issue stays flag-only (the human/LLM decides downstream). V0.03:
+        holds even with auto_repair=True (guard c aborts on ambiguity)."""
         # "emergs" is distance-1 from BOTH "emerges" and "emerge".
         source = "It emerges and will emerge fully in time."
         text = "The emergs of identity is key."
-        result, issues = detect_dropped_letter_garble(text, "exec", source)
+        result, issues = detect_dropped_letter_garble(
+            text, "exec", source, auto_repair=True)
         assert result == text
         assert any(
             i.severity == "flag" and "likely garbled" in i.detail

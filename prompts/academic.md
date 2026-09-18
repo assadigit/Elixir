@@ -25,15 +25,15 @@ INSTRUCTIONS:
 OUTPUT FORMAT (use exactly these XML tags):
 
 <executive_summary>
-A 200-300 word structured overview of the chapter's key findings, methods, and conclusions.
+A {{exec_words}} structured overview (scales to this chapter's length) of the chapter's key findings, methods, and conclusions.
 </executive_summary>
 
 <bullet_points>
-A comprehensive list of 25-50 distinct findings. One bullet per line, prefixed with "- ". Each bullet must be a single, precise claim with a page citation: - Finding here (p.N)
+A comprehensive list of {{bullet_range}} distinct findings (the count scales to this chapter's length). One bullet per line, prefixed with "- ". Each bullet must be a single, precise claim with a page citation: - Finding here (p.N)
 </bullet_points>
 
 <thorough_summary>
-A 1000-1500 word detailed analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 5-7 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover methodology, results, discussion, and limitations.
+A {{thorough_words}} detailed analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 5-7 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover methodology, results, discussion, and limitations. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it — write less if the chapter states less.
 </thorough_summary>
 
 <key_distinctions>

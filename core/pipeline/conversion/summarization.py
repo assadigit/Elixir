@@ -545,12 +545,34 @@ def run_summarization(
                         _provider.timeout = 300
             else:
                 # single_local or single_api — primary heavy model.
-                # single_local  → provider is ollama (or lmstudio)  → local model
+                # single_local  → provider is ollama (or lmstudio/llamacpp)
+                #                 → local model
                 # single_api    → provider is openai_compatible   → cloud model
                 # The provider is read from settings so the wizard's mode
                 # choice (which sets ``summarisation.provider``) is honoured.
                 _prov = _settings.get("summarisation.provider", "ollama")
-                if _prov in ("ollama", "lmstudio", "fusion"):
+                if _prov == "llamacpp":
+                    # V0.04: llama.cpp server — a local backend with its own
+                    # provider (NOT an Ollama-shaped call). The 300s timeout
+                    # override below does not apply: llama.cpp generates
+                    # stream-first (per-chunk timeout), so the provider's
+                    # own budget-derived timeouts govern.
+                    _provider = create_provider(
+                        provider="llamacpp",
+                        settings=_settings,
+                        log_callback=log,
+                        supervisor=None,
+                    )
+                    _summ_model = _settings.get(
+                        "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+                    if hasattr(_provider, "model"):
+                        _provider.model = _summ_model
+                    log(
+                        f"  🚀 V0.04 concept extraction: single_local mode "
+                        f"(llama.cpp model = {_summ_model})",
+                        "INFO",
+                    )
+                elif _prov in ("ollama", "lmstudio", "fusion"):
                     _provider = create_provider(
                         provider="ollama",
                         settings=_settings,
@@ -909,7 +931,14 @@ def run_summarization(
     log(f"📝 {len(summaries)} summaries → {summary_folder}")
 
     if converter.settings.get("summarisation.include_book_summary", True):
-        book_summary = summarizer.build_book_summary(summaries, book_title)
+        # V0.03 (P1-6): collect the ACTUAL aggregated bullet count — the
+        # provenance stamp previously passed len(summaries) (the CHAPTER
+        # count) as "bullets=N", stamping bullets=2 on a 70-bullet book.
+        _bk_stats: dict = {}
+        book_summary = summarizer.build_book_summary(
+            summaries, book_title, stats=_bk_stats)
+        _bk_bullet_count = _bk_stats.get("bullets") or sum(
+            len(s.bullet_points or []) for s in summaries)
         # V18.20.3.7: provenance stamp — the book-level summary names the
         # app version + run id that produced it (same self-identification
         # the chapter summaries carry; no sentinel — this file is always
@@ -933,7 +962,7 @@ def run_summarization(
                 getattr(_first_stamped, "app_version", "") or get_app_version()
             )
             _bk_prov = provenance_comment(
-                _bk_ver, _bk_rid, _bk_started, len(summaries),
+                _bk_ver, _bk_rid, _bk_started, _bk_bullet_count,  # V0.03: real bullet count
             )
             if not book_summary.startswith("<!--"):
                 book_summary = f"{_bk_prov}\n\n{book_summary}"
@@ -942,7 +971,7 @@ def run_summarization(
             # in rendered markdown, which is how stale artifacts from old
             # app-version folders pass a casual glance.
             book_summary = (
-                f"{book_summary.rstrip()}\n{visible_footer(_bk_ver, _bk_rid, _bk_started, len(summaries))}"
+                f"{book_summary.rstrip()}\n{visible_footer(_bk_ver, _bk_rid, _bk_started, _bk_bullet_count)}"  # V0.03: real bullet count
             )
         except Exception:
             pass  # stamping must never break the book summary write

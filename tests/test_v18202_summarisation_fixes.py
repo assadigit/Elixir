@@ -102,19 +102,26 @@ class TestA4PromptOverfitting:
         assert "trace identity" not in prompt
 
     def test_thorough_prompt_constraints_intact(self):
-        """All OTHER constraints survive the A4 edit."""
+        """All OTHER constraints survive the A4 edit.
+
+        V0.05 (F9b): the word target is now SOURCE-SCALED (the SRC fixture
+        is ~178 words → "80-120 word"), never the absolute 800-1200 — the
+        pin keeps the CONSTRAINT (a word target exists, prose form,
+        coverage, anti-invention) with the scaled phrasing.
+        """
         prompt = build_dedicated_thorough_prompt(
             "Chapter 1", self.SRC, "Executive summary.", ["- bullet one"]
         )
         for fragment in (
             "FLOWING PROSE PARAGRAPHS",
-            "800-1200 word thorough summary",
+            "80-120 word thorough summary",  # V0.05: source-scaled target
             "Cover ALL key concepts",
             "Include every named author/theorist",
             "Do NOT invent facts",
             "transitional phrases",
         ):
             assert fragment in prompt, f"constraint lost: {fragment!r}"
+        assert "800-1200" not in prompt  # V0.05: absolute demand is gone
 
     def test_thorough_prompt_neutral_for_any_book(self):
         """A climate-science chapter must not receive identity instructions."""
@@ -635,14 +642,33 @@ class TestA19DroppedLetterOnBullets:
     )
 
     def test_bullet_emergs_auto_repaired(self):
-        """V18.20.3.4 (RC-3, audit v182033): the A19 detector still catches
-        'emergs' — now with severity='fix' because 'emerges' is the UNIQUE
-        edit-distance-1 source candidate (auto-repair contract)."""
+        """V18.20.3.4 (RC-3) → V0.03 (P0-1): the A19 detector still catches
+        'emergs'. Default: flag-only (auto-repair disabled until
+        rig-validated). With auto_repair_garble=True: severity='fix' (the
+        UNIQUE edit-distance-1 source candidate, guarded)."""
+        # V0.03 default: flag-only. (Fixture is a realistic-length bullet —
+        # the 6-word V18.20.3.4 fixture now trips the label-stub ship-time
+        # drop once the garble is left in place, which is correct behavior
+        # for <8-word verbless items, not for real garbled bullets.)
+        _bp = "The process of identity formation emergs from the analysis of material."
         report = pc_mod.run_post_checks(
-            ["The process emergs from the analysis."],
+            [_bp],
             "Exec summary.",
             "Thorough summary text.",
             self.SOURCE,
+        )
+        dropped = [i for i in report.issues if i.detector == "dropped_letter"]
+        assert dropped, "bullet 'emergs' must be caught (A19)"
+        assert any(i.field == "bullet[0]" for i in dropped)
+        assert all(i.severity == "flag" for i in dropped)
+        assert report.bullets == [_bp]
+        # Explicitly enabled: guarded repair fires.
+        report = pc_mod.run_post_checks(
+            [_bp],
+            "Exec summary.",
+            "Thorough summary text.",
+            self.SOURCE,
+            auto_repair_garble=True,
         )
         dropped = [i for i in report.issues if i.detector == "dropped_letter"]
         assert dropped, "bullet 'emergs' must be caught (A19)"
@@ -659,14 +685,22 @@ class TestA19DroppedLetterOnBullets:
         assert not [i for i in report.issues if i.detector == "dropped_letter"]
 
     def test_unambiguous_autofix_applies_to_bullets(self):
-        """V18.20.3.4 (RC-3): the unique-candidate repair is APPLIED to the
-        shipped bullet text (the V18.20.3.3 'edipal' class shipped as a
-        typo in both the bullet and the thorough)."""
-        bullets = ["The process emergs from the analysis."]
+        """V18.20.3.4 (RC-3) → V0.03 (P0-1): the unique-candidate repair is
+        APPLIED to the shipped bullet text when auto_repair_garble=True
+        (the V18.20.3.3 'edipal' class shipped as a typo in both the bullet
+        and the thorough). V0.03 default: OFF — bullets ship verbatim."""
+        bullets = ["The process of identity formation emergs from the analysis of material."]
+        # V0.03 default: no repair — the bullet ships as the model wrote it.
         report = pc_mod.run_post_checks(
             bullets, "Exec.", "Thorough.", self.SOURCE,
         )
-        assert report.bullets == ["The process emerges from the analysis."]
+        assert report.bullets == bullets
+        # Explicitly enabled: the guarded repair applies.
+        report = pc_mod.run_post_checks(
+            bullets, "Exec.", "Thorough.", self.SOURCE,
+            auto_repair_garble=True,
+        )
+        assert report.bullets == ["The process of identity formation emerges from the analysis of material."]
 
 
 # ════════════════════════════════════════════════════════════════════════════

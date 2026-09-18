@@ -7,6 +7,7 @@ calls with a single ``provider.complete(prompt) -> str`` interface.
 
 Implementations:
   - ``OllamaProvider`` — local Ollama (http://localhost:11434)
+  - ``LlamaCppProvider`` — local llama.cpp server (http://127.0.0.1:8080/v1, V0.04)
   - ``OpenAICompatProvider`` — OpenRouter/OpenAI/FreeLLMAPI
   - ``ClaudeProvider`` — Anthropic Claude API
 
@@ -166,8 +167,8 @@ def create_provider(
     """Create an LLMProvider based on the provider name + settings.
 
     Args:
-        provider: "ollama" | "openrouter" | "openai" | "openai_compatible"
-                  | "claude" | "freellmapi"
+        provider: "ollama" | "llamacpp" | "openrouter" | "openai" |
+                  "openai_compatible" | "claude" | "freellmapi"
         settings: the Settings singleton (for reading API keys, URLs, etc.)
         log_callback: fn(message, level) for progress logging
         supervisor: OllamaSupervisor instance (only used by OllamaProvider)
@@ -190,6 +191,25 @@ def create_provider(
             retries=1,
             log_callback=log,
             supervisor=supervisor,
+        )
+    elif provider == "llamacpp":
+        # V0.04: llama.cpp server (llama-server) — the first non-Ollama
+        # LOCAL backend. Reads the llamacpp_* settings block (defaults:
+        # 127.0.0.1:8080/v1, api key "local", 65k context / 12k output).
+        # The timeout honours local.http_timeout_sec (the app-wide local
+        # backend timeout) instead of the cloud-style 300s.
+        from core.llm.llamacpp_provider import LlamaCppProvider
+        return LlamaCppProvider(
+            model=settings.get("summarisation.llamacpp_model", ""),
+            base_url=settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"),
+            api_key=settings.get("summarisation.llamacpp_api_key", "local"),
+            temperature=settings.get("summarisation.temperature", 0.6),
+            max_tokens=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
+            context_tokens=settings.get("summarisation.llamacpp_context_tokens", 65536),
+            output_cap=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
+            timeout=int(settings.get("local.http_timeout_sec", 600) or 600),
+            retries=1,
+            log_callback=log,
         )
     elif provider in ("openrouter", "openai", "openai_compatible"):
         from core.llm.openai_compat_provider import OpenAICompatProvider
@@ -241,6 +261,7 @@ def create_provider(
 # accesses the name, not when llm_provider_impl itself loads.
 _LAZY_PROVIDER_NAMES = {
     "OllamaProvider": "core.llm.ollama_provider",
+    "LlamaCppProvider": "core.llm.llamacpp_provider",
     "OpenAICompatProvider": "core.llm.openai_compat_provider",
     "ClaudeProvider": "core.llm.claude_provider",
 }

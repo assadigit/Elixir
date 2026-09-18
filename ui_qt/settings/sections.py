@@ -336,15 +336,16 @@ PROVIDER_MODEL_HINTS = {
 
 
 class AiLocalModelSection(QGroupBox):
-    """Local model backend (Ollama / LM Studio / custom) + summarisation models + workers.
+    """Local model backend (Ollama / llama.cpp / LM Studio / custom) + summarisation models + workers.
 
     The backend picker changes where the model list is fetched from:
       - Ollama    → http://localhost:11434/api/tags
+      - llama.cpp → http://127.0.0.1:8080/v1/models (llama-server, V0.04)
       - LM Studio → http://localhost:1234/v1/models
       - Custom    → user-supplied URL (expects Ollama-style /api/tags)
     """
 
-    BACKENDS = ["Ollama", "LM Studio", "Custom"]
+    BACKENDS = ["Ollama", "llama.cpp server", "LM Studio", "Custom"]
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__("Local model", parent)
@@ -364,6 +365,14 @@ class AiLocalModelSection(QGroupBox):
         self.backend_combo = QComboBox()
         self.backend_combo.addItems(self.BACKENDS)
         saved_backend = controller.get_setting("ai.backend", "Ollama")
+        # V0.04: an installation whose summarisation provider is llamacpp
+        # (the V0.04 default / migration) shows the llama.cpp backend here
+        # even when the legacy ai.backend key still says "Ollama".
+        if saved_backend not in self.BACKENDS:
+            if controller.get_setting("summarisation.provider", "ollama") == "llamacpp":
+                saved_backend = "llama.cpp server"
+            else:
+                saved_backend = "Ollama"
         idx = self.backend_combo.findText(saved_backend)
         if idx >= 0:
             self.backend_combo.setCurrentIndex(idx)
@@ -619,6 +628,12 @@ class AiLocalModelSection(QGroupBox):
         backend = self.backend_combo.currentText()
         if backend == "Ollama":
             return "http://localhost:11434"
+        if backend == "llama.cpp server":
+            # V0.04: the llama.cpp endpoint lives in the llamacpp_* settings
+            # block (shared with the wizard + provider — single source).
+            _u = self.controller.get_setting(
+                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+            return _u[:-3] if _u.endswith("/v1") else _u
         if backend == "LM Studio":
             return "http://localhost:1234"
         return self.custom_url.text().strip() or "http://localhost:11434"
@@ -630,8 +645,35 @@ class AiLocalModelSection(QGroupBox):
         from the combos, so only call it on the MAIN thread. The async
         refresh snapshots the URL first and runs the widget-free
         ``_fetch_models_from(url)`` on the worker instead.
+
+        V0.04: the llama.cpp backend dispatches to _fetch_llamacpp_models.
         """
+        if self.backend_combo.currentText() == "llama.cpp server":
+            return self._fetch_llamacpp_models()
         return self._fetch_models_from(self._backend_url())
+
+    def _fetch_llamacpp_models(self) -> list:
+        """V0.04: list models from the llama.cpp server (worker-safe).
+
+        Reads the llamacpp_* settings directly (thread-safe Settings
+        singleton) — NOT widgets — so it is safe as the async worker fn.
+        Falls back to the configured model name when the server lists
+        nothing (down / older build without /v1/models).
+        """
+        try:
+            from core.llm.llamacpp_provider import list_llamacpp_models
+
+            base = self.controller.get_setting(
+                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+            key = self.controller.get_setting(
+                "summarisation.llamacpp_api_key", "local")
+            models = list_llamacpp_models(base, key, timeout=5)
+            if models:
+                return models
+            configured = self.controller.get_setting("summarisation.llamacpp_model", "")
+            return [configured] if configured else []
+        except Exception:
+            return []
 
     def _fetch_models_from(self, url: str) -> list:
         """Widget-free fetch from ``url`` (safe to run on a worker thread)."""
@@ -661,7 +703,16 @@ class AiLocalModelSection(QGroupBox):
         for up to 5s when the backend was down. The backend URL is
         snapshotted on the MAIN thread (combo read) and the widget-free
         ``_fetch_models_from(url)`` runs on the worker; populate happens
-        on the main thread in _on_models_loaded."""
+        on the main thread in _on_models_loaded.
+
+        V0.04: the llama.cpp backend dispatches to _fetch_llamacpp_models
+        (Settings-only reads — worker-safe) instead of the URL-based fetch.
+        """
+        if self.backend_combo.currentText() == "llama.cpp server":
+            fetch = self._fetch_llamacpp_models  # Settings-only, worker-safe
+            _refresh_models_async(self, fetch,
+                                  self._on_models_loaded, self.refresh_btn)
+            return
         url = self._backend_url()  # snapshot on the main thread
         fetch = self._fetch_models_from  # bound method — worker-safe body
         _refresh_models_async(self, lambda: fetch(url),
@@ -708,9 +759,14 @@ class AiLocalModelSection(QGroupBox):
             pass
         c.update_setting("summarisation.simplification_model", self.simplification_combo.currentData() or "")
         c.update_setting("summarisation.max_workers", self.workers_slider.value())
-        # when using a local backend, set provider to ollama so the pipeline
-        # knows to use local models (not a cloud API).
-        c.update_setting("summarisation.provider", "ollama")
+        # when using a local backend, set the provider so the pipeline knows
+        # to use local models (not a cloud API). V0.04: the llama.cpp
+        # backend maps to its own provider — the old unconditional
+        # "ollama" write silently clobbered it on every Settings save.
+        if self.backend_combo.currentText() == "llama.cpp server":
+            c.update_setting("summarisation.provider", "llamacpp")
+        else:
+            c.update_setting("summarisation.provider", "ollama")
 
     def reload(self) -> None:
         c = self.controller
@@ -1181,6 +1237,24 @@ class AiQualitySection(QGroupBox):
             "🔬 Academic Rigor (temp 0, self-review, structured JSON)",
             checked=controller.get_setting("summarisation.academic_rigor", False),
         )
+        # V0.03 (P0-1): dropped-letter auto-repair toggle — OFF by default
+        # (the V0.02 rig run corrupted 12/13 valid paraphrase words). When
+        # enabled, repairs require the English-lexicon guard + paragraph
+        # corroboration + strict single-candidate uniqueness.
+        self.dropped_letter_repair_cb = labeled_checkbox(
+            "🔤 Garble Auto-Repair (guarded — OFF until rig-validated)",
+            checked=controller.get_setting("summarisation.dropped_letter_auto_repair", False),
+        )
+        self.dropped_letter_repair_cb.setToolTip(
+            "V0.03: auto-repairs non-word garbles ('emergs'→'emerges').\n\n"
+            "DISABLED by default — the V0.02 rig run showed 12 of 13\n"
+            "auto-repairs corrupted valid words ('contrast'→'contract',\n"
+            "'teams'→'beams'). When enabled, a repair additionally\n"
+            "requires: the token is NOT a valid English dictionary word,\n"
+            "the candidate appears in a topically-matching source\n"
+            "paragraph, and it is the ONLY edit-distance-1 candidate.\n\n"
+            "Flags (log-only) always run regardless of this setting."
+        )
         # V10.1.0: Source Grounding (langextract) — Layer 8 anti-hallucination.
         self.grounding_cb = labeled_checkbox(
             "🛡️ Source Grounding (langextract — verbatim claim verification). "
@@ -1251,6 +1325,7 @@ class AiQualitySection(QGroupBox):
         )
         f.addRow(self.self_consist_cb)
         f.addRow(self.academic_cb)
+        f.addRow(self.dropped_letter_repair_cb)  # V0.03 (P0-1)
         f.addRow("🛡️ Grounding backend", self.grounding_backend)
         f.addRow("🌡️ GPU thermal profile", self.gpu_profile_combo)
         f.addRow(self.grounding_cb)
@@ -1311,6 +1386,8 @@ class AiQualitySection(QGroupBox):
         c.update_setting("summarisation.b3_voting_enabled", self.b3_voting_cb.isChecked())
         c.update_setting("summarisation.self_consistency", self.self_consist_cb.isChecked())
         c.update_setting("summarisation.academic_rigor", self.academic_cb.isChecked())
+        # V0.03 (P0-1): dropped-letter repair toggle
+        c.update_setting("summarisation.dropped_letter_auto_repair", self.dropped_letter_repair_cb.isChecked())
         # V10.1.0: grounding settings
         c.update_setting("grounding.enabled", self.grounding_cb.isChecked())
         c.update_setting("grounding.backend", self.grounding_backend.currentText())
@@ -1334,6 +1411,8 @@ class AiQualitySection(QGroupBox):
         self.b3_voting_cb.setChecked(c.get_setting("summarisation.b3_voting_enabled", False))
         self.self_consist_cb.setChecked(c.get_setting("summarisation.self_consistency", False))
         self.academic_cb.setChecked(c.get_setting("summarisation.academic_rigor", False))
+        # V0.03 (P0-1): dropped-letter repair toggle
+        self.dropped_letter_repair_cb.setChecked(c.get_setting("summarisation.dropped_letter_auto_repair", False))
         # V10.1.0: grounding settings
         self.grounding_cb.setChecked(c.get_setting("grounding.enabled", False))
         self.grounding_backend.setCurrentText(c.get_setting("grounding.backend", "ollama"))

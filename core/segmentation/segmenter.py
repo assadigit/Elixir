@@ -372,9 +372,22 @@ class Segmenter:
                 deduped.append((heading, page))
                 last_page = page
         if len(deduped) < 2: return []
+        # V0.03 (P0-4): the LAST chapter entry ends at the LAST EXTRACTED
+        # page, not total_pages. With a selection-filtered TOC the extracted
+        # markdown only contains the selected pages — the old `total_pages`
+        # fallback made the last selected chapter claim the rest of the book
+        # in its metadata (pages 15–119 for a 2-page essay in the V0.02 rig
+        # shape). For full-book runs every page has a marker, so the max is
+        # total_pages — behavior unchanged there.
+        _last_extracted_page = max(
+            (p for p in page_to_pos if p <= total_pages), default=total_pages
+        )
         segments = []
         for idx, (heading, start_page) in enumerate(deduped):
-            end_page = deduped[idx + 1][1] - 1 if idx + 1 < len(deduped) else total_pages
+            end_page = (
+                deduped[idx + 1][1] - 1 if idx + 1 < len(deduped)
+                else _last_extracted_page
+            )
             if end_page < start_page: end_page = start_page
             # V18.20.4.10 (P0-b3): a missing start-page marker must resolve
             # to the NEAREST FOLLOWING marker — the old ``get(start_page, 0)``
@@ -424,7 +437,25 @@ class Segmenter:
         group spans ~``max_merge_pages`` pages, then a new group starts.
         A short fragment following an already-large segment now stands
         alone (keeping its own real TOC heading) instead of being absorbed.
+
+        V0.03 (P0-4, real-rig audit): the merge is DISABLED entirely when
+        the user explicitly selected chapters. The V0.02 rig selected 10
+        numbered essays; Layer 3 merged 7 of them into segment 1, and the
+        run shipped 2 mislabeled mega-summaries ("eight core principles"
+        under the heading of thing 1). GENERAL rule: an explicit selection
+        IS the requested structure — each selected TOC entry stays its own
+        segment. Merging remains available for full-book runs, where it
+        protects against 1-page TOC fragments.
         """
+        # V0.03 (P0-4): never merge explicitly selected chapters.
+        if getattr(self.request, "selected_chapters", None):
+            self.log(
+                "  [Segmenter] Layer 3: short-segment merge SKIPPED — explicit "
+                "chapter selection active (each selected entry stays its own "
+                "segment; V0.03 P0-4).",
+                "INFO",
+            )
+            return segments
         if len(segments) <= 2: return segments
         if max_merge_pages is None:
             max_merge_pages = min_pages * 2

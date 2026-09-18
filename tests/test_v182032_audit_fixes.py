@@ -794,16 +794,24 @@ class TestDroppedLetterStoplist:
         )
 
     def test_true_positive_still_caught(self):
-        """V18.20.3.4 (RC-3): 'emergs' is still caught — as an auto-repair
-        (severity='fix') because 'emerges' is the unique edit-distance-1
-        source candidate in this source."""
+        """V18.20.3.4 (RC-3) → V0.03 (P0-1): 'emergs' is still caught — as a
+        guarded auto-repair (severity='fix') when auto_repair=True, because
+        'emerges' is the unique edit-distance-1 source candidate. Default
+        remains flag-only (repair disabled until rig-validated)."""
         from core.summarisation.postcheck_detectors import (
             detect_dropped_letter_garble,
         )
+        # V0.03 default: flag-only, text untouched.
         fixed, issues = detect_dropped_letter_garble(
             "the emergs process", "test", source_text=self._SRC)
+        assert any(i.severity == "flag" for i in issues)
+        assert "emergs" in fixed
+        # Explicitly enabled: the guarded repair fires.
+        fixed, issues = detect_dropped_letter_garble(
+            "the emergs process", "test", source_text=self._SRC,
+            auto_repair=True)
         assert any(
-            i.severity == "fix" and "auto-repaired" in i.detail
+            i.severity == "fix" and "auto-repair" in i.detail
             for i in issues
         ), "the 'emergs' true positive must be caught (now as a repair)"
         assert "emerges" in fixed

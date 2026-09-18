@@ -321,6 +321,84 @@ class Converter:
             self._log(f"  Scanned page numbers: {preview}{suffix}", "INFO")
         return None
 
+    def _archive_stale_run_artifacts(self) -> None:
+        """V0.05 (rig audit F7 — P2): move previous-run summary/log
+        artifacts into ``_archive/<UTC-timestamp>/`` so nothing from an old
+        run ships beside the current run's outputs.
+
+        GENERAL rule (run-scoped output): the summaries dir and the logs dir
+        may only contain THIS run's artifacts. At run start, any pre-existing
+        ``*.summary.md`` / ``*.summary.docx`` (book-level and per-chapter)
+        and ``*.log.md`` / ``drops.jsonl`` files are archived with their
+        relative structure preserved. Skipped entirely when resume is
+        enabled (resume deliberately reuses existing chapter summaries).
+        Fail-soft: any error is swallowed (logged DEBUG) — archiving must
+        never block a conversion.
+        """
+        from datetime import datetime as _dt
+        try:
+            _resume_on = bool(self.settings.get("summarisation.resume_enabled", False))
+        except Exception:
+            _resume_on = bool(getattr(self.request, "resume_enabled", False))
+        if _resume_on:
+            self._log(
+                "  🗄️ V0.05: Resume enabled — stale-artifact archiving skipped "
+                "(existing chapter summaries are reused).",
+                "DEBUG",
+            )
+            return
+
+        _root = Path(self.output_dir)
+        if not _root.exists():
+            return
+
+        _patterns = ["*.summary.md", "*.summary.docx"]
+        _candidates: list[Path] = []
+        _summ = Path(self.paths.summaries_dir)
+        if _summ.exists():
+            _candidates.extend(
+                p for pat in _patterns
+                for p in _summ.rglob(pat)
+            )
+        for _sub in ("logs",):
+            _subdir = _root / _sub
+            if _subdir.exists():
+                _candidates.extend(_subdir.rglob("*.log.md"))
+                _drops = _subdir / "drops.jsonl"
+                if _drops.exists():
+                    _candidates.append(_drops)
+        # top-level conversion log (legacy flat location)
+        _candidates.extend(_root.glob("*.conversion.log.md"))
+        # never archive anything already inside _archive/
+        _candidates = [
+            p for p in _candidates
+            if p.is_file() and "_archive" not in p.relative_to(_root).parts
+        ]
+        if not _candidates:
+            return
+
+        _stamp = _dt.now().strftime("%Y%m%d-%H%M%S")
+        _archive_dir = _root / "_archive" / _stamp
+        _moved = 0
+        for p in _candidates:
+            try:
+                _rel = p.relative_to(_root)
+                _dest = _archive_dir / _rel
+                _dest.parent.mkdir(parents=True, exist_ok=True)
+                if _dest.exists():
+                    continue
+                p.rename(_dest)
+                _moved += 1
+            except Exception as _e:
+                logger.debug("archive move skipped (%s): %s", p, _e)
+        if _moved:
+            self._log(
+                f"  🗄️ V0.05: Archived {_moved} stale artifact(s) from previous "
+                f"run(s) → _archive/{_stamp}/ — this folder now contains only "
+                f"this run's outputs.",
+                "INFO",
+            )
+
     def _enforce_vram_budget(self) -> str | None:
         """V18.20.4.10 (P0-c): enforce ``local.vram_overbudget_policy``.
 
@@ -473,14 +551,31 @@ class Converter:
 
         # Build page ranges: each matched chapter spans from its start page
         # to the page before the NEXT TOC entry (any entry, not just matched).
+        # V0.03 (P0-4, real-rig audit): dedupe SAME-PAGE entries first (keep
+        # the first, mirroring _segment_by_chapters' convention). The raw
+        # outline often places a metadata/author bookmark on the same page as
+        # its chapter ("Act with Prudence" + "Seb Rose" both p.28); computing
+        # next_start − 1 against the bookmark collapsed the chapter to ZERO
+        # pages (start 28 > end 27 → guard dropped it silently) — the V0.02
+        # false-success incident's root precondition.
+        _deduped: list = []
+        _last_page = None
+        for _entry in sorted_toc:
+            _page = _entry[1] if len(_entry) > 1 and _entry[1] else 0
+            if _page == _last_page:
+                continue
+            _last_page = _page
+            _deduped.append(_entry)
         valid_pages = set()
         for idx in sorted(matched_indices):
             start_page = sorted_toc[idx][1]
-            # Find the next TOC entry after this one
-            if idx + 1 < len(sorted_toc):
-                end_page = sorted_toc[idx + 1][1] - 1
-            else:
-                end_page = total_pages
+            # Find the next TOC entry (on a LATER page) after this one.
+            end_page = total_pages
+            for _entry in _deduped:
+                _page = _entry[1] if len(_entry) > 1 and _entry[1] else 0
+                if _page > start_page:
+                    end_page = _page - 1
+                    break
             # Clamp to valid range
             start_page = max(1, start_page)
             end_page = min(total_pages, end_page)
@@ -1255,6 +1350,22 @@ class Converter:
 
         # Log ALL conversion settings at the start for diagnostics
         self._log_conversion_settings()
+
+        # V0.05 (rig audit F7 — P2): RUN-SCOPED OUTPUT. The output folder
+        # previously mixed runs — the V0.04 rig's folder shipped V0.02
+        # chapter summaries, a stale book-level summary, and an old
+        # conversion log beside the new run's files, and the audit's first
+        # pass mis-attributed evidence because of it. GENERAL rule: nothing
+        # from a previous run ever ships beside a new run's outputs — at run
+        # start, pre-existing summary/log artifacts are moved to
+        # ``_archive/<UTC-timestamp>/`` with one log line. Skipped when
+        # resume is enabled (the resume path deliberately reuses existing
+        # chapter summaries).
+        try:
+            self._archive_stale_run_artifacts()
+        except Exception as _e:
+            logger.debug("stale-artifact archive ignored: %s: %s",
+                         type(_e).__name__, _e)
 
         # V18.20.4.10 (P0-c): enforce the VRAM budget. The V18.20.4.9
         # behaviour was warn-and-continue: the settings block printed

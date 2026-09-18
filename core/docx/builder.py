@@ -43,38 +43,11 @@ class DocxBuilder:
         text = re.sub(r'(?<=\S) {2,}(?=\S)', ' ', text)
         return text
 
-    def _clean_content_for_preview(self, text: str, max_chars: int = 500) -> str:
-        """
-        Clean a content snippet for display in the DOCX "Original Chapter Content" section.
-        Removes page markers, fixes hyphenated line breaks, and normalises whitespace.
-        """
-        if not text:
-            return ""
-
-        # 1. Remove page marker comments
-        text = re.sub(r'<!-- original page \d+ -->\s*\n?', '', text)
-        text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
-
-        # V13.33.3: The text is ALREADY cleaned by the postprocess pipeline.
-        # DO NOT re-do hyphenation repair here — it was already done correctly.
-        # The old code's r'\1\2' (no space) mangled "word1-\nword2" → "word1word2".
-        # Just do minimal cleanup: remove page markers (already done above) + tabs.
-        text = text.replace('\t', ' ')
-        text = re.sub(r' {2,}', ' ', text)
-
-        # 4. Normalise line breaks: keep paragraphs separated by double newline,
-        #    but collapse excessive newlines.
-        text = re.sub(r'\n{3,}', '\n\n', text)
-
-        # 5. Truncate to max_chars while preserving whole words
-        if len(text) > max_chars:
-            # Find the last space before max_chars
-            cut = text.rfind(' ', 0, max_chars)
-            if cut == -1:
-                cut = max_chars
-            text = text[:cut] + "..."
-
-        return text.strip()
+    # V0.06 (rig audit F3): _clean_content_for_preview REMOVED — its only
+    # caller was the deleted "Original Chapter Content (first 2000 chars)"
+    # preview block, which duplicated the full chapter content rendered
+    # immediately after it (a deliverable never lists the same content
+    # block twice).
 
     # ── NEW: Render structured academic rigor output ──────────────────────
 
@@ -391,24 +364,10 @@ class DocxBuilder:
             run.font.size = Pt(11)
             run.font.name = "Helvetica"
 
-    def _add_global_takeaways(self, doc, summaries: list[SummaryResult]):
-        all_bullets = []
-        for summ in summaries:
-            all_bullets.extend(summ.bullet_points)
-        seen = set()
-        unique_bullets = []
-        for bp in all_bullets:
-            if not bp or len(bp) < 10:
-                continue
-            norm = re.sub(r'[^\w\s]', '', bp.lower()).strip()
-            if norm not in seen:
-                seen.add(norm)
-                unique_bullets.append(bp)
-        if not unique_bullets:
-            return
-        doc.add_page_break()
-        self._add_heading(doc, "Global Key Takeaways", level=1)
-        self._add_callout_box(doc, "All Key Takeaways", unique_bullets)
+    # V0.06 (rig audit F3): _add_global_takeaways REMOVED — it rendered a
+    # closing page concatenating every chapter's bullets a second time after
+    # the per-chapter "Key Takeaways" callouts had already listed them (the
+    # aggregate takeaway view is the keypoints deliverable).
 
     def _add_footer_with_page_numbers(self, doc):
         section = doc.sections[0]
@@ -467,39 +426,52 @@ class DocxBuilder:
 
             if has_summaries:
                 summ = summaries[idx - 1]
-                p = doc.add_paragraph()
-                run = p.add_run("Executive Summary")
-                run.font.size = Pt(14)
-                run.font.bold = True
-                run.font.name = "Helvetica"
-                run.font.color.rgb = RGBColor(0, 102, 204)
-                p.paragraph_format.space_after = Pt(6)
-
-                # Render structured content if present
-                exec_text = self._render_structured_summary(summ.executive_summary or "")
-                p = doc.add_paragraph(exec_text)
-                for run in p.runs:
-                    run.font.size = Pt(11)
+                # V0.05 (rig audit F9a — no empty headings): each DOCX
+                # section renders only when it has content, matching the
+                # markdown renderer (chapter_checkpoint.render_summary_markdown).
+                # V0.06 (rig audit F1-c): the output-selection flags are
+                # enforced AT RENDER TIME here too — the V0.05 rig shipped a
+                # "Thorough Summary" heading to a user who unchecked the
+                # output because the parser smuggled content into the field
+                # and this renderer was flag-blind. A section renders only
+                # when BOTH its flag is on AND it has content (unstamped
+                # legacy results default to True).
+                _inc_exec_d = getattr(summ, "include_executive_summary", True)
+                _inc_kp_d = getattr(summ, "include_keypoints", True)
+                _inc_th_d = getattr(summ, "include_thorough_summary", True)
+                _exec_text = self._render_structured_summary(summ.executive_summary or "")
+                if _exec_text.strip() and _inc_exec_d:
+                    p = doc.add_paragraph()
+                    run = p.add_run("Executive Summary")
+                    run.font.size = Pt(14)
+                    run.font.bold = True
                     run.font.name = "Helvetica"
-                p.paragraph_format.space_after = Pt(12)
+                    run.font.color.rgb = RGBColor(0, 102, 204)
+                    p.paragraph_format.space_after = Pt(6)
 
-                if summ.bullet_points:
+                    p = doc.add_paragraph(_exec_text)
+                    for run in p.runs:
+                        run.font.size = Pt(11)
+                        run.font.name = "Helvetica"
+                    p.paragraph_format.space_after = Pt(12)
+
+                if summ.bullet_points and _inc_kp_d:
                     self._add_callout_box(doc, "Key Takeaways", summ.bullet_points)
 
-                p = doc.add_paragraph()
-                run = p.add_run("Thorough Summary")
-                run.font.size = Pt(14)
-                run.font.bold = True
-                run.font.name = "Helvetica"
-                run.font.color.rgb = RGBColor(0, 102, 204)
-                p.paragraph_format.space_after = Pt(6)
-                # Render structured content for thorough summary
-                thorough_text = self._render_structured_summary(summ.thorough_summary or "")
-                p = doc.add_paragraph(thorough_text)
-                for run in p.runs:
-                    run.font.size = Pt(11)
+                _thorough_text = self._render_structured_summary(summ.thorough_summary or "")
+                if _thorough_text.strip() and _inc_th_d:
+                    p = doc.add_paragraph()
+                    run = p.add_run("Thorough Summary")
+                    run.font.size = Pt(14)
+                    run.font.bold = True
                     run.font.name = "Helvetica"
-                p.paragraph_format.space_after = Pt(12)
+                    run.font.color.rgb = RGBColor(0, 102, 204)
+                    p.paragraph_format.space_after = Pt(6)
+                    p = doc.add_paragraph(_thorough_text)
+                    for run in p.runs:
+                        run.font.size = Pt(11)
+                        run.font.name = "Helvetica"
+                    p.paragraph_format.space_after = Pt(12)
 
                 # V13.40.1: Render additive sections (Key Distinctions + Theoretical Tensions)
                 # These are anti-hallucination-verified sections added in V13.38.0.
@@ -554,6 +526,44 @@ class DocxBuilder:
                         run.font.name = "Helvetica"
                     p.paragraph_format.space_after = Pt(12)
 
+                # V0.03 (P0-2): Tier-3 source excerpts — separate, clearly
+                # labelled section; NEVER mixed into Key Takeaways.
+                _se = getattr(summ, "source_excerpts", None) or []
+                if len(_se):
+                    p = doc.add_paragraph()
+                    run = p.add_run("Source Excerpts (auto-inserted)")
+                    run.font.size = Pt(14)
+                    run.font.bold = True
+                    run.font.name = "Helvetica"
+                    run.font.color.rgb = RGBColor(0, 102, 204)
+                    p.paragraph_format.space_after = Pt(6)
+                    note = doc.add_paragraph(
+                        "Verbatim source sentences auto-recorded for concepts "
+                        "the summary text did not cover. They are quotes from "
+                        "the book — including possible examples of what NOT "
+                        "to do — and are not the summarizer's advice."
+                    )
+                    for run in note.runs:
+                        run.font.size = Pt(9)
+                        run.font.italic = True
+                        run.font.name = "Helvetica"
+                    for _excerpt in _se:
+                        _ex = str(_excerpt).strip()
+                        if not _ex:
+                            continue
+                        p = doc.add_paragraph(_ex)
+                        for run in p.runs:
+                            run.font.size = Pt(10)
+                            run.font.name = "Helvetica"
+                        p.paragraph_format.space_after = Pt(6)
+                    p.paragraph_format.space_after = Pt(12)
+
+                # V0.03 (P1-6) → V0.06 (rig audit F2 — REMOVED FROM THE
+                # DELIVERABLE): the quarantine record is pipeline
+                # bookkeeping — it lives in logs/drops.jsonl and the
+                # conversion log, never in the Word report (user ruling:
+                # "keep it for your logs"). The render block is deleted.
+
             # ── Full Chapter Content ──────────────────────────────────────
             p = doc.add_paragraph()
             run = p.add_run("Full Chapter Content")
@@ -566,23 +576,14 @@ class DocxBuilder:
             # Extract raw content
             raw_content = chap.get("content", "")
 
-            # V13.33.2: Increased from 500 → 2000 chars (500 was too short)
-            if raw_content:
-                preview = self._clean_content_for_preview(raw_content, max_chars=2000)
-                if preview:
-                    p = doc.add_paragraph()
-                    run = p.add_run("Original Chapter Content (first 2000 chars)")
-                    run.font.size = Pt(11)
-                    run.font.italic = True
-                    run.font.name = "Helvetica"
-                    p.paragraph_format.space_after = Pt(4)
-
-                    p = doc.add_paragraph()
-                    run = p.add_run(preview)
-                    run.font.size = Pt(10)
-                    run.font.name = "Helvetica"
-                    run.font.color.rgb = RGBColor(80, 80, 80)
-                    p.paragraph_format.space_after = Pt(12)
+            # V0.06 (rig audit F3 — GENERAL RULE: a deliverable never lists
+            # the same content block twice): the V13.33.2 "Original Chapter
+            # Content (first 2000 chars)" preview is DELETED — the full
+            # chapter content is rendered immediately below by
+            # _add_full_content, so for any chapter shorter than ~2000
+            # chars (the rig's 1-page chapters) the preview duplicated the
+            # ENTIRE chapter inside its own section. The full render is the
+            # single source of the chapter text in the report.
 
             # Then add the full cleaned content (with structured rendering)
             self._add_full_content(doc, raw_content)
@@ -590,8 +591,12 @@ class DocxBuilder:
             if idx < len(full_chapters):
                 doc.add_page_break()
 
-        if has_summaries:
-            self._add_global_takeaways(doc, summaries)
+        # V0.06 (rig audit F3): the closing "Global Key Takeaways" page is
+        # DELETED — it concatenated every chapter's bullets a second time
+        # after the per-chapter "Key Takeaways" callouts had already listed
+        # them (every takeaway twice in one document). The aggregate
+        # takeaway view is the keypoints deliverable; the DOCX report keeps
+        # the structured per-chapter view only.
 
         self._add_footer_with_page_numbers(doc)
 

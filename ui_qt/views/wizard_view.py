@@ -302,6 +302,14 @@ class WizardView(QDialog):
             self.state.vram_recovery_delay_sec = int(s.get_setting("local.vram_recovery_delay_sec", 0))
             self.state.b4_max_sections = int(s.get_setting("local.b4_max_sections", 6))
             self.state.b4_threshold_tokens = int(s.get_setting("summarisation.b4_threshold_tokens", 12000))
+            # V0.04: load the token budget settings into the wizard state.
+            # The state's hardcoded 32768/8192 defaults used to override the
+            # persisted values — the wizard showed 32k even when settings
+            # said 65k (llama.cpp backend), and step 7b's spinboxes started
+            # from the stale defaults. GENERAL RULE: the wizard must show
+            # what is actually configured, not its own literals.
+            self.state.max_context_tokens = int(s.get_setting("summarisation.max_context_tokens", 32768))
+            self.state.max_output_tokens = int(s.get_setting("summarisation.max_output_tokens", 16000))
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)  # if settings can't be loaded, use WizardState defaults
 

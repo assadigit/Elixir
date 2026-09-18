@@ -212,7 +212,11 @@ class Settings:
                 "max_output_tokens":    16000,  # V13.45.4: raised from 8192 (user has 32K context, 8K was too low for 100+ bullets)
                 "cache_enabled":        False,
                 "include_book_summary": True,
-                "provider":             "ollama",
+                # V0.04: fresh installs default to the llama.cpp backend
+                # (the rig's primary). Existing installs are migrated in
+                # _load() — and only when still at the untouched "ollama"
+                # default, so explicit choices survive.
+                "provider":             "llamacpp",
                 "api_key":              "",
                 "api_base_url":         "https://openrouter.ai/api/v1",
                 "cloud_model":          "google/gemini-2.5-flash-preview:free",
@@ -226,6 +230,23 @@ class Settings:
                 "freellmapi_url":       "http://localhost:3001/v1",
                 "freellmapi_key":       "",
                 "freellmapi_model":     "auto",
+                # ── llama.cpp server (llama-server) — V0.04 ────────────────
+                # The first non-Ollama LOCAL backend, wired end-to-end
+                # (provider + wizard + settings dialog). Defaults match the
+                # rig: llama-server on 127.0.0.1:8080 with the
+                # Ternary-Bonsai-2-27B-Instruct-Vision model, 65k context
+                # (65536) and 12k output (12288). ``llamacpp_api_key`` is
+                # sent as a Bearer token — llama.cpp only enforces it when
+                # started with --api-key, otherwise the header is ignored.
+                "llamacpp_base_url":           "http://127.0.0.1:8080/v1",
+                "llamacpp_api_key":            "local",
+                "llamacpp_model":              "Ternary-Bonsai-2-27B-Instruct-Vision",
+                "llamacpp_context_tokens":     65536,   # the 65k window
+                "llamacpp_max_output_tokens":  12288,   # the 12k output cap
+                # One-time activation flag for the V0.04 migration (see
+                # _load). After the first run the flag stays True so a user
+                # who later switches BACK to Ollama is never re-flipped.
+                "llamacpp_activation_done":    False,
                 # ── Quality controls ──────────────────────────────────────
                 # V10.1.7: default temperature raised 0.2 → 0.6 per user request.
                 # 0.6 works better with Qwythos/Qwen models (0.2 produced empty output).
@@ -281,6 +302,16 @@ class Settings:
                 # fit in a single 32k context window. Lower to 8000 if you
                 # notice coverage dropping on long chapters.
                 "b4_threshold_tokens":         12000,
+                # V0.03 (P0-1, real-rig audit): dropped-letter auto-repair.
+                # DEFAULT OFF. The V0.02 rig run showed 12 of 13 auto-repairs
+                # corrupted valid paraphrase words ('contrast'→'contract',
+                # 'teams'→'beams', 'skill'→'still' …) — the rule assumed any
+                # non-source word at edit-distance-1 from a source word is a
+                # garble, which is false for real English words the model
+                # legitimately coined. With this enabled, repairs require the
+                # English-lexicon guard + paragraph corroboration + strict
+                # single-candidate uniqueness. Flags (log-only) always run.
+                "dropped_letter_auto_repair":  False,
                 # V7.7.0: Chapter-level resume — skip chapters with valid summaries on disk
                 "resume_enabled":       True,
                 # V18.20.3.0: Incremental chapter checkpointing — save each
@@ -1061,11 +1092,58 @@ class Settings:
                 _local["b4_max_sections"] = 6
                 logger.info("[Settings] V18.1: migrating local.b4_max_sections 3→6 (stop skipping sections)")
             # V18.1: max_output_tokens <16000 → 16000 (was 8192 in old versions)
+            # V0.04 GUARD: skip when the llama.cpp backend is active — its
+            # 12288 output cap is a MODEL limit, and this legacy floor would
+            # re-raise it to 16000 on every load (migrations must not fight
+            # newer backend-specific caps).
             _summ_mig = merged.setdefault("summarisation", {})
-            if _summ_mig.get("max_output_tokens", 16000) < 16000:
+            if (
+                _summ_mig.get("max_output_tokens", 16000) < 16000
+                and _summ_mig.get("provider", "ollama") != "llamacpp"
+            ):
                 _summ_mig["max_output_tokens"] = 16000
                 logger.info("[Settings] V18.1: migrating summarisation.max_output_tokens %d→16000",
                             _summ_mig.get("max_output_tokens", 8192))
+
+            # ── V0.04 (llama.cpp backend): one-time activation ─────────────
+            # The rig's primary LLM backend moves from Ollama to a local
+            # llama.cpp server (llama-server, 127.0.0.1:8080). GENERAL RULE:
+            # a backend switch migrates ONLY installations still sitting at
+            # the untouched previous default — an explicit user choice
+            # (lmstudio / cloud / anything else) is never overridden. The
+            # llamacpp_* keys themselves are deep-merged from defaults for
+            # every install (idempotent), so the backend is always
+            # configurable regardless of the activation flip.
+            _summ_lc = merged.setdefault("summarisation", {})
+            _lc_defaults = defaults.get("summarisation", {})
+            for _k in ("llamacpp_base_url", "llamacpp_api_key", "llamacpp_model",
+                       "llamacpp_context_tokens", "llamacpp_max_output_tokens"):
+                if _k in _lc_defaults and _k not in _summ_lc:
+                    _summ_lc[_k] = _lc_defaults[_k]
+            if not _summ_lc.get("llamacpp_activation_done", False):
+                _summ_lc["llamacpp_activation_done"] = True
+                if _summ_lc.get("provider", "ollama") == "ollama":
+                    _summ_lc["provider"] = "llamacpp"
+                    _summ_lc["model"] = _lc_defaults.get(
+                        "llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+                    # 32k→65k only when still at the old default (a user's
+                    # custom ctx survives untouched).
+                    if _summ_lc.get("max_context_tokens", 32768) == 32768:
+                        _summ_lc["max_context_tokens"] = _lc_defaults.get(
+                            "llamacpp_context_tokens", 65536)
+                    # The old 16000 output default EXCEEDS the new model's
+                    # 12288 output cap — clamp down (again: only at the old
+                    # default; custom values survive).
+                    if _summ_lc.get("max_output_tokens", 16000) == 16000:
+                        _summ_lc["max_output_tokens"] = _lc_defaults.get(
+                            "llamacpp_max_output_tokens", 12288)
+                    logger.info(
+                        "[Settings] V0.04: activating llama.cpp backend "
+                        "(provider ollama→llamacpp, ctx 65536, output 12288)")
+                else:
+                    logger.info(
+                        "[Settings] V0.04: llama.cpp backend available "
+                        "(kept provider=%s)", _summ_lc.get("provider", "?"))
 
             self._data = merged
 

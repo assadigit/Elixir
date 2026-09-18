@@ -51,20 +51,47 @@ def _lang_str(language: str) -> str:
     return "Write in English."
 
 
+# V0.05 (rig audit F9b): every prompt builder in this module SCALES its
+# length demands to the source via core.summarisation.length_policy — the
+# absolute "800-1200 word" / "30-50 bullets" / "150-250 word" demands are
+# what force-fed padding and invention on short chapters (the V0.04 rig:
+# thorough sections 1.55-2.76× their sources). One helper, one rule.
+def _scaled_targets(text: str) -> tuple[str, str, str, str]:
+    """(exec_words, thorough_words, bullet_range, compression_note) for text."""
+    from core.summarisation.length_policy import (
+        bullet_range_phrase,
+        count_source_words,
+        exec_words_phrase,
+        thorough_words_phrase,
+    )
+    _w = count_source_words(text)
+    return (
+        exec_words_phrase(_w),
+        thorough_words_phrase(_w),
+        bullet_range_phrase(_w),
+        "The target scales to this chapter's length: a summary section must "
+        "be SHORTER than its source — if you cannot fill the target with "
+        "content the chapter actually states, write less; NEVER pad, "
+        "elaborate, or invent content to reach a length.",
+    )
+
+
 def build_thorough_followup(heading: str, text: str, exec_sum: str,
                             language: str = "en") -> str:
     """Build the thorough-summary followup prompt.
 
     Extracted verbatim from ``Summarizer._build_thorough_followup``.
     Only change: ``self.language`` -> ``language`` parameter.
+    V0.05 (F9b): the word target scales to the source (was 800-1200).
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
+    _exec_w, _th_w, _bp_r, _note = _scaled_targets(text)
     return f"""You are an expert summariser. {lang}
 
 You already wrote this executive summary for "{heading}":
 {exec_sum[:400]}…
 
-Now write a comprehensive, detailed thorough summary of 800‑1200 words covering the full chapter in depth. Write in FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Include all key points, examples, and reasoning. Wrap it exactly like this:
+Now write a comprehensive, detailed thorough summary of {_th_w} covering the full chapter in depth. Write in FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). {_note} Include all key points, examples, and reasoning. Wrap it exactly like this:
 
 <thorough_summary>
 your detailed narrative here
@@ -112,6 +139,7 @@ def build_dedicated_thorough_prompt(heading: str, text: str, exec_sum: str,
     wasted AND anchors the continuation in the model's own framing).
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
+    _exec_w, _th_w, _bp_r, _note = _scaled_targets(text)
     _bullets_text = "\n".join(f"- {b}" for b in bullets[:30]) if bullets else "(no bullets yet)"
     _max_source_chars = min(len(text), 40000)
     _source = text[:_max_source_chars]
@@ -127,8 +155,8 @@ A partial thorough draft was cut at the primary call's output cap:
 
 COMPLETE and DEEPEN this draft: preserve its valid findings (correct any
 partially-written sentence at the cut point), extend it to the full
-800-1200-word contract, and weave in the remaining chapter content it
-missed. Do not re-derive what the draft already covers.
+{_th_w} target, and weave in the remaining chapter content it missed. Do
+not re-derive what the draft already covers.
 
 """
     return f"""### ROLE ###
@@ -144,11 +172,11 @@ And these key bullet points:
 {_bullets_text}
 
 {_draft_block}### TASK ###
-Write a comprehensive 800-1200 word thorough summary of the chapter above. This is a DEDICATED call — you have the FULL output budget for this summary alone. Use it all.
+Write a comprehensive {_th_w} thorough summary of the chapter above. This is a DEDICATED call — you have the FULL output budget for this summary alone. {_note}
 
 ### CONSTRAINTS ###
 - Write FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line)
-- Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences
+- Organize into 2-4 paragraphs, each with a clear topic sentence followed by 2-4 supporting sentences
 - Use transitional phrases between paragraphs
 - Cover ALL key concepts, frameworks, named contributors, and examples from the chapter
 - Include every named author/theorist mentioned in the chapter
@@ -163,7 +191,7 @@ Chapter content:
 Output ONLY the thorough summary wrapped in XML tags. No preamble, no commentary.
 
 <thorough_summary>
-Your 800-1200 word detailed analysis here.
+Your {_th_w} detailed analysis here.
 </thorough_summary>"""
 
 
@@ -190,6 +218,7 @@ def build_exec_from_thorough_prompt(heading: str, thorough_summary: str,
         The prompt string for the exec-from-thorough followup LLM call.
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
+    _exec_w, _th_w, _bp_r, _note = _scaled_targets(thorough_summary or "")
     # Cap the thorough at 4000 chars (~1000 words) to stay within token budget.
     _thorough = (thorough_summary or "")[:4000]
     return f"""### ROLE ###
@@ -202,10 +231,10 @@ You already produced this comprehensive thorough summary:
 {_thorough}
 
 ### TASK ###
-Write a 150-250 word executive summary that captures the chapter's main thesis, key conclusions, and central argument. This is a DERIVATIVE call — synthesize the thorough summary above into a concise overview. Do NOT introduce new information. Do NOT include bullet points. Write in flowing prose.
+Write a {_exec_w} executive summary that captures the chapter's main thesis, key conclusions, and central argument. This is a DERIVATIVE call — synthesize the thorough summary above into a concise overview. Do NOT introduce new information. Do NOT include bullet points. Write in flowing prose.
 
 ### CONSTRAINTS ###
-- 150-250 words (strict)
+- {_exec_w} (strict)
 - Flowing prose paragraphs (NOT bullet points)
 - Capture the main thesis + key conclusions
 - Do NOT introduce facts not in the thorough summary
@@ -213,7 +242,7 @@ Write a 150-250 word executive summary that captures the chapter's main thesis, 
 - Wrap the output exactly like this:
 
 <executive_summary>
-your 150-250 word executive summary here
+your {_exec_w} executive summary here
 </executive_summary>"""
 
 
@@ -231,6 +260,7 @@ def build_dedicated_bullet_prompt(heading: str, text: str, exec_sum: str,
     coverage of every named contributor, framework, and example.
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
+    _exec_w, _th_w, _bp_r, _note = _scaled_targets(text)
     _existing_text = "\n".join(f"- {b}" for b in existing_bullets[:20]) if existing_bullets else "(none yet)"
     _max_source_chars = min(len(text), 40000)
     _source = text[:_max_source_chars]
@@ -245,7 +275,7 @@ And these existing bullet points (do NOT repeat these — add NEW ones):
 {_existing_text}
 
 ### TASK ###
-Produce 30-50 NEW bullet points covering ALL key concepts, named contributors, frameworks, and examples from the chapter.
+Produce enough NEW bullet points to reach a total of {_bp_r} for the chapter (one distinct takeaway per ~50 source words), covering the key concepts, named contributors, frameworks, and examples that are NOT yet covered above. {_note}
 
 ### CONSTRAINTS ###
 - One bullet per line, prefixed with "- "
@@ -253,6 +283,7 @@ Produce 30-50 NEW bullet points covering ALL key concepts, named contributors, f
 - Cover every named author/theorist in the chapter
 - Do NOT repeat the existing bullets above
 - Do NOT invent facts not in the source
+- Do NOT fragment or pad — a bullet must carry a distinct claim the source actually states
 
 ### INPUT ###
 Chapter content:
@@ -295,7 +326,10 @@ New bullet points only:"""
 def build_chunked_prompt(heading: str, text: str,
                          full_prompt: str,
                          with_cot: bool = True,
-                         chunk: int = 1) -> str:
+                         chunk: int = 1,
+                         include_executive: bool = True,
+                         include_thorough: bool = True,
+                         include_keypoints: bool = True) -> str:
     """V18.3.4 (E3): Build a chunked prompt — only requests SOME sections.
 
     Extracted verbatim from ``Summarizer._build_chunked_prompt``.
@@ -306,26 +340,51 @@ def build_chunked_prompt(heading: str, text: str,
 
     chunk=1: executive_summary + bullet_points + thorough_summary
     chunk=2: key_distinctions + theoretical_tensions
+
+    V0.05 (rig audit F9a/F9b): the chunk-1 section list respects the
+    user's output-selection flags (an unrequested section is not demanded
+    back in via the chunk override), every length target scales to the
+    source via length_policy, and the output-format replacement now stops
+    at ``Chapter content:`` — the old to-end-of-string pattern ate
+    EVERYTHING after the format block, chapter content included, on any
+    real (non-synthetic) full prompt.
     """
+    _exec_w, _th_w, _bp_r, _note = _scaled_targets(text)
     # Find the output_format section and replace it with the chunked version
     if chunk == 1:
-        _chunk_format = """
-Output ONLY these three XML sections (chunk 1 of 2):
-
-<executive_summary>
-A 150-250 word narrative overview of the chapter's main argument and conclusions.
-</executive_summary>
-
-<bullet_points>
-A comprehensive list of 20-40 distinct key takeaways. One bullet per line, each prefixed with "- ". Each bullet must be a complete, self-contained sentence expressing a single claim, finding, or concept. Cover every section of the chapter.
-</bullet_points>
-
-<thorough_summary>
-A 600-1000 word detailed summary covering ALL major topics, contributors, and examples. Write in flowing prose paragraphs. Preserve all enumerated lists and multi-step processes. Do NOT truncate.
-</thorough_summary>
-
-Do NOT output key_distinctions or theoretical_tensions in this chunk — they will be generated in chunk 2.
-"""
+        _c1_sections = []
+        if include_executive:
+            _c1_sections.append(
+                f"<executive_summary>\nA {_exec_w} narrative overview of the "
+                "chapter's main argument and conclusions.\n</executive_summary>"
+            )
+        if include_keypoints:
+            _c1_sections.append(
+                f"<bullet_points>\nA comprehensive list of {_bp_r} distinct "
+                "key takeaways. One bullet per line, each prefixed with "
+                '"- ". Each bullet must be a complete, self-contained '
+                "sentence expressing a single claim, finding, or concept. "
+                "Cover every section of the chapter.\n</bullet_points>"
+            )
+        if include_thorough:
+            _c1_sections.append(
+                f"<thorough_summary>\nA {_th_w} detailed summary covering "
+                "ALL major topics, contributors, and examples. Write in "
+                "flowing prose paragraphs. Preserve all enumerated lists and "
+                "multi-step processes. Do NOT truncate.\n</thorough_summary>"
+            )
+        _c1_names = [s.split("\n")[0] for s in _c1_sections]
+        _c1_skip = [t for t, on in (
+            ("key_distinctions", True), ("theoretical_tensions", True),
+        ) if on]
+        _chunk_format = (
+            f"\nOutput ONLY these {len(_c1_sections)} XML sections "
+            "(chunk 1 of 2):\n\n"
+            + "\n\n".join(_c1_sections)
+            + f"\n\nDo NOT output {' or '.join(_c1_skip)} in this chunk — they "
+              "will be generated in chunk 2.\n"
+            + f"\n{_note}\n"
+        )
     else:
         _chunk_format = """
 Output ONLY these two XML sections (chunk 2 of 2):
@@ -341,17 +400,27 @@ Output ONLY these two XML sections (chunk 2 of 2):
 Do NOT output executive_summary, bullet_points, or thorough_summary in this chunk — they were generated in chunk 1.
 """
     # Replace the output_format section of the full prompt.
-    # The full prompt ends with the 5-section output_format; we replace from
-    # "Output a JSON object with five sections" or "You MUST output exactly these five XML sections"
-    # to the end with our chunked version.
+    # V0.05: the replacement window ends at "Chapter content:" (or end of
+    # prompt) — the chapter text always survives the chunk override.
+    _end_guard = r'(?=\nChapter content:|\nFull chapter content:|$)'
     # Try JSON-format first (academic_rigor path)
-    _pattern_json = re.compile(r'Output a JSON object with five sections:.*?(?:""")', re.DOTALL)
+    _pattern_json = re.compile(
+        r'Output a JSON object with (?:five|these) sections:.*?' + _end_guard,
+        re.DOTALL,
+    )
     if _pattern_json.search(full_prompt):
-        return _pattern_json.sub(_chunk_format.strip() + '\n\nDo NOT describe the JSON structure. Only output the JSON object.\n"""', full_prompt)
+        return _pattern_json.sub(
+            _chunk_format.strip()
+            + '\n\nDo NOT describe the JSON structure. Only output the JSON object.',
+            full_prompt,
+        )
     # Try XML-format
-    _pattern_xml = re.compile(r'You MUST output exactly these five XML sections:.*?(?:"""|$)', re.DOTALL)
+    _pattern_xml = re.compile(
+        r'You MUST output exactly these (?:five )?XML sections:.*?' + _end_guard,
+        re.DOTALL,
+    )
     if _pattern_xml.search(full_prompt):
-        return _pattern_xml.sub(_chunk_format.strip() + '\n"""', full_prompt)
+        return _pattern_xml.sub(_chunk_format.strip(), full_prompt)
     # Fallback: append the chunk instruction
     return full_prompt + "\n\n" + _chunk_format
 

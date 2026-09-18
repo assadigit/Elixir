@@ -325,6 +325,99 @@ _SUMMARY_SELF_ASSESSMENT_RE = re.compile(
     r'leaves\s+out)\b',
     re.IGNORECASE,
 )
+# V0.05 (rig audit F2 — P0): STRUCTURAL self-assessment detection. The
+# phrase-enumeration regex above caught only "the summary <verb>" with 6
+# verbs; the V0.04 rig leaked 11 critique bullets through it in 3/6 files
+# ("Missing explicit mechanism…", "It omits…", "The summary flattens…",
+# "The gap fails to capture…", "Author attribution: … does not appear in
+# the summary text", "The summary must identify…"). The general rule: a
+# bullet whose SUBJECT is the summary artifact (not the source content) is
+# process commentary, not summary content — detected STRUCTURALLY, not by
+# enumerating phrases:
+#   (a) HEADLINE form — sentence-initial "Missing/Omitted/Absent/Uncovered
+#       <noun-phrase>:" (no subject, pure critique-label);
+#   (b) ARTIFACT-SUBJECT form — {the summary, this summary, the text above,
+#       the gap, sentence-initial It, the thorough summary} × a
+#       coverage-verb family (omits/misses/lacks/flattens/fails to
+#       capture|mention|cover|include/does not appear/is not mentioned/
+#       must identify/needs to/neglects/overlooks/does not appear).
+_COVERAGE_VERB = (
+    r'(?:omits|omitted|omitting|misses|missed|missing|lacks|lacked|'
+    r'lacking|flattens|flattened|neglects|neglected|overlooks|overlooked|'
+    r'fails\s+to\s+(?:capture|mention|cover|include|identify|reflect|'
+    r'convey|note)|does\s+not\s+(?:appear|mention|cover|include|name|'
+    r'identify|capture|convey|note)|is\s+not\s+(?:mentioned|covered|'
+    r'included|named)|must\s+(?:identify|include|mention|name|capture)|'
+    r'needs\s+to\s+(?:identify|include|mention|name|capture))'
+)
+_SELF_ASSESSMENT_HEADLINE_RE = re.compile(
+    r'^\s*(?:missing|omitted|absent|uncovered|lacking)'
+    r'(?:\s+(?:the|a|an|this|that|its|their|specific|explicit|distinct|'
+    r'exact|any|several|certain)\b|[^.!?\n]{0,90}:)',
+    re.IGNORECASE,
+)
+_SELF_ASSESSMENT_SUBJECT_RE = re.compile(
+    r'(?:^|[.!?\n]\s*)'
+    r'(?:it|the\s+(?:summary|thorough\s+summary|executive\s+summary|text\s+above|gap)|'
+    r'this\s+summary)\s+'
+    + _COVERAGE_VERB,
+    re.IGNORECASE,
+)
+# "… does not appear in the summary text" — the verb targets the summary
+# even when the subject is something else ("Author attribution: The chapter
+# author is identified as 'By Neal Ford' but this name does not appear in
+# the summary text").
+_SELF_ASSESSMENT_IN_SUMMARY_RE = re.compile(
+    r'(?:does\s+not\s+appear|is\s+not\s+mentioned|is\s+absent)\s+in\s+the\s+summary',
+    re.IGNORECASE,
+)
+# "Author attribution:"-style critique labels — the scholar prompt's
+# checklist vocabulary used as a bullet headline.
+_SELF_ASSESSMENT_LABEL_RE = re.compile(
+    r'^\s*(?:author\s+attribution|attribution)\s*[:—-]',
+    re.IGNORECASE,
+)
+# V0.06 (rig audit F5 — P0): THREE more STRUCTURAL forms the V0.05 rig
+# leaked through the detector above (all shipped in Key Takeaways):
+#   (a) TRAILING critique-label — "<topic> omitted/missing/…: "<quote>""
+#       ("Weather impact on schedules omitted: "a sever change in weather
+#       throws the entire schedule out of whack."", "Framework origin
+#       preference missing: "Prefer frameworks derived from working code…"").
+#       The coverage-verb is NOT sentence-initial (the headline form) and
+#       the subject is not the summary artifact (the subject form) — it is
+#       a topic-label + past-participle + colon + evidence-quote. Requiring
+#       the colon-then-quote shape keeps it clear of real content ("a
+#       payroll system is missing a cost model: "quote"" is about the
+#       SOURCE's subject matter only when no coverage-verb is involved).
+#   (b) ADVICE form — "The summary should clarify/must identify/needs to
+#       …" ("The summary should clarify that quality attributes are
+#       explicitly defined in the text as "-ilities"…"). Any sentence whose
+#       subject is the summary and whose verb is advisory is process
+#       commentary by construction.
+#   (c) NEGATED-ENUMERATION vs the artifact — "…are not fully enumerated
+#       in the summary: "…"", "…are omitted from the detailed examples:
+#       "…"". A coverage-verb (or negated completeness-verb) anchored to
+#       "the summary"/"the detailed examples"/"the takeaways" is a claim
+#       about the SUMMARY ARTIFACT, not about the source's content.
+_SELF_ASSESSMENT_TRAILING_RE = re.compile(
+    r'[^.!?\n]{0,120}?\b(?:omitted|missing|absent|uncovered|lacking|'
+    r'not\s+fully\s+enumerated|not\s+enumerated|left\s+out|glossed\s+over|'
+    r'flattened|reduced\s+to)\s*'
+    r'(?:from\s+(?:the\s+)?(?:detailed\s+)?(?:summary|examples|takeaways|text)\s*)?'
+    r':\s*["\u201c]',
+    re.IGNORECASE,
+)
+_SELF_ASSESSMENT_ADVICE_RE = re.compile(
+    r'\b(?:the|this)\s+summary\s+(?:should|must|needs\s+to|could|would)\b',
+    re.IGNORECASE,
+)
+_SELF_ASSESSMENT_VS_ARTIFACT_RE = re.compile(
+    r'\b(?:omitted|missing|absent|uncovered|not\s+fully\s+enumerated|'
+    r'not\s+enumerated|not\s+fully\s+listed)\b[^.!?\n]{0,80}?'
+    r'\b(?:in|from)\s+the\s+(?:summary|detailed\s+summary|detailed\s+examples|'
+    r'takeaways|final\s+summary)\b',
+    re.IGNORECASE,
+)
 _TRUNCATION_MARKER_RE = re.compile(
     r'\(\s*text\s+cuts\s+off\s*\)|\[\s*truncated\s*\]|\{\s*truncated\s*\}',
     re.IGNORECASE,
@@ -341,10 +434,45 @@ def is_checklist_stub(bullet: str) -> bool:
 def is_summary_self_assessment(bullet: str) -> bool:
     """V18.20.3.4 (RC-1): True when the bullet comments on the summary's own
     coverage ("a topic the summary omits entirely") — incoherent inside the
-    summary it describes."""
+    summary it describes.
+
+    V0.05 (rig audit F2 — P0, STRUCTURAL): the detection is now structural
+    (headline form + artifact-subject × coverage-verb family + "in the
+    summary" verbs + attribution-critique labels), not the original 6-verb
+    phrase enumeration. All 11 leaked rig bullets match one of the
+    structural forms; the 3 sibling shapes the old regex caught remain
+    caught (it is a subset). False-positive guard: bullets that REPORT the
+    source's own claims about coverage are still content — but a bullet
+    whose subject is the SUMMARY ARTIFACT ("the summary", "the gap", "It"
+    at sentence start, "Missing …:") is process commentary by
+    construction, whatever the verb.
+    """
     if not bullet:
         return False
-    return bool(_SUMMARY_SELF_ASSESSMENT_RE.search(bullet))
+    t = bullet.strip()
+    if _SUMMARY_SELF_ASSESSMENT_RE.search(t):
+        return True
+    if _SELF_ASSESSMENT_HEADLINE_RE.match(t):
+        return True
+    if _SELF_ASSESSMENT_SUBJECT_RE.search(t):
+        return True
+    if _SELF_ASSESSMENT_IN_SUMMARY_RE.search(t):
+        return True
+    if _SELF_ASSESSMENT_LABEL_RE.match(t):
+        return True
+    # V0.06 (rig audit F5): the three new structural forms — trailing
+    # critique-label (…omitted/missing/…: "quote"), advice form (the
+    # summary should…), negated-enumeration vs the artifact (not fully
+    # enumerated in the summary…). All three leaked into the V0.05 rig's
+    # Key Takeaways despite the ship-time scar filter because the shapes
+    # above did not cover them.
+    if _SELF_ASSESSMENT_TRAILING_RE.search(t):
+        return True
+    if _SELF_ASSESSMENT_ADVICE_RE.search(t):
+        return True
+    if _SELF_ASSESSMENT_VS_ARTIFACT_RE.search(t):
+        return True
+    return False
 
 
 def has_truncation_marker(bullet: str) -> bool:

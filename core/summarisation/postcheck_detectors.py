@@ -2042,11 +2042,114 @@ def _is_legitimate_inflection_pair(summary_word: str, source_word: str) -> bool:
     return False
 
 
+# ── V0.03 (P0-1, real-rig audit): English lexicon for the garble guard ─────
+#
+# The V0.02 rig run proved the dropped-letter auto-repair corrupts valid
+# paraphrases: 12 of 13 "repairs" swapped a real English word for a different
+# source word ('contrast'→'contract', 'teams'→'beams', 'causes'→'cases',
+# 'skill'→'still', 'simply'→'simple' …). The structural proxies (stoplists,
+# inflection pairs, suffix decomposition) cannot separate a real word from a
+# garble — only a dictionary can. This vendored lexicon (126,761 lowercase
+# alpha words ≥4 chars, derived from the pyspellchecker English frequency
+# dictionary, frequency ≥ 50) provides exactly that. It is a GENERAL English
+# word list — not chapter- or book-derived (the V18.15.3.2 constraint bans
+# hand-curated CONTENT lists; a frequency lexicon of the whole language is
+# the same class of resource as a spell-checker, which this rule always
+# needed to be).
+_ENGLISH_LEXICON: set | None = None
+
+
+def _load_english_lexicon() -> set:
+    """Lazily load the vendored English lexicon (fail-open to empty set).
+
+    Empty set ⇒ the dictionary guard is inactive (degrades to the V0.02
+    behavior minus auto-repair, which is disabled by default anyway).
+    """
+    global _ENGLISH_LEXICON
+    if _ENGLISH_LEXICON is None:
+        try:
+            import gzip as _gzip
+            from pathlib import Path as _Path
+            _p = _Path(__file__).parent / "data" / "english_lexicon.txt.gz"
+            _ENGLISH_LEXICON = set(
+                _gzip.decompress(_p.read_bytes()).decode("ascii").split()
+            )
+        except Exception:  # fail-open — a missing lexicon must not crash postchecks
+            _ENGLISH_LEXICON = set()
+    return _ENGLISH_LEXICON
+
+
+def _paragraph_corroborated(
+    candidate: str,
+    garble_word: str,
+    match_start: int,
+    text: str,
+    source_text: str,
+) -> bool:
+    """V0.03 (P0-1 guard b): the repair candidate must live in a source
+    paragraph that is among the BEST topical matches for the summary
+    sentence being repaired (nearest-paragraph rule).
+
+    The rig audit showed every false repair attracted its candidate from a
+    DIFFERENT essay/section than the one the summary sentence was about
+    (e.g. 'contrast' in a deployment sentence "repaired" to 'contract' from
+    an unrelated agile-manifesto quote). GENERAL rule: compute content-word
+    overlap (words ≥4 chars) between the summary sentence and every source
+    paragraph; the candidate is corroborated iff it appears in a paragraph
+    achieving the MAXIMUM overlap (ties allowed — section boundaries are
+    fuzzy). When no paragraph shares any vocabulary (a fully paraphrased
+    sentence, or a single-paragraph source), every paragraph ties at zero
+    and the rule degrades to a vacuous pass — the remaining guards
+    (lexicon non-word, strict uniqueness, position-0) still apply.
+    """
+    try:
+        _sent_start = max(
+            text.rfind(". ", 0, match_start),
+            text.rfind("! ", 0, match_start),
+            text.rfind("? ", 0, match_start),
+            text.rfind("\n", 0, match_start),
+        ) + 1
+        _sent_end_candidates = [
+            p for p in (
+                text.find(". ", match_start),
+                text.find("! ", match_start),
+                text.find("? ", match_start),
+                text.find("\n", match_start),
+            ) if p != -1
+        ]
+        _sent_end = min(_sent_end_candidates) if _sent_end_candidates else len(text)
+        _sent_words = {
+            w for w in re.findall(r"[a-z]{4,}", text[_sent_start:_sent_end].lower())
+            if w != garble_word
+        }
+        _paras = [p for p in source_text.split("\n\n") if p.strip()]
+        if not _paras:
+            return False
+        _best = -1
+        _para_words_cache: list[set] = []
+        for _para in _paras:
+            _pw = set(re.findall(r"[a-z]{4,}", _para.lower()))
+            _para_words_cache.append(_pw)
+            _ov = len(_sent_words & _pw)
+            if _ov > _best:
+                _best = _ov
+        # Corroborated iff the candidate lives in a max-overlap paragraph.
+        for _pw in _para_words_cache:
+            if candidate in _pw and len(_sent_words & _pw) == _best:
+                return True
+        return False
+    except Exception:
+        # Fail-open on structure problems: corroboration unavailable → the
+        # caller keeps the flag-only path (never crashes a conversion).
+        return False
+
+
 def detect_dropped_letter_garble(
     text: str,
     field_label: str,
     source_text: str = "",
     source_words: set | None = None,
+    auto_repair: bool = False,
 ) -> tuple[str, list[Issue]]:
     """V18.19.2.3 (Audit Fix 5): Detect single-character garbled tokens.
     V18.19.2.5 (tune): Suppress false positives on legitimate English inflections.
@@ -2076,23 +2179,38 @@ def detect_dropped_letter_garble(
       4. The edit-distance-1 relationship is NOT a legitimate English inflection
          (V18.19.2.5: _is_legitimate_inflection_pair check).
       5. It's not in the _STRUCTURAL_STOPWORDS exempt set.
+      6. V0.03 (P0-1 guard a): it is NOT a valid English word per the vendored
+         lexicon — a real dictionary word is never a garble, regardless of its
+         edit-distance-1 neighbors ('causes' exists even when the source only
+         contains 'cases').
+      7. V0.03 (P0-1 guard d): it does not appear more than once in the summary
+         text — repeated vocabulary is deliberate authorial choice, not a typo.
 
-    V18.20.3.4 (RC-3, audit v182033): UNAMBIGUOUS repairs are now AUTO-FIXED.
-    When exactly ONE source word is at edit distance 1 (the "emergs"→
-    "emerges" class — the V18.20.3.3 run flagged it twice and shipped the
-    typo both times), the token is replaced in the returned text and the
-    issue is severity="fix". Multiple candidates remain flag-only (the
-    reconstruction is ambiguous: "emergs" could be "emerges" or "emerge";
-    the human/LLM decides downstream).
+    V18.20.3.4 (RC-3) originally auto-fixed unambiguous repairs. V0.03 (P0-1,
+    real-rig audit) DISABLES auto-repair by default: the V0.02 rig run showed
+    12 of 13 auto-repairs corrupted valid paraphrase words. When ``auto_repair``
+    is explicitly enabled, a repair additionally requires ALL of:
+      (a) the token is not a valid English dictionary word (guard a),
+      (b) paragraph corroboration — the candidate appears in a source paragraph
+          sharing content words with the summary sentence being repaired,
+      (c) exactly ONE source word at edit distance 1 counting inflection
+          partners too (the 'skill'→'still' corruption happened because
+          'skills' was excluded as an "inflection", leaving 'still' spuriously
+          "unique"),
+      (d) the pre-existing position-0 inflected-form guard.
+    Failed guards degrade to flag-only — the log stays honest, the text stays
+    untouched. Flags are advisory; repairs rewrite user-facing text.
 
     Args:
         text: the summary text to scan.
         field_label: "exec" / "thorough" / "bullet[N]".
-        source_text: the source chapter text (the only allowed dictionary).
+        source_text: the source chapter text.
+        auto_repair: V0.03 — default False (disabled until re-validated on a
+            real rig). When True, guarded auto-repair is allowed.
 
     Returns:
-        ``(text, issues)``. Text carries the unambiguous auto-repairs
-        (V18.20.3.4 RC-3); ambiguous garbles leave it unchanged.
+        ``(text, issues)``. Text carries only guarded auto-repairs (when
+        enabled); everything else leaves it unchanged.
     """
     issues: list[Issue] = []
     # V18.20.3.4 (RC-3): queued (garble, repair) pairs — applied after
@@ -2101,6 +2219,8 @@ def detect_dropped_letter_garble(
     _repairs: list = []
     if not text or not source_text:
         return text, issues
+    # V0.03 (P0-1 guard a): load once per process (lazy singleton).
+    _lexicon = _load_english_lexicon()
     try:
         # V18.20.2.0 (SWOT A24): accept the precomputed source word-set from
         # run_post_checks (was rebuilt per bullet/exec/thorough call);
@@ -2136,6 +2256,17 @@ def detect_dropped_letter_garble(
             # otherwise turn 'moving through' into 'loving').
             if _common_word_stem_in_stoplist(word):
                 continue
+            # V0.03 (P0-1 guard a): dictionary guard — a valid English word is
+            # never a garble, period. This is the general rule the stoplist/
+            # inflection/suffix proxies were approximating; the V0.02 rig run
+            # proved the proxies insufficient ('causes', 'teams', 'contrast',
+            # 'simply', 'agility' … are all real words that got "repaired").
+            if word in _lexicon:
+                continue
+            # V0.03 (P0-1 guard d): a token the model used more than once is
+            # deliberate vocabulary, not a one-off typo.
+            if len(re.findall(r'\b' + re.escape(word) + r'\b', text, re.IGNORECASE)) > 1:
+                continue
             # Check if any edit-distance-1 neighbor is a source word.
             neighbors = _edit_distance_one_neighbors(word)
             matching_source = candidate_sources & neighbors
@@ -2156,17 +2287,26 @@ def detect_dropped_letter_garble(
                 # the summary word is a real English word. Suppress the flag.
                 # (e.g. "author" matches "authors" via plural — suppress.)
                 continue
-            # V18.20.3.4 (RC-3, audit v182033): UNAMBIGUOUS dropped-letter
-            # tokens are now AUTO-REPAIRED instead of flag-only. The
-            # V18.20.3.3 run flagged `[dropped_letter/flag]` twice for
-            # garbled token (bullet + thorough; audit F7) and shipped the
-            # typo both times — the reconstruction was never in
-            # doubt: it is the ONLY source token at edit distance 1. Rule:
-            # exactly one non-inflection candidate → replace (severity=fix);
-            # multiple candidates → keep flag-only (the reconstruction is
-            # ambiguous; the human/LLM decides downstream). Case is
-            # preserved: a capitalized garble gets a capitalized repair.
-            if len(non_inflection_matches) == 1:
+            # V0.03 (P0-1): the RC-3 auto-repair is OFF unless explicitly
+            # enabled (auto_repair=True), and even then must pass guard (c):
+            # exactly ONE source word at edit distance 1 counting inflection
+            # partners too. The V0.02 rig corruption 'skill'→'still' happened
+            # precisely because 'skills' (the correct distance-1 partner) was
+            # excluded as an "inflection", leaving 'still' spuriously unique.
+            # Case is preserved: a capitalized garble gets a capitalized repair.
+            _repair_allowed = (
+                auto_repair
+                and len(matching_source) == 1
+                and len(non_inflection_matches) == 1
+            )
+            if _repair_allowed and not _paragraph_corroborated(
+                next(iter(matching_source)), word, m.start(), text, source_text,
+            ):
+                # V0.03 (P0-1 guard b): the only candidate lives in a source
+                # paragraph that does not overlap this sentence's content —
+                # not a credible reconstruction. Degrade to flag-only.
+                _repair_allowed = False
+            if _repair_allowed:
                 _repair = next(iter(non_inflection_matches))
                 _orig_tok = m.group(0)
                 if _orig_tok[:1].isupper():
@@ -2216,10 +2356,10 @@ def detect_dropped_letter_garble(
                     field=field_label,
                     snippet=_snippet(text, m.start()),
                     detail=(
-                        f"auto-repaired garbled token: '{_orig_tok}' → "
-                        f"'{_repair_tok}' (the unique source word at edit "
-                        f"distance 1 — V18.20.3.4 RC-3, the 'emergs'→"
-                        f"'emerges' class)"
+                        f"guarded auto-repair of garbled token: '{_orig_tok}' → "
+                        f"'{_repair_tok}' (non-word per English lexicon; the ONLY "
+                        f"source word at edit distance 1; paragraph-corroborated — "
+                        f"V0.03 P0-1, the 'emergs'→'emerges' class)"
                     ),
                 ))
                 # Queue the repair (word-boundary-scoped so a substring

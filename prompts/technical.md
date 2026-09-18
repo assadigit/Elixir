@@ -24,15 +24,15 @@ INSTRUCTIONS:
 OUTPUT FORMAT:
 
 <executive_summary>
-A 150-250 word technical overview of the chapter's main concepts and contributions.
+A {{exec_words}} technical overview (scales to this chapter's length) of the chapter's main concepts and contributions.
 </executive_summary>
 
 <bullet_points>
-A list of 20-40 technical keypoints. One per line, prefixed with "- ". Include page citations: - Point here (p.N)
+A list of {{bullet_range}} technical keypoints (the count scales to this chapter's length). One per line, prefixed with "- ". Include page citations: - Point here (p.N)
 </bullet_points>
 
 <thorough_summary>
-An 800-1200 word technical walkthrough written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover all concepts, architectures, and implementations in detail.
+A {{thorough_words}} technical walkthrough written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover all concepts, architectures, and implementations in detail. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it — write less if the chapter states less.
 </thorough_summary>
 
 <key_distinctions>

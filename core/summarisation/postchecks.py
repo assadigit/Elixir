@@ -80,6 +80,7 @@ def run_post_checks(
     source_text: str | None = None,
     key_distinctions: str = "",
     theoretical_tensions: str = "",
+    auto_repair_garble: bool = False,
 ) -> PostCheckReport:
     """Run all deterministic post-checks on the final summary.
 
@@ -108,6 +109,12 @@ def run_post_checks(
         source_text: optional chapter source. When provided, its author list
             is extracted via :func:`deterministic_analyzer.extract_citations`
             and used to validate the summary's ``(Author Year)`` citations.
+        auto_repair_garble: V0.03 (P0-1) — default False. The dropped-letter
+            auto-repair is DISABLED until re-validated on a real rig (the
+            V0.02 rig run: 12 of 13 auto-repairs corrupted valid paraphrase
+            words). When True, repairs additionally require the English-
+            lexicon guard, paragraph corroboration, and strict single-
+            candidate uniqueness (see detect_dropped_letter_garble).
 
     Returns:
         :class:`PostCheckReport` with cleaned outputs + issues.
@@ -196,6 +203,7 @@ def run_post_checks(
         # remain flag-only.
         bp_str, dropped_issues = detect_dropped_letter_garble(
             bp_str, label, source_text or "", source_words=_src_words,
+            auto_repair=auto_repair_garble,
         )
         _, year_issues = validate_years(bp_str, label, source_authors)
         # V18.2.17 Fix 7: attribution verification (source-aware).
@@ -408,7 +416,7 @@ def run_post_checks(
     _, exec_grammar = detect_grammatical_incoherence(exec_str, "exec")
     # V18.2.19 Improvement 2: word-fragment merge.
     _, exec_fragment = detect_word_fragment_merge(exec_str, "exec", source_text or "", source_words=_src_words)
-    exec_str, exec_dropped = detect_dropped_letter_garble(exec_str, "exec", source_text or "", source_words=_src_words)  # V18.20.3.4 (RC-3): capture auto-repairs
+    exec_str, exec_dropped = detect_dropped_letter_garble(exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble)  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
     _, exec_year = validate_years(exec_str, "exec", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, exec_attrib = verify_attribution(exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower) if source_text else (None, [])
@@ -473,7 +481,7 @@ def run_post_checks(
     _, tho_grammar = detect_grammatical_incoherence(tho_str, "thorough")
     # V18.2.19 Improvement 2: word-fragment merge.
     _, tho_fragment = detect_word_fragment_merge(tho_str, "thorough", source_text or "", source_words=_src_words)
-    tho_str, tho_dropped = detect_dropped_letter_garble(tho_str, "thorough", source_text or "", source_words=_src_words)  # V18.20.3.4 (RC-3): capture auto-repairs
+    tho_str, tho_dropped = detect_dropped_letter_garble(tho_str, "thorough", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble)  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
     _, tho_year = validate_years(tho_str, "thorough", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, tho_attrib = verify_attribution(tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower) if source_text else (None, [])
@@ -570,6 +578,156 @@ def run_post_checks(
             _clean_lines.append(_line)
         _sec = '\n'.join(_clean_lines)
         setattr(report, _section_name, _sec)
+
+    # ── V0.05 (rig audit F8 — P3): verbatim-quote verification ───────────
+    # Model-typed quotes are verified as NORMALIZED substrings of the source
+    # (case/whitespace/punctuation-insensitive). A span that fails ships as
+    # a paraphrase (quotes stripped) instead of a misquote — the V0.04 rig
+    # quoted "it should never happen…" where the source reads "this should
+    # never happen…". Verbatim excerpts from _find_source_sentence are
+    # already exact; this targets model-typed quotation marks.
+    def _quote_norm(s: str) -> str:
+        return re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+
+    _src_quote_norm = _quote_norm(source_text or "")
+    if _src_quote_norm:
+        _QUOTE_SPAN_RE = re.compile(r'[“"]([^“”"\n]{20,})[”"]')
+
+        def _verify_quotes(text: str, field: str) -> str:
+            if not text or '"' not in text and '“' not in text:
+                return text
+            out = text
+            for _m in list(_QUOTE_SPAN_RE.finditer(text)):
+                _span = _m.group(1)
+                if len(_span.split()) < 4:
+                    continue  # short quotes: single-word/phrase quotes are paraphrase-safe
+                if _quote_norm(_span) not in _src_quote_norm:
+                    # failing span: strip the quotation marks, keep the words
+                    out = out.replace(_m.group(0), _span, 1)
+                    report.issues.append(Issue(
+                        detector="quote_verification", severity="fix", field=field,
+                        snippet=_span[:60],
+                        detail=(
+                            "quoted span is not verbatim in the source — shipped "
+                            "as a paraphrase (quotation marks stripped) instead "
+                            "of a misquote"
+                        ),
+                    ))
+            return out
+
+        report.bullets = [_verify_quotes(b, f"bullet[{i}]")
+                          for i, b in enumerate(report.bullets)]
+        report.executive_summary = _verify_quotes(
+            report.executive_summary, "exec")
+        report.thorough_summary = _verify_quotes(
+            report.thorough_summary, "thorough")
+        report.key_distinctions = _verify_quotes(
+            report.key_distinctions, "key_distinctions")
+        report.theoretical_tensions = _verify_quotes(
+            report.theoretical_tensions, "theoretical_tensions")
+
+        # ── V0.06 (rig audit F6): trailing-quote dedupe + byline strip ────
+        # GENERAL RULE: a bullet states its claim ONCE. Two rig leak shapes:
+        #   (a) DUPLICATED QUOTE — the claim embeds a quote inline and the
+        #       generation template APPENDS the same quote again at the end:
+        #       'Borwankar explicitly states that such decisions "very rarely
+        #       result in happy outcomes," a direct causal claim … "Such
+        #       decisions very rarely result in happy outcomes."'
+        #       → the trailing span is stripped when its normalized text is
+        #       already contained in the rest of the bullet.
+        #   (b) BYLINE ECHO — a trailing quoted "By <Author>" used as
+        #       evidence ('The chapter is authored by Neal Ford, who argues
+        #       … "By Neal Ford"'). A byline is attribution metadata, never
+        #       a content quote — the span is stripped regardless of
+        #       containment.
+        _BYLINE_SPAN_RE = re.compile(
+            r'^\s*By\s+[A-Z][\w\'’-]*(?:\s+[A-Z][\w\'’-]*){0,3}\.?\s*$'
+        )
+        _TRAILING_QUOTE_SPAN_RE = re.compile(
+            r'["\u201c]([^"\u201d\n]{4,400})["\u201d]\s*[.!]?\s*$'
+        )
+
+        def _strip_trailing_quote_dup(text: str, field: str) -> str:
+            if not text or not text.strip():
+                return text
+            m = _TRAILING_QUOTE_SPAN_RE.search(text.rstrip())
+            if not m:
+                return text
+            span = m.group(1).strip()
+            rest = text.rstrip()[:m.start()].rstrip().rstrip(',;:—–-').rstrip()
+            if not span or not rest:
+                return text
+            if _BYLINE_SPAN_RE.match(span):
+                report.issues.append(Issue(
+                    detector="quote_dedupe", severity="fix", field=field,
+                    snippet=span[:60],
+                    detail=(
+                        "stripped trailing byline quote (\u201cBy <Author>\u201d) — "
+                        "attribution metadata quoted as evidence, not content"
+                    ),
+                ))
+                return rest
+            if _quote_norm(span) and _quote_norm(span) in _quote_norm(rest):
+                report.issues.append(Issue(
+                    detector="quote_dedupe", severity="fix", field=field,
+                    snippet=span[:60],
+                    detail=(
+                        "stripped trailing duplicate quote — the same span "
+                        "is already quoted/embedded in the bullet"
+                    ),
+                ))
+                return rest
+            return text
+
+        report.bullets = [_strip_trailing_quote_dup(b, f"bullet[{i}]")
+                          for i, b in enumerate(report.bullets)]
+
+    # ── V0.05 (rig audit F6 — P2): ship-time near-duplicate removal ──────
+    # Normalized token-set containment >= 0.8 → keep the FIRST, drop the
+    # rest. The V0.04 rig shipped 36 bullets for a ~430-word chapter with
+    # >=3 near-duplicate pairs ("moments of emotional tension → mutually
+    # agreed-upon goals" appearing twice, etc.) — gap-fill dedup was
+    # exact-prefix-only and the semantic-dedup phase is skippable. Content
+    # words only (len > 2), so function words never drive a match.
+    def _content_tokens(s: str) -> frozenset:
+        # light plural normalization (developer/developers, conversation/
+        # conversations) — mirrors summary_validator's plural tolerance so
+        # inflection alone never defeats the near-dup detector.
+        _out = set()
+        for w in re.findall(r'[a-z0-9]+', s.lower()):
+            if len(w) <= 2:
+                continue
+            if len(w) > 3 and w.endswith("s"):
+                _out.add(w[:-1])
+            _out.add(w)
+        return frozenset(_out)
+
+    _seen_token_sets: list[tuple[frozenset, int]] = []
+    _deduped_bullets: list[str] = []
+    for _i, _b in enumerate(report.bullets):
+        _toks = _content_tokens(_b)
+        _dup_of = None
+        if len(_toks) >= 4:  # very short bullets: token sets too small to judge
+            for _prev, _pi in _seen_token_sets:
+                _inter = len(_toks & _prev)
+                if _inter and _inter / min(len(_toks), len(_prev)) >= 0.8:
+                    _dup_of = _pi
+                    break
+        if _dup_of is not None:
+            report.issues.append(Issue(
+                detector="near_duplicate", severity="fix",
+                field=f"bullet[{_i}]",
+                snippet=_b[:60],
+                detail=(
+                    f"near-duplicate of bullet[{_dup_of}] (token-set "
+                    f"containment >= 0.8) — kept the first, dropped this one"
+                ),
+            ))
+            continue
+        _seen_token_sets.append((_toks, _i))
+        _deduped_bullets.append(_b)
+    if len(_deduped_bullets) != len(report.bullets):
+        report.bullets = _deduped_bullets
 
     # Recompute counts from the issues list (some detectors add issues
     # directly via .add(), others via extend()).

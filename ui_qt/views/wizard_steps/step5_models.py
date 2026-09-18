@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_qt.components.llamacpp_config import LlamaCppConfigMixin
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
@@ -38,8 +39,14 @@ logger = logging.getLogger(__name__)
 # Step 5: Model Selection
 # ════════════════════════════════════════════════════════════════════════════
 
-class Step5Models(WizardStep):
-    """V16.0.9: Model selection — 4-mode architecture (single/dual × local/API)."""
+class Step5Models(LlamaCppConfigMixin, WizardStep):
+    """V16.0.9: Model selection — 4-mode architecture (single/dual × local/API).
+
+    V0.04: mixes in LlamaCppConfigMixin (ui_qt/components/llamacpp_config.py)
+    — the llama.cpp endpoint box, its two-stage Test-connection probe, and
+    model discovery live there so this step module stays inside the O-b1
+    per-step line budget.
+    """
 
     def _build(self) -> None:
         lay = QVBoxLayout(self)
@@ -117,20 +124,25 @@ class Step5Models(WizardStep):
         self.local_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
         local_lay.addWidget(self.local_desc)
 
-        # Local backend selector (Ollama / LM Studio)
+        # Local backend selector (Ollama / llama.cpp / LM Studio)
         backend_row = QHBoxLayout()
         backend_row.setSpacing(8)
         backend_row.addWidget(QLabel("Local backend:"))
         self.backend_combo = QComboBox()
-        self.backend_combo.addItem("Ollama (default)", "ollama")
+        self.backend_combo.addItem("Ollama", "ollama")
+        # V0.04: llama.cpp server (llama-server) — the rig's primary local
+        # backend. Listed second because it is the CURRENT default for new
+        # configurations (see utils/settings.py V0.04).
+        self.backend_combo.addItem("llama.cpp server", "llamacpp")
         self.backend_combo.addItem("LM Studio", "lmstudio")
-        _saved_backend = self.controller.get_setting("summarisation.provider", "ollama")
-        if _saved_backend not in ("ollama", "lmstudio"):
-            _saved_backend = "ollama"
+        _saved_backend = self.controller.get_setting("summarisation.provider", "llamacpp")
+        if _saved_backend not in ("ollama", "llamacpp", "lmstudio"):
+            _saved_backend = "llamacpp"
         _b_idx = self.backend_combo.findData(_saved_backend)
         if _b_idx >= 0:
             self.backend_combo.setCurrentIndex(_b_idx)
         self.backend_combo.currentIndexChanged.connect(self._on_arch_change)
+        self.backend_combo.currentIndexChanged.connect(self._on_backend_change)
         backend_row.addWidget(self.backend_combo, 1)
         backend_row.addStretch()
         local_lay.addLayout(backend_row)
@@ -147,6 +159,12 @@ class Step5Models(WizardStep):
         lmstudio_row.addWidget(self.lmstudio_url_edit, 1)
         lmstudio_lay.addLayout(lmstudio_row)
         local_lay.addWidget(self.lmstudio_widget)
+
+        # ── V0.04: llama.cpp server configuration (mixin-owned) ──
+        # The endpoint box (URL / API key / model / Test connection) comes
+        # from LlamaCppConfigMixin — see ui_qt/components/llamacpp_config.py.
+        self.llamacpp_widget = self.build_llamacpp_box()
+        local_lay.addWidget(self.llamacpp_widget)
 
         # Refresh button
         refresh_row = QHBoxLayout()
@@ -365,15 +383,23 @@ class Step5Models(WizardStep):
         params_lay.addLayout(row)
 
         # Heavy model context size
+        # V0.04: range widened to 1024–262144 (was 4096–131072) so the GUI
+        # never caps a model's real window — 65k-class local models
+        # (llama.cpp Ternary-Bonsai: 65536) and 200k-class models now both
+        # fit. GENERAL RULE: spinbox ceilings are UI conveniences, not
+        # model policy; the provider layer owns the model-specific caps.
         ctx_row = QHBoxLayout()
         ctx_row.setSpacing(10)
         self.heavy_ctx_spin = QSpinBox()
-        self.heavy_ctx_spin.setRange(4096, 131072)
+        self.heavy_ctx_spin.setRange(1024, 262144)
         self.heavy_ctx_spin.setSingleStep(4096)
-        self.heavy_ctx_spin.setValue(self.state.max_context_tokens)
+        self.heavy_ctx_spin.setValue(
+            min(max(self.state.max_context_tokens, 1024), 262144)
+        )
         self.heavy_ctx_spin.setToolTip(
             "Context window size for the heavy/primary model.\n\n"
             "gemma4-12b: 32768 (32K)\n"
+            "llama.cpp Ternary-Bonsai-2-27B: 65536 (65K)\n"
             "Cloud APIs: use the model's maximum (often 128K+).\n"
             "Set per your model's maximum."
         )
@@ -381,6 +407,30 @@ class Step5Models(WizardStep):
         ctx_row.addWidget(self.heavy_ctx_spin)
         ctx_row.addStretch()
         params_lay.addLayout(ctx_row)
+
+        # V0.04: Heavy model OUTPUT budget — previously the wizard offered
+        # no way to set the output cap at the model step (only Step 7b had
+        # it, starting from a stale 8192 state default). The 12k-output
+        # llama.cpp model needs it front and centre: 12288.
+        out_row = QHBoxLayout()
+        out_row.setSpacing(10)
+        self.heavy_out_spin = QSpinBox()
+        self.heavy_out_spin.setRange(256, 65536)
+        self.heavy_out_spin.setSingleStep(1024)
+        self.heavy_out_spin.setValue(
+            min(max(int(getattr(self.state, "max_output_tokens", 12288) or 12288), 256), 65536)
+        )
+        self.heavy_out_spin.setToolTip(
+            "Maximum OUTPUT tokens per LLM call for the heavy/primary model.\n\n"
+            "llama.cpp Ternary-Bonsai-2-27B: 12288 (12K — the model's output cap)\n"
+            "Ollama 27B quants: 16000\n"
+            "This is a ceiling per call, not a target — shorter answers are fine.\n"
+            "The provider clamps requests to this automatically."
+        )
+        out_row.addWidget(QLabel("Heavy model output:"))
+        out_row.addWidget(self.heavy_out_spin)
+        out_row.addStretch()
+        params_lay.addLayout(out_row)
 
         # Fast model temperature + context (modes 2, 4)
         fast_row = QHBoxLayout()
@@ -408,7 +458,7 @@ class Step5Models(WizardStep):
         fast_row.addWidget(self.fast_temp_spin)
 
         self.fast_ctx_spin = QSpinBox()
-        self.fast_ctx_spin.setRange(4096, 131072)
+        self.fast_ctx_spin.setRange(1024, 262144)  # V0.04: widened with heavy ctx
         self.fast_ctx_spin.setSingleStep(4096)
         _default_fast_ctx = 131072
         try:
@@ -441,7 +491,13 @@ class Step5Models(WizardStep):
         self._on_arch_change()
 
     def _get_models(self) -> list[str]:
-        """Get available models from the current provider."""
+        """Get available models from the current provider (Ollama/LM Studio).
+
+        V0.04: the llama.cpp backend does NOT come through here —
+        _refresh_models dispatches it to the mixin's llamacpp_fetch_models
+        (Settings-only, worker-safe) instead, so this fn keeps its original
+        Ollama shape.
+        """
         try:
             from utils.dependencies import DependencyChecker
             models = DependencyChecker().get_ollama_models() or []
@@ -467,8 +523,20 @@ class Step5Models(WizardStep):
             in_flight = False  # worker already deleteLater'd itself — not running
         if in_flight:
             return  # a fetch is already in flight — don't stack workers
+        # V0.04: backend-aware dispatch — llama.cpp lists its models via
+        # the mixin's Settings-only worker fn (GET /v1/models with the
+        # configured-model fallback); the Ollama path keeps the original
+        # _get_models worker. The backend is snapshotted on the MAIN
+        # thread (combo reads never cross to the worker).
+        self._models_backend_snapshot = (
+            self.backend_combo.currentData() if hasattr(self, "backend_combo") else "ollama"
+        )
+        if self._models_backend_snapshot == "llamacpp":
+            worker_fn = self.llamacpp_fetch_models
+        else:
+            worker_fn = self._get_models
         self.refresh_btn.setEnabled(False)
-        self._models_worker = SimpleWorker(self._get_models)
+        self._models_worker = SimpleWorker(worker_fn)
         self._models_worker.finished.connect(self._on_models_loaded)
         self._models_worker.failed.connect(self._on_models_failed)
         self._models_worker.start()
@@ -542,6 +610,8 @@ class Step5Models(WizardStep):
         # LM Studio URL — local modes + lmstudio backend
         backend = self.backend_combo.currentData() if hasattr(self, "backend_combo") else "ollama"
         self.lmstudio_widget.setVisible(is_local and backend == "lmstudio")
+        # V0.04: llama.cpp config — local modes + llamacpp backend (mixin)
+        self.llamacpp_set_visible(is_local, backend)
 
         # Fast temp + context params — dual modes only
         self.fast_temp_label.setVisible(is_dual)
@@ -719,14 +789,29 @@ class Step5Models(WizardStep):
         self.state.model_architecture = arch
 
         if arch in ("single_local", "dual_local"):
-            # Local modes — provider is ollama or lmstudio
+            # Local modes — provider is ollama, llamacpp or lmstudio
             backend = self.backend_combo.currentData() or "ollama"
             self.controller.update_setting("summarisation.provider", backend)
             if backend == "lmstudio":
                 self.controller.update_setting("summarisation.lmstudio_url", self.lmstudio_url_edit.text().strip())
+            if backend == "llamacpp":
+                # V0.04: persist the llama.cpp endpoint + model (mixin) and
+                # make the backend's model the request's summarisation model
+                # (same pattern as the API modes writing cloud_model into
+                # it) so logs, provenance and the request all name the
+                # served model.
+                _lc_model = self.save_llamacpp_settings()
+                self.controller.update_setting(
+                    "summarisation.llamacpp_context_tokens", int(self.heavy_ctx_spin.value()))
+                self.controller.update_setting(
+                    "summarisation.llamacpp_max_output_tokens", int(self.heavy_out_spin.value()))
+                if _lc_model:
+                    self.state.summarisation_model = _lc_model
+                    self.controller.update_setting("summarisation.model", _lc_model)
             # Heavy/summarization model
-            self.state.summarisation_model = self.summ_combo.currentData() or ""
-            self.controller.update_setting("summarisation.model", self.state.summarisation_model)
+            if not (backend == "llamacpp" and self.state.summarisation_model):
+                self.state.summarisation_model = self.summ_combo.currentData() or ""
+                self.controller.update_setting("summarisation.model", self.state.summarisation_model)
             self.state.primary_ocr_model = self.ocr_combo.currentData() or ""
             self.state.fallback_ocr_model = self.ocr_combo.currentData() or ""
             self.controller.update_setting("ocr.primary_model", self.state.primary_ocr_model)
@@ -768,9 +853,14 @@ class Step5Models(WizardStep):
         self.state.max_workers = self.workers_spin.value()
         self.state.temperature = self.temp_spin.value()
         self.state.max_context_tokens = self.heavy_ctx_spin.value()
+        # V0.04: the output budget is now first-class in the wizard — the
+        # heavy_out_spin (256–65536) feeds the same request field Step 7b's
+        # out_spin writes, so both surfaces stay in sync via settings.
+        self.state.max_output_tokens = self.heavy_out_spin.value()
         self.controller.update_setting("summarisation.max_workers", self.workers_spin.value())
         self.controller.update_setting("summarisation.temperature", self.temp_spin.value())
         self.controller.update_setting("summarisation.max_context_tokens", self.heavy_ctx_spin.value())
+        self.controller.update_setting("summarisation.max_output_tokens", self.heavy_out_spin.value())
         self.controller.update_setting("summarisation.fast_model_temperature", self.fast_temp_spin.value())
         self.controller.update_setting("summarisation.fast_model_context", self.fast_ctx_spin.value())
 

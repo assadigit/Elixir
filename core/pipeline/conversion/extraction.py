@@ -330,8 +330,30 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # pages_to_ocr and pass to OCRService so it ONLY processes those pages.
     # Add ±1 page overlap to avoid splitting sentences at chapter
     # boundaries. The overlap pages are deduped in post-processing.
+    # V0.03 (P0-4, real-rig audit): the ±1 overlap is applied ONLY when the
+    # page set was NOT derived from TOC page numbers. TOC-derived boundaries
+    # are exact (entry start page → next entry start − 1); expanding them
+    # bleeds the FIRST PAGE OF THE NEXT UNSELECTED CHAPTER into the extract
+    # (the V0.02 rig: thing 9's range {15,16} expanded to {14..17} pulled in
+    # thing 10's p.17, which then flowed into "chapter 9"'s summary as
+    # Braithwaite's entire Quantify essay). Manual segment ranges keep the
+    # overlap (their boundaries are human-approximate).
+    _toc_derived_selection = bool(
+        not request.manual_segments
+        and request.selected_chapters
+        and toc_entries
+        and valid_pages is not None
+    )
     if valid_pages is not None:
-        valid_pages = expand_with_overlap(valid_pages, total_pages_for_range)
+        if _toc_derived_selection:
+            log(
+                "  📄 Boundary overlap SKIPPED — TOC-derived page ranges are "
+                "exact (V0.03 P0-4: ±1 expansion leaked the next unselected "
+                "chapter's first page in the V0.02 rig run).",
+                "INFO",
+            )
+        else:
+            valid_pages = expand_with_overlap(valid_pages, total_pages_for_range)
         # FIX: pages_to_ocr may be a list — convert to set for intersection
         pages_to_ocr_set = set(pages_to_ocr) if not isinstance(pages_to_ocr, set) else pages_to_ocr
         original_ocr_count = len(pages_to_ocr_set)

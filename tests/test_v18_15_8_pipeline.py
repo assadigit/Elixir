@@ -63,9 +63,16 @@ class TestBuildExecFromThoroughPrompt:
         assert thorough in p
 
     def test_prompt_word_count_constraint(self):
-        """The prompt must specify 150-250 words."""
+        """The prompt must specify a word-count constraint.
+
+        V0.05 (F9b): the target is SOURCE-SCALED (the thorough fixture is a
+        1-word source → a tiny scaled range), never the absolute 150-250.
+        """
+        import re as _re
         p = build_exec_from_thorough_prompt("Chapter", "Thorough.", "en")
-        assert "150-250" in p
+        assert _re.search(r"\b\d+-\d+ word executive summary", p)
+        assert _re.search(r"\b\d+-\d+ word \(strict\)", p)
+        assert "150-250" not in p
 
     def test_prompt_no_bullets_constraint(self):
         """The prompt must say NOT bullet points."""

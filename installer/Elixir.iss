@@ -23,13 +23,13 @@
 
 [Setup]
 AppName=Elixir
-AppVersion=0.02
+AppVersion=0.06
 AppPublisher=Elixir
 DefaultDirName={autopf}\Elixir
 DefaultGroupName=Elixir
 DisableProgramGroupPage=yes
 OutputDir=dist
-OutputBaseFilename=Elixir_Setup_V0.02
+OutputBaseFilename=Elixir_Setup_V0.06
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern

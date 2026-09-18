@@ -125,6 +125,15 @@ class SummaryResult:
     theoretical_tensions: str = ""
     # V13.41.0: Scholar reflections — meta-cognitive gap analysis
     scholar_reflections: str = ""
+    # V0.03 (P0-2): Tier-3 coverage excerpts — complete-sentence, framed
+    # verbatim source quotes recorded when a keyword is missing from the
+    # whole summary. NEVER part of bullet_points (Key Takeaways); rendered
+    # as a separate clearly-labelled section. Empty = none recorded.
+    source_excerpts: list[str] = field(default_factory=list)
+    # V0.03 (P1-6): quarantine appendix — rendered record of bullets the
+    # quality pipeline dropped or kept-with-concerns for this chapter
+    # (stage + reason + excerpt). Empty = nothing quarantined.
+    quarantine_appendix: str = ""
     # V18.20.3.5: deterministic recall-floor numbers measured on the FINAL
     # set (see core/summarisation/recall_floor.py). Consumed by the quality
     # report and the end-of-conversion diagnostic so they print real
@@ -138,6 +147,18 @@ class SummaryResult:
     run_id: str = ""
     app_version: str = ""
     run_started: str = ""
+    # V0.06 (rig audit F1-c — GENERAL RULE: the output selection is the
+    # CONTRACT, enforced at render time too): the user's output-selection
+    # flags, stamped by the Summarizer when the result is built. Renderers
+    # (chapter markdown, DOCX, book summary) skip a section whose flag is
+    # False EVEN IF content leaked into it — the V0.05 rig shipped a
+    # "Thorough Summary" section to a user who unchecked it because every
+    # gate was generation-side only and the parser's leftover fallback
+    # smuggled additive-section content into the field. Defaults True =
+    # legacy/unstamped results render exactly as before.
+    include_executive_summary: bool = True
+    include_thorough_summary: bool = True
+    include_keypoints: bool = True
 
 
 # ── Conversion Request / Result ───────────────────────────────────────────────

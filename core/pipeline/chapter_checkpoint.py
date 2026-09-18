@@ -159,6 +159,30 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     sr_md = ""
     if getattr(summ, "scholar_reflections", None) and str(summ.scholar_reflections).strip():
         sr_md = f"\n## Scholar's Reflections\n\n{summ.scholar_reflections}\n\n"
+    # V0.03 (P0-2): Tier-3 source excerpts — a SEPARATE, clearly-labelled
+    # section. These are framed verbatim quotes recorded for coverage on
+    # keywords the summary text itself did not cover; they are never mixed
+    # into Key Takeaways (the V0.02 rig shipped a mid-quote fragment of
+    # the source's *anti-pattern answer* as the book's final takeaway).
+    se_md = ""
+    _se = getattr(summ, "source_excerpts", None) or []
+    if len(_se):
+        _se_lines = "\n".join(f"- {str(e)}" for e in _se if str(e).strip())
+        se_md = (
+            "\n## Source Excerpts (auto-inserted)\n\n"
+            "The following verbatim source sentences were auto-recorded for "
+            "concepts the summary text did not cover. They are quotes from "
+            "the book — including possible examples of what NOT to do — and "
+            "are not the summarizer's advice.\n\n"
+            f"{_se_lines}\n\n"
+        )
+    # V0.03 (P1-6) → V0.06 (rig audit F2 — REMOVED FROM THE DELIVERABLE):
+    # the quarantine record (what the quality pipeline dropped) is pipeline
+    # bookkeeping — it renders into logs/drops.jsonl (QuarantineLog) and the
+    # conversion log, NEVER into the chapter summary. The V0.05 rig shipped
+    # a "## Quarantine Log (quality-pipeline drops)" section inside every
+    # affected chapter file; the user's ruling: "keep it for your logs".
+    # The render is deleted; the appendix field is never populated (V0.06).
 
     # V18.20.3.7: provenance comment (self-identification) — only when the
     # summary is stamped with a real run-id STRING; legacy/unstamped output
@@ -192,13 +216,40 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     from core.system.provenance import complete_sentinel
     # (Type guard rationale above — a MagicMock run_id must render as a
     # legacy bare sentinel, never as garbage text.)
+    # V0.05 (rig audit F9a — GENERAL RULE: no empty headings): every section
+    # heading renders ONLY when the section has content. The renderer
+    # previously emitted "## Executive Summary" / "## Key Takeaways" /
+    # "## Thorough Summary" unconditionally — a user who unchecked a section
+    # in the wizard still got its (empty or fabricated) heading in the file,
+    # and a section the pipeline could not populate shipped as a blank
+    # heading. When ALL core sections are present the bytes are identical to
+    # the legacy writer (the chunk shapes below are the legacy fragments).
+    #
+    # V0.06 (rig audit F1-c — GENERAL RULE: the output selection is the
+    # CONTRACT, enforced AT RENDER TIME): content-presence alone was proven
+    # insufficient — the V0.05 rig shipped a "## Thorough Summary" section
+    # to a user who unchecked the output, because the parser's leftover
+    # fallback smuggled unrequested additive-section content into the field
+    # and the renderer was flag-blind. The SummaryResult now carries the
+    # user's output-selection flags (stamped at construction, F1-b); a
+    # section renders only when BOTH its flag is on AND it has content.
+    # Unstamped (legacy) results default to True = byte-identical legacy
+    # behaviour.
+    _inc_exec_r = getattr(summ, "include_executive_summary", True)
+    _inc_kp_r = getattr(summ, "include_keypoints", True)
+    _inc_th_r = getattr(summ, "include_thorough_summary", True)
+    _core_chunks = []
+    if _inc_exec_r and (exec_formatted or "").strip():
+        _core_chunks.append(f"## Executive Summary\n\n{exec_formatted}\n\n")
+    if _inc_kp_r and (bullets_md or "").strip():
+        _core_chunks.append(f"## Key Takeaways\n\n{bullets_md}\n\n")
+    if _inc_th_r and (thorough_formatted or "").strip():
+        _core_chunks.append(f"## Thorough Summary\n\n{thorough_formatted}\n")
     return (
         f"# Summary: {summ.chapter_heading}\n\n"
         f"{prov_md}"
-        f"## Executive Summary\n\n{exec_formatted}\n\n"
-        f"## Key Takeaways\n\n{bullets_md}\n\n"
-        f"## Thorough Summary\n\n{thorough_formatted}\n"
-        f"{kd_md}{tt_md}{sr_md}"
+        f"{''.join(_core_chunks)}"
+        f"{kd_md}{tt_md}{sr_md}{se_md}"
         f"{footer_md}"
         f"{complete_sentinel(_run_id)}\n"
     )

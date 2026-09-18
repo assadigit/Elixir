@@ -68,6 +68,26 @@ from core.summarisation.bullet_scorer import score_bullet as bs_score_bullet
 # V18.15.3 (Phase 5 Stage 3, Batch 4.5): 3-Tier coverage guarantee.
 from core.summarisation.coverage_guarantee import apply_3tier_coverage as cg_apply_3tier_coverage
 
+# V0.06 (rig audit F4-b): the source-scaled bullet budget (single source of
+# truth: length_policy.bullet_target) as a hard-cap helper for the delegates.
+from core.summarisation.length_policy import (
+    bullet_cap as _lp_bullet_cap_mod,
+    count_source_words as _lp_count_source_words_mod,
+)
+
+
+def _lp_bullet_cap_fn(source_text: str) -> int | None:
+    """Hard bullet cap for a chapter of this size (length_policy.bullet_cap).
+
+    ``None`` (never a number) on any failure — every consumer treats
+    ``None``/``<= 0`` as "no cap" so a probe crash can never zero out a
+    chapter's bullets (fail-open, same contract as the other budget probes).
+    """
+    try:
+        return _lp_bullet_cap_mod(_lp_count_source_words_mod(source_text or ""))
+    except Exception:
+        return None
+
 # V18.15.3 (Phase 5 Stage 3, Batch 4.4): fast/small-model LLM dispatch.
 from core.summarisation.fast_llm import call_fast_llm as fl_call_fast_llm
 
@@ -258,6 +278,21 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         self.freellmapi_key = _get("summarisation.freellmapi_key", "")
         self.freellmapi_model = settings.get("summarisation.freellmapi_model", "auto")
 
+        # V0.04: llama.cpp server (llama-server) — the local backend that
+        # replaces Ollama on the rig. Read once here; the _call_llm
+        # dispatch routes "llamacpp" through _call_via_llm_provider, and
+        # create_provider("llamacpp") re-reads the same keys (single source
+        # of truth: the llamacpp_* settings block).
+        self.llamacpp_base_url = settings.get(
+            "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+        self.llamacpp_api_key = settings.get("summarisation.llamacpp_api_key", "local")
+        self.llamacpp_model = settings.get(
+            "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+        self.llamacpp_context_tokens = int(
+            settings.get("summarisation.llamacpp_context_tokens", 65536) or 65536)
+        self.llamacpp_max_output = int(
+            settings.get("summarisation.llamacpp_max_output_tokens", 12288) or 12288)
+
         # V13.36.0: Hybrid Fusion (Local + Cloud)
         self.fusion_enabled = self.provider == "fusion" or settings.get("summarisation.fusion_enabled", False)
         self.fusion_cloud_provider = settings.get("summarisation.fusion_cloud_provider", "openai_compat")
@@ -351,7 +386,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         reads self.is_local, self.timeout, self.local_chapter_deadline for the
         IQ2_S overrides). Does NOT read self.primary_model or self.heavy_model.
         """
-        self.is_local = self.provider in ("ollama", "lmstudio", "fusion")
+        # V0.04: "llamacpp" is a LOCAL backend — VRAM recovery, thermal
+        # guards, and local timeouts all apply to llama-server exactly as
+        # they do to Ollama.
+        self.is_local = self.provider in ("ollama", "lmstudio", "llamacpp", "fusion")
         self.local_vram_recovery_delay = settings.get("local.vram_recovery_delay_sec", 120)
         self.local_b4_section_cap = settings.get("local.b4_max_sections", 3)
         self.local_preflight_skip_temp = settings.get("local.preflight_skip_temp_c", 60)
@@ -1129,6 +1167,30 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         """
         lang = "Write your entire response in Persian (Farsi)." if self.language == "fa" else "Write your entire response in English."
 
+        # V0.05 (rig audit F9a/F9b — the user's "I didn't ask for a thorough
+        # summary but it produced" + "thorough longer than the chapter"):
+        # the request's output-selection flags are THE CONTRACT — they were
+        # previously logged (settings_logger) but never enforced here, so an
+        # unchecked Thorough Summary was still demanded, generated, expanded
+        # (the 800-word floor), and rendered. And every length target now
+        # SCALES to the source (a summary section may never be instructed to
+        # exceed a fraction of its source — absolute word demands force the
+        # model to pad/invent for short chapters: hallucination-by-instruction).
+        from core.summarisation.length_policy import (
+            bullet_range_phrase,
+            count_source_words,
+            exec_words_phrase,
+            length_budget_block,
+            thorough_words_phrase,
+        )
+        _source_words = count_source_words(text)
+        _exec_words = exec_words_phrase(_source_words)
+        _bullet_range = bullet_range_phrase(_source_words)
+        _thorough_words = thorough_words_phrase(_source_words)
+        _inc_exec = bool(getattr(self.request, "include_executive_summary", True))
+        _inc_thorough = bool(getattr(self.request, "include_thorough_summary", True))
+        _inc_keypoints = bool(getattr(self.request, "include_keypoints", True))
+
         callout_block = ""
         if callouts:
             callout_list = "\n".join(f"  - \"{c}\"" for c in callouts[:10])
@@ -1171,6 +1233,40 @@ summary must reach that conclusion.
             log_swallow("structural_outline_build", _e,
                         detail=f"heading={heading[:60]}")
 
+        # V0.03 (P1-5, real-rig audit): ANTHOLOGY ATTRIBUTION. The V0.02 rig
+        # summarized an 8-author extract with ZERO author names — for an
+        # anthology, bylines are core content. GENERAL rule: when the chapter
+        # text carries standalone "By <Name>" bylines, require the summary
+        # to attribute ideas to their authors.
+        # V0.05 (rig audit F5 — P1): the block fires at >=1 byline. The old
+        # >=2 threshold could never fire for a PER-CHAPTER segment of an
+        # anthology (exactly one byline), leaving attribution to model whim
+        # — the V0.04 rig's chapter-2 output named Neal Ford only inside a
+        # critique bullet. A byline is attribution content, full stop; the
+        # multi-author framing text remains for >=2.
+        attribution_block = ""
+        try:
+            from core.preprocessing.deterministic_analyzer import extract_bylines
+            _bylines = extract_bylines(text[:200000])
+            if len(_bylines) >= 2:
+                attribution_block = (
+                    "\nANTHOLOGY ATTRIBUTION — This section collects work by "
+                    f"multiple named authors ({', '.join(_bylines[:12])}). "
+                    "Attribute each idea to the author the source credits "
+                    "(e.g. \"Nygard argues…\", \"per Braithwaite…\"). Do NOT "
+                    "collapse multi-author sections into anonymous prose.\n"
+                )
+            elif len(_bylines) == 1:
+                attribution_block = (
+                    f"\nATTRIBUTION — This chapter is by {_bylines[0]}. Name "
+                    f"the author in the summary prose (e.g. \"{_bylines[0].split()[-1]} "
+                    "argues…\"); a chapter summary that never names its author "
+                    "is incomplete.\n"
+                )
+        except Exception as _e:
+            log_swallow("byline_attribution_build", _e,
+                        detail=f"heading={heading[:60]}")
+
         try:
             from core.summarisation.text_preprocessor import calculate_reading_level
             _source_grade = calculate_reading_level(text[:5000])
@@ -1191,7 +1287,7 @@ READING LEVEL REQUIREMENT (MANDATORY): Write for a non-native English reader at 
 - The summary MUST be EASIER to read than the source text, not harder.
 - Write clearly and directly. Avoid academic jargon unless the source requires it.
 """
-        if self.provider not in ("ollama", "lmstudio", ""):
+        if self.provider not in ("ollama", "lmstudio", "llamacpp", ""):
             reading_level_instruction += """
 QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
 - Synthesise across paragraphs; show how ideas connect.
@@ -1220,6 +1316,17 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                         rendered = rendered.replace("{{text}}", inject_so + "{{text}}")
                     else:
                         rendered += inject_so
+                # V0.03 (P1-5): the anthology attribution block rides the
+                # same injection path as callouts/structural outline.
+                if attribution_block:
+                    if "Chapter content:" in rendered:
+                        rendered = rendered.replace(
+                            "Chapter content:", attribution_block + "Chapter content:")
+                    elif "{{text}}" in rendered:
+                        rendered = rendered.replace(
+                            "{{text}}", attribution_block + "{{text}}")
+                    else:
+                        rendered += attribution_block
                 rendered += "\n" + reading_level_instruction
                 rendered += "\nIMPORTANT: Only include specific numbers (percentages, dosages, counts, dates) if they appear VERBATIM in the source text. Do NOT invent, approximate, or round any numbers. If you are unsure whether a number is in the source, omit it."
                 rendered += "\nANTI-HALLUCINATION: Use ONLY information from the source text. Do NOT add external knowledge, invented facts, or personal opinions. If you are unsure whether a claim is supported by the source, OMIT it."
@@ -1231,11 +1338,103 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                     rendered += "\n" + _preset.tone_instruction
                 if _preset.preserve_domain_terms:
                     rendered += "\nDOMAIN TERMS: Preserve all technical/domain terminology exactly as written. Do NOT simplify or replace with common words."
+                # V0.05 (F9a): strip the spec blocks of every section the user
+                # did NOT select — an unrequested <thorough_summary> spec in
+                # the prompt is what generated unrequested thorough sections
+                # on the rig (the flag was logged but never enforced).
+                if not _inc_exec:
+                    rendered = re.sub(
+                        r'<executive_summary>.*?</executive_summary>\s*',
+                        '', rendered, flags=re.DOTALL,
+                    )
+                if not _inc_keypoints:
+                    rendered = re.sub(
+                        r'<bullet_points>.*?</bullet_points>\s*',
+                        '', rendered, flags=re.DOTALL,
+                    )
+                if not _inc_thorough:
+                    rendered = re.sub(
+                        r'<thorough_summary>.*?</thorough_summary>\s*',
+                        '', rendered, flags=re.DOTALL,
+                    )
+                _wanted = [
+                    _t for _t, _on in (
+                        ("<executive_summary>", _inc_exec),
+                        ("<bullet_points>", _inc_keypoints),
+                        ("<thorough_summary>", _inc_thorough),
+                        ("<key_distinctions>", True),
+                        ("<theoretical_tensions>", True),
+                    ) if _on
+                ]
+                if len(_wanted) < 5:
+                    rendered += (
+                        "\nOUTPUT SECTIONS (OVERRIDES any section list above): "
+                        "output ONLY these sections, in this order: "
+                        + ", ".join(_wanted) + ".\n"
+                    )
+                # V0.05 (F9b): the source-relative length budget — appended to
+                # EVERY rendered template so the scaled targets override any
+                # absolute numbers a user-edited template still carries.
+                rendered += "\n" + length_budget_block(
+                    _source_words,
+                    include_executive=_inc_exec,
+                    include_thorough=_inc_thorough,
+                    include_keypoints=_inc_keypoints,
+                )
                 return rendered
+
+        # V0.05 (F9a/F9b): the inline fallback formats build ONLY the
+        # requested sections, with targets scaled to the source.
+        _sections_json = []
+        if _inc_exec:
+            _sections_json.append('- "executive_summary": 3-5 findings.')
+        if _inc_keypoints:
+            _sections_json.append(
+                f'- "bullet_points": {_bullet_range} findings. Include ALL '
+                'items from any enumerated lists in the source.'
+            )
+        if _inc_thorough:
+            _sections_json.append(
+                f'- "thorough_summary": {_bullet_range} findings. CRITICAL: '
+                'Cover ALL major topics and contributors in the chapter. Do '
+                'NOT truncate — if running low on output space, make claims '
+                'shorter rather than omitting topics. Preserve all '
+                'enumerated lists and multi-step processes.'
+            )
+        _sections_json += [
+            '- "key_distinctions": 2-5 distinctions (each: "claim" = the contrast + why it matters, "supporting_text" = verbatim quote). Prioritize technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.',
+            '- "theoretical_tensions": 2-4 tensions (each: "claim" = the tension + diverging positions, "supporting_text" = verbatim quote). Prioritize opposing-force dialectics, school-vs-school debates, unresolved ambiguities, clinical-vs-theoretical. Name BOTH poles.',
+        ]
+        _sections_xml = []
+        if _inc_exec:
+            _sections_xml.append(
+                f'<executive_summary>\nA {_exec_words} word narrative overview '
+                'of the chapter\'s main argument and conclusions.\n</executive_summary>'
+            )
+        if _inc_keypoints:
+            _sections_xml.append(
+                f'<bullet_points>\nA comprehensive list of {_bullet_range} '
+                'distinct key takeaways. One bullet per line, each prefixed '
+                'with "- ". Each bullet must be a complete, self-contained '
+                'sentence expressing a single claim, finding, or concept. '
+                'Cover every section of the chapter.\n</bullet_points>'
+            )
+        if _inc_thorough:
+            _sections_xml.append(
+                f'<thorough_summary>\nA {_thorough_words} word detailed '
+                'narrative that walks through the chapter section by section, '
+                'explaining the argument, evidence, and reasoning in depth. '
+                'The target scales to this chapter\'s length — never pad or '
+                'invent content to reach it.\n</thorough_summary>'
+            )
+        _sections_xml += [
+            '<key_distinctions>\nList 2-5 important DISTINCTIONS the chapter explicitly draws between related concepts. ONLY include distinctions that the chapter ACTUALLY discusses — each must be traceable to a specific passage. If the chapter does not draw any explicit distinctions, output "None" (do NOT invent distinctions). Format: one distinction per line, prefixed with "- ". Prioritize: technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.\n</key_distinctions>',
+            '<theoretical_tensions>\nIdentify 2-4 theoretical TENSIONS, DEBATES, or AMBIGUITIES the author EXPLICITLY discusses. ONLY include tensions that are actually present in the text — each must be traceable to a specific passage. If the chapter does not discuss any tensions, output "None" (do NOT fabricate debates to fill space). Prioritize: opposing-force dialectics, school-vs-school debates, unresolved ambiguities, clinical-vs-theoretical tensions. Name BOTH poles for each.\n</theoretical_tensions>',
+        ]
 
         output_format = ""
         if self.academic_rigor:
-            output_format = """
+            output_format = f"""
 You are a clinical summariser. Extract the key findings from the chapter titled "{heading}".
 
 For each finding, provide:
@@ -1252,40 +1451,25 @@ ANTI-OVERSPECIFICATION: Do NOT add interpretive adjectives not in the source. Qu
 ANTI-CONTEXT-STRIPPING: PRESERVE context qualifiers. Do NOT generalize context-specific statements to universal ones.
 DEPTH PRESERVATION: Preserve philosophical articulations verbatim. Do NOT reduce rich characterizations to generic phrases.
 
-Output a JSON object with five sections:
-- "executive_summary": 3-5 findings.
-- "bullet_points": 15-25 findings. Include ALL items from any enumerated lists in the source.
-- "thorough_summary": 15-25 findings. CRITICAL: Cover ALL major topics and contributors in the chapter. Do NOT truncate — if running low on output space, make claims shorter rather than omitting topics. Preserve all enumerated lists and multi-step processes.
-- "key_distinctions": 2-5 distinctions (each: "claim" = the contrast + why it matters, "supporting_text" = verbatim quote). Prioritize technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.
-- "theoretical_tensions": 2-4 tensions (each: "claim" = the tension + diverging positions, "supporting_text" = verbatim quote). Prioritize opposing-force dialectics, school-vs-school debates, unresolved ambiguities, clinical-vs-theoretical. Name BOTH poles.
+Output a JSON object with these sections:
+{chr(10).join(_sections_json)}
 
 PRECISION RULE: Every claim must be traceable to a specific passage. The supporting_text MUST be a verbatim quote from the source. Do NOT paraphrase loosely — if the source says "contains the history of object choices," write exactly that, not "holds history."
 
 Do NOT describe the JSON structure. Only output the JSON object.
 """
         else:
-            output_format = """
-You MUST output exactly these five XML sections:
-
-<executive_summary>
-A 150-250 word narrative overview of the chapter's main argument and conclusions.
-</executive_summary>
-
-<bullet_points>
-A comprehensive list of 20-40 distinct key takeaways. One bullet per line, each prefixed with "- ". Each bullet must be a complete, self-contained sentence expressing a single claim, finding, or concept. Cover every section of the chapter.
-</bullet_points>
-
-<thorough_summary>
-An 800-1200 word detailed narrative that walks through the chapter section by section, explaining the argument, evidence, and reasoning in depth.
-</thorough_summary>
-
-<key_distinctions>
-List 2-5 important DISTINCTIONS the chapter explicitly draws between related concepts. ONLY include distinctions that the chapter ACTUALLY discusses — each must be traceable to a specific passage. If the chapter does not draw any explicit distinctions, output "None" (do NOT invent distinctions). Format: one distinction per line, prefixed with "- ". Prioritize: technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.
-</key_distinctions>
-
-<theoretical_tensions>
-Identify 2-4 theoretical TENSIONS, DEBATES, or AMBIGUITIES the author EXPLICITLY discusses. ONLY include tensions that are actually present in the text — each must be traceable to a specific passage. If the chapter does not discuss any tensions, output "None" (do NOT fabricate debates to fill space). Prioritize: opposing-force dialectics, school-vs-school debates, unresolved ambiguities, clinical-vs-theoretical tensions. Name BOTH poles for each.
-</theoretical_tensions>"""
+            output_format = (
+                "\nYou MUST output exactly these XML sections:\n\n"
+                + "\n\n".join(_sections_xml)
+            )
+        # V0.05 (F9b): the length budget rides BOTH inline paths.
+        output_format += "\n\n" + length_budget_block(
+            _source_words,
+            include_executive=_inc_exec,
+            include_thorough=_inc_thorough,
+            include_keypoints=_inc_keypoints,
+        )
 
         cot_instruction = ""
 
@@ -1346,12 +1530,13 @@ INSTRUCTIONS:
 {tone_instruction}
 {content_addendum}
 {callout_block}
+{attribution_block}
 {output_format}
 
 Chapter content:
 {text}
 
-Output ONLY the five XML sections. No preamble, no commentary, no thinking process, no markdown code fences.
+Output ONLY the XML sections specified above. No preamble, no commentary, no thinking process, no markdown code fences.
 """
 
     def _build_thorough_followup(self, heading: str, text: str, exec_sum: str) -> str:
@@ -1494,6 +1679,9 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             _bp_text = "\n".join(f"- {b}" for b in _bullets)
             _kd = result.get("key_distinctions", "") or ""
             _tt = result.get("theoretical_tensions", "") or ""
+            # V0.03 (P0-2): Tier-3 excerpts in checkpoints too.
+            _se = result.get("source_excerpts", []) or []
+            _se_text = "\n".join(f"- {e}" for e in _se if str(e).strip())
             _ckpt_content = (
                 f"# Summary ({label.upper()} CHECKPOINT — V18.20.1.2)\n\n"
                 f"## Chapter: {heading}\n\n"
@@ -1507,11 +1695,13 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                 f"## Thorough Summary\n\n{_thorough}\n\n"
                 + (f"## Key Distinctions\n\n{_kd}\n\n" if _kd.strip() else "")
                 + (f"## Theoretical Tensions\n\n{_tt}\n\n" if _tt.strip() else "")
+                + (f"## Source Excerpts (auto-inserted)\n\n{_se_text}\n\n" if _se_text else "")
                 + f"<!-- {label.upper()} CHECKPOINT — {len(_bullets)} bullets, "
                 f"{len(_exec.split()) if _exec else 0} exec words, "
                 f"{len(_thorough.split()) if _thorough else 0} thorough words"
                 + (", +key_distinctions" if _kd.strip() else "")
                 + (", +theoretical_tensions" if _tt.strip() else "")
+                + (", +source_excerpts" if _se_text else "")
                 + " -->\n"
             )
             atomic_write_text(_ckpt_path, _ckpt_content, encoding="utf-8")
@@ -1633,7 +1823,12 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
 
     def _find_source_sentence(self, keyword, text):
         kl = keyword.lower()
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z"])', text)
+        # V0.05 (rig audit F4 — P1): the boundary lookahead now accepts
+        # DIGITS and typographic quotes too. The old ``(?=[A-Z"])`` never
+        # split before a numbered-list continuation ("…on the attack.\n\n 3)
+        # Use these…"), so excerpts glued two numbered items into one
+        # "sentence" — a verbatim excerpt must be exactly one sentence.
+        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z0-9"\u201c])', text)
         for sent in sentences:
             sl = sent.lower().strip()
             if not sl or len(sl) < 20: continue
@@ -1693,21 +1888,173 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             self.log(f"    \u2705 Tier 2: gap-filled {len(new_bullets)}/{len(gap_pairs)} concepts via focused LLM calls", "INFO")
         return new_bullets
 
-    def _force_insert_missing(self, text, still_missing, result):
+    def _prune_covered_excerpts(
+        self,
+        bullets: list[str],
+        exec_sum: str,
+        thorough: str,
+        excerpts: list[str],
+    ) -> list[str]:
+        """V0.06 (rig audit F7-a): drop excerpts the FINAL summary covers.
+
+        GENERAL RULE: a Tier-3 excerpt exists to cover a concept the summary
+        text did not cover AT INSERTION TIME. Later stages (scholar
+        gap-fill, Tier-2) can add bullets covering the same source
+        sentence; at ship time the excerpt list is re-validated so the
+        delivered "Source Excerpts" section only contains material the
+        final summary genuinely does not cover. Two honest coverage
+        signals, either suffices:
+
+          * per-bullet content-token containment >= 0.55 (a bullet
+            paraphrasing the excerpt's sentence), or
+          * >= 75% of the quote's content words present in the combined
+            summary text (exec + bullets + thorough).
+        """
+        if not excerpts:
+            return list(excerpts or [])
+
+        def _tokens(s: str) -> set[str]:
+            out = set()
+            for w in re.findall(r'[a-z0-9]+', (s or "").lower()):
+                if len(w) <= 2:
+                    continue
+                if len(w) > 3 and w.endswith("s"):
+                    out.add(w[:-1])
+                out.add(w)
+            return out
+
+        combined_words = _tokens(
+            " ".join([str(exec_sum or ""), " ".join(str(b) for b in (bullets or [])),
+                      str(thorough or "")])
+        )
+        kept: list[str] = []
+        for ex in excerpts:
+            ex_str = str(ex)
+            m = re.search(r':\s*"(.*)"\s*$', ex_str, re.DOTALL)
+            if not m:
+                kept.append(ex_str)  # not a framed excerpt — leave untouched
+                continue
+            quote_toks = _tokens(m.group(1))
+            if not quote_toks:
+                kept.append(ex_str)
+                continue
+            covered = False
+            # (a) per-bullet paraphrase containment
+            for b in (bullets or []):
+                b_toks = _tokens(str(b))
+                if not b_toks:
+                    continue
+                inter = len(quote_toks & b_toks)
+                if inter and inter / min(len(quote_toks), len(b_toks)) >= 0.55:
+                    covered = True
+                    break
+            # (b) combined-text word coverage
+            if not covered:
+                hits = sum(1 for t in quote_toks if t in combined_words)
+                if hits / len(quote_toks) >= 0.75:
+                    covered = True
+            if not covered:
+                kept.append(ex_str)
+        return kept
+
+    def _force_insert_missing(self, text, still_missing, result, heading=""):
+        """V16.0.3 Tier-3 → V0.03 (P0-2) REDESIGNED.
+
+        The old implementation appended raw source slices as KEY TAKEAWAYS
+        ("- **{kw}**: {sent}"). The V0.02 rig run showed the failure mode:
+        a mid-quote fragment of the *anti-pattern answer* ("We do," we say
+        something like, "Well, you could do without a second server…")
+        shipped as the final takeaway of the book — advice-shaped garbage.
+
+        New contract (GENERAL, not book-specific):
+          - excerpts NEVER enter ``bullet_points`` (Key Takeaways) — they
+            go to ``result["source_excerpts"]``, rendered as a separate,
+            clearly-labelled section;
+          - only COMPLETE sentences are eligible: capital-letter start,
+            terminal punctuation, ≥40 chars, balanced double quotes;
+          - each excerpt carries explicit framing so a skimming reader
+            cannot mistake it for the model's advice.
+        """
         if not still_missing: return 0
         inserted = 0
-        existing_bps = set(str(b).lower()[:60] for b in result.get("bullet_points", []))
+        # V0.05 (rig audit F3-b — P1): the dedupe key is the NORMALIZED
+        # SOURCE SENTENCE, not the framed excerpt string. The old key
+        # (excerpt.lower()[:80]) was keyword-dominated — the frame
+        # 'On "kw" — verbatim…' STARTS with the keyword, so different
+        # keywords pointing at the SAME sentence each inserted their own
+        # copy (the V0.04 rig shipped 9 excerpts for 4 unique sentences in
+        # one chapter). The key extracts the quoted sentence tail instead.
+        _norm_ws = re.compile(r'\s+')
+        existing = set()
+        for x in result.get("source_excerpts", []) or []:
+            _body = str(x)
+            _qm = re.search(r':\s*"(.*)"\s*$', _body, re.DOTALL)
+            if _qm:
+                _body = _qm.group(1)
+            existing.add(_norm_ws.sub(' ', _body.lower().strip()))
+        # V0.05 (F3-c): remediation unit = SENTENCE, not keyword. Keywords
+        # resolving to the same source sentence are consolidated into ONE
+        # excerpt (the frame lists them together) — overlapping
+        # bigram/trigram keywords from one sentence must not each spawn
+        # their own remediation.
+        _by_sentence: dict[str, list[str]] = {}
+        _sent_cache: dict[str, str] = {}
         for kw in still_missing:
             sent = self._find_source_sentence(kw, text)
             if not sent: continue
-            bp = f"- **{kw}**: {sent}"
-            bp_key = bp.lower()[:60]
-            if bp_key in existing_bps: continue
-            result["bullet_points"].append(bp)
-            existing_bps.add(bp_key)
+            _skey = _norm_ws.sub(' ', sent.lower().strip())
+            _sent_cache[_skey] = sent
+            _by_sentence.setdefault(_skey, []).append(kw)
+        for _skey, _kws in _by_sentence.items():
+            sent = _sent_cache[_skey]
+            # V0.06 (rig audit F7-b — GENERAL RULE: an excerpt never opens
+            # with a duplicate of its own chapter heading). PDF extraction
+            # frequently glues the chapter TITLE (or its numbered echo)
+            # onto the first sentence of the body text — the V0.05 rig
+            # shipped an excerpt reading "Don't put your resume ahead of
+            # the\n\nrequirements As engineers we sometimes…" where the
+            # heading echo runs straight into the real sentence. Collapse
+            # internal whitespace and strip a leading heading-echo prefix
+            # (whitespace-insensitive, optional leading number).
+            sent = _norm_ws.sub(' ', sent).strip()
+            if heading:
+                _head = _norm_ws.sub(' ', str(heading).strip())
+                _head_nn = re.sub(r'^\d+[.)]?\s*', '', _head).strip().lower()
+                _sent_lc = sent.lower()
+                if _head_nn and len(_head_nn) >= 12 and _sent_lc.startswith(_head_nn):
+                    sent = sent[len(_head_nn):].lstrip(' —–-:,.').strip()
+                    _skey = _norm_ws.sub(' ', sent.lower().strip())
+            kw = " / ".join(_kws[:3]) + (" …" if len(_kws) > 3 else "")
+            # V0.03 (P0-2): complete-sentence gate — reject fragments.
+            _s = sent.strip().strip('"')
+            _starts_ok = bool(_s) and (_s[0].isupper() or _s[0] in "“\"'")
+            _ends_ok = bool(_s) and (_s[-1] in ".!?…" or _s[-1] in "”\"')")
+            _len_ok = len(_s) >= 40
+            _quotes_ok = sent.count('"') % 2 == 0
+            if not (_starts_ok and _ends_ok and _len_ok and _quotes_ok):
+                self.log(
+                    f"    ⛔ Tier 3: skipped non-sentence excerpt for '{kw}' "
+                    f"(fragment/quote-imbalanced source slice)",
+                    "DEBUG",
+                )
+                continue
+            if _skey in existing: continue
+            excerpt = (
+                f'On "{kw}" — verbatim from the source (auto-inserted for '
+                f'coverage; not the summarizer\'s advice): "{sent}"'
+            )
+            result.setdefault("source_excerpts", []).append(excerpt)
+            existing.add(_skey)
             inserted += 1
         if inserted > 0:
-            self.log(f"    \U0001f512 Tier 3: force-inserted {inserted} verbatim source bullets (deterministic guarantee \u2014 100% keyword coverage)", "INFO")
+            self.log(
+                f"    🔖 Tier 3: recorded {inserted} complete-sentence source "
+                f"excerpt(s) into the 'Source Excerpts' section (framed, "
+                f"EXCLUDED from Key Takeaways; sentence-deduped — "
+                f"{len(_by_sentence)} unique source sentence(s) for "
+                f"{len(still_missing)} keyword(s))",
+                "INFO",
+            )
         return inserted
 
     def _apply_3tier_coverage(self, heading, text, content, result, coverage):
@@ -1723,6 +2070,16 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         in place exactly as the original. Byte-for-byte identical behaviour
         (characterization tests in ``tests/test_coverage_guarantee.py``).
         """
+        # V0.06 (rig audit F4-b): the source-scaled bullet budget (the SAME
+        # length_policy.bullet_target every prompt uses) is passed as a HARD
+        # CAP to the coverage engine — Tier-2 gap-fill stops adding bullets
+        # at the cap (the V0.05 rig: 6 primary bullets + 4 Tier-2 + 9 scholar
+        # = 19 shipped against a 5-7 target). F7-b: the chapter heading is
+        # threaded to Tier-3 so excerpts never open with a heading echo.
+        from core.summarisation.length_policy import (
+            bullet_cap as _lp_bullet_cap,
+            count_source_words as _lp_csw,
+        )
         return cg_apply_3tier_coverage(
             heading, text, content, result, coverage,
             coverage_threshold=self.coverage_threshold,
@@ -1732,7 +2089,10 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             filter_thinking_bullets=self._filter_thinking_bullets,
             max_bullets_per_chapter=self.max_bullets_per_chapter,
             compute_coverage=self._compute_coverage,
-            force_insert_missing=self._force_insert_missing,
+            force_insert_missing=(
+                lambda t, sm, r: self._force_insert_missing(t, sm, r, heading=heading)
+            ),
+            bullet_cap=_lp_bullet_cap(_lp_csw(text)),
         )
 
     def _recover_vram(self, context: str = "", delay_sec: float = 8.0) -> None:
@@ -1778,6 +2138,11 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             # expansion path uses, BEFORE they merge into bullet_points.
             filter_thinking_bullets=self._filter_thinking_bullets,
             log=self.log,
+            # V0.06 (rig audit F4-b): the source-scaled bullet budget is a
+            # hard cap — the scholar gap-fill merges at most (cap - existing)
+            # new bullets (the V0.05 rig added 13/22/8/10 bullets on top of
+            # chapters already at their target).
+            bullet_cap=_lp_bullet_cap_fn(text),
         )
 
     def _scholar_reflection_gapfill_only(self, heading: str, text: str, result: dict) -> None:
@@ -1804,6 +2169,8 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             # full scholar-reflection path.
             filter_thinking_bullets=self._filter_thinking_bullets,
             log=self.log,
+            # V0.06 (F4-b): same hard bullet cap as the full path.
+            bullet_cap=_lp_bullet_cap_fn(text),
         )
 
     def _anti_false_precision_check(self, heading: str, text: str, result: dict) -> None:
@@ -1986,6 +2353,19 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                 "openai_compat", prompt,
                 base_url=self.api_base_url, api_key=self.api_key,
                 model=model or self.cloud_model,
+                temp=temp, max_tokens=max_tok,
+            )
+        elif self.provider == "llamacpp":
+            # V0.04: llama.cpp server. GENERAL RULE: the backend's own
+            # configured model is the source of truth — a stale Ollama tag
+            # in the request (saved wizard profile, old checkpoint) never
+            # reaches llama-server. The provider clamps max_tok to the
+            # model's 12288 output cap and fits it into the 65536 window
+            # (academic-rigor's 16000 floor cannot 400 the request).
+            _result = self._call_via_llm_provider(
+                "llamacpp", prompt,
+                base_url=self.llamacpp_base_url, api_key=self.llamacpp_api_key,
+                model=self.llamacpp_model or model,
                 temp=temp, max_tokens=max_tok,
             )
         else:
@@ -2335,6 +2715,8 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         V18.7 (Phase 5.2): extracted verbatim to ``summary_validator.verify_bullets``.
         This method is a thin delegate. The ``_verify_windows_cache`` dict is
         now initialized in ``__init__`` (was lazy-init'd via ``hasattr``).
+        V0.03 (P1-6): passes the current chapter heading so quarantine
+        entries are attributed and the per-chapter appendix can render them.
         """
         return sv_verify_bullets(
             bullets=bullets,
@@ -2342,6 +2724,7 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             verify_windows_cache=self._verify_windows_cache,
             quarantine=getattr(self, 'quarantine', None),
             log=self.log,
+            chapter=getattr(self, "_current_heading", "") or "",
         )
     def _extract_bullets_from_text(self, text: str) -> list[str]:
         """Delegate to response_parser.extract_bullets_from_text."""
@@ -2499,7 +2882,15 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         # Build the full prompt first (still in Summarizer — 9 self deps)
         full_prompt = self._build_prompt(heading, text, with_cot=with_cot,
                                           concepts=concepts, callouts=callouts)
-        return _pa_chunked(heading, text, full_prompt, with_cot=with_cot, chunk=chunk)
+        # V0.05 (F9a): the chunk override carries the same output-selection
+        # flags as the primary prompt — an unrequested section must not be
+        # demanded back in through the chunking layer.
+        return _pa_chunked(
+            heading, text, full_prompt, with_cot=with_cot, chunk=chunk,
+            include_executive=bool(getattr(self.request, "include_executive_summary", True)),
+            include_thorough=bool(getattr(self.request, "include_thorough_summary", True)),
+            include_keypoints=bool(getattr(self.request, "include_keypoints", True)),
+        )
 
     def _merge_summaries(self, summaries: list[dict], source_text: str = "") -> dict:
         """Merge multiple summaries. M21 fix: take source_text as parameter
@@ -3168,6 +3559,44 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             _thorough_len = len(result.get('thorough_summary', ''))
             self.log(f"    📝 Parsed: exec={_exec_len} chars, bullets={_bps_count}, thorough={_thorough_len} chars", "DEBUG")
 
+            # V0.06 (rig audit F1-b — GENERAL RULE: the output selection is
+            # the contract, enforced at PARSE time): when the user did not
+            # request a thorough summary, ANY thorough content the model
+            # produced anyway (the parser's leftover fallback can capture
+            # unrequested additive-section output; a low-bit model may emit
+            # the tag regardless) is discarded HERE, so every downstream
+            # stage (coverage, judges, expansion gates, render) sees the
+            # contract state: no thorough. The V0.05 rig shipped "Thorough
+            # Summary" sections to a user who unchecked the output because
+            # this gate did not exist.
+            if not bool(getattr(self.request, "include_thorough_summary", True)):
+                if (result.get("thorough_summary", "") or "").strip():
+                    self.log(
+                        f"    V0.06: thorough_summary not requested — discarding "
+                        f"{_thorough_len} chars of unrequested thorough content "
+                        f"(output-selection contract).",
+                        "DEBUG",
+                    )
+                result["thorough_summary"] = ""
+            if not bool(getattr(self.request, "include_keypoints", True)):
+                if result.get("bullet_points", []):
+                    self.log(
+                        f"    V0.06: keypoints not requested — discarding "
+                        f"{_bps_count} unrequested bullet(s) "
+                        f"(output-selection contract).",
+                        "DEBUG",
+                    )
+                result["bullet_points"] = []
+            if not bool(getattr(self.request, "include_executive_summary", True)):
+                if (result.get("executive_summary", "") or "").strip():
+                    self.log(
+                        f"    V0.06: executive_summary not requested — discarding "
+                        f"{_exec_len} chars of unrequested exec content "
+                        f"(output-selection contract).",
+                        "DEBUG",
+                    )
+                result["executive_summary"] = ""
+
             # ── V18.20.3.2 (audit N2+N3 / P0-1a): PARSE-TIME CoT gate ──────
             # The V18.20.3.1 real-rig run's primary call returned exec=0 and
             # a 34,794-char thorough that was 100% chain-of-thought. Nothing
@@ -3438,20 +3867,37 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         thorough = parsed.get("thorough_summary", "")
         # V18.2.34: Replaced the old "len(thorough) < len(exec_sum) * 2" check
         # (a fragile character-length heuristic) with a strict 800-word floor.
-        # 800 words is the documented contract (prompts ask for 800-1200 word
-        # thorough summaries). Below 800 the summary is materially incomplete.
-        # When the floor isn't met, fire a DEDICATED thorough-expansion LLM
-        # call (full output budget — not the cramped followup that shared
-        # budget with the other 4 sections in the primary call).
+        # V0.05 (rig audit F9b — GENERAL RULE REPLACEMENT): the floor is no
+        # longer the absolute 800 — it SCALES to the source (length_policy:
+        # thorough_target). The V0.04 rig proved the absolute floor's failure
+        # mode end-to-end: 321-441-word chapters were force-EXPANDED to >=800
+        # words (the delivered thorough sections measured 1.55-2.76x their
+        # sources, padded with invented context — hallucination-by-
+        # instruction). A short chapter's thorough summary is ALLOWED to be
+        # short: ~90-150 words for a 340-word chapter is the correct
+        # deliverable. The dedicated expansion call now only fires when the
+        # thorough is short RELATIVE TO ITS SCALED TARGET — and never when
+        # the user did not request a thorough summary at all (F9a).
+        from core.summarisation.length_policy import (
+            bullet_target as _bp_target_lp,
+            count_source_words as _csw_lp,
+            thorough_target as _th_target_lp,
+        )
+        _src_words_lp = _csw_lp(text)
+        _th_lo_lp, _th_hi_lp = _th_target_lp(_src_words_lp)
+        _bp_lo_lp, _bp_hi_lp = _bp_target_lp(_src_words_lp)
+        _inc_thorough_lp = bool(getattr(self.request, "include_thorough_summary", True))
+        _inc_exec_lp = bool(getattr(self.request, "include_executive_summary", True))
+        _inc_kp_lp = bool(getattr(self.request, "include_keypoints", True))
         _thorough_words = len(thorough.split()) if thorough else 0
-        _new_threshold = 800
+        _new_threshold = _th_lo_lp if _inc_thorough_lp else 0
         # V18.20.3.2 (P0-1b): snapshot the synthetic-fallback counter BEFORE
         # the dedicated call — if it increments, the returned thorough is the
         # deterministic exec+bullets synthesis built from the EARLY bullet
         # set (pre-expansion, pre-gap-fill). The final stage re-derives it
         # from the FINAL bullet set in that case (see the postchecks block).
         _syn_fb_before = getattr(self, "_synthetic_thorough_fallback_count", 0)
-        if not thorough or _thorough_words < _new_threshold:
+        if _inc_thorough_lp and (not thorough or _thorough_words < _new_threshold):
             self.log(f"    ⚠️ thorough_summary too short ({_thorough_words} words < {_new_threshold} threshold) — requesting dedicated expansion…", "WARNING")
             # V18.2.44 (Next Step #6): replaced the 2-attempt
             # ``_call_llm_with_empty_retry`` with the new 3-attempt +
@@ -3501,13 +3947,17 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         # backwards fallback (``thorough = exec_sum`` which copied an empty
         # string when exec was also empty, causing the V18.15.7.0 cascade
         # failure where BOTH exec + thorough were empty).
-        if not exec_sum and thorough and len(thorough.strip()) >= 50:
+        # V0.05 (F9a): the exec-from-thorough derivation only fires when the
+        # user actually requested an executive summary — the flags are the
+        # contract.
+        if _inc_exec_lp and not exec_sum and thorough and len(thorough.strip()) >= 50:
             exec_sum = self._ensure_exec_from_thorough(heading, thorough)
             if exec_sum:
                 parsed["executive_summary"] = exec_sum
         # Last-resort fallback (rare now — only fires if BOTH the dedicated
         # thorough call AND the exec-from-thorough call failed).
-        if not thorough:
+        # V0.05 (F9a): never fabricate a thorough the user did not request.
+        if not thorough and _inc_thorough_lp:
             thorough = exec_sum
 
         # V18.2.34: Dedicated bullet expansion. If the primary call returned
@@ -3528,15 +3978,35 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         _input_tok = count_tokens(text)
         # V18.15.4.3: Raised threshold 9000 -> 10000 tok (the V18.15.4.0 run hit
         # 9120 tok and the skip didn't fire, pushing past the 2400s deadline).
-        _skip_expansion = (_input_tok < 10000 and bullets and len(bullets) >= 20)
-        if _skip_expansion:
+        # V0.05 (rig audit F9b — GENERAL RULE): the expansion floor/ceiling now
+        # SCALE to the source (length_policy.bullet_target) instead of the
+        # absolute "<30 → ask for 30-50". The V0.04 rig shipped 29-36 bullets
+        # for 321-441-word chapters (one bullet per ~12 source words — the
+        # chapter restated as bullets) because this machinery pushed every
+        # chapter toward 30+. A 340-word chapter's target is ~5-7 bullets; the
+        # expansion call does not fire at all when the primary already met the
+        # SCALED target. Also gated on the user's keypoints selection (F9a).
+        _skip_expansion = (
+            not _inc_kp_lp
+            or bool(bullets and len(bullets) >= _bp_lo_lp)
+        )
+        if _skip_expansion and _inc_kp_lp:
             self.log(
-                f"    V18.15.4.3: Skipping bullet expansion — input {_input_tok} tok < 10000 "
-                f"and {len(bullets)} bullets >= 20 (gap-fill will handle missing theorists; "
-                f"saves ~7 min).",
+                f"    V0.05: Skipping bullet expansion — {len(bullets or [])} bullets "
+                f"already meet the source-scaled target ({_bp_lo_lp}-{_bp_hi_lp} for "
+                f"a {_src_words_lp}-word chapter; gap-fill will handle missing "
+                f"concepts).",
                 "INFO",
             )
-        if bullets and len(bullets) < 30 and not self._deadline_exceeded("dedicated bullet expansion") and not _skip_expansion:
+        elif not _inc_kp_lp:
+            self.log(
+                "    V0.05 (F9a): Keypoints not requested — bullet expansion "
+                "disabled for this chapter.",
+                "DEBUG",
+            )
+        if (_inc_kp_lp and bullets and len(bullets) < _bp_lo_lp
+                and not self._deadline_exceeded("dedicated bullet expansion")
+                and not _skip_expansion):
             self.log(f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…", "INFO")
             _bp_raw = self._call_llm_with_empty_retry(
                 self._build_dedicated_bullet_prompt(heading, text, exec_sum, bullets),
@@ -4070,6 +4540,7 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         # core/summarisation/postchecks.py for the full design.
         try:
             from core.summarisation.postchecks import run_post_checks
+            from utils.settings import Settings as _PcSettings
             _pc = run_post_checks(
                 bullets=bullets,
                 executive_summary=exec_sum,
@@ -4077,10 +4548,68 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                 source_text=content,
                 key_distinctions=parsed.get("key_distinctions", "") or "",
                 theoretical_tensions=parsed.get("theoretical_tensions", "") or "",
+                # V0.03 (P0-1): dropped-letter auto-repair is OFF by default
+                # (settings: summarisation.dropped_letter_auto_repair). The
+                # V0.02 rig run corrupted 12/13 valid paraphrase words.
+                auto_repair_garble=bool(
+                    _PcSettings().get("summarisation.dropped_letter_auto_repair", False)
+                ),
             )
             bullets = _pc.bullets
             exec_sum = _pc.executive_summary
             thorough = _pc.thorough_summary
+
+            # ── V0.06 (rig audit F4-c — GENERAL RULE: the source-scaled
+            # bullet budget is a HARD CAP, enforced at ship time) ─────────
+            # The V0.05 length policy gated only the dedicated expansion
+            # call; every other bullet-INSERTION engine (Tier-2 gap-fill,
+            # Tier-3-adjacent scholar gap-fill, quarantine recovery) kept
+            # appending freely — the rig shipped 19/18/15/14/12 bullets
+            # against source-scaled targets of 5-7/5-7/6-9/6-9/5-8, with
+            # the surplus being near-duplicate restatements of the same
+            # claims. The cap is bullet_target(source).hi — the SAME single
+            # source of truth every prompt uses. Primary-synthesis bullets
+            # come first (they are the model's deliberate selection);
+            # remediation bullets (appended later by gap-fill engines) are
+            # the ones trimmed. Coverage shortfall below the cap is logged
+            # honestly rather than padded away.
+            if _inc_kp_lp and len(bullets) > _bp_hi_lp:
+                self.log(
+                    f"    ✂️ V0.06: bullet budget enforced at ship time — "
+                    f"{len(bullets)} → {_bp_hi_lp} (target {_bp_lo_lp}-{_bp_hi_lp} "
+                    f"for a {_src_words_lp}-word chapter; primary bullets kept, "
+                    f"remediation bullets trimmed).",
+                    "INFO",
+                )
+                bullets = list(bullets[:_bp_hi_lp])
+                parsed["bullet_points"] = bullets
+
+            # ── V0.06 (rig audit F7-a — GENERAL RULE: Tier-3 excerpts are
+            # re-validated against the FINAL summary at ship time) ────────
+            # Excerpts are recorded mid-pipeline for keywords the summary
+            # "did not cover" — but later stages (scholar gap-fill, Tier-2)
+            # can add bullets that cover the very same sentences, and
+            # nothing re-checked the excerpt list. The rig shipped framed
+            # excerpts duplicating bullets that paraphrased the identical
+            # source sentence. An excerpt whose quoted sentence is already
+            # covered by the final summary text is dropped; the excerpt
+            # section keeps only genuinely-uncovered material.
+            _se_pre = list(parsed.get("source_excerpts", []) or [])
+            if _se_pre:
+                _se_post = self._prune_covered_excerpts(
+                    bullets=bullets,
+                    exec_sum=exec_sum,
+                    thorough=thorough,
+                    excerpts=_se_pre,
+                )
+                if len(_se_post) != len(_se_pre):
+                    self.log(
+                        f"    🔖 V0.06: pruned {len(_se_pre) - len(_se_post)} "
+                        f"source excerpt(s) whose sentence the FINAL summary "
+                        f"already covers (kept {len(_se_post)}).",
+                        "INFO",
+                    )
+                    parsed["source_excerpts"] = _se_post
             # V18.19.2.2 (Audit Fix 2): Re-populate thorough when run_post_checks
             # truncated it to empty (CoT narrative detected). The V18.19.2.0 audit
             # (audit/results/audit_V18.19.2.0_2026-08-28.md) found that the thorough
@@ -4109,7 +4638,11 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             #   (b) the thorough came from the V18.2.44 SYNTHETIC fallback
             #       (exec + the EARLY bullet set only — the final set is
             #       strictly richer).
-            _need_final_derive = (
+            # V0.05 (F9a): the re-derivation exists to repair a REQUESTED
+            # thorough that was lost (CoT-nuked / synthetic). When the user
+            # did not request a thorough summary, an empty one is CORRECT —
+            # deriving one would fabricate the unrequested section again.
+            _need_final_derive = _inc_thorough_lp and (
                 (not thorough or not thorough.strip())
                 or getattr(self, "_thorough_is_synthetic", False)
             )
@@ -4139,7 +4672,7 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
                         f"duplicated exec.",
                         "INFO",
                     )
-            elif not thorough and exec_sum and len(exec_sum.strip()) >= 50:
+            elif _inc_thorough_lp and not thorough and exec_sum and len(exec_sum.strip()) >= 50:
                 # V18.19.2.2 legacy fallback — only when the CoT-nuke path
                 # above did not apply (no primary CoT detected; e.g. a
                 # postchecks CoT-nuke on a dedicated-call thorough).
@@ -4355,9 +4888,16 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
         # no second tree-walk, no hardcoded names (.3.9 rule). Fail-soft:
         # the method logs a WARNING and returns the thorough unchanged on
         # any internal crash.
-        thorough = self._thorough_theorist_floor(
-            heading, content, thorough, _analysis_rf or "",
-        )
+        # V0.05 (F9a/F9b): skipped entirely when the user did not request a
+        # thorough summary (nothing to measure/extend), and the gap-fill
+        # append is budget-gated inside the mixin by the scaled target —
+        # the 150-300-word append must never push a short chapter's thorough
+        # past its source-scaled ceiling.
+        if _inc_thorough_lp:
+            thorough = self._thorough_theorist_floor(
+                heading, content, thorough, _analysis_rf or "",
+                scaled_target_hi=_th_hi_lp,
+            )
         parsed["thorough_summary"] = thorough
 
         try:
@@ -4388,12 +4928,43 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             logger.debug("recall-floor probe failed: %s: %s",
                          type(_rf_e).__name__, _rf_e)
 
+        # ── V0.03 (P1-6): quarantine record for THIS chapter ───────────────
+        # V0.06 (rig audit F2 — GENERAL RULE: pipeline bookkeeping never
+        # ships in the deliverable): the per-drop record stays in the LOGS
+        # (logs/drops.jsonl — the QuarantineLog has written every entry there
+        # since V13.x) and the conversion log gets one honest count line.
+        # The V0.05 rig rendered a "## Quarantine Log (quality-pipeline
+        # drops)" section into every chapter's .md and DOCX — internal
+        # quality-process metadata the user explicitly does not want in the
+        # output ("keep it for your logs"). The appendix field is no longer
+        # populated; the render sites were removed in the same release.
+        try:
+            _qa_entries = [
+                e for e in (getattr(self.quarantine, "entries", None) or [])
+                if getattr(e, "chapter", "") == heading and not getattr(e, "recovered", False)
+            ]
+            if _qa_entries:
+                self.log(
+                    f"    📋 Quarantine: {len(_qa_entries)} bullet drop(s) "
+                    f"recorded for this chapter → logs/drops.jsonl "
+                    f"(NOT rendered in the delivered files).",
+                    "INFO",
+                )
+        except Exception as _qa_e:
+            logger.debug("quarantine count log failed: %s: %s",
+                         type(_qa_e).__name__, _qa_e)
+
         model_label = parsed.get("model", self.primary_model)
         return SummaryResult(
             chapter_heading=heading,
             executive_summary=exec_sum,
             bullet_points=bullets,
-            thorough_summary=thorough,
+            # V0.06 (F1-b): the output-selection contract enforced at the
+            # SOURCE — an unrequested section never enters the result, so
+            # every renderer (markdown, DOCX, book summary) and every
+            # consumer sees the contract state even before the render-side
+            # flag gates (F1-c) run.
+            thorough_summary=(thorough if _inc_thorough_lp else ""),
             success=True,
             model_used=model_label,
             input_tokens=tok_in,
@@ -4404,6 +4975,11 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             theoretical_tensions=parsed.get("theoretical_tensions", "") or "",
             # V13.41.0: Scholar reflections — meta-cognitive gap analysis
             scholar_reflections=parsed.get("scholar_reflections", "") or "",
+            # V0.03 (P0-2): Tier-3 framed source excerpts (separate section,
+            # never Key Takeaways).
+            source_excerpts=list(parsed.get("source_excerpts", []) or []),
+            # V0.06 (F2): quarantine_appendix intentionally NOT set — the
+            # drop record lives in logs/drops.jsonl only.
             # V18.20.3.5: deterministic recall-floor numbers for the
             # quality report + diagnostic summary (replaces the "?").
             recall_floor=parsed.get("recall_floor"),
@@ -4412,6 +4988,13 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             run_id=getattr(self, "_run_id", ""),
             app_version=getattr(self, "_app_version", ""),
             run_started=getattr(self, "_run_started", ""),
+            # V0.06 (F1-c): stamp the output-selection flags onto the
+            # result — renderers skip a section whose flag is False even if
+            # content leaked into it (defense in depth behind the F1-b
+            # parse gate).
+            include_executive_summary=_inc_exec_lp,
+            include_thorough_summary=_inc_thorough_lp,
+            include_keypoints=_inc_kp_lp,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -4432,6 +5015,9 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
             bullets, source_text,
             quarantine=self.quarantine,
             log=self.log,
+            # V0.06 (F4-b): the source-scaled bullet budget is a hard cap at
+            # the recovery insertion site too.
+            bullet_cap=_lp_bullet_cap_fn(source_text),
         )
 
     def _gap_fill_concepts(
@@ -4866,33 +5452,63 @@ Output ONLY the five XML sections. No preamble, no commentary, no thinking proce
 
         return final_results
 
-    def build_book_summary(self, summaries: list[SummaryResult], book_title: str) -> str:
+    def build_book_summary(self, summaries: list[SummaryResult], book_title: str,
+                           stats: dict | None = None) -> str:
+        """V0.03 (P1-6): optional ``stats`` out-param receives the ACTUAL
+        aggregated numbers ("bullets" = the deduped cross-chapter count,
+        "chapters" = chapter count) so the caller's provenance stamp stops
+        labelling chapter count as bullet count (the V0.02 rig stamped
+        ``bullets=2`` on a file containing 70).
+
+        V0.06 (rig audit F3 — GENERAL RULE: a deliverable never lists the
+        same content block twice): the V0.05 book file opened with
+        "## 📌 All Key Takeaways" (a concatenation of EVERY chapter's
+        bullets) followed by "## 📖 Chapter-by-Chapter …" which repeated
+        each chapter's FULL bullet list again — every takeaway shipped
+        twice in one file. The aggregate view already exists as its own
+        deliverable (keypoints/*.Keypoints.md, classified core/supporting/
+        additional), so the book summary keeps the structured per-chapter
+        view ONLY. Section content additionally honors the per-chapter
+        output-selection flags (F1-c).
+        """
         lines = [f"# Book Summary: {book_title}", "", f"> Provider: {self.provider} | Language: {self.language} | Chapters: {len(summaries)} | {time.strftime('%Y-%m-%d')}", "", "---", ""]
-        seen, all_bullets = set(), []
+        seen = set()
+        all_bullets = []
         for s in summaries:
             for bp in s.bullet_points:
                 norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
                 if norm and norm not in seen and len(bp) > 10:
                     seen.add(norm); all_bullets.append(bp)
-        if all_bullets:
-            lines += ["## 📌 All Key Takeaways", ""]
-            for bp in all_bullets:
-                lines.append(f"- {bp}")
-            lines += ["", "---", ""]
+        if stats is not None:
+            try:
+                stats["bullets"] = len(all_bullets)
+                stats["chapters"] = len(summaries)
+            except Exception:
+                pass  # stats must never break the book summary build
+        # V0.06 (F3): the global "All Key Takeaways" concatenation is
+        # DELIBERATELY ABSENT — each chapter's takeaways appear exactly
+        # once, under their own chapter heading below. The aggregate
+        # takeaway view is the keypoints deliverable.
         lines += ["## 📖 Chapter-by-Chapter Executive Summaries", ""]
         for idx, s in enumerate(summaries, 1):
             if not s.success:
                 lines += [f"### {idx}. {s.chapter_heading}", "",
                           f"⚠️ Summary failed: {s.error_msg or 'unknown error'}", ""]
                 continue
-            exec_text = s.executive_summary.strip() if s.executive_summary else "(no executive summary generated)"
-            lines += [f"### {idx}. {s.chapter_heading}", "", exec_text, ""]
-            if s.bullet_points:
+            _inc_exec_s = getattr(s, "include_executive_summary", True)
+            _inc_kp_s = getattr(s, "include_keypoints", True)
+            _inc_th_s = getattr(s, "include_thorough_summary", True)
+            if _inc_exec_s and (s.executive_summary or "").strip():
+                lines += [f"### {idx}. {s.chapter_heading}", "",
+                          s.executive_summary.strip(), ""]
+            else:
+                lines += [f"### {idx}. {s.chapter_heading}", ""]
+            if _inc_kp_s and s.bullet_points:
                 lines.append("**Key takeaways:**")
                 for bp in s.bullet_points:
                     bp_str = str(bp) if not isinstance(bp, str) else bp
                     lines.append(f"- {bp_str}")
                 lines.append("")
-            if s.thorough_summary and s.thorough_summary.strip():
+            if _inc_th_s and s.thorough_summary and s.thorough_summary.strip():
                 lines += ["<details><summary>Detailed summary</summary>", "", s.thorough_summary, "", "</details>", ""]
         return "\n".join(lines)

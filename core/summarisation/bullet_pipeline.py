@@ -330,29 +330,55 @@ class BulletPipeline:
     # ── Stage: F1 length validation ────────────────────────────────────
 
     def apply_f1_length_validation(self, state: PipelineState) -> None:
-        """F1: truncate exec_summary to ≤400 words, thorough to ≤1500 (in-place).
+        """F1: enforce section length caps (in-place).
 
         V10.32.0 (Sprint 4 session 2): extracted from ``_summarize_inner``.
+        V0.05 (rig audit F9b): the caps are no longer the absolute 400/1500 —
+        they SCALE to the source via ``length_policy`` (a summary section may
+        never be instructed or allowed to balloon past a fraction of its
+        source; the V0.04 rig shipped thorough sections at 1.55-2.76x their
+        chapters). The truncation backstop fires at ~1.25x the scaled target
+        (never above the historical absolute cap), and the honest ratio line
+        logs the compression ratio for every section, WARNING when a section
+        is in expansion territory (>1.5x its target AND >60% of the source).
         """
         s = self.s
         try:
+            from core.summarisation.length_policy import (
+                executive_target,
+                expansion_audit,
+                thorough_target,
+            )
             from core.summarisation.text_preprocessor import (
                 truncate_summary,
                 validate_summary_length,
             )
+            _src_words = len((state.content or "").split())
+            _elo, _ehi = executive_target(_src_words)
+            _tlo, _thi = thorough_target(_src_words)
+            # Truncation backstop: 1.25x the scaled target, capped at the
+            # historical absolute ceilings (a 3000-word chapter keeps the
+            # 400/1500 caps; a 340-word chapter's thorough caps at ~190).
+            _exec_cap = min(400, int(_ehi * 1.25) + 1)
+            _thorough_cap = min(1500, int(_thi * 1.25) + 1)
             exec_valid, exec_wc, _ = validate_summary_length(
-                state.exec_sum, min_words=100, max_words=400, section="exec_summary"
+                state.exec_sum, min_words=40, max_words=_exec_cap, section="exec_summary"
             )
-            if not exec_valid and exec_wc > 400:
-                state.exec_sum = truncate_summary(state.exec_sum, max_words=400)
-                s.log("    ✂️ F1: Truncated exec_summary to 400 words", "DEBUG")
+            if not exec_valid and exec_wc > _exec_cap:
+                state.exec_sum = truncate_summary(state.exec_sum, max_words=_exec_cap)
+                s.log(f"    ✂️ F1: Truncated exec_summary to {_exec_cap} words (source-scaled cap)", "DEBUG")
             thorough_valid, thorough_wc, _ = validate_summary_length(
-                state.thorough, min_words=300, max_words=1500, section="thorough_summary"
+                state.thorough, min_words=40, max_words=_thorough_cap, section="thorough_summary"
             )
-            if not thorough_valid and thorough_wc > 1500:
-                state.thorough = truncate_summary(state.thorough, max_words=1500)
-                s.log("    ✂️ F1: Truncated thorough_summary to 1500 words", "DEBUG")
-            s.log(f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w", "DEBUG")
+            if not thorough_valid and thorough_wc > _thorough_cap:
+                state.thorough = truncate_summary(state.thorough, max_words=_thorough_cap)
+                s.log(f"    ✂️ F1: Truncated thorough_summary to {_thorough_cap} words (source-scaled cap)", "DEBUG")
+            s.log(f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w (source={_src_words}w; targets exec<={_ehi}w, thorough<={_thi}w)", "DEBUG")
+            # V0.05 honest measurement: the compression-ratio audit the rig
+            # run was missing. A summary section in expansion territory is
+            # a defect worth a visible WARNING, not a DEBUG line.
+            for _finding in expansion_audit(_src_words, exec_wc, thorough_wc):
+                s.log(f"    ⚠️ F1 ratio: {_finding}", "WARNING")
         except Exception as _e:
             logging.getLogger(__name__).debug("ignored %s: %s", type(_e).__name__, _e)
 
@@ -572,14 +598,21 @@ class BulletPipeline:
                             reason=f"Unverified numbers/quotes: {reason_str}",
                             source_overlap=0.0,
                             actually_dropped=not conservative,
+                            # V0.03 (P1-6): tag the chapter so the per-chapter
+                            # Quarantine Log appendix can attribute the drop.
+                            chapter=getattr(s, "_current_heading", "") or "",
                         )
 
                 if conservative:
-                    # V13.25.0 P1.5: Conservative mode — keep bullets but
-                    # mark them with ⚠️ prefix so the user can review.
+                    # V13.25.0 P1.5 → V0.03 (P1-6): conservative mode keeps the
+                    # bullets with NO user-facing marker (V13.33.2 rule) — the
+                    # log line no longer claims a ⚠️ that is never written.
+                    # The audit trail lives in the chapter's Quarantine Log
+                    # appendix + logs/drops.jsonl.
                     s.log(
                         f"    ⚠️ Guardrail A: {len(_unverified)} bullet(s) have unverified "
-                        f"numbers/quotes — KEPT (conservative mode) but marked ⚠️",
+                        f"numbers/quotes — KEPT (conservative mode, no user-facing "
+                        f"marker; see Quarantine Log appendix + drops.jsonl)",
                         "WARNING",
                     )
                     for bp, _reasons in _unverified:
@@ -943,6 +976,9 @@ class BulletPipeline:
                                             reason="LLM self-review marked as unsupported",
                                             source_overlap=0.0,
                                             actually_dropped=not conservative,
+                                            # V0.03 (P1-6): chapter tag for the
+                                            # per-chapter appendix.
+                                            chapter=getattr(s, "_current_heading", "") or "",
                                         )
 
                                 if conservative:

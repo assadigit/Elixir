@@ -313,10 +313,22 @@ class TestChapterCheckpointSaver:
         from docx import Document
 
         doc = Document(str(docx_path))
+        # V0.06 (rig audit F3): extract BOTH body paragraphs AND table-cell
+        # text — the per-chapter "Key Takeaways" callout is a styled TABLE
+        # (python-docx `doc.paragraphs` does not include table cells), and
+        # the old assertion only passed via the now-REMOVED duplicate
+        # "Global Key Takeaways" page (every takeaway twice per document).
         text = "\n".join(p.text for p in doc.paragraphs)
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    text += "\n" + cell.text
         assert "Chapter One" in text
         assert "Executive Summary" in text
         assert "Key Takeaways" in text
+        assert "Bullet 0 about Chapter One" in text
+        # V0.06 (F3): the duplicate global-takeaways page is gone.
+        assert "Global Key Takeaways" not in text
         # atomic save leaves no temp files behind
         assert not list((root / "checkpoints").rglob("*.tmp"))
 

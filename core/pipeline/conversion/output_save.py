@@ -40,6 +40,105 @@ from core.postprocess.cleaner import MarkdownCleaner
 logger = logging.getLogger(__name__)
 
 
+def insert_toc_boundary_headings(
+    content: str,
+    seg_start_page: int,
+    seg_end_page: int,
+    toc_entries: list,
+    log=None,
+) -> tuple[str, int]:
+    """V0.03 (P0-4): insert ``## <TOC title>`` at every interior TOC boundary.
+
+    The V0.02 rig output glued 7 of 8 selected essay titles into body text
+    (the full-book markdown had exactly TWO headings for a 10-essay extract
+    — things 2-8 and 10 were unfindable by any heading-aware chunker, and
+    the RAG frontmatter's chunking claim was hollow for 70% of the content).
+
+    GENERAL rule: when a segment spans multiple TOC entries (merged runs,
+    full-book runs, part-level segmentation), every TOC entry whose start
+    page falls STRICTLY INSIDE the segment gets a real markdown heading at
+    its page marker. Entries sharing the segment's start page are skipped
+    (the segment heading already covers position 0); same-page entries are
+    deduped keep-first (the _segment_by_chapters convention). When the text
+    carries no page markers, boundaries cannot be located — content is
+    returned unchanged (never guess).
+
+    Returns ``(new_content, n_inserted)``. Never raises (fail-open).
+    """
+    try:
+        if not content or not toc_entries:
+            return content, 0
+        entries: list[tuple[str, int]] = []
+        for e in toc_entries:
+            try:
+                if isinstance(e, (tuple, list)):
+                    title = str(e[0]).strip() if e else ""
+                    page = e[1] if len(e) > 1 else None
+                else:
+                    title = str(getattr(e, "title", "") or "").strip()
+                    page = getattr(e, "page", None)
+            except Exception:
+                continue
+            if not title or not page:
+                continue
+            try:
+                page_i = int(page)
+            except (TypeError, ValueError):
+                continue
+            if page_i > 0:
+                entries.append((title, page_i))
+        if not entries:
+            return content, 0
+        # Dedupe by page (keep first) + keep only INTERIOR boundaries.
+        seen_pages: set[int] = set()
+        interior: dict[int, str] = {}
+        for title, page in sorted(entries, key=lambda t: t[1]):
+            if page in seen_pages:
+                continue
+            seen_pages.add(page)
+            if seg_start_page < page <= seg_end_page:
+                interior[page] = title
+        if not interior:
+            return content, 0
+        try:
+            from core.postprocess.page_marker import extract_page_markers
+            markers = extract_page_markers(content)
+        except Exception:
+            return content, 0
+        if not markers:
+            return content, 0
+        # Insert AFTER the marker line, from the LAST marker backwards so
+        # earlier positions stay valid. A heading directly following the
+        # insertion point is never duplicated.
+        inserted = 0
+        for page, pos in sorted(markers, key=lambda m: m[1], reverse=True):
+            title = interior.get(page)
+            if not title:
+                continue
+            line_end = content.find("\n", pos)
+            if line_end == -1:
+                line_end = len(content) - 1
+            rest = content[line_end + 1:]
+            if rest.lstrip().startswith("#"):
+                continue  # a heading already sits at this boundary
+            heading_line = f"## {title}\n\n"
+            content = content[:line_end + 1] + heading_line + rest
+            inserted += 1
+        if inserted and log is not None:
+            log(
+                f"  [TOC-Headings] Inserted {inserted} interior TOC heading(s) "
+                f"into segment pages {seg_start_page}–{seg_end_page} "
+                f"(V0.03 P0-4 — every TOC boundary inside a segment becomes "
+                f"a real markdown heading for RAG chunking).",
+                "DEBUG",
+            )
+        return content, inserted
+    except Exception as e:  # fail-open — headings are an enhancement, not a gate
+        if log is not None:
+            log(f"  [TOC-Headings] insertion skipped (non-fatal): {e}", "DEBUG")
+        return content, 0
+
+
 @dataclass
 class OutputSaveResult:
     """The state produced by the output-saving phase.
@@ -166,6 +265,9 @@ def run_output_save(
     source_name = request.input_path.name
     clean_markers = converter.settings.get("rag.clean_page_markers", True)
     include_frontmatter = converter.settings.get("rag.include_frontmatter", True)
+    # V0.03 (P0-4): the extraction-phase TOC entries (stored on the converter
+    # after extraction) power interior boundary headings.
+    _toc_entries = getattr(converter, "toc_entries", None) or []
 
     full_parts = []
     if include_frontmatter:
@@ -173,9 +275,22 @@ def run_output_save(
         full_parts.append(
             converter._book_frontmatter(total_pages_effective, len(segments), source_name, book_title, detected_lang)
         )
+    _toc_heading_count = 0
     for seg in segments:
-        content = converter._strip_page_markers(seg.content) if clean_markers else seg.content
+        # V0.03 (P0-4): interior TOC boundaries become real markdown headings
+        # BEFORE marker stripping (positions come from the page markers).
+        _content, _n_ins = insert_toc_boundary_headings(
+            seg.content, seg.start_page, seg.end_page, _toc_entries, log)
+        _toc_heading_count += _n_ins
+        content = converter._strip_page_markers(_content) if clean_markers else _content
         full_parts.append(f"# {seg.heading}\n\n{content}")
+    if _toc_heading_count:
+        log(
+            f"📑 V0.03: inserted {_toc_heading_count} interior TOC heading(s) "
+            f"into the full markdown (RAG chunking can now find every "
+            f"selected section)",
+            "INFO",
+        )
 
     full_markdown = "\n\n---\n\n".join(full_parts)
     # lazy dir — ensure markdown/ exists before writing.
@@ -201,7 +316,11 @@ def run_output_save(
         # helper to map a chapter heading back to its segment/analysis files.
         safe = segment_filename_slug(seg.heading) or f"segment_{idx:03d}"
         seg_file = segments_folder / f"{idx:03d}_{safe}.md"
-        content = converter._strip_page_markers(seg.content) if clean_markers else seg.content
+        # V0.03 (P0-4): interior TOC headings in the per-segment files too —
+        # the deterministic analyzer + summarizer see real section structure.
+        _content, _ = insert_toc_boundary_headings(
+            seg.content, seg.start_page, seg.end_page, _toc_entries, log)
+        content = converter._strip_page_markers(_content) if clean_markers else _content
         seg_text = ""
         if include_frontmatter:
             seg_text += converter._chapter_frontmatter(seg, idx, len(segments), book_title, source_name, detected_lang)

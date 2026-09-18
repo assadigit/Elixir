@@ -464,6 +464,34 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
             remaining = remaining.replace(bm.group(0), '', 1)
         if tm:
             remaining = remaining.replace(tm.group(0), '', 1)
+        # V0.06 (rig audit F1-a — GENERAL RULE): the additive sections are
+        # parsed into their OWN fields below — they must never fall into the
+        # leftover-thorough fallback. The V0.05 rig run proved the failure
+        # mode end-to-end: with <thorough_summary> stripped from the prompt
+        # (the user unchecked it), the model still emitted
+        # <key_distinctions>/<theoretical_tensions>, and because the leftover
+        # removed ONLY the exec/bullet/thorough blocks, the additive items
+        # (plus the literal "None" placeholder the prompt instructs for
+        # empty additive sections) became the "thorough_summary" — shipped
+        # as a run-on "Thorough Summary" paragraph that restated Key
+        # Distinctions + Theoretical Tensions. The leftover may only ever
+        # contain genuinely unclaimed content.
+        remaining = re.sub(
+            r'<key_distinctions>.*?(?:</key_distinctions>|<theoretical_tensions>|$)',
+            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+        )
+        remaining = re.sub(
+            r'<theoretical_tensions>.*?(?:</theoretical_tensions>|$)',
+            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+        )
+        remaining = re.sub(
+            r'<scholar_reflections?>.*?(?:</scholar_reflections?>|$)',
+            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+        )
+        remaining = re.sub(
+            r'<source_excerpts?>.*?(?:</source_excerpts?>|$)',
+            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+        )
         remaining = re.sub(
             r'</?(?:summary|chapter_summary|response|output)\s*/?>',
             '', remaining, flags=re.IGNORECASE,
@@ -482,6 +510,18 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     thorough = strip_markup_tags(thorough)
     thorough = strip_reasoning_leaks(thorough)
     thorough = strip_narrative_from_thorough(thorough)
+    # V0.06 (rig audit F1-e — GENERAL RULE): the literal "None" placeholder
+    # (the prompt instructs "output the literal word None" for empty
+    # sections) is a FORMAT token, never content. A thorough field that is
+    # only "None" is empty; a thorough that ENDS with a standalone "None"
+    # after a completed sentence (the V0.05 rig: "…immediate career
+    # interests. None") has the next section's placeholder glued on.
+    if thorough:
+        _th_stripped = thorough.strip()
+        if _th_stripped.lower() in ("none", "n/a", "null", "none."):
+            thorough = ""
+        else:
+            thorough = re.sub(r'(?<=[.!?:])\s*\bNone\s*$', '', _th_stripped)
 
     # V13.38.0: Extract new additive sections
     key_distinctions = ""

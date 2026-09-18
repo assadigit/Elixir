@@ -66,11 +66,20 @@ class TestBuildThoroughFollowup:
         assert "A" * 500 not in result  # truncated
 
     def test_contains_required_sections(self):
-        """The prompt contains all required structural sections."""
+        """The prompt contains all required structural sections.
+
+        V0.05 (F9b): the word target is SOURCE-SCALED (length_policy), not
+        the absolute 800-1200 — a tiny source gets a tiny target, and the
+        compression contract forbids padding. Pinned: the scaled phrase for
+        the exact 2-word source, the prose instruction, and the contract.
+        """
         result = build_thorough_followup("Ch.1", "Text.", "Exec.", "en")
-        assert "800" in result and "1200" in result  # word count
+        # 1-word source -> a tiny scaled target ("N-N word"), never 800-1200
+        import re as _re
+        assert _re.search(r"\b\d+-\d+ word", result)  # source-scaled word count
+        assert "800-1200" not in result  # the absolute demand is gone
         assert "FLOWING PROSE PARAGRAPHS" in result
-        assert "4-6 paragraphs" in result
+        assert "SHORTER than its source" in result  # compression contract
 
 
 # == 2. build_dedicated_thorough_prompt ==
@@ -127,13 +136,18 @@ class TestBuildDedicatedThoroughPrompt:
 
 class TestBuildDedicatedBulletPrompt:
     def test_english_basic(self):
-        """Basic English prompt structure."""
+        """Basic English prompt structure.
+
+        V0.05 (F9b): the bullet-count demand is SOURCE-SCALED (the absolute
+        "30-50" forced padding on short chapters).
+        """
         result = build_dedicated_bullet_prompt("Ch.1", "Text.", "Exec.", ["existing bullet"], "en")
         assert "### ROLE ###" in result
         assert "Write in English." in result
         assert "Ch.1" in result
         assert "existing bullet" in result
-        assert "30-50 NEW bullet points" in result
+        assert "30-50 NEW bullet points" not in result  # absolute demand gone
+        assert "one distinct takeaway per ~50 source words" in result
 
     def test_persian_language(self):
         """Persian language instruction."""
@@ -251,7 +265,7 @@ You MUST output exactly these five XML sections:
 
     def test_chunk_1_json_format(self):
         """Chunk 1 works with the JSON (academic_rigor) output format."""
-        full_prompt = """Output a JSON object with five sections:
+        full_prompt = """Output a JSON object with these sections:
 - "executive_summary": 3-5 findings.
 - "bullet_points": 15-25 findings.
 - "thorough_summary": 15-25 findings.

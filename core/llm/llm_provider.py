@@ -25,6 +25,7 @@ from core.llm.llm_provider_impl import *  # noqa: F401, F403
 # this module loads.
 from core.llm.llm_provider_impl import (  # noqa: F401
     ClaudeProvider,
+    LlamaCppProvider,
     OllamaProvider,
     OpenAICompatProvider,
     _get_keep_alive,
