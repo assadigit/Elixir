@@ -181,12 +181,27 @@ def create_provider(
     # if we imported them at module level, neither module could finish loading.
     if provider == "ollama":
         from core.llm.ollama_provider import OllamaProvider
+        from core.llm.registry import get_registry
+        # V0.09 (P5): context window resolved through the ModelRegistry.
+        # The SETTINGS value (passed as the registry's ``configured``)
+        # WINS over every discovery source, so factory behavior is
+        # byte-identical at today's defaults. The registry adds, in order:
+        # (a) the new ``llm.context_window_overrides`` per-model key
+        # (absent by default — no behavior change until written), (b) the
+        # 220,144 local-backend cap (Task 8 decision #2), and (c) fixes the
+        # old fallback mismatch — the hardcoded 65536 default below used
+        # to disagree with the settings.py default 32768 whenever the key
+        # was absent (absent now → registry backend default 32768).
         return OllamaProvider(
             model=settings.get("summarisation.model", ""),
             base_url="http://localhost:11434",
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            context_tokens=settings.get("summarisation.max_context_tokens", 65536),
+            context_tokens=get_registry().get_context_window(
+                settings.get("summarisation.model", ""),
+                "ollama",
+                configured=settings.get("summarisation.max_context_tokens"),
+            ),
             timeout=300,
             retries=1,
             log_callback=log,
@@ -199,13 +214,24 @@ def create_provider(
         # The timeout honours local.http_timeout_sec (the app-wide local
         # backend timeout) instead of the cloud-style 300s.
         from core.llm.llamacpp_provider import LlamaCppProvider
+        from core.llm.registry import get_registry
+        # V0.09 (P5): same registry routing as the ollama branch — the
+        # settings value (65k window) stays the ``configured`` override so
+        # nothing changes at today's defaults (pinned by
+        # tests/test_v004_llamacpp.py::TestFactoryWiring), while the new
+        # ``llm.context_window_overrides`` key and the 220,144 local cap
+        # become available (Task 8 decisions #2/#4).
         return LlamaCppProvider(
             model=settings.get("summarisation.llamacpp_model", ""),
             base_url=settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"),
             api_key=settings.get("summarisation.llamacpp_api_key", "local"),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
-            context_tokens=settings.get("summarisation.llamacpp_context_tokens", 65536),
+            context_tokens=get_registry().get_context_window(
+                settings.get("summarisation.llamacpp_model", ""),
+                "llamacpp",
+                configured=settings.get("summarisation.llamacpp_context_tokens"),
+            ),
             output_cap=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
             timeout=int(settings.get("local.http_timeout_sec", 600) or 600),
             retries=1,

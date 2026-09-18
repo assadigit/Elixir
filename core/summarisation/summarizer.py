@@ -865,6 +865,37 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             self.request.summarisation_max_context_tokens = max(auto_ctx, 32768)
             self.log(f"  🔧 Raised summarisation context to {self.request.summarisation_max_context_tokens} tokens", "INFO")
 
+        # V0.09 (P5): ModelRegistry — the context window as DATA. The value
+        # computed above (settings → VRAM ladder → 32k floor) stays the
+        # FLOOR; a KNOWN model capability (llm.context_window_overrides >
+        # /api/show probe > Modelfile num_ctx > static table > name hints)
+        # can only ever RAISE it — e.g. the rig's 220k Ternary-Bonsai
+        # llama.cpp model — never lower it (that decision belongs to P6's
+        # strategy engine). Discovered values on local backends stay
+        # bounded by the 220,144 cap and the VRAM ladder above; explicit
+        # user values keep the pre-P5 never-ladder-reduced semantics. The
+        # ctx_clamp/IQ2_S caps are NOT touched here — they remain the
+        # post-cap layer at request time. With no overrides, no probe
+        # success, and a model absent from the table/hints, this is a
+        # no-op (byte-identical at today's defaults).
+        from core.llm.registry import backend_for_provider, get_registry
+        _reg = get_registry()
+        _reg_backend = backend_for_provider(self.provider)
+        _reg_ctx = _reg.get_context_window(
+            self.primary_model,
+            _reg_backend,
+            base=self.request.summarisation_max_context_tokens,
+            vram_limit_fn=self._auto_detect_context_limit,
+        )
+        if _reg_ctx != self.request.summarisation_max_context_tokens:
+            self.log(
+                f"  🧠 V0.09 (P5): model registry context window "
+                f"{self.request.summarisation_max_context_tokens} → {_reg_ctx} "
+                f"for '{self.primary_model}' ({_reg_backend} backend)",
+                "INFO",
+            )
+            self.request.summarisation_max_context_tokens = _reg_ctx
+
         # ── Max bullets per chapter ──────────────────────────────────────
         # V13.45.5: REMOVED the hard-coded cap. The user explicitly requested:
         # "There must be no max bullets per chapter — bullets can be as many

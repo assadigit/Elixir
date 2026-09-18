@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 import requests as _requests
 
+from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider, _get_keep_alive
 # V18.20.4.12 (T-c7): ModelNotFound404Error moved to the shared
 # core/llm/model_errors.py module — imported here (and re-exported for
@@ -186,7 +187,10 @@ class OllamaProvider(LLMProvider):
         need 65k of KV cache.
 
         Formula:
-            estimated_prompt_tokens = len(prompt) // 4  (rough: 4 chars/token)
+            V0.09 (P5): estimated_prompt_tokens = count_tokens(prompt)
+            (tiktoken cl100k_base via core.llm.context_budget — replaced the
+            old len(prompt)//4 heuristic, which over-counted repetitive text
+            ~2x and under-counted CJK)
             needed = estimated_prompt_tokens + max_tokens + 4096 (safety margin)
             ctx = min(self.context_tokens, max(16000, needed))
 
@@ -208,7 +212,11 @@ class OllamaProvider(LLMProvider):
             needed = 30000 + 4096 + 4096 = 38192
             ctx = min(65536, max(16000, 38192)) = 38192
         """
-        estimated_prompt_tokens = len(prompt) // 4
+        # V0.09 (P5): tokenizer-aware estimate (see formula note above). The
+        # import is bound at module level (the summarizer.py:228 convention);
+        # tests that need to control it patch core.llm.ollama_provider's
+        # binding (the established consumer-binding patch pattern).
+        estimated_prompt_tokens = _count_tokens(prompt)
         needed = estimated_prompt_tokens + max_tokens + 4096
         ctx = min(self.context_tokens, max(16000, needed))
 

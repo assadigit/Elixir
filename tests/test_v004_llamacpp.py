@@ -188,7 +188,12 @@ class TestOutputBudgetFitting:
         """A prompt that nearly fills the 65k window shrinks the budget to
         what actually fits (ctx − prompt_est − margin)."""
         p = _rig_provider(llamacpp_server, context_tokens=65536, output_cap=12288)
-        huge = "x" * 4 * 60000  # ~60k estimated tokens
+        # V0.09 (P5): fit_max_tokens now counts REAL tokens (tiktoken via
+        # core.llm.context_budget) instead of chars//4. The old prompt
+        # ("x" * 4 * 60000) only counts ~30k tokens now (tiktoken merges
+        # x-runs), so it no longer nearly fills the window — "word " * 60000
+        # is a genuine ~60k-token prompt, preserving this test's intent.
+        huge = "word " * 60000  # ~60k actual tokens
         fitted = p.fit_max_tokens(12288, huge)
         assert 256 <= fitted < 12288
 

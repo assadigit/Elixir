@@ -66,6 +66,7 @@ from collections.abc import Callable
 
 import requests as _requests
 
+from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
 
@@ -206,7 +207,12 @@ class LlamaCppProvider(LLMProvider):
         my settings" mysteries are born.
         """
         cap = self.output_cap if self.output_cap > 0 else requested
-        ctx_budget = self.context_tokens - (len(prompt) // 4) - LLAMACPP_FIT_MARGIN_TOKENS
+        # V0.09 (P5): tokenizer-aware prompt estimate (tiktoken cl100k_base
+        # via core.llm.context_budget) — replaces the len(prompt)//4 heuristic,
+        # which over-counted repetitive text ~2x (240k chars of 'x' is ~30k
+        # tokens, not 60k) and under-counted CJK. Same margin as before.
+        _prompt_tokens = _count_tokens(prompt)
+        ctx_budget = self.context_tokens - _prompt_tokens - LLAMACPP_FIT_MARGIN_TOKENS
         fitted = min(requested, cap, ctx_budget)
         # Sanity floor — applies ONLY when it protects a REDUCED request
         # (a huge prompt squeezed the budget below usable). A deliberately
@@ -224,7 +230,7 @@ class LlamaCppProvider(LLMProvider):
             if fitted == ctx_budget and requested > ctx_budget:
                 why.append(
                     f"context fit (ctx={self.context_tokens}, "
-                    f"~{len(prompt) // 4} prompt tokens, {LLAMACPP_FIT_MARGIN_TOKENS} margin)"
+                    f"~{_prompt_tokens} prompt tokens, {LLAMACPP_FIT_MARGIN_TOKENS} margin)"
                 )
             self.log(
                 f"    🔧 llama.cpp output budget {requested}→{fitted}"

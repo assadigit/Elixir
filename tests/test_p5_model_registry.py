@@ -715,3 +715,252 @@ class TestChunkSize:
         b = make_budget(32768)
         assert chunk_size(b, "map_reduce") == 4000
         assert chunk_size(b, "b4_section_map") == 4000
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# I. WIRING (P5-b) — create_provider + Summarizer + provider token math
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestFactoryWiring:
+    """create_provider routes ctx through the registry with the SETTINGS
+    value as the ``configured`` override — byte-identical at today's
+    defaults, changeable only via the new override key / the local cap."""
+
+    @staticmethod
+    def _factory_settings(values: dict | None = None) -> _FakeSettings:
+        base = {
+            "summarisation.model": "gemma4-12b:latest",
+            "summarisation.temperature": 0.6,
+            "summarisation.max_output_tokens": 4096,
+            "summarisation.max_context_tokens": 32768,
+            "summarisation.llamacpp_model": "Ternary-Bonsai-2-27B-Instruct-Vision",
+            "summarisation.llamacpp_base_url": "http://127.0.0.1:8080/v1",
+            "summarisation.llamacpp_api_key": "local",
+            "summarisation.llamacpp_max_output_tokens": 12288,
+            "summarisation.llamacpp_context_tokens": 65536,
+            "local.http_timeout_sec": 600,
+        }
+        base.update(values or {})
+        return _FakeSettings(base)
+
+    def test_ollama_defaults_byte_identical(self):
+        """The default 32k passes through untouched (settings.py:204)."""
+        from core.llm.llm_provider import create_provider
+
+        p = create_provider("ollama", self._factory_settings())
+        assert type(p).__name__ == "OllamaProvider"
+        assert p.context_tokens == 32768
+
+    def test_llamacpp_defaults_byte_identical(self):
+        """The default 65k passes through untouched — INCLUDING for the
+        Ternary-Bonsai model (the 220k table hit must stay inert at the
+        factory: the settings value wins; pinned jointly with
+        tests/test_v004_llamacpp.py::TestFactoryWiring)."""
+        from core.llm.llm_provider import create_provider
+
+        p = create_provider("llamacpp", self._factory_settings())
+        assert type(p).__name__ == "LlamaCppProvider"
+        assert p.model == "Ternary-Bonsai-2-27B-Instruct-Vision"
+        assert p.context_tokens == 65536
+
+    def test_override_key_changes_factory_ctx(self, monkeypatch):
+        """The new llm.context_window_overrides key (absent by default)
+        is the ONE discovery source that beats the settings value."""
+        from core.llm.llm_provider import create_provider
+
+        fake = _FakeSettings(
+            {
+                "llm.context_window_overrides": {"gemma4-12b:latest": 131072},
+            }
+        )
+        monkeypatch.setattr("utils.settings.Settings", lambda: fake)
+        p = create_provider("ollama", self._factory_settings())
+        assert p.context_tokens == 131072
+
+    def test_local_cap_applied_at_factory(self):
+        """Task 8 #2: a local window above 220,144 is capped (the GUI
+        spinbox still allows 262144 — the registry clamps the EFFECTIVE
+        window)."""
+        from core.llm.llm_provider import create_provider
+
+        p = create_provider(
+            "ollama",
+            self._factory_settings(
+                {
+                    "summarisation.max_context_tokens": 262144,
+                }
+            ),
+        )
+        assert p.context_tokens == 220144
+
+    def test_absent_settings_key_resolves_to_ollama_default(self):
+        """The pre-P5 factory hardcoded a 65536 FALLBACK for
+        summarisation.max_context_tokens while the settings default is
+        32768 (the Task 3-b "65538-vs-32768 mismatch"). With the key
+        absent, the registry now resolves the backend default (32768)."""
+        from core.llm.llm_provider import create_provider
+
+        settings = self._factory_settings()
+        settings._values.pop("summarisation.max_context_tokens")
+        p = create_provider("ollama", settings)
+        assert p.context_tokens == 32768
+
+
+class TestSummarizerCtxWiring:
+    """The Summarizer's ctx (settings → VRAM ladder → 32k floor) is routed
+    through the registry as the FLOOR: known capabilities only RAISE it."""
+
+    @staticmethod
+    def _make_summarizer(monkeypatch, model: str, provider: str, ctx: int):
+        """Full Summarizer construction with hermetic settings (the
+        test_group_b_characterization.py pattern)."""
+        fake = _FakeSettings(
+            {
+                "summarisation.provider": provider,
+                "local.http_timeout_sec": 600,
+                "local.chapter_deadline_sec": 0,
+                "model_temperatures": {},
+            }
+        )
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: fake)
+        monkeypatch.setattr("utils.settings.Settings", lambda: fake)
+
+        from core.models import ConversionRequest
+        from core.summarisation.summarizer import Summarizer
+
+        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
+        req.summarisation_model = model
+        req.summarisation_max_context_tokens = ctx
+        return Summarizer(
+            request=req,
+            log_callback=lambda m, lvl="INFO": None,
+            language="en",
+            claim_extractor=None,
+        )
+
+    def test_default_settings_identical(self, monkeypatch):
+        """Default model (not in the table), default 32k request ctx →
+        the registry layer is a NO-OP (byte-identical to pre-P5)."""
+        monkeypatch.setattr(
+            "core.summarisation.summarizer.Summarizer._auto_detect_context_limit",
+            lambda self: 65536,
+        )
+        s = self._make_summarizer(
+            monkeypatch, model="gemma4-12b:latest", provider="ollama", ctx=32768
+        )
+        assert s.request.summarisation_max_context_tokens == 32768
+
+    def test_220k_model_uses_capability(self, monkeypatch):
+        """THE P5 FEATURE: the rig's 220k llama.cpp model raises the
+        pipeline window to its capability (ladder permitting — here the
+        ladder is monkeypatched to a 24GB-class 262144)."""
+        monkeypatch.setattr(
+            "core.summarisation.summarizer.Summarizer._auto_detect_context_limit",
+            lambda self: 262144,
+        )
+        s = self._make_summarizer(
+            monkeypatch,
+            model="Ternary-Bonsai-2-27B-Instruct-Vision",
+            provider="llamacpp",
+            ctx=32768,
+        )
+        assert s.request.summarisation_max_context_tokens == 220000
+
+    def test_220k_model_ladder_bounded(self, monkeypatch):
+        """Same model on a small rig (ladder 65536): the DISCOVERED window
+        is bounded by the VRAM ladder — the pipeline gets 65536, not 220000
+        (the escape hatch is an explicit llm.context_window_overrides
+        entry, which is never ladder-reduced)."""
+        monkeypatch.setattr(
+            "core.summarisation.summarizer.Summarizer._auto_detect_context_limit",
+            lambda self: 65536,
+        )
+        s = self._make_summarizer(
+            monkeypatch,
+            model="Ternary-Bonsai-2-27B-Instruct-Vision",
+            provider="llamacpp",
+            ctx=32768,
+        )
+        assert s.request.summarisation_max_context_tokens == 65536
+
+    def test_low_capability_table_entry_never_lowers(self, monkeypatch):
+        """llama3:8b (table 8192) with a 32768 pipeline → stays 32768:
+        discovery only ever RAISES the floor (lowering is P6's call)."""
+        monkeypatch.setattr(
+            "core.summarisation.summarizer.Summarizer._auto_detect_context_limit",
+            lambda self: 65536,
+        )
+        s = self._make_summarizer(monkeypatch, model="llama3:8b", provider="ollama", ctx=32768)
+        assert s.request.summarisation_max_context_tokens == 32768
+
+    def test_override_key_uses_capability(self, monkeypatch):
+        """llm.context_window_overrides names the model → the pipeline
+        window becomes the override (explicit user word, not
+        ladder-reduced, but still local-capped)."""
+        fake = _FakeSettings(
+            {
+                "summarisation.provider": "ollama",
+                "local.http_timeout_sec": 600,
+                "local.chapter_deadline_sec": 0,
+                "model_temperatures": {},
+                "llm.context_window_overrides": {"gemma4-12b:latest": 131072},
+            }
+        )
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: fake)
+        monkeypatch.setattr("utils.settings.Settings", lambda: fake)
+        monkeypatch.setattr(
+            "core.summarisation.summarizer.Summarizer._auto_detect_context_limit",
+            lambda self: 65536,
+        )
+
+        from core.models import ConversionRequest
+        from core.summarisation.summarizer import Summarizer
+
+        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
+        req.summarisation_model = "gemma4-12b:latest"
+        req.summarisation_max_context_tokens = 32768
+        s = Summarizer(
+            request=req,
+            log_callback=lambda m, lvl="INFO": None,
+            language="en",
+            claim_extractor=None,
+        )
+        assert s.request.summarisation_max_context_tokens == 131072
+
+
+class TestProviderTokenMathWiring:
+    """The two former chars//4 sites now count REAL tokens."""
+
+    def test_adaptive_context_uses_count_tokens(self, monkeypatch):
+        """_adaptive_context estimates via core.llm.context_budget
+        (tiktoken), not len//4: a 60k-char 'x '-wall is 30k tokens (the
+        chars//4 estimate would be 15k)."""
+        from core.llm.ollama_provider import OllamaProvider
+
+        p = OllamaProvider(model="m", context_tokens=32768)
+        prompt = "x " * 30000  # 60k chars → 30001 tiktoken tokens
+        # count_tokens: needed = 30001 + 4096 + 4096 = 38193 → capped at 32768
+        # chars//4 (pre-P5): needed = 15000 + 4096 + 4096 = 23192
+        assert p._adaptive_context(prompt, max_tokens=4096) == 32768
+
+    def test_adaptive_context_patchable_binding(self, monkeypatch):
+        """The consumer-binding patch pattern (the summarizer.py:228
+        convention) controls the estimate."""
+        from core.llm import ollama_provider
+
+        monkeypatch.setattr(ollama_provider, "_count_tokens", lambda text: 20000)
+        p = ollama_provider.OllamaProvider(model="m", context_tokens=32768)
+        # needed = 20000 + 4096 + 4096 = 28192 (chars//4 of "tiny" would give 16000)
+        assert p._adaptive_context("tiny", max_tokens=4096) == 28192
+
+    def test_fit_max_tokens_uses_count_tokens(self):
+        """fit_max_tokens estimates via core.llm.context_budget: the
+        240k-char x-wall is 30k REAL tokens, so the 12,288 request FITS
+        (under chars//4 the budget would have shrunk to 5024)."""
+        from core.llm.llamacpp_provider import LlamaCppProvider
+
+        p = LlamaCppProvider(model="m", context_tokens=65536, output_cap=12288)
+        assert p.fit_max_tokens(12288, "x" * 240_000) == 12288
+        # ...and a genuine ~60k-token prompt still shrinks to what fits:
+        assert p.fit_max_tokens(12288, "word " * 60000) == 65536 - 60001 - 512
