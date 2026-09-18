@@ -318,6 +318,26 @@ def batch_gap_fill(
                 f"Chapter: {heading}\n\n"
                 f"Source excerpts for each missing author:\n{_batch_context}\n"
                 f"{_mention_block}\n\n"
+                # V0.11 (real-rig audit, attribution findings): three
+                # attribution-fidelity rules. The V0.10 rig's gap-fill
+                # bullets misattributed (a) the chapter author's
+                # section-level framing to a specific theorist (a
+                # methodological note about the whole section), (b) an
+                # invented causal link between one theorist's hypothesis
+                # and a DIFFERENT theorist's clinical material, and (c)
+                # stated intent where the source merely draws a parallel.
+                # Plus citation-year fidelity (adjacent-year swaps).
+                f"Attribution rules (STRICT):\n"
+                f"- Attribute to an author ONLY what the source excerpt "
+                f"attributes to THAT author. Never fold the chapter author's "
+                f"general framing, another author's material, or your own "
+                f"synthesis into their bullet.\n"
+                f"- Never invent causal links between an author's work and "
+                f"other material in the chapter. If the source draws a "
+                f"parallel or merely cites, say so — do not state that the "
+                f"author used the concept to explain something.\n"
+                f"- Keep citation years EXACTLY as they appear in the source "
+                f"excerpt — never substitute a different year for an author.\n\n"
                 f"{_tail_instruction} No preamble."
             )
             # V18.20.3.7 (RC-B.2, audit v182036): never

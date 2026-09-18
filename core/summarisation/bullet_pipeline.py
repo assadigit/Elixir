@@ -878,18 +878,34 @@ class BulletPipeline:
             # when the total exceeds 10. This preserves quality while avoiding
             # the 600s timeout that single-pass review hits with 100+ bullets.
             _bps_for_review = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
-            _use_batched_review = len(_bps_for_review) > 10
-            if _use_batched_review:
+            if not _bps_for_review:
+                # V0.11 (real-rig audit, BUG-VACUOUS-QA): with 0 bullets the
+                # self-review LLM call is pure waste (the V0.10 rig burned
+                # ~4 GPU-minutes "confirming" an empty set while the real
+                # problem was a claims-JSON format failure upstream) and its
+                # "all bullets confirmed" verdict is vacuous. Skip loudly —
+                # the format salvage / gap-fill stages must populate bullets
+                # first.
                 s.log(
-                    f"    🔬 Running self‑review in BATCHES ({len(_bps_for_review)} bullets → "
-                    f"{(len(_bps_for_review) + 9) // 10} batches of 10)… [coverage {_primary_cov:.0%}]",
-                    "INFO",
+                    "    ⚠️ Self‑review SKIPPED: 0 bullets to review (the "
+                    "primary parse produced no bullets — a response-format "
+                    "failure; see the parse warnings). Gap-fill will "
+                    "populate bullets.",
+                    "WARNING",
                 )
             else:
-                s.log(
-                    f"    🔬 Running self‑review to verify claims… [coverage {_primary_cov:.0%}]",
-                    "INFO",
-                )
+                _use_batched_review = len(_bps_for_review) > 10
+                if _use_batched_review:
+                    s.log(
+                        f"    🔬 Running self‑review in BATCHES ({len(_bps_for_review)} bullets → "
+                        f"{(len(_bps_for_review) + 9) // 10} batches of 10)… [coverage {_primary_cov:.0%}]",
+                        "INFO",
+                    )
+                else:
+                    s.log(
+                        f"    🔬 Running self‑review to verify claims… [coverage {_primary_cov:.0%}]",
+                        "INFO",
+                    )
             # V13.40.4: Increased from 8s → 20s. The 8s delay was insufficient
             # after B4's 3 calls (~12 min) + additive followup (~2 min).
             s._recover_vram(context="pre-self-review", delay_sec=20.0)
@@ -897,10 +913,14 @@ class BulletPipeline:
             full_summary = f"{result.get('executive_summary', '')} {' '.join(_bps3)} {result.get('thorough_summary', '')}"
             # V13.45.5: Self-review ALWAYS runs (no coverage-threshold skip).
             # Use BATCHED self-review when >10 bullets (preserves quality, avoids timeout)
-            if _use_batched_review:
-                reviewed = s._self_review_batched(heading, text, _bps3, result.get('thorough_summary', ''))
-            else:
-                reviewed = s._self_review(heading, text, full_summary)
+            # V0.11 (BUG-VACUOUS-QA): except when there are NO bullets — the
+            # call would confirm an empty set (vacuous) and waste minutes.
+            reviewed = None
+            if _bps_for_review:
+                if _use_batched_review:
+                    reviewed = s._self_review_batched(heading, text, _bps3, result.get('thorough_summary', ''))
+                else:
+                    reviewed = s._self_review(heading, text, full_summary)
             if reviewed:
                 # V13.37.0: Strip <think> blocks before parsing. _self_review is
                 # the only LLM call site that didn't call _strip_thinking, so

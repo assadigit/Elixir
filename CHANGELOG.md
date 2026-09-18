@@ -1,5 +1,78 @@
 # Changelog
 
+## V0.11 — The real-rig audit fixes: the one-sentence Thorough, killed at the root
+
+> **The change (AUDIT-1, the Broken Structures ch.1 post-mortem):** the V0.10
+> real-world rig shipped a factually-clean summary whose "Thorough Summary"
+> was ONE sentence. The audit traced the full failure chain and this release
+> kills it at every level — the format failure that started it, the render
+> collapse that hid it, the vacuous QA that blessed it, and the preset
+> false-switch that set it up.
+
+**The audited failure chain (for the record):**
+the primary model returned a 25k-char claims-JSON that STRICT `json.loads`
+rejected (it escaped single quotes Python-style inside a quoted source
+proper noun) → the parser's leftover fallback banked the whole blob as the
+`thorough_summary` (exec=0, bullets=0) → post-check quote-verification
+stripped the quotes around every non-verbatim claim value → the DOCX
+renderer's `"claim"`-key regex then salvaged ONLY the still-quoted claims —
+exactly one — and silently discarded ~1,050 words. Meanwhile the QA layers
+passed vacuously ("all 0 bullets verified ✓", "Self-review: all bullets
+confirmed" on an empty set, ~4 GPU-minutes wasted), and a domain textbook
+had been auto-switched to the academic_paper preset at 75% confidence,
+silently enabling Academic Rigor mode against the user's setting.
+
+**V0.11 fixes:**
+- `response_parser._repair_llm_json` (BUG-PRIMARY-FORMAT, root): strict
+  decode failure now triggers ONE lenient repair pass (`\'` escapes, smart
+  quotes, trailing commas) before giving up on a JSON response — the rig's
+  blob parses and its 46 claims are recovered instead of being lost to the
+  leftover fallback.
+- `response_parser._extract_json_result` (claims-mirror): a LARGE claim
+  list under `executive_summary` (≥ 12 claims) is really a takeaway list —
+  the claims are mirrored into `bullet_points` (each claim is a bullet) and
+  the exec is left empty so the exec-from-thorough derivation produces real
+  prose. Small claim lists keep the exact V13.34.1 behavior.
+- `response_parser._parse_universal` leftover guard (BUG-THOROUGH-LOSS,
+  markdown path): an unrepairable JSON claims blob is NEVER banked as the
+  thorough_summary — its claims are salvaged to bullets (leniently:
+  quoted or post-check-unquoted values) and the thorough is left empty for
+  the dedicated thorough call to regenerate.
+- `docx/builder._render_structured_summary` (BUG-THOROUGH-LOSS, DOCX
+  path): the `"claim"` substring guard no longer hijacks prose; the
+  JSON-key salvage fires only for actual `{`-payloads AND only when it
+  covers ≥ 50% of the input — otherwise the full text ships and the drop
+  is logged (complete-but-mangled beats lossy-but-pretty).
+- `summary_validator.verify_bullets` (BUG-VACUOUS-QA): a fact-check on an
+  EMPTY bullet set now logs a loud "VACUOUS PASS" WARNING instead of
+  "all 0 bullets verified ✓".
+- `bullet_pipeline.run_self_consistency_and_review` (BUG-VACUOUS-QA): with
+  0 bullets the self-review LLM call is SKIPPED entirely (the rig burned
+  ~4 GPU-minutes confirming an empty set) with a WARNING naming the likely
+  cause (response-format failure).
+- `gap_fill_batch` prompt (attribution fidelity, audit findings): three
+  STRICT rules added — attribute only what the source attributes to THAT
+  author (no folding the chapter author's framing into a theorist's
+  bullet), never invent causal links between authors' material, keep
+  citation years EXACTLY as the source gives them.
+- `postprocess` academic auto-switch guard (root-cause F0): switching INTO
+  the academic_paper preset from content auto-detection now requires ≥ 85%
+  confidence — the known false-positive class (a domain textbook with a
+  handful of citations, the rig's exact case at 75%) stays on normal_book,
+  because a wrong switch silently enables Academic Rigor mode (changing
+  the prompt, adding a self-review call, pushing the model toward
+  claims-JSON output) against the user's explicit setting.
+- Tests: `tests/test_v011_audit_fixes.py` — 21 regression tests covering
+  every fix (the rig's exact blob shape, the one-sentence collapse, the
+  vacuous passes, the attribution rules, the confidence bar). Suite:
+  3679 passed / 0 failed (V0.10 baseline 3658 + 21).
+
+**What the next rig run should show:** no "Parsed: exec=0, bullets=0"
+line; the claims recovered as bullets at parse time; a dedicated-thorough
+call producing 800-1,200 words of real prose; the exec derived from that
+thorough; "Auto-switching" NOT firing on the rig's book (75% < 85%); and
+any vacuous pass screaming WARNING instead of ✓.
+
 ## V0.10 — The 220k window, end to end: context as data, strategy as math
 
 > **The change (P5 + P6, the context-adaptation core):** the pipeline now

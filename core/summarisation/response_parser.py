@@ -200,6 +200,154 @@ def strip_narrative_from_thorough(text: str) -> str:
     return result if result else text
 
 
+# ── V0.11 (real-rig audit, BUG-PRIMARY-FORMAT): LLM-JSON salvage helpers ────
+
+def _repair_llm_json(text: str) -> str:
+    """V0.11 (real-rig audit, BUG-PRIMARY-FORMAT): repair the common
+    malformations LLMs produce in otherwise-valid JSON.
+
+    The V0.10 real-rig run (a 27B local model, single chapter) had the
+    primary model return a 25k-char claims JSON that ``json.loads`` REJECTED:
+    the model escaped single quotes Python-style (``\\'``) inside strings
+    carrying quoted source text containing apostrophes — an invalid
+    strict-JSON escape.
+    The whole blob then fell to the universal parser's leftover fallback and
+    was banked as the ``thorough_summary`` (exec=0, bullets=0), cascading into
+    the one-sentence "Thorough Summary" the audit found in the DOCX.
+
+    Repairs (ordered; all safe no-ops for already-valid JSON):
+      1. ``\\'`` → ``'``          — invalid escape (the rig failure)
+      2. smart quotes → ``"``     — models emit “ ” as string delimiters
+      3. trailing commas          — ``,}`` / `,]`` before a closer
+    """
+    out = text.replace("\\'", "'")
+    out = out.replace("\u201c", '"').replace("\u201d", '"')
+    out = re.sub(r",\s*([}\]])", r"\1", out)
+    return out
+
+
+def _salvage_json_claims(text: str) -> list[str]:
+    """V0.11: leniently extract claim strings from a (possibly malformed)
+    JSON claims blob — used when even ``_repair_llm_json`` cannot make the
+    text parse (e.g. truncated mid-string at the output cap).
+
+    Handles both value shapes:
+      * quoted:     ``"claim": "The chapter addresses..."``
+      * unquoted:   ``"claim": The chapter addresses...`` (the shape the
+        V0.10 rig's post-check quote-verification produced by stripping the
+        quotes around every non-verbatim claim value)
+    """
+    claims = re.findall(r'"claim"\s*:\s*"([^"]{10,})"', text)
+    if not claims:
+        claims = re.findall(
+            r'"claim"\s*:\s*([^"\n]{10,}?)(?=\s*,\s*"(?:supporting_text'
+            r'|source_reference|claim)"|\s*[}\]])',
+            text,
+        )
+    return [c.strip().rstrip(",") for c in claims if c.strip()]
+
+
+def _extract_json_result(data: dict) -> dict[str, Any] | None:
+    """V0.11: extract the summary fields from a PARSED JSON object.
+
+    Moved verbatim from ``parse_response``'s inline extraction so the strict
+    and the repaired-JSON paths share ONE implementation. Returns ``None``
+    when every core field is empty (the caller falls through to the
+    universal parser).
+
+    V0.11 claims-mirror rule: a model that returns a LARGE claim list under
+    ``executive_summary`` (the rig: 46 claims ≈ 3,400 words against a
+    400-word exec cap) is really returning key takeaways — F1 would truncate
+    the exec and silently lose ~88% of them. When the claim list is large
+    (≥ 12) and no ``bullet_points`` field exists, the claims are mirrored
+    into ``bullet_points`` (each claim is a takeaway) and the exec is left
+    EMPTY so the pipeline's exec-from-thorough derivation produces a real
+    prose executive summary instead of a truncated claim dump.
+    """
+    for key in ["executive_summary", "bullet_points", "thorough_summary"]:
+        if key not in data:
+            data[key] = []
+
+    def _extract_claims(items):
+        result = []
+        for item in items:
+            if isinstance(item, dict):
+                claim = item.get("claim", "") or item.get("text", "") or item.get("bullet", "")
+                if claim:
+                    result.append(str(claim))
+            elif isinstance(item, str):
+                if item.strip():
+                    result.append(item.strip())
+        return result
+
+    exec_items = data.get("executive_summary", [])
+    bullet_items = data.get("bullet_points", [])
+    thorough_items = data.get("thorough_summary", [])
+    if isinstance(exec_items, list):
+        _exec_claims = _extract_claims(exec_items)
+        exec_summary = "\n".join(_exec_claims)
+    else:
+        _exec_claims = []
+        exec_summary = str(exec_items)
+    bullet_points = _extract_claims(bullet_items) if isinstance(bullet_items, list) else []
+    thorough = "\n".join(_extract_claims(thorough_items)) if isinstance(thorough_items, list) else str(thorough_items)
+
+    # V0.11 claims-mirror (see docstring). Threshold 12: pinned tests and
+    # genuine academic-mode responses carry 1-3 claims; the rig failure
+    # carried 46. A 12-claim "executive summary" is a takeaway list.
+    if _exec_claims and not bullet_points and len(_exec_claims) >= 12:
+        bullet_points = list(_exec_claims)
+        exec_summary = ""
+        logger.warning(
+            "parse_response: %d executive_summary claims mirrored to "
+            "bullet_points (a claim list this large is a takeaway list, not "
+            "an exec); exec left empty for the exec-from-thorough derivation",
+            len(_exec_claims),
+        )
+
+    # V13.38.0: Extract new additive sections (key_distinctions, theoretical_tensions)
+    key_distinctions = ""
+    tensions = ""
+    kd_items = data.get("key_distinctions", [])
+    tt_items = data.get("theoretical_tensions", [])
+    if isinstance(kd_items, list):
+        key_distinctions = "\n".join(_extract_claims(kd_items))
+    elif isinstance(kd_items, str):
+        key_distinctions = kd_items
+    if isinstance(tt_items, list):
+        tensions = "\n".join(_extract_claims(tt_items))
+    elif isinstance(tt_items, str):
+        tensions = tt_items
+
+    if exec_summary.strip() or bullet_points or thorough.strip():
+        # Strip all artifacts from extracted content
+        exec_summary = strip_thinking(exec_summary)
+        exec_summary = strip_markup_tags(exec_summary)
+        exec_summary = strip_reasoning_leaks(exec_summary)
+        bullet_points = [strip_thinking(bp) for bp in bullet_points]
+        bullet_points = [strip_markup_tags(bp) for bp in bullet_points]
+        bullet_points = [strip_reasoning_leaks(bp) for bp in bullet_points]
+        bullet_points = [bp for bp in bullet_points if bp and len(bp) > 3]
+        thorough = strip_thinking(thorough)
+        thorough = strip_markup_tags(thorough)
+        thorough = strip_reasoning_leaks(thorough)
+        thorough = strip_narrative_from_thorough(thorough)
+        key_distinctions = strip_thinking(key_distinctions)
+        key_distinctions = strip_markup_tags(key_distinctions)
+        key_distinctions = strip_reasoning_leaks(key_distinctions)
+        tensions = strip_thinking(tensions)
+        tensions = strip_markup_tags(tensions)
+        tensions = strip_reasoning_leaks(tensions)
+        return {
+            "executive_summary": exec_summary,
+            "bullet_points": bullet_points,
+            "thorough_summary": thorough,
+            "key_distinctions": key_distinctions,
+            "theoretical_tensions": tensions,
+        }
+    return None
+
+
 # ── Bullet extraction helpers ─────────────────────────────────────────────
 
 def extract_bullets_from_text(text: str) -> list[str]:
@@ -270,78 +418,57 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
             # Fallback: try the greedy match
             json_match = re.search(r'(\{.*\})', json_text, re.DOTALL)
         if json_match:
+            _json_fields: dict[str, Any] | None = None
+            _json_parsed = False
             try:
                 data = json.loads(json_match.group(1))
-                for key in ["executive_summary", "bullet_points", "thorough_summary"]:
-                    if key not in data:
-                        data[key] = []
-
-                def _extract_claims(items):
-                    result = []
-                    for item in items:
-                        if isinstance(item, dict):
-                            claim = item.get("claim", "") or item.get("text", "") or item.get("bullet", "")
-                            if claim:
-                                result.append(str(claim))
-                        elif isinstance(item, str):
-                            if item.strip():
-                                result.append(item.strip())
-                    return result
-
-                exec_items = data.get("executive_summary", [])
-                bullet_items = data.get("bullet_points", [])
-                thorough_items = data.get("thorough_summary", [])
-                exec_summary = "\n".join(_extract_claims(exec_items)) if isinstance(exec_items, list) else str(exec_items)
-                bullet_points = _extract_claims(bullet_items) if isinstance(bullet_items, list) else []
-                thorough = "\n".join(_extract_claims(thorough_items)) if isinstance(thorough_items, list) else str(thorough_items)
-
-                # V13.38.0: Extract new additive sections (key_distinctions, theoretical_tensions)
-                key_distinctions = ""
-                tensions = ""
-                kd_items = data.get("key_distinctions", [])
-                tt_items = data.get("theoretical_tensions", [])
-                if isinstance(kd_items, list):
-                    key_distinctions = "\n".join(_extract_claims(kd_items))
-                elif isinstance(kd_items, str):
-                    key_distinctions = kd_items
-                if isinstance(tt_items, list):
-                    tensions = "\n".join(_extract_claims(tt_items))
-                elif isinstance(tt_items, str):
-                    tensions = tt_items
-
-                if exec_summary.strip() or bullet_points or thorough.strip():
-                    # Strip all artifacts from extracted content
-                    # V18.20.4.11 (P1 / T-a2): routine trace of the winning
-                    # path — counts only, content never logged above DEBUG.
+                _json_parsed = True
+                _json_fields = _extract_json_result(data)
+            except json.JSONDecodeError as _jde:
+                # V0.11 (real-rig audit, BUG-PRIMARY-FORMAT): strict decode
+                # failed — try ONE repair pass (``\\'`` escapes, smart
+                # quotes, trailing commas) before giving up on the blob.
+                # The V0.10 rig's 25k-char claims JSON failed STRICT parsing
+                # solely because the model escaped single quotes Python-style
+                # inside a quoted source proper noun — every claim was lost
+                # to the leftover-thorough fallback.
+                try:
+                    data = json.loads(_repair_llm_json(json_match.group(1)))
+                except json.JSONDecodeError:
+                    # V18.20.4.11 (P1 / T-a2): was a bare silent ``pass``. The
+                    # JSON → universal transition is a normal salvage (the
+                    # universal parser handles tagged/plain content), so DEBUG
+                    # with the reason + size; content head only at DEBUG, capped.
                     logger.debug(
-                        "parse_response: JSON path OK (%d bullets, exec %d "
-                        "chars, thorough %d chars)",
-                        len(bullet_points), len(exec_summary), len(thorough),
+                        "parse_response: JSON decode failed (%s: %s) → universal "
+                        "parser (%d chars, head=%r)",
+                        type(_jde).__name__, _jde.msg, len(cleaned), cleaned[:80],
                     )
-                    exec_summary = strip_thinking(exec_summary)
-                    exec_summary = strip_markup_tags(exec_summary)
-                    exec_summary = strip_reasoning_leaks(exec_summary)
-                    bullet_points = [strip_thinking(bp) for bp in bullet_points]
-                    bullet_points = [strip_markup_tags(bp) for bp in bullet_points]
-                    bullet_points = [strip_reasoning_leaks(bp) for bp in bullet_points]
-                    bullet_points = [bp for bp in bullet_points if bp and len(bp) > 3]
-                    thorough = strip_thinking(thorough)
-                    thorough = strip_markup_tags(thorough)
-                    thorough = strip_reasoning_leaks(thorough)
-                    thorough = strip_narrative_from_thorough(thorough)
-                    key_distinctions = strip_thinking(key_distinctions)
-                    key_distinctions = strip_markup_tags(key_distinctions)
-                    key_distinctions = strip_reasoning_leaks(key_distinctions)
-                    tensions = strip_thinking(tensions)
-                    tensions = strip_markup_tags(tensions)
-                    tensions = strip_reasoning_leaks(tensions)
-                    return {
-                        "executive_summary": exec_summary,
-                        "bullet_points": bullet_points,
-                        "thorough_summary": thorough,
-                        "key_distinctions": key_distinctions,
-                        "theoretical_tensions": tensions,
-                    }
+                else:
+                    _json_parsed = True
+                    _json_fields = _extract_json_result(data)
+                    if _json_fields is not None:
+                        logger.warning(
+                            "parse_response: strict JSON decode failed (%s: %s) "
+                            "but the V0.11 repair pass recovered it — %d "
+                            "bullets, exec %d chars, thorough %d chars",
+                            type(_jde).__name__, _jde.msg,
+                            len(_json_fields["bullet_points"]),
+                            len(_json_fields["executive_summary"]),
+                            len(_json_fields["thorough_summary"]),
+                        )
+            if _json_fields is not None:
+                # V18.20.4.11 (P1 / T-a2): routine trace of the winning
+                # path — counts only, content never logged above DEBUG.
+                logger.debug(
+                    "parse_response: JSON path OK (%d bullets, exec %d "
+                    "chars, thorough %d chars)",
+                    len(_json_fields["bullet_points"]),
+                    len(_json_fields["executive_summary"]),
+                    len(_json_fields["thorough_summary"]),
+                )
+                return _json_fields
+            if _json_parsed:
                 # V18.20.4.11 (P1 / T-a2): JSON parsed but every core field
                 # empty → the universal parser gets a chance. Routine-ish
                 # (the model emitted JSON-shaped nothing) → DEBUG.
@@ -349,16 +476,6 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
                     "parse_response: JSON parsed but all core fields empty "
                     "→ universal parser (%d chars)",
                     len(cleaned),
-                )
-            except json.JSONDecodeError as _jde:
-                # V18.20.4.11 (P1 / T-a2): was a bare silent ``pass``. The
-                # JSON → universal transition is a normal salvage (the
-                # universal parser handles tagged/plain content), so DEBUG
-                # with the reason + size; content head only at DEBUG, capped.
-                logger.debug(
-                    "parse_response: JSON decode failed (%s: %s) → universal "
-                    "parser (%d chars, head=%r)",
-                    type(_jde).__name__, _jde.msg, len(cleaned), cleaned[:80],
                 )
         else:
             # V18.20.4.11 (P1 / T-a2): looked like JSON but no JSON object
@@ -496,7 +613,34 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
             r'</?(?:summary|chapter_summary|response|output)\s*/?>',
             '', remaining, flags=re.IGNORECASE,
         )
-        thorough = remaining.strip()
+        # V0.11 (real-rig audit, BUG-THOROUGH-LOSS): the leftover fallback
+        # must NEVER bank a raw JSON claims blob as the thorough_summary.
+        # The V0.10 rig shipped a 25k-char JSON blob as the chapter's
+        # "Thorough Summary" (the DOCX render then collapsed it to the single
+        # claim whose quotes survived post-check quote-stripping). A JSON
+        # blob here means the primary response was a FORMAT FAILURE: salvage
+        # its claims into bullets (leniently — the blob may be truncated or
+        # quote-mangled) and leave thorough EMPTY so the pipeline's dedicated
+        # thorough call regenerates real prose.
+        _rem_json = remaining.strip()
+        if (
+            _rem_json.startswith(("{", "["))
+            and ('"claim"' in _rem_json or '"executive_summary"' in _rem_json)
+        ):
+            _salvaged = _salvage_json_claims(_rem_json)
+            if not bullets and len(_salvaged) >= 3:
+                bullets = list(_salvaged)
+                _bp_src = "salvaged JSON claims (V0.11)"
+            logger.warning(
+                "parse_response: leftover fallback is a JSON claims blob "
+                "(%d chars) — NOT banked as thorough_summary (%d claims "
+                "salvaged to bullets); thorough left empty for the "
+                "dedicated thorough call",
+                len(_rem_json), len(_salvaged),
+            )
+            thorough = ""
+        else:
+            thorough = _rem_json
 
     # Step G: Strip all tags from extracted content
     exec_sum = strip_thinking(exec_sum)

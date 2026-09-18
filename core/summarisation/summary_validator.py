@@ -760,6 +760,19 @@ def verify_bullets(
             f"(conservative; see Quarantine Log appendix + drops.jsonl)",
             "WARNING"
         )
+    elif verified == 0:
+        # V0.11 (real-rig audit, BUG-VACUOUS-QA): "all 0 bullets verified ✓"
+        # is a VACUOUS pass. The V0.10 rig logged exactly that while the
+        # primary parse had produced ZERO bullets (the model returned a
+        # claims-JSON the strict parser rejected) — a green checkmark on an
+        # empty set that read as success. A pass on an empty set must be
+        # LOUD, not a ✓.
+        _log(
+            "    ⚠️ Fact-check: VACUOUS PASS — 0 bullets to verify. The "
+            "primary parse produced no bullets (likely a response-format "
+            "failure); check the parse warnings above.",
+            "WARNING"
+        )
     else:
         _log(f"    🔍 Fact-check: all {verified} bullets verified ✓", "DEBUG")
 

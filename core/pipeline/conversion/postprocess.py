@@ -236,12 +236,39 @@ def run_postprocess(
                 "INFO",
             )
             if detection.recommended and detection.content_type != "normal_book":
-                log(
-                    f"  ✅ Auto-switching to '{detection.label()}' preset "
-                    f"(confidence {detection.confidence:.0%})",
-                    "INFO",
-                )
-                request.source_type = detection.content_type
+                # V0.11 (real-rig audit, root-cause F0): the academic_paper
+                # auto-switch has a KNOWN false-positive class — a domain
+                # textbook with a handful of citations (the rig: a
+                # domain-textbook chapter, 4 citations, 75% confidence,
+                # single-column — the layout-reorder guardrail's own comment
+                # documents this exact class). Switching wrongly is EXPENSIVE:
+                # it silently enables Academic Rigor mid-run (overriding the
+                # user's "Academic rigor: False" setting), which changes the
+                # prompt, adds a self-review LLM call, and pushes the model
+                # toward claims-JSON output. The auto-switch INTO
+                # academic_paper therefore requires HIGH confidence (>= 0.85);
+                # other types keep the plain `recommended` bar.
+                _acad_min_conf = 0.85
+                if (
+                    detection.content_type == "academic_paper"
+                    and detection.confidence < _acad_min_conf
+                ):
+                    log(
+                        f"  ℹ️ Detected '{detection.label()}' at only "
+                        f"{detection.confidence:.0%} confidence (< the "
+                        f"{_acad_min_conf:.0%} academic-switch bar) — keeping "
+                        f"normal_book preset. Domain textbooks with citations "
+                        f"are the known false-positive class; a wrong switch "
+                        f"silently enables Academic Rigor mode.",
+                        "INFO",
+                    )
+                else:
+                    log(
+                        f"  ✅ Auto-switching to '{detection.label()}' preset "
+                        f"(confidence {detection.confidence:.0%})",
+                        "INFO",
+                    )
+                    request.source_type = detection.content_type
                 # Log the signal breakdown for transparency
                 for t, s in detection.scores.items():
                     if s > 0:

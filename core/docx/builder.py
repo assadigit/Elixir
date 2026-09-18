@@ -126,17 +126,43 @@ class DocxBuilder:
                 parts.append(thorough_text)
             return "\n\n".join(parts)
 
-        # 3. If no structured tags found, but we still see `<claim>` tags, try to extract them
-        if '<claim>' in text or '"claim"' in text:
+        # 3. If no structured tags found, salvage claims from a JSON payload.
+        # V0.11 (real-rig audit, BUG-THOROUGH-LOSS): the old guard was
+        # ``if '<claim>' in text or '"claim"' in text:`` — a substring test
+        # that HIJACKED any prose merely containing the word "claim" in
+        # quotes, and the JSON-key regex then returned ONLY the still-quoted
+        # claims while silently discarding everything else. On the rig's
+        # post-check-mangled pseudo-JSON thorough exactly ONE claim value
+        # still carried quotes, so the DOCX "Thorough Summary" rendered as
+        # that single sentence while ~1,050 words of content vanished. Now:
+        #   (a) XML <claim> tags still extract unconditionally (they only
+        #       appear in genuinely structured responses);
+        #   (b) the JSON-key salvage fires ONLY when the text IS a JSON
+        #       payload (starts with {) AND the salvage covers >= 50% of the
+        #       input — otherwise the ORIGINAL text ships (complete-but-
+        #       mangled beats lossy-but-pretty) and the drop is logged.
+        if '<claim>' in text:
             # Extract everything between <claim> and </claim>
             claims = re.findall(r'<claim>(.*?)</claim>', text, re.DOTALL)
             if claims:
                 return "\n\n".join(claims)
-            # Or try JSON‑style "claim" keys
+        _t_strip = (text or "").strip()
+        if _t_strip.startswith("{") and '"claim"' in _t_strip:
             try:
                 claims = re.findall(r'"claim"\s*:\s*"([^"]*)"', text)
                 if claims:
-                    return "\n\n".join(claims)
+                    _joined = "\n\n".join(claims)
+                    _input_len = len(re.sub(r"\s+", "", _t_strip))
+                    _salvage_len = len(re.sub(r"\s+", "", _joined))
+                    if _salvage_len * 2 >= _input_len:
+                        return _joined
+                    logger.warning(
+                        "docx _render_structured_summary: claims salvage "
+                        "covers only %d/%d chars of a JSON-payload summary — "
+                        "shipping the full text instead of a lossy extraction "
+                        "(%d claims found)",
+                        _salvage_len, _input_len, len(claims),
+                    )
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
