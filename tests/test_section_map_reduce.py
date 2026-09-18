@@ -143,7 +143,6 @@ def _make_deps(
     dedup_calls = []
     thematic_calls = []
     musthave_calls = []
-    keyquote_calls = []
 
     def summarize_with_model(sec_heading, sec_text, model, temp, with_cot=True, concepts=None, callouts=None, **kw):
         i = idx["i"]
@@ -170,13 +169,11 @@ def _make_deps(
         musthave_calls.append(heading)
         return ["must-have item one", "must-have item two"]
 
-    def extract_key_quotes(text):
-        keyquote_calls.append(text[:40])
-        return []  # disabled in V16.0.2
+    # (V0.08 / P2: the extract_key_quotes stub was removed with the dead
+    # key-quote plumbing — it always returned [] since V16.0.2.)
 
     return {
         "extract_must_have_items": extract_must_have_items,
-        "extract_key_quotes": extract_key_quotes,
         "recover_vram": recover_vram,
         "summarize_with_model": summarize_with_model,
         "consolidate_duplicate_claims": consolidate_duplicate_claims,
@@ -186,7 +183,6 @@ def _make_deps(
         "_dedup_calls": dedup_calls,
         "_thematic_calls": thematic_calls,
         "_musthave_calls": musthave_calls,
-        "_keyquote_calls": keyquote_calls,
     }
 
 
@@ -201,7 +197,6 @@ def _common_kwargs(deps):
         local_vram_recovery_delay=0.0,
         max_bullets_per_chapter=100,
         extract_must_have_items=deps["extract_must_have_items"],
-        extract_key_quotes=deps["extract_key_quotes"],
         recover_vram=deps["recover_vram"],
         summarize_with_model=deps["summarize_with_model"],
         consolidate_duplicate_claims=deps["consolidate_duplicate_claims"],

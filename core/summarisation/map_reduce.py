@@ -314,7 +314,6 @@ def section_map_reduce(
     local_vram_recovery_delay: float,
     max_bullets_per_chapter: int,
     extract_must_have_items: Callable[[str, str], list[str]],
-    extract_key_quotes: Callable[[str], list[str]],
     recover_vram: RecoverVramFn,
     summarize_with_model: SummarizeWithModelFn,
     consolidate_duplicate_claims: Callable[[list[str]], list[str]],
@@ -411,10 +410,9 @@ def section_map_reduce(
         callouts = list(callouts) + [f"MUST COVER: {item}" for item in must_have_items]
         log(f"    \U0001f3af Pre-flight: {len(must_have_items)} must-have items injected into B4 prompts", "INFO")
 
-    # ── V13.44.0 Idea #6: Key Quote Preservation ──
-    key_quotes = extract_key_quotes(text)
-    if key_quotes:
-        log(f"    \U0001f4ac Key quotes: extracted {len(key_quotes)} important quoted passages", "INFO")
+    # (V0.08 / P2: the V13.44.0 "Key Quote Preservation" stage was removed —
+    # extract_key_quotes always returned [] since V16.0.2, so the call and
+    # the injection site below were zero-effect dead plumbing.)
 
     # Summarize each section
     all_bullets = []
@@ -542,9 +540,6 @@ def section_map_reduce(
     # V0.06 (F1-e): "None" placeholders excluded here too.
     merged_distinctions = '\n'.join(d for d in all_distinctions if _real(d))[:3000]
     merged_tensions = '\n'.join(t for t in all_tensions if _real(t))[:3000]
-
-    # V16.0.2: key_quotes is now empty (disabled). No injection needed.
-    # merged_bullets already contains the B4 claims with supporting evidence.
 
     return {
         "executive_summary": merged_exec,

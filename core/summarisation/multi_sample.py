@@ -187,28 +187,9 @@ def multi_sample_summarize(
     # The dedup is now skipped — bullets pass through to the pipeline
     # which handles dedup at the keypoints_builder stage with proper
     # context.
-    _skip_b3_dedup = True  # V13.40.3: was False — dedup killed all bullets
-    if not _skip_b3_dedup:
-        try:
-            from core.summarisation.dedup_service import DedupService
-            _dt = 75  # V10.12.9: was 60 (too weak)
-            try:
-                from core.llm.model_profiles import get_model_profile
-                _profile = get_model_profile(primary_model or "")
-                _dt = max(75, _profile.dedup_threshold)
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-            _svc = DedupService(log_callback=log)
-            voted_bullets, _b3_dropped = _svc.dedup_bullets(
-                voted_bullets,
-                threshold=_dt,
-                stage="B3_dedup",
-                chapter=current_heading,
-                conservative=conservative_drops,
-                quarantine=quarantine,
-            )
-        except Exception as _e:
-            logger.debug("B3 dedup via DedupService failed, falling back to no-dedup: %s: %s", type(_e).__name__, _e)
+    # (V0.08 / P2: the `_skip_b3_dedup = True` flag and its permanently-dead
+    # `if not _skip_b3_dedup:` branch were removed; the behaviour is
+    # unchanged — dedup after B3 voting has been skipped since V13.40.3.)
 
     # Pick best exec_summary + thorough by coverage
     source = text

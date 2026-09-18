@@ -225,12 +225,15 @@ class TestA5QwenNoThinkHelper:
 
     def test_six_direct_sites_wired(self):
         """Source scan: every specified direct-call site routes through the
-        shared helper (bullet_pipeline judge gap-fill, summarizer self-review
-        + coverage reprompt, thorough_fallback attempt 1, map_reduce ×3,
-        self_review batch)."""
+        shared helper (bullet_pipeline judge gap-fill, summarizer self-review,
+        thorough_fallback attempt 1, map_reduce ×3, self_review batch).
+
+        V0.08 (P2): summarizer.py count 2 -> 1 — the removed site was the
+        coverage reprompt inside the V18.6-era ``if False`` dead block (dead
+        code since V18.6, deleted together with the block)."""
         scans = {
             "core/summarisation/bullet_pipeline.py": 1,
-            "core/summarisation/summarizer.py": 2,
+            "core/summarisation/summarizer.py": 1,
             "core/summarisation/thorough_fallback.py": 1,
             "core/summarisation/map_reduce.py": 3,
             "core/summarisation/self_review.py": 1,

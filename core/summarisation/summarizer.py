@@ -1539,10 +1539,11 @@ Chapter content:
 Output ONLY the XML sections specified above. No preamble, no commentary, no thinking process, no markdown code fences.
 """
 
-    def _build_thorough_followup(self, heading: str, text: str, exec_sum: str) -> str:
-        """V18.6 (Phase 4, Task 4.2): delegates to prompt_assembly.build_thorough_followup."""
-        from core.summarisation.prompt_assembly import build_thorough_followup as _pa_followup
-        return _pa_followup(heading, text, exec_sum, self.language)
+    # V0.08 (P2 dead-code removal): the _build_thorough_followup delegate
+    # (zero callers since the thorough followup call was replaced by the
+    # dedicated thorough expansion) was deleted. The underlying
+    # prompt_assembly.build_thorough_followup stays — it is a pinned live
+    # export with its own characterization tests.
 
     def _build_dedicated_thorough_prompt(self, heading: str, text: str, exec_sum: str, bullets: list[str], draft: str | None = None) -> str:
         """V18.2.34: Dedicated thorough-summary prompt.
@@ -1624,18 +1625,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         )
         return _pa_ded_bullet(heading, text, exec_sum, existing_bullets, self.language)
 
-    def _build_missing_keywords_reprompt(self, heading: str, text: str, missing: list[str]) -> str:
-        """P4 fix: augmentation, not replacement. Ask for NEW bullets about
-        the missing concepts, not a whole new summary.
-
-        V18.6 (Phase 4, Task 4.2): delegates to
-        ``prompt_assembly.build_missing_keywords_reprompt``. Byte-for-byte
-        identical output (characterization tests in ``test_prompt_assembly.py``).
-        """
-        from core.summarisation.prompt_assembly import (
-            build_missing_keywords_reprompt as _pa_missing,
-        )
-        return _pa_missing(heading, text, missing, self.language)
+    # V0.08 (P2 dead-code removal): the _build_missing_keywords_reprompt
+    # delegate was deleted — its only call site was the V18.6-era `if False`
+    # academic-rigor gap-fill block removed above. The underlying
+    # prompt_assembly.build_missing_keywords_reprompt stays (pinned live
+    # export with characterization tests in test_prompt_assembly.py).
 
     def _build_exec_from_thorough_prompt(self, heading: str, thorough_summary: str) -> str:
         """V18.15.8.0 (Fix 1): Build the exec-from-thorough followup prompt.
@@ -3038,13 +3032,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             self.log(f"    ⚠️ Pre-flight failed: {e}", "WARNING")
             return []
 
-    def _extract_key_quotes(self, text: str) -> list[str]:
-        """V16.0.2: DISABLED — verbatim quote extraction caused truncated/incomplete
-        quotes with no attribution. The B4 summarization already captures key claims
-        with supporting evidence — verbatim quote extraction is unnecessary.
-        """
-        return []
-
+    # V0.08 (P2 dead-code removal): the _extract_key_quotes method (always
+    # returned [] since V16.0.2) and its zero-effect plumbing through
+    # map_reduce.section_map_reduce were deleted.
 
     def _normalize_bullets(self, bullets: list[str]) -> list[str]:
         """V16.0.2: Universal bullet normalization pass. Strips inconsistent prefixes.
@@ -3298,7 +3288,6 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             local_vram_recovery_delay=self.local_vram_recovery_delay,
             max_bullets_per_chapter=self.max_bullets_per_chapter,
             extract_must_have_items=self._extract_must_have_items,
-            extract_key_quotes=self._extract_key_quotes,
             recover_vram=self._recover_vram,
             summarize_with_model=self._summarize_with_model,
             consolidate_duplicate_claims=self._consolidate_duplicate_claims,
@@ -3747,45 +3736,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     heading, text, content, result, coverage,
                 )
 
-            # ── Old academic-rigor gap-fill (now superseded by 3-Tier above) ──
-            if False and self.academic_rigor and coverage < self.coverage_threshold:
-                # 'combined' was not defined here — it was set
-                # inside the B3 voting block above but only if voting ran.
-                # Rebuild it from the current result.
-                _bps_for_combined = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
-                combined = f"{result.get('executive_summary', '')} {' '.join(_bps_for_combined)} {result.get('thorough_summary', '')}"
-                missing = [k for k in self._extract_keywords(content, n=18) if k not in combined.lower()]
-                if missing:
-                    self.log(f"    🔁 Coverage {coverage:.0%} still below threshold – reprompting with missing keywords: {missing[:5]}{'…' if len(missing)>5 else ''}", "WARNING")
-                    reprompt = self._build_missing_keywords_reprompt(heading, text, missing[:8])
-                    # V18.20.2.0 (SWOT A5): direct _call_llm site — inject
-                    # /no_think for Qwen-family models. (Note: this site sits
-                    # inside the V18.6-era `if False` dead block — the
-                    # injection future-proofs re-enablement.)
-                    raw_reprompt = self._call_llm(
-                        qwen_no_think(reprompt, self.primary_model),
-                        model=self.primary_model, temperature=self.temperature * 0.7,
-                    )
-                    if raw_reprompt:
-                        parsed_reprompt = self._parse_response(raw_reprompt)
-                        _rbps = [str(b) if not isinstance(b, str) else b for b in parsed_reprompt.get('bullet_points', []) if b]
-                        rep_combined = f"{parsed_reprompt.get('executive_summary', '')} {' '.join(_rbps)} {parsed_reprompt.get('thorough_summary', '')}"
-                        rep_coverage = self._compute_coverage(content, rep_combined)
-                        # C6 fix: NEVER replace the original summary. Always merge
-                        # bullets from the reprompt into the existing result.
-                        # Keep the longer exec/thorough summary.
-                        for bp in parsed_reprompt.get("bullet_points", []):
-                            bp_str = str(bp) if not isinstance(bp, str) else bp
-                            if bp_str and bp_str not in result.get("bullet_points", []):
-                                result["bullet_points"].append(bp_str)
-                        if len(parsed_reprompt.get("executive_summary", "")) > len(result.get("executive_summary", "")):
-                            result["executive_summary"] = parsed_reprompt["executive_summary"]
-                        if len(parsed_reprompt.get("thorough_summary", "")) > len(result.get("thorough_summary", "")):
-                            result["thorough_summary"] = parsed_reprompt["thorough_summary"]
-                        result["bullet_points"] = result["bullet_points"][:self.max_bullets_per_chapter]
-                        result["model"] = "primary+reprompt"
-                        _new_bullets = len(result.get("bullet_points", []))
-                        self.log(f"    ✅ Merged reprompt bullets (coverage {rep_coverage:.0%}, was {coverage:.0%}) | total bullets now: {_new_bullets}", "INFO")
+            # ── Old academic-rigor gap-fill: removed in V0.08 (P2) — it was an
+            # `if False` dead block since V18.6, superseded by the 3-Tier
+            # coverage guarantee above. ──
 
             # ── Post-filter: remove thinking-process bullets + quality scoring ─
             # Pass concepts + source_text for quality scoring
