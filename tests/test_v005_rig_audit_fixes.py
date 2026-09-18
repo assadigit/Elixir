@@ -286,8 +286,8 @@ class TestLengthPolicy:
             t = _src(f"prompts/{name}.md")
             assert "{{thorough_words}}" in t, f"{name}.md must scale the thorough target"
             assert "800-1200" not in t, f"{name}.md still carries the absolute demand"
-        assert "{{thorough_words}}" in _src(
-            "prompts/summarisation/two_pass_synthesize.md")
+        # (V0.08 / P2: the two_pass_synthesize.md pin was removed with the
+        # dead two-pass template — the two-pass pipeline no longer exists.)
 
     def test_render_substitutes_scaled_targets(self, tmp_path, monkeypatch):
         """PromptManager.render computes the scaled numbers from the chapter
