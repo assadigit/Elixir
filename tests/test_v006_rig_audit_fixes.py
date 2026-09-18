@@ -374,15 +374,20 @@ class TestF3NoDoubleListing:
 
 class TestF4BulletCap:
     def test_bullet_cap_matches_rig_chapter_targets(self):
-        """The rig's five chapters (344/358/439/445/412 words) logged
-        targets 5-7/5-7/6-9/6-9/5-8 — the cap is the SAME hi."""
+        """The rig's five chapters (344/358/439/445/412 words).
+
+        V0.07 (output-regression fix): the takeaway density moved 50 -> 25
+        words/bullet (restoring V18's 30-40 bullets for normal chapters),
+        so the rig chapters' caps are now 14/14/18/18/16 — still far below
+        the 29-36 the rig actually shipped (one bullet per ~12 words).
+        """
         from core.summarisation.length_policy import bullet_cap
 
-        assert bullet_cap(344) == 7
-        assert bullet_cap(358) == 7
-        assert bullet_cap(439) == 9
-        assert bullet_cap(445) == 9
-        assert bullet_cap(412) == 8
+        assert bullet_cap(344) == 14
+        assert bullet_cap(358) == 14
+        assert bullet_cap(439) == 18
+        assert bullet_cap(445) == 18
+        assert bullet_cap(412) == 16
 
     def test_ship_time_budget_enforced_source_pin(self):
         s = _strip_comments(_src("core/summarisation/summarizer.py"))

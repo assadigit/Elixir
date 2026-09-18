@@ -400,6 +400,27 @@ def filter_toc_entries_for_selection(
         e for e in toc_entries
         if _normalize(_entry_heading(e)) in _matched_headings
     ]
+    # V0.07 (output-regression fix): a 1-entry TOC is worse than no filter.
+    # ALL THREE TOC segmentation strategies require len(toc_entries) >= 2
+    # (segmenter.py step-0 chapter-level / located-TOC / TOC-driven) — a
+    # single surviving entry silently disables every TOC strategy and
+    # cascades to heading-based segmentation, where a PDF-glued
+    # "Chapter N <Title> <first paragraph…>" line becomes the chapter
+    # headline (the user-reported paragraph-as-headline regression).
+    # With < 2 survivors, return the FULL TOC: the V0.03 selection-scoped
+    # short-segment-merge skip + the post-segmentation selection filter
+    # remain the safety nets, and the TOC paths can still title segments
+    # properly. The V0.02 false-success fix still applies whenever the
+    # selection matches >= 2 entries (the 97-Things phantom-segment case).
+    if len(filtered) < 2:
+        _warn(
+            f"  [Selection] Only {len(filtered)} TOC entr"
+            f"{'y' if len(filtered) == 1 else 'ies'} matched the selected "
+            f"chapters — a 1-entry TOC would disable TOC segmentation "
+            f"(falls to heading-based). Segmenting the full TOC; the "
+            f"post-segmentation filter stays active."
+        )
+        return toc_entries, 0
     dropped = len(toc_entries) - len(filtered)
     _dbg(
         f"  [Selection] TOC restricted to selection: kept {len(filtered)} "

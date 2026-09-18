@@ -217,11 +217,27 @@ class TestLengthPolicy:
         assert lo == 720
 
     def test_bullet_target_scales(self):
+        """V0.07 (output-regression fix): one takeaway per ~25 words.
+
+        At the V0.05 constant (50) a 1000-word chapter was capped at 20
+        bullets where V18 delivered 30-40 (the user-reported bullet
+        collapse). At 25: 340 words -> 9-14 (still bounded — no restating);
+        1000 words -> 27-40 (V18 parity).
+        """
         from core.summarisation.length_policy import bullet_target
 
-        assert bullet_target(340)[1] <= 8, "a 340-word chapter targets ~5-7 bullets"
+        blo, bhi = bullet_target(340)
+        assert 9 <= blo <= bhi <= 14, (
+            f"a 340-word chapter targets 9-14 bullets, got {blo}-{bhi}"
+        )
         assert bullet_target(3000)[0] >= 20
         assert bullet_target(20000)[1] == 40
+        # V0.07 regression pin: a normal chapter must reach V18's 30-40
+        lo_1k, hi_1k = bullet_target(1000)
+        assert hi_1k == 40 and lo_1k >= 27, (
+            f"a 1000-word chapter must target 27-40 bullets (V18 parity), "
+            f"got {lo_1k}-{hi_1k}"
+        )
 
     def test_exec_target_scales(self):
         from core.summarisation.length_policy import executive_target
@@ -323,11 +339,14 @@ class TestLengthPolicy:
         )
 
     def test_thorough_expansion_threshold_is_source_scaled(self):
-        """Source pin: _new_threshold comes from thorough_target, not 800."""
+        """Source pin (V0.07 output-regression fix): regime-split — normal
+        chapters (scaled thorough hi >= 800) expand below 800 words (V18's
+        contract); small sources keep the source-scaled lo (the 97-Things
+        anti-padding rule), never a flat 800 for everything."""
         src = _strip_comments(_src("core/summarisation/summarizer.py"))
-        assert "_new_threshold = _th_lo_lp" in src
-        assert "_new_threshold = 800" not in src, (
-            "no absolute 800-word expansion floor may remain"
+        assert "(800 if _th_hi_lp >= 800 else _th_lo_lp)" in src, (
+            "the expansion threshold must be regime-split (V18: 800 for "
+            "normal chapters, source-scaled for small ones)"
         )
 
     def test_bullet_expansion_threshold_is_source_scaled(self):

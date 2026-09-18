@@ -944,9 +944,11 @@ class Segmenter:
             return segments
         toc_by_num: dict = {}
         toc_unnumbered: list = []
+        toc_heading_norms: set = set()
         for e in self.toc_entries:
             h = e.title
             p = e.page if e.page is not None else 0
+            toc_heading_norms.add(re.sub(r"\s+", " ", h).strip().lower())
             n = self._extract_chapter_number(h)
             if n != float("inf"):
                 toc_by_num[n] = h
@@ -954,18 +956,32 @@ class Segmenter:
                 toc_unnumbered.append((h, p))
         updated = 0
         for seg in segments:
+            # V0.07 (output-regression fix): a segment already carrying an
+            # EXACT TOC title is correctly titled — skip it. The page-
+            # proximity repair used to re-title such segments with a
+            # NEIGHBORING entry (±3-page tolerance): a chapter at p28 was
+            # re-titled to the front-matter entry at p25, shifting every
+            # subsequent title (latent bug, exposed once a full TOC reaches
+            # the TOC-driven path again).
+            if re.sub(r"\s+", " ", seg.heading).strip().lower() in toc_heading_norms:
+                continue
             n = self._extract_chapter_number(seg.heading)
             if n != float("inf") and n in toc_by_num:
                 if toc_by_num[n] != seg.heading:
                     self.log(f"  [TOC] '{seg.heading}' → '{toc_by_num[n][:50]}'", "INFO")
                     seg.heading = toc_by_num[n]; updated += 1
             else:
+                # V0.07: page-proximity repair — pick the NEAREST entry, not
+                # the FIRST within ±3 pages (first-match stole neighbor titles).
+                _best = None
                 for th, tp in toc_unnumbered:
-                    if tp > 0 and abs(seg.start_page - tp) <= 3:
-                        if th != seg.heading:
-                            self.log(f"  [TOC] (page) '{seg.heading}' → '{th[:50]}'", "INFO")
-                            seg.heading = th; updated += 1
-                        break
+                    if tp > 0:
+                        _d = abs(seg.start_page - tp)
+                        if _d <= 3 and (_best is None or _d < _best[0]):
+                            _best = (_d, th)
+                if _best is not None and _best[1] != seg.heading:
+                    self.log(f"  [TOC] (page) '{seg.heading}' → '{_best[1][:50]}'", "INFO")
+                    seg.heading = _best[1]; updated += 1
         if updated:
             self.log(f"  [TOC] Applied {updated} heading update(s) from TOC.", "INFO")
         return segments

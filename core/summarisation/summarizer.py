@@ -3890,7 +3890,12 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         _inc_exec_lp = bool(getattr(self.request, "include_executive_summary", True))
         _inc_kp_lp = bool(getattr(self.request, "include_keypoints", True))
         _thorough_words = len(thorough.split()) if thorough else 0
-        _new_threshold = _th_lo_lp if _inc_thorough_lp else 0
+        # V0.07 (output-regression fix): normal chapters (scaled thorough
+        # hi >= 800 — the V18 regime) expand below 800 words, restoring
+        # MarkItDown V18's expansion contract; small sources (the 97-Things
+        # rig regime, hi < 800) keep the source-scaled lo so tiny chapters
+        # are never force-expanded to 800+ words.
+        _new_threshold = (800 if _th_hi_lp >= 800 else _th_lo_lp) if _inc_thorough_lp else 0
         # V18.20.3.2 (P0-1b): snapshot the synthetic-fallback counter BEFORE
         # the dedicated call — if it increments, the returned thorough is the
         # deterministic exec+bullets synthesis built from the EARLY bullet

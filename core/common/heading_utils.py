@@ -152,8 +152,10 @@ def is_likely_heading(line: str) -> bool:
     # 2. All caps (e.g., "REFERENCES")
     if stripped.isupper():
         return True
-    # 3. Contains chapter/part keywords
-    if any(k in stripped for k in ["Chapter", "Part", "Section", "CHAPTER", "PART", "SECTION"]):
+    # 3. STARTS WITH chapter/part keywords (V0.07: start-anchored — the old
+    #    substring test let body sentences like "In this Chapter we examine…"
+    #    qualify as heading candidates for fuzzy TOC matching)
+    if re.match(r"^(?:#+\s*)?(?:Chapter|Part|Section|CHAPTER|PART|SECTION)\b", stripped):
         return True
     # 4. Title‑case, short, no ending punctuation
     if (len(stripped) <= 80 and

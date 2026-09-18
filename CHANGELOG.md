@@ -1,5 +1,53 @@
 # Changelog
 
+## V0.07 — The output-richness restoration: V18's density back, without V18's padding
+
+> **The change (user-reported regressions, MarkItDown V18 → Elixir V0.06):**
+> (1) the same chapter that generated 30-40+ bullet points in V18 produced
+> ~3 in V0.06; (2) the thorough summary became short where V18's was dense;
+> (3) a paragraph of body text ("Chapter 1 …" + first sentence) became the
+> chapter headline. Root cause analysis (P1.5-a, git-diffed against
+> MarkItDown Pro V18.20.4.10 = commit 76d438c): the V0.05 length policy
+> over-corrected for the 97-Things rig's tiny (321-441-word) chapters, and
+> V0.02's selection TOC filter could silently disable every TOC
+> segmentation strategy. All three were one syndrome: mis-segmentation →
+> tiny "chapters" → scaled-down targets → 3 bullets + 80-word thorough +
+> paragraph headlines. The fixes restore V18's richness contract for NORMAL
+> chapters (≥ 800 words) while keeping every legitimate small-source
+> protection.
+
+**Fixes (all GENERAL, book-agnostic):**
+1. **Bullet density restored (W/25, was W/50).** A 1000-word chapter
+   targets 27-40 bullets again (V18 parity) with a 40-bullet ship cap;
+   tiny rig chapters still scale down (344 words → 14). The prompt's
+   LENGTH BUDGET block now quotes the actual constant.
+2. **Thorough summary: two regimes.** Sources ≥ 800 words get V18's
+   800-word floor (growing to the 1200 ceiling); smaller sources keep the
+   45%-of-source anti-padding rule. F1 truncation caps return to the
+   historical 1500/400 pass-lines for normal chapters (V0.05 cut a
+   well-written 800-word thorough to 563). The dedicated thorough
+   expansion fires below 800 words again for normal chapters.
+3. **Segmentation guards (paragraph-as-headline).** A selection matching
+   < 2 TOC entries returns the FULL TOC (a 1-entry TOC silently disabled
+   all three TOC strategies → heading-based fallback → PDF-glued
+   "Chapter N <Title> <paragraph>" lines became headlines). Lines > 120
+   chars are never chapter boundaries; normalized headings cap at the
+   first sentence / 80 chars; the chapter-keyword heading heuristic is
+   start-anchored.
+4. **Latent TOC re-titling bug fixed (exposed by #3).** `_apply_toc_headings`
+   re-titled segments that ALREADY carried an exact TOC title with a
+   NEIGHBORING entry (±3-page first-match tolerance) — a full TOC through
+   the TOC-driven path shifted every title. Exact-TOC-titled segments are
+   now skipped; the page-proximity repair picks the NEAREST entry.
+5. **Test-infra hardening (P0):** tracing state-leak fix, PySide6 6.11.2
+   reconnect semantics, MagicMock junk-file fix, mypy python_version
+   3.10→3.12, and the xdist split-brain root cause (conftest pins
+   `utils.token_counter`; test files can no longer displace imported
+   modules in sys.modules). Baseline: 3543 passed / 0 failed, no
+   deselects.
+
+# Changelog
+
 ## V0.06 — Deliverables that honor the contract, the budget, and the reader
 
 > **The change (second rig audit):** the V0.05 rig run (97-Things,

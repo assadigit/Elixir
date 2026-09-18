@@ -16,15 +16,22 @@ must pad, elaborate, and invent plausible-sounding context to satisfy the
 absolute number (hallucination-by-instruction — the rig's thorough sections
 contain invented examples the source never states).
 
-Every length target in this app therefore SCALES to the source:
+Every length target in this app therefore SCALES to the source — but the
+V0.07 output-regression fix restores V18's richness contract for NORMAL
+chapters (the V0.05 scaling over-corrected: a 1000-word chapter was told to
+write a 270-450-word thorough and 13-20 bullets where MarkItDown V18
+delivered 800-1200 words and 30-40 bullets — the user-reported "thin
+summary / 3 bullets" regressions):
 
-  * thorough summary: at most ~45% of the source (never more than the
-    source, never more than the historical 1200-word ceiling, at least ~120
-    words when the source itself is that small);
+  * thorough summary: for sources < 800 words, at most ~45% of the source
+    (the 97-Things anti-padding fix); for sources >= 800 words, at least
+    V18's 800-word contract (growing with 0.45x the source, never above the
+    historical 1200-word ceiling);
   * executive summary: at most ~20% of the source (floored at ~60 words,
     ceiling stays 250);
-  * bullet points: one distinct takeaway per ~50 source words (4-40, the
-    historical range).
+  * bullet points: one distinct takeaway per ~25 source words (4-40, the
+    historical range) — ~25 restores V18's 27-40 target for 1000+-word
+    chapters while tiny sources still scale down.
 
 Scaling is a PURE function of the source word count — same rule for a
 1-page essay and a 40-page chapter. Nothing here knows about any book.
@@ -55,6 +62,11 @@ EXEC_SOURCE_FRACTION = 0.20
 # 40-page chapter's thorough summary stays the documented 1200-word deliverable.
 THOROUGH_ABS_MAX = 1200
 EXEC_ABS_MAX = 250
+# V0.07 (output-regression fix): V18's thorough contract — a chapter of at
+# least this many words is asked for at least 800 words of thorough summary
+# (MarkItDown V18 demanded "800-1200" unconditionally; sources below this
+# keep the V0.05 45%-of-source anti-padding rule instead).
+THOROUGH_V18_FLOOR = 800
 # Small-source floors: for a source smaller than this, the target scales
 # down with the source (never instructing MORE than the source itself).
 THOROUGH_SMALL_SOURCE = 120
@@ -64,7 +76,11 @@ THOROUGH_LO_FRACTION = 0.6
 EXEC_LO_FRACTION = 0.6
 # Bullets: one takeaway per this many source words, clamped to the historic
 # 4..40 window (the old prompt demanded "20-40" unconditionally).
-BULLET_WORDS_PER_TAKEAWAY = 50
+# V0.07 (output-regression fix): 50 -> 25. At 50, a 1000-word chapter was
+# told "13-20 bullets" (ship cap 20) where V18 delivered 30-40 — the
+# user-reported bullet collapse. At 25: W=1000 -> (27, 40), W>=1250 -> 40;
+# tiny rig chapters (344-445 words) still scale down to 14-18.
+BULLET_WORDS_PER_TAKEAWAY = 25
 BULLET_ABS_MIN = 4
 BULLET_ABS_MAX = 40
 BULLET_LO_FRACTION = 0.67
@@ -88,14 +104,26 @@ def count_source_words(text: str | None) -> int:
 def thorough_target(source_words: int) -> tuple[int, int]:
     """(lo, hi) word target for the thorough summary, scaled to the source.
 
-    hi = min(THOROUGH_ABS_MAX, max(round(0.45 * W), min(120, W)))
-       — never above 1200, never above the source (both branches are ≤ W),
-         at least ~120 for anything but tiny sources.
+    V0.07 (output-regression fix) — two regimes:
+
+    * W >= THOROUGH_V18_FLOOR (800): V18's contract — at least 800 words,
+      growing with 0.45 x W, capped at 1200. (V18 demanded "800-1200"
+      unconditionally; a normal chapter must not be told to write 270-450
+      words.) Never exceeds W: the floor only applies once W >= 800.
+    * W < 800: the V0.05 anti-padding regime — at most ~45% of the source
+      (the 97-Things rig fix: a 321-441-word chapter must not be told to
+      write 800-1200 words = 2.7x its source), at least ~120 for anything
+      but tiny sources, never above the source itself.
+
     lo = max(80, round(hi * 0.6)).
     """
     w = max(0, int(source_words))
-    hi = min(THOROUGH_ABS_MAX, max(round(THOROUGH_SOURCE_FRACTION * w),
-                                   min(THOROUGH_SMALL_SOURCE, w)))
+    if w >= THOROUGH_V18_FLOOR:
+        hi = min(THOROUGH_ABS_MAX,
+                 max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR))
+    else:
+        hi = min(w, max(round(THOROUGH_SOURCE_FRACTION * w),
+                        min(THOROUGH_SMALL_SOURCE, w)))
     lo = max(80, round(hi * THOROUGH_LO_FRACTION))
     if lo > hi:
         lo = hi
@@ -187,7 +215,8 @@ def length_budget_block(
         blo, bhi = bullet_target(source_words)
         lines.append(
             f"- bullet_points: {blo}-{bhi} bullets (one distinct takeaway per"
-            " ~50 source words — do NOT fragment or pad to inflate the count)."
+            f" ~{BULLET_WORDS_PER_TAKEAWAY} source words — do NOT fragment or"
+            " pad to inflate the count)."
         )
     if include_thorough:
         tlo, thi = thorough_target(source_words)

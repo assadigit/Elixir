@@ -268,10 +268,28 @@ class HeadingSegmenter:
         text = raw_line.strip().lstrip("#").strip()
         text = re.sub(r"\t+", " ", text)
         text = re.sub(r" {2,}", " ", text)
+        # V0.07 (output-regression fix): cap pathological headings. PDF
+        # extraction frequently glues the chapter TITLE onto the first
+        # sentence of the body text ("Chapter N <Title> <first body
+        # sentence continues here…>"). Cut at the first sentence boundary,
+        # then hard-cap at 80 chars on a word boundary — a headline must
+        # never be a paragraph.
+        if len(text) > 80:
+            _m = re.search(r"[.!?]", text)
+            if _m and _m.start() <= 80:
+                text = text[: _m.start()].strip()
+            else:
+                _cut = text[:80].rsplit(" ", 1)[0]
+                text = _cut.strip()
         return text
 
     def _is_chapter_boundary(self, line: str) -> bool:
         normalised = re.sub(r"\t+", " ", line)
+        # V0.07 (output-regression fix): a line this long is a glued
+        # title+body paragraph, not a heading. Accepting it made the whole
+        # paragraph the chapter headline (user-reported regression).
+        if len(normalised.strip()) > 120:
+            return False
         return self._is_explicit_chapter(normalised) or self._is_h1_chapter(normalised)
 
     def segment(

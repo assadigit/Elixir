@@ -356,11 +356,25 @@ class BulletPipeline:
             _src_words = len((state.content or "").split())
             _elo, _ehi = executive_target(_src_words)
             _tlo, _thi = thorough_target(_src_words)
-            # Truncation backstop: 1.25x the scaled target, capped at the
-            # historical absolute ceilings (a 3000-word chapter keeps the
-            # 400/1500 caps; a 340-word chapter's thorough caps at ~190).
-            _exec_cap = min(400, int(_ehi * 1.25) + 1)
-            _thorough_cap = min(1500, int(_thi * 1.25) + 1)
+            # Truncation backstop. V0.07 (output-regression fix): two
+            # regimes, matching length_policy.thorough_target:
+            #   * normal chapters (scaled target in the V18 regime — thorough
+            #     hi >= 800 / exec hi >= 200): keep the HISTORICAL V18 F1
+            #     pass-lines (1500 thorough / 400 exec). V0.05's 1.25x-scaled
+            #     caps cut a well-written 800-word thorough to 563 and a
+            #     350-word exec to 313 on a 1000-word chapter — part of the
+            #     user-reported "thin summary" regression.
+            #   * small sources (the 97-Things rig regime): stay strictly
+            #     source-scaled (1.25x the scaled target) so a 441-word
+            #     chapter can never ship a 940-word thorough again.
+            if _thi >= 800:
+                _thorough_cap = 1500
+            else:
+                _thorough_cap = min(1500, int(_thi * 1.25) + 1)
+            if _ehi >= 200:
+                _exec_cap = 400
+            else:
+                _exec_cap = min(400, int(_ehi * 1.25) + 1)
             exec_valid, exec_wc, _ = validate_summary_length(
                 state.exec_sum, min_words=40, max_words=_exec_cap, section="exec_summary"
             )

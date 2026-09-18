@@ -168,10 +168,24 @@ class TestFilterTocEntriesForSelection:
         assert all(isinstance(e, TOCEntry) for e in kept)
 
     def test_tuple_entries_supported(self):
+        """Tuple entries filter by heading text like TOCEntry objects.
+
+        V0.07 (output-regression fix): a selection matching exactly ONE
+        entry now returns the FULL TOC (a 1-entry TOC disables every TOC
+        segmentation strategy — the paragraph-as-headline cascade). The
+        tuple-filtering path itself is exercised with a 2-match selection.
+        """
         entries = [("Alpha Chapter", 10), ("Beta Chapter", 20), ("Gamma", 30)]
-        kept, dropped = filter_toc_entries_for_selection(entries, ["Beta Chapter"])
-        assert kept == [("Beta Chapter", 20)]
-        assert dropped == 2
+        # Two matches -> restricted (the V0.02 false-success fix intact)
+        kept, dropped = filter_toc_entries_for_selection(
+            entries, ["Beta Chapter", "Gamma"]
+        )
+        assert kept == [("Beta Chapter", 20), ("Gamma", 30)]
+        assert dropped == 1
+        # Single match -> full TOC (V0.07: 1-entry TOCs are worse than none)
+        kept1, dropped1 = filter_toc_entries_for_selection(entries, ["Beta Chapter"])
+        assert kept1 is entries or kept1 == entries
+        assert dropped1 == 0
 
     def test_no_match_returns_original_unchanged(self):
         """Safety-net contract: a selection matching NOTHING must not shrink
