@@ -36,6 +36,11 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+# V0.10 (P6): the legacy-window boundary for the chunked-output gate —
+# at windows > 32768 the strategy engine (core/summarisation/strategy.py)
+# disables b4_sections/chunked_output entirely.
+from core.llm.context_budget import LEGACY_WINDOW
+
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
 RequestLike = Any
@@ -149,7 +154,21 @@ V18.3.4 had 3 bugs that caused the rig-test book's failure:
     _gpu_temp_c = _read_gpu_temp_c()
     _thermal_ok = _gpu_temp_c < 78.0 if _gpu_temp_c > 0 else True
     # Chunk ONLY when: input > 12000 AND output < 14000 AND GPU not too hot
-    _should_chunk = _input_tokens_actual > 12000 and _max_out < 14000 and _thermal_ok
+    # V0.10 (P6): …AND window <= 32768. At larger windows (the 220k rig)
+    # the chunked-output path NEVER fires — a >12000-token input that
+    # reached the primary call fits the window trivially, and splitting
+    # the output call in two only exists to dodge truncation. At legacy
+    # windows the gate is byte-identical to V18.3.5 (default 32768 when
+    # the request carries no context value).
+    _window_tokens = int(
+        getattr(request, "summarisation_max_context_tokens", LEGACY_WINDOW) or LEGACY_WINDOW
+    )
+    _should_chunk = (
+        _input_tokens_actual > 12000
+        and _max_out < 14000
+        and _thermal_ok
+        and _window_tokens <= LEGACY_WINDOW
+    )
     if _should_chunk:
         log(
             f"    📦 V18.3.5: chunked output — input {_input_tokens_actual} tok, output cap {_max_out} "

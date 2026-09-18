@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import inspect
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -313,6 +314,215 @@ class TestPurity:
     def test_window_zero_raises(self):
         with pytest.raises(ValueError):
             decide_strategy(1000, 0, 8192)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 5. WIRING PINS (P6-b) — the 4 dispatch sites consult decide_strategy
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestWiringPins:
+    """Source-pin style (house precedent: test_vram_recovery.py,
+    test_deadline_watchdog.py) — the dispatch sites route through
+    decide_strategy, the MAP_CHUNK geometry flows from the decision, and
+    _prepare_text keeps its legacy math."""
+
+    def test_map_reduce_dispatch_routes_through_decide_strategy(self):
+        from core.summarisation.summarizer import Summarizer
+
+        src = inspect.getsource(Summarizer._summarize_inner)
+        assert "decide_strategy" in src, "map-reduce dispatch must consult decide_strategy"
+        assert '_p6_decision.strategy == "map_reduce"' in src
+        # MAP_CHUNK flows from the decision (== 4000 at legacy windows):
+        assert "map_chunk_tokens=_p6_decision.map_chunk_tokens" in src
+        assert "map_chunk_overlap=_p6_decision.overlap" in src
+        # …and the literal 40000 comparison is GONE (replaced by the decision):
+        assert "src_tokens > self.MAP_REDUCE_THRESHOLD" not in src
+
+    def test_b4_dispatch_routes_through_decide_strategy(self):
+        from core.summarisation.summarizer import Summarizer
+
+        src = inspect.getsource(Summarizer._summarize_inner)
+        # Legacy leg kept (byte-parity with the pre-P6 gate) AND the
+        # decision leg (disables B4 above the legacy window):
+        assert "tok_in > _b4_threshold" in src
+        assert '_b4_decision.strategy == "b4_sections"' in src
+
+    def test_decision_uses_live_window_output_and_settings_b4(self):
+        from core.summarisation.summarizer import Summarizer
+
+        src = inspect.getsource(Summarizer._summarize_inner)
+        assert 'getattr(self.request, "summarisation_max_context_tokens", 32768)' in src
+        assert 'getattr(self.request, "summarisation_max_output_tokens", 8192)' in src
+        # the settings-driven b4 threshold still flows through:
+        assert "summarisation.b4_threshold_tokens" in src
+
+    def test_one_info_log_per_chapter(self):
+        from core.summarisation.summarizer import Summarizer
+
+        src = inspect.getsource(Summarizer._summarize_inner)
+        assert "strategy={_p6_decision.strategy}" in src
+        assert "src={src_tokens:,} tok / window={_p6_window:,} / output={_p6_output:,}" in src
+        assert "{_p6_decision.reason}" in src
+
+    def test_primary_call_chunked_gate_has_window_guard(self):
+        import core.summarisation.primary_call as pc_mod
+
+        src = inspect.getsource(pc_mod.summarize_with_model)
+        # the legacy gates stay byte-identical…
+        assert "_input_tokens_actual > 12000" in src
+        assert "_max_out < 14000" in src
+        # …and the V0.10 (P6) window guard is ANDed in:
+        assert "_window_tokens <= LEGACY_WINDOW" in src
+        assert 'getattr(request, "summarisation_max_context_tokens", LEGACY_WINDOW)' in src
+
+    def test_prepare_text_math_unchanged(self):
+        """P6 spec B.4: _prepare_text keeps its ctx-out-700 floor-8000 math
+        — it stays the final truncation safety net, NOT rewired."""
+        from core.summarisation.summarizer import Summarizer
+
+        src = inspect.getsource(Summarizer._prepare_text)
+        assert "summarisation_max_context_tokens - self.request.summarisation_max_output_tokens - 700" in src
+        assert "if max_tok < 8000:" in src
+
+    def test_map_reduce_summarize_accepts_decision_geometry(self):
+        """_map_reduce_summarize takes the decision's chunk geometry; the
+        instance constants remain the fallback (legacy parity)."""
+        import types
+
+        import core.summarisation.summarizer as sz_mod
+        from core.summarisation.summarizer import Summarizer
+
+        captured: dict = {}
+
+        def _fake_mr(heading, content, **kw):
+            captured.clear()
+            captured.update(kw)
+            return ("raw-response", 4242)
+
+        # summarizer binds the name at module import — patch it there.
+        original = sz_mod.mr_map_reduce_summarize
+        sz_mod.mr_map_reduce_summarize = _fake_mr
+        try:
+            s = object.__new__(Summarizer)
+            s.primary_model = "m"
+            s.temperature = 0.2
+            s.cache_dir = Path(tempfile.mkdtemp())
+            s.MAP_CHUNK_TOKENS = 4000
+            s.MAP_CHUNK_OVERLAP = 0.10
+            s.MAP_MINI_WORDS = 300
+            s.local_chapter_deadline = 0
+            s.request = types.SimpleNamespace(
+                input_path=Path("book.pdf"),
+                summarisation_cache_enabled=False,
+            )
+            s._build_prompt = lambda *a, **k: "PROMPT"
+            s._call_llm = lambda *a, **k: "RAW"
+            s.log = lambda *a, **k: None
+
+            # No kwargs → instance-constant fallback (the pre-P6 behavior):
+            raw, n = s._map_reduce_summarize("H", "C")
+            assert (raw, n) == ("raw-response", 4242)
+            assert captured["map_chunk_tokens"] == 4000
+            assert captured["map_chunk_overlap"] == 0.10
+            assert captured["map_mini_words"] == 300
+
+            # Decision-driven geometry (the 220k rig: 27,500-token chunks):
+            raw, n = s._map_reduce_summarize(
+                "H", "C", map_chunk_tokens=27500, map_chunk_overlap=0.10
+            )
+            assert captured["map_chunk_tokens"] == 27500
+            assert captured["map_chunk_overlap"] == 0.10
+        finally:
+            sz_mod.mr_map_reduce_summarize = original
+
+
+class _FakeRequest:
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+class TestChunkedGateBehavior:
+    """Behavioral pin for the primary_call window guard (V18.3.5 gates +
+    the V0.10 P6 leg). Mirrors the tests/test_primary_call.py harness."""
+
+    @staticmethod
+    def _run(monkeypatch, window, n_tokens=13000, max_out=8192):
+        import subprocess
+
+        import core.summarisation.primary_call as pc_mod
+        import utils.token_counter as tc
+
+        pc_mod._gpu_temp_cache.update({"valid": 0.0, "temp": 0.0, "ts": 0.0})
+        monkeypatch.setattr(tc, "count_tokens", lambda text: n_tokens)
+
+        def _fake_run(*a, **kw):
+            raise FileNotFoundError("no nvidia-smi in test env")
+
+        monkeypatch.setattr(subprocess, "run", _fake_run)
+
+        chunked_calls: list[int] = []
+
+        def _chunked(*a, **kw):
+            chunked_calls.append(1)
+            return {"bullet_points": ["chunked"], "from_chunked": True}
+
+        result = pc_mod.summarize_with_model(
+            "h", "text", "m", 0.7,
+            max_tokens=max_out,
+            request=_FakeRequest(summarisation_max_context_tokens=window),
+            log=lambda m, l="INFO": None,
+            chunked_summarize=_chunked,
+            build_prompt=lambda *a, **k: "P",
+            call_llm_structured=lambda *a, **k: {"bullet_points": ["single-pass"]},
+            call_llm_with_empty_retry=lambda *a, **k: None,
+            strip_thinking=lambda x: x,
+            parse_response=lambda x: {"bullet_points": []},
+        )
+        return result, len(chunked_calls)
+
+    def test_legacy_window_still_chunks(self, monkeypatch):
+        """window=32768: input 13000 > 12000, output 8192 < 14000, thermal
+        ok → chunked path fires (V18.3.5 behavior byte-identical)."""
+        result, n_chunked = self._run(monkeypatch, 32768)
+        assert n_chunked == 1
+        assert result == {"bullet_points": ["chunked"], "from_chunked": True}
+
+    def test_220k_window_never_chunks(self, monkeypatch):
+        """window=220000 (the 220k rig): the SAME input/output that chunks
+        at 32k goes single-pass — the chunked-output path is disabled
+        above LEGACY_WINDOW."""
+        result, n_chunked = self._run(monkeypatch, 220000)
+        assert n_chunked == 0
+        assert result["bullet_points"] == ["single-pass"]
+
+    def test_request_without_window_defaults_to_legacy(self, monkeypatch):
+        """No context value on the request → default 32768 → legacy gate."""
+        import core.summarisation.primary_call as pc_mod
+        import utils.token_counter as tc
+        import subprocess
+
+        pc_mod._gpu_temp_cache.update({"valid": 0.0, "temp": 0.0, "ts": 0.0})
+        monkeypatch.setattr(tc, "count_tokens", lambda text: 13000)
+        monkeypatch.setattr(
+            subprocess, "run", lambda *a, **kw: (_ for _ in ()).throw(FileNotFoundError)
+        )
+        chunked_calls: list[int] = []
+        result = pc_mod.summarize_with_model(
+            "h", "text", "m", 0.7,
+            max_tokens=8192,
+            request=_FakeRequest(),  # no summarisation_max_context_tokens
+            log=lambda m, l="INFO": None,
+            chunked_summarize=lambda *a, **k: chunked_calls.append(1) or {"from_chunked": True},
+            build_prompt=lambda *a, **k: "P",
+            call_llm_structured=lambda *a, **k: {"bullet_points": ["single-pass"]},
+            call_llm_with_empty_retry=lambda *a, **k: None,
+            strip_thinking=lambda x: x,
+            parse_response=lambda x: {"bullet_points": []},
+        )
+        assert len(chunked_calls) == 1  # legacy default window → chunked fires
+        assert result == {"from_chunked": True}
 
 
 if __name__ == "__main__":

@@ -3468,10 +3468,46 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 output_tokens=0,
             )
 
-        # ── Map‑Reduce if needed ──────────────────────────────────────────
-        if src_tokens > self.MAP_REDUCE_THRESHOLD:
-            self.log(f"    🗺️ Chapter too large for single call ({src_tokens:,} tokens > {self.MAP_REDUCE_THRESHOLD:,}) — switching to Map-Reduce", "INFO")
-            raw, combined_tokens = self._map_reduce_summarize(heading, content)
+        # ── V0.10 (P6): adaptive strategy decision ──────────────────────
+        # ONE pure decision per chapter. decide_strategy never does I/O —
+        # the LIVE window (request.summarisation_max_context_tokens, AFTER
+        # the P5 registry raise), the output target, and the settings-
+        # driven b4 threshold are read HERE and passed in. At window <=
+        # 32768 this reproduces the legacy thresholds EXACTLY (map_reduce
+        # iff src_tokens > MAP_REDUCE_THRESHOLD — byte-identical dispatch
+        # for every <= 32k model); above it, a chapter that FITS (src <=
+        # window - output - 700 - 512) goes single-pass — the 220k rig's
+        # 40k-token chapters stop being shredded into 4k map-reduce
+        # chunks (10+ LLM calls each).
+        from core.summarisation.strategy import decide_strategy as _p6_decide_strategy
+        from utils.settings import Settings as _P6Settings
+        _p6_window = int(getattr(self.request, "summarisation_max_context_tokens", 32768) or 32768)
+        _p6_output = int(getattr(self.request, "summarisation_max_output_tokens", 8192) or 8192)
+        _p6_b4_threshold = int(_P6Settings().get("summarisation.b4_threshold_tokens", 12000))
+        _p6_decision = _p6_decide_strategy(
+            src_tokens, _p6_window, _p6_output,
+            b4_threshold=_p6_b4_threshold,
+            map_reduce_threshold=self.MAP_REDUCE_THRESHOLD,
+        )
+        self.log(
+            f"    🧭 V0.10 (P6): strategy={_p6_decision.strategy} "
+            f"(src={src_tokens:,} tok / window={_p6_window:,} / output={_p6_output:,})"
+            f" — {_p6_decision.reason}",
+            "INFO",
+        )
+
+        if _p6_decision.strategy == "map_reduce":
+            self.log(
+                f"    🗺️ Chapter too large for single call ({src_tokens:,} tokens) — "
+                f"switching to Map-Reduce ({_p6_decision.map_chunk_tokens:,}-token chunks, "
+                f"{int(_p6_decision.overlap * 100)}% overlap)",
+                "INFO",
+            )
+            raw, combined_tokens = self._map_reduce_summarize(
+                heading, content,
+                map_chunk_tokens=_p6_decision.map_chunk_tokens,
+                map_chunk_overlap=_p6_decision.overlap,
+            )
             tok_in = combined_tokens
             if not raw:
                 return SummaryResult(chapter_heading=heading, executive_summary="[Error: Map-Reduce failed]", bullet_points=[], thorough_summary="", success=False, error_msg="Map-Reduce returned no response", input_tokens=tok_in, output_tokens=0)
@@ -3502,9 +3538,21 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # single-pass at 9k tokens — but that was with Gemma 12B.
             # For 27B models with larger context windows, single-pass at 9k
             # tokens should be fine. Users can lower to 8000 if coverage drops.
-            from utils.settings import Settings as _B4Settings
-            _b4_threshold = _B4Settings().get("summarisation.b4_threshold_tokens", 12000)
-            if tok_in > _b4_threshold:
+            # V0.10 (P6): the B4 gate ALSO routes through decide_strategy —
+            # computed on tok_in (the POST-_prepare_text token count,
+            # exactly what the legacy gate compared). At legacy windows its
+            # b4_sections decision is EXACTLY `tok_in > _b4_threshold`
+            # (byte-parity, both legs agree); at windows > 32768 B4 is
+            # DISABLED — a chapter that fits the window in one call has no
+            # truncation for B4 to recover from. The settings read moved to
+            # the P6 decision block above (same value, read once).
+            _b4_threshold = _p6_b4_threshold
+            _b4_decision = _p6_decide_strategy(
+                tok_in, _p6_window, _p6_output,
+                b4_threshold=_b4_threshold,
+                map_reduce_threshold=self.MAP_REDUCE_THRESHOLD,
+            )
+            if tok_in > _b4_threshold and _b4_decision.strategy == "b4_sections":
                 self.log(f"    📑 Chapter is long ({tok_in:,} tokens > {_b4_threshold:,} threshold) — trying section map-reduce (B4)…", "INFO")
                 result = self._section_map_reduce(heading, text, concepts, callouts)
                 if result:
@@ -5048,7 +5096,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     # Map‑Reduce with 4k chunks, 10% overlap, resumable from cache
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _map_reduce_summarize(self, heading: str, content: str) -> tuple[str | None, int]:
+    def _map_reduce_summarize(
+        self,
+        heading: str,
+        content: str,
+        *,
+        map_chunk_tokens: int | None = None,
+        map_chunk_overlap: float | None = None,
+    ) -> tuple[str | None, int]:
         """Map-Reduce summarization for very large chapters (40k+ tokens).
 
         V18.11 (Phase 5 Stage 3, Batch 2.1): logic extracted verbatim to
@@ -5058,6 +5113,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         are passed as explicit primitives. The MAP_CHUNK_* / MAP_MINI_WORDS
         instance attrs are passed as params. Byte-for-byte identical output
         (characterization tests in ``tests/test_map_reduce.py``).
+
+        V0.10 (P6): the chunk geometry now flows from the strategy
+        decision — at legacy windows the caller passes decide_strategy's
+        values, which are EXACTLY the instance constants (4000 / 0.10),
+        so behavior is byte-identical to pre-P6. At windows > 32768 the
+        chunk scales (clamp(window // 8, 4000, 32000)) — the 220k rig
+        maps 27,500-token chunks instead of 4k ones (7x fewer map calls).
+        The instance constants remain the fallback (and the parity pin).
 
         V18.20.4.10 (P0-d): also passes a wall-clock budget for the map
         phase (``local.map_phase_max_seconds``, default 1800s). Derived
@@ -5081,8 +5144,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             input_path_stem=self.request.input_path.stem,
             cache_enabled=bool(getattr(self.request, "summarisation_cache_enabled", False)),
             temperature=self.temperature,
-            map_chunk_tokens=self.MAP_CHUNK_TOKENS,
-            map_chunk_overlap=self.MAP_CHUNK_OVERLAP,
+            map_chunk_tokens=map_chunk_tokens if map_chunk_tokens is not None else self.MAP_CHUNK_TOKENS,
+            map_chunk_overlap=map_chunk_overlap if map_chunk_overlap is not None else self.MAP_CHUNK_OVERLAP,
             map_mini_words=self.MAP_MINI_WORDS,
             build_prompt=self._build_prompt,
             call_llm=self._call_llm,
