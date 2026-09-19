@@ -1,5 +1,63 @@
 # Changelog
 
+## V0.15 — Phase 2 "Test-Net Deepening": 5,401 tests, ≥80% per-package gates, property suites
+
+> **The change:** execution of Phase 2 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`). The test net under the upcoming Phase 5
+> de-monolithization of `summarizer.py` is now in place: per-package
+> coverage gates at ≥80% (measured: **core/llm 96%, core/pdf 98%,
+> core/summarisation 91%**), 124 Hypothesis property tests, zero xpass,
+> and a suite proven deterministic across random orderings. **No
+> production behavior changed** — production code is frozen except the
+> two revertible log-hygiene docstring fixes (task 2.4).
+
+**Coverage push (2.1) — 41 new test files, +1,726 tests:**
+- `core/llm` 70% → **96%**, `core/pdf` 17% → **98%**, `core/summarisation`
+  71% → **91%** (roadmap target: ≥80% each). CI now enforces all three via
+  `coverage report --fail-under=80`; the global gate ratchets 50% → **64%**
+  (measured 64.3%).
+- `core/pdf` is tested against REAL in-memory PDFs built with PyMuPDF
+  (bookmarks via `set_toc`, rendered Contents pages with dotted leaders,
+  drawn table grids) — honest extraction coverage, not mock theatre.
+  `toc_extractor.py` alone went 10% → 96.6%.
+- `summarizer.py` branch coverage now exercises `_summarize_inner`'s phase
+  gates, deadline short-circuits, and fallback ladders (the Phase 5
+  prerequisite) via the proven hermetic machinery (`Settings._test_override`
+  + scripted LLM).
+
+**Hypothesis property suites (2.2) — 124 tests, ~9 s:**
+- Chapter segmentation PARTITIONS the page range (`chapter_matcher` +
+  `heading_segmenter`); citation regexes round-trip; postcheck detectors
+  never crash on arbitrary unicode and fire on known-bad samples;
+  `text_utils` contracts (ratio decision, idempotence, never-fire guards).
+
+**Order-fragility eliminated (2.3) — zero xpass, 3-seed random-order proof:**
+- `TestA26GpuTempCache` xfail removed (hermetic: module-cache
+  snapshot/restore + pinned clock).
+- The random-order smoke (`pytest -p randomly --randomly-dont-reset-seed`,
+  seeds 101/202/303) exposed and fixed two real order-dependences:
+  1. `test_retry.py`'s `importlib.reload` re-bound every exception class —
+     downstream `pytest.raises` compared against the WRONG class objects
+     (now restores the original module namespace wholesale);
+  2. pytest-randomly's per-test reseed crashed through thinc's
+     `pytest_randomly.random_seeder` entry point on numpy≥2 — default is
+     now `-p no:randomly` with the documented smoke invocation.
+- The 7-file interference hunt also caught a raw
+  `requests.Response.iter_lines` class patch (never restored) poisoning
+  10 downstream tests — replaced with an autouse monkeypatch fixture.
+
+**Log hygiene (2.4):** docstring usage examples in `dependency_checker.py`,
+`verify_environment.py`, `config_views.py` no longer teach `print` —
+grep-clean except the two subprocess-protocol files (by design).
+
+**Markers (2.5):** 37 tests tagged `slow`/`integration`;
+`pytest -m "not slow"` = 68 s (2.3× faster iteration); marker table
+documented in the README dev section.
+
+**Suite:** `5401 passed / 0 failed / 35 skipped / 0 xpassed in ~155 s`
+(was 3,674 + 1 xpassed at V0.14). Skips unchanged (headless PySide6 +
+optional reference artifacts).
+
 ## V0.14 — Phase 1 "Baselines & Measurement": timing harness, golden freeze, honest coverage gate
 
 > **The change:** execution of Phase 1 of the approved V0.12 roadmap

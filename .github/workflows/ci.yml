@@ -25,10 +25,21 @@
 #     real finding: the lock had leaked a GitHub token via a `-e git+…`
 #     editable line (fixed in V0.14; token rotation advised).
 #
+# V0.15 (Phase 2 / Test-Net Deepening):
+#   - test job installs hypothesis (the property suites
+#     tests/test_property_*.py — 124 tests — need it).
+#   - global coverage gate ratcheted 50% → 64% (CI-measured post-Phase-2
+#     baseline: 64.3%, 35,540 stmts / 12,696 missed).
+#   - NEW per-package gates (roadmap Phase 2 acceptance): core/llm,
+#     core/pdf, core/summarisation each enforced ≥80% via
+#     `coverage report --fail-under=80` on the same .coverage data.
+#     Post-Phase-2 measured: llm 96% / pdf 98% / summarisation 91%.
+#
 # This workflow gates releases on:
 # - ruff lint clean (pinned version)
 # - ruff format clean
-# - pytest passing with coverage >= 50%
+# - pytest passing with coverage >= 64% (global) and >= 80% on the three
+#   core packages (llm / pdf / summarisation)
 # - pip-audit report produced (report-only)
 #
 # The golden-master audit gate (--audit) is NOT in CI because it requires
@@ -99,18 +110,27 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
+          pip install pytest pytest-cov pytest-asyncio "hypothesis>=6.100.0"
 
       - name: Run pytest with coverage
         run: |
           python -m pytest tests/ \
             --cov=core \
             --cov=utils \
-            --cov-fail-under=50 \
+            --cov-fail-under=64 \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-report=html \
             -p no:cacheprovider
+
+      # V0.15 (Phase 2.1 acceptance): per-package ≥80% gates on the three
+      # core packages — the Phase 5 de-monolithization safety net. These run
+      # on the SAME .coverage data produced above, so no re-execution cost.
+      - name: Per-package coverage gates (llm / pdf / summarisation >= 80%)
+        run: |
+          python -m coverage report --include="core/llm/*" --fail-under=80
+          python -m coverage report --include="core/pdf/*" --fail-under=80
+          python -m coverage report --include="core/summarisation/*" --fail-under=80
 
       # V0.14 (Phase 1.1): publish the coverage artifact — the per-file
       # htmlcov tree + the XML report are attached to every CI run so a

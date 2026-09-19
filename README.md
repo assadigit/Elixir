@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.13-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3668%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.15-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5401%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -24,7 +24,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 - 🎙️ **Podcast-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS for English, Piper for Farsi).
 - 🌐 **Bilingual** — full English ↔ Farsi translation pipeline (NLLB-200 or TranslateGemma).
 - 🖥️ **VRAM-aware** — estimates context windows and VRAM budgets from your actual GPU, and (as of V18.20.4.10) **fails fast** instead of warn-and-continue when a model won't fit.
-- 🧪 **3,000+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it.
+- 🧪 **5,400+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it, including 124 Hypothesis property tests.
 
 ---
 
@@ -317,8 +317,14 @@ Settings file: `~/.elixir/settings.json`
 # ▶️ Run the app
 python main.py
 
-# 🧪 Full test suite (3,000+ tests, ~117s headless)
+# 🧪 Full test suite (5,400+ tests, ~155s headless)
 python -m pytest tests/ --no-cov -q
+
+# ⚡ Fast iteration — skip the slow/integration tests (~68s, 2.3× faster)
+python -m pytest tests/ --no-cov -q -m "not slow"
+
+# 🎲 Random-order determinism smoke (3 seeds, all must pass identically)
+python -m pytest tests/ --no-cov -q -p randomly --randomly-dont-reset-seed --randomly-seed=101
 
 # 🧹 Lint
 ruff check .
@@ -327,7 +333,19 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.13):** `3668 passed / 0 failed / 35 skipped / 1 xpassed in ~125s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests, ruff pinned)*
+**Current gate (Elixir V0.15):** `5401 passed / 0 failed / 35 skipped / 0 xpassed in ~155s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + pip-audit, ruff pinned)*
+
+**Test markers** (registered, `--strict-markers`-enforced):
+
+| Marker | Meaning | Use |
+|---|---|---|
+| `slow` | Tests that take >2s on a warm machine (retry-ladder sleeps, end-to-end flows, heavy AST sweeps) | `pytest -m "not slow"` for fast iteration |
+| `integration` | Multi-module flow tests (may touch the filesystem) | `pytest -m integration` to run just the flows |
+| `regression` | Version-anchored regression tests (`test_v18_*` files) | — |
+| `characterization` | Byte-for-byte stability gates for extracted modules | — |
+| `gpu` | Tests requiring a real GPU (currently none — all mocked) | — |
+
+**Coverage gates (V0.15, Phase 2):** global ≥64% on `core`+`utils`, plus per-package ≥80% on `core/llm` (currently 96%), `core/pdf` (98%), and `core/summarisation` (91%) — the safety net under the Phase 5 de-monolithization of `summarizer.py`.
 
 ### 🏗️ Project Layout
 

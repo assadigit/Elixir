@@ -93,10 +93,10 @@
 | 2.5 Marker adoption | Tag genuinely slow/integration tests with the registered markers; document `pytest -m "not slow"` in README dev section | pytest |
 
 **Acceptance:**
-- [ ] `--cov-fail-under` per-package config enforces ≥80% on the three packages (global gate raised accordingly).
-- [ ] Hypothesis suite ≥100 property tests, running in CI < 60 s.
-- [ ] Zero xpass; suite deterministic across 3 random-order runs (`pytest -p randomly` smoke).
-- [ ] No `print(` in `core/` outside subprocess-protocol files (grep-verifiable).
+- [x] `--cov-fail-under` per-package config enforces ≥80% on the three packages (global gate raised accordingly). — V0.15: enforced via `coverage report --fail-under=80` on the same `.coverage` data (pytest-cov has no per-package fail-under); measured: **core/llm 96%, core/pdf 98%, core/summarisation 91%** (targets were ≥80%); global gate ratcheted 50% → **64%** (measured 64.3%).
+- [x] Hypothesis suite ≥100 property tests, running in CI < 60 s. — V0.15: **124 property tests** in 4 files (`tests/test_property_*.py`), ~9 s measured; hypothesis added to `[dev]` extras + CI install. One latent falsifier found & fixed (chapter-partition suite: `lstrip("#")` semantics).
+- [x] Zero xpass; suite deterministic across 3 random-order runs (`pytest -p randomly` smoke). — V0.15: xfail removed from `TestA26GpuTempCache` (hermetic: cache snapshot/restore + pinned clock; root cause was the conftest module-pin's predecessor). 3 random-order seeds (101/202/303) × 5,401 passed / 0 failed — after fixing TWO order-dependences the smoke exposed: (1) `test_retry.py`'s `importlib.reload` re-binding exception classes (now restores the original module namespace wholesale), (2) pytest-randomly's per-test reseed crashing through thinc's numpy seeder (default `-p no:randomly`; smoke documented in pyproject + README).
+- [x] No `print(` in `core/` outside subprocess-protocol files (grep-verifiable). — V0.15: the only matches are the two subprocess-protocol files (`core/tts/_qwen_tts_subprocess.py`, `core/tts/_vibevoice_subprocess.py`); the roadmap's `dependency_checker.py`/`verify_environment.py` hits were docstring examples, now routed through `logging` (task 2.4).
 
 **Effort:** 3–5 days. **Rollback:** additive tests only; no production code changes except 2.3/2.4 (revertible individually).
 
