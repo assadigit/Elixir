@@ -1,0 +1,190 @@
+# Elixir — Phased Execution Roadmap (Stage 2)
+
+> Derived from [`docs/AUDIT_SWOT_V0.11.md`](AUDIT_SWOT_V0.11.md). Sequencing rule: **gates and baselines before structure; structure before speed; measurement before everything.** No summarization-logic change lands before the accuracy harness exists (Phase 4 precedes any prompt/pipeline touch).
+>
+> Status: **PROPOSED — awaiting owner approval.** Nothing below executes until sign-off.
+
+---
+
+## Sequencing rationale (why this order)
+
+1. **Phase 0 (green gates) first** — Threat T1: every later phase needs a remote verifier. Fixing CI is a one-day task that de-risks everything after it.
+2. **Phase 1 (baselines) second** — Working Rule §7: capture baseline behavior before refactoring. Timings + golden outputs are the "before" for Phases 4–6.
+3. **Phase 2 (test net) before Phase 5 (de-monolithization)** — the user's own directive: "build the test safety net BEFORE structural refactoring." Coverage 51% is not a safety net for `_summarize_inner` surgery.
+4. **Phase 4 (accuracy harness) before any summarization-logic change** — the highest business-value priority gets its regression gate *before* prompts or pipeline logic are touched again.
+5. **Phase 6 (performance) last** — "profile before optimizing"; it consumes Phase 1's timing harness and Phase 4's quality gate to prove "faster *and* not worse."
+
+---
+
+## Phase 0 — Green Gates (P4/P3 · quick win)
+
+**Objective:** CI green on `main`; fresh installs work; version metadata agrees.
+
+| Task | Detail | Tools |
+|---|---|---|
+| 0.1 Repair requirements | Remove nonexistent `anydoc>=0.1.0`; correct `kokoro>=0.9.0`→`kokoro>=0.7.0`, `misaki[en]>=0.9.0`→`misaki[en]>=0.7.0` (verify against the engines' actual tested versions on the rig) | pip, PyPI |
+| 0.2 Split optional deps | Move heavy optionals (langchain, chromadb, spacy, sentence-transformers, kokoro/misaki, piper, docling, genanki, pikepdf, ebooklib, bs4) to `pyproject` extras: `[tts]`, `[rag]`, `[ocr]`, `[outputs]`; `requirements.txt` = core only | pyproject.toml |
+| 0.3 Regenerate `requirements.lock` | From a verified clean install of core+extras; delete stale pre-rebrand lock content (PyPDF2, numpy-financial) | `pip freeze` |
+| 0.4 Lint triage | Pin `ruff` in CI + pre-commit to the same version; apply the 121 auto-fixes; fix real F401/F841/F811 (dead code, ~114 sites) manually; add per-file noqa only where intentional (e.g. `retry.py` feature-detect import) | ruff |
+| 0.5 CI test job installs core only | `pip install -e .[dev]` + extras needed by tests; suite must reach 3,668-pass baseline remotely | GitHub Actions |
+| 0.6 Version sync | Installer `AppVersion` reads from `VERSION` (pre-build step); README badges 0.11→current; test badge 3,510→3,668 | sed/CI step |
+
+**Acceptance (measurable):**
+- [ ] CI on `main`: all 3 jobs green, test job shows `3668 passed` (± headless skips).
+- [ ] `pip install -r requirements.txt` succeeds on clean Linux **and** Windows Python 3.12.
+- [ ] `ruff check .` exits 0.
+- [ ] `VERSION`, installer, README agree.
+
+**Effort:** 1–2 days. **Rollback:** single revert commit; no behavior change intended (test suite must remain bit-identical: same pass count).
+
+---
+
+## Phase 1 — Baselines & Measurement (P1/P5)
+
+**Objective:** The "before" numbers for every later "after," committed as artifacts.
+
+| Task | Detail | Tools |
+|---|---|---|
+| 1.1 Coverage gate, honestly | Set `--cov-fail-under=55` (measured 51% + margin); publish coverage artifact in CI | pytest-cov |
+| 1.2 Timing harness | `scripts/bench_chapter.py`: run the golden chapter through the pipeline with a mock LLM (latency-bucketed: 3/8/20 s classes) + a `--profile` mode wrapping cProfile; record per-stage wall-clock | cProfile, time |
+| 1.3 Baseline timings artifact | Commit `docs/baseline/timings_V0.12.md` (per-stage table for sequential + parallel modes) | — |
+| 1.4 Golden outputs freeze | Run current prompts/model path over the golden chapter (and 2 more chapters added in Phase 4); commit outputs as fixtures with prompt-version manifest | git |
+| 1.5 pip-audit (report-only) | CI job step producing a dependency-vuln report; gate activation deferred to Phase 3 | pip-audit |
+
+**Acceptance:**
+- [ ] CI fails if coverage < 55%.
+- [ ] `python scripts/bench_chapter.py --profile` produces a per-stage table; baseline committed.
+- [ ] Golden fixtures + prompt manifest exist under `tests/golden/`.
+- [ ] pip-audit report artifact attached to CI runs.
+
+**Effort:** 2–3 days. **Rollback:** config-only; revert to 30% gate if flaky.
+
+---
+
+## Phase 2 — Test-Net Deepening (P3)
+
+**Objective:** Coverage ≥80% on the three core packages; parsers get property-based tests.
+
+| Task | Detail | Tools |
+|---|---|---|
+| 2.1 Coverage push: `core/summarisation` (incl. summarizer.py), `core/llm`, `core/pdf` → ≥80% | Focus on `_summarize_inner` branch coverage (phase gates, deadline short-circuits, fallback ladders) — prerequisite for Phase 5 | pytest-cov |
+| 2.2 Hypothesis suites | Property tests: `segmentation/chapter_matcher.py` + `heading_segmenter.py` (invariant: chapters partition the page range), `preprocessing/citations_regex.py` (round-trip on generated citations), `summarisation/postcheck_detectors.py` regexes (no crash on arbitrary unicode; detectors fire on known-bad samples), `utils/text_utils.py` | hypothesis |
+| 2.3 Fix the order-fragile xpass | Isolate module-state cache in `TestA26GpuTempCache` | pytest |
+| 2.4 Log hygiene | Route `dependency_checker.py:81`, `verify_environment.py:24-25` prints through `utils.logging` (keep subprocess JSON protocol prints as-is) | logging |
+| 2.5 Marker adoption | Tag genuinely slow/integration tests with the registered markers; document `pytest -m "not slow"` in README dev section | pytest |
+
+**Acceptance:**
+- [ ] `--cov-fail-under` per-package config enforces ≥80% on the three packages (global gate raised accordingly).
+- [ ] Hypothesis suite ≥100 property tests, running in CI < 60 s.
+- [ ] Zero xpass; suite deterministic across 3 random-order runs (`pytest -p randomly` smoke).
+- [ ] No `print(` in `core/` outside subprocess-protocol files (grep-verifiable).
+
+**Effort:** 3–5 days. **Rollback:** additive tests only; no production code changes except 2.3/2.4 (revertible individually).
+
+---
+
+## Phase 3 — Security & Config Hardening (P4)
+
+**Objective:** No cloud API key in plaintext on any install.
+
+| Task | Detail | Tools |
+|---|---|---|
+| 3.1 Ship `keyring` | Add to core requirements (Windows: Windows Credential Manager via keyring) | pip |
+| 3.2 Complete the wiring | Route every key path through `get_secret`/`set_secret`: summarisation (3 keys), grounding, translation, tts — audit with `rg 'get\(".*api_key'` | secrets.py |
+| 3.3 Fix the path mismatch | `core/translation/service.py:205` reads `translation.api_key`; `_SECRET_PATHS` lists `translation.cloud_api_key`. Reconcile (support both during migration), add test | pytest |
+| 3.4 Migration UX | On first access migrate plaintext→keychain (already implemented in `secrets.py`) + one WARNING log; settings UI shows "stored in OS keychain" | PySide6 |
+| 3.5 pip-audit gate | Fail CI on high-severity findings in core deps | pip-audit |
+
+**Acceptance:**
+- [ ] `rg 'api_key' core/ ui_qt/` shows no direct settings reads outside `secrets.py` (allow-listed exceptions documented).
+- [ ] Roundtrip test: set_secret→get_secret via keyring backend (mocked in CI, real on Windows rig).
+- [ ] Fresh-install test: key never written to `settings.json`.
+- [ ] pip-audit: 0 high-severity in core deps (or documented waivers).
+
+**Effort:** 1–2 days. **Rollback:** feature-flag: if keyring misbehaves on a user machine, fallback path already exists (plaintext + WARNING) — no data loss possible (migration removes the plaintext copy only after keychain write succeeds).
+
+---
+
+## Phase 4 — Accuracy & Reliability Harness (P5 — highest business value)
+
+**Objective:** Make summary-quality regressions mechanically detectable before any further prompt/pipeline change.
+
+| Task | Detail | Tools |
+|---|---|---|
+| 4.1 Golden dataset expansion | 3–5 chapters: current golden (Broken Structures ch.1), + academic paper (tables/citations), + scanned-PDF OCR output, + multi-column layout, + non-Latin (Farsi) — sources + reference summaries under `tests/golden/` | fixtures |
+| 4.2 Automated metrics | `scripts/eval_summary.py`: ROUGE-L, char-level faithfulness proxy (source-claim overlap — reuses the existing 8-layer signals: F4 overlap, drops.jsonl counts, coverage floors), hallucination-rate (claims-without-evidence / total claims), length-policy compliance; JSON scorecard output matching `docs/EVALUATION_FRAMEWORK.md` schema | rouge-score (new dep) |
+| 4.3 Prompt regression gate | Scorecards stored per prompt-version; `make eval` diffs candidate vs stored; CI step (warn on PR, fail on release tag) | make, CI |
+| 4.4 LLM-call hardening audit | Verify every provider path has: timeout, classified retry w/ backoff (`retry.py` exists — confirm coverage on claude/freellmapi/llamacpp), response validation (`structured_io`), and the V0.11 lenient-JSON repair; add tests for the repaired paths | pytest |
+| 4.5 Edge-case fixtures | Scanned PDF (OCR cascade), multi-column, tables, non-Latin scripts — pin extraction + summarization behavior with characterization tests | pytest |
+
+**Acceptance:**
+- [ ] `make eval` → machine-parsable scorecard on ≥5 golden chapters; committed baseline.
+- [ ] Deliberately-degraded prompt (mutation test) is **caught** by the gate (validate the gate itself).
+- [ ] Hallucination-rate + faithfulness numbers reported per chapter in CI artifact.
+- [ ] 4.4 audit table committed (`docs/LLM_HARDENING.md`) with test evidence per provider.
+
+**Effort:** 3–5 days. **Rollback:** harness is additive; gate starts warn-only for 2 weeks before failing.
+
+---
+
+## Phase 5 — De-Monolithization Round 3 (P7 — behind the Phase-2 net)
+
+**Objective:** No >2,500-LOC file in `core/`; `_summarize_inner` decomposed into staged, individually-testable phase modules. **Precondition: Phase 2 acceptance met.**
+
+| Task | Detail | Approach |
+|---|---|---|
+| 5.1 `summarizer.py` (5,566→≤2,500) | Split `_summarize_inner` (1,712 lines) along its existing phase boundaries into orchestration + phase modules (primary-call → exec-from-thorough → bullet pipeline → gap-fill → scholar/QA → ship-time enforcement), continuing the established mixin→module pattern | Characterization tests first (Phase 2), one PR per phase, byte-identical outputs on golden fixtures |
+| 5.2 `postcheck_detectors.py` (3,873) | Split by detector family: leakage/COT, garble/space, attribution/years, coherence/hedge — pure functions already; regroup into `postchecks/` package | mechanical moves |
+| 5.3 `text_preprocessor_impl.py` (2,449), `converter_impl.py` (2,278) | Same treatment; converter already has phase modules — finish the extraction | same |
+| 5.4 `controller.py` (968) | Extract `build_request_from_ui` + book-settings persistence into `ui_qt/request_builder.py`; keep thread orchestration | same |
+| 5.5 `ui_qt/settings/sections.py` (2,152), `tts_page.py` (1,439) | Split per-section widgets | same |
+
+**Acceptance:**
+- [ ] `wc -l` max in `core/` ≤ 2,500; `_summarize_inner` ≤ 300 lines (orchestrator only).
+- [ ] Test count not reduced; coverage per-package not reduced; golden-fixture outputs byte-identical.
+- [ ] One concern per commit (conventional commits); each PR ≤ ~600 moved lines.
+
+**Effort:** 5–8 days across multiple PRs. **Rollback:** per-PR revert; each extraction is a pure move (no logic change) — verified by fixture diff.
+
+---
+
+## Phase 6 — Performance (P1 — after baselines + quality gate)
+
+**Objective:** ≥25% chapter wall-clock reduction on the benchmark chapter with zero quality regression. **Precondition: Phases 1 & 4.**
+
+| Task | Detail | Tools |
+|---|---|---|
+| 6.1 Profile the real pipeline | Run `scripts/bench_chapter.py --profile` on the rig (real Ollama 9B); identify actual hotspots before touching anything | cProfile, py-spy |
+| 6.2 Overlap independent in-chapter stages | Wire `async_provider.gather_calls` (or thread-based equivalent if httpx path underperforms) for grounding-check ∥ self-review ∥ additive sections | async_provider.py |
+| 6.3 Queue concurrency (cloud providers) | Bounded cross-book workers in the Queue view when provider ≠ ollama (VRAM not a constraint in cloud) | ThreadPoolExecutor |
+| 6.4 Cache instrumentation | Response-cache + embedding-cache hit-rate logging; tune budgets | existing caches |
+| 6.5 Before/after report | Per-stage timings vs Phase-1 baseline; quality scorecards vs Phase-4 baseline — both committed | — |
+
+**Acceptance:**
+- [ ] Benchmark chapter wall-clock: ≥25% faster (mock-latency harness, deterministic) and ≥15% faster on the real rig.
+- [ ] Phase-4 scorecards: no metric below baseline (hallucination rate not up, coverage not down).
+- [ ] VRAM behavior unchanged on 12 GB rig (max_workers logic untouched for local path).
+
+**Effort:** 3–5 days. **Rollback:** async overlap behind a setting (`summarisation.parallel_stages`, default off→on after soak); each lever independently disableable.
+
+---
+
+## Explicitly deferred (parking lot)
+
+| Item | Why deferred |
+|---|---|
+| mypy 906→0 | Valuable but not blocking; ratchet after Phase 5 (moves churn lines). Start with `disallow_untyped_defs` on new/extracted modules only. |
+| Dead-code sweep beyond W11 fixes | vulture's 501 candidates need runtime evidence; `async_provider` becomes *live* in Phase 6 — deleting first would be wasted work. |
+| Real-rig 97-Things re-run (README roadmap #13) | Consumes Phase-4 harness; schedule after Phase 4 acceptance. |
+| Full asyncio migration / qasync | Rejected by prior maintainers (async_provider.py:33-38) — correct call at this scale. |
+| PyInstaller distribution pipeline | Installer script exists; automate version sync (Phase 0.6) now, full pipeline later. |
+
+---
+
+## Approval
+
+- [ ] Phase 0 approved → execute
+- [ ] Phase 1 approved → execute
+- [ ] Phases 2–6 approved in principle / pending re-confirmation after each prior phase
+
+*Per the working rules: small conventional commits, baseline before change, one concern per PR. Every phase ends with a CHANGELOG entry + VERSION bump + tagged backup zip.*

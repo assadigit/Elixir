@@ -1,5 +1,39 @@
 # Changelog
 
+## V0.12 — Stage 1 & 2 audit deliverables: SWOT + phased roadmap (docs-only, no production code)
+
+> **The change:** a full independent audit of the V0.11 codebase (every finding
+> verified by tool runs or API queries — no speculation) plus the phased
+> execution roadmap derived from it. **No production code was touched** — the
+> stage-gate is honored: nothing in the roadmap executes before owner approval.
+
+**Deliverables (this release):**
+- `docs/AUDIT_SWOT_V0.11.md` — 10 strengths, 14 weaknesses, 8 opportunities,
+  7 threats; every finding evidence-linked (file:line), mapped to the seven
+  improvement priorities, rated severity/impact/effort.
+- `docs/ROADMAP_V0.12.md` — 7 phases (Green Gates → Baselines → Test Net →
+  Security → Accuracy Harness → De-monolithization → Performance), each with
+  measurable acceptance criteria and a rollback strategy.
+
+**Critical findings surfaced by the audit (all severity 5):**
+1. **CI is red on the last 3 commits** — the lint job fails under current
+   ruff (1,059 findings incl. 114 real dead-code sites), and the test job
+   never reaches pytest: it dies at *Install dependencies*.
+2. **Fresh installs are broken** — `anydoc>=0.1.0` does not exist on PyPI;
+   `kokoro>=0.9.0` / `misaki[en]>=0.9.0` are unsatisfiable (PyPI max 0.7.x).
+   The user's rig survives on pre-installed packages only.
+3. **`_summarize_inner` is a single 1,712-line method** inside a 5,566-line
+   `summarizer.py` that has *grown* ~860 lines since the V0.06 decomposition
+   note.
+
+**Also verified (the good news):** 3,668 tests pass in 126 s on a clean Linux
+checkout (better than the README's 3,510 badge), coverage measures 51% (CI
+gate is only 30%), and the Windows-discipline claims (pathlib, UTF-8,
+torch-before-Qt) all check out on inspection.
+
+**Next:** owner approves → Phase 0 "Green Gates" (repair requirements, split
+optional extras, pin ruff, green CI, version-metadata sync) executes first.
+
 ## V0.11 — The real-rig audit fixes: the one-sentence Thorough, killed at the root
 
 > **The change (AUDIT-1, the Broken Structures ch.1 post-mortem):** the V0.10
