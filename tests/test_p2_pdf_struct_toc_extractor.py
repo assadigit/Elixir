@@ -814,9 +814,13 @@ class TestPageTextExtraction:
     def test_tesseract_ocr_success(self, tmp_path, monkeypatch):
         """OCR success path — pytesseract mocked at the library boundary
         (the production call hardcodes lang='eng+fas'; this sandbox's tesseract
-        has no 'fas' traineddata, so a real success is impossible here)."""
+        has no 'fas' traineddata, so a real success is impossible here).
+        Rasterization is mocked at the pdf2image boundary too — the test
+        verifies the OCR CHAIN, not the poppler binary (absent on clean
+        CI runners; found by the V0.15 CI canary)."""
         ex, logs = _make_extractor()
         reader = self._reader(tmp_path)
+        monkeypatch.setattr("pdf2image.convert_from_bytes", lambda *a, **k: [object()])
         monkeypatch.setattr(
             "pytesseract.image_to_string", lambda img, lang=None: "tesseract extracted this line"
         )

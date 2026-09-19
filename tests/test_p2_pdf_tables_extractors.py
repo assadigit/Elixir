@@ -180,6 +180,24 @@ def mixed_pdf(tmp_path: Path) -> Path:
 # ════════════════════════════════════════════════════════════════════════════
 
 
+# ── Clean-env guards (V0.15 CI canary) ──────────────────────────────────────
+# camelot (needs ghostscript/opencv) and tabula (needs Java) are OPTIONAL
+# extras — absent on clean CI runners. Real-render tests need the poppler
+# BINARY (pdftoppm), which CI installs via apt but a bare venv may lack.
+# These guards keep the suite green on ANY env while running everything the
+# env can honestly support (camelot/tabula suites run where installed).
+try:
+    import shutil as _shutil
+
+    _PDFTOPPM = _shutil.which("pdftoppm") is not None
+except Exception:  # pragma: no cover
+    _PDFTOPPM = False
+
+_requires_poppler = pytest.mark.skipif(
+    not _PDFTOPPM, reason="poppler binary (pdftoppm) not on PATH — real-render test"
+)
+
+
 class TestTableExtractorInit:
     def test_defaults(self):
         te = TableExtractor()
@@ -189,6 +207,7 @@ class TestTableExtractorInit:
         assert callable(te.log)
 
     def test_init_camelot_real(self):
+        pytest.importorskip("camelot")
         te = TableExtractor()
         assert te._init_camelot() is True
         assert te._camelot is not None
@@ -199,6 +218,7 @@ class TestTableExtractorInit:
         assert te._init_camelot() is False
 
     def test_init_tabula_real(self):
+        pytest.importorskip("tabula")
         te = TableExtractor()
         assert te._init_tabula() is True
         assert te._tabula is not None
@@ -211,6 +231,7 @@ class TestTableExtractorInit:
 
 class TestTableExtractorCamelot:
     def test_extract_success_with_fake_tables(self, grid_pdf, monkeypatch):
+        pytest.importorskip("camelot")
         import camelot
 
         pd = _pd()
@@ -230,6 +251,7 @@ class TestTableExtractorCamelot:
         assert any("Camelot extracted 2 tables" in m for m, _ in logs)
 
     def test_extract_real_camelot_fails_gracefully(self, grid_pdf):
+        pytest.importorskip("camelot")
         # REAL camelot is installed but its lattice flavor requires the
         # ghostscript Python module (absent) → the except-branch must catch it.
         logs: list[tuple[str, str]] = []
@@ -239,6 +261,7 @@ class TestTableExtractorCamelot:
         assert any("Camelot extraction failed" in m for m, _ in logs)
 
     def test_extract_empty_dataframe_skipped(self, grid_pdf, monkeypatch):
+        pytest.importorskip("camelot")
         import camelot
 
         pd = _pd()
@@ -250,6 +273,7 @@ class TestTableExtractorCamelot:
         assert results == {}
 
     def test_extract_fallback_markdown_df(self, grid_pdf, monkeypatch):
+        pytest.importorskip("camelot")
         # a df-like object without .to_markdown still yields markdown rows
         import camelot
 
@@ -271,6 +295,7 @@ class TestTableExtractorCamelot:
 
 class TestTableExtractorTabula:
     def test_extract_success_with_fake_dfs(self, grid_pdf, monkeypatch):
+        pytest.importorskip("tabula")
         import tabula
 
         pd = _pd()
@@ -287,6 +312,7 @@ class TestTableExtractorTabula:
         assert any("Tabula extracted 2 tables" in m for m, _ in logs)
 
     def test_extract_tabula_failure_logged(self, grid_pdf, monkeypatch):
+        pytest.importorskip("tabula")
         import tabula
 
         def _boom(*a, **k):
@@ -541,12 +567,14 @@ class TestMarkdownBuilders:
 
 
 class TestCapturePageScreenshot:
+    @_requires_poppler
     def test_png_success(self, grid_pdf, tmp_path):
         tge = TableGraphExtractor()
         out = tmp_path / "shot.png"
         assert tge._capture_page_screenshot(grid_pdf, 1, out) is True
         assert out.read_bytes()[:4] == b"\x89PNG"
 
+    @_requires_poppler
     def test_jpeg_success(self, grid_pdf, tmp_path):
         tge = TableGraphExtractor()
         out = tmp_path / "shot.jpg"
@@ -569,7 +597,9 @@ class TestTableGraphExtractorExtract:
     the table-found paths (the real camelot needs ghostscript → its genuine
     failure branch is asserted in the first test)."""
 
+    @pytest.mark.skipif(not _PDFTOPPM, reason="poppler binary (pdftoppm) not on PATH")
     def test_full_run_no_camelot_tables(self, mixed_pdf, tmp_path):
+        pytest.importorskip("camelot")  # asserts camelot's per-page graceful FAILURE
         logs: list[tuple[str, str]] = []
         tge = TableGraphExtractor(log_callback=lambda m, level="INFO": logs.append((m, level)))
         out_dir = tmp_path / "out"
@@ -608,6 +638,7 @@ class TestTableGraphExtractorExtract:
         assert any("Table extraction p." in m for m in debug_msgs)  # real camelot failure
         assert any("Visual page detection: 2/3" in m for m, lvl in logs if lvl == "INFO")
 
+    @_requires_poppler
     def test_full_run_empty_title_uses_page_word(self, mixed_pdf, tmp_path):
         tge = TableGraphExtractor()
         out_dir = tmp_path / "out"
@@ -615,7 +646,9 @@ class TestTableGraphExtractorExtract:
         names = sorted(p.name for p in (out_dir / "screenshots").iterdir())
         assert names == ["page_001_page.jpg"]
 
+    @_requires_poppler
     def test_full_run_with_stubbed_camelot_tables(self, mixed_pdf, tmp_path, monkeypatch):
+        pytest.importorskip("camelot")
         import camelot
 
         pd = _pd()
@@ -638,7 +671,9 @@ class TestTableGraphExtractorExtract:
         # table screenshot was really rendered
         assert (out_dir / "tables" / "table_001_p2.png").exists()
 
+    @_requires_poppler
     def test_full_run_camelot_fallback_markdown(self, mixed_pdf, tmp_path, monkeypatch):
+        pytest.importorskip("camelot")
         import camelot
 
         fake_df = _NoMarkdownDf(columns=["A", "B"], rows=[("x", "y")])

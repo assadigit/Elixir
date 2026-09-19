@@ -14,8 +14,9 @@
 **Coverage push (2.1) — 41 new test files, +1,726 tests:**
 - `core/llm` 70% → **96%**, `core/pdf` 17% → **98%**, `core/summarisation`
   71% → **91%** (roadmap target: ≥80% each). CI now enforces all three via
-  `coverage report --fail-under=80`; the global gate ratchets 50% → **64%**
-  (measured 64.3%).
+  `coverage report --fail-under=80`; the global gate ratchets 50% → **63%**
+  (measured 64.05% on the clean CI env — 1pp margin for env-dependent
+  optional-dep skips).
 - `core/pdf` is tested against REAL in-memory PDFs built with PyMuPDF
   (bookmarks via `set_toc`, rendered Contents pages with dotted leaders,
   drawn table grids) — honest extraction coverage, not mock theatre.

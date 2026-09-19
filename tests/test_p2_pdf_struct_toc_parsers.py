@@ -795,6 +795,9 @@ class TestFindTocPage:
         doc.new_page(width=612, height=792)  # blank
         path = _write_pdf(doc, tmp_path, "blank.pdf")
         reader = PdfReader(str(path))
+        # Rasterization mocked at the pdf2image boundary — no poppler binary
+        # needed (absent on clean CI runners; found by the V0.15 CI canary).
+        monkeypatch.setattr("pdf2image.convert_from_bytes", lambda *a, **k: [object()])
         monkeypatch.setattr(
             "pytesseract.image_to_string", lambda img, lang=None: "Contents\n1. Intro ......... 2"
         )
@@ -839,12 +842,15 @@ class TestExtractEdgeCases:
     def test_no_text_from_toc_pages_returns_empty(self, tmp_path, monkeypatch):
         # _find_toc_page finds the TOC via the OCR fallback, but the very same
         # fallback yields nothing during collection -> toc_lines stays empty.
+        # Rasterization mocked at the pdf2image boundary — no poppler binary
+        # needed (absent on clean CI runners; found by the V0.15 CI canary).
         calls = {"n": 0}
 
         def _fake_ocr(img, lang=None):
             calls["n"] += 1
             return "Contents" if calls["n"] == 1 else ""
 
+        monkeypatch.setattr("pdf2image.convert_from_bytes", lambda *a, **k: [object()])
         monkeypatch.setattr("pytesseract.image_to_string", _fake_ocr)
         doc = fitz.open()
         doc.new_page(width=612, height=792)  # blank "TOC" page
