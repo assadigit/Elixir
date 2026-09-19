@@ -1,0 +1,5 @@
+# V0.13 (Phase 0): ruff-format whole-repo pass (434 files) + the lint-triage
+# commit that carried it — ignore both in git blame to keep mechanical
+# re-wrapping out of line history.
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+bf994fa834d0a66aab0850dffa5a938d5821a046
