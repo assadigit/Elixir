@@ -629,7 +629,10 @@ def test_normalise_heading_caps_and_collapses(text):
     assert len(out) <= 80
     assert "\t" not in out
     assert "  " not in out
-    assert not out.startswith("#")
+    # Only the RAW LINE's leading '#' run is stripped (lstrip("#") semantics):
+    # a body that itself begins with '#' — after whitespace — keeps it.
+    # Discovered by hypothesis: text='#' → raw '# #' → out '#'.
+    assert out.startswith("#") == text.lstrip().startswith("#")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
