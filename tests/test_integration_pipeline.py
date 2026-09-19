@@ -35,6 +35,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Phase 2 (task 2.5): the two end-to-end flows take 8-18 s each on a warm
+# machine (mock Ollama server, real thread pool) — the suite's slowest file.
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))

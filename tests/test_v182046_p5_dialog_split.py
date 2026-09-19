@@ -197,11 +197,13 @@ class TestExternalImportersCovered:
                         )
         return found
 
+    @pytest.mark.slow  # Phase 2.5: 2.2 s AST sweep over the ui_qt tree
     def test_every_external_name_is_reexported(self):
         reexports = _facade_reexports()
         for _file, name in self._external_importers():
             assert name in reexports, f"{_file} imports {name!r}"
 
+    @pytest.mark.slow  # Phase 2.5: 2.1 s AST sweep over the ui_qt tree
     def test_external_importers_are_exactly_the_11_dialogs(self):
         # The step-1 inventory: app.py (HallucinationAuditDialog) +
         # convert_view.py (all 11 dialogs, lazy per-service imports).

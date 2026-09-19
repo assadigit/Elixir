@@ -384,6 +384,19 @@ class TestGracefulDegradation:
         # when sys.modules['tenacity'] is None.
         monkeypatch.setitem(sys.modules, "tenacity", None)
 
+        # Phase 2 (task 2.3, random-order determinism): a bare second
+        # ``importlib.reload`` in the finally-block RESTORES functionality but
+        # re-executes the module — every exception class gets rebound to a
+        # NEW class object. Modules that imported ``core.llm.retry`` earlier
+        # (e.g. ``core.llm.async_provider``, bound at session import) keep
+        # raising the OLD classes while any test importing
+        # ``from core.llm.retry import OllamaTimeoutError`` AFTER this test
+        # compares against the NEW ones — identity mismatch, order-dependent
+        # failure (caught by the ``-p randomly`` smoke). Fix: snapshot the
+        # original module namespace and restore it WHOLESALE (exact class
+        # identity preserved for every consumer, before or after this test).
+        _original_namespace = dict(retry_mod.__dict__)
+
         # Reload the retry module so it re-evaluates the try/except import.
         with caplog.at_level(logging.WARNING, logger="core.llm.retry"):
             importlib.reload(retry_mod)
@@ -395,11 +408,13 @@ class TestGracefulDegradation:
                 f"Expected WARNING about tenacity being absent, got: {warning_msgs}"
             )
         finally:
-            # Restore: undo the sys.modules block + reload the module so it
-            # picks up tenacity again. This MUST run so subsequent tests see
-            # the tenacity-enabled version.
+            # Restore: undo the sys.modules block + put the ORIGINAL module
+            # namespace back (same class objects, same functions — identity
+            # intact). This MUST run so subsequent tests see the
+            # tenacity-enabled version AND the pre-reload class identities.
             monkeypatch.undo()
-            importlib.reload(retry_mod)
+            retry_mod.__dict__.clear()
+            retry_mod.__dict__.update(_original_namespace)
             assert retry_mod._HAS_TENACITY is True, "Restore failed"
 
 

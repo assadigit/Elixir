@@ -602,6 +602,7 @@ class TestWa4DispatcherMigration:
         assert captured["payload"]["options"]["num_predict"] == 4096
         assert captured["timeout"] == 420
 
+    @pytest.mark.slow  # Phase 2.5: 3.3 s — retry ladder sleeps
     def test_call_ollama_empty_response_retries_then_fails_soft(self, monkeypatch):
         import core.summarisation.simplified_keypoints as sk
 

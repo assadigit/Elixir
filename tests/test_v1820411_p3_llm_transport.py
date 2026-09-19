@@ -229,6 +229,7 @@ class TestSourcePins:
 
 
 class TestDispatcherEmptyRetrySemantics:
+    @pytest.mark.slow  # Phase 2.5: 3.2 s — malformed-payload retry sleeps
     def test_openai_compat_malformed_payload_retries_then_none(self):
         """A malformed provider payload (no choices) previously raised
         KeyError straight to the outer except → None. Now it flows into

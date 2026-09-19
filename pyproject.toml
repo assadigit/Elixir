@@ -45,6 +45,10 @@ dev = [
     # V0.14 (Phase 1.5): dependency-vuln reporting (report-only in CI).
     # Pinned in CI at 2.10.1; floor here keeps local/CI parity.
     "pip-audit>=2.10.0",
+    # V0.15 (Phase 2.2): property-based suites (tests/test_property_*.py).
+    "hypothesis>=6.100.0",
+    # V0.15 (Phase 2): random-order determinism smoke (`pytest -p randomly`).
+    "pytest-randomly>=3.15.0",
 ]
 # V18.2.21 (Phase 1.4): Retry consolidation — optional runtime dep used by
 # core/llm/retry.py. If absent, retry.py degrades to a 2-attempt LINEAR retry
@@ -201,7 +205,23 @@ minversion = "8.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = ["-ra", "--strict-markers", "--cov=core", "--cov=utils", "--cov-report=term-missing"]
+# V0.15 (Phase 2.5): `-p no:randomly` keeps the DEFAULT run order
+# deterministic (CI reproducibility). pytest-randomly auto-activates once
+# installed, and its per-test reseed crashes through thinc's
+# `pytest_randomly.random_seeder` entry point on numpy>=2
+# (`numpy.random.seed(seed)` with seed ≥ 2**32 → ValueError).
+# Random-order determinism smoke (roadmap Phase 2 acceptance) re-enables it
+# explicitly WITHOUT the reseed:
+#   python3 -m pytest tests/ -p randomly --randomly-dont-reset-seed \
+#       --randomly-seed=<N> --no-cov -q
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "-p no:randomly",
+    "--cov=core",
+    "--cov=utils",
+    "--cov-report=term-missing",
+]
 asyncio_mode = "auto"
 # V18.15.4.3: register markers so `--strict-markers` doesn't reject them.
 # Enables `pytest -m "not slow"`, `pytest -m integration`, etc. without code changes.

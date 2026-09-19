@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -104,6 +106,7 @@ class TestCallClaude:
             )
         assert result == "This is the summary."
 
+    @pytest.mark.slow  # Phase 2.5: empty-reply retry ladder sleeps >2 s
     def test_empty_response_returns_none(self):
         """Should return None on empty response after retries."""
         mock_response = MagicMock()
@@ -210,6 +213,7 @@ class TestCallOpenAICompat:
         assert headers["HTTP-Referer"] == "https://elixir.local"
         assert headers["X-Title"] == "Elixir"
 
+    @pytest.mark.slow  # Phase 2.5: claude empty-reply retry sleeps >2 s
     def test_empty_response_returns_none(self):
         """Should return None on empty response after retries."""
         mock_response = MagicMock()
@@ -426,6 +430,7 @@ class TestCallFastOllama:
             )
         assert result == "Fast model response."
 
+    @pytest.mark.slow  # Phase 2.5: fast-ollama retry ladder sleeps >2 s
     def test_empty_response_retries(self):
         """Empty response should trigger retry via @retry_llm_call."""
         mock_response_empty = MagicMock()

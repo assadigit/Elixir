@@ -28,6 +28,13 @@ if "tiktoken" not in sys.modules:
     tk.get_encoding = lambda *a, **k: None
     sys.modules["tiktoken"] = tk
 
+import pytest
+
+# Phase 2 (task 2.5): every test in this file exercises the REAL 3-attempt
+# retry ladder, which sleeps its backoff (~3 s per test, ~38 s for the file)
+# — structurally slow, tag the whole module.
+pytestmark = pytest.mark.slow
+
 from core.summarisation.thorough_fallback import call_dedicated_thorough_with_fallback
 
 

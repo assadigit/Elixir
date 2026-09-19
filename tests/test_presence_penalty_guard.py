@@ -152,6 +152,7 @@ class TestPresencePenaltyGuardBehavior:
             if _is_qwen3 and _pp is not None and float(_pp) == 0.0:
                 raise ThinkingModeViolation(model=_model)
 
+    @pytest.mark.slow  # Phase 2.5: 3.4 s — presence-penalty probe sleeps
     def test_qwen3_with_pp_1_5_does_not_raise_guard(self):
         """V18.3 (Phase 1.2): Qwen3 + no pp override → no ThinkingModeViolation.
 
