@@ -40,7 +40,11 @@ cobble==0.1.4
 cryptography==50.0.1
 defusedxml==0.7.1
 distro==1.9.0
--e git+https://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@github.com/assadigit/elixir.git@65e9f9084a5c806395e12fcf0a7dc778490f6f92#egg=elixir
+## NOTE (V0.14 / Phase 1 security fix): this line previously contained the
+## project's editable install WITH AN EMBEDDED GITHUB TOKEN (leaked by
+## `pip freeze` of a token-URL git checkout). It has been removed: the lock
+## describes ONLY the dependency closure. Install the project itself with
+## `pip install -e .` from the repo root. NEVER commit credential URLs.
 et_xmlfile==2.0.0
 exceptiongroup==1.3.1
 flatbuffers==25.12.19
