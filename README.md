@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.06-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3510%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.13-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-3668%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -78,7 +78,8 @@ After first launch, open `~/.elixir/settings.json`:
 python main.py
 ```
 
-Or double-click **`run_app.bat`** on Windows.
+> ℹ️ Optional feature groups (TTS audio, EPUB/Anki formats, RAG, grounding)
+> are opt-in extras since V0.13 — see the header of `requirements.txt`.
 
 ---
 
@@ -326,7 +327,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.06):** `3510 passed / 0 failed / 35 skipped / 7 xfailed / 1 xpassed in 157s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts)*
+**Current gate (Elixir V0.13):** `3668 passed / 0 failed / 35 skipped / 1 xpassed in ~125s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests, ruff pinned)*
 
 ### 🏗️ Project Layout
 
@@ -358,7 +359,9 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: Elixir V0.06 — "Deliverables that honor the contract, the budget, and the reader."** The second llama.cpp rig run exposed what single-layer enforcement misses: the V0.05 flag gates were all generation-side, but the response parser's leftover fallback smuggled unrequested additive-section content into `thorough_summary` (shipped as a junk "Thorough Summary" to a user who unchecked it) — so the contract is now enforced at THREE layers (parse-time discard, result-construction, render-time flags on every renderer: chapter .md, DOCX, book summary). The bullet budget became a HARD CAP at every insertion site (Tier-2 gap-fill, scholar gap-fill, quarantine recovery) plus ship time — the rig shipped 19/18/15/14/12 bullets against 5-7/5-7/6-9/6-9/5-8 targets. Pipeline bookkeeping left the deliverables (quarantine → logs/drops.jsonl only); a deliverable never lists the same content block twice (book "All Key Takeaways" concat, DOCX 2000-char preview + "Global Key Takeaways" page all removed); critique bullets ("X omitted: …", "The summary should…", "…not fully enumerated in the summary…") are detected structurally and dropped at ship time; duplicated quotes/byline echoes are stripped; Tier-3 excerpts are re-validated against the final summary and never open with a heading echo. See the V0.06 changelog entry for the full design notes.
+**Current version: Elixir V0.13 — "Green Gates."** Phase 0 of the V0.12 audit roadmap ([`docs/ROADMAP_V0.12.md`](docs/ROADMAP_V0.12.md)): fresh installs repaired (the broken `anydoc`/`kokoro`/`misaki` pins), CI green for the first time (ruff pinned + enforced, 300+ dead-code/bug-pattern findings fixed, repo ruff-formatted), editable install fixed, and the full app import chain verified on a clean environment. The prior release notes are preserved below.
+
+**V0.06 — "Deliverables that honor the contract, the budget, and the reader."** The second llama.cpp rig run exposed what single-layer enforcement misses: the V0.05 flag gates were all generation-side, but the response parser's leftover fallback smuggled unrequested additive-section content into `thorough_summary` (shipped as a junk "Thorough Summary" to a user who unchecked it) — so the contract is now enforced at THREE layers (parse-time discard, result-construction, render-time flags on every renderer: chapter .md, DOCX, book summary). The bullet budget became a HARD CAP at every insertion site (Tier-2 gap-fill, scholar gap-fill, quarantine recovery) plus ship time — the rig shipped 19/18/15/14/12 bullets against 5-7/5-7/6-9/6-9/5-8 targets. Pipeline bookkeeping left the deliverables (quarantine → logs/drops.jsonl only); a deliverable never lists the same content block twice (book "All Key Takeaways" concat, DOCX 2000-char preview + "Global Key Takeaways" page all removed); critique bullets ("X omitted: …", "The summary should…", "…not fully enumerated in the summary…") are detected structurally and dropped at ship time; duplicated quotes/byline echoes are stripped; Tier-3 excerpts are re-validated against the final summary and never open with a heading echo. See the V0.06 changelog entry for the full design notes.
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 
@@ -388,10 +391,11 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 11. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext; the Elixir keychain service exists — pure wiring)
 12. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
 13. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
+14. ✅ ~~Green CI / fresh installs~~ — **fixed in V0.13 (Phase 0)**: see [`docs/AUDIT_SWOT_V0.11.md`](docs/AUDIT_SWOT_V0.11.md) and the V0.13 changelog entry
 
 ### ⚠️ Known Issues
 
-1. `summarizer.py` is still a large orchestrator (~4,700 lines) — decomposition continues behind the characterization-test net.
+1. `summarizer.py` is still a large orchestrator (~5,600 lines — it *grew* through V0.07–V0.11; measured in the V0.12 audit) — decomposition is Phase 5 of the roadmap, behind the test net.
 2. `[space/fix]` post-check occasionally splits correct compound words ("thereby" → "the reby"); auto-corrected by `[extra_space/fix]`.
 3. The V18.20.4.9 user-machine pre-chunk stall was environmental (not reproduced in-sandbox); V18.20.4.10 bounds and surfaces it if it recurs.
 4. `PromptContext` + `build_primary_prompt` remain in `prompt_assembly.py` unused (V18.6.3 crash pattern — kept frozen deliberately).
