@@ -110,7 +110,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio "hypothesis>=6.100.0"
+          # pymupdf is TEST-ONLY (V0.15): the pdf suites build real in-memory
+          # PDFs with fitz to exercise the real extraction code. The app keeps
+          # it optional — requirements.txt is intentionally unchanged.
+          pip install pytest pytest-cov pytest-asyncio "hypothesis>=6.100.0" "pymupdf>=1.24.0"
 
       - name: Run pytest with coverage
         run: |

@@ -49,6 +49,11 @@ dev = [
     "hypothesis>=6.100.0",
     # V0.15 (Phase 2): random-order determinism smoke (`pytest -p randomly`).
     "pytest-randomly>=3.15.0",
+    # V0.15 (Phase 2.1): TEST-ONLY — the pdf suites build real in-memory
+    # PDFs with PyMuPDF to exercise the real extraction code. The APP keeps
+    # fitz optional (guarded imports, graceful degradation — see
+    # dependency_checker); requirements.txt is intentionally unchanged.
+    "pymupdf>=1.24.0",
 ]
 # V18.2.21 (Phase 1.4): Retry consolidation — optional runtime dep used by
 # core/llm/retry.py. If absent, retry.py degrades to a 2-attempt LINEAR retry
