@@ -5,6 +5,7 @@ Byte-for-byte stability gate for ``scholar_reflection`` and
 
 Run: pytest tests/test_scholar_reflection.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,12 +16,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.scholar_reflection import (
     scholar_reflection,
@@ -96,7 +100,8 @@ class TestEmptyAndNoGaps:
         without mutating result (no gap-fill bullets, no reflections text)."""
         deps = _make_deps(llm_response="")
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection("Ch", "src text", result, **{k: v for k, v in cap.items()})
         assert "scholar_reflections" not in result  # not set on empty
         assert result["bullet_points"] == ["b1"]  # unchanged
@@ -107,7 +112,8 @@ class TestEmptyAndNoGaps:
         """If the LLM call raises, the exception is caught and logged (no raise)."""
         deps = _make_deps(llm_raises=RuntimeError("ollama crashed"))
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         # Must not raise
         scholar_reflection("Ch", "src", result, **{k: v for k, v in cap.items()})
         warnings = [m for m, l in cap["log"].calls if l == "WARNING"]
@@ -121,7 +127,8 @@ class TestEmptyAndNoGaps:
         llm = "<scholar_reflections>none</scholar_reflections>"
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection("Ch", "src", result, **{k: v for k, v in cap.items()})
         assert result["scholar_reflections"] == ""
         infos = [m for m, l in cap["log"].calls if l == "INFO"]
@@ -146,7 +153,8 @@ class TestGapFillBullets:
         )
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection("Ch", src, result, **{k: v for k, v in cap.items()})
         # The gap-fill bullet was added
         assert len(result["bullet_points"]) == 2
@@ -168,7 +176,8 @@ class TestGapFillBullets:
         )
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection("Ch", src, result, **{k: v for k, v in cap.items()})
         # The ungrounded bullet was dropped
         assert len(result["bullet_points"]) == 1  # unchanged
@@ -185,7 +194,8 @@ class TestGapFillBullets:
         )
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection("Ch", src, result, **{k: v for k, v in cap.items()})
         assert len(result["bullet_points"]) == 1  # unchanged
         debugs = [m for m, l in cap["log"].calls if l == "DEBUG"]
@@ -254,7 +264,8 @@ class TestGapfillOnly:
         )
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         scholar_reflection_gapfill_only("Ch", src, result, **{k: v for k, v in cap.items()})
         # The gap-fill bullet was added (kept)
         assert len(result["bullet_points"]) == 2
@@ -271,7 +282,9 @@ class TestGapfillOnly:
         llm = "<scholar_reflections>- Some identified gap\n</scholar_reflections>"
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        scholar_reflection_gapfill_only("Ch", src, result, **{k: v for k, v in _common_kwargs(deps).items()})
+        scholar_reflection_gapfill_only(
+            "Ch", src, result, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         # No gap-fill bullets added
         assert len(result["bullet_points"]) == 1
         # Reflections text suppressed
@@ -292,11 +305,13 @@ class TestByteForByte:
             '- Erikson described identity as "persistent sameness within oneself and sharing of essential character"'
             "</gap_fill_bullets>"
         )
+
         def _run():
             deps = _make_deps(llm_response=llm)
             result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
             scholar_reflection("Ch", src, result, **{k: v for k, v in _common_kwargs(deps).items()})
             return dict(result)
+
         r1 = _run()
         r2 = _run()
         assert r1 == r2
@@ -306,6 +321,7 @@ class TestByteForByte:
         llm = "<scholar_reflections>none</scholar_reflections>"
         deps = _make_deps(llm_response=llm)
         result = {"executive_summary": "e", "bullet_points": ["b1"], "thorough_summary": "t"}
-        kw = _common_kwargs(deps); kw.pop("log")
+        kw = _common_kwargs(deps)
+        kw.pop("log")
         scholar_reflection("Ch", "src", result, **{k: v for k, v in kw.items()})
         assert result["scholar_reflections"] == ""

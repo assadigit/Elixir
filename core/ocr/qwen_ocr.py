@@ -37,7 +37,7 @@ class QwenOCREngine(OCREngine):
         timeout: int = 180,
         retries: int = 2,
         image_max_size: int = 1200,
-        poppler_path: str | None = None,   # NEW: required on Windows
+        poppler_path: str | None = None,  # NEW: required on Windows
     ):
         self.model_name = model_name
         self.ollama_base_url = ollama_base_url
@@ -99,9 +99,7 @@ class QwenOCREngine(OCREngine):
             try:
                 logger.debug(f"Qwen VL attempt {attempt + 1}/{self.retries}…")
                 # FIX: json=payload (was json_data=payload — wrong kwarg, sent empty body)
-                resp = safe_ollama_request(
-                    "POST", url, json=payload, timeout=self.timeout
-                )
+                resp = safe_ollama_request("POST", url, json=payload, timeout=self.timeout)
                 text = resp.json().get("response", "").strip()
                 if text:
                     return text

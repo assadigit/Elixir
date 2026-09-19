@@ -29,6 +29,7 @@ tests/test_integration_pipeline.py:45-58 pattern); no Qt, no network.
 
 Run: ``pytest tests/test_v1820412_d2_atomic_comments.py -v``
 """
+
 from __future__ import annotations
 
 import ast
@@ -173,8 +174,10 @@ class TestAtomicSourceScan:
         (house style — core/outputs/packets/generator.py:25);
         output_save.py reuses its pre-existing function-local import."""
         module_level_files = [
-            rel for rel in _OWNED_FILES
-            if rel not in (
+            rel
+            for rel in _OWNED_FILES
+            if rel
+            not in (
                 "core/pipeline/conversion/output_save.py",
                 "core/outputs/evidence_map.py",  # no new atomic site (fallback kept)
             )
@@ -214,10 +217,7 @@ class TestAtomicSourceScan:
         src = _src("core/pipeline/conversion/output_save.py")
         assert 'atomic_write_text(seg_file, seg_text, encoding="utf-8")' in src
         assert "seg_file.write_text(" not in src
-        assert (
-            "atomic_write_text(converter.full_markdown_path, full_markdown)"
-            in src
-        )
+        assert "atomic_write_text(converter.full_markdown_path, full_markdown)" in src
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -309,9 +309,7 @@ class TestImportSanity:
         ]
         assert len(touched) == 16
         for rel in touched:
-            py_compile.compile(
-                str(_project_root / rel), doraise=True
-            )  # no exception = clean
+            py_compile.compile(str(_project_root / rel), doraise=True)  # no exception = clean
 
     def test_all_touched_modules_import_clean(self):
         """Every touched module imports headless (markitdown stubbed above —
@@ -375,10 +373,10 @@ class TestCommentDeJargon:
         extractor's shape are untouched (behavior pinned by the existing
         preprocessor regression files)."""
         src = _src("core/summarisation/text_preprocessor_impl.py")
-        assert '_QUOTED_TERM_PATTERN = re.compile(' in src
+        assert "_QUOTED_TERM_PATTERN = re.compile(" in src
         assert (
-            'r\'["\\u201c\\u2018]([a-zA-Z][a-zA-Z]+(?:\\s+[a-zA-Z]+){0,3})'
-            '["\\u201d\\u2019]\'' in src
+            "r'[\"\\u201c\\u2018]([a-zA-Z][a-zA-Z]+(?:\\s+[a-zA-Z]+){0,3})"
+            "[\"\\u201d\\u2019]'" in src
         )
         assert "def extract_ngram_keywords(text: str, n: int = 18) -> list[str]:" in src
 

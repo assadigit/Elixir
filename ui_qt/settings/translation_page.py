@@ -40,6 +40,7 @@ from ui_qt.settings.widgets import make_form
 # Model section
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TranslationModelSection(QGroupBox):
     """Backend selector + translator model + harakat model + judge model.
 
@@ -125,9 +126,7 @@ class TranslationModelSection(QGroupBox):
         f.addRow("Max tokens per chunk", self.chunk_spin)
 
         # ── /no_think toggle ────────────────────────────────────────────
-        self.no_think_cb = QCheckBox(
-            "Send /no_think directive (prevents <think> blocks)"
-        )
+        self.no_think_cb = QCheckBox("Send /no_think directive (prevents <think> blocks)")
         self.no_think_cb.setChecked(bool(controller.get_setting("translation.no_think", True)))
         f.addRow(self.no_think_cb)
 
@@ -227,6 +226,7 @@ class TranslationModelSection(QGroupBox):
 # Languages section
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TranslationLanguagesSection(QGroupBox):
     """Default target language selector."""
 
@@ -271,6 +271,7 @@ class TranslationLanguagesSection(QGroupBox):
 # Validation section
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TranslationValidationSection(QGroupBox):
     """Validation settings — back-translation + judge LLM thresholds."""
 
@@ -300,16 +301,12 @@ class TranslationValidationSection(QGroupBox):
         self.judge_spin.setRange(0.0, 1.0)
         self.judge_spin.setSingleStep(0.05)
         self.judge_spin.setDecimals(2)
-        self.judge_spin.setValue(
-            float(controller.get_setting("translation.judge_threshold", 0.7))
-        )
+        self.judge_spin.setValue(float(controller.get_setting("translation.judge_threshold", 0.7)))
         f.addRow("Judge LLM faithfulness threshold", self.judge_spin)
 
         self.retries_spin = QSpinBox()
         self.retries_spin.setRange(0, 5)
-        self.retries_spin.setValue(
-            int(controller.get_setting("translation.max_retries", 1))
-        )
+        self.retries_spin.setValue(int(controller.get_setting("translation.max_retries", 1)))
         f.addRow("Max retries for failed chunks", self.retries_spin)
 
         info = QLabel(
@@ -344,6 +341,7 @@ class TranslationValidationSection(QGroupBox):
 # Harakat section
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TranslationHarakatSection(QGroupBox):
     """Harakat (Persian diacritics) settings for TTS-friendly output."""
 
@@ -352,9 +350,7 @@ class TranslationHarakatSection(QGroupBox):
         self.controller = controller
         f = make_form()
 
-        self.harakat_cb = QCheckBox(
-            "Generate harakat variant for Farsi outputs (.fa.harakat.md)"
-        )
+        self.harakat_cb = QCheckBox("Generate harakat variant for Farsi outputs (.fa.harakat.md)")
         self.harakat_cb.setChecked(
             bool(controller.get_setting("translation.harakat_enabled", True))
         )
@@ -396,6 +392,7 @@ class TranslationHarakatSection(QGroupBox):
 # Glossary section
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TranslationGlossarySection(QGroupBox):
     """Glossary (terminology consistency) settings."""
 
@@ -415,7 +412,7 @@ class TranslationGlossarySection(QGroupBox):
         info = QLabel(
             "The glossary is extracted from the first few chunks and passed as "
             "context to all subsequent chunks. This ensures consistent translation "
-            "of names and terms (e.g., \"Mark Manson\" → \"مارک منسون\" throughout). "
+            'of names and terms (e.g., "Mark Manson" → "مارک منسون" throughout). '
             "Saved as translation_logs/Book.glossary.json for reuse."
         )
         info.setWordWrap(True)
@@ -425,9 +422,7 @@ class TranslationGlossarySection(QGroupBox):
         self.setLayout(f)
 
     def save(self) -> None:
-        self.controller.update_setting(
-            "translation.glossary_enabled", self.glossary_cb.isChecked()
-        )
+        self.controller.update_setting("translation.glossary_enabled", self.glossary_cb.isChecked())
 
     def reload(self) -> None:
         self.glossary_cb.setChecked(
@@ -441,17 +436,17 @@ class TranslationGlossarySection(QGroupBox):
 
 # (setting_key, label, subtitle)
 _TRANSLATABLE_OUTPUTS = [
-    ("full_markdown",        "Full book Markdown",     "BookName.md + chapters/*.md (large)"),
-    ("chapter_summaries",    "Chapter summaries",      "BookName.summary.md + per-chapter summaries"),
-    ("keypoints",            "Keypoints",              "BookName.keypoints.md"),
-    ("simplified_keypoints", "Simplified keypoints",   "BookName.simplified_keypoints.md"),
-    ("briefing",             "Executive briefing",     "BookName.briefing.md"),
-    ("podcast",              "Podcast script",         "BookName.podcast.md (+ harakat for TTS)"),
-    ("flashcards",           "Flashcards",             "BookName.flashcards.md"),
-    ("obsidian",             "Obsidian KB",            "obsidian/*.md"),
-    ("study_guide",          "Study guide",            "BookName.study_guide.md"),
-    ("social",               "Social media pack",      "BookName.social.md"),
-    ("mindmap",              "Mind map",               "BookName.mindmap.md"),
+    ("full_markdown", "Full book Markdown", "BookName.md + chapters/*.md (large)"),
+    ("chapter_summaries", "Chapter summaries", "BookName.summary.md + per-chapter summaries"),
+    ("keypoints", "Keypoints", "BookName.keypoints.md"),
+    ("simplified_keypoints", "Simplified keypoints", "BookName.simplified_keypoints.md"),
+    ("briefing", "Executive briefing", "BookName.briefing.md"),
+    ("podcast", "Podcast script", "BookName.podcast.md (+ harakat for TTS)"),
+    ("flashcards", "Flashcards", "BookName.flashcards.md"),
+    ("obsidian", "Obsidian KB", "obsidian/*.md"),
+    ("study_guide", "Study guide", "BookName.study_guide.md"),
+    ("social", "Social media pack", "BookName.social.md"),
+    ("mindmap", "Mind map", "BookName.mindmap.md"),
 ]
 
 
@@ -466,9 +461,7 @@ class TranslationOutputSelectionSection(QGroupBox):
         self._checkboxes: dict[str, QCheckBox] = {}
         for key, label, subtitle in _TRANSLATABLE_OUTPUTS:
             cb = QCheckBox(f"{label}  —  {subtitle}")
-            cb.setChecked(
-                bool(controller.get_setting(f"translation.outputs.{key}", False))
-            )
+            cb.setChecked(bool(controller.get_setting(f"translation.outputs.{key}", False)))
             f.addRow(cb)
             self._checkboxes[key] = cb
 
@@ -488,6 +481,7 @@ class TranslationOutputSelectionSection(QGroupBox):
 # ════════════════════════════════════════════════════════════════════════════
 # Preview section
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TranslationPreviewSection(QGroupBox):
     """Live translation preview — test the translator with custom text."""
@@ -557,6 +551,7 @@ class TranslationPreviewSection(QGroupBox):
     def _translate_worker(self, text: str) -> None:
         try:
             from core.translation.service import TranslationService
+
             service = TranslationService.from_settings()
             if service is None:
                 self.translation_done.emit("Error: no translation model configured", "")

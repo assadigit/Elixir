@@ -138,7 +138,8 @@ class PersistentJsonSubprocess:
                 logger.debug("stderr drain ended [%s]", self._name, exc_info=True)
 
         threading.Thread(
-            target=_drain_stderr, daemon=True,
+            target=_drain_stderr,
+            daemon=True,
             name=f"{self._name}-stderr-drain",
         ).start()
 
@@ -159,7 +160,8 @@ class PersistentJsonSubprocess:
                 self._lines.put(_EOF)
 
         threading.Thread(
-            target=_read_stdout, daemon=True,
+            target=_read_stdout,
+            daemon=True,
             name=f"{self._name}-stdout-reader",
         ).start()
 
@@ -273,9 +275,7 @@ class PersistentJsonSubprocess:
                         proc.kill()
                         proc.wait(timeout=_KILL_WAIT_S)
                     except Exception:
-                        logger.debug(
-                            "re-kill failed [%s]", self._name, exc_info=True
-                        )
+                        logger.debug("re-kill failed [%s]", self._name, exc_info=True)
             except Exception:
                 logger.debug("kill failed [%s]", self._name, exc_info=True)
             self._proc = None
@@ -301,9 +301,7 @@ class PersistentJsonSubprocess:
                 try:
                     proc.kill()
                 except Exception:
-                    logger.debug(
-                        "close-kill failed [%s]", self._name, exc_info=True
-                    )
+                    logger.debug("close-kill failed [%s]", self._name, exc_info=True)
             self._proc = None
             self._eof = True
 

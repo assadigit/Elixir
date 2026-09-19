@@ -44,18 +44,18 @@ logger = get_main_logger()
 class Controller:
     def __init__(self):
         self.current_conversion_thread: threading.Thread | None = None
-        self.cancel_event  = threading.Event()
+        self.cancel_event = threading.Event()
         # V9.0.0: conversion lock — atomic check-and-set to prevent the
         # TOCTOU race where Convert tab + Queue tab both pass is_converting()
         # simultaneously and spawn two worker threads (P1-7).
         self._conversion_lock = threading.Lock()
         self.converter: Converter | None = None
-        self.settings  = Settings()
+        self.settings = Settings()
 
-        self.on_progress: Callable[[float], None] | None          = None
-        self.on_status:   Callable[[str], None] | None            = None
-        self.on_log:      Callable[[str, str], None] | None       = None
-        self.on_complete: Callable[[ConversionResult], None] | None= None
+        self.on_progress: Callable[[float], None] | None = None
+        self.on_status: Callable[[str], None] | None = None
+        self.on_log: Callable[[str, str], None] | None = None
+        self.on_complete: Callable[[ConversionResult], None] | None = None
         # V18.20.4.5 (W-b10): ownership tag for the four callbacks above
         # ("convert_view" / "queue" / "wizard"; None for legacy callers).
         # Three UI components swap these callbacks mid-session, and the
@@ -99,8 +99,8 @@ class Controller:
         # (tests, legacy front-ends, convert_view/queue_view/wizard_view)
         # remain source-compatible.
         self.on_progress = on_progress
-        self.on_status   = on_status
-        self.on_log      = on_log
+        self.on_status = on_status
+        self.on_log = on_log
         self.on_complete = on_complete
         self.callback_owner = owner
 
@@ -125,7 +125,7 @@ class Controller:
                 return
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
-        fn(*args)   # fallback: call directly (safe when already on main thread)
+        fn(*args)  # fallback: call directly (safe when already on main thread)
 
     def _safe_progress(self, value):
         if self.on_progress:
@@ -167,7 +167,9 @@ class Controller:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _record_conversion_crash(
-        self, request: ConversionRequest, exc: BaseException,
+        self,
+        request: ConversionRequest,
+        exc: BaseException,
     ) -> str:
         """Record a conversion-thread death EVERYWHERE it can be observed.
 
@@ -192,31 +194,23 @@ class Controller:
         path so the failure dialog points at the evidence).  Never raises.
         """
         import traceback as _tb
-        _tb_text = "".join(
-            _tb.format_exception(type(exc), exc, exc.__traceback__)
-        )
-        _lines = _tb_text.rstrip().splitlines() or [
-            f"{type(exc).__name__}: {exc}"
-        ]
+
+        _tb_text = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+        _lines = _tb_text.rstrip().splitlines() or [f"{type(exc).__name__}: {exc}"]
 
         # 1. UI log viewer — the tail of the traceback (the crash site +
         #    every relevant frame) keeps the viewer readable.
-        self._safe_log(
-            f"💥 Conversion thread died: {type(exc).__name__}: {exc}", "ERROR"
-        )
+        self._safe_log(f"💥 Conversion thread died: {type(exc).__name__}: {exc}", "ERROR")
         for _line in _lines[-60:]:
             self._safe_log(f"    {_line}", "ERROR")
 
         # 2. Conversion log FILE — full traceback, no truncation.
         _file_note = ""
         try:
-            _conv_logger = getattr(
-                getattr(self, "converter", None), "conv_logger", None
-            )
+            _conv_logger = getattr(getattr(self, "converter", None), "conv_logger", None)
             if _conv_logger is not None:
                 _conv_logger.log(
-                    f"💥 FATAL — conversion thread died: "
-                    f"{type(exc).__name__}: {exc}",
+                    f"💥 FATAL — conversion thread died: {type(exc).__name__}: {exc}",
                     "ERROR",
                 )
                 for _line in _lines:
@@ -224,24 +218,22 @@ class Controller:
             else:
                 # The Converter was never constructed (or died inside its
                 # own __init__) — write the evidence wherever we can.
-                _file_note = self._write_crash_to_output_dir(
-                    request, _tb_text, exc
-                )
+                _file_note = self._write_crash_to_output_dir(request, _tb_text, exc)
         except Exception as _e:
             logger.debug(
                 "crash write to conversion log failed: %s: %s",
-                type(_e).__name__, _e,
+                type(_e).__name__,
+                _e,
             )
 
         # 3. Crash-report zip (traceback + redacted settings + system info).
         _crash_path = None
         try:
             from core.system.crash_report import generate_crash_report
+
             _crash_path = generate_crash_report(type(exc), exc, exc.__traceback__)
         except Exception as _e:
-            logger.debug(
-                "crash report generation failed: %s: %s", type(_e).__name__, _e
-            )
+            logger.debug("crash report generation failed: %s: %s", type(_e).__name__, _e)
 
         _msg = f"{type(exc).__name__}: {exc}"
         if _crash_path is not None:
@@ -256,7 +248,10 @@ class Controller:
         return _msg
 
     def _write_crash_to_output_dir(
-        self, request: ConversionRequest, tb_text: str, exc: BaseException,
+        self,
+        request: ConversionRequest,
+        tb_text: str,
+        exc: BaseException,
     ) -> str:
         """Best-effort fallback when no ConversionLogger exists yet.
 
@@ -276,9 +271,7 @@ class Controller:
             f"\n\n[{_dt.now().strftime('%H:%M:%S')}] [ERROR] "
             f"💥 FATAL — conversion thread died BEFORE the log was wired: "
             f"{type(exc).__name__}: {exc}\n"
-            + "\n".join(
-                f"    {ln}" for ln in tb_text.rstrip().splitlines()
-            )
+            + "\n".join(f"    {ln}" for ln in tb_text.rstrip().splitlines())
             + "\n"
         )
 
@@ -286,12 +279,9 @@ class Controller:
         try:
             _root = _P(str(getattr(request, "output_dir", "") or "."))
             if _root.exists():
-                _stem = getattr(
-                    getattr(request, "input_path", None), "stem", ""
-                ) or ""
+                _stem = getattr(getattr(request, "input_path", None), "stem", "") or ""
                 _cands = [
-                    p for p in _root.rglob("*.conversion.log.md")
-                    if not _stem or _stem in p.name
+                    p for p in _root.rglob("*.conversion.log.md") if not _stem or _stem in p.name
                 ]
                 if _cands:
                     _target = max(_cands, key=lambda p: p.stat().st_mtime)
@@ -301,7 +291,8 @@ class Controller:
         except Exception as _e:
             logger.debug(
                 "crash append to conversion log failed: %s: %s",
-                type(_e).__name__, _e,
+                type(_e).__name__,
+                _e,
             )
 
         # (b) standalone crash file next to the crash zips
@@ -315,7 +306,8 @@ class Controller:
         except Exception as _e:
             logger.debug(
                 "standalone crash file write failed: %s: %s",
-                type(_e).__name__, _e,
+                type(_e).__name__,
+                _e,
             )
         return ""
 
@@ -411,8 +403,7 @@ class Controller:
 
     def is_converting(self) -> bool:
         return (
-            self.current_conversion_thread is not None
-            and self.current_conversion_thread.is_alive()
+            self.current_conversion_thread is not None and self.current_conversion_thread.is_alive()
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -445,6 +436,7 @@ class Controller:
             # RTX 3060 12 GB during long (6-7h) conversions.
             try:
                 from core.llm import ModelManager
+
                 mm = ModelManager()
                 # V13.31.0 (#13): default backend is now "ollama" (was "nllb")
                 t_backend = self.settings.get("translation.backend", "ollama")
@@ -467,9 +459,7 @@ class Controller:
             results = service.translate_book_outputs(
                 book_output_dir=book_dir,
                 book_name=book_name,
-                progress_callback=lambda p: self._safe_log(
-                    f"  [{p.stage}] {p.message}", "INFO"
-                ),
+                progress_callback=lambda p: self._safe_log(f"  [{p.stage}] {p.message}", "INFO"),
             )
 
             if results:
@@ -573,15 +563,15 @@ class Controller:
             "extract_figure_text": request.extract_figure_text,
             # V7.9.0: save output_* flags so the Output Scanner can
             # distinguish "not requested" from "missing/failed".
-            "output_briefing":     getattr(request, "output_briefing", False),
-            "output_podcast":      getattr(request, "output_podcast", False),
-            "output_flashcards":   getattr(request, "output_flashcards", False),
-            "output_packets":      getattr(request, "output_packets", False),
-            "output_obsidian":     getattr(request, "output_obsidian", False),
-            "output_study_guide":  getattr(request, "output_study_guide", False),
-            "output_social":       getattr(request, "output_social", False),
-            "output_mindmap":      getattr(request, "output_mindmap", False),
-            "output_tts":          getattr(request, "output_tts", False),
+            "output_briefing": getattr(request, "output_briefing", False),
+            "output_podcast": getattr(request, "output_podcast", False),
+            "output_flashcards": getattr(request, "output_flashcards", False),
+            "output_packets": getattr(request, "output_packets", False),
+            "output_obsidian": getattr(request, "output_obsidian", False),
+            "output_study_guide": getattr(request, "output_study_guide", False),
+            "output_social": getattr(request, "output_social", False),
+            "output_mindmap": getattr(request, "output_mindmap", False),
+            "output_tts": getattr(request, "output_tts", False),
             # V10.1.0: langextract evidence map
             "output_evidence_map": getattr(request, "output_evidence_map", False),
         }
@@ -591,6 +581,7 @@ class Controller:
             # (load_book_settings can't parse a truncated file → regenerate
             # breaks permanently).  Same payload: indent=2, non-ASCII kept.
             from utils.atomic_io import atomic_write_json
+
             atomic_write_json(config_path, data, indent=2, ensure_ascii=False)
             self._safe_log(f"💾 Saved settings to {config_path}", "INFO")
         except Exception as e:
@@ -611,7 +602,9 @@ class Controller:
                     self._safe_log(f"📂 Loaded settings from {config_path}", "INFO")
                     return data
                 except Exception as e:
-                    self._safe_log(f"Failed to load book settings from {config_path}: {e}", "WARNING")
+                    self._safe_log(
+                        f"Failed to load book settings from {config_path}: {e}", "WARNING"
+                    )
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -628,102 +621,234 @@ class Controller:
     # V10.24.0 outputs_X vs output_X bug class is now structurally impossible).
     _REQUEST_FIELD_MAP = [
         # ── Path fields (transform=Path) ──────────────────────────────
-        ("input_path",  "input_path",  None, None, lambda v: Path(v)),
-        ("output_dir",  "output_dir",  None, None, lambda v: Path(v)),
+        ("input_path", "input_path", None, None, lambda v: Path(v)),
+        ("output_dir", "output_dir", None, None, lambda v: Path(v)),
         # ── Simple fields (no settings lookup) ────────────────────────
-        ("password",                    "password",                    None, None, None),
-        ("manual_segments",             "manual_segments",             None, None, None),
-        ("page_range_start",            "page_range_start",            None, None, None),
-        ("page_range_end",              "page_range_end",              None, None, None),
-        ("selected_chapters",           "selected_chapters",           None, None, None),
-        ("output_qa",                   "output_qa",                   None, False, None),
-        ("output_glossary",             "output_glossary",             None, False, None),
-        ("output_patterns",             "output_patterns",             None, False, None),
-        ("output_cheatsheet",           "output_cheatsheet",           None, False, None),
-        ("output_skill",                "output_skill",                None, False, None),
+        ("password", "password", None, None, None),
+        ("manual_segments", "manual_segments", None, None, None),
+        ("page_range_start", "page_range_start", None, None, None),
+        ("page_range_end", "page_range_end", None, None, None),
+        ("selected_chapters", "selected_chapters", None, None, None),
+        ("output_qa", "output_qa", None, False, None),
+        ("output_glossary", "output_glossary", None, False, None),
+        ("output_patterns", "output_patterns", None, False, None),
+        ("output_cheatsheet", "output_cheatsheet", None, False, None),
+        ("output_skill", "output_skill", None, False, None),
         # V10.35.0: New outputs
-        ("output_epub",                 "output_epub",                 None, False, None),
-        ("output_quote_bank",           "output_quote_bank",           None, False, None),
-        ("compact_summaries",           "compact_summaries",           None, False, None),
-        ("conservative_drops",          "conservative_drops",          None, False, None),
+        ("output_epub", "output_epub", None, False, None),
+        ("output_quote_bank", "output_quote_bank", None, False, None),
+        ("compact_summaries", "compact_summaries", None, False, None),
+        ("conservative_drops", "conservative_drops", None, False, None),
         # ── Settings-backed fields (ui_key, setting_path, default) ────
-        ("use_llm_ocr",                 "use_llm_ocr",                 "ocr.use_llm", True, None),
+        ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
         # V18.20.4.3 (P2 / W-c1): fallback defaults unified with the
         # canonical ``utils/settings.py`` defaults + USER_OLLAMA_MODELS.md
         # (these fire only when the settings file lacks the key — the old
         # disagreeing literals ``qwen3-vl:8b`` named models the rig never
         # had installed).
-        ("primary_ocr_model",           "primary_ocr_model",           "ocr.primary_model", "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest", None),
-        ("fallback_ocr_model",          "fallback_ocr_model",          "ocr.fallback_model", "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest", None),
-        ("auto_detect_scanned",         "auto_detect_scanned",         "ocr.auto_detect_scanned", True, None),
-        ("force_ocr_all_pages",         "force_ocr_all_pages",         "ocr.force_ocr_all_pages", False, None),
-        ("image_max_size",              "image_max_size",              "ocr.image_max_size", 1200, None),
-        ("clean_markdown",              "clean_markdown",              "postprocess.clean_markdown", True, None),
-        ("fix_missing_spaces",          "fix_missing_spaces",          "postprocess.fix_missing_spaces", False, None),
-        ("token_saver",                 "token_saver",                 "postprocess.token_saver", True, None),
-        ("remove_page_number_headings", "remove_page_number_headings", "postprocess.remove_page_number_headings", True, None),
-        ("convert_separators_to_comments", "convert_separators_to_comments", "postprocess.convert_separators_to_comments", False, None),
-        ("custom_keywords",             "custom_keywords",             "segmentation.custom_keywords", [], None),
-        ("custom_regex_patterns",       "custom_regex_patterns",       "segmentation.custom_regex_patterns", [], None),
-        ("chunk_by_page_groups",        "chunk_by_page_groups",        "segmentation.chunk_by_page_groups", True, None),
-        ("page_group_size",             "page_group_size",             "segmentation.page_group_size", 10, None),
-        ("token_limit_per_segment",     "token_limit_per_segment",     "segmentation.token_limit", 2000, None),
-        ("enable_semantic_segmentation","enable_semantic_segmentation","segmentation.enable_semantic", True, None),
-        ("generate_summaries",          "generate_summaries",          "summarisation.enabled", False, None),
+        (
+            "primary_ocr_model",
+            "primary_ocr_model",
+            "ocr.primary_model",
+            "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
+            None,
+        ),
+        (
+            "fallback_ocr_model",
+            "fallback_ocr_model",
+            "ocr.fallback_model",
+            "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
+            None,
+        ),
+        ("auto_detect_scanned", "auto_detect_scanned", "ocr.auto_detect_scanned", True, None),
+        ("force_ocr_all_pages", "force_ocr_all_pages", "ocr.force_ocr_all_pages", False, None),
+        ("image_max_size", "image_max_size", "ocr.image_max_size", 1200, None),
+        ("clean_markdown", "clean_markdown", "postprocess.clean_markdown", True, None),
+        ("fix_missing_spaces", "fix_missing_spaces", "postprocess.fix_missing_spaces", False, None),
+        ("token_saver", "token_saver", "postprocess.token_saver", True, None),
+        (
+            "remove_page_number_headings",
+            "remove_page_number_headings",
+            "postprocess.remove_page_number_headings",
+            True,
+            None,
+        ),
+        (
+            "convert_separators_to_comments",
+            "convert_separators_to_comments",
+            "postprocess.convert_separators_to_comments",
+            False,
+            None,
+        ),
+        ("custom_keywords", "custom_keywords", "segmentation.custom_keywords", [], None),
+        (
+            "custom_regex_patterns",
+            "custom_regex_patterns",
+            "segmentation.custom_regex_patterns",
+            [],
+            None,
+        ),
+        (
+            "chunk_by_page_groups",
+            "chunk_by_page_groups",
+            "segmentation.chunk_by_page_groups",
+            True,
+            None,
+        ),
+        ("page_group_size", "page_group_size", "segmentation.page_group_size", 10, None),
+        (
+            "token_limit_per_segment",
+            "token_limit_per_segment",
+            "segmentation.token_limit",
+            2000,
+            None,
+        ),
+        (
+            "enable_semantic_segmentation",
+            "enable_semantic_segmentation",
+            "segmentation.enable_semantic",
+            True,
+            None,
+        ),
+        ("generate_summaries", "generate_summaries", "summarisation.enabled", False, None),
         # V18.20.4.3 (P2 / W-c1): same unification — the request-builder
         # fallback now matches ``settings.py`` (``gemma4-12b:latest``, the
         # documented rig default since V13.45.4) instead of ``gemma3:12b``.
-        ("summarisation_model",         "summarisation_model",         "summarisation.model", "gemma4-12b:latest", None),
-        ("summarisation_max_context_tokens", "summarisation_max_context_tokens", "summarisation.max_context_tokens", 16000, None),
-        ("summarisation_max_output_tokens",  "summarisation_max_output_tokens",  "summarisation.max_output_tokens", 4096, None),
-        ("summarisation_cache_enabled", "summarisation_cache_enabled", "summarisation.cache_enabled", False, None),
-        ("generate_docx",               "generate_docx",               "docx.enabled", False, None),
-        ("docx_author",                 "docx_author",                 "docx.author", "Elixir", None),
-        ("docx_include_toc",            "docx_include_toc",            "docx.include_toc", True, None),
-        ("max_workers",                 "max_workers",                 "summarisation.max_workers", 2, None),
-        ("temperature",                 "temperature",                 "summarisation.temperature", 0.2, None),
-        ("self_consistency",            "self_consistency",            "summarisation.self_consistency", False, None),
+        (
+            "summarisation_model",
+            "summarisation_model",
+            "summarisation.model",
+            "gemma4-12b:latest",
+            None,
+        ),
+        (
+            "summarisation_max_context_tokens",
+            "summarisation_max_context_tokens",
+            "summarisation.max_context_tokens",
+            16000,
+            None,
+        ),
+        (
+            "summarisation_max_output_tokens",
+            "summarisation_max_output_tokens",
+            "summarisation.max_output_tokens",
+            4096,
+            None,
+        ),
+        (
+            "summarisation_cache_enabled",
+            "summarisation_cache_enabled",
+            "summarisation.cache_enabled",
+            False,
+            None,
+        ),
+        ("generate_docx", "generate_docx", "docx.enabled", False, None),
+        ("docx_author", "docx_author", "docx.author", "Elixir", None),
+        ("docx_include_toc", "docx_include_toc", "docx.include_toc", True, None),
+        ("max_workers", "max_workers", "summarisation.max_workers", 2, None),
+        ("temperature", "temperature", "summarisation.temperature", 0.2, None),
+        ("self_consistency", "self_consistency", "summarisation.self_consistency", False, None),
         # V15.1.0: Over-delivery — keep improving coverage past minimum threshold
-        ("overdeliver_enabled",         "overdeliver_enabled",          "summarisation.overdeliver_enabled", True, None),
-        ("overdeliver_target",          "overdeliver_target",           "summarisation.overdeliver_target", 1.0, lambda v: float(v) / 100.0 if v > 1.0 else float(v)),
-        ("b3_voting_enabled",           "b3_voting_enabled",            "summarisation.b3_voting_enabled", False, None),
+        (
+            "overdeliver_enabled",
+            "overdeliver_enabled",
+            "summarisation.overdeliver_enabled",
+            True,
+            None,
+        ),
+        (
+            "overdeliver_target",
+            "overdeliver_target",
+            "summarisation.overdeliver_target",
+            1.0,
+            lambda v: float(v) / 100.0 if v > 1.0 else float(v),
+        ),
+        ("b3_voting_enabled", "b3_voting_enabled", "summarisation.b3_voting_enabled", False, None),
         # V18.20.4.3 (P2 / W-c1): fast_model fallback unified — the
         # canonical settings default is "" (use the main model); the old
         # "gemma3:12b" literal named a model the rig never had (it is on
         # the known-bad-default blacklist in core/tts/normalizer.py).
-        ("fast_model",                  "fast_model",                  "summarisation.fast_model", "", None),
-        ("heavy_model",                 "heavy_model",                 "summarisation.heavy_model", "", None),
+        ("fast_model", "fast_model", "summarisation.fast_model", "", None),
+        ("heavy_model", "heavy_model", "summarisation.heavy_model", "", None),
         # V16.0.9: 4-mode model architecture (single_local | dual_local | single_api | dual_api)
-        ("model_architecture",          "model_architecture",          "summarisation.model_architecture", "single_local", None),
-        ("fast_model_temperature",      "fast_model_temperature",      "summarisation.fast_model_temperature", 0.1, None),
-        ("fast_model_context",          "fast_model_context",          "summarisation.fast_model_context", 131072, None),
-        ("fast_api_url",                "fast_api_url",                "summarisation.fast_api_url", "", None),
-        ("fast_api_key",                "fast_api_key",                "summarisation.fast_api_key", "", None),
-        ("fast_api_model",              "fast_api_model",              "summarisation.fast_api_model", "", None),
-        ("simplification_model",        "simplification_model",        "summarisation.simplification_model", "", None),
-        ("extract_tables",              "extract_tables",              "advanced.extract_tables", False, None),
-        ("extract_math",                "extract_math",                "advanced.extract_math", False, None),
-        ("layout_analysis",             "layout_analysis",             "advanced.layout_analysis", False, None),
-        ("table_extraction_method",     "table_extraction_method",     "advanced.table_method", "camelot", None),
-        ("math_model",                  "math_model",                  "advanced.math_model", "pix2tex", None),
-        ("source_type",                 "source_type",                 "source_type", "normal_book", None),
-        ("include_executive_summary",   "include_executive_summary",   "summarisation.include_executive_summary", True, None),
-        ("include_thorough_summary",    "include_thorough_summary",    "summarisation.include_thorough_summary", True, None),
-        ("include_keypoints",           "include_keypoints",           "summarisation.include_keypoints", True, None),
-        ("enable_content_filter",       "enable_content_filter",       "content_filter.enabled", True, None),
-        ("academic_rigor",              "academic_rigor",              "summarisation.academic_rigor", False, None),
-        ("simplified_keypoints_enabled","simplified_keypoints_enabled","summarisation.simplified_keypoints_enabled", False, None),
-        ("extract_figure_text",         "extract_figure_text",         "advanced.extract_figure_text", False, None),
-        ("output_briefing",             "output_briefing",             "outputs.briefing", True, None),
-        ("output_podcast",              "output_podcast",              "outputs.podcast", True, None),
-        ("output_flashcards",           "output_flashcards",           "outputs.flashcards", True, None),
-        ("output_packets",              "output_packets",              "outputs.packets", False, None),
-        ("output_obsidian",             "output_obsidian",             "outputs.obsidian", False, None),
-        ("output_study_guide",          "output_study_guide",          "outputs.study_guide", False, None),
-        ("output_social",               "output_social",               "outputs.social", False, None),
-        ("output_mindmap",              "output_mindmap",              "outputs.mindmap", False, None),
-        ("output_tts",                  "output_tts",                  "outputs.tts", False, None),
-        ("output_evidence_map",         "output_evidence_map",         "outputs.evidence_map", False, None),
+        (
+            "model_architecture",
+            "model_architecture",
+            "summarisation.model_architecture",
+            "single_local",
+            None,
+        ),
+        (
+            "fast_model_temperature",
+            "fast_model_temperature",
+            "summarisation.fast_model_temperature",
+            0.1,
+            None,
+        ),
+        (
+            "fast_model_context",
+            "fast_model_context",
+            "summarisation.fast_model_context",
+            131072,
+            None,
+        ),
+        ("fast_api_url", "fast_api_url", "summarisation.fast_api_url", "", None),
+        ("fast_api_key", "fast_api_key", "summarisation.fast_api_key", "", None),
+        ("fast_api_model", "fast_api_model", "summarisation.fast_api_model", "", None),
+        (
+            "simplification_model",
+            "simplification_model",
+            "summarisation.simplification_model",
+            "",
+            None,
+        ),
+        ("extract_tables", "extract_tables", "advanced.extract_tables", False, None),
+        ("extract_math", "extract_math", "advanced.extract_math", False, None),
+        ("layout_analysis", "layout_analysis", "advanced.layout_analysis", False, None),
+        (
+            "table_extraction_method",
+            "table_extraction_method",
+            "advanced.table_method",
+            "camelot",
+            None,
+        ),
+        ("math_model", "math_model", "advanced.math_model", "pix2tex", None),
+        ("source_type", "source_type", "source_type", "normal_book", None),
+        (
+            "include_executive_summary",
+            "include_executive_summary",
+            "summarisation.include_executive_summary",
+            True,
+            None,
+        ),
+        (
+            "include_thorough_summary",
+            "include_thorough_summary",
+            "summarisation.include_thorough_summary",
+            True,
+            None,
+        ),
+        ("include_keypoints", "include_keypoints", "summarisation.include_keypoints", True, None),
+        ("enable_content_filter", "enable_content_filter", "content_filter.enabled", True, None),
+        ("academic_rigor", "academic_rigor", "summarisation.academic_rigor", False, None),
+        (
+            "simplified_keypoints_enabled",
+            "simplified_keypoints_enabled",
+            "summarisation.simplified_keypoints_enabled",
+            False,
+            None,
+        ),
+        ("extract_figure_text", "extract_figure_text", "advanced.extract_figure_text", False, None),
+        ("output_briefing", "output_briefing", "outputs.briefing", True, None),
+        ("output_podcast", "output_podcast", "outputs.podcast", True, None),
+        ("output_flashcards", "output_flashcards", "outputs.flashcards", True, None),
+        ("output_packets", "output_packets", "outputs.packets", False, None),
+        ("output_obsidian", "output_obsidian", "outputs.obsidian", False, None),
+        ("output_study_guide", "output_study_guide", "outputs.study_guide", False, None),
+        ("output_social", "output_social", "outputs.social", False, None),
+        ("output_mindmap", "output_mindmap", "outputs.mindmap", False, None),
+        ("output_tts", "output_tts", "outputs.tts", False, None),
+        ("output_evidence_map", "output_evidence_map", "outputs.evidence_map", False, None),
     ]
 
     def build_request_from_ui(self, ui_data: dict[str, Any]) -> ConversionRequest:
@@ -751,10 +876,13 @@ class Controller:
             strat = strat.value
 
         # ── Special: coverage_threshold (/100.0 transform) ─────────────
-        cov = ui_data.get(
-            "coverage_threshold",
-            self.get_setting("summarisation.coverage_threshold", 50),
-        ) / 100.0
+        cov = (
+            ui_data.get(
+                "coverage_threshold",
+                self.get_setting("summarisation.coverage_threshold", 50),
+            )
+            / 100.0
+        )
 
         # ── Generic table-driven field resolution ───────────────────────
         kwargs: dict[str, Any] = {
@@ -790,6 +918,7 @@ class Controller:
     # patterns, cheatsheet, skill), so they couldn't be regenerated from
     # the Output Scanner.  The registry now drives all 4 surfaces.
     from core.outputs.registry import get_regenerate_map as _get_regen_map
+
     _REGENERATE_MAP = _get_regen_map()
 
     def regenerate_output(
@@ -822,9 +951,13 @@ class Controller:
         # 1. Load saved settings
         config_path = output_dir / ".conversion_config.json"
         if not config_path.exists():
-            return (False, f"No saved settings found ({config_path.name}). Cannot reconstruct request.")
+            return (
+                False,
+                f"No saved settings found ({config_path.name}). Cannot reconstruct request.",
+            )
         try:
             import json
+
             saved = json.loads(config_path.read_text(encoding="utf-8"))
         except Exception as e:
             return (False, f"Failed to load settings: {e}")
@@ -847,10 +980,14 @@ class Controller:
         # 3. Load existing summaries from disk (chapter resume system)
         try:
             from core.pipeline.chapter_resume import detect_processed_chapters
+
             processed = detect_processed_chapters(output_dir)
             summaries = list(processed.values())
             if not summaries:
-                return (False, "No valid chapter summaries found on disk. Run the main conversion first.")
+                return (
+                    False,
+                    "No valid chapter summaries found on disk. Run the main conversion first.",
+                )
             log(f"  📂 Loaded {len(summaries)} summaries from disk", "INFO")
         except Exception as e:
             return (False, f"Failed to load summaries: {e}")
@@ -865,6 +1002,7 @@ class Controller:
         # 5. Instantiate the generator + run it
         try:
             import core.outputs as _outputs
+
             gen_cls = getattr(_outputs, gen_class_name, None)
             if gen_cls is None:
                 return (False, f"Generator class '{gen_class_name}' not found.")
@@ -873,19 +1011,20 @@ class Controller:
 
             # Determine the output subfolder
             from core.pipeline.output_paths import OutputPaths
+
             paths = OutputPaths(output_dir, output_dir.name)
             subfolder_map = {
-                "briefing":       paths.briefing_dir,
+                "briefing": paths.briefing_dir,
                 "podcast_script": paths.podcast_dir,
-                "packets":        paths.packets_dir,
-                "flashcards":     paths.flashcards_dir,
-                "obsidian":       paths.obsidian_dir,
-                "study_guide":    paths.study_guide_dir,
-                "social":         paths.social_dir,
-                "mindmap":        paths.mindmap_dir,
-                "podcast_audio":  paths.podcast_dir,
+                "packets": paths.packets_dir,
+                "flashcards": paths.flashcards_dir,
+                "obsidian": paths.obsidian_dir,
+                "study_guide": paths.study_guide_dir,
+                "social": paths.social_dir,
+                "mindmap": paths.mindmap_dir,
+                "podcast_audio": paths.podcast_dir,
                 # V10.1.0: Scientific Evidence Map
-                "evidence_map":   paths.evidence_dir,
+                "evidence_map": paths.evidence_dir,
             }
             out_subdir = subfolder_map.get(output_key, output_dir)
 
@@ -899,12 +1038,16 @@ class Controller:
                 result = gen.generate(summaries, book_title, out_subdir)
             if result:
                 log(f"  ✅ {output_key} regenerated successfully", "SUCCESS")
-                return (True, f"Regenerated {output_key} ({len(result) if isinstance(result, list) else 1} file(s)).")
+                return (
+                    True,
+                    f"Regenerated {output_key} ({len(result) if isinstance(result, list) else 1} file(s)).",
+                )
             else:
                 log(f"  ⚠️ {output_key} regeneration returned no output", "WARNING")
                 return (False, "Generator ran but produced no output. Check the log for errors.")
         except Exception as e:
             import traceback
+
             log(f"  ❌ {output_key} regeneration failed: {e}", "ERROR")
             log(traceback.format_exc()[-500:], "DEBUG")
             return (False, f"Generator failed: {e}")
@@ -927,11 +1070,15 @@ class Controller:
         will then emit its guidance HTML).
         """
         from pathlib import Path
+
         chapters_dir = Path(output_dir) / "markdown" / "chapters"
         if not chapters_dir.is_dir():
             if log:
-                log(f"  ℹ️ No chapters folder at {chapters_dir} — EvidenceMap "
-                    f"will use summary text as source fallback", "DEBUG")
+                log(
+                    f"  ℹ️ No chapters folder at {chapters_dir} — EvidenceMap "
+                    f"will use summary text as source fallback",
+                    "DEBUG",
+                )
             return []
 
         # Build a minimal stand-in for Segment with the two attributes the
@@ -948,8 +1095,7 @@ class Controller:
         segments = []
         # Sort by filename so chapter order is stable
         try:
-            chapter_files = sorted(chapters_dir.glob("*.md"),
-                                   key=lambda p: p.name)
+            chapter_files = sorted(chapters_dir.glob("*.md"), key=lambda p: p.name)
         except Exception:
             chapter_files = list(chapters_dir.glob("*.md"))
         for cf in chapter_files:
@@ -962,6 +1108,5 @@ class Controller:
             heading = cf.stem.replace("_", " ").title()
             segments.append(_SegStub(heading, content))
         if log:
-            log(f"  📂 Loaded {len(segments)} chapter segment(s) from disk",
-                "DEBUG")
+            log(f"  📂 Loaded {len(segments)} chapter segment(s) from disk", "DEBUG")
         return segments

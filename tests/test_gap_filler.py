@@ -9,6 +9,7 @@ Byte-for-byte stability gate for ``gap_fill_concepts`` extracted from
 
 Run: pytest tests/test_gap_filler.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,12 +22,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.gap_filler import gap_fill_concepts
 
@@ -41,7 +45,7 @@ class _CapturingLog:
 
 class _FakePromptManager:
     def render_template(self, name, **kw):
-        return f"PROMPT name={name} concept={kw.get('concept','')[:30]} ctx={kw.get('context','')[:40]}..."
+        return f"PROMPT name={name} concept={kw.get('concept', '')[:30]} ctx={kw.get('context', '')[:40]}..."
 
 
 def _stub_analysis_exists(exists: bool):
@@ -59,7 +63,12 @@ def _stub_analysis_exists(exists: bool):
     mod.analysis_exists = lambda output_dir, log_fn=None: exists
     # Also stub the find/check/extract functions used in the V17.3 judge
     mod.find_analysis_for_heading = lambda output_dir, heading, log_fn=None: (None, None)
-    mod.check_coverage = lambda analysis, summary: {"covered": 0, "missing": [], "total": 0, "coverage_pct": 0.0}
+    mod.check_coverage = lambda analysis, summary: {
+        "covered": 0,
+        "missing": [],
+        "total": 0,
+        "coverage_pct": 0.0,
+    }
     mod.extract_authors_from_analysis = lambda analysis: []
     sys.modules["core.preprocessing.deterministic_analyzer"] = mod
     return mod
@@ -156,8 +165,9 @@ class TestEarlyReturns:
         """concepts=[] → returns bullets unchanged (no LLM call)."""
         _stub_analysis_exists(False)
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
-        out = gap_fill_concepts("Ch", "content", ["b1"], [], "e", "t",
-                                **{k: v for k, v in _common_kwargs(deps).items()})
+        out = gap_fill_concepts(
+            "Ch", "content", ["b1"], [], "e", "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out == ["b1"]
         assert len(deps["_llm_calls"]) == 0
 
@@ -165,8 +175,9 @@ class TestEarlyReturns:
         """bullets=[] → returns [] unchanged (no LLM call)."""
         _stub_analysis_exists(False)
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
-        out = gap_fill_concepts("Ch", "content", [], ["c1"], "e", "t",
-                                **{k: v for k, v in _common_kwargs(deps).items()})
+        out = gap_fill_concepts(
+            "Ch", "content", [], ["c1"], "e", "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out == []
         assert len(deps["_llm_calls"]) == 0
 
@@ -175,9 +186,11 @@ class TestEarlyReturns:
         the old sequential gap-fill (no LLM call)."""
         _stub_analysis_exists(True)
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
-        out = gap_fill_concepts("Ch", "content", ["b1"], ["c1"], "e", "t",
-                                **{k: v for k, v in cap.items()})
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
+        out = gap_fill_concepts(
+            "Ch", "content", ["b1"], ["c1"], "e", "t", **{k: v for k, v in cap.items()}
+        )
         assert out == ["b1"]  # unchanged
         assert len(deps["_llm_calls"]) == 0
         infos = [m for m, l in cap["log"].calls if l == "INFO"]
@@ -189,8 +202,15 @@ class TestEarlyReturns:
         _stub_analysis_exists(False)
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
         # The concept "identity" appears in the exec_summary → covered
-        out = gap_fill_concepts("Ch", "content", ["b1"], ["identity"], "identity is defined", "t",
-                                **{k: v for k, v in _common_kwargs(deps).items()})
+        out = gap_fill_concepts(
+            "Ch",
+            "content",
+            ["b1"],
+            ["identity"],
+            "identity is defined",
+            "t",
+            **{k: v for k, v in _common_kwargs(deps).items()},
+        )
         assert out == ["b1"]
         assert len(deps["_llm_calls"]) == 0
         assert len(deps["_rvram_calls"]) == 0
@@ -201,14 +221,21 @@ class TestEarlyReturns:
         coverage-threshold branch."""
         _stub_analysis_exists(False)
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
         # 2 concepts: 1 covered (in exec), 1 not covered → 50% coverage.
         # But effective_target=0.85 → 50% < 85% → gap-fill would NOT skip.
         # To test the skip path, set effective_target LOW so coverage >= target.
         cap["effective_target"] = 0.40  # 50% >= 40% → skip
-        out = gap_fill_concepts("Ch", "content with identity word", ["b1"],
-                                ["identity", "missing_concept_xyz"], "identity is defined here", "t",
-                                **{k: v for k, v in cap.items()})
+        out = gap_fill_concepts(
+            "Ch",
+            "content with identity word",
+            ["b1"],
+            ["identity", "missing_concept_xyz"],
+            "identity is defined here",
+            "t",
+            **{k: v for k, v in cap.items()},
+        )
         assert out == ["b1"]
         assert len(deps["_llm_calls"]) == 0
         infos = [m for m, l in cap["log"].calls if l == "INFO"]
@@ -225,12 +252,22 @@ class TestConceptGapFill:
         _stub_analysis_exists(False)
         # concept "ego" does NOT appear in exec/bullets/thorough → uncovered
         # content has a sentence with "ego" → relevant source sentence found
-        content = "The ego is first and foremost a bodily ego. The ego develops through identifications."
+        content = (
+            "The ego is first and foremost a bodily ego. The ego develops through identifications."
+        )
         llm_resp = "The ego is a bodily structure that develops through identifications."
         deps = _make_deps(llm_responses=[llm_resp])
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
-        out = gap_fill_concepts("Ch", content, ["b1"], ["ego"], "exec summary", "thorough summary",
-                                **{k: v for k, v in cap.items()})
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
+        out = gap_fill_concepts(
+            "Ch",
+            content,
+            ["b1"],
+            ["ego"],
+            "exec summary",
+            "thorough summary",
+            **{k: v for k, v in cap.items()},
+        )
         # The gap-fill bullet was added
         assert len(out) == 2
         assert "bodily" in out[1].lower() or "ego" in out[1].lower()
@@ -251,9 +288,11 @@ class TestConceptGapFill:
         _stub_analysis_exists(False)
         content = "The ego is a bodily ego."
         deps = _make_deps(llm_responses=[None], llm_raises=[RuntimeError("crashed")])
-        cap = _common_kwargs(deps); cap["log"] = _CapturingLog()
-        out = gap_fill_concepts("Ch", content, ["b1"], ["ego"], "exec", "thorough",
-                                **{k: v for k, v in cap.items()})
+        cap = _common_kwargs(deps)
+        cap["log"] = _CapturingLog()
+        out = gap_fill_concepts(
+            "Ch", content, ["b1"], ["ego"], "exec", "thorough", **{k: v for k, v in cap.items()}
+        )
         assert out == ["b1"]  # unchanged (the crash skipped the concept)
         warnings = [m for m, l in cap["log"].calls if l == "WARNING"]
         assert any("Gap-fill call 1 crashed" in w for w in warnings)
@@ -265,8 +304,15 @@ class TestConceptGapFill:
         # content has NO sentence containing "uncovered_concept_xyz"
         content = "Some unrelated source text about other topics entirely."
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
-        out = gap_fill_concepts("Ch", content, ["b1"], ["uncovered_concept_xyz"], "exec", "thorough",
-                                **{k: v for k, v in _common_kwargs(deps).items()})
+        out = gap_fill_concepts(
+            "Ch",
+            content,
+            ["b1"],
+            ["uncovered_concept_xyz"],
+            "exec",
+            "thorough",
+            **{k: v for k, v in _common_kwargs(deps).items()},
+        )
         # No LLM call (concept had no relevant source sentence)
         assert len(deps["_llm_calls"]) == 0
         # bullets unchanged
@@ -279,8 +325,15 @@ class TestConceptGapFill:
         content = "Concept alpha is defined here. Concept beta is described here. Concept gamma is mentioned here."
         # 3 uncovered concepts → 3 LLM calls → recover_vram before #1 (pre-gap-fill) + before #2 + #3
         deps = _make_deps(llm_responses=["bullet a", "bullet b", "bullet c"])
-        gap_fill_concepts("Ch", content, ["b1"], ["alpha", "beta", "gamma"], "exec", "thorough",
-                          **{k: v for k, v in _common_kwargs(deps).items()})
+        gap_fill_concepts(
+            "Ch",
+            content,
+            ["b1"],
+            ["alpha", "beta", "gamma"],
+            "exec",
+            "thorough",
+            **{k: v for k, v in _common_kwargs(deps).items()},
+        )
         # pre-gap-fill (30s) + gap-fill-2 (30s) + gap-fill-3 (30s) = 3 recover_vram calls
         assert len(deps["_rvram_calls"]) == 3
         contexts = [c["context"] for c in deps["_rvram_calls"]]
@@ -292,8 +345,15 @@ class TestConceptGapFill:
         _stub_analysis_exists(False)
         content = "Concept alpha here. Concept beta here."
         deps = _make_deps(llm_responses=["bullet a", "bullet b"])
-        gap_fill_concepts("Ch", content, ["b1"], ["alpha", "beta"], "exec", "thorough",
-                          **{k: v for k, v in _common_kwargs(deps).items()})
+        gap_fill_concepts(
+            "Ch",
+            content,
+            ["b1"],
+            ["alpha", "beta"],
+            "exec",
+            "thorough",
+            **{k: v for k, v in _common_kwargs(deps).items()},
+        )
         assert len(deps["_switch_calls"]) == 1  # only on _gi == 0
 
 
@@ -305,10 +365,19 @@ class TestByteForByte:
         """Same inputs → same output bullets across calls."""
         _stub_analysis_exists(False)
         content = "The ego is a bodily ego."
+
         def _run():
             deps = _make_deps(llm_responses=["The ego is a bodily structure."])
-            return gap_fill_concepts("Ch", content, ["b1"], ["ego"], "exec", "thorough",
-                                       **{k: v for k, v in _common_kwargs(deps).items()})
+            return gap_fill_concepts(
+                "Ch",
+                content,
+                ["b1"],
+                ["ego"],
+                "exec",
+                "thorough",
+                **{k: v for k, v in _common_kwargs(deps).items()},
+            )
+
         assert _run() == _run()
 
     def test_returns_list_of_strings(self):
@@ -316,8 +385,15 @@ class TestByteForByte:
         _stub_analysis_exists(False)
         content = "The ego is a bodily ego."
         deps = _make_deps(llm_responses=["The ego is a bodily structure."])
-        out = gap_fill_concepts("Ch", content, ["b1"], ["ego"], "exec", "thorough",
-                                **{k: v for k, v in _common_kwargs(deps).items()})
+        out = gap_fill_concepts(
+            "Ch",
+            content,
+            ["b1"],
+            ["ego"],
+            "exec",
+            "thorough",
+            **{k: v for k, v in _common_kwargs(deps).items()},
+        )
         assert isinstance(out, list)
         assert all(isinstance(x, str) for x in out)
 
@@ -326,7 +402,9 @@ class TestByteForByte:
         _stub_analysis_exists(False)
         content = "The ego is a bodily ego."
         deps = _make_deps(llm_responses=["The ego is a bodily structure."])
-        kw = _common_kwargs(deps); kw.pop("log")
-        out = gap_fill_concepts("Ch", content, ["b1"], ["ego"], "exec", "thorough",
-                                **{k: v for k, v in kw.items()})
+        kw = _common_kwargs(deps)
+        kw.pop("log")
+        out = gap_fill_concepts(
+            "Ch", content, ["b1"], ["ego"], "exec", "thorough", **{k: v for k, v in kw.items()}
+        )
         assert isinstance(out, list)

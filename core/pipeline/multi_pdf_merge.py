@@ -10,6 +10,7 @@ Usage::
         log_callback=log,
     )
 """
+
 from __future__ import annotations
 
 import logging

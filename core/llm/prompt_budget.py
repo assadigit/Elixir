@@ -31,6 +31,7 @@ calls ``compact`` before each LLM call if needed.
 Book-agnostic (Key Decision #3): the compaction is purely structural
 (head/tail preservation), no content awareness.
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,7 +88,13 @@ class PromptBudget:
     @property
     def available(self) -> int:
         """Tokens available for the next prompt (after response + margin)."""
-        return max(0, self.max_context_tokens - self.max_output_tokens - self.safety_margin - self.used_tokens)
+        return max(
+            0,
+            self.max_context_tokens
+            - self.max_output_tokens
+            - self.safety_margin
+            - self.used_tokens,
+        )
 
     def fits(self, text: str, reserved: int = 0) -> bool:
         """Check if ``text`` fits in the available budget.
@@ -169,7 +176,11 @@ class PromptBudget:
         self._tokens_saved += saved
         logger.debug(
             "PromptBudget.compact: %d → %d tokens (saved %d, kept head=%d + tail=%d)",
-            original_tokens, new_tokens, saved, head_tokens, tail_tokens,
+            original_tokens,
+            new_tokens,
+            saved,
+            head_tokens,
+            tail_tokens,
         )
         return compacted
 

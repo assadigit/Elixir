@@ -6,7 +6,7 @@ from utils.logging import get_main_logger
 
 logger = get_main_logger()
 
-PAGE_COMMENT_PATTERN = re.compile(r'<!-- original page (\d+) -->')
+PAGE_COMMENT_PATTERN = re.compile(r"<!-- original page (\d+) -->")
 
 
 def insert_page_markers(content_by_page: list[tuple[int, str]]) -> str:

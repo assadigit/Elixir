@@ -2,6 +2,7 @@
 
 Raises test coverage for the modules added in V13.23.0–V13.29.0.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,6 +16,7 @@ if str(_project_root) not in sys.path:
 
 
 # ── chapters_export tests ──────────────────────────────────────────────────
+
 
 class TestChaptersExport:
     """Tests for core/outputs/chapters_export.py (V13.23.0)."""
@@ -88,6 +90,7 @@ class TestChaptersExport:
 
 # ── thresholds tests ──────────────────────────────────────────────────────
 
+
 class TestThresholds:
     """Tests for core/summarisation/thresholds.py (V13.27.0)."""
 
@@ -100,6 +103,7 @@ class TestThresholds:
             SEMANTIC_FACT_CHECK_DROP,
             VERIFY_BULLETS_MARK,
         )
+
         assert F4_SOURCE_OVERLAP_DROP == 0.25
         assert F4_SOURCE_OVERLAP_RECOVER == 0.30
         assert VERIFY_BULLETS_MARK == 0.50
@@ -109,16 +113,19 @@ class TestThresholds:
     def test_recovery_higher_than_drop(self):
         """Recovery threshold should be higher than drop (borderline bullets stay dropped)."""
         from core.summarisation.thresholds import F4_SOURCE_OVERLAP_DROP, F4_SOURCE_OVERLAP_RECOVER
+
         assert F4_SOURCE_OVERLAP_RECOVER > F4_SOURCE_OVERLAP_DROP
 
     def test_packets_trace_lower_than_semantic(self):
         """Packets validation threshold should be lower than semantic fact-check
         (synthesis produces cross-bullet framing sentences)."""
         from core.summarisation.thresholds import PACKETS_VALIDATION_TRACE, SEMANTIC_FACT_CHECK_DROP
+
         assert PACKETS_VALIDATION_TRACE < SEMANTIC_FACT_CHECK_DROP
 
 
 # ── VRAM calculator tests ─────────────────────────────────────────────────
+
 
 class TestVRamCalculator:
     """Tests for core/vram_calculator.py (V13.26.0 rewrite)."""
@@ -126,6 +133,7 @@ class TestVRamCalculator:
     def test_parse_param_count(self):
         """Parameter count parsing from model names."""
         from core.vram_calculator import _parse_param_count
+
         assert _parse_param_count("gemma-4-12b-it") == 12.0
         assert _parse_param_count("qwen3.5-9b") == 9.0
         assert _parse_param_count("llama-7b") == 7.0
@@ -135,6 +143,7 @@ class TestVRamCalculator:
     def test_parse_quantization(self):
         """Quantization tag parsing from model names."""
         from core.vram_calculator import _parse_quantization
+
         assert _parse_quantization("model-Q5_K_XL")[0] == "q5_k_xl"
         assert _parse_quantization("model-Q4_K_M")[0] == "q4_k_m"
         assert _parse_quantization("model-Q8_0")[0] == "q8_0"
@@ -144,6 +153,7 @@ class TestVRamCalculator:
     def test_estimate_gemma_4_12b_q5_xl_32k(self):
         """Gemma 4 12B Q5_K_XL at 32k context should estimate ~10.9 GB."""
         from core.vram_calculator import _estimate_model_vram
+
         vram = _estimate_model_vram("gemma-4-12b-it-Q5_K_XL", "Summarization", 32768)
         # Should be ~10.9 GB (weights 8.64 + KV 1.8 + overhead 0.5)
         assert 10.0 < vram < 11.5, f"Expected ~10.9 GB, got {vram}"
@@ -151,6 +161,7 @@ class TestVRamCalculator:
     def test_estimate_lower_context_uses_less_vram(self):
         """Same model at 8k context should use less VRAM than at 32k."""
         from core.vram_calculator import _estimate_model_vram
+
         vram_32k = _estimate_model_vram("gemma-4-12b-Q5_K_XL", "Sum", 32768)
         vram_8k = _estimate_model_vram("gemma-4-12b-Q5_K_XL", "Sum", 8192)
         assert vram_8k < vram_32k, "8k context should use less VRAM than 32k"
@@ -158,6 +169,7 @@ class TestVRamCalculator:
     def test_calculate_vram_budget_returns_tuple(self):
         """calculate_vram_budget should return (estimates, peak, total, recommendation)."""
         from core.vram_calculator import calculate_vram_budget
+
         estimates, peak, total, rec = calculate_vram_budget(
             summarization_model="gemma-4-12b-Q5_K_XL",
             max_workers=1,

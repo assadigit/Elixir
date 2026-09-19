@@ -42,6 +42,7 @@ V15.0.0 changes:
     fixes the ``NameError: name 'Path' is not defined`` crash that V13.45.5
     hit inside ``_semantic_dedup_bullets()`` (Improvement 3).
 """
+
 from __future__ import annotations
 
 import logging
@@ -132,6 +133,7 @@ def _resolve_embed_device() -> str:
     """
     try:
         from utils.settings import Settings
+
         device_pref = Settings().get("embedding.device", "auto")
     except Exception:
         device_pref = "auto"
@@ -142,6 +144,7 @@ def _resolve_embed_device() -> str:
     if device_pref == "cuda":
         try:
             import torch
+
             if torch.cuda.is_available():
                 return "cuda"
         except ImportError:
@@ -157,6 +160,7 @@ def _resolve_embed_device() -> str:
         return "cpu"
     try:
         import torch
+
         if not torch.cuda.is_available():
             return "cpu"
         total_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -173,7 +177,9 @@ def _resolve_embed_device() -> str:
         logger.info(
             "embedding device=auto: only %.1f GB VRAM free (%.1f/%.1f used) — "
             "embedder stays on CPU to avoid LLM competition",
-            free_gb, allocated_gb, total_gb,
+            free_gb,
+            allocated_gb,
+            total_gb,
         )
         return "cpu"
     except ImportError:
@@ -220,6 +226,7 @@ def get_embed_model(model_name: str = "") -> Any | None:
     if not model_name:
         try:
             from utils.settings import Settings
+
             model_name = Settings().get("embedding.model", "nomic-embed-text")
         except Exception:
             model_name = "nomic-embed-text"
@@ -236,10 +243,12 @@ def get_embed_model(model_name: str = "") -> Any | None:
         # This supports Qwen3-Embedding-0.6B-GGUF, nomic-embed-text-v1.5-GGUF, etc.
         try:
             from core.llm.embedder_backend import OllamaEmbedBackend, is_ollama_embed_model
+
             if is_ollama_embed_model(model_name):
                 logger.info("Loading Ollama embedder backend: %s", model_name)
                 try:
                     from utils.settings import Settings
+
                     _ollama_url = Settings().get("llm.ollama_url", "http://localhost:11434")
                 except Exception:
                     _ollama_url = "http://localhost:11434"
@@ -283,7 +292,8 @@ def get_embed_model(model_name: str = "") -> Any | None:
                 _device = _resolve_embed_device()
                 logger.info(
                     "Loading SentenceTransformer from local cache (offline): %s [device=%s]",
-                    _model_dir, _device,
+                    _model_dir,
+                    _device,
                 )
                 _embed_model = SentenceTransformer(str(_model_dir), device=_device)
                 _embed_model_name = model_name
@@ -292,13 +302,15 @@ def get_embed_model(model_name: str = "") -> Any | None:
                 # vectors from a CUDA forward-pass OOM) is detected at load
                 # time, not after it has poisoned every cos_sim downstream.
                 from core.llm.embedder_backend import SentenceTransformerBackend
+
                 _wrapped = SentenceTransformerBackend(_embed_model)
                 if not _wrapped.smoke_test():
                     logger.warning(
                         "V18.2.44: SentenceTransformerBackend smoke-test FAILED "
                         "for '%s' (%s). Semantic similarity will fall back to "
                         "Jaccard; Phase 2.2 fact-check still runs on Jaccard.",
-                        model_name, _wrapped._health_reason,
+                        model_name,
+                        _wrapped._health_reason,
                     )
                 _embed_model = _wrapped
                 return _embed_model
@@ -308,7 +320,9 @@ def get_embed_model(model_name: str = "") -> Any | None:
                 # sentence-transformers version.
                 logger.warning(
                     "Failed to load local model from %s: %s: %s — attempting fresh download",
-                    _model_dir, type(exc).__name__, exc,
+                    _model_dir,
+                    type(exc).__name__,
+                    exc,
                 )
                 # The offline flags are restored by the ``finally`` below, so
                 # the download path is NOT forced offline — and the user's
@@ -337,7 +351,10 @@ def get_embed_model(model_name: str = "") -> Any | None:
                 _attempt_label = f" (attempt {_attempt + 1}/2)" if _attempt > 0 else ""
                 logger.info(
                     "Downloading SentenceTransformer('%s') (timeout=%ds, one-time)%s [device=%s]...",
-                    model_name, _EMBED_DOWNLOAD_TIMEOUT_SECONDS, _attempt_label, _device,
+                    model_name,
+                    _EMBED_DOWNLOAD_TIMEOUT_SECONDS,
+                    _attempt_label,
+                    _device,
                 )
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -351,27 +368,34 @@ def get_embed_model(model_name: str = "") -> Any | None:
                         logger.warning(
                             "SentenceTransformer('%s') download timed out after %ds — "
                             "retrying once more...",
-                            model_name, _EMBED_DOWNLOAD_TIMEOUT_SECONDS,
+                            model_name,
+                            _EMBED_DOWNLOAD_TIMEOUT_SECONDS,
                         )
                         continue
                     logger.warning(
                         "SentenceTransformer('%s') download timed out after %ds (2 attempts) — "
                         "semantic features disabled. Run the app once with internet "
                         "to seed the persistent local model at %s",
-                        model_name, _EMBED_DOWNLOAD_TIMEOUT_SECONDS, _model_dir,
+                        model_name,
+                        _EMBED_DOWNLOAD_TIMEOUT_SECONDS,
+                        _model_dir,
                     )
                     return None
                 except Exception as _dl_err:
                     if _attempt == 0:
                         logger.warning(
                             "SentenceTransformer('%s') download failed: %s: %s — retrying...",
-                            model_name, type(_dl_err).__name__, _dl_err,
+                            model_name,
+                            type(_dl_err).__name__,
+                            _dl_err,
                         )
                         continue
                     logger.warning(
                         "SentenceTransformer('%s') download failed (2 attempts): %s: %s — "
                         "semantic features disabled.",
-                        model_name, type(_dl_err).__name__, _dl_err,
+                        model_name,
+                        type(_dl_err).__name__,
+                        _dl_err,
                     )
                     return None
             else:
@@ -387,7 +411,9 @@ def get_embed_model(model_name: str = "") -> Any | None:
             except Exception as save_err:
                 logger.warning(
                     "Could not save model to %s: %s: %s",
-                    _model_dir, type(save_err).__name__, save_err,
+                    _model_dir,
+                    type(save_err).__name__,
+                    save_err,
                 )
 
             _embed_model_name = model_name
@@ -400,6 +426,7 @@ def get_embed_model(model_name: str = "") -> Any | None:
             # V18.2.44 (Next Step #5): wrap + smoke-test the freshly-downloaded
             # model too (same protection as the from-disk path above).
             from core.llm.embedder_backend import SentenceTransformerBackend
+
             _wrapped = SentenceTransformerBackend(_embed_model)
             if not _wrapped.smoke_test():
                 logger.warning(
@@ -407,19 +434,20 @@ def get_embed_model(model_name: str = "") -> Any | None:
                     "for freshly-downloaded '%s' (%s). The model loaded but "
                     "produces degenerate vectors — semantic similarity will "
                     "fall back to Jaccard.",
-                    model_name, _wrapped._health_reason,
+                    model_name,
+                    _wrapped._health_reason,
                 )
             _embed_model = _wrapped
             return _embed_model
         except ImportError:
-            logger.debug(
-                "sentence-transformers not installed — embed model unavailable"
-            )
+            logger.debug("sentence-transformers not installed — embed model unavailable")
             return None
         except Exception as exc:
             logger.warning(
                 "Failed to load SentenceTransformer('%s'): %s: %s",
-                model_name, type(exc).__name__, exc,
+                model_name,
+                type(exc).__name__,
+                exc,
             )
             return None
 
@@ -444,6 +472,7 @@ def is_embedder_healthy() -> bool:
         try:
             from core.llm.model_taxonomy import is_low_bit_quant
             from utils.settings import Settings
+
             _model_name = Settings().get("summarisation.model", "")
             if is_low_bit_quant(_model_name):
                 _FORCE_CPU_EMBEDDER = True
@@ -489,8 +518,8 @@ def get_spacy_nlp(
             return _spacy_nlp_cache[cache_key]
         try:
             import spacy
-            logger.debug("Loading spacy('%s', disable=%s) (one-time)",
-                         model_name, disable)
+
+            logger.debug("Loading spacy('%s', disable=%s) (one-time)", model_name, disable)
             if disable:
                 nlp = spacy.load(model_name, disable=disable)
             else:
@@ -503,8 +532,9 @@ def get_spacy_nlp(
             return None
         except Exception as exc:
             # spacy.load raises OSError if the model isn't installed
-            logger.warning("Failed to load spacy('%s'): %s: %s",
-                           model_name, type(exc).__name__, exc)
+            logger.warning(
+                "Failed to load spacy('%s'): %s: %s", model_name, type(exc).__name__, exc
+            )
             return None
 
 

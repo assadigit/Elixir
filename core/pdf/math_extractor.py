@@ -28,6 +28,7 @@ class MathExtractor:
     def _init_pix2tex(self) -> bool:
         try:
             from pix2tex import Pix2Tex
+
             self._pix2tex = Pix2Tex()
             self.log("  ✅ Pix2Tex loaded for math extraction.", "INFO")
             return True
@@ -38,6 +39,7 @@ class MathExtractor:
     def _init_latexocr(self) -> bool:
         try:
             from latexocr import LatexOCR
+
             self._latexocr = LatexOCR()
             self.log("  ✅ LaTeX-OCR loaded for math extraction.", "INFO")
             return True
@@ -61,7 +63,13 @@ class MathExtractor:
         # Render pages to images
         try:
             from pdf2image import convert_from_path
-            images = convert_from_path(str(pdf_path), first_page=pages[0], last_page=pages[-1], poppler_path=self.poppler_path or None)
+
+            images = convert_from_path(
+                str(pdf_path),
+                first_page=pages[0],
+                last_page=pages[-1],
+                poppler_path=self.poppler_path or None,
+            )
             # We need to map images back to page numbers
             for idx, img in enumerate(images):
                 page_num = pages[idx]
@@ -89,11 +97,10 @@ class MathExtractor:
         # For each page, we'll find the page marker and insert after.
         lines = markdown.splitlines()
         new_lines = []
-        current_page = None
         for line in lines:
             new_lines.append(line)
             # Check for page marker
-            m = re.search(r'<!-- original page (\d+) -->', line)
+            m = re.search(r"<!-- original page (\d+) -->", line)
             if m:
                 page_num = int(m.group(1))
                 if page_num in math_by_page:

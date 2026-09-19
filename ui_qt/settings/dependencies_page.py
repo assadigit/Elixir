@@ -37,6 +37,7 @@ from core.system.dependency_checker import DetailedDependencyChecker as Dependen
 
 # ── Animated status dot ───────────────────────────────────────────────────
 
+
 class StatusDot(QLabel):
     """A pulsing circle indicator for dependency status.
 
@@ -79,9 +80,8 @@ class StatusDot(QLabel):
 
         # Easing curve: in-out sine for a smooth breathe effect
         from PySide6.QtCore import QEasingCurve
-        self._pulse_animation.setEasingCurve(
-            QEasingCurve.Type.InOutSine
-        )
+
+        self._pulse_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
 
         # Toggle between fade-in and fade-out each loop
         self._pulse_animation.valueChanged.connect(self._on_pulse)
@@ -91,11 +91,7 @@ class StatusDot(QLabel):
     def _on_pulse(self, value: float) -> None:
         """Update the dot's opacity during the pulse animation."""
         color = self._color()
-        # Use alpha in the color string for opacity effect
-        alpha = int(value * 255)
-        self.setStyleSheet(
-            f"font-size: 22px; color: {color};"
-        )
+        self.setStyleSheet(f"font-size: 22px; color: {color};")
         # For opacity, we use a QGraphicsOpacityEffect-style approach
         # But since QLabel doesn't have opacity directly, we use color alpha
         self._base_opacity = value
@@ -118,6 +114,7 @@ class StatusDot(QLabel):
 
 # ── Dependency row ────────────────────────────────────────────────────────
 
+
 class DependencyRow(QWidget):
     """One row in the dashboard: dot + name + status + version/path."""
 
@@ -139,9 +136,7 @@ class DependencyRow(QWidget):
         info_col.setSpacing(0)
 
         name_label = QLabel(status.name)
-        name_label.setStyleSheet(
-            "font-size: 12px; font-weight: 600; background: transparent;"
-        )
+        name_label.setStyleSheet("font-size: 12px; font-weight: 600; background: transparent;")
         info_col.addWidget(name_label)
 
         status_text = status.status_text
@@ -150,9 +145,7 @@ class DependencyRow(QWidget):
         elif status.path:
             status_text += f"  ·  {status.path}"
         status_label = QLabel(status_text)
-        status_label.setStyleSheet(
-            "font-size: 11px; color: #888; background: transparent;"
-        )
+        status_label.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
         info_col.addWidget(status_label)
 
         lay.addLayout(info_col, 1)
@@ -168,13 +161,12 @@ class DependencyRow(QWidget):
         # Required/optional badge
         req_label = QLabel("required" if status.required else "optional")
         req_color = "#666" if status.required else "#aaa"
-        req_label.setStyleSheet(
-            f"font-size: 10px; color: {req_color}; background: transparent;"
-        )
+        req_label.setStyleSheet(f"font-size: 10px; color: {req_color}; background: transparent;")
         lay.addWidget(req_label)
 
 
 # ── Main dependencies section ─────────────────────────────────────────────
+
 
 class DependenciesSection(QGroupBox):
     """The full dependencies dashboard with categorized sections + recheck."""
@@ -251,7 +243,7 @@ class DependenciesSection(QGroupBox):
         # Build sections
         required_ok = 0
         required_total = 0
-        for cat_key, (cat_label, cat_statuses) in categories.items():
+        for _cat_key, (cat_label, cat_statuses) in categories.items():
             if not cat_statuses:
                 continue
             # Category header
@@ -279,8 +271,7 @@ class DependenciesSection(QGroupBox):
         # Update summary
         if required_ok == required_total:
             self.summary_label.setText(
-                f"✅  All required dependencies connected "
-                f"({required_ok}/{required_total})"
+                f"✅  All required dependencies connected ({required_ok}/{required_total})"
             )
             self.summary_label.setStyleSheet(
                 "font-size: 13px; font-weight: 600; padding: 8px 12px;"

@@ -8,6 +8,7 @@ to capture the B4 section map-reduce flow.
 
 Run: pytest tests/test_section_map_reduce.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,12 +21,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 
 class _CapturingLog:
@@ -41,7 +45,9 @@ class _CapturingLog:
 
 def _stub_detect_sections(section_list):
     """Install a fake core.summarisation.text_preprocessor with detect_sections."""
-    mod = sys.modules.get("core.summarisation.text_preprocessor") or types.ModuleType("core.summarisation.text_preprocessor")
+    mod = sys.modules.get("core.summarisation.text_preprocessor") or types.ModuleType(
+        "core.summarisation.text_preprocessor"
+    )
     mod.detect_sections = lambda text: list(section_list)
     sys.modules["core.summarisation.text_preprocessor"] = mod
     return mod
@@ -144,7 +150,9 @@ def _make_deps(
     thematic_calls = []
     musthave_calls = []
 
-    def summarize_with_model(sec_heading, sec_text, model, temp, with_cot=True, concepts=None, callouts=None, **kw):
+    def summarize_with_model(
+        sec_heading, sec_text, model, temp, with_cot=True, concepts=None, callouts=None, **kw
+    ):
         i = idx["i"]
         idx["i"] += 1
         swm_calls.append({"heading": sec_heading, "temp": temp})
@@ -232,7 +240,9 @@ class TestEarlyExit:
         """detect_sections returns < 2 headings → returns None."""
         _stub_detect_sections(["Only One Section"])
         deps = _make_deps(swm_results=[{"bullet_points": ["b1"]}])
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Only One Section"]), deps)
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Only One Section"]), deps
+        )
         assert out is None
 
     def test_fewer_than_two_section_chunks_returns_none(self):
@@ -246,8 +256,14 @@ class TestEarlyExit:
         # starts chunk 2. So 2 chunks. To get < 2 chunks, we'd need only 1 heading
         # that matches... but that's the < 2 sections case. This case is hard to
         # construct; skip with a basic assert that the function runs.
-        deps = _make_deps(swm_results=[{"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}])
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Heading Match", "Second"]), deps)
+        deps = _make_deps(
+            swm_results=[
+                {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
+            ]
+        )
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Heading Match", "Second"]), deps
+        )
         # 2 sections → 2 chunks → proceeds (doesn't return None here)
         assert out is not None or out is None  # smoke: doesn't crash
 
@@ -256,7 +272,9 @@ class TestEarlyExit:
         → returns None."""
         _stub_detect_sections(["Section A", "Section B"])
         deps = _make_deps()  # swm_results=[] → every call returns None
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+        )
         assert out is None
 
 
@@ -268,10 +286,24 @@ class TestSuccessfulMerge:
         """2 sections, each returns bullets+exec+thorough → merged dict with
         all fields, model='section_map_reduce_v13.44'."""
         _stub_detect_sections(["Section A", "Section B"])
-        s1 = {"bullet_points": ["a1", "a2"], "executive_summary": "exec A.", "thorough_summary": "thorough A.", "key_distinctions": "dist A", "theoretical_tensions": "tens A"}
-        s2 = {"bullet_points": ["b1"], "executive_summary": "exec B.", "thorough_summary": "thorough B.", "key_distinctions": "dist B", "theoretical_tensions": "tens B"}
+        s1 = {
+            "bullet_points": ["a1", "a2"],
+            "executive_summary": "exec A.",
+            "thorough_summary": "thorough A.",
+            "key_distinctions": "dist A",
+            "theoretical_tensions": "tens A",
+        }
+        s2 = {
+            "bullet_points": ["b1"],
+            "executive_summary": "exec B.",
+            "thorough_summary": "thorough B.",
+            "key_distinctions": "dist B",
+            "theoretical_tensions": "tens B",
+        }
         deps = _make_deps(swm_results=[s1, s2])
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+        )
         assert out is not None
         assert out["model"] == "section_map_reduce_v13.44"
         assert "exec A." in out["executive_summary"]
@@ -286,11 +318,22 @@ class TestSuccessfulMerge:
     def test_bullets_capped_at_max_bullets_per_chapter(self):
         """The returned bullet_points list is capped at max_bullets_per_chapter."""
         _stub_detect_sections(["Section A", "Section B"])
-        s1 = {"bullet_points": [f"a{i}" for i in range(60)], "executive_summary": "e", "thorough_summary": "t"}
-        s2 = {"bullet_points": [f"b{i}" for i in range(60)], "executive_summary": "e", "thorough_summary": "t"}
+        s1 = {
+            "bullet_points": [f"a{i}" for i in range(60)],
+            "executive_summary": "e",
+            "thorough_summary": "t",
+        }
+        s2 = {
+            "bullet_points": [f"b{i}" for i in range(60)],
+            "executive_summary": "e",
+            "thorough_summary": "t",
+        }
         deps = _make_deps(swm_results=[s1, s2], dedup_result=[f"x{i}" for i in range(150)])
-        kw = _common_kwargs(deps); kw["max_bullets_per_chapter"] = 100
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw)
+        kw = _common_kwargs(deps)
+        kw["max_bullets_per_chapter"] = 100
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw
+        )
         assert len(out["bullet_points"]) == 100
 
     def test_vram_recovery_between_sections(self):
@@ -299,7 +342,9 @@ class TestSuccessfulMerge:
         _stub_detect_sections(["Section A", "Section B"])
         s = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
         deps = _make_deps(swm_results=[s, s])
-        _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+        _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+        )
         # 1 recover_vram before section 2 (and possibly 1 for pre-thematic-synthesis)
         # if synthesis runs. With cloud + 2 sections + thorough >500 chars, synthesis runs.
         # So: 1 (before section 2) + 1 (pre-thematic) = 2. Or just 1 if synthesis skipped.
@@ -318,8 +363,11 @@ class TestPreFlight:
         _stub_detect_sections(["Section A", "Section B"])
         s = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
         deps = _make_deps(swm_results=[s, s])
-        kw = _common_kwargs(deps); kw["is_local"] = False
-        _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw)
+        kw = _common_kwargs(deps)
+        kw["is_local"] = False
+        _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw
+        )
         assert len(deps["_musthave_calls"]) == 1
 
     def test_preflight_skipped_when_local_and_gpu_warm(self):
@@ -332,8 +380,11 @@ class TestPreFlight:
         kw["is_local"] = True
         kw["local_preflight_skip_temp"] = 70
         kw["last_gpu_temp"] = 75  # >= 70 → skip
-        cap = _CapturingLog(); kw["log"] = cap
-        _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw)
+        cap = _CapturingLog()
+        kw["log"] = cap
+        _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw
+        )
         assert len(deps["_musthave_calls"]) == 0
         infos = [m for m, l in cap.calls if l == "INFO"]
         assert any("Pre-flight skipped" in i for i in infos)
@@ -351,7 +402,9 @@ class TestThematicSynthesis:
         s1 = {"bullet_points": ["a1"], "executive_summary": "e", "thorough_summary": long_thorough}
         s2 = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": long_thorough}
         deps = _make_deps(swm_results=[s1, s2], thematic_result="THEMATICALLY REORGANIZED")
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+        )
         assert len(deps["_thematic_calls"]) == 1
         assert out["thorough_summary"] == "THEMATICALLY REORGANIZED"
 
@@ -362,9 +415,13 @@ class TestThematicSynthesis:
         s1 = {"bullet_points": ["a1"], "executive_summary": "e", "thorough_summary": long_thorough}
         s2 = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": long_thorough}
         deps = _make_deps(swm_results=[s1, s2], thematic_result="SHOULD_NOT_BE_USED")
-        kw = _common_kwargs(deps); kw["is_local"] = True
-        cap = _CapturingLog(); kw["log"] = cap
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw)
+        kw = _common_kwargs(deps)
+        kw["is_local"] = True
+        cap = _CapturingLog()
+        kw["log"] = cap
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw
+        )
         assert len(deps["_thematic_calls"]) == 0
         infos = [m for m, l in cap.calls if l == "INFO"]
         assert any("Thematic synthesis skipped" in i for i in infos)
@@ -380,9 +437,13 @@ class TestByteForByte:
         """Same inputs → same output dict across calls."""
         _stub_detect_sections(["Section A", "Section B"])
         s = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
+
         def _run():
             deps = _make_deps(swm_results=[s, s])
-            return _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+            return _section_map_reduce_via_fn(
+                "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+            )
+
         assert _run() == _run()
 
     def test_returns_optional_dict(self):
@@ -390,10 +451,14 @@ class TestByteForByte:
         _stub_detect_sections(["Section A", "Section B"])
         s = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
         deps = _make_deps(swm_results=[s, s])
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps)
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps
+        )
         assert isinstance(out, dict)
         deps2 = _make_deps()  # all sections fail
-        out2 = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps2)
+        out2 = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps2
+        )
         assert out2 is None
 
     def test_no_log_callback_does_not_raise(self):
@@ -401,8 +466,11 @@ class TestByteForByte:
         _stub_detect_sections(["Section A", "Section B"])
         s = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
         deps = _make_deps(swm_results=[s, s])
-        kw = _common_kwargs(deps); kw.pop("log")
-        out = _section_map_reduce_via_fn("Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw)
+        kw = _common_kwargs(deps)
+        kw.pop("log")
+        out = _section_map_reduce_via_fn(
+            "Ch", _build_text_with_sections(["Section A", "Section B"]), deps, kw
+        )
         assert isinstance(out, dict)
 
 
@@ -415,6 +483,7 @@ def _section_map_reduce_via_fn(heading, text, deps, extra_kw=None):
     import importlib
 
     import core.summarisation.map_reduce as _mr
+
     importlib.reload(_mr)  # ensure the local-import stub is effective
     kw = _common_kwargs(deps)
     if extra_kw:

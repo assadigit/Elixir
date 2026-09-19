@@ -24,9 +24,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TextBlock:
     """Represents a text block with position and content."""
+
     page_num: int
     x0: float
     y0: float
@@ -49,13 +51,15 @@ class LayoutReorder:
 
     def _check_dependencies(self):
         try:
-            import pdfplumber
+            import pdfplumber  # noqa: F401 — availability probe (the import IS the check)
+
             self._pdfplumber_available = True
             self.log("  ✅ pdfplumber available for layout detection.", "DEBUG")
         except ImportError:
             self.log("  ⚠️ pdfplumber not installed. Falling back to PyMuPDF.", "WARNING")
             try:
-                import fitz
+                import fitz  # noqa: F401 — availability probe (the import IS the check)
+
                 self._pymupdf_available = True
                 self.log("  ✅ PyMuPDF available for layout detection.", "DEBUG")
             except ImportError:
@@ -85,7 +89,7 @@ class LayoutReorder:
         # a multi-column layout. If not, skip the per-page reorder entirely.
         # Rationale: layout reorder was designed for two-column scientific
         # papers. The content auto-detector sometimes misclassifies regular
-# books as "Academic Paper" (e.g. a domain textbook with 4
+        # books as "Academic Paper" (e.g. a domain textbook with 4
         # citations -> 75% confidence -> layout reorder enabled -> 20 pages
         # checked -> 0 reorders -> 25s wasted). The sampling check prevents
         # this: check 1-2 pages, and if no multi-column layout is detected,
@@ -96,7 +100,7 @@ class LayoutReorder:
                 f"  V18.13: Layout reorder skipped — sampled {len(sample_page_nums)} "
                 f"page(s), no multi-column layout detected (single-column content; "
                 f"reorder not needed, saved ~{len(pages) * 1.2:.0f}s).",
-                "INFO"
+                "INFO",
             )
             return markdown_text
 
@@ -111,7 +115,10 @@ class LayoutReorder:
                     reordered = self._reorder_page_pymupdf(pdf_path, page_num, page_content)
                 reordered_pages.append(f"<!-- original page {page_num} -->\n{reordered}")
             except Exception as e:
-                self.log(f"  ⚠️ Layout reorder failed for page {page_num}: {e}. Keeping original.", "WARNING")
+                self.log(
+                    f"  ⚠️ Layout reorder failed for page {page_num}: {e}. Keeping original.",
+                    "WARNING",
+                )
                 reordered_pages.append(f"<!-- original page {page_num} -->\n{page_content}")
 
         return "\n\n".join(reordered_pages)
@@ -152,6 +159,7 @@ class LayoutReorder:
         - Two-column: words in 2 clusters with a gap (gutter has < 5%)
         """
         import pdfplumber
+
         with pdfplumber.open(pdf_path) as pdf:
             if page_num > len(pdf.pages):
                 return False
@@ -165,24 +173,26 @@ class LayoutReorder:
             n_bins = 10
             bin_counts = [0] * n_bins
             for w in words:
-                x_center = (w.get('x0', 0) + w.get('x1', 0)) / 2
+                x_center = (w.get("x0", 0) + w.get("x1", 0)) / 2
                 bin_idx = int((x_center / page_width) * n_bins)
                 bin_idx = min(max(bin_idx, 0), n_bins - 1)
                 bin_counts[bin_idx] += 1
             total_words = sum(bin_counts)
             if total_words == 0:
                 return False
-            left_count = sum(bin_counts[0:4])    # 0-40%
+            left_count = sum(bin_counts[0:4])  # 0-40%
             gutter_count = sum(bin_counts[4:6])  # 40-60%
             right_count = sum(bin_counts[6:10])  # 60-100%
             gutter_ratio = gutter_count / total_words
             left_ratio = left_count / total_words
             right_ratio = right_count / total_words
             # Two-column if: gutter < 5% of words, both columns > 15%, enough words
-            return (gutter_ratio < 0.05 and
-                    left_ratio > 0.15 and
-                    right_ratio > 0.15 and
-                    total_words > 20)
+            return (
+                gutter_ratio < 0.05
+                and left_ratio > 0.15
+                and right_ratio > 0.15
+                and total_words > 20
+            )
 
     def _is_two_column_pymupdf(self, pdf_path: Path, page_num: int) -> bool:
         """Check if a single page has a 2-column layout using PyMuPDF.
@@ -190,6 +200,7 @@ class LayoutReorder:
         Same algorithm as _is_two_column_pdfplumber but using fitz.
         """
         import fitz
+
         doc = fitz.open(pdf_path)
         if page_num > doc.page_count:
             doc.close()
@@ -223,15 +234,19 @@ class LayoutReorder:
         left_count = sum(bin_counts[0:4])
         gutter_count = sum(bin_counts[4:6])
         right_count = sum(bin_counts[6:10])
-        return (gutter_count / total < 0.05 and
-                left_count / total > 0.15 and
-                right_count / total > 0.15 and
-                total > 20)
+        return (
+            gutter_count / total < 0.05
+            and left_count / total > 0.15
+            and right_count / total > 0.15
+            and total > 20
+        )
 
     def _split_markdown_into_pages(self, markdown_text: str) -> dict[int, str]:
         """Extract page content using <!-- original page N --> markers."""
         pages = {}
-        pattern = re.compile(r'(<!-- original page (\d+) -->)\s*(.*?)(?=<!-- original page \d+ -->|\Z)', re.DOTALL)
+        pattern = re.compile(
+            r"(<!-- original page (\d+) -->)\s*(.*?)(?=<!-- original page \d+ -->|\Z)", re.DOTALL
+        )
         for match in pattern.finditer(markdown_text):
             page_num = int(match.group(2))
             content = match.group(3).strip()
@@ -245,23 +260,23 @@ class LayoutReorder:
         """
         # Try standard extraction
         words = page.extract_words(x_tolerance=3, y_tolerance=3)
-        if words and all('x0' in w and 'y0' in w for w in words):
+        if words and all("x0" in w and "y0" in w for w in words):
             return words
 
         # Try with different tolerance
         words = page.extract_words(x_tolerance=5, y_tolerance=5)
-        if words and all('x0' in w and 'y0' in w for w in words):
+        if words and all("x0" in w and "y0" in w for w in words):
             return words
 
         # Try without tolerance
         words = page.extract_words()
-        if words and all('x0' in w and 'y0' in w for w in words):
+        if words and all("x0" in w and "y0" in w for w in words):
             return words
 
         # Try with extra parameters (keep_blank_chars)
         try:
             words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False)
-            if words and all('x0' in w and 'y0' in w for w in words):
+            if words and all("x0" in w and "y0" in w for w in words):
                 return words
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -283,16 +298,22 @@ class LayoutReorder:
             if not words:
                 # Fallback to PyMuPDF if available
                 if self._pymupdf_available:
-                    self.log(f"  ℹ️ pdfplumber failed to extract words on page {page_num}, falling back to PyMuPDF.", "DEBUG")
+                    self.log(
+                        f"  ℹ️ pdfplumber failed to extract words on page {page_num}, falling back to PyMuPDF.",
+                        "DEBUG",
+                    )
                     return self._reorder_page_pymupdf(pdf_path, page_num, page_content)
                 else:
                     self.log(f"  ℹ️ No words found on page {page_num} – skipping reorder.", "DEBUG")
                     return page_content
 
             # Ensure all words have required keys
-            required_keys = {'x0', 'y0', 'x1', 'y1', 'text'}
+            required_keys = {"x0", "y0", "x1", "y1", "text"}
             if not all(all(k in w for k in required_keys) for w in words):
-                self.log(f"  ⚠️ Words missing position keys on page {page_num} – falling back to PyMuPDF.", "DEBUG")
+                self.log(
+                    f"  ⚠️ Words missing position keys on page {page_num} – falling back to PyMuPDF.",
+                    "DEBUG",
+                )
                 if self._pymupdf_available:
                     return self._reorder_page_pymupdf(pdf_path, page_num, page_content)
                 else:
@@ -301,14 +322,17 @@ class LayoutReorder:
             # Cluster words into lines by y‑coordinate (within tolerance)
             lines = self._cluster_words_into_lines(words)
             # Sort lines by y, then x (left → right)
-            lines.sort(key=lambda line: (line[0].get('y0', 0), line[0].get('x0', 0)))
+            lines.sort(key=lambda line: (line[0].get("y0", 0), line[0].get("x0", 0)))
 
             # Reconstruct text from sorted lines
             reordered_text = self._reconstruct_text_from_lines(lines)
 
             # If the content seems unchanged, return original
             if self._is_same_content(reordered_text, page_content):
-                self.log(f"  ℹ️ Layout reorder didn't change page {page_num} (may be single‑column).", "DEBUG")
+                self.log(
+                    f"  ℹ️ Layout reorder didn't change page {page_num} (may be single‑column).",
+                    "DEBUG",
+                )
                 return page_content
 
             self.log(f"  ✅ Reordered page {page_num} (pdfplumber)", "INFO")
@@ -333,24 +357,22 @@ class LayoutReorder:
                         if span["text"].strip():
                             # Use the span's bbox
                             x0, y0, x1, y1 = span["bbox"]
-                            lines.append({
-                                "x0": x0,
-                                "y0": y0,
-                                "x1": x1,
-                                "y1": y1,
-                                "text": span["text"]
-                            })
+                            lines.append(
+                                {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "text": span["text"]}
+                            )
 
         if not lines:
             self.log(f"  ℹ️ No text blocks found on page {page_num} – skipping reorder.", "DEBUG")
             return page_content
 
         # Sort by y, then x
-        lines.sort(key=lambda l: (l["y0"], l["x0"]))
+        lines.sort(key=lambda ln: (ln["y0"], ln["x0"]))
         reordered_text = self._reconstruct_text_from_lines(lines)
 
         if self._is_same_content(reordered_text, page_content):
-            self.log(f"  ℹ️ Layout reorder didn't change page {page_num} (may be single‑column).", "DEBUG")
+            self.log(
+                f"  ℹ️ Layout reorder didn't change page {page_num} (may be single‑column).", "DEBUG"
+            )
             return page_content
 
         self.log(f"  ✅ Reordered page {page_num} (PyMuPDF)", "INFO")
@@ -361,23 +383,23 @@ class LayoutReorder:
         if not words:
             return []
         # Sort by y0
-        sorted_words = sorted(words, key=lambda w: w['y0'])
+        sorted_words = sorted(words, key=lambda w: w["y0"])
         lines = []
         current_line = [sorted_words[0]]
-        current_y = sorted_words[0]['y0']
+        current_y = sorted_words[0]["y0"]
         y_tolerance = 5  # pixels
 
         for w in sorted_words[1:]:
-            if abs(w['y0'] - current_y) < y_tolerance:
+            if abs(w["y0"] - current_y) < y_tolerance:
                 current_line.append(w)
             else:
                 # Sort current line by x0
-                current_line.sort(key=lambda w: w['x0'])
+                current_line.sort(key=lambda w: w["x0"])
                 lines.append(current_line)
                 current_line = [w]
-                current_y = w['y0']
+                current_y = w["y0"]
         if current_line:
-            current_line.sort(key=lambda w: w['x0'])
+            current_line.sort(key=lambda w: w["x0"])
             lines.append(current_line)
         return lines
 
@@ -387,12 +409,12 @@ class LayoutReorder:
         for line in lines:
             text_parts = []
             for word in line:
-                text_parts.append(word['text'])
-            result.append(' '.join(text_parts))
-        return '\n'.join(result)
+                text_parts.append(word["text"])
+            result.append(" ".join(text_parts))
+        return "\n".join(result)
 
     def _is_same_content(self, reordered: str, original: str) -> bool:
         """Check if reordered text is essentially the same (ignoring whitespace)."""
-        reordered_clean = re.sub(r'\s+', '', reordered)
-        original_clean = re.sub(r'\s+', '', original)
+        reordered_clean = re.sub(r"\s+", "", reordered)
+        original_clean = re.sub(r"\s+", "", original)
         return reordered_clean == original_clean

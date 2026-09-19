@@ -15,7 +15,18 @@ import of the full public API — the re-export surface is now reviewable,
 and transitive stdlib leakage (``logging``/``re``/``Counter``) from the
 impl module is no longer re-exported.
 """
+
 from __future__ import annotations
+
+# V0.13 (Phase 0 lint triage): removed a dead re-export block for
+# _BRACKET_CITATION_PATTERN / _NUMERICAL_CITATION_PATTERN — nothing imports
+# these names from this module (text_preprocessor_citations.py defines its
+# own compiled patterns).
+# V18.20.1.0 (D3): re-export the shared runtime state object so tests can patch
+# via the re-export module name AND have the change propagate to the impl module.
+# ``text_preprocessor._runtime_state.spacy_nlp = Y`` mutates the SAME object that
+# ``text_preprocessor_impl._runtime_state.spacy_nlp`` reads — no more silent no-ops.
+from core.summarisation._runtime_state import state as _runtime_state  # noqa: F401
 
 # V0.08 (P2): explicit re-export of the impl module's public API
 # (was: ``from text_preprocessor_impl import *``). Intentional re-exports —
@@ -111,18 +122,3 @@ from core.summarisation.text_preprocessor_impl import (  # noqa: F401
     verify_numbers_and_quotes,
     vocabulary_overlap_score,
 )
-
-# Try to re-export bracket citation patterns (may not exist)
-try:
-    from core.summarisation.text_preprocessor_impl import (
-        _BRACKET_CITATION_PATTERN,
-        _NUMERICAL_CITATION_PATTERN,
-    )
-except ImportError:
-    pass
-
-# V18.20.1.0 (D3): re-export the shared runtime state object so tests can patch
-# via the re-export module name AND have the change propagate to the impl module.
-# ``text_preprocessor._runtime_state.spacy_nlp = Y`` mutates the SAME object that
-# ``text_preprocessor_impl._runtime_state.spacy_nlp`` reads — no more silent no-ops.
-from core.summarisation._runtime_state import state as _runtime_state  # noqa: F401

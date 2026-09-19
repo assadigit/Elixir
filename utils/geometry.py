@@ -6,6 +6,7 @@ monitor change (or a disconnected second monitor) left the window fully
 off-screen — the app looked "dead on launch". The helpers below decide
 whether a restored window is visible on any screen.
 """
+
 from __future__ import annotations
 
 
@@ -15,11 +16,14 @@ def rects_intersect(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) 
     bx, by, bw, bh = b
     if aw <= 0 or ah <= 0 or bw <= 0 or bh <= 0:
         return False
-    return (ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah)
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
 
 
 def restored_geometry_is_visible(
-    x: int, y: int, w: int, h: int,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
     screens: list[tuple[int, int, int, int]],
     min_overlap_area: int = 100,
 ) -> bool:

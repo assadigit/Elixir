@@ -21,6 +21,7 @@ Usage::
     # or batch:
     vecs = embed_cache.get_or_encode_batch(model, texts, model_name=...)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -99,6 +100,7 @@ class EmbedCache:
             if not path.exists():
                 return None
             import numpy as np
+
             return np.load(str(path), allow_pickle=False)
         except Exception as exc:
             logger.debug("embed cache get failed: %s: %s", type(exc).__name__, exc)
@@ -110,6 +112,7 @@ class EmbedCache:
             return
         try:
             import numpy as np
+
             path = self._path_for(model_name, text)
             with _entry_lock(path.stem):
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -163,7 +166,7 @@ class EmbedCache:
         if miss_texts:
             # Encode all misses in one batch (much faster than one-by-one)
             new_vecs = model.encode(miss_texts, convert_to_numpy=True)
-            for idx, text, vec in zip(miss_indices, miss_texts, new_vecs):
+            for idx, text, vec in zip(miss_indices, miss_texts, new_vecs, strict=False):
                 results[idx] = vec
                 self.put(text, model_name, vec)
 
@@ -186,6 +189,7 @@ class EmbedCache:
         deleted = 0
         try:
             import shutil
+
             for model_dir in self._root.iterdir():
                 if model_dir.is_dir():
                     count = sum(1 for _ in model_dir.rglob("*.npy"))

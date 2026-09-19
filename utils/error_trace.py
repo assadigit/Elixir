@@ -62,6 +62,7 @@ Or with the context manager::
     with swallow("cleanup_temp_files"):
         cleanup_temp_files()
 """
+
 from __future__ import annotations
 
 import logging
@@ -115,10 +116,7 @@ def log_swallow(
     # pass strings or None by mistake). Never raise — this helper's whole
     # purpose is fail-open logging.
     if not isinstance(exc, BaseException):
-        msg = (
-            f"[swallow] {operation}: <non-exception: {type(exc).__name__}> "
-            f"{exc!r}"
-        )
+        msg = f"[swallow] {operation}: <non-exception: {type(exc).__name__}> {exc!r}"
         if detail:
             msg = f"{msg} | {detail}"
         logger.log(level, msg)

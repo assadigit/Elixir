@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QApplication
 # Design tokens — the single source of truth for spacing / type / radius
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _ns(**kw):
     return SimpleNamespace(**kw)
 
@@ -40,12 +41,12 @@ def _ns(**kw):
 #   lay.setSpacing(SPACE.sm)                 # 8
 SPACE = _ns(
     zero=0,
-    xs=3,      # hairline gaps
-    sm=6,      # tight grouping
-    md=8,      # default spacing
-    lg=12,     # comfortable
-    xl=16,     # roomy
-    xxl=20,    # section gap (use sparingly)
+    xs=3,  # hairline gaps
+    sm=6,  # tight grouping
+    md=8,  # default spacing
+    lg=12,  # comfortable
+    xl=16,  # roomy
+    xxl=20,  # section gap (use sparingly)
     # convenience quads (left, top, right, bottom) — Qt margin order
     xs_quad=(3, 3, 3, 3),
     sm_quad=(6, 6, 6, 6),
@@ -53,21 +54,21 @@ SPACE = _ns(
     lg_quad=(12, 12, 12, 12),
     xl_quad=(16, 16, 16, 16),
     # common page/content margins (h, v, h, v)
-    page=(14, 10, 14, 6),       # top-level page padding (compact)
-    card=(12, 10, 12, 10),      # inside a Card
-    section=(12, 8, 12, 8),     # inside a step/section
+    page=(14, 10, 14, 6),  # top-level page padding (compact)
+    card=(12, 10, 12, 10),  # inside a Card
+    section=(12, 8, 12, 8),  # inside a step/section
 )
 
 # Font sizes (px).  Inter renders crisply at 11px; Segoe UI fallback is fine too.
 FONT = _ns(
-    micro=9,     # badges, counters — use rarely
+    micro=9,  # badges, counters — use rarely
     caption=10,  # hints, secondary captions
-    body=11,     # default body text
+    body=11,  # default body text
     body_strong=11,
     subhead=12,  # small section labels
-    h3=13,       # card titles, group headings
-    h2=15,       # page titles
-    h1=18,       # hero / dialog titles
+    h3=13,  # card titles, group headings
+    h2=15,  # page titles
+    h1=18,  # hero / dialog titles
     display=22,  # splash / numbers
 )
 
@@ -79,35 +80,32 @@ RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10)
 
 # The canonical font-family stack.  Inter first (if loaded), then the best
 # Windows-native face, then cross-platform fallbacks.  Monospace for logs.
-FONT_FAMILY = (
-    '"Inter", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", '
-    'Arial, sans-serif'
-)
-FONT_FAMILY_MONO = (
-    '"JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace'
-)
+FONT_FAMILY = '"Inter", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+FONT_FAMILY_MONO = '"JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Palette
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class Palette:
     """A complete colour palette for one mode."""
+
     name: str
     is_dark: bool
 
     # surfaces
-    bg_window: str        # outermost app background
-    bg_surface: str       # cards / panels
-    bg_elevated: str      # hover / popups / raised elements
-    bg_input: str         # line-edits, combos, text areas
+    bg_window: str  # outermost app background
+    bg_surface: str  # cards / panels
+    bg_elevated: str  # hover / popups / raised elements
+    bg_input: str  # line-edits, combos, text areas
     bg_input_hover: str
 
     # lines
-    border: str           # hairline 1px
-    border_strong: str    # focus / selected
+    border: str  # hairline 1px
+    border_strong: str  # focus / selected
 
     # text
     text_primary: str
@@ -119,7 +117,7 @@ class Palette:
     accent: str
     accent_hover: str
     accent_pressed: str
-    accent_soft: str      # subtle fill behind selected items
+    accent_soft: str  # subtle fill behind selected items
 
     # semantics (muted, not garish)
     success: str
@@ -133,25 +131,25 @@ class Palette:
 DARK = Palette(
     name="dark",
     is_dark=True,
-    bg_window="#191512",         # warm near-black charcoal-brown
-    bg_surface="#241E18",        # warm dark brown card
-    bg_elevated="#2E271F",       # lighter warm brown for hover/popups
-    bg_input="#15110D",          # near-black warm input
+    bg_window="#191512",  # warm near-black charcoal-brown
+    bg_surface="#241E18",  # warm dark brown card
+    bg_elevated="#2E271F",  # lighter warm brown for hover/popups
+    bg_input="#15110D",  # near-black warm input
     bg_input_hover="#1F1914",
-    border="#3A3128",            # warm taupe hairline
-    border_strong="#D4A574",     # warm amber strong border
-    text_primary="#F5EDE0",      # warm cream (bumped for contrast)
-    text_secondary="#CBBFA9",    # brighter beige for readability
-    text_muted="#8A7D6E",        # warm taupe-gray
-    text_on_accent="#1A1612",    # dark text on amber accent
-    accent="#D8AA78",            # warm amber (brightened for dark mode pop)
+    border="#3A3128",  # warm taupe hairline
+    border_strong="#D4A574",  # warm amber strong border
+    text_primary="#F5EDE0",  # warm cream (bumped for contrast)
+    text_secondary="#CBBFA9",  # brighter beige for readability
+    text_muted="#8A7D6E",  # warm taupe-gray
+    text_on_accent="#1A1612",  # dark text on amber accent
+    accent="#D8AA78",  # warm amber (brightened for dark mode pop)
     accent_hover="#E6BC8A",
     accent_pressed="#C09060",
     accent_soft="rgba(216, 170, 120, 0.16)",
-    success="#94B088",           # muted sage green
-    warning="#D8BC66",           # warm gold
-    error="#DC9484",             # warm terracotta-red
-    info="#A294B8",              # muted mauve
+    success="#94B088",  # muted sage green
+    warning="#D8BC66",  # warm gold
+    error="#DC9484",  # warm terracotta-red
+    info="#A294B8",  # muted mauve
 )
 
 # V7.4.0: polished light mode — pure white surfaces for crisper card separation,
@@ -159,25 +157,25 @@ DARK = Palette(
 LIGHT = Palette(
     name="light",
     is_dark=False,
-    bg_window="#F7F3EC",         # warm ivory (slightly cooler for contrast)
-    bg_surface="#FFFFFF",        # pure white cards — crisp separation
-    bg_elevated="#F2EADF",       # warm cream hover
-    bg_input="#FFFFFF",          # white inputs
+    bg_window="#F7F3EC",  # warm ivory (slightly cooler for contrast)
+    bg_surface="#FFFFFF",  # pure white cards — crisp separation
+    bg_elevated="#F2EADF",  # warm cream hover
+    bg_input="#FFFFFF",  # white inputs
     bg_input_hover="#FBF6EE",
-    border="#E6DECF",            # warm taupe hairline
-    border_strong="#C8805A",     # terracotta strong border
-    text_primary="#2A211B",      # deeper warm brown for contrast
-    text_secondary="#6B5B4F",    # warm brown
-    text_muted="#9A8B7D",        # warm taupe-gray
+    border="#E6DECF",  # warm taupe hairline
+    border_strong="#C8805A",  # terracotta strong border
+    text_primary="#2A211B",  # deeper warm brown for contrast
+    text_secondary="#6B5B4F",  # warm brown
+    text_muted="#9A8B7D",  # warm taupe-gray
     text_on_accent="#FFFFFF",
-    accent="#B8704A",            # richer terracotta
+    accent="#B8704A",  # richer terracotta
     accent_hover="#A6623E",
     accent_pressed="#8F5332",
     accent_soft="rgba(184, 112, 74, 0.12)",
-    success="#6F9462",           # muted sage green
-    warning="#C99A3E",           # warm gold
-    error="#BD664F",             # warm terracotta-red
-    info="#7E6E94",              # muted mauve
+    success="#6F9462",  # muted sage green
+    warning="#C99A3E",  # warm gold
+    error="#BD664F",  # warm terracotta-red
+    info="#7E6E94",  # muted mauve
 )
 
 PALETTES = {"dark": DARK, "light": LIGHT}
@@ -219,6 +217,7 @@ def load_inter(app: QApplication) -> list[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # QSS generation
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _qss(p: Palette) -> str:
     """Build the complete application stylesheet for palette ``p``."""
@@ -770,6 +769,7 @@ def _qss(p: Palette) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # ThemeManager
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ThemeManager:
     """Owns the active palette, generates QSS, persists the user's choice.

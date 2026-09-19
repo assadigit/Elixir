@@ -52,12 +52,33 @@ class StructuredJsonFormatter(logging.Formatter):
     """
 
     # Standard LogRecord attributes that should NOT be folded into ``extra``.
-    _STD_ATTRS = frozenset({
-        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
-        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
-        "created", "msecs", "relativeCreated", "thread", "threadName",
-        "processName", "process", "message", "asctime", "taskName",
-    })
+    _STD_ATTRS = frozenset(
+        {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+            "asctime",
+            "taskName",
+        }
+    )
 
     def format(self, record: logging.LogRecord) -> str:
         # Ensure record.message is populated.
@@ -75,7 +96,8 @@ class StructuredJsonFormatter(logging.Formatter):
         }
         # Fold non-standard attributes into ``extra``.
         extras = {
-            k: v for k, v in record.__dict__.items()
+            k: v
+            for k, v in record.__dict__.items()
             if k not in self._STD_ATTRS and not k.startswith("_")
         }
         if extras:
@@ -166,20 +188,20 @@ def setup_main_logger() -> logging.Logger:
 # Users can override these via settings: logging.module_levels (a dict of
 # module_name → level_string, e.g. {"packets": "DEBUG", "ocr": "WARNING"}).
 _DEFAULT_MODULE_LEVELS: dict[str, str] = {
-    "packets": "INFO",           # packets generation — verbose by default
-    "summarizer": "INFO",        # summarization pipeline
-    "bullet_pipeline": "INFO",   # anti-hallucination layers
-    "content_judge": "INFO",     # grounding checks
-    "keypoints_builder": "INFO", # keypoints generation
-    "ocr": "WARNING",            # OCR — can be noisy (per-page logs)
-    "translation": "INFO",       # translation pipeline
-    "tts": "WARNING",            # TTS — can be noisy
-    "converter": "INFO",         # main pipeline
-    "vram_calculator": "WARNING",# VRAM budget (only log warnings)
-    "checkpoint": "INFO",        # checkpoint/resume
-    "dedup_service": "INFO",     # dedup passes
-    "quarantine": "INFO",        # quarantine system
-    "llm_provider": "INFO",      # LLM provider
+    "packets": "INFO",  # packets generation — verbose by default
+    "summarizer": "INFO",  # summarization pipeline
+    "bullet_pipeline": "INFO",  # anti-hallucination layers
+    "content_judge": "INFO",  # grounding checks
+    "keypoints_builder": "INFO",  # keypoints generation
+    "ocr": "WARNING",  # OCR — can be noisy (per-page logs)
+    "translation": "INFO",  # translation pipeline
+    "tts": "WARNING",  # TTS — can be noisy
+    "converter": "INFO",  # main pipeline
+    "vram_calculator": "WARNING",  # VRAM budget (only log warnings)
+    "checkpoint": "INFO",  # checkpoint/resume
+    "dedup_service": "INFO",  # dedup passes
+    "quarantine": "INFO",  # quarantine system
+    "llm_provider": "INFO",  # LLM provider
 }
 
 _LEVEL_MAP = {
@@ -207,6 +229,7 @@ def apply_module_log_levels(settings_overrides: dict[str, str] | None = None) ->
     """
     try:
         from utils.settings import Settings
+
         s = Settings()
         user_levels = settings_overrides or s.get("logging.module_levels", {})
     except Exception:
@@ -282,7 +305,7 @@ class ConversionLogger:
         self._open()
 
     def _open(self) -> None:
-        self._file_handle = open(self.log_path, "w", encoding="utf-8")
+        self._file_handle = open(self.log_path, "w", encoding="utf-8")  # noqa: SIM115 — lifecycle-managed log handle (see close())
         self._file_handle.write(f"# Conversion Log: {self.base_filename}\n\n")
         self._file_handle.write(f"Started at: {datetime.now().isoformat()}\n\n")
         self._file_handle.write("---\n\n")
@@ -305,14 +328,11 @@ class ConversionLogger:
 
     def log_diagnostic(self, data: dict[str, Any]) -> None:
         """Write a structured diagnostic entry as JSON Lines."""
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            **data
-        }
+        entry = {"timestamp": datetime.now().isoformat(), **data}
         # V10.25.0: Create the diagnostic file lazily (only when first
         # diagnostic is written — prevents empty .jsonl files).
         if self._diag_handle is None and hasattr(self, "_diag_path") and self._diag_path:
-            self._diag_handle = open(self._diag_path, "w", encoding="utf-8")
+            self._diag_handle = open(self._diag_path, "w", encoding="utf-8")  # noqa: SIM115 — lifecycle-managed log handle (see close())
             self.diagnostic_path = self._diag_path
         if self._diag_handle:
             self._diag_handle.write(json.dumps(entry) + "\n")
@@ -337,11 +357,7 @@ def measure_time(name: str, logger: ConversionLogger, **extra):
         yield
     finally:
         duration = time.time() - start
-        entry = {
-            "phase": name,
-            "duration_seconds": round(duration, 2),
-            **extra
-        }
+        entry = {"phase": name, "duration_seconds": round(duration, 2), **extra}
         logger.log_diagnostic(entry)
         logger.log(f"⏱️ {name} took {duration:.2f}s", "DEBUG")
 

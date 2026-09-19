@@ -8,6 +8,7 @@ Tests for:
 
 Run: pytest tests/test_postcheck_fragment_merge_fix.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,6 +26,7 @@ from core.summarisation.postchecks import (
 # ════════════════════════════════════════════════════════════════════════════
 # 1. _is_legitimate_inflection suffix checks
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestIsLegitimateInflection:
     """Test the suffix checker that prevents false positives."""
@@ -74,6 +76,7 @@ class TestIsLegitimateInflection:
 # ════════════════════════════════════════════════════════════════════════════
 # 2. Plural/inflection false-positive elimination (the 5th-occurrence fix)
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestPluralFalsePositivesEliminated:
     """Verify that legitimate plurals are NOT flagged as fragment merges.
@@ -162,6 +165,7 @@ class TestPluralFalsePositivesEliminated:
 # 3. Real fragment merges are still caught
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestRealFragmentMergesStillCaught:
     """Verify that genuine fragment merges are still detected (no false negatives)."""
 
@@ -193,6 +197,7 @@ class TestRealFragmentMergesStillCaught:
 # 4. IQ2_S deadline raise (prevents semantic dedup skip)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestIQ2SDedlineRaise:
     """Verify the V18.9 deadline raise for IQ2_S is in the source."""
 
@@ -200,7 +205,9 @@ class TestIQ2SDedlineRaise:
         """The V18.9 deadline raise for IQ2_S must be in summarizer.py."""
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        assert "V18.9" in content or "V18.15.4.0" in content, "V18.9/V18.15.4.0 change must be documented in summarizer.py"
+        assert "V18.9" in content or "V18.15.4.0" in content, (
+            "V18.9/V18.15.4.0 change must be documented in summarizer.py"
+        )
         assert "2400" in content, "2400s deadline (V18.15.4.0) must be in summarizer.py"
         assert "is_iq2_s" in content, "IQ2_S detection must be used"
 
@@ -228,6 +235,7 @@ class TestIQ2SDedlineRaise:
 # 5. Full audit scenario — the exact V18.8.0 summary text
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestAuditScenario:
     """Run the exact words flagged in the V18.8.0 audit and verify 0 flags now."""
 
@@ -251,5 +259,6 @@ class TestAuditScenario:
         _, issues = detect_word_fragment_merge(audit_text, "audit")
         fragment_issues = [i for i in issues if i.detector == "fragment_merge"]
         # Should be ZERO fragment-merge flags (all were false positives)
-        assert len(fragment_issues) == 0, \
+        assert len(fragment_issues) == 0, (
             f"V18.8.0 audit words should not be flagged: {[i.detail for i in fragment_issues]}"
+        )

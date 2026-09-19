@@ -37,6 +37,7 @@ Stdlib-only imports — this module sits at the very bottom of the
 ``core.llm`` dependency graph so ANY module (providers, outputs, TTS,
 UI dialogs) can import it without cycle risk.
 """
+
 from __future__ import annotations
 
 __all__ = [

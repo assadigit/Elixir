@@ -61,7 +61,6 @@ class OutputTypesDialog(QDialog):
         hl = QHBoxLayout(header)
         hl.setContentsMargins(16, 12, 16, 10)
         hl.setSpacing(10)
-        p = theme_manager.palette
         title = QLabel("Output Types")
         title.setObjectName("H2")
         hl.addWidget(title)
@@ -99,6 +98,7 @@ class OutputTypesDialog(QDialog):
         # so the user sees the cheap ones first and can decide based on
         # their time constraints.
         from core.pipeline.output_time_estimates import sort_outputs_by_cost
+
         sorted_outputs = sort_outputs_by_cost(_OUTPUTS)
         for i, (key, label, sub, icon_name, default) in enumerate(sorted_outputs):
             card = self._build_output_card(key, label, sub, icon_name, default)
@@ -181,7 +181,9 @@ class OutputTypesDialog(QDialog):
         text_col = QVBoxLayout()
         text_col.setSpacing(1)
         name = QLabel(label)
-        name.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {p.text_primary}; background: transparent;")
+        name.setStyleSheet(
+            f"font-size: 13px; font-weight: 600; color: {p.text_primary}; background: transparent;"
+        )
         text_col.addWidget(name)
         sub = QLabel(subtitle)
         sub.setStyleSheet(f"font-size: 11px; color: {p.text_muted}; background: transparent;")
@@ -205,12 +207,16 @@ class OutputTypesDialog(QDialog):
             get_tier_desc,
             get_tier_label,
         )
+
         est = get_output_estimate(key)
         tier_color_name = get_tier_color(est["tier"])
         # Map tier color name to actual palette color
         color_map = {
-            "success": p.success, "info": p.info, "warning": p.warning,
-            "error": p.error, "text_muted": p.text_muted,
+            "success": p.success,
+            "info": p.info,
+            "warning": p.warning,
+            "error": p.error,
+            "text_muted": p.text_muted,
         }
         badge_color = color_map.get(tier_color_name, p.text_muted)
         tier_label = get_tier_label(est["tier"])
@@ -239,12 +245,16 @@ class OutputTypesDialog(QDialog):
     def _update_total_estimate(self) -> None:
         """Compute the load grade for all checked outputs + display."""
         from core.pipeline.output_time_estimates import get_load_grade
+
         enabled_keys = [k for k, cb in self._checkboxes.items() if cb.isChecked()]
         grade = get_load_grade(enabled_keys)
         p = theme_manager.palette
         color_map = {
-            "success": p.success, "info": p.info, "warning": p.warning,
-            "error": p.error, "text_muted": p.text_muted,
+            "success": p.success,
+            "info": p.info,
+            "warning": p.warning,
+            "error": p.error,
+            "text_muted": p.text_muted,
         }
         color = color_map.get(grade["color"], p.text_muted)
         if not enabled_keys:
@@ -309,16 +319,17 @@ class OutputTypesDialog(QDialog):
 
         # Per-output translation checkboxes
         outputs_label = QLabel("Which outputs to translate:")
-        outputs_label.setStyleSheet("font-size: 10px; color: palette(text-muted); background: transparent;")
+        outputs_label.setStyleSheet(
+            "font-size: 10px; color: palette(text-muted); background: transparent;"
+        )
         lay.addWidget(outputs_label)
 
         self._tr_checkboxes: dict = {}
         from ui_qt.settings.translation_page import _TRANSLATABLE_OUTPUTS
-        for key, label, subtitle in _TRANSLATABLE_OUTPUTS:
+
+        for key, label, _subtitle in _TRANSLATABLE_OUTPUTS:
             cb = QCheckBox(f"{label}")
-            cb.setChecked(
-                bool(self.controller.get_setting(f"translation.outputs.{key}", False))
-            )
+            cb.setChecked(bool(self.controller.get_setting(f"translation.outputs.{key}", False)))
             cb.setStyleSheet("font-size: 10px; background: transparent;")
             lay.addWidget(cb)
             self._tr_checkboxes[key] = cb
@@ -331,7 +342,9 @@ class OutputTypesDialog(QDialog):
             self.controller.update_setting(key, cb.isChecked())
         # Save translation settings
         self.controller.update_setting("translation.enabled", self._tr_enabled_cb.isChecked())
-        self.controller.update_setting("translation.default_target_lang", self._tr_lang_combo.currentData())
+        self.controller.update_setting(
+            "translation.default_target_lang", self._tr_lang_combo.currentData()
+        )
         for key, cb in self._tr_checkboxes.items():
             self.controller.update_setting(f"translation.outputs.{key}", cb.isChecked())
         super().accept()

@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Step 5: Model Selection
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step5Models(LlamaCppConfigMixin, WizardStep):
     """V16.0.9: Model selection — 4-mode architecture (single/dual × local/API).
 
@@ -76,9 +77,10 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.arch_combo.addItem("🏠  Dual model — Local (heavy + fast)", "dual_local")
         self.arch_combo.addItem("☁️  Single model — API", "single_api")
         self.arch_combo.addItem("☁️  Dual model — API (fast + accurate)", "dual_api")
-        _saved_arch = self.controller.get_setting(
-            "summarisation.model_architecture", "single_local"
-        ) or "single_local"
+        _saved_arch = (
+            self.controller.get_setting("summarisation.model_architecture", "single_local")
+            or "single_local"
+        )
         # V16.0.9: backward-compat — legacy "single" → "single_local"
         if _saved_arch == "single":
             _saved_arch = "single_local"
@@ -154,7 +156,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         lmstudio_lay.setSpacing(5)
         lmstudio_row = QHBoxLayout()
         lmstudio_row.setSpacing(8)
-        self.lmstudio_url_edit = QLineEdit(self.controller.get_setting("summarisation.lmstudio_url", "http://localhost:1234/v1"))
+        self.lmstudio_url_edit = QLineEdit(
+            self.controller.get_setting("summarisation.lmstudio_url", "http://localhost:1234/v1")
+        )
         lmstudio_row.addWidget(QLabel("LM Studio URL:"))
         lmstudio_row.addWidget(self.lmstudio_url_edit, 1)
         lmstudio_lay.addLayout(lmstudio_row)
@@ -212,6 +216,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         heavy_api_lay.addWidget(self.heavy_api_desc)
 
         from core.llm.cloud_client import CLOUD_PRESETS
+
         heavy_preset_row = QHBoxLayout()
         heavy_preset_row.setSpacing(8)
         heavy_preset_row.addWidget(QLabel("Preset:"))
@@ -229,7 +234,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         cloud_url_row = QHBoxLayout()
         cloud_url_row.setSpacing(8)
-        self.cloud_url_edit = QLineEdit(self.controller.get_setting("summarisation.api_base_url", "https://openrouter.ai/api/v1"))
+        self.cloud_url_edit = QLineEdit(
+            self.controller.get_setting(
+                "summarisation.api_base_url", "https://openrouter.ai/api/v1"
+            )
+        )
         cloud_url_row.addWidget(QLabel("API base URL:"))
         cloud_url_row.addWidget(self.cloud_url_edit, 1)
         heavy_api_lay.addLayout(cloud_url_row)
@@ -244,7 +253,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         cloud_model_row = QHBoxLayout()
         cloud_model_row.setSpacing(8)
-        self.cloud_model_edit = QLineEdit(self.controller.get_setting("summarisation.cloud_model", ""))
+        self.cloud_model_edit = QLineEdit(
+            self.controller.get_setting("summarisation.cloud_model", "")
+        )
         cloud_model_row.addWidget(QLabel("Model name:"))
         cloud_model_row.addWidget(self.cloud_model_edit, 1)
         heavy_api_lay.addLayout(cloud_model_row)
@@ -254,7 +265,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.cloud_test_btn = QPushButton("🔌  Test connection")
         self.cloud_test_btn.setObjectName("Secondary")
         self.cloud_test_btn.setCursor(Qt.PointingHandCursor)
-        self.cloud_test_btn.setToolTip("Send a tiny request to verify the base URL, key, and model work.")
+        self.cloud_test_btn.setToolTip(
+            "Send a tiny request to verify the base URL, key, and model work."
+        )
         self.cloud_test_btn.clicked.connect(self._test_cloud_connection)
         test_row.addWidget(self.cloud_test_btn)
         self.cloud_test_label = QLabel("")
@@ -297,7 +310,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         fast_url_row = QHBoxLayout()
         fast_url_row.setSpacing(8)
-        self.fast_api_url_edit = QLineEdit(self.controller.get_setting("summarisation.fast_api_url", ""))
+        self.fast_api_url_edit = QLineEdit(
+            self.controller.get_setting("summarisation.fast_api_url", "")
+        )
         self.fast_api_url_edit.setPlaceholderText("https://openrouter.ai/api/v1")
         fast_url_row.addWidget(QLabel("API base URL:"))
         fast_url_row.addWidget(self.fast_api_url_edit, 1)
@@ -305,7 +320,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         fast_key_row = QHBoxLayout()
         fast_key_row.setSpacing(8)
-        self.fast_api_key_edit = QLineEdit(self.controller.get_setting("summarisation.fast_api_key", ""))
+        self.fast_api_key_edit = QLineEdit(
+            self.controller.get_setting("summarisation.fast_api_key", "")
+        )
         self.fast_api_key_edit.setEchoMode(QLineEdit.Password)
         self.fast_api_key_edit.setPlaceholderText("sk-...")
         fast_key_row.addWidget(QLabel("API key:"))
@@ -314,7 +331,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         fast_model_row = QHBoxLayout()
         fast_model_row.setSpacing(8)
-        self.fast_api_model_edit = QLineEdit(self.controller.get_setting("summarisation.fast_api_model", ""))
+        self.fast_api_model_edit = QLineEdit(
+            self.controller.get_setting("summarisation.fast_api_model", "")
+        )
         self.fast_api_model_edit.setPlaceholderText("google/gemini-2.5-flash-preview:free")
         fast_model_row.addWidget(QLabel("Model name:"))
         fast_model_row.addWidget(self.fast_api_model_edit, 1)
@@ -359,6 +378,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         row.addWidget(self.workers_warn_label)
 
         from PySide6.QtWidgets import QDoubleSpinBox
+
         self.temp_spin = QDoubleSpinBox()
         self.temp_spin.setRange(0.0, 1.0)
         self.temp_spin.setSingleStep(0.05)
@@ -393,9 +413,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.heavy_ctx_spin = QSpinBox()
         self.heavy_ctx_spin.setRange(1024, 262144)
         self.heavy_ctx_spin.setSingleStep(4096)
-        self.heavy_ctx_spin.setValue(
-            min(max(self.state.max_context_tokens, 1024), 262144)
-        )
+        self.heavy_ctx_spin.setValue(min(max(self.state.max_context_tokens, 1024), 262144))
         self.heavy_ctx_spin.setToolTip(
             "Context window size for the heavy/primary model.\n\n"
             "gemma4-12b: 32768 (32K)\n"
@@ -442,7 +460,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.fast_temp_spin.setDecimals(2)
         _default_fast_temp = 0.1
         try:
-            _default_fast_temp = float(self.controller.get_setting("summarisation.fast_model_temperature", 0.1))
+            _default_fast_temp = float(
+                self.controller.get_setting("summarisation.fast_model_temperature", 0.1)
+            )
         except Exception:
             pass
         self.fast_temp_spin.setValue(_default_fast_temp)
@@ -462,7 +482,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.fast_ctx_spin.setSingleStep(4096)
         _default_fast_ctx = 131072
         try:
-            _default_fast_ctx = int(self.controller.get_setting("summarisation.fast_model_context", 131072))
+            _default_fast_ctx = int(
+                self.controller.get_setting("summarisation.fast_model_context", 131072)
+            )
         except Exception:
             pass
         self.fast_ctx_spin.setValue(_default_fast_ctx)
@@ -500,6 +522,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         """
         try:
             from utils.dependencies import DependencyChecker
+
             models = DependencyChecker().get_ollama_models() or []
             return models
         except Exception:
@@ -546,20 +569,29 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.refresh_btn.setEnabled(True)
         models = models or []
         if not models:
-            QMessageBox.information(self, "No models found",
+            QMessageBox.information(
+                self,
+                "No models found",
                 "No Ollama models found. Make sure Ollama is running and has models pulled.\n\n"
                 "To pull models:\n"
                 "  ollama pull gemma4-12b:latest\n"
-                "  ollama pull qwen3-vl:8b")
+                "  ollama pull qwen3-vl:8b",
+            )
             return
 
         # Remember current selections
-        summ_current = self.summ_combo.currentData() or self.controller.get_setting("summarisation.model", "")
-        ocr_current = self.ocr_combo.currentData() or self.controller.get_setting("ocr.primary_model", "")
-        fast_current = self.fast_combo.currentData() or self.controller.get_setting("summarisation.fast_model", "")
+        summ_current = self.summ_combo.currentData() or self.controller.get_setting(
+            "summarisation.model", ""
+        )
+        ocr_current = self.ocr_combo.currentData() or self.controller.get_setting(
+            "ocr.primary_model", ""
+        )
+        fast_current = self.fast_combo.currentData() or self.controller.get_setting(
+            "summarisation.fast_model", ""
+        )
 
         # Repopulate
-        for combo, current, label in [
+        for combo, current, _label in [
             (self.summ_combo, summ_current, "Summarization"),
             (self.ocr_combo, ocr_current, "OCR"),
             (self.fast_combo, fast_current, "Fast"),
@@ -651,7 +683,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.arch_desc_label.setText(descs.get(arch, ""))
 
         # Highlight the active local box border
-        _active_style = "QGroupBox { font-weight: bold; border: 2px solid #5B9BD5; border-radius: 6px; }"
+        _active_style = (
+            "QGroupBox { font-weight: bold; border: 2px solid #5B9BD5; border-radius: 6px; }"
+        )
         if is_local:
             self.local_box.setStyleSheet(_active_style)
 
@@ -659,6 +693,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
     def _fill_cloud_preset(self) -> None:
         """Fill heavy API base URL + model from the selected preset."""
         from core.llm.cloud_client import CLOUD_PRESETS
+
         idx = self.cloud_preset_combo.currentIndex()
         if 0 <= idx < len(CLOUD_PRESETS):
             p = CLOUD_PRESETS[idx]
@@ -671,6 +706,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
     def _fill_fast_cloud_preset(self) -> None:
         """V16.0.9: Fill fast API base URL + model from the selected preset."""
         from core.llm.cloud_client import CLOUD_PRESETS
+
         idx = self.fast_preset_combo.currentIndex()
         if 0 <= idx < len(CLOUD_PRESETS):
             p = CLOUD_PRESETS[idx]
@@ -700,11 +736,13 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         def _run():
             from core.llm.cloud_client import test_cloud_connection
+
             ok, msg = test_cloud_connection(base, key, model)
             self._pending_cloud_result = (ok, msg)
             try:
                 from PySide6.QtCore import QMetaObject
                 from PySide6.QtCore import Qt as _Qt
+
                 QMetaObject.invokeMethod(
                     self, "_set_cloud_test_result", _Qt.ConnectionType.QueuedConnection
                 )
@@ -732,11 +770,13 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         def _run():
             from core.llm.cloud_client import test_cloud_connection
+
             ok, msg = test_cloud_connection(base, key, model)
             self._pending_fast_cloud_result = (ok, msg)
             try:
                 from PySide6.QtCore import QMetaObject
                 from PySide6.QtCore import Qt as _Qt
+
                 QMetaObject.invokeMethod(
                     self, "_set_fast_cloud_test_result", _Qt.ConnectionType.QueuedConnection
                 )
@@ -793,7 +833,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             backend = self.backend_combo.currentData() or "ollama"
             self.controller.update_setting("summarisation.provider", backend)
             if backend == "lmstudio":
-                self.controller.update_setting("summarisation.lmstudio_url", self.lmstudio_url_edit.text().strip())
+                self.controller.update_setting(
+                    "summarisation.lmstudio_url", self.lmstudio_url_edit.text().strip()
+                )
             if backend == "llamacpp":
                 # V0.04: persist the llama.cpp endpoint + model (mixin) and
                 # make the backend's model the request's summarisation model
@@ -802,16 +844,20 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 # served model.
                 _lc_model = self.save_llamacpp_settings()
                 self.controller.update_setting(
-                    "summarisation.llamacpp_context_tokens", int(self.heavy_ctx_spin.value()))
+                    "summarisation.llamacpp_context_tokens", int(self.heavy_ctx_spin.value())
+                )
                 self.controller.update_setting(
-                    "summarisation.llamacpp_max_output_tokens", int(self.heavy_out_spin.value()))
+                    "summarisation.llamacpp_max_output_tokens", int(self.heavy_out_spin.value())
+                )
                 if _lc_model:
                     self.state.summarisation_model = _lc_model
                     self.controller.update_setting("summarisation.model", _lc_model)
             # Heavy/summarization model
             if not (backend == "llamacpp" and self.state.summarisation_model):
                 self.state.summarisation_model = self.summ_combo.currentData() or ""
-                self.controller.update_setting("summarisation.model", self.state.summarisation_model)
+                self.controller.update_setting(
+                    "summarisation.model", self.state.summarisation_model
+                )
             self.state.primary_ocr_model = self.ocr_combo.currentData() or ""
             self.state.fallback_ocr_model = self.ocr_combo.currentData() or ""
             self.controller.update_setting("ocr.primary_model", self.state.primary_ocr_model)
@@ -827,22 +873,36 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             # API modes — provider is a cloud (openai_compatible)
             self.controller.update_setting("summarisation.provider", "openai_compatible")
             # Heavy cloud API config
-            self.controller.update_setting("summarisation.api_base_url", self.cloud_url_edit.text().strip())
+            self.controller.update_setting(
+                "summarisation.api_base_url", self.cloud_url_edit.text().strip()
+            )
             # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-            self.controller.update_setting("summarisation.api_key", self.cloud_key_edit.text().strip())
-            self.controller.update_setting("summarisation.cloud_model", self.cloud_model_edit.text().strip())
+            self.controller.update_setting(
+                "summarisation.api_key", self.cloud_key_edit.text().strip()
+            )
+            self.controller.update_setting(
+                "summarisation.cloud_model", self.cloud_model_edit.text().strip()
+            )
             self.state.summarisation_model = self.cloud_model_edit.text().strip()
             # OCR uses the saved local Ollama VLM (configured in Settings → OCR)
             self.state.primary_ocr_model = self.controller.get_setting("ocr.primary_model", "")
-            self.state.fallback_ocr_model = self.controller.get_setting("ocr.fallback_model", self.state.primary_ocr_model)
+            self.state.fallback_ocr_model = self.controller.get_setting(
+                "ocr.fallback_model", self.state.primary_ocr_model
+            )
             # API modes don't use a local fast model
             self.state.fast_model = ""
             # Fast API config (dual_api only)
             if arch == "dual_api":
-                self.controller.update_setting("summarisation.fast_api_url", self.fast_api_url_edit.text().strip())
+                self.controller.update_setting(
+                    "summarisation.fast_api_url", self.fast_api_url_edit.text().strip()
+                )
                 # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-                self.controller.update_setting("summarisation.fast_api_key", self.fast_api_key_edit.text().strip())
-                self.controller.update_setting("summarisation.fast_api_model", self.fast_api_model_edit.text().strip())
+                self.controller.update_setting(
+                    "summarisation.fast_api_key", self.fast_api_key_edit.text().strip()
+                )
+                self.controller.update_setting(
+                    "summarisation.fast_api_model", self.fast_api_model_edit.text().strip()
+                )
             else:
                 # single_api — clear fast API fields so they don't leak
                 self.controller.update_setting("summarisation.fast_api_url", "")
@@ -859,10 +919,18 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.state.max_output_tokens = self.heavy_out_spin.value()
         self.controller.update_setting("summarisation.max_workers", self.workers_spin.value())
         self.controller.update_setting("summarisation.temperature", self.temp_spin.value())
-        self.controller.update_setting("summarisation.max_context_tokens", self.heavy_ctx_spin.value())
-        self.controller.update_setting("summarisation.max_output_tokens", self.heavy_out_spin.value())
-        self.controller.update_setting("summarisation.fast_model_temperature", self.fast_temp_spin.value())
-        self.controller.update_setting("summarisation.fast_model_context", self.fast_ctx_spin.value())
+        self.controller.update_setting(
+            "summarisation.max_context_tokens", self.heavy_ctx_spin.value()
+        )
+        self.controller.update_setting(
+            "summarisation.max_output_tokens", self.heavy_out_spin.value()
+        )
+        self.controller.update_setting(
+            "summarisation.fast_model_temperature", self.fast_temp_spin.value()
+        )
+        self.controller.update_setting(
+            "summarisation.fast_model_context", self.fast_ctx_spin.value()
+        )
 
     # V7.5.1: temperature=0 warning — many models produce degenerate output
     # at t=0.  The warning is live (updates as the user drags the spin box).
@@ -878,9 +946,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 f"color: {p.warning}; background: transparent; font-size: 10px;"
             )
         elif value < 0.1:
-            self.temp_warn_label.setText(
-                "⚠️ t=0 can cause empty/repetitive output — use ≥ 0.1"
-            )
+            self.temp_warn_label.setText("⚠️ t=0 can cause empty/repetitive output — use ≥ 0.1")
             self.temp_warn_label.setStyleSheet(
                 f"color: {p.warning}; background: transparent; font-size: 10px;"
             )
@@ -925,6 +991,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         """Lock max_workers to 1 if an emergency-mode GPU is detected."""
         try:
             from core.system.hardware_monitor import detect_gpu_profile_from_system
+
             gpu_name, profile = detect_gpu_profile_from_system()
             if gpu_name and getattr(profile, "emergency_mode", False):
                 # Lock the spinbox

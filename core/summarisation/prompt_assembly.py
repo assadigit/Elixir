@@ -39,6 +39,7 @@ V18.20.4.7 (P5 phase 2 / W-a3): the dead ``PromptContext`` +
 module (kept after the V18.6.4 rollback) was deleted — the LIVE inline
 ``Summarizer._build_prompt`` in summarizer.py is the only builder.
 """
+
 from __future__ import annotations
 
 import re
@@ -64,6 +65,7 @@ def _scaled_targets(text: str) -> tuple[str, str, str, str]:
         exec_words_phrase,
         thorough_words_phrase,
     )
+
     _w = count_source_words(text)
     return (
         exec_words_phrase(_w),
@@ -76,8 +78,7 @@ def _scaled_targets(text: str) -> tuple[str, str, str, str]:
     )
 
 
-def build_thorough_followup(heading: str, text: str, exec_sum: str,
-                            language: str = "en") -> str:
+def build_thorough_followup(heading: str, text: str, exec_sum: str, language: str = "en") -> str:
     """Build the thorough-summary followup prompt.
 
     Extracted verbatim from ``Summarizer._build_thorough_followup``.
@@ -101,10 +102,14 @@ Full chapter content:
 {text}"""
 
 
-def build_dedicated_thorough_prompt(heading: str, text: str, exec_sum: str,
-                                    bullets: list[str],
-                                    language: str = "en",
-                                    draft: str | None = None) -> str:
+def build_dedicated_thorough_prompt(
+    heading: str,
+    text: str,
+    exec_sum: str,
+    bullets: list[str],
+    language: str = "en",
+    draft: str | None = None,
+) -> str:
     """V18.2.34: Dedicated thorough-summary prompt.
 
     Extracted verbatim from ``Summarizer._build_dedicated_thorough_prompt``.
@@ -195,8 +200,9 @@ Your {_th_w} detailed analysis here.
 </thorough_summary>"""
 
 
-def build_exec_from_thorough_prompt(heading: str, thorough_summary: str,
-                                    language: str = "en") -> str:
+def build_exec_from_thorough_prompt(
+    heading: str, thorough_summary: str, language: str = "en"
+) -> str:
     """V18.15.8.0 (Fix 1): Build the exec-from-thorough followup prompt.
 
     This is fired when the primary call produced an empty ``executive_summary``
@@ -246,9 +252,9 @@ your {_exec_w} executive summary here
 </executive_summary>"""
 
 
-def build_dedicated_bullet_prompt(heading: str, text: str, exec_sum: str,
-                                  existing_bullets: list[str],
-                                  language: str = "en") -> str:
+def build_dedicated_bullet_prompt(
+    heading: str, text: str, exec_sum: str, existing_bullets: list[str], language: str = "en"
+) -> str:
     """V18.2.34: Dedicated bullet-expansion prompt.
 
     Extracted verbatim from ``Summarizer._build_dedicated_bullet_prompt``.
@@ -261,7 +267,9 @@ def build_dedicated_bullet_prompt(heading: str, text: str, exec_sum: str,
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
     _exec_w, _th_w, _bp_r, _note = _scaled_targets(text)
-    _existing_text = "\n".join(f"- {b}" for b in existing_bullets[:20]) if existing_bullets else "(none yet)"
+    _existing_text = (
+        "\n".join(f"- {b}" for b in existing_bullets[:20]) if existing_bullets else "(none yet)"
+    )
     _max_source_chars = min(len(text), 40000)
     _source = text[:_max_source_chars]
     return f"""### ROLE ###
@@ -297,9 +305,9 @@ Output ONLY bullet points, one per line, prefixed with "- ".
 - ..."""
 
 
-def build_missing_keywords_reprompt(heading: str, text: str,
-                                    missing: list[str],
-                                    language: str = "en") -> str:
+def build_missing_keywords_reprompt(
+    heading: str, text: str, missing: list[str], language: str = "en"
+) -> str:
     """P4 fix: augmentation, not replacement. Ask for NEW bullets about
     the missing concepts, not a whole new summary.
 
@@ -307,7 +315,7 @@ def build_missing_keywords_reprompt(heading: str, text: str,
     Only change: ``self.language`` -> ``language`` parameter.
     """
     lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
-    return f"""The chapter "{heading}" discusses these concepts that may have been missed: {', '.join(missing)}.
+    return f"""The chapter "{heading}" discusses these concepts that may have been missed: {", ".join(missing)}.
 
 For EACH concept listed above, output 2-5 bullet points explaining what the chapter says about it. {lang}
 
@@ -323,13 +331,16 @@ Chapter content:
 New bullet points only:"""
 
 
-def build_chunked_prompt(heading: str, text: str,
-                         full_prompt: str,
-                         with_cot: bool = True,
-                         chunk: int = 1,
-                         include_executive: bool = True,
-                         include_thorough: bool = True,
-                         include_keypoints: bool = True) -> str:
+def build_chunked_prompt(
+    heading: str,
+    text: str,
+    full_prompt: str,
+    with_cot: bool = True,
+    chunk: int = 1,
+    include_executive: bool = True,
+    include_thorough: bool = True,
+    include_keypoints: bool = True,
+) -> str:
     """V18.3.4 (E3): Build a chunked prompt — only requests SOME sections.
 
     Extracted verbatim from ``Summarizer._build_chunked_prompt``.
@@ -374,16 +385,20 @@ def build_chunked_prompt(heading: str, text: str,
                 "multi-step processes. Do NOT truncate.\n</thorough_summary>"
             )
         _c1_names = [s.split("\n")[0] for s in _c1_sections]
-        _c1_skip = [t for t, on in (
-            ("key_distinctions", True), ("theoretical_tensions", True),
-        ) if on]
+        _c1_skip = [
+            t
+            for t, on in (
+                ("key_distinctions", True),
+                ("theoretical_tensions", True),
+            )
+            if on
+        ]
         _chunk_format = (
             f"\nOutput ONLY these {len(_c1_sections)} XML sections "
             "(chunk 1 of 2):\n\n"
             + "\n\n".join(_c1_sections)
             + f"\n\nDo NOT output {' or '.join(_c1_skip)} in this chunk — they "
-              "will be generated in chunk 2.\n"
-            + f"\n{_note}\n"
+            "will be generated in chunk 2.\n" + f"\n{_note}\n"
         )
     else:
         _chunk_format = """
@@ -402,21 +417,21 @@ Do NOT output executive_summary, bullet_points, or thorough_summary in this chun
     # Replace the output_format section of the full prompt.
     # V0.05: the replacement window ends at "Chapter content:" (or end of
     # prompt) — the chapter text always survives the chunk override.
-    _end_guard = r'(?=\nChapter content:|\nFull chapter content:|$)'
+    _end_guard = r"(?=\nChapter content:|\nFull chapter content:|$)"
     # Try JSON-format first (academic_rigor path)
     _pattern_json = re.compile(
-        r'Output a JSON object with (?:five|these) sections:.*?' + _end_guard,
+        r"Output a JSON object with (?:five|these) sections:.*?" + _end_guard,
         re.DOTALL,
     )
     if _pattern_json.search(full_prompt):
         return _pattern_json.sub(
             _chunk_format.strip()
-            + '\n\nDo NOT describe the JSON structure. Only output the JSON object.',
+            + "\n\nDo NOT describe the JSON structure. Only output the JSON object.",
             full_prompt,
         )
     # Try XML-format
     _pattern_xml = re.compile(
-        r'You MUST output exactly these (?:five )?XML sections:.*?' + _end_guard,
+        r"You MUST output exactly these (?:five )?XML sections:.*?" + _end_guard,
         re.DOTALL,
     )
     if _pattern_xml.search(full_prompt):

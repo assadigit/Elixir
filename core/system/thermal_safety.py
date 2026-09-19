@@ -78,30 +78,31 @@ LogFn = Callable[[str, str], None]
 PREFLIGHT_WARMUP_SEC = 30
 
 # Pre-flight check: temp rise thresholds
-PREFLIGHT_IDLE_HOT_C = 55       # idle temp above this = warning
-PREFLIGHT_RISE_WARN_C = 12      # rise above this in 30s = cooling inadequate
+PREFLIGHT_IDLE_HOT_C = 55  # idle temp above this = warning
+PREFLIGHT_RISE_WARN_C = 12  # rise above this in 30s = cooling inadequate
 PREFLIGHT_RISE_CRITICAL_C = 20  # rise above this = refuse to start
 
 # Mandatory cool-down (for emergency-mode cards)
-COOLDOWN_INTERVAL_MIN = 20      # pause every 20 min of sustained load
-COOLDOWN_DURATION_MIN = 3       # 3-min pause
-COOLDOWN_RESUME_TEMP_C = 68     # don't resume until below this temp
+COOLDOWN_INTERVAL_MIN = 20  # pause every 20 min of sustained load
+COOLDOWN_DURATION_MIN = 3  # 3-min pause
+COOLDOWN_RESUME_TEMP_C = 68  # don't resume until below this temp
 
 # Thermal budget (cumulative exposure cap)
-THERMAL_BUDGET_TRACK_TEMP_C = 70   # track time above this temp
+THERMAL_BUDGET_TRACK_TEMP_C = 70  # track time above this temp
 THERMAL_BUDGET_DAILY_LIMIT_MIN = 120  # 2 hours above 70°C per day
 THERMAL_BUDGET_REACHED_COOLDOWN_MIN = 30  # 30-min cool-down when budget hit
 
 # Output count guard
 OUTPUT_COUNT_WARN_THRESHOLD = 5  # warn if >5 outputs enabled
-OUTPUT_COUNT_EMERGENCY_CAP = 4   # hard cap for emergency-mode cards
+OUTPUT_COUNT_EMERGENCY_CAP = 4  # hard cap for emergency-mode cards
 
 # VRAM safe limits (GDDR6)
-VRAM_SAFE_TEMP_C = 95            # above this = bit errors start
-VRAM_CRITICAL_TEMP_C = 100       # above this = immediate pause
+VRAM_SAFE_TEMP_C = 95  # above this = bit errors start
+VRAM_CRITICAL_TEMP_C = 100  # above this = immediate pause
 
 
 # ── Thermal budget tracker ────────────────────────────────────────────────
+
 
 class ThermalBudget:
     """Tracks cumulative GPU thermal exposure.
@@ -160,8 +161,10 @@ class ThermalBudget:
     def check_budget(self) -> bool:
         """Returns True if the budget was just exceeded (triggers cool-down)."""
         with self._lock:
-            if (not self._budget_reached
-                    and self.minutes_above_threshold >= THERMAL_BUDGET_DAILY_LIMIT_MIN):
+            if (
+                not self._budget_reached
+                and self.minutes_above_threshold >= THERMAL_BUDGET_DAILY_LIMIT_MIN
+            ):
                 self._budget_reached = True
                 self._budget_reached_count += 1
                 return True
@@ -177,7 +180,11 @@ class ThermalBudget:
     def format_report(self) -> str:
         with self._lock:
             mins = self.minutes_above_threshold
-            pct = (mins / THERMAL_BUDGET_DAILY_LIMIT_MIN * 100) if THERMAL_BUDGET_DAILY_LIMIT_MIN > 0 else 0
+            pct = (
+                (mins / THERMAL_BUDGET_DAILY_LIMIT_MIN * 100)
+                if THERMAL_BUDGET_DAILY_LIMIT_MIN > 0
+                else 0
+            )
             return (
                 f"Thermal budget: {mins:.1f}/{THERMAL_BUDGET_DAILY_LIMIT_MIN} min "
                 f"above {THERMAL_BUDGET_TRACK_TEMP_C}°C ({pct:.0f}%) — "
@@ -186,6 +193,7 @@ class ThermalBudget:
 
 
 # ── Cool-down scheduler ───────────────────────────────────────────────────
+
 
 class CooldownScheduler:
     """Manages mandatory periodic cool-downs for emergency-mode cards.
@@ -255,13 +263,13 @@ class CooldownScheduler:
             # Runs before the load tracking below so the pause gate is
             # cleared regardless of current util.
             if self._in_cooldown:
-                if (gpu_temp_c is not None
-                        and gpu_temp_c <= COOLDOWN_RESUME_TEMP_C):
+                if gpu_temp_c is not None and gpu_temp_c <= COOLDOWN_RESUME_TEMP_C:
                     self._end_cooldown()
-                elif (self._cooldown_started_at is not None
-                        and self._cooldown_max_duration_sec is not None
-                        and (now - self._cooldown_started_at)
-                        >= self._cooldown_max_duration_sec):
+                elif (
+                    self._cooldown_started_at is not None
+                    and self._cooldown_max_duration_sec is not None
+                    and (now - self._cooldown_started_at) >= self._cooldown_max_duration_sec
+                ):
                     # Hard cap on cool-down duration — resume even if the
                     # temp is still borderline (prevents an indefinite pause).
                     self._end_cooldown()
@@ -284,8 +292,7 @@ class CooldownScheduler:
 
             elapsed_min = (now - self._sustained_load_start) / 60.0
             since_last = (
-                (now - self._last_cooldown_end) / 60.0
-                if self._last_cooldown_end else elapsed_min
+                (now - self._last_cooldown_end) / 60.0 if self._last_cooldown_end else elapsed_min
             )
 
             if elapsed_min >= COOLDOWN_INTERVAL_MIN and since_last >= COOLDOWN_INTERVAL_MIN:
@@ -361,7 +368,8 @@ class CooldownScheduler:
                 # documented THERMAL_BUDGET_REACHED_COOLDOWN_MIN (30 min)
                 # as their hard cap, not the regular COOLDOWN_DURATION_MIN.
                 self._start_cooldown(
-                    time.time(), None,
+                    time.time(),
+                    None,
                     max_duration_min=THERMAL_BUDGET_REACHED_COOLDOWN_MIN,
                 )
                 # Override the log message
@@ -380,6 +388,7 @@ class CooldownScheduler:
 
 # ── VRAM temperature reader ───────────────────────────────────────────────
 
+
 def query_vram_temp(nvidia_smi_path: str) -> int | None:
     """Query the VRAM (memory) temperature via nvidia-smi.
 
@@ -394,10 +403,10 @@ def query_vram_temp(nvidia_smi_path: str) -> int | None:
         return None
     try:
         result = subprocess.run(
-            [nvidia_smi_path,
-             "--query-gpu=temperature.memory",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            [nvidia_smi_path, "--query-gpu=temperature.memory", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return None
@@ -411,14 +420,16 @@ def query_vram_temp(nvidia_smi_path: str) -> int | None:
 
 # ── Model recommendation ──────────────────────────────────────────────────
 
+
 @dataclass
 class ModelRecommendation:
     """A thermal-safe model recommendation."""
+
     model_name: str
-    param_count: str        # "7B", "9B"
-    quant: str              # "Q4_K_M", "Q3_K_M"
-    vram_gb: float          # estimated VRAM usage
-    thermal_risk: str       # "low", "medium", "high"
+    param_count: str  # "7B", "9B"
+    quant: str  # "Q4_K_M", "Q3_K_M"
+    vram_gb: float  # estimated VRAM usage
+    thermal_risk: str  # "low", "medium", "high"
     note: str
 
 
@@ -431,8 +442,8 @@ THERMAL_SAFE_MODELS: list[ModelRecommendation] = [
         vram_gb=5.0,
         thermal_risk="low",
         note="Smallest model that still produces good summaries. ~30% less VRAM "
-             "bandwidth than 9B models. Best choice for sustained overnight runs "
-             "on the Zotac 3060 Twin Edge.",
+        "bandwidth than 9B models. Best choice for sustained overnight runs "
+        "on the Zotac 3060 Twin Edge.",
     ),
     ModelRecommendation(
         model_name="qwen2.5:7b",
@@ -441,7 +452,7 @@ THERMAL_SAFE_MODELS: list[ModelRecommendation] = [
         vram_gb=5.0,
         thermal_risk="low",
         note="Qwen 2.5 7B — strong reasoning, efficient architecture. ~30% less "
-             "VRAM bandwidth than 9B. Good for academic papers.",
+        "VRAM bandwidth than 9B. Good for academic papers.",
     ),
     ModelRecommendation(
         model_name="mistral:7b",
@@ -458,7 +469,7 @@ THERMAL_SAFE_MODELS: list[ModelRecommendation] = [
         vram_gb=4.5,
         thermal_risk="medium",
         note="9B at Q3 quant — 25% less VRAM than Q4. Slightly lower quality "
-             "but significantly less thermal stress. Acceptable for emergency mode.",
+        "but significantly less thermal stress. Acceptable for emergency mode.",
     ),
 ]
 
@@ -501,6 +512,7 @@ def recommend_thermal_safe_models(
 
 # ── Output count guard ────────────────────────────────────────────────────
 
+
 def count_enabled_outputs(request: Any) -> tuple[int, list[str]]:
     """Count the number of optional outputs enabled on the request.
 
@@ -538,7 +550,6 @@ def check_output_count_safety(
     count, enabled = count_enabled_outputs(request)
 
     is_emergency = getattr(profile, "emergency_mode", False)
-    cap = OUTPUT_COUNT_EMERGENCY_CAP if is_emergency else OUTPUT_COUNT_WARN_THRESHOLD + 2
 
     if count > OUTPUT_COUNT_WARN_THRESHOLD:
         warning = (
@@ -566,6 +577,7 @@ def check_output_count_safety(
 
 # ── Pre-flight thermal check ──────────────────────────────────────────────
 
+
 def preflight_thermal_check(
     nvidia_smi_path: str,
     profile: Any,
@@ -591,10 +603,10 @@ def preflight_thermal_check(
     def _read_temp() -> int | None:
         try:
             result = subprocess.run(
-                [nvidia_smi_path,
-                 "--query-gpu=temperature.gpu",
-                 "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=10,
+                [nvidia_smi_path, "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(result.stdout.strip().split(", ")[0])
@@ -630,6 +642,7 @@ def preflight_thermal_check(
             # Send a tiny generate request to warm the model
             if hasattr(model_manager, "acquire_model"):
                 from core.llm import ModelType
+
                 model_manager.acquire_model(
                     model_name, ModelType.SUMMARISATION, skip_vram_check=True
                 )
@@ -696,6 +709,7 @@ def preflight_thermal_check(
 
 
 # ── Main controller ───────────────────────────────────────────────────────
+
 
 class ThermalSafetyController:
     """Orchestrates all thermal safety measures for one conversion.
@@ -841,10 +855,12 @@ class ThermalSafetyController:
 
 # ── Helper ────────────────────────────────────────────────────────────────
 
+
 def _get_default_profile():
     """Get the default thermal profile (imported lazily to avoid circular deps)."""
     try:
         from core.system.hardware_monitor import _PROFILE_DEFAULT
+
         return _PROFILE_DEFAULT
     except Exception as _e:
         return None

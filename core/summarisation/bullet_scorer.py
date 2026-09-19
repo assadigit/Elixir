@@ -25,6 +25,7 @@ inputs → golden score outputs. Byte-for-byte stability gate. The existing
 ``tests/test_summarizer.py::TestScoreBullet`` (4 tests) exercises the
 delegate and must continue to pass unchanged.
 """
+
 from __future__ import annotations
 
 import re
@@ -54,7 +55,7 @@ def _normalized_source(source_text: str) -> str:
     _cached = _SOURCE_NORM_CACHE.get(_key)
     if _cached is not None and _cached[0] is source_text:
         return _cached[1]
-    _norm = re.sub(r'[^\w\s]', '', source_text.lower())
+    _norm = re.sub(r"[^\w\s]", "", source_text.lower())
     if len(_SOURCE_NORM_CACHE) >= _SOURCE_NORM_CACHE_MAX:
         _SOURCE_NORM_CACHE.pop(next(iter(_SOURCE_NORM_CACHE)))
     _SOURCE_NORM_CACHE[_key] = (source_text, _norm)
@@ -108,11 +109,17 @@ def score_bullet(
                 break
 
     # +10: Contains an action verb
-    if re.search(r'\b(?:should|must|need\s+to|requires?|involves?|ensures?|establish|create|develop|use|build|maintain|avoid|adapt|assess|identify|define|leverage|prioritize|recognize|invest|pursue|showed|demonstrated|found|reported|suggests|indicates)\b', bp_lower):
+    if re.search(
+        r"\b(?:should|must|need\s+to|requires?|involves?|ensures?|establish|create|develop|use|build|maintain|avoid|adapt|assess|identify|define|leverage|prioritize|recognize|invest|pursue|showed|demonstrated|found|reported|suggests|indicates)\b",
+        bp_lower,
+    ):
         score += 10
 
     # +10: Does NOT contain narrative markers (V10.14.0: broadened)
-    if not re.search(r'\b(?:went|goes|arrives|arrived|meets|met|tells|told|says|said|decides|decided|begins|began|story|novel|chapter\'s narrative)\b', bp_lower):
+    if not re.search(
+        r"\b(?:went|goes|arrives|arrived|meets|met|tells|told|says|said|decides|decided|begins|began|story|novel|chapter\'s narrative)\b",
+        bp_lower,
+    ):
         score += 10
 
     # +10: Length 10-35 words
@@ -123,7 +130,7 @@ def score_bullet(
         score += 5  # partial credit
 
     # +10: Contains a number/statistic from source
-    numbers = re.findall(r'\b\d+(?:\.\d+)?(?:%| percent)?\b', bp)
+    numbers = re.findall(r"\b\d+(?:\.\d+)?(?:%| percent)?\b", bp)
     if numbers and source_text:
         for num in numbers:
             if num in source_text:
@@ -132,7 +139,7 @@ def score_bullet(
 
     # V10.14.0 (D3): +10: Contains specificity markers
     # (academic citations [N], percentages %, dosages mg, trial IDs NCT)
-    if re.search(r'\[\d+\]|\d+%|\d+\s*mg\b|NCT\d+', bp):
+    if re.search(r"\[\d+\]|\d+%|\d+\s*mg\b|NCT\d+", bp):
         score += 10
 
     # V10.14.0 (D3): +10: Has source text overlap (>40%)
@@ -142,7 +149,8 @@ def score_bullet(
     if source_text and word_count > 3:
         try:
             from rapidfuzz import fuzz as rf_fuzz
-            bp_norm = re.sub(r'[^\w\s]', '', bp_lower).strip()
+
+            bp_norm = re.sub(r"[^\w\s]", "", bp_lower).strip()
             # V18.20.2.0 (SWOT A25): the full-source normalization is hoisted
             # through the identity-keyed memo (once per source object, not
             # once per bullet) — same string value, identical score.
@@ -153,19 +161,31 @@ def score_bullet(
             pass
 
     # +5: Starts with capital, ends with punctuation
-    if bp and bp[0].isupper() and bp[-1] in '.!?':
+    if bp and bp[0].isupper() and bp[-1] in ".!?":
         score += 5
 
     # +10: Does NOT contain thinking markers
-    if not re.search(r'(?:<think|<thinking|Analyze|Process|Draft|Check |Refine|I\'ll|I will|Let\'s|Let me)', bp, re.IGNORECASE):
+    if not re.search(
+        r"(?:<think|<thinking|Analyze|Process|Draft|Check |Refine|I\'ll|I will|Let\'s|Let me)",
+        bp,
+        re.IGNORECASE,
+    ):
         score += 10
 
     # +5: Does NOT contain prompt-leakage text
-    if not re.search(r'(?:Source Text|Target Concepts|Task:|Format:|Rules:|Instructions:|Output:|Input:)', bp, re.IGNORECASE):
+    if not re.search(
+        r"(?:Source Text|Target Concepts|Task:|Format:|Rules:|Instructions:|Output:|Input:)",
+        bp,
+        re.IGNORECASE,
+    ):
         score += 5
 
     # V10.14.0 (D3): +5: Does NOT contain meta-commentary
-    if not re.search(r'(?:This captures|This is a complete sentence|not identical|covers point|This bullet|This keypoint)', bp, re.IGNORECASE):
+    if not re.search(
+        r"(?:This captures|This is a complete sentence|not identical|covers point|This bullet|This keypoint)",
+        bp,
+        re.IGNORECASE,
+    ):
         score += 5
 
     return min(score, 100)

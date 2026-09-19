@@ -15,6 +15,7 @@ These are valid in filenames on most OSes but cause problems in:
 - cross-platform file copying
 - logging output (invisible characters corrupt log parsing)
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,21 +27,21 @@ import unicodedata
 logger = logging.getLogger(__name__)
 
 _INVISIBLE_CHARS = re.compile(
-    '['
-    '\u200b'  # zero-width space
-    '\u200c'  # zero-width non-joiner (ZWNJ)
-    '\u200d'  # zero-width joiner (ZWJ)
-    '\u200e'  # left-to-right mark (LRM)
-    '\u200f'  # right-to-left mark (RTL)
-    '\ufeff'  # byte order mark (BOM)
-    '\u00ad'  # soft hyphen
-    '\u2060'  # word joiner
-    '\u2061'  # function application
-    '\u2062'  # invisible times
-    '\u2063'  # invisible separator
-    '\u2064'  # invisible plus
-    '\u00a0'  # non-breaking space
-    ']'
+    "["
+    "\u200b"  # zero-width space
+    "\u200c"  # zero-width non-joiner (ZWNJ)
+    "\u200d"  # zero-width joiner (ZWJ)
+    "\u200e"  # left-to-right mark (LRM)
+    "\u200f"  # right-to-left mark (RTL)
+    "\ufeff"  # byte order mark (BOM)
+    "\u00ad"  # soft hyphen
+    "\u2060"  # word joiner
+    "\u2061"  # function application
+    "\u2062"  # invisible times
+    "\u2063"  # invisible separator
+    "\u2064"  # invisible plus
+    "\u00a0"  # non-breaking space
+    "]"
 )
 
 # Characters that are illegal in filenames on Windows
@@ -60,23 +61,23 @@ def sanitize_filename(filename: str, replacement: str = "_") -> str:
         return "unnamed"
 
     # 1. Strip invisible characters
-    result = _INVISIBLE_CHARS.sub('', filename)
+    result = _INVISIBLE_CHARS.sub("", filename)
 
     # 2. Replace Windows-illegal characters
     result = _WINDOWS_ILLEGAL.sub(replacement, result)
 
     # 3. Normalize Unicode (NFC = composed form)
-    result = unicodedata.normalize('NFC', result)
+    result = unicodedata.normalize("NFC", result)
 
     # 4. Trim whitespace and dots (Windows doesn't allow trailing dots/spaces)
-    result = result.strip().strip('.').strip()
+    result = result.strip().strip(".").strip()
 
     # 5. Limit length (keep extension if present)
     if len(result) > 200:
         # Try to preserve extension
-        if '.' in result:
-            name, ext = result.rsplit('.', 1)
-            result = name[:200 - len(ext) - 1] + '.' + ext
+        if "." in result:
+            name, ext = result.rsplit(".", 1)
+            result = name[: 200 - len(ext) - 1] + "." + ext
         else:
             result = result[:200]
 
@@ -97,10 +98,10 @@ def sanitize_heading_for_filename(heading: str) -> str:
     result = sanitize_filename(heading)
 
     # Remove additional problematic characters
-    result = re.sub(r'["\'`'']', '', result)
-    result = re.sub(r'[:;]', '-', result)
-    result = re.sub(r'\s+', '_', result)
-    result = re.sub(r'_+', '_', result)  # collapse multiple underscores
-    result = result.strip('_')
+    result = re.sub(r'["\'`' "]", "", result)
+    result = re.sub(r"[:;]", "-", result)
+    result = re.sub(r"\s+", "_", result)
+    result = re.sub(r"_+", "_", result)  # collapse multiple underscores
+    result = result.strip("_")
 
     return result if result else "chapter"

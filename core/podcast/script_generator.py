@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 
 # ── Data structures ────────────────────────────────────────────────────
 
+
 @dataclass
 class ScriptLine:
     """One line of dialogue in the podcast script."""
+
     host: str  # "A" or "B"
     text: str
     source_ref: str  # e.g. "bullet 1", "bullet 3", "intro", "conclusion"
@@ -42,6 +44,7 @@ class ScriptLine:
 @dataclass
 class ScriptResult:
     """The generated podcast script + coverage info."""
+
     lines: list[ScriptLine] = field(default_factory=list)
     bullets_input: list[str] = field(default_factory=list)
     bullets_covered: list[int] = field(default_factory=list)
@@ -62,16 +65,24 @@ class ScriptResult:
 
     def to_json(self) -> str:
         """Render as JSON for editing/saving."""
-        return json.dumps({
-            "lines": [
-                {"host": l.host, "text": l.text, "source_ref": l.source_ref,
-                 "segment_type": l.segment_type}
-                for l in self.lines
-            ],
-            "coverage_pct": self.coverage_pct,
-            "bullets_covered": self.bullets_covered,
-            "bullets_missing": self.bullets_missing,
-        }, indent=2, ensure_ascii=False)
+        return json.dumps(
+            {
+                "lines": [
+                    {
+                        "host": ln.host,
+                        "text": ln.text,
+                        "source_ref": ln.source_ref,
+                        "segment_type": ln.segment_type,
+                    }
+                    for ln in self.lines
+                ],
+                "coverage_pct": self.coverage_pct,
+                "bullets_covered": self.bullets_covered,
+                "bullets_missing": self.bullets_missing,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> ScriptResult:
@@ -81,14 +92,15 @@ class ScriptResult:
         Also accepts JSONL (one object per line) for flexibility.
         """
         import json as _json
+
         try:
             data = _json.loads(json_str)
         except _json.JSONDecodeError:
             # Try JSONL — parse each line as a standalone object
             data = []
-            for raw in json_str.strip().split('\n'):
-                raw = raw.strip().rstrip(',').strip()
-                if not raw.startswith('{'):
+            for raw in json_str.strip().split("\n"):
+                raw = raw.strip().rstrip(",").strip()
+                if not raw.startswith("{"):
                     continue
                 try:
                     data.append(_json.loads(raw))
@@ -117,12 +129,14 @@ class ScriptResult:
             text_val = _strip_host_prefix(text_val)
             if not text_val:
                 continue
-            lines.append(ScriptLine(
-                host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
-                text=text_val,
-                source_ref=str(obj.get("source_ref", "")).strip().lower(),
-                segment_type=str(obj.get("segment_type", "content")).strip(),
-            ))
+            lines.append(
+                ScriptLine(
+                    host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
+                    text=text_val,
+                    source_ref=str(obj.get("source_ref", "")).strip().lower(),
+                    segment_type=str(obj.get("segment_type", "content")).strip(),
+                )
+            )
         return cls(
             lines=lines,
             bullets_input=meta.get("bullets_input", []),
@@ -133,6 +147,7 @@ class ScriptResult:
 
 
 # ── Deterministic bullet extraction ────────────────────────────────────
+
 
 def extract_bullets(text: str) -> list[str]:
     """Extract bullet points from text (deterministic, no LLM).
@@ -149,12 +164,12 @@ def extract_bullets(text: str) -> list[str]:
     for line in lines:
         stripped = line.strip()
         # Markdown bullet or numbered list
-        if re.match(r'^[-*+]\s+', stripped) or re.match(r'^\d+[.)]\s+', stripped):
+        if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+[.)]\s+", stripped):
             if current_bullet:
                 bullets.append(current_bullet.strip())
             # Remove the bullet marker
-            current_bullet = re.sub(r'^[-*+]\s+', '', stripped)
-            current_bullet = re.sub(r'^\d+[.)]\s+', '', current_bullet)
+            current_bullet = re.sub(r"^[-*+]\s+", "", stripped)
+            current_bullet = re.sub(r"^\d+[.)]\s+", "", current_bullet)
         elif stripped and current_bullet:
             # Continuation of the current bullet
             current_bullet += " " + stripped
@@ -175,6 +190,7 @@ def extract_bullets(text: str) -> list[str]:
 
 # ── Text pre-processing ────────────────────────────────────────────────
 
+
 def preprocess_source_text(text: str) -> str:
     """Pre-process raw text into clean markdown for the LLM.
 
@@ -192,25 +208,27 @@ def preprocess_source_text(text: str) -> str:
     import re
 
     # 1. Strip HTML tags
-    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r"<[^>]+>", "", text)
 
     # 2. Normalize whitespace
-    text = text.replace('\r\n', '\n').replace('\r', '\n')
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{3,}", "\n\n", text)
 
     # 3. Normalize bullet markers
-    text = re.sub(r'^[•‣▪◦○●]\s*', '- ', text, flags=re.MULTILINE)
+    text = re.sub(r"^[•‣▪◦○●]\s*", "- ", text, flags=re.MULTILINE)
 
     # 4. Remove page numbers (standalone numbers on a line)
-    text = re.sub(r'^\s*\d+\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
 
     # 5. Remove common headers/footers
-    text = re.sub(r'^\s*(?:Page|Pg|P\.)\s*\d+\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
-    text = re.sub(r'^\s*(?:©|Copyright|All rights reserved).*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r"^\s*(?:Page|Pg|P\.)\s*\d+\s*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(
+        r"^\s*(?:©|Copyright|All rights reserved).*$", "", text, flags=re.MULTILINE | re.IGNORECASE
+    )
 
     # 6. Detect headings — short lines (< 80 chars) with no ending punctuation
     # that are followed by a blank line or content. Add # if not already markdown.
-    lines = text.split('\n')
+    lines = text.split("\n")
     processed_lines = []
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -218,37 +236,37 @@ def preprocess_source_text(text: str) -> str:
             processed_lines.append(line)
             continue
         # Skip if already a markdown heading
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             processed_lines.append(line)
             continue
         # Skip if it's a bullet
-        if re.match(r'^[-*+]\s+', stripped) or re.match(r'^\d+[.)]\s+', stripped):
+        if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+[.)]\s+", stripped):
             processed_lines.append(line)
             continue
         # Detect heading: short, no terminal punctuation, title-case or ALL CAPS
         is_short = len(stripped) < 80
-        no_terminal = not re.search(r'[.!?:,;]$', stripped)
-        has_caps = stripped == stripped.upper() or re.match(r'^[A-Z]', stripped)
+        no_terminal = not re.search(r"[.!?:,;]$", stripped)
+        has_caps = stripped == stripped.upper() or re.match(r"^[A-Z]", stripped)
         # Look ahead: next non-empty line should be content (not another heading)
         next_is_content = False
-        for j in range(i+1, min(i+3, len(lines))):
+        for j in range(i + 1, min(i + 3, len(lines))):
             nxt = lines[j].strip()
             if nxt:
-                next_is_content = len(nxt) > 20 or re.match(r'^[-*+]\s+', nxt)
+                next_is_content = len(nxt) > 20 or re.match(r"^[-*+]\s+", nxt)
                 break
         if is_short and no_terminal and has_caps and next_is_content:
             processed_lines.append(f"## {stripped}")
         else:
             processed_lines.append(line)
 
-    text = '\n'.join(processed_lines)
+    text = "\n".join(processed_lines)
 
     # 7. Add a top-level heading if none exists
-    if not re.search(r'^#\s+', text, re.MULTILINE):
+    if not re.search(r"^#\s+", text, re.MULTILINE):
         text = "# Source Material\n\n" + text
 
     # 8. Final cleanup
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
@@ -285,14 +303,15 @@ TONE_PROFILES = {
 # Qwythos: min=0.6, max=0.8, recommended=0.7
 # For podcasts we want MORE creativity, so we use the upper end.
 TEMPERATURE_PROFILES = {
-    "conservative": 0.6,   # Qwythos min — safe, predictable
-    "balanced": 0.7,       # Qwythos recommended
-    "creative": 0.8,       # Qwythos max — most creative within safe range
+    "conservative": 0.6,  # Qwythos min — safe, predictable
+    "balanced": 0.7,  # Qwythos recommended
+    "creative": 0.8,  # Qwythos max — most creative within safe range
     "very_creative": 0.9,  # Slightly above Qwythos max (for non-Qwythos models)
 }
 
 
 # ── Prompt builders ────────────────────────────────────────────────────
+
 
 def _build_lecture_prompt(
     bullets: list[str],
@@ -302,7 +321,7 @@ def _build_lecture_prompt(
 ) -> str:
     """Build the prompt for lecture mode (1 host)."""
     tone_profile = TONE_PROFILES.get(tone, TONE_PROFILES["casual"])
-    bullets_text = "\n".join(f"[BULLET {i+1}] {b}" for i, b in enumerate(bullets))
+    bullets_text = "\n".join(f"[BULLET {i + 1}] {b}" for i, b in enumerate(bullets))
     lang_instruction = ""
     if language == "fa":
         lang_instruction = "\n\nIMPORTANT: Write the ENTIRE script in Persian (Farsi). All dialogue must be in Farsi."
@@ -315,8 +334,8 @@ Do not add any facts, examples, or details that are not in the source.
 
 {bullets_text}
 
-TONE: {tone_profile['desc']}
-{tone_profile['instruction']}
+TONE: {tone_profile["desc"]}
+{tone_profile["instruction"]}
 
 HUMAN CHARACTERISTICS — make this sound like a REAL person talking, not a robot:
 - Use filler words naturally: "um", "uh", "well", "so", "I mean", "you know"
@@ -364,7 +383,7 @@ def _build_conversational_prompt(
 ) -> str:
     """Build the prompt for conversational mode (2 hosts)."""
     tone_profile = TONE_PROFILES.get(tone, TONE_PROFILES["casual"])
-    bullets_text = "\n".join(f"[BULLET {i+1}] {b}" for i, b in enumerate(bullets))
+    bullets_text = "\n".join(f"[BULLET {i + 1}] {b}" for i, b in enumerate(bullets))
     lang_instruction = ""
     if language == "fa":
         lang_instruction = "\n\nIMPORTANT: Write the ENTIRE script in Persian (Farsi). All dialogue must be in Farsi."
@@ -396,8 +415,8 @@ CRITICAL CONVERSATIONAL RULE — DO NOT READ THE SOURCE ALOUD:
 
 {bullets_text}
 
-TONE: {tone_profile['desc']}
-{tone_profile['instruction']}
+TONE: {tone_profile["desc"]}
+{tone_profile["instruction"]}
 
 HUMAN CHARACTERISTICS — make this sound like a REAL, ENGAGING conversation:
 - Use filler words SPARINGLY (max 1-2 per line): "um", "well", "so", "I mean"
@@ -478,9 +497,10 @@ def _build_gap_fill_prompt(
     language: str,
 ) -> str:
     """Build a gap-fill reprompt for uncovered bullets."""
-    missing_text = "\n".join(
-        f"[BULLET {i+1}] {bullets[i]}" for i in missing_indices)
-    host_instruction = "Host A only (lecture mode)" if mode == "lecture" else "Host A and Host B (conversational)"
+    missing_text = "\n".join(f"[BULLET {i + 1}] {bullets[i]}" for i in missing_indices)
+    host_instruction = (
+        "Host A only (lecture mode)" if mode == "lecture" else "Host A and Host B (conversational)"
+    )
     lang_instruction = "\nWrite in Persian (Farsi)." if language == "fa" else ""
 
     return f"""Your previous podcast script MISSED these bullet points. You MUST
@@ -494,17 +514,18 @@ Each bullet MUST get at least one line.
 
 OUTPUT FORMAT — JSON array only:
 [
-  {{"host": "A", "text": "...", "source_ref": "bullet {missing_indices[0]+1}", "segment_type": "content"}},
+  {{"host": "A", "text": "...", "source_ref": "bullet {missing_indices[0] + 1}", "segment_type": "content"}},
   ...
 ]
 
 RULES:
-- source_ref MUST match the bullet number (e.g. "bullet {missing_indices[0]+1}")
+- source_ref MUST match the bullet number (e.g. "bullet {missing_indices[0] + 1}")
 - Do NOT invent facts — use only the source material above
 - Keep each line to 1-3 sentences{lang_instruction}"""
 
 
 # ── Script parsing & coverage verification ─────────────────────────────
+
 
 def _parse_script_response(response: str) -> list[ScriptLine]:
     """Parse the LLM's response into ScriptLine objects.
@@ -528,9 +549,9 @@ def _parse_script_response(response: str) -> list[ScriptLine]:
     response = response.strip()
 
     # V11.37.4: strip <think>...</think> tags (Qwythos thinking output)
-    response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE)
+    response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL | re.IGNORECASE)
     # Also strip unclosed <think> tags
-    response = re.sub(r'<think>.*', '', response, flags=re.DOTALL | re.IGNORECASE)
+    response = re.sub(r"<think>.*", "", response, flags=re.DOTALL | re.IGNORECASE)
     response = response.strip()
 
     # ── Strategy 1: Direct JSON parse ──────────────────────────────
@@ -547,8 +568,8 @@ def _parse_script_response(response: str) -> list[ScriptLine]:
         return lines
 
     # ── Strategy 2: Strip markdown code fences and retry ───────────
-    fenced = re.sub(r'^```(?:json)?\s*', '', response)
-    fenced = re.sub(r'\s*```$', '', fenced)
+    fenced = re.sub(r"^```(?:json)?\s*", "", response)
+    fenced = re.sub(r"\s*```$", "", fenced)
     if fenced != response:
         lines = _try_parse_json(fenced)
         if lines:
@@ -556,7 +577,7 @@ def _parse_script_response(response: str) -> list[ScriptLine]:
 
     # ── Strategy 3: Extract JSON array from surrounding text ───────
     # Find the first [ and the last ] — extract everything between
-    match = re.search(r'\[.*\]', response, re.DOTALL)
+    match = re.search(r"\[.*\]", response, re.DOTALL)
     if match:
         lines = _try_parse_json(match.group())
         if lines:
@@ -569,7 +590,7 @@ def _parse_script_response(response: str) -> list[ScriptLine]:
         if lines:
             return lines
         # Also try extracting array from fixed text
-        match = re.search(r'\[.*\]', fixed, re.DOTALL)
+        match = re.search(r"\[.*\]", fixed, re.DOTALL)
         if match:
             lines = _try_parse_json(match.group())
             if lines:
@@ -600,10 +621,14 @@ def _strip_host_prefix(text: str) -> str:
     if not text:
         return text
     import re as _re
+
     # Strip [Host A], [Host B], [Host], Host A:, Host B:, A:, B: at the start
     text = _re.sub(
-        r'^\s*(?:\[Host\s+[AB]\]\s*|Host\s+[AB]\s*[:\)]\s*|[AB]\s*[:\)]\s*)',
-        '', text, flags=_re.IGNORECASE)
+        r"^\s*(?:\[Host\s+[AB]\]\s*|Host\s+[AB]\s*[:\)]\s*|[AB]\s*[:\)]\s*)",
+        "",
+        text,
+        flags=_re.IGNORECASE,
+    )
     return text.strip()
 
 
@@ -631,12 +656,14 @@ def _try_parse_json(text: str) -> list[ScriptLine]:
         text_val = _strip_host_prefix(text_val)
         if not text_val:
             continue
-        lines.append(ScriptLine(
-            host=str(item.get("host", "A")).strip().upper()[:1] or "A",
-            text=text_val,
-            source_ref=str(item.get("source_ref", "")).strip().lower(),
-            segment_type=str(item.get("segment_type", "content")).strip(),
-        ))
+        lines.append(
+            ScriptLine(
+                host=str(item.get("host", "A")).strip().upper()[:1] or "A",
+                text=text_val,
+                source_ref=str(item.get("source_ref", "")).strip().lower(),
+                segment_type=str(item.get("segment_type", "content")).strip(),
+            )
+        )
     return lines
 
 
@@ -658,13 +685,13 @@ def _try_parse_jsonl(text: str) -> list[ScriptLine]:
         return []
 
     lines = []
-    for raw_line in text.split('\n'):
+    for raw_line in text.split("\n"):
         raw_line = raw_line.strip()
-        if not raw_line or not raw_line.startswith('{'):
+        if not raw_line or not raw_line.startswith("{"):
             continue
         # Strip trailing commas (from pseudo-array without brackets)
-        clean = raw_line.rstrip(',').strip()
-        if not clean.endswith('}'):
+        clean = raw_line.rstrip(",").strip()
+        if not clean.endswith("}"):
             # Maybe the JSON object spans multiple lines — try accumulating
             # until we find a closing }. But for simple JSONL, each line
             # is a complete object.
@@ -682,12 +709,14 @@ def _try_parse_jsonl(text: str) -> list[ScriptLine]:
         text_val = _strip_host_prefix(text_val)
         if not text_val:
             continue
-        lines.append(ScriptLine(
-            host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
-            text=text_val,
-            source_ref=str(obj.get("source_ref", "")).strip().lower(),
-            segment_type=str(obj.get("segment_type", "content")).strip(),
-        ))
+        lines.append(
+            ScriptLine(
+                host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
+                text=text_val,
+                source_ref=str(obj.get("source_ref", "")).strip().lower(),
+                segment_type=str(obj.get("segment_type", "content")).strip(),
+            )
+        )
     return lines
 
 
@@ -702,36 +731,36 @@ def _fix_json_errors(text: str) -> str:
     - Fix missing array wrapper (if response is just objects, wrap in [])
     """
     # Remove comments
-    text = re.sub(r'//[^\n]*', '', text)
-    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", "", text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
 
     # V11.37.4: remove [Host A] / [Host B] prefixes that the LLM sometimes
     # adds before JSON objects
-    text = re.sub(r'^\s*\[Host\s+[AB]\]\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\[Host\s+[AB]\]\s*", "", text, flags=re.MULTILINE)
 
     # Fix single quotes → double quotes (only outside of strings)
     text = re.sub(r"'([^']+)':", r'"\1":', text)
 
     # Remove trailing commas
-    text = re.sub(r',\s*([}\]])', r'\1', text)
+    text = re.sub(r",\s*([}\]])", r"\1", text)
 
     # V11.37.4: if the text looks like multiple JSON objects but isn't
     # wrapped in an array, wrap it
     stripped = text.strip()
-    if stripped.startswith('{') and not stripped.startswith('['):
+    if stripped.startswith("{") and not stripped.startswith("["):
         # Check if there are multiple objects separated by commas/newlines
         # Wrap in array
-        text = '[' + stripped + ']'
+        text = "[" + stripped + "]"
         # Fix any double-wrapping
-        text = text.replace('[{', '[{').replace('}]', '}]')
+        text = text.replace("[{", "[{").replace("}]", "}]")
 
     # If the text ends without a closing ], try adding it
     stripped = text.rstrip()
-    if not stripped.endswith(']') and not stripped.endswith('}'):
+    if not stripped.endswith("]") and not stripped.endswith("}"):
         # Count brackets
-        opens = text.count('[') - text.count(']')
+        opens = text.count("[") - text.count("]")
         if opens > 0:
-            text = text + ']' * opens
+            text = text + "]" * opens
 
     return text
 
@@ -755,8 +784,8 @@ def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
     lines = []
     # Match: optional "Host ", then A or B, then ":" or "]" or newline
     pattern = re.compile(
-        r'(?:Host\s+)?([AB])(?:\]?\s*[:\]\n]\s*|\n)(.+?)(?=(?:Host\s+)?[AB](?:\]?\s*[:\]\n])|$)',
-        re.DOTALL | re.IGNORECASE
+        r"(?:Host\s+)?([AB])(?:\]?\s*[:\]\n]\s*|\n)(.+?)(?=(?:Host\s+)?[AB](?:\]?\s*[:\]\n])|$)",
+        re.DOTALL | re.IGNORECASE,
     )
     matches = list(pattern.finditer(text))
     if not matches:
@@ -770,20 +799,22 @@ def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
             continue
 
         # V11.37.5: if the captured text is JSON, extract the fields
-        if line_text.startswith('{'):
+        if line_text.startswith("{"):
             try:
-                obj = json.loads(line_text.rstrip(','))
+                obj = json.loads(line_text.rstrip(","))
                 # Use the JSON's host if present, otherwise keep the matched host
-                if 'host' in obj:
-                    host = str(obj['host']).strip().upper()[:1] or host
-                line_text = obj.get('text', '').strip()
-                source_ref = str(obj.get('source_ref', '')).strip().lower()
-                segment_type = str(obj.get('segment_type', 'content')).strip()
+                if "host" in obj:
+                    host = str(obj["host"]).strip().upper()[:1] or host
+                line_text = obj.get("text", "").strip()
+                source_ref = str(obj.get("source_ref", "")).strip().lower()
+                segment_type = str(obj.get("segment_type", "content")).strip()
                 if not line_text:
                     continue
-                lines.append(ScriptLine(
-                    host=host, text=line_text,
-                    source_ref=source_ref, segment_type=segment_type))
+                lines.append(
+                    ScriptLine(
+                        host=host, text=line_text, source_ref=source_ref, segment_type=segment_type
+                    )
+                )
                 continue
             except json.JSONDecodeError:
                 # Not valid JSON — treat as plain text
@@ -799,9 +830,9 @@ def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
         else:
             segment_type = "content"
             source_ref = ""  # unknown — will be caught by coverage check
-        lines.append(ScriptLine(
-            host=host, text=line_text,
-            source_ref=source_ref, segment_type=segment_type))
+        lines.append(
+            ScriptLine(host=host, text=line_text, source_ref=source_ref, segment_type=segment_type)
+        )
     return lines
 
 
@@ -814,18 +845,16 @@ def _parse_tagged_lines(text: str) -> list[ScriptLine]:
       - Some text...
     """
     lines = []
-    for line in text.split('\n'):
+    for line in text.split("\n"):
         stripped = line.strip()
         if not stripped:
             continue
         # Remove numbering or bullet markers
-        cleaned = re.sub(r'^\d+[.)]\s*', '', stripped)
-        cleaned = re.sub(r'^[-*+]\s*', '', cleaned)
+        cleaned = re.sub(r"^\d+[.)]\s*", "", stripped)
+        cleaned = re.sub(r"^[-*+]\s*", "", cleaned)
         if len(cleaned) < 5:
             continue
-        lines.append(ScriptLine(
-            host="A", text=cleaned,
-            source_ref="", segment_type="content"))
+        lines.append(ScriptLine(host="A", text=cleaned, source_ref="", segment_type="content"))
     return lines if len(lines) >= 2 else []
 
 
@@ -845,13 +874,13 @@ def verify_coverage(
     for line in lines:
         ref = line.source_ref.strip().lower()
         # Normalize: "bullet 1", "Bullet 1", "bullet1" → "bullet 1"
-        ref = re.sub(r'\s+', ' ', ref)
+        ref = re.sub(r"\s+", " ", ref)
         refs_found.add(ref)
 
     covered = []
     missing = []
     for i in range(num_bullets):
-        bullet_ref = f"bullet {i+1}"
+        bullet_ref = f"bullet {i + 1}"
         if bullet_ref in refs_found:
             covered.append(i)
         else:
@@ -866,25 +895,47 @@ def verify_coverage(
 
 import random as _random
 
-_BACKCHANNELS = ["Yeah.", "Right.", "Mhm.", "Exactly.", "Oh?", "Hmm.", "That's interesting.", "Right, right.", "Mm-hmm.", "For sure."]
+_BACKCHANNELS = [
+    "Yeah.",
+    "Right.",
+    "Mhm.",
+    "Exactly.",
+    "Oh?",
+    "Hmm.",
+    "That's interesting.",
+    "Right, right.",
+    "Mm-hmm.",
+    "For sure.",
+]
 _FILLERS = ["um", "well", "so", "I mean", "you know", "honestly", "like", "basically"]
-_REACTIONS = ["Oh wow.", "No way.", "That's so true.", "100%.", "Absolutely.", "Makes sense.", "Oh, that's good.", "Wow, okay.", "Hmm, interesting.", "That hits home."]
+_REACTIONS = [
+    "Oh wow.",
+    "No way.",
+    "That's so true.",
+    "100%.",
+    "Absolutely.",
+    "Makes sense.",
+    "Oh, that's good.",
+    "Wow, okay.",
+    "Hmm, interesting.",
+    "That hits home.",
+]
 
 # V11.52.0: Expanded vocal cues with variable durations
 # Each entry: (cue_tag, duration_range_seconds)
 # The cue_tag is what appears in the text: [pause 0.7s], [breath], [sigh], etc.
 _VOCAL_CUES_EXPANDED = [
-    ("[pause 0.3s]", (0.3, 0.3)),   # short pause (comma-level)
-    ("[pause 0.5s]", (0.5, 0.5)),   # medium pause (sentence-level)
-    ("[pause 0.7s]", (0.7, 0.7)),   # thinking pause
-    ("[pause 1.0s]", (1.0, 1.0)),   # dramatic pause
-    ("[breath]", (0.3, 0.4)),       # quick breath
-    ("[sigh]", (0.6, 0.8)),         # longer exhale
-    ("[chuckle]", (0.4, 0.6)),      # short laugh
-    ("[hmm]", (0.0, 0.0)),          # word-level (stays in text)
-    ("[um]", (0.0, 0.0)),           # word-level (stays in text)
-    ("[gasp]", (0.3, 0.4)),         # surprised intake
-    ("[throat_clear]", (0.4, 0.5)), # before speaking
+    ("[pause 0.3s]", (0.3, 0.3)),  # short pause (comma-level)
+    ("[pause 0.5s]", (0.5, 0.5)),  # medium pause (sentence-level)
+    ("[pause 0.7s]", (0.7, 0.7)),  # thinking pause
+    ("[pause 1.0s]", (1.0, 1.0)),  # dramatic pause
+    ("[breath]", (0.3, 0.4)),  # quick breath
+    ("[sigh]", (0.6, 0.8)),  # longer exhale
+    ("[chuckle]", (0.4, 0.6)),  # short laugh
+    ("[hmm]", (0.0, 0.0)),  # word-level (stays in text)
+    ("[um]", (0.0, 0.0)),  # word-level (stays in text)
+    ("[gasp]", (0.3, 0.4)),  # surprised intake
+    ("[throat_clear]", (0.4, 0.5)),  # before speaking
 ]
 
 
@@ -943,23 +994,27 @@ def inject_human_elements(
             next_line = lines[i + 1]
             if next_line.host == "B" and rng.random() < intensity * 0.5:
                 backchannel = rng.choice(_BACKCHANNELS)
-                enhanced.append(ScriptLine(
-                    host="B",
-                    text=backchannel,
-                    source_ref=line.source_ref,
-                    segment_type="backchannel",
-                ))
+                enhanced.append(
+                    ScriptLine(
+                        host="B",
+                        text=backchannel,
+                        source_ref=line.source_ref,
+                        segment_type="backchannel",
+                    )
+                )
 
         # Phase 2c: Add reaction after content lines
         if line.segment_type == "content" and rng.random() < intensity * 0.35:
             reaction = rng.choice(_REACTIONS)
             reacting_host = "B" if line.host == "A" else "A"
-            enhanced.append(ScriptLine(
-                host=reacting_host,
-                text=reaction,
-                source_ref=line.source_ref,
-                segment_type="reaction",
-            ))
+            enhanced.append(
+                ScriptLine(
+                    host=reacting_host,
+                    text=reaction,
+                    source_ref=line.source_ref,
+                    segment_type="reaction",
+                )
+            )
 
     return enhanced
 
@@ -984,7 +1039,7 @@ def _insert_vocal_cues_in_text(text: str, rng: _random.Random) -> str:
             return f", [pause {dur}s]"
         return m.group(0)
 
-    text = _re.sub(r',', _maybe_pause_comma, text)
+    text = _re.sub(r",", _maybe_pause_comma, text)
 
     # Insert pauses after sentence-ending punctuation (50% chance)
     def _maybe_pause_sentence(m):
@@ -993,25 +1048,28 @@ def _insert_vocal_cues_in_text(text: str, rng: _random.Random) -> str:
             return f"{m.group(1)} [pause {dur}s]"
         return m.group(0)
 
-    text = _re.sub(r'([.!?])\s', _maybe_pause_sentence, text)
+    text = _re.sub(r"([.!?])\s", _maybe_pause_sentence, text)
 
     # Insert [breath] before long clauses (after "and", "but", "so", "because")
     if rng.random() < 0.3:
         text = _re.sub(
-            r'\b(and|but|so|because|which|where|when)\s',
-            r'\1 [breath] ',
-            text, count=1, flags=_re.IGNORECASE)
+            r"\b(and|but|so|because|which|where|when)\s",
+            r"\1 [breath] ",
+            text,
+            count=1,
+            flags=_re.IGNORECASE,
+        )
 
     # Occasionally add [sigh], [chuckle], or [gasp] (10% chance)
     if rng.random() < 0.10:
         cue = rng.choice(["[sigh]", "[chuckle]", "[gasp]"])
         # Insert at a natural point — after the first sentence
-        parts = text.split('. ', 1)
+        parts = text.split(". ", 1)
         if len(parts) == 2:
-            text = parts[0] + f'. {cue} ' + parts[1]
+            text = parts[0] + f". {cue} " + parts[1]
 
     # Clean up any double spaces
-    text = _re.sub(r'  +', ' ', text).strip()
+    text = _re.sub(r"  +", " ", text).strip()
     return text
 
 
@@ -1027,43 +1085,44 @@ def strip_vocal_cues(text: str) -> str:
     (position, cue_type, duration_seconds) tuples.
     """
     import re
+
     cues = []
 
     # Extract [pause X.Ys] or [pause] — variable durations
-    for m in re.finditer(r'\[pause\s*(\d*\.?\d*)s?\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[pause\s*(\d*\.?\d*)s?\]", text, re.IGNORECASE):
         duration = float(m.group(1)) if m.group(1) else 0.5
         cues.append((m.start(), "pause", duration))
 
     # Extract [breath] — 0.3s
-    for m in re.finditer(r'\[breath\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[breath\]", text, re.IGNORECASE):
         cues.append((m.start(), "breath", 0.3))
 
     # Extract [sigh] — 0.7s (longer exhale)
-    for m in re.finditer(r'\[sigh\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[sigh\]", text, re.IGNORECASE):
         cues.append((m.start(), "sigh", 0.7))
 
     # Extract [chuckle] — 0.5s
-    for m in re.finditer(r'\[chuckle\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[chuckle\]", text, re.IGNORECASE):
         cues.append((m.start(), "chuckle", 0.5))
 
     # Extract [gasp] — 0.3s
-    for m in re.finditer(r'\[gasp\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[gasp\]", text, re.IGNORECASE):
         cues.append((m.start(), "gasp", 0.3))
 
     # Extract [throat_clear] — 0.4s
-    for m in re.finditer(r'\[throat_clear\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[throat_clear\]", text, re.IGNORECASE):
         cues.append((m.start(), "throat_clear", 0.4))
 
     # Extract [laugh] — V11.64.0: replace with "haha" so TTS speaks it
-    for m in re.finditer(r'\[laugh\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[laugh\]", text, re.IGNORECASE):
         cues.append((m.start(), "laugh", 0.0))
 
     # Extract [hmm] — 0.0s (word-level)
-    for m in re.finditer(r'\[hmm\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[hmm\]", text, re.IGNORECASE):
         cues.append((m.start(), "hmm", 0.0))
 
     # Extract [um] — 0.0s (word-level)
-    for m in re.finditer(r'\[um\]', text, re.IGNORECASE):
+    for m in re.finditer(r"\[um\]", text, re.IGNORECASE):
         cues.append((m.start(), "um", 0.0))
 
     # Sort by position
@@ -1071,16 +1130,19 @@ def strip_vocal_cues(text: str) -> str:
 
     # V11.64.0: Replace [laugh] with "haha" BEFORE stripping, so TTS
     # speaks the laugh. Other cues are stripped (handled by audio generator).
-    clean = re.sub(r'\[laugh\]', 'haha', text, flags=re.IGNORECASE)
+    clean = re.sub(r"\[laugh\]", "haha", text, flags=re.IGNORECASE)
 
     # Remove all OTHER cue tags from text
     # V11.52.0: expanded to include sigh, chuckle, gasp, throat_clear
     # V11.64.0: laugh is already replaced above, so don't strip it here
     clean = re.sub(
-        r'\[(?:pause|breath|hmm|um|sigh|chuckle|gasp|throat_clear)\s*\d*\.?\d*s?\]',
-        '', clean, flags=re.IGNORECASE)
+        r"\[(?:pause|breath|hmm|um|sigh|chuckle|gasp|throat_clear)\s*\d*\.?\d*s?\]",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    )
     # Clean up double spaces left behind
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r"\s+", " ", clean).strip()
 
     return clean, cues
 
@@ -1107,27 +1169,33 @@ def _force_insert_segments(
     new_lines = []
     for idx in missing_indices:
         bullet_text = bullets[idx]
-        bullet_ref = f"bullet {idx+1}"
+        bullet_ref = f"bullet {idx + 1}"
         if mode == "lecture":
-            new_lines.append(ScriptLine(
-                host="A",
-                text=f"Another important point: {bullet_text}",
-                source_ref=bullet_ref,
-                segment_type="content",
-            ))
+            new_lines.append(
+                ScriptLine(
+                    host="A",
+                    text=f"Another important point: {bullet_text}",
+                    source_ref=bullet_ref,
+                    segment_type="content",
+                )
+            )
         else:
-            new_lines.append(ScriptLine(
-                host="A",
-                text=f"Let's talk about this point: {bullet_text}",
-                source_ref=bullet_ref,
-                segment_type="content",
-            ))
-            new_lines.append(ScriptLine(
-                host="B",
-                text="That's a great point. Can you elaborate on that?",
-                source_ref=bullet_ref,
-                segment_type="content",
-            ))
+            new_lines.append(
+                ScriptLine(
+                    host="A",
+                    text=f"Let's talk about this point: {bullet_text}",
+                    source_ref=bullet_ref,
+                    segment_type="content",
+                )
+            )
+            new_lines.append(
+                ScriptLine(
+                    host="B",
+                    text="That's a great point. Can you elaborate on that?",
+                    source_ref=bullet_ref,
+                    segment_type="content",
+                )
+            )
 
     # Insert before the conclusion
     result = lines[:insert_pos] + new_lines + lines[insert_pos:]
@@ -1135,6 +1203,7 @@ def _force_insert_segments(
 
 
 # ── Main generation function ───────────────────────────────────────────
+
 
 def generate_podcast_script(
     source_text: str,
@@ -1179,7 +1248,7 @@ def generate_podcast_script(
     result.bullets_input = bullets
     log(f"  📝 Extracted {len(bullets)} bullet points from source", "INFO")
     for i, b in enumerate(bullets):
-        log(f"     [{i+1}] {b[:80]}...", "DEBUG")
+        log(f"     [{i + 1}] {b[:80]}...", "DEBUG")
 
     # Determine temperature label
     temp_label = "balanced"
@@ -1222,10 +1291,11 @@ def generate_podcast_script(
                 },
                 timeout=300,
             )
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
             raise RuntimeError(
                 f"Could not connect to Ollama at {ollama_url}. "
-                f"Is Ollama running? Start it with: ollama serve")
+                f"Is Ollama running? Start it with: ollama serve"
+            ) from e
         if resp.status_code == 404:
             err_detail = ""
             try:
@@ -1238,8 +1308,7 @@ def generate_podcast_script(
             try:
                 tags_resp = _session_for_url(ollama_url).get(f"{ollama_url}/api/tags", timeout=5)
                 if tags_resp.status_code == 200:
-                    available = [m.get("name", "")
-                                 for m in tags_resp.json().get("models", [])]
+                    available = [m.get("name", "") for m in tags_resp.json().get("models", [])]
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
                 pass
@@ -1248,7 +1317,8 @@ def generate_podcast_script(
                 f"Model '{model}' not found in Ollama (HTTP 404). "
                 f"{'Ollama says: ' + err_detail if err_detail else ''}\n"
                 f"Fix: ollama pull {model}\n"
-                f"Available models:\n  {avail_str}")
+                f"Available models:\n  {avail_str}"
+            )
         if resp.status_code != 200:
             err = f"HTTP {resp.status_code}"
             try:
@@ -1271,8 +1341,8 @@ def generate_podcast_script(
         return result
 
     # V11.37.4: strip <think> tags before parsing (Qwythos outputs these)
-    response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE)
-    response = re.sub(r'<think>.*', '', response, flags=re.DOTALL | re.IGNORECASE)
+    response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL | re.IGNORECASE)
+    response = re.sub(r"<think>.*", "", response, flags=re.DOTALL | re.IGNORECASE)
     response = response.strip()
 
     lines = _parse_script_response(response)
@@ -1283,7 +1353,8 @@ def generate_podcast_script(
         result.error = (
             "Failed to parse the LLM response. The model may not have "
             "returned valid JSON. Try a different model (e.g. qwen2.5:7b) "
-            "or lower the creativity setting.")
+            "or lower the creativity setting."
+        )
         return result
     log(f"  ✅ Parsed {len(lines)} script lines", "INFO")
     result.lines = lines
@@ -1295,13 +1366,16 @@ def generate_podcast_script(
     result.coverage_pct = len(covered) / len(bullets) if bullets else 0.0
     log(f"  📊 Coverage: {len(covered)}/{len(bullets)} ({result.coverage_pct:.0%})", "INFO")
     if missing:
-        log(f"  ⚠️ Missing bullets: {[m+1 for m in missing]}", "WARNING")
+        log(f"  ⚠️ Missing bullets: {[m + 1 for m in missing]}", "WARNING")
 
     # Step 4: Gap-fill retries
     while missing and result.retries < max_retries:
         result.retries += 1
-        log(f"  🔄 Gap-fill retry {result.retries}/{max_retries} for "
-            f"{len(missing)} missing bullets...", "INFO")
+        log(
+            f"  🔄 Gap-fill retry {result.retries}/{max_retries} for "
+            f"{len(missing)} missing bullets...",
+            "INFO",
+        )
 
         gap_prompt = _build_gap_fill_prompt(bullets, missing, mode, language)
         try:
@@ -1325,23 +1399,29 @@ def generate_podcast_script(
             result.bullets_covered = covered
             result.bullets_missing = missing
             result.coverage_pct = len(covered) / len(bullets) if bullets else 0.0
-            log(f"  📊 Coverage after retry {result.retries}: "
-                f"{len(covered)}/{len(bullets)} ({result.coverage_pct:.0%})", "INFO")
+            log(
+                f"  📊 Coverage after retry {result.retries}: "
+                f"{len(covered)}/{len(bullets)} ({result.coverage_pct:.0%})",
+                "INFO",
+            )
 
     # Step 5: Force-insert any remaining missing bullets (LAST RESORT)
     if missing:
-        log(f"  🔧 Force-inserting {len(missing)} uncovered bullets "
-            f"(deterministic guarantee)", "WARNING")
-        result.lines = _force_insert_segments(
-            result.lines, bullets, missing, mode)
+        log(
+            f"  🔧 Force-inserting {len(missing)} uncovered bullets (deterministic guarantee)",
+            "WARNING",
+        )
+        result.lines = _force_insert_segments(result.lines, bullets, missing, mode)
         result.forced_segments = len(missing)
         # Final verification
         covered, missing = verify_coverage(result.lines, len(bullets))
         result.bullets_covered = covered
         result.bullets_missing = missing
         result.coverage_pct = len(covered) / len(bullets) if bullets else 0.0
-        log(f"  ✅ Final coverage: {len(covered)}/{len(bullets)} "
-            f"({result.coverage_pct:.0%})", "INFO")
+        log(
+            f"  ✅ Final coverage: {len(covered)}/{len(bullets)} ({result.coverage_pct:.0%})",
+            "INFO",
+        )
 
     # V11.41.0/V11.52.0/V11.60.0: Inject human elements
     # V11.60.0: reverted intensity 0.5→0.3 (0.5 added too many extra lines,
@@ -1372,13 +1452,14 @@ def _remove_duplicate_lines(lines: list[ScriptLine], log) -> list[ScriptLine]:
     if not lines:
         return lines
     import re as _re
+
     seen_texts = []
     deduped = []
     removed = 0
     for line in lines:
         # Normalize: lowercase, strip vocal cues, strip punctuation
-        normalized = _re.sub(r'\[.*?\]', '', line.text.lower())
-        normalized = _re.sub(r'[^a-z0-9\s]', '', normalized).strip()
+        normalized = _re.sub(r"\[.*?\]", "", line.text.lower())
+        normalized = _re.sub(r"[^a-z0-9\s]", "", normalized).strip()
         # Check if this is too similar to any seen text
         is_dup = False
         for seen in seen_texts:
@@ -1417,36 +1498,58 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
 
     # Mapping of common spelled-out years and numbers
     YEAR_PATTERN = _re.compile(
-        r'\b(two thousand (?:and )?)(twenty|twenty-one|twenty-two|twenty-three|'
-        r'twenty-four|twenty-five|twenty-six|twenty-seven|twenty-eight|twenty-nine|'
-        r'thirty|thirty-one|thirty-two|thirty-three|thirty-four|thirty-five|'
-        r'thirty-six|thirty-seven|thirty-eight|thirty-nine|forty|forty-one|'
-        r'forty-two|forty-three|forty-four|forty-five|forty-six|forty-seven|'
-        r'forty-eight|forty-nine|fifty)\b',
-        _re.IGNORECASE)
+        r"\b(two thousand (?:and )?)(twenty|twenty-one|twenty-two|twenty-three|"
+        r"twenty-four|twenty-five|twenty-six|twenty-seven|twenty-eight|twenty-nine|"
+        r"thirty|thirty-one|thirty-two|thirty-three|thirty-four|thirty-five|"
+        r"thirty-six|thirty-seven|thirty-eight|thirty-nine|forty|forty-one|"
+        r"forty-two|forty-three|forty-four|forty-five|forty-six|forty-seven|"
+        r"forty-eight|forty-nine|fifty)\b",
+        _re.IGNORECASE,
+    )
 
     # Year word → digit mapping
     YEAR_WORDS = {
-        'twenty': '20', 'twenty-one': '21', 'twenty-two': '22',
-        'twenty-three': '23', 'twenty-four': '24', 'twenty-five': '25',
-        'twenty-six': '26', 'twenty-seven': '27', 'twenty-eight': '28',
-        'twenty-nine': '29', 'thirty': '30', 'thirty-one': '31',
-        'thirty-two': '32', 'thirty-three': '33', 'thirty-four': '34',
-        'thirty-five': '35', 'thirty-six': '36', 'thirty-seven': '37',
-        'thirty-eight': '38', 'thirty-nine': '39', 'forty': '40',
-        'forty-one': '41', 'forty-two': '42', 'forty-three': '43',
-        'forty-four': '44', 'forty-five': '45', 'forty-six': '46',
-        'forty-seven': '47', 'forty-eight': '48', 'forty-nine': '49',
-        'fifty': '50',
+        "twenty": "20",
+        "twenty-one": "21",
+        "twenty-two": "22",
+        "twenty-three": "23",
+        "twenty-four": "24",
+        "twenty-five": "25",
+        "twenty-six": "26",
+        "twenty-seven": "27",
+        "twenty-eight": "28",
+        "twenty-nine": "29",
+        "thirty": "30",
+        "thirty-one": "31",
+        "thirty-two": "32",
+        "thirty-three": "33",
+        "thirty-four": "34",
+        "thirty-five": "35",
+        "thirty-six": "36",
+        "thirty-seven": "37",
+        "thirty-eight": "38",
+        "thirty-nine": "39",
+        "forty": "40",
+        "forty-one": "41",
+        "forty-two": "42",
+        "forty-three": "43",
+        "forty-four": "44",
+        "forty-five": "45",
+        "forty-six": "46",
+        "forty-seven": "47",
+        "forty-eight": "48",
+        "forty-nine": "49",
+        "fifty": "50",
     }
 
     fixed_count = 0
     for line in lines:
         original = line.text
+
         # Fix "two thousand twenty-two" → "2022"
         def _replace_year(m):
             year_word = m.group(2).lower()
-            year_digits = YEAR_WORDS.get(year_word, '')
+            year_digits = YEAR_WORDS.get(year_word, "")
             if year_digits:
                 return f"20{year_digits}"
             return m.group(0)
@@ -1454,10 +1557,12 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
         line.text = YEAR_PATTERN.sub(_replace_year, line.text)
 
         # Fix common spelled-out numbers
-        line.text = _re.sub(r'\bone hundred million\b', '100 million', line.text, flags=_re.IGNORECASE)
-        line.text = _re.sub(r'\bone billion\b', '1 billion', line.text, flags=_re.IGNORECASE)
-        line.text = _re.sub(r'\bone million\b', '1 million', line.text, flags=_re.IGNORECASE)
-        line.text = _re.sub(r'\bten million\b', '10 million', line.text, flags=_re.IGNORECASE)
+        line.text = _re.sub(
+            r"\bone hundred million\b", "100 million", line.text, flags=_re.IGNORECASE
+        )
+        line.text = _re.sub(r"\bone billion\b", "1 billion", line.text, flags=_re.IGNORECASE)
+        line.text = _re.sub(r"\bone million\b", "1 million", line.text, flags=_re.IGNORECASE)
+        line.text = _re.sub(r"\bten million\b", "10 million", line.text, flags=_re.IGNORECASE)
 
         if line.text != original:
             fixed_count += 1
@@ -1467,9 +1572,9 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
     return lines
 
 
-def _generate_podcast_title(lines: list[ScriptLine], ollama_url: str,
-                            model: str, temperature: float,
-                            log) -> str:
+def _generate_podcast_title(
+    lines: list[ScriptLine], ollama_url: str, model: str, temperature: float, log
+) -> str:
     """V11.51.0/V11.53.0/V11.62.0: Ask the LLM for a 3-6 word podcast title.
 
     V11.62.0: the <think> tags were consuming the ENTIRE response, leaving
@@ -1483,8 +1588,9 @@ def _generate_podcast_title(lines: list[ScriptLine], ollama_url: str,
     # V18.20.4.11 (P3 / O-c5): pooled transport — same session selection
     # as _call_ollama above (localhost → no-proxy pooled, cloud → pooled).
     from utils.network import session_for_url as _session_for_url
+
     # Build a summary of the script content for the LLM
-    script_text = " ".join(l.text for l in lines[:10])[:500]
+    script_text = " ".join(ln.text for ln in lines[:10])[:500]
     prompt = (
         "Generate a SHORT podcast title (3-6 words) based on this script. "
         "The title should capture the main topic.\n\n"
@@ -1514,26 +1620,24 @@ def _generate_podcast_title(lines: list[ScriptLine], ollama_url: str,
         if resp.status_code == 200:
             title = resp.json().get("response", "").strip()
             # V11.62.0: extract text AFTER </think> if present
-            think_match = re.search(r'</think>\s*(.*)', title,
-                                   re.DOTALL | re.IGNORECASE)
+            think_match = re.search(r"</think>\s*(.*)", title, re.DOTALL | re.IGNORECASE)
             if think_match:
                 title = think_match.group(1).strip()
             else:
                 # Strip <think>...</think> tags
-                title = re.sub(r'<think>.*?</think>', '', title,
-                              flags=re.DOTALL | re.IGNORECASE)
+                title = re.sub(r"<think>.*?</think>", "", title, flags=re.DOTALL | re.IGNORECASE)
                 # Also strip unclosed <think> tags
-                title = re.sub(r'<think>.*', '', title,
-                              flags=re.DOTALL | re.IGNORECASE)
+                title = re.sub(r"<think>.*", "", title, flags=re.DOTALL | re.IGNORECASE)
             # Strip "The user wants..." reasoning text
-            title = re.sub(r'^The user wants.*?(?:\.|!|\?)\s*', '',
-                          title, flags=re.IGNORECASE | re.DOTALL)
+            title = re.sub(
+                r"^The user wants.*?(?:\.|!|\?)\s*", "", title, flags=re.IGNORECASE | re.DOTALL
+            )
             # Clean up: remove quotes, newlines, extra whitespace
-            title = title.strip('"\'').strip().replace('\n', ' ')
+            title = title.strip("\"'").strip().replace("\n", " ")
             # Take first line only
-            title = title.split('\n')[0].strip()
+            title = title.split("\n")[0].strip()
             # Remove any remaining tags
-            title = re.sub(r'<[^>]+>', '', title).strip()
+            title = re.sub(r"<[^>]+>", "", title).strip()
             # Limit to 60 chars
             if len(title) > 60:
                 title = title[:57].rstrip() + "..."

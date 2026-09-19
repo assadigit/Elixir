@@ -60,6 +60,7 @@ the veto-twice → mention-only → give-up escalation, the no-op guard, and
 the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
 ``filter_thinking_bullets`` / ``log``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -128,7 +129,8 @@ def batch_gap_fill(
     if not missing:
         return GapFillOutcome(total_added=0, rounds=0, still_missing=[], given_up=set())
     import re as _re2
-    _sentences = _re2.split(r'(?<=[.!?])\s+', content)
+
+    _sentences = _re2.split(r"(?<=[.!?])\s+", content)
     _gap_fill_round = 0
     _still_missing = list(missing)
     _total_added = 0
@@ -181,9 +183,7 @@ def batch_gap_fill(
         # V18.20.3.4 (RC-4): exclude given-up authors from
         # the batch pool; stop when nothing actionable
         # remains (all persistent-veto authors).
-        _batch_pool = [
-            a for a in _still_missing if a not in _given_up
-        ]
+        _batch_pool = [a for a in _still_missing if a not in _given_up]
         if not _batch_pool:
             log(
                 f"    ⏹️  V18.20.3.4: No actionable authors left "
@@ -199,19 +199,16 @@ def batch_gap_fill(
         # V18.20.3.7 (RC-B.1): mention-only after 2
         # vetoes OR 2 consecutive zero-yield rounds.
         _mention_only = [
-            a for a in _batch_authors
-            if _veto_counts.get(a, 0) >= 2
-            or _no_yield_counts.get(a, 0) >= 2
+            a
+            for a in _batch_authors
+            if _veto_counts.get(a, 0) >= 2 or _no_yield_counts.get(a, 0) >= 2
         ]
         log(
             f"    🔍 V18.14.1: Batch gap-fill round {_gap_fill_round}: "
             f"filling {len(_batch_authors)} missing authors: "
             f"{_batch_authors[:5]}{'…' if len(_batch_authors) > 5 else ''}"
-            + (
-                f" (mention-only: {_mention_only[:5]})"
-                if _mention_only else ""
-            ),
-            "INFO"
+            + (f" (mention-only: {_mention_only[:5]})" if _mention_only else ""),
+            "INFO",
         )
         _mention_attempted.update(_mention_only)
         _batch_context = ""
@@ -308,9 +305,7 @@ def batch_gap_fill(
                 f"Output {len(_batch_authors)} bullets, one per line, each starting with '- '."
             )
             if not _mention_only:
-                _tail_instruction += (
-                    f" Begin each bullet with the author's name."  # noqa: F541 — verbatim: carried from _summarize_inner
-                )
+                _tail_instruction += f" Begin each bullet with the author's name."  # noqa: F541 — verbatim: carried from _summarize_inner
             _batch_prompt = (
                 f"Write ONE bullet point (starting with '- ') for EACH of the following "
                 f"authors, summarizing their key contribution as described in the source "
@@ -365,6 +360,7 @@ def batch_gap_fill(
                 from core.summarisation.postcheck_detectors import (
                     detect_parenthetical_promotion,
                 )
+
                 # V18.20.3.7 (RC-C, audit v182036):
                 # per-round telemetry. The V18.20.3.6
                 # "added 0/3" rounds were ~1s no-ops and
@@ -377,7 +373,8 @@ def batch_gap_fill(
                 # = degenerate completion).
                 _tl_t0 = time.monotonic()
                 _raw = call_fast_llm(
-                    _batch_prompt, max_tokens=2000,
+                    _batch_prompt,
+                    max_tokens=2000,
                     temperature=temperature,
                 )
                 _tl_dur = time.monotonic() - _tl_t0
@@ -392,14 +389,16 @@ def batch_gap_fill(
                     )
                 if _raw:
                     _raw = strip_thinking(_raw).strip()
-                    _gap_bullets = [l.strip() for l in _raw.split("\n") if l.strip().startswith("-")]  # noqa: E741 — verbatim: carried from _summarize_inner
+                    _gap_bullets = [
+                        line.strip() for line in _raw.split("\n") if line.strip().startswith("-")
+                    ]  # V0.13: 'l' renamed to 'line' (E741); carried from _summarize_inner
                     _added = 0
                     _max_gap_bullets = len(_batch_authors) * 2
                     for _gb in _gap_bullets[:_max_gap_bullets]:
                         _gb = _gb.strip()
-                        _gb_norm = _re2.sub(r'[^\w\s]', '', _gb.lower()).strip()[:60]
+                        _gb_norm = _re2.sub(r"[^\w\s]", "", _gb.lower()).strip()[:60]
                         _is_dup = any(
-                            _gb_norm in _re2.sub(r'[^\w\s]', '', str(b).lower()).strip()[:60]
+                            _gb_norm in _re2.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
                             for b in bullets
                         )
                         if _is_dup:
@@ -407,7 +406,9 @@ def batch_gap_fill(
                             continue
                         if _gb and len(_gb) > 10:
                             _filtered = filter_thinking_bullets(
-                                [_gb], concepts=None, source_text="",
+                                [_gb],
+                                concepts=None,
+                                source_text="",
                             )
                             if _filtered:
                                 # V18.20.3.2 (audit N4 / P1-a):
@@ -435,7 +436,8 @@ def batch_gap_fill(
                                 # only author there IS no
                                 # legitimate contribution bullet.
                                 _promo = detect_parenthetical_promotion(
-                                    _filtered[0], content,
+                                    _filtered[0],
+                                    content,
                                     # V18.20.3.8 (Phase 1 /
                                     # W4): pass the
                                     # citation-extracted
@@ -496,9 +498,7 @@ def batch_gap_fill(
                                                 _veto_key = _va
                                                 break
                                     if _veto_key is not None:
-                                        _veto_counts[_veto_key] = (
-                                            _veto_counts.get(_veto_key, 0) + 1
-                                        )
+                                        _veto_counts[_veto_key] = _veto_counts.get(_veto_key, 0) + 1
                                     _tl["veto"] += 1
                                     continue
                                 bullets.append(_filtered[0])
@@ -515,7 +515,7 @@ def batch_gap_fill(
                     log(
                         f"    ✅ V18.14.1: Batch gap-fill round {_gap_fill_round} "
                         f"added {_added}/{len(_batch_authors)} bullets",
-                        "INFO"
+                        "INFO",
                     )
                     # V18.20.3.7 (RC-C): the round's fate,
                     # breakdown-visible. `parsed` counts
@@ -526,7 +526,7 @@ def batch_gap_fill(
                         f"{len(_gap_bullets) if _gap_bullets else 0} bullet lines, "
                         f"dup={_tl['dup']}, think-filtered={_tl['think']}, "
                         f"vetoed={_tl['veto']}, added={_tl['added']}",
-                        "DEBUG"
+                        "DEBUG",
                     )
                 elif not _raw:
                     # Empty response: still emit the
@@ -537,14 +537,17 @@ def batch_gap_fill(
                         f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
                         f"({_tl_dur:.1f}s): response=EMPTY, "
                         f"dup=0, think-filtered=0, vetoed=0, added=0",
-                        "DEBUG"
+                        "DEBUG",
                     )
             except Exception as _be:
-                log(f"    ⚠️ V18.14.1: Batch gap-fill round {_gap_fill_round} failed: {_be}", "WARNING")
+                log(
+                    f"    ⚠️ V18.14.1: Batch gap-fill round {_gap_fill_round} failed: {_be}",
+                    "WARNING",
+                )
                 break  # stop the loop on persistent failures
 
         # Re-check bullets-only coverage to see what's still missing
-        _bullets_only_after = ' '.join(bullets) if bullets else ''
+        _bullets_only_after = " ".join(bullets) if bullets else ""
         _cov_after = check_coverage(analysis, _bullets_only_after)
         _still_missing = _cov_after["missing"]
         # V18.20.3.7 (RC-B.1): per-author consecutive
@@ -561,9 +564,7 @@ def batch_gap_fill(
             if _ya in _cov_after_set:
                 _no_yield_counts[_ya] = 0
             else:
-                _no_yield_counts[_ya] = (
-                    _no_yield_counts.get(_ya, 0) + 1
-                )
+                _no_yield_counts[_ya] = _no_yield_counts.get(_ya, 0) + 1
                 if (
                     _no_yield_counts[_ya] == 2
                     and _veto_counts.get(_ya, 0) < 2
@@ -595,26 +596,22 @@ def batch_gap_fill(
                 f"    📊 V18.14.1: After round {_gap_fill_round}, "
                 f"{len(_still_missing)} still missing from bullets: "
                 f"{_still_missing[:5]}{'…' if len(_still_missing) > 5 else ''}",
-                "DEBUG"
+                "DEBUG",
             )
 
     if _total_added > 0:
         log(
             f"    ✅ V18.14.1: Batch gap-fill complete — "
             f"added {_total_added} bullets across {_gap_fill_round} round(s)",
-            "INFO"
+            "INFO",
         )
     if _still_missing:
         # V18.20.3.4 (RC-4): split the report — authors
         # we actively gave up on (persistent veto) vs
         # authors that simply never landed. The operator
         # needs to know which class each name is in.
-        _gave_up_missing = [
-            a for a in _still_missing if a in _given_up
-        ]
-        _plain_missing = [
-            a for a in _still_missing if a not in _given_up
-        ]
+        _gave_up_missing = [a for a in _still_missing if a in _given_up]
+        _plain_missing = [a for a in _still_missing if a not in _given_up]
         log(
             f"    ⚠️ V18.14.1: {len(_still_missing)} theorists still "
             f"missing from bullets after gap-fill: {_still_missing[:8]}"
@@ -624,14 +621,15 @@ def batch_gap_fill(
                 f"attribution-safe bullet exists: every generated "
                 f"claim was vetoed as a misattribution): "
                 f"{_gave_up_missing[:8]}"
-                if _gave_up_missing else ""
+                if _gave_up_missing
+                else ""
             )
             + (
-                f" — {len(_plain_missing)} never covered "
-                f"(round cap/deadline): {_plain_missing[:8]}"
-                if _plain_missing else ""
+                f" — {len(_plain_missing)} never covered (round cap/deadline): {_plain_missing[:8]}"
+                if _plain_missing
+                else ""
             ),
-            "WARNING"
+            "WARNING",
         )
 
     return GapFillOutcome(

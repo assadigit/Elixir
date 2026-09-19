@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
     _show_success_modal,
@@ -97,8 +96,9 @@ class TranslationServiceDialog(BaseServiceDialog):
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(controller, "🌐 Translation Service", parent,
-                         accept_files=True, accept_text=True)
+        super().__init__(
+            controller, "🌐 Translation Service", parent, accept_files=True, accept_text=True
+        )
         # V11.29: Resolved attrs - set here (after super().__init__, which
         # built the widgets). These are NOT widget refs, so overwriting them
         # is safe. They're read by _process (background thread) + _save_result
@@ -106,7 +106,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         self._resolved_format: str = ".md"
         self._resolved_obsidian: bool = False
         self._resolved_model: str = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
-        self._resolved_mode: str = "literal"           # literal | simplified
+        self._resolved_mode: str = "literal"  # literal | simplified
         self._resolved_source_lang: str = "en"
         self._resolved_target_lang: str = "fa"
         self._detected_direction: tuple[str, str] = ("en", "fa")
@@ -249,6 +249,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         Falls back to "EN → FA" if no text is available.
         """
         from core.translation.translation_engine import TranslationEngine
+
         text = self._peek_input_text()
         if text and text.strip():
             try:
@@ -300,8 +301,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         source of truth for which files to translate.
         """
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add file(s) to translate", "",
-            "Text (*.txt *.md);;All files (*.*)"
+            self, "Add file(s) to translate", "", "Text (*.txt *.md);;All files (*.*)"
         )
         if not paths:
             return
@@ -315,8 +315,7 @@ class TranslationServiceDialog(BaseServiceDialog):
     def _add_translation_files(self) -> None:
         """V11.27/V11.29: Add one or more files to the queue."""
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add files to translate", "",
-            "Text (*.txt *.md);;All files (*.*)"
+            self, "Add files to translate", "", "Text (*.txt *.md);;All files (*.*)"
         )
         if not paths:
             return
@@ -469,6 +468,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
+
         dlg = _QDlg(self)
         dlg.setWindowTitle("⚙ Translation Settings")
         dlg.setModal(True)
@@ -504,10 +504,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         v.addWidget(obs_chk)
 
         # -- Save-to folder -----------------------------------------
-        folder_lbl = _QL(
-            "Default save-to folder "
-            "(leave empty to use the source file's directory):"
-        )
+        folder_lbl = _QL("Default save-to folder (leave empty to use the source file's directory):")
         folder_lbl.setObjectName("Caption")
         v.addWidget(folder_lbl)
         folder_row = _HL()
@@ -517,7 +514,8 @@ class TranslationServiceDialog(BaseServiceDialog):
 
         def _pick_folder() -> None:
             path = _QFD.getExistingDirectory(
-                dlg, "Choose default save-to folder",
+                dlg,
+                "Choose default save-to folder",
                 folder_edit.text() or str(Path.home()),
             )
             if path:
@@ -562,12 +560,15 @@ class TranslationServiceDialog(BaseServiceDialog):
         import requests as _req
 
         from utils.settings import Settings
+
         s = Settings()
         preferred = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
 
         # Fetch installed models from Ollama.
-        ollama_url = s.get("translation.endpoint", "http://localhost:11434/v1") or \
-            "http://localhost:11434/v1"
+        ollama_url = (
+            s.get("translation.endpoint", "http://localhost:11434/v1")
+            or "http://localhost:11434/v1"
+        )
         ollama_url = ollama_url.rstrip("/")
         if ollama_url.endswith("/v1"):
             ollama_url = ollama_url[:-3]
@@ -577,8 +578,7 @@ class TranslationServiceDialog(BaseServiceDialog):
         try:
             r = _req.get(f"{ollama_url}/api/tags", timeout=5)
             if r.status_code == 200:
-                models = [m.get("name", "") for m in r.json().get("models", [])
-                          if m.get("name")]
+                models = [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 
@@ -625,7 +625,8 @@ class TranslationServiceDialog(BaseServiceDialog):
         """
         from core.translation.translation_engine import TranslationEngine
         from utils.settings import Settings
-        s = Settings()
+
+        Settings()  # V0.13: side-effect instantiation (warms the singleton)
 
         # -- Final direction auto-detection (uses current input) ----
         text = self._peek_input_text()
@@ -709,15 +710,16 @@ class TranslationServiceDialog(BaseServiceDialog):
         out_folder = self.out_path_edit.text().strip()
         if not out_folder:
             QMessageBox.warning(
-                self, "No output",
-                "Please choose where to save the translations "
-                "(a folder for multi-file mode)."
+                self,
+                "No output",
+                "Please choose where to save the translations (a folder for multi-file mode).",
             )
             return
 
         # If the output path looks like a file (has an extension), use
         # its parent directory as the output folder.
         from pathlib import Path as _P
+
         out_p = _P(out_folder)
         if out_p.is_file() or (not out_p.exists() and "." in out_p.name):
             out_folder = str(out_p.parent)
@@ -738,6 +740,7 @@ class TranslationServiceDialog(BaseServiceDialog):
             from pathlib import Path as _P2
 
             from core.outputs.service_formatters import write_output
+
             results: list[str] = []
             total = len(self._file_queue)
             for i, file_path in enumerate(self._file_queue):
@@ -746,7 +749,7 @@ class TranslationServiceDialog(BaseServiceDialog):
                 p = _P2(file_path)
                 self._emit_progress(
                     int((i / total) * 100) if total > 0 else 0,
-                    f"🌐 Translating file {i + 1}/{total}: {p.name}…"
+                    f"🌐 Translating file {i + 1}/{total}: {p.name}…",
                 )
                 try:
                     text = p.read_text(encoding="utf-8", errors="replace")
@@ -761,7 +764,8 @@ class TranslationServiceDialog(BaseServiceDialog):
                         f"{p.stem}-{self._resolved_target_lang}-translation{ext}"
                     )
                     ok, msg = write_output(
-                        translated, out_file,
+                        translated,
+                        out_file,
                         fmt=ext,
                         title=f"Translation of {p.name}",
                         obsidian=self._resolved_obsidian,
@@ -777,12 +781,11 @@ class TranslationServiceDialog(BaseServiceDialog):
                     results.append(f"❌ {p.name} → {type(e).__name__}: {e}")
 
             elapsed = time.time() - (self._start_time or time.time())
-            self._emit_progress(
-                100, f"✅ All files translated — {self._format_elapsed(elapsed)}"
-            )
+            self._emit_progress(100, f"✅ All files translated — {self._format_elapsed(elapsed)}")
             return "\n".join(results)
 
         self._worker = SimpleWorker(_run_queue)
+
         # V11.29.1: in multi-file mode, don't use the normal _on_finished
         # (which calls _save_result and would overwrite the real files with
         # the summary string). Instead, show the summary in the status +
@@ -796,13 +799,17 @@ class TranslationServiceDialog(BaseServiceDialog):
             # V11.30: defer the success modal via QTimer.singleShot(0, ...)
             # to prevent QTextDocument thread-safety crash.
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: _show_success_modal(
-                self,
-                "✅ Translation Complete",
-                summary,
-                file_path=out_folder,
-                on_try_another=self._on_try_another,
-            ))
+
+            QTimer.singleShot(
+                0,
+                lambda: _show_success_modal(
+                    self,
+                    "✅ Translation Complete",
+                    summary,
+                    file_path=out_folder,
+                    on_try_another=self._on_try_another,
+                ),
+            )
 
         self._worker.finished.connect(_on_queue_finished)
         self._worker.failed.connect(self._on_error)
@@ -832,13 +839,17 @@ class TranslationServiceDialog(BaseServiceDialog):
         mode = self._resolved_mode
 
         from utils.settings import Settings
+
         s = Settings()
-        ollama_url = s.get("translation.endpoint", "http://localhost:11434/v1") or \
-            "http://localhost:11434/v1"
+        ollama_url = (
+            s.get("translation.endpoint", "http://localhost:11434/v1")
+            or "http://localhost:11434/v1"
+        )
         model = self._resolved_model
 
         try:
             from core.translation.translation_engine import ModelNotFoundError, TranslationEngine
+
             engine = TranslationEngine(
                 ollama_url=ollama_url,
                 model=model,
@@ -881,19 +892,21 @@ class TranslationServiceDialog(BaseServiceDialog):
         if not isinstance(result, str):
             return None
         from core.outputs.service_formatters import write_output
+
         ext = self._resolved_format or ".md"
         # Adjust the path extension to match the resolved format.
         if path.suffix.lower() != ext.lower():
             path = path.with_suffix(ext)
         lang = self._resolved_target_lang or "fa"
         ok, msg = write_output(
-            result, path,
+            result,
+            path,
             fmt=ext,
             title=f"Translation ({lang})",
             obsidian=self._resolved_obsidian,
-            source_filename="translation",   # clean filename, not path.stem
-            quality=self._resolved_mode,     # "literal" or "simplified"
-            model=self._resolved_model,      # actual model name
+            source_filename="translation",  # clean filename, not path.stem
+            quality=self._resolved_mode,  # "literal" or "simplified"
+            model=self._resolved_model,  # actual model name
         )
         if not ok:
             path.parent.mkdir(parents=True, exist_ok=True)

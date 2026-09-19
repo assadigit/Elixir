@@ -5,6 +5,7 @@ dead code — it was only imported by this test file, never by production).
 The remaining tests cover caching patterns (coverage cache, verify-windows
 cache, memory release) which are still relevant.
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,6 +18,7 @@ if str(_project_root) not in sys.path:
 
 # ── Coverage cache tests ──────────────────────────────────────────────────
 
+
 def test_coverage_cache_dict_exists() -> None:
     """The _coverage_cache should be a dict on Summarizer init.
 
@@ -26,6 +28,7 @@ def test_coverage_cache_dict_exists() -> None:
     cache: dict = {}
     # Simulate the caching logic
     import hashlib
+
     source = "test source text for caching"
     key = hashlib.md5(source.encode()).hexdigest()
     cache[key] = (["keyword1"], ["concept1"])
@@ -47,6 +50,7 @@ def test_coverage_cache_eviction() -> None:
 
 # ── Verify windows cache pattern ──────────────────────────────────────────
 
+
 def test_windows_cache_pattern() -> None:
     """The _verify_bullets window caching pattern should work."""
     source = "This is a test source text. " * 100
@@ -55,7 +59,7 @@ def test_windows_cache_pattern() -> None:
     window_size = 80
     windows = []
     for i in range(0, max(1, src_len - window_size), 40):
-        windows.append(src_lower[i:i + window_size])
+        windows.append(src_lower[i : i + window_size])
     if src_len <= window_size:
         windows.append(src_lower)
 
@@ -67,6 +71,7 @@ def test_windows_cache_pattern() -> None:
 
 # ── Memory release test ───────────────────────────────────────────────────
 
+
 def test_del_raw_markdown_pattern() -> None:
     """The del raw_markdown pattern should free memory."""
     raw = "x" * 100000  # 100K chars
@@ -75,6 +80,6 @@ def test_del_raw_markdown_pattern() -> None:
     # raw is now undefined — if we try to access it, we get NameError
     try:
         _ = raw  # type: ignore
-        assert False, "Should have raised NameError"
+        raise AssertionError("Should have raised NameError")
     except NameError:
         pass  # correct — variable was freed

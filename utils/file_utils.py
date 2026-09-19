@@ -9,6 +9,8 @@ from typing import Optional
 from utils.filename import sanitize_filename
 
 logger = logging.getLogger(__name__)
+
+
 class TempFileManager:
     """Manages temporary files for a conversion session.
 

@@ -42,6 +42,7 @@ This module makes every generated output file self-identifying:
 
 Stdlib-only (AST-verified policy for core/system modules).
 """
+
 from __future__ import annotations
 
 import re
@@ -63,9 +64,7 @@ _PROVENANCE_RE = re.compile(
 
 # Stamped sentinel: <!-- COMPLETE run_id=... --> (legacy bare form accepted
 # by has_complete_sentinel below).
-_SENTINEL_RUN_ID_RE = re.compile(
-    r"<!--\s*COMPLETE\s+run_id=([A-Za-z0-9_-]+)\s*-->"
-)
+_SENTINEL_RUN_ID_RE = re.compile(r"<!--\s*COMPLETE\s+run_id=([A-Za-z0-9_-]+)\s*-->")
 
 _LEGACY_SENTINEL = "<!-- COMPLETE -->"
 
@@ -150,7 +149,10 @@ def parse_provenance(text: str) -> dict[str, str]:
     Never raises.
     """
     out: dict[str, str] = {
-        "run_id": "", "app_version": "", "started": "", "bullets": "",
+        "run_id": "",
+        "app_version": "",
+        "started": "",
+        "bullets": "",
     }
     if not text:
         return out

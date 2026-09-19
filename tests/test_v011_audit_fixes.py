@@ -28,6 +28,7 @@ This file pins the V0.11 fixes:
   6. gap-fill attribution-fidelity rules in the batch prompt.
   7. The academic_paper auto-switch confidence bar.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,7 +63,7 @@ class TestRepairLlmJson:
         assert data["claim"] == "Freud addressed B'nai B'rith in 1926a."
 
     def test_smart_quotes_normalized(self):
-        raw = '{\u201cclaim\u201d: \u201cSmart-quoted claim text.\u201d}'
+        raw = "{\u201cclaim\u201d: \u201cSmart-quoted claim text.\u201d}"
         data = json.loads(_repair_llm_json(raw))
         assert data["claim"] == "Smart-quoted claim text."
 
@@ -90,8 +91,7 @@ def _rig_claims_blob(n_claims: int = 15, with_bad_escape: bool = True) -> str:
     for i in range(1, n_claims + 1):
         if with_bad_escape and i == 3:
             claim = (
-                "Freud referred to identity only once, in his address to "
-                "B\\'nai B\\'rith (1926a)."
+                "Freud referred to identity only once, in his address to B\\'nai B\\'rith (1926a)."
             )
         else:
             claim = (
@@ -104,7 +104,7 @@ def _rig_claims_blob(n_claims: int = 15, with_bad_escape: bool = True) -> str:
             '"source_reference": "p. ' + str(14 + i) + '"}'
         )
     return (
-        '{"executive_summary": [' + ", ".join(items) + '], '
+        '{"executive_summary": [' + ", ".join(items) + "], "
         '"key_distinctions": [], "theoretical_tensions": []}'
     )
 
@@ -139,7 +139,7 @@ class TestParseClaimsJsonBlob:
             '{"executive_summary": ['
             '{"claim": "Identity is a key psychoanalytic concept.", '
             '"supporting_text": "...", "source_reference": "p.1"}'
-            ']}'
+            "]}"
         )
         r = parse_response(raw)
         assert "Identity is a key psychoanalytic concept" in r["executive_summary"]
@@ -217,9 +217,7 @@ class TestDocxStructuredRenderGuard:
 
         # _render_structured_summary is self-free (static in behaviour);
         # bind it without running DocxBuilder.__init__ (which needs a request).
-        return DocxBuilder._render_structured_summary.__get__(
-            object.__new__(DocxBuilder)
-        )
+        return DocxBuilder._render_structured_summary.__get__(object.__new__(DocxBuilder))
 
     def test_prose_containing_the_word_claim_is_not_hijacked(self):
         """Pre-fix, ANY prose containing '"claim"' was hijacked by the
@@ -232,9 +230,7 @@ class TestDocxStructuredRenderGuard:
         )
         from core.docx.builder import DocxBuilder
 
-        out = DocxBuilder._render_structured_summary(
-            object.__new__(DocxBuilder), text
-        )
+        out = DocxBuilder._render_structured_summary(object.__new__(DocxBuilder), text)
         assert out == text
 
     def test_mangled_json_thorough_ships_full_text_not_one_claim(self):
@@ -254,9 +250,7 @@ class TestDocxStructuredRenderGuard:
         )
         from core.docx.builder import DocxBuilder
 
-        out = DocxBuilder._render_structured_summary(
-            object.__new__(DocxBuilder), mangled
-        )
+        out = DocxBuilder._render_structured_summary(object.__new__(DocxBuilder), mangled)
         # NOT the one-sentence collapse
         assert out != "Blos proposed a biphasic resolution of the Oedipus complex."
         # the full mangled text ships (complete beats lossy)
@@ -273,9 +267,7 @@ class TestDocxStructuredRenderGuard:
         )
         from core.docx.builder import DocxBuilder
 
-        out = DocxBuilder._render_structured_summary(
-            object.__new__(DocxBuilder), payload
-        )
+        out = DocxBuilder._render_structured_summary(object.__new__(DocxBuilder), payload)
         assert "First claim of the payload." in out
         assert "Third claim of the payload." in out
 
@@ -283,9 +275,7 @@ class TestDocxStructuredRenderGuard:
         text = "<claim>XML claim one.</claim>\n<claim>XML claim two.</claim>"
         from core.docx.builder import DocxBuilder
 
-        out = DocxBuilder._render_structured_summary(
-            object.__new__(DocxBuilder), text
-        )
+        out = DocxBuilder._render_structured_summary(object.__new__(DocxBuilder), text)
         assert "XML claim one." in out and "XML claim two." in out
 
 
@@ -315,9 +305,7 @@ class TestVacuousQA:
         vacuous = [m for lvl, m in logged if "VACUOUS PASS" in m]
         assert vacuous, f"expected a VACUOUS PASS warning, got: {logged}"
         # level check (explicit): a vacuous pass must be a WARNING, not a ✓
-        assert any(
-            lvl == "WARNING" and "VACUOUS PASS" in m for lvl, m in logged
-        )
+        assert any(lvl == "WARNING" and "VACUOUS PASS" in m for lvl, m in logged)
 
     def test_self_review_skipped_on_zero_bullets(self):
         """The V0.10 rig burned ~4 GPU-minutes 'confirming' an empty bullet
@@ -357,9 +345,9 @@ class TestVacuousQA:
         pipe.run_self_consistency_and_review(state, result, "Ch 1", "text")
 
         assert calls == [], "self-review LLM call must NOT fire with 0 bullets"
-        assert any(
-            "SKIPPED" in m and lvl == "WARNING" for lvl, m in logged
-        ), f"expected skip WARNING, got: {logged}"
+        assert any("SKIPPED" in m and lvl == "WARNING" for lvl, m in logged), (
+            f"expected skip WARNING, got: {logged}"
+        )
 
     def test_self_review_still_runs_with_bullets(self):
         from core.summarisation.bullet_pipeline import BulletPipeline
@@ -425,8 +413,7 @@ class TestGapFillAttributionRules:
             covered = [a for a in ("Fromm", "Wheelis") if a in text]
             missing = [a for a in ("Fromm", "Wheelis") if a not in text]
             pct = len(covered) / 2
-            return {"covered": covered, "missing": missing, "total": 2,
-                    "coverage_pct": pct}
+            return {"covered": covered, "missing": missing, "total": 2, "coverage_pct": pct}
 
         batch_gap_fill(
             "1 - IDENTITY AND ITS ORIGINS",
@@ -462,9 +449,7 @@ class TestAcademicAutoSwitchGuard:
     def test_source_pins_the_confidence_bar(self):
         """House source-pin style: the 0.85 academic-switch bar + the
         keep-normal_book branch exist in postprocess.py."""
-        src = Path("core/pipeline/conversion/postprocess.py").read_text(
-            encoding="utf-8"
-        )
+        src = Path("core/pipeline/conversion/postprocess.py").read_text(encoding="utf-8")
         assert "_acad_min_conf = 0.85" in src
         assert re.search(
             r"detection\.content_type == \"academic_paper\"\s*\n\s*and "
@@ -482,9 +467,7 @@ class TestAcademicAutoSwitchGuard:
 
     def test_other_types_keep_recommended_bar(self):
         """Non-academic detections are NOT affected by the 0.85 bar."""
-        src = Path("core/pipeline/conversion/postprocess.py").read_text(
-            encoding="utf-8"
-        )
+        src = Path("core/pipeline/conversion/postprocess.py").read_text(encoding="utf-8")
         # the 0.85 bar is scoped to academic_paper only (inside the branch)
         assert 'detection.content_type == "academic_paper"' in src
 

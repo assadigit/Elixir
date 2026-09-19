@@ -24,6 +24,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -49,6 +50,7 @@ def words_to_minutes(words: int) -> int:
 
 # ── Prompt builder ────────────────────────────────────────────────────────
 
+
 class PodcastPromptBuilder:
     """Builds a dynamic LLM prompt from podcast configuration settings.
 
@@ -58,7 +60,7 @@ class PodcastPromptBuilder:
 
     def __init__(
         self,
-        hosts: int = 2,           # 1 or 2
+        hosts: int = 2,  # 1 or 2
         depth_mode: str = "exhaustive",  # "exhaustive" or "time_restricted"
         target_minutes: int = 30,  # for time_restricted
         exhaustive_cap_minutes: int = 120,  # 2hr safety cap
@@ -78,8 +80,7 @@ class PodcastPromptBuilder:
         self.include_outro = include_outro
         self.human_fillers = human_fillers
 
-    def build(self, keypoints_text: str, book_title: str,
-              chapter_label: str | None = None) -> str:
+    def build(self, keypoints_text: str, book_title: str, chapter_label: str | None = None) -> str:
         """Build the complete prompt.
 
         Args:
@@ -263,6 +264,7 @@ class PodcastPromptBuilder:
 
 # ── Generator ─────────────────────────────────────────────────────────────
 
+
 class PodcastGenerator(OutputGeneratorBase):
     """V4.6.0: Configurable podcast script generator.
 
@@ -283,6 +285,7 @@ class PodcastGenerator(OutputGeneratorBase):
         full-book scope, or N paths for per-chapter scope).
         """
         from utils.settings import Settings
+
         s = Settings()
 
         # Read all podcast settings
@@ -323,7 +326,8 @@ class PodcastGenerator(OutputGeneratorBase):
             # Generate one podcast per chapter
             self.log(
                 f"  🎙️ Generating per-chapter podcasts ({len(chapters)} "
-                f"chapters, {hosts}-host, {depth_mode})…", "INFO"
+                f"chapters, {hosts}-host, {depth_mode})…",
+                "INFO",
             )
             for idx, chapter in enumerate(chapters, 1):
                 chapter_label = chapter.chapter_heading or f"Chapter {idx}"
@@ -338,24 +342,24 @@ class PodcastGenerator(OutputGeneratorBase):
 
                 self.log(f"    🎙️ {ch_tag}: {chapter_label[:50]}…", "INFO")
                 # V4.7.21: Pass keypoints list for coverage verification
-                kp_list = [bp.strip().lstrip("-•* ").strip()
-                           for bp in chapter.bullet_points if bp.strip()]
+                kp_list = [
+                    bp.strip().lstrip("-•* ").strip() for bp in chapter.bullet_points if bp.strip()
+                ]
                 script = self._generate_one(
-                    builder, keypoints, book_title, chapter_label,
+                    builder,
+                    keypoints,
+                    book_title,
+                    chapter_label,
                     keypoints_list=kp_list,
                 )
                 if script:
                     self._write_script(
-                        output_path, script, book_title, chapter_label,
-                        len(chapters), hosts
+                        output_path, script, book_title, chapter_label, len(chapters), hosts
                     )
                     output_paths.append(output_path)
         else:
             # Full-book: one podcast from all chapters
-            self.log(
-                f"  🎙️ Generating full-book podcast ({hosts}-host, "
-                f"{depth_mode})…", "INFO"
-            )
+            self.log(f"  🎙️ Generating full-book podcast ({hosts}-host, {depth_mode})…", "INFO")
             all_keypoints = self._all_keypoints(chapters)
             if not all_keypoints:
                 self.log("  ℹ️ Podcast: No keypoints to discuss.", "INFO")
@@ -379,18 +383,19 @@ class PodcastGenerator(OutputGeneratorBase):
             if len(all_kp_list) > 25:
                 self.log(
                     f"  📦 V7.1.0 S11: Batched generation — {len(all_kp_list)} keypoints "
-                    f"in batches of {BATCH_SIZE}", "INFO"
+                    f"in batches of {BATCH_SIZE}",
+                    "INFO",
                 )
                 batches = []
                 for i in range(0, len(all_kp_list), BATCH_SIZE):
-                    batch_kps = all_kp_list[i:i + BATCH_SIZE]
+                    batch_kps = all_kp_list[i : i + BATCH_SIZE]
                     batches.append(batch_kps)
 
                 all_segments = []
                 for batch_idx, batch_kps in enumerate(batches):
                     self.log(
-                        f"    📦 Batch {batch_idx+1}/{len(batches)}: "
-                        f"{len(batch_kps)} keypoints", "INFO"
+                        f"    📦 Batch {batch_idx + 1}/{len(batches)}: {len(batch_kps)} keypoints",
+                        "INFO",
                     )
                     # Build keypoints text for this batch
                     batch_keypoints_text = "\n".join(f"- {kp}" for kp in batch_kps)
@@ -402,21 +407,21 @@ class PodcastGenerator(OutputGeneratorBase):
 
                     batch_kp_list = batch_kps
                     script_segment = self._generate_one(
-                        builder, batch_keypoints_text, book_title, None,
+                        builder,
+                        batch_keypoints_text,
+                        book_title,
+                        None,
                         keypoints_list=batch_kp_list if batch_kp_list else None,
                     )
                     if script_segment:
                         all_segments.append(script_segment)
                         self.log(
-                            f"    ✅ Batch {batch_idx+1}: "
+                            f"    ✅ Batch {batch_idx + 1}: "
                             f"{len(batch_kps)}/{len(batch_kps)} keypoints covered",
-                            "INFO"
+                            "INFO",
                         )
                     else:
-                        self.log(
-                            f"    ⚠️ Batch {batch_idx+1}: generation failed",
-                            "WARNING"
-                        )
+                        self.log(f"    ⚠️ Batch {batch_idx + 1}: generation failed", "WARNING")
 
                 # V7.6.0 R6: no [Outro] bracket — the LLM's outro conclusion
                 # (from _structure_instructions) is spoken by the hosts.
@@ -425,22 +430,19 @@ class PodcastGenerator(OutputGeneratorBase):
             else:
                 # Small enough for single pass
                 script = self._generate_one(
-                    builder, all_keypoints, book_title, None,
+                    builder,
+                    all_keypoints,
+                    book_title,
+                    None,
                     keypoints_list=all_kp_list if all_kp_list else None,
                 )
             if script:
                 output_path = output_dir / f"{book_title}.Podcast.md"
-                self._write_script(
-                    output_path, script, book_title, None,
-                    len(chapters), hosts
-                )
+                self._write_script(output_path, script, book_title, None, len(chapters), hosts)
                 output_paths.append(output_path)
 
         if output_paths:
-            self.log(
-                f"  ✅ Podcast: {len(output_paths)} script(s) generated",
-                "SUCCESS"
-            )
+            self.log(f"  ✅ Podcast: {len(output_paths)} script(s) generated", "SUCCESS")
         return output_paths
 
     def _chapter_keypoints(self, chapter: SummaryResult) -> str:
@@ -494,6 +496,7 @@ class PodcastGenerator(OutputGeneratorBase):
         # V4.7.21: Coverage verification + gap-fill retry
         if keypoints_list and len(keypoints_list) > 0:
             from core.outputs.podcast_coverage import PodcastCoverageChecker
+
             checker = PodcastCoverageChecker(self.request, log_callback=self.log)
 
             for attempt in range(3):  # initial + 2 revisions
@@ -508,7 +511,7 @@ class PodcastGenerator(OutputGeneratorBase):
                         f"  ⚠️ Coverage at {report.percentage:.0f}% — "
                         f"{len(report.missing)} keypoints still missing after "
                         f"{attempt} revision(s). Proceeding with best effort.",
-                        "WARNING"
+                        "WARNING",
                     )
                     break
 
@@ -516,14 +519,10 @@ class PodcastGenerator(OutputGeneratorBase):
                 revised = checker.revise(script, report.missing, book_title)
                 if revised and len(revised) > len(script) * 0.5:
                     script = revised
-                    self.log(
-                        f"  🔄 Revision {attempt + 1} applied — re-checking "
-                        f"coverage…", "INFO"
-                    )
+                    self.log(f"  🔄 Revision {attempt + 1} applied — re-checking coverage…", "INFO")
                 else:
                     self.log(
-                        "  ⚠️ Revision produced no improvement — keeping "
-                        "original script", "WARNING"
+                        "  ⚠️ Revision produced no improvement — keeping original script", "WARNING"
                     )
                     break
 
@@ -592,7 +591,7 @@ class PodcastGenerator(OutputGeneratorBase):
             if stripped.startswith("#"):
                 continue
             # Skip horizontal rules / scene dividers
-            if re.match(r'^[\-\*_]{3,}$', stripped) or stripped == "* * *":
+            if re.match(r"^[\-\*_]{3,}$", stripped) or stripped == "* * *":
                 continue
             # Skip lines that are entirely a bracketed stage direction
             if stripped.startswith("[") and stripped.endswith("]"):
@@ -602,7 +601,11 @@ class PodcastGenerator(OutputGeneratorBase):
             if no_bold.startswith("[") and no_bold.endswith("]"):
                 continue
             # Skip music/SFX cue lines
-            if re.match(r"^(music|sfx|sound|soundtrack|intro|outro|transition|fade)\s*:", no_bold, re.IGNORECASE):
+            if re.match(
+                r"^(music|sfx|sound|soundtrack|intro|outro|transition|fade)\s*:",
+                no_bold,
+                re.IGNORECASE,
+            ):
                 continue
             # Skip lines with music note symbols
             if "♪" in stripped or "♫" in stripped or "🎵" in stripped:
@@ -611,7 +614,7 @@ class PodcastGenerator(OutputGeneratorBase):
             # ── Normalize speaker labels ───────────────────────────────
             # V10.1.11: convert any "Name:" prefix to "Host A:" / "Host B:"
             # Check if this line has a speaker label (word(s) followed by colon)
-            speaker_match = re.match(r'^([A-Z][\w\-\s]{0,30}):\s*(.+)$', stripped)
+            speaker_match = re.match(r"^([A-Z][\w\-\s]{0,30}):\s*(.+)$", stripped)
             if speaker_match:
                 label = speaker_match.group(1).strip().lower()
                 text = speaker_match.group(2).strip()

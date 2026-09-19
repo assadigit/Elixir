@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from core.models import SummaryResult
-
 from core.outputs.packets.models import LogFn, Packet, PacketCollection
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 # Packet Generator
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class PacketGenerator:
     """Generates Packets of Knowledge from chapter summaries."""
@@ -62,6 +63,7 @@ class PacketGenerator:
         """
         try:
             from utils.settings import Settings
+
             s = Settings()
             mode = s.get("packets.mode", "chapter")
             if mode not in ("chapter", "cross_chapter"):
@@ -93,7 +95,7 @@ class PacketGenerator:
             self.log(
                 "  ⚠️ Cross-chapter mode uses semantic clustering that may produce "
                 "mismatched packets. Chapter-aligned mode is recommended for best results.",
-                "WARNING"
+                "WARNING",
             )
 
         # 1. Collect all keypoints
@@ -102,7 +104,9 @@ class PacketGenerator:
             self.log(f"  ℹ️ Not enough keypoints for packets ({len(all_bullets)} < 10)", "INFO")
             return None
 
-        self.log(f"  📊 Collected {len(all_bullets)} keypoints from {len(summaries)} chapters", "INFO")
+        self.log(
+            f"  📊 Collected {len(all_bullets)} keypoints from {len(summaries)} chapters", "INFO"
+        )
 
         # V13.19.0 Fix 2: Pre-clustering deduplication (rapidfuzz, 85% threshold).
         # Done BEFORE clustering so duplicate bullets don't pollute the clusters.
@@ -126,7 +130,7 @@ class PacketGenerator:
             if not packet.validation_passed:
                 self._apply_bullet_fallback(packet, i)
             if (i + 1) % 10 == 0:
-                self.log(f"  📦 Generated {i+1}/{len(packets)} packets", "INFO")
+                self.log(f"  📦 Generated {i + 1}/{len(packets)} packets", "INFO")
 
         # V13.19.0 Fix 3: do NOT drop failed packets.  Re-index packets so
         # the surviving indices stay contiguous (no gaps for the user).
@@ -138,12 +142,12 @@ class PacketGenerator:
             self.log(
                 f"  ⚠️ {fallback} packet(s) failed validation — using bullet-list fallback "
                 f"(no packets dropped, no bullets lost)",
-                "WARNING"
+                "WARNING",
             )
         self.log(
             f"  📊 Coverage: {synthesized} synthesized, {fallback} bullet-list fallback "
             f"(out of {len(packets)} packets)",
-            "INFO"
+            "INFO",
         )
         # Re-index so packet numbers are contiguous 1..N
         for i, p in enumerate(packets):
@@ -151,8 +155,11 @@ class PacketGenerator:
 
         # 4. Build hierarchy (themes → concepts → packets)
         self._build_hierarchy(packets)
-        self.log(f"  🌳 Hierarchy: {len(set(p.theme for p in packets))} themes, "
-                 f"{len(set(p.concept for p in packets))} concepts", "INFO")
+        self.log(
+            f"  🌳 Hierarchy: {len({p.theme for p in packets})} themes, "
+            f"{len({p.concept for p in packets})} concepts",
+            "INFO",
+        )
 
         # 5. Generate cross-references
         self._generate_cross_refs(packets)
@@ -165,8 +172,8 @@ class PacketGenerator:
         collection = PacketCollection(
             book_title=book_title,
             packets=packets,
-            themes=sorted(set(p.theme for p in packets if p.theme)),
-            concepts=sorted(set(p.concept for p in packets if p.concept)),
+            themes=sorted({p.theme for p in packets if p.theme}),
+            concepts=sorted({p.concept for p in packets if p.concept}),
             total_bullets=len(all_bullets),
             total_packets=len(packets),
             generation_time_s=time.time() - t_start,
@@ -251,12 +258,112 @@ class PacketGenerator:
 
         # Stop words for content-word comparison
         _STOP = frozenset(
-            ["the", "a", "an", "and", "or", "to", "in", "for", "with", "on", "at", "by", "from", "is", "are", "was", "were", "be", "been", "being", "it", "its", "this", "that", "these", "those", "they", "them", "their", "he", "she", "we", "you", "i", "me", "my", "your", "his", "her", "our", "not", "no", "do", "does", "did", "will", "would", "can", "could", "should", "may", "might", "must", "shall", "of", "as", "if", "than", "then", "so", "such", "very", "more", "most", "some", "any", "all", "each", "every", "which", "what", "who", "whom", "whose", "where", "when", "why", "how", "into", "out", "up", "down", "over", "under", "again", "further", "once", "here", "there", "about", "above", "below", "off", "through", "during", "before", "after", "between", "among"])
+            [
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "to",
+                "in",
+                "for",
+                "with",
+                "on",
+                "at",
+                "by",
+                "from",
+                "is",
+                "are",
+                "was",
+                "were",
+                "be",
+                "been",
+                "being",
+                "it",
+                "its",
+                "this",
+                "that",
+                "these",
+                "those",
+                "they",
+                "them",
+                "their",
+                "he",
+                "she",
+                "we",
+                "you",
+                "i",
+                "me",
+                "my",
+                "your",
+                "his",
+                "her",
+                "our",
+                "not",
+                "no",
+                "do",
+                "does",
+                "did",
+                "will",
+                "would",
+                "can",
+                "could",
+                "should",
+                "may",
+                "might",
+                "must",
+                "shall",
+                "of",
+                "as",
+                "if",
+                "than",
+                "then",
+                "so",
+                "such",
+                "very",
+                "more",
+                "most",
+                "some",
+                "any",
+                "all",
+                "each",
+                "every",
+                "which",
+                "what",
+                "who",
+                "whom",
+                "whose",
+                "where",
+                "when",
+                "why",
+                "how",
+                "into",
+                "out",
+                "up",
+                "down",
+                "over",
+                "under",
+                "again",
+                "further",
+                "once",
+                "here",
+                "there",
+                "about",
+                "above",
+                "below",
+                "off",
+                "through",
+                "during",
+                "before",
+                "after",
+                "between",
+                "among",
+            ]
+        )
 
         def _content_words(text: str) -> set:
             """Extract significant content words (lowercase, 3+ chars, not stop words)."""
-            return {w.lower() for w in re.findall(r'[a-zA-Z]{3,}', text)
-                    if w.lower() not in _STOP}
+            return {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", text) if w.lower() not in _STOP}
 
         try:
             from rapidfuzz import fuzz as _rf_fuzz  # type: ignore
@@ -295,7 +402,7 @@ class PacketGenerator:
             if is_dup:
                 duplicates_removed += 1
                 # V13.26.0 (P1.6): Track dropped bullets for audit
-                if not hasattr(self, '_dedup_dropped_details'):
+                if not hasattr(self, "_dedup_dropped_details"):
                     self._dedup_dropped_details = []
                 self._dedup_dropped_details.append(f"  🗑️ '{bullet[:60]}...' (dup)")
             else:
@@ -309,7 +416,7 @@ class PacketGenerator:
                 "INFO",
             )
             # V13.26.0 (P1.6): Log each dropped bullet for audit trail
-            details = getattr(self, '_dedup_dropped_details', [])
+            details = getattr(self, "_dedup_dropped_details", [])
             for detail in details[:15]:
                 self.log(detail, "DEBUG")
             if len(details) > 15:
@@ -362,8 +469,7 @@ class PacketGenerator:
                 chunks = self._split_bullets_into_chunks(bullets, self.TARGET_BULLETS_PER_PACKET)
                 chapters_split += 1
                 self.log(
-                    f"  📂 Chapter '{heading[:40]}': {n} bullets → {len(chunks)} packets",
-                    "INFO"
+                    f"  📂 Chapter '{heading[:40]}': {n} bullets → {len(chunks)} packets", "INFO"
                 )
                 for chunk in chunks:
                     packet = Packet(
@@ -386,7 +492,7 @@ class PacketGenerator:
                 self.log(
                     f"  📝 Chapter '{heading[:40]}': {n} bullets (< {self.MIN_BULLETS_PER_PACKET}) "
                     f"+ {len(supp)} exec-summary sentences as supplementary context",
-                    "INFO"
+                    "INFO",
                 )
                 packets.append(packet)
 
@@ -403,7 +509,7 @@ class PacketGenerator:
             f"  📊 Chapter-aligned: {chapters_with_bullets} chapters with bullets, "
             f"{chapters_split} split, {chapters_supplemented} supplemented with exec summary, "
             f"{len(packets)} packets total",
-            "INFO"
+            "INFO",
         )
 
         if not packets:
@@ -441,7 +547,7 @@ class PacketGenerator:
         idx = 0
         for i in range(n_chunks):
             size = base_size + (1 if i < remainder else 0)
-            chunks.append(bullets[idx:idx + size])
+            chunks.append(bullets[idx : idx + size])
             idx += size
         return chunks
 
@@ -461,12 +567,8 @@ class PacketGenerator:
             return []
 
         # Split on sentence boundaries (. ! ?) followed by whitespace + capital
-        raw_sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', exec_summary.strip())
-        sentences = [
-            s.strip()
-            for s in raw_sentences
-            if len(s.strip()) >= 30
-        ]
+        raw_sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", exec_summary.strip())
+        sentences = [s.strip() for s in raw_sentences if len(s.strip()) >= 30]
         return sentences[:5]  # cap at 5 to avoid flooding the prompt
 
     # ── Step 2 (cross-chapter mode): Cluster bullets ──────────────────
@@ -483,7 +585,10 @@ class PacketGenerator:
             import numpy as np
             from sklearn.cluster import AgglomerativeClustering
         except ImportError:
-            self.log("  ⚠️ sentence-transformers/sklearn not available — using sequential grouping", "WARNING")
+            self.log(
+                "  ⚠️ sentence-transformers/sklearn not available — using sequential grouping",
+                "WARNING",
+            )
             return self._sequential_cluster(bullets)
 
         try:
@@ -520,12 +625,18 @@ class PacketGenerator:
             for indices in clusters.values():
                 if len(indices) > SOFT_MAX:
                     centroid = np.mean(embeddings[indices], axis=0)
-                    sims = [float(np.dot(embeddings[i], centroid) /
-                                   (np.linalg.norm(embeddings[i]) * np.linalg.norm(centroid) + 1e-8))
-                            for i in indices]
-                    sorted_indices = [i for _, i in sorted(zip(sims, indices), reverse=True)]
+                    sims = [
+                        float(
+                            np.dot(embeddings[i], centroid)
+                            / (np.linalg.norm(embeddings[i]) * np.linalg.norm(centroid) + 1e-8)
+                        )
+                        for i in indices
+                    ]
+                    sorted_indices = [
+                        i for _, i in sorted(zip(sims, indices, strict=False), reverse=True)
+                    ]
                     for j in range(0, len(sorted_indices), TARGET_SIZE):
-                        chunk = sorted_indices[j:j + TARGET_SIZE]
+                        chunk = sorted_indices[j : j + TARGET_SIZE]
                         if chunk:
                             split_clusters.append(chunk)
                 else:
@@ -551,8 +662,14 @@ class PacketGenerator:
                         if not merged_indices:
                             continue
                         merged_centroid = np.mean(embeddings[merged_indices], axis=0)
-                        sim = float(np.dot(cluster_centroids[i], merged_centroid) /
-                                    (np.linalg.norm(cluster_centroids[i]) * np.linalg.norm(merged_centroid) + 1e-8))
+                        sim = float(
+                            np.dot(cluster_centroids[i], merged_centroid)
+                            / (
+                                np.linalg.norm(cluster_centroids[i])
+                                * np.linalg.norm(merged_centroid)
+                                + 1e-8
+                            )
+                        )
                         if sim > best_sim:
                             best_sim = sim
                             best_j = j
@@ -568,7 +685,7 @@ class PacketGenerator:
             for indices in merged:
                 if len(indices) > SOFT_MAX:
                     for j in range(0, len(indices), TARGET_SIZE):
-                        chunk = indices[j:j + TARGET_SIZE]
+                        chunk = indices[j : j + TARGET_SIZE]
                         if chunk:
                             final_clusters.append(chunk)
                 else:
@@ -607,8 +724,9 @@ class PacketGenerator:
             if sizes:
                 self.log(
                     f"  📊 Packet distribution: {len(packets)} packets, "
-                    f"min={min(sizes)}, max={max(sizes)}, avg={sum(sizes)/len(sizes):.1f}",
-                    "INFO")
+                    f"min={min(sizes)}, max={max(sizes)}, avg={sum(sizes) / len(sizes):.1f}",
+                    "INFO",
+                )
 
             return packets if packets else self._sequential_cluster(bullets)
 
@@ -621,7 +739,7 @@ class PacketGenerator:
         packets = []
         target_size = (self.CLUSTER_SIZE_MIN + self.CLUSTER_SIZE_MAX) // 2
         for i in range(0, len(bullets), target_size):
-            chunk = bullets[i:i + target_size]
+            chunk = bullets[i : i + target_size]
             packet = Packet(
                 index=len(packets),
                 source_bullets=[b[0] for b in chunk],
@@ -668,9 +786,11 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         # otherwise the rule line is empty (and the .md template trims it).
         supplementary_rule = (
             "- Use the SUPPLEMENTARY CONTEXT below as background to understand the bullets. You may draw framing from it, but every content sentence must still trace to a primary bullet.\n"
-            if packet.supplementary_context else ""
+            if packet.supplementary_context
+            else ""
         )
         from core.summarisation.prompt_manager import PromptManager
+
         _pm = PromptManager()
         combined_prompt = _pm.render_template(
             "outputs/packets_synthesize",
@@ -687,12 +807,13 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
         # Call LLM for combined synthesis + TL;DR (1 call) and importance (1 call).
         try:
-            from utils.settings import Settings
             # V18.20.4.12 (W-a10): was lowercase qwythos literal — 404s
             # (case-sensitive tag) on every install incl. the rig; sentinel
             # default per the V18.20.4.3 unification (LEGACY_DEFAULT_MODEL =
             # "no explicit model configured", core/llm/model_taxonomy.py).
             from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
+            from utils.settings import Settings
+
             s = Settings()
             model = s.get("summarisation.model", LEGACY_DEFAULT_MODEL)
             provider = s.get("summarisation.provider", "ollama")
@@ -742,7 +863,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             # an empty paragraph — it would give a false "✅ Validated" stamp.
             if _synthesis_failed:
                 packet.validation_passed = False
-                packet.validation_details = "Synthesis empty or too short — using bullet-list fallback"
+                packet.validation_details = (
+                    "Synthesis empty or too short — using bullet-list fallback"
+                )
             else:
                 # Validate (claim tracing)
                 packet.validation_passed, packet.validation_details = self._validate_packet(packet)
@@ -751,7 +874,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             packet.has_tension, packet.tension_description = self._detect_tension(packet)
 
         except Exception as e:
-            self.log(f"  ⚠️ Packet {idx+1} generation failed: {e}", "WARNING")
+            self.log(f"  ⚠️ Packet {idx + 1} generation failed: {e}", "WARNING")
             packet.paragraph = bullets_text
             packet.title = f"Packet {idx + 1}"
             packet.tldr = ""
@@ -824,8 +947,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         """
         bullets_md = "\n".join(f"- {b}" for b in packet.source_bullets)
         packet.paragraph = (
-            "⚠️ Synthesis failed validation — showing source bullets instead.\n\n"
-            f"{bullets_md}"
+            f"⚠️ Synthesis failed validation — showing source bullets instead.\n\n{bullets_md}"
         )
         # Keep the existing title; clear the TL;DR so we don't show a
         # potentially-hallucinated one-liner next to the bullet list.
@@ -834,7 +956,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         packet.tldr = ""
         packet.question = ""
         self.log(
-            f"  ⚠️ Packet {idx+1}: synthesis failed validation — using bullet-list fallback",
+            f"  ⚠️ Packet {idx + 1}: synthesis failed validation — using bullet-list fallback",
             "WARNING",
         )
 
@@ -902,6 +1024,10 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         """
         import requests
 
+        # V18.20.4.12 (T-c7): shared 404 detection + canonical pull hint
+        # (single source with the providers — core/llm/model_errors.py).
+        from core.llm.model_errors import is_model_not_found, model_not_found_hint
+
         # V18.20.4.11 (P3 / O-c5): pooled transport — the tuple timeout,
         # stream=True and the 2-attempt retry loop below are UNCHANGED (they
         # were lost 3 times by rewrites; this edit only swaps the per-call
@@ -909,11 +1035,8 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         # locality, and closes each streamed response so the pooled
         # connection is returned clean instead of leaking pool slots).
         from utils.network import session_for_url
-        # V18.20.4.12 (T-c7): shared 404 detection + canonical pull hint
-        # (single source with the providers — core/llm/model_errors.py).
-        from core.llm.model_errors import is_model_not_found, model_not_found_hint
-
         from utils.settings import Settings
+
         s = Settings()
 
         timeout = (10, 300)  # 10s connect, 300s read
@@ -934,8 +1057,13 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                         "temperature": temperature,
                         "stream": True,
                     }
-                    resp = session_for_url(api_url).post(f"{api_url}/chat/completions", json=payload,
-                                                          headers=headers, timeout=timeout, stream=True)
+                    resp = session_for_url(api_url).post(
+                        f"{api_url}/chat/completions",
+                        json=payload,
+                        headers=headers,
+                        timeout=timeout,
+                        stream=True,
+                    )
                     try:
                         resp.raise_for_status()
                         content = self._parse_openai_stream(resp)
@@ -955,7 +1083,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                             "stream": True,
                             "options": {"temperature": temperature},
                         }
-                        resp = session_for_url(native_url).post(native_url, json=payload, timeout=timeout, stream=True)
+                        resp = session_for_url(native_url).post(
+                            native_url, json=payload, timeout=timeout, stream=True
+                        )
                         try:
                             resp.raise_for_status()
                             content = self._parse_ollama_stream(resp)
@@ -968,8 +1098,12 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                             "temperature": temperature,
                             "stream": True,
                         }
-                        resp = session_for_url(api_url).post(f"{api_url}/chat/completions", json=payload,
-                                                             timeout=timeout, stream=True)
+                        resp = session_for_url(api_url).post(
+                            f"{api_url}/chat/completions",
+                            json=payload,
+                            timeout=timeout,
+                            stream=True,
+                        )
                         try:
                             resp.raise_for_status()
                             content = self._parse_openai_stream(resp)
@@ -981,11 +1115,16 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 if content:
                     return content
                 # V13.35.0: empty stream — fall through to retry (don't return "")
-                self.log(f"    ⚠️ Empty stream response (attempt {attempt+1}/{max_retries})", "WARNING")
+                self.log(
+                    f"    ⚠️ Empty stream response (attempt {attempt + 1}/{max_retries})", "WARNING"
+                )
 
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
-                    self.log(f"    ⏱️ LLM timeout (attempt {attempt+1}/{max_retries}), retrying...", "WARNING")
+                    self.log(
+                        f"    ⏱️ LLM timeout (attempt {attempt + 1}/{max_retries}), retrying...",
+                        "WARNING",
+                    )
                     continue
                 self.log(f"    ❌ LLM timed out after {max_retries} attempts", "WARNING")
                 return None
@@ -1018,8 +1157,8 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
     # "closing framing" sentence per paragraph (sim 0.22–0.46 to any single
     # bullet, because it synthesizes across ALL bullets). That sentence is
     # NOT hallucination — it's the synthesis we asked for.
-    _VAL_SIM_THRESHOLD = 0.42   # was 0.50 — a traced sentence needs ≥ this to a bullet
-    _VAL_MAX_UNTRACED = 1       # was 0 — allow 1 closing/framing sentence
+    _VAL_SIM_THRESHOLD = 0.42  # was 0.50 — a traced sentence needs ≥ this to a bullet
+    _VAL_MAX_UNTRACED = 1  # was 0 — allow 1 closing/framing sentence
     _VAL_MIN_TRACED_RATIO = 0.60  # at least 60% of sentences must trace
 
     def _validate_packet(self, packet: Packet) -> tuple[bool, str]:
@@ -1142,16 +1281,17 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             for i in range(len(packet.source_bullets)):
                 for j in range(i + 1, len(packet.source_bullets)):
                     if sims[i][j] < 0.15:
-                        tension_pairs.append((
-                            packet.source_bullets[i][:60],
-                            packet.source_bullets[j][:60],
-                            float(sims[i][j]),
-                        ))
+                        tension_pairs.append(
+                            (
+                                packet.source_bullets[i][:60],
+                                packet.source_bullets[j][:60],
+                                float(sims[i][j]),
+                            )
+                        )
 
             if tension_pairs:
                 desc = "; ".join(
-                    f"'{a}...' vs '{b}...' (sim: {s:.2f})"
-                    for a, b, s in tension_pairs[:2]
+                    f"'{a}...' vs '{b}...' (sim: {s:.2f})" for a, b, s in tension_pairs[:2]
                 )
                 return True, desc
 
@@ -1180,8 +1320,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         # V13.23.0: Chapter-aligned mode detection — if all packets have
         # exactly 1 source chapter, use the chapter heading as the concept.
         all_single_chapter = all(
-            len(p.source_chapters) == 1 and p.source_chapters[0]
-            for p in packets
+            len(p.source_chapters) == 1 and p.source_chapters[0] for p in packets
         )
         if all_single_chapter:
             for packet in packets:
@@ -1206,15 +1345,20 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             # Level 2: Concepts (group packets into ~5-10 concepts)
             n_concepts = min(len(packets) // 5, 10) if len(packets) > 10 else 1
             if n_concepts > 1:
-                clustering = AgglomerativeClustering(n_clusters=n_concepts, metric="cosine", linkage="average")
+                clustering = AgglomerativeClustering(
+                    n_clusters=n_concepts, metric="cosine", linkage="average"
+                )
                 concept_labels = clustering.fit_predict(emb)
 
                 # V9.0.0 P2-6: name each concept semantically using the
                 # TL;DRs of its member packets (was "Concept 1/2/3…").
                 concept_names: dict = {}
                 for c in range(n_concepts):
-                    member_tldrs = [packets[i].tldr for i in range(len(packets))
-                                    if concept_labels[i] == c and packets[i].tldr]
+                    member_tldrs = [
+                        packets[i].tldr
+                        for i in range(len(packets))
+                        if concept_labels[i] == c and packets[i].tldr
+                    ]
                     if member_tldrs:
                         # Use the first 3 words of the first TL;DR as the label
                         words = member_tldrs[0].split()[:4]
@@ -1223,7 +1367,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                         concept_names[c] = f"Concept {c + 1}"
 
                 for i, packet in enumerate(packets):
-                    packet.concept = concept_names.get(concept_labels[i], f"Concept {concept_labels[i] + 1}")
+                    packet.concept = concept_names.get(
+                        concept_labels[i], f"Concept {concept_labels[i] + 1}"
+                    )
 
                 # Level 1: Themes (group concepts into ~3-5 themes)
                 concept_emb = []
@@ -1234,7 +1380,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
                 n_themes = min(n_concepts // 2, 5) if n_concepts > 2 else 1
                 if n_themes > 1:
-                    theme_clustering = AgglomerativeClustering(n_clusters=n_themes, metric="cosine", linkage="average")
+                    theme_clustering = AgglomerativeClustering(
+                        n_clusters=n_themes, metric="cosine", linkage="average"
+                    )
                     theme_labels = theme_clustering.fit_predict(concept_emb)
 
                     # V9.0.0 P2-6: name themes semantically too
@@ -1293,7 +1441,9 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 packet.cross_refs = [j for j, s in sim_scores[:3] if s > 0.5]
 
         except Exception as _e:
-            logger.debug("ignored %s: %s", type(_e).__name__, _e)  # Cross-references are nice-to-have
+            logger.debug(
+                "ignored %s: %s", type(_e).__name__, _e
+            )  # Cross-references are nice-to-have
 
     # ── Step 6: One-page distillation ──────────────────────────────────
 
@@ -1323,6 +1473,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         n_packets = len(packets)
 
         from core.summarisation.prompt_manager import PromptManager
+
         _pm = PromptManager()
         prompt = _pm.render_template(
             "outputs/packets_distillation",
@@ -1333,6 +1484,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
         try:
             from utils.settings import Settings
+
             s = Settings()
             model = s.get("summarisation.model", "")
             provider = s.get("summarisation.provider", "ollama")
@@ -1340,9 +1492,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
             if response and len(response) > 150 and "##" in response:
                 header = f"# 📖 One-Page Distillation: {book_title}"
-                footer = (
-                    f"\n\n---\n*Synthesized from {n_packets} packets*"
-                )
+                footer = f"\n\n---\n*Synthesized from {n_packets} packets*"
                 return f"{header}\n\n{response}{footer}"
         except Exception as _e:
             logger.debug("one-page synthesis failed: %s: %s", type(_e).__name__, _e)
@@ -1365,8 +1515,10 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 lines.append(f"{icon} **{p.title}**")
         lines.append("")
         lines.append("---")
-        lines.append("*Theme synthesis unavailable — showing packet overview. "
-                     "Re-run with a faster model for full distillation.*")
+        lines.append(
+            "*Theme synthesis unavailable — showing packet overview. "
+            "Re-run with a faster model for full distillation.*"
+        )
         return "\n".join(lines)
 
     # ── Step 8: Write output files ────────────────────────────────────
@@ -1376,23 +1528,25 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         lines = []
         lines.append(f"# 📦 Packets of Knowledge: {collection.book_title}")
         lines.append("")
-        lines.append(f"**{collection.total_packets} packets** synthesized from "
-                     f"**{collection.total_bullets} keypoints** across "
-                     f"**{len(collection.themes)} themes** and "
-                     f"**{len(collection.concepts)} concepts**.")
+        lines.append(
+            f"**{collection.total_packets} packets** synthesized from "
+            f"**{collection.total_bullets} keypoints** across "
+            f"**{len(collection.themes)} themes** and "
+            f"**{len(collection.concepts)} concepts**."
+        )
         lines.append(f"Generated in {collection.generation_time_s:.1f}s")
         lines.append("")
         lines.append("---")
         lines.append("")
 
         # Group by theme → concept → packets
-        themes = sorted(set(p.theme for p in collection.packets if p.theme))
+        themes = sorted({p.theme for p in collection.packets if p.theme})
         for theme in themes:
             theme_packets = [p for p in collection.packets if p.theme == theme]
             lines.append(f"# 🌳 {theme}")
             lines.append("")
 
-            concepts = sorted(set(p.concept for p in theme_packets if p.concept))
+            concepts = sorted({p.concept for p in theme_packets if p.concept})
             for concept in concepts:
                 concept_packets = [p for p in theme_packets if p.concept == concept]
                 lines.append(f"## 📋 {concept}")
@@ -1411,11 +1565,13 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
         # Sort by importance (critical first)
         importance_order = {"critical": 0, "important": 1, "contextual": 2}
-        sorted_packets = sorted(collection.packets, key=lambda p: importance_order.get(p.importance, 3))
+        sorted_packets = sorted(
+            collection.packets, key=lambda p: importance_order.get(p.importance, 3)
+        )
 
         for i, packet in enumerate(sorted_packets[:20]):
             next_packet = sorted_packets[i + 1] if i + 1 < len(sorted_packets) else None
-            lines.append(f"**{i+1}.** [{packet.title}]")
+            lines.append(f"**{i + 1}.** [{packet.title}]")
             if next_packet:
                 lines.append(f"   → Next: [{next_packet.title}]")
             lines.append("")
@@ -1468,7 +1624,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
         # Cross-references (Obsidian wikilinks)
         if packet.cross_refs:
-            refs = ", ".join(f"[[Packet {r+1}]]" for r in packet.cross_refs)
+            refs = ", ".join(f"[[Packet {r + 1}]]" for r in packet.cross_refs)
             lines.append(f"**🔗 Connects to:** {refs}")
             lines.append("")
 
@@ -1560,7 +1716,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 edge_key = (tid, cid)
                 if edge_key not in theme_concept_edges:
                     theme_concept_edges.add(edge_key)
-                    lines.append(f'    {tid} -->|contains| {cid}')
+                    lines.append(f"    {tid} -->|contains| {cid}")
 
         # ── Packet nodes + Concept→Packet edges ──
         concept_packet_edges: set = set()
@@ -1576,7 +1732,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                 edge_key = (cid, pid)
                 if edge_key not in concept_packet_edges:
                     concept_packet_edges.add(edge_key)
-                    lines.append(f'    {cid} -->|packet| {pid}')
+                    lines.append(f"    {cid} -->|packet| {pid}")
 
         # ── Cross-reference edges (dotted) ──
         for packet in collection.packets:
@@ -1609,9 +1765,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         bullets_in_packets = sum(len(p.source_bullets) for p in collection.packets)
         synthesized = sum(1 for p in collection.packets if p.validation_passed)
         fallback = len(collection.packets) - synthesized
-        coverage_pct = (
-            100.0 * bullets_in_packets / max(1, dedup_count)
-        )
+        coverage_pct = 100.0 * bullets_in_packets / max(1, dedup_count)
 
         # Build a lookup: bullet_text → (packet_index, status)
         # If the same bullet text appears in multiple packets (shouldn't
@@ -1633,8 +1787,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             lines.append(f"- Removed as duplicates: {removed}")
         lines.append(f"- Input bullets (post-dedup): {dedup_count}")
         lines.append(
-            f"- Bullets in packets: {bullets_in_packets} "
-            f"({coverage_pct:.1f}% of post-dedup)"
+            f"- Bullets in packets: {bullets_in_packets} ({coverage_pct:.1f}% of post-dedup)"
         )
         lines.append(f"- Packets generated: {len(collection.packets)}")
         lines.append(f"- Packets with synthesis: {synthesized}")
@@ -1663,9 +1816,7 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
         for p in collection.packets:
             for b in p.source_bullets:
                 if b not in {orig_b for orig_b, _ in original_bullets}:
-                    orphan_lines.append(
-                        f"- Packet {p.index + 1}: {b[:60]}…"
-                    )
+                    orphan_lines.append(f"- Packet {p.index + 1}: {b[:60]}…")
         if orphan_lines:
             lines.append("")
             lines.append("## ⚠️ Orphan bullets (in packets but not in input)")

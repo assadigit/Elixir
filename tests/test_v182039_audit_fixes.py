@@ -21,6 +21,7 @@ Sections:
   7. B1 — diagnostic provenance stamps + "Open summaries folder" wiring.
   8. C1 — per-call LLM telemetry registry + estimator call-count honesty.
 """
+
 from __future__ import annotations
 
 import ast
@@ -41,23 +42,76 @@ ROOT = Path(__file__).resolve().parent.parent
 # Proper nouns extracted from the ground-truth test chapter (the same
 # inventory the V18.20.3.9 residuals sweep used — 43 names).
 CHAPTER_NAMES = [
-    "Jacobson", "Freud", "Erikson", "Kernberg", "Mahler", "Blos", "Winnicott",
-    "Lichtenstein", "Greenacre", "Chasseguet", "Smirgel", "Fenichel", "Hartmann",
-    "Searles", "Eissler", "Fromm", "Wheelis", "Lynd", "Lifton", "Lasch", "Kovel",
-    "Tausk", "Glover", "Stoller", "Galenson", "Roiphe", "Kris", "Loewenstein",
-    "Spitz", "Khan", "Klein", "Loewald", "Guttman", "Whitman", "Marx", "Durkheim",
-    "Akhtar", "Salman", "Oedipus", "oedipal", "Jews", "Jewry", "WINNICOTT",
+    "Jacobson",
+    "Freud",
+    "Erikson",
+    "Kernberg",
+    "Mahler",
+    "Blos",
+    "Winnicott",
+    "Lichtenstein",
+    "Greenacre",
+    "Chasseguet",
+    "Smirgel",
+    "Fenichel",
+    "Hartmann",
+    "Searles",
+    "Eissler",
+    "Fromm",
+    "Wheelis",
+    "Lynd",
+    "Lifton",
+    "Lasch",
+    "Kovel",
+    "Tausk",
+    "Glover",
+    "Stoller",
+    "Galenson",
+    "Roiphe",
+    "Kris",
+    "Loewenstein",
+    "Spitz",
+    "Khan",
+    "Klein",
+    "Loewald",
+    "Guttman",
+    "Whitman",
+    "Marx",
+    "Durkheim",
+    "Akhtar",
+    "Salman",
+    "Oedipus",
+    "oedipal",
+    "Jews",
+    "Jewry",
+    "WINNICOTT",
 ]
 # Distinctive concept phrases from the chapter + the domain vocabulary that
 # previously keyed live detectors/prompts (A1/A2/A3 + the prompt examples).
 CHAPTER_CONCEPTS = [
-    "false self", "true self", "identity diffusion", "ego identity",
-    "identity principle", "corporeality", "sine qua non", "psychoanalytic",
-    "psychoanalysis", "psychoanalysts", "metapsychological", "object relations",
-    "self psychology", "Broken Structures", "IDENTITY AND ITS ORIGINS",
-    "identity and its origins", "Song of Myself", "das Ich",
-    "second individuation", "psychic structure", "self-object",
-    "developmental basis", "three-step process",
+    "false self",
+    "true self",
+    "identity diffusion",
+    "ego identity",
+    "identity principle",
+    "corporeality",
+    "sine qua non",
+    "psychoanalytic",
+    "psychoanalysis",
+    "psychoanalysts",
+    "metapsychological",
+    "object relations",
+    "self psychology",
+    "Broken Structures",
+    "IDENTITY AND ITS ORIGINS",
+    "identity and its origins",
+    "Song of Myself",
+    "das Ich",
+    "second individuation",
+    "psychic structure",
+    "self-object",
+    "developmental basis",
+    "three-step process",
 ]
 # The other-book given names that keyed _NARRATIVE_PATTERNS before V18.20.3.9
 # (the W3 class — "a 'Werner went to…' bullet shipped because the name wasn't
@@ -66,11 +120,26 @@ CHAPTER_CONCEPTS = [
 OTHER_BOOK_NAMES = ["Ryan", "Thad", "Clive", "Tyler", "Bernard", "Georgina", "Brad"]
 OTHER_BOOK_VOCAB = ["entrepreneurs", "operatives", "spies"]
 
-_RUNTIME_PREFIXES = ("core/", "utils/", "ui_qt/", "controller.py", "main.py",
-                     "config/", "prompts/", "installer/", "assets/")
-_SKIP_FILES = {"CHANGELOG.md", "Project-History.md", "Readme.md",
-               "NEW_SESSION_PROMPT.md", "docs/EVALUATION_FRAMEWORK.md",
-               "docs/USER_OLLAMA_MODELS.md", "docs/EMBEDDERS.md"}
+_RUNTIME_PREFIXES = (
+    "core/",
+    "utils/",
+    "ui_qt/",
+    "controller.py",
+    "main.py",
+    "config/",
+    "prompts/",
+    "installer/",
+    "assets/",
+)
+_SKIP_FILES = {
+    "CHANGELOG.md",
+    "Project-History.md",
+    "Readme.md",
+    "NEW_SESSION_PROMPT.md",
+    "docs/EVALUATION_FRAMEWORK.md",
+    "docs/USER_OLLAMA_MODELS.md",
+    "docs/EMBEDDERS.md",
+}
 _SCAN_EXTS = (".py", ".json", ".md", ".txt", ".toml", ".yml", ".yaml", ".iss")
 
 
@@ -97,9 +166,9 @@ class TestResidualsDenyList:
 
     def test_runtime_contains_no_chapter_names(self):
         offenders = []
-        rx = re.compile(r"\b(?:"
-                        + "|".join(re.escape(n) for n in CHAPTER_NAMES + OTHER_BOOK_NAMES)
-                        + r")\b")
+        rx = re.compile(
+            r"\b(?:" + "|".join(re.escape(n) for n in CHAPTER_NAMES + OTHER_BOOK_NAMES) + r")\b"
+        )
         for rel, p in self._runtime_files():
             for i, line in enumerate(
                 p.read_text(encoding="utf-8", errors="replace").splitlines(), 1
@@ -114,8 +183,7 @@ class TestResidualsDenyList:
     def test_runtime_contains_no_chapter_concept_phrases(self):
         offenders = []
         terms = CHAPTER_CONCEPTS + OTHER_BOOK_VOCAB
-        rxs = [(t, re.compile(re.escape(t), re.IGNORECASE if t[0].islower() else 0))
-               for t in terms]
+        rxs = [(t, re.compile(re.escape(t), re.IGNORECASE if t[0].islower() else 0)) for t in terms]
         for rel, p in self._runtime_files():
             for i, line in enumerate(
                 p.read_text(encoding="utf-8", errors="replace").splitlines(), 1
@@ -221,19 +289,25 @@ class TestNarrativeStructural:
 # 3) A2 — concept indicators are structural only
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestConceptIndicators:
     def test_domain_nouns_purged(self):
         pat = _CONCEPT_INDICATORS.pattern
-        for noun in ("entrepreneurs", "businesses", "spies", "operatives",
-                     "analysts", "professionals"):
+        for noun in (
+            "entrepreneurs",
+            "businesses",
+            "spies",
+            "operatives",
+            "analysts",
+            "professionals",
+        ):
             assert noun not in pat, f"domain noun survived: {noun}"
 
     def test_structural_indicators_kept(self):
-        for phrase in ("is defined as", "the concept of", "the purpose of",
-                       "studies show"):
-            assert _CONCEPT_INDICATORS.search(
-                f"The text {phrase} something."
-            ), f"structural indicator lost: {phrase}"
+        for phrase in ("is defined as", "the concept of", "the purpose of", "studies show"):
+            assert _CONCEPT_INDICATORS.search(f"The text {phrase} something."), (
+                f"structural indicator lost: {phrase}"
+            )
 
     def test_domain_noun_no_longer_rescues_narrative(self):
         """A narrative bullet that carries a (purged) domain noun is no
@@ -253,8 +327,12 @@ class TestLeakagePatternGeneralized:
         """The class (model speculating about the SOURCE's genre) must fire
         for ANY domain, not only the one book that produced the original
         literal."""
-        for domain in ("a historical text", "a technical manual",
-                       "a psychoanalytic text", "a botanical study"):
+        for domain in (
+            "a historical text",
+            "a technical manual",
+            "a psychoanalytic text",
+            "a botanical study",
+        ):
             text, _ = detect_prompt_leakage(
                 f"a comprehensive summary of Chapter 1 from what appears to be {domain}.",
                 "thorough",
@@ -273,13 +351,12 @@ class TestLeakagePatternGeneralized:
 # 5) A5 — guards: crash_visibility stdlib-only (AST) + ci.yml branches
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestCrashVisibilityStdlibOnly:
     def test_imports_are_stdlib_only(self):
         """crash_visibility must stay importable BEFORE any heavy import
         (torch/PySide6) — enforced structurally via the AST."""
-        src = (ROOT / "core" / "system" / "crash_visibility.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "system" / "crash_visibility.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
         imported = set()
         for node in ast.walk(tree):
@@ -339,15 +416,11 @@ class TestPossessiveSubjectBroadened:
         assert _parse_bullet_subject("AuthorI's six phases of development") is None
 
     def test_attributive_possessive_matches_new_nouns(self):
-        m = _ATTRIBUTIVE_POSSESSIVE_RE.search(
-            "AuthorX's research provides the mechanism."
-        )
+        m = _ATTRIBUTIVE_POSSESSIVE_RE.search("AuthorX's research provides the mechanism.")
         assert m and m.group(1) == "AuthorX" and m.group(2).lower() == "provides"
 
     def test_source_side_possessive_new_nouns(self):
-        m = _SRC_POSSESSIVE_SUBJECT_RE.search(
-            "AuthorY's perspective provided the account."
-        )
+        m = _SRC_POSSESSIVE_SUBJECT_RE.search("AuthorY's perspective provided the account.")
         assert m and m.group(1) == "AuthorY"
         m2 = _SRC_PRONOUN_SUBJECT_RE.search("His analysis established the pattern.")
         assert m2 and m2.group(1).lower() == "established"
@@ -359,9 +432,7 @@ class TestPossessiveSubjectBroadened:
             "Marrow provided the mechanism for the consolidation process, "
             "describing it in detail (Whitfield 1971)."
         )
-        bullet = (
-            "Whitfield: Provided the mechanism for the consolidation process."
-        )
+        bullet = "Whitfield: Provided the mechanism for the consolidation process."
         _, issues = detect_attribution_subject_swap(bullet, source, "bullet[0]")
         assert any(i.detector == "attribution_swap" for i in issues)
 
@@ -399,20 +470,17 @@ class TestMentionOnlyPromptBan:
 # 7) B1 — provenance stamps in the diagnostic + open-summaries affordance
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestB1ProvenanceAndAffordance:
     def test_diagnostic_prints_stamps(self):
         """The end-of-run diagnostic block must print every summaries/*.md
         file's generated-by line (or warn about its absence)."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         # V18.20.3.10 (F6): the check now delegates to the canonical
         # whole-text parser instead of peeking line 2.
         assert "stamp_diagnostic" in src
         assert "Summary files (" in src
-        prov = (ROOT / "core" / "system" / "provenance.py").read_text(
-            encoding="utf-8"
-        )
+        prov = (ROOT / "core" / "system" / "provenance.py").read_text(encoding="utf-8")
         assert "NO generated-by stamp" in prov
 
     def test_wizard_open_summaries_button(self):
@@ -422,18 +490,15 @@ class TestB1ProvenanceAndAffordance:
         # _open_summaries_folder handler stayed in wizard_view.py.
         # Assertions unchanged — the pin now reads the label from its
         # real home instead of wizard_view.py's module docstring.
-        step9 = (ROOT / "ui_qt" / "views" / "wizard_steps" /
-                 "step9_logs.py").read_text(encoding="utf-8")
-        assert "Open summaries folder" in step9
-        src = (ROOT / "ui_qt" / "views" / "wizard_view.py").read_text(
+        step9 = (ROOT / "ui_qt" / "views" / "wizard_steps" / "step9_logs.py").read_text(
             encoding="utf-8"
         )
+        assert "Open summaries folder" in step9
+        src = (ROOT / "ui_qt" / "views" / "wizard_view.py").read_text(encoding="utf-8")
         assert "_open_summaries_folder" in src
 
     def test_convert_view_open_summaries_button(self):
-        src = (ROOT / "ui_qt" / "views" / "convert_view.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "ui_qt" / "views" / "convert_view.py").read_text(encoding="utf-8")
         assert "Open Summaries Folder" in src
 
 
@@ -467,7 +532,10 @@ class TestCallTelemetryRegistry:
         call_meta.record_call_telemetry("m", 1.0, 1, 1, "stop")
         call_meta.reset_call_telemetry()
         assert call_meta.call_telemetry_summary() == {
-            "calls": 0, "total_s": 0.0, "truncated": 0, "slowest": []
+            "calls": 0,
+            "total_s": 0.0,
+            "truncated": 0,
+            "slowest": [],
         }
 
     def test_recording_never_raises(self):
@@ -490,16 +558,12 @@ class TestCallTelemetryRegistry:
         assert call_meta.call_telemetry_summary()["calls"] == 400
 
     def test_provider_wires_telemetry(self):
-        src = (ROOT / "core" / "llm" / "ollama_provider.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "llm" / "ollama_provider.py").read_text(encoding="utf-8")
         assert "record_call_telemetry(" in src
         assert "done in {" in src  # the ⏱️ per-call INFO line
 
     def test_converter_wires_reset_and_summary(self):
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         assert "reset_call_telemetry()" in src
         assert "call_telemetry_summary()" in src
 
@@ -560,7 +624,5 @@ class TestEstimatorCallCountHonesty:
         # typical band: 10/chapter + any per-output calls (none enabled here)
         assert est["llm_calls"] == est["chapter_count"] * 10
         assert est["llm_calls_worst_case"] >= est["llm_calls"]
-        assert est["llm_calls_worst_case"] == pytest.approx(
-            est["chapter_count"] * 40
-        )
+        assert est["llm_calls_worst_case"] == pytest.approx(est["chapter_count"] * 40)
         assert "10 calls/chapter" in est["llm_calls_basis"]

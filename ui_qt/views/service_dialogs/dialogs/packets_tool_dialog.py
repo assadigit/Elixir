@@ -42,8 +42,10 @@ logger = logging.getLogger(__name__)
 # V13.20.0: Packets of Knowledge + Hallucination Audit — standalone tools
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class _PacketWorker(QThread):
     """Background thread for packet generation."""
+
     log_signal = Signal(str, str)
     done_signal = Signal(str, str)
 
@@ -66,24 +68,30 @@ class _PacketWorker(QThread):
             # V13.23.0: Persist the user-selected packets mode so the
             # PacketGenerator picks up chapter-aligned vs cross-chapter logic.
             from utils.settings import Settings
+
             try:
                 s = Settings()
                 s.set("packets.mode", self._mode)
             except Exception:
                 logger.debug("best-effort op failed", exc_info=True)
-            req = ConversionRequest(input_path=_P(self._output_dir),
-                                    output_dir=_P(self._output_dir))
+            req = ConversionRequest(
+                input_path=_P(self._output_dir), output_dir=_P(self._output_dir)
+            )
             gen = PacketGenerator(
-                request=req,
-                log_callback=lambda msg, level="INFO": self.log_signal.emit(msg, level))
-            paths = gen.generate(summaries=self._summaries, book_title=self._book_title,
-                                 output_dir=_P(self._output_dir))
+                request=req, log_callback=lambda msg, level="INFO": self.log_signal.emit(msg, level)
+            )
+            paths = gen.generate(
+                summaries=self._summaries,
+                book_title=self._book_title,
+                output_dir=_P(self._output_dir),
+            )
             if paths:
                 self.done_signal.emit(str(self._output_dir), "")
             else:
                 self.done_signal.emit("", "No packets generated — need at least 10 keypoints.")
         except Exception as e:
             import traceback
+
             self.done_signal.emit("", f"{type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}")
 
 
@@ -126,15 +134,18 @@ class PacketsToolDialog(QDialog):
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
+
         lay = _VL(self)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
         title = _QL("📦 Packets of Knowledge")
         title.setObjectName("H2")
         lay.addWidget(title)
-        desc = _QL("Transform scattered notes into structured knowledge packets. "
-                   "Each packet clusters ~5 related bullets, then synthesizes them "
-                   "into a paragraph + TL;DR. Outputs: packets doc + one-page + map + coverage.")
+        desc = _QL(
+            "Transform scattered notes into structured knowledge packets. "
+            "Each packet clusters ~5 related bullets, then synthesizes them "
+            "into a paragraph + TL;DR. Outputs: packets doc + one-page + map + coverage."
+        )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
         lay.addWidget(desc)
@@ -148,7 +159,8 @@ class PacketsToolDialog(QDialog):
             "Paste notes here. Use ## headings to separate chapters.\n\n"
             "## Chapter 1\n- First bullet\n- Second bullet\n\n## Chapter 2\n- ...\n\n"
             "Or paste a .Chapters.md file (with ### Executive Summary + "
-            "### Bullet Points sections) for full chapter-aligned mode.")
+            "### Bullet Points sections) for full chapter-aligned mode."
+        )
         self.text_input.setAcceptRichText(False)
         text_lay.addWidget(self.text_input)
         self.tabs.addTab(text_tab, "📋 Paste Text")
@@ -196,8 +208,8 @@ class PacketsToolDialog(QDialog):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Chapter-aligned (recommended)", "chapter")
         self.mode_combo.addItem(
-            "Cross-chapter clustering (legacy, may produce mismatched packets)",
-            "cross_chapter")
+            "Cross-chapter clustering (legacy, may produce mismatched packets)", "cross_chapter"
+        )
         self.mode_combo.setCurrentIndex(0)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         mode_row.addWidget(self.mode_combo, 1)
@@ -205,11 +217,13 @@ class PacketsToolDialog(QDialog):
         self.mode_warning_label = _QL(
             "⚠️ Cross-chapter mode uses semantic clustering that may produce "
             "mismatched packets. Chapter-aligned mode uses the author's own "
-            "chapter boundaries for better results.")
+            "chapter boundaries for better results."
+        )
         self.mode_warning_label.setWordWrap(True)
         self.mode_warning_label.setStyleSheet(
             "QLabel { color: #cc8800; font-size: 11px; padding: 4px 8px; "
-            "background: #fff8e1; border: 1px solid #e6c200; border-radius: 3px; }")
+            "background: #fff8e1; border: 1px solid #e6c200; border-radius: 3px; }"
+        )
         self.mode_warning_label.setVisible(False)
         opt_lay.addWidget(self.mode_warning_label)
         lay.addWidget(opt_group)
@@ -228,7 +242,8 @@ class PacketsToolDialog(QDialog):
         self.live_log.setStyleSheet(
             "QPlainTextEdit { background: #1e1e1e; color: #d4d4d4; "
             "font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; "
-            "border: 1px solid #3c3c3c; }")
+            "border: 1px solid #3c3c3c; }"
+        )
         lay.addWidget(self.live_log)
 
         # Status + progress
@@ -260,10 +275,9 @@ class PacketsToolDialog(QDialog):
         super().closeEvent(event)
 
     def _add_files(self):
-        from PySide6.QtWidgets import QFileDialog
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add note files", "",
-            "Markdown/Text (*.md *.txt);;All files (*.*)")
+            self, "Add note files", "", "Markdown/Text (*.md *.txt);;All files (*.*)"
+        )
         if paths:
             for p in paths:
                 if p not in self._files:
@@ -277,7 +291,6 @@ class PacketsToolDialog(QDialog):
             self.file_list.takeItem(row)
 
     def _pick_output(self):
-        from PySide6.QtWidgets import QFileDialog
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
         if folder:
             self.out_edit.setText(folder)
@@ -289,11 +302,11 @@ class PacketsToolDialog(QDialog):
 
     def _toggle_live_log(self, checked):
         self.live_log.setVisible(checked)
-        self._log_toggle_btn.setText(
-            "📋 Hide Live Log" if checked else "📋 Show Live Log")
+        self._log_toggle_btn.setText("📋 Hide Live Log" if checked else "📋 Show Live Log")
 
     def _append_live_log(self, msg, level="INFO"):
         import datetime as _dt
+
         ts = _dt.datetime.now().strftime("%H:%M:%S")
         self.live_log.appendPlainText(f"[{ts}] {msg}")
 
@@ -322,6 +335,7 @@ class PacketsToolDialog(QDialog):
     def _parse_pasted_text(text):
         """Split pasted text into chapters by ## headings; extract bullets."""
         from core.models import SummaryResult
+
         chunks = []
         current_heading = ""
         current_body = []
@@ -344,10 +358,15 @@ class PacketsToolDialog(QDialog):
             bullets = PacketsToolDialog._extract_bullets(body)
             if not bullets:
                 continue
-            summaries.append(SummaryResult(
-                chapter_heading=heading or f"Chapter {len(summaries)+1}",
-                executive_summary="", thorough_summary="",
-                bullet_points=bullets, success=True))
+            summaries.append(
+                SummaryResult(
+                    chapter_heading=heading or f"Chapter {len(summaries) + 1}",
+                    executive_summary="",
+                    thorough_summary="",
+                    bullet_points=bullets,
+                    success=True,
+                )
+            )
         return summaries
 
     @staticmethod
@@ -362,6 +381,7 @@ class PacketsToolDialog(QDialog):
         bullets only, exec_summary="").
         """
         from core.models import SummaryResult
+
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
         except Exception:
@@ -369,11 +389,14 @@ class PacketsToolDialog(QDialog):
         if not text.strip():
             return None
         # V13.23.0: Detect chapters-md format and use the dedicated parser.
-        if ("## Table of Contents" in text
-                and "### Executive Summary" in text
-                and "### Bullet Points" in text):
+        if (
+            "## Table of Contents" in text
+            and "### Executive Summary" in text
+            and "### Bullet Points" in text
+        ):
             try:
                 from core.outputs.chapters_export import read_chapters_md
+
                 _book_title, summaries = read_chapters_md(Path(path))
                 return summaries if summaries else []
             except Exception:
@@ -383,9 +406,15 @@ class PacketsToolDialog(QDialog):
         bullets = PacketsToolDialog._extract_bullets(text)
         if not bullets:
             return []
-        return [SummaryResult(chapter_heading=heading, executive_summary="",
-                              thorough_summary="", bullet_points=bullets,
-                              success=True)]
+        return [
+            SummaryResult(
+                chapter_heading=heading,
+                executive_summary="",
+                thorough_summary="",
+                bullet_points=bullets,
+                success=True,
+            )
+        ]
 
     def _on_generate(self):
         active_tab = self.tabs.currentIndex()
@@ -393,8 +422,9 @@ class PacketsToolDialog(QDialog):
         if active_tab == 0:
             text = self.text_input.toPlainText().strip()
             if not text or len(text) < 20:
-                QMessageBox.warning(self, "Need more text",
-                                    "Please paste some notes (at least 20 characters).")
+                QMessageBox.warning(
+                    self, "Need more text", "Please paste some notes (at least 20 characters)."
+                )
                 return
             summaries = self._parse_pasted_text(text)
         else:
@@ -408,8 +438,9 @@ class PacketsToolDialog(QDialog):
 
         total_bullets = sum(len(s.bullet_points) for s in summaries)
         if total_bullets < 10:
-            QMessageBox.warning(self, "Not enough keypoints",
-                                f"Need at least 10 keypoints. Found {total_bullets}.")
+            QMessageBox.warning(
+                self, "Not enough keypoints", f"Need at least 10 keypoints. Found {total_bullets}."
+            )
             return
 
         out_folder = self.out_edit.text().strip()
@@ -422,7 +453,8 @@ class PacketsToolDialog(QDialog):
         self.gen_btn.setText("📦 Generating...")
         self.progress_bar.setVisible(True)
         self.status_label.setText(
-            f"📦 Generating packets from {total_bullets} keypoints in {len(summaries)} section(s)...")
+            f"📦 Generating packets from {total_bullets} keypoints in {len(summaries)} section(s)..."
+        )
         self.live_log.clear()
         if not self._log_toggle_btn.isChecked():
             self._log_toggle_btn.setChecked(True)
@@ -431,10 +463,8 @@ class PacketsToolDialog(QDialog):
         self._append_live_log(f"📦 Title: {book_title}")
         self._append_live_log(f"📦 Output: {out_folder}")
 
-        mode = (self.mode_combo.currentData()
-                if hasattr(self, "mode_combo") else "chapter")
-        self._worker = _PacketWorker(summaries, book_title, out_folder,
-                                     mode=mode, parent=self)
+        mode = self.mode_combo.currentData() if hasattr(self, "mode_combo") else "chapter"
+        self._worker = _PacketWorker(summaries, book_title, out_folder, mode=mode, parent=self)
         self._worker.log_signal.connect(self._append_live_log)
         self._worker.done_signal.connect(self._on_done)
         self._worker.start()
@@ -450,6 +480,10 @@ class PacketsToolDialog(QDialog):
         else:
             self.status_label.setText(f"✅ Packets generated in: {output_dir}")
             self._append_live_log(f"✅ Done! Output: {output_dir}")
-            _show_success_modal(self, "📦 Packets of Knowledge Complete",
-                                f"Packets generated successfully!\n\nOutput folder:\n{output_dir}",
-                                file_path=output_dir, on_try_another=None)
+            _show_success_modal(
+                self,
+                "📦 Packets of Knowledge Complete",
+                f"Packets generated successfully!\n\nOutput folder:\n{output_dir}",
+                file_path=output_dir,
+                on_try_another=None,
+            )

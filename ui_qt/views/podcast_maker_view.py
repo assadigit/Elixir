@@ -38,6 +38,10 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+
+# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
+# model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from core.podcast.audio_generator import generate_podcast_audio
 from core.podcast.script_generator import (
     TEMPERATURE_PROFILES,
@@ -45,10 +49,6 @@ from core.podcast.script_generator import (
     ScriptResult,
     generate_podcast_script,
 )
-# V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
-# model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
-from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
-
 
 logger = logging.getLogger(__name__)
 
@@ -154,15 +154,15 @@ class PodcastMakerView(QWidget):
         temp_row.addWidget(QLabel("Creativity:"))
         self.temp_combo = QComboBox()
         for label, val in TEMPERATURE_PROFILES.items():
-            self.temp_combo.addItem(
-                f"{label.title()} (temp={val})", val)
+            self.temp_combo.addItem(f"{label.title()} (temp={val})", val)
         self.temp_combo.setCurrentIndex(1)  # balanced (0.7)
         self.temp_combo.setToolTip(
             "Temperature controls creativity.\n"
             "Conservative (0.6) = safe, predictable\n"
             "Balanced (0.7) = Qwythos recommended\n"
             "Creative (0.8) = Qwythos max\n"
-            "Very Creative (0.9) = above Qwythos range")
+            "Very Creative (0.9) = above Qwythos range"
+        )
         temp_row.addWidget(self.temp_combo)
         temp_row.addSpacing(16)
 
@@ -186,9 +186,7 @@ class PodcastMakerView(QWidget):
         # mismatch); RIG_FALLBACK_MODEL is the working tag. Only reached
         # when settings are empty AND Ollama is unreachable (combo
         # refreshes from /api/tags otherwise).
-        default_model = self.controller.get_setting(
-            "summarisation.model",
-            RIG_FALLBACK_MODEL)
+        default_model = self.controller.get_setting("summarisation.model", RIG_FALLBACK_MODEL)
         self.model_combo.addItem(default_model)
         model_row.addWidget(self.model_combo, 1)
         self.refresh_models_btn = QPushButton("🔄 Refresh")
@@ -204,14 +202,14 @@ class PodcastMakerView(QWidget):
         # V11.44.1: Kokoro default + VibeVoice optional
         from core.tts.vibevoice_engine import VIBEVOICE_ENGLISH_VOICES
         from core.tts.voices import KOKORO_VOICES
+
         for entry in KOKORO_VOICES[:6]:
             voice_id, _lang, gender, desc = entry
+            self.host_a_combo.addItem(f"Kokoro — {voice_id} ({gender})", voice_id)
+        for voice_id, display_name, gender, _native in VIBEVOICE_ENGLISH_VOICES:
             self.host_a_combo.addItem(
-                f"Kokoro — {voice_id} ({gender})", voice_id)
-        for voice_id, display_name, gender, native in VIBEVOICE_ENGLISH_VOICES:
-            self.host_a_combo.addItem(
-                f"VibeVoice — {display_name} ({gender})",
-                f"vibevoice:{voice_id}")
+                f"VibeVoice — {display_name} ({gender})", f"vibevoice:{voice_id}"
+            )
         self.host_a_combo.setCurrentIndex(0)  # Default: af_heart (Kokoro)
         voice_row.addWidget(self.host_a_combo)
         voice_row.addSpacing(16)
@@ -223,12 +221,11 @@ class PodcastMakerView(QWidget):
         self.host_b_combo.setEditable(True)
         for entry in KOKORO_VOICES[:6]:
             voice_id, _lang, gender, desc = entry
+            self.host_b_combo.addItem(f"Kokoro — {voice_id} ({gender})", voice_id)
+        for voice_id, display_name, gender, _native in VIBEVOICE_ENGLISH_VOICES:
             self.host_b_combo.addItem(
-                f"Kokoro — {voice_id} ({gender})", voice_id)
-        for voice_id, display_name, gender, native in VIBEVOICE_ENGLISH_VOICES:
-            self.host_b_combo.addItem(
-                f"VibeVoice — {display_name} ({gender})",
-                f"vibevoice:{voice_id}")
+                f"VibeVoice — {display_name} ({gender})", f"vibevoice:{voice_id}"
+            )
         self.host_b_combo.setCurrentIndex(3)  # Default: am_michael (different from A)
         voice_row.addWidget(self.host_b_combo)
         voice_row.addStretch()
@@ -262,7 +259,8 @@ class PodcastMakerView(QWidget):
 
         self.script_preview = QPlainTextEdit()
         self.script_preview.setPlaceholderText(
-            "Script will appear here after generation. You can edit it before generating audio.")
+            "Script will appear here after generation. You can edit it before generating audio."
+        )
         self.script_preview.setMinimumHeight(200)
         script_layout.addWidget(self.script_preview)
 
@@ -272,7 +270,8 @@ class PodcastMakerView(QWidget):
         self.export_script_btn = QPushButton("📤 Export Script")
         self.export_script_btn.setObjectName("Compact")
         self.export_script_btn.setToolTip(
-            "Save the current script as a .json file (preserves host/text/source_ref).")
+            "Save the current script as a .json file (preserves host/text/source_ref)."
+        )
         self.export_script_btn.setEnabled(False)
         self.export_script_btn.clicked.connect(self._on_export_script)
         script_btn_row.addWidget(self.export_script_btn)
@@ -280,7 +279,8 @@ class PodcastMakerView(QWidget):
         self.import_script_btn = QPushButton("📥 Import Script")
         self.import_script_btn.setObjectName("Compact")
         self.import_script_btn.setToolTip(
-            "Load a previously saved .json script file to re-generate audio from.")
+            "Load a previously saved .json script file to re-generate audio from."
+        )
         self.import_script_btn.clicked.connect(self._on_import_script)
         script_btn_row.addWidget(self.import_script_btn)
 
@@ -352,6 +352,7 @@ class PodcastMakerView(QWidget):
         import requests
 
         from utils.settings import Settings
+
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
@@ -377,8 +378,8 @@ class PodcastMakerView(QWidget):
 
     def _pick_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Pick source file", "",
-            "Text files (*.md *.txt);;All files (*.*)")
+            self, "Pick source file", "", "Text files (*.md *.txt);;All files (*.*)"
+        )
         if path:
             self.file_label.setText(f"📄 {Path(path).name}")
             try:
@@ -392,12 +393,15 @@ class PodcastMakerView(QWidget):
 
     def _pick_output(self) -> None:
         from datetime import datetime
+
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         default = f"Podcast-{ts}.wav"
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save podcast audio",
+            self,
+            "Save podcast audio",
             str(Path.home() / "Desktop" / default),
-            "WAV audio (*.wav);;All files (*.*)")
+            "WAV audio (*.wav);;All files (*.*)",
+        )
         if path:
             self.out_edit.setText(path)
 
@@ -415,10 +419,13 @@ class PodcastMakerView(QWidget):
 
         self.gen_script_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("📝 Pre-processing source → extracting bullets → generating script...")
+        self.status_label.setText(
+            "📝 Pre-processing source → extracting bullets → generating script..."
+        )
 
         def _work():
             from utils.settings import Settings
+
             s = Settings()
             ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
             return generate_podcast_script(
@@ -444,7 +451,7 @@ class PodcastMakerView(QWidget):
         if isinstance(result, Exception):
             self.status_label.setText(f"❌ Script generation failed: {result}")
             return
-        if not hasattr(result, 'error'):
+        if not hasattr(result, "error"):
             self.status_label.setText(f"❌ Unexpected result: {result}")
             return
         if result.error:
@@ -464,7 +471,7 @@ class PodcastMakerView(QWidget):
             f"Forced segments: {result.forced_segments}"
         )
         if result.bullets_missing:
-            coverage_text += f" | ⚠️ Still missing: {[m+1 for m in result.bullets_missing]}"
+            coverage_text += f" | ⚠️ Still missing: {[m + 1 for m in result.bullets_missing]}"
         self.coverage_label.setText(coverage_text)
         self.status_label.setText("✅ Script ready! Review/edit above, then generate audio.")
         self.gen_audio_btn.setEnabled(True)
@@ -489,7 +496,8 @@ class PodcastMakerView(QWidget):
         if a == b:
             self.voice_warning_label.setText(
                 "⚠️ Warning: Host A and Host B have the same voice! "
-                "For a natural conversation, pick different voices.")
+                "For a natural conversation, pick different voices."
+            )
             self.voice_warning_label.setVisible(True)
         else:
             self.voice_warning_label.setVisible(False)
@@ -505,16 +513,16 @@ class PodcastMakerView(QWidget):
             self._parse_edited_script(edited_text)
 
         from datetime import datetime
+
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         default_path = str(Path.home() / "Desktop" / f"Podcast-Script-{ts}.json")
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Podcast Script", default_path,
-            "JSON files (*.json);;All files (*.*)")
+            self, "Export Podcast Script", default_path, "JSON files (*.json);;All files (*.*)"
+        )
         if not path:
             return
         try:
-            Path(path).write_text(
-                self._script_result.to_json(), encoding="utf-8")
+            Path(path).write_text(self._script_result.to_json(), encoding="utf-8")
             self.status_label.setText(f"📤 Script exported to: {path}")
         except Exception as e:
             # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the
@@ -525,8 +533,8 @@ class PodcastMakerView(QWidget):
     def _on_import_script(self) -> None:
         """V11.49.0: Import a .json script file and load it for audio generation."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import Podcast Script", "",
-            "JSON files (*.json);;All files (*.*)")
+            self, "Import Podcast Script", "", "JSON files (*.json);;All files (*.*)"
+        )
         if not path:
             return
         try:
@@ -539,31 +547,34 @@ class PodcastMakerView(QWidget):
             return
         try:
             from core.podcast.script_generator import ScriptResult
+
             result = ScriptResult.from_json(content)
         except Exception as e:
             # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the
             # user box (was str(e)-only — zero diagnostics).
             logger.warning("podcast script parse failed", exc_info=True)
             QMessageBox.critical(
-                self, "Parse failed",
+                self,
+                "Parse failed",
                 f"Could not parse script JSON:\n{e}\n\n"
                 "Expected format: a JSON array of objects with "
                 "'host', 'text', 'source_ref', 'segment_type' fields, "
-                "or a JSON object with a 'lines' array.")
+                "or a JSON object with a 'lines' array.",
+            )
             return
         if not result.lines:
             QMessageBox.warning(
-                self, "Empty script",
-                "The file was parsed but contains no script lines.")
+                self, "Empty script", "The file was parsed but contains no script lines."
+            )
             return
         self._script_result = result
         self.script_preview.setPlainText(result.to_dialogue_text())
         self.export_script_btn.setEnabled(True)
         self.gen_audio_btn.setEnabled(True)
         self.coverage_label.setText(
-            f"📥 Imported {len(result.lines)} lines from: {Path(path).name}")
-        self.status_label.setText(
-            "✅ Script imported! Review/edit above, then generate audio.")
+            f"📥 Imported {len(result.lines)} lines from: {Path(path).name}"
+        )
+        self.status_label.setText("✅ Script imported! Review/edit above, then generate audio.")
 
     def _on_generate_audio(self) -> None:
         if not self._script_result:
@@ -585,28 +596,38 @@ class PodcastMakerView(QWidget):
         if not out_path:
             import re as _re
             from datetime import datetime
+
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
             # Get the LLM-generated title (or fallback)
-            title = getattr(self._script_result, 'title', '') or 'Untitled'
+            title = getattr(self._script_result, "title", "") or "Untitled"
             # Sanitize title for filename (remove invalid chars)
-            safe_title = _re.sub(r'[^\w\s-]', '', title).strip()
-            safe_title = _re.sub(r'[\s]+', '-', safe_title)[:50]
+            safe_title = _re.sub(r"[^\w\s-]", "", title).strip()
+            safe_title = _re.sub(r"[\s]+", "-", safe_title)[:50]
             # Determine engine name from the voice selection
             engine_name = "Kokoro"
             if host_a and str(host_a).startswith("vibevoice:"):
                 engine_name = "VibeVoice"
             # Determine speakers
-            mode = self.mode_combo.currentData() if hasattr(self, 'mode_combo') else "conversational"
+            mode = (
+                self.mode_combo.currentData() if hasattr(self, "mode_combo") else "conversational"
+            )
             if mode == "conversational":
                 # Extract short speaker names from the combo text
-                a_name = self.host_a_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
-                b_name = self.host_b_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
+                a_name = (
+                    self.host_a_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
+                )
+                b_name = (
+                    self.host_b_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
+                )
                 speakers = f"{a_name}+{b_name}"
             else:
-                a_name = self.host_a_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
+                a_name = (
+                    self.host_a_combo.currentText().split("—")[-1].strip().split("(")[0].strip()
+                )
                 speakers = a_name
-            out_path = str(Path.home() / "Desktop" /
-                          f"Podcast-{safe_title}-{engine_name}-{speakers}-{ts}.wav")
+            out_path = str(
+                Path.home() / "Desktop" / f"Podcast-{safe_title}-{engine_name}-{speakers}-{ts}.wav"
+            )
             self.out_edit.setText(out_path)
 
         self.gen_audio_btn.setEnabled(False)
@@ -616,6 +637,7 @@ class PodcastMakerView(QWidget):
 
         def _work():
             from utils.settings import Settings
+
             s = Settings()
             return generate_podcast_audio(
                 script=self._script_result,
@@ -639,9 +661,10 @@ class PodcastMakerView(QWidget):
         if isinstance(result, Exception):
             self.status_label.setText(f"❌ Audio generation failed: {result}")
             QMessageBox.critical(
-                self, "❌ Podcast Failed",
-                f"Audio generation failed:\n\n{result}\n\n"
-                f"Check the live log for details.")
+                self,
+                "❌ Podcast Failed",
+                f"Audio generation failed:\n\n{result}\n\nCheck the live log for details.",
+            )
             return
         if result and isinstance(result, (str, Path)) and Path(result).exists():
             self.status_label.setText(f"✅ Podcast saved to: {result}")
@@ -652,23 +675,22 @@ class PodcastMakerView(QWidget):
         else:
             self.status_label.setText("❌ Audio generation failed — no output produced")
             QMessageBox.critical(
-                self, "❌ Podcast Failed",
-                "Audio generation produced no output.\n\n"
-                "Check the live log for details.")
+                self,
+                "❌ Podcast Failed",
+                "Audio generation produced no output.\n\nCheck the live log for details.",
+            )
 
     def _show_podcast_success_modal(self, audio_path) -> None:
         """V11.62.0: Show a success modal with the saved folder + file."""
         import subprocess as _sp
         import sys as _sys
         from pathlib import Path as _P
+
         audio_p = _P(audio_path)
         folder = audio_p.parent
         # Get report path if it exists
         report_p = audio_p.with_suffix(".report.txt")
-        report_line = (
-            f"\n📄 Report: {report_p.name}"
-            if report_p.exists() else ""
-        )
+        report_line = f"\n📄 Report: {report_p.name}" if report_p.exists() else ""
         msg = QMessageBox(self)
         msg.setWindowTitle("✅ Podcast Complete")
         msg.setIcon(QMessageBox.Information)
@@ -686,11 +708,11 @@ class PodcastMakerView(QWidget):
             # Open the folder in the OS file explorer with the file selected
             try:
                 if _sys.platform == "win32":
-                    _sp.Popen(['explorer', '/select,', str(audio_p)])
+                    _sp.Popen(["explorer", "/select,", str(audio_p)])
                 elif _sys.platform == "darwin":
-                    _sp.Popen(['open', '-R', str(audio_p)])
+                    _sp.Popen(["open", "-R", str(audio_p)])
                 else:
-                    _sp.Popen(['xdg-open', str(folder)])
+                    _sp.Popen(["xdg-open", str(folder)])
             except Exception:
                 pass  # best-effort
 
@@ -715,7 +737,9 @@ class PodcastMakerView(QWidget):
 
         # Get script info
         script_lines = len(self._script_result.lines) if self._script_result else 0
-        script_chars = sum(len(l.text) for l in self._script_result.lines) if self._script_result else 0
+        script_chars = (
+            sum(len(ln.text) for ln in self._script_result.lines) if self._script_result else 0
+        )
         script_bullets = len(self._script_result.bullets_input) if self._script_result else 0
         coverage = f"{self._script_result.coverage_pct:.0%}" if self._script_result else "N/A"
 
@@ -740,9 +764,9 @@ Audio file: {audio_p.name}
 
 AUDIO INFO
 ----------
-Duration: {audio_duration:.1f}s ({audio_duration/60:.1f} min)
+Duration: {audio_duration:.1f}s ({audio_duration / 60:.1f} min)
 File size: {audio_size // 1024} KB
-Sample rate: {sr if 'sr' in dir() else '24000'} Hz
+Sample rate: {sr if "sr" in dir() else "24000"} Hz
 
 SCRIPT INFO
 -----------
@@ -768,12 +792,13 @@ Host B: {host_b}
 
 SCRIPT CONTENT
 --------------
-{self.script_preview.toPlainText()[:5000] if self.script_preview else 'N/A'}
+{self.script_preview.toPlainText()[:5000] if self.script_preview else "N/A"}
 """
         try:
             report_path.write_text(report, encoding="utf-8")
             self.status_label.setText(
-                f"✅ Podcast saved: {audio_p.name} | Report: {report_path.name}")
+                f"✅ Podcast saved: {audio_p.name} | Report: {report_path.name}"
+            )
         except Exception:
             pass
 
@@ -787,36 +812,41 @@ SCRIPT CONTENT
         import re
 
         from core.podcast.script_generator import ScriptLine
+
         lines = []
-        for match in re.finditer(r'\[Host ([AB])\]\s*(.+?)(?=\[Host [AB]\]|$)', text, re.DOTALL):
+        for match in re.finditer(r"\[Host ([AB])\]\s*(.+?)(?=\[Host [AB]\]|$)", text, re.DOTALL):
             host = match.group(1)
             line_text = match.group(2).strip()
             if not line_text:
                 continue
             # V11.37.5: if the text is JSON, extract the fields
-            if line_text.startswith('{'):
+            if line_text.startswith("{"):
                 try:
-                    obj = json.loads(line_text.rstrip(','))
-                    if 'host' in obj:
-                        host = str(obj['host']).strip().upper()[:1] or host
-                    line_text = obj.get('text', '').strip()
+                    obj = json.loads(line_text.rstrip(","))
+                    if "host" in obj:
+                        host = str(obj["host"]).strip().upper()[:1] or host
+                    line_text = obj.get("text", "").strip()
                     if not line_text:
                         continue
-                    lines.append(ScriptLine(
-                        host=host, text=line_text,
-                        source_ref=str(obj.get('source_ref', 'edited')).lower(),
-                        segment_type=obj.get('segment_type', 'content')))
+                    lines.append(
+                        ScriptLine(
+                            host=host,
+                            text=line_text,
+                            source_ref=str(obj.get("source_ref", "edited")).lower(),
+                            segment_type=obj.get("segment_type", "content"),
+                        )
+                    )
                     continue
                 except json.JSONDecodeError:
                     pass  # treat as plain text
-            lines.append(ScriptLine(
-                host=host, text=line_text,
-                source_ref="edited", segment_type="content"))
+            lines.append(
+                ScriptLine(host=host, text=line_text, source_ref="edited", segment_type="content")
+            )
         if lines:
             self._script_result.lines = lines
 
     def _log(self, msg: str, level: str = "INFO") -> None:
-        if hasattr(self.controller, 'log'):
+        if hasattr(self.controller, "log"):
             self.controller.log(msg, level)
         # V11.51.0: also route to the live log panel
         self._progress_signal.progress.emit(-1, msg)
@@ -839,12 +869,12 @@ SCRIPT CONTENT
     def _toggle_live_log(self, checked: bool) -> None:
         """V11.51.0: Toggle the live log panel visibility."""
         self.live_log.setVisible(checked)
-        self._log_toggle_btn.setText(
-            "📋 Hide Live Log" if checked else "📋 Show Live Log")
+        self._log_toggle_btn.setText("📋 Hide Live Log" if checked else "📋 Show Live Log")
 
     def _append_live_log(self, msg: str) -> None:
         """V11.51.0: Append a message to the live log panel."""
         import datetime as _dt
+
         ts = _dt.datetime.now().strftime("%H:%M:%S")
         self.live_log.appendPlainText(f"[{ts}] {msg}")
         sb = self.live_log.verticalScrollBar()
@@ -856,11 +886,13 @@ SCRIPT CONTENT
 
 class _SignalBridge(QObject):
     """Thread-safe signal bridge for background workers."""
+
     finished = Signal(object)
 
 
 class _ProgressSignal(QObject):
     """Thread-safe progress signal."""
+
     progress = Signal(int, str)
 
 

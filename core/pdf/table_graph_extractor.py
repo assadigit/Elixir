@@ -31,6 +31,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 class TableGraphExtractor:
     """Extract tables and graphs from PDF with screenshots for verification."""
 
@@ -76,31 +77,39 @@ class TableGraphExtractor:
         visual_pages = self._detect_visual_pages(pdf_path, pages)
         self.log(
             f"  📈 Visual page detection: {len(visual_pages)}/{len(pages)} "
-            f"pages have charts/diagrams/graphs", "INFO"
+            f"pages have charts/diagrams/graphs",
+            "INFO",
         )
 
         # ── 1. Extract tables using Camelot (if available) ────────────────
         table_count = 0
         try:
             import camelot
+
             for page_num in pages:
                 try:
-                    tables = camelot.read_pdf(str(pdf_path), pages=str(page_num), flavor='lattice')
-                    for i, table in enumerate(tables):
+                    tables = camelot.read_pdf(str(pdf_path), pages=str(page_num), flavor="lattice")
+                    for _i, table in enumerate(tables):
                         table_count += 1
                         df = table.df
-                        md_table = df.to_markdown(index=False) if hasattr(df, 'to_markdown') else self._df_to_markdown(df)
+                        md_table = (
+                            df.to_markdown(index=False)
+                            if hasattr(df, "to_markdown")
+                            else self._df_to_markdown(df)
+                        )
 
                         screenshot_path = tables_dir / f"table_{table_count:03d}_p{page_num}.png"
                         self._capture_page_screenshot(pdf_path, page_num, screenshot_path)
                         all_screenshots.append(screenshot_path)
 
-                        table_entries.append({
-                            "number": table_count,
-                            "page": page_num,
-                            "markdown": md_table,
-                            "screenshot": str(screenshot_path),
-                        })
+                        table_entries.append(
+                            {
+                                "number": table_count,
+                                "page": page_num,
+                                "markdown": md_table,
+                                "screenshot": str(screenshot_path),
+                            }
+                        )
                 except Exception as e:
                     self.log(f"  ⚠️ Table extraction p.{page_num}: {e}", "DEBUG")
         except ImportError:
@@ -114,12 +123,14 @@ class TableGraphExtractor:
                 if self._capture_page_screenshot(pdf_path, page_num, screenshot_path):
                     graph_count += 1
                     all_screenshots.append(screenshot_path)
-                    graph_entries.append({
-                        "number": graph_count,
-                        "page": page_num,
-                        "screenshot": str(screenshot_path),
-                        "note": "Page with detected visual elements (chart/diagram/graph)",
-                    })
+                    graph_entries.append(
+                        {
+                            "number": graph_count,
+                            "page": page_num,
+                            "screenshot": str(screenshot_path),
+                            "note": "Page with detected visual elements (chart/diagram/graph)",
+                        }
+                    )
             except Exception as e:
                 self.log(f"  ⚠️ Graph screenshot p.{page_num}: {e}", "DEBUG")
 
@@ -127,6 +138,7 @@ class TableGraphExtractor:
         # V4.7.7: JPEG format + naming convention: page_NNN_bookname.jpg
         # Only captures pages in the selected chapters' range.
         import re as _re
+
         safe_title = _re.sub(r"[^\w\s-]", "", book_title).strip().replace(" ", "_")
         if not safe_title:
             safe_title = "page"
@@ -140,8 +152,8 @@ class TableGraphExtractor:
             except Exception as e:
                 logger.debug("page %d screenshot failed: %s: %s", page_num, type(e).__name__, e)
         self.log(
-            f"  📸 Full screenshots: {screenshot_count}/{len(pages)} pages "
-            f"→ screenshots/ (JPEG)", "INFO"
+            f"  📸 Full screenshots: {screenshot_count}/{len(pages)} pages → screenshots/ (JPEG)",
+            "INFO",
         )
 
         # ── 4. Write tables.md ────────────────────────────────────────────
@@ -155,10 +167,7 @@ class TableGraphExtractor:
         graphs_md_path = output_dir / "graphs.md"
         graphs_content = self._build_graphs_md(graph_entries, len(pages), len(visual_pages))
         graphs_md_path.write_text(graphs_content, encoding="utf-8")
-        self.log(
-            f"  📈 Graphs: {graph_count} visual pages → {graphs_md_path}",
-            "INFO"
-        )
+        self.log(f"  📈 Graphs: {graph_count} visual pages → {graphs_md_path}", "INFO")
 
         return {
             "tables_md": tables_md_path if table_entries else None,
@@ -192,6 +201,7 @@ class TableGraphExtractor:
         visual_pages = []
         try:
             import pdfplumber
+
             with pdfplumber.open(str(pdf_path)) as pdf:
                 for page_num in pages:
                     # pdfplumber uses 0-indexed pages
@@ -202,10 +212,7 @@ class TableGraphExtractor:
                     if score >= 3:
                         visual_pages.append(page_num)
         except Exception as e:
-            self.log(
-                f"  ⚠️ Visual detection failed ({e}), including all pages",
-                "DEBUG"
-            )
+            self.log(f"  ⚠️ Visual detection failed ({e}), including all pages", "DEBUG")
             return pages  # fallback: include all pages
         return visual_pages
 
@@ -284,8 +291,9 @@ class TableGraphExtractor:
 
         return "\n".join(lines)
 
-    def _build_graphs_md(self, entries: list[dict], total_pages: int = 0,
-                         visual_count: int = 0) -> str:
+    def _build_graphs_md(
+        self, entries: list[dict], total_pages: int = 0, visual_count: int = 0
+    ) -> str:
         """Build graphs.md content (only visual pages).
 
         V4.7.2: Now shows only pages with detected visual elements, not
@@ -303,8 +311,7 @@ class TableGraphExtractor:
         lines = [
             "# Graphs & Charts",
             "",
-            f"**Pages scanned:** {total_pages} | "
-            f"**Visual pages detected:** {visual_count}",
+            f"**Pages scanned:** {total_pages} | **Visual pages detected:** {visual_count}",
             "",
             "> 📈 Only pages with detected visual elements (charts, diagrams, "
             "graphs) are listed below. Detection uses pdfplumber's shape "
@@ -325,8 +332,9 @@ class TableGraphExtractor:
 
         return "\n".join(lines)
 
-    def _capture_page_screenshot(self, pdf_path: Path, page_num: int,
-                                  output_path: Path, jpeg: bool = False) -> bool:
+    def _capture_page_screenshot(
+        self, pdf_path: Path, page_num: int, output_path: Path, jpeg: bool = False
+    ) -> bool:
         """Capture a full-page screenshot. Returns True on success.
 
         V4.7.7: Supports JPEG output (smaller files for screenshots folder).
@@ -335,6 +343,7 @@ class TableGraphExtractor:
             from pdf2image import convert_from_path
 
             from utils.settings import Settings
+
             settings = Settings()
             poppler_path = settings.get("paths.poppler") or None
 

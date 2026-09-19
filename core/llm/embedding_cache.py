@@ -45,6 +45,7 @@ callers (``content_judge``, ``keypoints_builder``,
 follow-up wiring task. This module just provides the cache + drop-in
 replacement helper.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -100,9 +101,7 @@ class EmbeddingCache:
         # ``~/.elixir/embed_cache.jsonl`` location. response_cache.py
         # uses a module-level constant; adding the constructor param here is
         # a minor testability improvement that doesn't change prod behavior.
-        self._cache_file: Path = (
-            Path(cache_file) if cache_file is not None else _CACHE_FILE
-        )
+        self._cache_file: Path = Path(cache_file) if cache_file is not None else _CACHE_FILE
         self._hits = 0
         self._misses = 0
         self._disk_loads = 0
@@ -171,13 +170,15 @@ class EmbeddingCache:
             logger.debug(
                 "EmbeddingCache: refusing to cache all-zero vector for "
                 "text=%r model=%r (embedder may be unhealthy)",
-                text[:80], model_name,
+                text[:80],
+                model_name,
             )
             return
         if np.isnan(arr).any():
             logger.debug(
                 "EmbeddingCache: refusing to cache NaN vector for text=%r model=%r",
-                text[:80], model_name,
+                text[:80],
+                model_name,
             )
             return
 
@@ -224,9 +225,7 @@ class EmbeddingCache:
     # Batch helpers
     # ------------------------------------------------------------------
 
-    def get_many(
-        self, texts: Sequence[str], model_name: str
-    ) -> list[np.ndarray | None]:
+    def get_many(self, texts: Sequence[str], model_name: str) -> list[np.ndarray | None]:
         """Look up multiple texts at once. Returns a list of Optional vectors.
 
         Useful for pre-probing a batch before deciding which texts to
@@ -234,17 +233,13 @@ class EmbeddingCache:
         """
         return [self.get(t, model_name) for t in texts]
 
-    def put_many(
-        self, texts: Sequence[str], model_name: str, vecs: np.ndarray
-    ) -> None:
+    def put_many(self, texts: Sequence[str], model_name: str, vecs: np.ndarray) -> None:
         """Cache multiple embeddings at once (e.g. from a batch encode call)."""
         vecs_arr = np.asarray(vecs, dtype=np.float32)
         if vecs_arr.ndim == 1:
             vecs_arr = vecs_arr.reshape(1, -1)
         if len(texts) != len(vecs_arr):
-            raise ValueError(
-                f"texts/vecs length mismatch: {len(texts)} vs {len(vecs_arr)}"
-            )
+            raise ValueError(f"texts/vecs length mismatch: {len(texts)} vs {len(vecs_arr)}")
         # Lengths are verified equal above; strict=False keeps the loop
         # robust if a caller passes an iterator that doesn't pre-compute length.
         for t, v in zip(texts, vecs_arr, strict=False):
@@ -292,12 +287,14 @@ class EmbeddingCache:
             if count > 0:
                 logger.debug(
                     "Embedding cache: loaded %d entries from disk (%s)",
-                    count, self._cache_file,
+                    count,
+                    self._cache_file,
                 )
         except Exception as exc:
             logger.debug(
                 "Embedding cache disk load failed: %s: %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
 
     def _append_to_disk(self, key: str, vec: np.ndarray) -> None:
@@ -325,7 +322,8 @@ class EmbeddingCache:
         except Exception as exc:
             logger.debug(
                 "Embedding cache disk write failed: %s: %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
 
     def _flush_to_disk(self) -> None:
@@ -355,13 +353,12 @@ class EmbeddingCache:
                             ensure_ascii=False,
                         )
                     )
-            self._cache_file.write_text(
-                "\n".join(lines) + "\n", encoding="utf-8"
-            )
+            self._cache_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:
             logger.debug(
                 "Embedding cache disk flush failed: %s: %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
 
     # ------------------------------------------------------------------
@@ -436,9 +433,7 @@ class EmbeddingCache:
 # V18.2.24: constructed at import time, like response_cache. The disk load
 # is cheap (returns early if the file doesn't exist), so import cost is
 # negligible when no cache file is present.
-embedding_cache = EmbeddingCache(
-    max_entries=_DEFAULT_MAX_ENTRIES, persist_to_disk=True
-)
+embedding_cache = EmbeddingCache(max_entries=_DEFAULT_MAX_ENTRIES, persist_to_disk=True)
 
 
 # ── Drop-in replacement for model.encode() ──────────────────────────────────
@@ -540,11 +535,7 @@ def cached_encode(
             cached_vecs[seen[t]] = v
 
     # Assemble the final array in de-duplicated order.
-    dim = (
-        int(cached_vecs[0].shape[0])
-        if cached_vecs and cached_vecs[0] is not None
-        else 0
-    )
+    dim = int(cached_vecs[0].shape[0]) if cached_vecs and cached_vecs[0] is not None else 0
     unique_result = np.zeros((len(unique_texts), dim), dtype=np.float32)
     for i, v in enumerate(cached_vecs):
         if v is not None:

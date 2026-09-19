@@ -178,7 +178,9 @@ def decide_strategy(
     recover from).
     """
     b4_thr = LEGACY_B4_THRESHOLD if b4_threshold is None else int(b4_threshold)
-    mr_thr = LEGACY_MAP_REDUCE_THRESHOLD if map_reduce_threshold is None else int(map_reduce_threshold)
+    mr_thr = (
+        LEGACY_MAP_REDUCE_THRESHOLD if map_reduce_threshold is None else int(map_reduce_threshold)
+    )
     # The P5 budget object owns the fit arithmetic (margin 700 + overhead
     # 512 + output reserve) and the chunk-scaling rule, so the numbers
     # live in exactly one module.

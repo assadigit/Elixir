@@ -37,6 +37,7 @@ BOOK-AGNOSTIC
 The Protocol is completely domain-agnostic — it describes conversion
 plumbing (paths, settings, logging, progress), not any book content.
 """
+
 from __future__ import annotations
 
 import threading
@@ -91,9 +92,7 @@ class ConversionContext(Protocol):
     def _record_partial_failure(self, subsystem: str, error: Exception) -> None: ...
 
     # ── Error result builder (all phases) ─────────────────────────────────
-    def _build_error_result(
-        self, error_msg: str, **kwargs: Any
-    ) -> ConversionResult: ...
+    def _build_error_result(self, error_msg: str, **kwargs: Any) -> ConversionResult: ...
 
     # ── Segment helpers (segmentation, summarization) ─────────────────────
     def _filter_segment_content(self, segment: Any) -> Any: ...

@@ -32,6 +32,7 @@ from ui_qt.settings.widgets import make_form
 
 # ── Section 1: Format ─────────────────────────────────────────────────────
 
+
 class PodcastFormatSection(QGroupBox):
     """Hosts (1/2), scope (full-book/per-chapter), host voice selectors."""
 
@@ -94,11 +95,12 @@ class PodcastFormatSection(QGroupBox):
         combo.addItem("juliette — Female, gentle (NeuTTS preset)", "juliette")
         combo.addItem("mateo — Male, energetic (NeuTTS preset)", "mateo")
         from core.tts.voice_manager import VoiceManager
+
         vm = VoiceManager()
         for v in vm.list_voices():
             if v["name"] not in ("dave", "jo", "greta", "juliette", "mateo"):
                 combo.addItem(f"{v['name']} — {v['description']}", v["name"])
-        for group_label, voices in kokoro_voice_groups():
+        for _group_label, voices in kokoro_voice_groups():
             for vid, _lang, _gender, desc in voices:
                 combo.addItem(f"Kokoro · {vid} — {desc}", vid)
         for vid, _repo, _sub in PIPER_FA_VOICES:
@@ -134,6 +136,7 @@ class PodcastFormatSection(QGroupBox):
 
 # ── Section 2: Depth & Length ─────────────────────────────────────────────
 
+
 class PodcastDepthSection(QGroupBox):
     """Depth mode (exhaustive/time-restricted) + target length + cap."""
 
@@ -144,12 +147,8 @@ class PodcastDepthSection(QGroupBox):
 
         # Depth mode
         self.depth_combo = QComboBox()
-        self.depth_combo.addItem(
-            "Exhaustive (cover everything thoroughly)", "exhaustive"
-        )
-        self.depth_combo.addItem(
-            "Time-restricted (fit into a target length)", "time_restricted"
-        )
+        self.depth_combo.addItem("Exhaustive (cover everything thoroughly)", "exhaustive")
+        self.depth_combo.addItem("Time-restricted (fit into a target length)", "time_restricted")
         depth = controller.get_setting("podcast.depth_mode", "exhaustive")
         idx = self.depth_combo.findData(depth)
         if idx >= 0:
@@ -169,9 +168,7 @@ class PodcastDepthSection(QGroupBox):
 
         # Exhaustive cap
         self.cap_cb = QCheckBox("Safety cap for exhaustive mode")
-        self.cap_cb.setChecked(
-            controller.get_setting("podcast.exhaustive_cap_enabled", True)
-        )
+        self.cap_cb.setChecked(controller.get_setting("podcast.exhaustive_cap_enabled", True))
         self.cap_cb.setToolTip(
             "When enabled, exhaustive podcasts are capped at the specified "
             "duration as a safety measure. Disable for truly unlimited length."
@@ -181,9 +178,7 @@ class PodcastDepthSection(QGroupBox):
         self.cap_spin = QSpinBox()
         self.cap_spin.setRange(10, 600)
         self.cap_spin.setSuffix(" minutes")
-        self.cap_spin.setValue(
-            int(controller.get_setting("podcast.exhaustive_cap_minutes", 120))
-        )
+        self.cap_spin.setValue(int(controller.get_setting("podcast.exhaustive_cap_minutes", 120)))
         f.addRow("Exhaustive cap", self.cap_spin)
 
         hint = QLabel(
@@ -231,6 +226,7 @@ class PodcastDepthSection(QGroupBox):
 
 # ── Section 3: Style ──────────────────────────────────────────────────────
 
+
 class PodcastStyleSection(QGroupBox):
     """Tone, intro/outro, human fillers."""
 
@@ -264,9 +260,7 @@ class PodcastStyleSection(QGroupBox):
         self.fillers_cb = QCheckBox(
             "Human-like fillers (breathing, 'hmm', 'yeah' — NotebookLM style)"
         )
-        self.fillers_cb.setChecked(
-            controller.get_setting("podcast.human_fillers", True)
-        )
+        self.fillers_cb.setChecked(controller.get_setting("podcast.human_fillers", True))
         self.fillers_cb.setToolTip(
             "Adds natural conversational fillers to make the podcast sound like "
             "a real human conversation. Works best with NeuTTS (LLM-based engine). "
@@ -305,6 +299,7 @@ class PodcastStyleSection(QGroupBox):
 
 # ── Section 4: Preview ────────────────────────────────────────────────────
 
+
 class PodcastPreviewSection(QGroupBox):
     """Estimated word count + runtime based on current settings."""
 
@@ -317,8 +312,7 @@ class PodcastPreviewSection(QGroupBox):
         self.estimate_label.setObjectName("Caption")
         self.estimate_label.setWordWrap(True)
         self.estimate_label.setStyleSheet(
-            "font-size: 12px; padding: 10px; background: rgba(0,0,0,0.03);"
-            "border-radius: 4px;"
+            "font-size: 12px; padding: 10px; background: rgba(0,0,0,0.03);border-radius: 4px;"
         )
         f.addRow("Estimate", self.estimate_label)
 

@@ -14,6 +14,7 @@ Branches covered:
 
 Run: pytest tests/test_structured_llm.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,12 +28,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain works (matches sibling tests).
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.structured_llm import call_llm_structured
 
@@ -48,10 +52,10 @@ from core.summarisation.structured_llm import call_llm_structured
 # entries and restores them after every test in this file, making the file
 # hermetic while keeping every assertion unchanged.
 _STUBBED_MODULES = (
-    'core.llm.structured_io',
-    'core.llm.llm_provider',
-    'utils.settings',
-    'core.llm',
+    "core.llm.structured_io",
+    "core.llm.llm_provider",
+    "utils.settings",
+    "core.llm",
 )
 _MISSING = object()
 
@@ -70,31 +74,37 @@ def _restore_stubbed_sys_modules():
 
 def _install_structured_io(supports_json=True, complete_result=None):
     """Inject a fake ``core.llm.structured_io`` module into sys.modules."""
-    mod = types.ModuleType('core.llm.structured_io')
+    mod = types.ModuleType("core.llm.structured_io")
     mod.supports_json_mode = lambda provider, model: supports_json
     mod.complete_structured = lambda *a, **k: complete_result
-    sys.modules['core.llm.structured_io'] = mod
+    sys.modules["core.llm.structured_io"] = mod
     return mod
 
 
 def _install_llm_provider(raises=False):
     """Inject a fake ``core.llm.llm_provider`` + ``utils.settings.Settings``."""
-    pkg = sys.modules.get('core.llm')
+    pkg = sys.modules.get("core.llm")
     if pkg is None:
-        pkg = types.ModuleType('core.llm'); sys.modules['core.llm'] = pkg
-    lp = types.ModuleType('core.llm.llm_provider')
+        pkg = types.ModuleType("core.llm")
+        sys.modules["core.llm"] = pkg
+    lp = types.ModuleType("core.llm.llm_provider")
+
     def _create(*a, **k):
         if raises:
             raise RuntimeError("boom")
         return object()
+
     lp.create_provider = _create
-    sys.modules['core.llm.llm_provider'] = lp
+    sys.modules["core.llm.llm_provider"] = lp
     # Settings stub
-    s = types.ModuleType('utils.settings')
+    s = types.ModuleType("utils.settings")
+
     class _Settings:
-        def __init__(self): pass
+        def __init__(self):
+            pass
+
     s.Settings = _Settings
-    sys.modules['utils.settings'] = s
+    sys.modules["utils.settings"] = s
 
 
 def _setup_chain(supports_json=True, complete_result=None, provider_raises=False):
@@ -103,19 +113,21 @@ def _setup_chain(supports_json=True, complete_result=None, provider_raises=False
 
 
 class TestStructuredLlmBranches:
-
     def test_structured_io_unavailable_returns_none(self, monkeypatch):
         """Branch 1: core.llm.structured_io import fails → None (XML path)."""
         # Remove the module so the inline import raises ImportError.
-        monkeypatch.delitem(sys.modules, 'core.llm.structured_io', raising=False)
+        monkeypatch.delitem(sys.modules, "core.llm.structured_io", raising=False)
         # Force the inline ``from core.llm.structured_io import ...`` to fail.
         import builtins
+
         real_import = builtins.__import__
+
         def _blocking_import(name, *a, **k):
-            if name == 'core.llm.structured_io':
+            if name == "core.llm.structured_io":
                 raise ImportError("blocked for test")
             return real_import(name, *a, **k)
-        monkeypatch.setattr(builtins, '__import__', _blocking_import)
+
+        monkeypatch.setattr(builtins, "__import__", _blocking_import)
         result = call_llm_structured("p", "m", 0.7, 4096, provider="ollama")
         assert result is None
 
@@ -127,8 +139,9 @@ class TestStructuredLlmBranches:
 
     def test_provider_build_failure_returns_none(self, monkeypatch):
         """Branch 3: create_provider raises → None."""
-        _setup_chain(supports_json=True, complete_result={"bullet_points": ["x"]},
-                     provider_raises=True)
+        _setup_chain(
+            supports_json=True, complete_result={"bullet_points": ["x"]}, provider_raises=True
+        )
         result = call_llm_structured("p", "m", 0.7, 4096, provider="ollama")
         assert result is None
 
@@ -144,12 +157,16 @@ class TestStructuredLlmBranches:
         covered in tests/test_v18202_llm_fixes.py.
         """
         import core.summarisation.structured_llm as _sl
+
         monkeypatch.setattr(_sl, "_STRUCTURED_PATH_ENABLED", True)
-        _setup_chain(supports_json=True,
-                     complete_result={"bullet_points": ["a", "b", "c"]})
+        _setup_chain(supports_json=True, complete_result={"bullet_points": ["a", "b", "c"]})
         logs = []
         result = call_llm_structured(
-            "p", "m", 0.7, 4096, provider="ollama",
+            "p",
+            "m",
+            0.7,
+            4096,
+            provider="ollama",
             parse_response=lambda r: {"bullet_points": []},
             log=lambda msg, level="INFO": logs.append((msg, level)),
         )
@@ -169,11 +186,16 @@ class TestStructuredLlmBranches:
         None earlier — see tests/test_v18202_llm_fixes.py for that gate).
         """
         import core.summarisation.structured_llm as _sl
+
         monkeypatch.setattr(_sl, "_STRUCTURED_PATH_ENABLED", True)
         _setup_chain(supports_json=True, complete_result=None)
         logs = []
         result = call_llm_structured(
-            "p", "m", 0.7, 4096, provider="ollama",
+            "p",
+            "m",
+            0.7,
+            4096,
+            provider="ollama",
             parse_response=lambda r: {},
             log=lambda msg, level="INFO": logs.append(msg),
         )
@@ -184,10 +206,12 @@ class TestStructuredLlmBranches:
         """provider=None → defaults to 'ollama' (getattr behaviour preserved)."""
         captured = {}
         mod = _install_structured_io(supports_json=True, complete_result=None)
+
         def _supports(provider, model):
-            captured['provider'] = provider
+            captured["provider"] = provider
             return False  # short-circuit to None
+
         mod.supports_json_mode = _supports
         _install_llm_provider(raises=False)
         call_llm_structured("p", "m", 0.7, 4096, provider=None)
-        assert captured['provider'] == "ollama"
+        assert captured["provider"] == "ollama"

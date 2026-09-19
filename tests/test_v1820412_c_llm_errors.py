@@ -42,6 +42,7 @@ This file pins:
 
 Run: ``python3 -m pytest tests/test_v1820412_c_llm_errors.py --no-cov -q``
 """
+
 from __future__ import annotations
 
 import logging
@@ -170,8 +171,7 @@ class TestHintAndConstructor:
 
     def test_message_without_detail(self) -> None:
         assert str(ModelNotFound404Error("m:latest")) == (
-            "Model 'm:latest' not found in Ollama (HTTP 404) "
-            "— run `ollama pull m:latest`"
+            "Model 'm:latest' not found in Ollama (HTTP 404) — run `ollama pull m:latest`"
         )
 
     def test_message_with_detail_spliced_before_hint(self) -> None:
@@ -202,9 +202,9 @@ class TestIsModelNotFound:
             # status is None → body heuristic: BOTH "model" AND "not found"
             (None, "model xyz not found", True),
             (None, 'error: model "qwen" not found in registry', True),
-            (None, "other error", False),          # neither keyword
-            (None, "not found", False),            # missing "model"
-            (None, "model loaded", False),         # missing "not found"
+            (None, "other error", False),  # neither keyword
+            (None, "not found", False),  # missing "model"
+            (None, "model loaded", False),  # missing "not found"
             (None, "", False),
             # any other explicit status → False even if the body matches
             (500, "model not found", False),
@@ -282,14 +282,11 @@ class TestOllamaProvider404:
         def _raise_404(*args, **kwargs):
             calls["n"] += 1
             raise requests.exceptions.HTTPError(
-                "404 Client Error: Not Found for url "
-                "http://localhost:11434/api/generate",
+                "404 Client Error: Not Found for url http://localhost:11434/api/generate",
                 response=_FakeResp(404, "model not found"),
             )
 
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", _raise_404
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", _raise_404)
 
         captured: dict = {}
 
@@ -305,9 +302,7 @@ class TestOllamaProvider404:
             _transparent_halving,
         )
         # deterministic "installed models" listing — no network in the outer handler
-        monkeypatch.setattr(
-            "utils.network.list_ollama_models", lambda *a, **k: ["qwen2.5:latest"]
-        )
+        monkeypatch.setattr("utils.network.list_ollama_models", lambda *a, **k: ["qwen2.5:latest"])
 
         logs: list[tuple[str, str]] = []
         provider = OllamaProvider(
@@ -341,16 +336,10 @@ class TestOllamaProvider404:
         from core.llm.ollama_provider import OllamaProvider
 
         def _raise_500(*args, **kwargs):
-            raise requests.exceptions.HTTPError(
-                "500 Server Error", response=_FakeResp(500, "boom")
-            )
+            raise requests.exceptions.HTTPError("500 Server Error", response=_FakeResp(500, "boom"))
 
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", _raise_500
-        )
-        monkeypatch.setattr(
-            "utils.network.list_ollama_models", lambda *a, **k: []
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", _raise_500)
+        monkeypatch.setattr("utils.network.list_ollama_models", lambda *a, **k: [])
 
         logs: list[tuple[str, str]] = []
         provider = OllamaProvider(
@@ -369,9 +358,7 @@ class TestOllamaProvider404:
                 captured["exc"] = exc
                 raise
 
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.retry_with_oom_context_halving", _capture
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.retry_with_oom_context_halving", _capture)
         result = provider.complete("hello")
         assert result is None
         assert "exc" not in captured, "500 must not convert to ModelNotFound404Error"
@@ -393,7 +380,9 @@ class TestPacketsGenerator404:
         from core.outputs.packets.generator import PacketGenerator
 
         logs: list[tuple[str, str]] = []
-        gen = PacketGenerator(request=None, log_callback=lambda msg, level="INFO": logs.append((level, msg)))
+        gen = PacketGenerator(
+            request=None, log_callback=lambda msg, level="INFO": logs.append((level, msg))
+        )
         return gen, logs
 
     def _drive(self, monkeypatch, status: int, provider: str, body: str = ""):
@@ -408,9 +397,9 @@ class TestPacketsGenerator404:
         result, logs, session = self._drive(monkeypatch, 404, "ollama")
         assert result is None, "HTTP errors still return None (control flow preserved)"
         warnings = [m for lvl, m in logs if lvl == "WARNING"]
-        assert any(
-            "ollama pull missing-model:latest" in m for m in warnings
-        ), f"expected the canonical pull hint in WARNING logs, got: {warnings}"
+        assert any("ollama pull missing-model:latest" in m for m in warnings), (
+            f"expected the canonical pull hint in WARNING logs, got: {warnings}"
+        )
         assert any("not found in Ollama (HTTP 404)" in m for m in warnings)
         # the hint is the model_errors canonical message (single source)
         assert model_not_found_hint("missing-model:latest") in " ".join(warnings)
@@ -451,7 +440,7 @@ class TestPacketsGenerator404:
         src = _src("core/outputs/packets/generator.py", comments=False)
         assert "from core.llm.model_errors import is_model_not_found, model_not_found_hint" in src
         assert "except requests.exceptions.HTTPError" in src
-        assert 'is_model_not_found(_status, str(e))' in src
+        assert "is_model_not_found(_status, str(e))" in src
         assert 'provider != "cloud"' in src
 
 
@@ -474,9 +463,7 @@ class TestTtsNormalizer404:
         )
         return norm, logs
 
-    def test_404_logs_canonical_hint_then_falls_back(
-        self, monkeypatch, caplog
-    ) -> None:
+    def test_404_logs_canonical_hint_then_falls_back(self, monkeypatch, caplog) -> None:
         norm, logs = self._make_normalizer()
         session = _FakeSession(404, "model not found")
         monkeypatch.setattr("core.tts.normalizer.session_for_url", lambda url: session)
@@ -487,9 +474,9 @@ class TestTtsNormalizer404:
         # the canonical pull hint hit the LOGGER (module logger, not just the
         # dialog callback) before raise_for_status raised
         warning_texts = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-        assert any(
-            "ollama pull missing-model:latest" in m for m in warning_texts
-        ), f"expected the canonical hint at WARNING, got: {warning_texts}"
+        assert any("ollama pull missing-model:latest" in m for m in warning_texts), (
+            f"expected the canonical hint at WARNING, got: {warning_texts}"
+        )
         assert any("falling back to deterministic" in m for m in warning_texts)
         # deterministic fallback STILL applies (control flow unchanged):
         # Persian numeral ۵ → پنج
@@ -547,9 +534,7 @@ class TestTaxonomyConstants:
     def test_rig_fallback_model_value(self) -> None:
         from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 
-        assert RIG_FALLBACK_MODEL == (
-            "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M-empero-v3:latest"
-        )
+        assert RIG_FALLBACK_MODEL == ("Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M-empero-v3:latest")
 
     def test_known_bad_model_aliases_value(self) -> None:
         from core.llm.model_taxonomy import KNOWN_BAD_MODEL_ALIASES
@@ -630,9 +615,7 @@ class TestDeMagicSourcePins:
         code = _strip_comments(src)
         assert '"summarisation.model",' in code
         # the get_setting fallback must be the constant, not a raw tag
-        m = re.search(
-            r'get_setting\(\s*"summarisation\.model",\s*(RIG_FALLBACK_MODEL)\s*\)', code
-        )
+        m = re.search(r'get_setting\(\s*"summarisation\.model",\s*(RIG_FALLBACK_MODEL)\s*\)', code)
         assert m and m.group(1) == "RIG_FALLBACK_MODEL", (
             "podcast maker combo default must fall back to RIG_FALLBACK_MODEL"
         )

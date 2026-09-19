@@ -33,6 +33,7 @@ _QTI = QTableWidgetItem
 
 class _HallucinationAuditWorker(QThread):
     """Background thread for hallucination audit."""
+
     done_signal = Signal(list, str)
 
     def __init__(self, source_text, bullets, parent=None):
@@ -43,9 +44,9 @@ class _HallucinationAuditWorker(QThread):
     def run(self):
         try:
             from core.summarisation.hallucination_detector import HallucinationDetector
+
             detector = HallucinationDetector()
-            filtered, reports = detector.detect_and_filter(
-                self._bullets, self._source, "Audit")
+            filtered, reports = detector.detect_and_filter(self._bullets, self._source, "Audit")
             self.done_signal.emit(reports, "")
         except Exception as e:
             self.done_signal.emit([], f"{type(e).__name__}: {e}")
@@ -80,16 +81,19 @@ class HallucinationAuditDialog(QDialog):
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
+
         lay = _VL(self)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
         title = _QL("🛡️ Hallucination Audit")
         title.setObjectName("H2")
         lay.addWidget(title)
-        desc = _QL("Paste source text and summary bullets. The audit checks each "
-                   "bullet against the source using 4 signals (verbatim match, "
-                   "semantic similarity, content-word overlap, number/quote check). "
-                   "Grounded bullets are ✅, suspicious ones ⚠️, hallucinations 🗑️.")
+        desc = _QL(
+            "Paste source text and summary bullets. The audit checks each "
+            "bullet against the source using 4 signals (verbatim match, "
+            "semantic similarity, content-word overlap, number/quote check). "
+            "Grounded bullets are ✅, suspicious ones ⚠️, hallucinations 🗑️."
+        )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
         lay.addWidget(desc)
@@ -121,7 +125,8 @@ class HallucinationAuditDialog(QDialog):
         lay.addWidget(_QL("📊 Results:"))
         self.results_table = _QTW(0, 5)
         self.results_table.setHorizontalHeaderLabels(
-            ["Bullet", "Verdict", "Reason", "Overlap", "Similarity"])
+            ["Bullet", "Verdict", "Reason", "Overlap", "Similarity"]
+        )
         self.results_table.horizontalHeader().setSectionResizeMode(0, _QHV.Stretch)
         self.results_table.horizontalHeader().setSectionResizeMode(1, _QHV.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, _QHV.Stretch)
@@ -157,8 +162,7 @@ class HallucinationAuditDialog(QDialog):
         source = self.source_input.toPlainText().strip()
         bullets_text = self.bullets_input.toPlainText().strip()
         if not source or not bullets_text:
-            QMessageBox.warning(self, "Need input",
-                                "Please paste both source text and bullets.")
+            QMessageBox.warning(self, "Need input", "Please paste both source text and bullets.")
             return
         # Parse bullets
         bullets = []
@@ -196,7 +200,11 @@ class HallucinationAuditDialog(QDialog):
         flagged = 0
         dropped = 0
         for i, report in enumerate(reports):
-            bullet = report.get("bullet", "")[:80] + "..." if len(report.get("bullet", "")) > 80 else report.get("bullet", "")
+            bullet = (
+                report.get("bullet", "")[:80] + "..."
+                if len(report.get("bullet", "")) > 80
+                else report.get("bullet", "")
+            )
             action = report.get("action", "kept")
             if action == "dropped":
                 verdict = "🗑️ Dropped"
@@ -218,7 +226,8 @@ class HallucinationAuditDialog(QDialog):
 
         self.status_label.setText(
             f"✅ Audit complete: {grounded} grounded, {flagged} flagged, {dropped} dropped "
-            f"(of {len(reports)} total)")
+            f"(of {len(reports)} total)"
+        )
 
     def _copy_filtered(self):
         """Copy only grounded bullets to clipboard."""
@@ -230,6 +239,7 @@ class HallucinationAuditDialog(QDialog):
                 grounded.append(f"- {bullet_item.text()}")
         if grounded:
             from PySide6.QtWidgets import QApplication
+
             QApplication.clipboard().setText("\n".join(grounded))
             self.status_label.setText(f"📋 Copied {len(grounded)} grounded bullets to clipboard.")
         else:

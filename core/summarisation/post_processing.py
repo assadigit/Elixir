@@ -33,6 +33,7 @@ This cleanly separates the pure decision logic from the I/O side-effect.
 Characterization tests: ``tests/test_post_processing.py`` captures canned
 inputs → golden outputs for every function. Byte-for-byte stability gate.
 """
+
 from __future__ import annotations
 
 import re
@@ -72,6 +73,7 @@ def normalize_bullets(bullets: list[str]) -> list[str]:
     this is a mechanical move, not a logic change.
     """
     import re as _re
+
     normalized = []
     for bp in bullets:
         if not bp:
@@ -86,40 +88,89 @@ def normalize_bullets(bullets: list[str]) -> list[str]:
         # leading markers are found (max 3 passes — handles up to "- - - text").
         for _ in range(3):
             _prev = bp_str
-            bp_str = _re.sub(r'^[-–•*]\s+', '', bp_str)
-            bp_str = _re.sub(r'^\d+[.)]\s+', '', bp_str)
+            bp_str = _re.sub(r"^[-–•*]\s+", "", bp_str)
+            bp_str = _re.sub(r"^\d+[.)]\s+", "", bp_str)
             if bp_str == _prev:
                 break  # no change → all leading markers stripped
         # V18.2.7: Strip "KEY QUOTE:" prefix
-        bp_str = _re.sub(r'^-?\s*KEY QUOTE:\s*', '', bp_str, flags=_re.IGNORECASE)
+        bp_str = _re.sub(r"^-?\s*KEY QUOTE:\s*", "", bp_str, flags=_re.IGNORECASE)
         # V18.2.9: Strip section-heading artifacts that leak into bullets:
         # "*Analysis:**", "*Conclusion:**", "## Analysis", etc.
-        bp_str = _re.sub(r'^\*+(Analysis|Conclusion|Summary|Key Points?)\*+:?\s*$', '', bp_str, flags=_re.IGNORECASE)
-        bp_str = _re.sub(r'^#+\s*(Analysis|Conclusion|Summary|Key Points?)\s*$', '', bp_str, flags=_re.IGNORECASE)
+        bp_str = _re.sub(
+            r"^\*+(Analysis|Conclusion|Summary|Key Points?)\*+:?\s*$",
+            "",
+            bp_str,
+            flags=_re.IGNORECASE,
+        )
+        bp_str = _re.sub(
+            r"^#+\s*(Analysis|Conclusion|Summary|Key Points?)\s*$", "", bp_str, flags=_re.IGNORECASE
+        )
         # V18.2.9: Drop bullets that are just "con" or fragments < 15 chars
         # (these are truncation artifacts, not real bullets)
         if len(bp_str) < 15:
             continue
         # V18.2.7: If bullet starts with "**Author**:" (gap-fill format),
         # strip the bold markers but keep the author name
-        bp_str = _re.sub(r'^\*\*([A-Z][^*]{2,60})\*\*:\s*', r'\1: ', bp_str)
+        bp_str = _re.sub(r"^\*\*([A-Z][^*]{2,60})\*\*:\s*", r"\1: ", bp_str)
         # V18.2.7: Remove trailing "…" or "...." (truncation artifacts)
         # These indicate an incomplete bullet — but rather than dropping,
         # we clean them. The content is still valuable.
-        bp_str = _re.sub(r'\s*\.{2,}$', '.', bp_str)  # "…." → "."
-        bp_str = _re.sub(r'\s*…$', '.', bp_str)  # "…" → "."
+        bp_str = _re.sub(r"\s*\.{2,}$", ".", bp_str)  # "…." → "."
+        bp_str = _re.sub(r"\s*…$", ".", bp_str)  # "…" → "."
         # V18.2.9: Drop bullets that end mid-sentence (no terminal punctuation)
         # and are clearly truncated. A complete bullet must end with . ! ? or :
         # If it ends with a word + "were"/"and"/"the"/"of"/"to"/"in" etc., it's
         # truncated mid-sentence — drop it (better to omit than ship incomplete).
-        _trailing_words = ('were', 'and', 'the', 'of', 'to', 'in', 'for', 'with',
-                           'from', 'by', 'as', 'is', 'are', 'was', 'be', 'that',
-                           'this', 'which', 'who', 'whose', 'its', 'their', 'his',
-                           'her', 'our', 'your', 'an', 'a', 'or', 'but', 'not',
-                           'have', 'has', 'had', 'will', 'would', 'could', 'should',
-                           'may', 'might', 'can', 'shall', 'must', 'do', 'does', 'did')
+        _trailing_words = (
+            "were",
+            "and",
+            "the",
+            "of",
+            "to",
+            "in",
+            "for",
+            "with",
+            "from",
+            "by",
+            "as",
+            "is",
+            "are",
+            "was",
+            "be",
+            "that",
+            "this",
+            "which",
+            "who",
+            "whose",
+            "its",
+            "their",
+            "his",
+            "her",
+            "our",
+            "your",
+            "an",
+            "a",
+            "or",
+            "but",
+            "not",
+            "have",
+            "has",
+            "had",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "shall",
+            "must",
+            "do",
+            "does",
+            "did",
+        )
         _words = bp_str.split()
-        if _words and _words[-1].lower().rstrip('.,;:') in _trailing_words:
+        if _words and _words[-1].lower().rstrip(".,;:") in _trailing_words:
             # Truncated mid-sentence — skip this bullet
             continue
         bp_str = bp_str.strip()
@@ -138,23 +189,23 @@ def normalize_bullets(bullets: list[str]) -> list[str]:
 # quarantine-logging side-effect; this function does the pure classification.
 
 _THINKING_STARTS = re.compile(
-    r'^(?:\*?\*?)?(?:Analyze|Process|Draft|Check|Review|Refine|Identify|'
-    r'Extract|Read|Understand|Consider|Note|Step|Plan|Determine|Evaluate|'
-    r'Scan|Simplification|Translation|Final|Refinement|Polish|'
-    r'I\s+will|I\'ll|Let\'s|Let me|Looks good|Wait|Ready|Okay|'
-    r'One more|Now|First|Next|Then|After that|Moving on|'
-    r'Input|Output|Rules?|Instructions?|Task|Format|Language|Condition|'
-    r'Source Text|Target Concepts|Claims to verify|Summary to verify)\b',
-    re.IGNORECASE
+    r"^(?:\*?\*?)?(?:Analyze|Process|Draft|Check|Review|Refine|Identify|"
+    r"Extract|Read|Understand|Consider|Note|Step|Plan|Determine|Evaluate|"
+    r"Scan|Simplification|Translation|Final|Refinement|Polish|"
+    r"I\s+will|I\'ll|Let\'s|Let me|Looks good|Wait|Ready|Okay|"
+    r"One more|Now|First|Next|Then|After that|Moving on|"
+    r"Input|Output|Rules?|Instructions?|Task|Format|Language|Condition|"
+    r"Source Text|Target Concepts|Claims to verify|Summary to verify)\b",
+    re.IGNORECASE,
 )
-_BACKTICK_WORDS = re.compile(r'`[a-z_]+`')
+_BACKTICK_WORDS = re.compile(r"`[a-z_]+`")
 _INTERNAL_MARKERS = re.compile(
-    r'\*?\*?(?:Jargon|Context|Draft|Simplification|Translation|Refinement|Check|Original|Point)\s*[:\d]',
-    re.IGNORECASE
+    r"\*?\*?(?:Jargon|Context|Draft|Simplification|Translation|Refinement|Check|Original|Point)\s*[:\d]",
+    re.IGNORECASE,
 )
 _PROMPT_LEAKAGE = re.compile(
-    r'(?:Source Text|Target Concepts|Task|Format|Language|Condition|Rules|Instructions|Output|Input)\s*:',
-    re.IGNORECASE
+    r"(?:Source Text|Target Concepts|Task|Format|Language|Condition|Rules|Instructions|Output|Input)\s*:",
+    re.IGNORECASE,
 )
 # V18.12.2: Gap-fill prompt-leakage patterns. The V18.12.1 golden-master audit
 # found that the V17.8 batch gap-fill sometimes leaked the prompt template
@@ -169,34 +220,34 @@ _PROMPT_LEAKAGE = re.compile(
 # "Let me analyze", "The user wants me to"). The Tier 2 path now also filters
 # structurally, but these patterns catch any other gap-fill that leaks them.
 _GAP_FILL_PROMPT_LEAKAGE = re.compile(
-    r'(?:a single bullet point summarizing what the source sentence says about|'
-    r'the source sentence\s*:|'
-    r'What does this say about|'
-    r'summarizing what the source|'
-    r'what the source sentence says|'
-    r'me to write one bullet point|'
-    r'Wait\s*[-–]\s*the user asks|'
-    r'Let me analyze|'
-    r'The user wants me to|'
-    r'Write ONE bullet point|'
+    r"(?:a single bullet point summarizing what the source sentence says about|"
+    r"the source sentence\s*:|"
+    r"What does this say about|"
+    r"summarizing what the source|"
+    r"what the source sentence says|"
+    r"me to write one bullet point|"
+    r"Wait\s*[-–]\s*the user asks|"
+    r"Let me analyze|"
+    r"The user wants me to|"
+    r"Write ONE bullet point|"
     r'prefixed with ["\']- ["\']|'
     # V18.14.3: bullet expansion prompt-leakage patterns
-    r'extract all key concepts|'
-    r'through the source systematically|'
-    r'Wait,? let me re.?read|'
-    r'So make sure ALL of|'
-    r'Now let me organize|'
-    r'Named contributors in order|'
-    r'from what appears to be a|'
-    r'likely by \w+,? given the)',
-    re.IGNORECASE
+    r"extract all key concepts|"
+    r"through the source systematically|"
+    r"Wait,? let me re.?read|"
+    r"So make sure ALL of|"
+    r"Now let me organize|"
+    r"Named contributors in order|"
+    r"from what appears to be a|"
+    r"likely by \w+,? given the)",
+    re.IGNORECASE,
 )
 _META_COMMENTARY = re.compile(
-    r'(?:This captures|This is a complete sentence|not identical to any existing|'
-    r'covers point \d+|This bullet|This keypoint|This item|This statement|'
-    r'It is a complete sentence|This refers to the|This describes the|'
-    r'This captures the|not identical to any|This entry)',
-    re.IGNORECASE
+    r"(?:This captures|This is a complete sentence|not identical to any existing|"
+    r"covers point \d+|This bullet|This keypoint|This item|This statement|"
+    r"It is a complete sentence|This refers to the|This describes the|"
+    r"This captures the|not identical to any|This entry)",
+    re.IGNORECASE,
 )
 
 # V18.19.2.1 (Audit Fix 1): Word-count chain-of-thought leakage.
@@ -216,33 +267,24 @@ _META_COMMENTARY = re.compile(
 #   3. Trailing "Let me split:" continuation marker
 #   4. Self-correction in parens: "(Wait, ...)" or "(use X not Y)"
 _WORD_COUNT_COT = re.compile(
-    r'=\s*\d+\s*(?:words?|w|chars?)?\s*[-–—]\s*'
-    r'(?:TOO\s+LONG|borderline|too\s+long|too\s+short|long|short)\b',
-    re.IGNORECASE
+    r"=\s*\d+\s*(?:words?|w|chars?)?\s*[-–—]\s*"
+    r"(?:TOO\s+LONG|borderline|too\s+long|too\s+short|long|short)\b",
+    re.IGNORECASE,
 )
-_WORD_COUNT_CHECKMARK = re.compile(
-    r'=\s*\d+\s*✓',
-    re.IGNORECASE
-)
-_LET_ME_SPLIT = re.compile(
-    r'\bLet\s+me\s+split\b',
-    re.IGNORECASE
-)
-_SELF_CORRECTION_PAREN = re.compile(
-    r'\(\s*Wait\b',
-    re.IGNORECASE
-)
+_WORD_COUNT_CHECKMARK = re.compile(r"=\s*\d+\s*✓", re.IGNORECASE)
+_LET_ME_SPLIT = re.compile(r"\bLet\s+me\s+split\b", re.IGNORECASE)
+_SELF_CORRECTION_PAREN = re.compile(r"\(\s*Wait\b", re.IGNORECASE)
 # V18.19.2.1 (Audit Fix 1b): Self-instruction leakage.
 # Lines like "Using the chapter's own terminology", "Preserving all named
 # contributors", "Preserve technical terminology" — the model instructing
 # itself on strategy, not summary content. These appeared as standalone bullets
 # in the V18.19.2.0 output.
 _SELF_INSTRUCTION = re.compile(
-    r'^(?:Using\s+the\s+\S+\s+(?:own\s+)?terminology|'
-    r'Preserving\s+all\s+(?:named\s+)?(?:contributors|authors|terms)|'
-    r'Preserve\s+(?:technical|all)\s+terminology|'
-    r'Using\s+(?:the\s+)?(?:source|chapter)\'?s?\s+(?:own\s+)?(?:terminology|words|vocabulary))\b',
-    re.IGNORECASE
+    r"^(?:Using\s+the\s+\S+\s+(?:own\s+)?terminology|"
+    r"Preserving\s+all\s+(?:named\s+)?(?:contributors|authors|terms)|"
+    r"Preserve\s+(?:technical|all)\s+terminology|"
+    r"Using\s+(?:the\s+)?(?:source|chapter)\'?s?\s+(?:own\s+)?(?:terminology|words|vocabulary))\b",
+    re.IGNORECASE,
 )
 # V18.19.2.1 (Audit Fix 1c): Bare validation checkmark lines.
 # Lines like "AuthorI (1950) ✓" or "AuthorO (1958a) ✓" — the model's validation
@@ -251,9 +293,7 @@ _SELF_INSTRUCTION = re.compile(
 # in an isolated ✓ (possibly with a trailing parenthetical like "(mentioned in
 # context of resurrecting the term)"). NOTE: no \b before ✓ — ✓ (U+2713) is not a
 # word character so \b won't match before it; use (?:^|\s) lookahead instead.
-_BARE_CHECKMARK = re.compile(
-    r'✓\s*(?:\([^)]*\))?\s*$'
-)
+_BARE_CHECKMARK = re.compile(r"✓\s*(?:\([^)]*\))?\s*$")
 
 # V18.20.3.2 (audit N1 / P0-2): model SELF-TALK patterns (mid-bullet,
 # unanchored). The V18.20.3.1 real-rig run shipped two CoT planning lines as
@@ -270,27 +310,27 @@ _BARE_CHECKMARK = re.compile(
 # — self-talk quoting the source defeats the source-overlap rescue, so the
 # SAME regex list is exposed as SELF_TALK_PATTERNS for reuse.
 SELF_TALK_PATTERNS = re.compile(
-    r'(?:'
-    r'\binclude this\b|'
-    r'\bincluded this\b|'
-    r'\blet\s+me\s+add\b|'
-    r'\blet\s+me\s+include\b|'
-    r'\blet\s+me\s+check\b|'
-    r'\blet\s+me\s+verify\b|'
-    r'\blet\s+me\s+make\s+sure\b|'
-    r'\bbe\s+more\s+specific\b|'
-    r'\bthe\s+source\s+says\b|'
-    r'\bthe\s+text\s+says\b|'
-    r'\bthe\s+prompt\s+says\b|'
-    r'\blooking\s+at\s+the\s+text\b|'
-    r'\blooking\s+at\s+the\s+source\b|'
-    r'\bI\s+need\s+to\s+include\b|'
-    r'\bI\s+should\s+include\b|'
-    r'\bI\s+should\s+add\b|'
-    r'\bnote\s+to\s+self\b|'
-    r'\bWait,?\s+use\b|'
-    r'\bActually,?\s+looking\s+at\b'
-    r')',
+    r"(?:"
+    r"\binclude this\b|"
+    r"\bincluded this\b|"
+    r"\blet\s+me\s+add\b|"
+    r"\blet\s+me\s+include\b|"
+    r"\blet\s+me\s+check\b|"
+    r"\blet\s+me\s+verify\b|"
+    r"\blet\s+me\s+make\s+sure\b|"
+    r"\bbe\s+more\s+specific\b|"
+    r"\bthe\s+source\s+says\b|"
+    r"\bthe\s+text\s+says\b|"
+    r"\bthe\s+prompt\s+says\b|"
+    r"\blooking\s+at\s+the\s+text\b|"
+    r"\blooking\s+at\s+the\s+source\b|"
+    r"\bI\s+need\s+to\s+include\b|"
+    r"\bI\s+should\s+include\b|"
+    r"\bI\s+should\s+add\b|"
+    r"\bnote\s+to\s+self\b|"
+    r"\bWait,?\s+use\b|"
+    r"\bActually,?\s+looking\s+at\b"
+    r")",
     re.IGNORECASE,
 )
 
@@ -316,13 +356,13 @@ SELF_TALK_PATTERNS = re.compile(
 # always-drop (structural self-reference); the verbless-label class is
 # enforced at ship time only (see is_label_stub).
 _CHECKLIST_STUB_RE = re.compile(
-    r'^\s*\S[^\n]{0,80}?\s[-\u2013\u2014]\s*covered\s*$',
+    r"^\s*\S[^\n]{0,80}?\s[-\u2013\u2014]\s*covered\s*$",
     re.IGNORECASE,
 )
 _SUMMARY_SELF_ASSESSMENT_RE = re.compile(
-    r'\bthe\s+summary\b[^\n]{0,80}?\b(?:omits|misses|omitted|missed|'
-    r'does\s+not\s+cover|does\s+not\s+mention|fails\s+to\s+cover|'
-    r'leaves\s+out)\b',
+    r"\bthe\s+summary\b[^\n]{0,80}?\b(?:omits|misses|omitted|missed|"
+    r"does\s+not\s+cover|does\s+not\s+mention|fails\s+to\s+cover|"
+    r"leaves\s+out)\b",
     re.IGNORECASE,
 )
 # V0.05 (rig audit F2 — P0): STRUCTURAL self-assessment detection. The
@@ -342,25 +382,24 @@ _SUMMARY_SELF_ASSESSMENT_RE = re.compile(
 #       capture|mention|cover|include/does not appear/is not mentioned/
 #       must identify/needs to/neglects/overlooks/does not appear).
 _COVERAGE_VERB = (
-    r'(?:omits|omitted|omitting|misses|missed|missing|lacks|lacked|'
-    r'lacking|flattens|flattened|neglects|neglected|overlooks|overlooked|'
-    r'fails\s+to\s+(?:capture|mention|cover|include|identify|reflect|'
-    r'convey|note)|does\s+not\s+(?:appear|mention|cover|include|name|'
-    r'identify|capture|convey|note)|is\s+not\s+(?:mentioned|covered|'
-    r'included|named)|must\s+(?:identify|include|mention|name|capture)|'
-    r'needs\s+to\s+(?:identify|include|mention|name|capture))'
+    r"(?:omits|omitted|omitting|misses|missed|missing|lacks|lacked|"
+    r"lacking|flattens|flattened|neglects|neglected|overlooks|overlooked|"
+    r"fails\s+to\s+(?:capture|mention|cover|include|identify|reflect|"
+    r"convey|note)|does\s+not\s+(?:appear|mention|cover|include|name|"
+    r"identify|capture|convey|note)|is\s+not\s+(?:mentioned|covered|"
+    r"included|named)|must\s+(?:identify|include|mention|name|capture)|"
+    r"needs\s+to\s+(?:identify|include|mention|name|capture))"
 )
 _SELF_ASSESSMENT_HEADLINE_RE = re.compile(
-    r'^\s*(?:missing|omitted|absent|uncovered|lacking)'
-    r'(?:\s+(?:the|a|an|this|that|its|their|specific|explicit|distinct|'
-    r'exact|any|several|certain)\b|[^.!?\n]{0,90}:)',
+    r"^\s*(?:missing|omitted|absent|uncovered|lacking)"
+    r"(?:\s+(?:the|a|an|this|that|its|their|specific|explicit|distinct|"
+    r"exact|any|several|certain)\b|[^.!?\n]{0,90}:)",
     re.IGNORECASE,
 )
 _SELF_ASSESSMENT_SUBJECT_RE = re.compile(
-    r'(?:^|[.!?\n]\s*)'
-    r'(?:it|the\s+(?:summary|thorough\s+summary|executive\s+summary|text\s+above|gap)|'
-    r'this\s+summary)\s+'
-    + _COVERAGE_VERB,
+    r"(?:^|[.!?\n]\s*)"
+    r"(?:it|the\s+(?:summary|thorough\s+summary|executive\s+summary|text\s+above|gap)|"
+    r"this\s+summary)\s+" + _COVERAGE_VERB,
     re.IGNORECASE,
 )
 # "… does not appear in the summary text" — the verb targets the summary
@@ -368,13 +407,13 @@ _SELF_ASSESSMENT_SUBJECT_RE = re.compile(
 # author is identified as 'By Neal Ford' but this name does not appear in
 # the summary text").
 _SELF_ASSESSMENT_IN_SUMMARY_RE = re.compile(
-    r'(?:does\s+not\s+appear|is\s+not\s+mentioned|is\s+absent)\s+in\s+the\s+summary',
+    r"(?:does\s+not\s+appear|is\s+not\s+mentioned|is\s+absent)\s+in\s+the\s+summary",
     re.IGNORECASE,
 )
 # "Author attribution:"-style critique labels — the scholar prompt's
 # checklist vocabulary used as a bullet headline.
 _SELF_ASSESSMENT_LABEL_RE = re.compile(
-    r'^\s*(?:author\s+attribution|attribution)\s*[:—-]',
+    r"^\s*(?:author\s+attribution|attribution)\s*[:—-]",
     re.IGNORECASE,
 )
 # V0.06 (rig audit F5 — P0): THREE more STRUCTURAL forms the V0.05 rig
@@ -400,26 +439,26 @@ _SELF_ASSESSMENT_LABEL_RE = re.compile(
 #       "the summary"/"the detailed examples"/"the takeaways" is a claim
 #       about the SUMMARY ARTIFACT, not about the source's content.
 _SELF_ASSESSMENT_TRAILING_RE = re.compile(
-    r'[^.!?\n]{0,120}?\b(?:omitted|missing|absent|uncovered|lacking|'
-    r'not\s+fully\s+enumerated|not\s+enumerated|left\s+out|glossed\s+over|'
-    r'flattened|reduced\s+to)\s*'
-    r'(?:from\s+(?:the\s+)?(?:detailed\s+)?(?:summary|examples|takeaways|text)\s*)?'
+    r"[^.!?\n]{0,120}?\b(?:omitted|missing|absent|uncovered|lacking|"
+    r"not\s+fully\s+enumerated|not\s+enumerated|left\s+out|glossed\s+over|"
+    r"flattened|reduced\s+to)\s*"
+    r"(?:from\s+(?:the\s+)?(?:detailed\s+)?(?:summary|examples|takeaways|text)\s*)?"
     r':\s*["\u201c]',
     re.IGNORECASE,
 )
 _SELF_ASSESSMENT_ADVICE_RE = re.compile(
-    r'\b(?:the|this)\s+summary\s+(?:should|must|needs\s+to|could|would)\b',
+    r"\b(?:the|this)\s+summary\s+(?:should|must|needs\s+to|could|would)\b",
     re.IGNORECASE,
 )
 _SELF_ASSESSMENT_VS_ARTIFACT_RE = re.compile(
-    r'\b(?:omitted|missing|absent|uncovered|not\s+fully\s+enumerated|'
-    r'not\s+enumerated|not\s+fully\s+listed)\b[^.!?\n]{0,80}?'
-    r'\b(?:in|from)\s+the\s+(?:summary|detailed\s+summary|detailed\s+examples|'
-    r'takeaways|final\s+summary)\b',
+    r"\b(?:omitted|missing|absent|uncovered|not\s+fully\s+enumerated|"
+    r"not\s+enumerated|not\s+fully\s+listed)\b[^.!?\n]{0,80}?"
+    r"\b(?:in|from)\s+the\s+(?:summary|detailed\s+summary|detailed\s+examples|"
+    r"takeaways|final\s+summary)\b",
     re.IGNORECASE,
 )
 _TRUNCATION_MARKER_RE = re.compile(
-    r'\(\s*text\s+cuts\s+off\s*\)|\[\s*truncated\s*\]|\{\s*truncated\s*\}',
+    r"\(\s*text\s+cuts\s+off\s*\)|\[\s*truncated\s*\]|\{\s*truncated\s*\}",
     re.IGNORECASE,
 )
 
@@ -546,7 +585,7 @@ def classify_scar(bullet: str) -> str | None:
 # (run_post_checks) — a bullet with no predicate and <8 content words
 # carries no claim at all.
 _CITATION_TOKEN_RE = re.compile(
-    r'[A-Z][a-zA-Z\u2019\-]+\s*\((?:\d{4}[a-z]?(?:\s*[,;]\s*\d{4}[a-z]?)*)\)'
+    r"[A-Z][a-zA-Z\u2019\-]+\s*\((?:\d{4}[a-z]?(?:\s*[,;]\s*\d{4}[a-z]?)*)\)"
 )
 # Light verb heuristic (keeps post_processing dependency-free): a word that
 # IS a common verb form or ends with a verb suffix. Anything richer belongs
@@ -558,37 +597,37 @@ _CITATION_TOKEN_RE = re.compile(
 # (introduced, formulated, distinguished, contributed, described, …) while
 # the explicit list covers the irregulars and present-tense forms.
 _LIGHT_VERB_RE = re.compile(
-    r'\b(?:is|are|was|were|be|been|being|has|have|had|does|did|do|will|would|'
-    r'can|could|should|must|may|might|makes?|made|gives?|gave|takes?|took|'
-    r'provides?|provided|offers?|offered|forms?|formed|holds?|held|sees?|saw|'
-    r'views?|viewed|argues?|argued|notes?|noted|adds?|added|describes?|'
-    r'described|defines?|defined|proposes?|proposed|suggests?|suggested|'
-    r'emphasizes?|emphasized|contributes?|contributed|identifies?|identified|'
-    r'introduces?|introduced|distinguishes?|distinguished|develops?|developed|'
-    r'examines?|examined|explores?|explored|traces?|traced|coined|termed|'
-    r'observes?|observed|maintains?|maintained|asserts?|asserted|'
-    r'advances?|advanced|highlights?|highlighted|clarifies?|clarified|'
-    r'recognizes?|recognized|applies?|applied|extends?|extended|'
-    r'considers?|considered|discusses?|discussed|demonstrates?|'
-    r'demonstrated|establishes?|established|creates?|created|builds?|built|'
-    r'lays?|laid|finds?|found|shows?|showed|shown|wrote|writes?|'
+    r"\b(?:is|are|was|were|be|been|being|has|have|had|does|did|do|will|would|"
+    r"can|could|should|must|may|might|makes?|made|gives?|gave|takes?|took|"
+    r"provides?|provided|offers?|offered|forms?|formed|holds?|held|sees?|saw|"
+    r"views?|viewed|argues?|argued|notes?|noted|adds?|added|describes?|"
+    r"described|defines?|defined|proposes?|proposed|suggests?|suggested|"
+    r"emphasizes?|emphasized|contributes?|contributed|identifies?|identified|"
+    r"introduces?|introduced|distinguishes?|distinguished|develops?|developed|"
+    r"examines?|examined|explores?|explored|traces?|traced|coined|termed|"
+    r"observes?|observed|maintains?|maintained|asserts?|asserted|"
+    r"advances?|advanced|highlights?|highlighted|clarifies?|clarified|"
+    r"recognizes?|recognized|applies?|applied|extends?|extended|"
+    r"considers?|considered|discusses?|discussed|demonstrates?|"
+    r"demonstrated|establishes?|established|creates?|created|builds?|built|"
+    r"lays?|laid|finds?|found|shows?|showed|shown|wrote|writes?|"
     # V18.20.3.4 (RC-1): common present-tense academic verbs — the
     # label-stub detector (<8 words AND no verb) was false-positiving on
     # legitimate short sentences whose verb is 3rd-person present
     # ("The process emerges from the analysis."). Base forms +
     # 3rd-person -s forms.
-    r'emerges?|arises?|occurs?|reflects?|captures?|marks?|signals?|'
-    r'undergoes?|entails?|constitutes?|represents?|remains?|becomes?|'
-    r'involves?|includes?|encompasses?|concerns?|focus(?:es)?|centers?|'
-    r'stems?|derives?|originates?|follows?|precedes?|accompanies?|'
-    r'parallels?|contrasts?|differs?|resembles?|replaces?|produces?|'
-    r'generates?|yields?|results?|leads?|implies?|indicates?|reveals?|'
-    r'illustrates?|exemplifies?|embodies?|expresses?|articulates?|'
-    r'frames?|positions?|casts?|treats?|regards?|conceives?|imagines?|'
-    r'envisions?|characterizes?|conceptualizes?|postulates?|assumes?|'
-    r'links?|connects?|relates?|associates?|underpins?|grounds?|'
-    r'shapes?|molds?|drives?|fuels?|anchors?|consolidates?|integrates?|'
-    r'[a-z]{5,}ed)\b',
+    r"emerges?|arises?|occurs?|reflects?|captures?|marks?|signals?|"
+    r"undergoes?|entails?|constitutes?|represents?|remains?|becomes?|"
+    r"involves?|includes?|encompasses?|concerns?|focus(?:es)?|centers?|"
+    r"stems?|derives?|originates?|follows?|precedes?|accompanies?|"
+    r"parallels?|contrasts?|differs?|resembles?|replaces?|produces?|"
+    r"generates?|yields?|results?|leads?|implies?|indicates?|reveals?|"
+    r"illustrates?|exemplifies?|embodies?|expresses?|articulates?|"
+    r"frames?|positions?|casts?|treats?|regards?|conceives?|imagines?|"
+    r"envisions?|characterizes?|conceptualizes?|postulates?|assumes?|"
+    r"links?|connects?|relates?|associates?|underpins?|grounds?|"
+    r"shapes?|molds?|drives?|fuels?|anchors?|consolidates?|integrates?|"
+    r"[a-z]{5,}ed)\b",
     re.IGNORECASE,
 )
 
@@ -622,10 +661,10 @@ def is_citation_only_fragment(bullet: str) -> bool:
     if _LIGHT_VERB_RE.search(text):
         return False  # has a predicate — it's a claim, keep it
     # Strip citation tokens, then count remaining content words.
-    stripped = _CITATION_TOKEN_RE.sub(' ', text)
+    stripped = _CITATION_TOKEN_RE.sub(" ", text)
     # Also strip remaining bare parentheticals (e.g. "(a foreign term, a translation)").
-    stripped = re.sub(r'\([^)]{0,60}\)', ' ', stripped)
-    stripped = re.sub(r'[,;:.\-–—]', ' ', stripped)
+    stripped = re.sub(r"\([^)]{0,60}\)", " ", stripped)
+    stripped = re.sub(r"[,;:.\-–—]", " ", stripped)
     words = [w for w in stripped.split() if len(w) > 2]
     if len(words) >= 8:
         return False
@@ -634,8 +673,9 @@ def is_citation_only_fragment(bullet: str) -> bool:
     # this, every legitimate label-style bullet ("AuthorI's stages of
     # psychosocial development") would drop.
     has_citation = bool(_CITATION_TOKEN_RE.search(text))
-    has_parenthetical = bool(re.search(r'\([^)]{0,60}\)', text))
+    has_parenthetical = bool(re.search(r"\([^)]{0,60}\)", text))
     return has_citation or has_parenthetical
+
 
 _NARRATIVE_PATTERNS = [
     # V18.20.3.9 (Phase 2 / W3 / residuals sweep): structural replacement for
@@ -670,12 +710,26 @@ _NARRATIVE_PATTERNS = [
         r"(?:to|at|in|into|onto)?\s*"
         r"(?:a|an|the|his|her|their|its|some)\b"
     ),
-    re.compile(r"^For\s+[A-Z]\w+'s\s+(?:spy\s+)?(?:story|scenario|example|case|mission)", re.IGNORECASE),
-    re.compile(r'^(?:A|An|The)\s+(?:case\s+study|real\s+example|story|anecdote)\s+(?:involving|about|where|demonstrates)', re.IGNORECASE),
-    re.compile(r'^(?:In\s+a|In\s+the)\s+(?:licens|deal|scenario|situation|story|case|example|meeting)', re.IGNORECASE),
-    re.compile(r'(?:as\s+seen\s+in\s+[A-Z]\w+|like\s+the\s+character\s+[A-Z]\w+|in\s+the\s+chapter\'s\s+narrative)', re.IGNORECASE),
-    re.compile(r'(?:arrives at a party|goes to a|meets [A-Z]\w+ at|tells the story of|recounts how|describes how [A-Z]\w+ (?:went|arrived|met)|succeeded with|struggled with)', re.IGNORECASE),
-    re.compile(r'\(and\s+by\s+extension', re.IGNORECASE),
+    re.compile(
+        r"^For\s+[A-Z]\w+'s\s+(?:spy\s+)?(?:story|scenario|example|case|mission)", re.IGNORECASE
+    ),
+    re.compile(
+        r"^(?:A|An|The)\s+(?:case\s+study|real\s+example|story|anecdote)\s+(?:involving|about|where|demonstrates)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:In\s+a|In\s+the)\s+(?:licens|deal|scenario|situation|story|case|example|meeting)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:as\s+seen\s+in\s+[A-Z]\w+|like\s+the\s+character\s+[A-Z]\w+|in\s+the\s+chapter\'s\s+narrative)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:arrives at a party|goes to a|meets [A-Z]\w+ at|tells the story of|recounts how|describes how [A-Z]\w+ (?:went|arrived|met)|succeeded with|struggled with)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\(and\s+by\s+extension", re.IGNORECASE),
     re.compile(r"in\s+the\s+chapter'?s\s+narrative", re.IGNORECASE),
 ]
 
@@ -686,18 +740,18 @@ _NARRATIVE_PATTERNS = [
 # deontic markers, reportative frames, and second-person directives — they
 # rescue narrative bullets in ANY book without keying on any book's cast.
 _CONCEPT_INDICATORS = re.compile(
-    r'(?:is defined as|refers to|means|involves|requires|'
-    r'the concept of|the principle of|the technique of|the strategy of|'
-    r'should|must|need to|important to|essential to|crucial to|'
-    r'according to|research shows|statistics indicate|studies show|'
-    r'the goal of|the purpose of|the key to|the difference between|'
-    r'this (?:technique|method|approach|concept|principle|strategy)|'
-    r'by (?:matching|mirroring|observing|asking|using|creating|establishing|developing)|'
-    r'you (?:should|must|need to|can|could|should)|'
-    r'(?:effective|powerful|essential|important) (?:way|method|technique|strategy|approach)|'
-    r'(?:involves|requires|consists of|depends on|relies on)|'
-    r'(?:the (?:first|second|third|key|main|primary|best) (?:step|way|method|approach|rule|principle)))',
-    re.IGNORECASE
+    r"(?:is defined as|refers to|means|involves|requires|"
+    r"the concept of|the principle of|the technique of|the strategy of|"
+    r"should|must|need to|important to|essential to|crucial to|"
+    r"according to|research shows|statistics indicate|studies show|"
+    r"the goal of|the purpose of|the key to|the difference between|"
+    r"this (?:technique|method|approach|concept|principle|strategy)|"
+    r"by (?:matching|mirroring|observing|asking|using|creating|establishing|developing)|"
+    r"you (?:should|must|need to|can|could|should)|"
+    r"(?:effective|powerful|essential|important) (?:way|method|technique|strategy|approach)|"
+    r"(?:involves|requires|consists of|depends on|relies on)|"
+    r"(?:the (?:first|second|third|key|main|primary|best) (?:step|way|method|approach|rule|principle)))",
+    re.IGNORECASE,
 )
 
 
@@ -738,27 +792,99 @@ _CONCEPT_INDICATORS = re.compile(
 # reveals the truncation. Deliberately EXCLUDES words that can end
 # elliptical-but-complete sentences ("so", "not", "no", "thus", "hence",
 # "however") to avoid false positives.
-_DANGLING_TAIL_WORDS = frozenset({
-    # coordinating conjunctions
-    "and", "or", "but", "nor", "yet",
-    # relativizers / subordinators
-    "that", "which", "who", "whom", "whose", "when", "where", "while",
-    "because", "since", "although", "though", "if", "unless", "than",
-    # prepositions
-    "of", "in", "to", "with", "for", "as", "by", "from", "into", "onto",
-    "at", "on", "upon", "about", "across", "against", "among", "between",
-    "during", "through", "toward", "towards", "within", "without", "via",
-    "per", "over", "under",
-    # articles / determiners
-    "the", "a", "an", "this", "these", "those", "such",
-    # connectives that never end a sentence
-    "also", "then", "both", "either", "neither", "including",
-    "especially", "particularly",
-    # copulas / auxiliaries
-    "is", "are", "was", "were", "be", "been", "being", "has", "have",
-    "had", "will", "would", "can", "could", "should", "must", "may",
-    "might", "does", "did",
-})
+_DANGLING_TAIL_WORDS = frozenset(
+    {
+        # coordinating conjunctions
+        "and",
+        "or",
+        "but",
+        "nor",
+        "yet",
+        # relativizers / subordinators
+        "that",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "when",
+        "where",
+        "while",
+        "because",
+        "since",
+        "although",
+        "though",
+        "if",
+        "unless",
+        "than",
+        # prepositions
+        "of",
+        "in",
+        "to",
+        "with",
+        "for",
+        "as",
+        "by",
+        "from",
+        "into",
+        "onto",
+        "at",
+        "on",
+        "upon",
+        "about",
+        "across",
+        "against",
+        "among",
+        "between",
+        "during",
+        "through",
+        "toward",
+        "towards",
+        "within",
+        "without",
+        "via",
+        "per",
+        "over",
+        "under",
+        # articles / determiners
+        "the",
+        "a",
+        "an",
+        "this",
+        "these",
+        "those",
+        "such",
+        # connectives that never end a sentence
+        "also",
+        "then",
+        "both",
+        "either",
+        "neither",
+        "including",
+        "especially",
+        "particularly",
+        # copulas / auxiliaries
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "has",
+        "have",
+        "had",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "must",
+        "may",
+        "might",
+        "does",
+        "did",
+    }
+)
 
 # Trailing characters stripped before reading the final word: terminal
 # punctuation + closing quotes/brackets/ellipsis (both ASCII and curly).
@@ -823,11 +949,11 @@ def is_truncated(bullet: str) -> bool:
     # V18.15.4.3: count ASCII " AND curly U+201C/U+201D (PDFs/typesetters
     # emit curly quotes; the pre-V18.15.4.3 code only counted ASCII " and
     # silently missed mid-curly-quote truncation).
-    _quote_count = stripped.count('"') + stripped.count('\u201c') + stripped.count('\u201d')
+    _quote_count = stripped.count('"') + stripped.count("\u201c") + stripped.count("\u201d")
     if _quote_count % 2 != 0:
         return True
     # Unmatched parentheses (any length — catches "AuthorD (198").
-    if stripped.count('(') != stripped.count(')'):
+    if stripped.count("(") != stripped.count(")"):
         return True
     # V18.20.3.0 (Audit FLAG-02): dangling function-word tail — ANY length.
     # "…, and." has balanced quotes/parens AND terminal punctuation, so every
@@ -846,7 +972,7 @@ def is_truncated(bullet: str) -> bool:
     # V18.15.4.3: include curly closing quote U+201D as a valid terminal char
     # (a bullet ending in a closing curly quote is NOT truncated).
     last = stripped[-1]
-    if last not in '.!?:)\'"\u201d\u2019':
+    if last not in ".!?:)'\"\u201d\u2019":
         return True
     return False
 
@@ -890,29 +1016,58 @@ def classify_bullets(
 
         # ── ALWAYS-ACTIVE thinking/prompt-leakage checks ─────────────
         if _THINKING_STARTS.match(bp_str):
-            drops.append((bp_str, "thinking_filter.thinking_process",
-                          "Bullet starts with a thinking-process verb "
-                          "(Analyze/Process/Draft/Step/Now/…).", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.thinking_process",
+                    "Bullet starts with a thinking-process verb "
+                    "(Analyze/Process/Draft/Step/Now/…).",
+                    True,
+                )
+            )
             continue
         if _BACKTICK_WORDS.search(bp_str):
-            drops.append((bp_str, "thinking_filter.backtick_words",
-                          "Bullet contains backtick-quoted internal markers.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.backtick_words",
+                    "Bullet contains backtick-quoted internal markers.",
+                    True,
+                )
+            )
             continue
         if _INTERNAL_MARKERS.search(bp_str):
-            drops.append((bp_str, "thinking_filter.internal_markers",
-                          "Bullet contains internal-section markers "
-                          "(Jargon/Context/Draft/Refinement/…).", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.internal_markers",
+                    "Bullet contains internal-section markers (Jargon/Context/Draft/Refinement/…).",
+                    True,
+                )
+            )
             continue
         if _PROMPT_LEAKAGE.search(bp_str):
-            drops.append((bp_str, "thinking_filter.prompt_leakage",
-                          "Bullet leaks the prompt template.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.prompt_leakage",
+                    "Bullet leaks the prompt template.",
+                    True,
+                )
+            )
             continue
         # V18.12.2: Gap-fill prompt-leakage (defense-in-depth). Catches the
         # V17.8 batch gap-fill template phrases that slip past _PROMPT_LEAKAGE.
         if _GAP_FILL_PROMPT_LEAKAGE.search(bp_str):
-            drops.append((bp_str, "thinking_filter.gap_fill_prompt_leakage",
-                          "Bullet leaks the gap-fill prompt template "
-                          "(source sentence / what does this say about).", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.gap_fill_prompt_leakage",
+                    "Bullet leaks the gap-fill prompt template "
+                    "(source sentence / what does this say about).",
+                    True,
+                )
+            )
             continue
 
         # V18.19.2.1 (Audit Fix 1): Word-count CoT + self-instruction +
@@ -921,38 +1076,74 @@ def classify_bullets(
         # the existing patterns missed. All three are structural contamination
         # (always_drop=True): they are never legitimate summary content.
         if _WORD_COUNT_COT.search(bp_str):
-            drops.append((bp_str, "thinking_filter.word_count_cot",
-                          "Bullet ends with a word-count annotation "
-                          "(= N words - TOO LONG/borderline) — model's "
-                          "internal split-decision reasoning.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.word_count_cot",
+                    "Bullet ends with a word-count annotation "
+                    "(= N words - TOO LONG/borderline) — model's "
+                    "internal split-decision reasoning.",
+                    True,
+                )
+            )
             continue
         if _WORD_COUNT_CHECKMARK.search(bp_str):
-            drops.append((bp_str, "thinking_filter.word_count_checkmark",
-                          "Bullet ends with '= N ✓' word-count + validation "
-                          "annotation — model's internal verification reasoning.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.word_count_checkmark",
+                    "Bullet ends with '= N ✓' word-count + validation "
+                    "annotation — model's internal verification reasoning.",
+                    True,
+                )
+            )
             continue
         if _LET_ME_SPLIT.search(bp_str):
-            drops.append((bp_str, "thinking_filter.let_me_split",
-                          "Bullet contains 'Let me split' — model's internal "
-                          "continuation marker, not summary content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.let_me_split",
+                    "Bullet contains 'Let me split' — model's internal "
+                    "continuation marker, not summary content.",
+                    True,
+                )
+            )
             continue
         if _SELF_CORRECTION_PAREN.search(bp_str):
-            drops.append((bp_str, "thinking_filter.self_correction",
-                          "Bullet contains a '(Wait, ...)' self-correction "
-                          "parenthetical — model's internal editing reasoning.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.self_correction",
+                    "Bullet contains a '(Wait, ...)' self-correction "
+                    "parenthetical — model's internal editing reasoning.",
+                    True,
+                )
+            )
             continue
         if _SELF_INSTRUCTION.match(bp_str):
-            drops.append((bp_str, "thinking_filter.self_instruction",
-                          "Bullet is a self-instruction (Using the chapter's "
-                          "terminology / Preserving all contributors / Preserve "
-                          "technical terminology) — model's strategy notes, "
-                          "not summary content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.self_instruction",
+                    "Bullet is a self-instruction (Using the chapter's "
+                    "terminology / Preserving all contributors / Preserve "
+                    "technical terminology) — model's strategy notes, "
+                    "not summary content.",
+                    True,
+                )
+            )
             continue
         if _BARE_CHECKMARK.search(bp_str):
-            drops.append((bp_str, "thinking_filter.bare_checkmark",
-                          "Bullet ends in an isolated ✓ validation checkmark "
-                          "— model's author-inclusion checklist, not summary "
-                          "content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.bare_checkmark",
+                    "Bullet ends in an isolated ✓ validation checkmark "
+                    "— model's author-inclusion checklist, not summary "
+                    "content.",
+                    True,
+                )
+            )
             continue
 
         # V18.20.3.2 (audit N1 / P0-2): model SELF-TALK — mid-bullet CoT
@@ -963,11 +1154,17 @@ def classify_bullets(
         # with an author-year token. Always-drop: a bullet discussing the
         # summary-writing process is never summary content.
         if SELF_TALK_PATTERNS.search(bp_str):
-            drops.append((bp_str, "thinking_filter.self_talk",
-                          "Bullet contains model self-talk (include this! / "
-                          "let me add / be more specific / the source says / "
-                          "looking at the text) — CoT planning note, not "
-                          "summary content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.self_talk",
+                    "Bullet contains model self-talk (include this! / "
+                    "let me add / be more specific / the source says / "
+                    "looking at the text) — CoT planning note, not "
+                    "summary content.",
+                    True,
+                )
+            )
             continue
 
         # V18.20.3.4 (RC-1 layer 2, audit v182033): process-scar classes at
@@ -980,28 +1177,51 @@ def classify_bullets(
         # process is never summary content. (The verbless-label class is
         # ship-time-only — see run_post_checks.)
         if is_checklist_stub(bp_str):
-            drops.append((bp_str, "thinking_filter.checklist_stub",
-                          "Gap-fill checklist stub ('X - covered') — the "
-                          "model ticking off its own coverage list, not "
-                          "summary content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.checklist_stub",
+                    "Gap-fill checklist stub ('X - covered') — the "
+                    "model ticking off its own coverage list, not "
+                    "summary content.",
+                    True,
+                )
+            )
             continue
         if is_summary_self_assessment(bp_str):
-            drops.append((bp_str, "thinking_filter.summary_self_assessment",
-                          "Bullet comments on the summary's own coverage "
-                          "('a topic the summary omits') — self-assessment, "
-                          "incoherent inside the summary it describes.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.summary_self_assessment",
+                    "Bullet comments on the summary's own coverage "
+                    "('a topic the summary omits') — self-assessment, "
+                    "incoherent inside the summary it describes.",
+                    True,
+                )
+            )
             continue
         if has_truncation_marker(bp_str):
-            drops.append((bp_str, "thinking_filter.truncation_marker",
-                          "Bullet carries an explicit truncation marker "
-                          "('(text cuts off)') — the model's annotation of a "
-                          "cut, not summary content.", True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.truncation_marker",
+                    "Bullet carries an explicit truncation marker "
+                    "('(text cuts off)') — the model's annotation of a "
+                    "cut, not summary content.",
+                    True,
+                )
+            )
             continue
         if ends_in_bare_ellipsis(bp_str):
-            drops.append((bp_str, "thinking_filter.bare_ellipsis",
-                          "Bullet ends in a bare ellipsis — mid-generation "
-                          "cut; the claim is incomplete and unverifiable.",
-                          True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.bare_ellipsis",
+                    "Bullet ends in a bare ellipsis — mid-generation "
+                    "cut; the claim is incomplete and unverifiable.",
+                    True,
+                )
+            )
             continue
 
         # V18.20.3.2 (audit N5 / P1-c): citation-only fragment — no verb,
@@ -1010,27 +1230,50 @@ def classify_bullets(
         # These carry no claim and previously shipped as the FIRST bullets
         # of the Key Takeaways. Always-drop.
         if is_citation_only_fragment(bp_str):
-            drops.append((bp_str, "thinking_filter.citation_only",
-                          "Citation-only fragment (no predicate, <8 content "
-                          "words after citation strip) — carries no claim.",
-                          True))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.citation_only",
+                    "Citation-only fragment (no predicate, <8 content "
+                    "words after citation strip) — carries no claim.",
+                    True,
+                )
+            )
             continue
 
         # ── Conservative-gated checks (always_drop=False) ────────────
         if _META_COMMENTARY.search(bp_str):
-            drops.append((bp_str, "thinking_filter.meta_commentary",
-                          "Model commenting on the bullet itself.", False))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.meta_commentary",
+                    "Model commenting on the bullet itself.",
+                    False,
+                )
+            )
             continue
         if len(bp_str) > 500:
-            drops.append((bp_str, "thinking_filter.too_long_500chars",
-                          f"Bullet is {len(bp_str)} chars (>500).", False))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.too_long_500chars",
+                    f"Bullet is {len(bp_str)} chars (>500).",
+                    False,
+                )
+            )
             continue
 
         is_narrative = any(p.search(bp_str) for p in _NARRATIVE_PATTERNS)
         has_concept = bool(_CONCEPT_INDICATORS.search(bp_str))
         if is_narrative and not has_concept:
-            drops.append((bp_str, "thinking_filter.narrative_no_concept",
-                          "Narrative/story bullet with no concept indicator.", False))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.narrative_no_concept",
+                    "Narrative/story bullet with no concept indicator.",
+                    False,
+                )
+            )
             continue
 
         # Strip thinking + markup from the bullet itself
@@ -1038,9 +1281,9 @@ def classify_bullets(
         bp_str = strip_markup_tags(bp_str)
 
         # Strip orphaned bold-label prefixes
-        bp_str = re.sub(r'^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\*\*:\s*', '', bp_str)
-        bp_str = re.sub(r'^[^.]*?\*\*:\s*', '', bp_str, count=1)
-        bp_str = re.sub(r'^\*\*', '', bp_str)
+        bp_str = re.sub(r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\*\*:\s*", "", bp_str)
+        bp_str = re.sub(r"^[^.]*?\*\*:\s*", "", bp_str, count=1)
+        bp_str = re.sub(r"^\*\*", "", bp_str)
 
         # V18.15.3.1: Strip leading bullet markers ("- ", "* ", "• ") that
         # survive from gap-fill output. Gap-fill bullets arrive as "- Name: text"
@@ -1052,7 +1295,7 @@ def classify_bullets(
         # handle "- - Name" (double-dash from the prompt + model).
         for _ in range(3):
             _prev_marker = bp_str
-            bp_str = re.sub(r'^[-–•*]\s+', '', bp_str)
+            bp_str = re.sub(r"^[-–•*]\s+", "", bp_str)
             if bp_str == _prev_marker:
                 break
 
@@ -1064,29 +1307,41 @@ def classify_bullets(
         # coverage"). The AuthorO bullet from the V18.15.3.0 audit is the
         # regression case: ended mid-quote at "I am different" (unmatched ").
         if is_truncated(bp_str):
-            drops.append((bp_str, "thinking_filter.truncated",
-                          "Bullet appears truncated (unmatched quote/paren or "
-                          "no terminal punctuation) — likely hit max_tokens "
-                          "ceiling. Gap-fill will re-add a complete bullet.",
-                          False))
+            drops.append(
+                (
+                    bp_str,
+                    "thinking_filter.truncated",
+                    "Bullet appears truncated (unmatched quote/paren or "
+                    "no terminal punctuation) — likely hit max_tokens "
+                    "ceiling. Gap-fill will re-add a complete bullet.",
+                    False,
+                )
+            )
             continue
 
         # Numeric/quote verification (optional — needs source_text)
         if source_text and bp_str:
             try:
                 from core.summarisation.text_preprocessor import verify_numbers_and_quotes
+
                 is_valid, _reasons = verify_numbers_and_quotes(bp_str, source_text)
                 if not is_valid:
-                    drops.append((bp_str, "thinking_filter.numeric_verify",
-                                  f"Numeric/quote verification failed: "
-                                  f"{', '.join(_reasons[:2]) if _reasons else 'unknown'}.",
-                                  False))
+                    drops.append(
+                        (
+                            bp_str,
+                            "thinking_filter.numeric_verify",
+                            f"Numeric/quote verification failed: "
+                            f"{', '.join(_reasons[:2]) if _reasons else 'unknown'}.",
+                            False,
+                        )
+                    )
                     continue
             except Exception as _e:  # V18.15.4.3: was silent `except Exception: pass`.
                 # Keep fail-open (verification is optional — spaCy/NLTK may be
                 # absent), but log at DEBUG so verify_numbers_and_quotes
                 # regressions are discoverable instead of silently swallowed.
                 import logging as _logging
+
                 _logging.getLogger(__name__).debug(
                     "verify_numbers_and_quotes crashed (optional, fail-open): %r", _e
                 )
@@ -1107,14 +1362,14 @@ __all__ = [
     "classify_bullets",
     "DropRecord",
     "detect_enumerated_conclusions",  # V18.15.9.0
-    "SELF_TALK_PATTERNS",            # V18.20.3.2 (audit N1 / P0-2)
-    "is_citation_only_fragment",     # V18.20.3.2 (audit N5 / P1-c)
-    "classify_scar",                 # V18.20.3.4 (RC-1, audit v182033)
-    "is_checklist_stub",             # V18.20.3.4 (RC-1)
-    "is_summary_self_assessment",    # V18.20.3.4 (RC-1)
-    "has_truncation_marker",         # V18.20.3.4 (RC-1)
-    "ends_in_bare_ellipsis",         # V18.20.3.4 (RC-1)
-    "is_label_stub",                 # V18.20.3.4 (RC-1)
+    "SELF_TALK_PATTERNS",  # V18.20.3.2 (audit N1 / P0-2)
+    "is_citation_only_fragment",  # V18.20.3.2 (audit N5 / P1-c)
+    "classify_scar",  # V18.20.3.4 (RC-1, audit v182033)
+    "is_checklist_stub",  # V18.20.3.4 (RC-1)
+    "is_summary_self_assessment",  # V18.20.3.4 (RC-1)
+    "has_truncation_marker",  # V18.20.3.4 (RC-1)
+    "ends_in_bare_ellipsis",  # V18.20.3.4 (RC-1)
+    "is_label_stub",  # V18.20.3.4 (RC-1)
 ]
 
 
@@ -1163,12 +1418,12 @@ def detect_enumerated_conclusions(
 
     # Focus on the last 30% of the source (conclusions are at the end).
     _len = len(source_text)
-    _focus = source_text[int(_len * 0.7):]
+    _focus = source_text[int(_len * 0.7) :]
 
     # V18.15.9.0: Filter out 4-digit numbers (year-citations like (1978), (1951))
     # — they're NOT conclusion items. Conclusion items are 1-99 (single/double digit).
     # Pattern: (N) where N is 1-2 digits, NOT 4 digits (which are years).
-    _paren_matches = list(_re.finditer(r'\(([1-9]\d{0,1})\)\s+', _focus))
+    _paren_matches = list(_re.finditer(r"\(([1-9]\d{0,1})\)\s+", _focus))
     if len(_paren_matches) >= min_items:
         items = _extract_sequential_run(_paren_matches, min_items, max_items)
         if items:
@@ -1176,7 +1431,7 @@ def detect_enumerated_conclusions(
 
     # Try N. style (e.g., "1. selfsameness 2. temporal continuity ...").
     # Same 1-2 digit filter (avoid matching "1978.").
-    _dot_matches = list(_re.finditer(r'(?<!\d)([1-9]\d{0,1})\.\s+', _focus))
+    _dot_matches = list(_re.finditer(r"(?<!\d)([1-9]\d{0,1})\.\s+", _focus))
     if len(_dot_matches) >= min_items:
         items = _extract_sequential_run(_dot_matches, min_items, max_items)
         if items:
@@ -1222,17 +1477,21 @@ def _extract_sequential_run(matches, min_items, max_items):
     items = []
     for i, m in enumerate(_longest):
         _start = m.end()
-        _end = _longest[i + 1].start() if i + 1 < len(_longest) else _find_sentence_end(m.string, _start)
-        _text = m.string[_start:_end].strip().rstrip(',;.')
+        _end = (
+            _longest[i + 1].start()
+            if i + 1 < len(_longest)
+            else _find_sentence_end(m.string, _start)
+        )
+        _text = m.string[_start:_end].strip().rstrip(",;.")
         # V18.15.9.1 (Fix 3): Collapse newlines to spaces (the source may have
         # line breaks mid-item like "(6) subjective clarity\nregarding one's
         # gender"). Also strip trailing "and" (from "(6) ..., and (7) ...").
-        _text = _text.replace('\n', ' ').replace('\r', ' ')
-        _text = re.sub(r'\s+', ' ', _text).strip()  # collapse multiple spaces
-        _text = _text.rstrip(',;.')
+        _text = _text.replace("\n", " ").replace("\r", " ")
+        _text = re.sub(r"\s+", " ", _text).strip()  # collapse multiple spaces
+        _text = _text.rstrip(",;.")
         # Strip trailing "and" (e.g., "subjective clarity and" → "subjective clarity")
-        _text = re.sub(r'\s+and\s*$', '', _text, flags=re.IGNORECASE).strip()
-        _text = _text.rstrip(',;.')
+        _text = re.sub(r"\s+and\s*$", "", _text, flags=re.IGNORECASE).strip()
+        _text = _text.rstrip(",;.")
         if _text:  # V18.15.9.0: accept any non-empty text (strip() handles whitespace)
             items.append((int(m.group(1)), _text))
     return items[:max_items]
@@ -1241,7 +1500,8 @@ def _extract_sequential_run(matches, min_items, max_items):
 def _find_sentence_end(text, start):
     """Find the end of the current sentence (period + space + Capital, or end)."""
     import re as _re
-    _m = _re.search(r'[.!?]\s+(?=[A-Z])', text[start:])
+
+    _m = _re.search(r"[.!?]\s+(?=[A-Z])", text[start:])
     if _m:
         return start + _m.start() + 1  # include the period
     return len(text)

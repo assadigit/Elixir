@@ -27,6 +27,7 @@ from tests/test_v1820313_thorough_floor.py; no Qt, no network, no GPU):
 
 No line-number peeking — everything is located by name via ast.
 """
+
 from __future__ import annotations
 
 import ast
@@ -66,8 +67,7 @@ _PKG_INIT = _project_root / "core" / "summarisation" / "__init__.py"
 _EXT_IMPORTER = _project_root / "core" / "pipeline" / "conversion" / "summarization.py"
 
 # The shipped pre-split reference (the P5-2a moves happened after .4.6).
-_REF_ZIP = _project_root.parent.parent / "download" / (
-    "Elixir-V18.20.4.6.zip")
+_REF_ZIP = _project_root.parent.parent / "download" / ("Elixir-V18.20.4.6.zip")
 _REF_MEMBER_SUM = "Elixir-V18.20.4.6/core/summarisation/summarizer.py"
 _REF_MEMBER_PA = "Elixir-V18.20.4.6/core/summarisation/prompt_assembly.py"
 
@@ -80,10 +80,10 @@ _MOVED_TO_ADDITIVE = (
 )
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
 _NOT_MOVED_NEIGHBOURS = (
-    "_recover_vram",          # generic VRAM recovery — deliberately NOT moved
-    "_scholar_reflection",    # P1 scholar wiring — stays in summarizer.py
-    "_summarize_inner",       # explicitly out of the approved P5 scope
-    "_build_prompt",          # the LIVE inline primary-prompt builder
+    "_recover_vram",  # generic VRAM recovery — deliberately NOT moved
+    "_scholar_reflection",  # P1 scholar wiring — stays in summarizer.py
+    "_summarize_inner",  # explicitly out of the approved P5 scope
+    "_build_prompt",  # the LIVE inline primary-prompt builder
 )
 _LIVE_PA_FUNCTIONS = (
     "build_thorough_followup",
@@ -106,8 +106,7 @@ def _class(tree: ast.Module, name: str) -> ast.ClassDef:
 
 
 def _methods(cls: ast.ClassDef) -> dict:
-    return {n.name: n for n in cls.body
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return {n.name: n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
 def _seg(src: str, node: ast.AST) -> str:
@@ -118,6 +117,7 @@ def _seg(src: str, node: ast.AST) -> str:
 # (a) O-a2 — verbatim mixin extraction
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestMixinModulesExist:
     def test_both_new_modules_exist_and_parse(self):
         for path in (_ADD, _FLOOR):
@@ -127,9 +127,7 @@ class TestMixinModulesExist:
     def test_mixin_classes_defined(self):
         add_cls = _class(ast.parse(_src(_ADD)), "SummarizerAdditiveMixin")
         floor_cls = _class(ast.parse(_src(_FLOOR)), "SummarizerThoroughFloorMixin")
-        assert set(_methods(add_cls)) == set(_MOVED_TO_ADDITIVE), (
-            sorted(_methods(add_cls))
-        )
+        assert set(_methods(add_cls)) == set(_MOVED_TO_ADDITIVE), sorted(_methods(add_cls))
         assert set(_methods(floor_cls)) == set(_MOVED_TO_FLOOR)
 
     def test_mixins_do_not_import_summarizer(self):
@@ -154,8 +152,7 @@ class TestMixinModulesExist:
                     "core.summarisation.additive_sections",
                     "core.summarisation.thorough_theorist_floor",
                 ):
-                    offenders.append(
-                        f"{p.relative_to(_project_root)}:{node.lineno}")
+                    offenders.append(f"{p.relative_to(_project_root)}:{node.lineno}")
         assert not offenders, offenders
 
 
@@ -174,16 +171,14 @@ class TestVerbatimBodiesVsV182046:
         add_src = _src(_ADD)
         add_methods = _methods(_class(ast.parse(add_src), "SummarizerAdditiveMixin"))
         floor_src = _src(_FLOOR)
-        floor_methods = _methods(
-            _class(ast.parse(floor_src), "SummarizerThoroughFloorMixin"))
+        floor_methods = _methods(_class(ast.parse(floor_src), "SummarizerThoroughFloorMixin"))
         for name in _MOVED_TO_ADDITIVE:
             assert _seg(add_src, add_methods[name]) == _seg(ref_src, ref_methods[name]), (
                 f"{name} drifted in the O-a2 move (must be byte-identical)"
             )
-            assert [d.id for d in add_methods[name].decorator_list
-                    if isinstance(d, ast.Name)] == [
-                d.id for d in ref_methods[name].decorator_list
-                if isinstance(d, ast.Name)], f"{name} decorator drift"
+            assert [d.id for d in add_methods[name].decorator_list if isinstance(d, ast.Name)] == [
+                d.id for d in ref_methods[name].decorator_list if isinstance(d, ast.Name)
+            ], f"{name} decorator drift"
         for name in _MOVED_TO_FLOOR:
             assert _seg(floor_src, floor_methods[name]) == _seg(ref_src, ref_methods[name]), (
                 f"{name} drifted in the O-a2 move (must be byte-identical)"
@@ -251,12 +246,14 @@ class TestVerbatimBodiesVsV182046:
                 assert 'response_cache.get(prompt, model or "", temp)' in expected
                 expected = expected.replace(
                     'response_cache.get(prompt, model or "", temp)',
-                    'response_cache.get(prompt, model or "", temp, max_tok)', 1,
+                    'response_cache.get(prompt, model or "", temp, max_tok)',
+                    1,
                 )
                 assert 'response_cache.put(prompt, model or "", temp, _result)' in expected
                 expected = expected.replace(
                     'response_cache.put(prompt, model or "", temp, _result)',
-                    'response_cache.put(prompt, model or "", temp, _result, max_tok)', 1,
+                    'response_cache.put(prompt, model or "", temp, _result, max_tok)',
+                    1,
                 )
             assert _seg(new_src, node) == expected, name
 
@@ -283,12 +280,14 @@ class TestVerbatimBodiesVsV182046:
         assert new_stop == ["_STRUCTURAL_FUNCTION_WORDS = STRUCTURAL_FUNCTION_WORDS"]
         # membership parity with the .4.6 reference literal (93 words, no drift)
         ref_assign = next(
-            n for n in ref_cls.body
+            n
+            for n in ref_cls.body
             if isinstance(n, ast.Assign)
             and ast.unparse(n).startswith("_STRUCTURAL_FUNCTION_WORDS =")
         )
         ref_set = ast.literal_eval(ref_assign.value.args[0])
         from core.summarisation.structural_stopwords import STRUCTURAL_FUNCTION_WORDS
+
         assert ref_set == STRUCTURAL_FUNCTION_WORDS, (
             "the canonical set must carry the exact .4.6 reference membership"
         )
@@ -298,11 +297,14 @@ class TestVerbatimBodiesVsV182046:
 # (b) O-a2 — Summarizer inherits the mixins
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSummarizerInheritance:
     def test_class_bases_are_exactly_the_two_mixins(self):
         cls = _class(ast.parse(_src(_SUM)), "Summarizer")
         assert [ast.unparse(b) for b in cls.bases] == [
-            "SummarizerAdditiveMixin", "SummarizerThoroughFloorMixin"]
+            "SummarizerAdditiveMixin",
+            "SummarizerThoroughFloorMixin",
+        ]
 
     def test_summarizer_imports_both_mixins(self):
         src = _src(_SUM)
@@ -322,26 +324,27 @@ class TestSummarizerInheritance:
     def test_runtime_mro_resolution(self):
         """Import the real module (hermetic stubs above) — the 6 methods
         must resolve through the MIXINS on the Summarizer MRO."""
-        from core.summarisation.summarizer import Summarizer
         from core.summarisation.additive_sections import SummarizerAdditiveMixin
+        from core.summarisation.summarizer import Summarizer
         from core.summarisation.thorough_theorist_floor import (
             SummarizerThoroughFloorMixin,
         )
+
         assert issubclass(Summarizer, SummarizerAdditiveMixin)
         assert issubclass(Summarizer, SummarizerThoroughFloorMixin)
         for name in _MOVED_TO_ADDITIVE:
             home = next(c for c in Summarizer.__mro__ if name in vars(c))
             assert home is SummarizerAdditiveMixin, name
-        home = next(c for c in Summarizer.__mro__
-                    if "_thorough_theorist_floor" in vars(c))
+        home = next(c for c in Summarizer.__mro__ if "_thorough_theorist_floor" in vars(c))
         assert home is SummarizerThoroughFloorMixin
 
     def test_mixin_loggers_are_the_main_app_logger(self):
         """The re-homed ``logger`` must be the SAME object summarizer.py
         holds (fail-soft debug lines behave identically)."""
-        from core.summarisation.summarizer import logger as sum_logger
         from core.summarisation.additive_sections import logger as add_logger
+        from core.summarisation.summarizer import logger as sum_logger
         from core.summarisation.thorough_theorist_floor import logger as floor_logger
+
         assert add_logger is sum_logger
         assert floor_logger is sum_logger
 
@@ -358,24 +361,24 @@ class TestSummarizerInheritance:
 # (c) W-a3 — the dead primary-prompt twin is GONE
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWa3DeadTwinGone:
     def test_module_compiles(self):
         compile(_src(_PA), str(_PA), "exec")
 
     def test_twin_names_gone(self):
         tree = ast.parse(_src(_PA))
-        names = [
-            n.name for n in tree.body
-            if isinstance(n, (ast.FunctionDef, ast.ClassDef))
-        ]
+        names = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
         assert "build_primary_prompt" not in names
         assert "PromptContext" not in names
 
     def test_all_exports_gone_from_dunder_all(self):
         tree = ast.parse(_src(_PA))
-        all_node = next(n for n in tree.body
-                        if isinstance(n, ast.Assign)
-                        and ast.unparse(n.targets[0]) == "__all__")
+        all_node = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "__all__"
+        )
         exported = ast.literal_eval(all_node.value)
         assert "build_primary_prompt" not in exported
         assert "PromptContext" not in exported
@@ -383,10 +386,7 @@ class TestWa3DeadTwinGone:
 
     def test_live_functions_intact(self):
         tree = ast.parse(_src(_PA))
-        names = [
-            n.name for n in tree.body
-            if isinstance(n, (ast.FunctionDef, ast.ClassDef))
-        ]
+        names = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
         for name in _LIVE_PA_FUNCTIONS:
             assert name in names, f"live function {name} went missing"
         # The delegates summarizer.py actually calls (all live):
@@ -401,12 +401,13 @@ class TestWa3DeadTwinGone:
         ref_tree = ast.parse(ref_src)
         new_src = _src(_PA)
         new_tree = ast.parse(new_src)
-        ref_defs = {n.name: n for n in ref_tree.body
-                    if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
-        new_defs = {n.name: n for n in new_tree.body
-                    if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
-        assert set(ref_defs) - set(new_defs) == {
-            "PromptContext", "build_primary_prompt"}
+        ref_defs = {
+            n.name: n for n in ref_tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+        }
+        new_defs = {
+            n.name: n for n in new_tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+        }
+        assert set(ref_defs) - set(new_defs) == {"PromptContext", "build_primary_prompt"}
         for name, node in new_defs.items():
             assert _seg(new_src, node) == _seg(ref_src, ref_defs[name]), name
 
@@ -428,8 +429,11 @@ class TestWa3DeadTwinGone:
                             offenders.append(f"{p.name}:{node.lineno}")
                 if isinstance(node, ast.Call):
                     fn = node.func
-                    nm = fn.id if isinstance(fn, ast.Name) else (
-                        fn.attr if isinstance(fn, ast.Attribute) else None)
+                    nm = (
+                        fn.id
+                        if isinstance(fn, ast.Name)
+                        else (fn.attr if isinstance(fn, ast.Attribute) else None)
+                    )
                     if nm in ("build_primary_prompt", "PromptContext"):
                         offenders.append(f"{p.name}:{node.lineno}")
         assert not offenders, offenders
@@ -444,6 +448,7 @@ class TestWa3DeadTwinGone:
 # (d) W-a13 — dead A/B comparison method deleted
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWa13DeadMethodGone:
     def test_no_definition_or_live_call_tree_wide(self):
         offenders = []
@@ -453,16 +458,17 @@ class TestWa13DeadMethodGone:
                 continue
             tree = ast.parse(src)
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and \
-                        node.name == "_generate_ab_comparison":
+                if isinstance(node, ast.FunctionDef) and node.name == "_generate_ab_comparison":
                     offenders.append(f"{p.relative_to(_project_root)}:DEF:{node.lineno}")
                 if isinstance(node, ast.Call):
                     fn = node.func
-                    nm = fn.id if isinstance(fn, ast.Name) else (
-                        fn.attr if isinstance(fn, ast.Attribute) else None)
+                    nm = (
+                        fn.id
+                        if isinstance(fn, ast.Name)
+                        else (fn.attr if isinstance(fn, ast.Attribute) else None)
+                    )
                     if nm == "_generate_ab_comparison":
-                        offenders.append(
-                            f"{p.relative_to(_project_root)}:CALL:{node.lineno}")
+                        offenders.append(f"{p.relative_to(_project_root)}:CALL:{node.lineno}")
         assert not offenders, offenders
 
     def test_quality_report_path_still_live(self):
@@ -480,23 +486,84 @@ class TestWa13DeadMethodGone:
 # Vocabulary copied from tests/test_v182039_audit_fixes.py (the permanent
 # tree-wide guard — this local copy keeps this file self-contained).
 _DENY_NAMES = [
-    "Jacobson", "Freud", "Erikson", "Kernberg", "Mahler", "Blos", "Winnicott",
-    "Lichtenstein", "Greenacre", "Chasseguet", "Smirgel", "Fenichel", "Hartmann",
-    "Searles", "Eissler", "Fromm", "Wheelis", "Lynd", "Lifton", "Lasch", "Kovel",
-    "Tausk", "Glover", "Stoller", "Galenson", "Roiphe", "Kris", "Loewenstein",
-    "Spitz", "Khan", "Klein", "Loewald", "Guttman", "Whitman", "Marx", "Durkheim",
-    "Akhtar", "Salman", "Oedipus", "oedipal", "Jews", "Jewry", "WINNICOTT",
-    "Ryan", "Thad", "Clive", "Tyler", "Bernard", "Georgina", "Brad",
+    "Jacobson",
+    "Freud",
+    "Erikson",
+    "Kernberg",
+    "Mahler",
+    "Blos",
+    "Winnicott",
+    "Lichtenstein",
+    "Greenacre",
+    "Chasseguet",
+    "Smirgel",
+    "Fenichel",
+    "Hartmann",
+    "Searles",
+    "Eissler",
+    "Fromm",
+    "Wheelis",
+    "Lynd",
+    "Lifton",
+    "Lasch",
+    "Kovel",
+    "Tausk",
+    "Glover",
+    "Stoller",
+    "Galenson",
+    "Roiphe",
+    "Kris",
+    "Loewenstein",
+    "Spitz",
+    "Khan",
+    "Klein",
+    "Loewald",
+    "Guttman",
+    "Whitman",
+    "Marx",
+    "Durkheim",
+    "Akhtar",
+    "Salman",
+    "Oedipus",
+    "oedipal",
+    "Jews",
+    "Jewry",
+    "WINNICOTT",
+    "Ryan",
+    "Thad",
+    "Clive",
+    "Tyler",
+    "Bernard",
+    "Georgina",
+    "Brad",
 ]
 _DENY_CONCEPTS = [
-    "false self", "true self", "identity diffusion", "ego identity",
-    "identity principle", "corporeality", "sine qua non", "psychoanalytic",
-    "psychoanalysis", "psychoanalysts", "metapsychological", "object relations",
-    "self psychology", "Broken Structures", "IDENTITY AND ITS ORIGINS",
-    "identity and its origins", "Song of Myself", "das Ich",
-    "second individuation", "psychic structure", "self-object",
-    "developmental basis", "three-step process",
-    "entrepreneurs", "operatives", "spies",
+    "false self",
+    "true self",
+    "identity diffusion",
+    "ego identity",
+    "identity principle",
+    "corporeality",
+    "sine qua non",
+    "psychoanalytic",
+    "psychoanalysis",
+    "psychoanalysts",
+    "metapsychological",
+    "object relations",
+    "self psychology",
+    "Broken Structures",
+    "IDENTITY AND ITS ORIGINS",
+    "identity and its origins",
+    "Song of Myself",
+    "das Ich",
+    "second individuation",
+    "psychic structure",
+    "self-object",
+    "developmental basis",
+    "three-step process",
+    "entrepreneurs",
+    "operatives",
+    "spies",
 ]
 _TOUCHED = (_SUM, _ADD, _FLOOR, _PA, _DET, _GFB, _CI)
 
@@ -504,19 +571,18 @@ _TOUCHED = (_SUM, _ADD, _FLOOR, _PA, _DET, _GFB, _CI)
 class TestDenyListTouchedFiles:
     def test_no_book_derived_names_or_concepts_in_touched_files(self):
         import re as _re
-        name_rx = _re.compile(
-            r"\b(?:" + "|".join(_re.escape(n) for n in _DENY_NAMES) + r")\b")
+
+        name_rx = _re.compile(r"\b(?:" + "|".join(_re.escape(n) for n in _DENY_NAMES) + r")\b")
         offenders = []
         for p in _TOUCHED:
             for i, line in enumerate(
-                    p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                p.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+            ):
                 if name_rx.search(line):
                     offenders.append(f"{p.name}:{i}")
                     continue
                 for term in _DENY_CONCEPTS:
-                    rx = _re.compile(
-                        _re.escape(term),
-                        _re.IGNORECASE if term[0].islower() else 0)
+                    rx = _re.compile(_re.escape(term), _re.IGNORECASE if term[0].islower() else 0)
                     if rx.search(line):
                         offenders.append(f"{p.name}:{i} [{term}]")
                         break

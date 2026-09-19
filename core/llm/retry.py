@@ -311,6 +311,7 @@ def classify_ollama_exception(exc: BaseException) -> bool:
         _model = getattr(exc, "model", None) or ""
         try:
             from core.llm.model_taxonomy import is_iq2_s
+
             if is_iq2_s(_model):
                 return True  # IQ2_S — retryable
         except Exception:

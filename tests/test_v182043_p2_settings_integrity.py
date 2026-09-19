@@ -54,6 +54,7 @@ Two layers, per the house pattern: headless-safe source pins + pure-Py
 behavioral tests always run; offscreen Qt behavioral tests skip when
 PySide6 is unavailable (the headless rig).
 """
+
 from __future__ import annotations
 
 import sys
@@ -61,8 +62,6 @@ import types
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
@@ -116,8 +115,10 @@ def _hermetic_settings(tmp_dir: Path):
     Settings._instance = None
     Settings._test_override = None
     try:
-        with patch.object(Settings, "_settings_dir", tmp_dir), \
-             patch.object(Settings, "_settings_file", tmp_dir / "settings.json"):
+        with (
+            patch.object(Settings, "_settings_dir", tmp_dir),
+            patch.object(Settings, "_settings_file", tmp_dir / "settings.json"),
+        ):
             yield
     finally:
         Settings._instance = None
@@ -127,6 +128,7 @@ def _hermetic_settings(tmp_dir: Path):
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c3 — get_settings deep-copy snapshot
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWc3Snapshot:
     def test_snapshot_is_isolated_copy(self, tmp_path):
@@ -168,6 +170,7 @@ class TestWc3Snapshot:
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c4 + T-c8 — corrupt-file backup + BOM-tolerant load
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWc4CorruptSettings:
     def test_corrupt_file_backed_up_before_reset(self, tmp_path):
@@ -220,6 +223,7 @@ class TestWc4CorruptSettings:
 # W-b6 — save-failure visibility (Settings.save/set return success)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb6SaveFailure:
     def test_save_returns_true_on_success(self, tmp_path):
         with _hermetic_settings(tmp_path):
@@ -260,15 +264,11 @@ class TestWb6SaveFailure:
     def test_dialog_warns_and_stays_open_on_save_failure(self):
         src = _src(_DIALOG)
         body_start = src.find("def _on_save")
-        body = src[body_start: src.find("\n    def ", body_start)]
+        body = src[body_start : src.find("\n    def ", body_start)]
         assert "QMessageBox.warning" in body
         assert "return  # keep the dialog open for a retry" in body
         # the old swallow-then-accept is gone
-        old_swallow = (
-            "self.controller.settings.save()\n"
-            "        except Exception:\n"
-            "            pass"
-        )
+        old_swallow = "self.controller.settings.save()\n        except Exception:\n            pass"
         assert old_swallow not in src
 
     def test_dialog_calls_save_result(self):
@@ -280,6 +280,7 @@ class TestWb6SaveFailure:
 # W-b7 — fast_model double-write + orphaned combo
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb7FastModelDoubleWrite:
     def test_orphaned_fast_combo_removed(self):
         src = _strip_comments(_src(_SECTIONS))
@@ -290,9 +291,7 @@ class TestWb7FastModelDoubleWrite:
     def test_exactly_one_fast_model_write(self):
         src = _strip_comments(_src(_SECTIONS))
         count = src.count('update_setting("summarisation.fast_model"')
-        assert count == 1, (
-            f"exactly one authoritative fast_model write expected, found {count}"
-        )
+        assert count == 1, f"exactly one authoritative fast_model write expected, found {count}"
 
     def test_single_write_comes_from_visible_combo(self):
         src = _strip_comments(_src(_SECTIONS))
@@ -310,11 +309,9 @@ class TestWb7FastModelDoubleWrite:
         body_start = src.find("def _on_models_loaded")
         bodies = []
         while body_start != -1:
-            bodies.append(src[body_start: src.find("\n    def ", body_start)])
+            bodies.append(src[body_start : src.find("\n    def ", body_start)])
             body_start = src.find("def _on_models_loaded", body_start + 1)
-        ai_local = next(
-            (b for b in bodies if "self.simplification_combo" in b), ""
-        )
+        ai_local = next((b for b in bodies if "self.simplification_combo" in b), "")
         assert "self.fast_model_combo" in ai_local, (
             "the model refresh must populate the VISIBLE fast_model_combo "
             "(W-b7; W-b11 moved the populate into _on_models_loaded)"
@@ -329,6 +326,7 @@ class TestWb7FastModelDoubleWrite:
 # (production-dead module). _FakeSettings is KEPT below — it is shared
 # by the W-c9 URL-unification tests.
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class _FakeSettings:
     """Duck-typed Settings (originally built for the adaptive_toc
@@ -350,6 +348,7 @@ class _FakeSettings:
 # W-c1 — dead models.json + unified defaults
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWc1ModelsRegistry:
     def test_models_json_deleted(self):
         assert not (_project_root / "config" / "models.json").exists(), (
@@ -367,20 +366,21 @@ class TestWc1ModelsRegistry:
         assert m, "settings.py must still declare ocr.primary_model"
         canonical_ocr = m.group(1)
         assert canonical_ocr in ctrl, (
-            "controller request-builder fallback must use the canonical OCR "
-            "model string (W-c1)"
+            "controller request-builder fallback must use the canonical OCR model string (W-c1)"
         )
         assert "qwen3-vl:8b" not in ctrl
         # Summarisation: gemma4-12b:latest (documented default since V13.45.4)
         m2 = re.search(r'"model":\s*"(gemma4-12b:latest)"', setsrc)
         assert m2, "settings.py must still declare gemma4-12b:latest"
-        assert '"summarisation.model", "gemma4-12b:latest"' in ctrl
+        # V0.13: format-wrapped tuple — key and value on adjacent lines
+        assert '"summarisation.model",\n            "gemma4-12b:latest",' in ctrl
         assert "gemma3:12b" not in ctrl
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c18 — str vs Path in regenerate_output
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWc18OutputDirPath:
     def test_regenerate_assigns_path(self):
@@ -392,6 +392,7 @@ class TestWc18OutputDirPath:
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c9 — canonical Ollama URL at the (8 + 2) previously-hardcoded sites
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWc9OllamaUrlUnification:
     def test_vram_manager_resolves_url_from_settings(self, monkeypatch):
@@ -417,7 +418,7 @@ class TestWc9OllamaUrlUnification:
         # the canonical-resolver INTENT of this pin is unchanged — every
         # request line still resolves through _ollama_base_url().
         assert 'f"{_ollama_base_url()}/api/ps"' in src
-        assert 'session_for_url(_ps_url).get(_ps_url' in src
+        assert "session_for_url(_ps_url).get(_ps_url" in src
         assert 'f"{_ollama_base_url()}/api/generate"' in src
         # the two raw hardcodes are gone from the request lines
         assert 'requests.get("http://localhost:11434' not in src
@@ -467,7 +468,7 @@ class TestWc9OllamaUrlUnification:
         src = _strip_comments(_src(_SUMMARIZER))
         body_start = src.find("def _init_runtime_basics")
         assert body_start != -1, "_init_runtime_basics must exist"
-        body = src[body_start: src.find("\n    def ", body_start)]
+        body = src[body_start : src.find("\n    def ", body_start)]
         assert "self.ollama_base_url = Settings().get_ollama_url()" in body
         # the localhost literal survives ONLY as the fail-soft except-branch
         # fallback — exactly once, guarded by "except Exception:"
@@ -491,9 +492,7 @@ class TestG1StampVersionMismatch:
     def test_stale_version_escalates_to_warning(self):
         from core.system.provenance import stamp_diagnostic
 
-        level, msg = stamp_diagnostic(
-            "001_summary.md", _STAMPED_38, current_version="18.20.4.3"
-        )
+        level, msg = stamp_diagnostic("001_summary.md", _STAMPED_38, current_version="18.20.4.3")
         assert level == "WARNING"
         assert "STALE ARTIFACT" in msg
         assert "v18.20.3.8" in msg and "18.20.4.3" in msg
@@ -503,9 +502,7 @@ class TestG1StampVersionMismatch:
     def test_same_version_stays_info(self):
         from core.system.provenance import stamp_diagnostic
 
-        level, msg = stamp_diagnostic(
-            "001_summary.md", _STAMPED_38, current_version="18.20.3.8"
-        )
+        level, msg = stamp_diagnostic("001_summary.md", _STAMPED_38, current_version="18.20.3.8")
         assert level == "INFO"
         assert msg.startswith("✓")
 
@@ -519,9 +516,7 @@ class TestG1StampVersionMismatch:
         from core.system.provenance import stamp_diagnostic
 
         sentinel_only = "content\n<!-- COMPLETE run_id=abc12345 -->\n"
-        level, msg = stamp_diagnostic(
-            "old.md", sentinel_only, current_version="18.20.4.3"
-        )
+        level, msg = stamp_diagnostic("old.md", sentinel_only, current_version="18.20.4.3")
         assert level == "INFO"  # legacy sentinel-only: run id present, version unknown
 
     def test_unstamped_still_warns(self):
@@ -543,6 +538,7 @@ class TestG1StampVersionMismatch:
 # G-2 — the converter scan passes full paths + current version
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestG2ConverterScan:
     def test_scan_passes_current_version_and_full_path(self):
         src = _strip_comments(_src(_CONVERTER_IMPL))
@@ -553,6 +549,7 @@ class TestG2ConverterScan:
 # ═══════════════════════════════════════════════════════════════════════════
 # G-3 — the visible provenance footer
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class _Summ:
     """Duck-typed SummaryResult for render_summary_markdown."""
@@ -570,9 +567,7 @@ class TestG3VisibleFooter:
     def test_footer_shape(self):
         from core.system.provenance import visible_footer
 
-        f = visible_footer(
-            "18.20.4.3", "20260901-154401-fe4399da", "2026-09-01T15:44:01", 46
-        )
+        f = visible_footer("18.20.4.3", "20260901-154401-fe4399da", "2026-09-01T15:44:01", 46)
         assert f.startswith("\n---\n\n")
         assert f.endswith("\n\n")
         assert (

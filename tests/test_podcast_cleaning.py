@@ -4,6 +4,7 @@ The V10.1.11 fix normalizes all speaker labels to "Host A:" / "Host B:"
 and strips music cues, sound effects, and stage directions so the TTS
 engine receives clean dialogue.
 """
+
 from __future__ import annotations
 
 import re
@@ -29,7 +30,7 @@ def strip_stage_directions(script: str) -> str:
         if stripped.startswith("#"):
             continue
         # Skip horizontal rules / scene dividers
-        if re.match(r'^[\-\*_]{3,}$', stripped) or stripped == "* * *":
+        if re.match(r"^[\-\*_]{3,}$", stripped) or stripped == "* * *":
             continue
         # Skip bracketed stage directions
         if stripped.startswith("[") and stripped.endswith("]"):
@@ -38,14 +39,16 @@ def strip_stage_directions(script: str) -> str:
         if no_bold.startswith("[") and no_bold.endswith("]"):
             continue
         # Skip music/SFX cues
-        if re.match(r"^(music|sfx|sound|soundtrack|intro|outro|transition|fade)\s*:", no_bold, re.IGNORECASE):
+        if re.match(
+            r"^(music|sfx|sound|soundtrack|intro|outro|transition|fade)\s*:", no_bold, re.IGNORECASE
+        ):
             continue
         # Skip music note symbols
         if "♪" in stripped or "♫" in stripped or "🎵" in stripped:
             continue
 
         # Normalize speaker labels
-        speaker_match = re.match(r'^([A-Z][\w\-\s]{0,30}):\s*(.+)$', stripped)
+        speaker_match = re.match(r"^([A-Z][\w\-\s]{0,30}):\s*(.+)$", stripped)
         if speaker_match:
             label = speaker_match.group(1).strip().lower()
             text = speaker_match.group(2).strip()
@@ -81,6 +84,7 @@ def strip_stage_directions(script: str) -> str:
 
 
 # ── Stage direction stripping ─────────────────────────────────────────────
+
 
 def test_strips_bracketed_directions() -> None:
     """[Intro music] should be removed."""
@@ -123,6 +127,7 @@ def test_strips_music_symbols() -> None:
 
 
 # ── Speaker normalization ─────────────────────────────────────────────────
+
 
 def test_normalizes_speaker_1_to_host_a() -> None:
     """Speaker 1: should become Host A:"""

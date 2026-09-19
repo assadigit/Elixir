@@ -17,6 +17,7 @@ summarization pipeline, which needs Ollama).
 
 Run: ``pytest tests/test_primary_call_checkpoint.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,6 +37,7 @@ from utils.atomic_io import atomic_write_text
 # 1. The checkpoint logic (pure function mirror of summarizer.py:3000-3033)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _save_primary_checkpoint(
     output_dir: Path,
     heading: str,
@@ -49,9 +51,10 @@ def _save_primary_checkpoint(
     phase crash doesn't lose it. Returns the checkpoint path.
     """
     import re
+
     _ckpt_dir = output_dir / "summaries" / ".checkpoints"
     _ckpt_dir.mkdir(parents=True, exist_ok=True)
-    _safe_h = re.sub(r'[^A-Za-z0-9_\-]+', '_', heading)[:60].strip('_')
+    _safe_h = re.sub(r"[^A-Za-z0-9_\-]+", "_", heading)[:60].strip("_")
     _ckpt_path = _ckpt_dir / f"primary_{_safe_h}_summary.md"
     _bp_text = "\n".join(f"- {b}" for b in bullets)
     _ckpt_content = (
@@ -92,7 +95,9 @@ class TestPrimaryCallCheckpoint:
         path = _save_primary_checkpoint(
             output_dir=tmp_path,
             heading="1 - IDENTITY AND ITS ORIGINS",
-            exec_summary="x", bullets=[], thorough="x",
+            exec_summary="x",
+            bullets=[],
+            thorough="x",
         )
         assert "primary_1_-_IDENTITY_AND_ITS_ORIGINS" in path.name
         assert path.suffix == ".md"
@@ -102,7 +107,9 @@ class TestPrimaryCallCheckpoint:
         path = _save_primary_checkpoint(
             output_dir=tmp_path,
             heading="Test Chapter",
-            exec_summary="x", bullets=[], thorough="x",
+            exec_summary="x",
+            bullets=[],
+            thorough="x",
         )
         assert path.parent.name == ".checkpoints"
         assert path.parent.parent.name == "summaries"
@@ -114,7 +121,9 @@ class TestPrimaryCallCheckpoint:
         path = _save_primary_checkpoint(
             output_dir=output_dir,
             heading="Test",
-            exec_summary="x", bullets=[], thorough="x",
+            exec_summary="x",
+            bullets=[],
+            thorough="x",
         )
         assert path.exists()
 
@@ -123,7 +132,9 @@ class TestPrimaryCallCheckpoint:
         path = _save_primary_checkpoint(
             output_dir=tmp_path,
             heading="Test",
-            exec_summary="", bullets=[], thorough="",
+            exec_summary="",
+            bullets=[],
+            thorough="",
         )
         assert path.exists()
         content = path.read_text(encoding="utf-8")
@@ -132,12 +143,18 @@ class TestPrimaryCallCheckpoint:
     def test_checkpoint_overwrites_on_rerun(self, tmp_path):
         """A second checkpoint write replaces the first (idempotent)."""
         path = _save_primary_checkpoint(
-            output_dir=tmp_path, heading="Test",
-            exec_summary="first", bullets=[], thorough="",
+            output_dir=tmp_path,
+            heading="Test",
+            exec_summary="first",
+            bullets=[],
+            thorough="",
         )
         path = _save_primary_checkpoint(
-            output_dir=tmp_path, heading="Test",
-            exec_summary="second", bullets=[], thorough="",
+            output_dir=tmp_path,
+            heading="Test",
+            exec_summary="second",
+            bullets=[],
+            thorough="",
         )
         content = path.read_text(encoding="utf-8")
         assert "second" in content
@@ -150,8 +167,11 @@ class TestPrimaryCallCheckpoint:
         — if the process crashes mid-write, the original file is untouched.
         """
         path = _save_primary_checkpoint(
-            output_dir=tmp_path, heading="Test",
-            exec_summary="content", bullets=["b1"], thorough="t",
+            output_dir=tmp_path,
+            heading="Test",
+            exec_summary="content",
+            bullets=["b1"],
+            thorough="t",
         )
         # No leftover .tmp files in the directory
         tmp_files = list(path.parent.glob(".*.tmp"))
@@ -166,15 +186,19 @@ class TestV181923CrashScenario:
         """Simulate: primary call produces good output, then the process would
         crash at additive-sections. The checkpoint must contain the primary output."""
         # The primary-call output (from the V18.19.2.3 log at 15:20:43)
-        exec_sum = ("This chapter synthesizes psychoanalytic and developmental "
-                    "writings on personal identity. Tausk (1919) first introduced "
-                    "the term into psychoanalytic literature.")
+        exec_sum = (
+            "This chapter synthesizes psychoanalytic and developmental "
+            "writings on personal identity. Tausk (1919) first introduced "
+            "the term into psychoanalytic literature."
+        )
         bullets = [
             "Tausk (1919) introduced the term identity into psychoanalytic literature.",
             "Erikson (1956) defined ego identity as persistent sameness.",
             "Freud rarely used identity technically; 91 of 92 uses were colloquial.",
         ]
-        thorough = "The chapter traces identity from Tausk through Erikson to seven characteristics."
+        thorough = (
+            "The chapter traces identity from Tausk through Erikson to seven characteristics."
+        )
 
         # Save the checkpoint (this happens BEFORE the additive-sections call)
         path = _save_primary_checkpoint(

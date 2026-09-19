@@ -23,6 +23,7 @@ rules that generalize to any book):
     * ``converter_impl.compute_pages_processed`` — the precedence rule,
       applied to the modal number AND the diagnostic summary.
 """
+
 from __future__ import annotations
 
 import sys
@@ -56,9 +57,9 @@ from core.pipeline.conversion.extraction import (
 from core.pipeline.converter_impl import compute_pages_processed
 
 # ── Real-run constants (Broken Structures, 2026-08-31 rig run) ────────────
-BOOK_TOTAL = 397          # PDF page count (log: "31/397 pages are scanned")
-CH1_START, CH1_END = 15, 32   # TOC: Ch. 1 starts p.15, Ch. 2 starts p.33
-CH1_PAGES = set(range(CH1_START, CH1_END + 1))   # 18 pages — user expectation
+BOOK_TOTAL = 397  # PDF page count (log: "31/397 pages are scanned")
+CH1_START, CH1_END = 15, 32  # TOC: Ch. 1 starts p.15, Ch. 2 starts p.33
+CH1_PAGES = set(range(CH1_START, CH1_END + 1))  # 18 pages — user expectation
 CH1_WITH_OVERLAP = set(range(CH1_START - 1, CH1_END + 2))  # 20 pages
 
 
@@ -66,120 +67,176 @@ CH1_WITH_OVERLAP = set(range(CH1_START - 1, CH1_END + 2))  # 20 pages
 # compute_pages_processed — the precedence rule
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def test_real_run_single_chapter_reports_chapter_pages():
     """THE reported bug: 1 selected chapter of a 397-page book → 18, not 397."""
-    assert compute_pages_processed(
-        selected_pages=CH1_PAGES,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, total_pages=BOOK_TOTAL,
-    ) == 18
+    assert (
+        compute_pages_processed(
+            selected_pages=CH1_PAGES,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=BOOK_TOTAL,
+            effective_total_pages=BOOK_TOTAL,
+            total_pages=BOOK_TOTAL,
+        )
+        == 18
+    )
 
 
 def test_pre_overlap_set_not_overlap_inflated():
     """The ±1 boundary overlap (18 → 20) must NOT leak into the number."""
     assert len(expand_with_overlap(set(CH1_PAGES), BOOK_TOTAL)) == 20
-    assert compute_pages_processed(
-        selected_pages=CH1_PAGES,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, total_pages=BOOK_TOTAL,
-    ) == 18  # still 18 — selected_pages is the PRE-overlap snapshot
+    assert (
+        compute_pages_processed(
+            selected_pages=CH1_PAGES,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=BOOK_TOTAL,
+            effective_total_pages=BOOK_TOTAL,
+            total_pages=BOOK_TOTAL,
+        )
+        == 18
+    )  # still 18 — selected_pages is the PRE-overlap snapshot
 
 
 def test_multiple_selected_chapters_union():
     """Two chapters (any book, any pages) → the union of their page sets."""
-    ch2 = set(range(33, 56))          # 23 pages
+    ch2 = set(range(33, 56))  # 23 pages
     selection = CH1_PAGES | ch2
-    assert compute_pages_processed(
-        selected_pages=selection,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, total_pages=BOOK_TOTAL,
-    ) == 18 + 23
+    assert (
+        compute_pages_processed(
+            selected_pages=selection,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=BOOK_TOTAL,
+            effective_total_pages=BOOK_TOTAL,
+            total_pages=BOOK_TOTAL,
+        )
+        == 18 + 23
+    )
 
 
 def test_selection_intersects_page_range_when_both_set():
     """Chapter selection + page range → only pages inside BOTH count
     (extraction already filters OCR results to the effective range)."""
     # range 20–397 → keeps pages 20..32 of the chapter = 13 pages
-    assert compute_pages_processed(
-        selected_pages=CH1_PAGES,
-        page_range_start=20, page_range_end=None,
-        effective_start_page=20, effective_end_page=397,
-        effective_total_pages=378, total_pages=BOOK_TOTAL,
-    ) == 13
+    assert (
+        compute_pages_processed(
+            selected_pages=CH1_PAGES,
+            page_range_start=20,
+            page_range_end=None,
+            effective_start_page=20,
+            effective_end_page=397,
+            effective_total_pages=378,
+            total_pages=BOOK_TOTAL,
+        )
+        == 13
+    )
 
 
 def test_page_range_only_reports_range_size():
     """No chapter selection, page range 100–200 → 101, not 397."""
-    assert compute_pages_processed(
-        selected_pages=None,
-        page_range_start=100, page_range_end=200,
-        effective_start_page=100, effective_end_page=200,
-        effective_total_pages=101, total_pages=BOOK_TOTAL,
-    ) == 101
+    assert (
+        compute_pages_processed(
+            selected_pages=None,
+            page_range_start=100,
+            page_range_end=200,
+            effective_start_page=100,
+            effective_end_page=200,
+            effective_total_pages=101,
+            total_pages=BOOK_TOTAL,
+        )
+        == 101
+    )
 
 
 def test_whole_book_unchanged():
     """No selection, no range → the previous (correct) whole-doc number."""
-    assert compute_pages_processed(
-        selected_pages=None,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, total_pages=BOOK_TOTAL,
-    ) == BOOK_TOTAL
+    assert (
+        compute_pages_processed(
+            selected_pages=None,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=BOOK_TOTAL,
+            effective_total_pages=BOOK_TOTAL,
+            total_pages=BOOK_TOTAL,
+        )
+        == BOOK_TOTAL
+    )
 
 
 def test_degenerate_empty_selection_reports_zero():
     """A selection that resolved to NO pages (e.g. out-of-bounds manual
     ranges) reports 0 — honest — instead of silently falling back to the
     book total."""
-    assert compute_pages_processed(
-        selected_pages=set(),
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, total_pages=BOOK_TOTAL,
-    ) == 0
+    assert (
+        compute_pages_processed(
+            selected_pages=set(),
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=BOOK_TOTAL,
+            effective_total_pages=BOOK_TOTAL,
+            total_pages=BOOK_TOTAL,
+        )
+        == 0
+    )
 
 
 def test_non_pdf_input_reports_all_pages():
     """The multi-format path (EPUB/DOCX/…) returns selected_pages=None and
     effective span 1..N — the number stays N."""
-    assert compute_pages_processed(
-        selected_pages=None,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=120,
-        effective_total_pages=120, total_pages=120,
-    ) == 120
+    assert (
+        compute_pages_processed(
+            selected_pages=None,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=120,
+            effective_total_pages=120,
+            total_pages=120,
+        )
+        == 120
+    )
 
 
 def test_single_page_book():
     """1-page document, whole-book mode → 1 (boundary sanity)."""
-    assert compute_pages_processed(
-        selected_pages=None,
-        page_range_start=None, page_range_end=None,
-        effective_start_page=1, effective_end_page=1,
-        effective_total_pages=1, total_pages=1,
-    ) == 1
+    assert (
+        compute_pages_processed(
+            selected_pages=None,
+            page_range_start=None,
+            page_range_end=None,
+            effective_start_page=1,
+            effective_end_page=1,
+            effective_total_pages=1,
+            total_pages=1,
+        )
+        == 1
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # expand_with_overlap — the boundary helper (extracted for testability)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def test_overlap_adds_one_page_each_side():
     out = expand_with_overlap(CH1_PAGES, BOOK_TOTAL)
-    assert 14 in out and 33 in out          # boundary context pages
+    assert 14 in out and 33 in out  # boundary context pages
     assert len(out) == 20
 
 
 def test_overlap_never_creates_page_zero_or_overflow():
-    out = expand_with_overlap({1}, 1)       # single-page selection in 1-page doc
+    out = expand_with_overlap({1}, 1)  # single-page selection in 1-page doc
     assert out == {1}
-    out2 = expand_with_overlap({1, 2}, 5)   # page 1 → no page 0
+    out2 = expand_with_overlap({1, 2}, 5)  # page 1 → no page 0
     assert 0 not in out2
-    out3 = expand_with_overlap({5}, 5)      # last page → no page 6
+    out3 = expand_with_overlap({5}, 5)  # last page → no page 6
     assert 6 not in out3
 
 
@@ -187,23 +244,36 @@ def test_overlap_never_creates_page_zero_or_overflow():
 # ExtractionResult contract
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _minimal_extraction_result(**overrides):
     """An ExtractionResult with the minimum viable fields (defaults for
     the new field keep the dataclass backward-compatible with every
     existing constructor call)."""
     from core.models import PageAnalysis, PdfAnalysisResult, PdfRecommendation
+
     analysis = PdfAnalysisResult(
-        total_pages=BOOK_TOTAL, scanned_pages=[], text_pages=[],
+        total_pages=BOOK_TOTAL,
+        scanned_pages=[],
+        text_pages=[],
         recommendation=PdfRecommendation.NO_OCR,
-        per_page=[PageAnalysis(page_num=i + 1, is_scanned=False,
-                               extracted_text_preview="",
-                               recommended_action="skip")
-                  for i in range(BOOK_TOTAL)],
+        per_page=[
+            PageAnalysis(
+                page_num=i + 1,
+                is_scanned=False,
+                extracted_text_preview="",
+                recommended_action="skip",
+            )
+            for i in range(BOOK_TOTAL)
+        ],
     )
     kwargs = dict(
-        raw_markdown="x", analysis=analysis, pages_to_ocr=[],
-        effective_start_page=1, effective_end_page=BOOK_TOTAL,
-        effective_total_pages=BOOK_TOTAL, toc_entries=[],
+        raw_markdown="x",
+        analysis=analysis,
+        pages_to_ocr=[],
+        effective_start_page=1,
+        effective_end_page=BOOK_TOTAL,
+        effective_total_pages=BOOK_TOTAL,
+        toc_entries=[],
         valid_pages=None,
     )
     kwargs.update(overrides)
@@ -239,6 +309,7 @@ _SRC_EXTRACTION = "core/pipeline/conversion/extraction.py"
 
 def _read_src(rel: str) -> str:
     from pathlib import Path
+
     p = Path(__file__).resolve().parent.parent / rel
     return p.read_text(encoding="utf-8")
 

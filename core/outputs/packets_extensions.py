@@ -27,11 +27,13 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
+
 
 class PacketsPDFExporter:
     """Renders a packets .md file as a styled PDF using reportlab."""
@@ -51,7 +53,7 @@ class PacketsPDFExporter:
         """
         try:
             from reportlab.lib.colors import HexColor
-            from reportlab.lib.enums import TA_CENTER, TA_LEFT
+            from reportlab.lib.enums import TA_CENTER
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import mm
@@ -70,48 +72,77 @@ class PacketsPDFExporter:
             return None
 
         # Theme colors (match the app's warm palette)
-        accent = HexColor("#B8704A")      # terracotta
+        accent = HexColor("#B8704A")  # terracotta
         text_primary = HexColor("#2A211B")  # warm dark brown
         text_secondary = HexColor("#6B5B4F")  # warm brown
-        bg_soft = HexColor("#F7F3EC")      # ivory
 
         output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
         doc = SimpleDocTemplate(
-            str(output_pdf_path), pagesize=A4,
-            leftMargin=20*mm, rightMargin=20*mm,
-            topMargin=20*mm, bottomMargin=20*mm,
+            str(output_pdf_path),
+            pagesize=A4,
+            leftMargin=20 * mm,
+            rightMargin=20 * mm,
+            topMargin=20 * mm,
+            bottomMargin=20 * mm,
             title=f"{book_title} — Packets of Knowledge",
         )
 
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
-            "PacketTitle", parent=styles["Title"],
-            fontSize=22, textColor=accent, spaceAfter=6*mm,
+            "PacketTitle",
+            parent=styles["Title"],
+            fontSize=22,
+            textColor=accent,
+            spaceAfter=6 * mm,
         )
         h2_style = ParagraphStyle(
-            "PacketH2", parent=styles["Heading2"],
-            fontSize=14, textColor=accent, spaceBefore=8*mm, spaceAfter=3*mm,
+            "PacketH2",
+            parent=styles["Heading2"],
+            fontSize=14,
+            textColor=accent,
+            spaceBefore=8 * mm,
+            spaceAfter=3 * mm,
         )
         h3_style = ParagraphStyle(
-            "PacketH3", parent=styles["Heading3"],
-            fontSize=12, textColor=text_secondary, spaceBefore=5*mm, spaceAfter=2*mm,
+            "PacketH3",
+            parent=styles["Heading3"],
+            fontSize=12,
+            textColor=text_secondary,
+            spaceBefore=5 * mm,
+            spaceAfter=2 * mm,
         )
         body_style = ParagraphStyle(
-            "PacketBody", parent=styles["BodyText"],
-            fontSize=10, textColor=text_primary, leading=14, spaceAfter=3*mm,
+            "PacketBody",
+            parent=styles["BodyText"],
+            fontSize=10,
+            textColor=text_primary,
+            leading=14,
+            spaceAfter=3 * mm,
         )
         tldr_style = ParagraphStyle(
-            "PacketTLDR", parent=body_style,
-            fontSize=10, textColor=accent, fontName="Helvetica-Oblique",
+            "PacketTLDR",
+            parent=body_style,
+            fontSize=10,
+            textColor=accent,
+            fontName="Helvetica-Oblique",
         )
 
         story: list = []
         # Title page
         story.append(Paragraph(f"{book_title}", title_style))
-        story.append(Paragraph("Packets of Knowledge", ParagraphStyle(
-            "Subtitle", parent=styles["Normal"],
-            fontSize=14, textColor=text_secondary, alignment=TA_CENTER, spaceAfter=10*mm,
-        )))
+        story.append(
+            Paragraph(
+                "Packets of Knowledge",
+                ParagraphStyle(
+                    "Subtitle",
+                    parent=styles["Normal"],
+                    fontSize=14,
+                    textColor=text_secondary,
+                    alignment=TA_CENTER,
+                    spaceAfter=10 * mm,
+                ),
+            )
+        )
         story.append(PageBreak())
 
         # Parse the markdown + render
@@ -119,7 +150,7 @@ class PacketsPDFExporter:
         for line in content.splitlines():
             stripped = line.strip()
             if not stripped:
-                story.append(Spacer(1, 3*mm))
+                story.append(Spacer(1, 3 * mm))
                 continue
             # Escape HTML entities for reportlab
             safe = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -223,6 +254,7 @@ class PacketsAudioGenerator(OutputGeneratorBase):
         content = packets_path.read_text(encoding="utf-8")
         # Parse packets — each starts with "## Packet N:" or "### Packet N:"
         import re
+
         packet_blocks = re.split(r"^##+\s+Packet\s+\d+", content, flags=re.MULTILINE)
         if len(packet_blocks) <= 1:
             self.log("  ℹ️ Packets audio: no packet blocks found", "INFO")
@@ -250,8 +282,10 @@ class PacketsAudioGenerator(OutputGeneratorBase):
 
         # Load TTS settings
         from utils.settings import Settings
+
         s = Settings()
         from core.tts.engine import TTSRouter
+
         piper_binary = Path(s.get("tts.piper_binary", ""))
         en_engine = s.get("tts.en_engine", "neutts")
         neutts_gguf = s.get("tts.neutts_gguf_path", "")
@@ -263,7 +297,7 @@ class PacketsAudioGenerator(OutputGeneratorBase):
             en_engine=en_engine,
             neutts_gguf_path=Path(neutts_gguf) if neutts_gguf else None,
             neutts_project_path=Path(neutts_project) if neutts_project else None,
-            fa_engine=s.get("tts.fa_engine", "piper"),          # V10.37.0
+            fa_engine=s.get("tts.fa_engine", "piper"),  # V10.37.0
             coqui_model=s.get("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
             coqui_speaker=s.get("tts.coqui_speaker", "Ana"),
             coqui_voice_sample=s.get("tts.coqui_voice_sample", ""),

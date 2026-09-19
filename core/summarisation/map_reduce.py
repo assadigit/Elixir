@@ -26,6 +26,7 @@ Matches the proven Phase 4 + Phase 5 + Batch 1 pattern.
 Characterization tests: ``tests/test_map_reduce.py`` captures canned inputs →
 golden outputs with mocked ``build_prompt`` / ``call_llm`` / cache filesystem.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -65,7 +66,9 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
 _MAPREDUCE_CACHE_MAX_ENTRIES = 256
 
 
-def _evict_mapreduce_cache(cache_dir: Path, max_entries: int = _MAPREDUCE_CACHE_MAX_ENTRIES) -> None:
+def _evict_mapreduce_cache(
+    cache_dir: Path, max_entries: int = _MAPREDUCE_CACHE_MAX_ENTRIES
+) -> None:
     """V18.20.2.0 (SWOT A29): keep at most ``max_entries`` mapreduce_* cache
     files in ``cache_dir``, evicting the oldest by mtime. Best-effort — any
     filesystem error is swallowed (the cache is an optimization, never a
@@ -142,7 +145,9 @@ def map_reduce_summarize(
     # is the correct behaviour after this fix).
     content_hash = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()[:16]
     model_tag = (primary_model or "unknown")[:20]
-    cache_key = hashlib.md5(f"{heading}_{input_path_stem}_{content_hash}_{model_tag}".encode()).hexdigest()
+    cache_key = hashlib.md5(
+        f"{heading}_{input_path_stem}_{content_hash}_{model_tag}".encode()
+    ).hexdigest()
     cache_file = cache_dir / f"mapreduce_{cache_key}.mini_summaries.md"
     # V10.33.0 (Sprint 5.5): respect the summarisation_cache_enabled setting.
     # Before V10.33.0 this was a dead setting — the cache was always read
@@ -159,14 +164,22 @@ def map_reduce_summarize(
                     break
             combined = "\n".join(lines[start_idx:]).strip()
             if combined:
-                log("    \U0001f4be Found cached mini\u2011summaries \u2013 skipping Map phase", "INFO")
+                log(
+                    "    \U0001f4be Found cached mini\u2011summaries \u2013 skipping Map phase",
+                    "INFO",
+                )
                 combined_tokens = count_tokens(combined)
-                reduce_prompt = build_prompt(heading, f"[Sequential summaries covering the complete chapter]\n\n{combined}", with_cot=True)
+                reduce_prompt = build_prompt(
+                    heading,
+                    f"[Sequential summaries covering the complete chapter]\n\n{combined}",
+                    with_cot=True,
+                )
                 # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think
                 # for Qwen-family models.
                 response = call_llm(
                     qwen_no_think(reduce_prompt, primary_model),
-                    model=primary_model, temperature=temperature,
+                    model=primary_model,
+                    temperature=temperature,
                 )
                 return response, combined_tokens
         except Exception as _e:
@@ -177,7 +190,7 @@ def map_reduce_summarize(
         f"into ~{map_chunk_tokens:,}-token chunks…",
         "DEBUG",
     )
-    paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
     chunks = []
     overlap_tokens = int(map_chunk_tokens * map_chunk_overlap)
     current = []
@@ -185,7 +198,7 @@ def map_reduce_summarize(
     for para in paragraphs:
         pt = count_tokens(para)
         if used + pt > map_chunk_tokens and current:
-            chunks.append('\n\n'.join(current))
+            chunks.append("\n\n".join(current))
             overlap_paras = []
             overlap_used = 0
             for p in reversed(current):
@@ -199,9 +212,12 @@ def map_reduce_summarize(
         current.append(para)
         used += pt
     if current:
-        chunks.append('\n\n'.join(current))
+        chunks.append("\n\n".join(current))
 
-    log(f"    \U0001f5fa\ufe0f Map\u2011Reduce: {len(chunks)} chunks (overlap ~{overlap_tokens} tokens)", "INFO")
+    log(
+        f"    \U0001f5fa\ufe0f Map\u2011Reduce: {len(chunks)} chunks (overlap ~{overlap_tokens} tokens)",
+        "INFO",
+    )
 
     # V18.20.4.10 (P0-d): chunk-count sanity. A chapter needing more than
     # ~50 map chunks is a SEGMENTATION failure (a whole-book segment), not
@@ -223,36 +239,37 @@ def map_reduce_summarize(
         # Checked BEFORE each chunk so a stuck/slow phase is bounded by
         # budget + one HTTP timeout, never unbounded. Failing loudly beats
         # silently producing a partial summary (honesty machinery rule).
-        if (
-            map_phase_budget_sec > 0
-            and (time.monotonic() - _phase_start) > map_phase_budget_sec
-        ):
+        if map_phase_budget_sec > 0 and (time.monotonic() - _phase_start) > map_phase_budget_sec:
             log(
                 f"    \u26a0\ufe0f Map\u2011Reduce ABORTED: map phase exceeded its "
                 f"{map_phase_budget_sec}s budget after {len(mini_summaries)}/{len(chunks)} "
-                f"chunks \u2014 chapter \'{heading[:40]}\' will be marked FAILED instead "
+                f"chunks \u2014 chapter '{heading[:40]}' will be marked FAILED instead "
                 f"of silently grinding (raise local.map_phase_max_seconds to "
                 f"allow longer map phases).",
                 "WARNING",
             )
             return None, 0
         prompt = f'Summarize the following excerpt from chapter "{heading}" in exactly {map_mini_words} words. Focus on concrete facts, arguments, and named concepts. Output ONLY the summary text, no preamble.\n\n{chunk}'
-        log(f"    \U0001f5fa\ufe0f Map chunk {idx}/{len(chunks)} ({count_tokens(chunk):,} tok)\u2026", "INFO")
+        log(
+            f"    \U0001f5fa\ufe0f Map chunk {idx}/{len(chunks)} ({count_tokens(chunk):,} tok)\u2026",
+            "INFO",
+        )
         # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think for
         # Qwen-family models.
         response = call_llm(
             qwen_no_think(prompt, primary_model),
-            model=primary_model, temperature=temperature * 0.7,
+            model=primary_model,
+            temperature=temperature * 0.7,
         )
         if response:
-            mini_summaries.append(f'[Chunk {idx}/{len(chunks)}]\n{response.strip()}')
+            mini_summaries.append(f"[Chunk {idx}/{len(chunks)}]\n{response.strip()}")
         else:
             log(f"    \u26a0\ufe0f Map chunk {idx} failed \u2013 skipped", "WARNING")
 
     if not mini_summaries:
         return None, 0
 
-    combined = '\n\n'.join(mini_summaries)
+    combined = "\n\n".join(mini_summaries)
     combined_tokens = count_tokens(combined)
 
     try:
@@ -276,12 +293,17 @@ def map_reduce_summarize(
         f"({combined_tokens:,} tokens) into the final summary\u2026",
         "INFO",
     )
-    reduce_prompt = build_prompt(heading, f"[Sequential summaries covering the complete chapter]\n\n{combined}", with_cot=True)
+    reduce_prompt = build_prompt(
+        heading,
+        f"[Sequential summaries covering the complete chapter]\n\n{combined}",
+        with_cot=True,
+    )
     # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think for
     # Qwen-family models.
     response = call_llm(
         qwen_no_think(reduce_prompt, primary_model),
-        model=primary_model, temperature=temperature,
+        model=primary_model,
+        temperature=temperature,
     )
     return response, combined_tokens
 
@@ -373,7 +395,7 @@ def section_map_reduce(
         for s in sections:
             if stripped == s or stripped.startswith(s):
                 if current_chunk:
-                    section_chunks.append((current_heading, '\n'.join(current_chunk)))
+                    section_chunks.append((current_heading, "\n".join(current_chunk)))
                 current_chunk = []
                 current_heading = f"{heading} \u2014 {s}"
                 is_heading = True
@@ -381,7 +403,7 @@ def section_map_reduce(
         if not is_heading:
             current_chunk.append(line)
     if current_chunk:
-        section_chunks.append((current_heading, '\n'.join(current_chunk)))
+        section_chunks.append((current_heading, "\n".join(current_chunk)))
 
     if len(section_chunks) < 2:
         return None
@@ -396,19 +418,24 @@ def section_map_reduce(
             _gpu_temp = last_gpu_temp
             if _gpu_temp >= local_preflight_skip_temp:
                 _skip_preflight = True
-                log(f"    \u23ed\ufe0f Pre-flight skipped (GPU temp {_gpu_temp}\u00b0C \u2265 {local_preflight_skip_temp}\u00b0C threshold)", "INFO")
+                log(
+                    f"    \u23ed\ufe0f Pre-flight skipped (GPU temp {_gpu_temp}\u00b0C \u2265 {local_preflight_skip_temp}\u00b0C threshold)",
+                    "INFO",
+                )
         if not _skip_preflight:
             must_have_items = extract_must_have_items(heading, text)
     except Exception as _e:
         # V18.2.14 (B4): traceable — was silent except:pass
-        log_swallow("preflight_must_have_extract", _e,
-                    detail=f"heading={heading[:60]}")
+        log_swallow("preflight_must_have_extract", _e, detail=f"heading={heading[:60]}")
     # Inject must-have items as additional callouts
     if must_have_items:
         if callouts is None:
             callouts = []
         callouts = list(callouts) + [f"MUST COVER: {item}" for item in must_have_items]
-        log(f"    \U0001f3af Pre-flight: {len(must_have_items)} must-have items injected into B4 prompts", "INFO")
+        log(
+            f"    \U0001f3af Pre-flight: {len(must_have_items)} must-have items injected into B4 prompts",
+            "INFO",
+        )
 
     # (V0.08 / P2: the V13.44.0 "Key Quote Preservation" stage was removed —
     # extract_key_quotes always returned [] since V16.0.2, so the call and
@@ -440,6 +467,7 @@ def section_map_reduce(
         if _skipped_sections > 0:
             try:
                 from core.vram_calculator import get_total_vram
+
                 _total_vram = get_total_vram()
                 if _total_vram and _total_vram >= 12.0:
                     _new_cap = min(len(section_chunks), max(_max_sections, 8))
@@ -473,13 +501,18 @@ def section_map_reduce(
         # V18.1 (audit P3): delay is now configurable (local.vram_recovery_delay_sec).
         # Default changed from 120s to 0 (user undervolted GPU — no thermal pressure).
         if sec_idx > 0:
-            recover_vram(context=f"B4-section-{sec_idx+1}", delay_sec=float(local_vram_recovery_delay))
+            recover_vram(
+                context=f"B4-section-{sec_idx + 1}", delay_sec=float(local_vram_recovery_delay)
+            )
 
         # V18.1 (audit Q1): Build progressive context — inject FULL executive summary
         progressive_context = ""
         if prev_section_summary and sec_idx > 0:
             progressive_context = f"\n\nPREVIOUS SECTION CONTEXT (already covered \u2014 focus on what's NEW):\n{prev_section_summary}"
-            log(f"    \U0001f4d1 B4 section {sec_idx+1}/{_max_sections}: progressive context injected ({len(prev_section_summary)} chars)", "DEBUG")
+            log(
+                f"    \U0001f4d1 B4 section {sec_idx + 1}/{_max_sections}: progressive context injected ({len(prev_section_summary)} chars)",
+                "DEBUG",
+            )
 
         # Inject progressive context into the section text
         sec_text_with_context = sec_text
@@ -488,11 +521,16 @@ def section_map_reduce(
 
         try:
             result = summarize_with_model(
-                sec_heading, sec_text_with_context, primary_model, temperature,
-                with_cot=True, concepts=concepts, callouts=callouts,
+                sec_heading,
+                sec_text_with_context,
+                primary_model,
+                temperature,
+                with_cot=True,
+                concepts=concepts,
+                callouts=callouts,
             )
         except Exception as _e:
-            log(f"    \u26a0\ufe0f B4 section {sec_idx+1} crashed (non-fatal): {_e}", "WARNING")
+            log(f"    \u26a0\ufe0f B4 section {sec_idx + 1} crashed (non-fatal): {_e}", "WARNING")
             logger.debug("B4 section crash: %s: %s", type(_e).__name__, _e)
             result = None
         if result:
@@ -504,14 +542,20 @@ def section_map_reduce(
             # V13.44.0 Idea #7: Save this section's summary for the next section
             # V18.1 (audit Q1): No truncation — save full executive summary
             prev_section_summary = result.get("executive_summary", "")
-            log(f"    \U0001f4d1 B4 section {sec_idx+1}/{_max_sections}: completed, {len(result.get('bullet_points', []))} bullets, {len(result.get('thorough_summary', ''))} chars thorough", "DEBUG")
+            log(
+                f"    \U0001f4d1 B4 section {sec_idx + 1}/{_max_sections}: completed, {len(result.get('bullet_points', []))} bullets, {len(result.get('thorough_summary', ''))} chars thorough",
+                "DEBUG",
+            )
 
     if not all_bullets:
         return None
 
     # ── V13.44.0 Idea #5: Dedup Consolidation Pass ──
     merged_bullets = consolidate_duplicate_claims(all_bullets)
-    log(f"    \U0001f527 Dedup consolidation: {len(all_bullets)} \u2192 {len(merged_bullets)} bullets (merged {len(all_bullets) - len(merged_bullets)} duplicates)", "INFO")
+    log(
+        f"    \U0001f527 Dedup consolidation: {len(all_bullets)} \u2192 {len(merged_bullets)} bullets (merged {len(all_bullets) - len(merged_bullets)} duplicates)",
+        "INFO",
+    )
 
     # V0.06 (rig audit F1-e): the "None" placeholder is a FORMAT token — a
     # section that answered "None" contributes nothing to the merge (the
@@ -519,8 +563,8 @@ def section_map_reduce(
     def _real(txt: str) -> bool:
         return bool(txt and txt.strip() and txt.strip().lower() not in ("none", "n/a", "null"))
 
-    merged_exec = ' '.join(e for e in all_execs if _real(e))[:2000]
-    merged_thorough = '\n\n'.join(t for t in all_thoroughs if _real(t))[:6000]
+    merged_exec = " ".join(e for e in all_execs if _real(e))[:2000]
+    merged_thorough = "\n\n".join(t for t in all_thoroughs if _real(t))[:6000]
 
     # ── V13.44.0 Idea #3: Thematic Synthesis Pass ──
     # V13.44.3: Always run for cloud APIs (no thermal concern).
@@ -533,13 +577,16 @@ def section_map_reduce(
         recover_vram(context="pre-thematic-synthesis", delay_sec=10.0)
         synthesized_thorough = thematic_synthesis(heading, merged_thorough, text)
         if synthesized_thorough:
-            log(f"    \U0001f504 Thematic synthesis: reorganized {len(merged_thorough)} \u2192 {len(synthesized_thorough)} chars thorough", "INFO")
+            log(
+                f"    \U0001f504 Thematic synthesis: reorganized {len(merged_thorough)} \u2192 {len(synthesized_thorough)} chars thorough",
+                "INFO",
+            )
             merged_thorough = synthesized_thorough
 
     # V13.38.0: Merge the new additive sections (concatenate non-empty)
     # V0.06 (F1-e): "None" placeholders excluded here too.
-    merged_distinctions = '\n'.join(d for d in all_distinctions if _real(d))[:3000]
-    merged_tensions = '\n'.join(t for t in all_tensions if _real(t))[:3000]
+    merged_distinctions = "\n".join(d for d in all_distinctions if _real(d))[:3000]
+    merged_tensions = "\n".join(t for t in all_tensions if _real(t))[:3000]
 
     return {
         "executive_summary": merged_exec,

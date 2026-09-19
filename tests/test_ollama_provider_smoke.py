@@ -21,6 +21,7 @@ is needed.
 
 Run: ``pytest tests/test_ollama_provider_smoke.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -56,8 +57,9 @@ class TestSmokeTestHappyPath:
         """A non-empty response → True."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             ok = provider.smoke_test()
         assert ok is True
         mock_req.assert_called_once()
@@ -66,8 +68,7 @@ class TestSmokeTestHappyPath:
         """A multi-char response → True."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "Hello world", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp):
+        with patch("core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp):
             ok = provider.smoke_test()
         assert ok is True
 
@@ -80,8 +81,7 @@ class TestSmokeTestFailurePaths:
         """Empty/whitespace response → False (broken quant / Modelfile)."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "   ", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp):
+        with patch("core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp):
             ok = provider.smoke_test()
         assert ok is False
 
@@ -89,8 +89,7 @@ class TestSmokeTestFailurePaths:
         """Response JSON without 'response' key → False."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"done": True}  # no "response" field
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp):
+        with patch("core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp):
             ok = provider.smoke_test()
         assert ok is False
 
@@ -99,29 +98,33 @@ class TestSmokeTestFailurePaths:
         resp_404 = MagicMock()
         resp_404.status_code = 404
         http_err = requests.exceptions.HTTPError(response=resp_404)
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   side_effect=http_err):
+        with patch("core.llm.ollama_provider.safe_ollama_request", side_effect=http_err):
             ok = provider.smoke_test()
         assert ok is False
 
     def test_returns_false_on_timeout(self, provider):
         """Timeout → False (server stalled / cold load)."""
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   side_effect=requests.exceptions.Timeout("60s")):
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request",
+            side_effect=requests.exceptions.Timeout("60s"),
+        ):
             ok = provider.smoke_test()
         assert ok is False
 
     def test_returns_false_on_connection_error(self, provider):
         """ConnectionError (Ollama not running) → False."""
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   side_effect=requests.exceptions.ConnectionError("refused")):
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request",
+            side_effect=requests.exceptions.ConnectionError("refused"),
+        ):
             ok = provider.smoke_test()
         assert ok is False
 
     def test_returns_false_on_unexpected_exception(self, provider):
         """Any other exception → False (defensive catch-all)."""
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   side_effect=ValueError("unexpected")):
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", side_effect=ValueError("unexpected")
+        ):
             ok = provider.smoke_test()
         assert ok is False
 
@@ -133,8 +136,7 @@ class TestSmokeTestFailurePaths:
             ValueError("v"),
             RuntimeError("r"),
         ]:
-            with patch("core.llm.ollama_provider.safe_ollama_request",
-                       side_effect=exc):
+            with patch("core.llm.ollama_provider.safe_ollama_request", side_effect=exc):
                 # Must not raise
                 result = provider.smoke_test()
                 assert isinstance(result, bool)
@@ -155,8 +157,9 @@ class TestSmokeTestPayloadConstraints:
         """
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert "presence_penalty" not in payload.get("options", {}), (
@@ -167,8 +170,9 @@ class TestSmokeTestPayloadConstraints:
         """num_predict=1 — minimal token cost for the probe."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert payload["options"]["num_predict"] == 1
@@ -177,8 +181,9 @@ class TestSmokeTestPayloadConstraints:
         """num_ctx=4096 — fast KV cache allocation for the probe."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert payload["options"]["num_ctx"] == 4096
@@ -187,8 +192,9 @@ class TestSmokeTestPayloadConstraints:
         """temperature=0.0 — most deterministic probe."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert payload["options"]["temperature"] == 0.0
@@ -197,8 +203,9 @@ class TestSmokeTestPayloadConstraints:
         """system='' — override the Modelfile's system prompt (V18.2.37e fix)."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert payload.get("system") == ""
@@ -207,8 +214,9 @@ class TestSmokeTestPayloadConstraints:
         """keep_alive is set (models stay resident — V18.1)."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert "keep_alive" in payload
@@ -217,8 +225,9 @@ class TestSmokeTestPayloadConstraints:
         """The probe hits /api/generate (not /api/embeddings)."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         call_args = mock_req.call_args
         url = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("url", "")
@@ -236,8 +245,9 @@ class TestSmokeTestTimeoutCap:
         assert provider.timeout == 300
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         used_timeout = mock_req.call_args.kwargs["timeout"]
         assert used_timeout == 60
@@ -245,13 +255,16 @@ class TestSmokeTestTimeoutCap:
     def test_timeout_uses_provider_value_when_lower(self):
         """Provider timeout=30 → probe uses min(30, 60) = 30."""
         p = OllamaProvider(
-            model="m:latest", base_url="http://localhost:11434",
-            timeout=30, log_callback=lambda msg, level="INFO": None,
+            model="m:latest",
+            base_url="http://localhost:11434",
+            timeout=30,
+            log_callback=lambda msg, level="INFO": None,
         )
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             p.smoke_test()
         used_timeout = mock_req.call_args.kwargs["timeout"]
         assert used_timeout == 30
@@ -260,8 +273,9 @@ class TestSmokeTestTimeoutCap:
         """An explicit timeout= arg to smoke_test overrides the cap."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test(timeout=15)
         used_timeout = mock_req.call_args.kwargs["timeout"]
         assert used_timeout == 15
@@ -281,8 +295,9 @@ class TestSmokeTestTimeoutCap:
         )
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "hi", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             p.smoke_test()
         used_timeout = mock_req.call_args.kwargs["timeout"]
         # smoke_test caps at 60, NOT 300 — preflight stays fast.
@@ -298,8 +313,9 @@ class TestSmokeTestCustomPrompt:
         """A custom probe prompt is passed through to the payload."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "x", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test(prompt="Say OK")
         payload = mock_req.call_args.kwargs["json"]
         assert payload["prompt"] == "Say OK"
@@ -308,8 +324,9 @@ class TestSmokeTestCustomPrompt:
         """The default probe prompt is 'hello' (tiny, universally answerable)."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {"response": "x", "done": True}
-        with patch("core.llm.ollama_provider.safe_ollama_request",
-                   return_value=fake_resp) as mock_req:
+        with patch(
+            "core.llm.ollama_provider.safe_ollama_request", return_value=fake_resp
+        ) as mock_req:
             provider.smoke_test()
         payload = mock_req.call_args.kwargs["json"]
         assert payload["prompt"] == "hello"

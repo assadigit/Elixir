@@ -54,8 +54,7 @@ class _PulsingDot(QLabel):
         c = self._color.lstrip("#")
         r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
         self.setStyleSheet(
-            f"background-color: rgba({r},{g},{b},{opacity});"
-            f" border: none; border-radius: 5px;"
+            f"background-color: rgba({r},{g},{b},{opacity}); border: none; border-radius: 5px;"
         )
 
     def stop(self) -> None:
@@ -166,8 +165,7 @@ class ProgressPanel(QWidget):
         color = color_map.get(kind, p.text_secondary)
         self.status_label.setText(text)
         self.status_label.setStyleSheet(
-            f"color: {color}; font-size: 12px; font-weight: 500;"
-            " background: transparent;"
+            f"color: {color}; font-size: 12px; font-weight: 500; background: transparent;"
         )
 
     def enable_cancel(self, enabled: bool = True) -> None:
@@ -187,7 +185,7 @@ class ProgressPanel(QWidget):
         self.enable_cancel(False)
         # V10.36.0: Clear per-output progress
         self._output_bars = {}
-        if hasattr(self, '_output_container'):
+        if hasattr(self, "_output_container"):
             self._output_container.setVisible(False)
 
     # ── V10.36.0: Per-output progress ────────────────────────────────────
@@ -201,10 +199,11 @@ class ProgressPanel(QWidget):
         progress bar + label for each output type.
         """
         from PySide6.QtWidgets import QProgressBar as _QPB
+
         p = theme_manager.palette
 
         # Remove old bars if any
-        if hasattr(self, '_output_container'):
+        if hasattr(self, "_output_container"):
             self._output_container.deleteLater()
 
         self._output_container = QWidget()

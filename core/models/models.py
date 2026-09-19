@@ -4,7 +4,7 @@
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
@@ -18,35 +18,42 @@ from core.llm.model_taxonomy import (
 )
 
 logger = logging.getLogger(__name__)
-class OcrEngine(str, Enum):
+
+
+class OcrEngine(StrEnum):
     """Which OCR engine was used for a page."""
-    QWEN_VL    = "qwen3-vl"
-    TESSERACT  = "tesseract"
+
+    QWEN_VL = "qwen3-vl"
+    TESSERACT = "tesseract"
     MARKITDOWN = "markitdown"
-    NONE       = "none"
+    NONE = "none"
 
 
-class PdfRecommendation(str, Enum):
+class PdfRecommendation(StrEnum):
     """Recommended strategy after PDF analysis."""
-    LLM_OCR = "llm_ocr"    # Use Qwen3-VL for all pages
-    NO_OCR  = "no_ocr"     # Use extracted text directly
-    HYBRID  = "hybrid"     # OCR only on scanned pages
+
+    LLM_OCR = "llm_ocr"  # Use Qwen3-VL for all pages
+    NO_OCR = "no_ocr"  # Use extracted text directly
+    HYBRID = "hybrid"  # OCR only on scanned pages
 
 
-class SegmentStrategy(str, Enum):
+class SegmentStrategy(StrEnum):
     """Strategy used to split document into segments."""
-    AUTO     = "auto"      # Automatically choose best
-    HEADING  = "heading"   # Markdown headings or Persian patterns
-    KEYWORD  = "keyword"   # User-defined keywords/regex
+
+    AUTO = "auto"  # Automatically choose best
+    HEADING = "heading"  # Markdown headings or Persian patterns
+    KEYWORD = "keyword"  # User-defined keywords/regex
     SEMANTIC = "semantic"  # LLM-based boundary detection
-    TOKEN    = "token"     # Split by token count
+    TOKEN = "token"  # Split by token count
 
 
 # ── Analysis & OCR ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PageAnalysis:
     """Analysis result for a single PDF page."""
+
     page_num: int
     is_scanned: bool
     extracted_text_preview: str
@@ -56,6 +63,7 @@ class PageAnalysis:
 @dataclass
 class PdfAnalysisResult:
     """Overall PDF analysis."""
+
     total_pages: int
     scanned_pages: list[int]
     text_pages: list[int]
@@ -66,6 +74,7 @@ class PdfAnalysisResult:
 @dataclass
 class OcrResult:
     """Result of OCR on a single page."""
+
     page_num: int
     text: str
     success: bool
@@ -75,14 +84,16 @@ class OcrResult:
 
 # ── Segmentation ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Segment:
     """A generic segment (chapter or page-group chunk)."""
+
     heading: str
     content: str
     start_page: int
     end_page: int
-    segment_type: str = "chapter"           # "chapter", "chunk", or "gap"
+    segment_type: str = "chapter"  # "chapter", "chunk", or "gap"
     original_markdown: str | None = None
     # V18.3.3 (F1): aliases — headings of segments that were MERGED into this
     # one by _merge_short_segments. Preserves the lost headings so the chapter
@@ -108,9 +119,11 @@ class Segment:
 
 # ── Summarisation ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class SummaryResult:
     """Two-level summary for a segment."""
+
     chapter_heading: str
     executive_summary: str
     thorough_summary: str
@@ -163,9 +176,11 @@ class SummaryResult:
 
 # ── Conversion Request / Result ───────────────────────────────────────────────
 
+
 @dataclass
 class ConversionRequest:
     """All parameters needed to run a conversion."""
+
     input_path: Path
     output_dir: Path
     password: str | None = None
@@ -205,8 +220,10 @@ class ConversionRequest:
     # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
     # (value unchanged: "gemma3:12b" — the LEGACY sentinel default).
     summarisation_model: str = LEGACY_DEFAULT_MODEL
-    summarisation_max_context_tokens: int = 131072   # V10.12.6: raised 16k → 64k (RTX 3060 12GB can handle 64k for 9B Q4)
-    summarisation_max_output_tokens: int = 4096     # increased default
+    summarisation_max_context_tokens: int = (
+        131072  # V10.12.6: raised 16k → 64k (RTX 3060 12GB can handle 64k for 9B Q4)
+    )
+    summarisation_max_output_tokens: int = 4096  # increased default
     summarisation_cache_enabled: bool = False
 
     # DOCX
@@ -216,7 +233,7 @@ class ConversionRequest:
     docx_font: str = "Helvetica"
 
     # Performance
-    max_workers: int = 2   # NEW: parallel summarisation workers
+    max_workers: int = 2  # NEW: parallel summarisation workers
 
     # ── Pre-flight VRAM acknowledgment (V18.20.4.10 / P0-c) ────────────────
     # Set to True ONLY by an interactive user action (the wizard's
@@ -246,17 +263,17 @@ class ConversionRequest:
     # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
     # Legacy "single" is accepted for backward compat (mapped → "single_local").
     model_architecture: str = "single_local"
-    fast_model: str = ""               # small/fast LOCAL model for simple tasks
+    fast_model: str = ""  # small/fast LOCAL model for simple tasks
     fast_model_temperature: float = 0.1  # V16.0.8: LFM2.5 recommends 0.1
     fast_model_context: int = 131072  # V16.0.8: LFM2.5 max 128K context
-    fast_api_url: str = ""             # API URL for dual_api mode (fast cloud model)
-    fast_api_key: str = ""             # API key for dual_api mode (fast cloud model)
-    fast_api_model: str = ""           # Model name for dual_api mode (fast cloud model)
+    fast_api_url: str = ""  # API URL for dual_api mode (fast cloud model)
+    fast_api_key: str = ""  # API key for dual_api mode (fast cloud model)
+    fast_api_model: str = ""  # Model name for dual_api mode (fast cloud model)
     coverage_threshold: float = 0.50  # lowered to 50%
     # V15.1.0: Over-delivery — keep improving coverage past the minimum threshold
-    overdeliver_enabled: bool = True   # default ON
-    overdeliver_target: float = 1.0     # V15.1.1: 100% (the more the better)
-    b3_voting_enabled: bool = False     # V15.1.1: disabled (damages depth)
+    overdeliver_enabled: bool = True  # default ON
+    overdeliver_target: float = 1.0  # V15.1.1: 100% (the more the better)
+    b3_voting_enabled: bool = False  # V15.1.1: disabled (damages depth)
 
     # V3.5.0: Separate model for simplified keypoints — enables sequential
     # model loading (unload summarization model, load simplification model).
@@ -275,7 +292,7 @@ class ConversionRequest:
     extract_math: bool = False
     layout_analysis: bool = False
     table_extraction_method: str = "camelot"  # or "tabula"
-    math_model: str = "pix2tex"               # or "latex-ocr"
+    math_model: str = "pix2tex"  # or "latex-ocr"
 
     # ── Source Type & Quick Mode ──────────────────────────────────────────
     # V3.10.0: Expanded source types for content-type presets
@@ -322,25 +339,25 @@ class ConversionRequest:
     # Defaults are False at the model level; the settings layer
     # (build_request_from_ui) supplies sensible per-output defaults so the
     # 3 V4.0.0 outputs stay on by default and the 4 new ones are opt-in.
-    output_briefing: bool = False       # B3: one-page synthesis (.Briefing.md)
-    output_podcast: bool = False        # B1: 2-host conversational script (.Podcast.md)
-    output_flashcards: bool = False     # B2: Anki TSV + readable MD (.Flashcards.*)
-    output_packets: bool = False        # V7.3.0: Packets of Knowledge (clusters + synthesis)
-    output_obsidian: bool = False       # V4.1: Obsidian KB — MD + YAML + wikilinks
-    output_study_guide: bool = False    # V4.1: structured study guide (.StudyGuide.md)
-    output_social: bool = False         # V4.1: social media pack (.Social.md)
-    output_mindmap: bool = False        # V4.1: Mermaid mindmap + MD outline (.MindMap.md)
-    output_tts: bool = False            # V4.2: podcast audio via TTS (.Podcast.wav)
-    output_evidence_map: bool = False   # V10.1.0: Scientific Evidence Map (langextract)
-    output_qa: bool = False             # V10.17.0: Q&A study questions
-    output_glossary: bool = False        # V10.20.0: Glossary
-    output_patterns: bool = False        # V10.20.0: Patterns/Techniques
-    output_cheatsheet: bool = False      # V10.20.0: Cheatsheet
-    output_skill: bool = False            # V10.21.0: Agent Skill (SKILL.md)
-    compact_summaries: bool = False       # V10.20.0: Density mode (~1000 tokens/chapter)
+    output_briefing: bool = False  # B3: one-page synthesis (.Briefing.md)
+    output_podcast: bool = False  # B1: 2-host conversational script (.Podcast.md)
+    output_flashcards: bool = False  # B2: Anki TSV + readable MD (.Flashcards.*)
+    output_packets: bool = False  # V7.3.0: Packets of Knowledge (clusters + synthesis)
+    output_obsidian: bool = False  # V4.1: Obsidian KB — MD + YAML + wikilinks
+    output_study_guide: bool = False  # V4.1: structured study guide (.StudyGuide.md)
+    output_social: bool = False  # V4.1: social media pack (.Social.md)
+    output_mindmap: bool = False  # V4.1: Mermaid mindmap + MD outline (.MindMap.md)
+    output_tts: bool = False  # V4.2: podcast audio via TTS (.Podcast.wav)
+    output_evidence_map: bool = False  # V10.1.0: Scientific Evidence Map (langextract)
+    output_qa: bool = False  # V10.17.0: Q&A study questions
+    output_glossary: bool = False  # V10.20.0: Glossary
+    output_patterns: bool = False  # V10.20.0: Patterns/Techniques
+    output_cheatsheet: bool = False  # V10.20.0: Cheatsheet
+    output_skill: bool = False  # V10.21.0: Agent Skill (SKILL.md)
+    compact_summaries: bool = False  # V10.20.0: Density mode (~1000 tokens/chapter)
     # V10.35.0 (Sprint 8/9): New outputs
-    output_epub: bool = False             # V10.35.0: EPUB output (annotated)
-    output_quote_bank: bool = False       # V10.35.0: Quote bank
+    output_epub: bool = False  # V10.35.0: EPUB output (annotated)
+    output_quote_bank: bool = False  # V10.35.0: Quote bank
 
     @property
     def layout_reorder_enabled(self) -> bool:
@@ -353,46 +370,55 @@ class ConversionRequest:
     @property
     def ocr(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["ocr"]
 
     @property
     def postprocess(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["postprocess"]
 
     @property
     def segmentation(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["segmentation"]
 
     @property
     def summarization(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["summarization"]
 
     @property
     def outputs(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["outputs"]
 
     @property
     def quality(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["quality"]
 
     @property
     def advanced(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["advanced"]
 
     @property
     def selection(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["selection"]
 
     @property
     def docx_config(self):
         from core.models.config_views import build_config_views
+
         return build_config_views(self)["docx"]
 
     def get_segment_strategy_enum(self) -> SegmentStrategy:
@@ -407,6 +433,7 @@ class ConversionRequest:
 @dataclass
 class ConversionResult:
     """Result of a conversion operation."""
+
     success: bool
     error_msg: str = ""
     full_markdown_path: Path | None = None
@@ -430,5 +457,5 @@ class ConversionResult:
 # ── Callback type aliases ──────────────────────────────────────────────────────
 
 ProgressCallback = Callable[[float], None]
-StatusCallback   = Callable[[str], None]
-LogCallback      = Callable[[str, str], None]
+StatusCallback = Callable[[str], None]
+LogCallback = Callable[[str, str], None]

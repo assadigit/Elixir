@@ -20,6 +20,7 @@ Design notes:
   - The Obsidian formatter is pure-Python (no external deps) so it always
     works — Obsidian callouts are just ``> [!note]`` blockquotes.
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,6 +38,7 @@ OutputFormat = Literal[".md", ".docx", ".pdf"]
 
 
 # ── Obsidian formatter ────────────────────────────────────────────────
+
 
 def to_obsidian_markdown(
     text: str,
@@ -63,9 +65,10 @@ def to_obsidian_markdown(
 
     # Build front-matter
     import datetime
+
     fm_lines = ["---"]
     if title:
-        fm_lines.append(f'title: "{title.replace("\"", "\\\"")}"')
+        fm_lines.append(f'title: "{title.replace('"', '\\"')}"')
     if source_filename:
         fm_lines.append(f'source: "[[{source_filename}]]"')
     if quality:
@@ -146,6 +149,7 @@ def to_obsidian_markdown(
 
 # ── DOCX formatter ────────────────────────────────────────────────────
 
+
 def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
     """Write a markdown-ish string to a .docx file.
 
@@ -158,7 +162,9 @@ def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
         from docx import Document
         from docx.shared import Pt, RGBColor
     except ImportError:
-        logger.warning("python-docx not installed — cannot write .docx. Run: pip install python-docx")
+        logger.warning(
+            "python-docx not installed — cannot write .docx. Run: pip install python-docx"
+        )
         return False
 
     doc = Document()
@@ -224,6 +230,7 @@ def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
 
 # ── PDF formatter ─────────────────────────────────────────────────────
 
+
 def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
     """Write a markdown-ish string to a PDF file.
 
@@ -238,6 +245,7 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
     # Attempt 1: WeasyPrint (renders HTML → PDF with proper styling)
     try:
         import markdown as _md  # type: ignore
+
         html_body = _md.markdown(text, extensions=["extra", "tables", "fenced_code"])
         # Inline a little CSS for a clean, readable PDF
         css = """
@@ -257,13 +265,16 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
         li { margin: 2px 0; }
         hr { border: none; border-top: 1px solid #d1d5db; margin: 1em 0; }
         """
-        full_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>{css}</style></head><body>"
+        full_html = (
+            f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>{css}</style></head><body>"
+        )
         if title:
             full_html += f"<h1>{title}</h1>"
         full_html += html_body
         full_html += "</body></html>"
 
         from weasyprint import HTML
+
         HTML(string=full_html).write_pdf(str(out_path))
         return True
     except ImportError:
@@ -288,21 +299,56 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
         )
 
         doc = SimpleDocTemplate(
-            str(out_path), pagesize=A4,
-            leftMargin=2 * cm, rightMargin=2 * cm,
-            topMargin=2 * cm, bottomMargin=2 * cm,
+            str(out_path),
+            pagesize=A4,
+            leftMargin=2 * cm,
+            rightMargin=2 * cm,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm,
         )
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle("Title2", parent=styles["Title"], textColor=HexColor("#166534"), fontSize=20, spaceAfter=12)
-        h1_style = ParagraphStyle("H1", parent=styles["Heading1"], textColor=HexColor("#15803d"), fontSize=15, spaceBefore=12, spaceAfter=6)
-        h2_style = ParagraphStyle("H2", parent=styles["Heading2"], textColor=HexColor("#16a34a"), fontSize=12, spaceBefore=10, spaceAfter=4)
-        body_style = ParagraphStyle("Body2", parent=styles["BodyText"], fontSize=11, leading=16, alignment=TA_LEFT)
-        quote_style = ParagraphStyle("Quote", parent=body_style, leftIndent=18, textColor=HexColor("#374151"))
+        title_style = ParagraphStyle(
+            "Title2",
+            parent=styles["Title"],
+            textColor=HexColor("#166534"),
+            fontSize=20,
+            spaceAfter=12,
+        )
+        h1_style = ParagraphStyle(
+            "H1",
+            parent=styles["Heading1"],
+            textColor=HexColor("#15803d"),
+            fontSize=15,
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        h2_style = ParagraphStyle(
+            "H2",
+            parent=styles["Heading2"],
+            textColor=HexColor("#16a34a"),
+            fontSize=12,
+            spaceBefore=10,
+            spaceAfter=4,
+        )
+        body_style = ParagraphStyle(
+            "Body2", parent=styles["BodyText"], fontSize=11, leading=16, alignment=TA_LEFT
+        )
+        quote_style = ParagraphStyle(
+            "Quote", parent=body_style, leftIndent=18, textColor=HexColor("#374151")
+        )
 
         story: list = []
         if title:
             story.append(Paragraph(title, title_style))
-            story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#166534"), spaceBefore=2, spaceAfter=10))
+            story.append(
+                HRFlowable(
+                    width="100%",
+                    thickness=1,
+                    color=HexColor("#166534"),
+                    spaceBefore=2,
+                    spaceAfter=10,
+                )
+            )
 
         current_list: list[ListItem] | None = None
 
@@ -338,7 +384,9 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
             if re.match(r"^\s*\d+\.\s+", line):
                 flush_list()
                 item = _strip_md(re.sub(r"^\s*\d+\.\s+", "", line))
-                story.append(ListFlowable([ListItem(Paragraph(item, body_style))], bulletType="1", start="1"))
+                story.append(
+                    ListFlowable([ListItem(Paragraph(item, body_style))], bulletType="1", start="1")
+                )
                 continue
             if line.startswith(">"):
                 flush_list()
@@ -348,7 +396,15 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
                 continue
             if re.match(r"^\s*([-*_])\1{2,}\s*$", line):
                 flush_list()
-                story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#d1d5db"), spaceBefore=6, spaceAfter=6))
+                story.append(
+                    HRFlowable(
+                        width="100%",
+                        thickness=0.5,
+                        color=HexColor("#d1d5db"),
+                        spaceBefore=6,
+                        spaceAfter=6,
+                    )
+                )
                 continue
             if not line.strip():
                 flush_list()
@@ -368,13 +424,14 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
 def _strip_md(text: str) -> str:
     """Strip common markdown markers for ReportLab (which doesn't render md)."""
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)  # bold → reportlab bold
-    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)        # italic → reportlab italic
+    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)  # italic → reportlab italic
     text = re.sub(r"`(.+?)`", r"<font face='Courier'>\1</font>", text)
-    text = re.sub(r"\[(.+?)\]\((.+?)\)", r"\1", text)      # links → text only
+    text = re.sub(r"\[(.+?)\]\((.+?)\)", r"\1", text)  # links → text only
     return text
 
 
 # ── Unified entry point ───────────────────────────────────────────────
+
 
 def write_output(
     text: str,

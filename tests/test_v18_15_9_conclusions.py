@@ -12,6 +12,7 @@ Byte-for-byte stability gate for the V18.15.9.1 fixes:
 
 Run: pytest tests/test_v18_15_9_conclusions.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,7 +47,10 @@ class TestV18_15_9_1ExtractionFixes:
         _candidates = [
             _project_root / "audit" / "trust-ground" / "001_1_IDENTITY_AND_ITS_ORIGINS_source.md",
             Path("/home/z/my-project/audit/trust-ground/001_1_IDENTITY_AND_ITS_ORIGINS_source.md"),
-            _project_root.parent / "audit" / "trust-ground" / "001_1_IDENTITY_AND_ITS_ORIGINS_source.md",
+            _project_root.parent
+            / "audit"
+            / "trust-ground"
+            / "001_1_IDENTITY_AND_ITS_ORIGINS_source.md",
         ]
         for p in _candidates:
             if p.exists():
@@ -70,7 +74,7 @@ class TestV18_15_9_1ExtractionFixes:
         The trailing "and" is stripped (it's a conjunction for the next item)."""
         conclusions = detect_enumerated_conclusions(salman_akhtar_source)
         _num6, text6 = conclusions[5]
-        _lower = text6.lower().strip().rstrip(',;.')
+        _lower = text6.lower().strip().rstrip(",;.")
         assert not _lower.endswith("and"), f"char 6 ends with 'and': {text6!r}"
 
     def test_all_7_no_newlines(self, salman_akhtar_source):
@@ -84,14 +88,13 @@ class TestV18_15_9_1ExtractionFixes:
         """V18.15.9.1 Fix 3: NO conclusion text ends with "and"."""
         conclusions = detect_enumerated_conclusions(salman_akhtar_source)
         for num, text in conclusions:
-            _lower = text.lower().strip().rstrip(',;.')
+            _lower = text.lower().strip().rstrip(",;.")
             assert not _lower.endswith("and"), f"char {num} ends with 'and': {text!r}"
 
     def test_newline_collapse_synthetic(self):
         """Synthetic test: a source with a newline mid-item is collapsed."""
         source = (
-            "A" * 1000 + " "
-            "items: (1) first item, (2) second item with\na newline, (3) third item."
+            "A" * 1000 + " items: (1) first item, (2) second item with\na newline, (3) third item."
         )
         conclusions = detect_enumerated_conclusions(source)
         assert len(conclusions) == 3
@@ -102,14 +105,11 @@ class TestV18_15_9_1ExtractionFixes:
 
     def test_trailing_and_stripped_synthetic(self):
         """Synthetic test: trailing "and" is stripped from each item."""
-        source = (
-            "A" * 1000 + " "
-            "items: (1) first and, (2) second and, (3) third."
-        )
+        source = "A" * 1000 + " items: (1) first and, (2) second and, (3) third."
         conclusions = detect_enumerated_conclusions(source)
         assert len(conclusions) == 3
         for num, text in conclusions:
-            _lower = text.lower().strip().rstrip(',;.')
+            _lower = text.lower().strip().rstrip(",;.")
             assert not _lower.endswith("and"), f"char {num} ends with 'and': {text!r}"
 
 
@@ -146,7 +146,7 @@ class TestV18_15_9_1ConsolidatedBullet:
         assert isinstance(_consolidated, str)
         assert _consolidated.startswith("**Characteristics of solid identity**:")
         # Verify all 7 are in the single bullet
-        for n, t in conclusions:
+        for n, _t in conclusions:
             assert f"({n})" in _consolidated, f"item {n} missing from consolidated bullet"
 
     def test_consolidated_bullet_no_leading_dash(self, salman_akhtar_source):
@@ -170,7 +170,10 @@ class TestV18_15_9_1ConsolidatedBullet:
         _consolidated = f"**{_label_plural} of solid identity**: {_items_text}."
         # Verify #3 (genuineness and authenticity) is present (V18.15.9.0 missed it)
         assert "(3)" in _consolidated
-        assert "genuineness and authenticity" in _consolidated.lower() or "authenticity" in _consolidated.lower()
+        assert (
+            "genuineness and authenticity" in _consolidated.lower()
+            or "authenticity" in _consolidated.lower()
+        )
 
     def test_consolidated_bullet_no_malformed_items(self, salman_akhtar_source):
         """V18.15.9.1 Fix 3: no malformed items (no newlines, no trailing 'and')."""
@@ -181,12 +184,13 @@ class TestV18_15_9_1ConsolidatedBullet:
         assert "\r" not in _items_text
         # No item ends with "and" (before the semicolon or end)
         import re
+
         _items = _items_text.split(";")
         for item in _items:
-            _clean = item.strip().lower().rstrip(',;.')
+            _clean = item.strip().lower().rstrip(",;.")
             # The "and" may appear inside an item (e.g., "genuineness and authenticity")
             # but not as a trailing word
-            assert not re.search(r'\s+and\s*$', _clean), f"item ends with 'and': {item!r}"
+            assert not re.search(r"\s+and\s*$", _clean), f"item ends with 'and': {item!r}"
 
     def test_label_characteristic_for_7_items(self, salman_akhtar_source):
         """V18.15.9.1: 7 items → label "Characteristics" (plural)."""
@@ -216,6 +220,7 @@ class TestV18_15_9_1DistinctBulletCheck:
         conclusion bullet — the method should no-op (not scatter)."""
         # Simulate the distinct-bullet check (mirrors the regex approach in summarizer.py)
         import re
+
         existing_bullets = [
             "Tausk (1919) introduced identity.",
             "**Characteristics of solid identity**: (1) selfsameness; (2) ...",
@@ -223,7 +228,7 @@ class TestV18_15_9_1DistinctBulletCheck:
         _label_plural = "Characteristics"
         _found = False
         for bp in existing_bullets:
-            _bp_clean = re.sub(r'^\s*(?:[-\u2022]\s+)?', '', str(bp)).strip()
+            _bp_clean = re.sub(r"^\s*(?:[-\u2022]\s+)?", "", str(bp)).strip()
             # V18.15.9.1: check the prefix (not the full "**Characteristics**")
             # because the label may be "**Characteristics of solid identity**:"
             if _bp_clean.lower().startswith(f"**{_label_plural.lower()}"):
@@ -237,6 +242,7 @@ class TestV18_15_9_1DistinctBulletCheck:
         should NOT treat this as 'already present' — it should still add the
         consolidated bullet."""
         import re
+
         existing_bullets = [
             "The chapter's conclusion lists seven characteristics: sustained "
             "selfsameness, temporal continuity, genuineness and authenticity, "
@@ -245,7 +251,7 @@ class TestV18_15_9_1DistinctBulletCheck:
         _label_plural = "Characteristics"
         _found = False
         for bp in existing_bullets:
-            _bp_clean = re.sub(r'^\s*(?:[-\u2022]\s+)?', '', str(bp)).strip()
+            _bp_clean = re.sub(r"^\s*(?:[-\u2022]\s+)?", "", str(bp)).strip()
             if _bp_clean.lower().startswith(f"**{_label_plural.lower()}"):
                 _found = True
                 break
@@ -303,5 +309,5 @@ class TestV18_15_9_1UIFixes:
         # Find the QPushButton#Primary block + verify outline: none
         _primary_idx = _src.find("QPushButton#Primary")
         assert _primary_idx >= 0, "QPushButton#Primary block not found"
-        _block = _src[_primary_idx:_primary_idx + 500]
+        _block = _src[_primary_idx : _primary_idx + 500]
         assert "outline: none" in _block, "outline: none not in Primary button block"

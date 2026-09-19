@@ -24,6 +24,7 @@ Usage::
     worker.start()  # spawns a QThread, moves worker to it, starts
     worker.finished.connect(self._on_done)  # runs on main thread
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
@@ -41,9 +42,9 @@ class BaseWorker(QObject):
     """
 
     # Signals — emit these from run(), never touch Qt widgets directly.
-    progress = Signal(int, str)    # (percentage, status_message)
-    finished = Signal(object)      # (result: Any)
-    failed = Signal(str)           # (error_message)
+    progress = Signal(int, str)  # (percentage, status_message)
+    finished = Signal(object)  # (result: Any)
+    failed = Signal(str)  # (error_message)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 
 from core.tts.engine import LogFn
+
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport (canonical URL resolver
 # unchanged — see the W-c9 source pins in test_v182043_p2_settings_integrity).
 from utils.network import session_for_url
@@ -39,6 +40,7 @@ def _ollama_base_url() -> str:
     """
     try:
         from utils.settings import Settings
+
         return Settings().get_ollama_url()
     except Exception:
         return "http://localhost:11434"
@@ -60,6 +62,7 @@ class VRAMManager:
         """
         try:
             import torch
+
             if not torch.cuda.is_available():
                 return None
             total = torch.cuda.get_device_properties(0).total_memory
@@ -88,7 +91,7 @@ class VRAMManager:
         self.log(
             f"  💾 VRAM: {info['free_mb']} MB free / {info['total_mb']} MB total "
             f"— need {required_mb} MB → {'OK' if ok else 'INSUFFICIENT'}",
-            "DEBUG"
+            "DEBUG",
         )
         return ok
 
@@ -132,7 +135,7 @@ class VRAMManager:
                 self.log(f"  🧹 Unloading Ollama model: {model}", "INFO")
                 # Ollama doesn't have a direct "unload" API, but sending
                 # a generate request with keep_alive=0 unloads the model.
-                resp = session_for_url(_ollama_base_url()).post(
+                session_for_url(_ollama_base_url()).post(
                     f"{_ollama_base_url()}/api/generate",
                     json={
                         "model": model,
@@ -147,10 +150,7 @@ class VRAMManager:
                 self.log(f"  ⚠️ Could not unload {model}: {e}", "DEBUG")
 
         if unloaded > 0:
-            self.log(
-                f"  ✅ Unloaded {unloaded} Ollama model(s) — VRAM freed for TTS",
-                "INFO"
-            )
+            self.log(f"  ✅ Unloaded {unloaded} Ollama model(s) — VRAM freed for TTS", "INFO")
         return unloaded
 
     # ── Engine selection logic ────────────────────────────────────────────
@@ -183,25 +183,20 @@ class VRAMManager:
         # Log VRAM info for diagnostics (but don't block on it)
         info = self.get_vram_info()
         if info:
-            self.log(
-                f"  💾 VRAM: {info['free_mb']} MB free / {info['total_mb']} MB total",
-                "INFO"
-            )
+            self.log(f"  💾 VRAM: {info['free_mb']} MB free / {info['total_mb']} MB total", "INFO")
         else:
             self.log(
                 "  💾 VRAM check unavailable (likely background thread) — "
                 "proceeding with NeuTTS anyway",
-                "INFO"
+                "INFO",
             )
 
         # Check if NeuTTS files exist
         from pathlib import Path
+
         if neutts_gguf_path and Path(neutts_gguf_path).exists():
             self.log("  ✅ NeuTTS-Air GGUF found — proceeding with NeuTTS", "INFO")
             return "neutts"
         else:
-            self.log(
-                "  ⚠️ NeuTTS GGUF model not found — falling back to Kokoro",
-                "WARNING"
-            )
+            self.log("  ⚠️ NeuTTS GGUF model not found — falling back to Kokoro", "WARNING")
             return "kokoro"

@@ -7,6 +7,7 @@ the 3-attempt + synthetic-fallback flow.
 
 Run: pytest tests/test_thorough_fallback.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,12 +18,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.thorough_fallback import call_dedicated_thorough_with_fallback
 
@@ -100,7 +104,10 @@ class TestAttempt1Success:
         long_thorough = " ".join([f"word{i}" for i in range(900)]) + "."
         deps = _make_deps(llm_responses=[long_thorough])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1", "b2"], min_words=800,
+            "prompt",
+            "exec",
+            ["b1", "b2"],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out == long_thorough
@@ -115,7 +122,10 @@ class TestAttempt1Success:
         tagged = f"<think>planning</think><thorough_summary>{inner}</thorough_summary>tail"
         deps = _make_deps(llm_responses=[tagged])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800,
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out == inner  # the tag content, stripped of thinking + tags
@@ -133,7 +143,10 @@ class TestAttemptEscalation:
         long_t = " ".join([f"w{i}" for i in range(900)]) + "."
         deps = _make_deps(llm_responses=[short, long_t])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800,
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out == long_t
@@ -147,7 +160,10 @@ class TestAttemptEscalation:
         long_t = " ".join([f"w{i}" for i in range(900)]) + "."
         deps = _make_deps(llm_responses=[None, None, long_t])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800,
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out == long_t
@@ -162,9 +178,13 @@ class TestAttemptEscalation:
         best = " ".join([f"w{i}" for i in range(100)]) + "."  # 100 words < 800
         deps = _make_deps(llm_responses=["short.", "medium response.", best])
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800,
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in kw.items()},
         )
         # best = the 100-word one (longest of the 3)
@@ -184,8 +204,11 @@ class TestDeadlineSkip:
         synthetic fallback."""
         deps = _make_deps(llm_responses=[None], deadline_exceeded_returns=True)
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec summary text here", ["bullet one", "bullet two"],
-            min_words=800, **{k: v for k, v in _common_kwargs(deps).items()},
+            "prompt",
+            "exec summary text here",
+            ["bullet one", "bullet two"],
+            min_words=800,
+            **{k: v for k, v in _common_kwargs(deps).items()},
         )
         # Only attempt 1 ran (attempts 2 + 3 skipped due to deadline)
         assert len(deps["_llm_calls"]) == 1
@@ -208,8 +231,11 @@ class TestSyntheticFallback:
         count increments by 1."""
         deps = _make_deps(llm_responses=[None, None, None])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "The executive summary text.", ["Bullet one.", "Bullet two."],
-            min_words=800, **{k: v for k, v in _common_kwargs(deps).items()},
+            "prompt",
+            "The executive summary text.",
+            ["Bullet one.", "Bullet two."],
+            min_words=800,
+            **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out is not None
         assert "The executive summary text." in out
@@ -222,9 +248,14 @@ class TestSyntheticFallback:
         escalated WARNING is logged (SYSTEMATICALLY failing + diagnostics)."""
         deps = _make_deps(llm_responses=[None, None, None])
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap; kw["synthetic_fallback_count"] = 1
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
+        kw["synthetic_fallback_count"] = 1
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec text", ["b1"], min_words=800,
+            "prompt",
+            "exec text",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in kw.items()},
         )
         assert count == 2  # was 1, now 2
@@ -238,7 +269,10 @@ class TestSyntheticFallback:
         (None, fallback_count_unchanged) — no synthetic fallback possible."""
         deps = _make_deps(llm_responses=[None, None, None])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "", [], min_words=800,
+            "prompt",
+            "",
+            [],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out is None
@@ -249,7 +283,10 @@ class TestSyntheticFallback:
         built from bullets only."""
         deps = _make_deps(llm_responses=[None, None, None])
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "", ["Bullet one.", "Bullet two."], min_words=800,
+            "prompt",
+            "",
+            ["Bullet one.", "Bullet two."],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out is not None
@@ -265,19 +302,27 @@ class TestByteForByte:
     def test_deterministic_for_fixed_inputs(self):
         """Same inputs → same (out, count) across calls."""
         long_t = " ".join([f"w{i}" for i in range(900)]) + "."
+
         def _run():
             deps = _make_deps(llm_responses=[long_t])
             return call_dedicated_thorough_with_fallback(
-                "p", "e", ["b"], min_words=800,
+                "p",
+                "e",
+                ["b"],
+                min_words=800,
                 **{k: v for k, v in _common_kwargs(deps).items()},
             )
+
         assert _run() == _run()
 
     def test_returns_tuple_of_optional_str_and_int(self):
         """Returns (Optional[str], int) — the delegate unpacks this."""
         deps = _make_deps(llm_responses=[" ".join([f"w{i}" for i in range(900)]) + "."])
         out, count = call_dedicated_thorough_with_fallback(
-            "p", "e", ["b"], min_words=800,
+            "p",
+            "e",
+            ["b"],
+            min_words=800,
             **{k: v for k, v in _common_kwargs(deps).items()},
         )
         assert out is None or isinstance(out, str)
@@ -287,9 +332,14 @@ class TestByteForByte:
         """log=None (default) → _noop_log → no raise."""
         long_t = " ".join([f"w{i}" for i in range(900)]) + "."
         deps = _make_deps(llm_responses=[long_t])
-        kw = _common_kwargs(deps); kw.pop("log")
+        kw = _common_kwargs(deps)
+        kw.pop("log")
         out, count = call_dedicated_thorough_with_fallback(
-            "p", "e", ["b"], min_words=800, **{k: v for k, v in kw.items()},
+            "p",
+            "e",
+            ["b"],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
         )
         assert out == long_t
 
@@ -318,10 +368,14 @@ class TestCallLlmRaisesFallthrough:
             ],
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "The executive summary text.", ["Bullet one.", "Bullet two."],
-            min_words=800, **{k: v for k, v in kw.items()},
+            "prompt",
+            "The executive summary text.",
+            ["Bullet one.", "Bullet two."],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
         )
         # All 3 attempts raised → synthetic fallback built from exec + bullets
         assert out is not None
@@ -332,7 +386,9 @@ class TestCallLlmRaisesFallthrough:
         # 3 WARNINGs about the crashes (one per attempt)
         warnings = [m for m, l in cap.calls if l == "WARNING"]
         crash_warnings = [w for w in warnings if "crashed" in w and "falling through" in w]
-        assert len(crash_warnings) == 3, f"expected 3 crash warnings, got {len(crash_warnings)}: {crash_warnings}"
+        assert len(crash_warnings) == 3, (
+            f"expected 3 crash warnings, got {len(crash_warnings)}: {crash_warnings}"
+        )
 
     def test_attempt1_raises_attempt2_succeeds(self):
         """Attempt 1 raises → caught → attempt 2 succeeds → attempt 2's thorough
@@ -347,9 +403,14 @@ class TestCallLlmRaisesFallthrough:
             ],
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800, **{k: v for k, v in kw.items()},
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
         )
         # Attempt 2 succeeded → its thorough returned
         assert out == long_t
@@ -372,9 +433,14 @@ class TestCallLlmRaisesFallthrough:
             ],
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "exec", ["b1"], min_words=800, **{k: v for k, v in kw.items()},
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
         )
         # Attempt 3 succeeded → its thorough returned
         assert out == long_t
@@ -396,9 +462,14 @@ class TestCallLlmRaisesFallthrough:
             ],
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out, count = call_dedicated_thorough_with_fallback(
-            "prompt", "", [], min_words=800, **{k: v for k, v in kw.items()},
+            "prompt",
+            "",
+            [],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
         )
         # No synthetic fallback possible (nothing to synthesize from)
         assert out is None
@@ -411,17 +482,24 @@ class TestCallLlmRaisesFallthrough:
     def test_http_error_exception_type_preserved_in_log(self):
         """The exception type (e.g. HTTPError) is preserved in the WARNING log
         message so the user can diagnose the root cause (Ollama 500 vs OOM vs etc)."""
+
         class _FakeHTTPError(RuntimeError):
             """Simulates requests.exceptions.HTTPError from Ollama 500."""
+
             pass
+
         deps = _make_deps(
             llm_responses=[None, None, None],
             llm_raises=[_FakeHTTPError("500 Server Error: Internal Server Error")] * 3,
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         call_dedicated_thorough_with_fallback(
-            "prompt", "exec text", ["b1"], min_words=800,
+            "prompt",
+            "exec text",
+            ["b1"],
+            min_words=800,
             **{k: v for k, v in kw.items()},
         )
         warnings = [m for m, l in cap.calls if l == "WARNING"]

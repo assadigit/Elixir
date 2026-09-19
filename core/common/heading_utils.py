@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from rapidfuzz import fuzz
+
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     fuzz = None
@@ -23,36 +24,56 @@ except ImportError:
 
 
 # ── Front matter blocklist (copied from heading_segmenter) ──────────────
-FRONT_MATTER_BLOCKLIST = frozenset({
-    "TABLE OF CONTENTS", "CONTENTS", "INDEX", "REFERENCES", "BIBLIOGRAPHY",
-    "ACKNOWLEDGMENTS", "ACKNOWLEDGEMENTS", "PREFACE", "FOREWORD", "DEDICATION",
-    "ABOUT THE AUTHOR", "COPYRIGHT", "COLOPHON", "GLOSSARY",
-    "فهرست مطالب", "فهرست", "منابع", "مراجع", "مقدمه ناشر", "سپاسگزاری",
-})
+FRONT_MATTER_BLOCKLIST = frozenset(
+    {
+        "TABLE OF CONTENTS",
+        "CONTENTS",
+        "INDEX",
+        "REFERENCES",
+        "BIBLIOGRAPHY",
+        "ACKNOWLEDGMENTS",
+        "ACKNOWLEDGEMENTS",
+        "PREFACE",
+        "FOREWORD",
+        "DEDICATION",
+        "ABOUT THE AUTHOR",
+        "COPYRIGHT",
+        "COLOPHON",
+        "GLOSSARY",
+        "فهرست مطالب",
+        "فهرست",
+        "منابع",
+        "مراجع",
+        "مقدمه ناشر",
+        "سپاسگزاری",
+    }
+)
 
 # Patterns that indicate a heading is likely front matter
 FRONT_MATTER_PATTERNS = [
-    re.compile(r'(?i)^\s*(table\s+of\s+contents|contents)\s*$'),
-    re.compile(r'(?i)^\s*فهرست\s+(مطالب)?\s*$'),
-    re.compile(r'(?i)^\s*index\s*$'),
-    re.compile(r'(?i)^\s*نمایه\s*$'),
-    re.compile(r'(?i)^\s*(references|bibliography|works\s+cited|sources)\s*$'),
-    re.compile(r'(?i)^\s*(منابع|مراجع|کتابنامه)\s*$'),
-    re.compile(r'(?i)^\s*copyright\s*[©]?'),
-    re.compile(r'(?i)^\s*©\s*\d{4}'),
-    re.compile(r'(?i)^\s*all\s+rights?\s+reserved'),
-    re.compile(r'(?i)^\s*dedication\s*$'),
-    re.compile(r'(?i)^\s*تقدیم\s*(به)?\s*$'),
-    re.compile(r'(?i)^\s*(acknowledgments|acknowledgements|thanks)\s*$'),
-    re.compile(r'(?i)^\s*(سپاسگزاری|تقدیر|تشکر)\s*$'),
-    re.compile(r'(?i)^\s*(preface|foreword|prologue)\s*$'),
-    re.compile(r'(?i)^\s*(پیشگفتار|سخن\s+ناشر|یادداشت\s+مترجم)\s*$'),
+    re.compile(r"(?i)^\s*(table\s+of\s+contents|contents)\s*$"),
+    re.compile(r"(?i)^\s*فهرست\s+(مطالب)?\s*$"),
+    re.compile(r"(?i)^\s*index\s*$"),
+    re.compile(r"(?i)^\s*نمایه\s*$"),
+    re.compile(r"(?i)^\s*(references|bibliography|works\s+cited|sources)\s*$"),
+    re.compile(r"(?i)^\s*(منابع|مراجع|کتابنامه)\s*$"),
+    re.compile(r"(?i)^\s*copyright\s*[©]?"),
+    re.compile(r"(?i)^\s*©\s*\d{4}"),
+    re.compile(r"(?i)^\s*all\s+rights?\s+reserved"),
+    re.compile(r"(?i)^\s*dedication\s*$"),
+    re.compile(r"(?i)^\s*تقدیم\s*(به)?\s*$"),
+    re.compile(r"(?i)^\s*(acknowledgments|acknowledgements|thanks)\s*$"),
+    re.compile(r"(?i)^\s*(سپاسگزاری|تقدیر|تشکر)\s*$"),
+    re.compile(r"(?i)^\s*(preface|foreword|prologue)\s*$"),
+    re.compile(r"(?i)^\s*(پیشگفتار|سخن\s+ناشر|یادداشت\s+مترجم)\s*$"),
 ]
 
 # Patterns that indicate a heading is a chapter (for offset detection)
 CHAPTER_LIKE_PATTERNS = [
-    re.compile(r'^(?:Chapter|Part|Section|Appendix|فصل|بخش|قسمت|مبحث)\s+', re.IGNORECASE | re.UNICODE),
-    re.compile(r'^\d+\s*[-–—.:]\s+', re.UNICODE),
+    re.compile(
+        r"^(?:Chapter|Part|Section|Appendix|فصل|بخش|قسمت|مبحث)\s+", re.IGNORECASE | re.UNICODE
+    ),
+    re.compile(r"^\d+\s*[-–—.:]\s+", re.UNICODE),
 ]
 
 
@@ -67,13 +88,18 @@ def normalize_heading(heading: str) -> str:
     """
     h = heading.strip()
     # Remove common prefixes with numbers/roman: "Chapter 1", "Part II", "Section 3", etc.
-    h = re.sub(r'^(?:Chapter|Part|Section|Appendix|فصل|بخش)\s+[IVX\d]+\s*[-–—:.]?\s*', '', h, flags=re.IGNORECASE)
+    h = re.sub(
+        r"^(?:Chapter|Part|Section|Appendix|فصل|بخش)\s+[IVX\d]+\s*[-–—:.]?\s*",
+        "",
+        h,
+        flags=re.IGNORECASE,
+    )
     # Remove standalone numbers at start: "1 - ", "1. ", etc. (including sub-sections like "1.2.3")
-    h = re.sub(r'^\d+(?:\.\d+)*\s*[-–—.:]\s*', '', h)
+    h = re.sub(r"^\d+(?:\.\d+)*\s*[-–—.:]\s*", "", h)
     # Remove trailing punctuation
-    h = re.sub(r'[:.\-–—]\s*$', '', h)
+    h = re.sub(r"[:.\-–—]\s*$", "", h)
     # Collapse multiple spaces, tabs, Unicode whitespace
-    h = re.sub(r'\s+', ' ', h)
+    h = re.sub(r"\s+", " ", h)
     return h.strip().lower()
 
 
@@ -121,7 +147,7 @@ def fuzzy_match_heading(
             if score >= threshold and score > best_score:
                 best_score = score
                 best_match = (line_no, cand_text)
-                best_method = f"fuzzy_{threshold:.2f}".replace('.', '_')
+                best_method = f"fuzzy_{threshold:.2f}".replace(".", "_")
         if best_match:
             break
 
@@ -140,14 +166,14 @@ def is_likely_heading(line: str) -> bool:
     if not stripped:
         return False
     # Skip code blocks, tables
-    if stripped.startswith('```') or stripped.startswith('|'):
+    if stripped.startswith("```") or stripped.startswith("|"):
         return False
     # Length: 3 to 200 chars (allow short headings like "REFERENCES")
     if len(stripped) < 3 or len(stripped) > 200:
         return False
 
     # 1. Markdown heading
-    if stripped.startswith('#'):
+    if stripped.startswith("#"):
         return True
     # 2. All caps (e.g., "REFERENCES")
     if stripped.isupper():
@@ -158,10 +184,12 @@ def is_likely_heading(line: str) -> bool:
     if re.match(r"^(?:#+\s*)?(?:Chapter|Part|Section|CHAPTER|PART|SECTION)\b", stripped):
         return True
     # 4. Title‑case, short, no ending punctuation
-    if (len(stripped) <= 80 and
-        not re.search(r'[.;,]$', stripped) and
-        stripped[0].isupper() and
-        len(stripped.split()) >= 2):
+    if (
+        len(stripped) <= 80
+        and not re.search(r"[.;,]$", stripped)
+        and stripped[0].isupper()
+        and len(stripped.split()) >= 2
+    ):
         return True
     return False
 
@@ -174,20 +202,14 @@ def is_front_matter(heading: str) -> bool:
     if heading_upper in FRONT_MATTER_BLOCKLIST:
         return True
 
-    for pattern in FRONT_MATTER_PATTERNS:
-        if pattern.search(heading):
-            return True
-    return False
+    return any(pattern.search(heading) for pattern in FRONT_MATTER_PATTERNS)
 
 
 def is_chapter_like(heading: str) -> bool:
     """
     Check if a heading looks like a chapter (for offset detection).
     """
-    for pattern in CHAPTER_LIKE_PATTERNS:
-        if pattern.search(heading):
-            return True
-    return False
+    return any(pattern.search(heading) for pattern in CHAPTER_LIKE_PATTERNS)
 
 
 def get_heading_candidates(

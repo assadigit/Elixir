@@ -19,15 +19,14 @@ import re
 
 logger = logging.getLogger(__name__)
 
-_FOOTNOTE_MARKER = re.compile(r'(\d{1,3})\s')  # number followed by space
+_FOOTNOTE_MARKER = re.compile(r"(\d{1,3})\s")  # number followed by space
 
 # Pattern for footnote definitions at bottom of page
-_FOOTNOTE_DEF = re.compile(r'^(\d{1,3})[\.\)]\s+(.{10,500})', re.MULTILINE)
+_FOOTNOTE_DEF = re.compile(r"^(\d{1,3})[\.\)]\s+(.{10,500})", re.MULTILINE)
 
 # Pattern for endnotes section
 _ENDNOTES_SECTION = re.compile(
-    r'(?:^|\n)#{0,3}\s*(?:Notes|Endnotes|Footnotes)\s*\n',
-    re.IGNORECASE | re.MULTILINE
+    r"(?:^|\n)#{0,3}\s*(?:Notes|Endnotes|Footnotes)\s*\n", re.IGNORECASE | re.MULTILINE
 )
 
 
@@ -50,24 +49,26 @@ def extract_footnotes(text: str, page_markers: list | None = None) -> dict:
     # 1. Extract endnotes section (if exists)
     endnotes_match = _ENDNOTES_SECTION.search(text)
     if endnotes_match:
-        endnotes_text = text[endnotes_match.end():]
+        endnotes_text = text[endnotes_match.end() :]
         # Split into individual endnotes
         for m in _FOOTNOTE_DEF.finditer(endnotes_text):
-            endnotes.append({
-                "number": int(m.group(1)),
-                "text": m.group(2).strip(),
-                "type": "endnote",
-            })
+            endnotes.append(
+                {
+                    "number": int(m.group(1)),
+                    "text": m.group(2).strip(),
+                    "type": "endnote",
+                }
+            )
         # Remove endnotes section from cleaned text
-        cleaned_text = text[:endnotes_match.start()].rstrip()
+        cleaned_text = text[: endnotes_match.start()].rstrip()
 
     # 2. Extract inline footnotes (bottom-of-page patterns)
     # Look for patterns like "1. Some footnote text." that appear after page markers
-    pages = re.split(r'(<!--\s*Page\s+\d+\s*-->)', cleaned_text)
+    pages = re.split(r"(<!--\s*Page\s+\d+\s*-->)", cleaned_text)
     cleaned_parts = []
 
-    for i, part in enumerate(pages):
-        if re.match(r'<!--\s*Page\s+\d+\s*-->', part):
+    for _i, part in enumerate(pages):
+        if re.match(r"<!--\s*Page\s+\d+\s*-->", part):
             cleaned_parts.append(part)
             continue
 
@@ -85,18 +86,20 @@ def extract_footnotes(text: str, page_markers: list | None = None) -> dict:
         for line in bottom_lines:
             m = _FOOTNOTE_DEF.match(line.strip())
             if m:
-                footnote_lines.append({
-                    "number": int(m.group(1)),
-                    "text": m.group(2).strip(),
-                    "type": "footnote",
-                })
+                footnote_lines.append(
+                    {
+                        "number": int(m.group(1)),
+                        "text": m.group(2).strip(),
+                        "type": "footnote",
+                    }
+                )
             else:
                 body_lines.append(line)
 
         footnotes.extend(footnote_lines)
-        cleaned_parts.append('\n'.join(body_lines))
+        cleaned_parts.append("\n".join(body_lines))
 
-    cleaned_text = ''.join(cleaned_parts)
+    cleaned_text = "".join(cleaned_parts)
 
     return {
         "footnotes": footnotes,
@@ -117,4 +120,4 @@ def format_footnotes_for_summary(footnotes: list[dict], endnotes: list[dict]) ->
     for en in endnotes:
         parts.append(f"[^{en['number']}]: {en['text']}\n")
 
-    return '\n'.join(parts)
+    return "\n".join(parts)

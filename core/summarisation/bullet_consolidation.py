@@ -50,6 +50,7 @@ canned inputs → golden outputs for both functions. The existing
 ``self._consolidate_bullets(bullets)`` after the deadline guard) must
 continue to pass unchanged.
 """
+
 from __future__ import annotations
 
 import re
@@ -79,20 +80,20 @@ def consolidate_duplicate_claims(
 ) -> list[str]:
     """V13.44.0 Idea #5: Dedup consolidation pass.
 
-    After B4 merges bullets from multiple sections, detect bullets making
-    the same claim about different subjects and merge them.
+        After B4 merges bullets from multiple sections, detect bullets making
+        the same claim about different subjects and merge them.
 
-Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defining condition"
-→ "AuthorL and AuthorD both view X as a defining condition"
+    Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defining condition"
+    → "AuthorL and AuthorD both view X as a defining condition"
 
-    Uses rapidfuzz to detect near-duplicate sentence structures (same claim,
-    different subject). Deterministic — no LLM call.
+        Uses rapidfuzz to detect near-duplicate sentence structures (same claim,
+        different subject). Deterministic — no LLM call.
 
-    Extracted verbatim from ``Summarizer._consolidate_duplicate_claims``. The
-    only change is ``self.log(...)`` → ``log(...)`` (with ``_noop_log``
-    default). All logic — the punctuation-normalize exact dedup, the 0.92
-    fuzzy threshold, the symmetric-difference subject-name extraction, the
-    "X and Y both [claim]" merge template — is byte-for-byte identical.
+        Extracted verbatim from ``Summarizer._consolidate_duplicate_claims``. The
+        only change is ``self.log(...)`` → ``log(...)`` (with ``_noop_log``
+        default). All logic — the punctuation-normalize exact dedup, the 0.92
+        fuzzy threshold, the symmetric-difference subject-name extraction, the
+        "X and Y both [claim]" merge template — is byte-for-byte identical.
     """
     log = log or _noop_log
     if len(bullets) < 2:
@@ -100,6 +101,7 @@ Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defin
 
     try:
         from rapidfuzz import fuzz as rf_fuzz
+
         has_rf = True
     except ImportError:
         has_rf = False
@@ -108,7 +110,7 @@ Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defin
     seen = set()
     unique_bullets = []
     for bp in bullets:
-        norm = re.sub(r'[^\w\s]', '', str(bp).lower()).strip()
+        norm = re.sub(r"[^\w\s]", "", str(bp).lower()).strip()
         if norm and norm not in seen:
             seen.add(norm)
             unique_bullets.append(str(bp))
@@ -143,7 +145,10 @@ Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defin
                 if 0 < len(diff_words) <= 6:
                     merge_group.append(bp2)
                     used.add(j)
-                    log(f"    \U0001f527 Consolidated: '{bp1[:40]}\u2026' + '{bp2[:40]}\u2026' (sim={sim:.2f})", "DEBUG")
+                    log(
+                        f"    \U0001f527 Consolidated: '{bp1[:40]}\u2026' + '{bp2[:40]}\u2026' (sim={sim:.2f})",
+                        "DEBUG",
+                    )
         used.add(i)
 
         if len(merge_group) > 1:
@@ -153,7 +158,23 @@ Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defin
                 # Try to extract the first proper noun or name
                 words = bp.split()
                 for w in words[:5]:
-                    if w[0].isupper() and len(w) > 2 and w not in ("The", "This", "These", "Those", "A", "An", "In", "While", "When", "If"):
+                    if (
+                        w[0].isupper()
+                        and len(w) > 2
+                        and w
+                        not in (
+                            "The",
+                            "This",
+                            "These",
+                            "Those",
+                            "A",
+                            "An",
+                            "In",
+                            "While",
+                            "When",
+                            "If",
+                        )
+                    ):
                         if w not in subjects:
                             subjects.append(w)
                         break
@@ -168,7 +189,10 @@ Example: "AuthorL views X as a defining condition" + "AuthorD views X as a defin
                 if "both" not in merged_bp.lower():
                     merged_bp = merged_bp.replace(combined_subjects, f"{combined_subjects} both", 1)
                 merged.append(merged_bp)
-                log(f"    \U0001f527 Merged {len(merge_group)} bullets \u2192 '{merged_bp[:60]}\u2026'", "DEBUG")
+                log(
+                    f"    \U0001f527 Merged {len(merge_group)} bullets \u2192 '{merged_bp[:60]}\u2026'",
+                    "DEBUG",
+                )
             else:
                 merged.extend(merge_group)
         else:
@@ -287,11 +311,13 @@ def consolidate_bullets(
         )
         return bullets, fire_count
 
-    log(f"    \U0001f527 V16.0.2 Bullet consolidation: {len(bullets)} bullets \u2192 LLM...", "INFO")
+    log(
+        f"    \U0001f527 V16.0.2 Bullet consolidation: {len(bullets)} bullets \u2192 LLM...", "INFO"
+    )
     # V16.0.3 FIX: Use the passed prompt_manager (the Summarizer's, already
     # initialized in __init__) instead of _get_prompt_manager() which doesn't
     # exist at module level.
-    numbered = "\n".join(f"{i+1}. {bp}" for i, bp in enumerate(bullets))
+    numbered = "\n".join(f"{i + 1}. {bp}" for i, bp in enumerate(bullets))
     # V18.2.44 (Next Step #4): Pick the LOW-BIT consolidation prompt for
     # low-bit quant models (IQ2_XXS/XS/S, Q2_K*, IQ1*). The original
     # ``bullet_consolidation.md`` has a 6-step PROCESS + a "95% identical"
@@ -311,9 +337,7 @@ def consolidate_bullets(
     # instead of inlining the is_low_bit_quant check. Behaviour is identical
     # — the helper checks for the _lowbit variant's existence and falls
     # back to the base name if missing.
-    _consolidation_prompt_name = select_prompt(
-        "summarisation/bullet_consolidation"
-    )
+    _consolidation_prompt_name = select_prompt("summarisation/bullet_consolidation")
     prompt = prompt_manager.render_template(_consolidation_prompt_name, bullets=numbered)
     if not prompt:
         log("    \u26a0\ufe0f Bullet consolidation: prompt file not found, skipping", "WARNING")
@@ -328,7 +352,8 @@ def consolidate_bullets(
         # semantic understanding + format following — only the heavy
         # model handles it reliably.
         raw = call_llm_with_empty_retry(
-            prompt, model=primary_model,
+            prompt,
+            model=primary_model,
             # V18.20.3.1 (real-rig audit D7): 2048 → 4096. The V18.20.3.0
             # the rig-test book run cut the consolidation response at the
             # 2048 cap mid-generation (done_reason=length, 8272 chars out)
@@ -343,7 +368,8 @@ def consolidate_bullets(
             # bullet[25] shipped truncated post-consolidation. 6144 = 75%
             # of the 8192 output ceiling; the consolidation of a ~50-bullet
             # list needs ~5k output tokens.
-            temperature=temperature, max_tokens=6144,
+            temperature=temperature,
+            max_tokens=6144,
         )
 
         # V18.20.3.7 (RC-A.2): was the response cut at the output cap? The
@@ -354,16 +380,20 @@ def consolidate_bullets(
         _response_truncated = False
         try:
             from core.llm.call_meta import consume_call_truncated
+
             _response_truncated = consume_call_truncated()
         except Exception:
             pass
 
         if not raw or len(raw.strip()) < 50:
-            log("    \u26a0\ufe0f Bullet consolidation: empty response, keeping original", "WARNING")
+            log(
+                "    \u26a0\ufe0f Bullet consolidation: empty response, keeping original", "WARNING"
+            )
             return bullets, fire_count
         raw = strip_thinking(raw)
         import re as _re
-        lines = _re.findall(r'(?:^|\n)\s*[-*]\s*(.+?)(?=\n|$)', raw)
+
+        lines = _re.findall(r"(?:^|\n)\s*[-*]\s*(.+?)(?=\n|$)", raw)
         consolidated = []
         seen = set()
         for line in lines:
@@ -383,8 +413,9 @@ def consolidate_bullets(
         # metadata and preserves all unique bullets.
         try:
             from core.summarisation.bullet_pipeline import BulletPipeline
-            leaked_count, leaked_samples = (
-                BulletPipeline.detect_leaked_consolidation_metadata(consolidated)
+
+            leaked_count, leaked_samples = BulletPipeline.detect_leaked_consolidation_metadata(
+                consolidated
             )
             if leaked_count > 0:
                 # V18.5 (Phase 3, Task 3.4): increment the per-run
@@ -475,9 +506,7 @@ def consolidate_bullets(
                             _ob_s = str(_ob)
                             if not any(_la in _ob_s.lower() for _la in _lost_lower):
                                 continue
-                            _ob_key = _re.sub(
-                                r"[^\w\s]", "", _ob_s.lower()
-                            ).strip()[:60]
+                            _ob_key = _re.sub(r"[^\w\s]", "", _ob_s.lower()).strip()[:60]
                             if _ob_key in _seen_keys:
                                 continue  # already present post-merge
                             _seen_keys.add(_ob_key)
@@ -501,7 +530,10 @@ def consolidate_bullets(
                                 "WARNING",
                             )
                             return bullets, fire_count
-            log(f"    \u2705 Bullet consolidation: {len(bullets)} \u2192 {len(consolidated)} bullets (merged {len(bullets) - len(consolidated)})", "INFO")
+            log(
+                f"    \u2705 Bullet consolidation: {len(bullets)} \u2192 {len(consolidated)} bullets (merged {len(bullets) - len(consolidated)})",
+                "INFO",
+            )
             return consolidated, fire_count
         else:
             log("    \u2139\ufe0f Bullet consolidation: no improvement, keeping original", "DEBUG")

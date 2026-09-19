@@ -56,8 +56,9 @@ def labeled_combo(values: list, current: str = "", tooltip: str = "") -> QComboB
     return cb
 
 
-def labeled_spin(value: int, minimum: int = 0, maximum: int = 100000,
-                 suffix: str = "", tooltip: str = "") -> QSpinBox:
+def labeled_spin(
+    value: int, minimum: int = 0, maximum: int = 100000, suffix: str = "", tooltip: str = ""
+) -> QSpinBox:
     sb = QSpinBox()
     sb.setRange(minimum, maximum)
     sb.setValue(int(value))
@@ -68,9 +69,14 @@ def labeled_spin(value: int, minimum: int = 0, maximum: int = 100000,
     return sb
 
 
-def labeled_doublespin(value: float, minimum: float = 0.0, maximum: float = 1.0,
-                       step: float = 0.05, decimals: int = 2,
-                       tooltip: str = "") -> QDoubleSpinBox:
+def labeled_doublespin(
+    value: float,
+    minimum: float = 0.0,
+    maximum: float = 1.0,
+    step: float = 0.05,
+    decimals: int = 2,
+    tooltip: str = "",
+) -> QDoubleSpinBox:
     sb = QDoubleSpinBox()
     sb.setRange(minimum, maximum)
     sb.setSingleStep(step)
@@ -81,8 +87,9 @@ def labeled_doublespin(value: float, minimum: float = 0.0, maximum: float = 1.0,
     return sb
 
 
-def labeled_line(text: str = "", placeholder: str = "",
-                 password: bool = False, tooltip: str = "") -> QLineEdit:
+def labeled_line(
+    text: str = "", placeholder: str = "", password: bool = False, tooltip: str = ""
+) -> QLineEdit:
     le = QLineEdit(text)
     if placeholder:
         le.setPlaceholderText(placeholder)
@@ -93,8 +100,9 @@ def labeled_line(text: str = "", placeholder: str = "",
     return le
 
 
-def slider_with_value(value: int, minimum: int, maximum: int,
-                      step: int = 1) -> tuple[QSlider, QLabel]:
+def slider_with_value(
+    value: int, minimum: int, maximum: int, step: int = 1
+) -> tuple[QSlider, QLabel]:
     """A slider paired with a live value label."""
     s = QSlider(__import__("PySide6").QtCore.Qt.Orientation.Horizontal)
     s.setRange(minimum, maximum)

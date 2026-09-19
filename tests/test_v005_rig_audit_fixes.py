@@ -31,6 +31,7 @@ GENERAL rules pinned here (the book is only the test that exposed them):
   - ONE coverage matcher everywhere; the remediation unit is the sentence;
   - run-scoped output (nothing from an old run ships beside the new one).
 """
+
 from __future__ import annotations
 
 import sys
@@ -87,8 +88,7 @@ def _strip_comments(text: str) -> str:
 # The rig's exact mojibake payload class: typographic characters whose UTF-8
 # bytes latin-1-decode into the observed â€™ / â€” / â€œ shapes.
 _NON_ASCII_PAYLOAD = (
-    "The engineer’s career needs — customer’s trust “matters” more "
-    "than the author’s résumé…"
+    "The engineer’s career needs — customer’s trust “matters” more than the author’s résumé…"
 )
 
 
@@ -128,20 +128,21 @@ class TestF1Utf8Pin:
         assert out is not None
         # the mock appends one trailing space per word — compare stripped
         assert out.strip() == _NON_ASCII_PAYLOAD, (
-            "streamed decode must round-trip typographic characters — "
-            f"got mojibake: {out[:60]!r}"
+            f"streamed decode must round-trip typographic characters — got mojibake: {out[:60]!r}"
         )
         assert "â€" not in out
 
     def test_nonstreaming_roundtrips_typographic_chars(self, nonascii_server):
         p = self._provider(nonascii_server)
-        out = p._chat_nonstreaming({
-            "model": p.model,
-            "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 64,
-            "temperature": 0.1,
-            "stream": False,
-        })
+        out = p._chat_nonstreaming(
+            {
+                "model": p.model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 64,
+                "temperature": 0.1,
+                "stream": False,
+            }
+        )
         assert out == _NON_ASCII_PAYLOAD
         assert "â€" not in out
 
@@ -152,7 +153,8 @@ class TestF1Utf8Pin:
         )
 
         ok, msg = test_llamacpp_connection(
-            nonascii_server.base_url, "local",
+            nonascii_server.base_url,
+            "local",
             "Ternary-Bonsai-2-27B-Instruct-Vision",
         )
         assert ok, msg
@@ -176,7 +178,7 @@ class TestF1Utf8Pin:
 
         for m in _re.finditer(r"resp\.(?:json\(\)|text\b|iter_lines\()", src):
             line_no = src[: m.start()].count("\n")
-            window = "\n".join(src.splitlines()[max(0, line_no - 6): line_no])
+            window = "\n".join(src.splitlines()[max(0, line_no - 6) : line_no])
             if m.group(0).startswith("resp.iter_lines"):
                 assert "_pin_utf8(resp)" in window or "_pin_utf8" in window, (
                     f"iter_lines at line {line_no + 1} is not UTF-8 pinned"
@@ -195,9 +197,7 @@ class TestLengthPolicy:
         for w in (100, 200, 340, 430, 800, 1500, 3000, 10000):
             lo, hi = thorough_target(w)
             assert lo <= hi
-            assert hi <= max(w, 120), (
-                f"thorough target {hi} exceeds its {w}-word source"
-            )
+            assert hi <= max(w, 120), f"thorough target {hi} exceeds its {w}-word source"
             assert hi <= 1200, "the historical 1200 ceiling is a hard cap"
 
     def test_rig_chapters_get_tiny_targets(self):
@@ -227,16 +227,13 @@ class TestLengthPolicy:
         from core.summarisation.length_policy import bullet_target
 
         blo, bhi = bullet_target(340)
-        assert 9 <= blo <= bhi <= 14, (
-            f"a 340-word chapter targets 9-14 bullets, got {blo}-{bhi}"
-        )
+        assert 9 <= blo <= bhi <= 14, f"a 340-word chapter targets 9-14 bullets, got {blo}-{bhi}"
         assert bullet_target(3000)[0] >= 20
         assert bullet_target(20000)[1] == 40
         # V0.07 regression pin: a normal chapter must reach V18's 30-40
         lo_1k, hi_1k = bullet_target(1000)
         assert hi_1k == 40 and lo_1k >= 27, (
-            f"a 1000-word chapter must target 27-40 bullets (V18 parity), "
-            f"got {lo_1k}-{hi_1k}"
+            f"a 1000-word chapter must target 27-40 bullets (V18 parity), got {lo_1k}-{hi_1k}"
         )
 
     def test_exec_target_scales(self):
@@ -281,8 +278,7 @@ class TestLengthPolicy:
         assert not _re.search(r"word\s+word", out), out
 
     def test_templates_use_scaled_placeholders(self):
-        for name in ("default", "academic", "technical", "creative",
-                     "default_lowbit"):
+        for name in ("default", "academic", "technical", "creative", "default_lowbit"):
             t = _src(f"prompts/{name}.md")
             assert "{{thorough_words}}" in t, f"{name}.md must scale the thorough target"
             assert "800-1200" not in t, f"{name}.md still carries the absolute demand"
@@ -324,12 +320,11 @@ class TestLengthPolicy:
 
         class _State:
             content = "word " * 340
-            exec_sum = "one " * 500   # 500 words — over any scaled exec cap
-            thorough = "big " * 900   # 900 words — over any scaled thorough cap
+            exec_sum = "one " * 500  # 500 words — over any scaled exec cap
+            thorough = "big " * 900  # 900 words — over any scaled thorough cap
 
         pipe = bp.BulletPipeline.__new__(bp.BulletPipeline)
         pipe.s = _S()
-        before = _State.exec_sum, _State.thorough
         bp.BulletPipeline.apply_f1_length_validation(pipe, _State)
         assert len(_State.exec_sum.split()) < 120, "exec must be truncated at a scaled cap"
         assert len(_State.thorough.split()) < 240, "thorough must be truncated at a scaled cap"
@@ -368,16 +363,16 @@ class TestLengthPolicy:
 
 
 class TestF9aFlagEnforcement:
-    def _make_summarizer(self, monkeypatch, include_thorough=True,
-                         include_exec=True, include_keypoints=True):
+    def _make_summarizer(
+        self, monkeypatch, include_thorough=True, include_exec=True, include_keypoints=True
+    ):
         class _FakeSettings:
             def get(self, key, default=None):
                 if key == "summarisation.provider":
                     return "ollama"
                 return default
 
-        monkeypatch.setattr(
-            "core.summarisation.summarizer.Settings", lambda: _FakeSettings())
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: _FakeSettings())
         monkeypatch.setattr("utils.settings.Settings", lambda: _FakeSettings())
         from core.summarisation.summarizer import Summarizer
 
@@ -387,8 +382,10 @@ class TestF9aFlagEnforcement:
         req.include_executive_summary = include_exec
         req.include_keypoints = include_keypoints
         return Summarizer(
-            request=req, log_callback=lambda m, l="INFO": None,
-            language="en", claim_extractor=None,
+            request=req,
+            log_callback=lambda m, l="INFO": None,
+            language="en",
+            claim_extractor=None,
         )
 
     def test_thorough_disabled_not_in_prompt(self, monkeypatch):
@@ -404,7 +401,7 @@ class TestF9aFlagEnforcement:
         assert "OUTPUT SECTIONS (OVERRIDES" in prompt
 
     def test_all_sections_present_when_enabled(self, monkeypatch):
-        s = self._make_summarizer(monkeyparser := monkeypatch)
+        s = self._make_summarizer(monkeypatch)
         text = "A chapter about balancing technical requirements. " * 12
         prompt = s._build_prompt("Ch.1", text)
         assert "<thorough_summary>" in prompt
@@ -442,7 +439,10 @@ class TestF9aFlagEnforcement:
             "Chapter content:\nSome chapter text here."
         )
         out = build_chunked_prompt(
-            "Ch.1", "Some chapter text here.", full, chunk=1,
+            "Ch.1",
+            "Some chapter text here.",
+            full,
+            chunk=1,
             include_thorough=False,
         )
         assert "<thorough_summary>" not in out
@@ -533,8 +533,7 @@ class TestF9aFlagEnforcement:
         from core.pipeline.chapter_resume import parse_summary_file
 
         f = tmp_path / "ch.summary.md"
-        f.write_text(
-            "# Summary: Ch.1\n\n<!-- COMPLETE -->\n", encoding="utf-8")
+        f.write_text("# Summary: Ch.1\n\n<!-- COMPLETE -->\n", encoding="utf-8")
         assert parse_summary_file(f) is None
 
     def test_docx_builder_gates_empty_sections(self):
@@ -542,15 +541,14 @@ class TestF9aFlagEnforcement:
         AND the output-selection flag is on (V0.06 F1-c added the flag half
         of the gate — content-presence alone shipped unrequested sections)."""
         src = _strip_comments(_src("core/docx/builder.py"))
-        assert 'if _exec_text.strip() and _inc_exec_d:' in src
-        assert 'if _thorough_text.strip() and _inc_th_d:' in src
-        assert 'if summ.bullet_points and _inc_kp_d:' in src
+        assert "if _exec_text.strip() and _inc_exec_d:" in src
+        assert "if _thorough_text.strip() and _inc_th_d:" in src
+        assert "if summ.bullet_points and _inc_kp_d:" in src
 
     def test_wizard_labels_do_not_promise_absolute_words(self):
         """The Step-4 labels must not promise "800-1200 words" the engine no
         longer demands (honest UI)."""
-        src = _strip_comments(
-            _src("ui_qt/views/wizard_steps/step4_outputs.py"))
+        src = _strip_comments(_src("ui_qt/views/wizard_steps/step4_outputs.py"))
         assert "800-1200" not in src
         assert "scaled to chapter" in src
 
@@ -563,27 +561,21 @@ class TestF9aFlagEnforcement:
 # shapes from the run.
 _RIG_LEAKED_BULLETS = [
     'Author attribution: The chapter author is identified as "By Neal Ford" '
-    'but this name does not appear in the summary text.',
+    "but this name does not appear in the summary text.",
     "The summary must identify specific emotional states—anger, frustration, "
     "annoyance—so the reader understands what to watch for.",
     "Missing explicit mechanism: the summary should explain HOW assuming the "
     "best leads to learning more.",
     "Missing specific behavioral outcome: what happens when you approach "
     "conversations with the right attitude.",
-    "Missing the specific time-frame constraint attached to mutually "
-    "agreed-upon goals.",
-    "Missing the framing of conversation as humanity's most important "
-    "innovation.",
-    "Missing the distinction between familiarity and skill as separate "
-    "sources of resistance.",
+    "Missing the specific time-frame constraint attached to mutually agreed-upon goals.",
+    "Missing the framing of conversation as humanity's most important innovation.",
+    "Missing the distinction between familiarity and skill as separate sources of resistance.",
     "The gap fails to capture the defensive reaction triggered when someone "
     "feels attacked or criticized.",
-    'It omits the distinct definition that "Clarity describes how you '
-    'communicate."',
-    'The summary flattens the vivid metaphor of being "pushed out" by poor '
-    "communication.",
-    'It lacks the explicit rhetorical distinction between working "with" and '
-    '"against" developers.',
+    'It omits the distinct definition that "Clarity describes how you communicate."',
+    'The summary flattens the vivid metaphor of being "pushed out" by poor communication.',
+    'It lacks the explicit rhetorical distinction between working "with" and "against" developers.',
 ]
 
 # Content bullets that must NEVER be flagged.
@@ -591,16 +583,13 @@ _RIG_CONTENT_BULLETS = [
     'The chapter author is identified as "By Neal Ford" — Neal Ford argues '
     "that essential complexity is inherent in the problem.",
     'Mark Richards defines clarity as "Clarity describes how you communicate."',
-    "The source notes that conversation is humanity's most important "
-    "innovation.",
-    "It is essential to balance technical requirements with stakeholder "
-    "interests.",
+    "The source notes that conversation is humanity's most important innovation.",
+    "It is essential to balance technical requirements with stakeholder interests.",
     "Missing requirements cause project failure when architects choose "
     "technologies to impress a resume.",
     "The author states that assuming the best helps you learn more because "
     "people become less defensive.",
-    "The gap between business and engineering priorities must be managed by "
-    "the architect.",
+    "The gap between business and engineering priorities must be managed by the architect.",
 ]
 
 
@@ -621,10 +610,12 @@ class TestF2StructuralSelfAssessment:
         from core.summarisation.post_processing import is_summary_self_assessment
 
         assert is_summary_self_assessment(
-            "The summary misses the emotional dimension of technical problems.")
+            "The summary misses the emotional dimension of technical problems."
+        )
         assert is_summary_self_assessment("The summary omits the second principle.")
         assert is_summary_self_assessment(
-            'A topic the summary omits entirely: "This specific area."')
+            'A topic the summary omits entirely: "This specific area."'
+        )
 
     def test_classify_scar_routes_the_new_class(self):
         from core.summarisation.post_processing import classify_scar
@@ -644,8 +635,7 @@ class TestF2StructuralSelfAssessment:
             assert b not in kept_set, f"critique bullet survived: {b[:60]}"
         for b in _RIG_CONTENT_BULLETS:
             assert b in kept_set, f"content bullet dropped: {b[:60]}"
-        assert any(s == "thinking_filter.summary_self_assessment"
-                   for _b, s, _r, _a in drops)
+        assert any(s == "thinking_filter.summary_self_assessment" for _b, s, _r, _a in drops)
 
     def test_scholar_prompt_forbids_critique_forms(self):
         t = _src("prompts/summarisation/scholar_reflection.md")
@@ -664,16 +654,13 @@ class TestF3CoverageMatcher:
         from core.summarisation.summary_validator import _normalize_for_coverage
 
         norm = _normalize_for_coverage(
-            "The summary describes a smart and effective architect who "
-            "considers ease of learning."
+            "The summary describes a smart and effective architect who considers ease of learning."
         )
         # the rig's exact false-"missing" cases:
         assert not _kw_missing("smart effective architect", norm), (
             "paraphrase-covered keyword must NOT be missing (was raw-substring)"
         )
-        assert not _kw_missing("ease-of-learning", norm), (
-            "hyphen variant must NOT be missing"
-        )
+        assert not _kw_missing("ease-of-learning", norm), "hyphen variant must NOT be missing"
         assert _kw_missing("skyscrapers aren't scalable", norm)
 
     def test_tier2_does_not_refire_on_paraphrase(self):
@@ -690,16 +677,24 @@ class TestF3CoverageMatcher:
             "thorough_summary": "",
         }
         apply_3tier_coverage(
-            "Ch", "text", "content",
-            result, coverage=0.5, coverage_threshold=0.85,
+            "Ch",
+            "text",
+            "content",
+            result,
+            coverage=0.5,
+            coverage_threshold=0.85,
             extract_keywords=lambda content, n=18: [
-                "smart effective architect", "ease-of-learning"],
+                "smart effective architect",
+                "ease-of-learning",
+            ],
             log=lambda m, l="DEBUG": None,
             targeted_gap_fill=lambda h, t, missing: (
-                calls.__setitem__("gap_fill", calls["gap_fill"] + 1) or []),
+                calls.__setitem__("gap_fill", calls["gap_fill"] + 1) or []
+            ),
             filter_thinking_bullets=lambda bps: bps,
-            force_insert_missing=lambda t, missing, res: (
-                calls.__setitem__("force_insert", calls["force_insert"] + 1)),
+            force_insert_missing=lambda t, missing, res: calls.__setitem__(
+                "force_insert", calls["force_insert"] + 1
+            ),
             compute_coverage=lambda c, s: 0.99,
         )
         assert calls["gap_fill"] == 0, "paraphrase-covered keywords must not gap-fill"
@@ -730,8 +725,11 @@ class TestF3CoverageMatcher:
         result = {"bullet_points": []}
         n = s._force_insert_missing(
             source,
-            ["angry frustrated annoyed", "annoyed otherwise flustered",
-             "attack opportunities mutually"],
+            [
+                "angry frustrated annoyed",
+                "annoyed otherwise flustered",
+                "attack opportunities mutually",
+            ],
             result,
         )
         assert n == 1, "three keywords on ONE sentence must yield ONE excerpt"
@@ -748,8 +746,7 @@ class TestF3CoverageMatcher:
             "times below 500 milliseconds cannot be distinguished by users."
         )
         result = {"bullet_points": []}
-        n = s._force_insert_missing(
-            source, ["respond to user input", "response times"], result)
+        n = s._force_insert_missing(source, ["respond to user input", "response times"], result)
         assert n == 2
         assert len(set(result["source_excerpts"])) == 2
 
@@ -779,7 +776,9 @@ class TestF4SentenceBoundary:
         )
         sent = s._find_source_sentence("mutually agreed", source)
         assert sent is not None
-        assert not sent.startswith("Watch"), "the numbered item must not glue to the previous sentence"
+        assert not sent.startswith("Watch"), (
+            "the numbered item must not glue to the previous sentence"
+        )
         assert "3)" in sent
         assert "on the attack" not in sent
 
@@ -806,16 +805,17 @@ class TestF5SingleBylineAttribution:
                     return "ollama"
                 return default
 
-        monkeypatch.setattr(
-            "core.summarisation.summarizer.Settings", lambda: _FakeSettings())
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: _FakeSettings())
         monkeypatch.setattr("utils.settings.Settings", lambda: _FakeSettings())
         from core.summarisation.summarizer import Summarizer
 
         req = ConversionRequest(input_path=Path("t.pdf"), output_dir=Path("out"))
         req.summarisation_model = "gemma3:12b"
         return Summarizer(
-            request=req, log_callback=lambda m, l="INFO": None,
-            language="en", claim_extractor=None,
+            request=req,
+            log_callback=lambda m, l="INFO": None,
+            language="en",
+            claim_extractor=None,
         )
 
     def test_single_byline_gets_attribution_block(self, monkeypatch):
@@ -856,12 +856,11 @@ class TestF6NearDuplicateRemoval:
         bullets = [
             "During moments of emotional tension, steer the conversation "
             "toward mutually agreed upon goals.",
-            "Ask the developer to help increase participation in the "
-            "conversation.",
+            "Ask the developer to help increase participation in the conversation.",
             "In moments of emotional tension, steer the conversation toward "
-            "mutually agreed-upon goals.",   # near-dup of [0]
+            "mutually agreed-upon goals.",  # near-dup of [0]
             "Ask developers to help increase participation in the "
-            "conversations.",                 # near-dup of [1]
+            "conversations.",  # near-dup of [1]
             "Assume the best about the other person to learn more.",
         ]
         rep = run_post_checks(bullets, "", "", source_text=" ".join(bullets))
@@ -893,15 +892,16 @@ class TestF7RunScopedOutput:
         from core.pipeline.converter_impl import Converter
 
         stub = types.SimpleNamespace()
-        stub._log = lambda msg, level="DEBUG": stub.logs.append(msg) if hasattr(stub, "logs") else None
+        stub._log = lambda msg, level="DEBUG": (
+            stub.logs.append(msg) if hasattr(stub, "logs") else None
+        )
         stub.logs = []
         stub.settings = types.SimpleNamespace(
-            get=lambda k, d=None: resume if k == "summarisation.resume_enabled" else d)
+            get=lambda k, d=None: resume if k == "summarisation.resume_enabled" else d
+        )
         stub.output_dir = tmp_path
-        stub.paths = types.SimpleNamespace(
-            summaries_dir=tmp_path / "book_summaries")
-        return Converter._archive_stale_run_artifacts.__get__(
-            stub, type(stub))
+        stub.paths = types.SimpleNamespace(summaries_dir=tmp_path / "book_summaries")
+        return Converter._archive_stale_run_artifacts.__get__(stub, type(stub))
 
     def test_stale_summaries_archived(self, tmp_path):
         summ = tmp_path / "book_summaries"
@@ -1034,8 +1034,7 @@ class TestVerifiedGoodBehaviorsKept:
         from core.llm.structured_io import build_json_instruction
         from core.summarisation.length_policy import bullet_range_phrase
 
-        instr = build_json_instruction(
-            _schema(), source_words=340)
+        instr = build_json_instruction(_schema(), source_words=340)
         assert "150-250" not in instr
         assert "800-1200" not in instr
         assert "20-40" not in instr

@@ -31,6 +31,7 @@ from core.summarisation.response_parser import parse_response
 # XML format tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestParseNewSectionsXML:
     """V13.38.0: Verify parse_response extracts the new XML sections."""
 
@@ -137,6 +138,7 @@ Thorough summary text.
 # ═══════════════════════════════════════════════════════════════════════════
 # JSON format tests (academic rigor)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestParseNewSectionsJSON:
     """V13.38.0: Verify parse_response extracts the new sections from JSON."""

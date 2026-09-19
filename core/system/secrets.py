@@ -22,6 +22,7 @@ Usage (replaces direct settings.json access for API keys)::
 The ``keyring`` library is an optional dependency — if not installed,
 the module falls back to plaintext (with a one-time WARNING log).
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,11 +36,14 @@ logger = logging.getLogger(__name__)
 # below) and re-stored under the new name on first read — no orphaned
 # credentials, no re-entry required.
 _KEYCHAIN_SERVICE = "Elixir"
-_LEGACY_KEYCHAIN_SERVICE = "MarkItDownPro"  # pre-rebrand keychain service — read-fallback source (do NOT rename)
+_LEGACY_KEYCHAIN_SERVICE = (
+    "MarkItDownPro"  # pre-rebrand keychain service — read-fallback source (do NOT rename)
+)
 
 # Try to import keyring (optional dep)
 try:
     import keyring as _keyring
+
     _HAS_KEYRING = True
 except ImportError:
     _HAS_KEYRING = False
@@ -92,7 +96,9 @@ def get_secret(path: str, settings: Any, default: str = "") -> str:
             if legacy_value is not None:
                 try:
                     _keyring.set_password(_KEYCHAIN_SERVICE, path, legacy_value)
-                    logger.info("Keychain rebrand migration: re-stored '%s' under the Elixir service.", path)
+                    logger.info(
+                        "Keychain rebrand migration: re-stored '%s' under the Elixir service.", path
+                    )
                 except Exception:
                     pass  # best-effort — the legacy entry still works via the fallback above
                 return legacy_value
@@ -105,7 +111,9 @@ def get_secret(path: str, settings: Any, default: str = "") -> str:
                     settings.set(path, "")
                     logger.info("Migrated secret '%s' from settings.json to OS keychain.", path)
                 except Exception as _e:
-                    logger.debug("ignored %s: %s", type(_e).__name__, _e)  # best-effort — don't crash on migration
+                    logger.debug(
+                        "ignored %s: %s", type(_e).__name__, _e
+                    )  # best-effort — don't crash on migration
                 return plaintext
             return default
         except Exception as exc:
@@ -192,11 +200,15 @@ def store_secret(key: str, value: str) -> bool:
         # so we don't pollute the keychain with non-secret values.
         try:
             from utils.settings import Settings
+
             Settings().set(key, value)
         except Exception as exc:  # pragma: no cover — best-effort
             logger.warning(
-                "store_secret: non-secret Settings.set failed for '%s': "
-                "%s: %s", key, type(exc).__name__, exc, exc_info=True,
+                "store_secret: non-secret Settings.set failed for '%s': %s: %s",
+                key,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
             )
         return False
     if not _HAS_KEYRING:
@@ -207,38 +219,50 @@ def store_secret(key: str, value: str) -> bool:
         # exactly which keys were stored insecurely and when.
         logger.warning(
             "[security] API key stored in PLAINTEXT (keyring unavailable): "
-            "%s — install 'keyring' to secure", key, exc_info=True,
+            "%s — install 'keyring' to secure",
+            key,
+            exc_info=True,
         )
         _warned_plaintext_keys.add(key)
         try:
             from utils.settings import Settings
+
             set_secret(key, value, Settings())
         except Exception as exc:  # pragma: no cover — best-effort
             logger.warning(
-                "store_secret: plaintext fallback failed for '%s': "
-                "%s: %s", key, type(exc).__name__, exc, exc_info=True,
+                "store_secret: plaintext fallback failed for '%s': %s: %s",
+                key,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
             )
         return False
     # Keyring available — store via keyring (existing set_secret handles the
     # plaintext clearing + storage).
     try:
         from utils.settings import Settings
+
         set_secret(key, value, Settings())
         return True
     except Exception as exc:  # pragma: no cover — best-effort
         logger.warning(
             "[security] store_secret: keyring set failed for '%s' (%s: %s) "
-            "— falling back to PLAINTEXT", key, type(exc).__name__, exc,
+            "— falling back to PLAINTEXT",
+            key,
+            type(exc).__name__,
+            exc,
             exc_info=True,
         )
         # Last-resort: store in plaintext so the user's key isn't lost.
         try:
             from utils.settings import Settings
+
             Settings().set(key, value)
         except Exception:
             logger.error(
-                "store_secret: BOTH keyring AND plaintext failed for '%s' "
-                "— key was NOT stored", key, exc_info=True,
+                "store_secret: BOTH keyring AND plaintext failed for '%s' — key was NOT stored",
+                key,
+                exc_info=True,
             )
         return False
 
@@ -250,6 +274,7 @@ def load_secret(key: str) -> str | None:
     """
     try:
         from utils.settings import Settings
+
         return get_secret(key, Settings(), default=None) or None
     except Exception as exc:  # pragma: no cover — best-effort
         logger.debug("load_secret: lookup failed for '%s': %s", key, exc)

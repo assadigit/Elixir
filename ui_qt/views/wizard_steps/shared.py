@@ -21,9 +21,11 @@ from controller import Controller
 # Wizard State
 # ════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class WizardState:
     """Holds all choices made during the wizard."""
+
     # Step 1: PDF
     input_path: str = ""
     source_type: str = "normal_book"
@@ -49,7 +51,7 @@ class WizardState:
     outputs_briefing: bool = False  # V13.34.0: off by default
     outputs_podcast: bool = False  # V13.34.0: off by default
     outputs_flashcards: bool = False  # V13.34.0: off by default
-    outputs_packets: bool = False   # V7.3.0: Packets of Knowledge
+    outputs_packets: bool = False  # V7.3.0: Packets of Knowledge
     outputs_obsidian: bool = False
     outputs_study_guide: bool = False
     outputs_social: bool = False
@@ -61,23 +63,23 @@ class WizardState:
     # _save_profile) silently dropped them → save/load profile lost these
     # 6 outputs every time.  Declaring them here fixes the silent data-loss
     # bug.  All default to False (opt-in), matching ConversionRequest.
-    outputs_evidence_map: bool = False   # V10.1.0: Scientific Evidence Map
-    outputs_qa: bool = False             # V10.17.0: Q&A study questions
-    outputs_glossary: bool = False       # V10.20.0: Glossary
-    outputs_patterns: bool = False       # V10.20.0: Patterns/Techniques
-    outputs_cheatsheet: bool = False     # V10.20.0: Cheatsheet
-    outputs_skill: bool = False          # V10.21.0: Agent Skill (SKILL.md)
-    compact_summaries: bool = False      # V10.20.0: Density mode
-    _streaming_enabled: bool = False     # V10.21.0: Streaming output display
+    outputs_evidence_map: bool = False  # V10.1.0: Scientific Evidence Map
+    outputs_qa: bool = False  # V10.17.0: Q&A study questions
+    outputs_glossary: bool = False  # V10.20.0: Glossary
+    outputs_patterns: bool = False  # V10.20.0: Patterns/Techniques
+    outputs_cheatsheet: bool = False  # V10.20.0: Cheatsheet
+    outputs_skill: bool = False  # V10.21.0: Agent Skill (SKILL.md)
+    compact_summaries: bool = False  # V10.20.0: Density mode
+    _streaming_enabled: bool = False  # V10.21.0: Streaming output display
     # V10.35.0: New outputs
-    outputs_epub: bool = False           # V10.35.0: EPUB output
-    outputs_quote_bank: bool = False     # V10.35.0: Quote bank
+    outputs_epub: bool = False  # V10.35.0: EPUB output
+    outputs_quote_bank: bool = False  # V10.35.0: Quote bank
     # Step 5: Models
     summarisation_model: str = ""
     primary_ocr_model: str = ""
     fallback_ocr_model: str = ""
     fast_model: str = ""
-    max_workers: int = 1   # V10.1.10: was 2 — VRAM safety default
+    max_workers: int = 1  # V10.1.10: was 2 — VRAM safety default
     temperature: float = 1.0  # V13.34.0: Gemma 4 recommended  # V10.1.10: was 0.2 — fine-tuner minimum for Qwythos/gemma
     # V16.0.9: 4-mode model architecture
     model_architecture: str = "single_local"  # single_local | dual_local | single_api | dual_api
@@ -90,11 +92,13 @@ class WizardState:
     translation_target_lang: str = "fa"
     translation_harakat_model: str = ""
     translation_judge_model: str = ""
-    translation_outputs: dict[str, bool] = field(default_factory=lambda: {
-        "chapter_summaries": True,
-        "keypoints": True,
-        "podcast": True,
-    })
+    translation_outputs: dict[str, bool] = field(
+        default_factory=lambda: {
+            "chapter_summaries": True,
+            "keypoints": True,
+            "podcast": True,
+        }
+    )
     # Step 7: Advanced
     segment_strategy: str = "auto"
     token_limit: int = 2000
@@ -118,7 +122,7 @@ class WizardState:
     self_consistency: bool = False
     heavy_model: str = ""
     coverage_threshold: int = 85  # V13.34.0
-    resume_enabled: bool = True   # V7.7.0: skip chapters with valid summaries on disk
+    resume_enabled: bool = True  # V7.7.0: skip chapters with valid summaries on disk
     post_completion_action: str = "none"  # V8.1.0: "none"/"quit"/"sleep"/"hibernate"/"shutdown"
     enable_content_filter: bool = True
     # Step 7b: Fine-tuning — Summarization limits (4)
@@ -130,11 +134,11 @@ class WizardState:
     extract_math: bool = False
     layout_analysis: bool = False
     # V18.2.1: Performance & Embeddings (settings-level, not request-level)
-    embedding_model: str = "BAAI/bge-small-en-v1.5"   # V18.2.2: default switched MiniLM→bge-small
-    embedding_device: str = "auto"              # "auto" | "cuda" | "cpu"
-    vram_recovery_delay_sec: int = 0            # 0 = disabled (user undervolted GPU)
-    b4_max_sections: int = 6                     # 0 = unlimited (cloud-like)
-    b4_threshold_tokens: int = 12000            # chapters above this trigger B4 map-reduce
+    embedding_model: str = "BAAI/bge-small-en-v1.5"  # V18.2.2: default switched MiniLM→bge-small
+    embedding_device: str = "auto"  # "auto" | "cuda" | "cpu"
+    vram_recovery_delay_sec: int = 0  # 0 = disabled (user undervolted GPU)
+    b4_max_sections: int = 6  # 0 = unlimited (cloud-like)
+    b4_threshold_tokens: int = 12000  # chapters above this trigger B4 map-reduce
     # Chapter selection (from Step 2)
     selected_chapters: list[str] | None = None
     # Output
@@ -228,14 +232,18 @@ class WizardState:
             "layout_analysis": self.layout_analysis,
         }
 
+
 # ════════════════════════════════════════════════════════════════════════════
 # Base Step
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class WizardStep(QWidget):
     """Base class for wizard steps."""
 
-    def __init__(self, controller: Controller, state: WizardState, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, controller: Controller, state: WizardState, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.controller = controller
         self.state = state

@@ -6,6 +6,7 @@ Byte-for-byte stability gate for ``multi_sample_summarize`` extracted from
 
 Run: pytest tests/test_multi_sample.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,12 +18,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain works.
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.multi_sample import multi_sample_summarize
 
@@ -63,11 +67,13 @@ def _make_deps(
     cov_calls = []
     judge_calls = []
 
-    def summarize_with_model(heading, text, model, temp, with_cot=True, concepts=None, callouts=None, **kw):
+    def summarize_with_model(
+        heading, text, model, temp, with_cot=True, concepts=None, callouts=None, **kw
+    ):
         swm_calls.append({"heading": heading, "model": model, "temp": temp})
         idx = len(swm_calls) - 1
         if idx < len(sample_raises) and sample_raises[idx]:
-            raise RuntimeError(f"sample {idx+1} crashed")
+            raise RuntimeError(f"sample {idx + 1} crashed")
         if idx < len(sample_results):
             return sample_results[idx]
         return None
@@ -125,13 +131,17 @@ class TestMultiSampleNoSamples:
             sample_results=[None, None, None],
             sample_raises=[True, True, True],
         )
-        out = multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()})
+        out = multi_sample_summarize(
+            "Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out is None
 
     def test_all_samples_return_none(self):
         """If every sample returns None (no crash, just empty), returns None."""
         deps = _make_deps(sample_results=[None, None, None])
-        out = multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()})
+        out = multi_sample_summarize(
+            "Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out is None
 
 
@@ -146,7 +156,9 @@ class TestMultiSampleSingle:
             sample_results=[one, None, None],
             sample_raises=[False, True, True],
         )
-        out = multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()})
+        out = multi_sample_summarize(
+            "Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         # Single sample → returned as-is (the dict, not wrapped)
         assert out is one
         assert out["executive_summary"] == "Exec one."
@@ -164,10 +176,18 @@ class TestMultiSampleVoting:
         s3 = _sample("Exec 3.", ["Bullet beta here.", "Bullet delta here."], "Thorough 3.")
         deps = _make_deps(
             sample_results=[s1, s2, s3],
-            coverage_map={"Exec 1.": 0.8, "Exec 2.": 0.5, "Exec 3.": 0.6,
-                           "Thorough 1.": 0.5, "Thorough 2.": 0.9, "Thorough 3.": 0.4},
+            coverage_map={
+                "Exec 1.": 0.8,
+                "Exec 2.": 0.5,
+                "Exec 3.": 0.6,
+                "Thorough 1.": 0.5,
+                "Thorough 2.": 0.9,
+                "Thorough 3.": 0.4,
+            },
         )
-        out = multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()})
+        out = multi_sample_summarize(
+            "Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         # Voted bullets: alpha (s1+s2), beta (s1+s3), gamma (s2), delta (s3) → 4 unique
         assert len(out["bullet_points"]) == 4
         # Best exec by coverage = "Exec 1." (0.8)
@@ -182,7 +202,9 @@ class TestMultiSampleVoting:
         (i > 0). With n_samples=3, expect 2 recover_vram calls."""
         s = _sample("E.", ["B."], "T.")
         deps = _make_deps(sample_results=[s, s, s])
-        multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()})
+        multi_sample_summarize(
+            "Ch", "text", n_samples=3, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert len(deps["_rvram_calls"]) == 2  # before sample 2 and 3
         # The contexts are B3-sample-2 and B3-sample-3
         contexts = [c["context"] for c in deps["_rvram_calls"]]
@@ -199,7 +221,8 @@ class TestMultiSampleVoting:
             coverage_map={"Exec 1.": 0.7, "Exec 3.": 0.5, "Thorough 1.": 0.4, "Thorough 3.": 0.8},
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out = multi_sample_summarize("Ch", "text", n_samples=3, **{k: v for k, v in kw.items()})
         # 2 surviving samples → voted bullets from both
         assert len(out["bullet_points"]) == 2
@@ -281,12 +304,21 @@ class TestMultiSampleByteForByte:
         """Same inputs → same output dict across calls."""
         s1 = _sample("Exec 1.", ["Bullet alpha."], "Thorough 1.")
         s2 = _sample("Exec 2.", ["Bullet beta."], "Thorough 2.")
+
         def _run():
             deps = _make_deps(
                 sample_results=[s1, s2],
-                coverage_map={"Exec 1.": 0.8, "Exec 2.": 0.5, "Thorough 1.": 0.5, "Thorough 2.": 0.9},
+                coverage_map={
+                    "Exec 1.": 0.8,
+                    "Exec 2.": 0.5,
+                    "Thorough 1.": 0.5,
+                    "Thorough 2.": 0.9,
+                },
             )
-            return multi_sample_summarize("Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps).items()})
+            return multi_sample_summarize(
+                "Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps).items()}
+            )
+
         r1 = _run()
         r2 = _run()
         assert r1 == r2
@@ -294,9 +326,13 @@ class TestMultiSampleByteForByte:
     def test_returns_optional_dict(self):
         """Returns Optional[Dict] — None when no samples, dict otherwise."""
         deps = _make_deps(sample_results=[None, None])
-        out = multi_sample_summarize("Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps).items()})
+        out = multi_sample_summarize(
+            "Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out is None
         s = _sample("E.", ["B."], "T.")
         deps2 = _make_deps(sample_results=[s, s])
-        out2 = multi_sample_summarize("Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps2).items()})
+        out2 = multi_sample_summarize(
+            "Ch", "text", n_samples=2, **{k: v for k, v in _common_kwargs(deps2).items()}
+        )
         assert isinstance(out2, dict)

@@ -17,6 +17,7 @@ BOOK-AGNOSTIC
 -------------
 VRAM management is pure infrastructure — no domain-specific terms.
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,6 +69,7 @@ def recover_vram(
     _delay = float(configured_delay) if configured_delay > 0 else 0.0
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
@@ -80,8 +82,7 @@ def recover_vram(
         else:
             log_fn(
                 f"    🧹 VRAM recovery{' (' + context + ')' if context else ''} "
-                f"— no CUDA"
-                + (f", waiting {_delay:.0f}s…" if _delay > 0 else " (delay disabled)"),
+                f"— no CUDA" + (f", waiting {_delay:.0f}s…" if _delay > 0 else " (delay disabled)"),
                 "DEBUG",
             )
     except Exception as _e:

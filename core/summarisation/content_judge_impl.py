@@ -83,6 +83,7 @@ def _embedding_settings() -> tuple[bool, str]:
     """
     try:
         from utils.settings import Settings
+
         _enabled = Settings().get("embedding.enabled", True)
         _fallback = Settings().get("embedding.fallback", "jaccard")
     except Exception:
@@ -124,16 +125,17 @@ LogFn = Callable[[str, str], None]
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
-CHUNK_SIZE_TOKENS = 2000       # ~8000 chars per chunk
-MIN_COVERAGE_PCT = 0.75        # 75% of source claims must be covered
+CHUNK_SIZE_TOKENS = 2000  # ~8000 chars per chunk
+MIN_COVERAGE_PCT = 0.75  # 75% of source claims must be covered
 GROUNDED_SIM_THRESHOLD = _THRESHOLDS_SEMANTIC_DROP  # min embedding similarity for "grounded" (V18.20.2.0: from thresholds.py, was 0.50)
-UNGROUNDED_MAX_PCT = 0.20      # max 20% of bullets can be ungrounded
-GAP_FILL_THRESHOLD = 0.75      # trigger gap-fill reprompt if coverage < 75%
+UNGROUNDED_MAX_PCT = 0.20  # max 20% of bullets can be ungrounded
+GAP_FILL_THRESHOLD = 0.75  # trigger gap-fill reprompt if coverage < 75%
 
 
 @dataclass
 class JudgeResult:
     """Result of the content judge for one chapter."""
+
     chapter_heading: str
     # Q1: Coverage
     total_source_claims: int = 0
@@ -205,35 +207,45 @@ class JudgeResult:
 # Patterns that indicate a "key claim" sentence
 _CLAIM_PATTERNS = [
     # Contains numbers/data
-    re.compile(r'\b\d+[.,]?\d*\s*[%‰]?\b'),
+    re.compile(r"\b\d+[.,]?\d*\s*[%‰]?\b"),
     # Contains causal/result language
-    re.compile(r'\b(?:therefore|because|thus|hence|results? show|'
-               r'found that|demonstrates?|indicates?|suggests?|'
-               r'implies?|means?|causes?|leads? to|results? in)\b',
-               re.IGNORECASE),
+    re.compile(
+        r"\b(?:therefore|because|thus|hence|results? show|"
+        r"found that|demonstrates?|indicates?|suggests?|"
+        r"implies?|means?|causes?|leads? to|results? in)\b",
+        re.IGNORECASE,
+    ),
     # Contains definition language
-    re.compile(r'\b(?:is defined as|refers to|means|consists of|'
-               r'comprises|constitutes?)\b', re.IGNORECASE),
+    re.compile(
+        r"\b(?:is defined as|refers to|means|consists of|"
+        r"comprises|constitutes?)\b",
+        re.IGNORECASE,
+    ),
     # Contains comparison/contrast
-    re.compile(r'\b(?:compared to|in contrast|whereas|while|'
-               r'unlike|similarly|conversely)\b', re.IGNORECASE),
+    re.compile(
+        r"\b(?:compared to|in contrast|whereas|while|"
+        r"unlike|similarly|conversely)\b",
+        re.IGNORECASE,
+    ),
     # Contains named entity (Capitalized phrase 2+ words)
-    re.compile(r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b'),
+    re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b"),
 ]
 
 # Sentences to skip (not claims)
 _SKIP_PATTERNS = [
-    re.compile(r'^\s*(?:Figure|Table|Fig\.?|Eq\.?|Equation|Section|Chapter|Appendix)\s*\d', re.IGNORECASE),
-    re.compile(r'^\s*(?:References|Bibliography|Acknowledg)', re.IGNORECASE),
-    re.compile(r'^\s*\d+\s*$'),  # page numbers
-    re.compile(r'^\s*(?:©|Copyright|All rights reserved)', re.IGNORECASE),
+    re.compile(
+        r"^\s*(?:Figure|Table|Fig\.?|Eq\.?|Equation|Section|Chapter|Appendix)\s*\d", re.IGNORECASE
+    ),
+    re.compile(r"^\s*(?:References|Bibliography|Acknowledg)", re.IGNORECASE),
+    re.compile(r"^\s*\d+\s*$"),  # page numbers
+    re.compile(r"^\s*(?:©|Copyright|All rights reserved)", re.IGNORECASE),
 ]
 
 
 def _split_into_sentences(text: str) -> list[str]:
     """Split text into sentences (simple regex splitter)."""
     # Split on . ! ? followed by space + capital letter, or newline
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text)
     return [s.strip() for s in sentences if s.strip() and len(s.strip()) > 30]
 
 
@@ -376,6 +388,7 @@ def _semantic_similarity(claim: str, candidate: str, candidate_emb: Any = None) 
         from sentence_transformers import util
 
         from core.llm.model_singletons import get_embed_model, is_embedder_healthy
+
         model = get_embed_model()
         if model is None:
             raise ImportError("sentence-transformers not available")
@@ -386,9 +399,7 @@ def _semantic_similarity(claim: str, candidate: str, candidate_emb: Any = None) 
         # lexical matches). This also avoids the degenerate-0/N guard firing
         # when Jaccard would have found some real coverage.
         if not is_embedder_healthy():
-            raise EmbedderUnavailable(
-                "embedder backend marked unhealthy (smoke-test failed)"
-            )
+            raise EmbedderUnavailable("embedder backend marked unhealthy (smoke-test failed)")
         emb1 = model.encode([claim], show_progress_bar=False)
         # V18.20.2.0 (SWOT A23): reuse a precomputed candidate embedding when
         # supplied (Q2/Q4 hoist); otherwise encode it (original behaviour).
@@ -408,6 +419,7 @@ def _semantic_similarity(claim: str, candidate: str, candidate_emb: Any = None) 
         # silent zero-similarity. This is the single most important line in
         # closing the "Phase 2.2 always skipped" regression.
         import numpy as _np_sem
+
         for _vec, _label in ((emb1, "claim"), (emb2, "candidate")):
             _arr = _np_sem.asarray(_vec, dtype=_np_sem.float32).ravel()
             if _arr.size == 0 or not _np_sem.any(_arr) or _np_sem.isnan(_arr).any():
@@ -430,7 +442,8 @@ def _semantic_similarity(claim: str, candidate: str, candidate_emb: Any = None) 
                 "this run. Coverage/hallucination signals will be weaker. "
                 "Fix: pull the embed model in Ollama, or set "
                 "embedding.model to a HuggingFace model (e.g. "
-                "BAAI/bge-small-en-v1.5) in settings.", _e,
+                "BAAI/bge-small-en-v1.5) in settings.",
+                _e,
             )
             _runtime_state.warned_semantic_fallback = True
         words1 = set(claim.lower().split())
@@ -502,6 +515,7 @@ def _encode_chunks_cached(chunks: list[str]) -> list[Any] | None:
         # vector guard turns them into the Jaccard fallback, exactly as a
         # fresh encode of the same text would.
         import numpy as _np_chunks
+
         out: list[Any] = []
         for e in embs:
             try:
@@ -516,12 +530,14 @@ def _encode_chunks_cached(chunks: list[str]) -> list[Any] | None:
     except Exception as _e:
         logger.debug(
             "chunk-embedding hoist unavailable (%s: %s) — using per-pair path",
-            type(_e).__name__, _e,
+            type(_e).__name__,
+            _e,
         )
         return None
 
 
 # ── Content Judge ──────────────────────────────────────────────────────────
+
 
 class ContentJudge:
     """Final pre-output validation: coverage, grounding, hallucination, deviation.
@@ -602,8 +618,8 @@ class ContentJudge:
                 return None  # fall back to per-pair Jaccard
 
             # Batch-encode all claims + all summary texts (cached across runs).
-            claims_emb = cached_encode(model, all_claims)          # (N_claims, dim)
-            summary_emb = cached_encode(model, summary_texts)     # (N_summary, dim)
+            claims_emb = cached_encode(model, all_claims)  # (N_claims, dim)
+            summary_emb = cached_encode(model, summary_texts)  # (N_summary, dim)
 
             # Compute the full similarity matrix: (N_claims, N_summary).
             sim_matrix = util.cos_sim(claims_emb, summary_emb)
@@ -628,8 +644,9 @@ class ContentJudge:
             return covered
         except Exception as exc:
             logger.debug(
-                "batch coverage check failed (%s: %s) — falling back to "
-                "per-pair Jaccard", type(exc).__name__, exc,
+                "batch coverage check failed (%s: %s) — falling back to per-pair Jaccard",
+                type(exc).__name__,
+                exc,
             )
             return None
 
@@ -753,11 +770,7 @@ class ContentJudge:
             # → the V18.2.19 auto-pass workaround fired AFTER burning ~6s +
             # 2 LLM round-trips. Now: detect 0/N, mark coverage as
             # "degenerate / unmeasurable", skip gap-fill, and log loudly.
-            if (
-                result.total_source_claims >= 10
-                and covered == 0
-                and summary_texts
-            ):
+            if result.total_source_claims >= 10 and covered == 0 and summary_texts:
                 logger.error(
                     "content_judge: DEGENERATE coverage 0/%d — the embedder "
                     "is almost certainly broken (zero vectors or unavailable). "
@@ -803,6 +816,7 @@ class ContentJudge:
         if self._claim_extractor is not None and result.total_bullets > 0:
             try:
                 from core.grounding import GroundingResult
+
                 gr: GroundingResult = self._claim_extractor.extract(
                     source_text=source_content,
                     summary_bullets=summary.bullet_points,
@@ -823,10 +837,11 @@ class ContentJudge:
                     # and its text fuzzy-matches the bullet ≥ 60%.
                     try:
                         from rapidfuzz import fuzz as rf_fuzz
+
                         _has_rf = True
                     except ImportError:
                         _has_rf = False
-                    for idx, bp in enumerate(summary.bullet_points):
+                    for idx, _bp in enumerate(summary.bullet_points):
                         bp_clean = (bp or "").strip()
                         if not bp_clean:
                             continue
@@ -836,9 +851,10 @@ class ContentJudge:
                             if not claim.is_grounded:
                                 continue
                             if _has_rf:
-                                score = rf_fuzz.partial_ratio(
-                                    bp_clean.lower(), claim.text.lower()
-                                ) / 100.0
+                                score = (
+                                    rf_fuzz.partial_ratio(bp_clean.lower(), claim.text.lower())
+                                    / 100.0
+                                )
                             else:
                                 a = set(bp_clean.lower().split())
                                 b = set(claim.text.lower().split())
@@ -880,13 +896,13 @@ class ContentJudge:
             # Short-circuit Q2: auto-ground all non-L8 bullets (can't measure
             # semantic similarity) and skip Q4 entirely. The deterministic
             # judge + postchecks still verify grounding downstream.
-            _skip_grounding = (not _emb_enabled and _emb_fallback == "skip")
+            _skip_grounding = not _emb_enabled and _emb_fallback == "skip"
             if _skip_grounding:
                 # Auto-ground every bullet (Layer 8 strong + the rest as
                 # "unmeasurable"). Keep ungrounded_bullets empty so the
                 # verdict isn't a false FAIL on a user-opted-out skip.
                 grounded = len(summary.bullet_points)
-                for idx, bp in enumerate(summary.bullet_points):
+                for idx, _bp in enumerate(summary.bullet_points):
                     if idx not in l8_strong_bullets:
                         # Not verbatim-grounded, but we can't semantic-check
                         # it either — count as weakly grounded (auto-pass).
@@ -922,7 +938,7 @@ class ContentJudge:
                 # vectors still trip the guard inside _semantic_similarity).
                 _chunk_embs = _encode_chunks_cached(chunks) if chunks else None
                 grounded = 0
-                for idx, bp in enumerate(summary.bullet_points):
+                for idx, _bp in enumerate(summary.bullet_points):
                     # If Layer 8 already grounded this bullet strongly, count
                     # it and skip the (slower) semantic check.
                     if idx in l8_strong_bullets:
@@ -931,10 +947,9 @@ class ContentJudge:
                     best_sim = 0.0
                     for ci, chunk in enumerate(chunks):
                         sim = _semantic_similarity(
-                            bp, chunk,
-                            candidate_emb=(
-                                _chunk_embs[ci] if _chunk_embs is not None else None
-                            ),
+                            bp,
+                            chunk,
+                            candidate_emb=(_chunk_embs[ci] if _chunk_embs is not None else None),
                         )
                         if sim > best_sim:
                             best_sim = sim
@@ -963,8 +978,19 @@ class ContentJudge:
         # the source chunk it's most similar to.  For now, this is a
         # simplified check: if the bullet contains a negation ("not", "never",
         # "cannot") that the source doesn't, it's a potential deviation.
-        negation_words = {"not", "never", "cannot", "no ", "none", "neither",
-                          "nor", "without", "fails", "unable", "impossible"}
+        negation_words = {
+            "not",
+            "never",
+            "cannot",
+            "no ",
+            "none",
+            "neither",
+            "nor",
+            "without",
+            "fails",
+            "unable",
+            "impossible",
+        }
         if result.total_bullets > 0 and not _skip_grounding:
             # V18.4 (Phase 2): Q4 deviation check also calls _semantic_similarity,
             # so it must be skipped in skip-mode (would raise EmbeddingDisabled).
@@ -984,19 +1010,16 @@ class ContentJudge:
                     best_chunk = ""
                     for ci, chunk in enumerate(chunks):
                         sim = _semantic_similarity(
-                            bp, chunk,
-                            candidate_emb=(
-                                _chunk_embs[ci] if _chunk_embs is not None else None
-                            ),
+                            bp,
+                            chunk,
+                            candidate_emb=(_chunk_embs[ci] if _chunk_embs is not None else None),
                         )
                         if sim > best_sim:
                             best_sim = sim
                             best_chunk = chunk
                     if best_chunk:
                         source_lower = best_chunk.lower()
-                        source_has_negation = any(
-                            neg in source_lower for neg in negation_words
-                        )
+                        source_has_negation = any(neg in source_lower for neg in negation_words)
                         # If the bullet negates but the source doesn't → deviation
                         if bp_has_negation and not source_has_negation and best_sim >= 0.40:
                             result.deviation_count += 1
@@ -1027,8 +1050,7 @@ class ContentJudge:
             and result.deviation_count <= 2  # allow up to 2 minor deviations
         )
         result.needs_gap_fill = (
-            result.coverage_pct < GAP_FILL_THRESHOLD
-            and len(result.uncovered_claims) > 0
+            result.coverage_pct < GAP_FILL_THRESHOLD and len(result.uncovered_claims) > 0
         )
         result.summary = result.format_report()
         return result
@@ -1072,8 +1094,9 @@ class ContentJudge:
             source_truncated = source_content
 
         # Build the prompt
-        bullets_text = "\n".join(f"{i+1}. {bp}" for i, bp in enumerate(bullets))
+        bullets_text = "\n".join(f"{i + 1}. {bp}" for i, bp in enumerate(bullets))
         from core.summarisation.prompt_manager import PromptManager
+
         _pm = PromptManager()
         prompt = _pm.render_template(
             "summarisation/content_judge",
@@ -1092,8 +1115,8 @@ class ContentJudge:
             ungrounded_bullets = []
             for bp_idx, bp in enumerate(bullets, 1):
                 # Look for "GROUNDED: N" or "NOT_GROUNDED: N" in the response
-                pattern_grounded = rf'(?i)GROUNDED\s*[:\-]?\s*{bp_idx}\b'
-                pattern_not = rf'(?i)NOT[\s_]*GROUNDED\s*[:\-]?\s*{bp_idx}\b'
+                pattern_grounded = rf"(?i)GROUNDED\s*[:\-]?\s*{bp_idx}\b"
+                pattern_not = rf"(?i)NOT[\s_]*GROUNDED\s*[:\-]?\s*{bp_idx}\b"
                 if re.search(pattern_not, response):
                     ungrounded_bullets.append(bp)
                 elif re.search(pattern_grounded, response):
@@ -1127,6 +1150,7 @@ class ContentJudge:
         claims_text = "\n".join(f"- {c}" for c in uncovered_claims[:15])
         existing_text = "\n".join(f"- {b}" for b in existing_bullets[:20])
         from core.summarisation.prompt_manager import PromptManager
+
         _pm = PromptManager()
         rendered = _pm.render_template(
             "summarisation/gap_fill_reprompt",

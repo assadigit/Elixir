@@ -42,14 +42,16 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class DetectionResult:
     """Result of content-type auto-detection."""
-    content_type: str          # the winning type key
-    confidence: float          # 0.0–1.0
-    scores: dict[str, float]   # per-type scores
-    signals: dict[str, str]    # human-readable signal summary per type
-    recommended: bool          # True if confidence >= 0.35 (trustworthy)
+
+    content_type: str  # the winning type key
+    confidence: float  # 0.0–1.0
+    scores: dict[str, float]  # per-type scores
+    signals: dict[str, str]  # human-readable signal summary per type
+    recommended: bool  # True if confidence >= 0.35 (trustworthy)
 
     def label(self) -> str:
         """Human-readable label for the detected type."""
@@ -77,96 +79,179 @@ _TYPE_LABELS = {
 
 # Academic: citations, DOI, p-value, sections, abstract
 _ACADEMIC_CITATION = re.compile(
-    r'\([A-Z][a-z]+(?:\s+(?:et\s+al\.?|and|&)\s+[A-Z][a-z]+)*,?\s+\d{4}\)'
+    r"\([A-Z][a-z]+(?:\s+(?:et\s+al\.?|and|&)\s+[A-Z][a-z]+)*,?\s+\d{4}\)"
 )
-_ACADEMIC_DOI = re.compile(r'10\.\d{4,}/[^\s]+', re.IGNORECASE)
-_ACADEMIC_PVALUE = re.compile(r'p\s*[<>=]\s*0?\.\d+')
-_ACADEMIC_SECTION = re.compile(r'^\d+\.\d+(?:\.\d+)?\s+[A-Z]', re.MULTILINE)
-_ACADEMIC_ABSTRACT = re.compile(r'\babstract\b', re.IGNORECASE)
+_ACADEMIC_DOI = re.compile(r"10\.\d{4,}/[^\s]+", re.IGNORECASE)
+_ACADEMIC_PVALUE = re.compile(r"p\s*[<>=]\s*0?\.\d+")
+_ACADEMIC_SECTION = re.compile(r"^\d+\.\d+(?:\.\d+)?\s+[A-Z]", re.MULTILINE)
+_ACADEMIC_ABSTRACT = re.compile(r"\babstract\b", re.IGNORECASE)
 _ACADEMIC_KEYWORDS = [
-    "methodology", "hypothesis", "empirical", "qualitative", "quantitative",
-    "regression", "statistically significant", "et al.", "references",
-    "bibliography", "proceedings", "journal of", "correlation",
-    "standard deviation", "confidence interval", "sample size",
-    "research question", "literature review", "systematic review",
-    "peer-reviewed", "controlled study", "experimental design",
+    "methodology",
+    "hypothesis",
+    "empirical",
+    "qualitative",
+    "quantitative",
+    "regression",
+    "statistically significant",
+    "et al.",
+    "references",
+    "bibliography",
+    "proceedings",
+    "journal of",
+    "correlation",
+    "standard deviation",
+    "confidence interval",
+    "sample size",
+    "research question",
+    "literature review",
+    "systematic review",
+    "peer-reviewed",
+    "controlled study",
+    "experimental design",
 ]
 # V9.2.0 M6: Publisher-specific markers for reliable detection of
 # Elsevier/ScienceDirect, Springer, Wiley, IEEE, Nature, Science papers.
 _ACADEMIC_PUBLISHERS = [
-    "elsevier", "sciencedirect", "springer", "wiley", "ieee",
-    "nature", "science magazine", "oxford university press",
-    "cambridge university press", "taylor & francis", "sage publications",
-    "acs publications", "rsc publishing", "mdpi", "frontiers",
+    "elsevier",
+    "sciencedirect",
+    "springer",
+    "wiley",
+    "ieee",
+    "nature",
+    "science magazine",
+    "oxford university press",
+    "cambridge university press",
+    "taylor & francis",
+    "sage publications",
+    "acs publications",
+    "rsc publishing",
+    "mdpi",
+    "frontiers",
 ]
 _ACADEMIC_DOI_PREFIXES = [
-    "10.1016",    # Elsevier
-    "10.1007",    # Springer
-    "10.1002",    # Wiley
-    "10.1109",    # IEEE
-    "10.1038",    # Nature
-    "10.1126",    # Science
-    "10.1093",    # Oxford
-    "10.1017",    # Cambridge
+    "10.1016",  # Elsevier
+    "10.1007",  # Springer
+    "10.1002",  # Wiley
+    "10.1109",  # IEEE
+    "10.1038",  # Nature
+    "10.1126",  # Science
+    "10.1093",  # Oxford
+    "10.1017",  # Cambridge
 ]
 _ACADEMIC_SUBMISSION = re.compile(
-    r'\b(?:received|accepted|published|available online)\s*:',
+    r"\b(?:received|accepted|published|available online)\s*:",
     re.IGNORECASE,
 )
 
 # Self-help: exercises, action items, motivational language
 _SELFHELP_EXERCISE = re.compile(
-    r'(?:^|\n)\s*(?:exercise|try this|action item|worksheet|practice|'
-    r'homework|reflection|journal prompt)\s*:',
+    r"(?:^|\n)\s*(?:exercise|try this|action item|worksheet|practice|"
+    r"homework|reflection|journal prompt)\s*:",
     re.IGNORECASE | re.MULTILINE,
 )
 _SELFHELP_KEYWORDS = [
-    "transform your", "empower yourself", "achieve your goals",
-    "mindset", "breakthrough", "your journey", "step-by-step",
-    "takeaway", "personal growth", "self-improvement", "habits of",
-    "unlock your potential", "overcome", "grit", "resilience",
-    "deliberate practice", "deep work", "atomic habits",
+    "transform your",
+    "empower yourself",
+    "achieve your goals",
+    "mindset",
+    "breakthrough",
+    "your journey",
+    "step-by-step",
+    "takeaway",
+    "personal growth",
+    "self-improvement",
+    "habits of",
+    "unlock your potential",
+    "overcome",
+    "grit",
+    "resilience",
+    "deliberate practice",
+    "deep work",
+    "atomic habits",
 ]
 
 # Philosophy: abstract terms, philosopher names, argument structure
 _PHILOSOPHY_KEYWORDS = [
-    "epistemology", "metaphysics", "ontological", "phenomenology",
-    "existentialism", "nihilism", "determinism", "a priori", "a posteriori",
-    "dialectic", "syllogism", "categorical imperative",
-    "moral relativism", "virtue ethics", "deontology", "utilitarianism",
-    "consciousness", "qualia", "solipsism", "pragmatism",
+    "epistemology",
+    "metaphysics",
+    "ontological",
+    "phenomenology",
+    "existentialism",
+    "nihilism",
+    "determinism",
+    "a priori",
+    "a posteriori",
+    "dialectic",
+    "syllogism",
+    "categorical imperative",
+    "moral relativism",
+    "virtue ethics",
+    "deontology",
+    "utilitarianism",
+    "consciousness",
+    "qualia",
+    "solipsism",
+    "pragmatism",
 ]
 _PHILOSOPHY_NAMES = [
-    "nietzsche", "kant", "hegel", "sartre", "aristotle", "plato",
-    "descartes", "hume", "spinoza", "wittgenstein", "heidegger",
-    "kierkegaard", "leibniz", "rousseau", "locke",
+    "nietzsche",
+    "kant",
+    "hegel",
+    "sartre",
+    "aristotle",
+    "plato",
+    "descartes",
+    "hume",
+    "spinoza",
+    "wittgenstein",
+    "heidegger",
+    "kierkegaard",
+    "leibniz",
+    "rousseau",
+    "locke",
 ]
 
 # Catalogue: product codes, prices, specifications
-_CATALOGUE_PRICE = re.compile(r'[£$€]\s*\d+[.,]?\d*')
-_CATALOGUE_SKU = re.compile(r'\b(?:SKU|product code|item no|model no|MPN)\s*[:#]?\s*[A-Z0-9\-]+', re.IGNORECASE)
+_CATALOGUE_PRICE = re.compile(r"[£$€]\s*\d+[.,]?\d*")
+_CATALOGUE_SKU = re.compile(
+    r"\b(?:SKU|product code|item no|model no|MPN)\s*[:#]?\s*[A-Z0-9\-]+", re.IGNORECASE
+)
 _CATALOGUE_SPECS = re.compile(
-    r'\b(?:specifications|dimensions|weight|material|color|warranty)\s*:',
+    r"\b(?:specifications|dimensions|weight|material|color|warranty)\s*:",
     re.IGNORECASE,
 )
 _CATALOGUE_KEYWORDS = [
-    "add to cart", "in stock", "free shipping", "product description",
-    "features", "what's included", "package contents",
+    "add to cart",
+    "in stock",
+    "free shipping",
+    "product description",
+    "features",
+    "what's included",
+    "package contents",
 ]
 
 # Magazine: visual cues, multi-column, editorial
 _MAGAZINE_KEYWORDS = [
-    "photograph", "illustration", "caption", "editor's note",
-    "contributing writer", "issue", "volume", "special feature",
-    "cover story", "photo essay", "staff photographer",
+    "photograph",
+    "illustration",
+    "caption",
+    "editor's note",
+    "contributing writer",
+    "issue",
+    "volume",
+    "special feature",
+    "cover story",
+    "photo essay",
+    "staff photographer",
 ]
-_MAGAZINE_SHORT_LINES = re.compile(r'^.{1,40}$', re.MULTILINE)  # short lines = captions
+_MAGAZINE_SHORT_LINES = re.compile(r"^.{1,40}$", re.MULTILINE)  # short lines = captions
 
 # Structural: two-column (heuristic — short lines + many line breaks)
-_TWO_COLUMN_HEURISTIC = re.compile(r'\n.{20,80}\n.{20,80}\n.{20,80}\n.{20,80}\n')
+_TWO_COLUMN_HEURISTIC = re.compile(r"\n.{20,80}\n.{20,80}\n.{20,80}\n.{20,80}\n")
 
 
 # ── Detector ───────────────────────────────────────────────────────────────
+
 
 def detect_content_type(
     text: str,
@@ -339,7 +424,7 @@ def detect_content_type(
     normal_score = 1.0  # baseline
     normal_signals: list[str] = ["default (no strong signals for other types)"]
     # Long paragraphs with prose = book-like
-    avg_line_len = len(text_sample) / max(1, text_sample.count('\n'))
+    avg_line_len = len(text_sample) / max(1, text_sample.count("\n"))
     if avg_line_len > 300:
         normal_score += 1.0
         normal_signals.append(f"long average line length ({avg_line_len:.0f} chars)")

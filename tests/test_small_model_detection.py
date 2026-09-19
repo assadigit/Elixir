@@ -22,6 +22,7 @@ OllamaSupervisor, loads PromptManager, etc.), we use TWO strategies:
      produce the same classification as the inline regex for every known
      model variant.
 """
+
 from __future__ import annotations
 
 import sys
@@ -53,23 +54,17 @@ class TestSmallModelDetectionSourceLevel:
     def test_source_contains_small_model_check(self):
         """summarizer.py must contain the _is_small_model detection."""
         src = self._read_source()
-        assert "_is_small_model" in src, (
-            "V18.2.39 small-model detection not found in summarizer.py"
-        )
+        assert "_is_small_model" in src, "V18.2.39 small-model detection not found in summarizer.py"
 
     def test_source_contains_13b_threshold(self):
         """The 13B threshold must be present."""
         src = self._read_source()
-        assert "13.0" in src or "13" in src, (
-            "V18.2.39 13B threshold not found"
-        )
+        assert "13.0" in src or "13" in src, "V18.2.39 13B threshold not found"
 
     def test_source_contains_8192_cap(self):
         """The 8192 max_output cap for small/low-bit models must be present."""
         src = self._read_source()
-        assert "8192" in src, (
-            "V18.2.39 max_output=8192 cap not found"
-        )
+        assert "8192" in src, "V18.2.39 max_output=8192 cap not found"
 
     def test_source_contains_low_bit_detection(self):
         """V18.3 (Phase 1.1): summarizer.py detects low-bit quants via model_taxonomy.
@@ -89,9 +84,7 @@ class TestSmallModelDetectionSourceLevel:
         """The param-count extraction regex must be present."""
         src = self._read_source()
         # The regex r'(\d+(?:\.\d+)?)\s*[bB]\b' extracts e.g. "27" from "27B".
-        assert "[bB]" in src or "param" in src.lower(), (
-            "Param-count extraction regex not found"
-        )
+        assert "[bB]" in src or "param" in src.lower(), "Param-count extraction regex not found"
 
 
 class TestModelTaxonomyCrossCheck:
@@ -106,32 +99,33 @@ class TestModelTaxonomyCrossCheck:
     # _is_low_bit = any(q in _model_lower for q in ("iq2_xxs", "iq2_xs", "iq1", "q2_k", "q2_"))
     # _is_small_model = 0 < _param_count_b < 13.0
 
-    @pytest.mark.parametrize("model,expected_small,expected_low_bit", [
-        # Small models (< 13B)
-        ("Qwen3.8-9B-Q8:latest",       True,  False),
-        ("Qwen3.8-3B:latest",          True,  False),
-        ("Qwen3.8-12B:latest",         True,  False),
-        # 27B low-bit quants (not small, but low-bit)
-        ("Qwen3.8-27B-UD-IQ2_S:latest",     False, True),
-        ("Qwen3.8-27B-UD-IQ2_XXS:latest",  False, True),
-        ("Qwen3.8-27B-UD-Q2_K_XL:latest",  False, True),
-        # 27B full-precision (neither small nor low-bit)
-        ("Qwen3.8-27B-Q8:latest",      False, False),
-        ("Qwen3.8-27B-F16:latest",     False, False),
-        # Boundary: 13B exactly → NOT small (0 < 13 < 13.0 is False)
-        ("Qwen3.8-13B:latest",         False, False),
-        # Boundary: 14B → NOT small
-        ("Qwen3.8-14B:latest",         False, False),
-    ])
+    @pytest.mark.parametrize(
+        "model,expected_small,expected_low_bit",
+        [
+            # Small models (< 13B)
+            ("Qwen3.8-9B-Q8:latest", True, False),
+            ("Qwen3.8-3B:latest", True, False),
+            ("Qwen3.8-12B:latest", True, False),
+            # 27B low-bit quants (not small, but low-bit)
+            ("Qwen3.8-27B-UD-IQ2_S:latest", False, True),
+            ("Qwen3.8-27B-UD-IQ2_XXS:latest", False, True),
+            ("Qwen3.8-27B-UD-Q2_K_XL:latest", False, True),
+            # 27B full-precision (neither small nor low-bit)
+            ("Qwen3.8-27B-Q8:latest", False, False),
+            ("Qwen3.8-27B-F16:latest", False, False),
+            # Boundary: 13B exactly → NOT small (0 < 13 < 13.0 is False)
+            ("Qwen3.8-13B:latest", False, False),
+            # Boundary: 14B → NOT small
+            ("Qwen3.8-14B:latest", False, False),
+        ],
+    )
     def test_taxonomy_matches_inline_regex(self, model, expected_small, expected_low_bit):
         """model_taxonomy classification matches the old inline regex."""
         assert is_small_model(model) is expected_small, (
-            f"is_small_model({model!r}) = {is_small_model(model)}, "
-            f"expected {expected_small}"
+            f"is_small_model({model!r}) = {is_small_model(model)}, expected {expected_small}"
         )
         assert is_low_bit_quant(model) is expected_low_bit, (
-            f"is_low_bit_quant({model!r}) = {is_low_bit_quant(model)}, "
-            f"expected {expected_low_bit}"
+            f"is_low_bit_quant({model!r}) = {is_low_bit_quant(model)}, expected {expected_low_bit}"
         )
 
     def test_small_model_implies_8192_cap(self):
@@ -194,12 +188,15 @@ class TestAcademicRigorDisable:
             "Academic Rigor logic not found in summarizer.py"
         )
 
-    @pytest.mark.parametrize("model,should_disable_rigor", [
-        ("Qwen3.8-9B-Q8:latest",      True),   # 9B < 13B → disable
-        ("Qwen3.8-3B:latest",         True),   # 3B < 13B → disable
-        ("Qwen3.8-27B-UD-IQ2_S:latest", False),  # 27B → keep (low-bit, but not small)
-        ("Qwen3.8-27B-Q8:latest",     False),  # 27B full-precision → keep
-    ])
+    @pytest.mark.parametrize(
+        "model,should_disable_rigor",
+        [
+            ("Qwen3.8-9B-Q8:latest", True),  # 9B < 13B → disable
+            ("Qwen3.8-3B:latest", True),  # 3B < 13B → disable
+            ("Qwen3.8-27B-UD-IQ2_S:latest", False),  # 27B → keep (low-bit, but not small)
+            ("Qwen3.8-27B-Q8:latest", False),  # 27B full-precision → keep
+        ],
+    )
     def test_rigor_disable_matches_taxonomy(self, model, should_disable_rigor):
         """The Academic Rigor disable condition matches is_small_model()."""
         is_small = is_small_model(model)

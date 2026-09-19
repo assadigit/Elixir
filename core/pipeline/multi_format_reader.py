@@ -17,6 +17,7 @@ Usage (from the converter's extraction phase)::
     from core.pipeline.multi_format_reader import extract_text
     text, pages = extract_text(file_path, log_callback=log)
 """
+
 from __future__ import annotations
 
 import logging
@@ -166,7 +167,6 @@ def _extract_docx_fallback(file_path: Path, log) -> tuple[str, int]:
         if "word/document.xml" in zf.namelist():
             content = zf.read("word/document.xml").decode("utf-8", errors="ignore")
             # Extract text from <w:t> tags
-            texts = re.findall(r"<w:t[^>]*>([^<]*)</w:t>", content)
             # Split on paragraph breaks <w:p>
             para_texts = re.split(r"</w:p>", content)
             for para_xml in para_texts:
@@ -197,6 +197,7 @@ def _extract_html(file_path: Path, log) -> tuple[str, int]:
 
     try:
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup(content, "html.parser")
         # Remove script/style tags
         for tag in soup(["script", "style"]):
@@ -217,6 +218,14 @@ def _extract_html(file_path: Path, log) -> tuple[str, int]:
 def is_supported_format(file_path: Path) -> bool:
     """Check if the file format is supported."""
     return file_path.suffix.lower() in (
-        ".pdf", ".epub", ".docx", ".txt", ".md", ".rst",
-        ".asciidoc", ".adoc", ".html", ".htm",
+        ".pdf",
+        ".epub",
+        ".docx",
+        ".txt",
+        ".md",
+        ".rst",
+        ".asciidoc",
+        ".adoc",
+        ".html",
+        ".htm",
     )

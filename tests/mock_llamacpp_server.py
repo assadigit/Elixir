@@ -30,6 +30,7 @@ Usage::
     finally:
         srv.stop()
 """
+
 from __future__ import annotations
 
 import json
@@ -42,9 +43,9 @@ DEFAULT_MODEL = "Ternary-Bonsai-2-27B-Instruct-Vision"
 
 def _error_body(code: int, message: str, err_type: str = "api_error") -> bytes:
     """The llama.cpp error shape: {"error": {"code", "message", "type"}}."""
-    return json.dumps(
-        {"error": {"code": code, "message": message, "type": err_type}}
-    ).encode("utf-8")
+    return json.dumps({"error": {"code": code, "message": message, "type": err_type}}).encode(
+        "utf-8"
+    )
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -229,7 +230,7 @@ class MockLlamaCppServer:
     def port(self) -> int:
         return self._httpd.server_address[1]
 
-    def start(self) -> "MockLlamaCppServer":
+    def start(self) -> MockLlamaCppServer:
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
         return self

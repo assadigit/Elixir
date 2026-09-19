@@ -20,6 +20,7 @@ Scope of this version (all approved by the user in the 2026-08-31 session):
            effect was invisible (DEBUG-only hits, no run-level stats).
            The diagnostic now reports per-run hits/misses.
 """
+
 from __future__ import annotations
 
 import sys
@@ -87,11 +88,7 @@ class TestF6StampDiagnostic:
         assert "NO generated-by stamp" not in msg
 
     def test_unstamped_legacy_file_warns(self):
-        legacy = (
-            "# Summary: Old\n\n"
-            "## Executive Summary\n\nOld exec.\n\n"
-            "<!-- COMPLETE -->\n"
-        )
+        legacy = "# Summary: Old\n\n## Executive Summary\n\nOld exec.\n\n<!-- COMPLETE -->\n"
         level, msg = stamp_diagnostic("old.md", legacy)
         assert level == "WARNING"
         assert "NO generated-by stamp" in msg
@@ -124,15 +121,16 @@ class TestF6StampDiagnostic:
         # parser contract: never raises, empty fields on no match
         prov = parse_provenance(None)
         assert prov == {
-            "run_id": "", "app_version": "", "started": "", "bullets": "",
+            "run_id": "",
+            "app_version": "",
+            "started": "",
+            "bullets": "",
         }
 
     def test_converter_uses_parser_not_line_peek(self):
         """Policy pin: the diagnostic block must delegate to the canonical
         parser — no fixed-line peeking may return."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         # V18.20.4.3 (P2 / G-1 + G-2): the scan now passes the file's full
         # path and the running app version (stale-artifact escalation) —
         # still delegating to the canonical parser, never line-peeking.
@@ -145,6 +143,7 @@ class TestF6StampDiagnostic:
 # ═════════════════════════════════════════════════════════════════════════════
 # 2) W11 — library keypoints count = the deduped count that shipped
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class TestW11KeypointCount:
     def _build(self, tmp_path, bullets):
@@ -184,9 +183,7 @@ class TestW11KeypointCount:
     def test_converter_library_uses_builder_count(self):
         """Policy pin: the library call must prefer the builder's deduped
         count over the raw bullet sum."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         assert "final_keypoint_count" in src
         assert "_kp_final_count" in src
 
@@ -201,18 +198,14 @@ class TestW11KeypointCount:
 # 3) F5 — known-cosmetic visibility classes
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestF5Visibility:
     def test_empty_response_retry_is_warning(self):
         """The .3.7 rig's invisible 1.9s empty round-1 response — the
         retry line must be WARNING-level so the anomaly is operator-
         visible."""
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8"
-        )
-        assert (
-            'self.log("    ⚠️ Empty/short LLM response — retrying with nudge'
-            in src
-        )
+        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
+        assert 'self.log("    ⚠️ Empty/short LLM response — retrying with nudge' in src
         # must NOT be the old DEBUG form
         assert 'retrying with nudge after 2s delay", "DEBUG")' not in src
 
@@ -220,9 +213,7 @@ class TestF5Visibility:
         """Models resident in the Ollama server at exit are a known
         cosmetic class — a WARNING on every clean run masks nothing and
         makes runs look failed."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         assert "Models still in Ollama server memory at exit" in src
         assert "server-managed" in src
         assert "Models still loaded at exit" not in src
@@ -232,17 +223,14 @@ class TestF5Visibility:
 # 4) O7 — opt-in response cache made visible
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestO7CacheVisibility:
     def test_cache_hit_logs_info(self):
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
         assert "Response cache HIT — LLM call skipped" in src
 
     def test_diagnostic_reports_run_cache_stats(self):
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
         assert "_cache_stats_start" in src
         assert "Response cache:" in src
         assert "opt-in" in src
@@ -271,8 +259,6 @@ class TestO7CacheVisibility:
         contract: the request model still defaults to cache OFF."""
         from core.models import ConversionRequest
 
-        field = ConversionRequest.__dataclass_fields__.get(
-            "summarisation_cache_enabled"
-        )
+        field = ConversionRequest.__dataclass_fields__.get("summarisation_cache_enabled")
         assert field is not None
         assert field.default is False

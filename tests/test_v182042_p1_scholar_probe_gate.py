@@ -24,16 +24,14 @@ ramble-truncated) needs the larger budget-cut / reorder — flagged as
 Phase-3.c continued, NOT in this release (surgical P1 = the .3.11 mirror
 only; no output caps touched, the 6144 cap stands).
 """
+
 from __future__ import annotations
 
 import ast
-import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
-
-import pytest
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
@@ -65,6 +63,7 @@ def _src(path: Path) -> str:
 # Source-pin layer (headless, always runs)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestScholarProbeGateSourcePins:
     def test_file_parses(self):
         ast.parse(_src(_SCHOLAR))
@@ -75,9 +74,7 @@ class TestScholarProbeGateSourcePins:
         probe_pos = src.find("_probe_missing = -1")
         call_pos = src.find("call_fast_llm(prompt, temperature=temperature, max_tokens=6144)")
         assert probe_pos != -1 and call_pos != -1
-        assert probe_pos < call_pos, (
-            "the probe-gate must run BEFORE the 6144-token LLM call"
-        )
+        assert probe_pos < call_pos, "the probe-gate must run BEFORE the 6144-token LLM call"
 
     def test_skip_path_returns_before_recover_vram(self):
         """Skip saves the 15s pre-scholar recover_vram too."""
@@ -96,7 +93,7 @@ class TestScholarProbeGateSourcePins:
         skip's ``_probe_merged = -1``."""
         src = _src(_SCHOLAR)
         assert "_probe_missing = -1" in src
-        assert 'except Exception:\n            _probe_missing = -1' in src
+        assert "except Exception:\n            _probe_missing = -1" in src
         # the only skip condition is == 0 (probe said "all covered")
         assert "if _probe_missing == 0:" in src
 
@@ -105,7 +102,7 @@ class TestScholarProbeGateSourcePins:
         (the proven precedent this gate mirrors)."""
         src = _src(_SCHOLAR)
         skip_pos = src.find("if _probe_missing == 0:")
-        block = src[skip_pos: src.find("\n    theorists_hint", skip_pos)]
+        block = src[skip_pos : src.find("\n    theorists_hint", skip_pos)]
         assert "Scholar reflection SKIPPED (probe-gate)" in block
         assert "V18.20.3.11" in block
         assert "consolidation skip" in block
@@ -122,6 +119,7 @@ class TestScholarProbeGateSourcePins:
 # ═══════════════════════════════════════════════════════════════════════════
 # Behavioral layer (pure Python — scholar_reflection is a module function)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _make_call():
     """A MagicMock call_fast_llm that records invocations + returns a
@@ -162,6 +160,7 @@ class TestScholarProbeGateBehavior:
         primary bullets already mention every cited theorist → the scholar
         call has nothing to add for its scope → SKIPPED."""
         from core.summarisation.scholar_reflection import scholar_reflection
+
         # source cites Voss (1948) and Ibarra (1952) — synthetic names
         # (the deny-list rule: no book-derived hardcoding in runtime; the
         # TEST fixture using synthetic names is the house pattern, see
@@ -175,44 +174,53 @@ class TestScholarProbeGateBehavior:
         call = _make_call()
         logs: list[tuple[str, str]] = []
         scholar_reflection(
-            "Chapter 1", text, result, **_make_fns(call),
+            "Chapter 1",
+            text,
+            result,
+            **_make_fns(call),
             log=lambda msg, level="INFO": logs.append((msg, level)),
         )
         assert call.call_count == 0, "the LLM call must be SKIPPED (probe-gate)"
         assert result["scholar_reflections"] == ""
-        assert any("SKIPPED (probe-gate)" in m for m, _ in logs), (
-            "the skip must log the INFO line"
-        )
+        assert any("SKIPPED (probe-gate)" in m for m, _ in logs), "the skip must log the INFO line"
 
     def test_runs_when_theorists_are_missing(self):
         """The .3.14 case where gaps exist: the probe finds missing
         theorists → falls through to the LLM call (the gate does NOT skip
         when the call MIGHT contribute)."""
         from core.summarisation.scholar_reflection import scholar_reflection
+
         # 'Smith (1960)' matches the scholar regex's [A-Z][a-z]+ \(year\)
         # pattern; the bullets cover Voss + Ibarra but NOT Smith.
-        text = "Voss (1948) discussed identity. Ibarra (1952) extended it. Smith (1960) added nuance."
+        text = (
+            "Voss (1948) discussed identity. Ibarra (1952) extended it. Smith (1960) added nuance."
+        )
         bullets = ["Voss (1948) — origins.", "Ibarra (1952) — extension."]
         result = self._result_with_bullets(bullets)
         call = _make_call()
         scholar_reflection(
-            "Chapter 1", text, result, **_make_fns(call),
+            "Chapter 1",
+            text,
+            result,
+            **_make_fns(call),
             log=lambda msg, level="INFO": None,
         )
-        assert call.call_count == 1, (
-            "the LLM call must run when the probe finds missing theorists"
-        )
+        assert call.call_count == 1, "the LLM call must run when the probe finds missing theorists"
 
     def test_runs_when_no_theorists_in_source(self):
         """No theorists_found → the probe block is skipped (``if
         theorists_found:`` False) → ``_probe_missing`` stays -1 → run the
         LLM call (no probe data, can't skip)."""
         from core.summarisation.scholar_reflection import scholar_reflection
+
         text = "A source with no cited authors at all."
         result = self._result_with_bullets(["A bullet."])
         call = _make_call()
         scholar_reflection(
-            "Chapter 1", text, result, **_make_fns(call),
+            "Chapter 1",
+            text,
+            result,
+            **_make_fns(call),
             log=lambda msg, level="INFO": None,
         )
         assert call.call_count == 1
@@ -221,10 +229,13 @@ class TestScholarProbeGateBehavior:
         """A probe crash → ``_probe_missing = -1`` → fall through to the
         LLM call (the .3.11 fail-soft)."""
         from core.summarisation.scholar_reflection import scholar_reflection
+
         text = "Voss (1948) and Ibarra (1952)."
         result = {
-            "executive_summary": "x", "bullet_points": ["Voss (1948)", object()],
-            "thorough_summary": "y", "key_distinctions": "",
+            "executive_summary": "x",
+            "bullet_points": ["Voss (1948)", object()],
+            "thorough_summary": "y",
+            "key_distinctions": "",
             "theoretical_tensions": "",
         }
         # ``object()`` is fine for the _summary_overview generator
@@ -232,16 +243,18 @@ class TestScholarProbeGateBehavior:
         # non-string element inside the probe → caught → _probe_missing=-1.
         call = _make_call()
         scholar_reflection(
-            "Chapter 1", text, result, **_make_fns(call),
+            "Chapter 1",
+            text,
+            result,
+            **_make_fns(call),
             log=lambda msg, level="INFO": None,
         )
-        assert call.call_count == 1, (
-            "a probe crash must NEVER skip the LLM call (fail-soft, .3.11)"
-        )
+        assert call.call_count == 1, "a probe crash must NEVER skip the LLM call (fail-soft, .3.11)"
 
     def test_skip_path_skips_recover_vram(self):
         """The skip must return BEFORE the 15s recover_vram delay."""
         from core.summarisation.scholar_reflection import scholar_reflection
+
         text = "Voss (1948). Ibarra (1952)."
         bullets = ["Voss (1948) — x.", "Ibarra (1952) — y."]
         result = self._result_with_bullets(bullets)
@@ -249,12 +262,14 @@ class TestScholarProbeGateBehavior:
         fns = _make_fns(call)
         recover = fns["recover_vram"]
         scholar_reflection(
-            "Chapter 1", text, result, **fns,
+            "Chapter 1",
+            text,
+            result,
+            **fns,
             log=lambda msg, level="INFO": None,
         )
         assert recover.call_count == 0, (
-            "recover_vram must not run when the call is skipped (saves the "
-            "15s pre-scholar delay)"
+            "recover_vram must not run when the call is skipped (saves the 15s pre-scholar delay)"
         )
 
     def test_gapfill_only_also_skips(self):
@@ -263,12 +278,16 @@ class TestScholarProbeGateBehavior:
         from core.summarisation.scholar_reflection import (
             scholar_reflection_gapfill_only,
         )
+
         text = "Voss (1948). Ibarra (1952)."
         bullets = ["Voss (1948) — x.", "Ibarra (1952) — y."]
         result = self._result_with_bullets(bullets)
         call = _make_call()
         scholar_reflection_gapfill_only(
-            "Chapter 1", text, result, **_make_fns(call),
+            "Chapter 1",
+            text,
+            result,
+            **_make_fns(call),
             log=lambda msg, level="INFO": None,
         )
         assert call.call_count == 0

@@ -21,6 +21,7 @@ Or via the settings helper::
     if is_structured_logging_enabled():
         # emit structured fields
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,7 +34,9 @@ from utils.settings import Settings
 __all__ = [
     "is_structured_logging_enabled",
     "setup_main_logger_gated",
-    "StructuredJsonFormatter",
+    # NOTE (V0.13): "StructuredJsonFormatter" removed — it is imported lazily
+    # from utils.logging inside setup_main_logger_gated, NOT re-exported at
+    # module level (the old __all__ entry was an undefined export).
 ]
 
 

@@ -41,6 +41,7 @@ tracing is off.
 Book-agnostic (Key Decision #3): tracing attributes are structural (stage
 names, token counts, model names), never book content.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,9 +65,8 @@ def _is_tracing_enabled() -> bool:
         return _tracing_enabled
     try:
         from utils.settings import Settings
-        _tracing_enabled = bool(
-            Settings().get("observability.tracing_enabled", False)
-        )
+
+        _tracing_enabled = bool(Settings().get("observability.tracing_enabled", False))
     except Exception:
         _tracing_enabled = False
     return _tracing_enabled
@@ -95,9 +95,7 @@ def _get_tracer() -> Any | None:
             provider = TracerProvider()
             # Console exporter — prints spans to stderr. Replace with
             # OTLPSpanExporter for Langfuse/Phoenix in production.
-            provider.add_span_processor(
-                BatchSpanProcessor(ConsoleSpanExporter())
-            )
+            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
             trace.set_tracer_provider(provider)
 
         _tracer = trace.get_tracer("elixir", "18.2.25")
@@ -162,6 +160,7 @@ def span(
             # Record the exception on the span (doesn't suppress it).
             try:
                 from opentelemetry.trace import Status, StatusCode
+
                 otel_span.record_exception(exc)
                 otel_span.set_status(Status(StatusCode.ERROR, str(exc)))
             except Exception:
@@ -212,6 +211,7 @@ def flush() -> None:
         return
     try:
         from opentelemetry import trace
+
         provider = trace.get_tracer_provider()
         # BatchSpanProcessor has a force_flush method.
         if hasattr(provider, "force_flush"):

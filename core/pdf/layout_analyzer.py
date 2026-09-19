@@ -23,6 +23,7 @@ class LayoutAnalyzer:
     def _init_layoutparser(self) -> bool:
         try:
             import layoutparser as lp
+
             self._layoutparser = lp
             self.log("  ✅ LayoutParser loaded.", "INFO")
             return True
@@ -40,30 +41,40 @@ class LayoutAnalyzer:
         try:
             import layoutparser as lp
             import pdf2image
+
             # We'll use a simple Detectron2 model (needs installation)
             # For now, we'll just detect text regions.
             model = lp.models.Detectron2LayoutModel(
-                'lp://PubLayNet/mask_rcnn_X_101_32x8d_FPN_3x/config',
+                "lp://PubLayNet/mask_rcnn_X_101_32x8d_FPN_3x/config",
                 extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.5],
-                label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
+                label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"},
             )
             results = {}
-            images = pdf2image.convert_from_path(str(pdf_path), first_page=pages[0], last_page=pages[-1])
+            images = pdf2image.convert_from_path(
+                str(pdf_path), first_page=pages[0], last_page=pages[-1]
+            )
             for idx, img in enumerate(images):
                 page_num = pages[idx]
                 layout = model.detect(img)
                 blocks = []
                 for block in layout:
-                    if block.type in ['Text', 'Title', 'List']:
+                    if block.type in ["Text", "Title", "List"]:
                         # Extract text from this region (we need OCR)
                         # This is complex; we'll just record coordinates and type.
-                        blocks.append({
-                            'type': block.type,
-                            'x1': block.x_1, 'y1': block.y_1,
-                            'x2': block.x_2, 'y2': block.y_2,
-                        })
+                        blocks.append(
+                            {
+                                "type": block.type,
+                                "x1": block.x_1,
+                                "y1": block.y_1,
+                                "x2": block.x_2,
+                                "y2": block.y_2,
+                            }
+                        )
                 results[page_num] = blocks
-                self.log(f"  📐 Layout analyzed page {page_num}: found {len(blocks)} text blocks", "DEBUG")
+                self.log(
+                    f"  📐 Layout analyzed page {page_num}: found {len(blocks)} text blocks",
+                    "DEBUG",
+                )
             return results
         except Exception as e:
             self.log(f"  ❌ Layout analysis failed: {e}", "WARNING")

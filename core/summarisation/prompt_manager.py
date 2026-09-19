@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # before rendering (so the LLM never sees it), and the resolved version is
 # logged at DEBUG level on first render of each prompt name.
 _FRONTMATTER_RE = re.compile(
-    r'\A---\s*\n(.*?)\n---\s*\n?',  # captures the block between --- delimiters
+    r"\A---\s*\n(.*?)\n---\s*\n?",  # captures the block between --- delimiters
     re.DOTALL,
 )
 # Track which prompt names we've already logged the version for (avoid spam).
@@ -45,9 +45,9 @@ _logged_versions: set = set()
 # Built-in presets shipped with the app — resolve from multiple candidate
 # locations to handle different install layouts (dev, PyInstaller bundle, etc.)
 _BUILTIN_CANDIDATES = [
-    Path(__file__).resolve().parent.parent / "prompts",   # core/summarisation/../../prompts
+    Path(__file__).resolve().parent.parent / "prompts",  # core/summarisation/../../prompts
     Path(__file__).resolve().parent.parent.parent / "prompts",  # one more level up
-    Path.cwd() / "prompts",                                # current working directory
+    Path.cwd() / "prompts",  # current working directory
 ]
 _BUILTIN_DIR = next((p for p in _BUILTIN_CANDIDATES if p.exists()), _BUILTIN_CANDIDATES[0])
 # User-customised prompts live here (copied from builtins on first run)
@@ -80,6 +80,7 @@ class PromptManager:
         of core.
         """
         import shutil as _shutil
+
         _USER_DIR.mkdir(parents=True, exist_ok=True)
         if not _BUILTIN_DIR.exists():
             logger.warning("PromptManager: built-in dir %s does not exist!", _BUILTIN_DIR)
@@ -92,7 +93,6 @@ class PromptManager:
             _shutil.copy2(_src, _dest)
             _copied += 1
         logger.info("PromptManager: re-synced %d built-in prompts to %s", _copied, _USER_DIR)
-
 
     # ------------------------------------------------------------------ #
     # Listing / save / delete (UI helpers)
@@ -201,6 +201,7 @@ class PromptManager:
                 # text is safer than the wrapped text.
                 # V18.3 (Phase 1.1): replaced inline regex with model_taxonomy.
                 from core.llm.model_taxonomy import is_low_bit_quant
+
                 _pm_model = getattr(self, "primary_model", "") or ""
                 _skip_sanitizer = is_low_bit_quant(_pm_model)
                 if _skip_sanitizer:
@@ -212,6 +213,7 @@ class PromptManager:
                 else:
                     try:
                         from core.llm.prompt_sanitizer import is_untrusted_wrapped, wrap_untrusted
+
                         if not is_untrusted_wrapped(value):
                             value = wrap_untrusted(
                                 value,
@@ -226,7 +228,8 @@ class PromptManager:
                         logger.debug(
                             "prompt_sanitizer.wrap_untrusted failed (%s: %s) — "
                             "substituting raw text (injection defense degraded)",
-                            type(exc).__name__, exc,
+                            type(exc).__name__,
+                            exc,
                         )
             template = template.replace("{{" + key + "}}", value)
         # V0.05 (rig audit F9b): source-relative length placeholders + the
@@ -246,6 +249,7 @@ class PromptManager:
                     exec_words_phrase,
                     thorough_words_phrase,
                 )
+
                 _sw = count_source_words(str(variables["text"]))
                 _scaled = {
                     "exec_words": exec_words_phrase(_sw),
@@ -257,9 +261,9 @@ class PromptManager:
                 template = apply_backstop(template, _sw)
             except Exception as _lp_e:
                 logger.debug(
-                    "length-policy substitution skipped (%s: %s) — template"
-                    " rendered unchanged",
-                    type(_lp_e).__name__, _lp_e,
+                    "length-policy substitution skipped (%s: %s) — template rendered unchanged",
+                    type(_lp_e).__name__,
+                    _lp_e,
                 )
         return template
 
@@ -286,7 +290,7 @@ class PromptManager:
         if not m:
             return {}, template
         block = m.group(1)
-        body = template[m.end():]
+        body = template[m.end() :]
         fm: dict[str, str] = {}
         for line in block.split("\n"):
             line = line.strip()
@@ -317,9 +321,10 @@ class PromptManager:
             _version = fm.get("version", "unversioned")
             _model_class = fm.get("compatible_model_class", "any")
             logger.debug(
-                "PromptManager: rendering '%s' (version=%s, "
-                "compatible_model_class=%s)",
-                name, _version, _model_class,
+                "PromptManager: rendering '%s' (version=%s, compatible_model_class=%s)",
+                name,
+                _version,
+                _model_class,
             )
             _logged_versions.add(name)
         return body

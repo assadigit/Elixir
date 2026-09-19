@@ -18,6 +18,7 @@ The "warm up and run model first" directive means:
   chunk doesn't have a 10s delay)
 - A status label shows "Warming up model..." → "Ready — recording"
 """
+
 from __future__ import annotations
 
 import threading
@@ -43,6 +44,7 @@ class _LiveTranscribeWorker(QThread):
     sends each chunk to faster-whisper for transcription, and emits
     the transcribed text via the ``chunk_transcribed`` signal.
     """
+
     chunk_transcribed = Signal(str)
     status_update = Signal(str, str)  # (message, level)
     error_occurred = Signal(str)
@@ -64,14 +66,14 @@ class _LiveTranscribeWorker(QThread):
                 from faster_whisper import WhisperModel
             except ImportError:
                 self.error_occurred.emit(
-                    "faster-whisper is not installed.\n"
-                    "Install with: pip install faster-whisper"
+                    "faster-whisper is not installed.\nInstall with: pip install faster-whisper"
                 )
                 return
 
             # Load model (GPU if available, else CPU)
             try:
                 import torch
+
                 device = "cuda" if torch.cuda.is_available() else "cpu"
                 compute_type = "float16" if device == "cuda" else "int8"
             except ImportError:
@@ -87,7 +89,7 @@ class _LiveTranscribeWorker(QThread):
             self.status_update.emit("Model ready. Setting up microphone...", "INFO")
 
             try:
-                import numpy as np
+                import numpy as np  # noqa: F401 — availability probe (sounddevice path needs numpy)
                 import sounddevice as sd
             except ImportError:
                 self.error_occurred.emit(
@@ -101,14 +103,17 @@ class _LiveTranscribeWorker(QThread):
             chunk_duration = 3.0  # seconds per chunk
             chunk_samples = int(sample_rate * chunk_duration)
 
-            self.status_update.emit(f"🎤 Recording (model: {self._model_name}, device: {device})...", "INFO")
+            self.status_update.emit(
+                f"🎤 Recording (model: {self._model_name}, device: {device})...", "INFO"
+            )
 
             # ── Phase 3: Recording loop ───────────────────────────────
             while not self._stop_flag.is_set():
                 # Record a chunk
                 try:
-                    audio = sd.rec(chunk_samples, samplerate=sample_rate,
-                                   channels=1, dtype="float32")
+                    audio = sd.rec(
+                        chunk_samples, samplerate=sample_rate, channels=1, dtype="float32"
+                    )
                     sd.wait()  # wait for recording to complete
                 except Exception as e:
                     self.error_occurred.emit(f"Microphone error: {e}")
@@ -122,7 +127,9 @@ class _LiveTranscribeWorker(QThread):
                     audio_flat = audio.flatten()
                     lang = self._language if self._language != "auto" else None
                     segments, _ = self._whisper_model.transcribe(
-                        audio_flat, language=lang, beam_size=1,  # fast for real-time
+                        audio_flat,
+                        language=lang,
+                        beam_size=1,  # fast for real-time
                     )
                     text = " ".join(seg.text for seg in segments).strip()
                     if text:
@@ -226,8 +233,7 @@ class LiveTranscribeDialog(QDialog):
         self.transcript_text.setPlaceholderText("Transcribed text will appear here in real-time...")
         self.transcript_text.setReadOnly(True)
         self.transcript_text.setStyleSheet(
-            "QPlainTextEdit { font-family: 'Consolas', 'Monaco', monospace; "
-            "font-size: 13px; }"
+            "QPlainTextEdit { font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; }"
         )
         lay.addWidget(self.transcript_text, 1)
 
@@ -323,10 +329,14 @@ class LiveTranscribeDialog(QDialog):
         worker = self._worker
         if worker is not None and worker.isRunning():
             from PySide6.QtWidgets import QMessageBox
+
             ret = QMessageBox.question(
-                self, "Recording in progress",
+                self,
+                "Recording in progress",
                 "Live transcription is still running.\n\nStop recording and close?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
             if ret != QMessageBox.Yes:
                 event.ignore()
                 return
@@ -367,13 +377,16 @@ class LiveTranscribeDialog(QDialog):
     def _save(self):
         """Save the transcript to a file."""
         from PySide6.QtWidgets import QFileDialog
+
         text = self.transcript_text.toPlainText().strip()
         if not text:
             return
 
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save transcript", "live_transcript.md",
-            "Markdown (*.md);;Text (*.txt);;All files (*.*)"
+            self,
+            "Save transcript",
+            "live_transcript.md",
+            "Markdown (*.md);;Text (*.txt);;All files (*.*)",
         )
         if path:
             Path(path).write_text(text, encoding="utf-8")

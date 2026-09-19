@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Step 7b: Fine-tuning (17 settings in 4 collapsible groups)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step7bFineTune(WizardStep):
     """Fine-tuning: post-processing, DOCX, quality, summarization limits, advanced doc."""
 
@@ -50,7 +51,9 @@ class Step7bFineTune(WizardStep):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        subtitle = QLabel("All settings below use sensible defaults. Change them only if you need specific control.")
+        subtitle = QLabel(
+            "All settings below use sensible defaults. Change them only if you need specific control."
+        )
         subtitle.setObjectName("Caption")
         subtitle.setWordWrap(True)
         lay.addWidget(subtitle)
@@ -106,7 +109,9 @@ class Step7bFineTune(WizardStep):
         q_lay = QVBoxLayout(q_box)
         q_lay.setContentsMargins(10, 10, 10, 8)
         q_lay.setSpacing(5)
-        self.self_consist_cb = QCheckBox("Self-consistency (multi-sample voting — slower, more accurate)")
+        self.self_consist_cb = QCheckBox(
+            "Self-consistency (multi-sample voting — slower, more accurate)"
+        )
         self.self_consist_cb.setChecked(self.state.self_consistency)
         q_lay.addWidget(self.self_consist_cb)
         self.filter_cb = QCheckBox("Content filter (filter out headers/footers/non-content)")
@@ -228,13 +233,16 @@ class Step7bFineTune(WizardStep):
         perf_lay.setSpacing(6)
 
         # Embedding model — presets for the two recommended options
-        perf_lay.addWidget(QLabel(
-            "Embedding model (used for hallucination detection, dedup, validation):"
-        ))
+        perf_lay.addWidget(
+            QLabel("Embedding model (used for hallucination detection, dedup, validation):")
+        )
         emb_row = QHBoxLayout()
         emb_row.setSpacing(8)
         self.embed_combo = QComboBox()
-        self.embed_combo.addItem("🦙 nomic-embed-text (274 MB — via Ollama, just `ollama pull nomic-embed-text`)", "nomic-embed-text")
+        self.embed_combo.addItem(
+            "🦙 nomic-embed-text (274 MB — via Ollama, just `ollama pull nomic-embed-text`)",
+            "nomic-embed-text",
+        )
         # Select the current state's model
         _emb_idx = self.embed_combo.findData(self.state.embedding_model)
         if _emb_idx >= 0:
@@ -276,9 +284,7 @@ class Step7bFineTune(WizardStep):
         perf_lay.addLayout(dev_row)
 
         # Thermal / VRAM recovery delay slider
-        perf_lay.addWidget(QLabel(
-            "VRAM recovery delay (thermal management — 0 = disabled):"
-        ))
+        perf_lay.addWidget(QLabel("VRAM recovery delay (thermal management — 0 = disabled):"))
         therm_row = QHBoxLayout()
         therm_row.setSpacing(8)
         self.thermal_slider = QSlider(Qt.Horizontal)
@@ -293,9 +299,7 @@ class Step7bFineTune(WizardStep):
         )
         self.thermal_label = QLabel(f"{self.state.vram_recovery_delay_sec}s")
         self.thermal_label.setMinimumWidth(40)
-        self.thermal_slider.valueChanged.connect(
-            lambda v: self.thermal_label.setText(f"{v}s")
-        )
+        self.thermal_slider.valueChanged.connect(lambda v: self.thermal_label.setText(f"{v}s"))
         therm_row.addWidget(self.thermal_slider, 1)
         therm_row.addWidget(self.thermal_label)
         perf_lay.addLayout(therm_row)
@@ -365,8 +369,12 @@ class Step7bFineTune(WizardStep):
         try:
             self.controller.update_setting("embedding.model", self.state.embedding_model)
             self.controller.update_setting("embedding.device", self.state.embedding_device)
-            self.controller.update_setting("local.vram_recovery_delay_sec", self.state.vram_recovery_delay_sec)
+            self.controller.update_setting(
+                "local.vram_recovery_delay_sec", self.state.vram_recovery_delay_sec
+            )
             self.controller.update_setting("local.b4_max_sections", self.state.b4_max_sections)
-            self.controller.update_setting("summarisation.b4_threshold_tokens", self.state.b4_threshold_tokens)
+            self.controller.update_setting(
+                "summarisation.b4_threshold_tokens", self.state.b4_threshold_tokens
+            )
         except Exception as _e:
             logger.debug("perf settings save failed: %s: %s", type(_e).__name__, _e)

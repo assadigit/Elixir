@@ -27,6 +27,7 @@ The function takes a context object (the converter instance, which has
 analysis result + page-range info, mutates the raw markdown in place,
 and writes it back to the temp file.
 """
+
 from __future__ import annotations
 
 import logging
@@ -82,6 +83,7 @@ def run_postprocess(
     # Pure regex, zero LLM cost.
     try:
         from core.summarisation.text_preprocessor import repair_hyphenation
+
         pre_len = len(raw_markdown)
         raw_markdown = repair_hyphenation(raw_markdown)
         if len(raw_markdown) != pre_len:
@@ -94,15 +96,16 @@ def run_postprocess(
     # text, these become literal \t characters between words, producing
     # "This\tview\tis\ta\tcomprehensive" instead of "This view is a comprehensive".
     # Replace all tabs with single spaces, then collapse multiple spaces.
-    _tab_count = raw_markdown.count('\t')
+    _tab_count = raw_markdown.count("\t")
     if _tab_count > 0:
-        raw_markdown = raw_markdown.replace('\t', ' ')
-        raw_markdown = re.sub(r' {2,}', ' ', raw_markdown)
+        raw_markdown = raw_markdown.replace("\t", " ")
+        raw_markdown = re.sub(r" {2,}", " ", raw_markdown)
         log(f"  🧹 Tab cleanup: replaced {_tab_count} tab character(s) with spaces", "DEBUG")
 
     # ── 2. Smart paragraph joining — join lines broken mid-sentence ───
     try:
         from core.summarisation.text_preprocessor import smart_paragraph_joining
+
         raw_markdown = smart_paragraph_joining(raw_markdown)
     except Exception as e:
         log(f"  ⚠️ Paragraph joining skipped: {e}", "DEBUG")
@@ -110,10 +113,13 @@ def run_postprocess(
     # ── 3. Header/footer removal — detect repeating lines across pages ─
     try:
         from core.summarisation.text_preprocessor import remove_headers_footers
+
         pre_len = len(raw_markdown)
         raw_markdown = remove_headers_footers(raw_markdown)
         if len(raw_markdown) != pre_len:
-            log(f"  🧹 Header/footer removal: {pre_len - len(raw_markdown)} chars stripped", "DEBUG")
+            log(
+                f"  🧹 Header/footer removal: {pre_len - len(raw_markdown)} chars stripped", "DEBUG"
+            )
     except Exception as e:
         log(f"  ⚠️ Header/footer removal skipped: {e}", "DEBUG")
 
@@ -132,6 +138,7 @@ def run_postprocess(
                 build_figure_table_manifest,
                 extract_figures_and_tables,
             )
+
             _figs, _tbls = extract_figures_and_tables(
                 pdf_path=Path(request.input_path),
                 output_dir=converter.output_dir,
@@ -175,7 +182,8 @@ def run_postprocess(
             "WARNING",
         )
         _fixed_text = converter._targeted_ocr_repair(
-            raw_markdown, _garbled_ranges,
+            raw_markdown,
+            _garbled_ranges,
             total_pages=analysis.total_pages if analysis else 17,
             pages_to_ocr=pages_to_ocr,
         )
@@ -189,8 +197,7 @@ def run_postprocess(
             )
         else:
             log(
-                "  ⚠️ Targeted OCR did not improve the text — "
-                "continuing with original extraction.",
+                "  ⚠️ Targeted OCR did not improve the text — continuing with original extraction.",
                 "WARNING",
             )
     else:
@@ -207,7 +214,8 @@ def run_postprocess(
                     "WARNING",
                 )
                 _fixed_text = converter._targeted_ocr_repair(
-                    raw_markdown, _partial_ranges,
+                    raw_markdown,
+                    _partial_ranges,
                     total_pages=analysis.total_pages if analysis else 17,
                     pages_to_ocr=pages_to_ocr,
                 )
@@ -228,9 +236,8 @@ def run_postprocess(
     if request.source_type == "normal_book" and len(raw_markdown) > 500:
         try:
             from core.llm.content_detector import detect_content_type
-            detection = detect_content_type(
-                raw_markdown, analysis.total_pages, len(pages_to_ocr)
-            )
+
+            detection = detect_content_type(raw_markdown, analysis.total_pages, len(pages_to_ocr))
             log(
                 f"  🔍 Content auto-detection: {detection.explanation()}",
                 "INFO",
@@ -292,10 +299,11 @@ def run_postprocess(
     # even instantiate LayoutReorder, don't log "enabling layout reorder",
     # don't produce the misleading "no changes" warning. The content
     # auto-detector classifies based on citations/keywords (not layout), so
-# a domain textbook with 4 citations gets "academic_paper" even
+    # a domain textbook with 4 citations gets "academic_paper" even
     # though it's single-column. This guardrail prevents that false activation.
     if request.source_type == "academic_paper":
         from core.pdf import LayoutReorder as _LR_Guard
+
         _guard = _LR_Guard(log_callback=lambda msg, level="DEBUG": None)
         _is_multi_column = False
         if _guard.is_available():
@@ -308,12 +316,13 @@ def run_postprocess(
                 "  V18.15.3.2: Layout reorder NOT activated — content classified as "
                 "'academic_paper' but sampling confirms single-column layout "
                 "(reorder unnecessary, skipped entire block).",
-                "INFO"
+                "INFO",
             )
         else:
             update_status("Reordering layout for multi‑column...")
             log("  📐 Multi-column layout detected – enabling layout reorder.", "INFO")
             from core.pdf import LayoutReorder
+
             _pre_reorder_len = len(raw_markdown)
             reorder = LayoutReorder(log_callback=log)
             if reorder.is_available():
@@ -337,6 +346,7 @@ def run_postprocess(
         # markdown so the summarizer can see them.
         try:
             import re as _re_fig
+
             fig_captions = _re_fig.findall(
                 r"(?:Figure|Fig\.?)\s*\d+[:.]?\s*(.+?)(?:\n\n|\n[A-Z]|\Z)",
                 raw_markdown,
@@ -355,6 +365,7 @@ def run_postprocess(
         # use as executive summary guidance).
         try:
             import re as _re_abs
+
             abs_match = _re_abs.search(
                 r"(?:^|\n)\s*(?:Abstract|ABSTRACT)\s*\n(.+?)(?:\n\s*(?:Keywords|Introduction|1\.\s|I\.\s))",
                 raw_markdown,
@@ -375,6 +386,7 @@ def run_postprocess(
         # Lightweight multi-column detection (no detectron2 needed)
         try:
             from core.pdf.lightweight_layout import LightweightLayoutDetector
+
             detector = LightweightLayoutDetector(log_callback=log)
             # Detect and reorder multi-column pages
             page_list = list(range(effective_start_page, effective_end_page + 1))
@@ -397,6 +409,7 @@ def run_postprocess(
             log("  📊 Extracting tables…", "INFO")
             try:
                 from core.pdf import TableExtractor
+
                 extractor = TableExtractor(
                     log_callback=log,
                     method=request.table_extraction_method,
@@ -406,9 +419,13 @@ def run_postprocess(
                     pages="all",
                 )
                 if tables:
-                    filtered_tables = {p: tbls for p, tbls in tables.items() if p in pages_to_process}
+                    filtered_tables = {
+                        p: tbls for p, tbls in tables.items() if p in pages_to_process
+                    }
                     if filtered_tables:
-                        raw_markdown = extractor.insert_tables_into_markdown(raw_markdown, filtered_tables)
+                        raw_markdown = extractor.insert_tables_into_markdown(
+                            raw_markdown, filtered_tables
+                        )
                         log(f"  ✅ Inserted tables from {len(filtered_tables)} pages.", "INFO")
                     else:
                         log("  ℹ️ No tables found in page range.", "INFO")
@@ -422,6 +439,7 @@ def run_postprocess(
             log("  📐 Extracting math formulae…", "INFO")
             try:
                 from core.pdf import MathExtractor
+
                 extractor = MathExtractor(
                     log_callback=log,
                     model=request.math_model,
@@ -445,6 +463,7 @@ def run_postprocess(
             log("  📐 Analyzing layout…", "INFO")
             try:
                 from core.pdf import LayoutAnalyzer
+
                 analyzer = LayoutAnalyzer(log_callback=log)
                 layout_pages = pages_to_process[:20]
                 layout_info = analyzer.analyze_layout(
@@ -469,6 +488,7 @@ def run_postprocess(
         log("  🖼️ Extracting text from figures using vision model…", "INFO")
         try:
             from core.pdf import VisionFigureExtractor
+
             model = request.primary_ocr_model  # OlmOCR by default
             # V18.20.4.11 (P2): literal → model_taxonomy constant (value
             # unchanged: "qwen3-vl:8b", the request-side fallback default).

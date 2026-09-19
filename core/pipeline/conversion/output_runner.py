@@ -16,6 +16,7 @@ signatures for evidence_map (4-arg) and flashcards (judge_results kwarg),
 and the verbose TTS diagnostics block.  The converter's inline loop is
 now a thin delegate to :func:`run_output_studio`.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -28,65 +29,133 @@ from core.models import SummaryResult
 # V10.6.0: added output_evidence_map (10th output — was missing from the
 # original V8.0.0 extraction, causing the extracted module to be incomplete).
 OUTPUT_PLAN: list[tuple[str, str, str, str, str]] = [
-    ("output_briefing",  "Generating Executive Briefing…",
-     "📄 Generating executive briefing (1-page synthesis)…",
-     "ExecutiveBriefingGenerator", "briefing_dir"),
-    ("output_podcast",   "Generating Podcast Script…",
-     "🎙️ Generating podcast script (configurable format/depth/style)…",
-     "PodcastGenerator", "podcast_dir"),
-    ("output_packets",   "Generating Packets of Knowledge…",
-     "📦 Generating Packets of Knowledge (synthesized paragraphs)…",
-     "PacketGenerator", "packets_dir"),
-    ("output_flashcards","Generating Flashcards…",
-     "🎴 Generating flashcards (Anki-compatible)…",
-     "FlashcardGenerator", "flashcards_dir"),
-    ("output_obsidian",  "Building Obsidian KB…",
-     "🗂️  Building Obsidian knowledge base (linked notes)…",
-     "ObsidianKBGenerator", "obsidian_dir"),
-    ("output_study_guide","Generating Study Guide…",
-     "📚 Generating study guide (objectives, glossary, Q&A)…",
-     "StudyGuideGenerator", "study_guide_dir"),
-    ("output_social",    "Generating Social Media Pack…",
-     "📱 Generating social media pack (X thread + LinkedIn)…",
-     "SocialMediaPackGenerator", "social_dir"),
-    ("output_mindmap",   "Generating Mind Map…",
-     "🧠 Generating mind map (Mermaid + outline)…",
-     "MindMapGenerator", "mindmap_dir"),
-    ("output_tts",       "Generating Podcast Audio (TTS)…",
-     "🎙️ Generating podcast audio (TTS: EN→Kokoro, FA→Piper)…",
-     "PodcastAudioGenerator", "podcast_dir"),
+    (
+        "output_briefing",
+        "Generating Executive Briefing…",
+        "📄 Generating executive briefing (1-page synthesis)…",
+        "ExecutiveBriefingGenerator",
+        "briefing_dir",
+    ),
+    (
+        "output_podcast",
+        "Generating Podcast Script…",
+        "🎙️ Generating podcast script (configurable format/depth/style)…",
+        "PodcastGenerator",
+        "podcast_dir",
+    ),
+    (
+        "output_packets",
+        "Generating Packets of Knowledge…",
+        "📦 Generating Packets of Knowledge (synthesized paragraphs)…",
+        "PacketGenerator",
+        "packets_dir",
+    ),
+    (
+        "output_flashcards",
+        "Generating Flashcards…",
+        "🎴 Generating flashcards (Anki-compatible)…",
+        "FlashcardGenerator",
+        "flashcards_dir",
+    ),
+    (
+        "output_obsidian",
+        "Building Obsidian KB…",
+        "🗂️  Building Obsidian knowledge base (linked notes)…",
+        "ObsidianKBGenerator",
+        "obsidian_dir",
+    ),
+    (
+        "output_study_guide",
+        "Generating Study Guide…",
+        "📚 Generating study guide (objectives, glossary, Q&A)…",
+        "StudyGuideGenerator",
+        "study_guide_dir",
+    ),
+    (
+        "output_social",
+        "Generating Social Media Pack…",
+        "📱 Generating social media pack (X thread + LinkedIn)…",
+        "SocialMediaPackGenerator",
+        "social_dir",
+    ),
+    (
+        "output_mindmap",
+        "Generating Mind Map…",
+        "🧠 Generating mind map (Mermaid + outline)…",
+        "MindMapGenerator",
+        "mindmap_dir",
+    ),
+    (
+        "output_tts",
+        "Generating Podcast Audio (TTS)…",
+        "🎙️ Generating podcast audio (TTS: EN→Kokoro, FA→Piper)…",
+        "PodcastAudioGenerator",
+        "podcast_dir",
+    ),
     # V10.6.0: Scientific Evidence Map (langextract grounding) — 10th output.
-    ("output_evidence_map", "Generating Scientific Evidence Map…",
-     "🗺️ Generating scientific evidence map (langextract grounding)…",
-     "EvidenceMapGenerator", "evidence_dir"),
+    (
+        "output_evidence_map",
+        "Generating Scientific Evidence Map…",
+        "🗺️ Generating scientific evidence map (langextract grounding)…",
+        "EvidenceMapGenerator",
+        "evidence_dir",
+    ),
     # V10.17.0 (F1): Q&A study questions — 11th output.
-    ("output_qa", "Generating Study Questions…",
-     "❓ Generating open-ended study questions (Q&A pairs)…",
-     "QAGenerator", "qa_dir"),
+    (
+        "output_qa",
+        "Generating Study Questions…",
+        "❓ Generating open-ended study questions (Q&A pairs)…",
+        "QAGenerator",
+        "qa_dir",
+    ),
     # V10.20.0: Glossary — 12th output.
-    ("output_glossary", "Generating Glossary…",
-     "📖 Generating glossary (key terms + definitions)…",
-     "GlossaryGenerator", "glossary_dir"),
+    (
+        "output_glossary",
+        "Generating Glossary…",
+        "📖 Generating glossary (key terms + definitions)…",
+        "GlossaryGenerator",
+        "glossary_dir",
+    ),
     # V10.20.0: Patterns/Techniques — 13th output.
-    ("output_patterns", "Generating Patterns & Techniques…",
-     "🔧 Generating patterns, techniques, and decision rules…",
-     "PatternsGenerator", "patterns_dir"),
+    (
+        "output_patterns",
+        "Generating Patterns & Techniques…",
+        "🔧 Generating patterns, techniques, and decision rules…",
+        "PatternsGenerator",
+        "patterns_dir",
+    ),
     # V10.20.0: Cheatsheet — 14th output.
-    ("output_cheatsheet", "Generating Cheatsheet…",
-     "📋 Generating cheatsheet (decision tables + quick-reference)…",
-     "CheatsheetGenerator", "cheatsheet_dir"),
+    (
+        "output_cheatsheet",
+        "Generating Cheatsheet…",
+        "📋 Generating cheatsheet (decision tables + quick-reference)…",
+        "CheatsheetGenerator",
+        "cheatsheet_dir",
+    ),
     # V10.21.0: Agent Skill export — 15th output.
-    ("output_skill", "Generating Agent Skill…",
-     "🤖 Generating SKILL.md for AI coding assistants…",
-     "AgentSkillGenerator", "skill_dir"),
+    (
+        "output_skill",
+        "Generating Agent Skill…",
+        "🤖 Generating SKILL.md for AI coding assistants…",
+        "AgentSkillGenerator",
+        "skill_dir",
+    ),
     # V10.35.0: EPUB output — 16th output.
-    ("output_epub", "Generating EPUB…",
-     "📚 Generating annotated EPUB (e-reader format)…",
-     "EPUBGenerator", "epub_dir"),
+    (
+        "output_epub",
+        "Generating EPUB…",
+        "📚 Generating annotated EPUB (e-reader format)…",
+        "EPUBGenerator",
+        "epub_dir",
+    ),
     # V10.35.0: Quote bank — 17th output.
-    ("output_quote_bank", "Generating Quote Bank…",
-     "💬 Extracting direct quotes with page citations…",
-     "QuoteBankGenerator", "quote_bank_dir"),
+    (
+        "output_quote_bank",
+        "Generating Quote Bank…",
+        "💬 Extracting direct quotes with page citations…",
+        "QuoteBankGenerator",
+        "quote_bank_dir",
+    ),
 ]
 
 
@@ -106,6 +175,7 @@ def _log_tts_diagnostics(
         "INFO",
     )
     from utils.settings import Settings
+
     _s = Settings()
     log(f"    EN engine: {_s.get('tts.en_engine', 'neutts')}", "INFO")
     log(f"    Piper binary: {_s.get('tts.piper_binary', '(not set)')}", "INFO")
@@ -171,6 +241,7 @@ def run_output_studio(
     if getattr(request, "output_packets", False):
         try:
             from core.outputs.chapters_export import write_chapters_md
+
             chapters_md_path = paths.packets_dir / f"{book_title}.Chapters.md"
             write_chapters_md(summaries, book_title, chapters_md_path)
             log(f"  📄 Chapters file written: {chapters_md_path.name}", "INFO")
@@ -189,8 +260,7 @@ def run_output_studio(
         ]
         if not enabled:
             log(
-                "  ℹ️ No Output Studio outputs enabled "
-                "(toggle them in Settings → Output Studio).",
+                "  ℹ️ No Output Studio outputs enabled (toggle them in Settings → Output Studio).",
                 "DEBUG",
             )
 
@@ -230,9 +300,9 @@ def run_output_studio(
                 log(
                     f"  ⏭️ Phase-level resume: skipping {len(_skipped)} already-completed output(s): "
                     + ", ".join(pn for _, pn in _skipped),
-                    "INFO"
+                    "INFO",
                 )
-                for item, phase_name in _skipped:
+                for item, _phase_name in _skipped:
                     attr = item[0]
                     results[attr] = "✅ already done (skipped — resume)"
                     if progress_callback:
@@ -250,6 +320,7 @@ def run_output_studio(
             # timeout, disk hiccup, VRAM OOM) marked the output as failed
             # permanently.  Now it retries up to 3 times before giving up.
             import time as _time
+
             _max_retries = 3
             _last_exc = None
             for _attempt in range(1, _max_retries + 1):
@@ -265,14 +336,18 @@ def run_output_studio(
                         gen.generate(summaries, segments, book_title, out_subdir)
                     elif attr == "output_flashcards":
                         gen.generate(
-                            summaries, book_title, out_subdir,
+                            summaries,
+                            book_title,
+                            out_subdir,
                             judge_results=judge_results,
                         )
                     else:
                         gen.generate(summaries, book_title, out_subdir)
-                    log(f"  ✅ {gen_cls.__name__} completed successfully"
+                    log(
+                        f"  ✅ {gen_cls.__name__} completed successfully"
                         + (f" (attempt {_attempt}/{_max_retries})" if _attempt > 1 else ""),
-                        "INFO")
+                        "INFO",
+                    )
                     results[attr] = "✅ done"
                     _last_exc = None
                     # V10.35.0 (Sprint 7.1): per-output progress (1.0 = done)
@@ -291,7 +366,11 @@ def run_output_studio(
                         _time.sleep(_backoff)
                     else:
                         import traceback
-                        log(f"  ❌ {gen_cls.__name__} failed after {_max_retries} attempts: {e}", "ERROR")
+
+                        log(
+                            f"  ❌ {gen_cls.__name__} failed after {_max_retries} attempts: {e}",
+                            "ERROR",
+                        )
                         log(f"  📋 Traceback: {traceback.format_exc()[-500:]}", "DEBUG")
                         results[attr] = f"❌ failed after {_max_retries} retries: {e}"
                         # V10.35.0 (Sprint 7.1): per-output progress (1.0 = done, even on failure)
@@ -328,6 +407,7 @@ def _run_packets_extensions(
             PacketsLectureGenerator,
             PacketsPDFExporter,
         )
+
         # 1. Styled PDF
         pdf_exporter = PacketsPDFExporter(log_callback=log)
         pdf_exporter.export(
@@ -351,6 +431,7 @@ def _run_packets_extensions(
     if getattr(request, "output_tts", False):
         try:
             from core.outputs.packets_extensions import PacketsAudioGenerator
+
             audio_gen = PacketsAudioGenerator(request, log_callback=log)
             audio_gen.generate(summaries, book_title, paths.packets_dir)
             results["packets_audio"] = "✅ done"

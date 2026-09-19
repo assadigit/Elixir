@@ -14,7 +14,7 @@ FIXES:
 
 import threading
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import Optional
 
 from utils.logging import get_main_logger
@@ -24,10 +24,10 @@ from utils.settings import Settings
 logger = get_main_logger()
 
 
-class ModelType(str, Enum):
-    OCR           = "ocr"
+class ModelType(StrEnum):
+    OCR = "ocr"
     SUMMARISATION = "summarisation"
-    SEMANTIC      = "semantic"
+    SEMANTIC = "semantic"
 
 
 class ModelManager:
@@ -62,6 +62,7 @@ class ModelManager:
         """
         try:
             import torch
+
             if not torch.cuda.is_available():
                 return {"total": 0.0, "used": 0.0, "free": 0.0}
             total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -93,7 +94,9 @@ class ModelManager:
             logger.debug(f"VRAM sufficient: {vram['free']:.2f} GB free (need {required_gb:.2f} GB)")
             return True
 
-        logger.info(f"VRAM low: {vram['free']:.2f} GB free, need {required_gb:.2f} GB. Attempting to free memory...")
+        logger.info(
+            f"VRAM low: {vram['free']:.2f} GB free, need {required_gb:.2f} GB. Attempting to free memory..."
+        )
         if status_callback:
             status_callback(f"VRAM low – offloading models to free {required_gb:.1f} GB...")
 
@@ -132,7 +135,9 @@ class ModelManager:
                 return True
 
         # If we still don't have enough VRAM, log a warning
-        logger.warning(f"Could not free enough VRAM. Available: {vram['free']:.2f} GB, need: {required_gb:.2f} GB")
+        logger.warning(
+            f"Could not free enough VRAM. Available: {vram['free']:.2f} GB, need: {required_gb:.2f} GB"
+        )
         if status_callback:
             status_callback(f"⚠️ Could not free enough VRAM (only {vram['free']:.2f} GB available).")
         return False
@@ -161,7 +166,7 @@ class ModelManager:
                 "model": model_name,
                 "prompt": "Hello",
                 "stream": False,
-                "options": {"num_predict": 1}
+                "options": {"num_predict": 1},
             }
             resp = safe_ollama_request("POST", url, json=payload, timeout=10, retries=0)
             if resp.status_code == 200:
@@ -258,8 +263,12 @@ class ModelManager:
                 # ── Only check VRAM if not skipped ──────────────────────────
                 if not skip_vram_check:
                     required = 7.0 if model_type == ModelType.OCR else 5.0
-                    if not self.ensure_vram_for_model(model_name, required_gb=required, status_callback=status_callback):
-                        logger.error(f"Not enough VRAM to load {model_name} (need ~{required:.1f} GB).")
+                    if not self.ensure_vram_for_model(
+                        model_name, required_gb=required, status_callback=status_callback
+                    ):
+                        logger.error(
+                            f"Not enough VRAM to load {model_name} (need ~{required:.1f} GB)."
+                        )
                         if status_callback:
                             status_callback(f"❌ Not enough VRAM to load {model_name}.")
                         return False

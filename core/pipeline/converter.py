@@ -18,6 +18,7 @@ module-level ``core.summarisation`` imports — the ``import *`` resolves cleanl
 Pattern: identical to the 4 prior splits (postchecks V18.18.0.2, text_preprocessor
 V18.19.0.0, content_judge V18.19.1.1, llm_provider V18.19.1.1).
 """
+
 from __future__ import annotations
 
 # Re-export everything from the implementation module

@@ -19,6 +19,7 @@ Covers:
   never kill the loop
 - settings default ``summarisation.incremental_chapter_save`` = True
 """
+
 from __future__ import annotations
 
 import json
@@ -252,8 +253,11 @@ class TestChapterCheckpointSaver:
         root, conv, chapters, positions = stub_env
         saver = ChapterCheckpointSaver(conv, positions, 3, build_docx=False, book_title="MyBook")
         empty = SummaryResult(
-            chapter_heading="Chapter Three", executive_summary="",
-            bullet_points=[], thorough_summary="", success=True,
+            chapter_heading="Chapter Three",
+            executive_summary="",
+            bullet_points=[],
+            thorough_summary="",
+            success=True,
         )
         saver.on_chapter_done(3, empty, chapters["Chapter Three"])
         assert not (root / "summaries" / "003_Chapter_Three_summary.md").exists()
@@ -288,7 +292,9 @@ class TestChapterCheckpointSaver:
 
         root, conv, chapters, positions = stub_env
         saver = ChapterCheckpointSaver(conv, None, 0, build_docx=False, book_title="MyBook")
-        saver.on_chapter_done(7, _mk_summary("Chapter Seven", 2), {"heading": "Chapter Seven", "content": "x"})
+        saver.on_chapter_done(
+            7, _mk_summary("Chapter Seven", 2), {"heading": "Chapter Seven", "content": "x"}
+        )
         assert (root / "summaries" / "007_Chapter_Seven_summary.md").exists()
 
     def test_checkpoint_progress_recorded(self, stub_env):
@@ -308,7 +314,9 @@ class TestChapterCheckpointSaver:
         root, conv, chapters, positions = stub_env
         saver = ChapterCheckpointSaver(conv, positions, 3, build_docx=True, book_title="MyBook")
         saver.on_chapter_done(1, _mk_summary("Chapter One", 3), chapters["Chapter One"])
-        docx_path = root / "checkpoints" / "chapters" / "001_Chapter_One" / "001_Chapter_One_summary.docx"
+        docx_path = (
+            root / "checkpoints" / "chapters" / "001_Chapter_One" / "001_Chapter_One_summary.docx"
+        )
         assert docx_path.exists()
         from docx import Document
 
@@ -417,22 +425,24 @@ class TestSummarizeChaptersCallback:
     def test_sequential_callback_fires_per_chapter(self):
         s = _bare_summarizer(max_workers=1)
         self._patch_inner(s)
-        chapters = [
-            {"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 4)
-        ]
+        chapters = [{"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 4)]
         calls = []
         s.summarize_chapters(
             chapters,
-            chapter_done_callback=lambda idx, summ, chap: calls.append((idx, summ.chapter_heading, chap["heading"])),
+            chapter_done_callback=lambda idx, summ, chap: calls.append(
+                (idx, summ.chapter_heading, chap["heading"])
+            ),
         )
-        assert calls == [(1, "Chapter 1", "Chapter 1"), (2, "Chapter 2", "Chapter 2"), (3, "Chapter 3", "Chapter 3")]
+        assert calls == [
+            (1, "Chapter 1", "Chapter 1"),
+            (2, "Chapter 2", "Chapter 2"),
+            (3, "Chapter 3", "Chapter 3"),
+        ]
 
     def test_parallel_callback_fires_per_chapter(self):
         s = _bare_summarizer(max_workers=2)
         self._patch_inner(s)
-        chapters = [
-            {"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 5)
-        ]
+        chapters = [{"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 5)]
         calls = []
         results = s.summarize_chapters(
             chapters,
@@ -440,15 +450,16 @@ class TestSummarizeChaptersCallback:
         )
         assert len(results) == 4
         assert sorted(calls) == [
-            (1, "Chapter 1"), (2, "Chapter 2"), (3, "Chapter 3"), (4, "Chapter 4"),
+            (1, "Chapter 1"),
+            (2, "Chapter 2"),
+            (3, "Chapter 3"),
+            (4, "Chapter 4"),
         ]
 
     def test_callback_exception_does_not_kill_loop(self):
         s = _bare_summarizer(max_workers=1)
         self._patch_inner(s)
-        chapters = [
-            {"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 4)
-        ]
+        chapters = [{"heading": f"Chapter {i}", "content": f"content {i}"} for i in range(1, 4)]
         calls = []
 
         def bad_callback(idx, summ, chap):
@@ -469,7 +480,9 @@ class TestSummarizeChaptersCallback:
             {"heading": "Chapter 2", "content": "c"},
         ]
         seen = []
-        s.summarize_chapters(chapters, chapter_done_callback=lambda i, r, c: seen.append((i, r.success)))
+        s.summarize_chapters(
+            chapters, chapter_done_callback=lambda i, r, c: seen.append((i, r.success))
+        )
         assert seen == [(1, True), (2, False)]
 
     def test_no_callback_still_works(self):

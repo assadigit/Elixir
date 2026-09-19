@@ -34,6 +34,7 @@ This is the proof-of-concept that the async infrastructure works in
 production. The full ``_summarize_inner`` async migration is the
 follow-up (higher risk, needs per-strategy migration).
 """
+
 from __future__ import annotations
 
 import logging

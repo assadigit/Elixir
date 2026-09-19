@@ -68,6 +68,7 @@ _BUILTIN_PROMPTS = frozenset({"default", "academic", "technical", "creative"})
 # Prompt Editor Dialog — view / edit a full prompt template
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class PromptEditorDialog(QDialog):
     """Full-screen editor for a single prompt template.
 
@@ -80,7 +81,7 @@ class PromptEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Edit Prompt: {prompt_name}")
         self.setMinimumSize(620, 460)  # V7.4.0: was 720x560
-        self.resize(700, 520)           # V7.4.0: was 800x640
+        self.resize(700, 520)  # V7.4.0: was 800x640
         self._name = prompt_name
         self._original_content = content
 
@@ -90,6 +91,7 @@ class PromptEditorDialog(QDialog):
 
         # ── Header ─────────────────────────────────────────────────────
         from PySide6.QtGui import QFont
+
         header = QHBoxLayout()
         header.setSpacing(10)
         icon_lbl = QLabel()
@@ -163,13 +165,14 @@ class PromptEditorDialog(QDialog):
 # Saved Prompt Card — a single card in the Saved Prompts grid
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class _SavedPromptCard(QFrame):
     """A card showing a single saved prompt with preview + action buttons."""
 
-    edit_requested = Signal(str)      # prompt name
+    edit_requested = Signal(str)  # prompt name
     duplicate_requested = Signal(str)  # prompt name
-    delete_requested = Signal(str)     # prompt name
-    activate_requested = Signal(str)   # prompt name
+    delete_requested = Signal(str)  # prompt name
+    activate_requested = Signal(str)  # prompt name
 
     def __init__(
         self,
@@ -332,6 +335,7 @@ class _SavedPromptCard(QFrame):
 # Active Prompts Tab — shows which prompt is active per context
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class _ActivePromptsTab(QWidget):
     """Tab showing each prompt context as a card with a prompt switcher."""
 
@@ -366,9 +370,7 @@ class _ActivePromptsTab(QWidget):
 
         # ── Context cards ──────────────────────────────────────────────
         for key, icon_name, display_name, description, settings_key in PROMPT_CONTEXTS:
-            card = self._build_context_card(
-                key, icon_name, display_name, description, settings_key
-            )
+            card = self._build_context_card(key, icon_name, display_name, description, settings_key)
             lay.addWidget(card)
 
         lay.addStretch()
@@ -415,7 +417,9 @@ class _ActivePromptsTab(QWidget):
         icon_lbl.setPixmap(icon(icon_name, p.accent, 22).pixmap(22, 22))
         head.addWidget(icon_lbl)
         title = QLabel(display_name)
-        title.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {p.text_primary}; background: transparent;")
+        title.setStyleSheet(
+            f"font-size: 14px; font-weight: 600; color: {p.text_primary}; background: transparent;"
+        )
         head.addWidget(title)
         head.addStretch()
         lay.addLayout(head)
@@ -431,7 +435,9 @@ class _ActivePromptsTab(QWidget):
         switch_row = QHBoxLayout()
         switch_row.setSpacing(10)
         label = QLabel("Active prompt:")
-        label.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {p.text_primary}; background: transparent;")
+        label.setStyleSheet(
+            f"font-size: 12px; font-weight: 500; color: {p.text_primary}; background: transparent;"
+        )
         switch_row.addWidget(label)
 
         combo = QComboBox()
@@ -443,7 +449,9 @@ class _ActivePromptsTab(QWidget):
         idx = combo.findText(saved)
         if idx >= 0:
             combo.setCurrentIndex(idx)
-        combo.currentTextChanged.connect(lambda name, sk=settings_key: self._on_prompt_changed(sk, name))
+        combo.currentTextChanged.connect(
+            lambda name, sk=settings_key: self._on_prompt_changed(sk, name)
+        )
         combo.setMinimumWidth(240)
         switch_row.addWidget(combo)
         switch_row.addStretch()
@@ -478,7 +486,8 @@ class _ActivePromptsTab(QWidget):
         """
         if not prompt_name:
             QMessageBox.warning(
-                self, "No prompt selected",
+                self,
+                "No prompt selected",
                 "Please select a prompt from the dropdown first.",
             )
             return
@@ -489,7 +498,8 @@ class _ActivePromptsTab(QWidget):
             content = self._pm.load_prompt("default")
             if content:
                 QMessageBox.information(
-                    self, "Prompt not found",
+                    self,
+                    "Prompt not found",
                     f"Prompt '{prompt_name}' could not be loaded from disk.\n"
                     f"Showing the built-in 'default' prompt instead.",
                 )
@@ -504,7 +514,8 @@ class _ActivePromptsTab(QWidget):
                     "Chapter content:\n{{text}}\n"
                 )
                 QMessageBox.warning(
-                    self, "Prompt files not found",
+                    self,
+                    "Prompt files not found",
                     "Could not load any prompt files from disk.\n"
                     "Showing a minimal fallback template.\n"
                     "Check that the 'prompts/' folder exists in the app directory.",
@@ -537,6 +548,7 @@ class _ActivePromptsTab(QWidget):
 # ════════════════════════════════════════════════════════════════════════════
 # Saved Prompts Tab — card grid of all saved prompts
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class _SavedPromptsTab(QWidget):
     """Tab showing all saved prompts as a card grid."""
@@ -638,13 +650,15 @@ class _SavedPromptsTab(QWidget):
             content = self._pm.load_prompt("default") or ""
             if content:
                 QMessageBox.information(
-                    self, "Prompt not found",
+                    self,
+                    "Prompt not found",
                     f"Prompt '{name}' could not be loaded. Showing 'default' instead.",
                 )
                 name = "default"
             else:
                 QMessageBox.warning(
-                    self, "Prompt not found",
+                    self,
+                    "Prompt not found",
                     f"Could not load prompt '{name}' or 'default' from disk.",
                 )
                 return
@@ -675,12 +689,16 @@ class _SavedPromptsTab(QWidget):
 
     def _delete_prompt(self, name: str) -> None:
         if name in _BUILTIN_PROMPTS:
-            QMessageBox.warning(self, "Cannot delete", f"'{name}' is a built-in preset and cannot be deleted.")
+            QMessageBox.warning(
+                self, "Cannot delete", f"'{name}' is a built-in preset and cannot be deleted."
+            )
             return
         ret = QMessageBox.question(
-            self, "Delete prompt",
+            self,
+            "Delete prompt",
             f"Delete prompt '{name}'? This cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
@@ -698,9 +716,10 @@ class _SavedPromptsTab(QWidget):
         self._rebuild_grid()
         self.prompts_changed.emit()
         QMessageBox.information(
-            self, "Prompt activated",
+            self,
+            "Prompt activated",
             f"'{name}' is now the active summarisation prompt.\n"
-            f"It will be used on the next conversion."
+            f"It will be used on the next conversion.",
         )
 
     def _new_prompt(self) -> None:
@@ -728,6 +747,7 @@ class _SavedPromptsTab(QWidget):
 # ════════════════════════════════════════════════════════════════════════════
 # Prompts Page — the Head Group page with two tabs
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class PromptsPage(QWidget):
     """The Prompt Bank head-group page: Active Prompts + Saved Prompts tabs."""

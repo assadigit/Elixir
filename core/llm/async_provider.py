@@ -57,6 +57,7 @@ independent, this can cut chapter time by 30-40%.
 
 Book-agnostic (Key Decision #3): no book-specific logic.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -190,7 +191,12 @@ class AsyncOllamaProvider:
             self._client = None
 
     def _build_payload(
-        self, prompt: str, temp: float, max_tok: int, ctx: int, json_mode: bool = False,
+        self,
+        prompt: str,
+        temp: float,
+        max_tok: int,
+        ctx: int,
+        json_mode: bool = False,
     ) -> dict:
         """Build the Ollama /api/generate payload (mirrors sync OllamaProvider)."""
         payload = {
@@ -265,6 +271,7 @@ class AsyncOllamaProvider:
             # requests equivalents so the shared classifier works for both
             # sync and async paths.
             import requests.exceptions as _rexc
+
             try:
                 resp = await client.post(url, json=payload)
                 resp.raise_for_status()
@@ -283,14 +290,14 @@ class AsyncOllamaProvider:
                 if status == 429 or 500 <= status < 600:
                     # Translate to requests.HTTPError so the shared
                     # classify_ollama_exception recognizes it as retryable.
-                    raise _rexc.HTTPError(
-                        f"HTTP {status}: {exc}", response=exc.response
-                    ) from exc
+                    raise _rexc.HTTPError(f"HTTP {status}: {exc}", response=exc.response) from exc
                 # Other HTTP errors — let the classifier decide.
                 raise _rexc.HTTPError(f"HTTP {status}: {exc}") from exc
             except httpx.TimeoutException as exc:
                 raise OllamaTimeoutError(
-                    model=_model, timeout=self.timeout, original=exc,
+                    model=_model,
+                    timeout=self.timeout,
+                    original=exc,
                 ) from exc
             except httpx.ConnectError as exc:
                 # Translate to requests.ConnectionError (retryable).
@@ -312,6 +319,7 @@ class AsyncOllamaProvider:
     ) -> str | None:
         """Degrade to the sync provider in a thread when httpx unavailable."""
         from core.llm.llm_provider import OllamaProvider
+
         sync = OllamaProvider(
             model=self.model,
             base_url=self.base_url,
@@ -326,8 +334,11 @@ class AsyncOllamaProvider:
         return await loop.run_in_executor(
             None,
             lambda: sync.complete(
-                prompt, temperature=temperature, max_tokens=max_tokens,
-                model=model, json_mode=json_mode,
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                json_mode=json_mode,
             ),
         )
 
@@ -359,6 +370,7 @@ def run_async(coro: Awaitable) -> Any:
             # We're already in an event loop — can't call asyncio.run.
             # Use asyncio.ensure_future + run_until_complete pattern.
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(asyncio.run, coro).result()
     except RuntimeError:
@@ -423,7 +435,9 @@ async def parallel_complete(
             except Exception as exc:
                 logger.warning(
                     "parallel_complete[%d] failed: %s: %s",
-                    idx, type(exc).__name__, exc,
+                    idx,
+                    type(exc).__name__,
+                    exc,
                 )
                 results[idx] = None
 

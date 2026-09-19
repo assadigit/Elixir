@@ -25,6 +25,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 6: Translation Settings
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step6Translation(WizardStep):
     """Translation settings: backend, harakat, outputs."""
 
@@ -54,7 +55,9 @@ class Step6Translation(WizardStep):
         # V13.31.0 (#13): NLLB removed from the UI. Only TranslateGemma
         # (Ollama) is exposed.
         self.backend_combo.addItem("📝 Ollama LLM (TranslateGemma)", "ollama")
-        backend_current = self.state.translation_backend or self.controller.get_setting("translation.backend", "ollama")
+        backend_current = self.state.translation_backend or self.controller.get_setting(
+            "translation.backend", "ollama"
+        )
         # V13.31.0 (#13): legacy "nllb" backends fall back to "ollama" in UI
         if backend_current == "nllb":
             backend_current = "ollama"
@@ -86,7 +89,9 @@ class Step6Translation(WizardStep):
         self.harakat_combo = QComboBox()
         for m in models:
             self.harakat_combo.addItem("📝 " + m, m)
-        current_harakat = self.state.translation_harakat_model or self.controller.get_setting("translation.harakat_model", "")
+        current_harakat = self.state.translation_harakat_model or self.controller.get_setting(
+            "translation.harakat_model", ""
+        )
         if current_harakat:
             idx = self.harakat_combo.findData(current_harakat)
             if idx >= 0:
@@ -94,12 +99,16 @@ class Step6Translation(WizardStep):
         settings_lay.addWidget(self.harakat_combo)
 
         # Judge model
-        settings_lay.addWidget(QLabel("Judge model (validation — empty = use summarization model):"))
+        settings_lay.addWidget(
+            QLabel("Judge model (validation — empty = use summarization model):")
+        )
         self.judge_combo = QComboBox()
         self.judge_combo.addItem("  (use summarization model)", "")
         for m in models:
             self.judge_combo.addItem("📝 " + m, m)
-        current_judge = self.state.translation_judge_model or self.controller.get_setting("translation.judge_model", "")
+        current_judge = self.state.translation_judge_model or self.controller.get_setting(
+            "translation.judge_model", ""
+        )
         if current_judge:
             idx = self.judge_combo.findData(current_judge)
             if idx >= 0:

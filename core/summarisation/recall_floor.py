@@ -37,6 +37,7 @@ is measured on the SHIPPED set.
 
 Content-agnostic: pure regex/token statistics, no word lists.
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,9 +87,13 @@ def deterministic_recall_floor(
     WARNING instead of silent zeros.
     """
     out: dict = {
-        "theorists_covered": 0, "theorists_total": 0, "theorists_missing": [],
-        "conclusion_items_covered": 0, "conclusion_items_total": 0,
-        "conclusion_items_missing": [], "log_parts": [],
+        "theorists_covered": 0,
+        "theorists_total": 0,
+        "theorists_missing": [],
+        "conclusion_items_covered": 0,
+        "conclusion_items_total": 0,
+        "conclusion_items_missing": [],
+        "log_parts": [],
         "theorists_probe_failed": False,
         "conclusion_items_probe_failed": False,
     }
@@ -99,6 +104,7 @@ def deterministic_recall_floor(
     if analysis:
         try:
             from core.preprocessing.deterministic_analyzer import check_coverage
+
             cov = check_coverage(analysis, bullets_text)
             if cov.get("total"):
                 out["theorists_covered"] = len(cov.get("covered", []))
@@ -109,7 +115,8 @@ def deterministic_recall_floor(
                     f"in final bullets"
                     + (
                         f" (missing: {out['theorists_missing'][:5]})"
-                        if out["theorists_missing"] else ""
+                        if out["theorists_missing"]
+                        else ""
                     )
                 )
         except Exception as _probe_e:  # pragma: no cover — probe must never raise
@@ -118,7 +125,8 @@ def deterministic_recall_floor(
             # never-raise contract is preserved.
             logger.warning(
                 "recall-floor theorist probe failed: %s: %s",
-                type(_probe_e).__name__, _probe_e,
+                type(_probe_e).__name__,
+                _probe_e,
             )
             out["log_parts"].append(
                 f"theorists probe FAILED — number unavailable "
@@ -131,6 +139,7 @@ def deterministic_recall_floor(
         from core.summarisation.post_processing import (
             detect_enumerated_conclusions,
         )
+
         conclusions = detect_enumerated_conclusions(source_text or "")
         if conclusions:
             haystack = (bullets_text + " " + (thorough or "")).lower()
@@ -140,10 +149,7 @@ def deterministic_recall_floor(
             # explicitly. The V18.20.3.4 inline probe called .lower() on
             # the tuple itself and died with an invisible AttributeError.
             for _num, item_text in conclusions:
-                words = [
-                    w for w in re.split(r"\W+", str(item_text).lower())
-                    if len(w) > 4
-                ][:6]
+                words = [w for w in re.split(r"\W+", str(item_text).lower()) if len(w) > 4][:6]
                 if not words:
                     covered += 1  # nothing checkable — count as present
                     continue
@@ -163,7 +169,8 @@ def deterministic_recall_floor(
         # V18.20.3.8 (Phase 1 / W2): same rule as probe (a).
         logger.warning(
             "recall-floor conclusion-item probe failed: %s: %s",
-            type(_probe_e).__name__, _probe_e,
+            type(_probe_e).__name__,
+            _probe_e,
         )
         out["log_parts"].append(
             f"conclusion-items probe FAILED — number unavailable "
@@ -208,6 +215,7 @@ def coverage_aware_cap(
     Never raises: any internal failure degrades to the plain head-cap
     with a visible WARNING through ``log_fn`` and the module logger.
     """
+
     def _log(msg: str, level: str = "WARNING") -> None:
         if log_fn is None:
             return
@@ -230,6 +238,7 @@ def coverage_aware_cap(
 
     try:
         from core.preprocessing.deterministic_analyzer import check_coverage
+
         # author -> set of bullet indices that cover it (garble-tolerant,
         # the same matching the judge and the floor use).
         author_hits: dict[str, set] = {}
@@ -240,7 +249,8 @@ def coverage_aware_cap(
     except Exception as _cap_e:
         logger.warning(
             "coverage-aware cap probe failed — plain head-cap: %s: %s",
-            type(_cap_e).__name__, _cap_e,
+            type(_cap_e).__name__,
+            _cap_e,
         )
         _log(
             f"    ⚠️ V18.20.3.8: coverage-aware cap probe failed "
@@ -266,8 +276,7 @@ def coverage_aware_cap(
         # Which authors does this tail bullet sole-cover (i.e. no other
         # surviving bullet — head or already-rescued — covers them)?
         sole_authors = [
-            a for a, hits in author_hits.items()
-            if t in hits and not (hits - {t}) & set(final)
+            a for a, hits in author_hits.items() if t in hits and not (hits - {t}) & set(final)
         ]
         if not sole_authors:
             continue

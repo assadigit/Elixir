@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PhaseStatus:
     """Status of a single conversion phase."""
+
     status: str = "pending"  # "pending", "in_progress", "done", "failed", "skipped"
     elapsed_s: float = 0.0
     error: str = ""
@@ -171,11 +172,17 @@ class Checkpoint:
         failed = sum(1 for p in self.phases.values() if p.status == "failed")
         skipped = sum(1 for p in self.phases.values() if p.status == "skipped")
         pending = sum(1 for p in self.phases.values() if p.status == "pending")
-        lines.append(f"Checkpoint: {done} done, {failed} failed, {skipped} skipped, {pending} pending")
+        lines.append(
+            f"Checkpoint: {done} done, {failed} failed, {skipped} skipped, {pending} pending"
+        )
         for phase in _ALL_PHASES:
             ps = self.phases.get(phase, PhaseStatus())
             if ps.status == "done":
-                meta = f" ({', '.join(f'{k}={v}' for k,v in ps.metadata.items())})" if ps.metadata else ""
+                meta = (
+                    f" ({', '.join(f'{k}={v}' for k, v in ps.metadata.items())})"
+                    if ps.metadata
+                    else ""
+                )
                 lines.append(f"  ✅ {phase}: done{meta} [{ps.elapsed_s:.1f}s]")
             elif ps.status == "failed":
                 lines.append(f"  ❌ {phase}: FAILED — {ps.error}")
@@ -201,6 +208,7 @@ class Checkpoint:
             self._output_dir.mkdir(parents=True, exist_ok=True)
             # V9.0.0: atomic write — prevents corrupted checkpoint on crash
             from utils.atomic_io import atomic_write_json
+
             atomic_write_json(self.checkpoint_path, data, indent=2, ensure_ascii=False)
         except Exception as e:
             # V10.4.0 (Phase 6A-4): Log the failure (e.g. disk-full) instead
@@ -266,7 +274,7 @@ _ALL_PHASES = [
     "study_guide",
     "social",
     "mindmap",
-    "packets",          # V13.25.0: was missing from the original list
+    "packets",  # V13.25.0: was missing from the original list
     "podcast_audio",
     "rag_indexing",
     "screenshots",

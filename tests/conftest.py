@@ -1,4 +1,5 @@
 """Shared test fixtures for Elixir."""
+
 from __future__ import annotations
 
 # ── V18.20.2.0 (SWOT test-infra): hermetic tiktoken gate ────────────────────

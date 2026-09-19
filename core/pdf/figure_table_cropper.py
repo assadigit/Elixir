@@ -70,8 +70,12 @@ def extract_figures_and_tables(
     # ── Part 1: Extract embedded images (figures/charts) via PyMuPDF ──────
     try:
         import fitz  # PyMuPDF
+
         doc = fitz.open(str(pdf_path))
-        log(f"  📊 Figure extraction: scanning {len(pages_to_process)} pages with PyMuPDF...", "INFO")
+        log(
+            f"  📊 Figure extraction: scanning {len(pages_to_process)} pages with PyMuPDF...",
+            "INFO",
+        )
 
         fig_count = 0
         for page_num in pages_to_process:
@@ -94,12 +98,14 @@ def extract_figures_and_tables(
                         img_path = graphs_dir / f"page{page_num}_figure{fig_count}.{img_ext}"
                         graphs_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
                         img_path.write_bytes(img_bytes)
-                        figures.append({
-                            "page": page_num,
-                            "path": str(img_path),
-                            "caption": _extract_caption(page, page_num, "figure"),
-                            "type": "figure",
-                        })
+                        figures.append(
+                            {
+                                "page": page_num,
+                                "path": str(img_path),
+                                "caption": _extract_caption(page, page_num, "figure"),
+                                "type": "figure",
+                            }
+                        )
                 except Exception as e:
                     log(f"  ⚠️ Figure extraction p.{page_num} img {img_index}: {e}", "DEBUG")
 
@@ -114,7 +120,11 @@ def extract_figures_and_tables(
     # ── Part 2: Extract tables via pdfplumber ─────────────────────────────
     try:
         import pdfplumber
-        log(f"  📊 Table extraction: scanning {len(pages_to_process)} pages with pdfplumber...", "INFO")
+
+        log(
+            f"  📊 Table extraction: scanning {len(pages_to_process)} pages with pdfplumber...",
+            "INFO",
+        )
 
         tbl_count = 0
         with pdfplumber.open(str(pdf_path)) as pdf:
@@ -145,13 +155,15 @@ def extract_figures_and_tables(
                             md_content = _table_to_markdown(table_data)
                             md_path.write_text(md_content, encoding="utf-8")
 
-                            tables.append({
-                                "page": page_num,
-                                "path": str(img_path),
-                                "caption": _extract_caption_pdfplumber(page, page_num, "table"),
-                                "type": "table",
-                                "data": table_data,
-                            })
+                            tables.append(
+                                {
+                                    "page": page_num,
+                                    "path": str(img_path),
+                                    "caption": _extract_caption_pdfplumber(page, page_num, "table"),
+                                    "type": "table",
+                                    "data": table_data,
+                                }
+                            )
                     except Exception as e:
                         log(f"  ⚠️ Table extraction p.{page_num} tbl {tbl_index}: {e}", "DEBUG")
 
@@ -170,7 +182,7 @@ def _extract_caption(page, page_num: int, label: str) -> str:
     try:
         text = page.get_text()
         # Look for "Figure N" or "Table N" patterns
-        pattern = rf'(?i)({label}\s*\d+[^.]*\.)'
+        pattern = rf"(?i)({label}\s*\d+[^.]*\.)"
         match = re.search(pattern, text)
         if match:
             return match.group(1).strip()[:200]
@@ -183,7 +195,7 @@ def _extract_caption_pdfplumber(page, page_num: int, label: str) -> str:
     """Extract figure/table caption from a pdfplumber page."""
     try:
         text = page.extract_text() or ""
-        pattern = rf'(?i)({label}\s*\d+[^.]*\.)'
+        pattern = rf"(?i)({label}\s*\d+[^.]*\.)"
         match = re.search(pattern, text)
         if match:
             return match.group(1).strip()[:200]
@@ -217,11 +229,15 @@ def build_figure_table_manifest(figures: list, tables: list) -> str:
     if figures:
         lines.append("### Figures\n")
         for fig in figures:
-            lines.append(f"- **{fig['caption'] or 'Figure'}** (page {fig['page']}) — `{fig['path']}`")
+            lines.append(
+                f"- **{fig['caption'] or 'Figure'}** (page {fig['page']}) — `{fig['path']}`"
+            )
     if tables:
         lines.append("\n### Tables\n")
         for tbl in tables:
-            lines.append(f"- **{tbl['caption'] or 'Table'}** (page {tbl['page']}) — `{tbl['path']}`")
+            lines.append(
+                f"- **{tbl['caption'] or 'Table'}** (page {tbl['page']}) — `{tbl['path']}`"
+            )
     if not figures and not tables:
         lines.append("(No figures or tables detected in this document.)")
     lines.append("\n---\n")

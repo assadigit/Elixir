@@ -27,6 +27,7 @@ Scope of this version (all approved by the user in the 2026-08-31 session):
   5. F7 — the estimator's typical band recalibrates 15 → 10 calls/chapter
      (rig-measured 9, minus the .3.11 consolidation skip).
 """
+
 from __future__ import annotations
 
 import sys
@@ -99,6 +100,7 @@ def _make_deps(probe, call_llm):
 # ═════════════════════════════════════════════════════════════════════════════
 # 1) Consolidation skip — probe-gated LLM call
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class TestConsolidationSkip:
     BULLETS = [f"Distinct takeaway {i} about concept {chr(65 + i)}." for i in range(8)]
@@ -193,6 +195,7 @@ class TestConsolidationSkip:
 # 2) Scholar compactness contract (cap-aware prompt shortening)
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestScholarPromptCompactness:
     def test_prompt_carries_compactness_contract(self):
         src = (ROOT / "prompts" / "summarisation" / "scholar_reflection.md").read_text(
@@ -208,6 +211,7 @@ class TestScholarPromptCompactness:
 # ═════════════════════════════════════════════════════════════════════════════
 # 3) Thorough continuation (designated continuation, not a cold re-derivation)
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class TestThoroughContinuation:
     def test_prompt_with_draft_contains_continuation_block(self):
@@ -236,6 +240,7 @@ class TestThoroughContinuation:
         # target, which now scales to the source (this fixture is ~100
         # words → a ~45-word target) — never the absolute 800-1200.
         import re as _re
+
         assert _re.search(r"\b\d+-\d+ word thorough summary", prompt)
         assert "800-1200" not in prompt
 
@@ -257,9 +262,7 @@ class TestThoroughContinuation:
         """Policy pin: the call site must pass the primary's partial
         thorough into the dedicated prompt (the truncation-paid-twice
         fix)."""
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
         assert "draft=(thorough or None)" in src
 
     def test_primary_prompts_close_clean_at_boundary(self):
@@ -274,13 +277,12 @@ class TestThoroughContinuation:
 # 4) F2 — dedup threshold alignment (0.92 → 0.85, keypoints parity)
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestF2DedupThresholdAlignment:
     def test_shipped_dedup_default_is_085(self):
         """The shipped-summary semantic-dedup delegate must default to
         0.85 — parity with the keypoints embedding dedup."""
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
         assert "threshold: float = 0.85" in src
         assert "threshold: float = 0.92" not in src
 
@@ -309,6 +311,7 @@ class TestF2DedupThresholdAlignment:
         original = sz_mod.sv_semantic_dedup_bullets
         sz_mod.sv_semantic_dedup_bullets = fake_dedup
         try:
+
             class _FakeSumm:
                 _semantic_dedup_bullets = sz_mod.Summarizer._semantic_dedup_bullets
                 log = staticmethod(lambda msg, level="INFO": None)
@@ -323,11 +326,10 @@ class TestF2DedupThresholdAlignment:
 # 5) F7 — estimator band recalibration (15 → 10 typical)
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestF7EstimatorBand:
     def test_bands_are_10_and_40(self):
-        src = (ROOT / "core" / "pipeline" / "token_estimator.py").read_text(
-            encoding="utf-8"
-        )
+        src = (ROOT / "core" / "pipeline" / "token_estimator.py").read_text(encoding="utf-8")
         assert "base_calls_per_chapter = 10" in src
         assert "worst_calls_per_chapter = 40" in src
         assert "base_calls_per_chapter = 15" not in src

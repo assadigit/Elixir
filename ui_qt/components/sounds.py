@@ -26,7 +26,6 @@ _SOUNDS_DIR = Path.home() / ".elixir" / "sounds"
 def _synth_chime(path: Path, notes=(523.25, 659.25, 783.99), note_ms=180, sr=44100) -> None:
     """Synthesise a gentle major-triad arpeggio into ``path`` as 16-bit WAV."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    total = int(sr * (len(notes) * note_ms / 1000.0))
     frames = bytearray()
     for i, freq in enumerate(notes):
         n = int(sr * note_ms / 1000)
@@ -66,6 +65,7 @@ def play_success() -> None:
         return
     try:
         from PySide6.QtCore import QCoreApplication
+
         app = QCoreApplication.instance()
         if app is None:
             return

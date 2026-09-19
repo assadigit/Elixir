@@ -35,12 +35,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class OutputCheck:
     """How to check for one output type on disk."""
-    key: str           # e.g. "full_markdown"
+
+    key: str  # e.g. "full_markdown"
     display_name: str  # e.g. "Full Markdown"
-    category: str      # "markdown", "summaries", "outputs", "translation", "logs"
+    category: str  # "markdown", "summaries", "outputs", "translation", "logs"
     checkpoint_phase: str  # phase name in .checkpoint.json ("" if none)
     setting_key: str = ""  # setting key in .conversion_config.json ("" if always-on)
 
@@ -85,39 +87,70 @@ OUTPUT_TYPES: list[OutputCheck] = [
     OutputCheck("chapters", "Chapter Files", "markdown", "segmentation"),
     OutputCheck("footnotes", "Footnotes", "markdown", ""),
     # ── Summaries ─────────────────────────────────────────────────────────
-    OutputCheck("chapter_summaries", "Per-Chapter Summaries", "summaries", "summarization",
-                setting_key="generate_summaries"),
-    OutputCheck("book_summary", "Book Summary", "summaries", "summarization",
-                setting_key="summarisation.include_book_summary"),
-    OutputCheck("keypoints", "Keypoints", "summaries", "keypoints",
-                setting_key="summarisation.include_keypoints"),
-    OutputCheck("simplified_keypoints", "Simplified Keypoints", "summaries", "simplified_keypoints",
-                setting_key="simplified_keypoints_enabled"),
+    OutputCheck(
+        "chapter_summaries",
+        "Per-Chapter Summaries",
+        "summaries",
+        "summarization",
+        setting_key="generate_summaries",
+    ),
+    OutputCheck(
+        "book_summary",
+        "Book Summary",
+        "summaries",
+        "summarization",
+        setting_key="summarisation.include_book_summary",
+    ),
+    OutputCheck(
+        "keypoints",
+        "Keypoints",
+        "summaries",
+        "keypoints",
+        setting_key="summarisation.include_keypoints",
+    ),
+    OutputCheck(
+        "simplified_keypoints",
+        "Simplified Keypoints",
+        "summaries",
+        "simplified_keypoints",
+        setting_key="simplified_keypoints_enabled",
+    ),
     # ── DOCX ──────────────────────────────────────────────────────────────
-    OutputCheck("docx", "DOCX Report", "outputs", "docx",
-                setting_key="generate_docx"),
+    OutputCheck("docx", "DOCX Report", "outputs", "docx", setting_key="generate_docx"),
     # ── Output Studio ─────────────────────────────────────────────────────
-    OutputCheck("briefing", "Executive Briefing", "outputs", "briefing",
-                setting_key="output_briefing"),
-    OutputCheck("podcast_script", "Podcast Script(s)", "outputs", "podcast_script",
-                setting_key="output_podcast"),
-    OutputCheck("packets", "Packets of Knowledge", "outputs", "packets",
-                setting_key="output_packets"),
-    OutputCheck("flashcards", "Flashcards", "outputs", "flashcards",
-                setting_key="output_flashcards"),
-    OutputCheck("obsidian", "Obsidian KB", "outputs", "obsidian",
-                setting_key="output_obsidian"),
-    OutputCheck("study_guide", "Study Guide", "outputs", "study_guide",
-                setting_key="output_study_guide"),
-    OutputCheck("social", "Social Media Pack", "outputs", "social",
-                setting_key="output_social"),
-    OutputCheck("mindmap", "Mind Map", "outputs", "mindmap",
-                setting_key="output_mindmap"),
-    OutputCheck("podcast_audio", "Podcast Audio (TTS)", "outputs", "podcast_audio",
-                setting_key="output_tts"),
+    OutputCheck(
+        "briefing", "Executive Briefing", "outputs", "briefing", setting_key="output_briefing"
+    ),
+    OutputCheck(
+        "podcast_script",
+        "Podcast Script(s)",
+        "outputs",
+        "podcast_script",
+        setting_key="output_podcast",
+    ),
+    OutputCheck(
+        "packets", "Packets of Knowledge", "outputs", "packets", setting_key="output_packets"
+    ),
+    OutputCheck(
+        "flashcards", "Flashcards", "outputs", "flashcards", setting_key="output_flashcards"
+    ),
+    OutputCheck("obsidian", "Obsidian KB", "outputs", "obsidian", setting_key="output_obsidian"),
+    OutputCheck(
+        "study_guide", "Study Guide", "outputs", "study_guide", setting_key="output_study_guide"
+    ),
+    OutputCheck("social", "Social Media Pack", "outputs", "social", setting_key="output_social"),
+    OutputCheck("mindmap", "Mind Map", "outputs", "mindmap", setting_key="output_mindmap"),
+    OutputCheck(
+        "podcast_audio", "Podcast Audio (TTS)", "outputs", "podcast_audio", setting_key="output_tts"
+    ),
     # V10.1.0: Scientific Evidence Map (langextract grounding)
-    OutputCheck("evidence_map", "Scientific Evidence Map", "outputs", "evidence_map",
-                setting_key="output_evidence_map"),
+    OutputCheck(
+        "evidence_map",
+        "Scientific Evidence Map",
+        "outputs",
+        "evidence_map",
+        setting_key="output_evidence_map",
+    ),
     # ── Translation ───────────────────────────────────────────────────────
     OutputCheck("translation", "Farsi Translation", "translation", "translation"),
     # ── Logs ──────────────────────────────────────────────────────────────
@@ -128,9 +161,11 @@ OUTPUT_TYPES: list[OutputCheck] = [
 
 # ── Result dataclass ──────────────────────────────────────────────────────
 
+
 @dataclass
 class OutputScanResult:
     """The scan result for one output type."""
+
     key: str
     display_name: str
     category: str
@@ -143,6 +178,7 @@ class OutputScanResult:
 @dataclass
 class ScanReport:
     """The full scan report for a book output folder."""
+
     output_dir: Path
     stem: str
     book_title: str = ""
@@ -171,6 +207,7 @@ class ScanReport:
 
 # ── Scanner ───────────────────────────────────────────────────────────────
 
+
 def detect_layout(output_dir: Path) -> str:
     """Detect whether this is a V7.5+ subfolder layout or legacy flat."""
     if (output_dir / "markdown").is_dir() or (output_dir / "summaries").is_dir():
@@ -192,8 +229,10 @@ def detect_stem(output_dir: Path) -> str:
     # Legacy: *.md at root, excluding summaries/keypoints
     for f in output_dir.glob("*.md"):
         name = f.stem
-        if not any(name.endswith(s) for s in (".summary", ".keypoints", ".Briefing",
-                                               ".Podcast", ".Flashcards", ".temp")):
+        if not any(
+            name.endswith(s)
+            for s in (".summary", ".keypoints", ".Briefing", ".Podcast", ".Flashcards", ".temp")
+        ):
             return name
     # Fallback: folder name
     return output_dir.name
@@ -229,40 +268,122 @@ def _check_output_on_disk(key: str, output_dir: Path, stem: str, layout: str) ->
             "full_markdown": lambda: _check_file(output_dir / "markdown" / f"{stem}.md"),
             "chapters": lambda: _check_dir(output_dir / "markdown" / "chapters"),
             "footnotes": lambda: _check_glob(output_dir / "markdown" / f"{stem}.*footnotes*.md"),
-            "chapter_summaries": lambda: _check_dir(output_dir / "summaries" / "chapters") if (output_dir / "summaries" / "chapters").exists() else _check_dir(output_dir / "markdown" / "chapters" / "summaries"),
-            "book_summary": lambda: _check_file(output_dir / "summaries" / f"{stem}.summary.md") if (output_dir / "summaries").exists() else _check_file(output_dir / f"{stem}.summary.md"),
-            "keypoints": lambda: _check_glob(output_dir / "keypoints" / f"{stem}.keypoints*.md") if (output_dir / "keypoints").exists() else _check_glob(output_dir / f"{stem}.keypoints*.md"),
-            "simplified_keypoints": lambda: _check_glob(output_dir / "keypoints" / f"{stem}.*simplified*.md") if (output_dir / "keypoints").exists() else _check_glob(output_dir / f"{stem}.*simplified*.md"),
+            "chapter_summaries": lambda: (
+                _check_dir(output_dir / "summaries" / "chapters")
+                if (output_dir / "summaries" / "chapters").exists()
+                else _check_dir(output_dir / "markdown" / "chapters" / "summaries")
+            ),
+            "book_summary": lambda: (
+                _check_file(output_dir / "summaries" / f"{stem}.summary.md")
+                if (output_dir / "summaries").exists()
+                else _check_file(output_dir / f"{stem}.summary.md")
+            ),
+            "keypoints": lambda: (
+                _check_glob(output_dir / "keypoints" / f"{stem}.keypoints*.md")
+                if (output_dir / "keypoints").exists()
+                else _check_glob(output_dir / f"{stem}.keypoints*.md")
+            ),
+            "simplified_keypoints": lambda: (
+                _check_glob(output_dir / "keypoints" / f"{stem}.*simplified*.md")
+                if (output_dir / "keypoints").exists()
+                else _check_glob(output_dir / f"{stem}.*simplified*.md")
+            ),
             "docx": lambda: _check_file(output_dir / f"{stem}.docx"),
-            "briefing": lambda: _check_glob(output_dir / "briefing" / f"{stem}.Briefing*.md") if (output_dir / "briefing").exists() else _check_glob(output_dir / f"{stem}.Briefing*.md"),
-            "podcast_script": lambda: _check_glob(output_dir / "podcast" / f"{stem}.*Podcast*.md") if (output_dir / "podcast").exists() else _check_glob(output_dir / f"{stem}.*Podcast*.md"),
-            "packets": lambda: _check_dir(output_dir / "packets") if (output_dir / "packets").exists() else (True, 0, "") if list(output_dir.glob("*Packets*")) else (False, 0, ""),
-            "flashcards": lambda: _check_glob(output_dir / "flashcards" / f"{stem}.Flashcards*") if (output_dir / "flashcards").exists() else _check_glob(output_dir / f"{stem}.Flashcards*"),
-            "obsidian": lambda: _check_dir(output_dir / "obsidian") if (output_dir / "obsidian").exists() else _check_glob(output_dir / f"{stem}.Obsidian*"),
-            "study_guide": lambda: _check_glob(output_dir / "study_guide" / f"{stem}.StudyGuide*") if (output_dir / "study_guide").exists() else _check_glob(output_dir / f"{stem}.StudyGuide*"),
-            "social": lambda: _check_glob(output_dir / "social" / f"{stem}.Social*") if (output_dir / "social").exists() else _check_glob(output_dir / f"{stem}.Social*"),
-            "mindmap": lambda: _check_glob(output_dir / "mindmap" / f"{stem}.MindMap*") if (output_dir / "mindmap").exists() else _check_glob(output_dir / f"{stem}.MindMap*"),
-            "podcast_audio": lambda: _check_glob(output_dir / "podcast" / f"{stem}.*Podcast*.wav") if (output_dir / "podcast").exists() else _check_glob(output_dir / f"{stem}.*Podcast*.wav"),
+            "briefing": lambda: (
+                _check_glob(output_dir / "briefing" / f"{stem}.Briefing*.md")
+                if (output_dir / "briefing").exists()
+                else _check_glob(output_dir / f"{stem}.Briefing*.md")
+            ),
+            "podcast_script": lambda: (
+                _check_glob(output_dir / "podcast" / f"{stem}.*Podcast*.md")
+                if (output_dir / "podcast").exists()
+                else _check_glob(output_dir / f"{stem}.*Podcast*.md")
+            ),
+            "packets": lambda: (
+                _check_dir(output_dir / "packets")
+                if (output_dir / "packets").exists()
+                else (True, 0, "")
+                if list(output_dir.glob("*Packets*"))
+                else (False, 0, "")
+            ),
+            "flashcards": lambda: (
+                _check_glob(output_dir / "flashcards" / f"{stem}.Flashcards*")
+                if (output_dir / "flashcards").exists()
+                else _check_glob(output_dir / f"{stem}.Flashcards*")
+            ),
+            "obsidian": lambda: (
+                _check_dir(output_dir / "obsidian")
+                if (output_dir / "obsidian").exists()
+                else _check_glob(output_dir / f"{stem}.Obsidian*")
+            ),
+            "study_guide": lambda: (
+                _check_glob(output_dir / "study_guide" / f"{stem}.StudyGuide*")
+                if (output_dir / "study_guide").exists()
+                else _check_glob(output_dir / f"{stem}.StudyGuide*")
+            ),
+            "social": lambda: (
+                _check_glob(output_dir / "social" / f"{stem}.Social*")
+                if (output_dir / "social").exists()
+                else _check_glob(output_dir / f"{stem}.Social*")
+            ),
+            "mindmap": lambda: (
+                _check_glob(output_dir / "mindmap" / f"{stem}.MindMap*")
+                if (output_dir / "mindmap").exists()
+                else _check_glob(output_dir / f"{stem}.MindMap*")
+            ),
+            "podcast_audio": lambda: (
+                _check_glob(output_dir / "podcast" / f"{stem}.*Podcast*.wav")
+                if (output_dir / "podcast").exists()
+                else _check_glob(output_dir / f"{stem}.*Podcast*.wav")
+            ),
             # V10.1.0: Scientific Evidence Map
-            "evidence_map": lambda: _check_glob(output_dir / "evidence" / f"{stem}.EvidenceMap*") if (output_dir / "evidence").exists() else _check_glob(output_dir / f"{stem}.EvidenceMap*"),
-            "translation": lambda: _check_dir(output_dir / "fa") if (output_dir / "fa").exists() else (True, 0, "") if list(output_dir.glob("**/fa/")) else (False, 0, ""),
-            "quality_report": lambda: _check_file(output_dir / "logs" / "quality_report.json") if (output_dir / "logs").exists() else _check_file(output_dir / "quality_report.json"),
-            "conversion_log": lambda: _check_glob(output_dir / "logs" / "*.conversion.log.md") if (output_dir / "logs").exists() else _check_glob(output_dir / "conversion_logs" / "*.conversion.log.md"),
+            "evidence_map": lambda: (
+                _check_glob(output_dir / "evidence" / f"{stem}.EvidenceMap*")
+                if (output_dir / "evidence").exists()
+                else _check_glob(output_dir / f"{stem}.EvidenceMap*")
+            ),
+            "translation": lambda: (
+                _check_dir(output_dir / "fa")
+                if (output_dir / "fa").exists()
+                else (True, 0, "")
+                if list(output_dir.glob("**/fa/"))
+                else (False, 0, "")
+            ),
+            "quality_report": lambda: (
+                _check_file(output_dir / "logs" / "quality_report.json")
+                if (output_dir / "logs").exists()
+                else _check_file(output_dir / "quality_report.json")
+            ),
+            "conversion_log": lambda: (
+                _check_glob(output_dir / "logs" / "*.conversion.log.md")
+                if (output_dir / "logs").exists()
+                else _check_glob(output_dir / "conversion_logs" / "*.conversion.log.md")
+            ),
         }
     else:
         # Legacy flat layout — all files at root
         checks = {
             "full_markdown": lambda: _check_file(output_dir / f"{stem}.md"),
-            "chapters": lambda: _check_dir(output_dir / "chapters") if (output_dir / "chapters").exists() else (False, 0, ""),
+            "chapters": lambda: (
+                _check_dir(output_dir / "chapters")
+                if (output_dir / "chapters").exists()
+                else (False, 0, "")
+            ),
             "footnotes": lambda: _check_glob(output_dir / f"{stem}.*footnotes*.md"),
-            "chapter_summaries": lambda: _check_dir(output_dir / "chapters" / "summaries") if (output_dir / "chapters" / "summaries").exists() else (False, 0, ""),
+            "chapter_summaries": lambda: (
+                _check_dir(output_dir / "chapters" / "summaries")
+                if (output_dir / "chapters" / "summaries").exists()
+                else (False, 0, "")
+            ),
             "book_summary": lambda: _check_file(output_dir / f"{stem}.summary.md"),
             "keypoints": lambda: _check_glob(output_dir / f"{stem}.keypoints*.md"),
             "simplified_keypoints": lambda: _check_glob(output_dir / f"{stem}.*simplified*.md"),
             "docx": lambda: _check_file(output_dir / f"{stem}.docx"),
             "briefing": lambda: _check_glob(output_dir / f"{stem}.Briefing*.md"),
             "podcast_script": lambda: _check_glob(output_dir / f"{stem}.*Podcast*.md"),
-            "packets": lambda: (True, 0, "") if list(output_dir.glob("*Packets*")) else (False, 0, ""),
+            "packets": lambda: (
+                (True, 0, "") if list(output_dir.glob("*Packets*")) else (False, 0, "")
+            ),
             "flashcards": lambda: _check_glob(output_dir / f"{stem}.Flashcards*"),
             "obsidian": lambda: _check_glob(output_dir / f"{stem}.Obsidian*"),
             "study_guide": lambda: _check_glob(output_dir / f"{stem}.StudyGuide*"),
@@ -271,9 +392,13 @@ def _check_output_on_disk(key: str, output_dir: Path, stem: str, layout: str) ->
             "podcast_audio": lambda: _check_glob(output_dir / f"{stem}.*Podcast*.wav"),
             # V10.1.0: Scientific Evidence Map
             "evidence_map": lambda: _check_glob(output_dir / f"{stem}.EvidenceMap*"),
-            "translation": lambda: (True, 0, "") if list(output_dir.glob("**/fa/")) else (False, 0, ""),
+            "translation": lambda: (
+                (True, 0, "") if list(output_dir.glob("**/fa/")) else (False, 0, "")
+            ),
             "quality_report": lambda: _check_file(output_dir / "quality_report.json"),
-            "conversion_log": lambda: _check_glob(output_dir / "conversion_logs" / "*.conversion.log.md"),
+            "conversion_log": lambda: _check_glob(
+                output_dir / "conversion_logs" / "*.conversion.log.md"
+            ),
         }
 
     checker = checks.get(key)
@@ -298,8 +423,13 @@ def scan_output_folder(output_dir: Path, log_callback=None) -> ScanReport:
     output_dir = Path(output_dir)
 
     if not output_dir.exists() or not output_dir.is_dir():
-        return ScanReport(output_dir=output_dir, stem="", layout="unknown",
-                          results=[], summary_counts={"error": 1})
+        return ScanReport(
+            output_dir=output_dir,
+            stem="",
+            layout="unknown",
+            results=[],
+            summary_counts={"error": 1},
+        )
 
     layout = detect_layout(output_dir)
     stem = detect_stem(output_dir)
@@ -308,8 +438,11 @@ def scan_output_folder(output_dir: Path, log_callback=None) -> ScanReport:
     checkpoint = load_checkpoint(output_dir)
     settings = load_settings(output_dir)
     checkpoint_phases = checkpoint.get("phases", {}) if checkpoint else {}
-    log(f"  📋 Checkpoint: {'found' if checkpoint else 'not found'}, "
-        f"Settings: {'found' if settings else 'not found'}", "DEBUG")
+    log(
+        f"  📋 Checkpoint: {'found' if checkpoint else 'not found'}, "
+        f"Settings: {'found' if settings else 'not found'}",
+        "DEBUG",
+    )
 
     # Detect book title from checkpoint or settings
     book_title = ""
@@ -334,7 +467,12 @@ def scan_output_folder(output_dir: Path, log_callback=None) -> ScanReport:
                 requested = bool(val)
             # For output_* flags, check the request attrs
             if check.setting_key.startswith("output_"):
-                requested = bool(settings.get(check.setting_key, settings.get(check.setting_key.replace("output_", "outputs_"), None)))
+                requested = bool(
+                    settings.get(
+                        check.setting_key,
+                        settings.get(check.setting_key.replace("output_", "outputs_"), None),
+                    )
+                )
 
         # 2. Checkpoint status
         cp_status = ""
@@ -343,9 +481,7 @@ def scan_output_folder(output_dir: Path, log_callback=None) -> ScanReport:
             cp_status = phase_data.get("status", "")
 
         # 3. File-system reality
-        exists, count, detail, path_str = _check_output_on_disk(
-            check.key, output_dir, stem, layout
-        )
+        exists, count, detail, path_str = _check_output_on_disk(check.key, output_dir, stem, layout)
 
         # 4. Determine final status
         if not requested and check.setting_key:
@@ -371,15 +507,17 @@ def scan_output_folder(output_dir: Path, log_callback=None) -> ScanReport:
         if not check.setting_key and status == "not_requested":
             status = "missing" if not exists else "generated"
 
-        results.append(OutputScanResult(
-            key=check.key,
-            display_name=check.display_name,
-            category=check.category,
-            status=status,
-            detail=detail,
-            checkpoint_status=cp_status,
-            path=path_str,
-        ))
+        results.append(
+            OutputScanResult(
+                key=check.key,
+                display_name=check.display_name,
+                category=check.category,
+                status=status,
+                detail=detail,
+                checkpoint_status=cp_status,
+                path=path_str,
+            )
+        )
         counts[status] = counts.get(status, 0) + 1
 
     return ScanReport(

@@ -45,6 +45,7 @@ _TORCH_LIB_PATHS = []
 try:
     # Find torch's lib directory without importing torch
     import importlib.util as _ilu
+
     _torch_spec = _ilu.find_spec("torch")
     if _torch_spec and _torch_spec.origin:
         _torch_dir = Path(_torch_spec.origin).parent
@@ -57,7 +58,9 @@ try:
                 try:
                     os.add_dll_directory(_lib_str)
                 except Exception:
-                    logger.debug("best-effort op failed [_vibevoice_subprocess:module:L60]", exc_info=True)
+                    logger.debug(
+                        "best-effort op failed [_vibevoice_subprocess:module:L60]", exc_info=True
+                    )
             # Method 2: prepend to PATH (legacy, more reliable)
             _current_path = os.environ.get("PATH", "")
             if _lib_str not in _current_path:
@@ -72,7 +75,9 @@ try:
                 try:
                     os.add_dll_directory(_bin_str)
                 except Exception:
-                    logger.debug("best-effort op failed [_vibevoice_subprocess:module:L75]", exc_info=True)
+                    logger.debug(
+                        "best-effort op failed [_vibevoice_subprocess:module:L75]", exc_info=True
+                    )
             _current_path = os.environ.get("PATH", "")
             if _bin_str not in _current_path:
                 os.environ["PATH"] = _bin_str + os.pathsep + _current_path
@@ -91,7 +96,9 @@ if _extra_dll:
                 try:
                     os.add_dll_directory(_p)
                 except Exception:
-                    logger.debug("best-effort op failed [_vibevoice_subprocess:module:L94]", exc_info=True)
+                    logger.debug(
+                        "best-effort op failed [_vibevoice_subprocess:module:L94]", exc_info=True
+                    )
             # V11.60.0: also prepend to PATH
             _current_path = os.environ.get("PATH", "")
             if _p not in _current_path:
@@ -104,13 +111,11 @@ if _extra_dll:
 # load handler instead of re-checking.
 try:
     import torch as _torch_early
+
     _SUBPROCESS_CUDA_OK = bool(_torch_early.cuda.is_available())
     _SUBPROCESS_TORCH_VERSION = _torch_early.__version__
     _SUBPROCESS_CUDA_TAG = getattr(_torch_early.version, "cuda", None)
-    _SUBPROCESS_CUDA_DEVICE = (
-        _torch_early.cuda.get_device_name(0)
-        if _SUBPROCESS_CUDA_OK else None
-    )
+    _SUBPROCESS_CUDA_DEVICE = _torch_early.cuda.get_device_name(0) if _SUBPROCESS_CUDA_OK else None
 except Exception as _e:
     _SUBPROCESS_CUDA_OK = False
     _SUBPROCESS_TORCH_VERSION = "import failed"
@@ -123,10 +128,11 @@ else:
 # V11.59.0: Log the EARLY CUDA status (before vibevoice/transformers)
 try:
     import datetime as _dt
+
     _probe_log = Path.home() / ".elixir" / "gpu_probe.log"
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     with open(_probe_log, "a", encoding="utf-8") as _f:
-        _f.write(f"\n{'='*60}\n")
+        _f.write(f"\n{'=' * 60}\n")
         _f.write(f"{_dt.datetime.now().isoformat()} — VIBEVOICE SUBPROCESS (early)\n")
         _f.write(f"Python: {sys.executable}\n")
         _f.write(f"torch: {_SUBPROCESS_TORCH_VERSION}\n")
@@ -158,7 +164,9 @@ def safe_print(msg, file=None, flush=True):
             safe = msg.encode("ascii", errors="replace").decode("ascii")
             print(safe, file=f, flush=flush)
         except Exception:
-            logger.debug("best-effort op failed [_vibevoice_subprocess:safe_print:L161]", exc_info=True)
+            logger.debug(
+                "best-effort op failed [_vibevoice_subprocess:safe_print:L161]", exc_info=True
+            )
 
 
 def main():
@@ -184,8 +192,9 @@ def main():
         elif action == "load":
             model_path = cmd.get("model_path", "")
             if not model_path or not os.path.exists(model_path):
-                safe_print(json.dumps({"status": "error",
-                                  "error": f"Model path not found: {model_path}"}))
+                safe_print(
+                    json.dumps({"status": "error", "error": f"Model path not found: {model_path}"})
+                )
                 continue
 
             try:
@@ -205,16 +214,27 @@ def main():
                 cuda_ok = _SUBPROCESS_CUDA_OK
                 # Also check the live value for diagnostic logging
                 live_cuda = torch.cuda.is_available()
-                safe_print(f"[SUBPROCESS] CUDA cached (early): {_SUBPROCESS_CUDA_OK}", file=sys.stderr)
-                safe_print(f"[SUBPROCESS] CUDA live (after vv import): {live_cuda}", file=sys.stderr)
-                safe_print(f"[SUBPROCESS] torch.version.cuda = {torch.version.cuda!r}", file=sys.stderr)
+                safe_print(
+                    f"[SUBPROCESS] CUDA cached (early): {_SUBPROCESS_CUDA_OK}", file=sys.stderr
+                )
+                safe_print(
+                    f"[SUBPROCESS] CUDA live (after vv import): {live_cuda}", file=sys.stderr
+                )
+                safe_print(
+                    f"[SUBPROCESS] torch.version.cuda = {torch.version.cuda!r}", file=sys.stderr
+                )
                 if _SUBPROCESS_CUDA_DEVICE:
-                    safe_print(f"[SUBPROCESS] GPU (cached): {_SUBPROCESS_CUDA_DEVICE}", file=sys.stderr)
+                    safe_print(
+                        f"[SUBPROCESS] GPU (cached): {_SUBPROCESS_CUDA_DEVICE}", file=sys.stderr
+                    )
                 if cuda_ok != live_cuda:
-                    safe_print(f"[SUBPROCESS] WARNING: CUDA status changed! "
-                          f"Early={cuda_ok}, Live={live_cuda}. "
-                          f"vibevoice/transformers imports broke CUDA. "
-                          f"Using cached value: {cuda_ok}.", file=sys.stderr)
+                    safe_print(
+                        f"[SUBPROCESS] WARNING: CUDA status changed! "
+                        f"Early={cuda_ok}, Live={live_cuda}. "
+                        f"vibevoice/transformers imports broke CUDA. "
+                        f"Using cached value: {cuda_ok}.",
+                        file=sys.stderr,
+                    )
                 if cuda_ok:
                     device = "cuda"
                     if _SUBPROCESS_CUDA_DEVICE:
@@ -222,18 +242,26 @@ def main():
                     try:
                         vram_mb = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
                         safe_print(f"[SUBPROCESS] VRAM: {vram_mb} MB", file=sys.stderr)
-                        safe_print(f"[SUBPROCESS] Forcing ALL layers on GPU ({vram_mb} MB)", file=sys.stderr)
+                        safe_print(
+                            f"[SUBPROCESS] Forcing ALL layers on GPU ({vram_mb} MB)",
+                            file=sys.stderr,
+                        )
                     except Exception:
-                        safe_print("[SUBPROCESS] (could not read VRAM — using cached device)", file=sys.stderr)
+                        safe_print(
+                            "[SUBPROCESS] (could not read VRAM — using cached device)",
+                            file=sys.stderr,
+                        )
                     device_map = "cuda:0"
                     dtype = torch.bfloat16
                 else:
                     device = "cpu"
-                    safe_print(f"[SUBPROCESS] WARNING: CUDA NOT available - VibeVoice will run on CPU "
-                          f"(~100x slower). torch.version.cuda={torch.version.cuda!r}. "
-                          f"If None, you have the CPU-only torch build: reinstall with "
-                          f"pip install torch --index-url https://download.pytorch.org/whl/cu126",
-                          file=sys.stderr)
+                    safe_print(
+                        f"[SUBPROCESS] WARNING: CUDA NOT available - VibeVoice will run on CPU "
+                        f"(~100x slower). torch.version.cuda={torch.version.cuda!r}. "
+                        f"If None, you have the CPU-only torch build: reinstall with "
+                        f"pip install torch --index-url https://download.pytorch.org/whl/cu126",
+                        file=sys.stderr,
+                    )
                     device_map = "cpu"
                     # bfloat16 is poorly supported on CPU; use float32 there.
                     dtype = torch.float32
@@ -253,22 +281,28 @@ def main():
                 if cuda_ok:
                     cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
                     if cpu_params > 0:
-                        safe_print(f"[SUBPROCESS] WARNING: {cpu_params} params still on CPU, moving to GPU", file=sys.stderr)
+                        safe_print(
+                            f"[SUBPROCESS] WARNING: {cpu_params} params still on CPU, moving to GPU",
+                            file=sys.stderr,
+                        )
                         model = model.to("cuda")
 
                 safe_print(json.dumps({"status": "ready", "device": device}))
 
             except Exception as e:
-                safe_print(json.dumps({
-                    "status": "error",
-                    "error": str(e),
-                    "traceback": traceback.format_exc()[:500],
-                }))
+                safe_print(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "error": str(e),
+                            "traceback": traceback.format_exc()[:500],
+                        }
+                    )
+                )
 
         elif action == "generate":
             if model is None or processor is None:
-                safe_print(json.dumps({"status": "error",
-                                  "error": "Model not loaded"}))
+                safe_print(json.dumps({"status": "error", "error": "Model not loaded"}))
                 continue
 
             text = cmd.get("text", "")
@@ -278,8 +312,7 @@ def main():
             cfg_scale = cmd.get("cfg_scale", 1.5)  # V11.40.1: emotion control
 
             if not text or not out_path:
-                safe_print(json.dumps({"status": "error",
-                                  "error": "Missing text or out_path"}))
+                safe_print(json.dumps({"status": "error", "error": "Missing text or out_path"}))
                 continue
 
             try:
@@ -290,15 +323,16 @@ def main():
                 from transformers.cache_utils import DynamicCache
                 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-                gen_start = _time.time()
-
                 # V11.59.0: use the CACHED CUDA status, not the live one.
                 # torch.cuda.is_available() returns False here because
                 # vibevoice/transformers imports broke it.
                 cuda_ok = _SUBPROCESS_CUDA_OK
-                safe_print(f"[SUBPROCESS] generate: text_len={len(text)}, "
-                      f"cuda={cuda_ok} (cached), device={model.device if hasattr(model, 'device') else '?'}",
-                      file=sys.stderr, flush=True)
+                safe_print(
+                    f"[SUBPROCESS] generate: text_len={len(text)}, "
+                    f"cuda={cuda_ok} (cached), device={model.device if hasattr(model, 'device') else '?'}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
                 # Find voice preset
                 voices_path = Path(voices_dir)
@@ -309,17 +343,29 @@ def main():
                     if pt_files:
                         preset_path = pt_files[0]
                     else:
-                        safe_print(json.dumps({"status": "error",
-                                          "error": f"Voice preset not found: {preset_path}"}), flush=True)
+                        safe_print(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "error": f"Voice preset not found: {preset_path}",
+                                }
+                            ),
+                            flush=True,
+                        )
                         continue
 
                 # V11.41.8: use the correct map_location based on device
                 map_loc = "cuda" if cuda_ok else "cpu"
                 t0 = _time.time()
                 with torch.serialization.safe_globals([BaseModelOutputWithPast, DynamicCache]):
-                    cached_prompt = torch.load(preset_path, map_location=map_loc, weights_only=False)
-                safe_print(f"[SUBPROCESS] voice preset loaded in {_time.time()-t0:.1f}s",
-                      file=sys.stderr, flush=True)
+                    cached_prompt = torch.load(
+                        preset_path, map_location=map_loc, weights_only=False
+                    )
+                safe_print(
+                    f"[SUBPROCESS] voice preset loaded in {_time.time() - t0:.1f}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
                 # Prepare inputs
                 t0 = _time.time()
@@ -335,20 +381,28 @@ def main():
                 dt = torch.bfloat16 if dev == "cuda" else torch.float32
                 inputs = {
                     k: v.to(dev).to(dt)
-                    if hasattr(v, "to") and torch.is_tensor(v) and v.dtype in (torch.float32, torch.float16)
+                    if hasattr(v, "to")
+                    and torch.is_tensor(v)
+                    and v.dtype in (torch.float32, torch.float16)
                     else (v.to(dev) if hasattr(v, "to") else v)
                     for k, v in inputs.items()
                 }
-                safe_print(f"[SUBPROCESS] input processed in {_time.time()-t0:.1f}s, "
-                      f"dev={dev}, dtype={dt}",
-                      file=sys.stderr, flush=True)
+                safe_print(
+                    f"[SUBPROCESS] input processed in {_time.time() - t0:.1f}s, "
+                    f"dev={dev}, dtype={dt}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
                 # V11.50.0: verify model params are on the expected device
                 if cuda_ok:
                     cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
                     if cpu_params > 0:
-                        safe_print(f"[SUBPROCESS] ⚠️ {cpu_params} params on CPU — forcing to GPU",
-                              file=sys.stderr, flush=True)
+                        safe_print(
+                            f"[SUBPROCESS] ⚠️ {cpu_params} params on CPU — forcing to GPU",
+                            file=sys.stderr,
+                            flush=True,
+                        )
                         model = model.to("cuda")
 
                 safe_print(json.dumps({"status": "generating", "text_len": len(text)}), flush=True)
@@ -365,8 +419,11 @@ def main():
                     all_prefilled_outputs=cached_prompt,
                 )
                 gen_time = _time.time() - t0
-                safe_print(f"[SUBPROCESS] model.generate() done in {gen_time:.1f}s",
-                      file=sys.stderr, flush=True)
+                safe_print(
+                    f"[SUBPROCESS] model.generate() done in {gen_time:.1f}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
                 # Save audio
                 t0 = _time.time()
@@ -400,27 +457,41 @@ def main():
                     #     except Exception:
                     #         pass
 
-                    safe_print(f"[SUBPROCESS] audio saved in {_time.time()-t0:.1f}s — "
-                          f"{duration:.1f}s audio, {rtf:.1f}x realtime, "
-                          f"{sr}Hz (native, no upsampling)",
-                          file=sys.stderr, flush=True)
-                    safe_print(json.dumps({
-                        "status": "ok",
-                        "out_path": out_path,
-                        "duration": round(duration, 1),
-                        "sample_rate": sr,
-                        "gen_time": round(gen_time, 1),
-                    }), flush=True)
+                    safe_print(
+                        f"[SUBPROCESS] audio saved in {_time.time() - t0:.1f}s — "
+                        f"{duration:.1f}s audio, {rtf:.1f}x realtime, "
+                        f"{sr}Hz (native, no upsampling)",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    safe_print(
+                        json.dumps(
+                            {
+                                "status": "ok",
+                                "out_path": out_path,
+                                "duration": round(duration, 1),
+                                "sample_rate": sr,
+                                "gen_time": round(gen_time, 1),
+                            }
+                        ),
+                        flush=True,
+                    )
                 else:
-                    safe_print(json.dumps({"status": "error",
-                                      "error": "File not written"}), flush=True)
+                    safe_print(
+                        json.dumps({"status": "error", "error": "File not written"}), flush=True
+                    )
 
             except Exception as e:
-                safe_print(json.dumps({
-                    "status": "error",
-                    "error": str(e),
-                    "traceback": traceback.format_exc()[:500],
-                }), flush=True)
+                safe_print(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "error": str(e),
+                            "traceback": traceback.format_exc()[:500],
+                        }
+                    ),
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

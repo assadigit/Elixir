@@ -16,6 +16,7 @@ edit (insert/delete/substitute) makes it match a source word. If yes → flag.
 
 Run: ``pytest tests/test_dropped_letter_garble.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,12 +38,15 @@ from core.summarisation.postchecks import run_post_checks
 # 1. The exact V18.19.2.0 audit case: "emergs" → "emerges"
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestEmergsCase:
     """The exact garbled token from the V18.19.2.0 audit."""
 
     def test_emergs_flagged_as_dropped_letter(self):
-        source = ("Self-constancy—a stable sense of unique personhood—emerges "
-                  "at approximately two years, when the rapprochement subphase ends.")
+        source = (
+            "Self-constancy—a stable sense of unique personhood—emerges "
+            "at approximately two years, when the rapprochement subphase ends."
+        )
         text = "The emergs of identity is a key concept in this chapter."
         _, issues = detect_dropped_letter_garble(text, "thorough", source)
         dropped = [i for i in issues if i.detector == "dropped_letter"]
@@ -52,11 +56,14 @@ class TestEmergsCase:
 
     def test_emergs_via_run_post_checks(self):
         """The full run_post_checks pipeline catches it too (wired in V18.19.2.3)."""
-        source = ("Self-constancy emerges at approximately two years, when "
-                  "the rapprochement subphase ends. Identity consolidation follows.")
+        source = (
+            "Self-constancy emerges at approximately two years, when "
+            "the rapprochement subphase ends. Identity consolidation follows."
+        )
         exec_text = "The emergs of identity is a key developmental milestone."
-        pc = run_post_checks(bullets=[], executive_summary=exec_text,
-                            thorough_summary="", source_text=source)
+        pc = run_post_checks(
+            bullets=[], executive_summary=exec_text, thorough_summary="", source_text=source
+        )
         dropped = [i for i in pc.issues if i.detector == "dropped_letter"]
         assert len(dropped) >= 1
         assert "emergs" in dropped[0].detail
@@ -66,21 +73,25 @@ class TestEmergsCase:
 # 2. Other dropped-letter / substitution cases
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOtherGarbleForms:
-    @pytest.mark.parametrize("garbled,correct,source_fragment", [
-        ("identiy", "identity", "identity formation is a lifelong process"),
-        # ("Dukhaim" → "Durkheim" is edit-distance-3, NOT caught by this
-        #  edit-distance-1 detector. That's validate_years's job. Removed.)
-        ("pschoanalytic", "psychoanalytic", "the psychoanalytic literature on identity"),
-        ("narcissstic", "narcissistic", "narcissistic personality structure"),
-        # Single-char garbles (the "emergs" class — true non-words):
-        # NOTE: "emerge"→"emerged" was removed in V18.19.2.5 — "emerge" is a real
-        # English word (the base verb), and the tuning's _is_legitimate_inflection_pair
-        # correctly suppresses it (emerge + "d" = emerged = past tense). Replaced
-        # with "developmet"→"development" (a true garbled non-word).
-        ("developmet", "development", "development is a key process"),
-        ("pschology", "psychology", "psychology studies the mind"),
-    ])
+    @pytest.mark.parametrize(
+        "garbled,correct,source_fragment",
+        [
+            ("identiy", "identity", "identity formation is a lifelong process"),
+            # ("Dukhaim" → "Durkheim" is edit-distance-3, NOT caught by this
+            #  edit-distance-1 detector. That's validate_years's job. Removed.)
+            ("pschoanalytic", "psychoanalytic", "the psychoanalytic literature on identity"),
+            ("narcissstic", "narcissistic", "narcissistic personality structure"),
+            # Single-char garbles (the "emergs" class — true non-words):
+            # NOTE: "emerge"→"emerged" was removed in V18.19.2.5 — "emerge" is a real
+            # English word (the base verb), and the tuning's _is_legitimate_inflection_pair
+            # correctly suppresses it (emerge + "d" = emerged = past tense). Replaced
+            # with "developmet"→"development" (a true garbled non-word).
+            ("developmet", "development", "development is a key process"),
+            ("pschology", "psychology", "psychology studies the mind"),
+        ],
+    )
     def test_various_garble_forms_flagged(self, garbled, correct, source_fragment):
         text = f"The {garbled} concept appears here."
         _, issues = detect_dropped_letter_garble(text, "exec", source_fragment)
@@ -93,6 +104,7 @@ class TestOtherGarbleForms:
 # 3. No false positives on legitimate content
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestNoFalsePositives:
     def test_source_words_not_flagged(self):
         """Words that ARE in the source must never be flagged."""
@@ -104,12 +116,16 @@ class TestNoFalsePositives:
 
     def test_real_content_not_flagged(self):
         """Real summary sentences using source-grounded words must pass."""
-        source = ("Tausk introduced the term identity in 1919. Erikson defined "
-                  "ego identity as persistent sameness. Winnicott distinguished "
-                  "true self from false self. Kernberg formulated a three-step "
-                  "process of identity formation.")
-        text = ("Tausk introduced the identity term. Erikson defined ego identity "
-                "as persistent sameness. Winnicott distinguished true from false self.")
+        source = (
+            "Tausk introduced the term identity in 1919. Erikson defined "
+            "ego identity as persistent sameness. Winnicott distinguished "
+            "true self from false self. Kernberg formulated a three-step "
+            "process of identity formation."
+        )
+        text = (
+            "Tausk introduced the identity term. Erikson defined ego identity "
+            "as persistent sameness. Winnicott distinguished true from false self."
+        )
         _, issues = detect_dropped_letter_garble(text, "exec", source)
         dropped = [i for i in issues if i.detector == "dropped_letter"]
         assert len(dropped) == 0
@@ -134,6 +150,7 @@ class TestNoFalsePositives:
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Edge cases
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestEdgeCases:
     def test_empty_text_no_crash(self):
@@ -163,13 +180,9 @@ class TestEdgeCases:
         assert any(i.severity == "flag" for i in issues)
         # Explicitly enabled: the guarded repair fires (non-word + unique
         # candidate + single-paragraph corroboration all pass).
-        result, issues = detect_dropped_letter_garble(
-            text, "exec", source, auto_repair=True)
+        result, issues = detect_dropped_letter_garble(text, "exec", source, auto_repair=True)
         assert result == "The emerges of identity is key."
-        assert any(
-            i.severity == "fix" and "auto-repair" in i.detail
-            for i in issues
-        )
+        assert any(i.severity == "fix" and "auto-repair" in i.detail for i in issues)
 
     def test_ambiguous_garble_text_unchanged(self):
         """V18.20.3.4 (RC-3): with MULTIPLE edit-distance-1 candidates the
@@ -179,19 +192,16 @@ class TestEdgeCases:
         # "emergs" is distance-1 from BOTH "emerges" and "emerge".
         source = "It emerges and will emerge fully in time."
         text = "The emergs of identity is key."
-        result, issues = detect_dropped_letter_garble(
-            text, "exec", source, auto_repair=True)
+        result, issues = detect_dropped_letter_garble(text, "exec", source, auto_repair=True)
         assert result == text
-        assert any(
-            i.severity == "flag" and "likely garbled" in i.detail
-            for i in issues
-        )
+        assert any(i.severity == "flag" and "likely garbled" in i.detail for i in issues)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # V18.19.2.5 (tune): the 16 false positives from the V18.19.2.4 audit must be
 # suppressed by the new _is_legitimate_inflection_pair check.
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestV181925TuningSuppressesAuditFalsePositives:
     """The V18.19.2.4 audit found 16 false positives. V18.19.2.5 tuning must
@@ -200,22 +210,22 @@ class TestV181925TuningSuppressesAuditFalsePositives:
     # The 16 false positives from audit/results/audit_V18.19.2.4_2026-08-28.md
     # Format: (summary_word, source_word_that_triggered_the_FP)
     AUDIT_FALSE_POSITIVES = [
-        ("attempts", "attempt"),       # plural
-        ("author", "authors"),         # singular (source has plural)
-        ("clarifies", "clarified"),    # verb conjugation (3rd-person vs past)
+        ("attempts", "attempt"),  # plural
+        ("author", "authors"),  # singular (source has plural)
+        ("clarifies", "clarified"),  # verb conjugation (3rd-person vs past)
         ("consolidates", "consolidated"),  # verb conjugation
-        ("depiction", "depictions"),   # singular
-        ("describe", "described"),     # present vs past
-        ("drawn", "draw"),             # past participle
-        ("emerges", "emerge"),         # 3rd-person singular
+        ("depiction", "depictions"),  # singular
+        ("describe", "described"),  # present vs past
+        ("drawn", "draw"),  # past participle
+        ("emerges", "emerge"),  # 3rd-person singular
         ("identifies", "identities"),  # coincidental (different stems — may stay flagged)
-        ("opens", "open"),             # 3rd-person singular
-        ("paths", "path"),             # plural
-        ("seven", "seen"),             # coincidental (different words — may stay flagged)
-        ("splits", "split"),           # 3rd-person singular
-        ("surveys", "survey"),         # plural/3rd-person
-        ("treat", "great"),            # coincidental (different words — may stay flagged)
-        ("turns", "turn"),             # 3rd-person singular
+        ("opens", "open"),  # 3rd-person singular
+        ("paths", "path"),  # plural
+        ("seven", "seen"),  # coincidental (different words — may stay flagged)
+        ("splits", "split"),  # 3rd-person singular
+        ("surveys", "survey"),  # plural/3rd-person
+        ("treat", "great"),  # coincidental (different words — may stay flagged)
+        ("turns", "turn"),  # 3rd-person singular
     ]
 
     def test_at_least_13_of_16_audit_fps_suppressed(self):
@@ -238,12 +248,19 @@ class TestV181925TuningSuppressesAuditFalsePositives:
         """All the morphological-inflection FPs (plural/verb-conjugation) must be
         suppressed. Only the 3 coincidental-different-word FPs may remain."""
         morphological_fps = [
-            ("attempts", "attempt"), ("author", "authors"),
-            ("clarifies", "clarified"), ("consolidates", "consolidated"),
-            ("depiction", "depictions"), ("describe", "described"),
-            ("drawn", "draw"), ("emerges", "emerge"),
-            ("opens", "open"), ("paths", "path"),
-            ("splits", "split"), ("surveys", "survey"), ("turns", "turn"),
+            ("attempts", "attempt"),
+            ("author", "authors"),
+            ("clarifies", "clarified"),
+            ("consolidates", "consolidated"),
+            ("depiction", "depictions"),
+            ("describe", "described"),
+            ("drawn", "draw"),
+            ("emerges", "emerge"),
+            ("opens", "open"),
+            ("paths", "path"),
+            ("splits", "split"),
+            ("surveys", "survey"),
+            ("turns", "turn"),
         ]
         for summary_w, source_w in morphological_fps:
             source = f"The {source_w} appears in the source text here."

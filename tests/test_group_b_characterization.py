@@ -29,6 +29,7 @@ instance attributes.
 
 Run: ``pytest tests/test_group_b_characterization.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -60,9 +61,7 @@ from core.summarisation.summarizer import Summarizer
 # ═══════════════════════════════════════════════════════════════════════════
 
 # The IQ2_S model from the project's golden-standard test rig.
-IQ2_S_MODEL = (
-    "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest"
-)
+IQ2_S_MODEL = "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest"
 # A low-bit-but-not-IQ2_S model (Q2_K suffix) → exercises the IQ2_XXS branch.
 IQ2_XXS_MODEL = "some-model-name-Q2_K:latest"
 # A full-precision large model (14B ≥ 13B threshold, not low-bit).
@@ -141,6 +140,7 @@ def _reset_runtime_singletons():
     yield
     try:
         from core.summarisation import content_judge_impl
+
         content_judge_impl._warned_embedding_disabled = False
         content_judge_impl._warned_semantic_fallback = False
         content_judge_impl._st_model = None
@@ -148,6 +148,7 @@ def _reset_runtime_singletons():
         pass
     try:
         from core.summarisation import text_preprocessor_impl
+
         text_preprocessor_impl._warned_no_embed_model = False
         if hasattr(text_preprocessor_impl, "_SPACY_NLP"):
             text_preprocessor_impl._SPACY_NLP = None
@@ -155,6 +156,7 @@ def _reset_runtime_singletons():
         pass
     try:
         from core.llm import llm_provider_impl
+
         llm_provider_impl._keep_alive_cache = None
     except Exception:
         pass
@@ -163,6 +165,7 @@ def _reset_runtime_singletons():
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. IQ2_S overrides (V18.15.4.0 + V18.15.6.0)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestIQ2SOverrides:
     """V18.15.4.0: deadline raised to 2400s for IQ2_S 27B.
@@ -176,15 +179,11 @@ class TestIQ2SOverrides:
 
     def test_iq2_s_timeout_raised_to_1200(self, monkeypatch):
         s = _make_summarizer(monkeypatch, model=IQ2_S_MODEL)
-        assert s.timeout == 1200, (
-            "V18.15.6.0: IQ2_S 27B HTTP timeout must be raised to 1200s"
-        )
+        assert s.timeout == 1200, "V18.15.6.0: IQ2_S 27B HTTP timeout must be raised to 1200s"
 
     def test_iq2_s_academic_rigor_not_auto_enabled(self, monkeypatch):
         """IQ2_S is low-bit → academic_rigor must NOT auto-enable (even for academic_paper)."""
-        s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL, source_type="academic_paper"
-        )
+        s = _make_summarizer(monkeypatch, model=IQ2_S_MODEL, source_type="academic_paper")
         assert s.academic_rigor is False, (
             "Low-bit quant (IQ2_S) must not auto-enable academic_rigor"
         )
@@ -193,6 +192,7 @@ class TestIQ2SOverrides:
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. IQ2_XXS overrides (V18.2.33) — low-bit but NOT IQ2_S
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestIQ2XXSOverrides:
     """V18.2.33: HTTP timeout reduced to 300s for IQ2_XXS; deadline raised to 1200s."""
@@ -214,13 +214,15 @@ class TestIQ2XXSOverrides:
 # 3. max_output_tokens capping (V18.2.37d / V18.3.6)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestMaxOutputTokensCapping:
     """V18.2.37d + V18.3.6: low-bit OR small models cap output at 8192.
     Full-precision large models force output to at least 16000."""
 
     def test_low_bit_model_caps_output_to_8192(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL,
+            monkeypatch,
+            model=IQ2_S_MODEL,
             summarisation_max_output_tokens=16000,
         )
         assert s.request.summarisation_max_output_tokens == 8192, (
@@ -230,7 +232,8 @@ class TestMaxOutputTokensCapping:
     def test_small_model_caps_output_to_8192(self, monkeypatch):
         # gemma3:12b is classified small (12B < 13B threshold)
         s = _make_summarizer(
-            monkeypatch, model="gemma3:12b",
+            monkeypatch,
+            model="gemma3:12b",
             summarisation_max_output_tokens=16000,
         )
         assert s.request.summarisation_max_output_tokens == 8192, (
@@ -239,7 +242,8 @@ class TestMaxOutputTokensCapping:
 
     def test_low_bit_output_already_under_cap_unchanged(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL,
+            monkeypatch,
+            model=IQ2_S_MODEL,
             summarisation_max_output_tokens=4096,
         )
         assert s.request.summarisation_max_output_tokens == 4096, (
@@ -248,7 +252,8 @@ class TestMaxOutputTokensCapping:
 
     def test_full_precision_large_model_forces_output_to_16000(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
             summarisation_max_output_tokens=4096,
         )
         assert s.request.summarisation_max_output_tokens == 16000, (
@@ -259,6 +264,7 @@ class TestMaxOutputTokensCapping:
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. max_bullets_per_chapter (V13.45.5 — no hard cap)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestMaxBulletsPerChapter:
     """V13.45.5: REMOVED the hard-coded bullet cap. Set to 99999 (effectively unlimited)."""
@@ -271,7 +277,9 @@ class TestMaxBulletsPerChapter:
 
     def test_max_bullets_unaffected_by_compact_mode(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL, compact_summaries=True,
+            monkeypatch,
+            model=IQ2_S_MODEL,
+            compact_summaries=True,
         )
         assert s.max_bullets_per_chapter == 99999, (
             "Even in compact mode, bullets must not be capped (only output tokens shrink)"
@@ -281,6 +289,7 @@ class TestMaxBulletsPerChapter:
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. primary_model default
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPrimaryModelDefault:
     def test_empty_model_defaults_to_gemma3(self, monkeypatch):
@@ -298,13 +307,16 @@ class TestPrimaryModelDefault:
 # 6-7. academic_rigor auto-enable
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestAcademicRigorAutoEnable:
     """academic_rigor auto-enables for academic_paper source when the model is
     full-precision AND large (≥13B). Low-bit / small models do NOT auto-enable."""
 
     def test_auto_enables_for_academic_paper_with_large_fp_model(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL, source_type="academic_paper",
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            source_type="academic_paper",
         )
         assert s.academic_rigor is True, (
             "academic_paper + full-precision large model must auto-enable academic_rigor"
@@ -312,13 +324,17 @@ class TestAcademicRigorAutoEnable:
 
     def test_not_auto_enabled_for_normal_book(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL, source_type="normal_book",
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            source_type="normal_book",
         )
         assert s.academic_rigor is False
 
     def test_not_auto_enabled_for_low_bit_even_if_academic(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL, source_type="academic_paper",
+            monkeypatch,
+            model=IQ2_S_MODEL,
+            source_type="academic_paper",
         )
         assert s.academic_rigor is False, (
             "Low-bit quant must NOT auto-enable academic_rigor (would over-stress the model)"
@@ -326,8 +342,10 @@ class TestAcademicRigorAutoEnable:
 
     def test_explicit_academic_rigor_respected(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL,
-            source_type="normal_book", academic_rigor=True,
+            monkeypatch,
+            model=IQ2_S_MODEL,
+            source_type="normal_book",
+            academic_rigor=True,
         )
         assert s.academic_rigor is True, (
             "Explicit academic_rigor=True from request must be honored even for low-bit"
@@ -337,6 +355,7 @@ class TestAcademicRigorAutoEnable:
 # ═══════════════════════════════════════════════════════════════════════════
 # 8. compact_summaries mode (V10.20.0)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestCompactSummaries:
     """V10.20.0: compact_summaries caps output at min(orig, 2048).
@@ -352,8 +371,10 @@ class TestCompactSummaries:
         # Low-bit model: the 8192-cap branch only caps DOWN (never forces UP),
         # so compact's 2048 cap survives.
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL,
-            summarisation_max_output_tokens=16000, compact_summaries=True,
+            monkeypatch,
+            model=IQ2_S_MODEL,
+            summarisation_max_output_tokens=16000,
+            compact_summaries=True,
         )
         assert s.request.summarisation_max_output_tokens == 2048, (
             "compact_summaries + low-bit model must cap output to 2048 "
@@ -366,8 +387,10 @@ class TestCompactSummaries:
         # Pre-V18.20.1.0 this was a latent bug: compact set 2048, then 16000-force
         # raised it back to 16000, defeating compact mode. Now fixed.
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            summarisation_max_output_tokens=16000, compact_summaries=True,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            summarisation_max_output_tokens=16000,
+            compact_summaries=True,
         )
         assert s.request.summarisation_max_output_tokens == 2048, (
             "V18.20.1.0 (D10 fix): compact_summaries' 2048 cap must survive the "
@@ -377,8 +400,10 @@ class TestCompactSummaries:
 
     def test_compact_does_not_raise_smaller_output(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=IQ2_S_MODEL,
-            summarisation_max_output_tokens=1024, compact_summaries=True,
+            monkeypatch,
+            model=IQ2_S_MODEL,
+            summarisation_max_output_tokens=1024,
+            compact_summaries=True,
         )
         # min(1024, 2048) = 1024, and low-bit branch doesn't force UP → stays 1024
         assert s.request.summarisation_max_output_tokens == 1024, (
@@ -390,20 +415,26 @@ class TestCompactSummaries:
 # 9. overdeliver_target clamping
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOverdeliverClamping:
     """overdeliver_target is clamped to [coverage_threshold, 1.0]."""
 
     def test_overdeliver_target_clamped_to_max_1(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            overdeliver_enabled=True, overdeliver_target=1.5,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            overdeliver_enabled=True,
+            overdeliver_target=1.5,
         )
         assert s.overdeliver_target <= 1.0
 
     def test_overdeliver_target_at_least_coverage_threshold(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            coverage_threshold=0.85, overdeliver_enabled=True, overdeliver_target=0.5,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            coverage_threshold=0.85,
+            overdeliver_enabled=True,
+            overdeliver_target=0.5,
         )
         assert s.overdeliver_target >= s.coverage_threshold, (
             "overdeliver_target must not fall below coverage_threshold"
@@ -411,8 +442,11 @@ class TestOverdeliverClamping:
 
     def test_overdeliver_disabled_uses_coverage_threshold(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            coverage_threshold=0.80, overdeliver_enabled=False, overdeliver_target=0.95,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            coverage_threshold=0.80,
+            overdeliver_enabled=False,
+            overdeliver_target=0.95,
         )
         assert s._effective_target == s.coverage_threshold, (
             "When overdeliver disabled, _effective_target must equal coverage_threshold"
@@ -422,6 +456,7 @@ class TestOverdeliverClamping:
 # ═══════════════════════════════════════════════════════════════════════════
 # 10. model profile assignment
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestModelProfileAssignment:
     """The model profile (from core.llm.model_profiles) drives thinking-strip
@@ -448,12 +483,15 @@ class TestModelProfileAssignment:
 # 11. heavy_model fallback
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestHeavyModelFallback:
     """When heavy_model equals primary_model (or is empty), heavy fallback is disabled."""
 
     def test_heavy_equals_primary_disables_fallback(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL, heavy_model=LARGE_FP_MODEL,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            heavy_model=LARGE_FP_MODEL,
         )
         assert s.heavy_model is None, (
             "heavy_model == primary_model must disable fallback (set to None)"
@@ -465,7 +503,9 @@ class TestHeavyModelFallback:
 
     def test_distinct_heavy_model_preserved(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model="gemma3:12b", heavy_model=LARGE_FP_MODEL,
+            monkeypatch,
+            model="gemma3:12b",
+            heavy_model=LARGE_FP_MODEL,
         )
         assert s.heavy_model == LARGE_FP_MODEL
 
@@ -473,6 +513,7 @@ class TestHeavyModelFallback:
 # ═══════════════════════════════════════════════════════════════════════════
 # 12. per-model temperature enforcement (model_temperatures setting)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPerModelTemperatureEnforcement:
     """If Settings().model_temperatures defines a (min_temp, rec_temp) for a
@@ -482,8 +523,10 @@ class TestPerModelTemperatureEnforcement:
         # qwen2.5 pattern → min 0.6, rec 0.6; request temp 0.2 < 0.6 → raised to 0.6
         overrides = {"model_temperatures": {"qwen2.5": (0.6, 0.6)}}
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            temperature=0.2, settings_overrides=overrides,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            temperature=0.2,
+            settings_overrides=overrides,
         )
         assert s.temperature == 0.6, (
             "Per-model temperature enforcement must raise 0.2 → 0.6 for qwen2.5"
@@ -492,15 +535,17 @@ class TestPerModelTemperatureEnforcement:
     def test_temperature_above_min_unchanged(self, monkeypatch):
         overrides = {"model_temperatures": {"qwen2.5": (0.6, 0.6)}}
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL,
-            temperature=0.8, settings_overrides=overrides,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            temperature=0.8,
+            settings_overrides=overrides,
         )
-        assert s.temperature == 0.8, (
-            "Temperature already ≥ model min must not be lowered"
-        )
+        assert s.temperature == 0.8, "Temperature already ≥ model min must not be lowered"
 
     def test_no_model_temperatures_setting_leaves_temp_unchanged(self, monkeypatch):
         s = _make_summarizer(
-            monkeypatch, model=LARGE_FP_MODEL, temperature=0.2,
+            monkeypatch,
+            model=LARGE_FP_MODEL,
+            temperature=0.2,
         )
         assert s.temperature == 0.2

@@ -104,23 +104,23 @@ class VoiceManager:
             if not wav.exists():
                 self._try_copy_voice_from_neutts(name, wav, txt)
 
-    def _try_copy_voice_from_neutts(
-        self, name: str, dest_wav: Path, dest_txt: Path
-    ) -> None:
+    def _try_copy_voice_from_neutts(self, name: str, dest_wav: Path, dest_txt: Path) -> None:
         """If the NeuTTS-Air project is installed, copy a preset voice."""
         from utils.settings import Settings
+
         s = Settings()
-        neutts_path = Path(s.get(
-            "tts.neutts_project_path",
-            r"G:\Program Files\neutts-air",
-        ))
+        neutts_path = Path(
+            s.get(
+                "tts.neutts_project_path",
+                r"G:\Program Files\neutts-air",
+            )
+        )
         src_wav = neutts_path / "samples" / f"{name}.wav"
         src_txt = neutts_path / "samples" / f"{name}.txt"
         try:
             if src_wav.exists():
                 shutil.copy2(src_wav, dest_wav)
-                self.log(f"  ✅ Copied preset voice '{name}' from NeuTTS project",
-                         "DEBUG")
+                self.log(f"  ✅ Copied preset voice '{name}' from NeuTTS project", "DEBUG")
             if src_txt.exists():
                 shutil.copy2(src_txt, dest_txt)
             elif not dest_txt.exists() and dest_wav.exists():
@@ -144,14 +144,16 @@ class VoiceManager:
         for name, desc in _PRESET_VOICES:
             wav = self.voices_dir / f"{name}.wav"
             txt = self.voices_dir / f"{name}.txt"
-            voices.append({
-                "name": name,
-                "description": desc,
-                "has_wav": wav.exists(),
-                "has_txt": txt.exists(),
-                "wav_path": str(wav),
-                "txt_path": str(txt),
-            })
+            voices.append(
+                {
+                    "name": name,
+                    "description": desc,
+                    "has_wav": wav.exists(),
+                    "has_txt": txt.exists(),
+                    "wav_path": str(wav),
+                    "txt_path": str(txt),
+                }
+            )
             seen_names.add(name)
 
         # User-added voices (any other wav+txt pairs in the folder)
@@ -160,14 +162,16 @@ class VoiceManager:
             if name in seen_names:
                 continue
             txt_path = self.voices_dir / f"{name}.txt"
-            voices.append({
-                "name": name,
-                "description": "User-added voice",
-                "has_wav": True,
-                "has_txt": txt_path.exists(),
-                "wav_path": str(wav_path),
-                "txt_path": str(txt_path),
-            })
+            voices.append(
+                {
+                    "name": name,
+                    "description": "User-added voice",
+                    "has_wav": True,
+                    "has_txt": txt_path.exists(),
+                    "wav_path": str(wav_path),
+                    "txt_path": str(txt_path),
+                }
+            )
             seen_names.add(name)
 
         return voices
@@ -203,6 +207,7 @@ class VoiceManager:
         Returns the path to the saved wav. Raises on invalid input.
         """
         import re
+
         # Sanitize name: keep alphanumeric + underscore, lowercase
         clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", name.strip()).lower()
         if not clean_name:

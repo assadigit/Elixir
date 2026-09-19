@@ -160,10 +160,20 @@ class VibeVoiceEngine(TTSEngine):
 
         # Copy ONLY essential system variables (NOT PATH — we rebuild it)
         _ESSENTIAL_VARS = [
-            "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "USERNAME",
-            "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
-            "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
-            "OS", "COMPUTERNAME", "HOMEDRIVE", "HOMEPATH",
+            "SYSTEMROOT",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "USERNAME",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "PROGRAMDATA",
+            "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE",
+            "OS",
+            "COMPUTERNAME",
+            "HOMEDRIVE",
+            "HOMEPATH",
             "PYTHONPATH",  # so the subprocess can find the project modules
         ]
         for var in _ESSENTIAL_VARS:
@@ -184,21 +194,26 @@ class VibeVoiceEngine(TTSEngine):
         # Add torch/lib first
         try:
             import torch as _torch_for_dlls
+
             _torch_lib = str(Path(_torch_for_dlls.__file__).parent / "lib")
             if Path(_torch_lib).exists():
                 _clean_path_parts.append(_torch_lib)
                 env["TORCH_CUDA_DLL_PATH"] = _torch_lib
         except Exception:
-            logger.debug("best-effort op failed [vibevoice_engine:_ensure_model:L187]", exc_info=True)
+            logger.debug(
+                "best-effort op failed [vibevoice_engine:_ensure_model:L187]", exc_info=True
+            )
 
         # Add essential Windows directories
         if sys.platform == "win32":
             _systemroot = os.environ.get("SYSTEMROOT", r"C:\Windows")
-            _clean_path_parts.extend([
-                os.path.join(_systemroot, "System32"),
-                _systemroot,
-                os.path.join(_systemroot, "System32", "Wbem"),
-            ])
+            _clean_path_parts.extend(
+                [
+                    os.path.join(_systemroot, "System32"),
+                    _systemroot,
+                    os.path.join(_systemroot, "System32", "Wbem"),
+                ]
+            )
 
         # Add Python directory
         _python_dir = str(Path(sys.executable).parent)
@@ -215,19 +230,20 @@ class VibeVoiceEngine(TTSEngine):
         # the neutts quit→wait→kill teardown contract written once. The
         # clean-env logic above is untouched.
         sub = PersistentJsonSubprocess(
-            name="VibeVoice", log=self.log,
-            stderr_prefix="[vibevoice]", stderr_level="INFO")
+            name="VibeVoice", log=self.log, stderr_prefix="[vibevoice]", stderr_level="INFO"
+        )
         sub.spawn([sys.executable, script_path], env=env)
         self._sub = sub
 
         # Send load command
-        if not sub.send({
-            "action": "load",
-            "model_path": str(self._model_path),
-        }):
+        if not sub.send(
+            {
+                "action": "load",
+                "model_path": str(self._model_path),
+            }
+        ):
             self._kill_subprocess("cannot send load command")
-            raise RuntimeError(
-                "VibeVoice subprocess not accepting the load command")
+            raise RuntimeError("VibeVoice subprocess not accepting the load command")
 
         # Wait for "ready" (timeout 300s — model is 2.6 GB, loading can
         # take a while on first load from disk; a REAL timeout now: the
@@ -245,15 +261,14 @@ class VibeVoiceEngine(TTSEngine):
             if status == "loading":
                 self.log(f"  🔄 Model loading (device: {msg.get('device', '?')})...", "INFO")
             elif status == "ready":
-                self._device = msg.get('device', 'unknown')
+                self._device = msg.get("device", "unknown")
                 self.log(f"  ✅ VibeVoice ready on {self._device.upper()}", "INFO")
                 self._loaded = True
                 return
             elif status == "error":
                 # V18.20.4.4 (W-c2): kill before raising — a reported load
                 # error can leave the subprocess alive holding VRAM.
-                self._kill_subprocess(
-                    f"load error: {msg.get('error', 'unknown')}")
+                self._kill_subprocess(f"load error: {msg.get('error', 'unknown')}")
                 raise RuntimeError(f"Model load failed: {msg.get('error', 'unknown')}")
 
         # V18.20.4.4 (W-c2): kill the still-loading subprocess before
@@ -264,8 +279,7 @@ class VibeVoiceEngine(TTSEngine):
         if sub.eof or not sub.alive:
             self._kill_subprocess("stdout closed during model load")
         else:
-            self._kill_subprocess(
-                f"model load not ready (timeout, {VIBEVOICE_LOAD_TIMEOUT_S}s)")
+            self._kill_subprocess(f"model load not ready (timeout, {VIBEVOICE_LOAD_TIMEOUT_S}s)")
         raise RuntimeError("VibeVoice subprocess failed to load model (timeout)")
 
     def synthesize(
@@ -297,7 +311,7 @@ class VibeVoiceEngine(TTSEngine):
             # Strip "vibevoice:" prefix if present
             voice_name = voice or self._default_voice
             if voice_name and voice_name.startswith("vibevoice:"):
-                voice_name = voice_name[len("vibevoice:"):]
+                voice_name = voice_name[len("vibevoice:") :]
 
             # V11.40.1: GUARDRAIL — explicitly verify we're using VibeVoice
             self.log("  ═══ VibeVoiceEngine.synthesize ═══", "INFO")
@@ -311,16 +325,15 @@ class VibeVoiceEngine(TTSEngine):
             # - cfg_scale controls how closely to match the voice preset
             # - text prefixes can influence prosody (the LLM understands them)
             style_profiles = {
-                "natural":      (1.5, ""),
+                "natural": (1.5, ""),
                 "enthusiastic": (2.0, "[enthusiastic] "),
-                "calm":         (1.0, "[calm, soothing] "),
-                "inspiring":    (2.0, "[inspiring] "),
-                "authoritative":(1.8, "[authoritative] "),
-                "friendly":     (1.5, "[friendly] "),
-                "dramatic":     (2.5, "[dramatic] "),
+                "calm": (1.0, "[calm, soothing] "),
+                "inspiring": (2.0, "[inspiring] "),
+                "authoritative": (1.8, "[authoritative] "),
+                "friendly": (1.5, "[friendly] "),
+                "dramatic": (2.5, "[dramatic] "),
             }
-            cfg_scale, emotion_prefix = style_profiles.get(
-                style, style_profiles["natural"])
+            cfg_scale, emotion_prefix = style_profiles.get(style, style_profiles["natural"])
             synth_text = text
             if emotion_prefix:
                 synth_text = emotion_prefix + text
@@ -351,7 +364,8 @@ class VibeVoiceEngine(TTSEngine):
                 raise RuntimeError(
                     "VibeVoice subprocess not accepting commands. "
                     "Podcast failed — no retry (to avoid the reloading "
-                    "death spiral).")
+                    "death spiral)."
+                )
 
             # Wait for response (timeout 600s = 10 min per line)
             # V11.49.0: increased from 120s — VibeVoice at 0.6x realtime
@@ -367,15 +381,13 @@ class VibeVoiceEngine(TTSEngine):
             while True:
                 remaining = VIBEVOICE_LINE_TIMEOUT_S - (time.time() - start)
                 if remaining <= 0:
-                    self.log(
-                        f"  ❌ Subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s)",
-                        "ERROR")
-                    self._kill_subprocess(
-                        f"timeout ({VIBEVOICE_LINE_TIMEOUT_S}s)")
+                    self.log(f"  ❌ Subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s)", "ERROR")
+                    self._kill_subprocess(f"timeout ({VIBEVOICE_LINE_TIMEOUT_S}s)")
                     # V11.57.0: RAISE — don't return None.
                     raise RuntimeError(
                         "VibeVoice subprocess timed out (600s). Podcast failed — "
-                        "no retry (to avoid the reloading death spiral).")
+                        "no retry (to avoid the reloading death spiral)."
+                    )
                 msg = self._sub.read_json(min(remaining, 5.0))
                 if msg is None:
                     if self._sub.eof or not self._sub.alive:
@@ -387,15 +399,14 @@ class VibeVoiceEngine(TTSEngine):
                         raise RuntimeError(
                             "VibeVoice subprocess crashed. Podcast failed — "
                             "no retry (to avoid the reloading death spiral). "
-                            "Check the live log for the crash reason.")
+                            "Check the live log for the crash reason."
+                        )
                     # V11.62.0: periodic progress — friendly, no scary
                     # numbers. Just elapsed time so the user knows it works.
                     now = time.time()
                     if now - last_progress_time > 5:
                         elapsed = now - start
-                        self.log(
-                            f"  ⏳ Still generating... ({elapsed:.0f}s elapsed)",
-                            "INFO")
+                        self.log(f"  ⏳ Still generating... ({elapsed:.0f}s elapsed)", "INFO")
                         last_progress_time = now
                     continue
                 status = msg.get("status", "")
@@ -403,33 +414,34 @@ class VibeVoiceEngine(TTSEngine):
                     # V11.62.0: friendlier progress message — don't show
                     # the scary token counter.
                     if not progress_shown:
-                        self.log("  ⏳ Generating speech (this takes a "
-                                "few seconds on GPU, longer on CPU)...",
-                                "INFO")
+                        self.log(
+                            "  ⏳ Generating speech (this takes a "
+                            "few seconds on GPU, longer on CPU)...",
+                            "INFO",
+                        )
                         progress_shown = True
                 elif status == "ok":
                     gen_time = time.time() - start
                     duration = msg.get("duration", 0)
                     self.log(
-                        f"  ✅ VibeVoice complete: {duration}s audio "
-                        f"in {gen_time:.1f}s", "INFO")
+                        f"  ✅ VibeVoice complete: {duration}s audio in {gen_time:.1f}s", "INFO"
+                    )
                     # V11.55.0: check subprocess health after generation
                     if self._sub and not self._sub.alive:
                         self.log(
                             f"  ⚠️ Subprocess died after generation "
                             f"(exit code {self._sub.returncode})",
-                            "WARNING")
+                            "WARNING",
+                        )
                         self._kill_subprocess("died after ok")
                     if out_path.exists():
                         file_size = out_path.stat().st_size
-                        self.log(
-                            f"  ✅ Verified: {out_path.name} "
-                            f"({file_size // 1024} KB)", "INFO")
+                        self.log(f"  ✅ Verified: {out_path.name} ({file_size // 1024} KB)", "INFO")
                         return out_path
                     self.log("  ❌ File not written", "ERROR")
                     raise RuntimeError("VibeVoice: file not written")
                 elif status == "error":
-                    err_msg = msg.get('error', 'unknown')
+                    err_msg = msg.get("error", "unknown")
                     self.log(f"  ❌ Generation error: {err_msg}", "ERROR")
                     self._kill_subprocess(f"generation error: {err_msg[:80]}")
                     # V11.57.0: RAISE — don't return None.

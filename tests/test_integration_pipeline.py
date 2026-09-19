@@ -24,6 +24,7 @@ NameError, ImportError, UnboundLocalError, or other wiring crash.
 
 Run: ``pytest tests/test_integration_pipeline.py -v --no-cov``
 """
+
 from __future__ import annotations
 
 import sys
@@ -119,9 +120,7 @@ _MOCK_FLASHCARD_RESPONSE = (
 )
 
 _MOCK_HEADING_LABEL_RESPONSE = (
-    "1 Introduction (page 1)\n"
-    "2 Main Content (page 2)\n"
-    "3 Conclusion (page 3)\n"
+    "1 Introduction (page 1)\n2 Main Content (page 2)\n3 Conclusion (page 3)\n"
 )
 
 
@@ -164,13 +163,30 @@ def _mock_safe_ollama_request(method, url, **kwargs):
 
 # ── Mock PDF analysis ──────────────────────────────────────────────────────
 
+
 def _make_mock_analysis():
     """Create a mock PdfAnalysisResult."""
     from core.models import PageAnalysis, PdfAnalysisResult, PdfRecommendation
+
     per_page = [
-        PageAnalysis(page_num=1, is_scanned=False, extracted_text_preview="Introduction", recommended_action="skip"),
-        PageAnalysis(page_num=2, is_scanned=False, extracted_text_preview="Main content", recommended_action="skip"),
-        PageAnalysis(page_num=3, is_scanned=False, extracted_text_preview="Conclusion", recommended_action="skip"),
+        PageAnalysis(
+            page_num=1,
+            is_scanned=False,
+            extracted_text_preview="Introduction",
+            recommended_action="skip",
+        ),
+        PageAnalysis(
+            page_num=2,
+            is_scanned=False,
+            extracted_text_preview="Main content",
+            recommended_action="skip",
+        ),
+        PageAnalysis(
+            page_num=3,
+            is_scanned=False,
+            extracted_text_preview="Conclusion",
+            recommended_action="skip",
+        ),
     ]
     return PdfAnalysisResult(
         total_pages=3,
@@ -200,6 +216,7 @@ The conclusion summarizes the findings and suggests directions for future work. 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def integration_setup(tmp_path):
     """Set up a complete mock environment for integration testing."""
@@ -222,8 +239,10 @@ def integration_setup(tmp_path):
     Settings._test_override = None
 
     # Patch Settings to use temp paths
-    with patch.object(Settings, "_settings_dir", settings_dir), \
-         patch.object(Settings, "_settings_file", settings_dir / "settings.json"):
+    with (
+        patch.object(Settings, "_settings_dir", settings_dir),
+        patch.object(Settings, "_settings_file", settings_dir / "settings.json"),
+    ):
         settings = Settings()
         # Set minimal required settings
         settings.set("summarisation.provider", "ollama")
@@ -244,6 +263,7 @@ def integration_setup(tmp_path):
 
         # Create ConversionRequest
         from tests.fixtures import make_minimal_request
+
         request = make_minimal_request(
             input_path=str(fake_pdf),
             output_dir=str(output_dir),
@@ -277,6 +297,7 @@ def integration_setup(tmp_path):
 
 
 # ── Integration test ──────────────────────────────────────────────────────
+
 
 class TestPipelineIntegration:
     """End-to-end pipeline integration test with mocked external dependencies.
@@ -312,45 +333,68 @@ class TestPipelineIntegration:
         )
 
         # Patch ALL external dependencies
-        with patch("core.pdf.analyzer.PdfAnalyzer.analyze", return_value=_make_mock_analysis()), \
-             patch("core.pdf.toc_extractor.TocExtractor.extract", return_value=[
-                 ("1 Introduction", 1), ("2 Main Content", 2), ("3 Conclusion", 3),
-             ]), \
-             patch("core.pdf.toc_extractor.TocExtractor.locate_headings", return_value=None), \
-             patch("core.ocr.service.OCRService.process_pdf", return_value={
-                 1: {"text": "Introduction text", "markdown": "Introduction text"},
-                 2: {"text": "Main content text", "markdown": "Main content text"},
-                 3: {"text": "Conclusion text", "markdown": "Conclusion text"},
-             }), \
-             patch("core.ocr.service.OCRService.build_markdown", return_value=_MOCK_MARKDOWN), \
-             patch("core.pdf.toc_extractor.TocExtractor.extract", return_value=[
-                 ("1 Introduction", 1), ("2 Main Content", 2), ("3 Conclusion", 3),
-             ]), \
-             patch("utils.network.safe_ollama_request", side_effect=_mock_safe_ollama_request), \
-             patch("core.system.hardware_monitor.detect_gpu_profile_from_system",
-                   return_value=("Mock GPU", None)), \
-             patch("core.system.hardware_monitor.HardwareMonitor._find_nvidia_smi",
-                   return_value=""), \
-             patch("core.system.thermal_safety.ThermalSafetyController.preflight_check",
-                   return_value=(True, "OK")), \
-             patch("core.system.thermal_safety.ThermalSafetyController.start"), \
-             patch("core.system.thermal_safety.check_output_count_safety"), \
-             patch("core.system.thermal_safety.recommend_thermal_safe_models"), \
-             patch("core.pdf.layout_reorder.LayoutReorder.is_available", return_value=False), \
-             patch("core.summarisation.text_preprocessor.repair_hyphenation",
-                   side_effect=lambda x: x), \
-             patch("core.summarisation.text_preprocessor.smart_paragraph_joining",
-                   side_effect=lambda x: x), \
-             patch("core.summarisation.text_preprocessor.remove_headers_footers",
-                   side_effect=lambda x: x):
-
+        with (
+            patch("core.pdf.analyzer.PdfAnalyzer.analyze", return_value=_make_mock_analysis()),
+            patch(
+                "core.pdf.toc_extractor.TocExtractor.extract",
+                return_value=[
+                    ("1 Introduction", 1),
+                    ("2 Main Content", 2),
+                    ("3 Conclusion", 3),
+                ],
+            ),
+            patch("core.pdf.toc_extractor.TocExtractor.locate_headings", return_value=None),
+            patch(
+                "core.ocr.service.OCRService.process_pdf",
+                return_value={
+                    1: {"text": "Introduction text", "markdown": "Introduction text"},
+                    2: {"text": "Main content text", "markdown": "Main content text"},
+                    3: {"text": "Conclusion text", "markdown": "Conclusion text"},
+                },
+            ),
+            patch("core.ocr.service.OCRService.build_markdown", return_value=_MOCK_MARKDOWN),
+            patch(
+                "core.pdf.toc_extractor.TocExtractor.extract",
+                return_value=[
+                    ("1 Introduction", 1),
+                    ("2 Main Content", 2),
+                    ("3 Conclusion", 3),
+                ],
+            ),
+            patch("utils.network.safe_ollama_request", side_effect=_mock_safe_ollama_request),
+            patch(
+                "core.system.hardware_monitor.detect_gpu_profile_from_system",
+                return_value=("Mock GPU", None),
+            ),
+            patch("core.system.hardware_monitor.HardwareMonitor._find_nvidia_smi", return_value=""),
+            patch(
+                "core.system.thermal_safety.ThermalSafetyController.preflight_check",
+                return_value=(True, "OK"),
+            ),
+            patch("core.system.thermal_safety.ThermalSafetyController.start"),
+            patch("core.system.thermal_safety.check_output_count_safety"),
+            patch("core.system.thermal_safety.recommend_thermal_safe_models"),
+            patch("core.pdf.layout_reorder.LayoutReorder.is_available", return_value=False),
+            patch(
+                "core.summarisation.text_preprocessor.repair_hyphenation", side_effect=lambda x: x
+            ),
+            patch(
+                "core.summarisation.text_preprocessor.smart_paragraph_joining",
+                side_effect=lambda x: x,
+            ),
+            patch(
+                "core.summarisation.text_preprocessor.remove_headers_footers",
+                side_effect=lambda x: x,
+            ),
+        ):
             # Run the conversion
             result = converter.convert()
 
         # Verify the conversion didn't crash
         assert result is not None, "convert() returned None"
-        assert isinstance(result, ConversionResult), \
+        assert isinstance(result, ConversionResult), (
             f"convert() should return ConversionResult, got {type(result)}"
+        )
 
         # The conversion may succeed or fail (depending on mock quality),
         # but it MUST NOT crash with NameError/ImportError/UnboundLocalError.
@@ -377,23 +421,34 @@ class TestPipelineIntegration:
         )
 
         try:
-            with patch("core.pdf.analyzer.PdfAnalyzer.analyze", return_value=_make_mock_analysis()), \
-                 patch("core.pdf.toc_extractor.TocExtractor.extract", return_value=[
-                     ("1 Introduction", 1), ("2 Main Content", 2),
-                 ]), \
-                 patch("core.ocr.service.OCRService.process_pdf", return_value={
-                     1: {"text": "text", "markdown": "text"},
-                 }), \
-                 patch("core.ocr.service.OCRService.build_markdown", return_value=_MOCK_MARKDOWN):
-
+            with (
+                patch("core.pdf.analyzer.PdfAnalyzer.analyze", return_value=_make_mock_analysis()),
+                patch(
+                    "core.pdf.toc_extractor.TocExtractor.extract",
+                    return_value=[
+                        ("1 Introduction", 1),
+                        ("2 Main Content", 2),
+                    ],
+                ),
+                patch(
+                    "core.ocr.service.OCRService.process_pdf",
+                    return_value={
+                        1: {"text": "text", "markdown": "text"},
+                    },
+                ),
+                patch("core.ocr.service.OCRService.build_markdown", return_value=_MOCK_MARKDOWN),
+            ):
                 from core.pipeline.conversion.extraction import run_extraction
+
                 result = run_extraction(converter=converter)
 
             # Must not crash — verify it returns a proper result
             from core.models import ConversionResult
             from core.pipeline.conversion.extraction import ExtractionResult
-            assert isinstance(result, (ExtractionResult, ConversionResult)), \
+
+            assert isinstance(result, (ExtractionResult, ConversionResult)), (
                 f"run_extraction should return ExtractionResult or ConversionResult, got {type(result)}"
+            )
         finally:
             # V18.2.27 (warnings fix): close the conv_logger file handle to
             # avoid ResourceWarning: unclosed file in test teardown.
@@ -421,13 +476,19 @@ class TestPipelineIntegration:
 
             mock_analysis = _make_mock_analysis()
             mock_segments = [
-                Segment(heading="1 Introduction", content="Intro text",
-                        start_page=1, end_page=1, segment_type="chapter"),
+                Segment(
+                    heading="1 Introduction",
+                    content="Intro text",
+                    start_page=1,
+                    end_page=1,
+                    segment_type="chapter",
+                ),
             ]
 
-            with patch("core.segmentation.Segmenter.segment", return_value=mock_segments), \
-                 patch("core.pdf.toc_extractor.TocExtractor.locate_headings", return_value=None):
-
+            with (
+                patch("core.segmentation.Segmenter.segment", return_value=mock_segments),
+                patch("core.pdf.toc_extractor.TocExtractor.locate_headings", return_value=None),
+            ):
                 result = run_segmentation(
                     converter=converter,
                     raw_markdown=_MOCK_MARKDOWN,
@@ -436,8 +497,10 @@ class TestPipelineIntegration:
                 )
 
             from core.pipeline.conversion.segmentation import SegmentationResult
-            assert isinstance(result, SegmentationResult), \
+
+            assert isinstance(result, SegmentationResult), (
                 f"run_segmentation should return SegmentationResult, got {type(result)}"
+            )
             assert len(result.segments) > 0
         finally:
             # V18.2.27 (warnings fix): close the conv_logger file handle.
@@ -465,9 +528,15 @@ class TestPipelineIntegration:
 
         try:
             from core.pipeline.conversion.output_save import run_output_save
+
             mock_segments = [
-                Segment(heading="1 Introduction", content="Intro text here.",
-                        start_page=1, end_page=1, segment_type="chapter"),
+                Segment(
+                    heading="1 Introduction",
+                    content="Intro text here.",
+                    start_page=1,
+                    end_page=1,
+                    segment_type="chapter",
+                ),
             ]
 
             # This test specifically catches the V10.12.4 UnboundLocalError bug
@@ -482,8 +551,10 @@ class TestPipelineIntegration:
             )
 
             from core.pipeline.conversion.output_save import OutputSaveResult
-            assert isinstance(result, OutputSaveResult), \
+
+            assert isinstance(result, OutputSaveResult), (
                 f"run_output_save should return OutputSaveResult, got {type(result)}"
+            )
             assert hasattr(result, "segments_folder"), "OutputSaveResult must have segments_folder"
         finally:
             # V18.2.27 (warnings fix): close the conv_logger file handle.
@@ -589,6 +660,7 @@ class TestSprint1Features:
 
         # Use the quarantine module directly (it's what the summarizer uses)
         from core.summarisation.quarantine import QuarantineLog
+
         q = QuarantineLog(output_dir=output_dir)
         q.add(
             "A hallucinated bullet about quantum entanglement.",
@@ -599,6 +671,7 @@ class TestSprint1Features:
         )
         assert drops_path.exists(), "drops.jsonl was not written"
         import json as _json
+
         line = drops_path.read_text(encoding="utf-8").splitlines()[0]
         entry = _json.loads(line)
         assert entry["bullet"] == "A hallucinated bullet about quantum entanglement."
@@ -610,6 +683,7 @@ class TestSprint1Features:
         from pathlib import Path as _P
 
         from core.models import ConversionRequest
+
         req = ConversionRequest(
             input_path=_P("/tmp/test.pdf"),
             output_dir=_P("/tmp/out"),
@@ -622,6 +696,7 @@ class TestSprint1Features:
         from pathlib import Path as _P
 
         from core.models import ConversionRequest
+
         req = ConversionRequest(input_path=_P("/tmp/test.pdf"), output_dir=_P("/tmp/out"))
         assert req.conservative_drops is False
 
@@ -629,11 +704,13 @@ class TestSprint1Features:
         """The recovery pass marks drops.jsonl entries as recovered=true."""
         output_dir = integration_setup["output_dir"]
         from core.summarisation.quarantine import QuarantineLog
+
         q = QuarantineLog(output_dir=output_dir)
         q.add("High-overlap bullet", stage="F4", source_overlap=0.80, actually_dropped=True)
         resurrected = q.recover(source_text="")
         assert len(resurrected) == 1
         import json as _json
+
         entries = q.drops_path.read_text(encoding="utf-8").splitlines()
         entry = _json.loads(entries[0])
         assert entry["recovered"] is True
@@ -646,11 +723,17 @@ class TestSprint1Features:
         checkpoint_path = output_dir / ".checkpoint.json"
         # Simulate what the converter writes
         import json as _json
-        checkpoint_path.write_text(_json.dumps({
-            "version": "1.0",
-            "phases": {},
-            "input_path": "/tmp/test.pdf",
-        }), encoding="utf-8")
+
+        checkpoint_path.write_text(
+            _json.dumps(
+                {
+                    "version": "1.0",
+                    "phases": {},
+                    "input_path": "/tmp/test.pdf",
+                }
+            ),
+            encoding="utf-8",
+        )
         assert checkpoint_path.exists()
         data = _json.loads(checkpoint_path.read_text(encoding="utf-8"))
         assert "phases" in data
@@ -661,6 +744,7 @@ class TestSprint1Features:
         from pathlib import Path as _P
 
         from core.pipeline.output_paths import SUB_LOGS, OutputPaths
+
         paths = OutputPaths(_P("/tmp/book"), "testbook")
         assert paths.logs_dir == _P("/tmp/book") / "logs"
         assert SUB_LOGS == "logs"

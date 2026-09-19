@@ -58,18 +58,18 @@ _DEFAULT_OUTPUT = 8192
 class TestLegacyParity:
     """At legacy windows the decision is the pre-P6 dispatch cascade:
 
-        map_reduce iff src > 40000; b4 iff src > 12000; chunked_output iff
-        src > 12000 AND output < 14000; else single_pass.
+    map_reduce iff src > 40000; b4 iff src > 12000; chunked_output iff
+    src > 12000 AND output < 14000; else single_pass.
     """
 
     # src_tokens -> expected legacy strategy (output=8192, default thresholds).
     PARITY_TABLE = {
-        1000: "single_pass",      # small chapter — plain primary call
-        11999: "single_pass",     # just under the b4 threshold
-        12001: "b4_sections",     # just over the b4 threshold (B4, NOT chunked)
-        39999: "b4_sections",     # long chapter, still under map-reduce
-        40001: "map_reduce",      # just over MAP_REDUCE_THRESHOLD
-        60000: "map_reduce",      # very large chapter
+        1000: "single_pass",  # small chapter — plain primary call
+        11999: "single_pass",  # just under the b4 threshold
+        12001: "b4_sections",  # just over the b4 threshold (B4, NOT chunked)
+        39999: "b4_sections",  # long chapter, still under map-reduce
+        40001: "map_reduce",  # just over MAP_REDUCE_THRESHOLD
+        60000: "map_reduce",  # very large chapter
     }
 
     @pytest.mark.parametrize("window", [16384, 32768])
@@ -124,7 +124,10 @@ class TestLegacyParity:
         MAP_REDUCE_THRESHOLD keep flowing through UNCHANGED at legacy
         windows (decide_strategy never reads Settings itself)."""
         # b4 lowered to the V13.40.3 value 8000 (the documented user lever):
-        assert decide_strategy(11999, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, b4_threshold=8000).strategy == "b4_sections"
+        assert (
+            decide_strategy(11999, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, b4_threshold=8000).strategy
+            == "b4_sections"
+        )
         # b4 raised above map-reduce: the map-reduce threshold still wins:
         assert (
             decide_strategy(45000, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, b4_threshold=50000).strategy
@@ -132,11 +135,15 @@ class TestLegacyParity:
         )
         # map_reduce raised to 50000: a 45k chapter is B4, not map-reduce:
         assert (
-            decide_strategy(45000, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, map_reduce_threshold=50000).strategy
+            decide_strategy(
+                45000, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, map_reduce_threshold=50000
+            ).strategy
             == "b4_sections"
         )
         assert (
-            decide_strategy(60000, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, map_reduce_threshold=50000).strategy
+            decide_strategy(
+                60000, _DEFAULT_WINDOW, _DEFAULT_OUTPUT, map_reduce_threshold=50000
+            ).strategy
             == "map_reduce"
         )
 
@@ -150,7 +157,10 @@ class TestLegacyParity:
         assert f"self.MAP_CHUNK_OVERLAP = {LEGACY_MAP_OVERLAP}" in summarizer_src
         assert f"self.MAP_REDUCE_THRESHOLD = {LEGACY_MAP_REDUCE_THRESHOLD}" in summarizer_src
         settings_src = (_project_root / "utils" / "settings.py").read_text(encoding="utf-8")
-        assert f'"b4_threshold_tokens":         {LEGACY_B4_THRESHOLD},' in settings_src
+        # V0.13: whitespace-flexible — ruff-format normalized the column padding
+        import re as _re_b4
+
+        assert _re_b4.search(rf'"b4_threshold_tokens":\s*{LEGACY_B4_THRESHOLD},', settings_src)
         primary_src = (_project_root / "core" / "summarisation" / "primary_call.py").read_text(
             encoding="utf-8"
         )
@@ -219,8 +229,8 @@ class TestAdaptive:
 
     def test_output_reserve_scales_usable(self):
         """A bigger output target shrinks the usable budget one-for-one."""
-        d1 = decide_strategy(55000, 65536, 8192)   # usable 56,132
-        d2 = decide_strategy(55000, 65536, 4096)   # usable 60,228
+        d1 = decide_strategy(55000, 65536, 8192)  # usable 56,132
+        d2 = decide_strategy(55000, 65536, 4096)  # usable 60,228
         assert "usable 56,132" in d1.reason
         assert "usable 60,228" in d2.reason
         assert d1.strategy == "single_pass" and d2.strategy == "single_pass"
@@ -382,7 +392,11 @@ class TestWiringPins:
         from core.summarisation.summarizer import Summarizer
 
         src = inspect.getsource(Summarizer._prepare_text)
-        assert "summarisation_max_context_tokens - self.request.summarisation_max_output_tokens - 700" in src
+        # V0.13: the long expression is format-wrapped across 3 lines — pin the
+        # three operands in order instead of one contiguous string.
+        assert "self.request.summarisation_max_context_tokens" in src
+        assert "self.request.summarisation_max_output_tokens" in src
+        assert "- 700" in src
         assert "if max_tok < 8000:" in src
 
     def test_map_reduce_summarize_accepts_decision_geometry(self):
@@ -469,7 +483,10 @@ class TestChunkedGateBehavior:
             return {"bullet_points": ["chunked"], "from_chunked": True}
 
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             max_tokens=max_out,
             request=_FakeRequest(summarisation_max_context_tokens=window),
             log=lambda m, l="INFO": None,
@@ -499,9 +516,10 @@ class TestChunkedGateBehavior:
 
     def test_request_without_window_defaults_to_legacy(self, monkeypatch):
         """No context value on the request → default 32768 → legacy gate."""
+        import subprocess
+
         import core.summarisation.primary_call as pc_mod
         import utils.token_counter as tc
-        import subprocess
 
         pc_mod._gpu_temp_cache.update({"valid": 0.0, "temp": 0.0, "ts": 0.0})
         monkeypatch.setattr(tc, "count_tokens", lambda text: 13000)
@@ -510,7 +528,10 @@ class TestChunkedGateBehavior:
         )
         chunked_calls: list[int] = []
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             max_tokens=8192,
             request=_FakeRequest(),  # no summarisation_max_context_tokens
             log=lambda m, l="INFO": None,

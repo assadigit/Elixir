@@ -27,11 +27,12 @@ Two layers, per the house UI-test pattern (see test_v182038_audit_fixes):
 - Behavioral widget tests (offscreen QApplication; skipped gracefully
   when PySide6 is unavailable — e.g. the headless rig).
 """
+
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -43,6 +44,7 @@ _CONVERT_VIEW = _project_root / "ui_qt" / "views" / "convert_view.py"
 
 
 # ── Policy / source-pin layer (headless-safe, always runs) ──────────────────
+
 
 class TestLegacyCtaTouchersAreGuarded:
     """Every .setEnabled on the V11.0.0-removed buttons must be inside
@@ -76,10 +78,7 @@ class TestLegacyCtaTouchersAreGuarded:
     def test_all_setenabled_calls_live_inside_the_guard(self):
         src = _CONVERT_VIEW.read_text(encoding="utf-8")
         lo, hi = self._helper_span(src)
-        stray = {
-            i: line for i, line in self._toucher_lines(src).items()
-            if not (lo <= i <= hi)
-        }
+        stray = {i: line for i, line in self._toucher_lines(src).items() if not (lo <= i <= hi)}
         assert not stray, (
             "Unguarded .setEnabled on the V11.0.0-removed CTA buttons "
             f"(must route through _set_cta_enabled): {stray}"
@@ -101,19 +100,15 @@ class TestLegacyCtaTouchersAreGuarded:
             )
         pos = src.find("def _on_complete")
         assert pos != -1, "_on_complete not found"
-        body = src[pos: src.find("\n    def ", pos + 1)]
-        assert "_set_cta_enabled(" in body, (
-            "_on_complete must call _set_cta_enabled (V18.20.3.14)"
-        )
+        body = src[pos : src.find("\n    def ", pos + 1)]
+        assert "_set_cta_enabled(" in body, "_on_complete must call _set_cta_enabled (V18.20.3.14)"
 
     def test_helper_guards_both_buttons(self):
         src = _CONVERT_VIEW.read_text(encoding="utf-8")
         lo, hi = self._helper_span(src)
-        body = "\n".join(src.splitlines()[lo - 1: hi])
+        body = "\n".join(src.splitlines()[lo - 1 : hi])
         for attr in ("self.convert_btn", "self.test_btn"):
-            assert f"if {attr} is not None:" in body, (
-                f"{attr} not None-guarded in _set_cta_enabled"
-            )
+            assert f"if {attr} is not None:" in body, f"{attr} not None-guarded in _set_cta_enabled"
 
     def test_v11000_none_invariant_still_documented(self):
         """The buttons are still deliberately None on this page — the fix
@@ -125,10 +120,12 @@ class TestLegacyCtaTouchersAreGuarded:
 
 # ── Behavioral layer (offscreen Qt; skips without PySide6) ──────────────────
 
+
 def _qt_available() -> bool:
     try:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -143,6 +140,7 @@ class TestConvertViewCompletionBehaviour:
     @pytest.fixture(scope="class")
     def app(self):
         from PySide6.QtWidgets import QApplication
+
         inst = QApplication.instance() or QApplication([])
         yield inst
 
@@ -150,6 +148,7 @@ class TestConvertViewCompletionBehaviour:
     def view(self, app):
         from controller import Controller
         from ui_qt.views.convert_view import ConvertView
+
         v = ConvertView(Controller())
         yield v
         v.deleteLater()
@@ -162,6 +161,7 @@ class TestConvertViewCompletionBehaviour:
         """The exact user-reported repro: _on_complete must not raise
         AttributeError when the legacy buttons are None."""
         from core.models import ConversionResult
+
         view.is_converting = True
         result = ConversionResult(success=False, error_msg="rig repro")
         view._on_complete(result)  # must not raise
@@ -171,7 +171,9 @@ class TestConvertViewCompletionBehaviour:
         """Guard must not break the buttons-present path (older UIs /
         subclasses that still build the CTAs)."""
         from PySide6.QtWidgets import QPushButton
+
         from core.models import ConversionResult
+
         view.convert_btn = QPushButton("Convert")
         view.test_btn = QPushButton("Test")
         view.convert_btn.setEnabled(False)
@@ -182,6 +184,7 @@ class TestConvertViewCompletionBehaviour:
 
     def test_set_cta_enabled_toggles_real_buttons(self, view):
         from PySide6.QtWidgets import QPushButton
+
         view.convert_btn = QPushButton("Convert")
         view.test_btn = QPushButton("Test")
         view._set_cta_enabled(False)

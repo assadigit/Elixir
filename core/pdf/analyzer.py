@@ -42,10 +42,9 @@ class EmptyPdfError(ValueError):
 
 
 class PdfAnalyzer:
-    MIN_TEXT_CHARS    = 30
+    MIN_TEXT_CHARS = 30
     SCANNED_THRESHOLD = 30
-    LLM_OCR_THRESHOLD = 0.30   # >=30% scanned → OCR everything
-
+    LLM_OCR_THRESHOLD = 0.30  # >=30% scanned → OCR everything
 
     def __init__(self, password: str | None = None):
         self.password = password
@@ -55,7 +54,7 @@ class PdfAnalyzer:
             return False
         stripped = text.strip()
         if len(stripped) < self.SCANNED_THRESHOLD:
-            word_pattern = re.compile(r'[A-Za-z\u0600-\u06FF]{2,}')
+            word_pattern = re.compile(r"[A-Za-z\u0600-\u06FF]{2,}")
             words = word_pattern.findall(stripped)
             if len(words) < 2:
                 return False
@@ -74,11 +73,8 @@ class PdfAnalyzer:
             logger.warning(f"Page {page_num}: text extraction failed: {e}")
             extracted_text = ""
 
-        is_scanned = (
-            not extracted_text.strip()
-            or not self._is_text_meaningful(extracted_text)
-        )
-        preview = extracted_text[:200].replace('\n', ' ').strip()
+        is_scanned = not extracted_text.strip() or not self._is_text_meaningful(extracted_text)
+        preview = extracted_text[:200].replace("\n", " ").strip()
         return PageAnalysis(
             page_num=page_num,
             is_scanned=is_scanned,
@@ -94,6 +90,7 @@ class PdfAnalyzer:
         self._docling_available = False
         try:
             import docling  # noqa: F401
+
             self._docling_available = True
             logger.info("Docling available — can use for technical PDF extraction")
         except ImportError:
@@ -109,7 +106,7 @@ class PdfAnalyzer:
             logger.error(f"Failed to read PDF: {e}")
             raise
 
-        total_pages  = len(reader.pages)
+        total_pages = len(reader.pages)
 
         # V10.4.0 (Phase 6A-1): Fail fast on 0-page PDFs.
         # A 0-page result is always pathological — corrupt file, wrong

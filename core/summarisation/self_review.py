@@ -15,6 +15,7 @@ text, collecting all verdicts into a merged JSON array.
 Characterization tests: ``tests/test_self_review.py`` captures the batched
 review flow with mocked ``call_llm`` / ``prompt_manager`` / ``recover_vram``.
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -99,11 +100,11 @@ def self_review_batched(
 
     # Truncate source to fit context window (same as _self_review)
     max_src = max(max_context_tokens - 2000, 8000)
-    src_text = text[:max_src * 4]
+    src_text = text[: max_src * 4]
 
     # Split bullets into batches of 10
     BATCH_SIZE = 10
-    batches = [bullets[i:i + BATCH_SIZE] for i in range(0, len(bullets), BATCH_SIZE)]
+    batches = [bullets[i : i + BATCH_SIZE] for i in range(0, len(bullets), BATCH_SIZE)]
     log(
         f"    \U0001f52c Batched self-review: {len(bullets)} bullets \u2192 {len(batches)} batch(es) of {BATCH_SIZE}",
         "INFO",
@@ -118,7 +119,6 @@ def self_review_batched(
             f"{batch_start_idx + i + 1}. {bp}" for i, bp in enumerate(batch)
         )
 
-        lang_note = ""
         prompt = prompt_manager.render_template(
             "summarisation/self_review_batched",
             heading=heading,
@@ -147,27 +147,35 @@ def self_review_batched(
             # this is a direct call_llm site (no empty-retry wrapper).
             raw = call_llm(
                 qwen_no_think(prompt, review_model),
-                model=review_model, temperature=temperature,
+                model=review_model,
+                temperature=temperature,
             )
             if not raw:
                 log(f"    \u26a0\ufe0f Batch {batch_idx + 1} returned empty — skipping", "WARNING")
                 continue
             raw = strip_thinking(raw)
 
-            json_match = _re.search(r'(\[.*\])', raw, _re.DOTALL)
+            json_match = _re.search(r"(\[.*\])", raw, _re.DOTALL)
             if json_match:
                 try:
                     batch_verdicts = _json.loads(json_match.group(0))
                     if isinstance(batch_verdicts, list):
                         all_verdicts.extend(batch_verdicts)
-                        unsupported = sum(1 for v in batch_verdicts if v.get("verdict") in ("unsupported", "partially_supported"))
+                        unsupported = sum(
+                            1
+                            for v in batch_verdicts
+                            if v.get("verdict") in ("unsupported", "partially_supported")
+                        )
                         log(
                             f"    \u2705 Batch {batch_idx + 1}: {len(batch_verdicts)} claims reviewed, "
                             f"{unsupported} flagged",
                             "DEBUG",
                         )
                 except _json.JSONDecodeError:
-                    log(f"    \u26a0\ufe0f Batch {batch_idx + 1} JSON parse failed — skipping", "WARNING")
+                    log(
+                        f"    \u26a0\ufe0f Batch {batch_idx + 1} JSON parse failed — skipping",
+                        "WARNING",
+                    )
             else:
                 log(f"    \u26a0\ufe0f Batch {batch_idx + 1} no JSON found — skipping", "WARNING")
         except Exception as e:

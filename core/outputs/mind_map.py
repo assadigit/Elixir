@@ -30,6 +30,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -116,9 +117,7 @@ class MindMapGenerator(OutputGeneratorBase):
             self.log("  ℹ️ Mind map: Nothing to map.", "INFO")
             return None
 
-        self.log(
-            f"  🧠 Building mind map from {len(structure)} chapters…", "INFO"
-        )
+        self.log(f"  🧠 Building mind map from {len(structure)} chapters…", "INFO")
 
         mermaid_block = self._build_mermaid(book_title, structure)
         outline = self._build_outline(book_title, structure)
@@ -226,10 +225,7 @@ class MindMapGenerator(OutputGeneratorBase):
         # Plain-text outline
         lines.append("## Outline (plain text)")
         lines.append("")
-        lines.append(
-            "Use this in outliners (Workflowy, Logseq, Roam) or any plain-text "
-            "editor."
-        )
+        lines.append("Use this in outliners (Workflowy, Logseq, Roam) or any plain-text editor.")
         lines.append("")
         lines.append(outline)
         lines.append("")

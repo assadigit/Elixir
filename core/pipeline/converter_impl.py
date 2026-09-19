@@ -81,6 +81,7 @@ from utils.text_utils import detect_persian_text
 # Try to import rapidfuzz for fuzzy matching
 try:
     from rapidfuzz import fuzz
+
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     fuzz = None
@@ -118,10 +119,9 @@ def compute_pages_processed(
     """
     if selected_pages is not None:
         if page_range_start is not None or page_range_end is not None:
-            return len({
-                p for p in selected_pages
-                if effective_start_page <= p <= effective_end_page
-            })
+            return len(
+                {p for p in selected_pages if effective_start_page <= p <= effective_end_page}
+            )
         return len(selected_pages)
     if page_range_start is not None or page_range_end is not None:
         return effective_total_pages
@@ -133,30 +133,33 @@ class Converter:
         self,
         request: ConversionRequest,
         progress_callback: Callable[[float], None] | None = None,
-        status_callback:   Callable[[str], None] | None   = None,
-        log_callback:      Callable[[str, str], None] | None = None,
-        cancel_event:      threading.Event | None = None,
+        status_callback: Callable[[str], None] | None = None,
+        log_callback: Callable[[str, str], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ):
-        self.request           = request
+        self.request = request
         self.progress_callback = progress_callback or (lambda p: None)
-        self.status_callback   = status_callback   or (lambda msg: None)
-        self.log_callback      = log_callback      or (lambda msg, level: None)
-        self.cancel_event      = cancel_event      or threading.Event()
-        self.settings          = Settings()
+        self.status_callback = status_callback or (lambda msg: None)
+        self.log_callback = log_callback or (lambda msg, level: None)
+        self.cancel_event = cancel_event or threading.Event()
+        self.settings = Settings()
 
-        self.output_dir         = create_output_folder(request.output_dir, request.input_path.stem, per_book=True)
+        self.output_dir = create_output_folder(
+            request.output_dir, request.input_path.stem, per_book=True
+        )
         # Organised subfolders (goal #6).  self.paths is the single
         # resolver; the legacy attribute names below are kept (pointing into
         # subfolders) so the ~30 downstream references keep working unchanged.
         from core.pipeline.output_paths import OutputPaths
+
         self.paths = OutputPaths(self.output_dir, request.input_path.stem)
         self.full_markdown_path = self.paths.full_markdown
         self.temp_markdown_path = self.paths.temp_markdown
-        self.chapters_folder    = self.paths.chapters_dir
-        self.chunks_folder      = self.paths.chunks_dir
-        self.docx_path          = self.paths.docx
-        self.summary_md_path    = self.paths.book_summary
-        self.conv_logger        = ConversionLogger(self.output_dir, request.input_path.stem)
+        self.chapters_folder = self.paths.chapters_dir
+        self.chunks_folder = self.paths.chunks_dir
+        self.docx_path = self.paths.docx
+        self.summary_md_path = self.paths.book_summary
+        self.conv_logger = ConversionLogger(self.output_dir, request.input_path.stem)
 
         # ── Get poppler_path for advanced features ────────────────────────
         self._poppler_path = self.settings.get("paths.poppler") or None
@@ -167,7 +170,7 @@ class Converter:
             min_content_chars=80,
             toc_density_threshold=0.40,
             is_academic=self.request.source_type == "academic_paper",
-            log_callback=self._log
+            log_callback=self._log,
         )
 
         # V18.2.14 (M4): ``_partial_failures`` moved from CLASS attr (shared
@@ -187,6 +190,7 @@ class Converter:
         # log_callback.
         try:
             from utils.logging import get_structured_logger
+
             slog = get_structured_logger("Elixir.converter")
             log_level = getattr(__import__("logging"), level.upper(), None)
             if log_level is None:
@@ -195,9 +199,9 @@ class Converter:
                 log_level,
                 message,
                 extra={
-                    "book": getattr(self, "_book_name", None) or
-                            getattr(self.request, "input_path", None) and
-                            self.request.input_path.stem,
+                    "book": getattr(self, "_book_name", None)
+                    or getattr(self.request, "input_path", None)
+                    and self.request.input_path.stem,
                     "phase": getattr(self, "_current_phase", None),
                 },
             )
@@ -211,7 +215,9 @@ class Converter:
             # logging is broken.
             logger.warning(
                 "structured log write failed: %s: %s",
-                type(_e).__name__, _e, exc_info=True,
+                type(_e).__name__,
+                _e,
+                exc_info=True,
             )
         self.conv_logger.log(message, level)
         self.log_callback(message, level)
@@ -250,10 +256,11 @@ class Converter:
         if not heading:
             return ""
         import re
+
         # Remove illegal characters
-        safe = re.sub(r'[:?*<>|"\\/]', '', heading)
+        safe = re.sub(r'[:?*<>|"\\/]', "", heading)
         # Collapse whitespace to underscores
-        safe = re.sub(r'\s+', '_', safe.strip())
+        safe = re.sub(r"\s+", "_", safe.strip())
         # Truncate to 80 chars to avoid path length issues
         return safe[:80]
 
@@ -269,6 +276,7 @@ class Converter:
         """
         try:
             from pathlib import Path
+
             # The VERSION file lives at the project root, two levels up
             # from core/pipeline/converter.py → ../VERSION
             vpath = Path(__file__).resolve().parent.parent.parent / "VERSION"
@@ -297,6 +305,7 @@ class Converter:
         DOCX, output paths, and resume-status sections).
         """
         from core.pipeline.conversion.settings_logger import log_conversion_settings
+
         log_conversion_settings(
             ctx={
                 "request": self.request,
@@ -310,14 +319,14 @@ class Converter:
 
     def _get_user_override(self, analysis: PdfAnalysisResult) -> PdfRecommendation | None:
         scanned = len(analysis.scanned_pages)
-        total   = analysis.total_pages
+        total = analysis.total_pages
         self._log(
-            f"PDF analysis: {analysis.recommendation.value} — "
-            f"{scanned}/{total} pages are scanned", "INFO"
+            f"PDF analysis: {analysis.recommendation.value} — {scanned}/{total} pages are scanned",
+            "INFO",
         )
         if analysis.scanned_pages:
             preview = analysis.scanned_pages[:10]
-            suffix  = "…" if len(analysis.scanned_pages) > 10 else ""
+            suffix = "…" if len(analysis.scanned_pages) > 10 else ""
             self._log(f"  Scanned page numbers: {preview}{suffix}", "INFO")
         return None
 
@@ -336,6 +345,7 @@ class Converter:
         never block a conversion.
         """
         from datetime import datetime as _dt
+
         try:
             _resume_on = bool(self.settings.get("summarisation.resume_enabled", False))
         except Exception:
@@ -356,10 +366,7 @@ class Converter:
         _candidates: list[Path] = []
         _summ = Path(self.paths.summaries_dir)
         if _summ.exists():
-            _candidates.extend(
-                p for pat in _patterns
-                for p in _summ.rglob(pat)
-            )
+            _candidates.extend(p for pat in _patterns for p in _summ.rglob(pat))
         for _sub in ("logs",):
             _subdir = _root / _sub
             if _subdir.exists():
@@ -371,8 +378,7 @@ class Converter:
         _candidates.extend(_root.glob("*.conversion.log.md"))
         # never archive anything already inside _archive/
         _candidates = [
-            p for p in _candidates
-            if p.is_file() and "_archive" not in p.relative_to(_root).parts
+            p for p in _candidates if p.is_file() and "_archive" not in p.relative_to(_root).parts
         ]
         if not _candidates:
             return
@@ -445,9 +451,7 @@ class Converter:
             )
             if peak <= _total_vram:
                 return None  # fits — nothing to enforce
-            policy = str(
-                self.settings.get("local.vram_overbudget_policy", "ask")
-            ).strip().lower()
+            policy = str(self.settings.get("local.vram_overbudget_policy", "ask")).strip().lower()
             if policy == "proceed":
                 self._log(
                     f"  ⚠️ VRAM OVERBUDGET (peak {peak:.1f} GB > {_total_vram:.1f} GB) "
@@ -456,9 +460,7 @@ class Converter:
                     "WARNING",
                 )
                 return None
-            if policy == "ask" and getattr(
-                r, "vram_overbudget_acknowledged", False
-            ):
+            if policy == "ask" and getattr(r, "vram_overbudget_acknowledged", False):
                 self._log(
                     f"  ⚠️ VRAM OVERBUDGET (peak {peak:.1f} GB > {_total_vram:.1f} GB) "
                     f"— acknowledged interactively by the user: continuing.",
@@ -509,7 +511,7 @@ class Converter:
 
         def _normalize(s: str) -> set:
             """Extract lowercase word set for overlap matching."""
-            return set(re.findall(r'[a-z0-9]+', s.lower()))
+            return set(re.findall(r"[a-z0-9]+", s.lower()))
 
         def _match_score(selected_title: str, toc_heading: str) -> float:
             """Word-overlap match score between 0 and 1."""
@@ -532,7 +534,7 @@ class Converter:
         for selected in selected_chapters:
             best_idx = -1
             best_score = 0.0
-            for idx, (heading, page) in enumerate(sorted_toc):
+            for idx, (heading, _page) in enumerate(sorted_toc):
                 score = _match_score(selected, heading)
                 if score > best_score:
                     best_score = score
@@ -633,12 +635,14 @@ class Converter:
             # Try to extract concepts for this chapter
             try:
                 from core.summarisation.text_preprocessor import DeterministicPreprocessor
+
                 pp = DeterministicPreprocessor()
                 if i <= len(segments):
                     concepts = pp.extract_concepts(segments[i - 1].content)
                     # Also extract academic terms
                     try:
                         from core.summarisation.text_preprocessor import extract_all_concepts
+
                         concepts = extract_all_concepts(segments[i - 1].content)
                     except Exception as _e:
                         logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -661,6 +665,7 @@ class Converter:
                     combined = f"{summ.executive_summary} {' '.join(summ.bullet_points or [])} {summ.thorough_summary}"
                     # Quick coverage estimate
                     from core.summarisation.text_preprocessor import extract_ngram_keywords
+
                     keywords = extract_ngram_keywords(content, n=18)
                     if keywords:
                         found = sum(1 for k in keywords if k in combined.lower())
@@ -673,17 +678,27 @@ class Converter:
             # Fix 4: a chapter with 0 bullets AND < 100 input_tokens
             # is a hallucinated essay (empty input → LLM fabricated content).
             # Mark as failed, not success.
-            if summ.success and chapter_data["bullet_count"] == 0 and chapter_data["input_tokens"] < 100:
+            if (
+                summ.success
+                and chapter_data["bullet_count"] == 0
+                and chapter_data["input_tokens"] < 100
+            ):
                 chapter_data["success"] = False
                 chapter_data["error"] = "Empty input — summary likely hallucinated"
                 self._log(
                     f"  ⚠️ Quality report: Chapter {i} '{summ.chapter_heading[:40]}' "
                     f"has 0 bullets + {chapter_data['input_tokens']} input tokens — "
                     f"marking as FAILED (hallucination risk)",
-                    "WARNING"
+                    "WARNING",
                 )
-                report["totals"]["successful_summaries"] = report["totals"].get("successful_summaries", 0) - 1 if not summ.success else report["totals"].get("successful_summaries", 0)
-                report["totals"]["failed_summaries"] = report["totals"].get("failed_summaries", 0) + 1
+                report["totals"]["successful_summaries"] = (
+                    report["totals"].get("successful_summaries", 0) - 1
+                    if not summ.success
+                    else report["totals"].get("successful_summaries", 0)
+                )
+                report["totals"]["failed_summaries"] = (
+                    report["totals"].get("failed_summaries", 0) + 1
+                )
             elif summ.success:
                 report["totals"]["successful_summaries"] += 1
             else:
@@ -701,9 +716,7 @@ class Converter:
         # THESE numbers (the old block read non-existent keys
         # 'coverage_percent'/'avg_similarity' and always printed "?").
         try:
-            _rf_chapters = [
-                (c.get("recall_floor") or {}) for c in report["chapters"]
-            ]
+            _rf_chapters = [(c.get("recall_floor") or {}) for c in report["chapters"]]
             _t_total = sum(int(r.get("theorists_total", 0)) for r in _rf_chapters)
             _t_cov = sum(int(r.get("theorists_covered", 0)) for r in _rf_chapters)
             _c_total = sum(int(r.get("conclusion_items_total", 0)) for r in _rf_chapters)
@@ -727,6 +740,7 @@ class Converter:
         # parent dir (replaces the lazy mkdir) and serializes identically
         # (indent=2, ensure_ascii=False).
         from utils.atomic_io import atomic_write_json
+
         atomic_write_json(report_path, report, indent=2, ensure_ascii=False)
         self._log(f"  📊 Quality report → {report_path}", "INFO")
 
@@ -749,14 +763,18 @@ class Converter:
         pages = [1] + ([total_pages] if total_pages >= 2 else [])
         for page_num in pages:
             try:
-                label  = "front_cover" if page_num == 1 else "back_cover"
-                out    = self.paths.screenshot(label)
+                label = "front_cover" if page_num == 1 else "back_cover"
+                out = self.paths.screenshot(label)
                 # ensure the screenshots dir exists before checking
                 out.parent.mkdir(parents=True, exist_ok=True)
                 if out.exists():
                     continue  # already extracted (re-run guard)
-                kwargs: dict = {"first_page": page_num, "last_page": page_num,
-                                "dpi": 200, "fmt": "jpeg"}
+                kwargs: dict = {
+                    "first_page": page_num,
+                    "last_page": page_num,
+                    "dpi": 200,
+                    "fmt": "jpeg",
+                }
                 if poppler_path:
                     kwargs["poppler_path"] = poppler_path
                 images = convert_from_path(str(self.request.input_path), **kwargs)
@@ -789,8 +807,12 @@ class Converter:
                             _out.parent.mkdir(parents=True, exist_ok=True)
                             if _out.exists():
                                 continue
-                            _kwargs = {"first_page": _pn, "last_page": _pn,
-                                       "dpi": 200, "fmt": "jpeg"}
+                            _kwargs = {
+                                "first_page": _pn,
+                                "last_page": _pn,
+                                "dpi": 200,
+                                "fmt": "jpeg",
+                            }
                             if poppler_path:
                                 _kwargs["poppler_path"] = poppler_path
                             _imgs = convert_from_path(str(self.request.input_path), **_kwargs)
@@ -830,48 +852,94 @@ class Converter:
 
     def _chapter_frontmatter(self, seg, idx, total, book_title, source_name, language) -> str:
         import re as _re
-        _STOP = frozenset({
-            "the","a","an","in","on","at","to","for","of","and","or","but","is","it",
-            "its","this","that","was","are","were","have","has","had","with","from","by",
-            "as","not","they","we","you","which","who","also","can","will","their","about",
-        })
-        _words = _re.findall(r'\b[a-z]{4,}\b', seg.content.lower())
+
+        _STOP = frozenset(
+            {
+                "the",
+                "a",
+                "an",
+                "in",
+                "on",
+                "at",
+                "to",
+                "for",
+                "of",
+                "and",
+                "or",
+                "but",
+                "is",
+                "it",
+                "its",
+                "this",
+                "that",
+                "was",
+                "are",
+                "were",
+                "have",
+                "has",
+                "had",
+                "with",
+                "from",
+                "by",
+                "as",
+                "not",
+                "they",
+                "we",
+                "you",
+                "which",
+                "who",
+                "also",
+                "can",
+                "will",
+                "their",
+                "about",
+            }
+        )
+        _words = _re.findall(r"\b[a-z]{4,}\b", seg.content.lower())
         _freq: dict = {}
         for w in _words:
-            if w not in _STOP: _freq[w] = _freq.get(w, 0) + 1
+            if w not in _STOP:
+                _freq[w] = _freq.get(w, 0) + 1
         _tags = sorted(_freq, key=lambda w: _freq[w], reverse=True)[:6]
 
         from utils.token_counter import count_tokens as _ct
-        return self._make_frontmatter({
-            "title":          seg.heading,
-            "book":           book_title,
-            "source_file":    source_name,
-            "chapter_index":  f"{idx} of {total}",
-            "chapter_number": idx,
-            "start_page":     seg.start_page,
-            "end_page":       seg.end_page,
-            "page_count":     max(0, seg.end_page - seg.start_page + 1),
-            "segment_type":   seg.segment_type,
-            "language":       language,
-            "word_count":     len(seg.content.split()),
-            "token_count":    _ct(seg.content),
-            "source_type":    self.settings.get("source_type", "normal_book"),
-            "tags":           _tags,
-            "doc_type":       "book_chapter",
-            "date_processed": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        })
 
-    def _book_frontmatter(self, total_pages, total_chapters, source_name, book_title, language) -> str:
-        return self._make_frontmatter({
-            "title":          book_title,
-            "source_file":    source_name,
-            "total_pages":    total_pages,
-            "total_chapters": total_chapters,
-            "language":       language,
-            "doc_type":       "book",
-            "rag_format":     self.settings.get("rag.target_format", "chromadb"),
-            "date_processed": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        return self._make_frontmatter(
+            {
+                "title": seg.heading,
+                "book": book_title,
+                "source_file": source_name,
+                "chapter_index": f"{idx} of {total}",
+                "chapter_number": idx,
+                "start_page": seg.start_page,
+                "end_page": seg.end_page,
+                "page_count": max(0, seg.end_page - seg.start_page + 1),
+                "segment_type": seg.segment_type,
+                "language": language,
+                "word_count": len(seg.content.split()),
+                "token_count": _ct(seg.content),
+                "source_type": self.settings.get("source_type", "normal_book"),
+                "tags": _tags,
+                "doc_type": "book_chapter",
+                "date_processed": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
+
+    def _book_frontmatter(
+        self, total_pages, total_chapters, source_name, book_title, language
+    ) -> str:
+        return self._make_frontmatter(
+            {
+                "title": book_title,
+                "source_file": source_name,
+                "total_pages": total_pages,
+                "total_chapters": total_chapters,
+                "language": language,
+                "doc_type": "book",
+                "rag_format": self.settings.get("rag.target_format", "chromadb"),
+                "date_processed": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        )
 
     def _summarisation_progress(self, fraction: float, status: str):
         # Summarization gets 55% of the bar (0.25-0.80) since it's
@@ -890,10 +958,7 @@ class Converter:
         100 tokens of content.
         """
         return self.content_filter.filter_segment_content(
-            seg.content,
-            start_page=seg.start_page,
-            end_page=seg.end_page,
-            min_tokens_keep=100
+            seg.content, start_page=seg.start_page, end_page=seg.end_page, min_tokens_keep=100
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -919,8 +984,8 @@ class Converter:
 
         def normalize(s):
             s = s.lower()
-            s = re.sub(r'[^\w\s]', '', s)
-            s = re.sub(r'\s+', ' ', s).strip()
+            s = re.sub(r"[^\w\s]", "", s)
+            s = re.sub(r"\s+", " ", s).strip()
             return s
 
         heading_norm = normalize(heading_clean)
@@ -933,7 +998,7 @@ class Converter:
         # 2. Extract chapter numbers (e.g., "3.6", "2.2.1", "1")
         def extract_chapter_number(s):
             # Match patterns like "3.6", "2.2.1", "1", "3.6 Cannabinoids"
-            m = re.match(r'^(\d+(?:\.\d+)*)\s', s)
+            m = re.match(r"^(\d+(?:\.\d+)*)\s", s)
             if m:
                 return m.group(1)
             return None
@@ -959,18 +1024,57 @@ class Converter:
         # 3. No chapter numbers — match on significant words only
         # Exclude common academic words that appear in every title
         _COMMON = {
-            "chapter", "part", "section", "appendix", "the", "of", "a", "an",
-            "and", "or", "to", "in", "for", "with", "on", "at", "by", "from",
+            "chapter",
+            "part",
+            "section",
+            "appendix",
+            "the",
+            "of",
+            "a",
+            "an",
+            "and",
+            "or",
+            "to",
+            "in",
+            "for",
+            "with",
+            "on",
+            "at",
+            "by",
+            "from",
             # Common academic title words that should NOT be used for matching:
-            "treatment", "acute", "preventive", "prevention", "study",
-            "evidence", "trial", "clinical", "practice", "review",
-            "introduction", "conclusion", "conclusions", "future",
-            "therapeutics", "management", "therapy", "drug", "drugs",
-            "migraine", "headache", "pain", "receptor", "antagonist",
-            "agonist", "inhibition", "action", "mode", "proposed",
+            "treatment",
+            "acute",
+            "preventive",
+            "prevention",
+            "study",
+            "evidence",
+            "trial",
+            "clinical",
+            "practice",
+            "review",
+            "introduction",
+            "conclusion",
+            "conclusions",
+            "future",
+            "therapeutics",
+            "management",
+            "therapy",
+            "drug",
+            "drugs",
+            "migraine",
+            "headache",
+            "pain",
+            "receptor",
+            "antagonist",
+            "agonist",
+            "inhibition",
+            "action",
+            "mode",
+            "proposed",
         }
-        heading_words = set(w for w in heading_norm.split() if len(w) > 2 and w not in _COMMON)
-        selected_words = set(w for w in selected_norm.split() if len(w) > 2 and w not in _COMMON)
+        heading_words = {w for w in heading_norm.split() if len(w) > 2 and w not in _COMMON}
+        selected_words = {w for w in selected_norm.split() if len(w) > 2 and w not in _COMMON}
 
         if heading_words and selected_words:
             overlap = heading_words & selected_words
@@ -1044,7 +1148,7 @@ class Converter:
         """
         msg = f"{subsystem}: {type(error).__name__}: {error}"
         self._log(f"  ⚠️ Partial failure — {msg}", "WARNING")
-        if not hasattr(self, '_partial_failures'):
+        if not hasattr(self, "_partial_failures"):
             # V18.2.14 (M4): This branch should never execute (init guarantees
             # the attr). If it does, log a traceable WARNING so we can find
             # the code path that bypassed __init__.
@@ -1052,7 +1156,8 @@ class Converter:
                 "_partial_failures missing on Converter instance (subsystem=%s) "
                 "— initializing defensively. This indicates __init__ was "
                 "bypassed; please report this code path.",
-                subsystem, exc_info=True,
+                subsystem,
+                exc_info=True,
             )
             self._partial_failures = []
         self._partial_failures.append(msg)
@@ -1072,9 +1177,11 @@ class Converter:
         be genuine overlap, not paraphrases).
         """
         from core.summarisation.dedup_service import CROSS_CHAPTER_THRESHOLD, DedupService
+
         chapter_bullets = [
             (s.chapter_heading, [str(b) for b in s.bullet_points])
-            for s in summaries if s.bullet_points
+            for s in summaries
+            if s.bullet_points
         ]
         svc = DedupService(log_callback=self._log)
         deduped = svc.cross_chapter_dedup(chapter_bullets, threshold=CROSS_CHAPTER_THRESHOLD)
@@ -1108,19 +1215,21 @@ class Converter:
             from core.ocr.service import OCRService
 
             # create a minimal analysis if we don't have one
-            _analysis = getattr(self, '_analysis', None)
+            _analysis = getattr(self, "_analysis", None)
             if _analysis is None:
                 # Build a dummy analysis that marks all pages as "not scanned"
                 # (digital text extraction), so OCRService knows these are
                 # pages that need re-extraction via OCR.
                 _dummy_pages = []
                 for p in page_nums:
-                    _dummy_pages.append(PageAnalysis(
-                        page_num=p,
-                        is_scanned=False,
-                        extracted_text_preview="",
-                        recommended_action="no_ocr",
-                    ))
+                    _dummy_pages.append(
+                        PageAnalysis(
+                            page_num=p,
+                            is_scanned=False,
+                            extracted_text_preview="",
+                            recommended_action="no_ocr",
+                        )
+                    )
                 _analysis = PdfAnalysisResult(
                     total_pages=max(page_nums) if page_nums else 1,
                     scanned_pages=[],
@@ -1149,6 +1258,7 @@ class Converter:
         except Exception as e:
             self._log(f"  ⚠️ OCR re-extraction failed: {e}", "WARNING")
             import traceback
+
             self._log(f"  📋 Traceback: {traceback.format_exc()[-300:]}", "DEBUG")
         return ""
 
@@ -1158,7 +1268,10 @@ class Converter:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _targeted_ocr_repair(
-        self, text: str, garbled_ranges: list, total_pages: int = 17,
+        self,
+        text: str,
+        garbled_ranges: list,
+        total_pages: int = 17,
         pages_to_ocr: list = None,
     ) -> str:
         """V10.1.13: Repair garbled sections with targeted OCR.
@@ -1190,6 +1303,7 @@ class Converter:
                 "INFO",
             )
             import bisect
+
             marker_positions = [pos for _, pos in page_markers]
             marker_pages = [pn for pn, _ in page_markers]
             for start, end in garbled_ranges:
@@ -1246,7 +1360,7 @@ class Converter:
             f"  🎯 Targeted OCR: {len(ocr_pages)} page(s) to OCR "
             f"(pages {ocr_pages[0]}-{ocr_pages[-1]} if contiguous, "
             f"else scattered). Original text: {text_len:,} chars, "
-            f"garbled: {sum(e-s for s,e in garbled_ranges):,} chars.",
+            f"garbled: {sum(e - s for s, e in garbled_ranges):,} chars.",
             "INFO",
         )
 
@@ -1270,8 +1384,8 @@ class Converter:
             adj_start = start + offset
             adj_end = end + offset
             # Get clean text before and after the garbled section (200 chars each)
-            before_text = result[max(0, adj_start - 200):adj_start].strip()
-            after_text = result[adj_end:min(len(result), adj_end + 200)].strip()
+            before_text = result[max(0, adj_start - 200) : adj_start].strip()
+            after_text = result[adj_end : min(len(result), adj_end + 200)].strip()
 
             # Try to find before_text in the OCR text (overlap anchor)
             ocr_before_pos = -1
@@ -1289,10 +1403,12 @@ class Converter:
             # Extract the OCR text between the anchors
             if ocr_before_pos >= 0 and ocr_after_pos >= 0 and ocr_after_pos > ocr_before_pos:
                 # Found both anchors — extract between them
-                ocr_replacement = ocr_text[ocr_before_pos + len(before_text[-50:]):ocr_after_pos].strip()
+                ocr_replacement = ocr_text[
+                    ocr_before_pos + len(before_text[-50:]) : ocr_after_pos
+                ].strip()
             elif ocr_before_pos >= 0:
                 # Found only the before anchor — take everything after it
-                ocr_replacement = ocr_text[ocr_before_pos + 50:].strip()
+                ocr_replacement = ocr_text[ocr_before_pos + 50 :].strip()
             elif ocr_after_pos >= 0:
                 # Found only the after anchor — take everything before it
                 ocr_replacement = ocr_text[:ocr_after_pos].strip()
@@ -1305,7 +1421,7 @@ class Converter:
                 result = result[:adj_start] + "\n" + ocr_replacement + "\n" + result[adj_end:]
                 offset += len(ocr_replacement) + 2 - (adj_end - adj_start)
                 self._log(
-                    f"  🔧 Replaced garbled section ({end-start:,} chars) "
+                    f"  🔧 Replaced garbled section ({end - start:,} chars) "
                     f"with OCR text ({len(ocr_replacement):,} chars)",
                     "DEBUG",
                 )
@@ -1314,8 +1430,9 @@ class Converter:
 
     def convert(self) -> ConversionResult:
         _t_start = _time_mod.time()
+
         def _elapsed() -> str:
-            return f"{_time_mod.time()-_t_start:.1f}s"
+            return f"{_time_mod.time() - _t_start:.1f}s"
 
         self._log("🚀 Starting conversion…", "SUCCESS")
         self._update_status("Initialising…")
@@ -1326,6 +1443,7 @@ class Converter:
         # conversion in the same session would double-count).
         try:
             from core.llm.call_meta import reset_call_telemetry
+
             reset_call_telemetry()
         except Exception as _e:
             logger.debug("telemetry reset ignored: %s", _e)
@@ -1336,6 +1454,7 @@ class Converter:
         self._cache_stats_start = None
         try:
             from core.llm.response_cache import response_cache
+
             self._cache_stats_start = response_cache.stats()
         except Exception as _e:
             logger.debug("response cache snapshot ignored: %s", _e)
@@ -1344,6 +1463,7 @@ class Converter:
         # optional deps are importable BEFORE starting a 90-min conversion.
         # Fails fast with a clear message instead of crashing 7 min in.
         from core.system.preflight_check import run_preflight_check
+
         _missing = run_preflight_check(self.request, log_callback=self._log)
         if _missing:
             return ConversionResult(success=False, error_msg=_missing)
@@ -1364,8 +1484,7 @@ class Converter:
         try:
             self._archive_stale_run_artifacts()
         except Exception as _e:
-            logger.debug("stale-artifact archive ignored: %s: %s",
-                         type(_e).__name__, _e)
+            logger.debug("stale-artifact archive ignored: %s: %s", type(_e).__name__, _e)
 
         # V18.20.4.10 (P0-c): enforce the VRAM budget. The V18.20.4.9
         # behaviour was warn-and-continue: the settings block printed
@@ -1387,6 +1506,7 @@ class Converter:
         # less than 1 GB free (a big book with TTS can produce 500MB+).
         try:
             import shutil
+
             usage = shutil.disk_usage(self.output_dir)
             free_gb = usage.free / (1024**3)
             if free_gb < 1.0:
@@ -1394,7 +1514,7 @@ class Converter:
                     f"  ⚠️ Low disk space: {free_gb:.1f} GB free on {self.output_dir.anchor}. "
                     f"A big book with TTS/packets can produce 500MB+. "
                     f"Conversion may fail mid-way if disk fills up.",
-                    "WARNING"
+                    "WARNING",
                 )
             else:
                 self._log(f"  💾 Disk space: {free_gb:.1f} GB free", "DEBUG")
@@ -1402,7 +1522,9 @@ class Converter:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
         # Track output generation results for graceful degradation summary
-        self._output_results: dict[str, str] = {}  # phase → "✅ done" / "❌ failed: msg" / "⏭️ skipped"
+        self._output_results: dict[
+            str, str
+        ] = {}  # phase → "✅ done" / "❌ failed: msg" / "⏭️ skipped"
 
         # JudgeResult list from the Summarizer (Layer 8 grounding).
         # Populated after summarization; stays empty when grounding is off or
@@ -1414,6 +1536,7 @@ class Converter:
         # completed phases.  Created after the folder rename (which happens
         # later in convert()), so we init it here and set_output_dir later.
         from core.pipeline.checkpoint import Checkpoint
+
         # V13.25.0 (P1.1): Phase-level resume — load existing checkpoint
         # instead of always creating a fresh one. If a checkpoint exists
         # in the output dir with some phases done, those phases will be
@@ -1429,7 +1552,7 @@ class Converter:
                 self._log(
                     f"  📋 Checkpoint loaded — resuming from '{resume_point}' "
                     f"({done_count} phase(s) already done)",
-                    "INFO"
+                    "INFO",
                 )
             else:
                 self._log("  📋 Checkpoint loaded (no phases to resume)", "DEBUG")
@@ -1439,7 +1562,9 @@ class Converter:
                 input_path=str(self.request.input_path),
             )
             self.checkpoint.set_output_dir(self.output_dir)
-            self._log(f"  📋 Checkpoint system initialized → {self.checkpoint.checkpoint_path}", "DEBUG")
+            self._log(
+                f"  📋 Checkpoint system initialized → {self.checkpoint.checkpoint_path}", "DEBUG"
+            )
 
         try:
             # ── Steps 1–4: Extraction phase (V10.8.0 Phase 8C) ─────────────
@@ -1451,6 +1576,7 @@ class Converter:
             from core.pipeline.conversion.extraction import (
                 run_extraction as _run_extraction,
             )
+
             _extract = _run_extraction(converter=self)
             if isinstance(_extract, ConversionResult):
                 return _extract  # early exit (0-page or cancel)
@@ -1496,6 +1622,7 @@ class Converter:
             # the converter owns the pipeline flow + state, the module owns
             # the post-processing logic.
             from core.pipeline.conversion.postprocess import run_postprocess
+
             raw_markdown = run_postprocess(
                 converter=self,
                 raw_markdown=raw_markdown,
@@ -1520,7 +1647,13 @@ class Converter:
             from core.pipeline.conversion.segmentation import (
                 run_segmentation as _run_seg,
             )
-            _seg = _run_seg(converter=self, raw_markdown=raw_markdown, analysis=analysis, toc_entries=toc_entries)
+
+            _seg = _run_seg(
+                converter=self,
+                raw_markdown=raw_markdown,
+                analysis=analysis,
+                toc_entries=toc_entries,
+            )
             if isinstance(_seg, ConversionResult):
                 return _seg  # early exit (cancel)
             segments = _seg.segments
@@ -1546,6 +1679,7 @@ class Converter:
             from core.pipeline.conversion.output_save import (
                 run_output_save as _run_save,
             )
+
             _save = _run_save(
                 converter=self,
                 segments=segments,
@@ -1556,7 +1690,6 @@ class Converter:
             )
             book_title = _save.book_title
             detected_lang = _save.detected_lang
-            source_name = _save.source_name
             segments_folder = _save.segments_folder
             # Release raw_markdown — run_output_save was the last user (for
             # book-title detection + full-markdown assembly).  Summarization
@@ -1578,6 +1711,7 @@ class Converter:
             from core.pipeline.conversion.summarization import (
                 run_summarization as _run_summ,
             )
+
             _summ = _run_summ(
                 converter=self,
                 segments=segments,
@@ -1613,7 +1747,7 @@ class Converter:
                     docx_path = self.docx_path
 
             # ── Keypoints (always when summaries exist) ───────────────────────
-            keypoints_md_path   = None
+            keypoints_md_path = None
             keypoints_docx_path = None
             # V18.20.3.10 (W11): the DEDUPED keypoint count from the builder —
             # the library must record the number that actually shipped in
@@ -1624,12 +1758,14 @@ class Converter:
                 # V18.19.2.0 (Debt D4): lazy import breaks the converter→core.summarisation
                 # eager import cycle. KeypointsBuilder is only needed when summaries exist.
                 from core.summarisation import KeypointsBuilder
+
                 kp = KeypointsBuilder(log_callback=self._log)
                 # Pass segments + concepts for J1 ordering, K1 confidence,
                 # K2 source excerpts, H2 page traceability
                 all_concepts = []
                 try:
                     from core.summarisation.text_preprocessor import DeterministicPreprocessor
+
                     pp = DeterministicPreprocessor()
                     for seg in segments:
                         all_concepts.extend(pp.extract_concepts(seg.content))
@@ -1641,7 +1777,7 @@ class Converter:
                     output_dir=self.paths.keypoints_dir,
                     segments=segments,
                     concepts=all_concepts,
-                    judge_results=getattr(self, "_judge_results", None)
+                    judge_results=getattr(self, "_judge_results", None),
                 )
                 # V18.20.3.10 (W11): capture the deduped count for the
                 # library record (falls back to the raw sum below when the
@@ -1657,13 +1793,17 @@ class Converter:
             # load or any error occurs, gracefully skip simplification instead
             # of crashing the entire pipeline. The keypoints (already generated)
             # are preserved. The user gets a clear warning instead of a crash.
-            if (self.request.simplified_keypoints_enabled and summaries
-                    and not self._cancel_requested("simplified keypoints")):
+            if (
+                self.request.simplified_keypoints_enabled
+                and summaries
+                and not self._cancel_requested("simplified keypoints")
+            ):
                 self._update_status("Generating Simplified Keypoints Digest…")
                 self._log("  📌 Generating simplified keypoints (jargon‑free digest)…", "INFO")
                 try:
                     # V18.19.2.0 (Debt D4): lazy import breaks the eager import cycle.
                     from core.summarisation import SimplifiedKeypointsBuilder
+
                     builder = SimplifiedKeypointsBuilder(
                         request=self.request,
                         log_callback=self._log,
@@ -1678,13 +1818,32 @@ class Converter:
                 except (OSError, ConnectionError, TimeoutError) as e:
                     # Model load failure, Ollama connection error, timeout
                     self._log(f"  ⚠️ Simplification skipped (model unavailable): {e}", "WARNING")
-                    self._log("  ℹ️ Keypoints and summaries are still available without simplification.", "INFO")
+                    self._log(
+                        "  ℹ️ Keypoints and summaries are still available without simplification.",
+                        "INFO",
+                    )
                 except Exception as e:
                     # Any other error — don't crash the pipeline
                     error_msg = str(e).lower()
-                    if any(kw in error_msg for kw in ("model", "load", "ollama", "connection", "timeout", "memory", "vram")):
-                        self._log(f"  ⚠️ Simplification skipped (infrastructure error): {e}", "WARNING")
-                        self._log("  ℹ️ Keypoints and summaries are still available without simplification.", "INFO")
+                    if any(
+                        kw in error_msg
+                        for kw in (
+                            "model",
+                            "load",
+                            "ollama",
+                            "connection",
+                            "timeout",
+                            "memory",
+                            "vram",
+                        )
+                    ):
+                        self._log(
+                            f"  ⚠️ Simplification skipped (infrastructure error): {e}", "WARNING"
+                        )
+                        self._log(
+                            "  ℹ️ Keypoints and summaries are still available without simplification.",
+                            "INFO",
+                        )
                     else:
                         self._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")
 
@@ -1712,6 +1871,7 @@ class Converter:
             # is wrapped in try/except inside the runner.
             if summaries and len(summaries) > 0 and not self._cancel_requested("output studio"):
                 from core.pipeline.conversion.output_runner import run_output_studio
+
                 self._output_results.update(
                     run_output_studio(
                         request=self.request,
@@ -1722,7 +1882,9 @@ class Converter:
                         log=self._log,
                         update_status=self._update_status,
                         judge_results=getattr(self, "_judge_results", None),
-                        progress_callback=getattr(self, "_output_progress_callback", None),  # V10.37.0
+                        progress_callback=getattr(
+                            self, "_output_progress_callback", None
+                        ),  # V10.37.0
                         checkpoint=getattr(self, "checkpoint", None),  # V13.25.0 P1.1
                     )
                 )
@@ -1731,7 +1893,8 @@ class Converter:
             if not self._cancel_requested("citation graph"):
                 try:
                     from core.outputs.citation_graph import generate_citation_graph
-                    if hasattr(self, 'temp_markdown_path') and self.temp_markdown_path.exists():
+
+                    if hasattr(self, "temp_markdown_path") and self.temp_markdown_path.exists():
                         _raw_md = self.temp_markdown_path.read_text(encoding="utf-8")
                         generate_citation_graph(
                             summaries=summaries,
@@ -1754,7 +1917,9 @@ class Converter:
                 or self.request.selected_chapters is not None
             )
             if page_markers and len(page_markers) != total_pages and not chapter_selection_active:
-                warnings.append(f"Page count mismatch: {total_pages} expected, {len(page_markers)} marked.")
+                warnings.append(
+                    f"Page count mismatch: {total_pages} expected, {len(page_markers)} marked."
+                )
             if summaries:
                 for summ in summaries:
                     if summ.success and not summ.bullet_points:
@@ -1771,8 +1936,13 @@ class Converter:
             # Previously the pipeline reported "✅ Conversion complete" even
             # when ALL chapters failed (model returned empty). Now: if no
             # summaries have content, report failure.
-            _valid_summaries = [s for s in summaries if s and getattr(s, "success", True)
-                                 and (s.executive_summary or s.bullet_points or s.thorough_summary)]
+            _valid_summaries = [
+                s
+                for s in summaries
+                if s
+                and getattr(s, "success", True)
+                and (s.executive_summary or s.bullet_points or s.thorough_summary)
+            ]
             _failed_count = len(summaries) - len(_valid_summaries) if summaries else 0
             _all_failed = summaries and len(_valid_summaries) == 0
 
@@ -1794,8 +1964,7 @@ class Converter:
             # still produced) but is announced with a loud WARNING instead
             # of silence.
             _zero_summaries = (
-                not summaries and bool(self.request.generate_summaries)
-                and not _cancelled
+                not summaries and bool(self.request.generate_summaries) and not _cancelled
             )
             _selection_active = bool(self.request.selected_chapters)
             if _all_failed:
@@ -1839,8 +2008,7 @@ class Converter:
             elif _cancelled:
                 self._update_status("Conversion cancelled")
                 self._log(
-                    "⏹️ Conversion cancelled — partial summaries saved; "
-                    "downstream phases skipped.",
+                    "⏹️ Conversion cancelled — partial summaries saved; downstream phases skipped.",
                     "WARNING",
                 )
             else:
@@ -1863,7 +2031,11 @@ class Converter:
                 for phase, result in self._output_results.items():
                     # Check if this output was actually requested
                     _attr = phase
-                    _is_requested = getattr(self.request, _attr, False) if hasattr(self.request, _attr) else True
+                    _is_requested = (
+                        getattr(self.request, _attr, False)
+                        if hasattr(self.request, _attr)
+                        else True
+                    )
                     if not _is_requested:
                         # Skip outputs that weren't requested
                         continue
@@ -1913,7 +2085,9 @@ class Converter:
             # version header now reads from VERSION file (was stale
             # "V7.5.1" hardcoded).
             self._log("", "INFO")
-            self._log(f"━━━ Elixir v{self._get_app_version()} Conversion Diagnostic Summary ━━━", "INFO")
+            self._log(
+                f"━━━ Elixir v{self._get_app_version()} Conversion Diagnostic Summary ━━━", "INFO"
+            )
             self._log(f"  Book: {book_title}", "INFO")
             self._log(f"  Total pages: {total_pages}", "INFO")
             # V18.20.3.6: when a chapter selection / page range limited the
@@ -1926,18 +2100,24 @@ class Converter:
                     f"(selection active — {_pages_processed} of {total_pages} pages)",
                     "INFO",
                 )
-            self._log(f"  Segments: {len(segments)} "
-                       f"(chapters: {len([s for s in segments if s.segment_type == 'chapter'])}, "
-                       f"chunks: {len([s for s in segments if s.segment_type == 'chunk'])})", "INFO")
+            self._log(
+                f"  Segments: {len(segments)} "
+                f"(chapters: {len([s for s in segments if s.segment_type == 'chapter'])}, "
+                f"chunks: {len([s for s in segments if s.segment_type == 'chunk'])})",
+                "INFO",
+            )
             self._log(f"  Summaries generated: {len(summaries) if summaries else 0}", "INFO")
             if summaries:
                 ok = sum(1 for s in summaries if s.success)
                 failed = len(summaries) - ok
                 total_bullets = sum(len(s.bullet_points) for s in summaries)
-                self._log(f"    Success: {ok}, Failed: {failed}, Total bullets: {total_bullets}", "INFO")
+                self._log(
+                    f"    Success: {ok}, Failed: {failed}, Total bullets: {total_bullets}", "INFO"
+                )
                 # Coverage stats from the quality report if available
                 try:
                     import json as _json
+
                     qr = self.paths.quality_report
                     if qr.exists():
                         report = _json.loads(qr.read_text(encoding="utf-8"))
@@ -1957,13 +2137,19 @@ class Converter:
                                 f"    Recall floor (deterministic, final set): "
                                 f"theorists {_rf.get('theorists_covered', 0)}/"
                                 f"{_rf['theorists_total']}"
-                                + (f" ({_rf['theorists_pct']:.0%})"
-                                   if _rf.get("theorists_pct") is not None else "")
+                                + (
+                                    f" ({_rf['theorists_pct']:.0%})"
+                                    if _rf.get("theorists_pct") is not None
+                                    else ""
+                                )
                                 + f", conclusion items "
-                                  f"{_rf.get('conclusion_items_covered', 0)}/"
-                                  f"{_rf.get('conclusion_items_total', 0)}"
-                                + (f" ({_rf['conclusion_items_pct']:.0%})"
-                                   if _rf.get("conclusion_items_pct") is not None else ""),
+                                f"{_rf.get('conclusion_items_covered', 0)}/"
+                                f"{_rf.get('conclusion_items_total', 0)}"
+                                + (
+                                    f" ({_rf['conclusion_items_pct']:.0%})"
+                                    if _rf.get("conclusion_items_pct") is not None
+                                    else ""
+                                ),
                                 "INFO",
                             )
                 except Exception as _e:
@@ -1996,8 +2182,11 @@ class Converter:
                         self._log(f"  Summary files ({len(_mds)}):", "INFO")
                         from core.system.provenance import (
                             get_app_version as _get_app_ver,
+                        )
+                        from core.system.provenance import (
                             stamp_diagnostic,
                         )
+
                         # V18.20.4.3 (P2 / G-1 + G-2, the F8 follow-up):
                         # (a) each line now carries the file's FULL PATH —
                         # the user had only file NAMES before, and with
@@ -2012,9 +2201,7 @@ class Converter:
                         _app_ver = _get_app_ver()
                         for _sf in _mds:
                             try:
-                                _text = _sf.read_text(
-                                    encoding="utf-8", errors="replace"
-                                )
+                                _text = _sf.read_text(encoding="utf-8", errors="replace")
                             except Exception:
                                 _text = ""
                             _level, _msg = stamp_diagnostic(
@@ -2031,6 +2218,7 @@ class Converter:
             # the run (no more log-timestamp archaeology).
             try:
                 from core.llm.call_meta import call_telemetry_summary
+
                 _tel = call_telemetry_summary()
                 if _tel.get("calls"):
                     _run_s = _time_mod.time() - _t_start
@@ -2059,6 +2247,7 @@ class Converter:
             # off, so most runs see nothing here).
             try:
                 from core.llm.response_cache import response_cache
+
                 _st = response_cache.stats()
                 _start = getattr(self, "_cache_stats_start", None) or {}
                 _d_hits = _st.get("hits", 0) - _start.get("hits", 0)
@@ -2082,6 +2271,7 @@ class Converter:
             # ended on it).
             try:
                 from core.llm import ModelManager
+
                 mm = ModelManager()
                 loaded = mm.get_loaded_models()
                 if loaded:
@@ -2108,10 +2298,12 @@ class Converter:
             # Now only runs if the user explicitly enabled it.
             # V18.20.2.0 (SWOT A15): cancel gate — screenshots are opt-in but
             # run 10+ minutes when enabled; a cancelled run must not start them.
-            if (self.settings.get("outputs_optin.screenshots", False)
-                    and not self._cancel_requested("screenshots/graphs")):
+            if self.settings.get("outputs_optin.screenshots", False) and not self._cancel_requested(
+                "screenshots/graphs"
+            ):
                 try:
                     from core.pdf.table_graph_extractor import TableGraphExtractor
+
                     extractor = TableGraphExtractor(log_callback=self._log)
                     # screenshots now respect ALL page-selection
                     # mechanisms — page range, manual_segments, AND selected_chapters.
@@ -2138,11 +2330,16 @@ class Converter:
                         if toc_page_set:
                             page_list = [p for p in page_list if p in toc_page_set]
                     result = extractor.extract(
-                        self.request.input_path, self.output_dir, page_list,
+                        self.request.input_path,
+                        self.output_dir,
+                        page_list,
                         book_title=book_title,
                     )
                     if result["table_count"] > 0 or result["graph_count"] > 0:
-                        self._log(f"  📊 Tables: {result['table_count']}, Graphs: {result['graph_count']} → tables.md + graphs.md", "INFO")
+                        self._log(
+                            f"  📊 Tables: {result['table_count']}, Graphs: {result['graph_count']} → tables.md + graphs.md",
+                            "INFO",
+                        )
                 except Exception as e:
                     self._record_partial_failure("Table/graph extraction", e)
             else:
@@ -2153,16 +2350,29 @@ class Converter:
             if not self._cancel_requested("footnote extraction"):
                 try:
                     from core.pdf.footnote_extractor import extract_footnotes
-                    full_text = self.full_markdown_path.read_text(encoding="utf-8") if self.full_markdown_path.exists() else ""
+
+                    full_text = (
+                        self.full_markdown_path.read_text(encoding="utf-8")
+                        if self.full_markdown_path.exists()
+                        else ""
+                    )
                     if full_text:
                         fn_result = extract_footnotes(full_text)
                         if fn_result["total_notes"] > 0:
-                            self._log(f"  📝 Footnotes: {fn_result['total_notes']} extracted", "INFO")
+                            self._log(
+                                f"  📝 Footnotes: {fn_result['total_notes']} extracted", "INFO"
+                            )
                             # Save footnotes to separate file
                             fn_path = self.paths.footnotes(book_title)
                             from core.pdf.footnote_extractor import format_footnotes_for_summary
+
                             fn_path.parent.mkdir(parents=True, exist_ok=True)  # lazy dir
-                            fn_path.write_text(format_footnotes_for_summary(fn_result["footnotes"], fn_result["endnotes"]), encoding="utf-8")
+                            fn_path.write_text(
+                                format_footnotes_for_summary(
+                                    fn_result["footnotes"], fn_result["endnotes"]
+                                ),
+                                encoding="utf-8",
+                            )
                 except Exception as e:
                     self._record_partial_failure("Footnote extraction", e)
 
@@ -2172,6 +2382,7 @@ class Converter:
             if not self._cancel_requested("library tracking"):
                 try:
                     from core.pipeline.library_manager import LibraryManager
+
                     # V18.20.4.1 (P0 / W-a2): the coverage stat stored in
                     # library.json is the MEASURED number from
                     # quality_report.json ("totals.avg_coverage" — the same
@@ -2187,6 +2398,7 @@ class Converter:
                     _cov_lib: float | None = None
                     try:
                         import json as _json_lib
+
                         _qr_lib = self.paths.quality_report
                         if _qr_lib.exists():
                             _cov_val_lib = (
@@ -2204,7 +2416,9 @@ class Converter:
                         source_file=self.request.input_path.name,
                         chapters_processed=len(summaries) if summaries else 0,
                         total_chapters=len(segments) if segments else 0,
-                        concepts_extracted=sum(len(s.bullet_points) for s in summaries) if summaries else 0,
+                        concepts_extracted=sum(len(s.bullet_points) for s in summaries)
+                        if summaries
+                        else 0,
                         # V18.20.3.10 (W11): the DEDUPED count that shipped in
                         # the keypoints file (was the raw bullet sum — the
                         # 41-vs-36 mismatch, .3.7 SWOT W11).
@@ -2222,7 +2436,7 @@ class Converter:
             # V10.34.0 (Sprint 6.10): Merge partial failures into warnings
             # so they surface in the success modal.
             _all_warnings = list(warnings)
-            _pf = getattr(self, '_partial_failures', [])
+            _pf = getattr(self, "_partial_failures", [])
             if _pf:
                 _all_warnings.append(f"⚠️ {len(_pf)} sub-system(s) had partial failures:")
                 _all_warnings.extend(f"  • {pf}" for pf in _pf)
@@ -2243,19 +2457,28 @@ class Converter:
                     and not _cancelled
                     and not (_zero_summaries and _selection_active)
                 ),
-                error_msg=("Cancelled by user" if _cancelled else
-                           ("All chapters returned empty responses — model may not be installed, "
-                            "VRAM insufficient, or quantization too aggressive. "
-                            "Try: ollama pull <model>, use IQ2_M instead of IQ2_XXS, "
-                            "or raise temperature to 1.0.") if _all_failed else
-                           (f"None of the {len(self.request.selected_chapters)} selected chapter(s) "
-                            f"were summarized — the selection matched no summarizable section. "
-                            f"Re-pick chapters in the selector (per-chapter author bookmarks "
-                            f"are no longer listed) or convert the whole book."
-                            if (_zero_summaries and _selection_active) else None)),
+                error_msg=(
+                    "Cancelled by user"
+                    if _cancelled
+                    else (
+                        "All chapters returned empty responses — model may not be installed, "
+                        "VRAM insufficient, or quantization too aggressive. "
+                        "Try: ollama pull <model>, use IQ2_M instead of IQ2_XXS, "
+                        "or raise temperature to 1.0."
+                    )
+                    if _all_failed
+                    else (
+                        f"None of the {len(self.request.selected_chapters)} selected chapter(s) "
+                        f"were summarized — the selection matched no summarizable section. "
+                        f"Re-pick chapters in the selector (per-chapter author bookmarks "
+                        f"are no longer listed) or convert the whole book."
+                        if (_zero_summaries and _selection_active)
+                        else None
+                    )
+                ),
                 full_markdown_path=self.full_markdown_path,
                 chapters_folder=self.chapters_folder if self.chapters_folder.exists() else None,
-                chunks_folder=self.chunks_folder   if self.chunks_folder.exists()   else None,
+                chunks_folder=self.chunks_folder if self.chunks_folder.exists() else None,
                 docx_path=docx_path,
                 # V18.20.3.6: the pages THIS run actually covered (selection
                 # > range > whole document) — was ``total_pages``, which
@@ -2264,7 +2487,8 @@ class Converter:
                 chapters_detected=len([s for s in segments if s.segment_type == "chapter"]),
                 chunks_created=len([s for s in segments if s.segment_type == "chunk"]),
                 summaries_generated=len(summaries),
-                segments=segments, summaries=summaries,
+                segments=segments,
+                summaries=summaries,
                 log_file_path=self.conv_logger.log_path,
                 warnings=_all_warnings,
             )
@@ -2272,6 +2496,7 @@ class Converter:
         except Exception as e:
             self._log(f"❌ Fatal error: {e}", "ERROR")
             import traceback
+
             self._log(traceback.format_exc(), "ERROR")
             return ConversionResult(success=False, error_msg=str(e))
         finally:

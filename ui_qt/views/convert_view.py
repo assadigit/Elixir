@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from controller import Controller
 from core.models import ConversionResult
@@ -80,6 +80,7 @@ class ConvertView(QWidget):
         # The 9 tool cards are the primary entry point. The old preset
         # type cards (Book, Research Paper, etc.) move to the wizard's Step 1.
         from ui_qt.views.tool_dashboard import ToolDashboard
+
         self.tool_dashboard = ToolDashboard(self)
         self.tool_dashboard.tool_clicked.connect(self._on_tool_clicked)
         root.addWidget(self.tool_dashboard)
@@ -150,66 +151,77 @@ class ConvertView(QWidget):
             self._open_wizard()
         elif tool_key == "pdf_to_markdown":
             from ui_qt.views.service_dialogs.base_dialog import QuickConvertDialog
+
             dlg = QuickConvertDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "ocr_service":
             from ui_qt.views.service_dialogs.base_dialog import OcrServiceDialog
+
             dlg = OcrServiceDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "summarization":
             from ui_qt.views.service_dialogs.base_dialog import SummarizationServiceDialog
+
             dlg = SummarizationServiceDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "translation":
             from ui_qt.views.service_dialogs.base_dialog import TranslationServiceDialog
+
             dlg = TranslationServiceDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "tts_service":
             from ui_qt.views.service_dialogs.base_dialog import TtsServiceDialog
+
             dlg = TtsServiceDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "markdown_styler":
             from ui_qt.views.service_dialogs.base_dialog import MarkdownStylerDialog
+
             dlg = MarkdownStylerDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "packets_tool":
             from ui_qt.views.service_dialogs.base_dialog import PacketsToolDialog
+
             dlg = PacketsToolDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "hallucination_audit":
             from ui_qt.views.service_dialogs.base_dialog import HallucinationAuditDialog
+
             dlg = HallucinationAuditDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "pdf_docx_cutter":
             from ui_qt.views.service_dialogs.base_dialog import PdfDocxCutterDialog
+
             dlg = PdfDocxCutterDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "image_extractor":
             from ui_qt.views.service_dialogs.base_dialog import ImageExtractorDialog
+
             dlg = ImageExtractorDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.exec()
         elif tool_key == "transcribe":
             from ui_qt.views.service_dialogs.base_dialog import TranscribeServiceDialog
+
             dlg = TranscribeServiceDialog(self.controller, self)
             # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -220,6 +232,7 @@ class ConvertView(QWidget):
             from PySide6.QtWidgets import QDialog, QVBoxLayout
 
             from ui_qt.views.podcast_maker_view import PodcastMakerView
+
             dlg = QDialog(self)
             dlg.setWindowTitle("🎙️ Podcast Maker")
             dlg.setMinimumSize(700, 600)
@@ -250,19 +263,25 @@ class ConvertView(QWidget):
         attr_name = attr_map.get(tab_name, tab_name)
         parent = self.parent()
         while parent is not None:
-            if hasattr(parent, 'tab_widget'):
+            if hasattr(parent, "tab_widget"):
                 # Find the tab by widget attribute name
                 tw = parent.tab_widget
                 for i in range(tw.count()):
                     widget = tw.widget(i)
-                    inner = widget.widget() if hasattr(widget, 'widget') else widget
+                    inner = widget.widget() if hasattr(widget, "widget") else widget
                     if hasattr(parent, attr_name) and inner is getattr(parent, attr_name):
                         tw.setCurrentIndex(i)
                         # Briefly highlight the tab (Q17: instant + highlight)
-                        tw.tabBar().setTabTextColor(i, __import__('PySide6.QtGui', fromlist=['QColor']).QColor("#D8AA78"))
+                        tw.tabBar().setTabTextColor(
+                            i, __import__("PySide6.QtGui", fromlist=["QColor"]).QColor("#D8AA78")
+                        )
                         from PySide6.QtCore import QTimer
-                        def _reset_color(idx=i):
-                            tw.tabBar().setTabTextColor(idx, __import__('PySide6.QtGui', fromlist=['QColor']).QColor())
+
+                        def _reset_color(idx=i, tw=tw):
+                            tw.tabBar().setTabTextColor(
+                                idx, __import__("PySide6.QtGui", fromlist=["QColor"]).QColor()
+                            )
+
                         QTimer.singleShot(1500, _reset_color)
                         return
             parent = parent.parent()
@@ -271,6 +290,7 @@ class ConvertView(QWidget):
     def _open_wizard(self) -> None:
         """Launch the Process Wizard."""
         from ui_qt.views.wizard_view import WizardView
+
         dlg = WizardView(self.controller, self)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         # (The post-exec call below touches self, not dlg — safe to delete the dialog.)
@@ -307,7 +327,7 @@ class ConvertView(QWidget):
                     self.output_toggle_cb.blockSignals(True)
                     self.output_toggle_cb.setChecked(True)
                     self.output_toggle_cb.blockSignals(False)
-                if hasattr(self, 'output_picker') and self.output_picker:
+                if hasattr(self, "output_picker") and self.output_picker:
                     self.output_picker.set_path(override)
                     self.output_picker.setVisible(True)
             else:
@@ -315,7 +335,7 @@ class ConvertView(QWidget):
                     self.output_toggle_cb.blockSignals(True)
                     self.output_toggle_cb.setChecked(False)
                     self.output_toggle_cb.blockSignals(False)
-                if hasattr(self, 'output_picker') and self.output_picker:
+                if hasattr(self, "output_picker") and self.output_picker:
                     self.output_picker.setVisible(False)
         self._apply_live_log_visibility()
         self._refresh_engine_indicator()
@@ -364,6 +384,7 @@ class ConvertView(QWidget):
             if self.controller.get_setting("ui.play_success_sound", True):
                 try:
                     from ui_qt.components.sounds import play_success
+
                     play_success()
                 except Exception:
                     pass  # best-effort (UI — never crash)
@@ -373,6 +394,7 @@ class ConvertView(QWidget):
             # the wrong-folder pick was the recurring stale-file-upload
             # class. Also logged so the folder is copy-pasteable.
             from PySide6.QtWidgets import QMessageBox as _QMB
+
             _summ_dir = None
             if result.full_markdown_path:
                 _walk = result.full_markdown_path.parent
@@ -397,6 +419,7 @@ class ConvertView(QWidget):
             if _open_summ is not None and _box.clickedButton() is _open_summ:
                 try:
                     from PySide6.QtGui import QDesktopServices, QUrl
+
                     QDesktopServices.openUrl(QUrl.fromLocalFile(str(_summ_dir)))
                 except Exception:
                     pass  # best-effort (UI — never crash)
@@ -413,16 +436,15 @@ class ConvertView(QWidget):
         p = theme_manager.palette
         # V11.30.1: refresh tool dashboard cards (was missing — cards kept
         # light-mode background when switching to dark mode).
-        if hasattr(self, 'tool_dashboard') and self.tool_dashboard is not None:
+        if hasattr(self, "tool_dashboard") and self.tool_dashboard is not None:
             self.tool_dashboard.refresh_theme()
         # V18.20.4.1 (W-b13): the _type_cards / _type_head / _doc_head /
         # load_prev_btn branches never ran (those attributes were never
         # assigned after V11.0.0) — deleted with the legacy block.
-        if hasattr(self, 'log_viewer') and self.log_viewer is not None:
+        if hasattr(self, "log_viewer") and self.log_viewer is not None:
             self.log_viewer.refresh_theme()
         # V11.29.5: guard the optional CTA buttons (removed in V11.0.0)
         if getattr(self, "test_btn", None) is not None:
             self.test_btn.setIcon(icon("flask", p.text_primary, 16))
         if getattr(self, "convert_btn", None) is not None:
             self.convert_btn.setIcon(icon("rocket", p.text_on_accent, 17))
-

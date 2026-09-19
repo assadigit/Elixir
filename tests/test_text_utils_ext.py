@@ -7,6 +7,7 @@ test fails.
 
 Run: pytest tests/test_text_utils_ext.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -19,20 +20,23 @@ if str(_project_root) not in sys.path:
 
 # Stub tiktoken so the import chain (utils.token_counter → tiktoken) works
 # without the real package installed in the sandbox.
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
     class _E:
         def encode(self, s, disallowed_special=()):  # pragma: no cover - stub
             # Crude word-based token approximation (good enough for the
             # count_tokens fallback path; tests below don't assert exact
             # token counts, only structural properties).
             return s.split()
+
         def decode(self, tokens):  # pragma: no cover - stub
-            return ' '.join(tokens)
+            return " ".join(tokens)
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: _E()
     tk.encoding_for_model = lambda *a, **k: _E()
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.text_utils_ext import smart_truncate
 
@@ -154,8 +158,7 @@ class TestSmartTruncateByteForByte:
         """The truncated result must be shorter than the input when the input
         exceeds the budget (the whole point of truncation)."""
         text = "\n\n".join(
-            f"Paragraph {i} with Erikson stage {i} content words to fill budget."
-            for i in range(10)
+            f"Paragraph {i} with Erikson stage {i} content words to fill budget." for i in range(10)
         )
         result = smart_truncate(text, max_tokens=120, log=_CapturingLog())
         # The result should be meaningfully shorter than the input.
@@ -165,9 +168,7 @@ class TestSmartTruncateByteForByte:
         """Even with a very tight budget, the anchor (first) and tail (last)
         paragraphs are always kept (they fall back to truncated single
         paragraphs if the budget is too small for whole paragraphs)."""
-        text = "\n\n".join(
-            f"Paragraph {i} with Erikson content words." for i in range(5)
-        )
+        text = "\n\n".join(f"Paragraph {i} with Erikson content words." for i in range(5))
         result = smart_truncate(text, max_tokens=50, log=_CapturingLog())
         assert "Paragraph 0" in result
         assert "Paragraph 4" in result

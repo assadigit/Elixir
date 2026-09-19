@@ -31,6 +31,7 @@ USAGE
         rf'\s*\(?(\d{4}[a-z]?)\)?'
     )
 """
+
 from __future__ import annotations
 
 # ── Apostrophe class ───────────────────────────────────────────────────────

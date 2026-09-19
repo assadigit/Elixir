@@ -48,6 +48,7 @@ The ``detect_and_filter`` method returns ``(filtered_bullets, reports)`` where:
   - ``source_overlap`` (float 0-1): F4 content-word overlap
   - ``semantic_similarity`` (float 0-1): best embedding similarity
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,8 +69,8 @@ class HallucinationDetector:
     """
 
     # Thresholds (aligned with the existing pipeline layers)
-    OVERLAP_THRESHOLD = 0.25      # F4: drop if below
-    SEMANTIC_THRESHOLD = 0.42     # V13.22.0 relaxed threshold (was 0.50)
+    OVERLAP_THRESHOLD = 0.25  # F4: drop if below
+    SEMANTIC_THRESHOLD = 0.42  # V13.22.0 relaxed threshold (was 0.50)
     PARTIAL_RATIO_THRESHOLD = 0.50  # rapidfuzz fallback for verbatim
 
     def detect_and_filter(
@@ -104,9 +105,13 @@ class HallucinationDetector:
             logger.error("Cannot import text_preprocessor signals: %s", e)
             # Fail-open: return all bullets as "kept" with empty reports
             return list(bullets), [
-                {"bullet": b, "action": "kept",
-                 "reason": "signal import failed — fail-open",
-                 "source_overlap": 0.0, "semantic_similarity": 0.0}
+                {
+                    "bullet": b,
+                    "action": "kept",
+                    "reason": "signal import failed — fail-open",
+                    "source_overlap": 0.0,
+                    "semantic_similarity": 0.0,
+                }
                 for b in bullets
             ]
 
@@ -114,6 +119,7 @@ class HallucinationDetector:
         claim_extractor = None
         try:
             from core.grounding.claim_extractor import ClaimExtractor
+
             claim_extractor = ClaimExtractor()
         except Exception:
             # langextract is optional — fall back to rapidfuzz partial_ratio
@@ -124,7 +130,8 @@ class HallucinationDetector:
 
         for bullet in bullets:
             report = self._check_single_bullet(
-                bullet, source_text,
+                bullet,
+                source_text,
                 compute_source_overlap,
                 semantic_fact_check,
                 verify_numbers_and_quotes,
@@ -140,7 +147,11 @@ class HallucinationDetector:
         dropped = sum(1 for r in reports if r["action"] == "dropped")
         logger.info(
             "%s: %d grounded, %d flagged, %d dropped (of %d total)",
-            label, grounded, flagged, dropped, len(reports),
+            label,
+            grounded,
+            flagged,
+            dropped,
+            len(reports),
         )
 
         return filtered, reports
@@ -166,7 +177,9 @@ class HallucinationDetector:
         # Signal 2: Phase 2.2 semantic similarity
         try:
             sem_result = semantic_fact_check(
-                bullet, source_text, threshold=self.SEMANTIC_THRESHOLD,
+                bullet,
+                source_text,
+                threshold=self.SEMANTIC_THRESHOLD,
             )
             similarity = sem_result.get("best_similarity", 0.0)
             sem_pass = sem_result.get("is_grounded", True)
@@ -190,9 +203,7 @@ class HallucinationDetector:
             try:
                 claims = claim_extractor.extract(bullet, source_text)
                 if claims:
-                    verbatim_pass = any(
-                        c.get("char_interval") is not None for c in claims
-                    )
+                    verbatim_pass = any(c.get("char_interval") is not None for c in claims)
                     verbatim_reason = "langextract verbatim span found"
                 else:
                     verbatim_reason = "no verbatim span"
@@ -262,7 +273,7 @@ class HallucinationDetector:
 
             # Slide a window across the source
             for i in range(0, len(source_text) - window_size + 1, 20):
-                window = source_text[i:i + window_size + bullet_len]
+                window = source_text[i : i + window_size + bullet_len]
                 score = _rf_fuzz.partial_ratio(bullet.lower(), window.lower())
                 if score >= self.PARTIAL_RATIO_THRESHOLD * 100:
                     return True

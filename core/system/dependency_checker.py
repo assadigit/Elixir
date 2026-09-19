@@ -34,9 +34,11 @@ from pathlib import Path
 
 # ── Status dataclass ──────────────────────────────────────────────────────
 
+
 @dataclass
 class DependencyStatus:
     """Result of a single dependency check."""
+
     name: str
     category: str  # "core" / "tts" / "binary" / "optional"
     ok: bool | None  # True=ok, False=missing, None=optional+missing
@@ -62,6 +64,7 @@ class DependencyStatus:
 
 
 # ── Checker ───────────────────────────────────────────────────────────────
+
 
 class DetailedDependencyChecker:
     """V13.29.0: Renamed from DependencyChecker to avoid collision with
@@ -89,6 +92,7 @@ class DetailedDependencyChecker:
         if self._settings is None:
             try:
                 from utils.settings import Settings
+
                 self._settings = Settings()
             except Exception as _e:
                 self._settings = {}
@@ -139,14 +143,10 @@ class DetailedDependencyChecker:
         results.append(self._check_kokoro_model())
 
         # Optional
-        results.append(self._check_import("pyenchant", "enchant", "optional",
-                                          required=False))
-        results.append(self._check_import("detectron2", "detectron2", "optional",
-                                          required=False))
-        results.append(self._check_import("camelot", "camelot", "optional",
-                                          required=False))
-        results.append(self._check_import("pymupdf (fitz)", "fitz", "optional",
-                                          required=False))
+        results.append(self._check_import("pyenchant", "enchant", "optional", required=False))
+        results.append(self._check_import("detectron2", "detectron2", "optional", required=False))
+        results.append(self._check_import("camelot", "camelot", "optional", required=False))
+        results.append(self._check_import("pymupdf (fitz)", "fitz", "optional", required=False))
 
         return results
 
@@ -156,9 +156,7 @@ class DetailedDependencyChecker:
 
     def all_required_ok(self) -> bool:
         """True if ALL required dependencies are available."""
-        return all(
-            s.is_ok for s in self.check_all() if s.required
-        )
+        return all(s.is_ok for s in self.check_all() if s.required)
 
     # ── Individual checks ────────────────────────────────────────────────
 
@@ -185,26 +183,30 @@ class DetailedDependencyChecker:
             ok = None if not required else False
             status = "not installed" + (" (optional)" if not required else "")
             return DependencyStatus(
-                name=name, category=category, ok=ok,
-                status_text=status, required=required,
+                name=name,
+                category=category,
+                ok=ok,
+                status_text=status,
+                required=required,
             )
         except Exception as e:
             ok = None if not required else False
             return DependencyStatus(
-                name=name, category=category, ok=ok,
-                status_text=f"error: {e}", required=required,
+                name=name,
+                category=category,
+                ok=ok,
+                status_text=f"error: {e}",
+                required=required,
             )
 
     def _check_ollama(self) -> DependencyStatus:
         """Check if Ollama is running on localhost:11434."""
         import requests
+
         try:
-            resp = requests.get(
-                "http://localhost:11434/api/tags", timeout=2
-            )
+            resp = requests.get("http://localhost:11434/api/tags", timeout=2)
             if resp.status_code == 200:
                 models = resp.json().get("models", [])
-                model_names = [m.get("name", "") for m in models]
                 return DependencyStatus(
                     name="Ollama (LLM runtime)",
                     category="binary",
@@ -215,13 +217,15 @@ class DetailedDependencyChecker:
                 )
             return DependencyStatus(
                 name="Ollama (LLM runtime)",
-                category="binary", ok=False,
+                category="binary",
+                ok=False,
                 status_text=f"HTTP {resp.status_code}",
             )
         except Exception as _e:
             return DependencyStatus(
                 name="Ollama (LLM runtime)",
-                category="binary", ok=False,
+                category="binary",
+                ok=False,
                 status_text="not running (start: ollama serve)",
             )
 
@@ -235,13 +239,15 @@ class DetailedDependencyChecker:
         if p.exists():
             return DependencyStatus(
                 name="Piper binary (Persian TTS)",
-                category="binary", ok=True,
+                category="binary",
+                ok=True,
                 status_text="found",
                 path=str(p),
             )
         return DependencyStatus(
             name="Piper binary (Persian TTS)",
-            category="binary", ok=False,
+            category="binary",
+            ok=False,
             status_text="not found",
             path=str(p),
         )
@@ -249,14 +255,18 @@ class DetailedDependencyChecker:
     def _check_ffmpeg(self) -> DependencyStatus:
         """Check if ffmpeg is on PATH (optional, for mp3 export)."""
         return self._check_binary(
-            "ffmpeg", "ffmpeg", required=False,
+            "ffmpeg",
+            "ffmpeg",
+            required=False,
             desc="FFmpeg (optional, mp3 export)",
         )
 
     def _check_tesseract(self) -> DependencyStatus:
         """Check if Tesseract OCR is installed (optional)."""
         return self._check_binary(
-            "tesseract", "tesseract", required=False,
+            "tesseract",
+            "tesseract",
+            required=False,
             desc="Tesseract OCR (optional)",
         )
 
@@ -268,7 +278,8 @@ class DetailedDependencyChecker:
             if found:
                 return DependencyStatus(
                     name="Poppler (PDF rendering)",
-                    category="binary", ok=True,
+                    category="binary",
+                    ok=True,
                     status_text="found",
                     path=found,
                 )
@@ -277,13 +288,15 @@ class DetailedDependencyChecker:
         if poppler_path and Path(poppler_path).exists():
             return DependencyStatus(
                 name="Poppler (PDF rendering)",
-                category="binary", ok=True,
+                category="binary",
+                ok=True,
                 status_text="found (auto-detected)",
                 path=poppler_path,
             )
         return DependencyStatus(
             name="Poppler (PDF rendering)",
-            category="binary", ok=None,
+            category="binary",
+            ok=None,
             status_text="not found (optional)",
             required=False,
         )
@@ -299,13 +312,15 @@ class DetailedDependencyChecker:
             size_mb = p.stat().st_size / (1024 * 1024)
             return DependencyStatus(
                 name="NeuTTS-Air GGUF model",
-                category="tts", ok=True,
+                category="tts",
+                ok=True,
                 status_text=f"found ({size_mb:.0f} MB)",
                 path=str(p),
             )
         return DependencyStatus(
             name="NeuTTS-Air GGUF model",
-            category="tts", ok=False,
+            category="tts",
+            ok=False,
             status_text="not found",
             path=str(p),
         )
@@ -320,13 +335,15 @@ class DetailedDependencyChecker:
         if p.exists() and (p / "neutts").is_dir():
             return DependencyStatus(
                 name="NeuTTS project folder",
-                category="tts", ok=True,
+                category="tts",
+                ok=True,
                 status_text="found (neutts package present)",
                 path=str(p),
             )
         return DependencyStatus(
             name="NeuTTS project folder",
-            category="tts", ok=False,
+            category="tts",
+            ok=False,
             status_text="not found or missing neutts/ subfolder",
             path=str(p),
         )
@@ -338,13 +355,15 @@ class DetailedDependencyChecker:
         if kokoro_cache.exists():
             return DependencyStatus(
                 name="Kokoro model (cached)",
-                category="tts", ok=True,
+                category="tts",
+                ok=True,
                 status_text="cached (~330 MB)",
                 path=str(kokoro_cache),
             )
         return DependencyStatus(
             name="Kokoro model (cached)",
-            category="tts", ok=None,
+            category="tts",
+            ok=None,
             status_text="not cached (downloads on first use)",
             required=False,
         )
@@ -359,7 +378,9 @@ class DetailedDependencyChecker:
             version = ""
             try:
                 result = subprocess.run(
-                    [cmd, "--version"], capture_output=True, text=True,
+                    [cmd, "--version"],
+                    capture_output=True,
+                    text=True,
                     timeout=5,
                 )
                 if result.returncode == 0:
@@ -368,7 +389,8 @@ class DetailedDependencyChecker:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
             return DependencyStatus(
                 name=desc or name,
-                category="binary", ok=True,
+                category="binary",
+                ok=True,
                 status_text="found" + (f" ({version})" if version else ""),
                 path=found,
                 required=required,
@@ -376,7 +398,8 @@ class DetailedDependencyChecker:
         ok = None if not required else False
         return DependencyStatus(
             name=desc or name,
-            category="binary", ok=ok,
+            category="binary",
+            ok=ok,
             status_text="not found" + (" (optional)" if not required else ""),
             required=required,
         )

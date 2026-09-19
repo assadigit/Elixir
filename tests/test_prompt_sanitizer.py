@@ -10,6 +10,7 @@ Covers:
 7. SYSTEM_PROMPT_INSTRUCTION is non-empty + references the fence
 8. Integration: PromptManager.render_template sanitizes the `text` variable
 """
+
 from __future__ import annotations
 
 import logging
@@ -205,14 +206,13 @@ class TestPromptManagerIntegration:
 
     def test_text_variable_sanitized(self, tmp_path):
         from core.summarisation.prompt_manager import PromptManager
+
         # Create a minimal template in the user prompts dir
         user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer.md"
         try:
-            test_template.write_text(
-                "INPUT:\n{{text}}\nHEADING: {{heading}}", encoding="utf-8"
-            )
+            test_template.write_text("INPUT:\n{{text}}\nHEADING: {{heading}}", encoding="utf-8")
             pm = PromptManager()
             rendered = pm.render_template(
                 "_test_sanitizer",
@@ -230,13 +230,12 @@ class TestPromptManagerIntegration:
 
     def test_src_text_variable_sanitized(self, tmp_path):
         from core.summarisation.prompt_manager import PromptManager
+
         user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer2.md"
         try:
-            test_template.write_text(
-                "SRC:\n{{src_text}}\nLANG: {{language}}", encoding="utf-8"
-            )
+            test_template.write_text("SRC:\n{{src_text}}\nLANG: {{language}}", encoding="utf-8")
             pm = PromptManager()
             rendered = pm.render_template(
                 "_test_sanitizer2",
@@ -253,6 +252,7 @@ class TestPromptManagerIntegration:
     def test_no_crash_on_missing_text(self):
         """render_template must not crash if text/src_text are absent."""
         from core.summarisation.prompt_manager import PromptManager
+
         user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         test_template = user_dir / "_test_sanitizer3.md"

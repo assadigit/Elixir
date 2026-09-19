@@ -20,6 +20,7 @@ simulate leak-guard fires without needing a real LLM call.
 
 Run: ``pytest tests/test_leak_guard_counter.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,12 +34,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so Summarizer can be imported
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.bullet_pipeline import BulletPipeline
 from core.summarisation.summarizer import Summarizer
@@ -135,13 +139,16 @@ class TestLeakDetectionPatterns:
     catch them.
     """
 
-    @pytest.mark.parametrize("leaky_bullet", [
-        "Bullet 11: 'Lichtenstein (1961) distinguished...'",
-        "Bullet 8 (Kernberg 1967) and bullet 9 (Kernberg 1980): Both about identity.",
-        "These are related but different facts. KEEP BOTH.",
-        "This is similar to bullet 27 but attributed to a different author.",
-        "These are different facts/claims.",
-    ])
+    @pytest.mark.parametrize(
+        "leaky_bullet",
+        [
+            "Bullet 11: 'Lichtenstein (1961) distinguished...'",
+            "Bullet 8 (Kernberg 1967) and bullet 9 (Kernberg 1980): Both about identity.",
+            "These are related but different facts. KEEP BOTH.",
+            "This is similar to bullet 27 but attributed to a different author.",
+            "These are different facts/claims.",
+        ],
+    )
     def test_known_leak_pattern_detected(self, leaky_bullet):
         """Each known leak pattern must be detected by the guard."""
         leaked_count, samples = BulletPipeline.detect_leaked_consolidation_metadata([leaky_bullet])

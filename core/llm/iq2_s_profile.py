@@ -7,6 +7,7 @@ profile so they can be tuned in one place when the hardware changes.
 
 Single source of truth for the IQ2_S 27B model on the RTX 3060 12GB rig.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ class IQ2SProfile:
       - IQ2_XXS_DEADLINE_SEC=1200: IQ2_XXS chapters take ~2x longer than IQ2_S
         but still need a cap to prevent indefinite hangs.
     """
+
     CHAPTER_DEADLINE_SEC: int = 2400
     HTTP_TIMEOUT_SEC: int = 1200
     CONTEXT_CAP: int = 26758

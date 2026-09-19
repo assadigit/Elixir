@@ -7,6 +7,7 @@ test fails.
 
 Run: pytest tests/test_post_processing.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,12 +19,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain works
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.post_processing import (
     classify_bullets,
@@ -78,9 +82,11 @@ class TestStripMarkupTags:
 class TestStripNarrativeFromThorough:
     def test_strips_narrative_sentences(self):
         """Narrative/story sentences are removed from thorough summary."""
-        text = ("The chapter discusses identity formation. "
-                "Ryan went to a party and met Thad. "
-                "Erikson defined ego identity as self-sameness.")
+        text = (
+            "The chapter discusses identity formation. "
+            "Ryan went to a party and met Thad. "
+            "Erikson defined ego identity as self-sameness."
+        )
         result = strip_narrative_from_thorough(text)
         assert "Erikson defined ego identity" in result
         assert len(result) <= len(text)
@@ -363,7 +369,7 @@ class TestClassifyBulletsGapFillPromptLeakage:
         """The 'a single bullet point summarizing what the source sentence
         says about' phrase is dropped (always_drop=True)."""
         bullets = [
-            "a single bullet point summarizing what the source sentence says about \"infant\" (or \"infantile\").",
+            'a single bullet point summarizing what the source sentence says about "infant" (or "infantile").',
             "Erikson defined ego identity in 1956.",
         ]
         kept, drops = classify_bullets(bullets)
@@ -376,7 +382,7 @@ class TestClassifyBulletsGapFillPromptLeakage:
     def test_drops_the_source_sentence_label(self):
         """The 'the source sentence:' label is dropped."""
         bullets = [
-            "the source sentence: \"These included the relative significance of infantile phases.\"",
+            'the source sentence: "These included the relative significance of infantile phases."',
             "Lichtenstein proposed the identity principle and metamorphosis.",
         ]
         kept, drops = classify_bullets(bullets)
@@ -388,7 +394,7 @@ class TestClassifyBulletsGapFillPromptLeakage:
     def test_drops_what_does_this_say_about(self):
         """The 'What does this say about' question is dropped."""
         bullets = [
-            "What does this say about \"infant\"",
+            'What does this say about "infant"',
             "Mahler distinguished psychological birth from biological birth.",
         ]
         kept, drops = classify_bullets(bullets)

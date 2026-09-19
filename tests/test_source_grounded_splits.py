@@ -14,6 +14,7 @@ Key behaviors tested:
 
 Run: pytest tests/test_source_grounded_splits.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,12 +25,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.postchecks import detect_extra_spaces, detect_missing_spaces
 
@@ -52,7 +56,6 @@ SOURCE_WITHOUT = (
 
 
 class TestExtraSpacesSourceGrounded:
-
     def test_joins_when_joined_word_in_source(self):
         """the reby → thereby when source contains 'thereby'."""
         text = "The ego the reby links to identity."
@@ -122,7 +125,6 @@ class TestExtraSpacesSourceGrounded:
 
 
 class TestMissingSpacesSourceGrounded:
-
     def test_does_not_split_real_word_not_in_source(self):
         """thereby → NOT split when source lacks 'thereby' (prevents false positive)."""
         text = "thereby linking oedipal-phase relations to identity"
@@ -134,7 +136,6 @@ class TestMissingSpacesSourceGrounded:
     def test_splits_when_split_form_in_source(self):
         """the sonic → split when source has 'the sonic' (confirmed merge artifact)."""
         source = "The sonic quality of the dream was notable."
-        text = "the sonic quality was notable"
         # Wait — "the sonic" is already split. Let me test "thesonic" → "the sonic"
         text_merged = "thesonic quality was notable"
         result, issues = detect_missing_spaces(text_merged, "test", source)
@@ -184,7 +185,6 @@ class TestMissingSpacesSourceGrounded:
 
 
 class TestAuditDefectFix:
-
     def test_the_matic_not_fixed_if_not_in_source(self):
         """The V18.15.3.1 audit defect: 'the matic' → 'thematic'.
 

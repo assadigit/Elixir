@@ -120,8 +120,7 @@ class TTSEngine:
             if out_path.exists() and out_path.stat().st_size > 44:
                 return out_path
             self.last_error = "produced empty audio file"
-            self.log(f"  ⚠️ TTS: produced empty audio for: {text[:60]}…",
-                     "WARNING")
+            self.log(f"  ⚠️ TTS: produced empty audio for: {text[:60]}…", "WARNING")
             return None
         except Exception as e:
             self.last_error = str(e)
@@ -139,6 +138,7 @@ class TTSEngine:
 
 
 # ── Kokoro (English) ───────────────────────────────────────────────────────
+
 
 class KokoroEngine(TTSEngine):
     """English TTS via the Kokoro Python API.
@@ -179,8 +179,7 @@ class KokoroEngine(TTSEngine):
                 device = "cuda"
                 gpu_name = torch.cuda.get_device_name(0)
                 self.log(
-                    f"  🔄 Loading Kokoro pipeline (EN) on GPU "
-                    f"({gpu_name})…",
+                    f"  🔄 Loading Kokoro pipeline (EN) on GPU ({gpu_name})…",
                     "INFO",
                 )
             else:
@@ -195,9 +194,7 @@ class KokoroEngine(TTSEngine):
             t0 = time.time()
             # device= is the whole point — without it Kokoro defaults to
             # CPU silently. We pass it explicitly in both branches.
-            self._pipeline = KPipeline(
-                lang_code=self._lang_code, device=device
-            )
+            self._pipeline = KPipeline(lang_code=self._lang_code, device=device)
             load_time = time.time() - t0
 
             # Verify the model actually lives on the expected device.
@@ -205,18 +202,9 @@ class KokoroEngine(TTSEngine):
                 model = getattr(self._pipeline, "model", None)
                 if model is not None and hasattr(model, "parameters"):
                     dev = next(model.parameters()).device
-                    cpu_params = sum(
-                        1 for p in model.parameters()
-                        if p.device.type == "cpu"
-                    )
-                    gpu_params = sum(
-                        1 for p in model.parameters()
-                        if p.device.type == "cuda"
-                    )
-                    vram_mb = (
-                        torch.cuda.memory_allocated(0) // (1024 * 1024)
-                        if cuda_ok else 0
-                    )
+                    cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+                    gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+                    vram_mb = torch.cuda.memory_allocated(0) // (1024 * 1024) if cuda_ok else 0
                     vram_str = f", {vram_mb} MB VRAM" if cuda_ok else ""
                     self.log(
                         f"  ✅ Kokoro ready in {load_time:.1f}s — model on "
@@ -228,8 +216,7 @@ class KokoroEngine(TTSEngine):
                     # them up. (Only relevant when cuda_ok is True.)
                     if cuda_ok and cpu_params > 0:
                         self.log(
-                            f"  ⚠️ {cpu_params} params still on CPU — "
-                            "forcing model.to('cuda')",
+                            f"  ⚠️ {cpu_params} params still on CPU — forcing model.to('cuda')",
                             "WARNING",
                         )
                         model.to("cuda")
@@ -241,8 +228,7 @@ class KokoroEngine(TTSEngine):
                     )
             except Exception as e:
                 self.log(
-                    f"  ✅ Kokoro ready in {load_time:.1f}s "
-                    f"(device verify skipped: {e})",
+                    f"  ✅ Kokoro ready in {load_time:.1f}s (device verify skipped: {e})",
                     "DEBUG",
                 )
 
@@ -260,9 +246,7 @@ class KokoroEngine(TTSEngine):
         voice = voice or "af_heart"
         # Kokoro's `speed` param: 1.0 = normal, >1 faster, <1 slower.
         parts = []
-        for _gs, _ps, audio in self._pipeline(
-            text, voice=voice, speed=float(speed)
-        ):
+        for _gs, _ps, audio in self._pipeline(text, voice=voice, speed=float(speed)):
             # Kokoro yields audio as a torch.FloatTensor. If running on CUDA,
             # the tensor lives on GPU and np.asarray() fails with:
             #   "can't convert cuda:0 device type tensor to numpy"
@@ -279,6 +263,7 @@ class KokoroEngine(TTSEngine):
 
 
 # ── Piper (Persian) via binary ─────────────────────────────────────────────
+
 
 class PiperEngine(TTSEngine):
     """Persian TTS via the Piper binary (``piper.exe`` on Windows).
@@ -306,9 +291,8 @@ class PiperEngine(TTSEngine):
     def _ensure_voice(self, voice: str) -> Path:
         """Download (if needed) and return the .onnx model path."""
         from core.tts.voices import ensure_piper_voice
-        onnx_path, _json_path = ensure_piper_voice(
-            voice, self.voices_dir, log_callback=self.log
-        )
+
+        onnx_path, _json_path = ensure_piper_voice(voice, self.voices_dir, log_callback=self.log)
         return onnx_path
 
     def _synthesize(
@@ -335,9 +319,12 @@ class PiperEngine(TTSEngine):
         # would otherwise pollute stderr.
         cmd = [
             str(self.binary_path),
-            "--model", str(model_path),
-            "--output_file", str(out_path),
-            "--length-scale", f"{length_scale:.3f}",
+            "--model",
+            str(model_path),
+            "--output_file",
+            str(out_path),
+            "--length-scale",
+            f"{length_scale:.3f}",
         ]
         # On Windows, subprocess needs the text as bytes with UTF-8 encoding
         # and creationflags to hide the console window.
@@ -352,27 +339,23 @@ class PiperEngine(TTSEngine):
             "timeout": PIPER_SYNTH_TIMEOUT_S,
         }
         if sys.platform == "win32":
-            kwargs["creationflags"] = (
-                subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-            )
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
         self.log(f"  🎙️ Piper: synth {len(text)} chars with {voice}…", "DEBUG")
         try:
             proc = subprocess.run(cmd, **kwargs)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             # V18.20.4.4 (W-c8): subprocess.run already killed the child;
             # surface a clear, fail-soft error.
             raise RuntimeError(
-                f"Piper timed out after {PIPER_SYNTH_TIMEOUT_S}s "
-                f"(wedged binary? voice={voice})"
-            )
+                f"Piper timed out after {PIPER_SYNTH_TIMEOUT_S}s (wedged binary? voice={voice})"
+            ) from e
         if proc.returncode != 0:
             err = (proc.stderr or "").strip()
-            raise RuntimeError(
-                f"Piper exited {proc.returncode}: {err[:300]}"
-            )
+            raise RuntimeError(f"Piper exited {proc.returncode}: {err[:300]}")
 
 
 # ── Router ─────────────────────────────────────────────────────────────────
+
 
 class CoquiTTSEngine(TTSEngine):
     """V10.36.0: Coqui XTTS v2 — multilingual neural TTS with voice cloning.
@@ -413,6 +396,7 @@ class CoquiTTSEngine(TTSEngine):
     def _cuda_available() -> bool:
         try:
             import torch
+
             return torch.cuda.is_available()
         except ImportError:
             return False
@@ -422,6 +406,7 @@ class CoquiTTSEngine(TTSEngine):
         """Lazily load the Coqui TTS model (slow first time, ~10s)."""
         if self._tts is None:
             from TTS.api import TTS
+
             self.log(f"  🎙️ Loading Coqui XTTS v2 model on {self._device}…", "INFO")
             self._tts = TTS(self._model_name).to(self._device)
             self.log("  ✅ Coqui XTTS v2 loaded", "INFO")
@@ -459,6 +444,7 @@ class CoquiTTSEngine(TTSEngine):
 
             # Detect language (Coqui supports "en", "fa", "ar", etc.)
             from core.tts.engine import detect_language
+
             lang = detect_language(text)
 
             kwargs = {
@@ -533,7 +519,8 @@ class TTSRouter:
     def piper(self) -> PiperEngine:
         if self._piper is None:
             self._piper = PiperEngine(
-                self._piper_binary, self._piper_voices_dir,
+                self._piper_binary,
+                self._piper_voices_dir,
                 log_callback=self.log,
             )
         return self._piper
@@ -556,6 +543,7 @@ class TTSRouter:
         """Lazily load the NeuTTS-Air engine (slow first time)."""
         if self._neutts is None:
             from core.tts.neutts_engine import NeuTTSEngine
+
             if self._neutts_gguf_path is None or self._neutts_project_path is None:
                 raise RuntimeError(
                     "NeuTTS paths not configured. Set tts.neutts_gguf_path "
@@ -612,6 +600,7 @@ class TTSRouter:
         of Piper, for much better quality.
         """
         from core.tts.voices import KOKORO_VOICES, PIPER_FA_VOICES
+
         kokoro_ids = {v[0] for v in KOKORO_VOICES}
         piper_ids = {v[0] for v in PIPER_FA_VOICES}
 

@@ -38,6 +38,7 @@ inline ``for attempt in range(2)`` to ``@retry_llm_call`` decorator.
 Characterization tests: ``tests/test_llm_dispatcher.py`` verifies the
 delegate wiring and that the functions accept the expected params.
 """
+
 from __future__ import annotations
 
 import logging
@@ -107,11 +108,16 @@ def call_ollama(
     # complete_streaming() to show partial output in the UI log viewer.
     if streaming_enabled:
         return _call_ollama_streaming(
-            prompt, model, temp, max_tokens,
+            prompt,
+            model,
+            temp,
+            max_tokens,
             ollama_base_url=ollama_base_url,
-            timeout=timeout, retries=retries,
+            timeout=timeout,
+            retries=retries,
             context_tokens=context_tokens,
-            supervisor=supervisor, log=_log,
+            supervisor=supervisor,
+            log=_log,
             error_tracker=error_tracker,  # V18.15.6.0 (Fix B)
         )
 
@@ -119,6 +125,7 @@ def call_ollama(
     try:
         from core.llm.llm_provider import create_provider
         from utils.settings import Settings
+
         # V13.6.0: create_provider() only accepts (provider, settings,
         # log_callback, supervisor). Other kwargs passed to complete().
         provider = create_provider(
@@ -128,11 +135,11 @@ def call_ollama(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, '_model'):
+        if hasattr(provider, "_model"):
             provider._model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s,
         # but we need 600s for Gemma 4 12B (takes 5+ min per call)
-        if hasattr(provider, 'timeout'):
+        if hasattr(provider, "timeout"):
             provider.timeout = timeout
         result = provider.complete(
             prompt=prompt,
@@ -152,9 +159,11 @@ def call_ollama(
             "WARNING",
         )
         logger.warning(
-            "OllamaProvider.complete() delegation failed for model=%s "
-            "(prompt len=%d): %s: %s",
-            model, len(prompt), type(_e).__name__, _e,
+            "OllamaProvider.complete() delegation failed for model=%s (prompt len=%d): %s: %s",
+            model,
+            len(prompt),
+            type(_e).__name__,
+            _e,
             exc_info=True,
         )
         # V18.15.6.0 (Fix B): classify the error type so the caller can
@@ -162,6 +171,7 @@ def call_ollama(
         if error_tracker is not None:
             error_tracker.clear()
             from core.llm.retry import OllamaTimeoutError as _OllamaTimeoutError
+
             if isinstance(_e, _OllamaTimeoutError):
                 error_tracker.append("timeout")
             else:
@@ -204,6 +214,7 @@ def _call_ollama_streaming(
     """
     try:
         from core.llm.llm_provider import OllamaProvider
+
         provider = OllamaProvider(
             model=model,
             base_url=ollama_base_url,
@@ -218,6 +229,7 @@ def _call_ollama_streaming(
         log(f"    🤖 {model} (t={temp:.2f}) streaming…", "INFO")
 
         _last_logged_len = 0
+
         def _on_chunk(accumulated_text: str) -> None:
             nonlocal _last_logged_len
             # Log every ~500 chars of new content (not every token — too noisy)
@@ -243,9 +255,16 @@ def _call_ollama_streaming(
 
     # Fallback to non-streaming
     return _call_ollama_nonstreaming(
-        prompt, model, temp, max_tokens,
-        context_tokens=context_tokens, timeout=timeout, retries=retries,
-        ollama_base_url=ollama_base_url, supervisor=supervisor, log=log,
+        prompt,
+        model,
+        temp,
+        max_tokens,
+        context_tokens=context_tokens,
+        timeout=timeout,
+        retries=retries,
+        ollama_base_url=ollama_base_url,
+        supervisor=supervisor,
+        log=log,
         error_tracker=error_tracker,  # V18.15.6.0 (Fix B): propagate tracker
     )
 
@@ -292,19 +311,20 @@ def _call_ollama_nonstreaming(
     # a no-op when the GPU size can't be detected (headless/test sandbox).
     from core.llm.ctx_clamp import clamp_num_ctx
     from core.llm.retry import OllamaTimeoutError
+
     ctx = clamp_num_ctx(model, max(context_tokens, 16000))
     payload = {
-        "model":   model,
-        "prompt":  prompt,
-        "stream":  False,
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
         # V18.2.37e: override the Modelfile's system prompt
         "system": "",
         "options": {
             "temperature": temp,
             "num_predict": max_tokens,
-            "num_ctx":     ctx,
+            "num_ctx": ctx,
             # V18.2.20 (P7 follow-up): -1 = "all available GPU layers".
-            "num_gpu":     -1,
+            "num_gpu": -1,
             # V18.2.42: presence_penalty removed — let Modelfile decide.
             # Forcing 0 puts Qwen3 in thinking mode. See llm_provider.py
             # for the full explanation.
@@ -352,7 +372,8 @@ def _call_ollama_nonstreaming(
             logger.warning(
                 "Ollama timeout (model=%s, timeout=%ss) — not retrying "
                 "(IQ2_XXS timeouts indicate model stall, not network issue)",
-                model, timeout,
+                model,
+                timeout,
             )
             supervisor.record_failure()
             raise OllamaTimeoutError(model=model, timeout=timeout, original=e) from e
@@ -392,7 +413,12 @@ def _call_ollama_nonstreaming(
         if error_tracker is not None:
             error_tracker.clear()
             _err_msg = str(e).lower()
-            if "404" in _err_msg or "not found" in _err_msg or "model" in _err_msg and "not" in _err_msg:
+            if (
+                "404" in _err_msg
+                or "not found" in _err_msg
+                or "model" in _err_msg
+                and "not" in _err_msg
+            ):
                 error_tracker.append("not_found")
             elif "oom" in _err_msg or "out of memory" in _err_msg or "cuda" in _err_msg:
                 error_tracker.append("oom")
@@ -449,7 +475,7 @@ def call_openai_compat(
     # decorator. Same pattern as OpenAICompatProvider.complete — the
     # decorator classifies retryable (429 / 5xx / ConnectionError) vs
     # non-retryable (401 / 403 / 404 / programming) errors.
-    icon = '☁️' if provider != 'freellmapi' else '🔌'
+    icon = "☁️" if provider != "freellmapi" else "🔌"
 
     @retry_llm_call(max_attempts=retries + 1, log_callback=_log)
     def _do_one_call() -> str:
@@ -515,9 +541,7 @@ def call_claude(
     payload = {
         "model": claude_model,
         "max_tokens": min(max_tokens, 8192),  # Claude max is 8192 for most models
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
+        "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
     }
     url = f"{claude_base_url.rstrip('/')}/messages"
@@ -543,11 +567,7 @@ def call_claude(
         # Claude returns content as a list of text blocks
         content = data.get("content", [])
         if content and isinstance(content, list):
-            text_parts = [
-                block.get("text", "")
-                for block in content
-                if block.get("type") == "text"
-            ]
+            text_parts = [block.get("text", "") for block in content if block.get("type") == "text"]
             text = "".join(text_parts).strip()
             if text:
                 _log(f"    ✅ Claude response: {len(text)} chars", "INFO")
@@ -618,6 +638,7 @@ def call_via_llm_provider(
     try:
         from core.llm.llm_provider import create_provider
         from utils.settings import Settings
+
         # V13.6.0: create_provider() only accepts (provider, settings,
         # log_callback, supervisor). Other kwargs (model, temperature,
         # etc.) are passed to provider.complete() below. Previously
@@ -629,10 +650,10 @@ def call_via_llm_provider(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, '_model'):
+        if hasattr(provider, "_model"):
             provider._model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s
-        if hasattr(provider, 'timeout'):
+        if hasattr(provider, "timeout"):
             provider.timeout = timeout
         # Apply cloud-specific settings (base_url, api_key) for openai_compat
         if provider_type == "openai_compat" and base_url:
@@ -664,7 +685,9 @@ def call_via_llm_provider(
             return result.strip()
         _log("    ⚠️ llm_provider returned empty — falling back to inline call", "WARNING")
     except Exception as _e:
-        _log(f"    ⚠️ llm_provider.{provider_type} failed ({_e}) — falling back to inline", "WARNING")
+        _log(
+            f"    ⚠️ llm_provider.{provider_type} failed ({_e}) — falling back to inline", "WARNING"
+        )
         logger.debug("llm_provider delegation failed: %s: %s", type(_e).__name__, _e)
     # Fallback to the inline implementations
     if provider_type == "claude":
@@ -673,8 +696,13 @@ def call_via_llm_provider(
         return None
     if call_openai_compat_fn:
         return call_openai_compat_fn(
-            prompt, base_url=base_url, api_key=api_key, model=model,
-            label=provider_type, temp=temp, max_tokens=max_tokens,
+            prompt,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            label=provider_type,
+            temp=temp,
+            max_tokens=max_tokens,
         )
     return None
 
@@ -729,7 +757,7 @@ def call_fast_ollama(
 
     @retry_llm_call(max_attempts=2, log_callback=_log)
     def _do_one_call() -> str:
-        _log(f"    🤖 {model} (t={temp:.2f}, ctx={ctx//1024}K) attempt…", "INFO")
+        _log(f"    🤖 {model} (t={temp:.2f}, ctx={ctx // 1024}K) attempt…", "INFO")
         resp = safe_ollama_request("POST", url, json=payload, timeout=120)
         text = resp.json().get("response", "").strip()
         if not text:

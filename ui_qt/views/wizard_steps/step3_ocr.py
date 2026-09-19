@@ -24,6 +24,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 3: OCR Settings
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step3Ocr(WizardStep):
     """OCR engine settings."""
 

@@ -43,19 +43,25 @@ class ValidateDialog(QDialog):
         head = QLabel("🔍  Validate summary quality")
         head.setObjectName("H1")
         root.addWidget(head)
-        sub = QLabel("Compare a source Markdown file against its summary to check coverage and faithfulness.")
+        sub = QLabel(
+            "Compare a source Markdown file against its summary to check coverage and faithfulness."
+        )
         sub.setObjectName("Caption")
         sub.setWordWrap(True)
         root.addWidget(sub)
 
         self.source_picker = FilePickerRow(
-            "Source", mode="file", placeholder="Full Markdown (source)",
+            "Source",
+            mode="file",
+            placeholder="Full Markdown (source)",
             filter="Markdown (*.md);;All files (*)",
         )
         root.addWidget(self.source_picker)
 
         self.summary_picker = FilePickerRow(
-            "Summary", mode="file", placeholder="Summary file (optional)",
+            "Summary",
+            mode="file",
+            placeholder="Summary file (optional)",
             filter="Markdown (*.md);;All files (*)",
         )
         root.addWidget(self.summary_picker)
@@ -112,9 +118,11 @@ class ValidateDialog(QDialog):
                 self.summary_picker.set_path(cand)
             else:
                 ret = QMessageBox.question(
-                    self, "No summary",
+                    self,
+                    "No summary",
                     "No summary file found. Continue with source-only analysis?",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
                 )
                 if ret != QMessageBox.Yes:
                     return
@@ -125,6 +133,7 @@ class ValidateDialog(QDialog):
 
         try:
             from core.validation.validator import Validator
+
             v = Validator(src, summ)
             if not v.load():
                 self.result.setPlainText("❌ Failed to load files.")

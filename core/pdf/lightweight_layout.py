@@ -13,6 +13,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 class LightweightLayoutDetector:
     """Detect multi-column layouts using pdfplumber's word positions.
 
@@ -55,14 +56,17 @@ class LightweightLayoutDetector:
 
                     # Reorder words by column then y-position
                     reordered = self._reorder_by_columns(words, columns)
-                    text = ' '.join(w['text'] for w in reordered)
+                    text = " ".join(w["text"] for w in reordered)
 
                     # Clean up spacing
-                    text = re.sub(r'\s+([.,;:!?])', r'\1', text)
-                    text = re.sub(r'\s{2,}', ' ', text)
+                    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
+                    text = re.sub(r"\s{2,}", " ", text)
 
                     results[page_num] = text
-                    self.log(f"    📐 Multi-column detected on p.{page_num} ({len(columns)} columns) — reordered", "DEBUG")
+                    self.log(
+                        f"    📐 Multi-column detected on p.{page_num} ({len(columns)} columns) — reordered",
+                        "DEBUG",
+                    )
 
         except Exception as e:
             self.log(f"  ⚠️ Layout detection failed: {e}", "DEBUG")
@@ -75,26 +79,25 @@ class LightweightLayoutDetector:
         Returns list of (x_start, x_end) tuples for each column.
         """
         # Collect all x0 (left edge) positions
-        x0s = sorted([w['x0'] for w in words])
 
         # Find the gap — if there's a large gap in the middle, it's 2 columns
         mid_point = page_width / 2
-        left_words = [w for w in words if w['x0'] < mid_point]
-        right_words = [w for w in words if w['x0'] >= mid_point]
+        left_words = [w for w in words if w["x0"] < mid_point]
+        right_words = [w for w in words if w["x0"] >= mid_point]
 
         if not left_words or not right_words:
             return [(0, page_width)]  # Single column
 
         # Check if there's a significant gap between left and right
-        left_max_x = max(w['x1'] for w in left_words)
-        right_min_x = min(w['x0'] for w in right_words)
+        left_max_x = max(w["x1"] for w in left_words)
+        right_min_x = min(w["x0"] for w in right_words)
         gap = right_min_x - left_max_x
 
         # If gap > 5% of page width, it's likely 2 columns
         if gap > page_width * 0.05:
             return [
-                (min(w['x0'] for w in left_words), left_max_x),
-                (right_min_x, max(w['x1'] for w in right_words)),
+                (min(w["x0"] for w in left_words), left_max_x),
+                (right_min_x, max(w["x1"] for w in right_words)),
             ]
 
         return [(0, page_width)]  # Single column
@@ -106,14 +109,14 @@ class LightweightLayoutDetector:
         for w in words:
             # Find which column this word belongs to
             for i, (x_start, x_end) in enumerate(columns):
-                if w['x0'] >= x_start and w['x0'] <= x_end:
+                if w["x0"] >= x_start and w["x0"] <= x_end:
                     column_words[i].append(w)
                     break
 
         # Sort each column by y-position (top to bottom)
         result = []
         for i in range(len(columns)):
-            col_words = sorted(column_words[i], key=lambda w: (w['top'], w['x0']))
+            col_words = sorted(column_words[i], key=lambda w: (w["top"], w["x0"]))
             result.extend(col_words)
 
         return result

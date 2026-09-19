@@ -95,6 +95,7 @@ STATUS_CANCELLED = "cancelled"
 @dataclass
 class QueueItem:
     """A single book in the queue."""
+
     path: Path
     status: str = STATUS_PENDING
     progress: float = 0.0
@@ -105,6 +106,7 @@ class QueueItem:
 # ════════════════════════════════════════════════════════════════════════════
 # Row widget
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class _QueueRow(QWidget):
     """One row in the queue list: filename | status badge | progress | remove."""
@@ -199,13 +201,14 @@ class _QueueRow(QWidget):
 # QueueView
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class QueueView(QWidget):
     """V4.3.0 Queue tab — sequential batch processing of multiple PDFs."""
 
     # ── Internal signals (fired from the worker thread; Qt marshals the
     #    connected slots to the main thread via queued connections).
-    book_started = Signal(int)               # book index
-    book_finished = Signal(int, str, str)    # book index, status, error
+    book_started = Signal(int)  # book index
+    book_finished = Signal(int, str, str)  # book index, status, error
     queue_started = Signal()
     queue_finished = Signal()
 
@@ -227,9 +230,11 @@ class QueueView(QWidget):
         self._current_idx: int = -1
         self._current_result: ConversionResult | None = None
         # Saved ConvertView callbacks (restored when the queue finishes).
-        self._saved_callbacks: tuple[Any | None, Any | None,
-                                     Any | None, Any | None] = (
-            None, None, None, None,
+        self._saved_callbacks: tuple[Any | None, Any | None, Any | None, Any | None] = (
+            None,
+            None,
+            None,
+            None,
         )
         # V18.20.4.5 (W-b10): owner tag saved alongside the callbacks, so
         # _restore_convert_callbacks can hand them back with their original
@@ -253,12 +258,15 @@ class QueueView(QWidget):
 
         # ── Step 1: Add books ──────────────────────────────────────────
         add_card = Card(padding=10, spacing=6)
-        add_card.addWidget(StepHeader(
-            1, "Add books to the queue",
-            "Select multiple PDFs, or drag-and-drop them onto the window. "
-            "Each book uses the current Convert-screen settings (output "
-            "types, segmentation, summarisation).",
-        ))
+        add_card.addWidget(
+            StepHeader(
+                1,
+                "Add books to the queue",
+                "Select multiple PDFs, or drag-and-drop them onto the window. "
+                "Each book uses the current Convert-screen settings (output "
+                "types, segmentation, summarisation).",
+            )
+        )
         add_row = QHBoxLayout()
         add_row.setContentsMargins(0, 0, 0, 0)
         add_row.setSpacing(7)
@@ -287,11 +295,14 @@ class QueueView(QWidget):
 
         # ── Step 2: Queue list ─────────────────────────────────────────
         list_card = Card(padding=10, spacing=6)
-        list_card.addWidget(StepHeader(
-            2, "Queue",
-            "Books will be processed one at a time, in order. Remove a "
-            "book before processing starts if needed.",
-        ))
+        list_card.addWidget(
+            StepHeader(
+                2,
+                "Queue",
+                "Books will be processed one at a time, in order. Remove a "
+                "book before processing starts if needed.",
+            )
+        )
 
         # Scrollable list of rows
         self.list_scroll = QScrollArea()
@@ -326,11 +337,14 @@ class QueueView(QWidget):
 
         # ── Step 3: Processing ─────────────────────────────────────────
         proc_card = Card(padding=10, spacing=6)
-        proc_card.addWidget(StepHeader(
-            3, "Process the queue",
-            "Starts sequential processing. If a book fails, the queue "
-            "logs the error and continues to the next book.",
-        ))
+        proc_card.addWidget(
+            StepHeader(
+                3,
+                "Process the queue",
+                "Starts sequential processing. If a book fails, the queue "
+                "logs the error and continues to the next book.",
+            )
+        )
 
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 0, 0, 0)
@@ -386,10 +400,13 @@ class QueueView(QWidget):
 
         # ── Live log ───────────────────────────────────────────────────
         log_card = Card(padding=10, spacing=6)
-        log_card.addWidget(StepHeader(
-            4, "Live log",
-            "Per-book progress messages, warnings, and errors.",
-        ))
+        log_card.addWidget(
+            StepHeader(
+                4,
+                "Live log",
+                "Per-book progress messages, warnings, and errors.",
+            )
+        )
         self.log_viewer = LogViewer(max_lines=4000)
         self.log_viewer.setMinimumHeight(96)
         self.log_viewer.setMaximumHeight(240)
@@ -447,8 +464,7 @@ class QueueView(QWidget):
         Only PDFs are accepted (the queue is PDF-focused). Non-PDF files
         are silently skipped.
         """
-        accepted = [p for p in paths
-                    if p.suffix.lower() == ".pdf" and p.exists()]
+        accepted = [p for p in paths if p.suffix.lower() == ".pdf" and p.exists()]
         if not accepted:
             return False
         self._add_books(accepted)
@@ -479,7 +495,9 @@ class QueueView(QWidget):
     # ══════════════════════════════════════════════════════════════════════
     def _on_add_books(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select PDFs to queue", str(Path.home()),
+            self,
+            "Select PDFs to queue",
+            str(Path.home()),
             "PDF (*.pdf);;All files (*)",
         )
         if not paths:
@@ -502,16 +520,19 @@ class QueueView(QWidget):
     def _on_clear_all(self) -> None:
         if self._is_running:
             QMessageBox.warning(
-                self, "Queue running",
+                self,
+                "Queue running",
                 "Stop the queue before clearing it.",
             )
             return
         if not self._queue:
             return
         ret = QMessageBox.question(
-            self, "Clear queue",
+            self,
+            "Clear queue",
             f"Remove all {len(self._queue)} book(s) from the queue?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
@@ -523,7 +544,8 @@ class QueueView(QWidget):
     def _remove_book(self, idx: int) -> None:
         if self._is_running:
             QMessageBox.warning(
-                self, "Queue running",
+                self,
+                "Queue running",
                 "Stop the queue before removing books.",
             )
             return
@@ -584,13 +606,15 @@ class QueueView(QWidget):
             return
         if not self._queue:
             QMessageBox.information(
-                self, "Empty queue",
+                self,
+                "Empty queue",
                 "Add some PDFs to the queue first.",
             )
             return
         if not self.has_pending():
             QMessageBox.information(
-                self, "Nothing to process",
+                self,
+                "Nothing to process",
                 "All books are already done, failed, or cancelled. "
                 "Clear and re-add books to process them again.",
             )
@@ -599,7 +623,8 @@ class QueueView(QWidget):
         # ConvertView is running a single conversion).
         if self.controller.is_converting():
             QMessageBox.warning(
-                self, "Conversion in progress",
+                self,
+                "Conversion in progress",
                 "A conversion is already running on the Convert tab. "
                 "Wait for it to finish before starting the queue.",
             )
@@ -618,7 +643,8 @@ class QueueView(QWidget):
         self.queue_started.emit()
 
         self._worker_thread = threading.Thread(
-            target=self._queue_worker, daemon=True,
+            target=self._queue_worker,
+            daemon=True,
         )
         self._worker_thread.start()
 
@@ -626,10 +652,12 @@ class QueueView(QWidget):
         if not self._is_running:
             return
         ret = QMessageBox.question(
-            self, "Stop queue",
+            self,
+            "Stop queue",
             "Stop the queue?\n\nThe current book will be cancelled and "
             "remaining books will be skipped.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
@@ -751,9 +779,7 @@ class QueueView(QWidget):
         self._saved_callback_owner = None
 
     # ── Per-book conversion ─────────────────────────────────────────────
-    def _run_one_conversion(
-        self, request: ConversionRequest
-    ) -> ConversionResult:
+    def _run_one_conversion(self, request: ConversionRequest) -> ConversionResult:
         """Run a single conversion synchronously (in the worker thread).
 
         Mirrors ``Controller._run_conversion`` but:
@@ -765,6 +791,7 @@ class QueueView(QWidget):
             signal.
         """
         from core.pipeline import Converter  # local import (heavier module)
+
         try:
             self.controller.cancel_event.clear()
             self.controller.converter = Converter(
@@ -778,9 +805,7 @@ class QueueView(QWidget):
             self.controller._safe_complete(result)
             if result.success and result.full_markdown_path:
                 try:
-                    self.controller.save_book_settings(
-                        result.full_markdown_path.parent, request
-                    )
+                    self.controller.save_book_settings(result.full_markdown_path.parent, request)
                 except Exception as e:
                     logger.warning("Failed to save book settings: %s", e)
             return result
@@ -804,15 +829,9 @@ class QueueView(QWidget):
             "output_dir": str(item.path.parent),
             "password": None,
             "use_llm_ocr": self.controller.get_setting("ocr.use_llm", True),
-            "auto_detect_scanned": self.controller.get_setting(
-                "ocr.auto_detect_scanned", True
-            ),
-            "force_ocr_all_pages": self.controller.get_setting(
-                "ocr.force_ocr_all_pages", False
-            ),
-            "source_type": self.controller.get_setting(
-                "source_type", "normal_book"
-            ),
+            "auto_detect_scanned": self.controller.get_setting("ocr.auto_detect_scanned", True),
+            "force_ocr_all_pages": self.controller.get_setting("ocr.force_ocr_all_pages", False),
+            "source_type": self.controller.get_setting("source_type", "normal_book"),
             "include_executive_summary": self.controller.get_setting(
                 "summarisation.include_executive_summary", True
             ),
@@ -822,18 +841,12 @@ class QueueView(QWidget):
             "include_keypoints": self.controller.get_setting(
                 "summarisation.include_keypoints", True
             ),
-            "enable_content_filter": self.controller.get_setting(
-                "content_filter.enabled", True
-            ),
-            "academic_rigor": self.controller.get_setting(
-                "summarisation.academic_rigor", False
-            ),
+            "enable_content_filter": self.controller.get_setting("content_filter.enabled", True),
+            "academic_rigor": self.controller.get_setting("summarisation.academic_rigor", False),
             "simplified_keypoints_enabled": self.controller.get_setting(
                 "summarisation.simplified_keypoints_enabled", False
             ),
-            "max_workers": self.controller.get_setting(
-                "summarisation.max_workers", 2
-            ),
+            "max_workers": self.controller.get_setting("summarisation.max_workers", 2),
             "extract_figure_text": self.controller.get_setting(
                 "advanced.extract_figure_text", False
             ),
@@ -888,13 +901,9 @@ class QueueView(QWidget):
                     msg += f"  →  {item.result.full_markdown_path}"
                 self.log_viewer.append(msg, "SUCCESS")
             elif status == STATUS_FAILED:
-                self.log_viewer.append(
-                    f"✗ Failed: {item.path.name} — {error}", "ERROR"
-                )
+                self.log_viewer.append(f"✗ Failed: {item.path.name} — {error}", "ERROR")
             elif status == STATUS_CANCELLED:
-                self.log_viewer.append(
-                    f"⊘ Cancelled: {item.path.name}", "WARNING"
-                )
+                self.log_viewer.append(f"⊘ Cancelled: {item.path.name}", "WARNING")
         self._update_count()
         self._update_overall_progress()
 
@@ -920,19 +929,15 @@ class QueueView(QWidget):
 
         if failed or cancelled:
             self.status_lbl.setText(
-                f"Finished — {done} done, {failed} failed, "
-                f"{cancelled} cancelled of {total}"
+                f"Finished — {done} done, {failed} failed, {cancelled} cancelled of {total}"
             )
             self.log_viewer.append(
-                f"Queue finished with errors: {done} done, {failed} failed, "
-                f"{cancelled} cancelled.",
+                f"Queue finished with errors: {done} done, {failed} failed, {cancelled} cancelled.",
                 "WARNING",
             )
         else:
             self.status_lbl.setText(f"Finished — {done} of {total} books done")
-            self.log_viewer.append(
-                f"Queue finished: {done} of {total} books done.", "SUCCESS"
-            )
+            self.log_viewer.append(f"Queue finished: {done} of {total} books done.", "SUCCESS")
 
         self.current_lbl.setText("Idle")
         self.book_progress_bar.setValue(0)
@@ -947,6 +952,7 @@ class QueueView(QWidget):
         ):
             try:
                 from ui_qt.components.sounds import play_success
+
                 play_success()
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)

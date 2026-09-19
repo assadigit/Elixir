@@ -35,6 +35,7 @@ and the caller's existing XML parse path handles it.
 Book-agnostic (Key Decision #3): the schema describes STRUCTURE only
 (section names + types), never content. No book-specific fields.
 """
+
 from __future__ import annotations
 
 import json
@@ -171,6 +172,7 @@ def build_json_instruction(schema_cls: type, source_words: int | None = None) ->
                 exec_words_phrase,
                 thorough_words_phrase,
             )
+
             if source_words:
                 _exec_hint = exec_words_phrase(int(source_words))
                 _bullet_hint = f"{bullet_range_phrase(int(source_words))} distinct key takeaways"
@@ -193,7 +195,7 @@ def build_json_instruction(schema_cls: type, source_words: int | None = None) ->
             '  "theoretical_tensions": "2-4 tensions, or null"\n'
             "}\n"
             "If the chapter does not discuss distinctions or tensions, use "
-            "null (not the string \"None\")."
+            'null (not the string "None").'
         )
     # Generic fallback for other schemas
     return (
@@ -226,9 +228,7 @@ def validate_summary_json(raw: str) -> dict[str, Any] | None:
 
     cleaned = _extract_json(raw)
     if cleaned is None:
-        logger.debug(
-            "structured_io: no JSON object found in response — falling back to XML"
-        )
+        logger.debug("structured_io: no JSON object found in response — falling back to XML")
         return None
 
     if _HAS_PYDANTIC:
@@ -237,14 +237,15 @@ def validate_summary_json(raw: str) -> dict[str, Any] | None:
             return schema.model_dump()
         except ValidationError as exc:
             logger.debug(
-                "structured_io: JSON failed Pydantic validation (%s) — "
-                "falling back to XML", exc,
+                "structured_io: JSON failed Pydantic validation (%s) — falling back to XML",
+                exc,
             )
             return None
         except Exception as exc:
             logger.debug(
                 "structured_io: JSON parse error (%s: %s) — falling back to XML",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
             return None
 
@@ -319,8 +320,9 @@ def _manual_validate(json_str: str) -> dict[str, Any] | None:
         val = data.get(key)
         if not isinstance(val, expected_type):
             logger.debug(
-                "structured_io: manual validation failed — key %r expected "
-                "%s, got %s", key, expected_type.__name__,
+                "structured_io: manual validation failed — key %r expected %s, got %s",
+                key,
+                expected_type.__name__,
                 type(val).__name__ if val is not None else "None",
             )
             return None
@@ -388,7 +390,8 @@ def complete_structured(
     except Exception as exc:
         logger.debug(
             "structured_io: provider.complete raised %s: %s — falling back",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
         raw = None
 
@@ -405,7 +408,8 @@ def complete_structured(
             except Exception as exc:
                 logger.debug(
                     "structured_io: fallback_parser raised %s: %s",
-                    type(exc).__name__, exc,
+                    type(exc).__name__,
+                    exc,
                 )
     # Provider returned None or both paths failed — last resort: None
     # signals the caller to handle the empty-response path.

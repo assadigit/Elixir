@@ -173,6 +173,7 @@ class ElixirWindow(QMainWindow):
         """V10.18.0 (E6): Detect the system's dark/light theme preference."""
         try:
             from PySide6.QtGui import QGuiApplication
+
             app = QGuiApplication.instance()
             if app:
                 scheme = app.styleHints().colorScheme()
@@ -202,6 +203,7 @@ class ElixirWindow(QMainWindow):
     def _open_wizard(self) -> None:
         """V5.3.2: Open the Process Wizard as a modal dialog."""
         from ui_qt.views.wizard_view import WizardView
+
         dlg = WizardView(self.controller, self)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -223,7 +225,9 @@ class ElixirWindow(QMainWindow):
 
         # Let user select multiple book output directories
         folder = QFileDialog.getExistingDirectory(
-            self, "Select folder containing book conversions to merge", "",
+            self,
+            "Select folder containing book conversions to merge",
+            "",
             QFileDialog.ShowDirsOnly,
         )
         if not folder:
@@ -233,14 +237,19 @@ class ElixirWindow(QMainWindow):
         base = Path(folder)
         book_dirs = [d for d in base.iterdir() if d.is_dir() and (d / "summaries").exists()]
         if not book_dirs:
-            QMessageBox.information(self, "No books found",
+            QMessageBox.information(
+                self,
+                "No books found",
                 f"No book conversion directories found in: {folder}\n\n"
-                f"Each book should have a 'summaries' subfolder.")
+                f"Each book should have a 'summaries' subfolder.",
+            )
             return
 
         # Let user select output location
         output_folder = QFileDialog.getExistingDirectory(
-            self, "Select output folder for merged result", str(base),
+            self,
+            "Select output folder for merged result",
+            str(base),
             QFileDialog.ShowDirsOnly,
         )
         if not output_folder:
@@ -261,14 +270,14 @@ class ElixirWindow(QMainWindow):
 
         def _work():
             from core.pipeline.multi_pdf_merge import merge_books
+
             try:
                 return merge_books(book_dirs, Path(output_folder), log_callback=None)
             except Exception:
                 # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE
                 # the "Merge error" box (was str(e)-only — zero
                 # diagnostics for support).
-                logger.warning("library merge raised — traceback follows",
-                               exc_info=True)
+                logger.warning("library merge raised — traceback follows", exc_info=True)
                 raise
 
         w = SimpleWorker(_work)
@@ -281,10 +290,12 @@ class ElixirWindow(QMainWindow):
         """W-b12: main-thread handler — re-enable + the identical boxes."""
         self.merge_btn.setEnabled(True)
         from PySide6.QtWidgets import QMessageBox
+
         book_dirs = self._merge_book_dirs
         if result:
-            QMessageBox.information(self, "Merge complete",
-                f"Merged {len(book_dirs)} books.\nResult: {result}")
+            QMessageBox.information(
+                self, "Merge complete", f"Merged {len(book_dirs)} books.\nResult: {result}"
+            )
         else:
             QMessageBox.warning(self, "Merge failed", "No summaries found to merge.")
 
@@ -294,6 +305,7 @@ class ElixirWindow(QMainWindow):
         shape; the diagnostics went to the log via the W-b17 wrapper)."""
         self.merge_btn.setEnabled(True)
         from PySide6.QtWidgets import QMessageBox
+
         QMessageBox.critical(self, "Merge error", error)
 
     # V13.31.0 (#9): Quick Convert removed per user request
@@ -308,6 +320,7 @@ class ElixirWindow(QMainWindow):
         # - Added Hallucination Audit tab (was only accessible from tool cards)
         # - Removed tools menu (moved to About button in header)
         from PySide6.QtWidgets import QTabWidget
+
         self.tab_widget = QTabWidget()
         self.tab_widget.setObjectName("MainTabs")
         self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
@@ -371,6 +384,7 @@ class ElixirWindow(QMainWindow):
         from PySide6.QtWidgets import QLabel as _QL
         from PySide6.QtWidgets import QPushButton as _QPB
         from PySide6.QtWidgets import QVBoxLayout as _VL
+
         hallucination_widget = QWidget()
         h_lay = _VL(hallucination_widget)
         h_lay.setContentsMargins(20, 16, 20, 16)
@@ -378,9 +392,11 @@ class ElixirWindow(QMainWindow):
         h_title = _QL("🛡️ Hallucination Audit")
         h_title.setObjectName("H2")
         h_lay.addWidget(h_title)
-        h_desc = _QL("Check bullets against source text using 4 signals: verbatim match, "
-                     "semantic similarity, content-word overlap, and number/quote verification.\n\n"
-                     "Paste source text and bullets below, then click Audit.")
+        h_desc = _QL(
+            "Check bullets against source text using 4 signals: verbatim match, "
+            "semantic similarity, content-word overlap, and number/quote verification.\n\n"
+            "Paste source text and bullets below, then click Audit."
+        )
         h_desc.setObjectName("Caption")
         h_desc.setWordWrap(True)
         h_lay.addWidget(h_desc)
@@ -430,6 +446,7 @@ class ElixirWindow(QMainWindow):
     def _open_hallucination_audit(self) -> None:
         """V13.31.0 (#1): Open the Hallucination Audit dialog."""
         from ui_qt.views.service_dialogs.base_dialog import HallucinationAuditDialog
+
         dlg = HallucinationAuditDialog(self.controller, self)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -437,6 +454,7 @@ class ElixirWindow(QMainWindow):
 
     def _open_about_system(self) -> None:
         from ui_qt.views.about_system_dialog import AboutSystemDialog
+
         dlg = AboutSystemDialog(self.controller, self)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -475,9 +493,11 @@ class ElixirWindow(QMainWindow):
         def _check():
             try:
                 from utils.network import is_ollama_reachable
+
                 if not is_ollama_reachable():
                     from PySide6.QtCore import QMetaObject
                     from PySide6.QtCore import Qt as _Qt
+
                     QMetaObject.invokeMethod(
                         self, "_show_ollama_warning", _Qt.ConnectionType.QueuedConnection
                     )
@@ -497,8 +517,10 @@ class ElixirWindow(QMainWindow):
     @Slot()
     def _show_ollama_warning(self) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         QMessageBox.warning(
-            self, "Ollama not running",
+            self,
+            "Ollama not running",
             "Ollama does not appear to be running on localhost:11434.\n\n"
             "LLM OCR and summarisation will not work until Ollama is started.\n"
             "Start Ollama, then try your conversion.",
@@ -528,11 +550,7 @@ class ElixirWindow(QMainWindow):
 
     def dropEvent(self, event: QDropEvent) -> None:  # type: ignore[override]
         self._show_drop_overlay(False)
-        paths = [
-            Path(url.toLocalFile())
-            for url in event.mimeData().urls()
-            if url.isLocalFile()
-        ]
+        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls() if url.isLocalFile()]
         if not paths:
             event.ignore()
             return
@@ -555,6 +573,7 @@ class ElixirWindow(QMainWindow):
         """Show/hide a translucent drop-zone overlay with 'Drop a PDF here' text."""
         if not hasattr(self, "_drop_overlay"):
             from PySide6.QtWidgets import QLabel
+
             p = theme_manager.palette
             self._drop_overlay = QLabel("📄  Drop a PDF here", self)
             self._drop_overlay.setAlignment(Qt.AlignCenter)
@@ -577,6 +596,7 @@ class ElixirWindow(QMainWindow):
     @staticmethod
     def _app_version() -> str:
         from pathlib import Path
+
         try:
             vf = Path(__file__).resolve().parent.parent / "VERSION"
             if vf.exists():
@@ -608,17 +628,25 @@ class ElixirWindow(QMainWindow):
                     # showMaximized below — so the check is skipped.)
                     if not data.get("maximized"):
                         from PySide6.QtWidgets import QApplication
+
                         screens = [
-                            (scr.availableGeometry().x(), scr.availableGeometry().y(),
-                             scr.availableGeometry().width(), scr.availableGeometry().height())
+                            (
+                                scr.availableGeometry().x(),
+                                scr.availableGeometry().y(),
+                                scr.availableGeometry().width(),
+                                scr.availableGeometry().height(),
+                            )
                             for scr in QApplication.screens()
                         ]
-                        if not restored_geometry_is_visible(
-                                data["x"], data["y"], w, h, screens):
+                        if not restored_geometry_is_visible(data["x"], data["y"], w, h, screens):
                             logger.warning(
                                 "restored window geometry (%s,%s %sx%s) is not "
                                 "visible on any screen — resetting to default",
-                                data["x"], data["y"], w, h)
+                                data["x"],
+                                data["y"],
+                                w,
+                                h,
+                            )
                             primary = QApplication.primaryScreen().availableGeometry()
                             self.resize(608, 432)
                             self.move(
@@ -656,11 +684,14 @@ class ElixirWindow(QMainWindow):
             is_queue = hasattr(self, "queue_view") and self.queue_view.is_running()
             if is_conv or is_queue:
                 from PySide6.QtWidgets import QMessageBox
+
                 what = "queue" if is_queue else "conversion"
                 ret = QMessageBox.question(
-                    self, "Processing in progress",
+                    self,
+                    "Processing in progress",
                     f"A {what} is still running. Cancel it and quit?",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
                 )
                 if ret != QMessageBox.Yes:
                     event.ignore()
@@ -689,6 +720,7 @@ class ElixirWindow(QMainWindow):
         # teardown contract).
         try:
             from core.tts.engine_cache import clear_cache
+
             clear_cache()
         except Exception:
             pass
@@ -709,13 +741,15 @@ class ElixirWindow(QMainWindow):
         """
         candidates: list[threading.Thread] = []
         try:
-            queue_thread = getattr(self.queue_view, "_worker_thread", None) \
-                if hasattr(self, "queue_view") else None
+            queue_thread = (
+                getattr(self.queue_view, "_worker_thread", None)
+                if hasattr(self, "queue_view")
+                else None
+            )
             if queue_thread is not None and queue_thread.is_alive():
                 candidates.append(queue_thread)
             conv_thread = getattr(self.controller, "current_conversion_thread", None)
-            if (conv_thread is not None and conv_thread.is_alive()
-                    and conv_thread not in candidates):
+            if conv_thread is not None and conv_thread.is_alive() and conv_thread not in candidates:
                 candidates.append(conv_thread)
         except Exception:
             logger.debug("worker retire scan failed", exc_info=True)
@@ -739,7 +773,9 @@ class ElixirWindow(QMainWindow):
             logger.warning(
                 "conversion worker(s) still writing after the %sms retire "
                 "wait — parked %d thread(s) on close (T-b6)",
-                wait_ms, len(retired))
+                wait_ms,
+                len(retired),
+            )
 
 
 # ── Public entry point ──────────────────────────────────────────────────────
@@ -766,12 +802,14 @@ def _acquire_single_instance_lock(app) -> bool:
     WARNING — better to start the app unguarded than to crash on import.
     """
     import sys
+
     try:
         from PySide6.QtNetwork import QLocalServer, QLocalSocket
     except Exception as _e:  # pragma: no cover — env-specific
         logging.getLogger(__name__).warning(
             "single-instance lock disabled (PySide6.QtNetwork unavailable: %s) "
-            "— running multiple instances may corrupt output dirs", _e,
+            "— running multiple instances may corrupt output dirs",
+            _e,
         )
         return True
 

@@ -29,12 +29,13 @@ Two layers, per the house pattern: headless-safe source pins + pure-Py
 behavioral tests always run; offscreen Qt behavioral tests skip when
 PySide6 is unavailable (the headless rig).
 """
+
 from __future__ import annotations
 
 import ast
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -88,6 +89,7 @@ def _strip_comments(text: str) -> str:
 # W-b1 — the drag-and-drop crash (the live Critical)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb1DropRouting:
     def test_drop_event_no_longer_forwards_to_convert_view(self):
         """The crash path (app.py → convert_view.handle_dropped_file →
@@ -95,14 +97,13 @@ class TestWb1DropRouting:
         src = _strip_comments(_src(_APP))
         drop_start = src.find("def dropEvent")
         assert drop_start != -1
-        body = src[drop_start: src.find("\n    def ", drop_start)]
+        body = src[drop_start : src.find("\n    def ", drop_start)]
         assert "convert_view.handle_dropped_file" not in body, (
             "dropEvent must not forward to convert_view.handle_dropped_file "
             "(W-b1: input_picker is None since V11.0.0 — the crash)"
         )
         assert "queue_view.handle_dropped_files" in body, (
-            "dropEvent must route drops to the Queue view (the only live "
-            "drop consumer)"
+            "dropEvent must route drops to the Queue view (the only live drop consumer)"
         )
 
     def test_drop_overlay_only_advertises_pdf(self):
@@ -111,7 +112,7 @@ class TestWb1DropRouting:
         src = _strip_comments(_src(_APP))
         enter_start = src.find("def dragEnterEvent")
         assert enter_start != -1
-        body = src[enter_start: src.find("\n    def ", enter_start)]
+        body = src[enter_start : src.find("\n    def ", enter_start)]
         assert '".pdf"' in body
         assert ".md" not in body and ".txt" not in body and ".docx" not in body
 
@@ -121,24 +122,32 @@ class TestWb1DropRouting:
         src = _src(_CONVERT_VIEW)
         assert "def handle_dropped_file" not in src
         assert "def _on_input_changed" not in src
-        assert "chapter_count_lbl" not in src.replace(
-            "# ``input_picker.set_path``", ""
-        )
+        assert "chapter_count_lbl" not in src.replace("# ``input_picker.set_path``", "")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-b13 — the legacy minefield deletion
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb13LegacyMinefieldDeleted:
     DEAD_METHODS = (
-        "_on_type_selected", "_on_input_changed",
-        "_on_chapter_checkbox_toggled", "_on_output_toggle",
-        "_on_output_changed", "_refresh_output_count",
-        "_open_output_types_dialog", "_load_previous_settings",
-        "_start_conversion", "_start_diagnostic", "_run_diagnostic",
-        "_finalize_diagnostic", "_cancel_diagnostic",
-        "_ask_password_if_needed", "_parse_int", "handle_dropped_file",
+        "_on_type_selected",
+        "_on_input_changed",
+        "_on_chapter_checkbox_toggled",
+        "_on_output_toggle",
+        "_on_output_changed",
+        "_refresh_output_count",
+        "_open_output_types_dialog",
+        "_load_previous_settings",
+        "_start_conversion",
+        "_start_diagnostic",
+        "_run_diagnostic",
+        "_finalize_diagnostic",
+        "_cancel_diagnostic",
+        "_ask_password_if_needed",
+        "_parse_int",
+        "handle_dropped_file",
     )
 
     def test_no_dead_legacy_methods_remain(self):
@@ -155,12 +164,21 @@ class TestWb13LegacyMinefieldDeleted:
         .3.14 regression tests, routed through _set_cta_enabled)."""
         src = _src(_CONVERT_VIEW)
         for attr in (
-            "self.input_picker", "self.full_ocr_cb", "self.select_chapters_cb",
-            "self.page_start", "self.page_end", "self.load_prev_btn",
-            "self.output_types_btn", "self.output_count_lbl",
-            "self._chapter_dialog", "self._type_cards", "self._type_head",
-            "self._doc_head", "self._selected_type",
-            "self._diagnostic_thread", "self._diagnostic_cancel",
+            "self.input_picker",
+            "self.full_ocr_cb",
+            "self.select_chapters_cb",
+            "self.page_start",
+            "self.page_end",
+            "self.load_prev_btn",
+            "self.output_types_btn",
+            "self.output_count_lbl",
+            "self._chapter_dialog",
+            "self._type_cards",
+            "self._type_head",
+            "self._doc_head",
+            "self._selected_type",
+            "self._diagnostic_thread",
+            "self._diagnostic_cancel",
         ):
             assert attr not in src, f"dead attribute {attr} must be gone"
         assert "self.convert_btn = None" in src  # .3.14 contract preserved
@@ -170,11 +188,17 @@ class TestWb13LegacyMinefieldDeleted:
         """The deletion must not take live plumbing with it."""
         src = _src(_CONVERT_VIEW)
         for name in (
-            "def _register_callbacks", "def _on_tool_clicked",
-            "def _open_wizard", "def _on_complete", "def _on_status",
-            "def _set_cta_enabled", "def refresh_theme",
-            "def apply_ui_preferences", "def _cancel_conversion",
-            "def _cancel_any_operation", "def _wire_bridge",
+            "def _register_callbacks",
+            "def _on_tool_clicked",
+            "def _open_wizard",
+            "def _on_complete",
+            "def _on_status",
+            "def _set_cta_enabled",
+            "def refresh_theme",
+            "def apply_ui_preferences",
+            "def _cancel_conversion",
+            "def _cancel_any_operation",
+            "def _wire_bridge",
         ):
             assert name in src, f"live method {name} must survive W-b13"
 
@@ -187,9 +211,13 @@ class TestWb13LegacyMinefieldDeleted:
         """The imports that only served the dead block are gone."""
         src = _src(_CONVERT_VIEW)
         for gone in (
-            "import threading", "from typing import Any", "SimpleWorker",
-            "SOURCE_PRESETS", "ChapterSelectorDialog",
-            "request_conversion", "request_diagnostic",
+            "import threading",
+            "from typing import Any",
+            "SimpleWorker",
+            "SOURCE_PRESETS",
+            "ChapterSelectorDialog",
+            "request_conversion",
+            "request_diagnostic",
         ):
             assert gone not in src, f"stale import/declaration: {gone}"
 
@@ -198,12 +226,11 @@ class TestWb13LegacyMinefieldDeleted:
 # W-a2 — the fabricated coverage stat
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWa2MeasuredCoverage:
     def test_no_placeholder_092(self):
         src = _strip_comments(_src(_CONVERTER))
-        assert "coverage=0.92" not in src, (
-            "the fabricated 0.92 placeholder must be gone (W-a2)"
-        )
+        assert "coverage=0.92" not in src, "the fabricated 0.92 placeholder must be gone (W-a2)"
         assert "Placeholder — will be updated" not in src
 
     def test_library_call_reads_measured_coverage(self):
@@ -212,7 +239,7 @@ class TestWa2MeasuredCoverage:
         src = _strip_comments(_src(_CONVERTER))
         lib_start = src.find('"library tracking"')
         assert lib_start != -1
-        block = src[lib_start: src.find("return ConversionResult", lib_start)]
+        block = src[lib_start : src.find("return ConversionResult", lib_start)]
         assert "coverage=_cov_lib" in block
         assert 'get("totals", {})' in block
         assert 'get("avg_coverage")' in block
@@ -236,30 +263,32 @@ class TestWa2LibraryBehavior:
     @pytest.fixture
     def lib_file(self, tmp_path, monkeypatch):
         f = tmp_path / "library.json"
-        monkeypatch.setattr(
-            "core.pipeline.library_manager._LIBRARY_FILE", f
-        )
+        monkeypatch.setattr("core.pipeline.library_manager._LIBRARY_FILE", f)
         return f
 
     def test_real_coverage_rounds_and_persists(self, lib_file):
         from core.pipeline.library_manager import LibraryManager
+
         lib = LibraryManager()
         lib.add_book("Book A", coverage=0.87654, chapters_processed=3)
         stored = lib.get_book("Book A")["coverage"]
         assert stored == 0.877
         # persisted to disk
         import json
+
         data = json.loads(lib_file.read_text(encoding="utf-8"))
         assert data["books"]["Book A"]["coverage"] == 0.877
 
     def test_unknown_coverage_stored_as_none(self, lib_file):
         from core.pipeline.library_manager import LibraryManager
+
         lib = LibraryManager()
         lib.add_book("Book B", coverage=None, chapters_processed=2)
         assert lib.get_book("Book B")["coverage"] is None
 
     def test_stats_average_only_measured_books(self, lib_file):
         from core.pipeline.library_manager import LibraryManager
+
         lib = LibraryManager()
         lib.add_book("Book C", coverage=0.5, chapters_processed=1)
         lib.add_book("Book D", coverage=None, chapters_processed=1)
@@ -271,6 +300,7 @@ class TestWa2LibraryBehavior:
 
     def test_stats_all_unknown_stay_zero(self, lib_file):
         from core.pipeline.library_manager import LibraryManager
+
         lib = LibraryManager()
         lib.add_book("Book F", coverage=None, chapters_processed=1)
         lib.add_book("Book G", coverage=None, chapters_processed=1)
@@ -281,6 +311,7 @@ class TestWa2LibraryBehavior:
 # W-b2 — hardware-monitor callbacks cross the thread boundary safely
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb2HwMonitorThreading:
     def test_log_callback_routes_through_bridge(self):
         """The monitor's log callback must NOT call self._on_log directly
@@ -288,28 +319,24 @@ class TestWb2HwMonitorThreading:
         src = _src(_WIZARD)
         start = src.find("def _start_hardware_monitor")
         assert start != -1
-        body = src[start: src.find("\n    def ", start)]
+        body = src[start : src.find("\n    def ", start)]
         assert "self.bridge.emit_log" in body, (
-            "log_callback must emit via the bridge signal (queued to the "
-            "main thread)"
+            "log_callback must emit via the bridge signal (queued to the main thread)"
         )
         assert "lambda msg, level: self._on_log(msg, level)" not in body
 
     def test_auto_pause_is_a_main_thread_signal(self):
         src = _src(_WIZARD)
-        assert "auto_pause_requested = Signal()" in src, (
-            "the class-level signal must exist"
-        )
+        assert "auto_pause_requested = Signal()" in src, "the class-level signal must exist"
         start = src.find("def _start_hardware_monitor")
-        body = src[start: src.find("\n    def ", start)]
+        body = src[start : src.find("\n    def ", start)]
         assert "self.auto_pause_requested.emit()" in body, (
-            "_auto_pause must EMIT the signal, not touch widgets/Qt state "
-            "from the polling thread"
+            "_auto_pause must EMIT the signal, not touch widgets/Qt state from the polling thread"
         )
         # the slot: main-thread execution, logs + cancels
         slot = src.find("def _on_auto_pause")
         assert slot != -1
-        slot_body = src[slot: src.find("\n    def ", slot)]
+        slot_body = src[slot : src.find("\n    def ", slot)]
         assert "self._on_log" in slot_body
         assert "self.controller.cancel_conversion()" in slot_body
 
@@ -322,16 +349,19 @@ class TestWb2HwMonitorThreading:
 # W-b3 — idempotent bridge connections (no duplicate delivery)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb3IdempotentBridge:
     def test_all_connectors_route_through_connect_unique(self):
         src = _src(_BRIDGE)
         for connector in (
-            "def connect_progress", "def connect_status",
-            "def connect_log", "def connect_complete",
+            "def connect_progress",
+            "def connect_status",
+            "def connect_log",
+            "def connect_complete",
         ):
             pos = src.find(connector)
             assert pos != -1, f"{connector} missing"
-            body = src[pos: src.find("\n    def ", pos)]
+            body = src[pos : src.find("\n    def ", pos)]
             assert "_connect_unique" in body, (
                 f"{connector} must be idempotent (W-b3: wizard re-runs "
                 "duplicated every signal — double completion modals, double "
@@ -342,11 +372,10 @@ class TestWb3IdempotentBridge:
         src = _src(_BRIDGE)
         pos = src.find("def _connect_unique")
         assert pos != -1
-        body = src[pos: src.find("\n    def ", pos)]
+        body = src[pos : src.find("\n    def ", pos)]
         assert "signal.disconnect(slot)" in body
         assert "TypeError" in body and "RuntimeError" in body, (
-            "both not-connected (TypeError) and dead-receiver (RuntimeError) "
-            "must be tolerated"
+            "both not-connected (TypeError) and dead-receiver (RuntimeError) must be tolerated"
         )
 
 
@@ -354,12 +383,13 @@ class TestWb3IdempotentBridge:
 # W-b4 — closing the wizard stops the monitor + elapsed timer
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb4WizardCloseStopsMonitor:
     def test_close_event_stops_both(self):
         src = _src(_WIZARD)
         pos = src.find("def closeEvent")
         assert pos != -1
-        body = src[pos: src.find("\n    def ", pos)]
+        body = src[pos : src.find("\n    def ", pos)]
         assert "self._stop_hardware_monitor()" in body, (
             "closeEvent must stop the hw monitor (was orphaned forever when "
             "the wizard closed mid-conversion — _on_complete was the only "
@@ -372,7 +402,7 @@ class TestWb4WizardCloseStopsMonitor:
         via the still-connected bridge signals."""
         src = _src(_WIZARD)
         pos = src.find("def closeEvent")
-        body = src[pos: src.find("\n    def ", pos)]
+        body = src[pos : src.find("\n    def ", pos)]
         stop_pos = body.find("self._stop_hardware_monitor()")
         disc_pos = body.find("sig.disconnect()")
         assert stop_pos != -1 and disc_pos != -1
@@ -383,10 +413,12 @@ class TestWb4WizardCloseStopsMonitor:
 # Behavioral layer (offscreen Qt; skips without PySide6)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _qt_available() -> bool:
     try:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -397,11 +429,13 @@ class TestWb3BridgeBehavior:
     @pytest.fixture(scope="class")
     def app(self):
         from PySide6.QtWidgets import QApplication
+
         inst = QApplication.instance() or QApplication([])
         yield inst
 
     def test_repeated_connect_delivers_once(self, app):
         from ui_qt.controller_bridge import QtControllerBridge
+
         bridge = QtControllerBridge()
         calls: list[str] = []
 
@@ -417,12 +451,11 @@ class TestWb3BridgeBehavior:
 
     def test_different_slots_both_deliver(self, app):
         from ui_qt.controller_bridge import QtControllerBridge
+
         bridge = QtControllerBridge()
         a: list[str] = []
         b: list[str] = []
         bridge.connect_log(lambda msg, level: a.append(msg))
         bridge.connect_log(lambda msg, level: b.append(msg))
         bridge.emit_log("x", "INFO")
-        assert a == ["x"] and b == ["x"], (
-            "idempotency must only dedupe the SAME slot"
-        )
+        assert a == ["x"] and b == ["x"], "idempotency must only dedupe the SAME slot"

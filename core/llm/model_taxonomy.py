@@ -39,16 +39,17 @@ Usage::
     if is_small_model(model_name):
         # cap max_output at 8192, disable Academic Rigor
 """
+
 from __future__ import annotations
 
 import re
 
 __all__ = [
     "LOW_BIT_TOKENS",
-    "LEGACY_DEFAULT_MODEL",          # V18.20.4.11 (P2): legacy "gemma3:12b" sentinel
-    "DEFAULT_FALLBACK_OCR_MODEL",    # V18.20.4.11 (P2): "qwen3-vl:8b" request-side OCR default
-    "RIG_FALLBACK_MODEL",            # V18.20.4.12 (W-a10): rig-tuned qwythos fallback tag
-    "KNOWN_BAD_MODEL_ALIASES",       # V18.20.4.12 (W-a10): names that 404 — never default to these
+    "LEGACY_DEFAULT_MODEL",  # V18.20.4.11 (P2): legacy "gemma3:12b" sentinel
+    "DEFAULT_FALLBACK_OCR_MODEL",  # V18.20.4.11 (P2): "qwen3-vl:8b" request-side OCR default
+    "RIG_FALLBACK_MODEL",  # V18.20.4.12 (W-a10): rig-tuned qwythos fallback tag
+    "KNOWN_BAD_MODEL_ALIASES",  # V18.20.4.12 (W-a10): names that 404 — never default to these
     "is_low_bit_quant",
     "is_iq2_s",
     "param_count_b",
@@ -68,15 +69,15 @@ __all__ = [
 # Phase 1.0: added ``iq2_m`` and ``iq0`` (from summarizer.py:401's list) so
 # this is now the true union of every inline low-bit check in the codebase.
 LOW_BIT_TOKENS: tuple[str, ...] = (
-    "iq2_xxs",   # 1.9-bit
-    "iq2_xs",    # 2.2-bit
-    "iq2_s",     # 2.4-bit  (gold standard quant)
-    "iq2_m",     # 2.2-bit medium  (Phase 1.0: from summarizer.py:401)
-    "iq1",       # 1.0-bit
-    "iq0",       # 0-bit   (Phase 1.0: from summarizer.py:401 — extreme low-bit)
-    "q2_k",      # 2-bit K-quants (Q2_K, Q2_K_XL, Q2_K_S) — redundant with q2_ but explicit
-    "q2_",       # generic 2-bit prefix (catches q2_k, q2_s, AND iq2_* via substring)
-    "q1_",       # generic 1-bit prefix (catches q1_0, etc.)
+    "iq2_xxs",  # 1.9-bit
+    "iq2_xs",  # 2.2-bit
+    "iq2_s",  # 2.4-bit  (gold standard quant)
+    "iq2_m",  # 2.2-bit medium  (Phase 1.0: from summarizer.py:401)
+    "iq1",  # 1.0-bit
+    "iq0",  # 0-bit   (Phase 1.0: from summarizer.py:401 — extreme low-bit)
+    "q2_k",  # 2-bit K-quants (Q2_K, Q2_K_XL, Q2_K_S) — redundant with q2_ but explicit
+    "q2_",  # generic 2-bit prefix (catches q2_k, q2_s, AND iq2_* via substring)
+    "q1_",  # generic 1-bit prefix (catches q1_0, etc.)
 )
 
 
@@ -146,6 +147,7 @@ KNOWN_BAD_MODEL_ALIASES: tuple[str, ...] = (
 
 # ── Predicates ─────────────────────────────────────────────────────────────
 
+
 def is_low_bit_quant(model: str | None) -> bool:
     """True if the model name indicates a low-bit quantization.
 
@@ -203,7 +205,7 @@ def is_iq2_s(model: str | None) -> bool:
 # ── Parameter-count extraction ─────────────────────────────────────────────
 
 # Same regex as llm_provider.py / summarizer.py inline:
-_PARAM_RE = re.compile(r'(\d+(?:\.\d+)?)\s*[bB]\b')
+_PARAM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[bB]\b")
 
 
 def param_count_b(model: str | None) -> float:
@@ -234,6 +236,7 @@ def param_count_b(model: str | None) -> float:
 
 
 # ── Composite predicates ────────────────────────────────────────────────────
+
 
 def is_small_model(model: str | None, threshold: float = 13.0) -> bool:
     """True if the model has < ``threshold`` billion parameters.
@@ -281,6 +284,7 @@ def is_27b_plus(model: str | None) -> bool:
 
 
 # ── Context-cap recommendation ──────────────────────────────────────────────
+
 
 def recommended_ctx_cap(
     model: str | None,

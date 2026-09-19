@@ -27,8 +27,8 @@ SAMPLE_RATE = 24000
 # V11.63.0/V11.65.0: Conversational overlap settings
 # V11.65.0: reduced max overlap from 800ms to 300ms — large overlaps
 # caused audio distortion on VibeVoice.
-OVERLAP_MIN_MS = 0      # sometimes immediate (interruption)
-OVERLAP_MAX_MS = 300    # max overlap (gentle, won't distort)
+OVERLAP_MIN_MS = 0  # sometimes immediate (interruption)
+OVERLAP_MAX_MS = 300  # max overlap (gentle, won't distort)
 BACKCHANNEL_OVERLAP_MS = 600  # backchannel layered over last 0.6s
 BACKCHANNEL_VOLUME = 0.35  # backchannel at 35% volume (background)
 
@@ -142,9 +142,9 @@ def _apply_mic_variation(audio, rng, intensity=0.12):
 
     # Combine three sine waves for a natural envelope
     envelope = (
-        0.5 * np.sin(2 * np.pi * freq1 * t + phase1) +
-        0.3 * np.sin(2 * np.pi * freq2 * t + phase2) +
-        0.2 * np.sin(2 * np.pi * freq3 * t + phase3)
+        0.5 * np.sin(2 * np.pi * freq1 * t + phase1)
+        + 0.3 * np.sin(2 * np.pi * freq2 * t + phase2)
+        + 0.2 * np.sin(2 * np.pi * freq3 * t + phase3)
     ) * intensity
 
     # Center around 1.0 (no net volume change)
@@ -176,15 +176,27 @@ def _boost_exclamations(audio, text, rng):
     """
     # Detect exclamatory content
     exclamation_words = (
-        "wow", "wooow", "whattt", "what", "awesome", "awww",
-        "kidding", "no way", "oh my", "incredible", "amazing",
-        "insane", "crazy", "mind-blowing", "unbelievable",
+        "wow",
+        "wooow",
+        "whattt",
+        "what",
+        "awesome",
+        "awww",
+        "kidding",
+        "no way",
+        "oh my",
+        "incredible",
+        "amazing",
+        "insane",
+        "crazy",
+        "mind-blowing",
+        "unbelievable",
     )
     text_lower = text.lower()
     has_exclamation = (
-        "!" in text or
-        any(w in text_lower for w in exclamation_words) or
-        text.isupper()  # ALL CAPS = shouting
+        "!" in text
+        or any(w in text_lower for w in exclamation_words)
+        or text.isupper()  # ALL CAPS = shouting
     )
 
     if not has_exclamation or len(audio) < SAMPLE_RATE:
@@ -202,11 +214,11 @@ def _boost_exclamations(audio, text, rng):
     if ramp_len > 0:
         ramp = np.linspace(1.0, boost_factor, ramp_len, dtype=audio.dtype)
         if result.ndim > 1:
-            result[start_sample:start_sample + ramp_len] *= ramp[:, None]
-            result[start_sample + ramp_len:] *= boost_factor
+            result[start_sample : start_sample + ramp_len] *= ramp[:, None]
+            result[start_sample + ramp_len :] *= boost_factor
         else:
-            result[start_sample:start_sample + ramp_len] *= ramp
-            result[start_sample + ramp_len:] *= boost_factor
+            result[start_sample : start_sample + ramp_len] *= ramp
+            result[start_sample + ramp_len :] *= boost_factor
 
     # Normalize to prevent clipping
     max_val = np.max(np.abs(result))
@@ -219,7 +231,8 @@ def _boost_exclamations(audio, text, rng):
 def _detect_language(text: str) -> str:
     """Detect if text is Farsi or English."""
     import re
-    arabic_chars = len(re.findall(r'[\u0600-\u06FF\u0750-\u077F]', text))
+
+    arabic_chars = len(re.findall(r"[\u0600-\u06FF\u0750-\u077F]", text))
     non_space = max(len([c for c in text if not c.isspace()]), 1)
     if arabic_chars / non_space > 0.2:
         return "fa"
@@ -247,16 +260,19 @@ def _synthesize_line(
             # error. Silently switching engines mid-podcast creates a
             # jarring voice change (Host A suddenly sounds completely
             # different).
-            voice_name = voice[len("vibevoice:"):]
+            voice_name = voice[len("vibevoice:") :]
             vv_path = settings.get("tts.vibevoice_model_path", "")
             vv_voices = settings.get("tts.vibevoice_voices_dir", "")
             if not vv_path:
-                log("  ❌ VibeVoice model path not set — cannot generate. "
+                log(
+                    "  ❌ VibeVoice model path not set — cannot generate. "
                     "Set it in Settings → TTS → VibeVoice model path.",
-                    "ERROR")
+                    "ERROR",
+                )
                 return None
             try:
                 from core.tts.engine_cache import get_vibevoice_engine
+
                 engine = get_vibevoice_engine(
                     model_path=vv_path,
                     voices_dir=vv_voices,
@@ -266,16 +282,21 @@ def _synthesize_line(
                 result = engine.synthesize(line.text, out_path, voice_name, 1.0)
                 if result and Path(result).exists() and Path(result).stat().st_size > 44:
                     return result
-                log("  ❌ VibeVoice produced no output for this line. "
+                log(
+                    "  ❌ VibeVoice produced no output for this line. "
                     "Podcast will fail — no engine switching, no retry.",
-                    "ERROR")
+                    "ERROR",
+                )
                 # V11.57.0: RAISE — don't return None.
                 raise RuntimeError(
-                    "VibeVoice produced no output. Podcast failed — "
-                    "no engine switching, no retry.")
+                    "VibeVoice produced no output. Podcast failed — no engine switching, no retry."
+                )
             except Exception as ve:
-                log(f"  ❌ VibeVoice failed: {ve}. Podcast will fail — "
-                    f"no engine switching, no retry.", "ERROR")
+                log(
+                    f"  ❌ VibeVoice failed: {ve}. Podcast will fail — "
+                    f"no engine switching, no retry.",
+                    "ERROR",
+                )
                 # V11.57.0: RE-RAISE — don't return None. Returning None
                 # lets the podcast continue to the next line, which tries
                 # to restart VibeVoice → death spiral ("resetting").
@@ -285,12 +306,14 @@ def _synthesize_line(
         elif lang == "fa":
             # V11.44.0: Farsi default: Kokoro
             from core.tts.engine_cache import get_kokoro_engine
+
             engine = get_kokoro_engine(log_callback=log)
             return engine.synthesize(line.text, out_path, voice or "af_heart", 1.0)
 
         else:
             # English default: Kokoro (fast)
             from core.tts.engine_cache import get_kokoro_engine
+
             engine = get_kokoro_engine(log_callback=log)
             return engine.synthesize(line.text, out_path, voice or "af_heart", 1.0)
     except RuntimeError as e:
@@ -344,6 +367,7 @@ def generate_podcast_audio(
     # verify the podcast is using GPU (not CPU).
     try:
         import torch
+
         cuda_ok = torch.cuda.is_available()
         if cuda_ok:
             gpu_name = torch.cuda.get_device_name(0)
@@ -360,6 +384,7 @@ def generate_podcast_audio(
     chunk_hosts: list[str] = []  # which host for each chunk
 
     import time as _time
+
     audio_start = _time.time()
 
     with tempfile.TemporaryDirectory(prefix="podcast_") as tmp:
@@ -370,8 +395,8 @@ def generate_podcast_audio(
             pct = int((i / total) * 100)
             line_start = _time.time()
             if progress_callback:
-                progress_callback(pct, f"🎙️ Line {i+1}/{total} (Host {line.host})")
-            log(f"  🎙️ [{i+1}/{total}] Host {line.host}: {line.text[:60]}...", "INFO")
+                progress_callback(pct, f"🎙️ Line {i + 1}/{total} (Host {line.host})")
+            log(f"  🎙️ [{i + 1}/{total}] Host {line.host}: {line.text[:60]}...", "INFO")
 
             # V11.41.0: Strip vocal cues before TTS, save them for post-processing
             clean_text, cues = strip_vocal_cues(line.text)
@@ -393,6 +418,7 @@ def generate_podcast_audio(
 
             # Create a modified line with clean text for TTS
             from core.podcast.script_generator import ScriptLine
+
             clean_line = ScriptLine(
                 host=line.host,
                 text=clean_text,
@@ -407,8 +433,8 @@ def generate_podcast_audio(
                 # V11.57.0: VibeVoice (or Kokoro) had a fatal error.
                 # STOP the podcast — no retry, no engine switch.
                 # The user's requirement: "either success or fail."
-                log(f"  ❌ [{i+1}/{total}] FATAL: {e}", "ERROR")
-                log(f"  ❌ Podcast generation STOPPED at line {i+1}.", "ERROR")
+                log(f"  ❌ [{i + 1}/{total}] FATAL: {e}", "ERROR")
+                log(f"  ❌ Podcast generation STOPPED at line {i + 1}.", "ERROR")
                 log("  ❌ No audio file will be produced.", "ERROR")
                 return None
             line_time = _time.time() - line_start
@@ -419,30 +445,37 @@ def generate_podcast_audio(
                 # V11.51.0: log per-line timing + audio duration
                 try:
                     import soundfile as _sf
+
                     _data, _sr = _sf.read(str(result))
                     _dur = len(_data) / _sr
                     elapsed_total = _time.time() - audio_start
-                    log(f"  ✅ [{i+1}/{total}] done in {line_time:.1f}s "
+                    log(
+                        f"  ✅ [{i + 1}/{total}] done in {line_time:.1f}s "
                         f"(audio: {_dur:.1f}s, total elapsed: {elapsed_total:.0f}s)",
-                        "INFO")
+                        "INFO",
+                    )
                 except Exception as _e:
                     logger.debug("ignored %s: %s", type(_e).__name__, _e)
-                    log(f"  ✅ [{i+1}/{total}] done in {line_time:.1f}s", "INFO")
+                    log(f"  ✅ [{i + 1}/{total}] done in {line_time:.1f}s", "INFO")
             else:
-                log(f"  ⚠️ Skipping line {i+1} (TTS failed in {line_time:.1f}s)", "WARNING")
+                log(f"  ⚠️ Skipping line {i + 1} (TTS failed in {line_time:.1f}s)", "WARNING")
 
         if not chunk_paths:
             log("  ❌ No audio chunks produced — ALL lines failed TTS", "ERROR")
             log(f"  ❌ Total lines attempted: {total}, succeeded: 0", "ERROR")
             log(f"  ❌ Host A voice: '{host_a_voice}', Host B voice: '{host_b_voice}'", "ERROR")
-            log("  ❌ Check that TTS is configured (Settings → TTS) and the voice names are valid", "ERROR")
+            log(
+                "  ❌ Check that TTS is configured (Settings → TTS) and the voice names are valid",
+                "ERROR",
+            )
             return None
 
         # V11.41.0/V11.63.0: Stitch with conversational overlap + crossfade
         if progress_callback:
             progress_callback(95, "🔗 Stitching audio with natural overlap...")
-        log(f"  🔗 Stitching {len(chunk_paths)} audio chunks with "
-            f"conversational overlap...", "INFO")
+        log(
+            f"  🔗 Stitching {len(chunk_paths)} audio chunks with conversational overlap...", "INFO"
+        )
 
         audio_parts = []
         for cp in chunk_paths:
@@ -452,34 +485,31 @@ def generate_podcast_audio(
         # V11.63.0: New stitching approach — overlap + crossfade for
         # host transitions, silence for same-host, backchannel mixing.
         import random as _rng
-        rng = _rng.Random(42)  # deterministic
 
-        # Load backchannel audio snippets (generate them if needed)
-        backchannel_snippets = {}
-        backchannel_texts = {"yeah": "Yeah.", "right": "Right.",
-                            "mhm": "Mhm.", "exactly": "Exactly."}
+        rng = _rng.Random(42)  # deterministic
 
         # Process each chunk: apply cues only (V11.65.0: reverted mic
         # variation + exclamation boost — they caused severe distortion
         # on VibeVoice, making it sound like a "ghoul/mountain troll").
         processed_parts = []
         for i, (part, cues, host) in enumerate(
-            zip(audio_parts, chunk_cues, chunk_hosts)
+            zip(audio_parts, chunk_cues, chunk_hosts, strict=False)
         ):
             # Apply vocal cue silences WITHIN the part
             SILENCE_CUE_TYPES = (
-                "pause", "breath", "sigh", "chuckle",
-                "gasp", "throat_clear",
+                "pause",
+                "breath",
+                "sigh",
+                "chuckle",
+                "gasp",
+                "throat_clear",
             )
             part_with_cues = part
-            for cue_pos, cue_type, cue_duration in cues:
+            for _cue_pos, cue_type, cue_duration in cues:
                 if cue_type in SILENCE_CUE_TYPES and cue_duration > 0:
-                    cue_silence = np.zeros(
-                        int(SAMPLE_RATE * cue_duration), dtype=part.dtype)
-                    part_with_cues = np.concatenate(
-                        [part_with_cues, cue_silence])
-                    log(f"  🎭 Inserted {cue_type} ({cue_duration}s) "
-                        f"in line {i+1}", "DEBUG")
+                    cue_silence = np.zeros(int(SAMPLE_RATE * cue_duration), dtype=part.dtype)
+                    part_with_cues = np.concatenate([part_with_cues, cue_silence])
+                    log(f"  🎭 Inserted {cue_type} ({cue_duration}s) in line {i + 1}", "DEBUG")
 
             processed_parts.append((part_with_cues, host))
 
@@ -501,28 +531,27 @@ def generate_podcast_audio(
                     overlap_samples = int(SAMPLE_RATE * overlap_ms / 1000)
 
                     if overlap_ms > 0:
-                        log(f"  🔀 Overlapping {prev_host}→{curr_host} "
-                            f"({overlap_ms}ms crossfade)", "DEBUG")
-                        final_audio = _crossfade_overlap(
-                            final_audio, curr_part, overlap_samples)
+                        log(
+                            f"  🔀 Overlapping {prev_host}→{curr_host} ({overlap_ms}ms crossfade)",
+                            "DEBUG",
+                        )
+                        final_audio = _crossfade_overlap(final_audio, curr_part, overlap_samples)
                     else:
                         # Immediate transition (interruption)
-                        log(f"  ⚡ Immediate transition {prev_host}→{curr_host} "
-                            f"(interruption)", "DEBUG")
-                        final_audio = np.concatenate(
-                            [final_audio, curr_part])
+                        log(
+                            f"  ⚡ Immediate transition {prev_host}→{curr_host} (interruption)",
+                            "DEBUG",
+                        )
+                        final_audio = np.concatenate([final_audio, curr_part])
                 else:
                     # Same host — small silence
-                    silence = np.zeros(
-                        int(SAMPLE_RATE * SILENCE_MS / 1000),
-                        dtype=curr_part.dtype)
-                    final_audio = np.concatenate(
-                        [final_audio, silence, curr_part])
+                    silence = np.zeros(int(SAMPLE_RATE * SILENCE_MS / 1000), dtype=curr_part.dtype)
+                    final_audio = np.concatenate([final_audio, silence, curr_part])
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         sf.write(str(out_path), final_audio, SAMPLE_RATE)
 
         if progress_callback:
             progress_callback(100, "✅ Podcast audio complete")
-        log(f"  ✅ Podcast saved: {out_path} ({len(final_audio)/SAMPLE_RATE:.1f}s)", "INFO")
+        log(f"  ✅ Podcast saved: {out_path} ({len(final_audio) / SAMPLE_RATE:.1f}s)", "INFO")
         return out_path

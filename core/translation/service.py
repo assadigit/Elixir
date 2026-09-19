@@ -65,6 +65,7 @@ ProgressFn = Callable[["TranslationProgress"], None]
 
 # ── Progress ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TranslationProgress:
     """Progress update for UI callbacks.
@@ -79,6 +80,7 @@ class TranslationProgress:
         total_chunks:       total chunks in the current file.
         message:            human-readable status message.
     """
+
     stage: str = "starting"
     current_file: str = ""
     current_file_index: int = 0
@@ -103,8 +105,12 @@ _OUTPUT_FILE_MAP = {
         "Full book + individual chapters",
     ),
     "chapter_summaries": (
-        ["{name}.summary.md", "summaries/{name}.summary.md",
-         "chapters/summaries/*.md", "summaries/chapters/*.md"],
+        [
+            "{name}.summary.md",
+            "summaries/{name}.summary.md",
+            "chapters/summaries/*.md",
+            "summaries/chapters/*.md",
+        ],
         "Book summary + per-chapter summaries",
     ),
     "keypoints": (
@@ -112,8 +118,12 @@ _OUTPUT_FILE_MAP = {
         "All keypoints",
     ),
     "simplified_keypoints": (
-        ["{name}.simplified_keypoints.md", "keypoints/{name}.simplified_keypoints.md",
-         "{name}.keypoints.simplified.md", "keypoints/{name}.keypoints.simplified.md"],
+        [
+            "{name}.simplified_keypoints.md",
+            "keypoints/{name}.simplified_keypoints.md",
+            "{name}.keypoints.simplified.md",
+            "keypoints/{name}.keypoints.simplified.md",
+        ],
         "Simplified keypoints digest",
     ),
     "briefing": (
@@ -121,8 +131,12 @@ _OUTPUT_FILE_MAP = {
         "Executive briefing",
     ),
     "podcast": (
-        ["{name}.podcast.md", "{name}.Podcast.md",
-         "podcast/{name}.podcast.md", "podcast/{name}.Podcast.md"],
+        [
+            "{name}.podcast.md",
+            "{name}.Podcast.md",
+            "podcast/{name}.podcast.md",
+            "podcast/{name}.Podcast.md",
+        ],
         "Podcast script",
     ),
     "flashcards": (
@@ -149,6 +163,7 @@ _OUTPUT_FILE_MAP = {
 
 
 # ── Translation service ──────────────────────────────────────────────────
+
 
 class TranslationService:
     """Orchestrates the full translation pipeline.
@@ -199,6 +214,7 @@ class TranslationService:
         A14) before any read, so the branch was unreachable dead code.
         """
         from utils.settings import Settings
+
         s = Settings()
 
         endpoint = s.get("translation.endpoint", "http://localhost:11434/v1")
@@ -335,22 +351,22 @@ class TranslationService:
         if source_lang == target_lang:
             self.log(
                 f"  [Translation] Source already in {target_lang}, skipping: {source_path.name}",
-                "INFO"
+                "INFO",
             )
             return None, None
 
         self.log(
-            f"  [Translation] Translating {source_path.name}: "
-            f"{source_lang} → {target_lang}",
-            "INFO"
+            f"  [Translation] Translating {source_path.name}: {source_lang} → {target_lang}", "INFO"
         )
 
         if progress_callback:
-            progress_callback(TranslationProgress(
-                stage="chunking",
-                current_file=source_path.name,
-                message=f"Chunking {source_path.name}...",
-            ))
+            progress_callback(
+                TranslationProgress(
+                    stage="chunking",
+                    current_file=source_path.name,
+                    message=f"Chunking {source_path.name}...",
+                )
+            )
 
         # ── Chunk ─────────────────────────────────────────────────────
         chunks = self.chunker.chunk(text)
@@ -360,12 +376,13 @@ class TranslationService:
         self.log(f"  [Translation] {len(chunks)} chunks", "INFO")
 
         glossary_mgr, glossary_context = self._extract_glossary_context(
-            chunks, source_lang, target_lang,
+            chunks,
+            source_lang,
+            target_lang,
         )
 
         # ── Translate + validate each chunk ───────────────────────────
         translated_chunks: list[str] = []
-        validation_pairs: list[tuple] = []
         report = ValidationReport(
             file_name=source_path.name,
             source_lang=source_lang,
@@ -416,11 +433,13 @@ class TranslationService:
         )
 
         if progress_callback:
-            progress_callback(TranslationProgress(
-                stage="done",
-                current_file=source_path.name,
-                message=f"Done: {report.summary()}" if report.chunk_results else "Done",
-            ))
+            progress_callback(
+                TranslationProgress(
+                    stage="done",
+                    current_file=source_path.name,
+                    message=f"Done: {report.summary()}" if report.chunk_results else "Done",
+                )
+            )
 
         return translated_path, report if self.validation_enabled else None
 
@@ -454,7 +473,7 @@ class TranslationService:
             if glossary_mgr.glossary.entries:
                 self.log(
                     f"  [Translation] Glossary: {len(glossary_mgr.glossary.entries)} terms extracted",
-                    "INFO"
+                    "INFO",
                 )
 
         glossary_context = glossary_mgr.get_context_for_prompt() if glossary_mgr else ""
@@ -491,8 +510,16 @@ class TranslationService:
 
             # V7.1.0 S4: Use 2 workers for NLLB (small model, fits VRAM easily)
             # For Ollama (LLM), use 1 worker (VRAM constrained)
-            max_workers = 2 if hasattr(self.translator, 'model_name') and 'nllb' in str(getattr(self.translator, 'model_name', '')).lower() else 1
-            self.log(f"  [Translation] Using {max_workers} parallel worker(s) for {len(translatable_indices)} chunks", "INFO")
+            max_workers = (
+                2
+                if hasattr(self.translator, "model_name")
+                and "nllb" in str(getattr(self.translator, "model_name", "")).lower()
+                else 1
+            )
+            self.log(
+                f"  [Translation] Using {max_workers} parallel worker(s) for {len(translatable_indices)} chunks",
+                "INFO",
+            )
 
             lock = threading.Lock()
             completed_count = [0]
@@ -506,7 +533,10 @@ class TranslationService:
                         get_cached_translation,
                         save_cached_translation,
                     )
-                    model_id = getattr(self.translator, 'model_name', getattr(self.translator, 'model', 'unknown'))
+
+                    model_id = getattr(
+                        self.translator, "model_name", getattr(self.translator, "model", "unknown")
+                    )
                     cached = get_cached_translation(
                         text=chunk.text,
                         source_lang=source_lang,
@@ -514,11 +544,12 @@ class TranslationService:
                         model=str(model_id),
                     )
                     if cached:
-                        self.log(f"  [Translation] Chunk {idx+1} cache hit — skipping", "DEBUG")
+                        self.log(f"  [Translation] Chunk {idx + 1} cache hit — skipping", "DEBUG")
                         cv = None
                         if self.validator and self.validation_enabled:
                             # Reconstruct validation result from cache
                             from core.translation.validator import ChunkValidation
+
                             cv = ChunkValidation(
                                 chunk_index=idx,
                                 source_text=chunk.text,
@@ -571,24 +602,28 @@ class TranslationService:
 
                     return (idx, translated, cv)
                 except Exception as e:
-                    self.log(f"  [Translation] Chunk {idx+1} failed: {e}", "WARNING")
+                    self.log(f"  [Translation] Chunk {idx + 1} failed: {e}", "WARNING")
                     return (idx, chunk.text, None)
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_translate_one, idx): idx for idx in translatable_indices}
+                futures = {
+                    executor.submit(_translate_one, idx): idx for idx in translatable_indices
+                }
                 for future in as_completed(futures):
                     idx, translated, cv = future.result()
                     with lock:
                         translated_chunks[idx] = translated
                         completed_count[0] += 1
                         if progress_callback:
-                            progress_callback(TranslationProgress(
-                                stage="translating",
-                                current_file=source_path.name,
-                                current_chunk=completed_count[0],
-                                total_chunks=len(translatable_indices),
-                                message=f"Translated chunk {completed_count[0]}/{len(translatable_indices)}...",
-                            ))
+                            progress_callback(
+                                TranslationProgress(
+                                    stage="translating",
+                                    current_file=source_path.name,
+                                    current_chunk=completed_count[0],
+                                    total_chunks=len(translatable_indices),
+                                    message=f"Translated chunk {completed_count[0]}/{len(translatable_indices)}...",
+                                )
+                            )
                         if cv:
                             report.chunk_results.append(cv)
                             report.total_chunks += 1
@@ -599,8 +634,12 @@ class TranslationService:
 
             # V7.1.0 S4: Compute averages from validation results
             if report.chunk_results:
-                report.avg_similarity = sum(cv.similarity_score for cv in report.chunk_results) / len(report.chunk_results)
-                report.avg_judge_score = sum(cv.judge_score for cv in report.chunk_results) / len(report.chunk_results)
+                report.avg_similarity = sum(
+                    cv.similarity_score for cv in report.chunk_results
+                ) / len(report.chunk_results)
+                report.avg_judge_score = sum(cv.judge_score for cv in report.chunk_results) / len(
+                    report.chunk_results
+                )
 
             # V7.1.0 S4: Retry flagged chunks sequentially (after parallel pass)
             if self.max_retries > 0:
@@ -609,10 +648,10 @@ class TranslationService:
                         cv.retried = True
                         chunk = chunks[cv.chunk_index]
                         self.log(
-                            f"  [Translation] Chunk {cv.chunk_index+1} flagged ({cv.flagged_reason}), retrying...",
-                            "INFO"
+                            f"  [Translation] Chunk {cv.chunk_index + 1} flagged ({cv.flagged_reason}), retrying...",
+                            "INFO",
                         )
-                        old_temp = getattr(self.translator, 'temperature', 0.1)
+                        old_temp = getattr(self.translator, "temperature", 0.1)
                         self.translator.temperature = max(0.0, old_temp - 0.05)
                         translated = self.translator.translate(
                             chunk.text,
@@ -634,13 +673,13 @@ class TranslationService:
                         new_cv.retried = True
                         if not new_cv.passed:
                             self.log(
-                                f"  [Translation] Chunk {cv.chunk_index+1} still flagged after retry: {new_cv.flagged_reason}",
-                                "WARNING"
+                                f"  [Translation] Chunk {cv.chunk_index + 1} still flagged after retry: {new_cv.flagged_reason}",
+                                "WARNING",
                             )
                         else:
                             self.log(
-                                f"  [Translation] Chunk {cv.chunk_index+1} passed after retry",
-                                "INFO"
+                                f"  [Translation] Chunk {cv.chunk_index + 1} passed after retry",
+                                "INFO",
                             )
                         # Update the result
                         idx_in_results = report.chunk_results.index(cv)
@@ -654,8 +693,13 @@ class TranslationService:
 
                 # Recompute averages after retries
                 if report.chunk_results:
-                    report.avg_similarity = sum(cv.similarity_score for cv in report.chunk_results) / len(report.chunk_results)
-                    report.avg_judge_score = sum(cv.judge_score for cv in report.chunk_results) / len(report.chunk_results)
+                    report.avg_similarity = sum(
+                        cv.similarity_score for cv in report.chunk_results
+                    ) / len(report.chunk_results)
+                    report.avg_judge_score = sum(
+                        cv.judge_score for cv in report.chunk_results
+                    ) / len(report.chunk_results)
+
     # ── Output persistence (O-c7: extracted verbatim from translate_file) ───
 
     def _write_translation_outputs(
@@ -688,11 +732,13 @@ class TranslationService:
         translated_path = output_dir / f"{stem}.{target_lang}{suffix}"
 
         if progress_callback:
-            progress_callback(TranslationProgress(
-                stage="writing",
-                current_file=source_path.name,
-                message=f"Writing {translated_path.name}...",
-            ))
+            progress_callback(
+                TranslationProgress(
+                    stage="writing",
+                    current_file=source_path.name,
+                    message=f"Writing {translated_path.name}...",
+                )
+            )
 
         translated_path.write_text(translated_text, encoding="utf-8")
         self.log(f"  [Translation] Written: {translated_path}", "INFO")
@@ -701,11 +747,13 @@ class TranslationService:
         harakat_path: Path | None = None
         if target_lang == "fa" and self.harakat_enabled and self.harakat_gen:
             if progress_callback:
-                progress_callback(TranslationProgress(
-                    stage="harakat",
-                    current_file=source_path.name,
-                    message=f"Generating harakat variant for {source_path.name}...",
-                ))
+                progress_callback(
+                    TranslationProgress(
+                        stage="harakat",
+                        current_file=source_path.name,
+                        message=f"Generating harakat variant for {source_path.name}...",
+                    )
+                )
 
             harakat_text = self.harakat_gen.add_harakat_to_markdown(translated_text)
             harakat_path = output_dir / f"{stem}.{target_lang}.harakat{suffix}"
@@ -721,17 +769,18 @@ class TranslationService:
             # V7.2.0 S6: Also save human-readable Markdown report
             report_md_path = logs_dir / f"{stem}.translation.report.md"
             report.save_markdown(report_md_path)
-            self.log(
-                f"  [Translation] Report: {report_path} — {report.summary()}",
-                "INFO"
-            )
+            self.log(f"  [Translation] Report: {report_path} — {report.summary()}", "INFO")
 
             # V7.2.0 S25: Generate bilingual HTML viewer
             try:
                 bilingual_path = logs_dir / f"{stem}.bilingual.html"
                 self._generate_bilingual_html(
-                    source_path, translated_text, report, bilingual_path,
-                    source_lang, target_lang,
+                    source_path,
+                    translated_text,
+                    report,
+                    bilingual_path,
+                    source_lang,
+                    target_lang,
                 )
                 self.log(f"  [Translation] Bilingual viewer: {bilingual_path}", "INFO")
             except Exception as e:
@@ -776,6 +825,7 @@ class TranslationService:
         import time as _time
 
         from utils.settings import Settings
+
         s = Settings()
 
         if target_lang is None:
@@ -797,7 +847,7 @@ class TranslationService:
         files_to_translate: list[Path] = []
         book_output_dir = Path(book_output_dir)
 
-        for output_key, (patterns, desc) in _OUTPUT_FILE_MAP.items():
+        for output_key, (patterns, _desc) in _OUTPUT_FILE_MAP.items():
             if not outputs_config.get(output_key, False):
                 continue
             for pattern in patterns:
@@ -814,13 +864,12 @@ class TranslationService:
                         self.log(
                             f"  [Translation] Skipping stale file (not from this conversion): "
                             f"{f.relative_to(book_output_dir)}",
-                            "DEBUG"
+                            "DEBUG",
                         )
                         continue
                     files_to_translate.append(f)
                     self.log(
-                        f"  [Translation] Will translate: {f.relative_to(book_output_dir)}",
-                        "INFO"
+                        f"  [Translation] Will translate: {f.relative_to(book_output_dir)}", "INFO"
                     )
 
         if not files_to_translate:
@@ -829,20 +878,22 @@ class TranslationService:
 
         self.log(
             f"  [Translation] Translating {len(files_to_translate)} file(s) to {target_lang}",
-            "INFO"
+            "INFO",
         )
 
         results: list[tuple[Path, ValidationReport | None]] = []
 
         for idx, file_path in enumerate(files_to_translate):
             if progress_callback:
-                progress_callback(TranslationProgress(
-                    stage="starting",
-                    current_file=file_path.name,
-                    current_file_index=idx,
-                    total_files=len(files_to_translate),
-                    message=f"File {idx+1}/{len(files_to_translate)}: {file_path.name}",
-                ))
+                progress_callback(
+                    TranslationProgress(
+                        stage="starting",
+                        current_file=file_path.name,
+                        current_file_index=idx,
+                        total_files=len(files_to_translate),
+                        message=f"File {idx + 1}/{len(files_to_translate)}: {file_path.name}",
+                    )
+                )
 
             translated_path, report = self.translate_file(
                 source_path=file_path,
@@ -855,12 +906,14 @@ class TranslationService:
                 results.append((translated_path, report))
 
         if progress_callback:
-            progress_callback(TranslationProgress(
-                stage="done",
-                current_file_index=len(files_to_translate),
-                total_files=len(files_to_translate),
-                message=f"All done: {len(results)} files translated to {target_lang}",
-            ))
+            progress_callback(
+                TranslationProgress(
+                    stage="done",
+                    current_file_index=len(files_to_translate),
+                    total_files=len(files_to_translate),
+                    message=f"All done: {len(results)} files translated to {target_lang}",
+                )
+            )
 
         return results
 
@@ -949,7 +1002,7 @@ class TranslationService:
             </tr>
         </thead>
         <tbody>
-            {''.join(rows_html)}
+            {"".join(rows_html)}
         </tbody>
     </table>
 </body>
@@ -972,8 +1025,7 @@ class TranslationService:
         translated = self.translate_text(text, source_lang, target_lang)
 
         # Add harakat if Farsi and harakat is enabled
-        if (target_lang == "fa" and self.harakat_enabled
-                and self.harakat_gen and translated):
+        if target_lang == "fa" and self.harakat_enabled and self.harakat_gen and translated:
             return self.harakat_gen.add_harakat_to_markdown(translated)
 
         return translated

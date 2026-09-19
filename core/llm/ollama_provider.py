@@ -7,6 +7,7 @@ OllamaSupervisor integration — records failures and auto-restarts Ollama after
 Extracted verbatim from llm_provider_impl.py (lines 159-767 of the pre-V18.20.1.0
 file). The llm_provider_impl.py module re-exports this class for backward compat.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ import requests as _requests
 
 from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider, _get_keep_alive
+
 # V18.20.4.12 (T-c7): ModelNotFound404Error moved to the shared
 # core/llm/model_errors.py module — imported here (and re-exported for
 # compat, matching the historical ``from core.llm.ollama_provider import
@@ -56,7 +58,9 @@ class OllamaProvider(LLMProvider):
         log_callback: Callable[[str, str], None] | None = None,
         supervisor: OllamaSupervisor | None = None,
     ):
-        super().__init__(model, temperature, max_tokens, context_tokens, timeout, retries, log_callback)
+        super().__init__(
+            model, temperature, max_tokens, context_tokens, timeout, retries, log_callback
+        )
         self.base_url = base_url
         self._supervisor = supervisor or OllamaSupervisor(
             url=base_url,
@@ -108,9 +112,9 @@ class OllamaProvider(LLMProvider):
                 # V18.2.42: do NOT set presence_penalty — let the Modelfile
                 # decide (1.5 = Instruct mode). Setting 0.0 would activate
                 # thinking mode AND trip the ThinkingModeViolation guard.
-                "temperature": 0.0,   # greedy — most deterministic probe
-                "num_predict": 1,     # 1 token is enough to prove the model runs
-                "num_ctx": 4096,      # tiny ctx → fast KV cache allocation
+                "temperature": 0.0,  # greedy — most deterministic probe
+                "num_predict": 1,  # 1 token is enough to prove the model runs
+                "num_ctx": 4096,  # tiny ctx → fast KV cache allocation
                 "num_gpu": -1,
             },
         }
@@ -226,12 +230,14 @@ class OllamaProvider(LLMProvider):
         # The chapter is 9127 tokens — 16k context is plenty (9127 + 4096 margin = 13223 < 16384).
         try:
             from utils.settings import Settings
+
             _adaptive = Settings().get("summarisation.adaptive_context_enabled", True)
         except Exception:
             _adaptive = True
         if _adaptive:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     total_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
                     allocated_gb = torch.cuda.memory_allocated(0) / (1024**3)
@@ -243,7 +249,8 @@ class OllamaProvider(LLMProvider):
                         logger.info(
                             "V18.2: adaptive context %d→16384 (only %.1f GB VRAM free — "
                             "reducing KV cache to prevent CPU offloading)",
-                            _orig_ctx, free_gb,
+                            _orig_ctx,
+                            free_gb,
                         )
                     # V18.2.31: IQ2_XXS on 12 GB cards stalls when context
                     # exceeds 26758 tokens (the KV cache size + the 12B IQ2_XXS
@@ -281,6 +288,7 @@ class OllamaProvider(LLMProvider):
                         is_low_bit_quant,
                         param_count_b,
                     )
+
                     _is_low_bit = is_low_bit_quant(self.model)
                     _param_b = param_count_b(self.model)
                     _is_27b_plus = is_27b_plus(self.model)
@@ -306,6 +314,7 @@ class OllamaProvider(LLMProvider):
                         # uses. Identical values (IQ2_S→26758, other low-bit→16000);
                         # the constants are no longer duplicated inline.
                         from core.llm.ctx_clamp import low_bit_ctx_cap
+
                         _safe_ctx = low_bit_ctx_cap(self.model, total_gb)
                         # V18.3.5 (F2): VRAM-AWARE RAISE — FIXED.
                         # V18.3.4 had 2 bugs: (1) the condition "if ctx > _raised_ctx"
@@ -333,7 +342,10 @@ class OllamaProvider(LLMProvider):
                                 logger.info(
                                     "ctx_raise: model=%s safe_ctx %d→%d reason=VRAM-aware "
                                     "(%.2f GB free → KV=2.01GB, headroom=1.22GB)",
-                                    self.model, _orig_safe, _safe_ctx, _free_gb,
+                                    self.model,
+                                    _orig_safe,
+                                    _safe_ctx,
+                                    _free_gb,
                                 )
                                 self.log(
                                     f"    📈 V18.3.5: IQ2_S VRAM-aware raise — safe_ctx {_orig_safe}→{_safe_ctx} "
@@ -347,7 +359,9 @@ class OllamaProvider(LLMProvider):
                             logger.info(
                                 "ctx_capped: model=%s from=%d to=%d reason=VRAM "
                                 "(%sB %s on %.0fGB card — IQ2_S headroom 1.59GB vs Q2_K 0.82GB)",
-                                self.model, _orig_ctx, ctx,
+                                self.model,
+                                _orig_ctx,
+                                ctx,
                                 _param_b if _param_b > 0 else "?",
                                 "IQ2_S" if _is_iq2_s_model else "Q2_K",
                                 total_gb,
@@ -386,6 +400,7 @@ class OllamaProvider(LLMProvider):
             return None
         try:
             from utils.network import safe_ollama_request
+
             resp = safe_ollama_request("GET", f"{self.base_url}/api/ps", timeout=5)
             data = resp.json()
             used_bytes = 0
@@ -394,12 +409,14 @@ class OllamaProvider(LLMProvider):
                     used_bytes += int(_entry.get("size_vram") or 0)
                 except (TypeError, ValueError):
                     continue
-            return total_gb - (used_bytes / (1024 ** 3))
+            return total_gb - (used_bytes / (1024**3))
         except Exception as exc:
             logger.debug(
                 "ctx_raise: external VRAM reading unavailable for model=%s "
                 "(%s: %s) — keeping safe cap",
-                self.model, type(exc).__name__, exc,
+                self.model,
+                type(exc).__name__,
+                exc,
             )
             return None
 
@@ -449,7 +466,7 @@ class OllamaProvider(LLMProvider):
                 # Ollama — handles small-VRAM cards gracefully (the old
                 # hardcoded 99 forced 99 layers offload even on cards that
                 # couldn't hold the whole model, causing OOM/spillover).
-                "num_gpu":     -1,
+                "num_gpu": -1,
                 # V18.2.42 (CRITICAL fix): DO NOT force presence_penalty=0.
                 # Key Decision #7 was WRONG — it was based on the V18.2.37
                 # Q2_K_XL failure, which was actually a VRAM overflow issue
@@ -582,6 +599,7 @@ class OllamaProvider(LLMProvider):
                     "INFO",
                 )
                 from core.llm.call_meta import record_call_telemetry
+
                 record_call_telemetry(
                     model=_model,
                     duration_s=_dur,
@@ -607,6 +625,7 @@ class OllamaProvider(LLMProvider):
             # "no significant gaps found".
             try:
                 from core.llm.call_meta import mark_call_truncated
+
                 mark_call_truncated(_truncated)
             except Exception:  # pragma: no cover — never fail a call over a flag
                 pass
@@ -615,8 +634,11 @@ class OllamaProvider(LLMProvider):
                     "truncation_detected: model=%s done_reason=length "
                     "(num_predict cap hit mid-generation) prompt_eval_count=%s "
                     "eval_count=%s truncated_output_len=%d num_ctx=%d",
-                    _model, _data.get("prompt_eval_count"), _data.get("eval_count"),
-                    len(text), num_ctx,
+                    _model,
+                    _data.get("prompt_eval_count"),
+                    _data.get("eval_count"),
+                    len(text),
+                    num_ctx,
                 )
                 self.log(
                     f"    ✂️ Output truncated (done_reason=length): '{_model}' hit "
@@ -648,6 +670,7 @@ class OllamaProvider(LLMProvider):
             # installed models so the user can pick an alternative.
             try:
                 from utils.network import list_ollama_models
+
                 installed = list_ollama_models(self.base_url)
             except Exception:
                 installed = []
@@ -730,7 +753,7 @@ class OllamaProvider(LLMProvider):
                 # hardcoded 99 forced 99 layers offload even on cards that
                 # couldn't hold the whole model, causing OOM/spillover. Now
                 # both code paths agree on -1.
-                "num_gpu":     -1,
+                "num_gpu": -1,
             },
         }
         url = f"{self.base_url}/api/generate"
@@ -756,6 +779,7 @@ class OllamaProvider(LLMProvider):
                     continue
                 try:
                     import json
+
                     chunk = json.loads(line)
                     token = chunk.get("response", "")
                     if token:
@@ -778,4 +802,3 @@ class OllamaProvider(LLMProvider):
 
         # Fallback to non-streaming
         return self.complete(prompt, temperature, max_tokens, model)
-

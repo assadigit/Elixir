@@ -41,59 +41,225 @@ logger = logging.getLogger(__name__)
 # This is a GENERIC English-language filter, not chapter-specific.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_ENGLISH_FALSE_POSITIVES = frozenset({
-    "In", "By", "The", "A", "An", "For", "With", "From", "About", "Around",
-    "During", "Since", "Until", "After", "Before", "Between", "Within",
-    "Near", "Beyond", "Through", "Throughout", "Following", "Prior",
-    "This", "That", "These", "Those", "There", "Then", "Thus", "When",
-    "Where", "While", "What", "Which", "Who", "Whom", "How", "Why",
-    "And", "But", "Or", "Nor", "Yet", "So", "If", "As", "At", "On",
-    "To", "Of", "Up", "Out", "Over", "Under", "Above", "Below",
-    "Here", "Now", "Today", "Tomorrow", "Yesterday", "Soon", "Later",
-    "Always", "Never", "Sometimes", "Often", "Rarely", "Usually",
-    "However", "Therefore", "Moreover", "Furthermore", "Nevertheless",
-    "Meanwhile", "Although", "Because", "Unless", "Whether",
-    # V18.20.3.5 (audit v182034): the missing members of the discourse-
-    # connective closed class. "Finally" shipped as a THEORIST in the
-    # V18.20.3.4 rig run ("Finally, AuthorL (1964)" was captured by the
-    # multi-author enumeration pattern). These are general-English function
-    # words (the same word class as the entries above — every English
-    # academic text starts sentences with them); completing the class is
-    # language-level structure, NOT chapter-specific tuning.
-    "Finally", "Additionally", "Notably", "Importantly", "Interestingly",
-    "Significantly", "Specifically", "Similarly", "Likewise", "Conversely",
-    "Nonetheless", "Regardless", "Certainly", "Clearly", "Obviously",
-    "Indeed", "Perhaps", "Remarkably", "Noteworthy", "Accordingly",
-    "Consequently", "Equally", "Namely", "Overall", "Alternatively",
-    "Ultimately", "Briefly", "Lastly", "Subsequently",
-    "Simultaneously", "Paradoxically", "Strikingly", "Surprisingly",
-    "Each", "Every", "Some", "Any", "All", "None", "Both", "Either",
-    "Neither", "Few", "Many", "Much", "More", "Most", "Less", "Least",
-    "First", "Second", "Third", "Last", "Next", "Previous", "Final",
-    "New", "Old", "Young", "Good", "Bad", "Great", "Small", "Large",
-    "Long", "Short", "High", "Low", "Fast", "Slow", "Hard", "Easy",
-    "Right", "Left", "Front", "Back", "Top", "Bottom", "Side", "Middle",
-    "Year", "Month", "Day", "Week", "Hour", "Minute", "Man", "Woman", "Child", "Boy", "Girl", "Person", "People",
-    "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
-    "Nine", "Ten", "Eleven", "Twelve", "Hundred", "Thousand", "Million",
-})
+_ENGLISH_FALSE_POSITIVES = frozenset(
+    {
+        "In",
+        "By",
+        "The",
+        "A",
+        "An",
+        "For",
+        "With",
+        "From",
+        "About",
+        "Around",
+        "During",
+        "Since",
+        "Until",
+        "After",
+        "Before",
+        "Between",
+        "Within",
+        "Near",
+        "Beyond",
+        "Through",
+        "Throughout",
+        "Following",
+        "Prior",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "There",
+        "Then",
+        "Thus",
+        "When",
+        "Where",
+        "While",
+        "What",
+        "Which",
+        "Who",
+        "Whom",
+        "How",
+        "Why",
+        "And",
+        "But",
+        "Or",
+        "Nor",
+        "Yet",
+        "So",
+        "If",
+        "As",
+        "At",
+        "On",
+        "To",
+        "Of",
+        "Up",
+        "Out",
+        "Over",
+        "Under",
+        "Above",
+        "Below",
+        "Here",
+        "Now",
+        "Today",
+        "Tomorrow",
+        "Yesterday",
+        "Soon",
+        "Later",
+        "Always",
+        "Never",
+        "Sometimes",
+        "Often",
+        "Rarely",
+        "Usually",
+        "However",
+        "Therefore",
+        "Moreover",
+        "Furthermore",
+        "Nevertheless",
+        "Meanwhile",
+        "Although",
+        "Because",
+        "Unless",
+        "Whether",
+        # V18.20.3.5 (audit v182034): the missing members of the discourse-
+        # connective closed class. "Finally" shipped as a THEORIST in the
+        # V18.20.3.4 rig run ("Finally, AuthorL (1964)" was captured by the
+        # multi-author enumeration pattern). These are general-English function
+        # words (the same word class as the entries above — every English
+        # academic text starts sentences with them); completing the class is
+        # language-level structure, NOT chapter-specific tuning.
+        "Finally",
+        "Additionally",
+        "Notably",
+        "Importantly",
+        "Interestingly",
+        "Significantly",
+        "Specifically",
+        "Similarly",
+        "Likewise",
+        "Conversely",
+        "Nonetheless",
+        "Regardless",
+        "Certainly",
+        "Clearly",
+        "Obviously",
+        "Indeed",
+        "Perhaps",
+        "Remarkably",
+        "Noteworthy",
+        "Accordingly",
+        "Consequently",
+        "Equally",
+        "Namely",
+        "Overall",
+        "Alternatively",
+        "Ultimately",
+        "Briefly",
+        "Lastly",
+        "Subsequently",
+        "Simultaneously",
+        "Paradoxically",
+        "Strikingly",
+        "Surprisingly",
+        "Each",
+        "Every",
+        "Some",
+        "Any",
+        "All",
+        "None",
+        "Both",
+        "Either",
+        "Neither",
+        "Few",
+        "Many",
+        "Much",
+        "More",
+        "Most",
+        "Less",
+        "Least",
+        "First",
+        "Second",
+        "Third",
+        "Last",
+        "Next",
+        "Previous",
+        "Final",
+        "New",
+        "Old",
+        "Young",
+        "Good",
+        "Bad",
+        "Great",
+        "Small",
+        "Large",
+        "Long",
+        "Short",
+        "High",
+        "Low",
+        "Fast",
+        "Slow",
+        "Hard",
+        "Easy",
+        "Right",
+        "Left",
+        "Front",
+        "Back",
+        "Top",
+        "Bottom",
+        "Side",
+        "Middle",
+        "Year",
+        "Month",
+        "Day",
+        "Week",
+        "Hour",
+        "Minute",
+        "Man",
+        "Woman",
+        "Child",
+        "Boy",
+        "Girl",
+        "Person",
+        "People",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Eleven",
+        "Twelve",
+        "Hundred",
+        "Thousand",
+        "Million",
+    }
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Deterministic extractors — all 100% reliable (pure regex)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def extract_headings(md_text: str) -> list[dict]:
     """Extract markdown headings (H1-H6). Generic regex."""
     headings = []
     for i, line in enumerate(md_text.split("\n"), 1):
-        match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        match = re.match(r"^(#{1,6})\s+(.+)$", line)
         if match:
-            headings.append({
-                "level": len(match.group(1)),
-                "title": match.group(2).strip(),
-                "line": i,
-            })
+            headings.append(
+                {
+                    "level": len(match.group(1)),
+                    "title": match.group(2).strip(),
+                    "line": i,
+                }
+            )
     return headings
 
 
@@ -102,10 +268,14 @@ def extract_all_caps_sections(md_text: str) -> list[dict]:
     sections = []
     for i, line in enumerate(md_text.split("\n"), 1):
         stripped = line.strip()
-        if (len(stripped) > 3 and stripped.isupper() and
-                any(c.isalpha() for c in stripped) and
-                not stripped.startswith(('#', '-', '*', '|', '>', '<')) and
-                not stripped.endswith(':') and not re.search(r'[a-z]', stripped)):
+        if (
+            len(stripped) > 3
+            and stripped.isupper()
+            and any(c.isalpha() for c in stripped)
+            and not stripped.startswith(("#", "-", "*", "|", ">", "<"))
+            and not stripped.endswith(":")
+            and not re.search(r"[a-z]", stripped)
+        ):
             # Must be a phrase (2+ words) OR a long single word (>=8 chars)
             # 8+ chars catches: CONCLUSION (10), FOREWORD (9), PREFACE (8), REFERENCES (10)
             if len(stripped.split()) >= 2 or len(stripped) >= 8:
@@ -142,8 +312,12 @@ def extract_citations(md_text: str) -> list[dict]:
         # (rstrip("'s") was eating trailing 's' from names like 'AuthorJ' → 'Blo')
         # V18.15.3.5: Also handle curly apostrophe (U+2019) from PDF extraction.
         # V18.15.5.1 (DEBT-08): use shared APOS class (adds U+2018 left quote).
-        author = re.sub(_APOS + r"s$", "", author)  # "Federn's" / "Federn's" / "Federn's" → "Federn"
-        author = author.rstrip("\u2019\u2018'").strip("',.;:\u2019\u2018")  # trailing apostrophe/punct
+        author = re.sub(
+            _APOS + r"s$", "", author
+        )  # "Federn's" / "Federn's" / "Federn's" → "Federn"
+        author = author.rstrip("\u2019\u2018'").strip(
+            "',.;:\u2019\u2018"
+        )  # trailing apostrophe/punct
         # Remove "et al." suffix for dedup (keep the primary author)
         author = re.sub(r"\s+et\s+al\.?", "", author).strip()
         if not author or len(author) < 2:
@@ -166,38 +340,37 @@ def extract_citations(md_text: str) -> list[dict]:
     # V18.15.5.1 (DEBT-08): _APOS imported at function top (shared class
     # adds U+2018 left single quote for completeness).
     for match in re.finditer(
-        r'([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?'
+        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?"
-        r'(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)?'
+        r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)?"
         r"(?:\s+et\s+al\.?)?)"
-        r'\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)',
-        md_text
+        r"\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)",
+        md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical")
 
     # Pattern 2: Author['s] Year (without parens) — e.g., "AuthorZ 1926a", "AuthorAA's 1950"
     for match in re.finditer(
-        r'([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?'
+        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?)"
-        r'\s+(\d{4}[a-z]?)\b',
-        md_text
+        r"\s+(\d{4}[a-z]?)\b",
+        md_text,
     ):
         _add(match.group(1), match.group(2), "inline")
 
     # Pattern 3: (Author, Year) — parenthetical full citation
     # e.g., "(AuthorZ, 1923a)", "(AuthorL, 1964; AuthorD, 1967)"
     for match in re.finditer(
-        r'\(([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+)?'
-        r'(?:\s+et\s+al\.?)?),?\s*(\d{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*\d{4}[a-z]?)*)\)',
-        md_text
+        r"\(([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+)?"
+        r"(?:\s+et\s+al\.?)?),?\s*(\d{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*\d{4}[a-z]?)*)\)",
+        md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical_full")
 
     # Pattern 4: Author, Year (comma-separated, no parens)
     # e.g., "AuthorI, 1956" or "as noted by AuthorL, 1964,"
     for match in re.finditer(
-        r'([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*(\d{4}[a-z]?)\b',
-        md_text
+        r"([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*(\d{4}[a-z]?)\b", md_text
     ):
         _add(match.group(1), match.group(2), "comma_separated")
 
@@ -213,22 +386,27 @@ def extract_citations(md_text: str) -> list[dict]:
     # EVERY name in the enumeration with the shared year. Additive only:
     # existing matches are unaffected (the `seen` dedup keys on
     # author|years, and each split surname is a new key).
-    _NAME = r'[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?'
+    _NAME = r"[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?"
     # Two shapes, either of which must be followed by "(Year)":
     #   (a) comma list, optional trailing "and C":  "A, B, C" / "A, B, and C"
     #   (b) plain "and"/"&" pair (no comma):        "A and B" / "A & B"
     _MULTI_NAME_BLOCK = (
-        r'(?:'
-        + _NAME + r'(?:\s*,\s*' + _NAME + r')+'
-        + r'(?:\s*,?\s*(?:and|&)\s+' + _NAME + r')?'
-        + r'|'
-        + _NAME + r'\s*,?\s+(?:and|&)\s+' + _NAME
-        + r')'
+        r"(?:"
+        + _NAME
+        + r"(?:\s*,\s*"
+        + _NAME
+        + r")+"
+        + r"(?:\s*,?\s*(?:and|&)\s+"
+        + _NAME
+        + r")?"
+        + r"|"
+        + _NAME
+        + r"\s*,?\s+(?:and|&)\s+"
+        + _NAME
+        + r")"
     )
     for match in re.finditer(
-        r'(' + _MULTI_NAME_BLOCK +
-        r')\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)',
-        md_text
+        r"(" + _MULTI_NAME_BLOCK + r")\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)", md_text
     ):
         _names_block, _years = match.group(1), match.group(2)
         # Split the captured block into individual surnames. Split on
@@ -237,9 +415,7 @@ def extract_citations(md_text: str) -> list[dict]:
         # ["A", "B", "C"] with no "and C" fragment.
         _name_list = [
             n.strip()
-            for n in re.split(
-                r'\s*,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+', _names_block
-            )
+            for n in re.split(r"\s*,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+", _names_block)
             if n.strip()
         ]
         # V18.20.3.5 (audit v182034, 'Finally' bug): STRUCTURAL rejection of
@@ -255,7 +431,7 @@ def extract_citations(md_text: str) -> list[dict]:
         # match loses nothing. Purely structural — no word list. Lists of
         # 3+ names ("A, B, C (Year)") and any list with an and/& connector
         # remain accepted.
-        _has_connector = bool(re.search(r'\b(?:and|&)\b', _names_block))
+        _has_connector = bool(re.search(r"\b(?:and|&)\b", _names_block))
         if len(_name_list) == 2 and not _has_connector:
             continue
         for _nm in _name_list:
@@ -272,14 +448,14 @@ def count_author_mentions(citations: list[dict], md_text: str) -> list[tuple[str
     for cite in citations:
         author = cite["author"]
         author_mentions[author] += 1
-        for year in re.findall(r'\d{4}[a-z]?', cite["years"]):
+        for year in re.findall(r"\d{4}[a-z]?", cite["years"]):
             author_years[author].add(year)
 
     # Count raw text mentions (case-insensitive)
     for author in list(author_mentions.keys()):
         if author in _ENGLISH_FALSE_POSITIVES:
             continue
-        count = len(re.findall(r'\b' + re.escape(author) + r'\b', md_text, re.IGNORECASE))
+        count = len(re.findall(r"\b" + re.escape(author) + r"\b", md_text, re.IGNORECASE))
         author_mentions[author] = max(author_mentions[author], count)
 
     result = []
@@ -301,26 +477,39 @@ def extract_numbered_lists(md_text: str, headings: list[dict]) -> list[dict]:
     for i, line in enumerate(lines, 1):
         if i in heading_at_line:
             if current_list:
-                lists.append({"context": last_heading, "items": current_list,
-                              "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
             last_heading = heading_at_line[i]
             continue
-        match = re.match(r'^(\d+)\.\s+(.+)$', line)
+        match = re.match(r"^(\d+)\.\s+(.+)$", line)
         if match:
-            current_list.append({
-                "number": int(match.group(1)),
-                "text": match.group(2).strip(),
-                "line": i,
-            })
+            current_list.append(
+                {
+                    "number": int(match.group(1)),
+                    "text": match.group(2).strip(),
+                    "line": i,
+                }
+            )
         else:
             if current_list and line.strip() == "":
-                lists.append({"context": last_heading, "items": current_list,
-                              "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
     if current_list:
-        lists.append({"context": last_heading, "items": current_list,
-                      "start_line": current_list[0]["line"]})
+        lists.append(
+            {"context": last_heading, "items": current_list, "start_line": current_list[0]["line"]}
+        )
     return lists
 
 
@@ -347,14 +536,14 @@ def extract_all_lists_comprehensive(md_text: str, headings: list[dict]) -> list[
     heading_at_line = {h["line"]: h["title"] for h in headings}
 
     patterns = {
-        "numbered": re.compile(r'^(\d+)[\.\)]\s+(.+)'),
-        "bulleted": re.compile(r'^[-*\u2022]\s+(.+)'),
-        "lettered_upper": re.compile(r'^([A-Z])[\.\)]\s+(.+)'),
-        "lettered_lower": re.compile(r'^([a-z])[\.\)]\s+(.+)'),
-        "lettered_paren": re.compile(r'^\(([a-zA-Z])\)\s+(.+)'),
-        "roman_upper": re.compile(r'^([IVXLCDM]+)[\.\)]\s+(.+)'),
-        "roman_lower": re.compile(r'^([ivxlcdm]+)[\.\)]\s+(.+)'),
-        "parenthetical_num": re.compile(r'^\((\d+)\)\s+(.+)'),
+        "numbered": re.compile(r"^(\d+)[\.\)]\s+(.+)"),
+        "bulleted": re.compile(r"^[-*\u2022]\s+(.+)"),
+        "lettered_upper": re.compile(r"^([A-Z])[\.\)]\s+(.+)"),
+        "lettered_lower": re.compile(r"^([a-z])[\.\)]\s+(.+)"),
+        "lettered_paren": re.compile(r"^\(([a-zA-Z])\)\s+(.+)"),
+        "roman_upper": re.compile(r"^([IVXLCDM]+)[\.\)]\s+(.+)"),
+        "roman_lower": re.compile(r"^([ivxlcdm]+)[\.\)]\s+(.+)"),
+        "parenthetical_num": re.compile(r"^\((\d+)\)\s+(.+)"),
     }
 
     def detect_list_type(line):
@@ -378,8 +567,14 @@ def extract_all_lists_comprehensive(md_text: str, headings: list[dict]) -> list[
     for i, line in enumerate(lines, 1):
         if i in heading_at_line:
             if current_list:
-                lists.append({"type": current_type, "context": last_heading,
-                              "items": current_list, "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "type": current_type,
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
                 current_type = None
             last_heading = heading_at_line[i]
@@ -388,8 +583,14 @@ def extract_all_lists_comprehensive(md_text: str, headings: list[dict]) -> list[
         stripped = line.strip()
         if not stripped:
             if current_list:
-                lists.append({"type": current_type, "context": last_heading,
-                              "items": current_list, "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "type": current_type,
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
                 current_type = None
             continue
@@ -400,17 +601,29 @@ def extract_all_lists_comprehensive(md_text: str, headings: list[dict]) -> list[
                 current_type = ltype
             current_list.append({"marker": marker, "text": text, "line": i})
         else:
-            if current_list and not stripped.startswith(('  ', '\t')):
-                lists.append({"type": current_type, "context": last_heading,
-                              "items": current_list, "start_line": current_list[0]["line"]})
+            if current_list and not stripped.startswith(("  ", "\t")):
+                lists.append(
+                    {
+                        "type": current_type,
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
                 current_type = None
 
     if current_list:
-        lists.append({"type": current_type, "context": last_heading,
-                      "items": current_list, "start_line": current_list[0]["line"]})
+        lists.append(
+            {
+                "type": current_type,
+                "context": last_heading,
+                "items": current_list,
+                "start_line": current_list[0]["line"],
+            }
+        )
 
-    lists = [l for l in lists if len(l["items"]) >= 2]
+    lists = [lst for lst in lists if len(lst["items"]) >= 2]
     return lists
 
 
@@ -453,7 +666,7 @@ def extract_inline_lists(md_text: str, headings: list[dict]) -> list[dict]:
     for para_text, para_heading, para_line in paragraphs:
         # Pattern 1: (1) item (2) item — parenthetical numbered
         # V17.9: Only 1-2 digit numbers (excludes years)
-        inline_num = list(re.finditer(r'\((\d{1,2})\)', para_text))
+        inline_num = list(re.finditer(r"\((\d{1,2})\)", para_text))
         if len(inline_num) >= 2:
             # Group consecutive items (num increments by 1, or resets to 1)
             groups = []
@@ -488,33 +701,37 @@ def extract_inline_lists(md_text: str, headings: list[dict]) -> list[dict]:
                         _remaining = para_text[start:]
                         _end = len(_remaining)
                         # Search for sentence boundary: ". " followed by capital
-                        for _sm in re.finditer(r'\.\s+([A-Z][a-z]{2,})', _remaining):
+                        for _sm in re.finditer(r"\.\s+([A-Z][a-z]{2,})", _remaining):
                             _end = _sm.start() + 1  # include the period
                             break
                         # If no sentence boundary found within 300 chars, cap at 300
                         if _end > 300:
                             _end = 300
                         end = start + _end
-                    item_text = para_text[start:end].strip().rstrip(',;.')
+                    item_text = para_text[start:end].strip().rstrip(",;.")
                     if item_text and len(item_text) > 3:
-                        items.append({"marker": f"({nums[k]})", "text": item_text, "line": para_line})
+                        items.append(
+                            {"marker": f"({nums[k]})", "text": item_text, "line": para_line}
+                        )
 
                 if len(items) >= 2:
                     # Capture 500 chars before the list for header detection
                     ctx_start = max(0, grp[0].start() - 500)
-                    context_before = para_text[ctx_start:grp[0].start()].strip()
-                    lists.append({
-                        "type": "inline_numbered",
-                        "context": para_heading,
-                        "items": items,
-                        "start_line": para_line,
-                        "header_context": context_before,
-                    })
+                    context_before = para_text[ctx_start : grp[0].start()].strip()
+                    lists.append(
+                        {
+                            "type": "inline_numbered",
+                            "context": para_heading,
+                            "items": items,
+                            "start_line": para_line,
+                            "header_context": context_before,
+                        }
+                    )
             continue
 
         # Pattern 2: 1) item 2) item — closing paren numbered
         # V18.0: Also filter — only match if preceded by a non-digit (not a year fragment)
-        close_paren = list(re.finditer(r'(?<!\d)(\d{1,2})\)', para_text))
+        close_paren = list(re.finditer(r"(?<!\d)(\d{1,2})\)", para_text))
         if len(close_paren) >= 2:
             groups = []
             current = [close_paren[0]]
@@ -542,26 +759,30 @@ def extract_inline_lists(md_text: str, headings: list[dict]) -> list[dict]:
                         # V18.2.9: Same sentence-boundary fix as Pattern 1
                         _remaining = para_text[start:]
                         _end = len(_remaining)
-                        for _sm in re.finditer(r'\.\s+([A-Z][a-z]{2,})', _remaining):
+                        for _sm in re.finditer(r"\.\s+([A-Z][a-z]{2,})", _remaining):
                             _end = _sm.start() + 1
                             break
                         if _end > 300:
                             _end = 300
                         end = start + _end
-                    item_text = para_text[start:end].strip().rstrip(',;.')
+                    item_text = para_text[start:end].strip().rstrip(",;.")
                     if item_text and len(item_text) > 3:
-                        items.append({"marker": f"{nums[k]})", "text": item_text, "line": para_line})
+                        items.append(
+                            {"marker": f"{nums[k]})", "text": item_text, "line": para_line}
+                        )
 
                 if len(items) >= 2:
                     ctx_start = max(0, grp[0].start() - 500)
-                    context_before = para_text[ctx_start:grp[0].start()].strip()
-                    lists.append({
-                        "type": "inline_numbered_paren",
-                        "context": para_heading,
-                        "items": items,
-                        "start_line": para_line,
-                        "header_context": context_before,
-                    })
+                    context_before = para_text[ctx_start : grp[0].start()].strip()
+                    lists.append(
+                        {
+                            "type": "inline_numbered_paren",
+                            "context": para_heading,
+                            "items": items,
+                            "start_line": para_line,
+                            "header_context": context_before,
+                        }
+                    )
 
     return lists
 
@@ -582,7 +803,7 @@ def format_lists_section(md_text: str) -> str:
 
     # Combine and sort by line number
     all_lists = block_lists + inline_lists
-    all_lists.sort(key=lambda l: l.get("start_line", 0))
+    all_lists.sort(key=lambda lst: lst.get("start_line", 0))
 
     # V18.2.7: Filter out noise lists:
     # 1. YAML frontmatter tags (items that are just quoted words < 15 chars)
@@ -594,10 +815,7 @@ def format_lists_section(md_text: str) -> str:
         if len(items) < 2:
             continue
         # Check if all items are short quoted words (YAML tags)
-        _all_short = all(
-            len(it.get("text", "").strip().strip('"\'')) < 15
-            for it in items
-        )
+        _all_short = all(len(it.get("text", "").strip().strip("\"'")) < 15 for it in items)
         if _all_short:
             # Skip — this is likely YAML frontmatter tags, not a real list
             continue
@@ -610,15 +828,19 @@ def format_lists_section(md_text: str) -> str:
     lines = []
     lines.append("## Lists & Frameworks")
     lines.append("")
-    lines.append("<!-- All lists from the source chapter, extracted deterministically (100% reliable).")
+    lines.append(
+        "<!-- All lists from the source chapter, extracted deterministically (100% reliable)."
+    )
     lines.append("Includes block lists (numbered, bulleted, lettered, roman) and inline lists")
     lines.append("(parenthetical numbered, ordinal patterns). -->")
     lines.append("")
 
-    for i, lst in enumerate(all_lists, 1):
+    for _i, lst in enumerate(all_lists, 1):
         type_label = {
-            "numbered": "Numbered", "bulleted": "Bulleted",
-            "lettered": "Lettered", "roman": "Roman Numeral",
+            "numbered": "Numbered",
+            "bulleted": "Bulleted",
+            "lettered": "Lettered",
+            "roman": "Roman Numeral",
             "parenthetical": "Parenthetical Numbered",
             "inline_numbered": "Inline Numbered (parenthetical)",
             "inline_numbered_paren": "Inline Numbered (closing paren)",
@@ -636,24 +858,22 @@ def format_lists_section(md_text: str) -> str:
             # Example: "AuthorK emphasized that two conditions must be met for
             # organization of the ego and neutralization of drives to arrive at
             # a sense of identity:" → "Two conditions for ego organization"
-            _colon_sentences = re.findall(
-                r'([A-Z][^:]{15,120}):\s*(?=\(\d|$)',
-                ctx
-            )
+            _colon_sentences = re.findall(r"([A-Z][^:]{15,120}):\s*(?=\(\d|$)", ctx)
             if _colon_sentences:
                 # Take the last colon-ending sentence as the header
                 header = _colon_sentences[-1].strip()
                 # Clean up: if it starts with "The" or "This", strip it
-                header = re.sub(r'^(The|This|These|Those)\s+', '', header)
+                header = re.sub(r"^(The|This|These|Those)\s+", "", header)
             else:
                 # V18.2.9: Strategy 2 — Look for "N <plural noun>" patterns
                 count_match = re.search(
-                    r'(?:(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+)'
-                    r'(conditions|categories|aspects|characteristics|factors|'
-                    r'types|phases|stages|steps|components|elements|dimensions|'
-                    r'forces|connotations|origins|sources|routes|paths|tasks|'
-                    r'areas|foundations)\s*(?:of\s+)?([A-Z][^.!?]{5,60})?',
-                    ctx, re.IGNORECASE
+                    r"(?:(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+)"
+                    r"(conditions|categories|aspects|characteristics|factors|"
+                    r"types|phases|stages|steps|components|elements|dimensions|"
+                    r"forces|connotations|origins|sources|routes|paths|tasks|"
+                    r"areas|foundations)\s*(?:of\s+)?([A-Z][^.!?]{5,60})?",
+                    ctx,
+                    re.IGNORECASE,
                 )
                 if count_match:
                     num = count_match.group(1)
@@ -667,11 +887,11 @@ def format_lists_section(md_text: str) -> str:
                     # V18.2.9: Strategy 3 — Look for "consists of" / "provides"
                     # / "accomplished by" patterns
                     _intro_match = re.search(
-                        r'([A-Z][^.!?]{15,80}?)\s+'
-                        r'(?:consists of|provides|accomplished by|'
-                        r'divided into|organized into|categorized into|'
-                        r'described as|proposed|identified)\s',
-                        ctx
+                        r"([A-Z][^.!?]{15,80}?)\s+"
+                        r"(?:consists of|provides|accomplished by|"
+                        r"divided into|organized into|categorized into|"
+                        r"described as|proposed|identified)\s",
+                        ctx,
                     )
                     if _intro_match:
                         header = _intro_match.group(1).strip()
@@ -688,7 +908,7 @@ def format_lists_section(md_text: str) -> str:
             # If no header found, use the section heading + item count
             _page = lst.get("page", "")
             _page_str = f" (p.{_page})" if _page else ""
-            _ctx = lst.get('context', '')
+            _ctx = lst.get("context", "")
             lines.append(f"### **{_ctx}** — {type_label}, {len(lst['items'])} items{_page_str}")
         lines.append("")
         for item in lst["items"]:
@@ -709,29 +929,40 @@ def extract_bulleted_lists(md_text: str, headings: list[dict]) -> list[dict]:
     for i, line in enumerate(lines, 1):
         if i in heading_at_line:
             if current_list:
-                lists.append({"context": last_heading, "items": current_list,
-                              "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
             last_heading = heading_at_line[i]
             continue
-        match = re.match(r'^[-*]\s+(.+)$', line)
+        match = re.match(r"^[-*]\s+(.+)$", line)
         if match:
             current_list.append({"text": match.group(1).strip(), "line": i})
         else:
             if current_list and line.strip() == "":
-                lists.append({"context": last_heading, "items": current_list,
-                              "start_line": current_list[0]["line"]})
+                lists.append(
+                    {
+                        "context": last_heading,
+                        "items": current_list,
+                        "start_line": current_list[0]["line"],
+                    }
+                )
                 current_list = []
     if current_list:
-        lists.append({"context": last_heading, "items": current_list,
-                      "start_line": current_list[0]["line"]})
+        lists.append(
+            {"context": last_heading, "items": current_list, "start_line": current_list[0]["line"]}
+        )
     return lists
 
 
 def extract_bold_terms(md_text: str) -> list[str]:
     """Extract bold terms. Generic regex."""
-    terms = re.findall(r'\*\*(.+?)\*\*', md_text)
-    terms.extend(re.findall(r'__(.+?)__', md_text))
+    terms = re.findall(r"\*\*(.+?)\*\*", md_text)
+    terms.extend(re.findall(r"__(.+?)__", md_text))
     seen = set()
     unique = []
     for t in terms:
@@ -743,11 +974,11 @@ def extract_bold_terms(md_text: str) -> list[str]:
 
 def extract_italic_terms(md_text: str) -> list[str]:
     """Extract italic terms. Generic regex."""
-    terms = re.findall(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', md_text)
+    terms = re.findall(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", md_text)
     seen = set()
     unique = []
     for t in terms:
-        if t not in seen and len(t) > 2 and not t.startswith('http'):
+        if t not in seen and len(t) > 2 and not t.startswith("http"):
             seen.add(t)
             unique.append(t)
     return unique
@@ -755,16 +986,19 @@ def extract_italic_terms(md_text: str) -> list[str]:
 
 def extract_block_quotes(md_text: str) -> list[str]:
     """Extract block quotes. Generic regex."""
-    return [match.group(1).strip()
-            for match in re.finditer(r'^>\s+(.+)$', md_text, re.MULTILINE)]
+    return [match.group(1).strip() for match in re.finditer(r"^>\s+(.+)$", md_text, re.MULTILINE)]
 
 
 def count_words_per_section(md_text: str, headings: list[dict]) -> list[dict]:
     """Count words per section. Generic."""
     if not headings:
-        return [{"section": "(entire document)",
-                 "word_count": len(md_text.split()),
-                 "char_count": len(md_text)}]
+        return [
+            {
+                "section": "(entire document)",
+                "word_count": len(md_text.split()),
+                "char_count": len(md_text),
+            }
+        ]
     lines = md_text.split("\n")
     heading_lines = sorted(h["line"] for h in headings)
     sections = []
@@ -772,10 +1006,14 @@ def count_words_per_section(md_text: str, headings: list[dict]) -> list[dict]:
         start = h["line"]
         end = heading_lines[i + 1] if i + 1 < len(heading_lines) else len(lines) + 1
         text = "\n".join(lines[start:end])
-        sections.append({
-            "section": h["title"], "level": h["level"],
-            "word_count": len(text.split()), "char_count": len(text),
-        })
+        sections.append(
+            {
+                "section": h["title"],
+                "level": h["level"],
+                "word_count": len(text.split()),
+                "char_count": len(text),
+            }
+        )
     return sections
 
 
@@ -790,8 +1028,8 @@ def count_citations_per_section(md_text: str, headings: list[dict]) -> list[dict
         start = h["line"]
         end = heading_lines[i + 1] if i + 1 < len(heading_lines) else len(lines) + 1
         text = "\n".join(lines[start:end])
-        parenthetical = len(re.findall(r'[A-Z][a-z]+\s*\(\d{4}', text))
-        inline = len(re.findall(r'[A-Z][a-z]+\s+\d{4}[a-z]?\b', text))
+        parenthetical = len(re.findall(r"[A-Z][a-z]+\s*\(\d{4}", text))
+        inline = len(re.findall(r"[A-Z][a-z]+\s+\d{4}[a-z]?\b", text))
         sections.append({"section": h["title"], "citation_count": parenthetical + inline})
     return sections
 
@@ -841,6 +1079,7 @@ def extract_bylines(md_text: str) -> list[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Main analyzer — runs all extractors + formats output
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_deterministic_analysis(md_text: str) -> str:
     """Run all extractors and format as markdown report. Content-agnostic.
@@ -1050,6 +1289,7 @@ def _list_analysis_files(output_dir: Path) -> list:
     _ANALYSIS_SCAN_CACHE[key] = (dir_mtime, files)
     return files
 
+
 # V18.20.4.11 (P1): heading-aware analysis lookup. Previously
 # find_analysis_for_heading IGNORED its heading parameter and returned the
 # FIRST readable *_analysis.md file tree-wide — in multi-segment books (the
@@ -1057,6 +1297,7 @@ def _list_analysis_files(output_dir: Path) -> list:
 # segment-001's analysis injected: wrong-chapter authors/keywords polluted
 # prompts, coverage probes, gap-fill, the recall floor and the thorough-
 # theorist floor. The helpers below implement the matching ladder.
+
 
 def _analysis_segment_stem(analysis_path: Path) -> str:
     """V18.20.4.11 (P1): analysis file stem minus its TRAILING _analysis
@@ -1100,7 +1341,10 @@ def _select_analysis_for_heading(analysis_files, heading, log_fn=None):
                 candidates.append(f)
     if len(candidates) == 1:
         if log_fn:
-            log_fn(f"    [V17.5] Analysis for '{heading}' → {candidates[0].name} (match: exact slug)", "INFO")
+            log_fn(
+                f"    [V17.5] Analysis for '{heading}' → {candidates[0].name} (match: exact slug)",
+                "INFO",
+            )
         return candidates[0], "exact-slug"
     if len(candidates) > 1:
         if log_fn:
@@ -1138,7 +1382,10 @@ def _select_analysis_for_heading(analysis_files, heading, log_fn=None):
                     )
                 return best, "fuzzy-tied"
             if log_fn:
-                log_fn(f"    [V17.5] Analysis for '{heading}' → {best.name} (match: fuzzy {best_ratio:.2f})", "INFO")
+                log_fn(
+                    f"    [V17.5] Analysis for '{heading}' → {best.name} (match: fuzzy {best_ratio:.2f})",
+                    "INFO",
+                )
             return best, "fuzzy"
 
     # ── 3. fail-closed ──
@@ -1206,7 +1453,10 @@ def find_analysis_for_heading(output_dir, heading: str, log_fn=None) -> tuple[st
         return "", ""
 
     if log_fn:
-        log_fn(f"    [V17.5] Found {len(analysis_files)} analysis file(s): {[f.name for f in analysis_files]}", "DEBUG")
+        log_fn(
+            f"    [V17.5] Found {len(analysis_files)} analysis file(s): {[f.name for f in analysis_files]}",
+            "DEBUG",
+        )
 
     # V18.20.4.11 (P1): heading-aware selection. Single analysis file →
     # legacy behavior (it is THE analysis for the whole run — single-
@@ -1237,11 +1487,17 @@ def find_analysis_for_heading(output_dir, heading: str, log_fn=None) -> tuple[st
         # loop skipped it and silently fell through to the NEXT chapter's
         # file — same wrong-content class as the heading bug).
         if log_fn and method != "single-file":
-            log_fn(f"    [V17.5] ⚠️ Selected analysis file is empty: {selected.name} — injecting NOTHING", "WARNING")
+            log_fn(
+                f"    [V17.5] ⚠️ Selected analysis file is empty: {selected.name} — injecting NOTHING",
+                "WARNING",
+            )
         return "", ""
 
     if log_fn:
-        log_fn(f"    [V17.5] Using analysis: {selected.name} ({len(analysis_text)} chars), segment: {segment_path.name}", "DEBUG")
+        log_fn(
+            f"    [V17.5] Using analysis: {selected.name} ({len(analysis_text)} chars), segment: {segment_path.name}",
+            "DEBUG",
+        )
     return str(segment_path), analysis_text
 
 
@@ -1263,10 +1519,16 @@ def analysis_exists(output_dir, log_fn=None) -> bool:
     exists = len(analysis_files) > 0
     if log_fn:
         if exists:
-            log_fn(f"    [V17.5] Analysis exists: {len(analysis_files)} file(s) found — V17.4 skips ENABLED", "DEBUG")
+            log_fn(
+                f"    [V17.5] Analysis exists: {len(analysis_files)} file(s) found — V17.4 skips ENABLED",
+                "DEBUG",
+            )
         else:
-            log_fn("    [V17.5] No analysis files found — V17.4 skips DISABLED (old behavior)", "DEBUG")
+            log_fn(
+                "    [V17.5] No analysis files found — V17.4 skips DISABLED (old behavior)", "DEBUG"
+            )
     return exists
+
 
 def extract_authors_from_analysis(analysis: str) -> list[str]:
     """Extract author names from the deterministic analysis output.
@@ -1296,14 +1558,14 @@ def _extract_authors_cached(analysis: str) -> tuple:
     never be poisoned by caller-side mutation.
     """
     # Find the citations section
-    cite_match = re.search(r'## Citations.*?\n(.*?)(?=\n## |\Z)', analysis, re.DOTALL)
+    cite_match = re.search(r"## Citations.*?\n(.*?)(?=\n## |\Z)", analysis, re.DOTALL)
     if not cite_match:
         return ()
     cite_block = cite_match.group(1)
     # Each line: "N. **Author** (count mentions): years"
     authors = []
     for line in cite_block.split("\n"):
-        m = re.match(r'\d+\.\s+\*\*(.+?)\*\*', line)
+        m = re.match(r"\d+\.\s+\*\*(.+?)\*\*", line)
         if m:
             authors.append(m.group(1).strip())
     return tuple(authors)
@@ -1320,7 +1582,7 @@ def _edit_distance_le1(a: str, b: str) -> bool:
     if abs(la - lb) > 1:
         return False
     if la == lb:
-        return sum(1 for x, y in zip(a, b) if x != y) <= 1
+        return sum(1 for x, y in zip(a, b, strict=False) if x != y) <= 1
     if la > lb:
         a, b, la, lb = b, a, lb, la  # a is now the shorter
     # deletion check: b must reduce to a by removing one char
@@ -1340,23 +1602,23 @@ def _edit_distance_le1(a: str, b: str) -> bool:
 
 def _author_in_summary(author: str, summary_lower: str, summary_tokens: set) -> bool:
     """V18.20.3.5 (audit v182034, a false-missing pair from a dropped-letter garble):
-    garble-tolerant author-presence check.
+        garble-tolerant author-presence check.
 
-    The V18.14 judge ran on the pre-repair summary text in which the model
-had written "AuthorM and AuthorN-garble" (single-char garble of the second name).
-The exact substring check failed, the pair
-    was reported missing from bullets AND thorough, and gap-fill generated
-    a redundant bullet for an author that was already covered — the exact
-    duplicate class the V18.20.3.4 dedup then had to clean up.
+        The V18.14 judge ran on the pre-repair summary text in which the model
+    had written "AuthorM and AuthorN-garble" (single-char garble of the second name).
+    The exact substring check failed, the pair
+        was reported missing from bullets AND thorough, and gap-fill generated
+        a redundant bullet for an author that was already covered — the exact
+        duplicate class the V18.20.3.4 dedup then had to clean up.
 
-    Fundamental fix (content-agnostic): an author is covered when every
-    NAME token of the author (connectors \"and\"/\"&\" skipped) appears in
-    the summary either exactly or as an edit-distance-1 neighbor (same
-    first letter, length >= 4) of some summary token. This matches the
-same garble class the postcheck auto-repair fixes (dropped-letter
+        Fundamental fix (content-agnostic): an author is covered when every
+        NAME token of the author (connectors \"and\"/\"&\" skipped) appears in
+        the summary either exactly or as an edit-distance-1 neighbor (same
+        first letter, length >= 4) of some summary token. This matches the
     same garble class the postcheck auto-repair fixes (dropped-letter
-    'emergs'->'emerges'), so the judge and the repair layer finally agree
-    match — d1 on short words is too noisy.
+        same garble class the postcheck auto-repair fixes (dropped-letter
+        'emergs'->'emerges'), so the judge and the repair layer finally agree
+        match — d1 on short words is too noisy.
     """
     if author.lower() in summary_lower:
         return True  # fast path: exact substring
@@ -1432,7 +1694,7 @@ def _check_coverage_cached(analysis: str, summary_text: str) -> tuple:
 
     summary_lower = summary_text.lower()
     # V18.20.3.5: token set built once for the garble-tolerant path.
-    summary_tokens = set(re.findall(r'\b[a-z][a-z]{2,}\b', summary_lower))
+    summary_tokens = set(re.findall(r"\b[a-z][a-z]{2,}\b", summary_lower))
     covered = []
     missing = []
     for author in authors:
@@ -1456,13 +1718,15 @@ def check_numbered_list_coverage(analysis: str, summary_text: str) -> dict:
         return {"total": 0, "covered": [], "missing": [], "coverage_pct": 1.0}
 
     # Find numbered list sections
-    list_matches = re.findall(r'### List \d+ \(under: (.+?), (\d+) items\)\n((?:\d+\..+\n?)+)', analysis)
+    list_matches = re.findall(
+        r"### List \d+ \(under: (.+?), (\d+) items\)\n((?:\d+\..+\n?)+)", analysis
+    )
     if not list_matches:
         return {"total": 0, "covered": [], "missing": [], "coverage_pct": 1.0}
 
     all_items = []
-    for context, count, items_block in list_matches:
-        for item_match in re.finditer(r'\d+\.\s+(.+)', items_block):
+    for _context, _count, items_block in list_matches:
+        for item_match in re.finditer(r"\d+\.\s+(.+)", items_block):
             all_items.append(item_match.group(1).strip())
 
     if not all_items:

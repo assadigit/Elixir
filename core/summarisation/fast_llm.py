@@ -26,6 +26,7 @@ Characterization tests: ``tests/test_fast_llm.py`` captures all 4 architecture
 modes, the legacy ``single`` alias, the gemma3:12b short-circuit, the
 dual_local failure-fallback, and the dual_api missing-config fallback.
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,6 +59,7 @@ def _noop_llm(prompt, **kw):
 
 
 # ── call_fast_llm (extracted verbatim) ─────────────────────────────────────
+
 
 def call_fast_llm(
     prompt: str,
@@ -102,7 +104,9 @@ def call_fast_llm(
     # so single_api (provider = cloud) hits the cloud API automatically.
     if arch in ("single_local", "single_api"):
         return call_llm_with_empty_retry(
-            prompt, temperature=temperature, max_tokens=max_tokens,
+            prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     if arch == "dual_local":
@@ -112,17 +116,23 @@ def call_fast_llm(
         # configured" — route to the primary model.
         if not fast_model or fast_model == LEGACY_DEFAULT_MODEL:
             return call_llm_with_empty_retry(
-                prompt, temperature=temperature, max_tokens=max_tokens,
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
         switch_to_fast_model()
         try:
-            result = call_fast_ollama(prompt, model=fast_model, temp=fast_temp, max_tokens=max_tokens)
+            result = call_fast_ollama(
+                prompt, model=fast_model, temp=fast_temp, max_tokens=max_tokens
+            )
             return result
         except Exception as _e:
             log(f"    ⚠️ Fast model failed ({_e}) — falling back to heavy", "WARNING")
             switch_to_heavy_model()
             return call_llm_with_empty_retry(
-                prompt, temperature=temperature, max_tokens=max_tokens,
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
     if arch == "dual_api":
@@ -131,16 +141,24 @@ def call_fast_llm(
         api_model = getattr(request, "fast_api_model", "") or ""
         if not api_url or not api_model:
             return call_llm_with_empty_retry(
-                prompt, temperature=temperature, max_tokens=max_tokens,
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
         try:
             return call_openai_compat(
-                prompt, base_url=api_url, api_key=api_key,
-                model=api_model, label="FastAPI",
-                temp=fast_temp, max_tokens=max_tokens,
+                prompt,
+                base_url=api_url,
+                api_key=api_key,
+                model=api_model,
+                label="FastAPI",
+                temp=fast_temp,
+                max_tokens=max_tokens,
             )
         except Exception:
             return call_llm_with_empty_retry(
-                prompt, temperature=temperature, max_tokens=max_tokens,
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
     return None

@@ -13,6 +13,7 @@
     3+ word selections, while keeping the strict "ALL" rule for 1-2 word
     selections (prevents false positives like "Cannabinoids" matching "Memantine").
 """
+
 from __future__ import annotations
 
 import re
@@ -32,7 +33,11 @@ from core.errors import ChapterMatchFailure
 # source-scans) now lives in converter_impl.py.  Resolve the implementation
 # module, falling back to the old path for pre-V18.20 trees.
 _CONVERTER_IMPL = _project_root / "core" / "pipeline" / "converter_impl.py"
-CONVERTER_PATH = _CONVERTER_IMPL if _CONVERTER_IMPL.exists() else (_project_root / "core" / "pipeline" / "converter.py")
+CONVERTER_PATH = (
+    _CONVERTER_IMPL
+    if _CONVERTER_IMPL.exists()
+    else (_project_root / "core" / "pipeline" / "converter.py")
+)
 SUMMARIZATION_PATH = _project_root / "core" / "pipeline" / "conversion" / "summarization.py"
 
 # V18.3.1: extract _match_chapter as a standalone function for testing.
@@ -43,6 +48,7 @@ SUMMARIZATION_PATH = _project_root / "core" / "pipeline" / "conversion" / "summa
 # production code. The method is pure (no self state) so this is equivalent.
 try:
     from rapidfuzz import fuzz as _fuzz
+
     _RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     _RAPIDFUZZ_AVAILABLE = False
@@ -61,8 +67,8 @@ def _match_chapter(heading: str, selected: str) -> bool:
 
     def normalize(s):
         s = s.lower()
-        s = re.sub(r'[^\w\s]', '', s)
-        s = re.sub(r'\s+', ' ', s).strip()
+        s = re.sub(r"[^\w\s]", "", s)
+        s = re.sub(r"\s+", " ", s).strip()
         return s
 
     heading_norm = normalize(heading_clean)
@@ -72,7 +78,7 @@ def _match_chapter(heading: str, selected: str) -> bool:
         return True
 
     def extract_chapter_number(s):
-        m = re.match(r'^(\d+(?:\.\d+)*)\s', s)
+        m = re.match(r"^(\d+(?:\.\d+)*)\s", s)
         if m:
             return m.group(1)
         return None
@@ -88,14 +94,53 @@ def _match_chapter(heading: str, selected: str) -> bool:
         return False
 
     _COMMON = {
-        "chapter", "part", "section", "appendix", "the", "of", "a", "an",
-        "and", "or", "to", "in", "for", "with", "on", "at", "by", "from",
-        "treatment", "acute", "preventive", "prevention", "study",
-        "evidence", "trial", "clinical", "practice", "review",
-        "introduction", "conclusion", "conclusions", "future",
-        "therapeutics", "management", "therapy", "drug", "drugs",
-        "migraine", "headache", "pain", "receptor", "antagonist",
-        "agonist", "inhibition", "action", "mode", "proposed",
+        "chapter",
+        "part",
+        "section",
+        "appendix",
+        "the",
+        "of",
+        "a",
+        "an",
+        "and",
+        "or",
+        "to",
+        "in",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "treatment",
+        "acute",
+        "preventive",
+        "prevention",
+        "study",
+        "evidence",
+        "trial",
+        "clinical",
+        "practice",
+        "review",
+        "introduction",
+        "conclusion",
+        "conclusions",
+        "future",
+        "therapeutics",
+        "management",
+        "therapy",
+        "drug",
+        "drugs",
+        "migraine",
+        "headache",
+        "pain",
+        "receptor",
+        "antagonist",
+        "agonist",
+        "inhibition",
+        "action",
+        "mode",
+        "proposed",
     }
     heading_words = set(w for w in heading_norm.split() if len(w) > 2 and w not in _COMMON)
     selected_words = set(w for w in selected_norm.split() if len(w) > 2 and w not in _COMMON)
@@ -123,6 +168,7 @@ def _match_chapter(heading: str, selected: str) -> bool:
 
 # ── P0: ChapterMatchFailure exception ───────────────────────────────────────
 
+
 class TestChapterMatchFailureException:
     """The exception class exists + carries the right data."""
 
@@ -133,6 +179,7 @@ class TestChapterMatchFailureException:
     def test_exception_is_conversion_error(self):
         """ChapterMatchFailure is a subclass of ConversionError."""
         from core.errors import ConversionError
+
         exc = ChapterMatchFailure("test", selected=["Ch 1"], available=["Seg 1"])
         assert isinstance(exc, ConversionError)
 
@@ -186,12 +233,15 @@ class TestP0GuardInSource:
 
 # ── P2: Word-overlap relaxation ────────────────────────────────────────────
 
+
 class TestP2WordOverlapRelaxation:
     """The word-overlap rule is relaxed from 'ALL' to 'majority' for 3+ words."""
 
     def test_exact_match_still_works(self):
         """Exact match (normalized) must still return True."""
-        assert _match_chapter("1 - IDENTITY AND ITS ORIGINS", "1 - IDENTITY AND ITS ORIGINS") is True
+        assert (
+            _match_chapter("1 - IDENTITY AND ITS ORIGINS", "1 - IDENTITY AND ITS ORIGINS") is True
+        )
 
     def test_number_match_still_works(self):
         """Chapter-number match (e.g. '3.6' vs '3.6') must still return True."""
@@ -220,9 +270,7 @@ class TestP2WordOverlapRelaxation:
             "Part Three: Confidence Building and Active Listening Skills",
             "Chapter 3: Confidence Building Through Active Listening",
         )
-        assert result is True, (
-            "V18.3.1 P2: 4/5 word overlap should match (was rejected before)"
-        )
+        assert result is True, "V18.3.1 P2: 4/5 word overlap should match (was rejected before)"
 
     def test_majority_match_6_words(self):
         """V18.3.1 P2: 5-word selection with 4/5 overlap should match (threshold=3)."""
@@ -266,6 +314,7 @@ class TestP2WordOverlapRelaxation:
 
 # ── Integration: the full guard flow ────────────────────────────────────────
 
+
 class TestGuardIntegration:
     """Verify the guard's logic by simulating the selection flow."""
 
@@ -277,24 +326,26 @@ class TestGuardIntegration:
         """
         # Simulate the segments + selection from "Agent of Influence"
         chapter_dicts = [
-            {'heading': 'Gap (pages 1–1)'},
-            {'heading': 'Title Page'},
-            {'heading': 'Chapter 1: The Confidence Reflex'},
-            {'heading': 'Part One: The SADR Cycle'},
-            {'heading': 'Part Two: Spy Skills Equal Common Sense'},
-            {'heading': 'Part Three: Protecting Your Most Important Asset'},
-            {'heading': 'Bonus Section: The Ultimate Primer'},
-            {'heading': 'About the Publisher'},
+            {"heading": "Gap (pages 1–1)"},
+            {"heading": "Title Page"},
+            {"heading": "Chapter 1: The Confidence Reflex"},
+            {"heading": "Part One: The SADR Cycle"},
+            {"heading": "Part Two: Spy Skills Equal Common Sense"},
+            {"heading": "Part Three: Protecting Your Most Important Asset"},
+            {"heading": "Bonus Section: The Ultimate Primer"},
+            {"heading": "About the Publisher"},
         ]
-        selected_titles = ["Chapter 2: Spotting: How to Quickly Identify the People Who Will Help Your Business Succeed"]
+        selected_titles = [
+            "Chapter 2: Spotting: How to Quickly Identify the People Who Will Help Your Business Succeed"
+        ]
         selected_count = 1
 
         # Replicate the summarization.py:705-754 flow
-        all_available = [cd['heading'] for cd in chapter_dicts]
+        all_available = [cd["heading"] for cd in chapter_dicts]
         best_matches = []
         for cd in chapter_dicts:
             for sel in selected_titles:
-                if _match_chapter(cd['heading'], sel):
+                if _match_chapter(cd["heading"], sel):
                     best_matches.append((1, cd))
                     break
         best_matches.sort(key=lambda x: x[0], reverse=True)
@@ -321,8 +372,8 @@ class TestGuardIntegration:
     def test_successful_match_does_not_raise(self):
         """When _match_chapter returns ≥1 match, no ChapterMatchFailure."""
         chapter_dicts = [
-            {'heading': '1 - IDENTITY AND ITS ORIGINS'},
-            {'heading': '2 - SOME OTHER CHAPTER'},
+            {"heading": "1 - IDENTITY AND ITS ORIGINS"},
+            {"heading": "2 - SOME OTHER CHAPTER"},
         ]
         selected_titles = ["1 - IDENTITY AND ITS ORIGINS"]
         selected_count = 1
@@ -330,7 +381,7 @@ class TestGuardIntegration:
         best_matches = []
         for cd in chapter_dicts:
             for sel in selected_titles:
-                if _match_chapter(cd['heading'], sel):
+                if _match_chapter(cd["heading"], sel):
                     best_matches.append((3, cd))  # score 3 = exact
                     break
         best_matches.sort(key=lambda x: x[0], reverse=True)
@@ -338,10 +389,11 @@ class TestGuardIntegration:
 
         # Match found → no raise
         assert len(result_dicts) == 1
-        assert result_dicts[0]['heading'] == "1 - IDENTITY AND ITS ORIGINS"
+        assert result_dicts[0]["heading"] == "1 - IDENTITY AND ITS ORIGINS"
 
 
 # ── V18.3.2: Page-based fallback ──────────────────────────────────────────
+
 
 class TestPageBasedFallback:
     """V18.3.2 (P3-partial): when heading match fails, match by TOC page.
@@ -363,6 +415,7 @@ class TestPageBasedFallback:
         """
         try:
             from rapidfuzz import fuzz
+
             _HAS_FUZZ = True
         except ImportError:
             _HAS_FUZZ = False
@@ -390,12 +443,12 @@ class TestPageBasedFallback:
         # Step 2: page-based fallback
         # 2a: find selected's TOC page
         best_idx, best_score = -1, 0.0
-        for ti, (th, tp) in enumerate(toc_entries):
+        for ti, (th, _tp) in enumerate(toc_entries):
             if _HAS_FUZZ:
                 sc = fuzz.token_set_ratio(selected.lower(), str(th).lower()) / 100.0
             else:
-                sw = set(re.findall(r'[a-z0-9]+', selected.lower()))
-                tw = set(re.findall(r'[a-z0-9]+', str(th).lower()))
+                sw = set(re.findall(r"[a-z0-9]+", selected.lower()))
+                tw = set(re.findall(r"[a-z0-9]+", str(th).lower()))
                 sc = len(sw & tw) / max(len(sw | tw), 1) if (sw or tw) else 0.0
             if sc > best_score:
                 best_score, best_idx = sc, ti
@@ -420,6 +473,7 @@ class TestPageBasedFallback:
         # No TOC entries → fallback can't run → ChapterMatchFailure raises.
         # (This is the V18.3.1 behavior for books without a TOC.)
         from core.errors import ChapterMatchFailure
+
         with pytest.raises(ChapterMatchFailure):
             raise ChapterMatchFailure(
                 "heading + page fallback both failed",
@@ -434,9 +488,7 @@ class TestPageBasedFallback:
         segmenter only produced segments up to page 150. No segment contains
         page 200 → fallback fails → ChapterMatchFailure.
         """
-        toc_entries = [("Chapter 99", 200)]
         segments = [{"heading": "Only Chapter", "start_page": 1, "end_page": 150}]
-        selected = "Chapter 99"
 
         sel_page = 200
         page_matched = None

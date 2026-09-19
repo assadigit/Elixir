@@ -69,6 +69,7 @@ DESIGN PRINCIPLES
   ``page_range_start``/``page_range_end`` — only scans the pages the
   user actually selected.
 """
+
 from __future__ import annotations
 
 import logging
@@ -90,7 +91,7 @@ SCANNED_TEXT_THRESHOLD = 30  # chars; below this, check words
 # Garbage-char run: 5+ consecutive special chars indicates OCR/extraction
 # garbage (not real text).
 _GARBAGE_RE = re.compile(r'([!@#$%^&*()_+=\-{}\[\]:;"\'<>?,./]{5,})')
-_WORD_RE = re.compile(r'[A-Za-z\u0600-\u06FF]{2,}')
+_WORD_RE = re.compile(r"[A-Za-z\u0600-\u06FF]{2,}")
 
 
 def _is_text_meaningful(text: str) -> bool:
@@ -128,6 +129,7 @@ class PreScanResult:
         elapsed_sec: wall-clock time the pre-scan took.
         skip_model_load: True if scanned_pages is empty (no OCR needed).
     """
+
     scanned_pages: list[int] = field(default_factory=list)
     digital_pages: list[int] = field(default_factory=list)
     total_scanned: int = 0
@@ -167,6 +169,7 @@ def prescan_pages(
     Returns:
         :class:`PreScanResult` with the scanned/digital page split.
     """
+
     def _log(msg: str, level: str = "INFO") -> None:
         if log_fn:
             log_fn(msg, level)
@@ -180,6 +183,7 @@ def prescan_pages(
     start = time.time()
     try:
         from pypdf import PdfReader
+
         reader = PdfReader(str(pdf_path))
         if reader.is_encrypted and password:
             reader.decrypt(password)

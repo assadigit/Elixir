@@ -21,6 +21,7 @@ in the sandbox).
 
 Run: ``pytest tests/test_quarantine.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -87,9 +88,13 @@ class TestAdd:
     def test_add_entry_has_all_fields(self, tmp_log: QuarantineLog):
         """The JSON line must contain all documented fields."""
         tmp_log.add(
-            "test bullet", stage="F4_source_overlap",
-            threshold=0.25, source_overlap=0.18, reason="overlap too low",
-            chapter="Chapter 5", actually_dropped=True,
+            "test bullet",
+            stage="F4_source_overlap",
+            threshold=0.25,
+            source_overlap=0.18,
+            reason="overlap too low",
+            chapter="Chapter 5",
+            actually_dropped=True,
         )
         entry = json.loads(tmp_log.drops_path.read_text().splitlines()[0])
         assert entry["bullet"] == "test bullet"
@@ -285,9 +290,11 @@ class TestInMemoryOnly:
 class TestThreadSafety:
     def test_concurrent_adds(self, tmp_log: QuarantineLog):
         """1000 concurrent adds from 10 threads must all land."""
+
         def adder(n):
             for i in range(100):
                 tmp_log.add(f"b-{n}-{i}", stage="concurrent")
+
         threads = [threading.Thread(target=adder, args=(n,)) for n in range(10)]
         for t in threads:
             t.start()

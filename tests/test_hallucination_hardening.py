@@ -11,6 +11,7 @@ Covers:
 8. detect_citation_coverage_gap: empty inputs → no issue
 9. Book-agnostic: works on any discipline
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -88,8 +89,21 @@ class TestExecBulletInconsistency:
 class TestCitationCoverageGap:
     def test_low_coverage_flagged(self):
         """Source names 10 authors, summary mentions 2 → 20% < 80% → flag."""
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans", "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join([f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)])
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(
+            [f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names)]
+        )
         summary = "Adams (1910) wrote about topic 0. Baker (1920) discussed topic 1."
         issues = detect_citation_coverage_gap(source, summary)
         assert len(issues) == 1
@@ -99,9 +113,24 @@ class TestCitationCoverageGap:
 
     def test_good_coverage_no_issue(self):
         """Source names 10 authors, summary mentions 9 → 90% ≥ 80% → no flag."""
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans", "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join([f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)])
-        summary = ". ".join([f"{n} ({1900+i}) discussed topic {i}." for i, n in enumerate(names[:9])])
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(
+            [f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names)]
+        )
+        summary = ". ".join(
+            [f"{n} ({1900 + i}) discussed topic {i}." for i, n in enumerate(names[:9])]
+        )
         issues = detect_citation_coverage_gap(source, summary)
         assert issues == []
 
@@ -123,17 +152,45 @@ class TestCitationCoverageGap:
 
     def test_custom_coverage_floor(self):
         """With a 100% floor, even 90% coverage should flag."""
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans", "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join([f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)])
-        summary = ". ".join([f"{n} ({1900+i}) discussed topic {i}." for i, n in enumerate(names[:9])])
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(
+            [f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names)]
+        )
+        summary = ". ".join(
+            [f"{n} ({1900 + i}) discussed topic {i}." for i, n in enumerate(names[:9])]
+        )
         # 9/10 = 90% → with floor=1.0, should flag
         issues = detect_citation_coverage_gap(source, summary, coverage_floor=1.0)
         assert len(issues) == 1
 
     def test_missing_authors_listed(self):
         """The flag should list the missing author names."""
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans", "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join([f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)])
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(
+            [f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names)]
+        )
         summary = "Only Adams (1910) is mentioned."
         issues = detect_citation_coverage_gap(source, summary)
         assert len(issues) == 1
@@ -142,8 +199,19 @@ class TestCitationCoverageGap:
         assert "Clark" in issues[0].detail
 
     def test_book_agnostic_works_on_physics(self):
-        names = ["Newton", "Einstein", "Bohr", "Heisenberg", "Schrodinger", "Dirac", "Pauli", "Fermi", "Feynman", "GellMann"]
-        source = ". ".join([f"{n} ({1900+i}) discovered law {i}." for i, n in enumerate(names)])
+        names = [
+            "Newton",
+            "Einstein",
+            "Bohr",
+            "Heisenberg",
+            "Schrodinger",
+            "Dirac",
+            "Pauli",
+            "Fermi",
+            "Feynman",
+            "GellMann",
+        ]
+        source = ". ".join([f"{n} ({1900 + i}) discovered law {i}." for i, n in enumerate(names)])
         summary = "Galileo (1600) described motion. Hubble (1920) described expansion."
         issues = detect_citation_coverage_gap(source, summary)
         # 0/10 source authors covered → flag

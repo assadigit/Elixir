@@ -34,6 +34,7 @@ The module-level ``_warned_X = False`` lines become
 value-copies at import, which reintroduces the bug. So the impl modules MUST
 read/write ``state.X`` directly. This module provides the single source of truth.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ class _State:
     behavior is identical unless a caller mutates them. Tests reset via
     ``reset()`` in an autouse fixture (see tests/test_runtime_state.py).
     """
+
     # content_judge_impl singletons
     warned_embedding_disabled: bool = False
     warned_semantic_fallback: bool = False

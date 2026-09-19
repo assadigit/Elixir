@@ -38,14 +38,17 @@ from utils.token_counter import count_tokens
 
 logger = get_main_logger()
 
+
 # ── Dynamic MIN_SEGMENT_TOKENS based on source_type ──────────────────────
 # V3.10.0: Now uses content presets for per-type configuration.
 # Academic: 80 (short sections), Philosophy: 400 (long passages), Normal: 250
 def get_min_segment_tokens(request: ConversionRequest) -> int:
     from core.llm.content_presets import get_content_preset
+
     source_type = getattr(request, "source_type", "normal_book")
     preset = get_content_preset(source_type)
     return preset.min_segment_tokens
+
 
 MIN_TOC_SEGMENTS = 3
 # Keyword overlap threshold: if heading shares < 20% of keywords with content, treat as false positive
@@ -54,32 +57,173 @@ KEYWORD_OVERLAP_THRESHOLD = 0.20
 # Confidence thresholds – lowered to keep more sections
 CONFIDENCE_HIGH = 0.7
 CONFIDENCE_MEDIUM = 0.5
-CONFIDENCE_LOW = 0.3   # NEW: keep entries with at least this confidence
+CONFIDENCE_LOW = 0.3  # NEW: keep entries with at least this confidence
 
 # Stopwords for keyword extraction (copied from summarizer for independence)
-_STOPWORDS = frozenset({
-    "the","a","an","in","on","at","to","for","of","and","or","but",
-    "is","it","its","this","that","was","are","were","be","been",
-    "have","has","had","with","from","by","as","not","he","she",
-    "they","we","you","i","their","our","his","her","which","who",
-    "what","when","where","how","all","one","two","three","also",
-    "can","will","would","could","should","may","might","do","did",
-    "such","than","then","so","if","about","up","out","more","very",
-    "just","into","over","after","before","between","through",
-    "page","pages","copyright","rights","reserved","published","publisher",
-    "publication","press","edition","printing","printed","reprinted",
-    "isbn","library","congress","cataloging","university","college",
-    "journal","volume","issue","series","revised","translated",
-    "author","authors","editor","editors","foreword","preface",
-    "introduction","conclusion","chapter","chapters","section","part",
-    "figure","table","appendix","references","bibliography","index",
-    "acknowledgments","acknowledgements","dedication","contents",
-    "first","second","third","fourth","fifth","however","therefore",
-    "thus","hence","whereas","although","despite","whether","both",
-    "each","every","other","another","same","different","various",
-    "many","some","most","much","less","well","often","always",
-    "never","already","still","even","only","further","example",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "and",
+        "or",
+        "but",
+        "is",
+        "it",
+        "its",
+        "this",
+        "that",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "have",
+        "has",
+        "had",
+        "with",
+        "from",
+        "by",
+        "as",
+        "not",
+        "he",
+        "she",
+        "they",
+        "we",
+        "you",
+        "i",
+        "their",
+        "our",
+        "his",
+        "her",
+        "which",
+        "who",
+        "what",
+        "when",
+        "where",
+        "how",
+        "all",
+        "one",
+        "two",
+        "three",
+        "also",
+        "can",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "do",
+        "did",
+        "such",
+        "than",
+        "then",
+        "so",
+        "if",
+        "about",
+        "up",
+        "out",
+        "more",
+        "very",
+        "just",
+        "into",
+        "over",
+        "after",
+        "before",
+        "between",
+        "through",
+        "page",
+        "pages",
+        "copyright",
+        "rights",
+        "reserved",
+        "published",
+        "publisher",
+        "publication",
+        "press",
+        "edition",
+        "printing",
+        "printed",
+        "reprinted",
+        "isbn",
+        "library",
+        "congress",
+        "cataloging",
+        "university",
+        "college",
+        "journal",
+        "volume",
+        "issue",
+        "series",
+        "revised",
+        "translated",
+        "author",
+        "authors",
+        "editor",
+        "editors",
+        "foreword",
+        "preface",
+        "introduction",
+        "conclusion",
+        "chapter",
+        "chapters",
+        "section",
+        "part",
+        "figure",
+        "table",
+        "appendix",
+        "references",
+        "bibliography",
+        "index",
+        "acknowledgments",
+        "acknowledgements",
+        "dedication",
+        "contents",
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "however",
+        "therefore",
+        "thus",
+        "hence",
+        "whereas",
+        "although",
+        "despite",
+        "whether",
+        "both",
+        "each",
+        "every",
+        "other",
+        "another",
+        "same",
+        "different",
+        "various",
+        "many",
+        "some",
+        "most",
+        "much",
+        "less",
+        "well",
+        "often",
+        "always",
+        "never",
+        "already",
+        "still",
+        "even",
+        "only",
+        "further",
+        "example",
+    }
+)
 
 
 def compute_metadata_child_levels(by_level: dict[int, list]) -> dict[int, tuple[int, int]]:
@@ -139,12 +283,12 @@ class Segmenter:
                 - TOCResult (from toc_extractor.locate_headings)
                 - list of TOCEntry objects (with line numbers already matched)
         """
-        self.request     = request
-        self.log         = log_callback or (lambda msg, level="INFO": None)
+        self.request = request
+        self.log = log_callback or (lambda msg, level="INFO": None)
         self._raw_toc_entries = toc_entries
-        self.heading_segmenter  = HeadingSegmenter(request, log_callback)
+        self.heading_segmenter = HeadingSegmenter(request, log_callback)
         self.semantic_segmenter = SemanticSegmenter(request, log_callback)
-        self.token_segmenter    = TokenSegmenter(request)
+        self.token_segmenter = TokenSegmenter(request)
 
         # Normalise toc_entries into a list of TOCEntry objects (with optional line)
         self.toc_entries = self._normalise_toc_entries(toc_entries)
@@ -171,7 +315,9 @@ class Segmenter:
             return toc_data
 
         # If it's a list of (heading, page) tuples
-        if isinstance(toc_data, list) and all(isinstance(e, tuple) and len(e) == 2 for e in toc_data):
+        if isinstance(toc_data, list) and all(
+            isinstance(e, tuple) and len(e) == 2 for e in toc_data
+        ):
             return [TOCEntry(title=h, page=p if p > 0 else None) for h, p in toc_data]
 
         # Fallback: empty
@@ -187,17 +333,34 @@ class Segmenter:
             return float("inf")
         m = re.search(r"(?:Chapter|Section|فصل|بخش)\s+(\d+(?:\.\d+)?)", heading, re.IGNORECASE)
         if m:
-            try: return float(m.group(1))
-            except ValueError: pass
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
         m = re.search(r"^\s*(\d+(?:\.\d+)?)", heading)
         if m:
-            try: return float(m.group(1))
-            except ValueError: pass
-        persian = {"۰":"0","۱":"1","۲":"2","۳":"3","۴":"4","۵":"5","۶":"6","۷":"7","۸":"8","۹":"9"}
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
+        persian = {
+            "۰": "0",
+            "۱": "1",
+            "۲": "2",
+            "۳": "3",
+            "۴": "4",
+            "۵": "5",
+            "۶": "6",
+            "۷": "7",
+            "۸": "8",
+            "۹": "9",
+        }
         m = re.search(r"(?:فصل|بخش)\s+([۰-۹]+)", heading)
         if m:
-            try: return float("".join(persian.get(c, c) for c in m.group(1)))
-            except ValueError: pass
+            try:
+                return float("".join(persian.get(c, c) for c in m.group(1)))
+            except ValueError:
+                pass
         return float("inf")
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -206,23 +369,29 @@ class Segmenter:
 
     @staticmethod
     def _toc_entry_title(e) -> str:
-        if hasattr(e, 'title'): return e.title
-        elif isinstance(e, (tuple, list)) and len(e) >= 1: return e[0]
+        if hasattr(e, "title"):
+            return e.title
+        elif isinstance(e, (tuple, list)) and len(e) >= 1:
+            return e[0]
         return ""
 
     @staticmethod
     def _toc_entry_page(e):
-        if hasattr(e, 'page'): return e.page
-        elif isinstance(e, (tuple, list)) and len(e) >= 2: return e[1]
+        if hasattr(e, "page"):
+            return e.page
+        elif isinstance(e, (tuple, list)) and len(e) >= 2:
+            return e[1]
         return None
 
     @staticmethod
     def _toc_entry_level(e) -> int:
-        if hasattr(e, 'level'): return e.level
+        if hasattr(e, "level"):
+            return e.level
         return 0
 
     def _has_outline_levels(self) -> bool:
-        if not self.toc_entries: return False
+        if not self.toc_entries:
+            return False
         return any(self._toc_entry_level(e) > 0 for e in self.toc_entries)
 
     def _filter_to_chapter_level(self) -> list:
@@ -238,7 +407,8 @@ class Segmenter:
         If level-1 entries don't exist or look like front-matter (Dedication,
         Epigraph, etc.), fall back to level 0.
         """
-        if not self.toc_entries: return []
+        if not self.toc_entries:
+            return []
 
         # V18.3.3 (F3): group entries by level.
         by_level: dict[int, list] = {}
@@ -257,10 +427,20 @@ class Segmenter:
         # like real chapters (not just front-matter). If yes, prefer them —
         # the user almost certainly wants to select by chapter, not by part.
         _FRONT_MATTER = {
-            "dedication", "epigraph", "contents", "table of contents",
-            "copyright", "title page", "about the author", "about the publisher",
-            "acknowledgments", "acknowledgements", "author's note", "author note",
-            "front matter", "cover",
+            "dedication",
+            "epigraph",
+            "contents",
+            "table of contents",
+            "copyright",
+            "title page",
+            "about the author",
+            "about the publisher",
+            "acknowledgments",
+            "acknowledgements",
+            "author's note",
+            "author note",
+            "front matter",
+            "cover",
         }
 
         # V18.20.4.10 (P0-b1): exclude "metadata children" levels BEFORE the
@@ -303,9 +483,9 @@ class Segmenter:
             if t in _FRONT_MATTER:
                 return False
             # "Chapter N", "Lesson N", "N. Title", "N Title", "Part N"
-            if re.match(r'^(chapter|lesson|section|part)\s+\d+', t):
+            if re.match(r"^(chapter|lesson|section|part)\s+\d+", t):
                 return True
-            if re.match(r'^\d+[\.\s\-]', t):
+            if re.match(r"^\d+[\.\s\-]", t):
                 return True
             # Any non-front-matter title with >10 chars is probably a real chapter
             if len(t) > 10:
@@ -342,27 +522,48 @@ class Segmenter:
         return chapter_entries
 
     def _filter_by_chapter_numbers(self) -> list:
-        if not self.toc_entries: return []
-        _STANDALONE = {"foreword","preface","acknowledgments","introduction","references","bibliography","index","appendix","conclusion","afterword","prologue","epilogue","about the author","glossary"}
+        if not self.toc_entries:
+            return []
+        _STANDALONE = {
+            "foreword",
+            "preface",
+            "acknowledgments",
+            "introduction",
+            "references",
+            "bibliography",
+            "index",
+            "appendix",
+            "conclusion",
+            "afterword",
+            "prologue",
+            "epilogue",
+            "about the author",
+            "glossary",
+        }
         chapter_entries = []
         for e in self.toc_entries:
             _page = self._toc_entry_page(e)
-            if _page is None or _page <= 0: continue
+            if _page is None or _page <= 0:
+                continue
             title = self._toc_entry_title(e).strip()
             title_lower = title.lower()
             has_primary = bool(re.match(r"^\d+\s*[-\u2013\u2014.:]\s+", title))
             has_chapter_word = bool(re.match(r"^(chapter|section)\s+\d+", title, re.IGNORECASE))
-            has_bare = False  # V13.33.5: removed — matched "10 -", "11 -" as chapters
+            # V13.33.5: has_bare removed — matched "10 -", "11 -" as chapters
             is_standalone = title_lower in _STANDALONE
             if has_primary or has_chapter_word or is_standalone:
                 chapter_entries.append((title, _page))
         if chapter_entries:
-            self.log(f"  [Segmenter] Layer 2: chapter-number filter \u2014 kept {len(chapter_entries)} chapter-level entries (from {len(self.toc_entries)} total).", "INFO")
+            self.log(
+                f"  [Segmenter] Layer 2: chapter-number filter \u2014 kept {len(chapter_entries)} chapter-level entries (from {len(self.toc_entries)} total).",
+                "INFO",
+            )
         return chapter_entries
 
     def _segment_by_chapters(self, markdown_text, total_pages, page_markers, chapter_entries):
-        if not chapter_entries or not page_markers: return []
-        page_to_pos = {p: pos for p, pos in page_markers}
+        if not chapter_entries or not page_markers:
+            return []
+        page_to_pos = dict(page_markers)
         page_to_pos[total_pages + 1] = len(markdown_text)
         chapter_entries.sort(key=lambda x: x[1])
         deduped = []
@@ -371,7 +572,8 @@ class Segmenter:
             if page != last_page:
                 deduped.append((heading, page))
                 last_page = page
-        if len(deduped) < 2: return []
+        if len(deduped) < 2:
+            return []
         # V0.03 (P0-4): the LAST chapter entry ends at the LAST EXTRACTED
         # page, not total_pages. With a selection-filtered TOC the extracted
         # markdown only contains the selected pages — the old `total_pages`
@@ -384,11 +586,9 @@ class Segmenter:
         )
         segments = []
         for idx, (heading, start_page) in enumerate(deduped):
-            end_page = (
-                deduped[idx + 1][1] - 1 if idx + 1 < len(deduped)
-                else _last_extracted_page
-            )
-            if end_page < start_page: end_page = start_page
+            end_page = deduped[idx + 1][1] - 1 if idx + 1 < len(deduped) else _last_extracted_page
+            if end_page < start_page:
+                end_page = start_page
             # V18.20.4.10 (P0-b3): a missing start-page marker must resolve
             # to the NEAREST FOLLOWING marker — the old ``get(start_page, 0)``
             # fallback silently sliced from position 0, i.e. the segment
@@ -399,9 +599,7 @@ class Segmenter:
             # content.
             start_pos = page_to_pos.get(start_page)
             if start_pos is None:
-                _next_marker_page = min(
-                    (p for p in page_to_pos if p > start_page), default=None
-                )
+                _next_marker_page = min((p for p in page_to_pos if p > start_page), default=None)
                 start_pos = (
                     page_to_pos[_next_marker_page]
                     if _next_marker_page is not None
@@ -418,8 +616,13 @@ class Segmenter:
             # (the old fallback duplicated the rest of the book into this
             # segment AND every later segment).
             content = markdown_text[start_pos:end_pos].strip() if start_pos < end_pos else ""
-            segments.append(Segment(heading=heading, content=content, start_page=start_page, end_page=end_page))
-        self.log(f"  [Segmenter] Created {len(segments)} chapter-level segments (no sub-section splitting, no merging needed).", "INFO")
+            segments.append(
+                Segment(heading=heading, content=content, start_page=start_page, end_page=end_page)
+            )
+        self.log(
+            f"  [Segmenter] Created {len(segments)} chapter-level segments (no sub-section splitting, no merging needed).",
+            "INFO",
+        )
         return segments
 
     def _merge_short_chapters(self, segments, min_pages=5, max_merge_pages=None):
@@ -456,7 +659,8 @@ class Segmenter:
                 "INFO",
             )
             return segments
-        if len(segments) <= 2: return segments
+        if len(segments) <= 2:
+            return segments
         if max_merge_pages is None:
             max_merge_pages = min_pages * 2
         merged = [segments[0]]
@@ -485,40 +689,54 @@ class Segmenter:
                     if seg.heading not in prev.aliases:
                         prev.aliases.append(seg.heading)
                 # Also carry over any aliases the merged segment had.
-                for alias in (getattr(seg, 'aliases', None) or []):
+                for alias in getattr(seg, "aliases", None) or []:
                     if alias and alias != prev.heading and alias not in prev.aliases:
                         prev.aliases.append(alias)
-                self.log(f"  [Segmenter] Layer 3: merged short segment '{seg.heading[:40]}' ({page_count} pages) into '{prev.heading[:40]}'.", "DEBUG")
+                self.log(
+                    f"  [Segmenter] Layer 3: merged short segment '{seg.heading[:40]}' ({page_count} pages) into '{prev.heading[:40]}'.",
+                    "DEBUG",
+                )
             else:
                 merged.append(seg)
         merged.append(segments[-1])
         if len(merged) < len(segments):
-            self.log(f"  [Segmenter] Layer 3: merged {len(segments) - len(merged)} short segment(s).", "INFO")
+            self.log(
+                f"  [Segmenter] Layer 3: merged {len(segments) - len(merged)} short segment(s).",
+                "INFO",
+            )
         return merged
 
     @staticmethod
     def _better_heading(a: str, b: str) -> str:
-        clean = lambda s: re.sub(r" {2,}", " ", s).strip()
+        def clean(s: str) -> str:
+            return re.sub(r" {2,}", " ", s).strip()
+
         ha, hb = clean(a), clean(b)
         return ha if len(ha.replace(" ", "")) >= len(hb.replace(" ", "")) else hb
 
     def _sort_segments(self, segments: list[Segment]) -> list[Segment]:
         if not segments:
             return segments
-        numbered   = [s for s in segments if self._extract_chapter_number(s.heading) != float("inf")]
-        unnumbered = [s for s in segments if self._extract_chapter_number(s.heading) == float("inf")]
+        numbered = [s for s in segments if self._extract_chapter_number(s.heading) != float("inf")]
+        unnumbered = [
+            s for s in segments if self._extract_chapter_number(s.heading) == float("inf")
+        ]
         if not numbered:
             return sorted(segments, key=lambda s: s.start_page)
-        numbered_sorted   = sorted(numbered,   key=lambda s: (self._extract_chapter_number(s.heading), s.start_page))
+        numbered_sorted = sorted(
+            numbered, key=lambda s: (self._extract_chapter_number(s.heading), s.start_page)
+        )
         unnumbered_sorted = sorted(unnumbered, key=lambda s: s.start_page)
         result: list[Segment] = []
         u = 0
         for chap in numbered_sorted:
             while u < len(unnumbered_sorted) and unnumbered_sorted[u].start_page < chap.start_page:
-                result.append(unnumbered_sorted[u]); u += 1
+                result.append(unnumbered_sorted[u])
+                u += 1
             result.append(chap)
         while u < len(unnumbered_sorted):
-            result.append(unnumbered_sorted[u]); u += 1
+            result.append(unnumbered_sorted[u])
+            u += 1
         return result
 
     def _recalc_page_bounds(self, segment: Segment) -> None:
@@ -535,7 +753,7 @@ class Segmenter:
         """Extract top n keywords from text (excluding stopwords)."""
         if not text:
             return []
-        words = re.findall(r'\b[a-z]{4,}\b', text.lower())
+        words = re.findall(r"\b[a-z]{4,}\b", text.lower())
         counts: dict[str, int] = {}
         for w in words:
             if w not in _STOPWORDS:
@@ -560,7 +778,13 @@ class Segmenter:
     # Enforce contiguity and fix overlaps/gaps
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _enforce_contiguity(self, segments: list[Segment], total_pages: int, markdown_text: str, page_markers: list[tuple[int, int]]) -> list[Segment]:
+    def _enforce_contiguity(
+        self,
+        segments: list[Segment],
+        total_pages: int,
+        markdown_text: str,
+        page_markers: list[tuple[int, int]],
+    ) -> list[Segment]:
         if not segments:
             return segments
 
@@ -569,7 +793,7 @@ class Segmenter:
         current_page = 1
         previous_end = 0
 
-        page_to_pos = {p: pos for p, pos in page_markers}
+        page_to_pos = dict(page_markers)
         page_to_pos[total_pages + 1] = len(markdown_text)
 
         for seg in sorted_segs:
@@ -618,7 +842,10 @@ class Segmenter:
                         seg.start_page = total_pages + 1  # mark as invalid
                         seg.end_page = total_pages + 1
                         continue
-                    self.log(f"  ⚠️ Overlap detected: '{seg.heading[:30]}' start page {seg.start_page} <= previous end {previous_end}. Adjusting start to {new_start}", "WARNING")
+                    self.log(
+                        f"  ⚠️ Overlap detected: '{seg.heading[:30]}' start page {seg.start_page} <= previous end {previous_end}. Adjusting start to {new_start}",
+                        "WARNING",
+                    )
                     seg.start_page = new_start
                     if new_start <= total_pages:
                         start_pos = page_to_pos.get(new_start, 0)
@@ -630,15 +857,22 @@ class Segmenter:
                             if new_content:
                                 seg.content = new_content
                                 self._recalc_page_bounds(seg)
-                                self.log(f"  ✅ Content trimmed and recalculated for '{seg.heading[:30]}'", "INFO")
+                                self.log(
+                                    f"  ✅ Content trimmed and recalculated for '{seg.heading[:30]}'",
+                                    "INFO",
+                                )
                     if not seg.content.strip():
-                        seg.content = f"[No content extracted for pages {seg.start_page}–{seg.end_page}]"
+                        seg.content = (
+                            f"[No content extracted for pages {seg.start_page}–{seg.end_page}]"
+                        )
             else:
                 pass
 
             if seg.start_page > current_page:
-                gap_heading = f"Gap (pages {current_page}–{seg.start_page-1})"
-                gap_content = f"[No content extracted for pages {current_page}–{seg.start_page-1}]"
+                gap_heading = f"Gap (pages {current_page}–{seg.start_page - 1})"
+                gap_content = (
+                    f"[No content extracted for pages {current_page}–{seg.start_page - 1}]"
+                )
                 gap_seg = Segment(
                     heading=gap_heading,
                     content=gap_content,
@@ -675,7 +909,13 @@ class Segmenter:
     # Manual segmentation creation
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _create_manual_segments(self, markdown_text: str, total_pages: int, page_markers: list[tuple[int, int]], manual_ranges: list[tuple[int, int]]) -> list[Segment]:
+    def _create_manual_segments(
+        self,
+        markdown_text: str,
+        total_pages: int,
+        page_markers: list[tuple[int, int]],
+        manual_ranges: list[tuple[int, int]],
+    ) -> list[Segment]:
         segments = []
         page_positions = {}
         for p, pos in page_markers:
@@ -693,16 +933,18 @@ class Segmenter:
             heading = f"Chapter {idx}"
             lines = content.splitlines()
             for line in lines:
-                if line.strip().startswith('#'):
-                    heading = line.strip().lstrip('#').strip()
+                if line.strip().startswith("#"):
+                    heading = line.strip().lstrip("#").strip()
                     break
-            segments.append(Segment(
-                heading=heading,
-                content=content,
-                start_page=start,
-                end_page=end,
-                segment_type="chapter",
-            ))
+            segments.append(
+                Segment(
+                    heading=heading,
+                    content=content,
+                    start_page=start,
+                    end_page=end,
+                    segment_type="chapter",
+                )
+            )
         return segments
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -710,7 +952,7 @@ class Segmenter:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _remove_toc_bursts(self, segments: list[Segment]) -> list[Segment]:
-        TOC_BURST_MIN  = 4
+        TOC_BURST_MIN = 4
         TOC_MAX_TOKENS = 20
         if not segments:
             return segments
@@ -735,8 +977,8 @@ class Segmenter:
         for start, end in runs:
             preview = [segments[k].heading[:35] for k in range(start, end)]
             self.log(
-                f"  [Segmenter] ⚠️ TOC burst: discarding {end-start} near-empty stubs "
-                f"→ keeping '{segments[end].heading[:35]}'. Removed: {preview[:3]}{'…' if len(preview)>3 else ''}",
+                f"  [Segmenter] ⚠️ TOC burst: discarding {end - start} near-empty stubs "
+                f"→ keeping '{segments[end].heading[:35]}'. Removed: {preview[:3]}{'…' if len(preview) > 3 else ''}",
                 "WARNING",
             )
             for k in range(start, end):
@@ -794,8 +1036,9 @@ class Segmenter:
                 # Page", the user can still match on "Dedication").
                 _better = self._better_heading(seg.heading, nxt.heading)
                 _worse = seg.heading if _better == nxt.heading else nxt.heading
-                _merged_aliases = list(getattr(seg, 'aliases', []) or []) + \
-                                  list(getattr(nxt, 'aliases', []) or [])
+                _merged_aliases = list(getattr(seg, "aliases", []) or []) + list(
+                    getattr(nxt, "aliases", []) or []
+                )
                 if _worse and _worse != _better:
                     _merged_aliases.append(_worse)
                 merged = Segment(
@@ -817,7 +1060,7 @@ class Segmenter:
                 self.log(
                     f"  [Segmenter] Merged '{seg.heading[:35]}' → '{merged.heading[:35]}' "
                     f"({', '.join(reason)})",
-                    "INFO"
+                    "INFO",
                 )
                 result.append(merged)
                 i += 2
@@ -842,7 +1085,7 @@ class Segmenter:
                     self.log(
                         f"  [Segmenter] V10.0.1: Merged '{seg.heading[:35]}' backward "
                         f"(below {HARD_MIN_TOKENS} token hard minimum)",
-                        "WARNING"
+                        "WARNING",
                     )
                 else:
                     final.append(seg)
@@ -866,18 +1109,21 @@ class Segmenter:
                 seg = segments[i]
                 if i + 1 < len(segments):
                     nxt = segments[i + 1]
-                    n1  = self._extract_chapter_number(seg.heading)
-                    n2  = self._extract_chapter_number(nxt.heading)
+                    n1 = self._extract_chapter_number(seg.heading)
+                    n2 = self._extract_chapter_number(nxt.heading)
                     if n1 == n2 and n1 != float("inf"):
                         merged = Segment(
-                            heading      = self._better_heading(seg.heading, nxt.heading),
-                            content      = (seg.content.strip() + "\n\n" + nxt.content.strip()).strip(),
-                            start_page   = seg.start_page,
-                            end_page     = nxt.end_page,
-                            segment_type = "chapter",
+                            heading=self._better_heading(seg.heading, nxt.heading),
+                            content=(seg.content.strip() + "\n\n" + nxt.content.strip()).strip(),
+                            start_page=seg.start_page,
+                            end_page=nxt.end_page,
+                            segment_type="chapter",
                         )
                         self._recalc_page_bounds(merged)
-                        self.log(f"  [Segmenter] Merged dup ch.{int(n1)}: '{seg.heading[:30]}' + '{nxt.heading[:30]}'", "INFO")
+                        self.log(
+                            f"  [Segmenter] Merged dup ch.{int(n1)}: '{seg.heading[:30]}' + '{nxt.heading[:30]}'",
+                            "INFO",
+                        )
                         result.append(merged)
                         i += 2
                         changed = True
@@ -905,7 +1151,7 @@ class Segmenter:
 
         def _full_norm(h: str) -> str:
             """Lightweight normalisation: lowercase + collapse whitespace only."""
-            return re.sub(r'\s+', ' ', h.strip().lower())
+            return re.sub(r"\s+", " ", h.strip().lower())
 
         merged = []
         i = 0
@@ -924,15 +1170,18 @@ class Segmenter:
                 if segments[j].segment_type == "chapter":
                     seg.segment_type = "chapter"
                 self.log(
-                    f"  [Segmenter] Merged duplicate heading '{seg.heading[:40]}' (was {j-i+1} segments)",
-                    "INFO"
+                    f"  [Segmenter] Merged duplicate heading '{seg.heading[:40]}' (was {j - i + 1} segments)",
+                    "INFO",
                 )
                 j += 1
             merged.append(seg)
             i = j
 
         if len(merged) < len(segments):
-            self.log(f"  [Segmenter] Reduced {len(segments)} → {len(merged)} segments by merging duplicate headings.", "INFO")
+            self.log(
+                f"  [Segmenter] Reduced {len(segments)} → {len(merged)} segments by merging duplicate headings.",
+                "INFO",
+            )
         return merged
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -969,7 +1218,8 @@ class Segmenter:
             if n != float("inf") and n in toc_by_num:
                 if toc_by_num[n] != seg.heading:
                     self.log(f"  [TOC] '{seg.heading}' → '{toc_by_num[n][:50]}'", "INFO")
-                    seg.heading = toc_by_num[n]; updated += 1
+                    seg.heading = toc_by_num[n]
+                    updated += 1
             else:
                 # V0.07: page-proximity repair — pick the NEAREST entry, not
                 # the FIRST within ±3 pages (first-match stole neighbor titles).
@@ -981,7 +1231,8 @@ class Segmenter:
                             _best = (_d, th)
                 if _best is not None and _best[1] != seg.heading:
                     self.log(f"  [TOC] (page) '{seg.heading}' → '{_best[1][:50]}'", "INFO")
-                    seg.heading = _best[1]; updated += 1
+                    seg.heading = _best[1]
+                    updated += 1
         if updated:
             self.log(f"  [TOC] Applied {updated} heading update(s) from TOC.", "INFO")
         return segments
@@ -990,7 +1241,9 @@ class Segmenter:
     # ── Helper: Map character position to page using binary search ────────
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _get_page_for_char_pos(self, char_pos: int, page_markers: list[tuple[int, int]], total_pages: int) -> int:
+    def _get_page_for_char_pos(
+        self, char_pos: int, page_markers: list[tuple[int, int]], total_pages: int
+    ) -> int:
         """
         Find the page number for a given character position using binary search on page markers.
         Returns 1 if markers are empty or char_pos is before the first marker.
@@ -1058,13 +1311,21 @@ class Segmenter:
             if e.confidence >= CONFIDENCE_HIGH:
                 located.append(e)
             elif e.confidence >= CONFIDENCE_LOW:
-                self.log(f"  ⚠️ Low confidence ({e.confidence:.2f}) for '{e.title[:40]}' – using anyway (threshold lowered).", "WARNING")
+                self.log(
+                    f"  ⚠️ Low confidence ({e.confidence:.2f}) for '{e.title[:40]}' – using anyway (threshold lowered).",
+                    "WARNING",
+                )
                 located.append(e)
             else:
-                self.log(f"  ⚠️ Very low confidence ({e.confidence:.2f}) for '{e.title[:40]}' – discarding.", "WARNING")
+                self.log(
+                    f"  ⚠️ Very low confidence ({e.confidence:.2f}) for '{e.title[:40]}' – discarding.",
+                    "WARNING",
+                )
 
         if not located:
-            self.log("[Segmenter] No located TOC entries with confidence >= 0.3 – falling back.", "INFO")
+            self.log(
+                "[Segmenter] No located TOC entries with confidence >= 0.3 – falling back.", "INFO"
+            )
             return []
 
         # Sort by line
@@ -1079,7 +1340,7 @@ class Segmenter:
 
             # ── FIX: end_line is the line of the NEXT heading (exclusive) ──
             if i + 1 < len(located_sorted):
-                end_line = located_sorted[i+1].line - 1  # Last line before next heading
+                end_line = located_sorted[i + 1].line - 1  # Last line before next heading
             else:
                 end_line = len(lines) - 1
 
@@ -1089,17 +1350,23 @@ class Segmenter:
 
             # Clamp to valid range
             if start_line >= len(lines):
-                self.log(f"  ⚠️ start_line {start_line} exceeds line count {len(lines)} for '{entry.title[:40]}'", "WARNING")
+                self.log(
+                    f"  ⚠️ start_line {start_line} exceeds line count {len(lines)} for '{entry.title[:40]}'",
+                    "WARNING",
+                )
                 continue
             if end_line >= len(lines):
                 end_line = len(lines) - 1
 
             # Extract content
-            content = "\n".join(lines[start_line:end_line+1]).strip()
+            content = "\n".join(lines[start_line : end_line + 1]).strip()
 
             # If content is empty, try to get at least some text
             if not content:
-                self.log(f"  ⚠️ Empty content for '{entry.title[:40]}' (lines {start_line}-{end_line}) – using fallback.", "WARNING")
+                self.log(
+                    f"  ⚠️ Empty content for '{entry.title[:40]}' (lines {start_line}-{end_line}) – using fallback.",
+                    "WARNING",
+                )
                 content = f"[No content extracted for this section]\n\n{entry.title}"
 
             # Compute character positions
@@ -1108,7 +1375,9 @@ class Segmenter:
 
             # Map to pages
             start_page = self._get_page_for_char_pos(start_char, markers_sorted, total_pages)
-            end_page = self._get_page_for_char_pos(end_char - 1 if end_char > start_char else start_char, markers_sorted, total_pages)
+            end_page = self._get_page_for_char_pos(
+                end_char - 1 if end_char > start_char else start_char, markers_sorted, total_pages
+            )
 
             if end_page < start_page:
                 end_page = start_page
@@ -1164,7 +1433,7 @@ class Segmenter:
 
         # Determine search window
         if page_markers and suggested_page is not None and suggested_page > 0:
-            marker_map = {p: pos for p, pos in page_markers}
+            marker_map = dict(page_markers)
             marker_line = marker_map.get(suggested_page)
             if marker_line is not None:
                 start_line = marker_line
@@ -1185,10 +1454,12 @@ class Segmenter:
             start_line, end_line = end_line, start_line
 
         # 1. Exact match (with optional # prefix)
-        window_text = "".join(lines[start_line:end_line+1])
+        window_text = "".join(lines[start_line : end_line + 1])
         window_offset = sum(len(lines[i]) for i in range(start_line))
 
-        pattern = re.compile(r'^(?:#+\s*)?' + re.escape(heading_stripped) + r'\s*$', re.MULTILINE | re.IGNORECASE)
+        pattern = re.compile(
+            r"^(?:#+\s*)?" + re.escape(heading_stripped) + r"\s*$", re.MULTILINE | re.IGNORECASE
+        )
         match = pattern.search(window_text)
         if match:
             pos = window_offset + match.start()
@@ -1205,7 +1476,9 @@ class Segmenter:
         # 2. Normalised exact match
         normalised = normalize_heading(heading_stripped)
         if normalised and normalised != heading_stripped:
-            pattern = re.compile(r'^(?:#+\s*)?' + re.escape(normalised) + r'\s*$', re.MULTILINE | re.IGNORECASE)
+            pattern = re.compile(
+                r"^(?:#+\s*)?" + re.escape(normalised) + r"\s*$", re.MULTILINE | re.IGNORECASE
+            )
             match = pattern.search(window_text)
             if match:
                 pos = window_offset + match.start()
@@ -1220,9 +1493,7 @@ class Segmenter:
 
         # 3. Fuzzy matching with progressive thresholds
         candidates = get_heading_candidates(
-            [line.rstrip('\n') for line in lines],
-            start_line,
-            end_line
+            [line.rstrip("\n") for line in lines], start_line, end_line
         )
 
         if candidates:
@@ -1237,15 +1508,13 @@ class Segmenter:
 
         # 4. Global fallback (full text search)
         global_candidates = get_heading_candidates(
-            [line.rstrip('\n') for line in lines],
+            [line.rstrip("\n") for line in lines],
             150,  # skip TOC area
-            total_lines - 1
+            total_lines - 1,
         )
         if not global_candidates:
             global_candidates = get_heading_candidates(
-                [line.rstrip('\n') for line in lines],
-                0,
-                total_lines - 1
+                [line.rstrip("\n") for line in lines], 0, total_lines - 1
             )
 
         if global_candidates:
@@ -1264,7 +1533,9 @@ class Segmenter:
     # TOC‑driven segmentation (with fuzzy search and confidence filtering)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _segment_by_toc(self, markdown_text: str, total_pages: int, page_markers: list[tuple[int, int]]) -> list[Segment]:
+    def _segment_by_toc(
+        self, markdown_text: str, total_pages: int, page_markers: list[tuple[int, int]]
+    ) -> list[Segment]:
         # V10.14.0 (D2): Try page-anchor segmentation FIRST (no text matching).
         # When the TOC entries have accurate page numbers (e.g. from the PDF's
         # native outline/bookmarks), we can split the markdown at page markers
@@ -1303,7 +1574,7 @@ class Segmenter:
             page_markers=page_markers,
         )
 
-        page_to_pos = {p: pos for p, pos in page_markers}
+        page_to_pos = dict(page_markers)
         page_to_pos[total_pages + 1] = len(markdown_text)
 
         segments = []
@@ -1324,12 +1595,18 @@ class Segmenter:
             if matched_line is not None:
                 # Confidence filtering – also lowered here
                 if confidence < CONFIDENCE_LOW:
-                    self.log(f"  ⚠️ Very low confidence ({confidence:.2f}) for '{heading[:40]}' – skipping TOC match, will rely on heading detection.", "WARNING")
+                    self.log(
+                        f"  ⚠️ Very low confidence ({confidence:.2f}) for '{heading[:40]}' – skipping TOC match, will rely on heading detection.",
+                        "WARNING",
+                    )
                     low_confidence_count += 1
                     continue
 
                 if confidence < CONFIDENCE_HIGH:
-                    self.log(f"  ⚠️ Medium confidence ({confidence:.2f}) for '{heading[:40]}' – using TOC match with warning.", "WARNING")
+                    self.log(
+                        f"  ⚠️ Medium confidence ({confidence:.2f}) for '{heading[:40]}' – using TOC match with warning.",
+                        "WARNING",
+                    )
 
                 # Find position in text
                 lines = markdown_text.splitlines(keepends=True)
@@ -1347,14 +1624,23 @@ class Segmenter:
                 if start_page < 1:
                     start_page = 1
 
-                self.log(f"[Segmenter] Found heading '{heading[:40]}' at page {start_page} (confidence: {confidence:.2f})", "DEBUG")
+                self.log(
+                    f"[Segmenter] Found heading '{heading[:40]}' at page {start_page} (confidence: {confidence:.2f})",
+                    "DEBUG",
+                )
             else:
                 if toc_page == 0:
-                    self.log(f"[Segmenter] Cannot locate heading '{heading[:40]}' even with fuzzy matching. Skipping.", "WARNING")
+                    self.log(
+                        f"[Segmenter] Cannot locate heading '{heading[:40]}' even with fuzzy matching. Skipping.",
+                        "WARNING",
+                    )
                     continue
                 else:
                     start_page = max(1, min(toc_page, total_pages))
-                    self.log(f"[Segmenter] Heading '{heading[:40]}' not found. Using TOC page {start_page} as anchor.", "DEBUG")
+                    self.log(
+                        f"[Segmenter] Heading '{heading[:40]}' not found. Using TOC page {start_page} as anchor.",
+                        "DEBUG",
+                    )
                     pos = page_to_pos.get(start_page, 0)
 
             if idx + 1 < len(corrected_toc):
@@ -1414,13 +1700,21 @@ class Segmenter:
             segments.append(seg)
 
         if low_confidence_count > 0:
-            self.log(f"[Segmenter] {low_confidence_count} entries skipped due to very low confidence.", "INFO")
+            self.log(
+                f"[Segmenter] {low_confidence_count} entries skipped due to very low confidence.",
+                "INFO",
+            )
 
         if segments:
-            self.log(f"[Segmenter] TOC‑driven segmentation: created {len(segments)} segments.", "INFO")
+            self.log(
+                f"[Segmenter] TOC‑driven segmentation: created {len(segments)} segments.", "INFO"
+            )
             return segments
         else:
-            self.log("[Segmenter] No TOC headings could be matched. Falling back to heading‑based segmentation.", "INFO")
+            self.log(
+                "[Segmenter] No TOC headings could be matched. Falling back to heading‑based segmentation.",
+                "INFO",
+            )
             return []
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1449,12 +1743,13 @@ class Segmenter:
             return []
 
         # Build page → position map
-        page_to_pos = {p: pos for p, pos in page_markers}
+        page_to_pos = dict(page_markers)
         page_to_pos[total_pages + 1] = len(markdown_text)
 
         # Filter TOC entries that have valid page numbers
         entries_with_pages = [
-            (e.title, e.page) for e in self.toc_entries
+            (e.title, e.page)
+            for e in self.toc_entries
             if e.page is not None and e.page > 0 and e.page <= total_pages
         ]
         if len(entries_with_pages) < 2:
@@ -1498,9 +1793,7 @@ class Segmenter:
             # same class as _segment_by_chapters, see the P0-b3 note there).
             start_pos = page_to_pos.get(start_page)
             if start_pos is None:
-                _next_marker_page = min(
-                    (p for p in page_to_pos if p > start_page), default=None
-                )
+                _next_marker_page = min((p for p in page_to_pos if p > start_page), default=None)
                 start_pos = (
                     page_to_pos[_next_marker_page]
                     if _next_marker_page is not None
@@ -1584,8 +1877,13 @@ class Segmenter:
     def segment(self, markdown_text, total_pages, page_markers) -> list[Segment]:
         # 0. Manual segments (highest priority)
         if self.request.manual_segments is not None and len(self.request.manual_segments) > 0:
-            self.log(f"[Segmenter] Using manual segmentation: {len(self.request.manual_segments)} ranges", "INFO")
-            return self._create_manual_segments(markdown_text, total_pages, page_markers, self.request.manual_segments)
+            self.log(
+                f"[Segmenter] Using manual segmentation: {len(self.request.manual_segments)} ranges",
+                "INFO",
+            )
+            return self._create_manual_segments(
+                markdown_text, total_pages, page_markers, self.request.manual_segments
+            )
 
         # Get the user's strategy preference
         strategy = self.request.get_segment_strategy_enum()
@@ -1606,21 +1904,28 @@ class Segmenter:
             return self.token_segmenter.segment(markdown_text, total_pages, page_markers)
 
         # ── AUTO strategy: Priority Cascade ──────────────────────────────
-                # V13.32.8: 0. Chapter-Level Segmentation (the new gold standard)
+        # V13.32.8: 0. Chapter-Level Segmentation (the new gold standard)
         if self.toc_entries and len(self.toc_entries) >= 2:
             chapter_entries = None
             if self._has_outline_levels():
                 chapter_entries = self._filter_to_chapter_level()
             if not chapter_entries:
                 chapter_entries = self._filter_by_chapter_numbers()
-            if chapter_entries and len(chapter_entries) >= 1:  # V13.33.0: >=1 (not >=2) — user may select 1 chapter
+            if (
+                chapter_entries and len(chapter_entries) >= 1
+            ):  # V13.33.0: >=1 (not >=2) — user may select 1 chapter
                 self.log("[Segmenter] Attempting chapter-level segmentation\u2026", "INFO")
-                segments = self._segment_by_chapters(markdown_text, total_pages, page_markers, chapter_entries)
+                segments = self._segment_by_chapters(
+                    markdown_text, total_pages, page_markers, chapter_entries
+                )
                 # V0.02: selection-aware acceptance (see _segments_meet_minimum)
                 if self._segments_meet_minimum(segments):
                     segments = self._merge_short_chapters(segments)
-                    segments = self._enforce_contiguity(segments, total_pages, markdown_text, page_markers)
-                    for s in segments: self._recalc_page_bounds(s)
+                    segments = self._enforce_contiguity(
+                        segments, total_pages, markdown_text, page_markers
+                    )
+                    for s in segments:
+                        self._recalc_page_bounds(s)
                     segments = sorted(segments, key=lambda s: s.start_page)
                     # V18.20.4.10 (P0-b4): defense-in-depth monster-segment
                     # gate. With >=3 segments, no single chapter-level segment
@@ -1647,12 +1952,21 @@ class Segmenter:
                                 f"manual page-range segmentation for this book.",
                                 "WARNING",
                             )
-                    self.log(f"[Segmenter] Chapter-level segmentation produced {len(segments)} segments \u2013 using it. \u2713", "INFO")
+                    self.log(
+                        f"[Segmenter] Chapter-level segmentation produced {len(segments)} segments \u2013 using it. \u2713",
+                        "INFO",
+                    )
                     return segments
                 else:
-                    self.log(f"[Segmenter] Chapter-level produced <{MIN_TOC_SEGMENTS} segments \u2014 falling back to TOC cascade.", "INFO")
+                    self.log(
+                        f"[Segmenter] Chapter-level produced <{MIN_TOC_SEGMENTS} segments \u2014 falling back to TOC cascade.",
+                        "INFO",
+                    )
 
-        self.log("[Segmenter] AUTO strategy: Priority Cascade (Located TOC \u2192 TOC \u2192 Heading \u2192 Semantic \u2192 Token).", "INFO")
+        self.log(
+            "[Segmenter] AUTO strategy: Priority Cascade (Located TOC \u2192 TOC \u2192 Heading \u2192 Semantic \u2192 Token).",
+            "INFO",
+        )
 
         # 1. Located TOC (if entries already have line numbers)
         if self._toc_has_located_lines and len(self.toc_entries) >= 2:
@@ -1662,9 +1976,7 @@ class Segmenter:
             # If any segment has < 50 tokens of content, the located-TOC
             # mis-located headings (common on two-column academic PDFs).
             # Fall through to TOC-driven or heading segmentation instead.
-            _has_empty_segments = any(
-                count_tokens(s.content) < 50 for s in (segments or [])
-            )
+            _has_empty_segments = any(count_tokens(s.content) < 50 for s in (segments or []))
             if self._segments_meet_minimum(segments) and not _has_empty_segments:
                 segments = self._apply_toc_headings(segments)
                 # ── Merge duplicate headings and short segments ──────────
@@ -1674,17 +1986,24 @@ class Segmenter:
                 for s in segments:
                     self._recalc_page_bounds(s)
                 segments = sorted(segments, key=lambda s: s.start_page)
-                self.log(f"[Segmenter] Located TOC produced {len(segments)} segments (≥ {MIN_TOC_SEGMENTS}) – using it.", "INFO")
+                self.log(
+                    f"[Segmenter] Located TOC produced {len(segments)} segments (≥ {MIN_TOC_SEGMENTS}) – using it.",
+                    "INFO",
+                )
                 return segments
             elif _has_empty_segments:
                 self.log(
                     "[Segmenter] Located TOC produced segments with < 50 tokens "
                     "(likely mis-located headings on two-column PDF). "
-                    "Falling back to TOC-driven segmentation.", "WARNING"
+                    "Falling back to TOC-driven segmentation.",
+                    "WARNING",
                 )
             else:
                 if segments:
-                    self.log(f"[Segmenter] Located TOC produced only {len(segments)} segments (< {MIN_TOC_SEGMENTS}). Falling back.", "INFO")
+                    self.log(
+                        f"[Segmenter] Located TOC produced only {len(segments)} segments (< {MIN_TOC_SEGMENTS}). Falling back.",
+                        "INFO",
+                    )
                 else:
                     self.log("[Segmenter] Located TOC produced no segments. Falling back.", "INFO")
 
@@ -1697,15 +2016,23 @@ class Segmenter:
                 segments = self._apply_toc_headings(segments)
                 segments = self._merge_duplicate_headings(segments)
                 segments = self._merge_short_segments(segments)
-                segments = self._enforce_contiguity(segments, total_pages, markdown_text, page_markers)
+                segments = self._enforce_contiguity(
+                    segments, total_pages, markdown_text, page_markers
+                )
                 for s in segments:
                     self._recalc_page_bounds(s)
                 segments = sorted(segments, key=lambda s: s.start_page)
-                self.log(f"[Segmenter] TOC produced {len(segments)} segments (≥ {MIN_TOC_SEGMENTS}) – using it.", "INFO")
+                self.log(
+                    f"[Segmenter] TOC produced {len(segments)} segments (≥ {MIN_TOC_SEGMENTS}) – using it.",
+                    "INFO",
+                )
                 return segments
             else:
                 if segments:
-                    self.log(f"[Segmenter] TOC produced only {len(segments)} segments (< {MIN_TOC_SEGMENTS}). Falling back.", "INFO")
+                    self.log(
+                        f"[Segmenter] TOC produced only {len(segments)} segments (< {MIN_TOC_SEGMENTS}). Falling back.",
+                        "INFO",
+                    )
                 else:
                     self.log("[Segmenter] TOC produced no segments. Falling back.", "INFO")
 
@@ -1713,7 +2040,9 @@ class Segmenter:
         self.log("[Segmenter] Attempting heading-based segmentation…", "INFO")
         segments = self._heading_pipeline(markdown_text, total_pages, page_markers)
         if segments:
-            self.log(f"[Segmenter] Heading-based produced {len(segments)} segments – using it.", "INFO")
+            self.log(
+                f"[Segmenter] Heading-based produced {len(segments)} segments – using it.", "INFO"
+            )
             return segments
 
         # 4. Semantic (LLM-based)
@@ -1721,26 +2050,35 @@ class Segmenter:
             self.log("[Segmenter] Attempting semantic segmentation…", "INFO")
             segments = self.semantic_segmenter.segment(markdown_text, total_pages, page_markers)
             if segments:
-                self.log(f"[Segmenter] Semantic produced {len(segments)} segments – using it.", "INFO")
+                self.log(
+                    f"[Segmenter] Semantic produced {len(segments)} segments – using it.", "INFO"
+                )
                 return segments
 
         # 5. Token-based (fallback)
         self.log("[Segmenter] Falling back to token-based segmentation.", "INFO")
         segments = self.token_segmenter.segment(markdown_text, total_pages, page_markers)
         if segments:
-            self.log(f"[Segmenter] Token-based produced {len(segments)} segments – using it.", "INFO")
+            self.log(
+                f"[Segmenter] Token-based produced {len(segments)} segments – using it.", "INFO"
+            )
             return segments
 
         # 6. Ultimate fallback: single segment covering the whole document
-        self.log("[Segmenter] No segmentation method produced segments. Creating full-document fallback.", "WARNING")
-        self.log("[Segmenter] 💡 Suggestion: Use manual segmentation in the Convert tab (enter page ranges).", "INFO")
-        return [Segment(
-            heading="Full Document",
-            content=markdown_text,
-            start_page=1,
-            end_page=max(1, total_pages),
-            segment_type="chunk",
-        )]
-
-
-
+        self.log(
+            "[Segmenter] No segmentation method produced segments. Creating full-document fallback.",
+            "WARNING",
+        )
+        self.log(
+            "[Segmenter] 💡 Suggestion: Use manual segmentation in the Convert tab (enter page ranges).",
+            "INFO",
+        )
+        return [
+            Segment(
+                heading="Full Document",
+                content=markdown_text,
+                start_page=1,
+                end_page=max(1, total_pages),
+                segment_type="chunk",
+            )
+        ]

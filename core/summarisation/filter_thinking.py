@@ -27,6 +27,7 @@ Characterization tests: ``tests/test_filter_thinking.py`` captures the
 classify-delegate path, conservative-mode keep-back, quality-scoring trim,
 low-score quarantine logging, and the _last_quarantined rebuild.
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,6 +100,7 @@ def _default_score_bullet(bullet, concepts=None, source_text=""):
 
 
 # ── filter_thinking_bullets (extracted verbatim) ───────────────────────────
+
 
 def filter_thinking_bullets(
     bullets: list,
@@ -176,10 +178,12 @@ def filter_thinking_bullets(
                 dropped += 1
         if quarantine is not None:
             quarantine.add(
-                _bp, stage=_stage, reason=_reason + (
-                    " (kept — conservative mode)." if (_cons and not _always) else "."
-                ),
-                chapter=_chapter_ctx, actually_dropped=_actually,
+                _bp,
+                stage=_stage,
+                reason=_reason
+                + (" (kept — conservative mode)." if (_cons and not _always) else "."),
+                chapter=_chapter_ctx,
+                actually_dropped=_actually,
             )
 
     # Bullet quality scoring — score each bullet 0-100 and
@@ -207,10 +211,12 @@ def filter_thinking_bullets(
                 if sc < 25:
                     if quarantine is not None:
                         quarantine.add(
-                            bp, stage="quality_scorer",
-                            threshold=25.0, source_overlap=0.0,
+                            bp,
+                            stage="quality_scorer",
+                            threshold=25.0,
+                            source_overlap=0.0,
                             reason=f"Quality score {sc}/100 < 25 threshold"
-                                   + (" (kept — conservative mode)" if _cons else ""),
+                            + (" (kept — conservative mode)" if _cons else ""),
                             chapter=_chapter_ctx,
                             actually_dropped=not _cons,
                         )
@@ -250,7 +256,5 @@ def filter_thinking_bullets(
                 f"Stages: {_q_summary}",
                 "INFO",
             )
-        set_last_quarantined([
-            (e.bullet[:80], e.stage) for e in quarantine.entries
-        ])
+        set_last_quarantined([(e.bullet[:80], e.stage) for e in quarantine.entries])
     return filtered

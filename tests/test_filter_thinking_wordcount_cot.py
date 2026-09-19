@@ -19,6 +19,7 @@ and asserts it's dropped with the correct stage.
 
 Run: ``pytest tests/test_filter_thinking_wordcount_cot.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -40,29 +41,33 @@ from core.summarisation.post_processing import classify_bullets
 # 1. Word-count CoT annotations (the "= N words - TOO LONG" surface form)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWordCountCotAnnotation:
     """Bullets ending in '= N words - TOO LONG' / '= N - borderline' are CoT."""
 
     def test_too_long_annotation_dropped(self):
-        bp = ('"Erikson identified four connotations: conscious sense of '
-              'individual identity, unconscious striving for continuity, '
-              'criterion for ego synthesis, and inner solidarity with group '
-              'ideals." = 23 words - TOO LONG. Need to split.')
+        bp = (
+            '"Erikson identified four connotations: conscious sense of '
+            "individual identity, unconscious striving for continuity, "
+            "criterion for ego synthesis, and inner solidarity with group "
+            'ideals." = 23 words - TOO LONG. Need to split.'
+        )
         kept, drops = classify_bullets([bp], concepts=[], source_text="")
         assert len(kept) == 0
         assert drops[0][1] == "thinking_filter.word_count_cot"
         assert drops[0][3] is True  # always_drop
 
     def test_borderline_no_unit_dropped(self):
-        bp = ('"Winnicott did not use the term identity specifically, but his '
-              'views provide developmental basis for authenticity, corporeality, '
-              'and temporal continuity." = 20 - borderline. Let me split:')
+        bp = (
+            '"Winnicott did not use the term identity specifically, but his '
+            "views provide developmental basis for authenticity, corporeality, "
+            'and temporal continuity." = 20 - borderline. Let me split:'
+        )
         kept, drops = classify_bullets([bp], concepts=[], source_text="")
         assert len(kept) == 0
         stages = {d[1] for d in drops}
         # Either word_count_cot or let_me_split catches it (both match).
-        assert stages & {"thinking_filter.word_count_cot",
-                         "thinking_filter.let_me_split"}
+        assert stages & {"thinking_filter.word_count_cot", "thinking_filter.let_me_split"}
 
     def test_word_count_with_chars_unit(self):
         bp = '"Some quote." = 200 chars - too long.'
@@ -75,34 +80,40 @@ class TestWordCountCotAnnotation:
 # 2. Word-count + checkmark (the "= N ✓" surface form)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWordCountCheckmark:
     """Bullets ending in '= N ✓ (Wait, ...)' are CoT self-verification."""
 
     def test_word_count_checkmark_dropped(self):
-        bp = ('"Self-constancy—a stable sense of unique personhood—emergs at '
-              'approximately two years, when the rapprochement subphase ends." '
-              '= 17 ✓ (Wait, use "emerges" not "emergs")')
+        bp = (
+            '"Self-constancy—a stable sense of unique personhood—emergs at '
+            'approximately two years, when the rapprochement subphase ends." '
+            '= 17 ✓ (Wait, use "emerges" not "emergs")'
+        )
         kept, drops = classify_bullets([bp], concepts=[], source_text="")
         assert len(kept) == 0
         stages = {d[1] for d in drops}
-        assert stages & {"thinking_filter.word_count_checkmark",
-                         "thinking_filter.self_correction"}
+        assert stages & {"thinking_filter.word_count_checkmark", "thinking_filter.self_correction"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. Self-instruction lines
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSelfInstruction:
     """Standalone self-instruction lines are model strategy notes, not content."""
 
-    @pytest.mark.parametrize("line", [
-        "Using the chapter's own terminology",
-        "Preserving all named contributors",
-        "Preserve technical terminology",
-        "Preserving all named authors",
-        "Using the source's own vocabulary",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Using the chapter's own terminology",
+            "Preserving all named contributors",
+            "Preserve technical terminology",
+            "Preserving all named authors",
+            "Using the source's own vocabulary",
+        ],
+    )
     def test_self_instruction_dropped(self, line):
         kept, drops = classify_bullets([line], concepts=[], source_text="")
         assert len(kept) == 0, f"Should drop: {line!r}"
@@ -114,17 +125,21 @@ class TestSelfInstruction:
 # 4. Bare validation checkmark lines
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBareCheckmark:
     """Lines ending in an isolated ✓ are the model's validation checklist."""
 
-    @pytest.mark.parametrize("line", [
-        "Erikson (1950) ✓",
-        "Erikson (1958) ✓",
-        "Jacobson (1964) ✓",
-        "Greenacre (1958a) ✓",
-        "Stoller (1968) ✓",
-        "Erikson (1950) ✓ (mentioned in context of resurrecting the term)",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Erikson (1950) ✓",
+            "Erikson (1958) ✓",
+            "Jacobson (1964) ✓",
+            "Greenacre (1958a) ✓",
+            "Stoller (1968) ✓",
+            "Erikson (1950) ✓ (mentioned in context of resurrecting the term)",
+        ],
+    )
     def test_bare_checkmark_dropped(self, line):
         kept, drops = classify_bullets([line], concepts=[], source_text="")
         assert len(kept) == 0, f"Should drop: {line!r}"
@@ -136,11 +151,12 @@ class TestBareCheckmark:
 # 5. Let-me-split continuation markers
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLetMeSplit:
     def test_let_me_split_dropped(self):
         # A bullet with "Let me split" but WITHOUT a word-count annotation
         # (so word_count_cot doesn't fire first) must be caught by let_me_split.
-        bp = 'Some bullet text. Let me split: part one, part two.'
+        bp = "Some bullet text. Let me split: part one, part two."
         kept, drops = classify_bullets([bp], concepts=[], source_text="")
         assert len(kept) == 0
         assert drops[0][1] == "thinking_filter.let_me_split"
@@ -149,20 +165,22 @@ class TestLetMeSplit:
     def test_let_me_split_combined_with_word_count_also_dropped(self):
         # The combined form "= 20 - borderline. Let me split:" — word_count_cot
         # fires first (correctly) and the bullet is dropped. Either stage is fine.
-        bp = ('"Blos outlined three areas: second individuation in adolescence, '
-              'consolidation of sexual identity, and biphasic resolution of the '
-              'Oedipus complex." = 20 - borderline. Let me split:')
+        bp = (
+            '"Blos outlined three areas: second individuation in adolescence, '
+            "consolidation of sexual identity, and biphasic resolution of the "
+            'Oedipus complex." = 20 - borderline. Let me split:'
+        )
         kept, drops = classify_bullets([bp], concepts=[], source_text="")
         assert len(kept) == 0
         stages = {d[1] for d in drops}
         # Either pattern catches it — the requirement is that it's dropped.
-        assert stages & {"thinking_filter.let_me_split",
-                        "thinking_filter.word_count_cot"}
+        assert stages & {"thinking_filter.let_me_split", "thinking_filter.word_count_cot"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 6. Self-correction parentheticals
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestSelfCorrectionParen:
     def test_wait_paren_dropped(self):
@@ -176,22 +194,29 @@ class TestSelfCorrectionParen:
 # 7. Regression guard: real content bullets must NOT be dropped by the new patterns
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRealContentNotDropped:
     """The new patterns must not false-positive on legitimate summary bullets."""
 
-    @pytest.mark.parametrize("bp", [
-        "Tausk introduced the term identity into psychoanalytic literature.",
-        "Erikson defined ego identity as persistent sameness within oneself.",
-        "Winnicott distinguished the true self from the false self.",
-        "Kernberg formulated a three-step process of identity formation.",
-        "The chapter defines seven characteristics of solid identity.",
-    ])
+    @pytest.mark.parametrize(
+        "bp",
+        [
+            "Tausk introduced the term identity into psychoanalytic literature.",
+            "Erikson defined ego identity as persistent sameness within oneself.",
+            "Winnicott distinguished the true self from the false self.",
+            "Kernberg formulated a three-step process of identity formation.",
+            "The chapter defines seven characteristics of solid identity.",
+        ],
+    )
     def test_real_content_kept(self, bp):
         # source_text contains the years so numeric_verify passes
-        source = ("Tausk 1919 Erikson 1956 Winnicott Kernberg three-step "
-                  "seven characteristics solid identity")
-        kept, drops = classify_bullets([bp], concepts=["identity", "ego", "self"],
-                                       source_text=source)
+        source = (
+            "Tausk 1919 Erikson 1956 Winnicott Kernberg three-step "
+            "seven characteristics solid identity"
+        )
+        kept, drops = classify_bullets(
+            [bp], concepts=["identity", "ego", "self"], source_text=source
+        )
         # The new word-count/self-instruction/checkmark patterns must NOT fire.
         new_stages = {
             "thinking_filter.word_count_cot",
@@ -208,6 +233,7 @@ class TestRealContentNotDropped:
 # ═══════════════════════════════════════════════════════════════════════════
 # 8. Full V18.19.2.0 audit regression: all 24 leaked lines caught
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestFullAuditLeakedSet:
     """The exact 24 leaked lines from the V18.19.2.0 audit must ALL be dropped."""
@@ -242,14 +268,10 @@ class TestFullAuditLeakedSet:
     def test_all_24_leaked_lines_dropped(self):
         kept, drops = classify_bullets(self.LEAKED, concepts=[], source_text="")
         # Every leaked line must be dropped (kept must be empty).
-        assert len(kept) == 0, (
-            f"{len(kept)} leaked lines survived filtering: {kept!r}"
-        )
+        assert len(kept) == 0, f"{len(kept)} leaked lines survived filtering: {kept!r}"
         assert len(drops) == len(self.LEAKED), (
             f"Expected {len(self.LEAKED)} drops, got {len(drops)}"
         )
         # All drops must be always_drop=True (structural contamination).
         not_always = [d for d in drops if not d[3]]
-        assert not not_always, (
-            f"These leaked lines were gated (not always_drop): {not_always!r}"
-        )
+        assert not not_always, f"These leaked lines were gated (not always_drop): {not_always!r}"

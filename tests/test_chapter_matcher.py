@@ -4,6 +4,7 @@ These tests verify the V10.2.4 strict number-based matching that replaced
 the old fuzzy word-overlap matcher (which matched "3.6 Cannabinoids"
 against "2.2 Memantine" because they shared the word "Treatment").
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,12 +25,14 @@ def _make_converter():
 
     try:
         from rapidfuzz import fuzz as rf_fuzz
+
         _rf = True
     except ImportError:
         _rf = False
 
     class _StubConverter:
         """Stubs just enough to call _match_chapter."""
+
         pass
 
     # Copy the _match_chapter method from converter.py
@@ -40,8 +43,8 @@ def _make_converter():
 
         def normalize(s):
             s = s.lower()
-            s = re.sub(r'[^\w\s]', '', s)
-            s = re.sub(r'\s+', ' ', s).strip()
+            s = re.sub(r"[^\w\s]", "", s)
+            s = re.sub(r"\s+", " ", s).strip()
             return s
 
         heading_norm = normalize(heading_clean)
@@ -51,7 +54,7 @@ def _make_converter():
             return True
 
         def extract_chapter_number(s):
-            m = re.match(r'^(\d+(?:\.\d+)*)\s', s)
+            m = re.match(r"^(\d+(?:\.\d+)*)\s", s)
             if m:
                 return m.group(1)
             return None
@@ -67,14 +70,53 @@ def _make_converter():
             return False
 
         _COMMON = {
-            "chapter", "part", "section", "appendix", "the", "of", "a", "an",
-            "and", "or", "to", "in", "for", "with", "on", "at", "by", "from",
-            "treatment", "acute", "preventive", "prevention", "study",
-            "evidence", "trial", "clinical", "practice", "review",
-            "introduction", "conclusion", "conclusions", "future",
-            "therapeutics", "management", "therapy", "drug", "drugs",
-            "migraine", "headache", "pain", "receptor", "antagonist",
-            "agonist", "inhibition", "action", "mode", "proposed",
+            "chapter",
+            "part",
+            "section",
+            "appendix",
+            "the",
+            "of",
+            "a",
+            "an",
+            "and",
+            "or",
+            "to",
+            "in",
+            "for",
+            "with",
+            "on",
+            "at",
+            "by",
+            "from",
+            "treatment",
+            "acute",
+            "preventive",
+            "prevention",
+            "study",
+            "evidence",
+            "trial",
+            "clinical",
+            "practice",
+            "review",
+            "introduction",
+            "conclusion",
+            "conclusions",
+            "future",
+            "therapeutics",
+            "management",
+            "therapy",
+            "drug",
+            "drugs",
+            "migraine",
+            "headache",
+            "pain",
+            "receptor",
+            "antagonist",
+            "agonist",
+            "inhibition",
+            "action",
+            "mode",
+            "proposed",
         }
         heading_words = set(w for w in heading_norm.split() if len(w) > 2 and w not in _COMMON)
         selected_words = set(w for w in selected_norm.split() if len(w) > 2 and w not in _COMMON)
@@ -99,23 +141,37 @@ def _make_converter():
 
 # ── Number-based matching ─────────────────────────────────────────────────
 
+
 def test_exact_number_match() -> None:
     """Same chapter number should match."""
     c = _make_converter()
-    assert c._match_chapter("3.6 Cannabinoids: Acute Treatment", "3.6 Cannabinoids: Acute Treatment") is True
+    assert (
+        c._match_chapter("3.6 Cannabinoids: Acute Treatment", "3.6 Cannabinoids: Acute Treatment")
+        is True
+    )
 
 
 def test_different_numbers_no_match() -> None:
     """Different chapter numbers should NOT match (the core bug fix)."""
     c = _make_converter()
-    assert c._match_chapter("2.2 Memantine (NMDA Receptor Antagonist)", "3.6 Cannabinoids: Acute Treatment") is False
+    assert (
+        c._match_chapter(
+            "2.2 Memantine (NMDA Receptor Antagonist)", "3.6 Cannabinoids: Acute Treatment"
+        )
+        is False
+    )
 
 
 def test_parent_child_match() -> None:
     """Parent chapter number should match sub-chapters."""
     c = _make_converter()
     # Selecting "2" should match "2.1 Lasmiditan"
-    assert c._match_chapter("2.1 Lasmiditan (Serotonin 5HT1F Agonist)", "2 Currently Available New Treatments") is True
+    assert (
+        c._match_chapter(
+            "2.1 Lasmiditan (Serotonin 5HT1F Agonist)", "2 Currently Available New Treatments"
+        )
+        is True
+    )
 
 
 def test_same_number_different_text() -> None:
@@ -132,6 +188,7 @@ def test_sub_sub_chapter() -> None:
 
 # ── Non-numbered chapters ─────────────────────────────────────────────────
 
+
 def test_non_numbered_exact_match() -> None:
     """Non-numbered chapters should match on exact title."""
     c = _make_converter()
@@ -146,6 +203,7 @@ def test_non_numbered_no_common_words() -> None:
 
 # ── Edge cases ────────────────────────────────────────────────────────────
 
+
 def test_empty_strings() -> None:
     """Empty strings should not crash."""
     c = _make_converter()
@@ -154,7 +212,7 @@ def test_empty_strings() -> None:
 
 def test_none_values() -> None:
     """None should not crash (handled by .strip())."""
-    c = _make_converter()
+    _c = _make_converter()  # V0.13: underscore — construction kept, result unused here
     # .strip() on None would crash, but the function is typed str — skip
     pass
 

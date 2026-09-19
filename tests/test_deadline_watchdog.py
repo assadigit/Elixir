@@ -9,6 +9,7 @@ Covers:
 6. The optional phases (scholar reflection, dedup, consolidation) are
    skipped when the deadline is exceeded
 """
+
 from __future__ import annotations
 
 import time
@@ -33,9 +34,7 @@ class TestDeadlineExceeded:
         stub.local_chapter_deadline = deadline
         stub._chapter_deadline_start = start
         stub.is_local = is_local
-        stub._deadline_exceeded = lambda phase: _deadline_exceeded_impl(
-            stub, phase
-        )
+        stub._deadline_exceeded = lambda phase: _deadline_exceeded_impl(stub, phase)
         return stub
 
     def test_no_deadline_returns_false(self):
@@ -61,9 +60,7 @@ class TestDeadlineExceeded:
     def test_exceeded_returns_true_and_logs(self):
         """When elapsed > deadline, return True and log WARNING."""
         # Start time 500 seconds ago, deadline 480
-        stub = self._make_summarizer_stub(
-            deadline=480, start=time.time() - 500
-        )
+        stub = self._make_summarizer_stub(deadline=480, start=time.time() - 500)
         logs = []
         stub.log = lambda msg, level: logs.append((msg, level))
         stub._deadline_exceeded = lambda phase: _deadline_exceeded_impl(stub, phase)
@@ -78,9 +75,7 @@ class TestDeadlineExceeded:
 
     def test_just_under_deadline_returns_false(self):
         """When elapsed is 1s under deadline, don't skip."""
-        stub = self._make_summarizer_stub(
-            deadline=480, start=time.time() - 479
-        )
+        stub = self._make_summarizer_stub(deadline=480, start=time.time() - 479)
         assert stub._deadline_exceeded("test") is False
 
 
@@ -114,37 +109,40 @@ class TestDeadlineWatchdogIntegration:
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
         # Find the scholar reflection block
-        scholar_idx = content.find("_deadline_exceeded(\"scholar reflection\")")
+        scholar_idx = content.find('_deadline_exceeded("scholar reflection")')
         assert scholar_idx > 0, "scholar reflection must be guarded by _deadline_exceeded"
         # Verify it's BEFORE the _scholar_reflection call
         scholar_call_idx = content.find(
             "self._scholar_reflection_gapfill_only(heading, content, parsed)",
             scholar_idx,
         )
-        assert scholar_call_idx > scholar_idx, \
+        assert scholar_call_idx > scholar_idx, (
             "_deadline_exceeded must come before _scholar_reflection"
+        )
 
     def test_deadline_check_before_semantic_dedup(self):
         """The semantic dedup phase must be guarded by _deadline_exceeded."""
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        dedup_idx = content.find("_deadline_exceeded(\"semantic dedup\")")
+        dedup_idx = content.find('_deadline_exceeded("semantic dedup")')
         assert dedup_idx > 0, "semantic dedup must be guarded by _deadline_exceeded"
         dedup_call_idx = content.find("self._semantic_dedup_bullets(bullets)", dedup_idx)
-        assert dedup_call_idx > dedup_idx, \
+        assert dedup_call_idx > dedup_idx, (
             "_deadline_exceeded must come before _semantic_dedup_bullets"
+        )
 
     def test_deadline_check_before_consolidation(self):
         """The consolidation phase must be guarded by _deadline_exceeded."""
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        consol_idx = content.find("_deadline_exceeded(\"bullet consolidation\")")
+        consol_idx = content.find('_deadline_exceeded("bullet consolidation")')
         assert consol_idx > 0, "consolidation must be guarded by _deadline_exceeded"
         # V18.20.3.7: the call site gained a heading kwarg (RC-A coverage
         # assertion) — match on the prefix, the ordering intent is unchanged.
         consol_call_idx = content.find("self._consolidate_bullets(bullets", consol_idx)
-        assert consol_call_idx > consol_idx, \
+        assert consol_call_idx > consol_idx, (
             "_deadline_exceeded must come before _consolidate_bullets"
+        )
 
     def test_deadline_start_set_in_summarize_chapters(self):
         """summarize_chapters must set _chapter_deadline_start before _summarize_inner."""
@@ -153,15 +151,17 @@ class TestDeadlineWatchdogIntegration:
         start_idx = content.find("self._chapter_deadline_start = _chap_start")
         assert start_idx > 0, "_chapter_deadline_start must be set in summarize_chapters"
         inner_idx = content.find("_result = self._summarize_inner(", start_idx)
-        assert inner_idx > start_idx, \
+        assert inner_idx > start_idx, (
             "_chapter_deadline_start must be set BEFORE _summarize_inner is called"
+        )
 
     def test_helper_method_exists(self):
         """The _deadline_exceeded method must be defined on the Summarizer."""
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        assert "def _deadline_exceeded(self, phase_name: str) -> bool:" in content, \
+        assert "def _deadline_exceeded(self, phase_name: str) -> bool:" in content, (
             "_deadline_exceeded method must be defined"
+        )
 
 
 class TestEmptyOCRModelWarning:
@@ -171,17 +171,18 @@ class TestEmptyOCRModelWarning:
         """settings_logger.py must warn when use_llm_ocr=True and model empty."""
         logger_path = _project_root / "core" / "pipeline" / "conversion" / "settings_logger.py"
         content = logger_path.read_text(encoding="utf-8")
-        assert "primary_ocr_model is EMPTY" in content or \
-               "primary_ocr_model is empty" in content, \
+        assert "primary_ocr_model is EMPTY" in content or "primary_ocr_model is empty" in content, (
             "settings_logger must warn about empty primary_ocr_model"
+        )
         assert "WARNING" in content
 
     def test_warning_only_when_ocr_enabled(self):
         """The warning must be gated on r.use_llm_ocr (not unconditional)."""
         logger_path = _project_root / "core" / "pipeline" / "conversion" / "settings_logger.py"
         content = logger_path.read_text(encoding="utf-8")
-        assert "r.use_llm_ocr and not r.primary_ocr_model" in content, \
+        assert "r.use_llm_ocr and not r.primary_ocr_model" in content, (
             "warning must be gated on use_llm_ocr AND empty model"
+        )
 
 
 if __name__ == "__main__":

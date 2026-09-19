@@ -17,6 +17,7 @@ Usage (called from main.py's excepthook)::
     report_path = generate_crash_report(exc_type, exc_value, exc_tb)
     # show report_path in the error dialog
 """
+
 from __future__ import annotations
 
 import datetime
@@ -41,7 +42,12 @@ _SETTINGS_FILE = Path.home() / ".elixir" / "settings.json"
 # translation.cloud_api_key, tts.cloud_api_key, grounding.cloud_api_key,
 # any "apikey" (no underscore), tokens, secrets, passwords, auth headers.
 _REDACT_KEYS = {
-    "api_key", "apikey", "token", "secret", "password", "auth",
+    "api_key",
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "auth",
 }
 
 # Keys likely to hold absolute paths (and thus leak the local username).
@@ -65,6 +71,7 @@ def _redact_settings(settings: dict) -> dict:
     the local username via translation.glossary, ocr.unlimited_ocr_path,
     ocr.deepseek_ocr2_path, postprocess.*_path, etc.
     """
+
     def _redact(obj, key_path=""):
         if isinstance(obj, dict):
             out = {}
@@ -86,6 +93,7 @@ def _redact_settings(settings: dict) -> dict:
         elif isinstance(obj, list):
             return [_redact(item, key_path) for item in obj]
         return obj
+
     return _redact(settings)
 
 
@@ -100,6 +108,7 @@ def _get_system_info() -> dict:
     # GPU info (best-effort)
     try:
         import torch
+
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
             info["gpu"] = {
@@ -153,7 +162,10 @@ def generate_crash_report(
         with zipfile.ZipFile(report_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("traceback.txt", tb_text)
             zf.writestr("system_info.json", json.dumps(sys_info, indent=2, ensure_ascii=False))
-            zf.writestr("settings_redacted.json", json.dumps(settings_redacted, indent=2, ensure_ascii=False))
+            zf.writestr(
+                "settings_redacted.json",
+                json.dumps(settings_redacted, indent=2, ensure_ascii=False),
+            )
             if extra_log_lines:
                 zf.writestr("recent_log.txt", "\n".join(extra_log_lines))
 

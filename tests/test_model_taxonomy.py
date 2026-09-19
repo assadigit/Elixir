@@ -15,6 +15,7 @@ Test categories:
   - Cross-check: is_iq2_s vs is_low_bit_quant (IQ2_S is low-bit but Q2_K_S is NOT iq2_s)
   - Context cap: the full recommended_ctx_cap decision matrix
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,33 +39,40 @@ from core.llm.model_taxonomy import (
 
 # ── is_low_bit_quant ────────────────────────────────────────────────────────
 
+
 class TestIsLowBitQuant:
     """Every known low-bit quant variant must be detected."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest",
-        "Qwen3.8-27B-UD-IQ2_S:latest",
-        "Qwen3.8-27B-UD-IQ2_XXS:latest",
-        "Qwen3.8-27B-UD-IQ2_XS:latest",
-        "Qwen3.8-27B-UD-Q2_K_XL:latest",
-        "Qwen3.8-27B-UD-Q2_K:latest",
-        "Qwen3.8-27B-UD-Q2_K_S:latest",
-        "Qwen3.8-27B-UD-IQ1_S:latest",
-        "Qwen3.8-27B-UD-IQ1_M:latest",
-        "Qwen3.8-27B-Q1_0:latest",
-        "qwen3.8-27b-ud-iq2_s:latest",  # case-insensitive
-        "QWEN3.8-27B-IQ2_S",            # all-caps
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest",
+            "Qwen3.8-27B-UD-IQ2_S:latest",
+            "Qwen3.8-27B-UD-IQ2_XXS:latest",
+            "Qwen3.8-27B-UD-IQ2_XS:latest",
+            "Qwen3.8-27B-UD-Q2_K_XL:latest",
+            "Qwen3.8-27B-UD-Q2_K:latest",
+            "Qwen3.8-27B-UD-Q2_K_S:latest",
+            "Qwen3.8-27B-UD-IQ1_S:latest",
+            "Qwen3.8-27B-UD-IQ1_M:latest",
+            "Qwen3.8-27B-Q1_0:latest",
+            "qwen3.8-27b-ud-iq2_s:latest",  # case-insensitive
+            "QWEN3.8-27B-IQ2_S",  # all-caps
+        ],
+    )
     def test_detects_low_bit_quants(self, model):
         assert is_low_bit_quant(model) is True
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-Q8_0:latest",       # Q8 is NOT low-bit
-        "Qwen3.8-27B-F16:latest",         # FP16 is NOT low-bit
-        "Qwen3.8-9B-Q8:latest",           # small model, not low-bit
-        "llama3:8b",                       # different family
-        "gpt-4",                           # no quant token
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-Q8_0:latest",  # Q8 is NOT low-bit
+            "Qwen3.8-27B-F16:latest",  # FP16 is NOT low-bit
+            "Qwen3.8-9B-Q8:latest",  # small model, not low-bit
+            "llama3:8b",  # different family
+            "gpt-4",  # no quant token
+        ],
+    )
     def test_rejects_full_precision(self, model):
         assert is_low_bit_quant(model) is False
 
@@ -81,24 +89,31 @@ class TestIsLowBitQuant:
 
 # ── is_iq2_s ────────────────────────────────────────────────────────────────
 
+
 class TestIsIq2S:
     """IQ2_S is a special case: it gets the 26758 ctx cap, not 16000."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S:latest",
-        "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest",
-        "qwen3.8-27b-ud-iq2_s:latest",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S:latest",
+            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest",
+            "qwen3.8-27b-ud-iq2_s:latest",
+        ],
+    )
     def test_iq2_s_detected(self, model):
         assert is_iq2_s(model) is True
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-Q2_K_XL:latest",   # Q2_K, not IQ2_S
-        "Qwen3.8-27B-UD-Q2_K_S:latest",    # Q2_K_S contains q2_k → not iq2_s
-        "Qwen3.8-27B-UD-IQ2_XXS:latest",   # XXS, not S
-        "Qwen3.8-27B-UD-IQ2_XS:latest",    # XS, not S
-        "Qwen3.8-27B-Q8:latest",           # not low-bit at all
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-Q2_K_XL:latest",  # Q2_K, not IQ2_S
+            "Qwen3.8-27B-UD-Q2_K_S:latest",  # Q2_K_S contains q2_k → not iq2_s
+            "Qwen3.8-27B-UD-IQ2_XXS:latest",  # XXS, not S
+            "Qwen3.8-27B-UD-IQ2_XS:latest",  # XS, not S
+            "Qwen3.8-27B-Q8:latest",  # not low-bit at all
+        ],
+    )
     def test_non_iq2_s_rejected(self, model):
         assert is_iq2_s(model) is False
 
@@ -111,45 +126,56 @@ class TestIsIq2S:
 
 # ── param_count_b ───────────────────────────────────────────────────────────
 
+
 class TestParamCountB:
     """Extract the parameter count in billions from the model name."""
 
-    @pytest.mark.parametrize("model,expected", [
-        ("Qwen3.8-27B-UD-IQ2_S:latest", 27.0),
-        ("Qwen3.8-9B-Q8:latest", 9.0),
-        ("llama3:8b", 8.0),
-        ("Qwen3.8-32B:latest", 32.0),
-        ("Qwen3.8-70B:latest", 70.0),
-        ("Qwen3.8-14.5B:latest", 14.5),    # decimal param count
-        ("phi-3.5-mini", 0.0),              # no param count in name
-        ("gpt-4", 0.0),
-        ("", 0.0),
-        (None, 0.0),
-    ])
+    @pytest.mark.parametrize(
+        "model,expected",
+        [
+            ("Qwen3.8-27B-UD-IQ2_S:latest", 27.0),
+            ("Qwen3.8-9B-Q8:latest", 9.0),
+            ("llama3:8b", 8.0),
+            ("Qwen3.8-32B:latest", 32.0),
+            ("Qwen3.8-70B:latest", 70.0),
+            ("Qwen3.8-14.5B:latest", 14.5),  # decimal param count
+            ("phi-3.5-mini", 0.0),  # no param count in name
+            ("gpt-4", 0.0),
+            ("", 0.0),
+            (None, 0.0),
+        ],
+    )
     def test_param_count(self, model, expected):
         assert param_count_b(model) == expected
 
 
 # ── is_small_model ──────────────────────────────────────────────────────────
 
+
 class TestIsSmallModel:
     """V18.2.39: < 13B params → small model (max_output=8192, rigor off)."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-9B-Q8:latest",
-        "llama3:8b",
-        "Qwen3.8-12B:latest",
-        "Qwen3.8-3B:latest",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-9B-Q8:latest",
+            "llama3:8b",
+            "Qwen3.8-12B:latest",
+            "Qwen3.8-3B:latest",
+        ],
+    )
     def test_small_models_detected(self, model):
         assert is_small_model(model) is True
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S:latest",   # 27B, not small
-        "Qwen3.8-14B:latest",             # 14B > 13B threshold
-        "Qwen3.8-32B:latest",             # 32B
-        "Qwen3.8-13B:latest",             # exactly 13B → NOT small (boundary)
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S:latest",  # 27B, not small
+            "Qwen3.8-14B:latest",  # 14B > 13B threshold
+            "Qwen3.8-32B:latest",  # 32B
+            "Qwen3.8-13B:latest",  # exactly 13B → NOT small (boundary)
+        ],
+    )
     def test_large_models_rejected(self, model):
         assert is_small_model(model) is False
 
@@ -173,22 +199,29 @@ class TestIsSmallModel:
 
 # ── is_27b_plus ──────────────────────────────────────────────────────────────
 
+
 class TestIs27BPlus:
     """27B+ models need the num_ctx cap on ≤ 12 GB cards."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S:latest",
-        "Qwen3.8-32B:latest",
-        "Qwen3.8-70B:latest",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S:latest",
+            "Qwen3.8-32B:latest",
+            "Qwen3.8-70B:latest",
+        ],
+    )
     def test_large_models(self, model):
         assert is_27b_plus(model) is True
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-9B-Q8:latest",
-        "Qwen3.8-14B:latest",
-        "Qwen3.8-19B:latest",   # 19B < 20B threshold
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-9B-Q8:latest",
+            "Qwen3.8-14B:latest",
+            "Qwen3.8-19B:latest",  # 19B < 20B threshold
+        ],
+    )
     def test_small_models(self, model):
         assert is_27b_plus(model) is False
 
@@ -200,6 +233,7 @@ class TestIs27BPlus:
 
 # ── recommended_ctx_cap ─────────────────────────────────────────────────────
 
+
 class TestRecommendedCtxCap:
     """The full VRAM-driven context-cap decision matrix.
 
@@ -210,35 +244,44 @@ class TestRecommendedCtxCap:
       - Small models / big GPUs   →  None (no cap)
     """
 
-    @pytest.mark.parametrize("model,gpu_gb,expected", [
-        # IQ2_S on 12 GB → 26758 (the gold-standard cap)
-        ("Qwen3.8-27B-UD-IQ2_S:latest", 12.0, 26758),
-        # Q2_K_XL on 12 GB → 16000 (tighter, 0.82 GB headroom)
-        ("Qwen3.8-27B-UD-Q2_K_XL:latest", 12.0, 16000),
-        # Q2_K on 12 GB → 16000
-        ("Qwen3.8-27B-UD-Q2_K:latest", 12.0, 16000),
-        # IQ2_XXS on 12 GB → 16000 (conservative)
-        ("Qwen3.8-27B-UD-IQ2_XXS:latest", 12.0, 16000),
-        # IQ2_XS on 12 GB → 16000
-        ("Qwen3.8-27B-UD-IQ2_XS:latest", 12.0, 16000),
-    ])
+    @pytest.mark.parametrize(
+        "model,gpu_gb,expected",
+        [
+            # IQ2_S on 12 GB → 26758 (the gold-standard cap)
+            ("Qwen3.8-27B-UD-IQ2_S:latest", 12.0, 26758),
+            # Q2_K_XL on 12 GB → 16000 (tighter, 0.82 GB headroom)
+            ("Qwen3.8-27B-UD-Q2_K_XL:latest", 12.0, 16000),
+            # Q2_K on 12 GB → 16000
+            ("Qwen3.8-27B-UD-Q2_K:latest", 12.0, 16000),
+            # IQ2_XXS on 12 GB → 16000 (conservative)
+            ("Qwen3.8-27B-UD-IQ2_XXS:latest", 12.0, 16000),
+            # IQ2_XS on 12 GB → 16000
+            ("Qwen3.8-27B-UD-IQ2_XS:latest", 12.0, 16000),
+        ],
+    )
     def test_caps_on_12gb(self, model, gpu_gb, expected):
         assert recommended_ctx_cap(model, gpu_gb) == expected
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S:latest",
-        "Qwen3.8-27B-UD-Q2_K_XL:latest",
-        "Qwen3.8-27B-UD-IQ2_XXS:latest",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S:latest",
+            "Qwen3.8-27B-UD-Q2_K_XL:latest",
+            "Qwen3.8-27B-UD-IQ2_XXS:latest",
+        ],
+    )
     def test_no_cap_on_24gb(self, model):
         """24 GB cards have enough VRAM — no cap needed."""
         assert recommended_ctx_cap(model, 24.0) is None
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-9B-Q8:latest",       # small model, no cap
-        "Qwen3.8-27B-Q8:latest",       # full-precision, no cap
-        "Qwen3.8-27B-F16:latest",      # FP16, no cap
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-9B-Q8:latest",  # small model, no cap
+            "Qwen3.8-27B-Q8:latest",  # full-precision, no cap
+            "Qwen3.8-27B-F16:latest",  # FP16, no cap
+        ],
+    )
     def test_no_cap_for_non_low_bit(self, model):
         assert recommended_ctx_cap(model, 12.0) is None
 
@@ -255,6 +298,7 @@ class TestRecommendedCtxCap:
 
 
 # ── Cross-consistency ───────────────────────────────────────────────────────
+
 
 class TestCrossConsistency:
     """The predicates must be internally consistent."""

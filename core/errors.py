@@ -22,6 +22,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ConversionError(Exception):
     """Base class for all conversion-related errors."""
 

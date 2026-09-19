@@ -33,18 +33,122 @@ _MIN_PHRASE_LEN = 4
 
 # Words too common to be useful as coverage markers
 _STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for",
-    "with", "without", "is", "are", "was", "were", "be", "been", "being",
-    "this", "that", "these", "those", "it", "its", "as", "at", "by", "from",
-    "into", "about", "than", "then", "so", "if", "when", "how", "what", "why",
-    "who", "which", "you", "your", "we", "our", "they", "their", "he", "she",
-    "his", "her", "not", "no", "yes", "can", "could", "should", "would",
-    "will", "may", "might", "must", "do", "does", "did", "have", "has", "had",
-    "more", "most", "less", "least", "very", "much", "many", "some", "any",
-    "all", "each", "every", "other", "another", "such", "same", "own", "new",
-    "old", "first", "last", "next", "one", "two", "three", "also", "only",
-    "just", "even", "still", "well", "too", "here", "there", "now", "because", "while", "during", "before", "after", "through", "between",
-    "among", "against", "upon", "within", "around",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "with",
+    "without",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "as",
+    "at",
+    "by",
+    "from",
+    "into",
+    "about",
+    "than",
+    "then",
+    "so",
+    "if",
+    "when",
+    "how",
+    "what",
+    "why",
+    "who",
+    "which",
+    "you",
+    "your",
+    "we",
+    "our",
+    "they",
+    "their",
+    "he",
+    "she",
+    "his",
+    "her",
+    "not",
+    "no",
+    "yes",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "may",
+    "might",
+    "must",
+    "do",
+    "does",
+    "did",
+    "have",
+    "has",
+    "had",
+    "more",
+    "most",
+    "less",
+    "least",
+    "very",
+    "much",
+    "many",
+    "some",
+    "any",
+    "all",
+    "each",
+    "every",
+    "other",
+    "another",
+    "such",
+    "same",
+    "own",
+    "new",
+    "old",
+    "first",
+    "last",
+    "next",
+    "one",
+    "two",
+    "three",
+    "also",
+    "only",
+    "just",
+    "even",
+    "still",
+    "well",
+    "too",
+    "here",
+    "there",
+    "now",
+    "because",
+    "while",
+    "during",
+    "before",
+    "after",
+    "through",
+    "between",
+    "among",
+    "against",
+    "upon",
+    "within",
+    "around",
 }
 
 
@@ -65,13 +169,13 @@ def _extract_key_phrases(keypoint: str) -> list[str]:
         phrases.append(m.group(1).lower())
 
     # 2. Capitalised words (proper nouns, frameworks)
-    for m in re.finditer(r'\b([A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})?)\b', keypoint):
+    for m in re.finditer(r"\b([A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})?)\b", keypoint):
         word = m.group(1).lower()
         if word not in _STOPWORDS and len(word) >= _MIN_PHRASE_LEN:
             phrases.append(word)
 
     # 3. Long words (>8 chars — likely domain-specific)
-    for m in re.finditer(r'\b([a-z]{9,})\b', keypoint, re.IGNORECASE):
+    for m in re.finditer(r"\b([a-z]{9,})\b", keypoint, re.IGNORECASE):
         word = m.group(1).lower()
         if word not in _STOPWORDS:
             phrases.append(word)
@@ -81,8 +185,12 @@ def _extract_key_phrases(keypoint: str) -> list[str]:
     for i in range(len(tokens) - 1):
         w1 = tokens[i].strip(".,;:!?\"'()[]-")
         w2 = tokens[i + 1].strip(".,;:!?\"'()[]-")
-        if (len(w1) >= _MIN_PHRASE_LEN and w1 not in _STOPWORDS and
-                len(w2) >= _MIN_PHRASE_LEN and w2 not in _STOPWORDS):
+        if (
+            len(w1) >= _MIN_PHRASE_LEN
+            and w1 not in _STOPWORDS
+            and len(w2) >= _MIN_PHRASE_LEN
+            and w2 not in _STOPWORDS
+        ):
             phrases.append(f"{w1} {w2}")
 
     # Deduplicate, prefer longer phrases
@@ -145,19 +253,14 @@ class PodcastCoverageChecker(OutputGeneratorBase):
                 covered.append((kp_clean, matched))
             else:
                 missing.append(kp_clean)
-                self.log(
-                    f"    ❌ Key point {i} NOT covered: {kp_clean[:80]}…",
-                    "WARNING"
-                )
+                self.log(f"    ❌ Key point {i} NOT covered: {kp_clean[:80]}…", "WARNING")
 
         total = len(keypoints)
         covered_count = len(covered)
         percentage = (covered_count / total * 100) if total > 0 else 100.0
 
         self.log(
-            f"  📊 Coverage: {covered_count}/{total} keypoints covered "
-            f"({percentage:.0f}%)",
-            "INFO"
+            f"  📊 Coverage: {covered_count}/{total} keypoints covered ({percentage:.0f}%)", "INFO"
         )
 
         return CoverageReport(
@@ -190,9 +293,7 @@ class PodcastCoverageChecker(OutputGeneratorBase):
         )
 
         self.log(
-            f"  🔄 Revising script to cover {len(missing_keypoints)} missing "
-            f"keypoints…",
-            "INFO"
+            f"  🔄 Revising script to cover {len(missing_keypoints)} missing keypoints…", "INFO"
         )
 
         response = self._call_llm(prompt, temperature=0.4, max_tokens=8192)

@@ -24,6 +24,7 @@ Public API
 - ``MARKITDOWN_EXTENSIONS``           — set of markitdown extensions (for
                                         format validation in the dropdown)
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,29 +33,62 @@ import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-LogCallback = Optional[Callable[[str], None]]
+LogCallback = Callable[[str], None] | None
 
 # ── Supported extensions (per V15 blueprint) ───────────────────────────────
 # AnyDoc: office-document formats with rich structure (headings, tables).
-ANYDOC_EXTENSIONS = frozenset({
-    ".pdf", ".docx", ".doc", ".epub", ".pptx", ".ppt",
-    ".xlsx", ".xls", ".odt", ".ods", ".odp", ".rtf", ".csv",
-    ".pptm", ".ppsx", ".ppsm", ".docm", ".xlsm", ".xlsb",
-    ".pps", ".pot",
-})
+ANYDOC_EXTENSIONS = frozenset(
+    {
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".epub",
+        ".pptx",
+        ".ppt",
+        ".xlsx",
+        ".xls",
+        ".odt",
+        ".ods",
+        ".odp",
+        ".rtf",
+        ".csv",
+        ".pptm",
+        ".ppsx",
+        ".ppsm",
+        ".docm",
+        ".xlsm",
+        ".xlsb",
+        ".pps",
+        ".pot",
+    }
+)
 
 # markitdown: a different (broader, but differently-shaped) set of formats.
 # Used by the fallback engine and for format-compatibility validation in
 # the QuickConvertDialog engine dropdown.
-MARKITDOWN_EXTENSIONS = frozenset({
-    ".pdf", ".docx", ".html", ".htm", ".csv", ".json",
-    ".xml", ".epub", ".ipynb", ".jpg", ".jpeg", ".png",
-    ".mp3", ".wav", ".txt", ".md",
-})
+MARKITDOWN_EXTENSIONS = frozenset(
+    {
+        ".pdf",
+        ".docx",
+        ".html",
+        ".htm",
+        ".csv",
+        ".json",
+        ".xml",
+        ".epub",
+        ".ipynb",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".mp3",
+        ".wav",
+        ".txt",
+        ".md",
+    }
+)
 
 
 def is_anydoc_available() -> bool:
@@ -66,6 +100,7 @@ def is_anydoc_available() -> bool:
     """
     try:
         import anydoc  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -79,6 +114,7 @@ def is_pikepdf_available() -> bool:
     """Return True if ``pikepdf`` is importable (used for PDF repair)."""
     try:
         import pikepdf  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -101,6 +137,7 @@ def _log(log_callback: LogCallback, msg: str, level: str = "INFO") -> None:
 
 # ── PDF repair ─────────────────────────────────────────────────────────────
 
+
 def _repair_pdf_with_pikepdf(src_path: str) -> str | None:
     """Attempt to repair a malformed PDF using pikepdf.
 
@@ -113,9 +150,7 @@ def _repair_pdf_with_pikepdf(src_path: str) -> str | None:
     except ImportError:
         return None
     try:
-        tmp_fd, tmp_path = tempfile.mkstemp(
-            suffix=".pdf", prefix="anydoc_repair_"
-        )
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf", prefix="anydoc_repair_")
         os.close(tmp_fd)
         # Opening with pikepdf already performs a degree of repair on read;
         # saving then rewrites a clean, spec-compliant PDF.
@@ -125,7 +160,9 @@ def _repair_pdf_with_pikepdf(src_path: str) -> str | None:
     except Exception as exc:
         logger.warning(
             "pikepdf repair failed for %s: %s: %s",
-            src_path, type(exc).__name__, exc,
+            src_path,
+            type(exc).__name__,
+            exc,
         )
         return None
 
@@ -140,14 +177,22 @@ def _is_malformed_pdf_error(exc: BaseException) -> bool:
     name = type(exc).__name__.lower()
     msg = str(exc).lower()
     keywords = (
-        "malformed", "xref", "trailer", "parseerror", "parse_error",
-        "syntax", "eof", "unexpected eof", "invalid pdf",
+        "malformed",
+        "xref",
+        "trailer",
+        "parseerror",
+        "parse_error",
+        "syntax",
+        "eof",
+        "unexpected eof",
+        "invalid pdf",
     )
     blob = f"{name} {msg}"
     return any(kw in blob for kw in keywords)
 
 
 # ── Core extraction ────────────────────────────────────────────────────────
+
 
 def _count_page_markers(text: str) -> int:
     """Best-effort page count from ``<!-- page N -->`` markers."""
@@ -189,11 +234,7 @@ def _try_anydoc_extract(path: str, log_callback: LogCallback) -> tuple[str, int]
             md_text = result[0] if result else ""
             page_count = result[1] if len(result) > 1 else 0
         elif isinstance(result, dict):
-            md_text = (
-                result.get("markdown")
-                or result.get("text")
-                or result.get("content")
-            )
+            md_text = result.get("markdown") or result.get("text") or result.get("content")
             page_count = result.get("pages") or result.get("page_count") or 0
         else:
             md_text = result
@@ -205,11 +246,7 @@ def _try_anydoc_extract(path: str, log_callback: LogCallback) -> tuple[str, int]
             md_text = result[0] if result else ""
             page_count = result[1] if len(result) > 1 else 0
         elif isinstance(result, dict):
-            md_text = (
-                result.get("markdown")
-                or result.get("text")
-                or result.get("content")
-            )
+            md_text = result.get("markdown") or result.get("text") or result.get("content")
             page_count = result.get("pages") or result.get("page_count") or 0
         else:
             md_text = result
@@ -317,8 +354,7 @@ def extract_with_anydoc(
             repaired = _repair_pdf_with_pikepdf(file_path)
             if not repaired:
                 raise RuntimeError(
-                    f"PDF is malformed and pikepdf could not repair it. "
-                    f"Original error: {first_err}"
+                    f"PDF is malformed and pikepdf could not repair it. Original error: {first_err}"
                 ) from first_err
             try:
                 _log(log_callback, "AnyDoc: retrying on repaired PDF…")

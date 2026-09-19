@@ -26,6 +26,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 9: Live Logs
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step9Logs(WizardStep):
     """Live progress + logs during conversion."""
 

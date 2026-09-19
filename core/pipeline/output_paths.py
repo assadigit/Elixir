@@ -43,29 +43,29 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SUB_MARKDOWN    = "markdown"
-SUB_SUMMARIES   = "summaries"
-SUB_KEYPOINTS   = "keypoints"
-SUB_PACKETS     = "packets"
-SUB_PODCAST     = "podcast"
-SUB_FLASHCARDS  = "flashcards"
-SUB_BRIEFING    = "briefing"
-SUB_FA          = "fa"
+SUB_MARKDOWN = "markdown"
+SUB_SUMMARIES = "summaries"
+SUB_KEYPOINTS = "keypoints"
+SUB_PACKETS = "packets"
+SUB_PODCAST = "podcast"
+SUB_FLASHCARDS = "flashcards"
+SUB_BRIEFING = "briefing"
+SUB_FA = "fa"
 SUB_SCREENSHOTS = "screenshots"
-SUB_GRAPHS      = "graphs"
-SUB_LOGS        = "logs"
-SUB_OBSIDIAN    = "obsidian"
-SUB_STUDYGUIDE  = "study_guide"
-SUB_SOCIAL      = "social"
-SUB_MINDMAP     = "mindmap"
-SUB_EVIDENCE    = "evidence"   # V10.1.0: Scientific Evidence Map (langextract)
-SUB_QA          = "qa"         # V10.17.0: Q&A study questions
-SUB_GLOSSARY    = "glossary"    # V10.20.0: Glossary
-SUB_PATTERNS    = "patterns"    # V10.20.0: Patterns/Techniques
-SUB_CHEATSHEET  = "cheatsheet"  # V10.20.0: Cheatsheet
-SUB_SKILL       = "skill"       # V10.21.0: Agent Skill
-SUB_EPUB        = "epub"        # V10.35.0: EPUB output
-SUB_QUOTE_BANK  = "quote_bank"  # V10.35.0: Quote bank
+SUB_GRAPHS = "graphs"
+SUB_LOGS = "logs"
+SUB_OBSIDIAN = "obsidian"
+SUB_STUDYGUIDE = "study_guide"
+SUB_SOCIAL = "social"
+SUB_MINDMAP = "mindmap"
+SUB_EVIDENCE = "evidence"  # V10.1.0: Scientific Evidence Map (langextract)
+SUB_QA = "qa"  # V10.17.0: Q&A study questions
+SUB_GLOSSARY = "glossary"  # V10.20.0: Glossary
+SUB_PATTERNS = "patterns"  # V10.20.0: Patterns/Techniques
+SUB_CHEATSHEET = "cheatsheet"  # V10.20.0: Cheatsheet
+SUB_SKILL = "skill"  # V10.21.0: Agent Skill
+SUB_EPUB = "epub"  # V10.35.0: EPUB output
+SUB_QUOTE_BANK = "quote_bank"  # V10.35.0: Quote bank
 
 
 class OutputPaths:

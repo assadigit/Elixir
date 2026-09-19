@@ -135,9 +135,7 @@ Return only the JSON array, no other text:"""
                 )
 
                 # Map page numbers to character positions using the marker list
-                start_pos = next(
-                    (pos for p, pos in page_markers if p == start_page), 0
-                )
+                start_pos = next((pos for p, pos in page_markers if p == start_page), 0)
                 end_pos = next(
                     (pos for p, pos in page_markers if p == end_page + 1), len(markdown_text)
                 )
@@ -154,9 +152,7 @@ Return only the JSON array, no other text:"""
                     )
                 )
 
-            self.log(
-                f"[SemanticSegmenter] Found {len(segments)} semantic sections", "INFO"
-            )
+            self.log(f"[SemanticSegmenter] Found {len(segments)} semantic sections", "INFO")
             return segments
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:

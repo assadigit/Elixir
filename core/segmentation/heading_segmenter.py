@@ -17,19 +17,59 @@ from utils.logging import get_main_logger
 
 logger = get_main_logger()
 
-BLOCKLIST = frozenset({
-    "TABLE OF CONTENTS", "CONTENTS", "INDEX", "REFERENCES", "BIBLIOGRAPHY",
-    "ACKNOWLEDGMENTS", "ACKNOWLEDGEMENTS", "PREFACE", "FOREWORD", "DEDICATION",
-    "ABOUT THE AUTHOR", "COPYRIGHT", "COLOPHON", "GLOSSARY",
-    "فهرست مطالب", "فهرست", "منابع", "مراجع", "مقدمه ناشر", "سپاسگزاری",
-})
+BLOCKLIST = frozenset(
+    {
+        "TABLE OF CONTENTS",
+        "CONTENTS",
+        "INDEX",
+        "REFERENCES",
+        "BIBLIOGRAPHY",
+        "ACKNOWLEDGMENTS",
+        "ACKNOWLEDGEMENTS",
+        "PREFACE",
+        "FOREWORD",
+        "DEDICATION",
+        "ABOUT THE AUTHOR",
+        "COPYRIGHT",
+        "COLOPHON",
+        "GLOSSARY",
+        "فهرست مطالب",
+        "فهرست",
+        "منابع",
+        "مراجع",
+        "مقدمه ناشر",
+        "سپاسگزاری",
+    }
+)
 
 # Common stopwords that should not start a heading
-HEADING_STOP_STARTS = frozenset({
-    "to", "of", "for", "with", "from", "by", "on", "at", "in", "into",
-    "through", "during", "without", "against", "between", "among",
-    "upon", "about", "after", "before", "under", "over", "toward"
-})
+HEADING_STOP_STARTS = frozenset(
+    {
+        "to",
+        "of",
+        "for",
+        "with",
+        "from",
+        "by",
+        "on",
+        "at",
+        "in",
+        "into",
+        "through",
+        "during",
+        "without",
+        "against",
+        "between",
+        "among",
+        "upon",
+        "about",
+        "after",
+        "before",
+        "under",
+        "over",
+        "toward",
+    }
+)
 
 
 class HeadingSegmenter:
@@ -53,7 +93,10 @@ class HeadingSegmenter:
                 for category in pattern_dict.values():
                     for lang_patterns in category.values():
                         patterns.extend(lang_patterns)
-                self.log(f"  [HeadingSegmenter] Loaded {len(patterns)} patterns from patterns.json", "DEBUG")
+                self.log(
+                    f"  [HeadingSegmenter] Loaded {len(patterns)} patterns from patterns.json",
+                    "DEBUG",
+                )
         except Exception as e:
             self.log(f"  [HeadingSegmenter] Error loading patterns.json: {e}", "DEBUG")
         return patterns
@@ -71,13 +114,21 @@ class HeadingSegmenter:
 
         # 2. English structural keywords
         self.explicit_patterns.append(
-            re.compile(r"^#{1,2}\s+(?:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+", re.IGNORECASE)
+            re.compile(
+                r"^#{1,2}\s+(?:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+",
+                re.IGNORECASE,
+            )
         )
         self.explicit_patterns.append(
-            re.compile(r"^(?:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+\d+\s*(?:[:\-–—]|$)", re.IGNORECASE)
+            re.compile(
+                r"^(?:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+\d+\s*(?:[:\-–—]|$)",
+                re.IGNORECASE,
+            )
         )
         self.explicit_patterns.append(
-            re.compile(r"^(?i:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+\d+\s+[A-Z]")
+            re.compile(
+                r"^(?i:Chapter|Part|Appendix|Unit|Module|Section|Lesson|Episode|Topic)\s+\d+\s+[A-Z]"
+            )
         )
 
         # 3. Numbered sections
@@ -105,9 +156,7 @@ class HeadingSegmenter:
         self.explicit_patterns.append(
             re.compile(r"^Section\s+\d+(?:[:\.\s\-–—]+[A-Z])?", re.IGNORECASE)
         )
-        self.explicit_patterns.append(
-            re.compile(r"^Part\s+[IVX]+", re.IGNORECASE)
-        )
+        self.explicit_patterns.append(re.compile(r"^Part\s+[IVX]+", re.IGNORECASE))
 
         # 4. Persian structural keywords
         self.explicit_patterns.append(
@@ -153,11 +202,11 @@ class HeadingSegmenter:
     # segmented into chapters by top-level sections (1., 2., 3.) while
     # still detecting subsections for map-reduce summarization.
     _ACADEMIC_SUBSECTION_RE = re.compile(
-        r'^#{1,3}\s+(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+[A-Z]',
+        r"^#{1,3}\s+(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+[A-Z]",
         re.UNICODE,
     )
     _ACADEMIC_SUBSECTION_PLAIN_RE = re.compile(
-        r'^(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+[A-Z][A-Za-z\s,.:\'\-]{3,}$',
+        r"^(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)\s+[A-Z][A-Za-z\s,.:\'\-]{3,}$",
         re.UNICODE,
     )
 
@@ -214,7 +263,9 @@ class HeadingSegmenter:
             return False
         return True
 
-    def _detect_plain_headings(self, lines: list[str], page_markers: list[tuple[int, int]]) -> list[int]:
+    def _detect_plain_headings(
+        self, lines: list[str], page_markers: list[tuple[int, int]]
+    ) -> list[int]:
         """
         Detect plain text headings (no explicit pattern) based on page position and style.
         Returns list of line indices that are likely chapter headings.
@@ -241,21 +292,21 @@ class HeadingSegmenter:
             if len(stripped) > 80:
                 continue
             # - No ending punctuation (.;,)
-            if re.search(r'[.;,]$', stripped):
+            if re.search(r"[.;,]$", stripped):
                 continue
             # - Must not start with a stopword (e.g., "to", "of", "for")
             first_word = stripped.split()[0].lower() if stripped.split() else ""
             if first_word in HEADING_STOP_STARTS:
                 continue
             # - Contains at least one uppercase letter
-            if not re.search(r'[A-Z]', stripped):
+            if not re.search(r"[A-Z]", stripped):
                 continue
             # - At least 3 words
             words = stripped.split()
             if len(words) < 3:
                 continue
             # - Check if it's title‑case or all caps
-            title_case = all(re.match(r'^[A-Z]', w) for w in words if w)
+            title_case = all(re.match(r"^[A-Z]", w) for w in words if w)
             all_caps = stripped.isupper()
             if not (title_case or all_caps):
                 continue
@@ -340,10 +391,16 @@ class HeadingSegmenter:
 
         # If no explicit chapters found, or only one, try plain heading detection
         if len(segments) <= 1:
-            self.log("  [HeadingSegmenter] Few or no explicit chapters; trying plain heading detection.", "INFO")
+            self.log(
+                "  [HeadingSegmenter] Few or no explicit chapters; trying plain heading detection.",
+                "INFO",
+            )
             plain_heading_indices = self._detect_plain_headings(lines, page_markers)
             if plain_heading_indices:
-                self.log(f"  [HeadingSegmenter] Found {len(plain_heading_indices)} plain text headings.", "INFO")
+                self.log(
+                    f"  [HeadingSegmenter] Found {len(plain_heading_indices)} plain text headings.",
+                    "INFO",
+                )
                 segments = []
                 current_heading = "Introduction"
                 current_content = []
@@ -395,7 +452,9 @@ class HeadingSegmenter:
                 return p_num
         return 1
 
-    def _get_end_page(self, line_idx: int, page_markers: list[tuple[int, int]], total_pages: int) -> int:
+    def _get_end_page(
+        self, line_idx: int, page_markers: list[tuple[int, int]], total_pages: int
+    ) -> int:
         for p_num, p_idx in page_markers:
             if p_idx > line_idx:
                 return p_num

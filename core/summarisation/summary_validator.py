@@ -30,6 +30,7 @@ context object like the failed ``PromptContext`` pattern). This matches the
 proven Phase 4 pattern (``post_processing.py`` + ``prompt_assembly.py`` 5 of 6
 methods) which passed all sandbox tests AND the golden-master gate.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -68,11 +69,20 @@ def normalize_empty_section(text: str) -> str:
     t = text.strip().lower()
     # Common "empty" responses the model might produce
     _empty_markers = [
-        "none", "n/a", "na", "not applicable", "no distinctions",
-        "no tensions", "no debates", "no ambiguities",
-        "the chapter does not discuss", "the chapter does not explore",
-        "the chapter does not draw", "not discussed in this chapter",
-        "no explicit distinctions", "no explicit tensions",
+        "none",
+        "n/a",
+        "na",
+        "not applicable",
+        "no distinctions",
+        "no tensions",
+        "no debates",
+        "no ambiguities",
+        "the chapter does not discuss",
+        "the chapter does not explore",
+        "the chapter does not draw",
+        "not discussed in this chapter",
+        "no explicit distinctions",
+        "no explicit tensions",
     ]
     if t in _empty_markers or any(t.startswith(m) for m in _empty_markers):
         return ""
@@ -101,14 +111,96 @@ def verify_additive_section_item(item: str, source_text: str) -> bool:
         return False
     item_clean = item.strip().lstrip("- ").strip()
     # Extract significant words (length > 3, not common stopwords)
-    _stop = frozenset(["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "from", "as", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "must", "shall", "this", "that", "these", "those", "it", "its", "their", "there", "here", "which", "who", "whom", "what", "when", "where", "why", "how", "between", "versus", "vs", "contrast", "distinction", "tension", "debate", "ambiguity", "important", "matters", "significant", "because", "while", "although", "though", "however", "thus", "therefore", "hence", "rather", "more", "most", "less", "least"])
+    _stop = frozenset(
+        [
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "as",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "must",
+            "shall",
+            "this",
+            "that",
+            "these",
+            "those",
+            "it",
+            "its",
+            "their",
+            "there",
+            "here",
+            "which",
+            "who",
+            "whom",
+            "what",
+            "when",
+            "where",
+            "why",
+            "how",
+            "between",
+            "versus",
+            "vs",
+            "contrast",
+            "distinction",
+            "tension",
+            "debate",
+            "ambiguity",
+            "important",
+            "matters",
+            "significant",
+            "because",
+            "while",
+            "although",
+            "though",
+            "however",
+            "thus",
+            "therefore",
+            "hence",
+            "rather",
+            "more",
+            "most",
+            "less",
+            "least",
+        ]
+    )
     words = [w.strip(".,;:!?\"'()[]").lower() for w in item_clean.split()]
     key_words = [w for w in words if len(w) > 3 and w not in _stop]
     if not key_words:
         # No extractable key terms — can't verify, keep it (benefit of doubt)
         return True
     # Check how many key words appear in the source (normalized)
-    source_norm = re.sub(r'\s+', ' ', source_text).strip().lower()
+    source_norm = re.sub(r"\s+", " ", source_text).strip().lower()
     found = sum(1 for w in key_words if w in source_norm)
     # Require at least 40% of key words to appear in the source
     ratio = found / len(key_words) if key_words else 1.0
@@ -157,8 +249,9 @@ def verify_additive_sections(
         items = []
         for line in raw.split("\n"):
             line = line.strip()
-            if line and (line.startswith("- ") or line.startswith("\u2022 ") or
-                         re.match(r'^\d+\.\s', line)):
+            if line and (
+                line.startswith("- ") or line.startswith("\u2022 ") or re.match(r"^\d+\.\s", line)
+            ):
                 items.append(line)
         # If no bullet markers found, treat the whole thing as one item
         if not items and raw.strip():
@@ -247,11 +340,11 @@ def anti_false_precision_check(
     # causing "AuthorL views" to be captured as a compound surname.
     # Instead, use inline (?i:...) ONLY for the contrastive conjunction.
     contrast_pat = _re.compile(
-        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\([^)]*\))?\s*'
-        r'(.{5,120}?)\s+'
-        r'(?i:while|whereas|where as|in contrast|by contrast|on the other hand|'
-        r'as opposed to|unlike|rather than)\s+'
-        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\([^)]*\))?\s*(.{5,120})',
+        r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\([^)]*\))?\s*"
+        r"(.{5,120}?)\s+"
+        r"(?i:while|whereas|where as|in contrast|by contrast|on the other hand|"
+        r"as opposed to|unlike|rather than)\s+"
+        r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\([^)]*\))?\s*(.{5,120})",
     )
 
     rewritten = 0
@@ -275,10 +368,36 @@ def anti_false_precision_check(
                 break
             name1, claim1, name2, claim2 = m.groups()
             # Skip if either name is a common word
-            _stop = {"The", "This", "These", "Those", "A", "An", "In",
-                     "While", "When", "If", "It", "He", "She", "They",
-                     "We", "Our", "You", "By", "For", "Of", "To", "On",
-                     "As", "At", "Or", "And", "But", "From"}
+            _stop = {
+                "The",
+                "This",
+                "These",
+                "Those",
+                "A",
+                "An",
+                "In",
+                "While",
+                "When",
+                "If",
+                "It",
+                "He",
+                "She",
+                "They",
+                "We",
+                "Our",
+                "You",
+                "By",
+                "For",
+                "Of",
+                "To",
+                "On",
+                "As",
+                "At",
+                "Or",
+                "And",
+                "But",
+                "From",
+            }
             if name1 in _stop or name2 in _stop:
                 # Advance by 1 to allow re-matching within this span
                 pos = m.start() + 1
@@ -296,8 +415,13 @@ def anti_false_precision_check(
             # other in the source — if they appear close together, the source
             # groups them (e.g., "AuthorL 1964, AuthorD 1967 regard X as Y").
             close_pat = _re.compile(
-                _re.escape(n1_lower) + r'.{0,120}?' + _re.escape(n2_lower) +
-                r'|' + _re.escape(n2_lower) + r'.{0,120}?' + _re.escape(n1_lower),
+                _re.escape(n1_lower)
+                + r".{0,120}?"
+                + _re.escape(n2_lower)
+                + r"|"
+                + _re.escape(n2_lower)
+                + r".{0,120}?"
+                + _re.escape(n1_lower),
                 _re.DOTALL,
             )
             grouped_in_source = bool(close_pat.search(src_lower))
@@ -310,7 +434,7 @@ def anti_false_precision_check(
                 orig = m.group(0)
                 # Simple merge: "Name1 and Name2 both [claim1]"
                 # Strip trailing punctuation from claim1
-                c1 = claim1.strip().rstrip(',;.')
+                c1 = claim1.strip().rstrip(",;.")
                 # V18.10.1 (grammar guard): Skip the rewrite if claim1 is a
                 # fragment that starts with a conjunction ("and", "or", "but")
                 # or is too short to form a valid predicate. The V18.10.0
@@ -322,7 +446,7 @@ def anti_false_precision_check(
                 # authors with nested citations — the simple merge can't
                 # handle it. Skip the rewrite (leave the original intact)
                 # rather than produce a broken sentence.
-                _c1_first_word = c1.split()[0].lower().rstrip(',;.') if c1.split() else ""
+                _c1_first_word = c1.split()[0].lower().rstrip(",;.") if c1.split() else ""
                 _CONJUNCTIONS = {"and", "or", "but", "while", "whereas", "where", "as"}
                 _is_fragment = (
                     _c1_first_word in _CONJUNCTIONS
@@ -360,7 +484,12 @@ def anti_false_precision_check(
             result["bullet_points"] = new_bullets
 
     # Apply to executive_summary, thorough_summary, kd, tt (strings)
-    for key in ("executive_summary", "thorough_summary", "key_distinctions", "theoretical_tensions"):
+    for key in (
+        "executive_summary",
+        "thorough_summary",
+        "key_distinctions",
+        "theoretical_tensions",
+    ):
         seg = result.get(key, "") or ""
         if seg:
             new_seg = _rewrite_if_ungrounded(seg)
@@ -475,7 +604,7 @@ def semantic_dedup_bullets(
                     is_dup = True
                     removed += 1
                     _log(
-                        f"    🧹 Semantic dedup: removing bullet {i+1} (sim={sim_matrix[i][j]:.2f} with bullet {j+1})",
+                        f"    🧹 Semantic dedup: removing bullet {i + 1} (sim={sim_matrix[i][j]:.2f} with bullet {j + 1})",
                         "DEBUG",
                     )
                     break
@@ -529,8 +658,11 @@ def _normalize_for_coverage(s: str) -> str:
 
 def _part_present(part: str, normalized_summary: str) -> bool:
     """Word-boundary presence with simple plural tolerance (V0.03 P0-3)."""
-    if f" {part} " in normalized_summary or normalized_summary.startswith(part + " ") \
-            or normalized_summary.endswith(" " + part):
+    if (
+        f" {part} " in normalized_summary
+        or normalized_summary.startswith(part + " ")
+        or normalized_summary.endswith(" " + part)
+    ):
         return True
     # Simple plural tolerance: 'wheels' matches 'wheel', 'wheel' matches 'wheels'.
     variants = set()
@@ -539,8 +671,11 @@ def _part_present(part: str, normalized_summary: str) -> bool:
     else:
         variants.add(part + "s")
     for v in variants:
-        if f" {v} " in normalized_summary or normalized_summary.startswith(v + " ") \
-                or normalized_summary.endswith(" " + v):
+        if (
+            f" {v} " in normalized_summary
+            or normalized_summary.startswith(v + " ")
+            or normalized_summary.endswith(" " + v)
+        ):
             return True
     return False
 
@@ -561,6 +696,7 @@ def _keyword_covered(keyword: str, normalized_summary: str) -> bool:
     # Multi-word: every content part must be present (order-free).
     try:
         from core.summarisation.structural_stopwords import STRUCTURAL_FUNCTION_WORDS
+
         content = [p for p in parts if p not in STRUCTURAL_FUNCTION_WORDS]
     except Exception:
         content = parts
@@ -610,6 +746,7 @@ def compute_coverage(
         concepts = []
         try:
             from core.summarisation.text_preprocessor import extract_all_concepts
+
             # V18.2.19: max_terms=25 (was 15) for finer granularity.
             concepts = extract_all_concepts(source, max_terms=25)
         except Exception as _e:
@@ -694,7 +831,7 @@ def verify_bullets(
         window_size = 80
         windows = []
         for i in range(0, max(1, src_len - window_size), 40):
-            windows.append(src_lower[i:i + window_size])
+            windows.append(src_lower[i : i + window_size])
         if src_len <= window_size:
             windows.append(src_lower)
         verify_windows_cache[src_hash] = windows
@@ -714,7 +851,7 @@ def verify_bullets(
         if not bp_str:
             continue
         # Strip citation markers for verification (e.g., "(p.31)")
-        bp_clean = re.sub(r'\s*\(p\.\d+\)\s*$', '', bp_str).strip().lower()
+        bp_clean = re.sub(r"\s*\(p\.\d+\)\s*$", "", bp_str).strip().lower()
         if len(bp_clean) < 10:
             result.append(bp_str)
             continue
@@ -758,7 +895,7 @@ def verify_bullets(
             f"    🔍 Fact-check: {verified} verified, {unverified} unverified "
             f"(best-score < {VERIFY_THRESHOLD:.0f}%) — kept unmarked "
             f"(conservative; see Quarantine Log appendix + drops.jsonl)",
-            "WARNING"
+            "WARNING",
         )
     elif verified == 0:
         # V0.11 (real-rig audit, BUG-VACUOUS-QA): "all 0 bullets verified ✓"
@@ -771,7 +908,7 @@ def verify_bullets(
             "    ⚠️ Fact-check: VACUOUS PASS — 0 bullets to verify. The "
             "primary parse produced no bullets (likely a response-format "
             "failure); check the parse warnings above.",
-            "WARNING"
+            "WARNING",
         )
     else:
         _log(f"    🔍 Fact-check: all {verified} bullets verified ✓", "DEBUG")

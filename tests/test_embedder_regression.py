@@ -11,6 +11,7 @@ content_judge's degenerate-0/N guard catches the downstream effect.
 
 These tests verify encode() NEVER raises, regardless of health state.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -111,6 +112,7 @@ class TestIsEmbedderHealthy:
     def test_returns_false_when_no_model_loaded(self):
         """When no embed model has been loaded, returns False."""
         from core.llm import model_singletons
+
         # Reset the singleton
         old = model_singletons._embed_model
         model_singletons._embed_model = None
@@ -122,6 +124,7 @@ class TestIsEmbedderHealthy:
     def test_returns_true_for_healthy_ollama_backend(self):
         """When an OllamaEmbedBackend is loaded and healthy, returns True."""
         from core.llm import model_singletons
+
         backend = OllamaEmbedBackend("test-model")
         backend.healthy = True
         old = model_singletons._embed_model
@@ -134,6 +137,7 @@ class TestIsEmbedderHealthy:
     def test_returns_false_for_unhealthy_ollama_backend(self):
         """When an OllamaEmbedBackend is loaded but unhealthy, returns False."""
         from core.llm import model_singletons
+
         backend = OllamaEmbedBackend("test-model")
         backend.healthy = False
         old = model_singletons._embed_model
@@ -146,6 +150,7 @@ class TestIsEmbedderHealthy:
     def test_returns_true_for_sentence_transformer(self):
         """SentenceTransformer backends don't have .healthy → assumed True."""
         from core.llm import model_singletons
+
         mock_st = MagicMock()  # no .healthy attribute
         del mock_st.healthy  # ensure AttributeError
         old = model_singletons._embed_model
@@ -167,13 +172,15 @@ class TestSemanticDedupSkipsWhenUnhealthy:
         """
         sv_path = _project_root / "core" / "summarisation" / "summary_validator.py"
         content = sv_path.read_text(encoding="utf-8")
-        assert "is_embedder_healthy" in content, \
+        assert "is_embedder_healthy" in content, (
             "_semantic_dedup_bullets must check is_embedder_healthy (in summary_validator.py)"
+        )
         # The check must come BEFORE the encode call
         health_check_idx = content.find("if not is_embedder_healthy():")
         encode_idx = content.find("embed_model.encode(bullet_strs", health_check_idx)
-        assert encode_idx > health_check_idx, \
+        assert encode_idx > health_check_idx, (
             "is_embedder_healthy check must come before encode call in dedup"
+        )
 
 
 if __name__ == "__main__":

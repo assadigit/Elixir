@@ -32,30 +32,95 @@ logger = logging.getLogger(__name__)
 
 _STATIC_ESTIMATES: dict[str, dict] = {
     # Core outputs — deterministic, no LLM
-    "summarisation.enabled":          {"mins": 0,   "label": "Per-chapter Summaries", "tier": "core",       "note": "runs during main summarization phase"},
-    "summarisation.include_keypoints":{"mins": 1,   "label": "Keypoints",             "tier": "core",       "note": "deterministic extraction"},
-    "docx.enabled":                   {"mins": 1,   "label": "DOCX Document",        "tier": "core",       "note": "no LLM, just formatting"},
-    "outputs.mindmap":                {"mins": 2,   "label": "Mind Map",             "tier": "fast",       "note": "deterministic, no LLM"},
+    "summarisation.enabled": {
+        "mins": 0,
+        "label": "Per-chapter Summaries",
+        "tier": "core",
+        "note": "runs during main summarization phase",
+    },
+    "summarisation.include_keypoints": {
+        "mins": 1,
+        "label": "Keypoints",
+        "tier": "core",
+        "note": "deterministic extraction",
+    },
+    "docx.enabled": {
+        "mins": 1,
+        "label": "DOCX Document",
+        "tier": "core",
+        "note": "no LLM, just formatting",
+    },
+    "outputs.mindmap": {
+        "mins": 2,
+        "label": "Mind Map",
+        "tier": "fast",
+        "note": "deterministic, no LLM",
+    },
     # Moderate — one LLM call (whole-book)
-    "outputs.briefing":               {"mins": 5,   "label": "Executive Briefing",   "tier": "moderate",   "note": "one LLM call"},
-    "outputs.flashcards":             {"mins": 6,   "label": "Flashcards",           "tier": "moderate",   "note": "one LLM call"},
-    "outputs.obsidian":               {"mins": 7,   "label": "Obsidian KB",          "tier": "moderate",   "note": "deterministic formatting + linking"},
+    "outputs.briefing": {
+        "mins": 5,
+        "label": "Executive Briefing",
+        "tier": "moderate",
+        "note": "one LLM call",
+    },
+    "outputs.flashcards": {
+        "mins": 6,
+        "label": "Flashcards",
+        "tier": "moderate",
+        "note": "one LLM call",
+    },
+    "outputs.obsidian": {
+        "mins": 7,
+        "label": "Obsidian KB",
+        "tier": "moderate",
+        "note": "deterministic formatting + linking",
+    },
     # Heavy — per-chapter LLM calls (scales with chapter count)
-    "summarisation.simplified_keypoints_enabled": {"mins": 15, "label": "Simplified Keypoints", "tier": "heavy", "note": "extra LLM pass per chapter"},
-    "outputs.podcast":                {"mins": 18,  "label": "Podcast Script",       "tier": "heavy",      "note": "LLM call per chapter (default scope)"},
-    "outputs.packets":                {"mins": 20,  "label": "Packets of Knowledge", "tier": "heavy",      "note": "clustering + synthesis per packet"},
-    "outputs.study_guide":            {"mins": 12,  "label": "Study Guide",          "tier": "heavy",      "note": "one LLM call, structured output"},
-    "outputs.social":                 {"mins": 10,  "label": "Social Media Pack",    "tier": "heavy",      "note": "one LLM call"},
+    "summarisation.simplified_keypoints_enabled": {
+        "mins": 15,
+        "label": "Simplified Keypoints",
+        "tier": "heavy",
+        "note": "extra LLM pass per chapter",
+    },
+    "outputs.podcast": {
+        "mins": 18,
+        "label": "Podcast Script",
+        "tier": "heavy",
+        "note": "LLM call per chapter (default scope)",
+    },
+    "outputs.packets": {
+        "mins": 20,
+        "label": "Packets of Knowledge",
+        "tier": "heavy",
+        "note": "clustering + synthesis per packet",
+    },
+    "outputs.study_guide": {
+        "mins": 12,
+        "label": "Study Guide",
+        "tier": "heavy",
+        "note": "one LLM call, structured output",
+    },
+    "outputs.social": {
+        "mins": 10,
+        "label": "Social Media Pack",
+        "tier": "heavy",
+        "note": "one LLM call",
+    },
     # Very heavy — realtime audio
-    "outputs.tts":                    {"mins": 30,  "label": "Podcast Audio (TTS)",  "tier": "very_heavy", "note": "audio synthesis (NeuTTS/Piper)"},
+    "outputs.tts": {
+        "mins": 30,
+        "label": "Podcast Audio (TTS)",
+        "tier": "very_heavy",
+        "note": "audio synthesis (NeuTTS/Piper)",
+    },
 }
 
 
 def get_output_estimate(setting_key: str) -> dict:
     """Return the estimate dict for a setting key."""
-    return _STATIC_ESTIMATES.get(setting_key, {
-        "mins": 5, "label": setting_key, "tier": "moderate", "note": ""
-    })
+    return _STATIC_ESTIMATES.get(
+        setting_key, {"mins": 5, "label": setting_key, "tier": "moderate", "note": ""}
+    )
 
 
 # ── Tier metadata ──────────────────────────────────────────────────────────
@@ -64,28 +129,28 @@ _TIER_ORDER = ["core", "fast", "moderate", "heavy", "very_heavy"]
 
 # V7.7.0: tier labels for UI display (no minute numbers).
 _TIER_LABEL = {
-    "core":       "Core",
-    "fast":       "Fast",
-    "moderate":   "Moderate",
-    "heavy":      "Heavy",
+    "core": "Core",
+    "fast": "Fast",
+    "moderate": "Moderate",
+    "heavy": "Heavy",
     "very_heavy": "Very heavy",
 }
 
 # Short description of WHY each tier is that cost (for tooltips).
 _TIER_DESC = {
-    "core":       "Deterministic — no LLM, negligible extra cost.",
-    "fast":       "Single-pass deterministic or trivial formatting.",
-    "moderate":   "One LLM call (whole-book synthesis).",
-    "heavy":      "Per-chapter LLM calls — scales with chapter count.",
+    "core": "Deterministic — no LLM, negligible extra cost.",
+    "fast": "Single-pass deterministic or trivial formatting.",
+    "moderate": "One LLM call (whole-book synthesis).",
+    "heavy": "Per-chapter LLM calls — scales with chapter count.",
     "very_heavy": "Realtime audio generation — slowest tier.",
 }
 
 # Theme color name for each tier (maps to palette in the UI).
 _TIER_COLOR = {
-    "core":       "success",
-    "fast":       "success",
-    "moderate":   "info",
-    "heavy":      "warning",
+    "core": "success",
+    "fast": "success",
+    "moderate": "info",
+    "heavy": "warning",
     "very_heavy": "error",
 }
 
@@ -115,6 +180,7 @@ def sort_outputs_by_cost(outputs: list) -> list:
 
     Within the same tier, sorts by the internal ``mins`` field.
     """
+
     def _cost(item):
         key = item[0]
         est = get_output_estimate(key)
@@ -122,10 +188,12 @@ def sort_outputs_by_cost(outputs: list) -> list:
             _TIER_ORDER.index(est["tier"]) if est["tier"] in _TIER_ORDER else 99,
             est["mins"],
         )
+
     return sorted(outputs, key=_cost)
 
 
 # ── Load-grade total (V7.7.0: replaces minute-sum) ────────────────────────
+
 
 def get_load_grade(enabled_keys: list) -> dict:
     """Compute the overall load grade for a set of enabled outputs.
@@ -160,18 +228,19 @@ def get_load_grade(enabled_keys: list) -> dict:
         grade = "heavy"
 
     _GRADE_MAP = {
-        "none":       ("Light load",       "success"),
-        "core":       ("Light load",       "success"),
-        "fast":       ("Light load",       "success"),
-        "moderate":   ("Moderate load",    "info"),
-        "heavy":      ("Heavy load",       "warning"),
-        "very_heavy": ("Very heavy load",  "error"),
+        "none": ("Light load", "success"),
+        "core": ("Light load", "success"),
+        "fast": ("Light load", "success"),
+        "moderate": ("Moderate load", "info"),
+        "heavy": ("Heavy load", "warning"),
+        "very_heavy": ("Very heavy load", "error"),
     }
     label, color = _GRADE_MAP.get(grade, ("Light load", "success"))
     return {"grade": grade, "label": label, "color": color, "counts": counts}
 
 
 # ── Dynamic refinement from past conversion logs (framework) ───────────────
+
 
 def get_dynamic_estimates(output_base_dir: Path) -> dict[str, float]:
     """Scan past conversion diagnostic logs for actual phase timings.

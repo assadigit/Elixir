@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from core.models import OcrResult
 
 logger = logging.getLogger(__name__)
+
+
 class OCREngine(ABC):
     """Base interface for OCR engines."""
 

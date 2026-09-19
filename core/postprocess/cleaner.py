@@ -38,10 +38,10 @@ class MarkdownCleaner:
         # H13 fix: only drop standalone numbers that look like page numbers
         # (1-3 digits, NOT 4-digit years like 1888/2020).  4-digit numbers
         # that are years are kept; 4-digit page numbers >999 are rare.
-        re.compile(r"^\s*\d{1,3}\s*$"),             # Standalone page numbers (1-999)
-        re.compile(r"^\s*[•·]\s*$"),                 # Orphan bullets
-        re.compile(r"^\s*[-_=]{5,}\s*$"),            # Decorative rule lines
-        re.compile(r"^\s*\|[\s|]+\|\s*$"),           # Empty table rows
+        re.compile(r"^\s*\d{1,3}\s*$"),  # Standalone page numbers (1-999)
+        re.compile(r"^\s*[•·]\s*$"),  # Orphan bullets
+        re.compile(r"^\s*[-_=]{5,}\s*$"),  # Decorative rule lines
+        re.compile(r"^\s*\|[\s|]+\|\s*$"),  # Empty table rows
     ]
 
     # ── Static reverse‑word mapping (fast, common cases) ──────────────────
@@ -54,7 +54,6 @@ class MarkdownCleaner:
         "gnikrow": "working",
         "gnikool": "looking",
         "gnissecorp": "processing",
-        "gnitcurtsnoc": "constructing",
         "gnitcurtsnoc": "constructing",
         "gnitseuq": "questing",
         "gnitcetorp": "protecting",
@@ -69,8 +68,7 @@ class MarkdownCleaner:
         # Add more as needed
     }
     REVERSE_WORD_PATTERN = re.compile(
-        r'\b(' + '|'.join(re.escape(w) for w in REVERSE_WORD_MAP) + r')\b',
-        re.IGNORECASE
+        r"\b(" + "|".join(re.escape(w) for w in REVERSE_WORD_MAP) + r")\b", re.IGNORECASE
     )
 
     def __init__(
@@ -130,7 +128,7 @@ class MarkdownCleaner:
         #     pypdf sometimes extracts each word or short phrase as a separate
         #     "paragraph" (double-newline separated).  The result in the DOCX is
         #     one paragraph-object per word, producing the word-explosion seen
-#     in Image 1 of the rig test.
+        #     in Image 1 of the rig test.
         #     Heuristic: if a block has ≤ 4 words and doesn't look like a heading
         #     or page marker, join it with adjacent short blocks.
         text = self._collapse_word_fragments(text)
@@ -158,35 +156,33 @@ class MarkdownCleaner:
         Guards: standalone page numbers, footnote refs ([1], *), citations
         (Smith 2003), years (1987), and URLs are NOT joined.
         """
-        PROTECTED = re.compile(
-            r'^(#{1,3} |<!-- |[-*•] |\d+[.)]\s|https?://)', re.MULTILINE
-        )
+        PROTECTED = re.compile(r"^(#{1,3} |<!-- |[-*•] |\d+[.)]\s|https?://)", re.MULTILINE)
         # Patterns that should remain as standalone blocks (not joined)
         STANDALONE = re.compile(
-            r'^(?:'
-            r'\d{1,4}\s*$'               # bare page number or year alone
-            r'|\[\d+\]'                   # footnote ref [1]
-            r'|\*+\s'                     # asterisk footnotes
-            r'|[ivxlcdmIVXLCDM]+\.'       # Roman numeral list
-            r'|[A-Z][a-z]+,?\s+\d{4}'    # citation: "Smith, 2003"
-            r'|\([A-Za-z].{0,30}\d{4}\)' # citation in parens
-            r'|doi:|http|www\.'           # URL / DOI
-            r')',
+            r"^(?:"
+            r"\d{1,4}\s*$"  # bare page number or year alone
+            r"|\[\d+\]"  # footnote ref [1]
+            r"|\*+\s"  # asterisk footnotes
+            r"|[ivxlcdmIVXLCDM]+\."  # Roman numeral list
+            r"|[A-Z][a-z]+,?\s+\d{4}"  # citation: "Smith, 2003"
+            r"|\([A-Za-z].{0,30}\d{4}\)"  # citation in parens
+            r"|doi:|http|www\."  # URL / DOI
+            r")",
         )
-        blocks = re.split(r'\n{2,}', text)
+        blocks = re.split(r"\n{2,}", text)
         result: list = []
         pending: list = []
 
         def flush():
             if pending:
-                result.append(' '.join(pending))
+                result.append(" ".join(pending))
                 pending.clear()
 
         for block in blocks:
             stripped = block.strip()
             if not stripped:
                 flush()
-                result.append('')
+                result.append("")
                 continue
 
             if PROTECTED.match(stripped) or STANDALONE.match(stripped):
@@ -199,14 +195,14 @@ class MarkdownCleaner:
                 pending.append(stripped)
             else:
                 if pending:
-                    combined = ' '.join(pending) + ' ' + stripped
+                    combined = " ".join(pending) + " " + stripped
                     pending.clear()
                     result.append(combined)
                 else:
                     result.append(block)
 
         flush()
-        return '\n\n'.join(r for r in result if r != '' or not result)
+        return "\n\n".join(r for r in result if r != "" or not result)
 
     # ── Static reverse‑word filter ─────────────────────────────────────────
 
@@ -215,6 +211,7 @@ class MarkdownCleaner:
         Replace common reversed-word artefacts with their correct form.
         Uses the static REVERSE_WORD_MAP; case-insensitive replacement.
         """
+
         def replace_match(match):
             word = match.group(1)
             # Preserve original case when possible
@@ -225,6 +222,7 @@ class MarkdownCleaner:
                 return correction.title()
             else:
                 return correction
+
         return self.REVERSE_WORD_PATTERN.sub(replace_match, text)
 
     # ── Dynamic paragraph‑level reversal correction ──────────────────────
@@ -237,6 +235,6 @@ class MarkdownCleaner:
         """
         if not text:
             return text
-        paragraphs = text.split('\n\n')
+        paragraphs = text.split("\n\n")
         corrected = [correct_reversed_paragraph(p) for p in paragraphs]
-        return '\n\n'.join(corrected)
+        return "\n\n".join(corrected)

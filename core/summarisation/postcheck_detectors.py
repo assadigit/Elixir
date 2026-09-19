@@ -8,6 +8,7 @@ and re-exports everything from here for backward compatibility.
 All existing imports ``from core.summarisation.postchecks import X`` continue
 to work — postchecks.py re-exports everything.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,6 +37,7 @@ MAX_YEAR = date.today().year + 1
 @dataclass
 class Issue:
     """A single post-check finding."""
+
     detector: str
     severity: str
     field: str
@@ -46,6 +48,7 @@ class Issue:
 @dataclass
 class PostCheckReport:
     """Result of running all post-checks."""
+
     bullets: list[str] = field(default_factory=list)
     executive_summary: str = ""
     thorough_summary: str = ""
@@ -67,7 +70,6 @@ class PostCheckReport:
         return len(self.issues)
 
 
-
 def _snippet(text: str, pos: int, width: int = 60) -> str:
     """Return a ~``width``-char context window around ``pos``."""
     if not text:
@@ -79,14 +81,15 @@ def _snippet(text: str, pos: int, width: int = 60) -> str:
         snippet = "…" + snippet
     if end < len(text):
         snippet = snippet + "…"
-    return re.sub(r'\s+', ' ', snippet).strip()
+    return re.sub(r"\s+", " ", snippet).strip()
+
 
 _PROMPT_LEAKAGE_PATTERNS: tuple[str, ...] = (
     # Direct echoes of the prompt template
-    r'provided\s+in\s+the\s+(?:input|source|text|chapter|passage)\b',
-    r'as\s+(?:mentioned|noted|stated|described|discussed)\s+in\s+the\s+(?:source|input|text|passage|chapter)\b',
-    r'based\s+on\s+the\s+source\s+(?:text|material|content)\b',
-    r'according\s+to\s+the\s+(?:source|input|text|passage)\b',
+    r"provided\s+in\s+the\s+(?:input|source|text|chapter|passage)\b",
+    r"as\s+(?:mentioned|noted|stated|described|discussed)\s+in\s+the\s+(?:source|input|text|passage|chapter)\b",
+    r"based\s+on\s+the\s+source\s+(?:text|material|content)\b",
+    r"according\s+to\s+the\s+(?:source|input|text|passage)\b",
     # First-person process leaks
     r"\bI\s+(?:need\s+to|must|should|will|am\s+going\s+to|can|cannot|don't\s+have)\b",
     r"\bI'll\b",
@@ -133,16 +136,16 @@ _PROMPT_LEAKAGE_PATTERNS: tuple[str, ...] = (
     r"\bLet me organize my understanding\b",
     r"\bwait,? let me re-?read\b",
     r"\bnow write\b",
-    r'\bNow\s+I\s+(?:will|shall|can|need)\b',
+    r"\bNow\s+I\s+(?:will|shall|can|need)\b",
     # Self-reference / refusals
-    r'\bas\s+an\s+AI\b',
-    r'\bas\s+a\s+language\s+model\b',
+    r"\bas\s+an\s+AI\b",
+    r"\bas\s+a\s+language\s+model\b",
     r"\bI'm\s+(?:not\s+)?(?:able|sure)\s+to\b",
     # Template scaffolding that survives parsing
-    r'\bhere\s+is\s+the\s+(?:summary|bullet|list|chapter)\b',
-    r'\bhere\s+are\s+the\s+(?:bullets|key\s+points|takeaways)\b',
-    r'\bthe\s+user\s+(?:wants|asked|requested|specifically)\b',
-    r'\bthe\s+instructions?\s+(?:say|state|ask|require)\b',
+    r"\bhere\s+is\s+the\s+(?:summary|bullet|list|chapter)\b",
+    r"\bhere\s+are\s+the\s+(?:bullets|key\s+points|takeaways)\b",
+    r"\bthe\s+user\s+(?:wants|asked|requested|specifically)\b",
+    r"\bthe\s+instructions?\s+(?:say|state|ask|require)\b",
 )
 
 # Compiled once at import.
@@ -160,18 +163,32 @@ _PROMPT_LEAKAGE_RE = [re.compile(p, re.IGNORECASE) for p in _PROMPT_LEAKAGE_PATT
 # false-flag those common academic words. (The vowel-less detector below
 # already treats 'y' as a vowel for the same reason.)
 
-_LONG_CONSONANT_CLUSTER_RE = re.compile(
-    r'\b\w*[bcdfghjklmnpqrstvwxz]{6,}\w*\b', re.IGNORECASE
-)
+_LONG_CONSONANT_CLUSTER_RE = re.compile(r"\b\w*[bcdfghjklmnpqrstvwxz]{6,}\w*\b", re.IGNORECASE)
 
 # Impossible English bigrams inside a word (case-sensitive lowercased).
 # "xz", "qq", "zc", "kx" never appear in real English words.
 
-_IMPOSSIBLE_BIGRAMS = ('xz', 'zx', 'qq', 'zz', 'kx', 'xk', 'jx', 'xj',
-                       'qx', 'xq', 'vc', 'cv', 'kz', 'zk', 'jz', 'zj')
+_IMPOSSIBLE_BIGRAMS = (
+    "xz",
+    "zx",
+    "qq",
+    "zz",
+    "kx",
+    "xk",
+    "jx",
+    "xj",
+    "qx",
+    "xq",
+    "vc",
+    "cv",
+    "kz",
+    "zk",
+    "jz",
+    "zj",
+)
 
 _IMPOSSIBLE_BIGRAM_RE = re.compile(
-    r'\b\w*(?:' + '|'.join(_IMPOSSIBLE_BIGRAMS) + r')\w*\b', re.IGNORECASE
+    r"\b\w*(?:" + "|".join(_IMPOSSIBLE_BIGRAMS) + r")\w*\b", re.IGNORECASE
 )
 
 # Long vowel-less words. English words with no vowel (a/e/i/o/u) longer than
@@ -179,10 +196,11 @@ _IMPOSSIBLE_BIGRAM_RE = re.compile(
 # "nth", "tsktsk", "phpht" — none appear in academic prose). We also treat
 # "y" as a vowel here to avoid flagging "rhythm", "nymph", "myth", "syzygy".
 
-_VOWEL = 'aeiouy'
+_VOWEL = "aeiouy"
 
 _VOWEL_LESS_LONG_RE = re.compile(
-    r'\b[^aeiouy\W\d]{5,}\b', re.IGNORECASE  # V18.2.19: exclude digits (1980b etc.)
+    r"\b[^aeiouy\W\d]{5,}\b",
+    re.IGNORECASE,  # V18.2.19: exclude digits (1980b etc.)
 )
 
 # V18.15.3.2: _GARBLED_ALLOWLIST DELETED. Hand-curated word lists are not
@@ -205,26 +223,19 @@ _VOWEL_LESS_LONG_RE = re.compile(
 # Pattern 1: any 1-3 char lowercase word + Capitalized word (e.g., "theFreud")
 # The Capital letter after a short lowercase word is a near-certain merge signal.
 
-_MISSING_SPACE_CAP_RE = re.compile(
-    r'\b([a-z]{1,3})([A-Z][a-zA-Z]{2,})\b'
-)
+_MISSING_SPACE_CAP_RE = re.compile(r"\b([a-z]{1,3})([A-Z][a-zA-Z]{2,})\b")
 
 # Pattern 2: any 1-3 char lowercase word + 4+ char lowercase suffix (e.g., "thesonic")
 # 4-char min on the suffix to avoid catching "thee", "them", "then", "thea".
 # V18.15.3.2: source-grounded validation decides whether to split (see below).
 
-_MISSING_SPACE_LOWER_RE = re.compile(
-    r'\b([a-z]{1,3})([a-z]{4,})\b',
-    re.IGNORECASE
-)
+_MISSING_SPACE_LOWER_RE = re.compile(r"\b([a-z]{1,3})([a-z]{4,})\b", re.IGNORECASE)
 
 # Pattern 3: lowercase word + Capitalized word mid-token (camelCase merge,
 # e.g., "doingsIdentity"). The lowercase part must be >= 3 chars and the
 # Capitalized part >= 3 chars.
 
-_CAMELCASE_MERGE_RE = re.compile(
-    r'\b([a-z]{3,})([A-Z][a-zA-Z]{2,})\b'
-)
+_CAMELCASE_MERGE_RE = re.compile(r"\b([a-z]{3,})([A-Z][a-zA-Z]{2,})\b")
 
 # ── Year / citation validation ────────────────────────────────────────────
 # Matches "Author (YYYY)" and "Author YYYY" (inline). We use this to find
@@ -235,9 +246,9 @@ _CAMELCASE_MERGE_RE = re.compile(
 # (e.g. "Federn's (1952)" with U+2019 copied verbatim from PDF source).
 
 _SUMMARY_CITATION_RE = re.compile(
-    r'([A-Z][a-zA-Z]+(?:' + _CIT_NAME_SEP + r'[A-Z][a-zA-Z]+)?'
+    r"([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?"
     r"(?:" + _CIT_APOS + r"[sS]?)?)"
-    r'\s*\(?(\d{4}[a-z]?)\)?'
+    r"\s*\(?(\d{4}[a-z]?)\)?"
 )
 # V18.2.18 Improvement 1: Bold-name bullet pattern — "**AuthorName**: text".
 # Gap-fill bullets use this format (e.g. "**AuthorC**: Provided the developmental
@@ -249,11 +260,11 @@ _SUMMARY_CITATION_RE = re.compile(
 # typographic hyphens for compound surnames).
 
 _BOLD_NAME_RE = re.compile(
-    r'\*\*([A-Z][a-zA-Z]+(?:' + _CIT_NAME_SEP + r'[A-Z][a-zA-Z]+)?)\*\*\s*:\s*(.{10,})'
+    r"\*\*([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)\*\*\s*:\s*(.{10,})"
 )
 # Bare 4-digit number that looks like a year (not part of a citation).
 
-_BARE_YEAR_RE = re.compile(r'\b(1\d{3}|20\d{2}|21\d{2})\b')
+_BARE_YEAR_RE = re.compile(r"\b(1\d{3}|20\d{2}|21\d{2})\b")
 
 
 def validate_years(
@@ -304,25 +315,31 @@ def validate_years(
             yr = int(m.group(1))
             if yr < MIN_YEAR or yr > MAX_YEAR:
                 snippet = _snippet(text, m.start())
-                issues.append(Issue(
-                    detector="year",
-                    severity="flag",
-                    field=field_label,
-                    snippet=snippet,
-                    detail=f"implausible year {yr} (outside {MIN_YEAR}-{MAX_YEAR})",
-                ))
+                issues.append(
+                    Issue(
+                        detector="year",
+                        severity="flag",
+                        field=field_label,
+                        snippet=snippet,
+                        detail=f"implausible year {yr} (outside {MIN_YEAR}-{MAX_YEAR})",
+                    )
+                )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="year", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"year-range check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="year",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"year-range check crashed: {e!r}",
+            )
+        )
 
     # --- Check 2: author-name grounding -------------------------------------
     if source_authors:
         try:
             # Build a casefolded lookup set once.
-            src_lower = {a.casefold(): a for a in source_authors
-                         if a and len(a) >= 3}
+            src_lower = {a.casefold(): a for a in source_authors if a and len(a) >= 3}
             seen_flags = set()  # avoid duplicate flags for the same name
             for m in _SUMMARY_CITATION_RE.finditer(text):
                 author = m.group(1).strip()
@@ -334,9 +351,28 @@ def validate_years(
                     continue
                 # Skip obvious non-names (the regex can catch "In (1950)" etc.)
                 if author_clean.split()[0].lower() in {
-                    "in", "by", "the", "a", "an", "as", "at", "to", "of",
-                    "and", "or", "for", "with", "from", "that", "this",
-                    "while", "when", "where", "later", "then", "early",
+                    "in",
+                    "by",
+                    "the",
+                    "a",
+                    "an",
+                    "as",
+                    "at",
+                    "to",
+                    "of",
+                    "and",
+                    "or",
+                    "for",
+                    "with",
+                    "from",
+                    "that",
+                    "this",
+                    "while",
+                    "when",
+                    "where",
+                    "later",
+                    "then",
+                    "early",
                 }:
                     continue
                 if _author_in_source(author_clean, src_lower):
@@ -346,23 +382,31 @@ def validate_years(
                     continue
                 seen_flags.add(key)
                 snippet = _snippet(text, m.start())
-                issues.append(Issue(
+                issues.append(
+                    Issue(
+                        detector="year",
+                        severity="flag",
+                        field=field_label,
+                        snippet=snippet,
+                        detail=(
+                            f"author '{author_clean}' (cited with {year}) not "
+                            f"found in source's {len(source_authors)} citations "
+                            f"— possible name corruption"
+                        ),
+                    )
+                )
+        except Exception as e:  # fail-open
+            issues.append(
+                Issue(
                     detector="year",
                     severity="flag",
                     field=field_label,
-                    snippet=snippet,
-                    detail=(f"author '{author_clean}' (cited with {year}) not "
-                            f"found in source's {len(source_authors)} citations "
-                            f"— possible name corruption"),
-                ))
-        except Exception as e:  # fail-open
-            issues.append(Issue(
-                detector="year", severity="flag", field=field_label,
-                snippet=text[:60], detail=f"author-grounding check crashed: {e!r}",
-            ))
+                    snippet=text[:60],
+                    detail=f"author-grounding check crashed: {e!r}",
+                )
+            )
 
     return text, issues
-
 
 
 def _author_in_source(author: str, src_lower: dict[str, str]) -> bool:
@@ -372,27 +416,22 @@ def _author_in_source(author: str, src_lower: dict[str, str]) -> bool:
         return True
     # V18.2.19: Also try the normalized form (strip hyphens) so
     # "AuthorA" matches "chasseguetsmirgel".
-    a_norm = a.replace('-', '').replace('\u2013', '').replace(' ', '')
+    a_norm = a.replace("-", "").replace("\u2013", "").replace(" ", "")
     for src in src_lower:
         if a == src:
             return True
-        src_norm = src.replace('-', '').replace('\u2013', '').replace(' ', '')
+        src_norm = src.replace("-", "").replace("\u2013", "").replace(" ", "")
         if a_norm == src_norm:
             return True
     # Try rapidfuzz (optional dep); else fall back to startswith/levenshtein.
     try:
         from rapidfuzz import fuzz as _rf
-        return any(
-            _rf.token_set_ratio(a, src) >= 82
-            for src in src_lower
-        )
+
+        return any(_rf.token_set_ratio(a, src) >= 82 for src in src_lower)
     except ImportError:
         # Simple fallback: casefold startswith either direction (handles
         # "AuthorY" vs "Dukhaim" only loosely, but rapidfuzz is in deps).
-        return any(
-            a.startswith(src) or src.startswith(a)
-            for src in src_lower
-        )
+        return any(a.startswith(src) or src.startswith(a) for src in src_lower)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -426,33 +465,40 @@ def detect_prompt_leakage(text: str, field_label: str) -> tuple[str, list[Issue]
         for pat in _PROMPT_LEAKAGE_RE:
             for m in list(pat.finditer(cleaned)):
                 snippet = _snippet(cleaned, m.start())
-                issues.append(Issue(
-                    detector="prompt",
-                    severity="fix",
-                    field=field_label,
-                    snippet=snippet,
-                    detail=f"stripped prompt-leakage: '{m.group(0)[:40]}'",
-                ))
-            cleaned = pat.sub('', cleaned)
+                issues.append(
+                    Issue(
+                        detector="prompt",
+                        severity="fix",
+                        field=field_label,
+                        snippet=snippet,
+                        detail=f"stripped prompt-leakage: '{m.group(0)[:40]}'",
+                    )
+                )
+            cleaned = pat.sub("", cleaned)
         # Collapse the double-spaces the substitutions leave behind.
-        cleaned = re.sub(r'  +', ' ', cleaned)
+        cleaned = re.sub(r"  +", " ", cleaned)
         # Remove a stray leading "(" that now opens nothing — the classic
         # V18.2.12 artifact was "( provided in the input" and after removing
         # the phrase, "(" lingers at the start of a bullet/sentence.
-        cleaned = re.sub(r'(?m)^\s*\(\s+', '', cleaned)
-        cleaned = re.sub(r'\s+\)\s*([.;,])', r'\1', cleaned)  # dangling ")"
+        cleaned = re.sub(r"(?m)^\s*\(\s+", "", cleaned)
+        cleaned = re.sub(r"\s+\)\s*([.;,])", r"\1", cleaned)  # dangling ")"
         # Strip a leading ", " left behind when a leakage phrase opened a
         # clause (e.g., "( provided in the input, the author notes..." ->
         # after stripping the leakage + leading "(" we get ", the author notes";
         # clean up the orphaned comma so the bullet starts cleanly).
-        cleaned = re.sub(r'(?m)^\s*,\s+', '', cleaned)
+        cleaned = re.sub(r"(?m)^\s*,\s+", "", cleaned)
         # Collapse newlines that the removals may have orphaned.
-        cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned).strip()
+        cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned).strip()
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="prompt", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"prompt-leakage check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="prompt",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"prompt-leakage check crashed: {e!r}",
+            )
+        )
         return text, issues
     return cleaned, issues
 
@@ -473,40 +519,39 @@ def detect_prompt_leakage(text: str, field_label: str) -> tuple[str, list[Issue]
 # exec_sum per summarizer.py:3077).
 
 _COT_NARRATIVE_MARKERS: tuple[str, ...] = (
-    r'\bLet me (?:organize|count|draft|list|write|be very careful)\b',
-    r'\bNamed contributors in order\b',
-    r'\bwrite the five sections\b',
-    r'\bBullet points\s*\(\s*\d+-\d+\s*\)\s*:',
-    r'\bExecutive Summary\s*\(\s*\d+-\d+\s*words?\s*\)\s*:',
-    r'\bI need \d+-\d+ distinct key takeaways\b',
-    r'\bWait,? let me re-?read\b',
-    r'\bLet me organize my understanding\b',
-    r'\bwhat (?:appears|seems) to be (?:a|an) [a-z\-]+ (?:text|book|work|chapter|document|study|manual)\b',  # V18.20.3.9: book-keyed literal generalized (see the leak-pattern twin above)
-    r'\bgo through the source material\b',
-    r'\bextract all key concepts, arguments, frameworks\b',
-    r'\bmaking sure to:\s*$',
-    r'\bwhile also maintaining academic precision\b',
-    r'\bThis is a tension\b',
-    r'\bnow write\b',
-    r'\bLet me count carefully\b',
-    r'\bLet me draft each section\b',
-    r'\bLet me list them\b',
+    r"\bLet me (?:organize|count|draft|list|write|be very careful)\b",
+    r"\bNamed contributors in order\b",
+    r"\bwrite the five sections\b",
+    r"\bBullet points\s*\(\s*\d+-\d+\s*\)\s*:",
+    r"\bExecutive Summary\s*\(\s*\d+-\d+\s*words?\s*\)\s*:",
+    r"\bI need \d+-\d+ distinct key takeaways\b",
+    r"\bWait,? let me re-?read\b",
+    r"\bLet me organize my understanding\b",
+    r"\bwhat (?:appears|seems) to be (?:a|an) [a-z\-]+ (?:text|book|work|chapter|document|study|manual)\b",  # V18.20.3.9: book-keyed literal generalized (see the leak-pattern twin above)
+    r"\bgo through the source material\b",
+    r"\bextract all key concepts, arguments, frameworks\b",
+    r"\bmaking sure to:\s*$",
+    r"\bwhile also maintaining academic precision\b",
+    r"\bThis is a tension\b",
+    r"\bnow write\b",
+    r"\bLet me count carefully\b",
+    r"\bLet me draft each section\b",
+    r"\bLet me list them\b",
     # V18.16.0.1 (Fix 1): exec-from-thorough CoT markers. The V18.16.0.0
     # regression: the exec-from-thorough call produced CoT that started with
     # "me to write a 150-250 word executive summary... synthesize the key
     # points... Draft: This chapter...". These are the model echoing the
     # PROMPT INSTRUCTIONS back as its output, NOT a summary.
-    r'\bme to write\b',
-    r'\bsynthesize the key\b',
-    r'\bKey elements to capture\b',
-    r'\bthis in flowing prose\b',
-    r'\bcarefully\.\s*Draft\b',
-    r'^\s*Draft:\s',
-    r'\bsynthesize.*thorough summary\b',
+    r"\bme to write\b",
+    r"\bsynthesize the key\b",
+    r"\bKey elements to capture\b",
+    r"\bthis in flowing prose\b",
+    r"\bcarefully\.\s*Draft\b",
+    r"^\s*Draft:\s",
+    r"\bsynthesize.*thorough summary\b",
 )
 
 _COT_NARRATIVE_RE = [re.compile(p, re.IGNORECASE) for p in _COT_NARRATIVE_MARKERS]
-
 
 
 def detect_cot_narrative(text: str, field_label: str) -> tuple[str, list[Issue]]:
@@ -542,25 +587,32 @@ def detect_cot_narrative(text: str, field_label: str) -> tuple[str, list[Issue]]
     try:
         marker_count = sum(1 for pat in _COT_NARRATIVE_RE if pat.search(text))
         if marker_count >= 3:
-            issues.append(Issue(
+            issues.append(
+                Issue(
+                    detector="cot_narrative",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:80],
+                    detail=(
+                        f"thorough_summary is chain-of-thought narrative "
+                        f"({marker_count} CoT markers detected — truncating to "
+                        f"empty; caller falls back to exec_sum). The V18.15.6.0 "
+                        f"golden-master regression was caused by this: the "
+                        f"thorough_summary was 100% model reasoning, not a summary."
+                    ),
+                )
+            )
+            return "", issues
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
                 detector="cot_narrative",
                 severity="flag",
                 field=field_label,
-                snippet=text[:80],
-                detail=(
-                    f"thorough_summary is chain-of-thought narrative "
-                    f"({marker_count} CoT markers detected — truncating to "
-                    f"empty; caller falls back to exec_sum). The V18.15.6.0 "
-                    f"golden-master regression was caused by this: the "
-                    f"thorough_summary was 100% model reasoning, not a summary."
-                ),
-            ))
-            return "", issues
-    except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="cot_narrative", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"CoT-narrative check crashed: {e!r}",
-        ))
+                snippet=text[:60],
+                detail=f"CoT-narrative check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -611,13 +663,15 @@ def detect_garbled_tokens(
         # accept a precomputed set from run_post_checks and fall back to the
         # lazy per-call build for direct callers.
         if source_words is None:
-            source_words = set(re.findall(r'\b[a-z]+\b', source_text.lower())) if source_text else set()
+            source_words = (
+                set(re.findall(r"\b[a-z]+\b", source_text.lower())) if source_text else set()
+            )
         flagged_words: set = set()
 
         def _flag(match: re.Match, signal: str) -> None:
             word = match.group(0)
             # Strip surrounding punctuation for allowlist lookup.
-            bare = word.strip('.,;:!?"\'()[]{}')
+            bare = word.strip(".,;:!?\"'()[]{}")
             # V18.15.3.2: source-grounded — if the word is in the source, it's legitimate
             if source_words and bare.casefold() in source_words:
                 return
@@ -626,13 +680,15 @@ def detect_garbled_tokens(
                 return
             flagged_words.add(key)
             snippet = _snippet(text, match.start())
-            issues.append(Issue(
-                detector="garbled",
-                severity="flag",
-                field=field_label,
-                snippet=snippet,
-                detail=f"{signal}: '{bare}'",
-            ))
+            issues.append(
+                Issue(
+                    detector="garbled",
+                    severity="flag",
+                    field=field_label,
+                    snippet=snippet,
+                    detail=f"{signal}: '{bare}'",
+                )
+            )
 
         for m in _LONG_CONSONANT_CLUSTER_RE.finditer(text):
             _flag(m, "long consonant cluster (6+)")
@@ -641,10 +697,15 @@ def detect_garbled_tokens(
         for m in _VOWEL_LESS_LONG_RE.finditer(text):
             _flag(m, "long vowel-less word (5+)")
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="garbled", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"garbled-token check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="garbled",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"garbled-token check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -691,14 +752,17 @@ def detect_missing_spaces(
     try:
         # Pattern 1: stopword + Capitalized → split (always safe).
         def _split_cap(m: re.Match) -> str:
-            issues.append(Issue(
-                detector="space",
-                severity="fix",
-                field=field_label,
-                snippet=_snippet(cleaned, m.start()),
-                detail=f"split '{m.group(0)}' → '{m.group(1)} {m.group(2)}'",
-            ))
+            issues.append(
+                Issue(
+                    detector="space",
+                    severity="fix",
+                    field=field_label,
+                    snippet=_snippet(cleaned, m.start()),
+                    detail=f"split '{m.group(0)}' → '{m.group(1)} {m.group(2)}'",
+                )
+            )
             return f"{m.group(1)} {m.group(2)}"
+
         cleaned = _MISSING_SPACE_CAP_RE.sub(_split_cap, cleaned)
 
         # Pattern 3: camelCase merge → split (always safe).
@@ -708,14 +772,17 @@ def detect_missing_spaces(
             # V18.15.3.2: skip if Pattern 1 already handled (short word + Capital)
             if len(m.group(1)) <= 3:
                 return m.group(0)
-            issues.append(Issue(
-                detector="space",
-                severity="fix",
-                field=field_label,
-                snippet=_snippet(cleaned, m.start()),
-                detail=f"split camelCase '{m.group(0)}' → '{m.group(1)} {m.group(2)}'",
-            ))
+            issues.append(
+                Issue(
+                    detector="space",
+                    severity="fix",
+                    field=field_label,
+                    snippet=_snippet(cleaned, m.start()),
+                    detail=f"split camelCase '{m.group(0)}' → '{m.group(1)} {m.group(2)}'",
+                )
+            )
             return f"{m.group(1)} {m.group(2)}"
+
         cleaned = _CAMELCASE_MERGE_RE.sub(_split_camel, cleaned)
 
         # Pattern 2: "the" + lowercase (4+) → split, but NOT if the merged
@@ -725,13 +792,13 @@ def detect_missing_spaces(
         # "thence", "theorem", "theology", "theorist", "theoretical", etc.
         # Short suffixes (<=3 chars: "theory"="the"+"ory" where "ory" is 3)
         # never reach this code because of the {4,} minimum in the regex.
-                # V18.15.3.2: _real_merged DELETED. Source-grounded validation replaces it.
+        # V18.15.3.2: _real_merged DELETED. Source-grounded validation replaces it.
         # V18.20.2.0 (SWOT A24): accept precomputed source_lower/source_words
         # from run_post_checks (was rebuilt per bullet); lazy-build when omitted.
         if source_lower is None:
             source_lower = source_text.lower() if source_text else ""
         if source_words is None:
-            source_words = set(re.findall(r'\b[a-z]+\b', source_lower)) if source_text else set()
+            source_words = set(re.findall(r"\b[a-z]+\b", source_lower)) if source_text else set()
 
         def _split_lower(m: re.Match) -> str:
             merged = m.group(0)
@@ -744,25 +811,33 @@ def detect_missing_spaces(
                 return merged
             # If split form appears in source -> confirmed merge -> split
             if split_form.lower() in source_lower:
-                issues.append(Issue(
-                    detector="space",
-                    severity="fix",
-                    field=field_label,
-                    snippet=_snippet(cleaned, m.start()),
-                    detail=f"split '{merged}' -> '{split_form}' (source-validated)",
-                ))
+                issues.append(
+                    Issue(
+                        detector="space",
+                        severity="fix",
+                        field=field_label,
+                        snippet=_snippet(cleaned, m.start()),
+                        detail=f"split '{merged}' -> '{split_form}' (source-validated)",
+                    )
+                )
                 return split_form
             # Neither form in source -> conservative: don't split
             return merged
+
         cleaned = _MISSING_SPACE_LOWER_RE.sub(_split_lower, cleaned)
 
         # Final whitespace cleanup.
-        cleaned = re.sub(r'  +', ' ', cleaned).strip()
+        cleaned = re.sub(r"  +", " ", cleaned).strip()
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="space", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"missing-space check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="space",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"missing-space check crashed: {e!r}",
+            )
+        )
         return text, issues
     return cleaned, issues
 
@@ -777,14 +852,14 @@ def detect_missing_spaces(
 # discipline.
 
 _INTERPRETIVE_FIRST_PERSON_RE = re.compile(
-    r'\b(?:'
-    r'we\s+can\s+see\s+that|we\s+can\s+conclude\s+that|'
-    r'we\s+see\s+that|we\s+note\s+that|we\s+observe\s+that|'
-    r'we\s+can\s+infer\s+that|we\s+can\s+deduce\s+that|'
-    r'it\s+is\s+clear\s+that|it\s+is\s+evident\s+that|'
-    r'it\s+is\s+obvious\s+that|it\s+should\s+be\s+noted\s+that|'
-    r'it\s+is\s+worth\s+noting\s+that|it\s+is\s+important\s+to\s+note\s+that'
-    r')\s*,?\s*',
+    r"\b(?:"
+    r"we\s+can\s+see\s+that|we\s+can\s+conclude\s+that|"
+    r"we\s+see\s+that|we\s+note\s+that|we\s+observe\s+that|"
+    r"we\s+can\s+infer\s+that|we\s+can\s+deduce\s+that|"
+    r"it\s+is\s+clear\s+that|it\s+is\s+evident\s+that|"
+    r"it\s+is\s+obvious\s+that|it\s+should\s+be\s+noted\s+that|"
+    r"it\s+is\s+worth\s+noting\s+that|it\s+is\s+important\s+to\s+note\s+that"
+    r")\s*,?\s*",
     re.IGNORECASE,
 )
 
@@ -794,14 +869,13 @@ _INTERPRETIVE_FIRST_PERSON_RE = re.compile(
 # leaves a trace for review.
 
 _INTERPRETIVE_LEAP_RE = re.compile(
-    r'\b(?:'
-    r'this\s+implies|this\s+suggests|this\s+means|'
-    r'this\s+indicates|this\s+demonstrates|this\s+shows|'
-    r'this\s+reveals|this\s+illustrates|this\s+proves'
-    r')\b',
+    r"\b(?:"
+    r"this\s+implies|this\s+suggests|this\s+means|"
+    r"this\s+indicates|this\s+demonstrates|this\s+shows|"
+    r"this\s+reveals|this\s+illustrates|this\s+proves"
+    r")\b",
     re.IGNORECASE,
 )
-
 
 
 def detect_interpretive_leaps(
@@ -848,17 +922,19 @@ def detect_interpretive_leaps(
     try:
         # Tier 1: Auto-strip first-person interpretive phrases.
         for m in list(_INTERPRETIVE_FIRST_PERSON_RE.finditer(cleaned)):
-            issues.append(Issue(
-                detector="interpretation",
-                severity="fix",
-                field=field_label,
-                snippet=_snippet(cleaned, m.start()),
-                detail=f"stripped first-person interpretation: '{m.group(0).strip()}'",
-            ))
-        cleaned = _INTERPRETIVE_FIRST_PERSON_RE.sub('', cleaned)
+            issues.append(
+                Issue(
+                    detector="interpretation",
+                    severity="fix",
+                    field=field_label,
+                    snippet=_snippet(cleaned, m.start()),
+                    detail=f"stripped first-person interpretation: '{m.group(0).strip()}'",
+                )
+            )
+        cleaned = _INTERPRETIVE_FIRST_PERSON_RE.sub("", cleaned)
         # Clean up the double-space / capitalization left behind.
-        cleaned = re.sub(r'\s+([,.;])', r'\1', cleaned)
-        cleaned = re.sub(r'  +', ' ', cleaned)
+        cleaned = re.sub(r"\s+([,.;])", r"\1", cleaned)
+        cleaned = re.sub(r"  +", " ", cleaned)
 
         # Tier 2: Flag interpretive-leap phrases (source-aware).
         # V18.20.2.0 (SWOT A24): accept the precomputed 200k-char lowercased
@@ -880,21 +956,28 @@ def detect_interpretive_leaps(
                 # conservative proxy that avoids false-flagging the source's
                 # own language.)
                 continue
-            issues.append(Issue(
+            issues.append(
+                Issue(
+                    detector="interpretation",
+                    severity="flag",
+                    field=field_label,
+                    snippet=_snippet(cleaned, m.start()),
+                    detail=(
+                        f"interpretive leap '{phrase}' not found in source — "
+                        f"summarizer may be adding interpretation"
+                    ),
+                )
+            )
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
                 detector="interpretation",
                 severity="flag",
                 field=field_label,
-                snippet=_snippet(cleaned, m.start()),
-                detail=(
-                    f"interpretive leap '{phrase}' not found in source — "
-                    f"summarizer may be adding interpretation"
-                ),
-            ))
-    except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="interpretation", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"interpretive-leap check crashed: {e!r}",
-        ))
+                snippet=text[:60],
+                detail=f"interpretive-leap check crashed: {e!r}",
+            )
+        )
         return text, issues
     return cleaned, issues
 
@@ -908,19 +991,39 @@ def detect_interpretive_leaps(
 # uncertainty/qualification in the source. Book-agnostic by design.
 
 _HEDGE_WORDS = (
-    'may', 'might', 'could', 'appears to', 'seems to', 'suggests',
-    'likely', 'possibly', 'perhaps', 'uncertain', 'unclear',
-    'remains', 'arguably', 'presumably', 'potentially', 'seemingly',
-    'allegedly', 'purportedly', 'hinges on', 'depends on',
-    'not yet', 'not fully', 'not entirely', 'subject to',
-    'tentatively', 'hypothetically', 'theoretically',
+    "may",
+    "might",
+    "could",
+    "appears to",
+    "seems to",
+    "suggests",
+    "likely",
+    "possibly",
+    "perhaps",
+    "uncertain",
+    "unclear",
+    "remains",
+    "arguably",
+    "presumably",
+    "potentially",
+    "seemingly",
+    "allegedly",
+    "purportedly",
+    "hinges on",
+    "depends on",
+    "not yet",
+    "not fully",
+    "not entirely",
+    "subject to",
+    "tentatively",
+    "hypothetically",
+    "theoretically",
 )
 
 _HEDGE_RE = re.compile(
-    r'\b(?:' + '|'.join(re.escape(w) for w in _HEDGE_WORDS) + r')\b',
+    r"\b(?:" + "|".join(re.escape(w) for w in _HEDGE_WORDS) + r")\b",
     re.IGNORECASE,
 )
-
 
 
 def detect_hedge_loss(
@@ -965,23 +1068,30 @@ def detect_hedge_loss(
         sum_density = sum_hedges / max(len(text), 1) * 1000
 
         if src_density >= 3.0 and sum_density < 1.0:
-            issues.append(Issue(
+            issues.append(
+                Issue(
+                    detector="hedge",
+                    severity="flag",
+                    field=field_label,
+                    snippet=f"source {src_density:.1f}/1k vs summary {sum_density:.1f}/1k",
+                    detail=(
+                        f"hedge loss: source has {src_hedges} hedges "
+                        f"({src_density:.1f}/1k chars) but summary has only "
+                        f"{sum_hedges} ({sum_density:.1f}/1k) — hedged claims "
+                        f"may be presented as certain"
+                    ),
+                )
+            )
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
                 detector="hedge",
                 severity="flag",
                 field=field_label,
-                snippet=f"source {src_density:.1f}/1k vs summary {sum_density:.1f}/1k",
-                detail=(
-                    f"hedge loss: source has {src_hedges} hedges "
-                    f"({src_density:.1f}/1k chars) but summary has only "
-                    f"{sum_hedges} ({sum_density:.1f}/1k) — hedged claims "
-                    f"may be presented as certain"
-                ),
-            ))
-    except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="hedge", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"hedge-loss check crashed: {e!r}",
-        ))
+                snippet=text[:60],
+                detail=f"hedge-loss check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -1033,7 +1143,7 @@ def verify_attribution(
             return text, issues
 
         # Build source sentence index for fast lookup.
-        src_sentences = re.split(r'(?<=[.!?])\s+', source_text)
+        src_sentences = re.split(r"(?<=[.!?])\s+", source_text)
         # V18.20.2.0 (SWOT A24): accept the precomputed 200k-char lowercased
         # source (was rebuilt per bullet); lazy-build when omitted.
         src_lower = source_lower if source_lower is not None else source_text.lower()[:200000]
@@ -1041,9 +1151,11 @@ def verify_attribution(
         # Try rapidfuzz for similarity; fall back to difflib.
         try:
             from rapidfuzz import fuzz as _rf
+
             _has_rf = True
         except ImportError:
             from difflib import SequenceMatcher
+
             _has_rf = False
 
         def _similarity(a: str, b: str) -> float:
@@ -1060,9 +1172,28 @@ def verify_attribution(
                 continue
             # Skip non-name stopwords (same list as validate_years).
             if author_clean.split()[0].lower() in {
-                "in", "by", "the", "a", "an", "as", "at", "to", "of",
-                "and", "or", "for", "with", "from", "that", "this",
-                "while", "when", "where", "later", "then", "early",
+                "in",
+                "by",
+                "the",
+                "a",
+                "an",
+                "as",
+                "at",
+                "to",
+                "of",
+                "and",
+                "or",
+                "for",
+                "with",
+                "from",
+                "that",
+                "this",
+                "while",
+                "when",
+                "where",
+                "later",
+                "then",
+                "early",
             }:
                 continue
             key = author_clean.casefold()
@@ -1076,8 +1207,8 @@ def verify_attribution(
                 continue  # validate_years already flags name mismatches
 
             # Extract the summary's sentence containing this citation.
-            sent_start = text.rfind('.', 0, m.start()) + 1
-            sent_end = text.find('.', m.end())
+            sent_start = text.rfind(".", 0, m.start()) + 1
+            sent_end = text.find(".", m.end())
             if sent_end < 0:
                 sent_end = len(text)
             summary_claim = text[sent_start:sent_end].strip()
@@ -1085,7 +1216,6 @@ def verify_attribution(
             # Find the source sentence containing this author + year.
             best_src_claim = ""
             best_sim = 0.0
-            year_lower = year.lower()
             for sent in src_sentences:
                 if author_lower in sent.lower():
                     # Prefer sentences that also mention the year.
@@ -1114,60 +1244,116 @@ def verify_attribution(
                 # has OTHER vocabulary, and most of it tracks the source.
                 _suppressed_as_paraphrase = False
                 if 0.40 <= best_sim < 0.50:
-                    _src_words_set = set(
-                        re.findall(r'\b[a-z0-9]+\b', best_src_claim.lower())
-                    )
+                    _src_words_set = set(re.findall(r"\b[a-z0-9]+\b", best_src_claim.lower()))
                     _checks = [
-                        e for e in re.findall(
-                            r'\b[A-Z][a-zA-Z]{2,}\b|\b\d{4}[a-z]?\b',
+                        e
+                        for e in re.findall(
+                            r"\b[A-Z][a-zA-Z]{2,}\b|\b\d{4}[a-z]?\b",
                             summary_claim,
                         )
-                        if e.lower() not in {
-                            "the", "in", "by", "a", "an", "as", "at", "to",
-                            "of", "and", "or", "for", "with", "from", "that",
-                            "this", "these", "those", "while", "when", "where",
-                            "later", "then", "early", "his", "her", "their",
-                            "its", "he", "she",
-                        } and e.lower() != author_clean.lower()
+                        if e.lower()
+                        not in {
+                            "the",
+                            "in",
+                            "by",
+                            "a",
+                            "an",
+                            "as",
+                            "at",
+                            "to",
+                            "of",
+                            "and",
+                            "or",
+                            "for",
+                            "with",
+                            "from",
+                            "that",
+                            "this",
+                            "these",
+                            "those",
+                            "while",
+                            "when",
+                            "where",
+                            "later",
+                            "then",
+                            "early",
+                            "his",
+                            "her",
+                            "their",
+                            "its",
+                            "he",
+                            "she",
+                        }
+                        and e.lower() != author_clean.lower()
                     ]
                     _checks += [
-                        w for w in re.findall(r'\b[a-z]{5,}\b', summary_claim.lower())
-                        if w not in {
-                            "about", "their", "which", "there", "these",
-                            "those", "while", "through", "between", "during",
-                            "before", "after", "where", "would", "could",
-                            "should", "might", "because", "since", "although",
-                            "though", "other", "others", "being", "having",
+                        w
+                        for w in re.findall(r"\b[a-z]{5,}\b", summary_claim.lower())
+                        if w
+                        not in {
+                            "about",
+                            "their",
+                            "which",
+                            "there",
+                            "these",
+                            "those",
+                            "while",
+                            "through",
+                            "between",
+                            "during",
+                            "before",
+                            "after",
+                            "where",
+                            "would",
+                            "could",
+                            "should",
+                            "might",
+                            "because",
+                            "since",
+                            "although",
+                            "though",
+                            "other",
+                            "others",
+                            "being",
+                            "having",
                         }
                     ]
                     if _checks:
                         _hits = sum(
-                            1 for w in _checks
+                            1
+                            for w in _checks
                             if w.lower() in _src_words_set
-                            or w.lower().rstrip('s') in _src_words_set
-                            or w.lower() + 's' in _src_words_set
+                            or w.lower().rstrip("s") in _src_words_set
+                            or w.lower() + "s" in _src_words_set
                         )
                         if _hits / len(_checks) >= 0.5:
                             _suppressed_as_paraphrase = True
                 if _suppressed_as_paraphrase:
                     continue
-                issues.append(Issue(
-                    detector="attribution",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"attribution mismatch: summary's claim about "
-                        f"'{author_clean} ({year})' has {best_sim:.0%} "
-                        f"similarity to the source's claim about this author "
-                        f"(threshold 50% — the claim may be misrepresented"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="attribution",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"attribution mismatch: summary's claim about "
+                            f"'{author_clean} ({year})' has {best_sim:.0%} "
+                            f"similarity to the source's claim about this author "
+                            f"(threshold 50% — the claim may be misrepresented"
+                        ),
+                    )
+                )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="attribution", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"attribution check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="attribution",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"attribution check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -1225,9 +1411,11 @@ def verify_bold_name_attribution(
         # Try rapidfuzz for similarity; fall back to difflib.
         try:
             from rapidfuzz import fuzz as _rf
+
             _has_rf = True
         except ImportError:
             from difflib import SequenceMatcher
+
             _has_rf = False
 
         def _similarity(a: str, b: str) -> float:
@@ -1236,7 +1424,8 @@ def verify_bold_name_attribution(
             return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
         import re as _re
-        src_sentences = _re.split(r'(?<=[.!?])\s+', source_text)
+
+        src_sentences = _re.split(r"(?<=[.!?])\s+", source_text)
 
         seen = set()
         for m in bold_matches:
@@ -1252,17 +1441,19 @@ def verify_bold_name_attribution(
             author_lower = author.lower()
             if author_lower not in src_lower:
                 # Author not mentioned in source at all → FLAG.
-                issues.append(Issue(
-                    detector="attribution",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"bold-name author '{author}' not found in source — "
-                        f"the summary attributes a claim to an author the "
-                        f"source never mentions"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="attribution",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"bold-name author '{author}' not found in source — "
+                            f"the summary attributes a claim to an author the "
+                            f"source never mentions"
+                        ),
+                    )
+                )
                 continue
 
             # Author IS in source — check if the claim matches.
@@ -1277,18 +1468,20 @@ def verify_bold_name_attribution(
                         best_src_claim = sent
 
             if best_src_claim and best_sim < 0.50:
-                issues.append(Issue(
-                    detector="attribution",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"bold-name attribution mismatch: '**{author}**: "
-                        f"{claim[:40]}…' has {best_sim:.0%} similarity to "
-                        f"the source's claim about this author (threshold 50% "
-                        f"— the claim may be misrepresented"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="attribution",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"bold-name attribution mismatch: '**{author}**: "
+                            f"{claim[:40]}…' has {best_sim:.0%} similarity to "
+                            f"the source's claim about this author (threshold 50% "
+                            f"— the claim may be misrepresented"
+                        ),
+                    )
+                )
 
             # V18.2.18 Improvement 1 (enhanced): Check if the author is the
             # SUBJECT of the source's claim, not just mentioned. The AuthorC
@@ -1303,35 +1496,44 @@ def verify_bold_name_attribution(
             # subject, flag it.
             if best_src_claim:
                 _citation_ctx = _re.search(
-                    r'\(' + _re.escape(author) + r'\s+\d{4}',
+                    r"\(" + _re.escape(author) + r"\s+\d{4}",
                     best_src_claim,
                 )
                 # Check if the author's name appears OUTSIDE of a parenthetical
                 # citation (i.e., as the sentence subject, not just a cite).
-                _non_citation_mention = bool(_re.search(
-                    rf'(?<!\(){author}\b(?!\s*\d{{4}})',
-                    best_src_claim,
-                ))
+                _non_citation_mention = bool(
+                    _re.search(
+                        rf"(?<!\(){author}\b(?!\s*\d{{4}})",
+                        best_src_claim,
+                    )
+                )
                 if _citation_ctx and not _non_citation_mention:
-                    issues.append(Issue(
-                        detector="attribution",
-                        severity="flag",
-                        field=field_label,
-                        snippet=_snippet(text, m.start()),
-                        detail=(
-                            f"bold-name subject mismatch: '**{author}**: "
-                            f"{claim[:40]}…' — the source mentions "
-                            f"'{author}' only as a citation (e.g. "
-                            f"'({author} YEAR)'), not as the subject of the "
-                            f"claim. The work may be attributed to a different "
-                            f"author in the source."
-                        ),
-                    ))
+                    issues.append(
+                        Issue(
+                            detector="attribution",
+                            severity="flag",
+                            field=field_label,
+                            snippet=_snippet(text, m.start()),
+                            detail=(
+                                f"bold-name subject mismatch: '**{author}**: "
+                                f"{claim[:40]}…' — the source mentions "
+                                f"'{author}' only as a citation (e.g. "
+                                f"'({author} YEAR)'), not as the subject of the "
+                                f"claim. The work may be attributed to a different "
+                                f"author in the source."
+                            ),
+                        )
+                    )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="attribution", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"bold-name attribution check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="attribution",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"bold-name attribution check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -1355,43 +1557,112 @@ def verify_bold_name_attribution(
 
 # Pattern 2: period+Capital with no space (merged sentences)
 
-_MERGED_SENTENCE_RE = re.compile(r'\.([A-Z][a-z]+)')
+_MERGED_SENTENCE_RE = re.compile(r"\.([A-Z][a-z]+)")
 
 # Common finite-verb endings (3rd person singular + base forms).
 # Used to detect "no main verb" — if none of these appear in the first
 # 40 words, the bullet likely has no finite verb.
 
 _VERB_ENDINGS = (
-    'es', 'ed', 'ing', 'ies', 'ied', 'ays', 'ows', 'aps', 'ops', 'ups',
-    'ans', 'ens', 'ins', 'ars', 'ers', 'irs', 'ors', 'urs',
-    'ate', 'ite', 'ose', 'ise', 'ize',
-    'ect', 'act', 'ict', 'upt', 'apt', 'opt',
-    'ain', 'oin', 'urn', 'awn',
+    "es",
+    "ed",
+    "ing",
+    "ies",
+    "ied",
+    "ays",
+    "ows",
+    "aps",
+    "ops",
+    "ups",
+    "ans",
+    "ens",
+    "ins",
+    "ars",
+    "ers",
+    "irs",
+    "ors",
+    "urs",
+    "ate",
+    "ite",
+    "ose",
+    "ise",
+    "ize",
+    "ect",
+    "act",
+    "ict",
+    "upt",
+    "apt",
+    "opt",
+    "ain",
+    "oin",
+    "urn",
+    "awn",
     # V18.2.19: Irregular verb endings (past tense + participles).
-    'ade',  # made, bade, waded
-    'oke',  # broke, spoke, woke
-    'elt',  # felt, dealt, knelt
-    'ew',   # knew, threw, grew, blew
-    'at',   # sat, pat, chat
-    'it',   # hit, split, quit
-    'ut',   # shut, cut, put
-    'et',   # set, let, get, met
-    'ound', # found, bound, wound
-    'old',  # sold, told, held
-    'ung',  # hung, sung, rung
-    'unk',  # sunk, drunk, shrunk
+    "ade",  # made, bade, waded
+    "oke",  # broke, spoke, woke
+    "elt",  # felt, dealt, knelt
+    "ew",  # knew, threw, grew, blew
+    "at",  # sat, pat, chat
+    "it",  # hit, split, quit
+    "ut",  # shut, cut, put
+    "et",  # set, let, get, met
+    "ound",  # found, bound, wound
+    "old",  # sold, told, held
+    "ung",  # hung, sung, rung
+    "unk",  # sunk, drunk, shrunk
 )
 # Stopwords that look like verbs but aren't (auxiliaries + articles).
 
-_VERB_STOPWORDS = frozenset({
-    'the', 'and', 'but', 'for', 'with', 'from', 'this', 'that', 'these',
-    'those', 'which', 'what', 'when', 'where', 'while', 'during', 'before',
-    'after', 'between', 'among', 'through', 'without', 'within', 'against',
-    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
-    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
-    'can', 'shall', 'must',
-})
-
+_VERB_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "but",
+        "for",
+        "with",
+        "from",
+        "this",
+        "that",
+        "these",
+        "those",
+        "which",
+        "what",
+        "when",
+        "where",
+        "while",
+        "during",
+        "before",
+        "after",
+        "between",
+        "among",
+        "through",
+        "without",
+        "within",
+        "against",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "must",
+    }
+)
 
 
 def detect_grammatical_incoherence(
@@ -1427,80 +1698,95 @@ def detect_grammatical_incoherence(
     try:
         # Signal 1: Merged sentences (.Capital with no space)
         for m in list(_MERGED_SENTENCE_RE.finditer(text)):
-            issues.append(Issue(
-                detector="grammar",
-                severity="flag",
-                field=field_label,
-                snippet=_snippet(text, m.start()),
-                detail=(
-                    f"merged sentences: '.{m.group(1)}' — a period is "
-                    f"immediately followed by a Capital letter with no space. "
-                    f"Likely a formatting/extraction failure."
-                ),
-            ))
+            issues.append(
+                Issue(
+                    detector="grammar",
+                    severity="flag",
+                    field=field_label,
+                    snippet=_snippet(text, m.start()),
+                    detail=(
+                        f"merged sentences: '.{m.group(1)}' — a period is "
+                        f"immediately followed by a Capital letter with no space. "
+                        f"Likely a formatting/extraction failure."
+                    ),
+                )
+            )
 
         # Signal 2 + 3: Check each bullet/line for missing verb
-        lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 15]
+        lines = [
+            line.strip() for line in text.split("\n") if line.strip() and len(line.strip()) > 15
+        ]
         for line in lines:
-            words = re.findall(r'[A-Za-z]+', line)
+            words = re.findall(r"[A-Za-z]+", line)
             if len(words) < 5:
                 continue
             first_40 = words[:40]
             # Check for any finite verb (word >3 chars ending in a verb suffix,
             # not a stopword).
             has_verb = any(
-                len(w) > 3 and w.lower() not in _VERB_STOPWORDS and
-                any(w.lower().endswith(e) for e in _VERB_ENDINGS)
+                len(w) > 3
+                and w.lower() not in _VERB_STOPWORDS
+                and any(w.lower().endswith(e) for e in _VERB_ENDINGS)
                 for w in first_40
             )
             if not has_verb:
                 # Double-check: is there an auxiliary (is/are/was/were)?
-                has_aux = any(w.lower() in _VERB_STOPWORDS for w in first_40
-                              if w.lower() in ('is', 'are', 'was', 'were',
-                                               'have', 'has', 'had'))
+                has_aux = any(
+                    w.lower() in _VERB_STOPWORDS
+                    for w in first_40
+                    if w.lower() in ("is", "are", "was", "were", "have", "has", "had")
+                )
                 if not has_aux:
-                    issues.append(Issue(
-                        detector="grammar",
-                        severity="flag",
-                        field=field_label,
-                        snippet=_snippet(line, 0),
-                        detail=(
-                            f"no main verb detected in first 40 words of "
-                            f"'{line[:40]}…' — the bullet may be grammatically "
-                            f"broken (generation/formatting failure)"
-                        ),
-                    ))
+                    issues.append(
+                        Issue(
+                            detector="grammar",
+                            severity="flag",
+                            field=field_label,
+                            snippet=_snippet(line, 0),
+                            detail=(
+                                f"no main verb detected in first 40 words of "
+                                f"'{line[:40]}…' — the bullet may be grammatically "
+                                f"broken (generation/formatting failure)"
+                            ),
+                        )
+                    )
 
             # Signal 3: "Noun1 and Noun2 both Noun3" with no verb
             # Pattern: two proper nouns joined by "and", then "both", then
             # a lowercase noun (not a verb).
             _disjoint = re.search(
-                r'([A-Z][a-z]+)\s+and\s+([A-Z][a-z]+)\s+both\s+([a-z]+)',
+                r"([A-Z][a-z]+)\s+and\s+([A-Z][a-z]+)\s+both\s+([a-z]+)",
                 line,
             )
             if _disjoint:
                 third = _disjoint.group(3).lower()
                 # Is the third word a verb? If not, it's a disjoint pattern.
-                _is_verb = any(third.endswith(e) for e in _VERB_ENDINGS) and \
-                           len(third) > 3
+                _is_verb = any(third.endswith(e) for e in _VERB_ENDINGS) and len(third) > 3
                 if not _is_verb:
-                    issues.append(Issue(
-                        detector="grammar",
-                        severity="flag",
-                        field=field_label,
-                        snippet=_snippet(line, 0),
-                        detail=(
-                            f"disjoint subject-object: '{_disjoint.group(0)}' "
-                            f"— '{_disjoint.group(1)} and {_disjoint.group(2)} "
-                            f"both {_disjoint.group(3)}' has no verb between "
-                            f"the subject and object. Likely a broken bullet."
-                        ),
-                    ))
+                    issues.append(
+                        Issue(
+                            detector="grammar",
+                            severity="flag",
+                            field=field_label,
+                            snippet=_snippet(line, 0),
+                            detail=(
+                                f"disjoint subject-object: '{_disjoint.group(0)}' "
+                                f"— '{_disjoint.group(1)} and {_disjoint.group(2)} "
+                                f"both {_disjoint.group(3)}' has no verb between "
+                                f"the subject and object. Likely a broken bullet."
+                            ),
+                        )
+                    )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="grammar", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"grammar check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="grammar",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"grammar check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -1515,6 +1801,7 @@ def detect_grammatical_incoherence(
 # Detection (book-agnostic): a stopword + a fragment that together form a
 # known English word when joined. Uses a common-word set (~5000 words built
 # from the most frequent English terms). No domain-specific vocabulary.
+
 
 def detect_extra_spaces(
     text: str,
@@ -1549,12 +1836,14 @@ def detect_extra_spaces(
     # from run_post_checks (was rebuilt per bullet); lazy-build when omitted.
     source_lower = source_lower if source_lower is not None else source_text.lower()
     # Build a set of standalone words in the source (for O(1) lookup)
-    source_words = source_words if source_words is not None else set(re.findall(r'\b[a-z]+\b', source_lower))
+    source_words = (
+        source_words if source_words is not None else set(re.findall(r"\b[a-z]+\b", source_lower))
+    )
 
     cleaned = text
     try:
         # Pattern: any short word (1-3 chars) + space + fragment (3+ chars)
-        _SPLIT_RE = re.compile(r'\b([a-zA-Z]{1,3})\s+([a-z]{3,})\b')
+        _SPLIT_RE = re.compile(r"\b([a-zA-Z]{1,3})\s+([a-z]{3,})\b")
 
         def _join_if_valid(m: re.Match) -> str:
             word1 = m.group(1).lower()
@@ -1571,7 +1860,7 @@ def detect_extra_spaces(
             # was window-local). The source is the dictionary — if it uses
             # the split form at all, we keep it.
             if re.search(
-                r'\b' + re.escape(word1) + r'\s+' + re.escape(fragment) + r'\b',
+                r"\b" + re.escape(word1) + r"\s+" + re.escape(fragment) + r"\b",
                 source_lower,
             ):
                 return m.group(0)
@@ -1581,13 +1870,15 @@ def detect_extra_spaces(
             # This catches "the reby" → "thereby" (source has "thereby",
             # "reby" is not a standalone source word).
             if joined in source_words and fragment not in source_words:
-                issues.append(Issue(
-                    detector="extra_space",
-                    severity="fix",
-                    field=field_label,
-                    snippet=_snippet(cleaned, m.start()),
-                    detail=f"joined split word: '{m.group(0)}' \u2192 '{joined}' (source-validated)",
-                ))
+                issues.append(
+                    Issue(
+                        detector="extra_space",
+                        severity="fix",
+                        field=field_label,
+                        snippet=_snippet(cleaned, m.start()),
+                        detail=f"joined split word: '{m.group(0)}' \u2192 '{joined}' (source-validated)",
+                    )
+                )
                 return joined
 
             # Phase 2: Adjacent-word guided lookup
@@ -1600,8 +1891,9 @@ def detect_extra_spaces(
             start = max(0, m.start() - 60)
             end = min(len(text), m.end() + 60)
             context = text[start:end].lower()
-            context_words = [w for w in re.findall(r'\b[a-z]{4,}\b', context)
-                            if w != fragment and w != word1]
+            context_words = [
+                w for w in re.findall(r"\b[a-z]{4,}\b", context) if w != fragment and w != word1
+            ]
 
             for adj_word in context_words[:4]:
                 adj_pos = source_lower.find(adj_word)
@@ -1612,22 +1904,27 @@ def detect_extra_spaces(
                     # Search for the JOINED form as a standalone token,
                     # or the hyphenated variant (e.g., a compound term).
                     # Do NOT match the split form ("the core construct").
-                    hyphenated = word1 + '-' + fragment
-                    if (re.search(r'\b' + re.escape(joined) + r'\b', window) or
-                        re.search(r'\b' + re.escape(hyphenated) + r'\b', window)):
+                    hyphenated = word1 + "-" + fragment
+                    if re.search(r"\b" + re.escape(joined) + r"\b", window) or re.search(
+                        r"\b" + re.escape(hyphenated) + r"\b", window
+                    ):
                         # Extra safety: don't join if the split form (word1 + ' ' + fragment)
                         # also appears in the window as standalone words — that means
                         # the split form is legitimate in this source.
-                        split_pattern = r'\b' + re.escape(word1) + r'\s+' + re.escape(fragment) + r'\b'
+                        split_pattern = (
+                            r"\b" + re.escape(word1) + r"\s+" + re.escape(fragment) + r"\b"
+                        )
                         if re.search(split_pattern, window):
                             continue  # split form is in source → don't join
-                        issues.append(Issue(
-                            detector="extra_space",
-                            severity="fix",
-                            field=field_label,
-                            snippet=_snippet(cleaned, m.start()),
-                            detail=f"joined split word: '{m.group(0)}' \u2192 '{joined}' (source-validated via adjacent '{adj_word}')",
-                        ))
+                        issues.append(
+                            Issue(
+                                detector="extra_space",
+                                severity="fix",
+                                field=field_label,
+                                snippet=_snippet(cleaned, m.start()),
+                                detail=f"joined split word: '{m.group(0)}' \u2192 '{joined}' (source-validated via adjacent '{adj_word}')",
+                            )
+                        )
                         return joined
 
             # Not found in source → don't join (safe)
@@ -1635,10 +1932,15 @@ def detect_extra_spaces(
 
         cleaned = _SPLIT_RE.sub(_join_if_valid, cleaned)
     except Exception as e:
-        issues.append(Issue(
-            detector="extra_space", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"extra-space check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="extra_space",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"extra-space check crashed: {e!r}",
+            )
+        )
         return text, issues
     return cleaned, issues
 
@@ -1655,7 +1957,7 @@ def detect_extra_spaces(
 # The 1-2 stray chars are the "o" from "To" after the ". T" was dropped.
 
 _FRAGMENT_MERGE_RE = re.compile(
-    r'\b([a-z]{4,})([a-z]{1,2})\s+([a-z]{2,})\b',
+    r"\b([a-z]{4,})([a-z]{1,2})\s+([a-z]{2,})\b",
     re.IGNORECASE,
 )
 
@@ -1665,35 +1967,36 @@ _FRAGMENT_MERGE_RE = re.compile(
 # This eliminates the 5th-occurrence false-positive class where "differences",
 # "conditions", "contributions", "representations", etc. were flagged.
 
-_LEGIT_SUFFIXES = frozenset({
-    's',    # plural: difference→differences, condition→conditions
-    'es',   # plural: box→boxes, church→churches
-    'ed',   # past tense: contribute→contributed, view→viewed
-    'er',   # comparative/agent: view→viewer, think→thinker
-    'ly',   # adverb: quick→quickly, clear→clearly
-    'al',   # adjective: environment→environmental, condition→conditional
-    'ing',  # participle: run→running, think→thinking
-    'est',  # superlative: big→biggest, fast→fastest
-    'd',    # past tense: use→used, move→moved
-    'ers',  # plural agent: view→viewers, think→thinkers
-    'ies',  # plural: city→cities, theory→theories
-    'ied',  # past tense: city→citied (rare but valid)
-    'ier',  # comparative: happy→happier
-    'iest', # superlative: happy→happiest
-    'ing',  # present participle (duplicate for safety)
-    'ic',   # adjective: history→historic
-    'ity',  # noun: active→activity
-    'ment', # noun: develop→development
-    'ness', # noun: dark→darkness
-    'tion', # noun: act→action
-    'able', # adjective: use→usable
-    'ible', # adjective: access→accessible
-    'ous',  # adjective: danger→dangerous
-    'ive',  # adjective: act→active
-    'ful',  # adjective: use→useful
-    'less', # adjective: use→useless
-})
-
+_LEGIT_SUFFIXES = frozenset(
+    {
+        "s",  # plural: difference→differences, condition→conditions
+        "es",  # plural: box→boxes, church→churches
+        "ed",  # past tense: contribute→contributed, view→viewed
+        "er",  # comparative/agent: view→viewer, think→thinker
+        "ly",  # adverb: quick→quickly, clear→clearly
+        "al",  # adjective: environment→environmental, condition→conditional
+        "ing",  # participle: run→running, think→thinking
+        "est",  # superlative: big→biggest, fast→fastest
+        "d",  # past tense: use→used, move→moved
+        "ers",  # plural agent: view→viewers, think→thinkers
+        "ies",  # plural: city→cities, theory→theories
+        "ied",  # past tense: city→citied (rare but valid)
+        "ier",  # comparative: happy→happier
+        "iest",  # superlative: happy→happiest
+        # present participle (duplicate for safety)
+        "ic",  # adjective: history→historic
+        "ity",  # noun: active→activity
+        "ment",  # noun: develop→development
+        "ness",  # noun: dark→darkness
+        "tion",  # noun: act→action
+        "able",  # adjective: use→usable
+        "ible",  # adjective: access→accessible
+        "ous",  # adjective: danger→dangerous
+        "ive",  # adjective: act→active
+        "ful",  # adjective: use→useful
+        "less",  # adjective: use→useless
+    }
+)
 
 
 def _is_legitimate_inflection(word: str, stray: str) -> bool:
@@ -1708,7 +2011,6 @@ def _is_legitimate_inflection(word: str, stray: str) -> bool:
     is the standard plural of "difference" — not a dropped sentence boundary.
     """
     return stray.lower() in _LEGIT_SUFFIXES
-
 
 
 def detect_word_fragment_merge(
@@ -1743,7 +2045,7 @@ def detect_word_fragment_merge(
     # V18.20.2.0 (SWOT A24): accept the precomputed source word-set from
     # run_post_checks (was rebuilt per bullet); lazy-build when omitted.
     if source_words is None:
-        source_words = set(re.findall(r'\b[a-z]+\b', source_text.lower())) if source_text else set()
+        source_words = set(re.findall(r"\b[a-z]+\b", source_text.lower())) if source_text else set()
     if not text:
         return text, issues
     try:
@@ -1765,18 +2067,20 @@ def detect_word_fragment_merge(
             if word in source_words and full not in source_words and len(stray) <= 2:
                 if _is_legitimate_inflection(word, stray):
                     continue  # valid plural/past-tense/adjective — not a fragment merge
-                issues.append(Issue(
-                    detector="fragment_merge",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"word-fragment merge: '{m.group(1)}{m.group(2)} {m.group(3)}' "
-                        f"— '{word}' is a known word but '{full}' is not. "
-                        f"The '{stray}' may be a remnant of a dropped "
-                        f"sentence boundary (e.g. '. To')."
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="fragment_merge",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"word-fragment merge: '{m.group(1)}{m.group(2)} {m.group(3)}' "
+                            f"— '{word}' is a known word but '{full}' is not. "
+                            f"The '{stray}' may be a remnant of a dropped "
+                            f"sentence boundary (e.g. '. To')."
+                        ),
+                    )
+                )
                 continue
             # Check the right side (group3): is it a known word + stray chars?
             # E.g. "adolescenceo" → "adolescence" + "o"
@@ -1791,24 +2095,31 @@ def detect_word_fragment_merge(
                         # legitimate English inflection (plural, past tense, etc.)
                         if _is_legitimate_inflection(base, stray_right):
                             continue  # valid inflection — not a fragment merge
-                        issues.append(Issue(
-                            detector="fragment_merge",
-                            severity="flag",
-                            field=field_label,
-                            snippet=_snippet(text, m.start(3)),
-                            detail=(
-                                f"word-fragment merge: '{m.group(3)}' "
-                                f"— '{base}' is a known word but '{right}' is not. "
-                                f"The trailing '{stray_right}' may be a remnant "
-                                f"of a dropped sentence boundary (e.g. '. To')."
-                            ),
-                        ))
+                        issues.append(
+                            Issue(
+                                detector="fragment_merge",
+                                severity="flag",
+                                field=field_label,
+                                snippet=_snippet(text, m.start(3)),
+                                detail=(
+                                    f"word-fragment merge: '{m.group(3)}' "
+                                    f"— '{base}' is a known word but '{right}' is not. "
+                                    f"The trailing '{stray_right}' may be a remnant "
+                                    f"of a dropped sentence boundary (e.g. '. To')."
+                                ),
+                            )
+                        )
                         break
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="fragment_merge", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"fragment-merge check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="fragment_merge",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"fragment-merge check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -1846,7 +2157,7 @@ def _edit_distance_one_neighbors(word: str) -> set:
     neighbors = set()
     # Deletions (remove 1 char): "emergs" → "emerg", "emegs", "emers", ...
     for i in range(len(word)):
-        neighbors.add(word[:i] + word[i + 1:])
+        neighbors.add(word[:i] + word[i + 1 :])
     # Insertions (add 1 char): "emergs" → "aemergs", "bemergs", ...
     # Limited to common letters to bound the set size.
     for i in range(len(word) + 1):
@@ -1856,7 +2167,7 @@ def _edit_distance_one_neighbors(word: str) -> set:
     for i in range(len(word)):
         for c in "abcdefghijklmnopqrstuvwxyz":
             if c != word[i]:
-                neighbors.add(word[:i] + c + word[i + 1:])
+                neighbors.add(word[:i] + c + word[i + 1 :])
     return neighbors
 
 
@@ -1909,45 +2220,50 @@ def _is_legitimate_inflection_pair(summary_word: str, source_word: str) -> bool:
     # 3. Trailing-s difference (plural / 3rd person singular):
     #    author↔authors, path↔paths, open↔opens, turn↔turns, split↔splits,
     #    survey↔surveys, attempt↔attempts
-    if (len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == 's'):
+    if len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == "s":
         return True
-    if (len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == 's'):
+    if len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == "s":
         return True
     # 4. Trailing-d/ed difference (past tense):
     #    describe↔described, clarify↔clarified, consolidate↔consolidated,
     #    emerge↔emerged (note: "emergs"≠"emerged" — emergs is a non-word, caught below)
     #    BUT "emergs" → "emerges" is NOT past tense (no d/ed) → still flagged. ✓
-    if (len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == 'd'):
+    if len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == "d":
         return True
-    if (len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == 'd'):
+    if len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == "d":
         return True
-    if (len(sw) == len(src) + 2 and sw.startswith(src) and sw[-2:] == 'ed'):
+    if len(sw) == len(src) + 2 and sw.startswith(src) and sw[-2:] == "ed":
         return True
-    if (len(src) == len(sw) + 2 and src.startswith(sw) and src[-2:] == 'ed'):
+    if len(src) == len(sw) + 2 and src.startswith(sw) and src[-2:] == "ed":
         return True
     # 5. Past participle -n (draw↔drawn, show↔shown). Rare but legitimate.
-    if (len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == 'n'):
+    if len(sw) == len(src) + 1 and sw.startswith(src) and sw[-1] == "n":
         return True
-    if (len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == 'n'):
+    if len(src) == len(sw) + 1 and src.startswith(sw) and src[-1] == "n":
         return True
+
     # 6. V18.19.2.5: -y / -ies / -ied verb-conjugation + noun-plural transformations.
     #    clarifY↔clarifieS, clarifY↔clarifieD, identitY↔identitIES.
     def _y_to_ies(w: str) -> str:
-        if w.endswith('y') and len(w) >= 3:
-            return w[:-1] + 'ies'
+        if w.endswith("y") and len(w) >= 3:
+            return w[:-1] + "ies"
         return w
+
     def _y_to_ied(w: str) -> str:
-        if w.endswith('y') and len(w) >= 3:
-            return w[:-1] + 'ied'
+        if w.endswith("y") and len(w) >= 3:
+            return w[:-1] + "ied"
         return w
+
     def _ies_to_y(w: str) -> str:
-        if w.endswith('ies') and len(w) >= 4:
-            return w[:-3] + 'y'
+        if w.endswith("ies") and len(w) >= 4:
+            return w[:-3] + "y"
         return w
+
     def _ied_to_y(w: str) -> str:
-        if w.endswith('ied') and len(w) >= 4:
-            return w[:-3] + 'y'
+        if w.endswith("ied") and len(w) >= 4:
+            return w[:-3] + "y"
         return w
+
     for transform in (_y_to_ies, _y_to_ied, _ies_to_y, _ied_to_y):
         if transform(sw) == src or transform(src) == sw:
             return True
@@ -1958,33 +2274,28 @@ def _is_legitimate_inflection_pair(summary_word: str, source_word: str) -> bool:
     # "es", and the stems are IDENTICAL. This is a general morphological
     # rule of English (a closed grammatical system), not a content word
     # list: it covers EVERY -is noun in any chapter, which is what
-#    replaces the V18.20.3.4 hand-added entries (learned from ONE
+    #    replaces the V18.20.3.4 hand-added entries (learned from ONE
     # "bases" were learned from ONE book's false positives — exactly the
     # chapter-specific tuning the user banned).
-    if (
-        sw.endswith('is') and src.endswith('es')
-        and sw[:-2] == src[:-2] and len(sw) - 2 >= 3
-    ):
+    if sw.endswith("is") and src.endswith("es") and sw[:-2] == src[:-2] and len(sw) - 2 >= 3:
         return True
-    if (
-        src.endswith('is') and sw.endswith('es')
-        and src[:-2] == sw[:-2] and len(src) - 2 >= 3
-    ):
+    if src.endswith("is") and sw.endswith("es") and src[:-2] == sw[:-2] and len(src) - 2 >= 3:
         return True
     # 10. V18.20.3.5: -is discipline vs -ts agent-plural tail swap:
-# "analysis" <-> "analysts" (equal length, identical prefix, ONLY the
+    # "analysis" <-> "analysts" (equal length, identical prefix, ONLY the
     # (equal length, identical prefix, ONLY the last two characters differ
     # as is<->ts). The Greek-derived agent-noun pattern. This is the pair
-# the V18.20.3.4 hand-added stoplist entry was hand-blocking —
+    # the V18.20.3.4 hand-added stoplist entry was hand-blocking —
     # without a rule here the unique-candidate auto-repair would CORRUPT
-# "the analysis of society" into "the analysts of
+    # "the analysis of society" into "the analysts of
     # society". Structural: prefix identity + tail is<->ts, no word list;
     # requires length >= 8 so it covers analysis/analysts while keeping
     # shorter coincidental pairs flagged.
     if (
-        len(sw) == len(src) and len(sw) >= 8
+        len(sw) == len(src)
+        and len(sw) >= 8
         and sw[:-2] == src[:-2]
-        and {sw[-2:], src[-2:]} == {'is', 'ts'}
+        and {sw[-2:], src[-2:]} == {"is", "ts"}
     ):
         return True
     # 9. V18.20.3.5: final-character inflection swap. Two words of EQUAL
@@ -1995,13 +2306,14 @@ def _is_legitimate_inflection_pair(summary_word: str, source_word: str) -> bool:
     # detector's original true positive, and no real inflection pair
     # needs it): "meant" <-> "means" (irregular mean paradigm),
     # "notes" <-> "noted", "states" <-> "stated". Garbles of the dropped-letter class are
-#    edits at ARBITRARY positions (a garbled name differs at one position
+    #    edits at ARBITRARY positions (a garbled name differs at one position
     # 4 of 6), so restricting this blessing to the FINAL position keeps
     # the true-positive garble class flagged while covering the irregular
     # verb pairs that forced the old hand-list entries.
-    _FINAL_INFLECTION_CHARS = frozenset('sdtn')
+    _FINAL_INFLECTION_CHARS = frozenset("sdtn")
     if (
-        len(sw) == len(src) and len(sw) >= 5
+        len(sw) == len(src)
+        and len(sw) >= 5
         and sw[:-1] == src[:-1]
         and sw[-1] in _FINAL_INFLECTION_CHARS
         and src[-1] in _FINAL_INFLECTION_CHARS
@@ -2025,19 +2337,36 @@ def _is_legitimate_inflection_pair(summary_word: str, source_word: str) -> bool:
     #        the suffixes to be EQUAL length — a true conjugation swap, not a
     #        dropped-letter case.)
     _INFLECTION_SUFFIXES_BY_LEN = {
-        3: ('ies', 'ied', 'ing', 'est', 'ers', 'ment', 'tion', 'ness', 'able',
-            'ible', 'ous', 'ive', 'ful', 'less'),
-        2: ('es', 'ed', 'er', 'al', 'ly', 'ic', 'ity'),
-        1: ('s', 'd'),
+        3: (
+            "ies",
+            "ied",
+            "ing",
+            "est",
+            "ers",
+            "ment",
+            "tion",
+            "ness",
+            "able",
+            "ible",
+            "ous",
+            "ive",
+            "ful",
+            "less",
+        ),
+        2: ("es", "ed", "er", "al", "ly", "ic", "ity"),
+        1: ("s", "d"),
     }
     for suf_len in (3, 2, 1):
         suffixes = _INFLECTION_SUFFIXES_BY_LEN[suf_len]
         if sw.endswith(suffixes) and src.endswith(suffixes):
             sw_stem = sw[:-suf_len] if len(sw) > suf_len else sw
             src_stem = src[:-suf_len] if len(src) > suf_len else src
-            if (sw_stem == src_stem and len(sw_stem) >= 4
-                    and len(sw) == len(src)  # equal length → true suffix swap
-                    and sw[-suf_len:] != src[-suf_len:]):  # different suffixes
+            if (
+                sw_stem == src_stem
+                and len(sw_stem) >= 4
+                and len(sw) == len(src)  # equal length → true suffix swap
+                and sw[-suf_len:] != src[-suf_len:]
+            ):  # different suffixes
                 return True
     return False
 
@@ -2070,10 +2399,9 @@ def _load_english_lexicon() -> set:
         try:
             import gzip as _gzip
             from pathlib import Path as _Path
+
             _p = _Path(__file__).parent / "data" / "english_lexicon.txt.gz"
-            _ENGLISH_LEXICON = set(
-                _gzip.decompress(_p.read_bytes()).decode("ascii").split()
-            )
+            _ENGLISH_LEXICON = set(_gzip.decompress(_p.read_bytes()).decode("ascii").split())
         except Exception:  # fail-open — a missing lexicon must not crash postchecks
             _ENGLISH_LEXICON = set()
     return _ENGLISH_LEXICON
@@ -2103,23 +2431,29 @@ def _paragraph_corroborated(
     (lexicon non-word, strict uniqueness, position-0) still apply.
     """
     try:
-        _sent_start = max(
-            text.rfind(". ", 0, match_start),
-            text.rfind("! ", 0, match_start),
-            text.rfind("? ", 0, match_start),
-            text.rfind("\n", 0, match_start),
-        ) + 1
+        _sent_start = (
+            max(
+                text.rfind(". ", 0, match_start),
+                text.rfind("! ", 0, match_start),
+                text.rfind("? ", 0, match_start),
+                text.rfind("\n", 0, match_start),
+            )
+            + 1
+        )
         _sent_end_candidates = [
-            p for p in (
+            p
+            for p in (
                 text.find(". ", match_start),
                 text.find("! ", match_start),
                 text.find("? ", match_start),
                 text.find("\n", match_start),
-            ) if p != -1
+            )
+            if p != -1
         ]
         _sent_end = min(_sent_end_candidates) if _sent_end_candidates else len(text)
         _sent_words = {
-            w for w in re.findall(r"[a-z]{4,}", text[_sent_start:_sent_end].lower())
+            w
+            for w in re.findall(r"[a-z]{4,}", text[_sent_start:_sent_end].lower())
             if w != garble_word
         }
         _paras = [p for p in source_text.split("\n\n") if p.strip()]
@@ -2226,7 +2560,7 @@ def detect_dropped_letter_garble(
         # run_post_checks (was rebuilt per bullet/exec/thorough call);
         # lazy-build when omitted.
         if source_words is None:
-            source_words = set(re.findall(r'\b[a-z]+\b', source_text.lower()))
+            source_words = set(re.findall(r"\b[a-z]+\b", source_text.lower()))
         if len(source_words) > _MAX_SOURCE_WORDS_FOR_EDIT_DISTANCE:
             # Skip for very large sources (perf guard — rare; the 9120-token
             # trust-ground produces ~2500 unique words, well under the cap).
@@ -2237,7 +2571,8 @@ def detect_dropped_letter_garble(
         if not candidate_sources:
             return text, issues
         seen: set = set()
-        for m in re.finditer(r'\b[a-zA-Z]{%d,}\b' % _MIN_GARBLED_WORD_LEN, text):
+        _word_pat = rf"\b[a-zA-Z]{{{_MIN_GARBLED_WORD_LEN},}}\b"
+        for m in re.finditer(_word_pat, text):
             word = m.group(0).lower()
             if word in seen:
                 continue
@@ -2265,7 +2600,7 @@ def detect_dropped_letter_garble(
                 continue
             # V0.03 (P0-1 guard d): a token the model used more than once is
             # deliberate vocabulary, not a one-off typo.
-            if len(re.findall(r'\b' + re.escape(word) + r'\b', text, re.IGNORECASE)) > 1:
+            if len(re.findall(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE)) > 1:
                 continue
             # Check if any edit-distance-1 neighbor is a source word.
             neighbors = _edit_distance_one_neighbors(word)
@@ -2279,7 +2614,8 @@ def detect_dropped_letter_garble(
             # if NONE of the matching source words are legitimate inflection
             # partners (i.e. the summary word is a true non-word like "emergs").
             non_inflection_matches = {
-                src_w for src_w in matching_source
+                src_w
+                for src_w in matching_source
                 if not _is_legitimate_inflection_pair(word, src_w)
             }
             if not non_inflection_matches:
@@ -2295,12 +2631,14 @@ def detect_dropped_letter_garble(
             # excluded as an "inflection", leaving 'still' spuriously unique.
             # Case is preserved: a capitalized garble gets a capitalized repair.
             _repair_allowed = (
-                auto_repair
-                and len(matching_source) == 1
-                and len(non_inflection_matches) == 1
+                auto_repair and len(matching_source) == 1 and len(non_inflection_matches) == 1
             )
             if _repair_allowed and not _paragraph_corroborated(
-                next(iter(matching_source)), word, m.start(), text, source_text,
+                next(iter(matching_source)),
+                word,
+                m.start(),
+                text,
+                source_text,
             ):
                 # V0.03 (P0-1 guard b): the only candidate lives in a source
                 # paragraph that does not overlap this sentence's content —
@@ -2328,40 +2666,43 @@ def detect_dropped_letter_garble(
                 # auto-repaired (flag-only, human decides). Non-decomposing
                 # tokens (the audit's true positive) still
                 # auto-repair. Purely structural, no word list.
-                _pos0_edit = (word == _repair[1:] or _repair == word[1:])
+                _pos0_edit = word == _repair[1:] or _repair == word[1:]
                 _looks_inflected = any(
-                    word.endswith(_suf) and len(word) - len(_suf) >= 3
-                    for _suf in _COMMON_SUFFIXES
+                    word.endswith(_suf) and len(word) - len(_suf) >= 3 for _suf in _COMMON_SUFFIXES
                 )
                 if _pos0_edit and _looks_inflected:
-                    issues.append(Issue(
+                    issues.append(
+                        Issue(
+                            detector="dropped_letter",
+                            severity="flag",
+                            field=field_label,
+                            snippet=_snippet(text, m.start()),
+                            detail=(
+                                f"possible garble: '{_orig_tok}' is edit-distance-1 "
+                                f"(leading-character edit) from source word "
+                                f"'{_repair}' — but '{_orig_tok}' decomposes as a "
+                                f"stem + standard English suffix, so it may be a "
+                                f"real word unrelated to '{_repair}' (the "
+                                f"'elated'/'related' class). NOT auto-repaired; "
+                                f"verify manually."
+                            ),
+                        )
+                    )
+                    continue
+                issues.append(
+                    Issue(
                         detector="dropped_letter",
-                        severity="flag",
+                        severity="fix",
                         field=field_label,
                         snippet=_snippet(text, m.start()),
                         detail=(
-                            f"possible garble: '{_orig_tok}' is edit-distance-1 "
-                            f"(leading-character edit) from source word "
-                            f"'{_repair}' — but '{_orig_tok}' decomposes as a "
-                            f"stem + standard English suffix, so it may be a "
-                            f"real word unrelated to '{_repair}' (the "
-                            f"'elated'/'related' class). NOT auto-repaired; "
-                            f"verify manually."
+                            f"guarded auto-repair of garbled token: '{_orig_tok}' → "
+                            f"'{_repair_tok}' (non-word per English lexicon; the ONLY "
+                            f"source word at edit distance 1; paragraph-corroborated — "
+                            f"V0.03 P0-1, the 'emergs'→'emerges' class)"
                         ),
-                    ))
-                    continue
-                issues.append(Issue(
-                    detector="dropped_letter",
-                    severity="fix",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"guarded auto-repair of garbled token: '{_orig_tok}' → "
-                        f"'{_repair_tok}' (non-word per English lexicon; the ONLY "
-                        f"source word at edit distance 1; paragraph-corroborated — "
-                        f"V0.03 P0-1, the 'emergs'→'emerges' class)"
-                    ),
-                ))
+                    )
+                )
                 # Queue the repair (word-boundary-scoped so a substring
                 # token can never be partially rewritten). Applied AFTER
                 # the scan loop so the finditer match positions stay valid
@@ -2370,32 +2711,39 @@ def detect_dropped_letter_garble(
                 seen.add(_repair)
                 continue
             _suggestion = sorted(non_inflection_matches)[0]
-            issues.append(Issue(
+            issues.append(
+                Issue(
+                    detector="dropped_letter",
+                    severity="flag",
+                    field=field_label,
+                    snippet=_snippet(text, m.start()),
+                    detail=(
+                        f"likely garbled token: '{m.group(0)}' is not in the source "
+                        f"and is not a legitimate inflection of any source word, "
+                        f"but is edit-distance-1 from '{_suggestion}' "
+                        f"(single-char insert/delete/substitute). "
+                        f"V18.19.2.5: caught 'emergs'→'emerges' (non-word) class."
+                    ),
+                )
+            )
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
                 detector="dropped_letter",
                 severity="flag",
                 field=field_label,
-                snippet=_snippet(text, m.start()),
-                detail=(
-                    f"likely garbled token: '{m.group(0)}' is not in the source "
-                    f"and is not a legitimate inflection of any source word, "
-                    f"but is edit-distance-1 from '{_suggestion}' "
-                    f"(single-char insert/delete/substitute). "
-                    f"V18.19.2.5: caught 'emergs'→'emerges' (non-word) class."
-                ),
-            ))
-    except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="dropped_letter", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"dropped-letter check crashed: {e!r}",
-        ))
+                snippet=text[:60],
+                detail=f"dropped-letter check crashed: {e!r}",
+            )
+        )
     # V18.20.3.4 (RC-3): apply the queued unambiguous repairs now that the
     # scan is done (match positions are no longer needed). Word-boundary
     # scoping keeps a substring token from being partially rewritten.
     for _orig_tok, _repair_tok in _repairs:
         try:
             text = re.sub(
-                r'(?<!\w)' + re.escape(_orig_tok) + r'(?!\w)',
-                _repair_tok.replace('\\', '\\\\'),
+                r"(?<!\w)" + re.escape(_orig_tok) + r"(?!\w)",
+                _repair_tok.replace("\\", "\\\\"),
                 text,
             )
         except re.error:
@@ -2408,24 +2756,76 @@ def detect_dropped_letter_garble(
 # these are grammatical glue, not content claims. Keeps the detector from
 # flagging "because"/"therefore"/"however" on chapters that don't happen to
 # contain them verbatim.
-_STRUCTURAL_STOPWORDS = frozenset({
-    "because", "therefore", "however", "moreover", "furthermore", "nevertheless",
-    "thus", "hence", "although", "though", "whereas", "while", "unless",
-    "between", "through", "during", "before", "after", "since", "until",
-    "against", "without", "within", "among", "across", "behind", "beyond",
-    "already", "always", "never", "often", "sometimes", "usually",
-    # V18.20.3.4 (RC-3 hardening, found while verifying the auto-repair):
-    # high-frequency function/frequency words that are edit-distance-1 from
-    # a DIFFERENT common word ("thorough"≈"through", "from"≈"form",
-    # "their"≈"there"). The V18.20.3.4 auto-repair makes the stoplist
-    # safety-critical (a missed common word could be "repaired" into its
-    # neighbor), so the preposition/determiner/adverb core of English is
-    # exempted here — grammatical glue, not content claims.
-    "from", "than", "then", "there", "their", "about", "into", "upon",
-    "over", "under", "again", "almost", "perhaps", "quite", "rather",
-    "still", "just", "even", "also", "both", "either", "neither",
-    "instead", "indeed", "somewhat", "thorough",
-})
+_STRUCTURAL_STOPWORDS = frozenset(
+    {
+        "because",
+        "therefore",
+        "however",
+        "moreover",
+        "furthermore",
+        "nevertheless",
+        "thus",
+        "hence",
+        "although",
+        "though",
+        "whereas",
+        "while",
+        "unless",
+        "between",
+        "through",
+        "during",
+        "before",
+        "after",
+        "since",
+        "until",
+        "against",
+        "without",
+        "within",
+        "among",
+        "across",
+        "behind",
+        "beyond",
+        "already",
+        "always",
+        "never",
+        "often",
+        "sometimes",
+        "usually",
+        # V18.20.3.4 (RC-3 hardening, found while verifying the auto-repair):
+        # high-frequency function/frequency words that are edit-distance-1 from
+        # a DIFFERENT common word ("thorough"≈"through", "from"≈"form",
+        # "their"≈"there"). The V18.20.3.4 auto-repair makes the stoplist
+        # safety-critical (a missed common word could be "repaired" into its
+        # neighbor), so the preposition/determiner/adverb core of English is
+        # exempted here — grammatical glue, not content claims.
+        "from",
+        "than",
+        "then",
+        "there",
+        "their",
+        "about",
+        "into",
+        "upon",
+        "over",
+        "under",
+        "again",
+        "almost",
+        "perhaps",
+        "quite",
+        "rather",
+        "still",
+        "just",
+        "even",
+        "also",
+        "both",
+        "either",
+        "neither",
+        "instead",
+        "indeed",
+        "somewhat",
+        "thorough",
+    }
+)
 
 # V18.20.3.2 (audit N7 / P2-a): common-English-word stoplist for the
 # dropped-letter detector. The V18.20.3.1 run false-flagged 8 ORDINARY words
@@ -2440,76 +2840,387 @@ _STRUCTURAL_STOPWORDS = frozenset({
 # grammatical/lexical structure, not content claims — and it only ever
 # SUPPRESSES flags (latent-corruption risk: any future auto-fix built on
 # this detector would otherwise turn "moving through" into "loving").
-_COMMON_ENGLISH_WORDS = frozenset({
-    # high-frequency verbs (base forms; inflections stripped before lookup)
-    "make", "take", "give", "get", "put", "keep", "find", "hold", "come",
-    "go", "see", "look", "know", "think", "say", "tell", "use", "show",
-    "move", "live", "work", "call", "try", "ask", "need", "feel", "become",
-    "leave", "mean", "meet", "run", "help", "talk", "turn", "start",
-    "bring", "lose", "pay", "sit", "stand", "hear", "play", "grow",
-    "raise", "rise", "fall", "fell", "pass", "cross", "cut", "read",
-    "write", "speak", "spoke", "learn", "teach", "taught", "buy", "sell",
-    "send", "build", "break", "broke", "share", "carry", "catch", "caught",
-    "choose", "chose", "deal", "draw", "drew", "drive", "drove", "eat",
-    "feed", "fill", "fly", "flew", "follow",
-    "forget", "hang", "happen", "hit", "hope", "join", "jump",
-    "kill", "land", "laugh", "lead", "led", "let", "lie", "lay", "light",
-    "love", "marry", "match", "miss", "mix", "open", "close",
-    "order", "own", "pick", "plan", "point", "press", "prove", "pull",
-    "push", "reach", "realize", "remain", "remember", "repeat", "reply",
-    "report", "require", "rest", "return", "ride", "ring", "save", "seem", "serve", "set", "settle", "shake", "shine",
-    "shoot", "shout", "sing", "sang", "sleep", "smell", "smile", "spend",
-    "spread", "stay", "step", "stick", "stop", "study", "support",
-    "survive", "swim", "swing", "taste", "tear", "thank", "throw", "threw", "touch", "train", "travel", "treat",
-    "trust", "understand", "understood", "visit", "wait", "wake", "walk",
-    "want", "warm", "wash", "watch", "wear", "wore", "win", "won", "wish",
-    "wonder", "worry",
-    # common verbs that appeared as real FPs in the V18.20.3.1 audit
-    "clarify", "fuse", "identify", "argue", "assert", "note", "observe",
-    "recognize", "suggest", "emphasize", "highlight", "distinguish",
-    "examine", "explore", "trace", "define", "view", "consider",
-    # numbers (edit-distance-1 traps: seven→seen, nine→none)
-    "seven", "eight", "nine", "three", "four", "five", "six", "ten",
-    "eleven", "twelve", "forty", "fifty", "sixty", "seventy", "eighty",
-    "ninety", "hundred", "thousand", "million", "none", "one", "two",
-    # high-frequency nouns/adjectives/adverbs
-    "stage", "state", "case", "place", "part", "fact", "force",
-    "form", "kind", "type", "sort", "field", "group", "level", "sense", "side", "thing", "time", "value", "world", "area",
-    "body", "book", "child", "city", "class", "color", "day", "door",
-    "east", "end", "even", "example", "eye", "face", "family",
-    "father", "feet", "figure", "girl", "hand", "head", "hour", "idea",
-    "inch", "interest", "job", "king", "lady", "language", "law",
-    "letter", "line", "list", "man", "matter", "may", "method", "mind",
-    "minute", "moment", "money", "month", "mother", "mouth", "music",
-    "name", "nation", "nature", "night", "north", "number",
-    "object", "office", "page", "paper", "person", "picture", "piece",
-    "plant", "power", "price", "problem", "question",
-    "race", "rate", "reason", "record", "research", "result", "right",
-    "river", "road", "rock", "room", "rule", "school", "science", "season",
-    "second", "sentence", "series", "service", "shape", "ship", "short",
-    "sound", "south", "space", "special", "story", "street", "student",
-    "subject", "table", "teacher", "test", "theory", "thought",
-    "title", "today", "topic", "town", "trade", "true", "unit", "voice",
-    "war", "water", "way", "week", "west", "wheel", "woman", "word",
-    "young",
-    # V18.20.3.4 (RC-5a, audit v182033) → V18.20.3.5 POLICY CHANGE (user
-    # rule: "never add a word list of this chapter — solve problems
-    # fundamentally"): the .3.4 entries added after auditing ONE book's
-    # false positives ("analysis", "elated", "argues", "asserts",
-    # "noted", "means") are REMOVED. Their FP classes are now covered by
-    # the general morphological rules added to
-    # _is_legitimate_inflection_pair (rule 8: Greek -is/-es plurals covers
-    # -is plurals, basis/bases, analysis/analyses in ANY
-    # chapter; rule 9: final-char inflection swap covers meant/means); the
-    # bare-inflection entries are redundant with the suffix-stripping
-    # lookup below (argues→argue, asserts→assert, noted→note, means→mean
-    # are all in the base list). Kept entries are top-3000 general English
-    # (analysis, analyst, base, basis, mean, meant) that belong in ANY
-    # English lexicon, independent of any book. POLICY: this set accepts
-    # ONLY general-English core vocabulary and grammatical structure —
-    # never words learned from a specific chapter's audit.
-    "analysis", "analyst", "base", "basis", "meant",
-})
+_COMMON_ENGLISH_WORDS = frozenset(
+    {
+        # high-frequency verbs (base forms; inflections stripped before lookup)
+        "make",
+        "take",
+        "give",
+        "get",
+        "put",
+        "keep",
+        "find",
+        "hold",
+        "come",
+        "go",
+        "see",
+        "look",
+        "know",
+        "think",
+        "say",
+        "tell",
+        "use",
+        "show",
+        "move",
+        "live",
+        "work",
+        "call",
+        "try",
+        "ask",
+        "need",
+        "feel",
+        "become",
+        "leave",
+        "mean",
+        "meet",
+        "run",
+        "help",
+        "talk",
+        "turn",
+        "start",
+        "bring",
+        "lose",
+        "pay",
+        "sit",
+        "stand",
+        "hear",
+        "play",
+        "grow",
+        "raise",
+        "rise",
+        "fall",
+        "fell",
+        "pass",
+        "cross",
+        "cut",
+        "read",
+        "write",
+        "speak",
+        "spoke",
+        "learn",
+        "teach",
+        "taught",
+        "buy",
+        "sell",
+        "send",
+        "build",
+        "break",
+        "broke",
+        "share",
+        "carry",
+        "catch",
+        "caught",
+        "choose",
+        "chose",
+        "deal",
+        "draw",
+        "drew",
+        "drive",
+        "drove",
+        "eat",
+        "feed",
+        "fill",
+        "fly",
+        "flew",
+        "follow",
+        "forget",
+        "hang",
+        "happen",
+        "hit",
+        "hope",
+        "join",
+        "jump",
+        "kill",
+        "land",
+        "laugh",
+        "lead",
+        "led",
+        "let",
+        "lie",
+        "lay",
+        "light",
+        "love",
+        "marry",
+        "match",
+        "miss",
+        "mix",
+        "open",
+        "close",
+        "order",
+        "own",
+        "pick",
+        "plan",
+        "point",
+        "press",
+        "prove",
+        "pull",
+        "push",
+        "reach",
+        "realize",
+        "remain",
+        "remember",
+        "repeat",
+        "reply",
+        "report",
+        "require",
+        "rest",
+        "return",
+        "ride",
+        "ring",
+        "save",
+        "seem",
+        "serve",
+        "set",
+        "settle",
+        "shake",
+        "shine",
+        "shoot",
+        "shout",
+        "sing",
+        "sang",
+        "sleep",
+        "smell",
+        "smile",
+        "spend",
+        "spread",
+        "stay",
+        "step",
+        "stick",
+        "stop",
+        "study",
+        "support",
+        "survive",
+        "swim",
+        "swing",
+        "taste",
+        "tear",
+        "thank",
+        "throw",
+        "threw",
+        "touch",
+        "train",
+        "travel",
+        "treat",
+        "trust",
+        "understand",
+        "understood",
+        "visit",
+        "wait",
+        "wake",
+        "walk",
+        "want",
+        "warm",
+        "wash",
+        "watch",
+        "wear",
+        "wore",
+        "win",
+        "won",
+        "wish",
+        "wonder",
+        "worry",
+        # common verbs that appeared as real FPs in the V18.20.3.1 audit
+        "clarify",
+        "fuse",
+        "identify",
+        "argue",
+        "assert",
+        "note",
+        "observe",
+        "recognize",
+        "suggest",
+        "emphasize",
+        "highlight",
+        "distinguish",
+        "examine",
+        "explore",
+        "trace",
+        "define",
+        "view",
+        "consider",
+        # numbers (edit-distance-1 traps: seven→seen, nine→none)
+        "seven",
+        "eight",
+        "nine",
+        "three",
+        "four",
+        "five",
+        "six",
+        "ten",
+        "eleven",
+        "twelve",
+        "forty",
+        "fifty",
+        "sixty",
+        "seventy",
+        "eighty",
+        "ninety",
+        "hundred",
+        "thousand",
+        "million",
+        "none",
+        "one",
+        "two",
+        # high-frequency nouns/adjectives/adverbs
+        "stage",
+        "state",
+        "case",
+        "place",
+        "part",
+        "fact",
+        "force",
+        "form",
+        "kind",
+        "type",
+        "sort",
+        "field",
+        "group",
+        "level",
+        "sense",
+        "side",
+        "thing",
+        "time",
+        "value",
+        "world",
+        "area",
+        "body",
+        "book",
+        "child",
+        "city",
+        "class",
+        "color",
+        "day",
+        "door",
+        "east",
+        "end",
+        "even",
+        "example",
+        "eye",
+        "face",
+        "family",
+        "father",
+        "feet",
+        "figure",
+        "girl",
+        "hand",
+        "head",
+        "hour",
+        "idea",
+        "inch",
+        "interest",
+        "job",
+        "king",
+        "lady",
+        "language",
+        "law",
+        "letter",
+        "line",
+        "list",
+        "man",
+        "matter",
+        "may",
+        "method",
+        "mind",
+        "minute",
+        "moment",
+        "money",
+        "month",
+        "mother",
+        "mouth",
+        "music",
+        "name",
+        "nation",
+        "nature",
+        "night",
+        "north",
+        "number",
+        "object",
+        "office",
+        "page",
+        "paper",
+        "person",
+        "picture",
+        "piece",
+        "plant",
+        "power",
+        "price",
+        "problem",
+        "question",
+        "race",
+        "rate",
+        "reason",
+        "record",
+        "research",
+        "result",
+        "right",
+        "river",
+        "road",
+        "rock",
+        "room",
+        "rule",
+        "school",
+        "science",
+        "season",
+        "second",
+        "sentence",
+        "series",
+        "service",
+        "shape",
+        "ship",
+        "short",
+        "sound",
+        "south",
+        "space",
+        "special",
+        "story",
+        "street",
+        "student",
+        "subject",
+        "table",
+        "teacher",
+        "test",
+        "theory",
+        "thought",
+        "title",
+        "today",
+        "topic",
+        "town",
+        "trade",
+        "true",
+        "unit",
+        "voice",
+        "war",
+        "water",
+        "way",
+        "week",
+        "west",
+        "wheel",
+        "woman",
+        "word",
+        "young",
+        # V18.20.3.4 (RC-5a, audit v182033) → V18.20.3.5 POLICY CHANGE (user
+        # rule: "never add a word list of this chapter — solve problems
+        # fundamentally"): the .3.4 entries added after auditing ONE book's
+        # false positives ("analysis", "elated", "argues", "asserts",
+        # "noted", "means") are REMOVED. Their FP classes are now covered by
+        # the general morphological rules added to
+        # _is_legitimate_inflection_pair (rule 8: Greek -is/-es plurals covers
+        # -is plurals, basis/bases, analysis/analyses in ANY
+        # chapter; rule 9: final-char inflection swap covers meant/means); the
+        # bare-inflection entries are redundant with the suffix-stripping
+        # lookup below (argues→argue, asserts→assert, noted→note, means→mean
+        # are all in the base list). Kept entries are top-3000 general English
+        # (analysis, analyst, base, basis, mean, meant) that belong in ANY
+        # English lexicon, independent of any book. POLICY: this set accepts
+        # ONLY general-English core vocabulary and grammatical structure —
+        # never words learned from a specific chapter's audit.
+        "analysis",
+        "analyst",
+        "base",
+        "basis",
+        "meant",
+    }
+)
 
 # Common English inflection suffixes — stripped before the stoplist lookup
 # ("moving" → "move" ✓, "stages" → "stage" ✓, "identifies" → "identify" ✓).
@@ -2517,7 +3228,17 @@ _COMMON_ENGLISH_WORDS = frozenset({
 # before -ing: move→moving, fuse→fusing) — the naive strip gave "mov"/"fus"
 # and the FP suppression missed exactly the two audit words.
 _COMMON_SUFFIXES = (
-    "ies", "ied", "ing", "est", "ers", "es", "ed", "er", "ly", "s", "d",
+    "ies",
+    "ied",
+    "ing",
+    "est",
+    "ers",
+    "es",
+    "ed",
+    "er",
+    "ly",
+    "s",
+    "d",
 )
 
 
@@ -2552,17 +3273,19 @@ def _common_word_stem_in_stoplist(word: str) -> bool:
 
 
 _PRONOUN_MAP = {
-    'he': 'she', 'she': 'he',
-    'his': 'her', 'her': 'his',
-    'him': 'her', 'himself': 'herself',
+    "he": "she",
+    "she": "he",
+    "his": "her",
+    "her": "his",
+    "him": "her",
+    "himself": "herself",
 }
 
 _PRONOUN_RE = re.compile(
-    r'\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\b'
-    r'(?:.{0,200}?)\b(he|she|his|her)\b',
+    r"\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\b"
+    r"(?:.{0,200}?)\b(he|she|his|her)\b",
     re.IGNORECASE | re.DOTALL,
 )
-
 
 
 def detect_pronoun_mismatch(
@@ -2630,10 +3353,33 @@ def detect_pronoun_mismatch(
                 continue
             # Skip non-name stopwords (same list as validate_years).
             if author.split()[0].lower() in {
-                "in", "by", "the", "a", "an", "as", "at", "to", "of",
-                "and", "or", "for", "with", "from", "that", "this",
-                "while", "when", "where", "later", "then", "early",
-                "chapter", "figure", "table", "page", "section",
+                "in",
+                "by",
+                "the",
+                "a",
+                "an",
+                "as",
+                "at",
+                "to",
+                "of",
+                "and",
+                "or",
+                "for",
+                "with",
+                "from",
+                "that",
+                "this",
+                "while",
+                "when",
+                "where",
+                "later",
+                "then",
+                "early",
+                "chapter",
+                "figure",
+                "table",
+                "page",
+                "section",
             }:
                 continue
             author_lower = author.lower()
@@ -2642,8 +3388,7 @@ def detect_pronoun_mismatch(
             # V18.20.3.1 (D2): author must be a source-cited author when the
             # citation-extracted list is available.
             if _gate_on and (
-                author_lower not in _author_set
-                and author.split()[-1].lower() not in _author_last
+                author_lower not in _author_set and author.split()[-1].lower() not in _author_last
             ):
                 continue
             key = (author_lower, pronoun)
@@ -2664,7 +3409,7 @@ def detect_pronoun_mismatch(
             # works ...", "Name — he argued ...") have no intervening
             # determiner+noun and still flag. Closed-class English
             # determiners only — content-agnostic by construction.
-            _between = text[m.end(1):m.start(2)]
+            _between = text[m.end(1) : m.start(2)]
             # Clause-scoped: a sentence boundary (. ! ? ;) resets the
             # antecedent — "AuthorO (1958) proposed a continuum. He
             # stressed ..." binds He→AuthorO (a TRUE positive the V18.2.19
@@ -2672,13 +3417,22 @@ def detect_pronoun_mismatch(
             # pronoun (the .3.6 bullet[25] shape: "... if a good-enough
             # mother fails ..., she produces ...") suppresses the flag.
             _final_clause = re.split(r"[.!?;]\s*", _between)[-1] if _between else ""
-            _bt_tokens = [
-                _w.strip(",;:.!?\u2014\u201c\u201d'\"()") for _w in _final_clause.split()
-            ]
+            _bt_tokens = [_w.strip(",;:.!?\u2014\u201c\u201d'\"()") for _w in _final_clause.split()]
             _bt_tokens = [_w for _w in _bt_tokens if _w]
             _DETERMINERS = {
-                "a", "an", "the", "this", "that", "these", "those",
-                "his", "her", "their", "its", "each", "every",
+                "a",
+                "an",
+                "the",
+                "this",
+                "that",
+                "these",
+                "those",
+                "his",
+                "her",
+                "their",
+                "its",
+                "each",
+                "every",
             }
             _has_np_antecedent = False
             _tail = _bt_tokens[-3:] if _bt_tokens else []
@@ -2694,16 +3448,17 @@ def detect_pronoun_mismatch(
             # sentence after the author name.
             src_pronoun = None
             for src_m in re.finditer(
-                rf'\b{re.escape(author)}\b.{{0,200}}?\b(he|she|his|her)\b',
-                source_text, re.IGNORECASE | re.DOTALL,
+                rf"\b{re.escape(author)}\b.{{0,200}}?\b(he|she|his|her)\b",
+                source_text,
+                re.IGNORECASE | re.DOTALL,
             ):
                 src_pronoun = src_m.group(1).lower()
                 break
             if src_pronoun and src_pronoun != pronoun:
                 # Check if they're actually different gender (he vs she, his vs her)
                 # vs just different forms (he vs his — same gender).
-                _sum_gender = 'm' if pronoun in ('he', 'his', 'him', 'himself') else 'f'
-                _src_gender = 'm' if src_pronoun in ('he', 'his', 'him', 'himself') else 'f'
+                _sum_gender = "m" if pronoun in ("he", "his", "him", "himself") else "f"
+                _src_gender = "m" if src_pronoun in ("he", "his", "him", "himself") else "f"
                 if _sum_gender != _src_gender:
                     # V18.20.3.1 (D2): flag-only — the V18.2.28 auto-fix
                     # re.sub block was dead code (all call sites discard the
@@ -2711,24 +3466,31 @@ def detect_pronoun_mismatch(
                     # "Auto-fixed". Removed; the message is now honest. No
                     # auto-rewrite is also the SAFE choice: the source's
                     # nearest pronoun can belong to a different author.
-                    issues.append(Issue(
-                        detector="pronoun",
-                        severity="flag",
-                        field=field_label,
-                        snippet=_snippet(text, m.start()),
-                        detail=(
-                            f"pronoun mismatch: summary uses '{pronoun}' for "
-                            f"'{author}' but source uses '{src_pronoun}' near "
-                            f"that name. Flagged for review (no auto-rewrite — "
-                            f"the source's nearby pronoun may belong to a "
-                            f"different author)."
-                        ),
-                    ))
+                    issues.append(
+                        Issue(
+                            detector="pronoun",
+                            severity="flag",
+                            field=field_label,
+                            snippet=_snippet(text, m.start()),
+                            detail=(
+                                f"pronoun mismatch: summary uses '{pronoun}' for "
+                                f"'{author}' but source uses '{src_pronoun}' near "
+                                f"that name. Flagged for review (no auto-rewrite — "
+                                f"the source's nearby pronoun may belong to a "
+                                f"different author)."
+                            ),
+                        )
+                    )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="pronoun", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"pronoun check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="pronoun",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"pronoun check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -2740,15 +3502,14 @@ def detect_pronoun_mismatch(
 # These are red flags when the concept actually DOES appear in the source.
 
 _MISSING_CLAIM_RE = re.compile(
-    r'\b(?:'
-    r'not\s+mention(?:ed|s)?|not\s+discuss(?:ed|es)?|not\s+address(?:ed|es)?|'
-    r'not\s+cover(?:ed|s)?|not\s+explor(?:ed|es)?|not\s+examin(?:ed|es)?|'
-    r'not\s+includ(?:ed|es)?|not\s+present(?:ed|s)?|'
-    r'absent|omitted|missing|excluded|overlooked|ignored'
-    r')\b',
+    r"\b(?:"
+    r"not\s+mention(?:ed|s)?|not\s+discuss(?:ed|es)?|not\s+address(?:ed|es)?|"
+    r"not\s+cover(?:ed|s)?|not\s+explor(?:ed|es)?|not\s+examin(?:ed|es)?|"
+    r"not\s+includ(?:ed|es)?|not\s+present(?:ed|s)?|"
+    r"absent|omitted|missing|excluded|overlooked|ignored"
+    r")\b",
     re.IGNORECASE,
 )
-
 
 
 def detect_inconsistency(
@@ -2789,24 +3550,44 @@ def detect_inconsistency(
         for m in list(_MISSING_CLAIM_RE.finditer(text)):
             # Extract the concept that follows the "not mentioned" phrase.
             # Take up to 80 chars after the phrase, ending at punctuation.
-            after = text[m.end():m.end() + 80]
+            after = text[m.end() : m.end() + 80]
             # Cut at the first sentence boundary.
-            cut = re.search(r'[.!?;,\n]|$', after)
-            concept = after[:cut.start()].strip() if cut else after.strip()
+            cut = re.search(r"[.!?;,\n]|$", after)
+            concept = after[: cut.start()].strip() if cut else after.strip()
             # Clean: remove leading articles/prepositions + trailing spaces.
-            concept = re.sub(r'^(?:the\s+|a\s+|an\s+|of\s+|to\s+|in\s+)', '', concept, flags=re.IGNORECASE).strip()
+            concept = re.sub(
+                r"^(?:the\s+|a\s+|an\s+|of\s+|to\s+|in\s+)", "", concept, flags=re.IGNORECASE
+            ).strip()
             if len(concept) < 3:
                 continue  # nothing to check
 
             # Search the source for the concept's key words.
             # Extract content words (≥4 chars, alphabetic) from the concept.
-            concept_words = [w for w in re.findall(r'[a-zA-Z]{4,}', concept)
-                             if w.lower() not in {
-                                 'that', 'this', 'with', 'from', 'have',
-                                 'been', 'were', 'they', 'their', 'which',
-                                 'would', 'could', 'should', 'about',
-                                 'into', 'than', 'then', 'them',
-                             }]
+            concept_words = [
+                w
+                for w in re.findall(r"[a-zA-Z]{4,}", concept)
+                if w.lower()
+                not in {
+                    "that",
+                    "this",
+                    "with",
+                    "from",
+                    "have",
+                    "been",
+                    "were",
+                    "they",
+                    "their",
+                    "which",
+                    "would",
+                    "could",
+                    "should",
+                    "about",
+                    "into",
+                    "than",
+                    "then",
+                    "them",
+                }
+            ]
             if not concept_words:
                 continue
 
@@ -2814,23 +3595,30 @@ def detect_inconsistency(
             found = sum(1 for w in concept_words if w.lower() in src_lower)
             ratio = found / len(concept_words) if concept_words else 0
             if ratio >= 0.50:
-                issues.append(Issue(
-                    detector="consistency",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"false 'missing' claim: '{m.group(0)}' followed by "
-                        f"'{concept[:40]}' — but {found}/{len(concept_words)} "
-                        f"of the concept's words DO appear in the source "
-                        f"(summary may falsely claim it's missing)"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="consistency",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"false 'missing' claim: '{m.group(0)}' followed by "
+                            f"'{concept[:40]}' — but {found}/{len(concept_words)} "
+                            f"of the concept's words DO appear in the source "
+                            f"(summary may falsely claim it's missing)"
+                        ),
+                    )
+                )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="consistency", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"consistency check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="consistency",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"consistency check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -2840,9 +3628,8 @@ def detect_inconsistency(
 
 
 _AUTHOR_RE = re.compile(
-    r'\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\s*\((\d{4}[a-z]?)\)',
+    r"\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\s*\((\d{4}[a-z]?)\)",
 )
-
 
 
 def detect_exec_bullet_inconsistency(
@@ -2893,23 +3680,24 @@ def detect_exec_bullet_inconsistency(
     for author in exec_authors:
         # Match the author name (or surname) in the bullet text.
         # "AuthorA" → check "chasseguet" OR "smirgel" in bullets.
-        parts = re.split(r'[-\u2013]', author)
+        parts = re.split(r"[-\u2013]", author)
         found = author in bullet_text or any(p in bullet_text for p in parts if len(p) >= 4)
         if not found:
-            issues.append(Issue(
-                detector="consistency",
-                severity="flag",
-                field=field_label,
-                snippet=executive_summary[:60],
-                detail=(
-                    f"exec mentions author '{author}' but no bullet point "
-                    f"covers this author — possible hallucination in exec or "
-                    f"omission in bullets"
-                ),
-            ))
+            issues.append(
+                Issue(
+                    detector="consistency",
+                    severity="flag",
+                    field=field_label,
+                    snippet=executive_summary[:60],
+                    detail=(
+                        f"exec mentions author '{author}' but no bullet point "
+                        f"covers this author — possible hallucination in exec or "
+                        f"omission in bullets"
+                    ),
+                )
+            )
 
     return issues
-
 
 
 def detect_citation_coverage_gap(
@@ -2961,7 +3749,7 @@ def detect_citation_coverage_gap(
     summary_lower = summary_text.lower()
     missing: list[str] = []
     for author_lower, author_original in source_authors.items():
-        parts = re.split(r'[-\u2013]', author_lower)
+        parts = re.split(r"[-\u2013]", author_lower)
         found = author_lower in summary_lower or any(
             p in summary_lower for p in parts if len(p) >= 4
         )
@@ -2970,19 +3758,21 @@ def detect_citation_coverage_gap(
 
     coverage = 1.0 - (len(missing) / len(source_authors))
     if coverage < coverage_floor:
-        issues.append(Issue(
-            detector="citation_coverage",
-            severity="flag",
-            field=field_label,
-            snippet=f"{len(source_authors)} authors in source, {len(missing)} missing",
-            detail=(
-                f"citation coverage gap: {len(missing)}/{len(source_authors)} "
-                f"source authors not mentioned in summary "
-                f"(coverage={coverage:.0%}, floor={coverage_floor:.0%}). "
-                f"Missing: {', '.join(missing[:10])}"
-                f"{'…' if len(missing) > 10 else ''}"
-            ),
-        ))
+        issues.append(
+            Issue(
+                detector="citation_coverage",
+                severity="flag",
+                field=field_label,
+                snippet=f"{len(source_authors)} authors in source, {len(missing)} missing",
+                detail=(
+                    f"citation coverage gap: {len(missing)}/{len(source_authors)} "
+                    f"source authors not mentioned in summary "
+                    f"(coverage={coverage:.0%}, floor={coverage_floor:.0%}). "
+                    f"Missing: {', '.join(missing[:10])}"
+                    f"{'…' if len(missing) > 10 else ''}"
+                ),
+            )
+        )
 
     return issues
 
@@ -2999,16 +3789,15 @@ def detect_citation_coverage_gap(
 
 
 _YEAR_IN_PARENS_RE = re.compile(
-    r'\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\s*\((\d{3,4}[a-z]?)\)'
+    r"\b([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)\s*\((\d{3,4}[a-z]?)\)"
 )
-
-
 
 
 def _is_subsequence(short: str, long: str) -> bool:
     """Check if ``short`` is a subsequence of ``long`` (not necessarily contiguous)."""
     it = iter(long)
     return all(c in it for c in short)
+
 
 def detect_dropped_digit_years(
     text: str,
@@ -3073,44 +3862,53 @@ def detect_dropped_digit_years(
                     # middle "9". Check if summary_year is a SUBSEQUENCE of
                     # src_year (same digits in same order, one missing).
                     if _is_subsequence(summary_year, src_year):
-                        issues.append(Issue(
-                            detector="dropped_digit_year",
-                            severity="fix",
-                            field=field_label,
-                            snippet=_snippet(cleaned, m.start()),
-                            detail=(
-                                f"dropped-digit year: '{author} ({summary_year})' "
-                                f"→ '{author} ({src_year})' (source has "
-                                f"{len(src_year)} digits, summary has "
-                                f"{len(summary_year)} — the model dropped a digit)"
-                            ),
-                        ))
+                        issues.append(
+                            Issue(
+                                detector="dropped_digit_year",
+                                severity="fix",
+                                field=field_label,
+                                snippet=_snippet(cleaned, m.start()),
+                                detail=(
+                                    f"dropped-digit year: '{author} ({summary_year})' "
+                                    f"→ '{author} ({src_year})' (source has "
+                                    f"{len(src_year)} digits, summary has "
+                                    f"{len(summary_year)} — the model dropped a digit)"
+                                ),
+                            )
+                        )
                         return f"{m.group(1)} ({src_year})"  # V18.2.28: preserve space before (
                 # Case 2: summary has MORE digits (e.g. "19881" vs "1981")
                 elif len(summary_year) > len(src_year):
                     if _is_subsequence(src_year, summary_year):
-                        issues.append(Issue(
-                            detector="dropped_digit_year",
-                            severity="fix",
-                            field=field_label,
-                            snippet=_snippet(cleaned, m.start()),
-                            detail=(
-                                f"extra-digit year: '{author} ({summary_year})' "
-                                f"→ '{author} ({src_year})' (source has "
-                                f"{len(src_year)} digits, summary has "
-                                f"{len(summary_year)} — the model added a digit)"
-                            ),
-                        ))
+                        issues.append(
+                            Issue(
+                                detector="dropped_digit_year",
+                                severity="fix",
+                                field=field_label,
+                                snippet=_snippet(cleaned, m.start()),
+                                detail=(
+                                    f"extra-digit year: '{author} ({summary_year})' "
+                                    f"→ '{author} ({src_year})' (source has "
+                                    f"{len(src_year)} digits, summary has "
+                                    f"{len(summary_year)} — the model added a digit)"
+                                ),
+                            )
+                        )
                         return f"{m.group(1)} ({src_year})"  # V18.2.28: preserve space before (
             return m.group(0)
 
         cleaned = _YEAR_IN_PARENS_RE.sub(_fix_year, cleaned)
         return cleaned, issues
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="dropped_digit_year", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"dropped-digit-year check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="dropped_digit_year",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"dropped-digit-year check crashed: {e!r}",
+            )
+        )
         return text, issues
 
 
@@ -3216,7 +4014,8 @@ _ATTRIB_NOUNS = (
 )
 _ATTRIBUTIVE_POSSESSIVE_RE = re.compile(
     r"\b([A-Z][a-zA-Z'\u2019\-]{2,}(?:\s+[A-Z][a-zA-Z'\u2019\-]{2,})?)['\u2019]s\s+"
-    + _ATTRIB_NOUNS + r"\s+"
+    + _ATTRIB_NOUNS
+    + r"\s+"
     r"(" + _ATTRIB_VERBS + r")\b"
 )
 
@@ -3225,13 +4024,11 @@ _ATTRIBUTIVE_POSSESSIVE_RE = re.compile(
 # <verb>" whose antecedent is a different name in the same region.
 # V18.20.3.2: verb families via the shared _ATTRIB_VERBS alternation.
 _SRC_POSSESSIVE_SUBJECT_RE = re.compile(
-    r"\b([A-Z][a-zA-Z'\u2019\-]{2,})['\u2019]s\s+"
-    + _ATTRIB_NOUNS + r"\s+"
+    r"\b([A-Z][a-zA-Z'\u2019\-]{2,})['\u2019]s\s+" + _ATTRIB_NOUNS + r"\s+"
     r"(" + _ATTRIB_VERBS + r")\b"
 )
 _SRC_PRONOUN_SUBJECT_RE = re.compile(
-    r"\b[Hh](?:is|er)\s+"
-    + _ATTRIB_NOUNS + r"\s+"
+    r"\b[Hh](?:is|er)\s+" + _ATTRIB_NOUNS + r"\s+"
     r"(" + _ATTRIB_VERBS + r")\b"
 )
 # V18.20.3.2 (audit N4 / AuthorF case): "according to <Name>" — the claim's
@@ -3243,25 +4040,92 @@ _SRC_PRONOUN_SUBJECT_RE = re.compile(
 # name, book-derived vocabulary in a comment) because no verb-based holder
 # could be resolved in that span — AuthorG owns the claim only via the
 # "according to" phrase.
-_SRC_ACCORDING_TO_RE = re.compile(
-    r"\baccording to\s+([A-Z][a-zA-Z'\u2019\-]{2,})\b"
-)
+_SRC_ACCORDING_TO_RE = re.compile(r"\baccording to\s+([A-Z][a-zA-Z'\u2019\-]{2,})\b")
 # Precompiled broad attribution-verb matcher (windows / passive agents).
 _ATTRIB_VERB_RE = re.compile(r"\b(?:" + _ATTRIB_VERBS + r")\b", re.IGNORECASE)
 
 # Common non-name capitalized words that appear at sentence starts — never
 # treated as the "different subject" evidence.
 _NON_NAME_CAPS = {
-    "The", "This", "That", "These", "Those", "His", "Her", "Their", "Its",
-    "He", "She", "They", "It", "In", "On", "At", "By", "For", "From", "As",
-    "With", "Without", "While", "When", "Where", "Although", "Though",
-    "However", "Moreover", "Furthermore", "Thus", "Hence", "Therefore",
-    "Indeed", "Notably", "Importantly", "Finally", "First", "Second",
-    "Third", "According", "Both", "Each", "Such", "Some", "Most", "Many",
-    "All", "No", "None", "Another", "Other", "Later", "Earlier", "Since",
-    "Because", "Before", "After", "During", "Between", "Among", "If",
-    "Unless", "Yet", "But", "And", "Or", "So", "What", "How", "Why",
-    "Whether", "There", "Here", "Now", "Then", "Chapter", "Part", "Note",
+    "The",
+    "This",
+    "That",
+    "These",
+    "Those",
+    "His",
+    "Her",
+    "Their",
+    "Its",
+    "He",
+    "She",
+    "They",
+    "It",
+    "In",
+    "On",
+    "At",
+    "By",
+    "For",
+    "From",
+    "As",
+    "With",
+    "Without",
+    "While",
+    "When",
+    "Where",
+    "Although",
+    "Though",
+    "However",
+    "Moreover",
+    "Furthermore",
+    "Thus",
+    "Hence",
+    "Therefore",
+    "Indeed",
+    "Notably",
+    "Importantly",
+    "Finally",
+    "First",
+    "Second",
+    "Third",
+    "According",
+    "Both",
+    "Each",
+    "Such",
+    "Some",
+    "Most",
+    "Many",
+    "All",
+    "No",
+    "None",
+    "Another",
+    "Other",
+    "Later",
+    "Earlier",
+    "Since",
+    "Because",
+    "Before",
+    "After",
+    "During",
+    "Between",
+    "Among",
+    "If",
+    "Unless",
+    "Yet",
+    "But",
+    "And",
+    "Or",
+    "So",
+    "What",
+    "How",
+    "Why",
+    "Whether",
+    "There",
+    "Here",
+    "Now",
+    "Then",
+    "Chapter",
+    "Part",
+    "Note",
 }
 
 # V18.20.3.1 (real-rig audit D3): the gap-fill path produces BOLD-COLON
@@ -3312,7 +4176,7 @@ def _name_holds_verb(name: str, span: str, verb_stems: set) -> bool:
             if sm.group(1) == name and (_verb_stems(sm.group(2).lower()) & verb_stems):
                 return True
         for vm in re.finditer(rf"\bby\s+{re.escape(name)}\b", span, re.IGNORECASE):
-            window = span[max(0, vm.start() - 80):vm.start()]
+            window = span[max(0, vm.start() - 80) : vm.start()]
             for w in _ATTRIB_VERB_RE.finditer(window):
                 if _verb_stems(w.group(0).lower()) & verb_stems:
                     return True
@@ -3341,7 +4205,7 @@ def _name_holds_any_attrib_verb(name: str, span: str) -> bool:
             if sm.group(1) == name:
                 return True
         for vm in re.finditer(rf"\bby\s+{re.escape(name)}\b", span, re.IGNORECASE):
-            window = span[max(0, vm.start() - 80):vm.start()]
+            window = span[max(0, vm.start() - 80) : vm.start()]
             if _ATTRIB_VERB_RE.search(window):
                 return True
     except re.error:
@@ -3487,7 +4351,14 @@ def detect_attribution_subject_swap(
             verb_stems = _verb_stems(verb)
 
             # The claim text around the match (sentence granularity).
-            sent_start = max(text.rfind(".", 0, m.start()), text.rfind("!", 0, m.start()), text.rfind("?", 0, m.start())) + 1
+            sent_start = (
+                max(
+                    text.rfind(".", 0, m.start()),
+                    text.rfind("!", 0, m.start()),
+                    text.rfind("?", 0, m.start()),
+                )
+                + 1
+            )
             sent_end = text.find(".", m.end())
             if sent_end < 0:
                 sent_end = len(text)
@@ -3533,7 +4404,9 @@ def detect_attribution_subject_swap(
                         # token outside parens (citation extraction misses
                         # authors who are only discussed, never cited).
                         diff_name = _resolve_pronoun_antecedent(
-                            span, claimed_surname, source_authors,
+                            span,
+                            claimed_surname,
+                            source_authors,
                         )
                 if diff_name is None:
                     continue
@@ -3547,20 +4420,22 @@ def detect_attribution_subject_swap(
 
             if confirmed_span and not has_genuine_subject_elsewhere:
                 span, real = confirmed_span
-                issues.append(Issue(
-                    detector="attribution_swap",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"subject-swap misattribution: summary attributes a "
-                        f"'{verb}' claim to '{claimed}', but the matching "
-                        f"source passage attributes it to '{real}' "
-                        f"('{claimed}' appears there only as a parenthetical "
-                        f"citation). Verify: is the WORK really {claimed}'s, "
-                        f"or is {claimed} only cited for a term?"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="attribution_swap",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"subject-swap misattribution: summary attributes a "
+                            f"'{verb}' claim to '{claimed}', but the matching "
+                            f"source passage attributes it to '{real}' "
+                            f"('{claimed}' appears there only as a parenthetical "
+                            f"citation). Verify: is the WORK really {claimed}'s, "
+                            f"or is {claimed} only cited for a term?"
+                        ),
+                    )
+                )
 
         # ── Path 2 (V18.20.3.1, audit D3): colon form "Name: <verb> …" ────
         # The gap-fill path emits bold-colon attribution stubs. Unlike the
@@ -3582,7 +4457,7 @@ def detect_attribution_subject_swap(
             line_end = text.find("\n", m.start())
             if line_end < 0:
                 line_end = len(text)
-            claim_sentence = text[m.end():line_end].strip()
+            claim_sentence = text[m.end() : line_end].strip()
             if len(claim_sentence) < 20:
                 continue  # too thin to confirm content overlap
 
@@ -3612,7 +4487,9 @@ def detect_attribution_subject_swap(
                     pron_subj = _SRC_PRONOUN_SUBJECT_RE.search(span)
                     if pron_subj and _verb_stems(pron_subj.group(1).lower()) & verb_stems:
                         holder = _resolve_pronoun_antecedent(
-                            span, claimed_surname, source_authors,
+                            span,
+                            claimed_surname,
+                            source_authors,
                         )
                 if holder is None:
                     continue
@@ -3636,26 +4513,33 @@ def detect_attribution_subject_swap(
 
             if confirmed_span and not has_genuine_subject_elsewhere:
                 span, real = confirmed_span
-                issues.append(Issue(
-                    detector="attribution_swap",
-                    severity="flag",
-                    field=field_label,
-                    snippet=_snippet(text, m.start()),
-                    detail=(
-                        f"subject-swap misattribution (colon form): summary "
-                        f"attributes a '{verb}' claim to '{claimed}', but the "
-                        f"matching source passage attributes it to '{real}' "
-                        f"('{claimed}' appears there only inside a citation/"
-                        f"list, not as the claim's subject). Verify: is the "
-                        f"claim really {claimed}'s, or is {claimed} only "
-                        f"cited within it?"
-                    ),
-                ))
+                issues.append(
+                    Issue(
+                        detector="attribution_swap",
+                        severity="flag",
+                        field=field_label,
+                        snippet=_snippet(text, m.start()),
+                        detail=(
+                            f"subject-swap misattribution (colon form): summary "
+                            f"attributes a '{verb}' claim to '{claimed}', but the "
+                            f"matching source passage attributes it to '{real}' "
+                            f"('{claimed}' appears there only inside a citation/"
+                            f"list, not as the claim's subject). Verify: is the "
+                            f"claim really {claimed}'s, or is {claimed} only "
+                            f"cited within it?"
+                        ),
+                    )
+                )
     except Exception as e:  # fail-open
-        issues.append(Issue(
-            detector="attribution_swap", severity="flag", field=field_label,
-            snippet=text[:60], detail=f"attribution-swap check crashed: {e!r}",
-        ))
+        issues.append(
+            Issue(
+                detector="attribution_swap",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"attribution-swap check crashed: {e!r}",
+            )
+        )
     return text, issues
 
 
@@ -3747,7 +4631,7 @@ def _parse_bullet_subject(bullet: str) -> tuple[str, str] | None:
     m = _BULLET_ACTIVE_PREFIX_RE.match(stripped)
     if m:
         claimed = m.group(1).strip()
-        return claimed, stripped[m.end():].strip()
+        return claimed, stripped[m.end() :].strip()
     return None
 
 
@@ -3829,19 +4713,23 @@ def detect_parenthetical_promotion(
                 break
             if holder is None:
                 pos_subj = _SRC_POSSESSIVE_SUBJECT_RE.search(span)
-                if (pos_subj and pos_subj.group(1) != claimed_surname
-                        and pos_subj.group(1) not in _NON_NAME_CAPS):
+                if (
+                    pos_subj
+                    and pos_subj.group(1) != claimed_surname
+                    and pos_subj.group(1) not in _NON_NAME_CAPS
+                ):
                     holder = pos_subj.group(1)
             if holder is None:
                 pron_subj = _SRC_PRONOUN_SUBJECT_RE.search(span)
                 if pron_subj:
                     holder = _resolve_pronoun_antecedent(
-                        span, claimed_surname, source_authors,
+                        span,
+                        claimed_surname,
+                        source_authors,
                     )
             if holder is None:
                 acc = _SRC_ACCORDING_TO_RE.search(span)
-                if (acc and acc.group(1) != claimed_surname
-                        and acc.group(1) not in _NON_NAME_CAPS):
+                if acc and acc.group(1) != claimed_surname and acc.group(1) not in _NON_NAME_CAPS:
                     holder = acc.group(1)
             if not holder or holder == claimed_surname:
                 continue
@@ -3867,7 +4755,8 @@ def detect_parenthetical_promotion(
         logger.warning(
             "parenthetical-promotion veto CRASHED — fail-open (bullet kept, "
             "verify manually): %s: %s | bullet: %r",
-            type(_veto_e).__name__, _veto_e, (bullet or "")[:80],
+            type(_veto_e).__name__,
+            _veto_e,
+            (bullet or "")[:80],
         )
         return None
-

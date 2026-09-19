@@ -29,7 +29,7 @@ from collections import Counter
 # ("café-\nbar" → "cafébar", "Über-\nschrift" → "Überschrift") are also
 # rejoined. The \u00C0-\u024F range covers Latin-1 Supplement + Latin
 # Extended-A/B (À-ÿ and beyond).
-_HYPHEN_PATTERN = re.compile(r'([a-zA-Z\u00C0-\u024F])-\n([a-zA-Z\u00C0-\u024F])')
+_HYPHEN_PATTERN = re.compile(r"([a-zA-Z\u00C0-\u024F])-\n([a-zA-Z\u00C0-\u024F])")
 
 # Don't join if the resulting word would be too long (likely a real hyphenated
 # compound like "state-of-the-art" that got line-broken)
@@ -39,25 +39,26 @@ _MAX_JOINED_WORD_LEN = 25
 def repair_hyphenation(text: str) -> str:
     """Fix words broken across lines by hyphenation.
 
-    PDF extraction often produces "net-\\nworking" when a word is hyphenated
-    at a line break. This rejoins them into "networking".
+        PDF extraction often produces "net-\\nworking" when a word is hyphenated
+        at a line break. This rejoins them into "networking".
 
-    V18.2.18 (O4): Fixed the lookahead to match Capitalized + accented chars.
-    Previously ``word_rest = re.match(r'[a-z]+', after)`` only matched
-# line-break splits were missed
-    (the 'son' part is lowercase, but the regex would fail to join if the
-    left side was Capitalized because the combined check was inconsistent).
-    Now the lookahead uses ``[a-zA-Z\\u00C0-\\u024F]+`` to match any letter,
-    matching the main ``_HYPHEN_PATTERN``.
+        V18.2.18 (O4): Fixed the lookahead to match Capitalized + accented chars.
+        Previously ``word_rest = re.match(r'[a-z]+', after)`` only matched
+    # line-break splits were missed
+        (the 'son' part is lowercase, but the regex would fail to join if the
+        left side was Capitalized because the combined check was inconsistent).
+        Now the lookahead uses ``[a-zA-Z\\u00C0-\\u024F]+`` to match any letter,
+        matching the main ``_HYPHEN_PATTERN``.
     """
+
     def _join(m: re.Match) -> str:
         left, right = m.group(1), m.group(2)
         # Peek ahead to get the full word after the newline.
         # V18.2.18 (O4): use the same char class as _HYPHEN_PATTERN so
         # Capitalized + accented proper nouns are joined correctly.
         rest = right
-        after = text[m.end():m.end() + 30]
-        word_rest = re.match(r'[a-zA-Z\u00C0-\u024F]+', after)
+        after = text[m.end() : m.end() + 30]
+        word_rest = re.match(r"[a-zA-Z\u00C0-\u024F]+", after)
         if word_rest:
             rest += word_rest.group()
         # V18.2.18 (O4): Also look BACK to find the full word before the
@@ -65,8 +66,8 @@ def repair_hyphenation(text: str) -> str:
         # Without this, the length check only sees `left` (1 char) + `rest`,
         # so long compounds like "pneumono...coniosis-\nsuffix" pass the
         # <25 check even though the full joined word is 52 chars.
-        before = text[max(0, m.start() - 30):m.start()]
-        word_before_match = re.search(r'[a-zA-Z\u00C0-\u024F]+$', before)
+        before = text[max(0, m.start() - 30) : m.start()]
+        word_before_match = re.search(r"[a-zA-Z\u00C0-\u024F]+$", before)
         full_left = (word_before_match.group() if word_before_match else "") + left
         # Don't join if the FULL combined word is too long (likely a real compound)
         if len(full_left) + len(rest) > _MAX_JOINED_WORD_LEN:
@@ -85,7 +86,9 @@ def repair_hyphenation(text: str) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 
 # Page marker pattern — detect lines like "<!-- Page 12 -->" or "[Page 12]"
-_PAGE_MARKER = re.compile(r'^(?:<!--\s*Page\s+\d+\s*-->|\[Page\s+\d+\])\s*$', re.MULTILINE | re.IGNORECASE)
+_PAGE_MARKER = re.compile(
+    r"^(?:<!--\s*Page\s+\d+\s*-->|\[Page\s+\d+\])\s*$", re.MULTILINE | re.IGNORECASE
+)
 
 
 def remove_headers_footers(text: str) -> str:
@@ -111,7 +114,7 @@ def remove_headers_footers(text: str) -> str:
     # headers in the text.
     if len(markers) < 2:
         # Not enough page markers to detect patterns — just strip bare page numbers
-        text = re.sub(r'^\s*\d{1,4}\s*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*\d{1,4}\s*$", "", text, flags=re.MULTILINE)
         return text
 
     # Split text into page chunks
@@ -131,7 +134,7 @@ def remove_headers_footers(text: str) -> str:
     header_lines = []  # list of (line_text, page_idx)
     footer_lines = []
     for idx, page in enumerate(pages):
-        lines = [l.strip() for l in page.splitlines() if l.strip()]
+        lines = [line.strip() for line in page.splitlines() if line.strip()]
         if len(lines) >= 2:
             header_lines.append((lines[0], idx))
             if len(lines) >= 3:
@@ -142,6 +145,7 @@ def remove_headers_footers(text: str) -> str:
 
     # Find lines that repeat across 2+ pages (V18.1/O5: lowered 3→2)
     from collections import Counter as _Counter
+
     header_counts = _Counter(line for line, _ in header_lines)
     footer_counts = _Counter(line for line, _ in footer_lines)
 
@@ -157,7 +161,7 @@ def remove_headers_footers(text: str) -> str:
 
     # Also remove bare page-number lines
     for line, _ in header_lines + footer_lines:
-        if re.match(r'^\d{1,4}$', line):
+        if re.match(r"^\d{1,4}$", line):
             to_remove.add(line)
 
     if not to_remove:
@@ -167,13 +171,13 @@ def remove_headers_footers(text: str) -> str:
     removed_count = 0
     for line in to_remove:
         # Remove the line wherever it appears as a standalone line
-        pattern = re.compile(r'^\s*' + re.escape(line) + r'\s*$', re.MULTILINE)
+        pattern = re.compile(r"^\s*" + re.escape(line) + r"\s*$", re.MULTILINE)
         matches = pattern.findall(text)
         removed_count += len(matches)
-        text = pattern.sub('', text)
+        text = pattern.sub("", text)
 
     # Clean up any triple+ newlines left by removals
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text
 
@@ -197,14 +201,14 @@ _QUOTED_TERM_PATTERN = re.compile(
 # Pattern 2: "X" is defined as / means / refers to / is called / is known as
 _DEFINITION_VERB_PATTERN = re.compile(
     r'["\u201c\u2018]?([a-zA-Z][a-zA-Z]+(?:\s+[a-zA-Z]+){0,3})["\u201d\u2019]?\s*'
-    r'(?:is\s+(?:defined\s+as|called|known\s+as)|means|refers\s+to)',
+    r"(?:is\s+(?:defined\s+as|called|known\s+as)|means|refers\s+to)",
     re.IGNORECASE,
 )
 
 # Pattern 3: The X principle/technique/concept/strategy/framework/cycle
 _CONCEPT_NOUN_PATTERN = re.compile(
     r'(?:the\s+)["\u201c\u2018]?([a-zA-Z][a-zA-Z]+(?:\s+[a-zA-Z]+){0,3})["\u201d\u2019]?\s*'
-    r'(?:principle|technique|concept|strategy|framework|method|approach|cycle|rule|list|base|zone)',
+    r"(?:principle|technique|concept|strategy|framework|method|approach|cycle|rule|list|base|zone)",
     re.IGNORECASE,
 )
 
@@ -252,12 +256,71 @@ def _is_valid_concept(term: str) -> bool:
 
     # 2+ words: check it's not a sentence fragment
     # Skip if first word is a common verb/conjunction (sentence fragment)
-    _SENTENCE_FRAGMENT_STARTS = frozenset(["do", "does", "did", "is", "are", "was", "were", "have", "has", "had", "will", "would", "could", "should", "may", "might", "can", "must", "shall", "and", "or", "but", "if", "when", "where", "why", "how", "what", "which", "who", "that", "this", "these", "those", "there", "here", "now", "then", "because", "although", "though", "since", "until", "unless", "whether", "while", "during", "before", "after", "above", "below", "important", "never", "intelligence", "waitress", "want"])
+    _SENTENCE_FRAGMENT_STARTS = frozenset(
+        [
+            "do",
+            "does",
+            "did",
+            "is",
+            "are",
+            "was",
+            "were",
+            "have",
+            "has",
+            "had",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "must",
+            "shall",
+            "and",
+            "or",
+            "but",
+            "if",
+            "when",
+            "where",
+            "why",
+            "how",
+            "what",
+            "which",
+            "who",
+            "that",
+            "this",
+            "these",
+            "those",
+            "there",
+            "here",
+            "now",
+            "then",
+            "because",
+            "although",
+            "though",
+            "since",
+            "until",
+            "unless",
+            "whether",
+            "while",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "important",
+            "never",
+            "intelligence",
+            "waitress",
+            "want",
+        ]
+    )
     if words[0].lower() in _SENTENCE_FRAGMENT_STARTS:
         return False
 
     # Skip if contains sentence-ending punctuation (it's a sentence, not a term)
-    if any(c in term for c in '.!?;'):
+    if any(c in term for c in ".!?;"):
         return False
 
     # V13.37.0: Reject terms containing newlines/tabs/carriage returns.
@@ -265,9 +328,9 @@ def _is_valid_concept(term: str) -> bool:
     # implemented (or was reverted). PDF table extraction produces garbage
     # like "Nai\nB" (a word broken across lines) which the regex patterns
     # match as a single concept because they use \s+ (matches newlines).
-# This caused 13/16 false-uncovered concepts in the rig-test
+    # This caused 13/16 false-uncovered concepts in the rig-test
     # conversion log, triggering 10 consecutive empty gap-fill LLM calls.
-    if any(c in term for c in '\n\t\r'):
+    if any(c in term for c in "\n\t\r"):
         return False
 
     # V18.20.3.9 (Phase 2 / residuals sweep): the hardcoded character-name
@@ -283,7 +346,134 @@ def _is_valid_concept(term: str) -> bool:
     # the academic-rigor XML output leaks as "concepts" (e.g., "As A",
     # "Understanding Of", "Headache Physicians").  Any term where ALL words
     # are common English words is likely a fragment, not a domain concept.
-    _COMMON_ENGLISH_WORDS = frozenset(["as", "a", "a", "the", "of", "in", "on", "at", "to", "for", "and", "or", "but", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "must", "shall", "this", "that", "these", "those", "there", "here", "now", "then", "who", "whom", "whose", "which", "what", "when", "where", "why", "how", "all", "any", "some", "no", "not", "nor", "so", "yet", "both", "each", "few", "more", "most", "other", "some", "such", "than", "too", "very", "just", "only", "own", "same", "so", "too", "very", "understanding", "knowledge", "concept", "idea", "theory", "principle", "method", "approach", "strategy", "technique", "process", "system", "structure", "function", "form", "type", "kind", "sort", "way", "means", "part", "section", "chapter", "page", "line", "figure", "table", "headache", "migraine", "treatment", "preventive", "acute", "clinical", "trial", "phase", "study", "patients", "drug", "dose", "mg", "efficacy", "safety", "adverse", "events", "side", "effects"])
+    _COMMON_ENGLISH_WORDS = frozenset(
+        [
+            "as",
+            "a",
+            "a",
+            "the",
+            "of",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "and",
+            "or",
+            "but",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "must",
+            "shall",
+            "this",
+            "that",
+            "these",
+            "those",
+            "there",
+            "here",
+            "now",
+            "then",
+            "who",
+            "whom",
+            "whose",
+            "which",
+            "what",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "any",
+            "some",
+            "no",
+            "not",
+            "nor",
+            "so",
+            "yet",
+            "both",
+            "each",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "than",
+            "too",
+            "very",
+            "just",
+            "only",
+            "own",
+            "same",
+            "so",
+            "too",
+            "very",
+            "understanding",
+            "knowledge",
+            "concept",
+            "idea",
+            "theory",
+            "principle",
+            "method",
+            "approach",
+            "strategy",
+            "technique",
+            "process",
+            "system",
+            "structure",
+            "function",
+            "form",
+            "type",
+            "kind",
+            "sort",
+            "way",
+            "means",
+            "part",
+            "section",
+            "chapter",
+            "page",
+            "line",
+            "figure",
+            "table",
+            "headache",
+            "migraine",
+            "treatment",
+            "preventive",
+            "acute",
+            "clinical",
+            "trial",
+            "phase",
+            "study",
+            "patients",
+            "drug",
+            "dose",
+            "mg",
+            "efficacy",
+            "safety",
+            "adverse",
+            "events",
+            "side",
+            "effects",
+        ]
+    )
     if all(w.lower() in _COMMON_ENGLISH_WORDS for w in words):
         return False
 
@@ -316,7 +506,7 @@ def _is_valid_concept(term: str) -> bool:
     # English phrases but not concepts — they're extracted from PDF table cells
     # or section headings, not from the running text. Reject concepts where
     # ALL words are capitalized (title-case) AND the concept is 4+ words —
-# real concepts are usually mixed-case multi-word phrases
+    # real concepts are usually mixed-case multi-word phrases
     if len(words) >= 4 and all(w[0].isupper() for w in words if w):
         return False
 
@@ -402,12 +592,745 @@ def extract_definitions(text: str, max_terms: int = 25) -> list[str]:
 # ════════════════════════════════════════════════════════════════════════════
 
 # Common English stopwords for keyword extraction
-_KEYWORD_STOPWORDS = frozenset(["the", "a", "an", "and", "or", "but", "to", "in", "on", "at", "for", "of", "with", "by", "from", "is", "was", "are", "were", "be", "been", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "this", "that", "these", "those", "it", "its", "they", "them", "their", "we", "us", "our", "you", "your", "he", "him", "his", "she", "her", "i", "me", "my", "if", "then", "else", "when", "where", "why", "how", "all", "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "not", "only", "own", "same", "so", "than", "too", "very", "just", "also", "now", "here", "there", "what", "which", "who", "whom", "because", "as", "while", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "up", "down", "out", "off", "over", "under", "again", "further", "once", "chapter", "part", "section", "appendix", "book", "page", "get", "got", "make", "made", "take", "took", "go", "went", "come", "came", "see", "saw", "know", "knew", "think", "thought", "say", "said", "tell", "told", "ask", "asked", "find", "found", "want", "wanted", "need", "needed", "try", "tried", "use", "used", "work", "worked", "look", "looked", "seem", "seemed", "feel", "felt", "become", "became", "leave", "left", "put", "set", "sit", "sat", "stand", "stood", "run", "ran", "walk", "walked", "talk", "talked", "give", "gave", "keep", "kept", "let", "begin", "began", "show", "showed", "hear", "heard", "play", "played", "turn", "turned", "start", "started", "move", "moved", "live", "lived", "believe", "believed", "bring", "brought", "happen", "happened", "write", "wrote", "read", "lead", "led", "understand", "understood", "meet", "met", "pay", "paid", "answer", "speak", "spoke", "allow", "add", "grow", "open", "learn", "change", "remember", "consider", "appear", "buy", "serve", "die", "send", "expect", "build", "stay", "fall", "cut", "reach", "kill", "remain", "suggest", "raise", "pass", "sell", "require", "report", "decide", "pull", "return", "explain", "hope", "develop", "carry", "break", "receive", "agree", "support", "hit", "produce", "eat", "cover", "catch", "draw", "choose", "point", "save", "design", "pick", "wear", "hall", "near", "tree", "side", "foot", "spring", "race", "lake", "corner", "answer", "train", "plane", "art", "front", "river", "car", "garden", "ball", "box", "office", "police", "court", "yard", "room", "house", "door", "window", "wall", "floor", "roof", "street", "road", "bridge", "park", "store", "shop", "market", "bank", "school", "church", "hospital", "library", "museum", "theater", "hotel", "restaurant", "farm", "factory", "station", "airport", "harbor", "path", "trail", "hill", "mountain", "valley", "forest", "desert", "island", "coast", "shore", "beach", "ocean", "sea", "water", "fire", "earth", "air", "wind", "rain", "snow", "ice", "fog", "storm", "cloud", "sun", "moon", "star", "light", "dark", "day", "night", "morning", "evening", "noon", "time", "year", "month", "week", "hour", "minute", "second", "man", "woman", "boy", "girl", "child", "baby", "person", "people", "family", "friend", "enemy", "stranger", "king", "queen", "prince", "princess", "president", "leader", "teacher", "student", "doctor", "nurse", "farmer", "soldier", "sailor", "pilot", "driver", "cook", "baker", "artist", "musician", "writer", "singer", "dancer", "actor", "lawyer", "judge", "priest", "monk", "table", "chair", "bed", "sofa", "desk", "shelf", "cabinet", "drawer", "basket", "bag", "purse", "wallet", "shirt", "pants", "dress", "skirt", "coat", "hat", "cap", "shoe", "sock", "boot", "glove", "scarf", "belt", "tie", "food", "bread", "meat", "fish", "fruit", "vegetable", "rice", "wheat", "corn", "bean", "pea", "soup", "stew", "pie", "cake", "cookie", "candy", "sugar", "salt", "pepper", "spice", "herb", "oil", "butter", "milk", "cheese", "yogurt", "egg", "chicken", "beef", "pork", "lamb", "duck", "turkey", "wine", "beer", "coffee", "tea", "juice", "soda", "dog", "cat", "horse", "cow", "pig", "sheep", "goat", "goose", "rabbit", "mouse", "rat", "bird", "snake", "frog", "turtle", "lizard", "spider", "ant", "bee", "fly", "worm", "tree", "flower", "grass", "bush", "leaf", "branch", "root", "seed", "berry", "nut", "bark", "wood", "stick", "stone", "rock", "sand", "dirt", "mud", "clay", "metal", "gold", "silver", "iron", "copper", "steel", "glass", "plastic", "rubber", "paper", "cloth", "leather", "cotton", "wool", "silk", "linen", "thread", "string", "rope", "wire", "chain", "nail", "screw", "bolt", "hammer", "saw", "knife", "fork", "spoon", "plate", "bowl", "cup", "glass", "bottle", "jar", "pot", "pan", "dish", "soap", "towel", "brush", "comb", "mirror", "lamp", "candle", "match", "fire", "flame", "smoke", "ash", "dust", "book", "letter", "map", "picture", "photo", "painting", "drawing", "sign", "flag", "ticket", "card", "music", "song", "dance", "game", "sport", "fight", "battle", "war", "peace", "love", "hate", "anger", "fear", "joy", "sad", "happy", "good", "bad", "big", "small", "tall", "short", "long", "wide", "narrow", "thick", "thin", "heavy", "light", "fast", "slow", "hot", "cold", "warm", "cool", "wet", "dry", "hard", "soft", "smooth", "rough", "sharp", "dull", "clean", "dirty", "old", "new", "young", "beautiful", "ugly", "plain", "rich", "poor", "strong", "weak", "smart", "stupid", "wise", "foolish", "brave", "shy", "quiet", "loud", "silent", "calm", "crazy", "right", "wrong", "true", "false", "real", "fake", "alive", "dead", "safe", "dangerous", "open", "closed", "full", "empty", "easy", "difficult", "simple", "complex", "possible", "impossible", "early", "late", "first", "last", "next", "previous", "same", "different", "important", "necessary", "ready", "example", "however", "whether", "though", "since", "unless", "toward", "around", "below", "above", "across", "behind", "looking", "making", "getting", "going", "coming", "taking", "thing", "things", "every", "makes", "might", "maybe", "opened", "really", "right", "started", "original", "wanted", "there", "myself", "someone", "something", "without", "throughout", "against", "between", "should", "would", "could", "before", "during", "after", "while", "being", "having", "their", "other", "about", "again", "still", "even", "only", "also", "just", "much", "many", "some", "most", "more", "less", "well", "often", "always", "never", "already", "further"])
+_KEYWORD_STOPWORDS = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "we",
+        "us",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "i",
+        "me",
+        "my",
+        "if",
+        "then",
+        "else",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "also",
+        "now",
+        "here",
+        "there",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "because",
+        "as",
+        "while",
+        "about",
+        "against",
+        "between",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "up",
+        "down",
+        "out",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "once",
+        "chapter",
+        "part",
+        "section",
+        "appendix",
+        "book",
+        "page",
+        "get",
+        "got",
+        "make",
+        "made",
+        "take",
+        "took",
+        "go",
+        "went",
+        "come",
+        "came",
+        "see",
+        "saw",
+        "know",
+        "knew",
+        "think",
+        "thought",
+        "say",
+        "said",
+        "tell",
+        "told",
+        "ask",
+        "asked",
+        "find",
+        "found",
+        "want",
+        "wanted",
+        "need",
+        "needed",
+        "try",
+        "tried",
+        "use",
+        "used",
+        "work",
+        "worked",
+        "look",
+        "looked",
+        "seem",
+        "seemed",
+        "feel",
+        "felt",
+        "become",
+        "became",
+        "leave",
+        "left",
+        "put",
+        "set",
+        "sit",
+        "sat",
+        "stand",
+        "stood",
+        "run",
+        "ran",
+        "walk",
+        "walked",
+        "talk",
+        "talked",
+        "give",
+        "gave",
+        "keep",
+        "kept",
+        "let",
+        "begin",
+        "began",
+        "show",
+        "showed",
+        "hear",
+        "heard",
+        "play",
+        "played",
+        "turn",
+        "turned",
+        "start",
+        "started",
+        "move",
+        "moved",
+        "live",
+        "lived",
+        "believe",
+        "believed",
+        "bring",
+        "brought",
+        "happen",
+        "happened",
+        "write",
+        "wrote",
+        "read",
+        "lead",
+        "led",
+        "understand",
+        "understood",
+        "meet",
+        "met",
+        "pay",
+        "paid",
+        "answer",
+        "speak",
+        "spoke",
+        "allow",
+        "add",
+        "grow",
+        "open",
+        "learn",
+        "change",
+        "remember",
+        "consider",
+        "appear",
+        "buy",
+        "serve",
+        "die",
+        "send",
+        "expect",
+        "build",
+        "stay",
+        "fall",
+        "cut",
+        "reach",
+        "kill",
+        "remain",
+        "suggest",
+        "raise",
+        "pass",
+        "sell",
+        "require",
+        "report",
+        "decide",
+        "pull",
+        "return",
+        "explain",
+        "hope",
+        "develop",
+        "carry",
+        "break",
+        "receive",
+        "agree",
+        "support",
+        "hit",
+        "produce",
+        "eat",
+        "cover",
+        "catch",
+        "draw",
+        "choose",
+        "point",
+        "save",
+        "design",
+        "pick",
+        "wear",
+        "hall",
+        "near",
+        "tree",
+        "side",
+        "foot",
+        "spring",
+        "race",
+        "lake",
+        "corner",
+        "answer",
+        "train",
+        "plane",
+        "art",
+        "front",
+        "river",
+        "car",
+        "garden",
+        "ball",
+        "box",
+        "office",
+        "police",
+        "court",
+        "yard",
+        "room",
+        "house",
+        "door",
+        "window",
+        "wall",
+        "floor",
+        "roof",
+        "street",
+        "road",
+        "bridge",
+        "park",
+        "store",
+        "shop",
+        "market",
+        "bank",
+        "school",
+        "church",
+        "hospital",
+        "library",
+        "museum",
+        "theater",
+        "hotel",
+        "restaurant",
+        "farm",
+        "factory",
+        "station",
+        "airport",
+        "harbor",
+        "path",
+        "trail",
+        "hill",
+        "mountain",
+        "valley",
+        "forest",
+        "desert",
+        "island",
+        "coast",
+        "shore",
+        "beach",
+        "ocean",
+        "sea",
+        "water",
+        "fire",
+        "earth",
+        "air",
+        "wind",
+        "rain",
+        "snow",
+        "ice",
+        "fog",
+        "storm",
+        "cloud",
+        "sun",
+        "moon",
+        "star",
+        "light",
+        "dark",
+        "day",
+        "night",
+        "morning",
+        "evening",
+        "noon",
+        "time",
+        "year",
+        "month",
+        "week",
+        "hour",
+        "minute",
+        "second",
+        "man",
+        "woman",
+        "boy",
+        "girl",
+        "child",
+        "baby",
+        "person",
+        "people",
+        "family",
+        "friend",
+        "enemy",
+        "stranger",
+        "king",
+        "queen",
+        "prince",
+        "princess",
+        "president",
+        "leader",
+        "teacher",
+        "student",
+        "doctor",
+        "nurse",
+        "farmer",
+        "soldier",
+        "sailor",
+        "pilot",
+        "driver",
+        "cook",
+        "baker",
+        "artist",
+        "musician",
+        "writer",
+        "singer",
+        "dancer",
+        "actor",
+        "lawyer",
+        "judge",
+        "priest",
+        "monk",
+        "table",
+        "chair",
+        "bed",
+        "sofa",
+        "desk",
+        "shelf",
+        "cabinet",
+        "drawer",
+        "basket",
+        "bag",
+        "purse",
+        "wallet",
+        "shirt",
+        "pants",
+        "dress",
+        "skirt",
+        "coat",
+        "hat",
+        "cap",
+        "shoe",
+        "sock",
+        "boot",
+        "glove",
+        "scarf",
+        "belt",
+        "tie",
+        "food",
+        "bread",
+        "meat",
+        "fish",
+        "fruit",
+        "vegetable",
+        "rice",
+        "wheat",
+        "corn",
+        "bean",
+        "pea",
+        "soup",
+        "stew",
+        "pie",
+        "cake",
+        "cookie",
+        "candy",
+        "sugar",
+        "salt",
+        "pepper",
+        "spice",
+        "herb",
+        "oil",
+        "butter",
+        "milk",
+        "cheese",
+        "yogurt",
+        "egg",
+        "chicken",
+        "beef",
+        "pork",
+        "lamb",
+        "duck",
+        "turkey",
+        "wine",
+        "beer",
+        "coffee",
+        "tea",
+        "juice",
+        "soda",
+        "dog",
+        "cat",
+        "horse",
+        "cow",
+        "pig",
+        "sheep",
+        "goat",
+        "goose",
+        "rabbit",
+        "mouse",
+        "rat",
+        "bird",
+        "snake",
+        "frog",
+        "turtle",
+        "lizard",
+        "spider",
+        "ant",
+        "bee",
+        "fly",
+        "worm",
+        "tree",
+        "flower",
+        "grass",
+        "bush",
+        "leaf",
+        "branch",
+        "root",
+        "seed",
+        "berry",
+        "nut",
+        "bark",
+        "wood",
+        "stick",
+        "stone",
+        "rock",
+        "sand",
+        "dirt",
+        "mud",
+        "clay",
+        "metal",
+        "gold",
+        "silver",
+        "iron",
+        "copper",
+        "steel",
+        "glass",
+        "plastic",
+        "rubber",
+        "paper",
+        "cloth",
+        "leather",
+        "cotton",
+        "wool",
+        "silk",
+        "linen",
+        "thread",
+        "string",
+        "rope",
+        "wire",
+        "chain",
+        "nail",
+        "screw",
+        "bolt",
+        "hammer",
+        "saw",
+        "knife",
+        "fork",
+        "spoon",
+        "plate",
+        "bowl",
+        "cup",
+        "glass",
+        "bottle",
+        "jar",
+        "pot",
+        "pan",
+        "dish",
+        "soap",
+        "towel",
+        "brush",
+        "comb",
+        "mirror",
+        "lamp",
+        "candle",
+        "match",
+        "fire",
+        "flame",
+        "smoke",
+        "ash",
+        "dust",
+        "book",
+        "letter",
+        "map",
+        "picture",
+        "photo",
+        "painting",
+        "drawing",
+        "sign",
+        "flag",
+        "ticket",
+        "card",
+        "music",
+        "song",
+        "dance",
+        "game",
+        "sport",
+        "fight",
+        "battle",
+        "war",
+        "peace",
+        "love",
+        "hate",
+        "anger",
+        "fear",
+        "joy",
+        "sad",
+        "happy",
+        "good",
+        "bad",
+        "big",
+        "small",
+        "tall",
+        "short",
+        "long",
+        "wide",
+        "narrow",
+        "thick",
+        "thin",
+        "heavy",
+        "light",
+        "fast",
+        "slow",
+        "hot",
+        "cold",
+        "warm",
+        "cool",
+        "wet",
+        "dry",
+        "hard",
+        "soft",
+        "smooth",
+        "rough",
+        "sharp",
+        "dull",
+        "clean",
+        "dirty",
+        "old",
+        "new",
+        "young",
+        "beautiful",
+        "ugly",
+        "plain",
+        "rich",
+        "poor",
+        "strong",
+        "weak",
+        "smart",
+        "stupid",
+        "wise",
+        "foolish",
+        "brave",
+        "shy",
+        "quiet",
+        "loud",
+        "silent",
+        "calm",
+        "crazy",
+        "right",
+        "wrong",
+        "true",
+        "false",
+        "real",
+        "fake",
+        "alive",
+        "dead",
+        "safe",
+        "dangerous",
+        "open",
+        "closed",
+        "full",
+        "empty",
+        "easy",
+        "difficult",
+        "simple",
+        "complex",
+        "possible",
+        "impossible",
+        "early",
+        "late",
+        "first",
+        "last",
+        "next",
+        "previous",
+        "same",
+        "different",
+        "important",
+        "necessary",
+        "ready",
+        "example",
+        "however",
+        "whether",
+        "though",
+        "since",
+        "unless",
+        "toward",
+        "around",
+        "below",
+        "above",
+        "across",
+        "behind",
+        "looking",
+        "making",
+        "getting",
+        "going",
+        "coming",
+        "taking",
+        "thing",
+        "things",
+        "every",
+        "makes",
+        "might",
+        "maybe",
+        "opened",
+        "really",
+        "right",
+        "started",
+        "original",
+        "wanted",
+        "there",
+        "myself",
+        "someone",
+        "something",
+        "without",
+        "throughout",
+        "against",
+        "between",
+        "should",
+        "would",
+        "could",
+        "before",
+        "during",
+        "after",
+        "while",
+        "being",
+        "having",
+        "their",
+        "other",
+        "about",
+        "again",
+        "still",
+        "even",
+        "only",
+        "also",
+        "just",
+        "much",
+        "many",
+        "some",
+        "most",
+        "more",
+        "less",
+        "well",
+        "often",
+        "always",
+        "never",
+        "already",
+        "further",
+    ]
+)
 
 
 def _tokenize(text: str) -> list[str]:
     """Tokenize text into lowercase word tokens (4+ chars, no stopwords)."""
-    words = re.findall(r'\b[a-z]{4,}\b', text.lower())
+    words = re.findall(r"\b[a-z]{4,}\b", text.lower())
     return [w for w in words if w not in _KEYWORD_STOPWORDS]
 
 
@@ -433,12 +1356,12 @@ def extract_ngram_keywords(text: str, n: int = 18) -> list[str]:
     # Bigrams (weight 1.8 — higher because multi-word concepts are more
     # meaningful for coverage scoring)
     for i in range(len(tokens) - 1):
-        bg = f"{tokens[i]} {tokens[i+1]}"
+        bg = f"{tokens[i]} {tokens[i + 1]}"
         scores[bg] += 1.8
 
     # Trigrams (weight 2.2)
     for i in range(len(tokens) - 2):
-        tg = f"{tokens[i]} {tokens[i+1]} {tokens[i+2]}"
+        tg = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
         scores[tg] += 2.2
 
     # Sort by score descending, then alphabetically for determinism
@@ -455,7 +1378,7 @@ def extract_ngram_keywords(text: str, n: int = 18) -> list[str]:
 # Exercise:, Worksheet:, Practice:, Try This:, Action Item:, Takeaway:,
 # Key Insight:, Homework:, Reflection:, Question to Ponder:
 _CALLOUT_PATTERN = re.compile(
-    r'\[(?:Spy\s+Tip|Key\s+Point|Important|Note|Remember|Tip|Warning|Insight)\][:\s]\s*([^\[\]]{20,300})',
+    r"\[(?:Spy\s+Tip|Key\s+Point|Important|Note|Remember|Tip|Warning|Insight)\][:\s]\s*([^\[\]]{20,300})",
     re.IGNORECASE,
 )
 
@@ -463,9 +1386,9 @@ _CALLOUT_PATTERN = re.compile(
 # These appear at the start of a line or after a newline, followed by a colon
 # and 20-300 chars of content. Matches until end of line or next callout.
 _CALLOUT_PREFIX_PATTERN = re.compile(
-    r'(?:^|\n)\s*(?:Exercise|Worksheet|Practice|Try\s+This|Action\s+Item|Takeaway|'
-    r'Key\s+Insight|Homework|Reflection|Question\s+to\s+Ponder|Activity|'
-    r'Experiment|Challenge|Step\s+\d+|Task)\s*:\s*([^\n]{20,300})',
+    r"(?:^|\n)\s*(?:Exercise|Worksheet|Practice|Try\s+This|Action\s+Item|Takeaway|"
+    r"Key\s+Insight|Homework|Reflection|Question\s+to\s+Ponder|Activity|"
+    r"Experiment|Challenge|Step\s+\d+|Task)\s*:\s*([^\n]{20,300})",
     re.IGNORECASE,
 )
 
@@ -486,13 +1409,13 @@ def extract_callouts(text: str) -> list[str]:
     for m in _CALLOUT_PATTERN.finditer(text):
         sentence = m.group(1).strip()
         if len(sentence) > 15:
-            sentence = re.sub(r'\s+', ' ', sentence)
+            sentence = re.sub(r"\s+", " ", sentence)
             callouts.append(sentence)
     # V3.9.6: Pattern 2 — non-bracket callouts (Exercise:, Try This:, etc.)
     for m in _CALLOUT_PREFIX_PATTERN.finditer(text):
         sentence = m.group(1).strip()
         if len(sentence) > 15:
-            sentence = re.sub(r'\s+', ' ', sentence)
+            sentence = re.sub(r"\s+", " ", sentence)
             # Avoid duplicates with bracket callouts
             if sentence not in callouts:
                 callouts.append(sentence)
@@ -502,6 +1425,7 @@ def extract_callouts(text: str) -> list[str]:
 # ════════════════════════════════════════════════════════════════════════════
 # Main preprocessor class — combines all steps
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class DeterministicPreprocessor:
     """Runs all deterministic pre-processing on chapter text.
@@ -590,19 +1514,21 @@ def smart_paragraph_joining(text: str) -> str:
             curr_stripped = line.rstrip()
             # Join if: current doesn't end with sentence punctuation AND
             # next starts with lowercase AND current is not empty
-            if (curr_stripped
+            if (
+                curr_stripped
                 and next_line
                 and not _SENTENCE_END.search(curr_stripped)
                 and next_line[0].islower()
-                and not next_line.startswith(('-', '*', '•', '1.', '2.', '3.'))
-                and not curr_stripped.startswith(('#', '##', '###'))):
+                and not next_line.startswith(("-", "*", "•", "1.", "2.", "3."))
+                and not curr_stripped.startswith(("#", "##", "###"))
+            ):
                 # Join with space
-                line = curr_stripped + ' ' + next_line
+                line = curr_stripped + " " + next_line
                 i += 1  # skip the next line (consumed)
         result.append(line)
         i += 1
 
-    return '\n'.join(result)
+    return "\n".join(result)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -611,8 +1537,8 @@ def smart_paragraph_joining(text: str) -> str:
 
 # Heading patterns: short lines, title case or all caps, no ending punctuation
 _HEADING_PATTERN = re.compile(
-    r'^(?:#{1,4}\s+)?'          # optional markdown heading prefix
-    r'([A-Z][A-Za-z0-9\s\-:,\&]+?)\s*$'  # title-case text
+    r"^(?:#{1,4}\s+)?"  # optional markdown heading prefix
+    r"([A-Z][A-Za-z0-9\s\-:,\&]+?)\s*$"  # title-case text
 )
 
 
@@ -639,17 +1565,17 @@ def detect_sections(text: str, max_sections: int = 8) -> list[str]:
         if not stripped or len(stripped) > 80:
             continue
         # Skip lines with ending punctuation (not headings)
-        if stripped[-1] in '.!?;:':
+        if stripped[-1] in ".!?;:":
             continue
         # Skip lines that are just numbers
-        if re.match(r'^\d+$', stripped):
+        if re.match(r"^\d+$", stripped):
             continue
         # Skip lines starting with lowercase
         if not stripped[0].isupper():
             continue
         # Must have at least 2 words OR start with a number/section prefix
         words = stripped.split()
-        if len(words) < 2 and not re.match(r'^\d+\.', stripped):
+        if len(words) < 2 and not re.match(r"^\d+\.", stripped):
             continue
         # Check if it looks like a heading (title case or all caps)
         is_title_case = all(w[0].isupper() or not w[0].isalpha() for w in words)
@@ -661,7 +1587,7 @@ def detect_sections(text: str, max_sections: int = 8) -> list[str]:
         if not prev_blank:
             continue
         # Strip markdown prefix
-        clean = re.sub(r'^#{1,4}\s+', '', stripped)
+        clean = re.sub(r"^#{1,4}\s+", "", stripped)
         headings.append(clean)
         if len(headings) >= max_sections:
             break
@@ -674,7 +1600,7 @@ def detect_sections(text: str, max_sections: int = 8) -> list[str]:
 # ════════════════════════════════════════════════════════════════════════════
 
 # Extract numbers (including percentages, decimals, years)
-_NUMBER_PATTERN = re.compile(r'\b\d+(?:\.\d+)?(?:%| percent)?\b')
+_NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?(?:%| percent)?\b")
 # Extract quoted text
 _QUOTE_PATTERN = re.compile(r'["\u201c]([^"]{10,200})["\u201d]')
 
@@ -720,11 +1646,10 @@ def verify_numbers_and_quotes(bullet: str, source_text: str) -> tuple:
 # ════════════════════════════════════════════════════════════════════════════
 
 # Split text into sentences
-_SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 
 
-def normalize_sentence_boundaries(bullet: str, max_sentences: int = 2,
-                                   max_words: int = 40) -> str:
+def normalize_sentence_boundaries(bullet: str, max_sentences: int = 2, max_words: int = 40) -> str:
     """V3.3.0 C5: Ensure each bullet is 1-2 complete sentences.
 
     - Splits run-on sentences at sentence boundaries
@@ -750,17 +1675,17 @@ def normalize_sentence_boundaries(bullet: str, max_sentences: int = 2,
     kept = sentences[:max_sentences]
 
     # Join and cap at max_words
-    result = ' '.join(kept)
+    result = " ".join(kept)
     words = result.split()
     if len(words) > max_words:
-        result = ' '.join(words[:max_words])
+        result = " ".join(words[:max_words])
         # Add ellipsis if truncated mid-sentence
-        if not result.endswith(('.', '!', '?')):
-            result += '…'
+        if not result.endswith((".", "!", "?")):
+            result += "…"
 
     # Ensure it ends with punctuation
-    if result and result[-1] not in '.!?':
-        result += '.'
+    if result and result[-1] not in ".!?":
+        result += "."
 
     return result
 
@@ -770,7 +1695,120 @@ def normalize_sentence_boundaries(bullet: str, max_sentences: int = 2,
 # ════════════════════════════════════════════════════════════════════════════
 
 # Top 100 common English words for OCR quality scoring
-_COMMON_WORDS = frozenset(["the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even", "new", "want", "because", "any", "these", "give", "day", "most", "us", "is", "are", "was", "were", "has", "had", "did", "been", "being", "am"])
+_COMMON_WORDS = frozenset(
+    [
+        "the",
+        "be",
+        "to",
+        "of",
+        "and",
+        "a",
+        "in",
+        "that",
+        "have",
+        "i",
+        "it",
+        "for",
+        "not",
+        "on",
+        "with",
+        "he",
+        "as",
+        "you",
+        "do",
+        "at",
+        "this",
+        "but",
+        "his",
+        "by",
+        "from",
+        "they",
+        "we",
+        "say",
+        "her",
+        "she",
+        "or",
+        "an",
+        "will",
+        "my",
+        "one",
+        "all",
+        "would",
+        "there",
+        "their",
+        "what",
+        "so",
+        "up",
+        "out",
+        "if",
+        "about",
+        "who",
+        "get",
+        "which",
+        "go",
+        "me",
+        "when",
+        "make",
+        "can",
+        "like",
+        "time",
+        "no",
+        "just",
+        "him",
+        "know",
+        "take",
+        "people",
+        "into",
+        "year",
+        "your",
+        "good",
+        "some",
+        "could",
+        "them",
+        "see",
+        "other",
+        "than",
+        "then",
+        "now",
+        "look",
+        "only",
+        "come",
+        "its",
+        "over",
+        "think",
+        "also",
+        "back",
+        "after",
+        "use",
+        "two",
+        "how",
+        "our",
+        "work",
+        "first",
+        "well",
+        "way",
+        "even",
+        "new",
+        "want",
+        "because",
+        "any",
+        "these",
+        "give",
+        "day",
+        "most",
+        "us",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "had",
+        "did",
+        "been",
+        "being",
+        "am",
+    ]
+)
 
 
 def score_ocr_quality(text: str) -> float:
@@ -789,7 +1827,7 @@ def score_ocr_quality(text: str) -> float:
         return 0.0
 
     total_chars = len(text)
-    spaces = text.count(' ')
+    spaces = text.count(" ")
     alpha_chars = sum(1 for c in text if c.isalpha())
     words = text.split()
 
@@ -798,16 +1836,18 @@ def score_ocr_quality(text: str) -> float:
 
     # 1. Space ratio (ideal: 0.12-0.18)
     space_ratio = spaces / total_chars
-    space_score = 1.0 if 0.10 <= space_ratio <= 0.22 else max(0.0, 1.0 - abs(space_ratio - 0.15) * 5)
+    space_score = (
+        1.0 if 0.10 <= space_ratio <= 0.22 else max(0.0, 1.0 - abs(space_ratio - 0.15) * 5)
+    )
 
     # 2. Common-word ratio (ideal: > 20%)
     word_count = len(words)
-    common_count = sum(1 for w in words if w.lower().strip('.,!?;:"\'') in _COMMON_WORDS)
+    common_count = sum(1 for w in words if w.lower().strip(".,!?;:\"'") in _COMMON_WORDS)
     common_ratio = common_count / word_count if word_count else 0
     common_score = min(1.0, common_ratio * 4)  # 25% common = 1.0
 
     # 3. Average word length (ideal: 4.5-5.5)
-    avg_len = sum(len(w.strip('.,!?;:"\'')) for w in words) / word_count
+    avg_len = sum(len(w.strip(".,!?;:\"'")) for w in words) / word_count
     len_score = 1.0 if 3.5 <= avg_len <= 7.0 else max(0.0, 1.0 - abs(avg_len - 5.0) * 0.3)
 
     # 4. Alpha character ratio (ideal: > 70%)
@@ -815,7 +1855,7 @@ def score_ocr_quality(text: str) -> float:
     alpha_score = min(1.0, alpha_ratio / 0.70) if alpha_ratio < 0.70 else 1.0
 
     # Weighted average
-    score = (space_score * 0.2 + common_score * 0.4 + len_score * 0.2 + alpha_score * 0.2)
+    score = space_score * 0.2 + common_score * 0.4 + len_score * 0.2 + alpha_score * 0.2
     return score
 
 
@@ -824,7 +1864,609 @@ def score_ocr_quality(text: str) -> float:
 # ════════════════════════════════════════════════════════════════════════════
 
 # Extended common English word list (top ~500 most frequent words)
-_COMMON_500 = frozenset(["the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even", "new", "want", "because", "any", "these", "give", "day", "most", "us", "is", "are", "was", "were", "has", "had", "did", "been", "being", "am", "very", "more", "many", "much", "such", "very", "great", "own", "old", "right", "left", "high", "low", "big", "small", "long", "short", "hard", "easy", "open", "close", "start", "stop", "begin", "end", "live", "dead", "give", "take", "find", "lose", "keep", "let", "make", "put", "set", "get", "go", "come", "see", "know", "think", "say", "tell", "ask", "call", "try", "need", "feel", "become", "leave", "seem", "help", "turn", "show", "run", "walk", "talk", "sit", "stand", "fall", "rise", "move", "play", "read", "write", "eat", "drink", "sleep", "wake", "dream", "love", "hate", "like", "want", "hope", "wish", "fear", "trust", "believe", "agree", "follow", "lead", "send", "bring", "buy", "sell", "pay", "cost", "spend", "save", "borrow", "lend", "owe", "earn", "win", "lose", "meet", "miss", "hit", "cut", "break", "build", "fix", "change", "stop", "start", "continue", "remain", "stay", "leave", "arrive", "depart", "enter", "exit", "join", "leave", "return", "visit", "travel", "drive", "ride", "fly", "sail", "walk", "run", "swim", "climb", "fall", "jump", "dance", "sing", "speak", "write", "read", "listen", "watch", "look", "see", "hear", "smell", "taste", "touch", "feel", "try", "use", "make", "do", "get", "have", "keep", "lose", "find", "give", "take", "put", "set", "business", "company", "group", "team", "people", "person", "man", "woman", "child", "friend", "family", "world", "life", "time", "way", "day", "year", "week", "month", "hour", "minute", "second", "place", "home", "work", "school", "book", "word", "number", "name", "part", "side", "point", "case", "fact", "question", "answer", "problem", "result", "reason", "idea", "plan", "method", "system", "process", "service", "product", "customer", "market", "money", "price", "cost", "value", "quality", "standard", "level", "type", "form", "kind", "sort", "class", "group", "set", "list", "line", "point", "area", "field", "room", "house", "building", "street", "road", "city", "town", "country", "state", "nation", "world", "north", "south", "east", "west", "left", "right", "front", "back", "top", "bottom", "side", "center", "middle", "end", "important", "possible", "necessary", "difficult", "different", "similar", "same", "new", "old", "first", "last", "next", "previous", "main", "major", "minor", "primary", "secondary", "general", "specific", "public", "private", "full", "empty", "complete", "partial", "total", "entire", "whole", "single", "double", "multiple", "complex", "simple", "true", "false", "right", "wrong", "good", "bad", "better", "worse", "best", "worst", "high", "low", "big", "small", "tall", "short", "long", "wide", "narrow", "thick", "thin", "heavy", "light", "fast", "slow", "hot", "cold", "warm", "cool", "dry", "wet", "able", "unable", "possible", "impossible", "available", "unavailable", "suitable", "unsuitable", "appropriate", "inappropriate", "relevant", "irrelevant", "effective", "ineffective", "efficient", "inefficient", "successful", "unsuccessful", "useful", "useless", "helpful", "unhelpful", "clear", "unclear", "obvious", "certain", "uncertain", "sure", "unsure", "definite", "indefinite", "exact", "approximate", "precise", "accurate", "inaccurate", "correct", "incorrect", "valid", "invalid", "real", "fake", "true", "false", "actual", "potential", "actual", "expected", "unexpected", "normal", "unusual", "common", "rare", "frequent", "occasional", "regular", "irregular", "consistent", "inconsistent", "stable", "unstable", "secure", "insecure", "safe", "dangerous", "healthy", "unhealthy", "strong", "weak", "powerful", "powerless", "active", "passive", "positive", "negative", "productive", "unproductive", "creative", "destructive", "constructive", "informative", "persuasive", "convincing", "credible", "reliable", "dependable", "trustworthy", "honest", "dishonest", "fair", "unfair", "just", "unjust", "equal", "unequal", "free", "restricted", "open", "closed", "public", "private", "personal", "professional", "social", "political", "economic", "cultural", "historical", "scientific", "technical", "practical", "theoretical", "abstract", "concrete", "general", "specific", "detailed", "brief", "thorough", "complete", "partial", "total", "entire", "whole", "comprehensive", "extensive", "limited", "broad", "narrow", "deep", "shallow", "simple", "complex", "complicated", "straightforward", "difficult", "easy", "hard", "challenging", "manageable", "achievable", "realistic", "unrealistic", "practical", "impractical", "functional", "dysfunctional", "operational", "effective", "successful", "proper", "improper", "appropriate", "inappropriate", "adequate", "inadequate", "sufficient", "insufficient", "excessive", "minimal", "maximum", "optimum", "optimal", "ideal", "perfect", "imperfect", "complete", "incomplete", "entire", "partial", "total", "full", "empty", "whole"])
+_COMMON_500 = frozenset(
+    [
+        "the",
+        "be",
+        "to",
+        "of",
+        "and",
+        "a",
+        "in",
+        "that",
+        "have",
+        "i",
+        "it",
+        "for",
+        "not",
+        "on",
+        "with",
+        "he",
+        "as",
+        "you",
+        "do",
+        "at",
+        "this",
+        "but",
+        "his",
+        "by",
+        "from",
+        "they",
+        "we",
+        "say",
+        "her",
+        "she",
+        "or",
+        "an",
+        "will",
+        "my",
+        "one",
+        "all",
+        "would",
+        "there",
+        "their",
+        "what",
+        "so",
+        "up",
+        "out",
+        "if",
+        "about",
+        "who",
+        "get",
+        "which",
+        "go",
+        "me",
+        "when",
+        "make",
+        "can",
+        "like",
+        "time",
+        "no",
+        "just",
+        "him",
+        "know",
+        "take",
+        "people",
+        "into",
+        "year",
+        "your",
+        "good",
+        "some",
+        "could",
+        "them",
+        "see",
+        "other",
+        "than",
+        "then",
+        "now",
+        "look",
+        "only",
+        "come",
+        "its",
+        "over",
+        "think",
+        "also",
+        "back",
+        "after",
+        "use",
+        "two",
+        "how",
+        "our",
+        "work",
+        "first",
+        "well",
+        "way",
+        "even",
+        "new",
+        "want",
+        "because",
+        "any",
+        "these",
+        "give",
+        "day",
+        "most",
+        "us",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "had",
+        "did",
+        "been",
+        "being",
+        "am",
+        "very",
+        "more",
+        "many",
+        "much",
+        "such",
+        "very",
+        "great",
+        "own",
+        "old",
+        "right",
+        "left",
+        "high",
+        "low",
+        "big",
+        "small",
+        "long",
+        "short",
+        "hard",
+        "easy",
+        "open",
+        "close",
+        "start",
+        "stop",
+        "begin",
+        "end",
+        "live",
+        "dead",
+        "give",
+        "take",
+        "find",
+        "lose",
+        "keep",
+        "let",
+        "make",
+        "put",
+        "set",
+        "get",
+        "go",
+        "come",
+        "see",
+        "know",
+        "think",
+        "say",
+        "tell",
+        "ask",
+        "call",
+        "try",
+        "need",
+        "feel",
+        "become",
+        "leave",
+        "seem",
+        "help",
+        "turn",
+        "show",
+        "run",
+        "walk",
+        "talk",
+        "sit",
+        "stand",
+        "fall",
+        "rise",
+        "move",
+        "play",
+        "read",
+        "write",
+        "eat",
+        "drink",
+        "sleep",
+        "wake",
+        "dream",
+        "love",
+        "hate",
+        "like",
+        "want",
+        "hope",
+        "wish",
+        "fear",
+        "trust",
+        "believe",
+        "agree",
+        "follow",
+        "lead",
+        "send",
+        "bring",
+        "buy",
+        "sell",
+        "pay",
+        "cost",
+        "spend",
+        "save",
+        "borrow",
+        "lend",
+        "owe",
+        "earn",
+        "win",
+        "lose",
+        "meet",
+        "miss",
+        "hit",
+        "cut",
+        "break",
+        "build",
+        "fix",
+        "change",
+        "stop",
+        "start",
+        "continue",
+        "remain",
+        "stay",
+        "leave",
+        "arrive",
+        "depart",
+        "enter",
+        "exit",
+        "join",
+        "leave",
+        "return",
+        "visit",
+        "travel",
+        "drive",
+        "ride",
+        "fly",
+        "sail",
+        "walk",
+        "run",
+        "swim",
+        "climb",
+        "fall",
+        "jump",
+        "dance",
+        "sing",
+        "speak",
+        "write",
+        "read",
+        "listen",
+        "watch",
+        "look",
+        "see",
+        "hear",
+        "smell",
+        "taste",
+        "touch",
+        "feel",
+        "try",
+        "use",
+        "make",
+        "do",
+        "get",
+        "have",
+        "keep",
+        "lose",
+        "find",
+        "give",
+        "take",
+        "put",
+        "set",
+        "business",
+        "company",
+        "group",
+        "team",
+        "people",
+        "person",
+        "man",
+        "woman",
+        "child",
+        "friend",
+        "family",
+        "world",
+        "life",
+        "time",
+        "way",
+        "day",
+        "year",
+        "week",
+        "month",
+        "hour",
+        "minute",
+        "second",
+        "place",
+        "home",
+        "work",
+        "school",
+        "book",
+        "word",
+        "number",
+        "name",
+        "part",
+        "side",
+        "point",
+        "case",
+        "fact",
+        "question",
+        "answer",
+        "problem",
+        "result",
+        "reason",
+        "idea",
+        "plan",
+        "method",
+        "system",
+        "process",
+        "service",
+        "product",
+        "customer",
+        "market",
+        "money",
+        "price",
+        "cost",
+        "value",
+        "quality",
+        "standard",
+        "level",
+        "type",
+        "form",
+        "kind",
+        "sort",
+        "class",
+        "group",
+        "set",
+        "list",
+        "line",
+        "point",
+        "area",
+        "field",
+        "room",
+        "house",
+        "building",
+        "street",
+        "road",
+        "city",
+        "town",
+        "country",
+        "state",
+        "nation",
+        "world",
+        "north",
+        "south",
+        "east",
+        "west",
+        "left",
+        "right",
+        "front",
+        "back",
+        "top",
+        "bottom",
+        "side",
+        "center",
+        "middle",
+        "end",
+        "important",
+        "possible",
+        "necessary",
+        "difficult",
+        "different",
+        "similar",
+        "same",
+        "new",
+        "old",
+        "first",
+        "last",
+        "next",
+        "previous",
+        "main",
+        "major",
+        "minor",
+        "primary",
+        "secondary",
+        "general",
+        "specific",
+        "public",
+        "private",
+        "full",
+        "empty",
+        "complete",
+        "partial",
+        "total",
+        "entire",
+        "whole",
+        "single",
+        "double",
+        "multiple",
+        "complex",
+        "simple",
+        "true",
+        "false",
+        "right",
+        "wrong",
+        "good",
+        "bad",
+        "better",
+        "worse",
+        "best",
+        "worst",
+        "high",
+        "low",
+        "big",
+        "small",
+        "tall",
+        "short",
+        "long",
+        "wide",
+        "narrow",
+        "thick",
+        "thin",
+        "heavy",
+        "light",
+        "fast",
+        "slow",
+        "hot",
+        "cold",
+        "warm",
+        "cool",
+        "dry",
+        "wet",
+        "able",
+        "unable",
+        "possible",
+        "impossible",
+        "available",
+        "unavailable",
+        "suitable",
+        "unsuitable",
+        "appropriate",
+        "inappropriate",
+        "relevant",
+        "irrelevant",
+        "effective",
+        "ineffective",
+        "efficient",
+        "inefficient",
+        "successful",
+        "unsuccessful",
+        "useful",
+        "useless",
+        "helpful",
+        "unhelpful",
+        "clear",
+        "unclear",
+        "obvious",
+        "certain",
+        "uncertain",
+        "sure",
+        "unsure",
+        "definite",
+        "indefinite",
+        "exact",
+        "approximate",
+        "precise",
+        "accurate",
+        "inaccurate",
+        "correct",
+        "incorrect",
+        "valid",
+        "invalid",
+        "real",
+        "fake",
+        "true",
+        "false",
+        "actual",
+        "potential",
+        "actual",
+        "expected",
+        "unexpected",
+        "normal",
+        "unusual",
+        "common",
+        "rare",
+        "frequent",
+        "occasional",
+        "regular",
+        "irregular",
+        "consistent",
+        "inconsistent",
+        "stable",
+        "unstable",
+        "secure",
+        "insecure",
+        "safe",
+        "dangerous",
+        "healthy",
+        "unhealthy",
+        "strong",
+        "weak",
+        "powerful",
+        "powerless",
+        "active",
+        "passive",
+        "positive",
+        "negative",
+        "productive",
+        "unproductive",
+        "creative",
+        "destructive",
+        "constructive",
+        "informative",
+        "persuasive",
+        "convincing",
+        "credible",
+        "reliable",
+        "dependable",
+        "trustworthy",
+        "honest",
+        "dishonest",
+        "fair",
+        "unfair",
+        "just",
+        "unjust",
+        "equal",
+        "unequal",
+        "free",
+        "restricted",
+        "open",
+        "closed",
+        "public",
+        "private",
+        "personal",
+        "professional",
+        "social",
+        "political",
+        "economic",
+        "cultural",
+        "historical",
+        "scientific",
+        "technical",
+        "practical",
+        "theoretical",
+        "abstract",
+        "concrete",
+        "general",
+        "specific",
+        "detailed",
+        "brief",
+        "thorough",
+        "complete",
+        "partial",
+        "total",
+        "entire",
+        "whole",
+        "comprehensive",
+        "extensive",
+        "limited",
+        "broad",
+        "narrow",
+        "deep",
+        "shallow",
+        "simple",
+        "complex",
+        "complicated",
+        "straightforward",
+        "difficult",
+        "easy",
+        "hard",
+        "challenging",
+        "manageable",
+        "achievable",
+        "realistic",
+        "unrealistic",
+        "practical",
+        "impractical",
+        "functional",
+        "dysfunctional",
+        "operational",
+        "effective",
+        "successful",
+        "proper",
+        "improper",
+        "appropriate",
+        "inappropriate",
+        "adequate",
+        "inadequate",
+        "sufficient",
+        "insufficient",
+        "excessive",
+        "minimal",
+        "maximum",
+        "optimum",
+        "optimal",
+        "ideal",
+        "perfect",
+        "imperfect",
+        "complete",
+        "incomplete",
+        "entire",
+        "partial",
+        "total",
+        "full",
+        "empty",
+        "whole",
+    ]
+)
 
 
 def score_bullet_complexity(bullet: str) -> float:
@@ -848,34 +2490,36 @@ def score_bullet_complexity(bullet: str) -> float:
         return 0.0
 
     # 1. Average word length (weight 0.3)
-    avg_len = sum(len(w.strip('.,!?;:"\'')) for w in words) / word_count
+    avg_len = sum(len(w.strip(".,!?;:\"'")) for w in words) / word_count
     len_score = max(0.0, min(1.0, (avg_len - 3.5) / 3.0))  # 3.5→0, 6.5→1.0
 
     # 2. Sentence length (weight 0.25)
     sent_len_score = max(0.0, min(1.0, (word_count - 10) / 25.0))  # 10→0, 35→1.0
 
     # 3. % uncommon words (weight 0.3)
-    common_count = sum(1 for w in words if w.lower().strip('.,!?;:"\'') in _COMMON_500)
+    common_count = sum(1 for w in words if w.lower().strip(".,!?;:\"'") in _COMMON_500)
     uncommon_ratio = 1.0 - (common_count / word_count)
     uncommon_score = max(0.0, min(1.0, uncommon_ratio / 0.30))  # 0%→0, 30%→1.0
 
     # 4. Passive voice detection (weight 0.15)
     passive_patterns = re.compile(
-        r'\b(?:is|are|was|were|been|being|be)\s+\w+ed\b',
+        r"\b(?:is|are|was|were|been|being|be)\s+\w+ed\b",
         re.IGNORECASE,
     )
     has_passive = bool(passive_patterns.search(bullet))
     passive_score = 1.0 if has_passive else 0.0
 
     # Weighted average
-    complexity = (len_score * 0.30 + sent_len_score * 0.25 +
-                  uncommon_score * 0.30 + passive_score * 0.15)
+    complexity = (
+        len_score * 0.30 + sent_len_score * 0.25 + uncommon_score * 0.30 + passive_score * 0.15
+    )
     return min(1.0, complexity)
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # G2: Vocabulary Overlap Pre-Check
 # ════════════════════════════════════════════════════════════════════════════
+
 
 def vocabulary_overlap_score(bullet: str) -> float:
     """V3.4.0 G2: Check what % of a bullet's words are common English.
@@ -887,7 +2531,7 @@ def vocabulary_overlap_score(bullet: str) -> float:
     if not bullet:
         return 1.0
 
-    words = [w.lower().strip('.,!?;:"\'') for w in bullet.split()]
+    words = [w.lower().strip(".,!?;:\"'") for w in bullet.split()]
     if not words:
         return 1.0
 
@@ -926,25 +2570,83 @@ def should_skip_simplification(bullet: str) -> tuple:
 
 # Patterns for NER
 _PERSON_PATTERN = re.compile(
-    r'\b(?:Mr|Mrs|Ms|Dr|Professor)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b'
+    r"\b(?:Mr|Mrs|Ms|Dr|Professor)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b"
     r'|"([A-Z][a-z]+)"\s+(?:said|told|went|met|decided|noticed|began|arrived|greeted|shook|introduced|called)'
-    r'|\b([A-Z][a-z]+)\s+(?:said|told|went|met|decided|noticed|began|arrived|greeted|shook|introduced|called)\b'
+    r"|\b([A-Z][a-z]+)\s+(?:said|told|went|met|decided|noticed|began|arrived|greeted|shook|introduced|called)\b"
 )
 
 _ORG_PATTERN = re.compile(
-    r'(?:worked\s+for|company|firm|organization|corporation|agency|institute|university)\s+'
-    r'(?:called|named|known\s+as)?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})'
+    r"(?:worked\s+for|company|firm|organization|corporation|agency|institute|university)\s+"
+    r"(?:called|named|known\s+as)?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})"
     r'|"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})"\s+(?:company|firm|corporation)'
 )
 
 _LOCATION_PATTERN = re.compile(
-    r'\b(?:in|at|to|from|near|located\s+in)\s+'
-    r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b'
-    r'(?:\s*,\s*([A-Z][a-z]+))?'
+    r"\b(?:in|at|to|from|near|located\s+in)\s+"
+    r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b"
+    r"(?:\s*,\s*([A-Z][a-z]+))?"
 )
 
 # Known false positives to exclude
-_NER_EXCLUDE = frozenset(["The", "This", "That", "These", "Those", "There", "Here", "Now", "Then", "Today", "Yesterday", "Tomorrow", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", "Spring", "Summer", "Fall", "Winter", "North", "South", "East", "West", "Chapter", "Section", "Part", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Yes", "No", "OK"])
+_NER_EXCLUDE = frozenset(
+    [
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "There",
+        "Here",
+        "Now",
+        "Then",
+        "Today",
+        "Yesterday",
+        "Tomorrow",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+        "Spring",
+        "Summer",
+        "Fall",
+        "Winter",
+        "North",
+        "South",
+        "East",
+        "West",
+        "Chapter",
+        "Section",
+        "Part",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Yes",
+        "No",
+        "OK",
+    ]
+)
 
 
 def extract_named_entities(text: str) -> dict[str, list[str]]:
@@ -962,6 +2664,7 @@ def extract_named_entities(text: str) -> dict[str, list[str]]:
     try:
         # V10.31.0 (Sprint 4.6): use shared spacy singleton
         from core.llm.model_singletons import get_spacy_nlp
+
         _SPACY_NLP = get_spacy_nlp("en_core_web_sm")
 
         if _SPACY_NLP is not None:
@@ -985,7 +2688,9 @@ def extract_named_entities(text: str) -> dict[str, list[str]]:
     except ImportError:
         pass  # spaCy not installed — fall back to regex
     except Exception as _e:
-        logger.debug("ignored %s: %s", type(_e).__name__, _e)  # Any spaCy error — fall back to regex
+        logger.debug(
+            "ignored %s: %s", type(_e).__name__, _e
+        )  # Any spaCy error — fall back to regex
 
     # Fallback: regex-based NER (V3.4.0 original implementation)
     persons = set()
@@ -1005,7 +2710,7 @@ def extract_named_entities(text: str) -> dict[str, list[str]]:
     for m in _LOCATION_PATTERN.finditer(text):
         loc = m.group(1)
         if loc and loc not in _NER_EXCLUDE and len(loc) > 2:
-            if loc[0].isupper() and not loc.endswith(('ing', 'ed', 'ly', 'tion')):
+            if loc[0].isupper() and not loc.endswith(("ing", "ed", "ly", "tion")):
                 locations.add(loc.strip())
 
     return {
@@ -1022,7 +2727,7 @@ def extract_named_entities(text: str) -> dict[str, list[str]]:
 # break (but the impl reads/writes state.spacy_nlp directly).
 from core.summarisation._runtime_state import state as _runtime_state
 
-_SPACY_NLP = None   # backward-compat proxy (impl uses _runtime_state.spacy_nlp)
+_SPACY_NLP = None  # backward-compat proxy (impl uses _runtime_state.spacy_nlp)
 _SPACY_LANG = None  # backward-compat proxy (impl uses _runtime_state.spacy_lang)
 
 
@@ -1064,6 +2769,7 @@ def _load_spacy_model(language: str = "en"):
 
     # V10.31.0 (Sprint 4.6): use shared spacy singleton (one per model name)
     from core.llm.model_singletons import get_spacy_nlp
+
     _runtime_state.spacy_nlp = get_spacy_nlp(model_name)
     _runtime_state.spacy_lang = language
     return _runtime_state.spacy_nlp
@@ -1088,6 +2794,7 @@ def get_all_ner_entities(text: str) -> set:
 # ════════════════════════════════════════════════════════════════════════════
 # J1: Bullet Ordering by Topic Clustering
 # ════════════════════════════════════════════════════════════════════════════
+
 
 def _bullet_similarity(b1: str, b2: str) -> float:
     """Compute cosine similarity between two bullets using word overlap."""
@@ -1144,8 +2851,10 @@ def order_bullets_by_topic(bullets: list[str]) -> list[str]:
 # F1: Summary Length Validation
 # ════════════════════════════════════════════════════════════════════════════
 
-def validate_summary_length(text: str, min_words: int = 150, max_words: int = 1200,
-                             section: str = "summary") -> tuple:
+
+def validate_summary_length(
+    text: str, min_words: int = 150, max_words: int = 1200, section: str = "summary"
+) -> tuple:
     """V3.4.1 F1: Validate summary length and flag if out of bounds.
 
     Returns (is_valid, word_count, message).
@@ -1171,17 +2880,18 @@ def truncate_summary(text: str, max_words: int) -> str:
     if len(words) <= max_words:
         return text
     # Find the last complete sentence within max_words
-    truncated = ' '.join(words[:max_words])
+    truncated = " ".join(words[:max_words])
     # Find the last sentence-ending punctuation
-    last_end = max(truncated.rfind('.'), truncated.rfind('!'), truncated.rfind('?'))
+    last_end = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
     if last_end > max_words * 0.7:  # Only truncate at sentence if we keep 70%+
-        return truncated[:last_end + 1]
-    return truncated + '…'
+        return truncated[: last_end + 1]
+    return truncated + "…"
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # F4: Source Overlap Verification (stronger fact-check)
 # ════════════════════════════════════════════════════════════════════════════
+
 
 def compute_source_overlap(bullet: str, source_text: str) -> float:
     """V3.4.1 F4: Compute content word overlap between bullet and source.
@@ -1197,7 +2907,7 @@ def compute_source_overlap(bullet: str, source_text: str) -> float:
 
     # Extract content words from bullet (5+ chars, not stopwords)
     bullet_words = set()
-    for w in re.findall(r'\b[a-z]{5,}\b', bullet.lower()):
+    for w in re.findall(r"\b[a-z]{5,}\b", bullet.lower()):
         if w not in _COMMON_500:
             bullet_words.add(w)
 
@@ -1213,8 +2923,10 @@ def compute_source_overlap(bullet: str, source_text: str) -> float:
 # K1: Confidence Score Per Bullet
 # ════════════════════════════════════════════════════════════════════════════
 
-def compute_bullet_confidence(bullet: str, source_text: str,
-                               concepts: list[str] | None = None) -> int:
+
+def compute_bullet_confidence(
+    bullet: str, source_text: str, concepts: list[str] | None = None
+) -> int:
     """V3.4.1 K1: Compute a confidence score (0-100) for a bullet.
 
     Criteria:
@@ -1252,7 +2964,7 @@ def compute_bullet_confidence(bullet: str, source_text: str,
                 break
 
     # 3. No thinking markers (+10)
-    if not re.search(r'<think|<thinking|Analyze|Process|Draft|I\'ll|I will', bullet, re.IGNORECASE):
+    if not re.search(r"<think|<thinking|Analyze|Process|Draft|I\'ll|I will", bullet, re.IGNORECASE):
         score += 10
 
     # 4. Length 10-35 words (+10)
@@ -1263,7 +2975,7 @@ def compute_bullet_confidence(bullet: str, source_text: str,
         score += 5
 
     # 5. Starts with capital, ends with punctuation (+5)
-    if bullet and bullet[0].isupper() and bullet[-1] in '.!?':
+    if bullet and bullet[0].isupper() and bullet[-1] in ".!?":
         score += 5
 
     # 6. No person names (+5)
@@ -1281,6 +2993,7 @@ def compute_bullet_confidence(bullet: str, source_text: str,
 # K2 + H2: Source Excerpt + Page-Level Traceability
 # ════════════════════════════════════════════════════════════════════════════
 
+
 def find_source_excerpt(bullet: str, source_text: str, max_length: int = 200) -> str | None:
     """V3.4.1 K2: Find the best-matching source sentence for a bullet.
 
@@ -1295,12 +3008,12 @@ def find_source_excerpt(bullet: str, source_text: str, max_length: int = 200) ->
         return None
 
     # Split source into sentences
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', source_text)
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", source_text)
     if not sentences:
         return None
 
     # Extract content words from bullet
-    bullet_words = set(w.lower() for w in re.findall(r'\b[a-z]{4,}\b', bullet.lower()))
+    bullet_words = {w.lower() for w in re.findall(r"\b[a-z]{4,}\b", bullet.lower())}
     if not bullet_words:
         return None
 
@@ -1311,7 +3024,7 @@ def find_source_excerpt(bullet: str, source_text: str, max_length: int = 200) ->
         sent = sent.strip()
         if len(sent) < 20:
             continue
-        sent_words = set(w.lower() for w in re.findall(r'\b[a-z]{4,}\b', sent.lower()))
+        sent_words = {w.lower() for w in re.findall(r"\b[a-z]{4,}\b", sent.lower())}
         if not sent_words:
             continue
         overlap = len(bullet_words & sent_words) / len(bullet_words)
@@ -1324,11 +3037,11 @@ def find_source_excerpt(bullet: str, source_text: str, max_length: int = 200) ->
         if len(best_sentence) > max_length:
             # Find a good break point
             truncated = best_sentence[:max_length]
-            last_space = truncated.rfind(' ')
+            last_space = truncated.rfind(" ")
             if last_space > max_length * 0.7:
-                best_sentence = truncated[:last_space] + '…'
+                best_sentence = truncated[:last_space] + "…"
             else:
-                best_sentence = truncated + '…'
+                best_sentence = truncated + "…"
         return best_sentence
 
     return None
@@ -1371,13 +3084,14 @@ def find_source_page(bullet: str, source_text: str, page_markers: list | None = 
 # F3: Reading Level Assessment (Flesch-Kincaid)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 def count_syllables(word: str) -> int:
     """Estimate syllable count for a word."""
-    word = word.lower().strip('.,!?;:"\'')
+    word = word.lower().strip(".,!?;:\"'")
     if not word:
         return 0
     # Count vowel groups
-    vowels = 'aeiouy'
+    vowels = "aeiouy"
     count = 0
     prev_vowel = False
     for c in word:
@@ -1386,7 +3100,7 @@ def count_syllables(word: str) -> int:
             count += 1
         prev_vowel = is_vowel
     # Adjust for silent 'e'
-    if word.endswith('e') and count > 1:
+    if word.endswith("e") and count > 1:
         count -= 1
     return max(1, count)
 
@@ -1403,12 +3117,12 @@ def flesch_kincaid_grade(text: str) -> float:
         return 0.0
 
     # Count sentences
-    sentences = re.split(r'[.!?]+', text)
+    sentences = re.split(r"[.!?]+", text)
     sentences = [s.strip() for s in sentences if s.strip()]
     sent_count = max(1, len(sentences))
 
     # Count words and syllables
-    words = re.findall(r'\b[a-zA-Z]+\b', text)
+    words = re.findall(r"\b[a-zA-Z]+\b", text)
     word_count = max(1, len(words))
     syllable_count = sum(count_syllables(w) for w in words)
 
@@ -1439,6 +3153,7 @@ def assess_reading_level(source: str, summary: str) -> dict:
 # I2: Chapter Difficulty Scoring
 # ════════════════════════════════════════════════════════════════════════════
 
+
 def score_chapter_difficulty(text: str) -> dict:
     """V3.4.2 I2: Score chapter difficulty for adaptive summarization strategy.
 
@@ -1454,15 +3169,15 @@ def score_chapter_difficulty(text: str) -> dict:
     if not text or len(text) < 100:
         return {"score": 0.0, "strategy": "single_pass"}
 
-    words = re.findall(r'\b[a-zA-Z]+\b', text)
+    words = re.findall(r"\b[a-zA-Z]+\b", text)
     word_count = max(1, len(words))
-    unique_words = len(set(w.lower() for w in words))
+    unique_words = len({w.lower() for w in words})
 
     # 1. Vocabulary diversity (0-1)
     vocab_diversity = unique_words / word_count
 
     # 2. Average sentence length
-    sentences = re.split(r'[.!?]+', text)
+    sentences = re.split(r"[.!?]+", text)
     sentences = [s.strip() for s in sentences if s.strip()]
     sent_count = max(1, len(sentences))
     avg_sent_len = word_count / sent_count
@@ -1482,13 +3197,16 @@ def score_chapter_difficulty(text: str) -> dict:
     grade_level = flesch_kincaid_grade(text)
 
     # Overall difficulty score (0.0 = easy, 1.0 = very hard)
-    score = min(1.0, (
-        vocab_diversity * 0.2 +
-        min(1.0, avg_sent_len / 30.0) * 0.2 +
-        min(1.0, tech_density / 0.10) * 0.25 +
-        min(1.0, ner_density / 5.0) * 0.15 +
-        min(1.0, grade_level / 16.0) * 0.20
-    ))
+    score = min(
+        1.0,
+        (
+            vocab_diversity * 0.2
+            + min(1.0, avg_sent_len / 30.0) * 0.2
+            + min(1.0, tech_density / 0.10) * 0.25
+            + min(1.0, ner_density / 5.0) * 0.15
+            + min(1.0, grade_level / 16.0) * 0.20
+        ),
+    )
 
     # Strategy recommendation
     if score > 0.6:
@@ -1513,8 +3231,10 @@ def score_chapter_difficulty(text: str) -> dict:
 # J2: Cross-Section Redundancy Check
 # ════════════════════════════════════════════════════════════════════════════
 
-def check_cross_section_redundancy(exec_summary: str, bullets: list[str],
-                                    thorough_summary: str) -> dict:
+
+def check_cross_section_redundancy(
+    exec_summary: str, bullets: list[str], thorough_summary: str
+) -> dict:
     """V3.4.2 J2: Check for redundant content between summary sections.
 
     Checks if the same information appears in multiple sections (exec + bullets,
@@ -1525,6 +3245,7 @@ def check_cross_section_redundancy(exec_summary: str, bullets: list[str],
     """
     try:
         from rapidfuzz import fuzz
+
         _has_rf = True
     except ImportError:
         _has_rf = False
@@ -1536,18 +3257,20 @@ def check_cross_section_redundancy(exec_summary: str, bullets: list[str],
         "total_redundant": 0,
     }
 
-    bullets_text = ' '.join(bullets)
+    bullets_text = " ".join(bullets)
 
     # Check exec vs bullets
     if exec_summary and bullets_text and _has_rf:
         for i, bp in enumerate(bullets):
             sim = fuzz.token_set_ratio(exec_summary.lower(), bp.lower())
             if sim > 75:
-                findings["exec_vs_bullets_redundant"].append({
-                    "bullet_index": i,
-                    "similarity": sim,
-                    "bullet_preview": bp[:60],
-                })
+                findings["exec_vs_bullets_redundant"].append(
+                    {
+                        "bullet_index": i,
+                        "similarity": sim,
+                        "bullet_preview": bp[:60],
+                    }
+                )
 
     # Check bullets vs thorough (expected — bullets SHOULD be in thorough)
     # Only flag if >90% (near-duplicate)
@@ -1555,24 +3278,28 @@ def check_cross_section_redundancy(exec_summary: str, bullets: list[str],
         for i, bp in enumerate(bullets):
             sim = fuzz.token_set_ratio(thorough_summary.lower(), bp.lower())
             if sim > 90:
-                findings["bullets_vs_thorough_redundant"].append({
-                    "bullet_index": i,
-                    "similarity": sim,
-                    "bullet_preview": bp[:60],
-                })
+                findings["bullets_vs_thorough_redundant"].append(
+                    {
+                        "bullet_index": i,
+                        "similarity": sim,
+                        "bullet_preview": bp[:60],
+                    }
+                )
 
     # Check exec vs thorough (flag if >80% — exec should be a summary, not a copy)
     if exec_summary and thorough_summary and _has_rf:
         sim = fuzz.token_set_ratio(exec_summary.lower(), thorough_summary.lower())
         if sim > 80:
-            findings["exec_vs_thorough_redundant"].append({
-                "similarity": sim,
-            })
+            findings["exec_vs_thorough_redundant"].append(
+                {
+                    "similarity": sim,
+                }
+            )
 
     findings["total_redundant"] = (
-        len(findings["exec_vs_bullets_redundant"]) +
-        len(findings["bullets_vs_thorough_redundant"]) +
-        len(findings["exec_vs_thorough_redundant"])
+        len(findings["exec_vs_bullets_redundant"])
+        + len(findings["bullets_vs_thorough_redundant"])
+        + len(findings["exec_vs_thorough_redundant"])
     )
 
     return findings
@@ -1584,11 +3311,11 @@ def check_cross_section_redundancy(exec_summary: str, bullets: list[str],
 
 # Discourse markers indicating coherent narrative flow
 _DISCOURSE_MARKERS = re.compile(
-    r'\b(?:however|therefore|additionally|furthermore|moreover|consequently|'
-    r'as a result|in addition|similarly|in contrast|on the other hand|'
-    r'for example|specifically|notably|ultimately|finally|in summary|'
-    r'the chapter|the author|this approach|this method|this concept|'
-    r'the core|the central|the main|the key|the primary)\b',
+    r"\b(?:however|therefore|additionally|furthermore|moreover|consequently|"
+    r"as a result|in addition|similarly|in contrast|on the other hand|"
+    r"for example|specifically|notably|ultimately|finally|in summary|"
+    r"the chapter|the author|this approach|this method|this concept|"
+    r"the core|the central|the main|the key|the primary)\b",
     re.IGNORECASE,
 )
 
@@ -1611,14 +3338,14 @@ def check_exec_summary_coherence(exec_summary: str) -> dict:
     marker_count = len(markers_found)
 
     # Check for topic sentence (first sentence is a complete statement)
-    sentences = re.split(r'(?<=[.!?])\s+', exec_summary.strip())
+    sentences = re.split(r"(?<=[.!?])\s+", exec_summary.strip())
     has_topic = len(sentences) > 0 and len(sentences[0]) > 30
 
     # Check for conclusion (last sentence ends with a period and is >20 chars)
     has_conclusion = len(sentences) > 1 and len(sentences[-1]) > 20
 
     # Check it's a narrative (not a list — no bullet markers)
-    is_narrative = not bool(re.search(r'^[\-\*]\s', exec_summary, re.MULTILINE))
+    is_narrative = not bool(re.search(r"^[\-\*]\s", exec_summary, re.MULTILINE))
 
     # Score: 0-100
     score = 0
@@ -1650,32 +3377,31 @@ def check_exec_summary_coherence(exec_summary: str) -> dict:
 
 # Core concept indicators — bullets that define or explain a key concept
 _CORE_INDICATORS = re.compile(
-    r'(?:is defined as|refers to|means|involves|requires|consists of|'
-    r'the concept of|the principle of|the technique of|the strategy of|'
-    r'the method of|the framework of|the foundation of|'
-    r'should|must|need to|essential to|crucial to|important to|'
-    r'Establish|Create|Develop|Define|Identify|Leverage|Apply|'
-    r'Use|Practice|Maintain|Avoid|Adapt|Assess|Conduct|'
-    r'Limit|Diversify|Integrate|Prepare|Watch|Recognize|'
-    r'Observe|Target|Pursue|Invest|Engage)',
+    r"(?:is defined as|refers to|means|involves|requires|consists of|"
+    r"the concept of|the principle of|the technique of|the strategy of|"
+    r"the method of|the framework of|the foundation of|"
+    r"should|must|need to|essential to|crucial to|important to|"
+    r"Establish|Create|Develop|Define|Identify|Leverage|Apply|"
+    r"Use|Practice|Maintain|Avoid|Adapt|Assess|Conduct|"
+    r"Limit|Diversify|Integrate|Prepare|Watch|Recognize|"
+    r"Observe|Target|Pursue|Invest|Engage)",
     re.IGNORECASE,
 )
 
 # Supporting detail indicators — bullets with specific examples, numbers, or cases
 _SUPPORTING_INDICATORS = re.compile(
-    r'(?:e\.g\.|for example|such as|including|specifically|'
-    r'\$\d|\d+%|\d{4}|\d{2,},\d{3}|'  # numbers, money, percentages, years
-    r'case study|story|anecdote|instance|illustration|'
+    r"(?:e\.g\.|for example|such as|including|specifically|"
+    r"\$\d|\d+%|\d{4}|\d{2,},\d{3}|"  # numbers, money, percentages, years
+    r"case study|story|anecdote|instance|illustration|"
     # V18.20.3.9 (Phase 2 / residuals sweep): was a three-name character
     # alternation harvested from one book. Structural replacement:
     # scene-action fragments (the character-reference signal, any book).
-    r'\bwent\s+to\s+(?:a|the)|\bmet\s+(?:a|the|his|her)|author|chapter|book)',
+    r"\bwent\s+to\s+(?:a|the)|\bmet\s+(?:a|the|his|her)|author|chapter|book)",
     re.IGNORECASE,
 )
 
 
-def classify_bullet(bullet: str, concepts: list[str] | None = None,
-                     source_text: str = "") -> str:
+def classify_bullet(bullet: str, concepts: list[str] | None = None, source_text: str = "") -> str:
     """V3.6.0: Classify a bullet as Core Concept, Supporting Detail, or Additional Insight.
 
     Classification rules:
@@ -1743,6 +3469,7 @@ def _get_embed_model():
     """
     try:
         from core.llm.model_singletons import get_embed_model
+
         return get_embed_model()
     except Exception as _e:
         return None
@@ -1800,8 +3527,9 @@ def semantic_fact_check(bullet: str, source_text: str, threshold: float = 0.5) -
 
     try:
         import re
+
         # Split source into sentences
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', source_text)
+        sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", source_text)
         sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 20]
 
         if not sentences:
@@ -1819,6 +3547,7 @@ def semantic_fact_check(bullet: str, source_text: str, threshold: float = 0.5) -
 
         # Compute cosine similarities
         import numpy as np
+
         bullet_norm = bullet_emb / (np.linalg.norm(bullet_emb, axis=1, keepdims=True) + 1e-8)
         source_norms = source_embs / (np.linalg.norm(source_embs, axis=1, keepdims=True) + 1e-8)
         similarities = np.dot(source_norms, bullet_norm[0])
@@ -1835,9 +3564,7 @@ def semantic_fact_check(bullet: str, source_text: str, threshold: float = 0.5) -
     except Exception as e:
         # V18.1 (S1): fail-closed on unexpected errors too — never silently
         # pass a bullet that we couldn't actually verify.
-        logger.warning(
-            "semantic_fact_check: embedding failure (%s) — failing CLOSED", e
-        )
+        logger.warning("semantic_fact_check: embedding failure (%s) — failing CLOSED", e)
         return {
             "is_grounded": False,
             "best_similarity": 0.0,
@@ -1854,14 +3581,17 @@ def semantic_fact_check(bullet: str, source_text: str, threshold: float = 0.5) -
 # Academic terminology patterns (beyond the existing quoted-term patterns)
 _ACADEMIC_TERM_PATTERNS = [
     # "Term (definition)" — common in academic writing
-    re.compile(r'\b([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\s+\(([^)]{10,100})\)', re.IGNORECASE),
+    re.compile(r"\b([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\s+\(([^)]{10,100})\)", re.IGNORECASE),
     # "Term: definition" — glossary style
-    re.compile(r'^([A-Z][a-z]+(?:\s+[a-z]+){0,2}):\s+(.{10,100})', re.MULTILINE),
+    re.compile(r"^([A-Z][a-z]+(?:\s+[a-z]+){0,2}):\s+(.{10,100})", re.MULTILINE),
     # "Term is/are defined as" — explicit definition
-    re.compile(r'([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\s+(?:is|are)\s+(?:defined\s+as|called|known\s+as)\s+(.{10,100})', re.IGNORECASE),
+    re.compile(
+        r"([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\s+(?:is|are)\s+(?:defined\s+as|called|known\s+as)\s+(.{10,100})",
+        re.IGNORECASE,
+    ),
     # Italicized terms (markdown) — *term* or _term_
-    re.compile(r'\*([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\*'),
-    re.compile(r'_([a-z]{4,}(?:\s+[a-z]{4,}){0,2})_'),
+    re.compile(r"\*([a-z]{4,}(?:\s+[a-z]{4,}){0,2})\*"),
+    re.compile(r"_([a-z]{4,}(?:\s+[a-z]{4,}){0,2})_"),
 ]
 
 # Domain-specific term lists for common academic fields
@@ -1871,42 +3601,104 @@ _ACADEMIC_TERM_PATTERNS = [
 # "Market", "Customer", etc.). Now each LINE is a complete phrase.
 _DOMAIN_TERMS = {
     "psychology": [
-        "cognitive behavioral therapy", "mindfulness", "neuroplasticity",
-        "conditioning", "reinforcement", "extroversion", "introversion",
-        "personality trait", "attachment theory", "self-actualization",
-        "hierarchy of needs", "intrinsic motivation", "extrinsic motivation",
-        "learned helplessness", "confirmation bias", "cognitive dissonance",
-        "heuristics", "availability heuristic", "stereotyping", "prejudice",
-        "implicit bias", "emotional intelligence", "grit", "growth mindset",
+        "cognitive behavioral therapy",
+        "mindfulness",
+        "neuroplasticity",
+        "conditioning",
+        "reinforcement",
+        "extroversion",
+        "introversion",
+        "personality trait",
+        "attachment theory",
+        "self-actualization",
+        "hierarchy of needs",
+        "intrinsic motivation",
+        "extrinsic motivation",
+        "learned helplessness",
+        "confirmation bias",
+        "cognitive dissonance",
+        "heuristics",
+        "availability heuristic",
+        "stereotyping",
+        "prejudice",
+        "implicit bias",
+        "emotional intelligence",
+        "grit",
+        "growth mindset",
     ],
     "philosophy": [
-        "stoicism", "virtue ethics", "deontology", "utilitarianism",
-        "consequentialism", "nihilism", "existentialism", "phenomenology",
-        "epistemology", "metaphysics", "determinism", "free will",
-        "moral relativism", "categorical imperative", "social contract",
-        "tabula rasa", "dialectic", "syllogism", "a priori", "a posteriori",
-        "noumenon", "phenomenon",
+        "stoicism",
+        "virtue ethics",
+        "deontology",
+        "utilitarianism",
+        "consequentialism",
+        "nihilism",
+        "existentialism",
+        "phenomenology",
+        "epistemology",
+        "metaphysics",
+        "determinism",
+        "free will",
+        "moral relativism",
+        "categorical imperative",
+        "social contract",
+        "tabula rasa",
+        "dialectic",
+        "syllogism",
+        "a priori",
+        "a posteriori",
+        "noumenon",
+        "phenomenon",
     ],
     "marketing": [
-        "brand positioning", "value proposition", "customer segmentation",
-        "target market", "competitive advantage", "unique selling proposition",
-        "market penetration", "brand equity", "customer lifetime value",
-        "conversion funnel", "A/B testing", "content marketing",
-        "inbound marketing", "outbound marketing", "SEO", "SEM",
+        "brand positioning",
+        "value proposition",
+        "customer segmentation",
+        "target market",
+        "competitive advantage",
+        "unique selling proposition",
+        "market penetration",
+        "brand equity",
+        "customer lifetime value",
+        "conversion funnel",
+        "A/B testing",
+        "content marketing",
+        "inbound marketing",
+        "outbound marketing",
+        "SEO",
+        "SEM",
     ],
     "urban_planning": [
-        "gentrification", "spatial segregation", "urban morphology",
-        "zoning", "land use", "transit-oriented development", "smart growth",
-        "urban sprawl", "density", "mixed-use development",
-        "pedestrian-friendly", "sustainable urbanism", "brownfield redevelopment",
-        "green infrastructure", "public realm",
+        "gentrification",
+        "spatial segregation",
+        "urban morphology",
+        "zoning",
+        "land use",
+        "transit-oriented development",
+        "smart growth",
+        "urban sprawl",
+        "density",
+        "mixed-use development",
+        "pedestrian-friendly",
+        "sustainable urbanism",
+        "brownfield redevelopment",
+        "green infrastructure",
+        "public realm",
     ],
     "management": [
-        "agile", "lean", "six sigma", "kanban", "scrum",
-        "stakeholder management", "strategic planning",
-        "key performance indicators", "balanced scorecard",
-        "organizational behavior", "transformational leadership",
-        "servant leadership", "change management",
+        "agile",
+        "lean",
+        "six sigma",
+        "kanban",
+        "scrum",
+        "stakeholder management",
+        "strategic planning",
+        "key performance indicators",
+        "balanced scorecard",
+        "organizational behavior",
+        "transformational leadership",
+        "servant leadership",
+        "change management",
     ],
 }
 
@@ -1963,24 +3755,38 @@ def extract_academic_terms(text: str, max_terms: int = 20) -> list[str]:
 def _extract_proper_noun_theorists(text: str, max_terms: int = 15) -> list[str]:
     """V15.2.0 Technique #2: Extract proper-noun theorist names.
 
-    Detects the "Surname (year)" citation pattern that academic authors use.
-This is the PRIMARY signal for theorist names — any cited
-author appears as "Surname (year)" in the source text.
+        Detects the "Surname (year)" citation pattern that academic authors use.
+    This is the PRIMARY signal for theorist names — any cited
+    author appears as "Surname (year)" in the source text.
 
-Also catches hyphenated names like "AuthorA-AuthorB".
+    Also catches hyphenated names like "AuthorA-AuthorB".
     """
     import re as _re
+
     # Pattern: Capitalized surname (optionally hyphenated) + (year)
-# e.g., "AuthorA (1919)", "AuthorB (1958a,b)", "AuthorC-D (1983, 1984)"
+    # e.g., "AuthorA (1919)", "AuthorB (1958a,b)", "AuthorC-D (1983, 1984)"
     citation_pattern = _re.compile(
-        r'\b([A-Z][a-z]+(?:-[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)'
+        r"\b([A-Z][a-z]+(?:-[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)"
     )
     seen = {}
     for m in citation_pattern.finditer(text):
         name = m.group(1).strip()
         # Filter out common false positives
-        _STOP = {"Chapter", "Figure", "Table", "Section", "Part", "Volume",
-                 "Appendix", "Note", "See", "Cf", "Op", "Loc", "Passim"}
+        _STOP = {
+            "Chapter",
+            "Figure",
+            "Table",
+            "Section",
+            "Part",
+            "Volume",
+            "Appendix",
+            "Note",
+            "See",
+            "Cf",
+            "Op",
+            "Loc",
+            "Passim",
+        }
         if name in _STOP or len(name) < 3:
             continue
         # Count occurrences to rank by frequency
@@ -1990,11 +3796,12 @@ Also catches hyphenated names like "AuthorA-AuthorB".
     return ranked[:max_terms]
 
 
-
 def _normalize_heading(h: str) -> str:
     """V16.0.4: Collapse newlines + multiple spaces into single spaces."""
     import re as _re
-    return _re.sub(r'\s+', ' ', h).strip()
+
+    return _re.sub(r"\s+", " ", h).strip()
+
 
 def _extract_section_headings(text: str, max_terms: int = 12) -> list[str]:
     """V15.2.0 Technique #3: Extract section headings.
@@ -2006,11 +3813,12 @@ def _extract_section_headings(text: str, max_terms: int = 12) -> list[str]:
     Also detects bold terms (**Term**) used as subsection markers.
     """
     import re as _re
+
     headings = []
     seen = set()
 
     # Markdown headings: ## Heading, ### Heading
-    for m in _re.finditer(r'^#{2,4}\s+(.+?)$', text, _re.MULTILINE):
+    for m in _re.finditer(r"^#{2,4}\s+(.+?)$", text, _re.MULTILINE):
         h = m.group(1).strip()
         # Skip if too long (probably a sentence, not a heading) or too short
         if 3 <= len(h) <= 80 and h.lower() not in seen:
@@ -2019,7 +3827,7 @@ def _extract_section_headings(text: str, max_terms: int = 12) -> list[str]:
 
     # ALL-CAPS section markers (common in academic books): THE CONCEPT OF IDENTITY
     # V15.2.0: Keep original case for proper nouns, title-case for ALL-CAPS phrases
-    for m in _re.finditer(r'^\s*([A-Z][A-Z\s]{4,60})\s*$', text, _re.MULTILINE):
+    for m in _re.finditer(r"^\s*([A-Z][A-Z\s]{4,60})\s*$", text, _re.MULTILINE):
         raw = m.group(1).strip()
         # If it's all caps, title-case it; otherwise keep as-is
         h = raw.title() if raw.isupper() else raw
@@ -2028,7 +3836,7 @@ def _extract_section_headings(text: str, max_terms: int = 12) -> list[str]:
             headings.append(h)
 
     # Bold terms: **Term** or __Term__
-    for m in _re.finditer(r'\*\*([A-Z][A-Za-z\s-]{3,60})\*\*', text):
+    for m in _re.finditer(r"\*\*([A-Z][A-Za-z\s-]{3,60})\*\*", text):
         h = m.group(1).strip()
         if h.lower() not in seen and 5 <= len(h) <= 60:
             seen.add(h.lower())
@@ -2050,10 +3858,11 @@ def _extract_conclusion_lists(text: str, max_terms: int = 10) -> list[str]:
     own summary of the key points.
     """
     import re as _re
+
     # V15.2.0: Find the conclusion section. Try explicit markers first
     # (## CONCLUSION, CONCLUSION, # CONCLUSION), then fall back to last 20%.
     conclusion_start = len(text)  # default: no conclusion section found
-    for marker in [r'^##\s*CONCLUSION\s*$', r'^CONCLUSION\s*$', r'^#\s*CONCLUSION\s*$']:
+    for marker in [r"^##\s*CONCLUSION\s*$", r"^CONCLUSION\s*$", r"^#\s*CONCLUSION\s*$"]:
         m = _re.search(marker, text, _re.MULTILINE | _re.IGNORECASE)
         if m:
             conclusion_start = m.start()
@@ -2066,11 +3875,11 @@ def _extract_conclusion_lists(text: str, max_terms: int = 10) -> list[str]:
     # Pattern: (N) item text — capture up to the next (N) or end of line.
     # V15.2.0 fix: use a non-greedy match that stops at the next numbered
     # item or a double-newline, so multi-item lists on one line work too.
-    list_pattern = _re.compile(r'\((\d{1,2})\)\s+([^()\n]{5,150}?)(?=\s*\(\d{1,2}\)|\n\n|$)')
+    list_pattern = _re.compile(r"\((\d{1,2})\)\s+([^()\n]{5,150}?)(?=\s*\(\d{1,2}\)|\n\n|$)")
     items = []
     seen = set()
     for m in list_pattern.finditer(conclusion_text):
-        item = m.group(2).strip().rstrip(',;')
+        item = m.group(2).strip().rstrip(",;")
         key = item.lower()
         # Filter generic phrases
         if key in seen or len(item) < 5:
@@ -2099,22 +3908,225 @@ def _extract_position_weighted_concepts(text: str, max_terms: int = 12) -> list[
     conclusion = text[concl_start:]
 
     # Title Case phrase pattern (2-4 words)
-    title_pattern = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b')
+    title_pattern = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
 
-    _STOP = frozenset(["The", "This", "That", "These", "Those", "There", "Here", "Now", "Then", "Will", "Would", "Could", "Should", "May", "Might", "Can", "Must", "Shall", "And", "Or", "But", "If", "When", "Where", "Why", "How", "What", "Which", "Who", "Of", "In", "On", "At", "For", "With", "By", "From", "To", "A", "An", "Is", "Are", "Was", "Were", "Be", "Been", "Being", "Have", "Has", "Had", "Do", "Does", "Did", "Not", "No", "Only", "Own", "Same", "So", "Than", "Too", "Very", "Just", "Also", "About", "Above", "Below", "Up", "Down", "Out", "Off", "Over", "Under", "Again", "Further", "Once", "Chapter", "Part", "Section", "Book", "Author", "Note"])
+    _STOP = frozenset(
+        [
+            "The",
+            "This",
+            "That",
+            "These",
+            "Those",
+            "There",
+            "Here",
+            "Now",
+            "Then",
+            "Will",
+            "Would",
+            "Could",
+            "Should",
+            "May",
+            "Might",
+            "Can",
+            "Must",
+            "Shall",
+            "And",
+            "Or",
+            "But",
+            "If",
+            "When",
+            "Where",
+            "Why",
+            "How",
+            "What",
+            "Which",
+            "Who",
+            "Of",
+            "In",
+            "On",
+            "At",
+            "For",
+            "With",
+            "By",
+            "From",
+            "To",
+            "A",
+            "An",
+            "Is",
+            "Are",
+            "Was",
+            "Were",
+            "Be",
+            "Been",
+            "Being",
+            "Have",
+            "Has",
+            "Had",
+            "Do",
+            "Does",
+            "Did",
+            "Not",
+            "No",
+            "Only",
+            "Own",
+            "Same",
+            "So",
+            "Than",
+            "Too",
+            "Very",
+            "Just",
+            "Also",
+            "About",
+            "Above",
+            "Below",
+            "Up",
+            "Down",
+            "Out",
+            "Off",
+            "Over",
+            "Under",
+            "Again",
+            "Further",
+            "Once",
+            "Chapter",
+            "Part",
+            "Section",
+            "Book",
+            "Author",
+            "Note",
+        ]
+    )
 
     counts = Counter()
-    phrase_positions = {}  # phrase -> "intro"/"conclusion"/"body"
 
     # V16.0.3: Expanded stopword list + sentence-boundary detection + frequency filter
-    _STOP = frozenset(["The", "This", "That", "These", "Those", "There", "Here", "Now", "Then", "Will", "Would", "Could", "Should", "May", "Might", "Can", "Must", "Shall", "And", "Or", "But", "If", "When", "Where", "Why", "How", "What", "Which", "Who", "Of", "In", "On", "At", "For", "With", "By", "From", "To", "A", "An", "Is", "Are", "Was", "Were", "Be", "Been", "Being", "Have", "Has", "Had", "Do", "Does", "Did", "Not", "No", "Only", "Own", "Same", "So", "Than", "Too", "Very", "Just", "Also", "About", "Above", "Below", "Up", "Down", "Out", "Off", "Over", "Under", "Again", "Further", "Once", "Chapter", "Part", "Section", "Book", "Author", "Note", "Although", "Despite", "Because", "Since", "While", "During", "Throughout", "Without", "However", "Moreover", "Furthermore", "Nevertheless", "Nonetheless", "Therefore", "Thus", "Hence", "Accordingly", "Consequently", "Similarly", "Likewise", "Instead", "Rather", "Building", "Following", "Later", "Earlier", "Around", "Between", "Among", "Across", "Within", "Toward", "Towards", "Dovetailing"])
+    _STOP = frozenset(
+        [
+            "The",
+            "This",
+            "That",
+            "These",
+            "Those",
+            "There",
+            "Here",
+            "Now",
+            "Then",
+            "Will",
+            "Would",
+            "Could",
+            "Should",
+            "May",
+            "Might",
+            "Can",
+            "Must",
+            "Shall",
+            "And",
+            "Or",
+            "But",
+            "If",
+            "When",
+            "Where",
+            "Why",
+            "How",
+            "What",
+            "Which",
+            "Who",
+            "Of",
+            "In",
+            "On",
+            "At",
+            "For",
+            "With",
+            "By",
+            "From",
+            "To",
+            "A",
+            "An",
+            "Is",
+            "Are",
+            "Was",
+            "Were",
+            "Be",
+            "Been",
+            "Being",
+            "Have",
+            "Has",
+            "Had",
+            "Do",
+            "Does",
+            "Did",
+            "Not",
+            "No",
+            "Only",
+            "Own",
+            "Same",
+            "So",
+            "Than",
+            "Too",
+            "Very",
+            "Just",
+            "Also",
+            "About",
+            "Above",
+            "Below",
+            "Up",
+            "Down",
+            "Out",
+            "Off",
+            "Over",
+            "Under",
+            "Again",
+            "Further",
+            "Once",
+            "Chapter",
+            "Part",
+            "Section",
+            "Book",
+            "Author",
+            "Note",
+            "Although",
+            "Despite",
+            "Because",
+            "Since",
+            "While",
+            "During",
+            "Throughout",
+            "Without",
+            "However",
+            "Moreover",
+            "Furthermore",
+            "Nevertheless",
+            "Nonetheless",
+            "Therefore",
+            "Thus",
+            "Hence",
+            "Accordingly",
+            "Consequently",
+            "Similarly",
+            "Likewise",
+            "Instead",
+            "Rather",
+            "Building",
+            "Following",
+            "Later",
+            "Earlier",
+            "Around",
+            "Between",
+            "Among",
+            "Across",
+            "Within",
+            "Toward",
+            "Towards",
+            "Dovetailing",
+        ]
+    )
 
-    _SENTENCE_BOUNDARY = re.compile(r'\.\s+[A-Z]')
+    _SENTENCE_BOUNDARY = re.compile(r"\.\s+[A-Z]")
 
     def _is_clean_phrase(phrase: str) -> bool:
         if len(phrase) < 5 or len(phrase) > 50:
             return False
-        if '\n' in phrase:
+        if "\n" in phrase:
             return False
         if _SENTENCE_BOUNDARY.search(phrase):
             return False
@@ -2155,18 +4167,18 @@ def _extract_position_weighted_concepts(text: str, max_terms: int = 12) -> list[
 def _llm_assisted_concept_extraction(text: str, llm_call_fn, log_fn=None) -> list[str]:
     """V15.2.0 Technique #5: LLM-assisted concept extraction.
 
-    Asks the LLM to list the key concepts and theorists in the chapter.
-    The LLM understands semantics — it catches concepts that don't appear
-as literal words (e.g., a multi-word concept vs. its single-word
-    + "diffusion" as separate words).
+        Asks the LLM to list the key concepts and theorists in the chapter.
+        The LLM understands semantics — it catches concepts that don't appear
+    as literal words (e.g., a multi-word concept vs. its single-word
+        + "diffusion" as separate words).
 
-    Args:
-        text: The chapter source text (will be truncated to ~8000 chars).
-        llm_call_fn: A callable(prompt) -> Optional[str] that invokes the LLM.
-        log_fn: Optional log callback for progress messages.
+        Args:
+            text: The chapter source text (will be truncated to ~8000 chars).
+            llm_call_fn: A callable(prompt) -> Optional[str] that invokes the LLM.
+            log_fn: Optional log callback for progress messages.
 
-    Returns:
-        List of concept strings (may be empty if the LLM call fails).
+        Returns:
+            List of concept strings (may be empty if the LLM call fails).
     """
     if llm_call_fn is None:
         return []
@@ -2174,6 +4186,7 @@ as literal words (e.g., a multi-word concept vs. its single-word
     # Truncate to fit context window (leave room for the prompt)
     truncated = text[:8000]
     from core.summarisation.prompt_manager import PromptManager
+
     _pm = PromptManager()
     prompt = _pm.render_template(
         "summarisation/concept_extraction",
@@ -2190,11 +4203,12 @@ as literal words (e.g., a multi-word concept vs. its single-word
             return []
         # Parse bullet lines: "- Concept Name" or "* Concept Name" or "1. Concept Name"
         import re as _re
-        lines = _re.findall(r'(?:^|\n)\s*[-*\d.]\s*(.+?)(?=\n|$)', raw)
+
+        lines = _re.findall(r"(?:^|\n)\s*[-*\d.]\s*(.+?)(?=\n|$)", raw)
         concepts = []
         seen = set()
         for line in lines:
-            c = line.strip().rstrip('.').strip()
+            c = line.strip().rstrip(".").strip()
             # Filter generic/empty
             if len(c) < 3 or len(c) > 100:
                 continue
@@ -2212,8 +4226,9 @@ as literal words (e.g., a multi-word concept vs. its single-word
         return []
 
 
-def _filter_concepts_by_source(concepts: list[str], source_text: str,
-                                 min_overlap_chars: int = 15) -> list[str]:
+def _filter_concepts_by_source(
+    concepts: list[str], source_text: str, min_overlap_chars: int = 15
+) -> list[str]:
     """V15.2.0 Technique #6: Source-grounded concept filter.
 
     Drops concepts that have NO source sentence containing them. This
@@ -2237,11 +4252,11 @@ def _filter_concepts_by_source(concepts: list[str], source_text: str,
         words = c.split()
         if len(words) >= 2:
             # Try the first 2-3 words as a fragment
-            fragment = " ".join(words[:min(3, len(words))])
+            fragment = " ".join(words[: min(3, len(words))])
             if len(fragment) >= min_overlap_chars and fragment in source_lower:
                 passed.append(concept)
                 continue
-# Try the longest single word (for hyphenated theorist names)
+        # Try the longest single word (for hyphenated theorist names)
         longest = max(words, key=len) if words else c
         if len(longest) >= 6 and longest in source_lower:
             passed.append(concept)
@@ -2250,8 +4265,9 @@ def _filter_concepts_by_source(concepts: list[str], source_text: str,
     return passed, dropped
 
 
-def extract_concepts_rich(text: str, max_terms: int = 18,
-                           llm_call_fn=None, log_fn=None) -> list[str]:
+def extract_concepts_rich(
+    text: str, max_terms: int = 18, llm_call_fn=None, log_fn=None
+) -> list[str]:
     """V15.2.0: Enhanced concept extraction — the foundation fix.
 
     Combines 6 techniques (the user's "خشت اول" / foundation-first principle):
@@ -2276,7 +4292,11 @@ def extract_concepts_rich(text: str, max_terms: int = 18,
         Deduplicated, source-grounded list of concept strings.
     """
     if log_fn is None:
-        log_fn = lambda msg, level="DEBUG": None
+
+        def _noop_log(msg: str, level: str = "DEBUG") -> None:
+            pass
+
+        log_fn = _noop_log
 
     log_fn("    🎯 V15.2.0: Enhanced concept extraction starting (6 techniques)", "INFO")
 
@@ -2342,9 +4362,15 @@ def extract_concepts_rich(text: str, max_terms: int = 18,
     try:
         grounded, dropped = _filter_concepts_by_source(merged, text)
         if dropped:
-            log_fn(f"    🎯 V15.2.0 #6 (source-grounded): kept {len(grounded)}, dropped {len(dropped)} ghost concepts — dropped: {dropped[:5]}", "DEBUG")
+            log_fn(
+                f"    🎯 V15.2.0 #6 (source-grounded): kept {len(grounded)}, dropped {len(dropped)} ghost concepts — dropped: {dropped[:5]}",
+                "DEBUG",
+            )
         else:
-            log_fn(f"    🎯 V15.2.0 #6 (source-grounded): all {len(grounded)} concepts grounded ✓", "DEBUG")
+            log_fn(
+                f"    🎯 V15.2.0 #6 (source-grounded): all {len(grounded)} concepts grounded ✓",
+                "DEBUG",
+            )
     except Exception as e:
         log_fn(f"    ⚠️ V15.2.0 #6 failed: {e}", "DEBUG")
         grounded = merged  # fall back to unfiltered
@@ -2399,12 +4425,114 @@ def extract_implicit_concepts(text: str, max_terms: int = 15) -> list[str]:
     from collections import Counter
 
     # Find Title Case phrases (2-4 words) — V3.9.1: explicitly require 2+ words
-    title_case_pattern = re.compile(
-        r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b'
-    )
+    title_case_pattern = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b")
 
     # V3.9.1: Common words that should never be "concepts" even in multi-word phrases
-    _IMPLICIT_STOPWORDS = frozenset(["The", "This", "That", "These", "Those", "There", "Here", "Now", "Then", "Will", "Would", "Could", "Should", "May", "Might", "Can", "Must", "Shall", "And", "Or", "But", "If", "When", "Where", "Why", "How", "What", "Which", "Who", "Of", "In", "On", "At", "For", "With", "By", "From", "To", "A", "An", "Is", "Are", "Was", "Were", "Be", "Been", "Being", "Have", "Has", "Had", "Do", "Does", "Did", "Not", "No", "Only", "Own", "Same", "So", "Than", "Too", "Very", "Just", "Also", "About", "Above", "Below", "Up", "Down", "Out", "Off", "Over", "Under", "Again", "Further", "Once", "Chapter", "Part", "Section", "Book", "Author", "Note", "Tip", "Point", "Key", "Important", "Remember", "United", "States", "Public", "Key", "Target", "Alliance", "Change", "Intelligence", "Customer", "Development", "Use", "Unique", "Brand", "Market"])
+    _IMPLICIT_STOPWORDS = frozenset(
+        [
+            "The",
+            "This",
+            "That",
+            "These",
+            "Those",
+            "There",
+            "Here",
+            "Now",
+            "Then",
+            "Will",
+            "Would",
+            "Could",
+            "Should",
+            "May",
+            "Might",
+            "Can",
+            "Must",
+            "Shall",
+            "And",
+            "Or",
+            "But",
+            "If",
+            "When",
+            "Where",
+            "Why",
+            "How",
+            "What",
+            "Which",
+            "Who",
+            "Of",
+            "In",
+            "On",
+            "At",
+            "For",
+            "With",
+            "By",
+            "From",
+            "To",
+            "A",
+            "An",
+            "Is",
+            "Are",
+            "Was",
+            "Were",
+            "Be",
+            "Been",
+            "Being",
+            "Have",
+            "Has",
+            "Had",
+            "Do",
+            "Does",
+            "Did",
+            "Not",
+            "No",
+            "Only",
+            "Own",
+            "Same",
+            "So",
+            "Than",
+            "Too",
+            "Very",
+            "Just",
+            "Also",
+            "About",
+            "Above",
+            "Below",
+            "Up",
+            "Down",
+            "Out",
+            "Off",
+            "Over",
+            "Under",
+            "Again",
+            "Further",
+            "Once",
+            "Chapter",
+            "Part",
+            "Section",
+            "Book",
+            "Author",
+            "Note",
+            "Tip",
+            "Point",
+            "Key",
+            "Important",
+            "Remember",
+            "United",
+            "States",
+            "Public",
+            "Key",
+            "Target",
+            "Alliance",
+            "Change",
+            "Intelligence",
+            "Customer",
+            "Development",
+            "Use",
+            "Unique",
+            "Brand",
+            "Market",
+        ]
+    )
 
     counts = Counter()
     for m in title_case_pattern.finditer(text):

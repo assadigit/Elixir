@@ -22,29 +22,170 @@ class Validator:
     """
 
     # Common stopwords (extended)
-    STOPWORDS = frozenset({
-        "the","a","an","in","on","at","to","for","of","and","or","but",
-        "is","it","its","this","that","was","are","were","be","been",
-        "have","has","had","with","from","by","as","not","he","she",
-        "they","we","you","i","their","our","his","her","which","who",
-        "what","when","where","how","all","one","two","three","also",
-        "can","will","would","could","should","may","might","do","did",
-        "such","than","then","so","if","about","up","out","more","very",
-        "just","into","over","after","before","between","through",
-        "page","pages","copyright","rights","reserved","published","publisher",
-        "publication","press","edition","printing","printed","reprinted",
-        "isbn","library","congress","cataloging","university","college",
-        "journal","volume","issue","series","revised","translated",
-        "author","authors","editor","editors","foreword","preface",
-        "introduction","conclusion","chapter","chapters","section","part",
-        "figure","table","appendix","references","bibliography","index",
-        "acknowledgments","acknowledgements","dedication","contents",
-        "first","second","third","fourth","fifth","however","therefore",
-        "thus","hence","whereas","although","despite","whether","both",
-        "each","every","other","another","same","different","various",
-        "many","some","most","much","less","well","often","always",
-        "never","already","still","even","only","further","example",
-    })
+    STOPWORDS = frozenset(
+        {
+            "the",
+            "a",
+            "an",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "and",
+            "or",
+            "but",
+            "is",
+            "it",
+            "its",
+            "this",
+            "that",
+            "was",
+            "are",
+            "were",
+            "be",
+            "been",
+            "have",
+            "has",
+            "had",
+            "with",
+            "from",
+            "by",
+            "as",
+            "not",
+            "he",
+            "she",
+            "they",
+            "we",
+            "you",
+            "i",
+            "their",
+            "our",
+            "his",
+            "her",
+            "which",
+            "who",
+            "what",
+            "when",
+            "where",
+            "how",
+            "all",
+            "one",
+            "two",
+            "three",
+            "also",
+            "can",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "do",
+            "did",
+            "such",
+            "than",
+            "then",
+            "so",
+            "if",
+            "about",
+            "up",
+            "out",
+            "more",
+            "very",
+            "just",
+            "into",
+            "over",
+            "after",
+            "before",
+            "between",
+            "through",
+            "page",
+            "pages",
+            "copyright",
+            "rights",
+            "reserved",
+            "published",
+            "publisher",
+            "publication",
+            "press",
+            "edition",
+            "printing",
+            "printed",
+            "reprinted",
+            "isbn",
+            "library",
+            "congress",
+            "cataloging",
+            "university",
+            "college",
+            "journal",
+            "volume",
+            "issue",
+            "series",
+            "revised",
+            "translated",
+            "author",
+            "authors",
+            "editor",
+            "editors",
+            "foreword",
+            "preface",
+            "introduction",
+            "conclusion",
+            "chapter",
+            "chapters",
+            "section",
+            "part",
+            "figure",
+            "table",
+            "appendix",
+            "references",
+            "bibliography",
+            "index",
+            "acknowledgments",
+            "acknowledgements",
+            "dedication",
+            "contents",
+            "first",
+            "second",
+            "third",
+            "fourth",
+            "fifth",
+            "however",
+            "therefore",
+            "thus",
+            "hence",
+            "whereas",
+            "although",
+            "despite",
+            "whether",
+            "both",
+            "each",
+            "every",
+            "other",
+            "another",
+            "same",
+            "different",
+            "various",
+            "many",
+            "some",
+            "most",
+            "much",
+            "less",
+            "well",
+            "often",
+            "always",
+            "never",
+            "already",
+            "still",
+            "even",
+            "only",
+            "further",
+            "example",
+        }
+    )
 
     def __init__(self, source_md_path: Path, summary_md_path: Path | None = None):
         self.source_path = source_md_path
@@ -77,16 +218,18 @@ class Validator:
                 self.summary_path = possible
                 self.summary_text = possible.read_text(encoding="utf-8")
             else:
-                logger.warning("No summary file found. Validation will only run on source keywords.")
+                logger.warning(
+                    "No summary file found. Validation will only run on source keywords."
+                )
                 self.summary_text = ""
         return True
 
     def _extract_keywords(self, text: str, n: int = 30) -> list[str]:
         """Extract top n keywords from text (excluding stopwords)."""
-        words = re.findall(r'\b[a-z]{4,}\b', text.lower())
+        words = re.findall(r"\b[a-z]{4,}\b", text.lower())
         # If Persian, also include Persian words
         if detect_persian_text(text, threshold=0.05):
-            persian_words = re.findall(r'[\u0600-\u06FF]{3,}', text)
+            persian_words = re.findall(r"[\u0600-\u06FF]{3,}", text)
             words.extend(persian_words)
         counts = Counter(w for w in words if w not in self.STOPWORDS)
         # Sort by frequency descending
@@ -104,7 +247,7 @@ class Validator:
             "coverage": coverage,
             "present": present,
             "missing": missing,
-            "total_keywords": len(source_keywords)
+            "total_keywords": len(source_keywords),
         }
 
     def validate(self) -> dict[str, Any]:
@@ -120,7 +263,7 @@ class Validator:
             return {
                 "source_keywords": source_keywords,
                 "summary_found": False,
-                "error": "No summary text provided"
+                "error": "No summary text provided",
             }
 
         # Compute coverage
@@ -143,7 +286,7 @@ class Validator:
             "present": coverage_info["present"],
             "hallucinated": hallucinated,
             "total_keywords": coverage_info["total_keywords"],
-            "summary_found": True
+            "summary_found": True,
         }
 
     def generate_report(self) -> str:
@@ -185,9 +328,13 @@ class Validator:
         lines.append("")
         lines.append("💡 Recommendation:")
         if coverage < 60:
-            lines.append("  - Coverage is low. Consider increasing summarisation context or using a heavier model.")
+            lines.append(
+                "  - Coverage is low. Consider increasing summarisation context or using a heavier model."
+            )
         elif coverage < 80:
-            lines.append("  - Coverage is acceptable but could be improved. Try enabling self‑consistency or lowering temperature.")
+            lines.append(
+                "  - Coverage is acceptable but could be improved. Try enabling self‑consistency or lowering temperature."
+            )
         else:
             lines.append("  - Excellent coverage! Summary captures most key concepts.")
         return "\n".join(lines)

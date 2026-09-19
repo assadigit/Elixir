@@ -47,6 +47,7 @@ def _get_sentence_model():
     """
     # V10.31.0: use shared singleton
     from core.llm.model_singletons import get_embed_model
+
     model = get_embed_model()
     _sentence_model_available = model is not None
     return model
@@ -64,6 +65,7 @@ def _semantic_similarity(text_a: str, text_b: str) -> float:
     try:
         from numpy import dot
         from numpy.linalg import norm
+
         emb = model.encode([text_a, text_b])
         a, b = emb[0], emb[1]
         sim = float(dot(a, b) / (norm(a) * norm(b) + 1e-8))
@@ -85,6 +87,7 @@ def _jaccard_similarity(text_a: str, text_b: str) -> float:
 
 # ── Data structures ───────────────────────────────────────────────────────
 
+
 @dataclass
 class ChunkValidation:
     """Validation result for a single chunk.
@@ -101,6 +104,7 @@ class ChunkValidation:
         flagged_reason:    why it was flagged (empty if passed).
         retried:           True if this chunk was retried.
     """
+
     chunk_index: int
     source_text: str = ""
     translated_text: str = ""
@@ -129,6 +133,7 @@ class ValidationReport:
         avg_judge_score:   average judge LLM score across all chunks.
         chunk_results:     per-chunk validation details.
     """
+
     file_name: str = ""
     source_lang: str = "en"
     target_lang: str = "fa"
@@ -144,9 +149,15 @@ class ValidationReport:
         d = asdict(self)
         # Truncate long text fields for the JSON report
         for cr in d["chunk_results"]:
-            cr["source_text"] = cr["source_text"][:500] + ("..." if len(cr["source_text"]) > 500 else "")
-            cr["translated_text"] = cr["translated_text"][:500] + ("..." if len(cr["translated_text"]) > 500 else "")
-            cr["back_translated"] = cr["back_translated"][:500] + ("..." if len(cr["back_translated"]) > 500 else "")
+            cr["source_text"] = cr["source_text"][:500] + (
+                "..." if len(cr["source_text"]) > 500 else ""
+            )
+            cr["translated_text"] = cr["translated_text"][:500] + (
+                "..." if len(cr["translated_text"]) > 500 else ""
+            )
+            cr["back_translated"] = cr["back_translated"][:500] + (
+                "..." if len(cr["back_translated"]) > 500 else ""
+            )
         return d
 
     def save(self, path: Path) -> None:
@@ -166,7 +177,9 @@ class ValidationReport:
         lines.append("")
         lines.append("## Summary")
         lines.append(f"- **Total chunks:** {self.total_chunks}")
-        lines.append(f"- **Passed:** {self.passed_chunks} ({self.passed_chunks/max(self.total_chunks,1)*100:.0f}%)")
+        lines.append(
+            f"- **Passed:** {self.passed_chunks} ({self.passed_chunks / max(self.total_chunks, 1) * 100:.0f}%)"
+        )
         lines.append(f"- **Flagged:** {self.flagged_chunks}")
         lines.append(f"- **Retried:** {self.retried_chunks}")
         lines.append(f"- **Average similarity:** {self.avg_similarity:.2f}")
@@ -179,10 +192,16 @@ class ValidationReport:
             lines.append("")
             for cv in flagged:
                 lines.append(f"### Chunk {cv.chunk_index + 1}")
-                lines.append(f"**Source:** {cv.source_text[:200]}{'...' if len(cv.source_text) > 200 else ''}")
-                lines.append(f"**Translation:** {cv.translated_text[:200]}{'...' if len(cv.translated_text) > 200 else ''}")
+                lines.append(
+                    f"**Source:** {cv.source_text[:200]}{'...' if len(cv.source_text) > 200 else ''}"
+                )
+                lines.append(
+                    f"**Translation:** {cv.translated_text[:200]}{'...' if len(cv.translated_text) > 200 else ''}"
+                )
                 if cv.back_translated:
-                    lines.append(f"**Back-translation:** {cv.back_translated[:200]}{'...' if len(cv.back_translated) > 200 else ''}")
+                    lines.append(
+                        f"**Back-translation:** {cv.back_translated[:200]}{'...' if len(cv.back_translated) > 200 else ''}"
+                    )
                 lines.append(f"**Similarity:** {cv.similarity_score:.2f}")
                 lines.append(f"**Judge score:** {cv.judge_score:.2f}")
                 if cv.judge_reason:
@@ -204,7 +223,9 @@ class ValidationReport:
             lines.append("|-------|------------|-------|--------|")
             for cv in passed:
                 status = "✅ retried" if cv.retried else "✅"
-                lines.append(f"| {cv.chunk_index + 1} | {cv.similarity_score:.2f} | {cv.judge_score:.2f} | {status} |")
+                lines.append(
+                    f"| {cv.chunk_index + 1} | {cv.similarity_score:.2f} | {cv.judge_score:.2f} | {status} |"
+                )
             lines.append("")
 
         path.write_text("\n".join(lines), encoding="utf-8")
@@ -247,6 +268,7 @@ Score:"""
 
 
 # ── Validator ────────────────────────────────────────────────────────────
+
 
 class TranslationValidator:
     """Validates translation quality via back-translation + judge LLM.
@@ -314,16 +336,13 @@ class TranslationValidator:
         # ── Stage 1: Back-translation + semantic similarity ────────────
         if self.translator is not None:
             try:
-                back = self.translator.translate_back(
-                    translated_text, source_lang, target_lang
-                )
+                back = self.translator.translate_back(translated_text, source_lang, target_lang)
                 result.back_translated = back
                 result.similarity_score = _semantic_similarity(source_text, back)
             except Exception as e:
                 self.log(
-                    f"  [Validation] Back-translation failed for chunk "
-                    f"{chunk_index}: {e}",
-                    "WARNING"
+                    f"  [Validation] Back-translation failed for chunk {chunk_index}: {e}",
+                    "WARNING",
                 )
                 result.similarity_score = 0.0
         else:
@@ -351,13 +370,10 @@ class TranslationValidator:
             reasons = []
             if not similarity_passed:
                 reasons.append(
-                    f"similarity {result.similarity_score:.2f} < "
-                    f"{self.similarity_threshold}"
+                    f"similarity {result.similarity_score:.2f} < {self.similarity_threshold}"
                 )
             if not judge_passed:
-                reasons.append(
-                    f"judge {result.judge_score:.2f} < {self.judge_threshold}"
-                )
+                reasons.append(f"judge {result.judge_score:.2f} < {self.judge_threshold}")
             result.flagged_reason = "; ".join(reasons)
 
         return result
@@ -382,8 +398,11 @@ class TranslationValidator:
 
         for source_text, translated_text, chunk_index in chunks:
             cv = self.validate_chunk(
-                source_text, translated_text, chunk_index,
-                source_lang, target_lang,
+                source_text,
+                translated_text,
+                chunk_index,
+                source_lang,
+                target_lang,
             )
             report.chunk_results.append(cv)
             if cv.passed:
@@ -436,15 +455,18 @@ class TranslationValidator:
             # the SCORE regex below already handles "" (no-match → fallback
             # patterns → 1.0 default), so a malformed payload degrades the
             # same way an empty one always did.
-            resp = session_for_url(url).post(url, json=payload, headers=headers,
-                                             timeout=self.timeout)
+            resp = session_for_url(url).post(
+                url, json=payload, headers=headers, timeout=self.timeout
+            )
             resp.raise_for_status()
             content = extract_openai_content(resp.json())
 
             # V9.0.0 P3-9: fix brittle SCORE regex — match only on the SCORE
             # line (line-anchored), not the first float anywhere in the text.
             # Old regex would match "I'd score this 0.9 because of 2 issues" → 0.9.
-            score_match = re.search(r"^SCORE:\s*(\d+\.?\d*)\s*$", content, re.MULTILINE | re.IGNORECASE)
+            score_match = re.search(
+                r"^SCORE:\s*(\d+\.?\d*)\s*$", content, re.MULTILINE | re.IGNORECASE
+            )
             if not score_match:
                 # Fallback: try the old pattern but only on the first line containing SCORE
                 score_match = re.search(r"SCORE:\s*(\d+\.?\d*)", content, re.IGNORECASE)
@@ -465,6 +487,6 @@ class TranslationValidator:
                     f"  [Validation] Judge LLM disabled after "
                     f"{self._judge_failure_count} failures (last: {e}). "
                     f"Relying on back-translation similarity only.",
-                    "WARNING"
+                    "WARNING",
                 )
             return 0.5, f"Judge LLM error: {e}"

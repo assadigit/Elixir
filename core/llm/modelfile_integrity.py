@@ -16,6 +16,7 @@ Usage::
         for issue in issues:
             logger.warning("Modelfile issue: %s", issue)
 """
+
 from __future__ import annotations
 
 import re
@@ -39,8 +40,7 @@ class ModelfileIssue:
 
     def __str__(self) -> str:
         return (
-            f"Modelfile {self.param}: expected {self.expected}, "
-            f"got {self.actual} ({self.severity})"
+            f"Modelfile {self.param}: expected {self.expected}, got {self.actual} ({self.severity})"
         )
 
     def to_dict(self) -> dict:
@@ -134,37 +134,45 @@ def check_modelfile_integrity(model: str) -> tuple[bool, list[ModelfileIssue]]:
     if is_qwen:
         pp = params.get("presence_penalty", "")
         if pp == "":
-            issues.append(ModelfileIssue(
-                param="presence_penalty",
-                expected="1.5",
-                actual="(missing)",
-                severity="ERROR",
-            ))
+            issues.append(
+                ModelfileIssue(
+                    param="presence_penalty",
+                    expected="1.5",
+                    actual="(missing)",
+                    severity="ERROR",
+                )
+            )
         elif pp != "1.5":
-            issues.append(ModelfileIssue(
-                param="presence_penalty",
-                expected="1.5",
-                actual=pp,
-                severity="ERROR",
-            ))
+            issues.append(
+                ModelfileIssue(
+                    param="presence_penalty",
+                    expected="1.5",
+                    actual=pp,
+                    severity="ERROR",
+                )
+            )
 
     # Universal: temperature should be set
     if "temperature" not in params:
-        issues.append(ModelfileIssue(
-            param="temperature",
-            expected="(set explicitly)",
-            actual="(missing)",
-            severity="WARNING",
-        ))
+        issues.append(
+            ModelfileIssue(
+                param="temperature",
+                expected="(set explicitly)",
+                actual="(missing)",
+                severity="WARNING",
+            )
+        )
 
     # Universal: num_ctx should be set
     if "num_ctx" not in params:
-        issues.append(ModelfileIssue(
-            param="num_ctx",
-            expected="(set explicitly)",
-            actual="(missing)",
-            severity="WARNING",
-        ))
+        issues.append(
+            ModelfileIssue(
+                param="num_ctx",
+                expected="(set explicitly)",
+                actual="(missing)",
+                severity="WARNING",
+            )
+        )
 
     # is_ok = no ERROR-severity issues (WARNINGs are acceptable)
     has_errors = any(i.severity == "ERROR" for i in issues)

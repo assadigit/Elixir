@@ -23,6 +23,7 @@ Two fixes, both per the V18.20.4.12 surgical batch:
 All pins are headless-safe (pure Python + source/AST slicing by NAME —
 no line numbers, no PySide6 import; the rig has none).
 """
+
 from __future__ import annotations
 
 import ast
@@ -47,6 +48,7 @@ _APP = _project_root / "ui_qt" / "app.py"
 
 # ── helpers (headless-safe: source text + AST only, by name) ────────────────
 
+
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -63,8 +65,7 @@ def _strip_comments(text: str) -> str:
 
 
 def _classes(path: Path) -> dict[str, ast.ClassDef]:
-    return {n.name: n for n in ast.parse(_src(path)).body
-            if isinstance(n, ast.ClassDef)}
+    return {n.name: n for n in ast.parse(_src(path)).body if isinstance(n, ast.ClassDef)}
 
 
 def _method(path: Path, class_name: str, method_name: str) -> str:
@@ -96,9 +97,10 @@ def _hermetic_settings(tmp_dir: Path):
     try:
         import unittest.mock as _mock
 
-        with _mock.patch.object(Settings, "_settings_dir", tmp_dir), \
-             _mock.patch.object(
-                 Settings, "_settings_file", tmp_dir / "settings.json"):
+        with (
+            _mock.patch.object(Settings, "_settings_dir", tmp_dir),
+            _mock.patch.object(Settings, "_settings_file", tmp_dir / "settings.json"),
+        ):
             yield
     finally:
         Settings._instance = None
@@ -129,6 +131,7 @@ def _on_disk(tmp_path: Path) -> dict:
 # W-c19 — Settings.batch(): N set() calls coalesce into ONE save
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWc19DefaultBehaviourUnchanged:
     """set() OUTSIDE a batch keeps the exact pre-W-c19 contract."""
 
@@ -145,11 +148,9 @@ class TestWc19DefaultBehaviourUnchanged:
         with _hermetic_settings(tmp_path):
             s = Settings()
             assert s.set("summarisation.model", "immediate:latest") is True
-            assert _on_disk(tmp_path)["summarisation"]["model"] == (
-                "immediate:latest")
+            assert _on_disk(tmp_path)["summarisation"]["model"] == ("immediate:latest")
 
-    def test_set_outside_batch_still_propagates_save_failure(
-            self, tmp_path, monkeypatch):
+    def test_set_outside_batch_still_propagates_save_failure(self, tmp_path, monkeypatch):
         """W-b6 regression guard: set() returns the save() result (False on
         disk failure) outside a batch — the pre-W-c19 contract."""
         import utils.settings as settings_mod
@@ -167,8 +168,7 @@ class TestWc19DefaultBehaviourUnchanged:
 
 
 class TestWc19BatchCoalescing:
-    def test_five_sets_inside_batch_cause_exactly_one_save(
-            self, tmp_path, monkeypatch):
+    def test_five_sets_inside_batch_cause_exactly_one_save(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings()
             calls = _counting_save(monkeypatch, s)
@@ -220,13 +220,11 @@ class TestWc19BatchCoalescing:
                 s.set("summarisation.model", "first:latest")
                 s.set("summarisation.model", "second:latest")
             assert s.get("summarisation.model") == "second:latest"
-            assert _on_disk(tmp_path)["summarisation"]["model"] == (
-                "second:latest")
+            assert _on_disk(tmp_path)["summarisation"]["model"] == ("second:latest")
 
 
 class TestWc19NestedBatches:
-    def test_nested_batches_one_save_at_outer_exit(
-            self, tmp_path, monkeypatch):
+    def test_nested_batches_one_save_at_outer_exit(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings()
             calls = _counting_save(monkeypatch, s)
@@ -260,8 +258,7 @@ class TestWc19NestedBatches:
 
 
 class TestWc19ExceptionSemantics:
-    def test_exception_saves_partial_then_reraises(
-            self, tmp_path, monkeypatch):
+    def test_exception_saves_partial_then_reraises(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings()
             calls = _counting_save(monkeypatch, s)
@@ -277,19 +274,18 @@ class TestWc19ExceptionSemantics:
             assert disk["summarisation"]["model"] == "partial:latest"
             assert disk["ocr"]["timeout"] == 55
 
-    def test_exception_before_any_set_saves_nothing(
-            self, tmp_path, monkeypatch):
+    def test_exception_before_any_set_saves_nothing(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings()
             calls = _counting_save(monkeypatch, s)
             before = (tmp_path / "settings.json").read_text(
-                encoding="utf-8")  # the one _load() write from __init__
+                encoding="utf-8"
+            )  # the one _load() write from __init__
             with pytest.raises(ValueError):
                 with s.batch():
                     raise ValueError("nothing was set")
             assert len(calls) == 0
-            assert (tmp_path / "settings.json").read_text(
-                encoding="utf-8") == before
+            assert (tmp_path / "settings.json").read_text(encoding="utf-8") == before
 
     def test_batch_state_clean_after_exception(self, tmp_path):
         """A failed batch must not leave depth/dirty poisoned — the NEXT
@@ -315,16 +311,13 @@ class TestWc19EmptyBatch:
             # NOTE: __init__/_load() writes settings.json ONCE on a fresh
             # dir (pre-existing behaviour) — snapshot it, then prove the
             # empty batch adds NOTHING on top of that.
-            before = (tmp_path / "settings.json").read_text(
-                encoding="utf-8")
+            before = (tmp_path / "settings.json").read_text(encoding="utf-8")
             with s.batch():
                 pass
             assert len(calls) == 0
-            assert (tmp_path / "settings.json").read_text(
-                encoding="utf-8") == before
+            assert (tmp_path / "settings.json").read_text(encoding="utf-8") == before
 
-    def test_nested_empty_batches_perform_no_save(
-            self, tmp_path, monkeypatch):
+    def test_nested_empty_batches_perform_no_save(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings()
             calls = _counting_save(monkeypatch, s)
@@ -338,8 +331,7 @@ class TestWc19HarnessInstanceDefensiveInit:
     """The codebase's tests build instances via object.__new__ (skipping
     __init__) — batch()/set() must not require the new instance attrs."""
 
-    def test_object_new_instance_without_batch_attrs(
-            self, tmp_path, monkeypatch):
+    def test_object_new_instance_without_batch_attrs(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings.__new__(Settings)
             # the minimum state set()/save() read — NO _batch_depth/_batch_dirty
@@ -353,14 +345,12 @@ class TestWc19HarnessInstanceDefensiveInit:
                 assert s.get("summarisation.model") == "harness:latest"
                 assert len(calls) == 0
             assert len(calls) == 1  # getattr-defensive path still flushes
-            assert _on_disk(tmp_path)["summarisation"]["model"] == (
-                "harness:latest")
+            assert _on_disk(tmp_path)["summarisation"]["model"] == ("harness:latest")
             # state materialized by the defensive path is consistent
             assert s._batch_depth == 0
             assert s._batch_dirty is False
 
-    def test_object_new_instance_set_outside_batch_still_saves(
-            self, tmp_path, monkeypatch):
+    def test_object_new_instance_set_outside_batch_still_saves(self, tmp_path, monkeypatch):
         with _hermetic_settings(tmp_path):
             s = Settings.__new__(Settings)
             s._lock = threading.RLock()
@@ -371,8 +361,7 @@ class TestWc19HarnessInstanceDefensiveInit:
 
 
 class TestWc19ThreadedSetters:
-    def test_concurrent_set_calls_inside_batch_coalesce(
-            self, tmp_path, monkeypatch):
+    def test_concurrent_set_calls_inside_batch_coalesce(self, tmp_path, monkeypatch):
         """Depth/dirty bookkeeping rides the existing RLock: set() calls
         from other threads while a batch is active are deferred too, and
         the outer exit still performs exactly ONE save."""
@@ -389,10 +378,7 @@ class TestWc19ThreadedSetters:
                     errors.append(f"{type(e).__name__}: {e}")
 
             with s.batch():
-                threads = [
-                    threading.Thread(target=_worker, args=(i,))
-                    for i in range(4)
-                ]
+                threads = [threading.Thread(target=_worker, args=(i,)) for i in range(4)]
                 for t in threads:
                     t.start()
                 for t in threads:
@@ -449,17 +435,22 @@ class TestWc19SourcePins:
 
     def test_typing_iterator_import(self):
         src = _strip_comments(_src(_SETTINGS))
-        assert "from typing import Any, Iterator, Optional" in src
+        # V0.13: UP035 auto-fix split the import — Iterator is from
+        # collections.abc now (the deprecated typing alias was removed).
+        assert "from typing import Any, Optional" in src
+        assert "from collections.abc import Iterator" in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-c12 — engine_cache.clear_cache(): graceful teardown + shutdown wiring
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.fixture
 def clean_engine_cache():
     """Isolate + restore the module-global engine cache around each test."""
     import core.tts.engine_cache as ec
+
     saved = dict(ec._engines)
     ec._engines.clear()
     try:
@@ -483,6 +474,7 @@ class _FakeEngine:
             self.calls.append(name)
             if name == self._raise_on:
                 raise RuntimeError(f"stuck {name}")
+
         return _hook
 
 
@@ -502,8 +494,7 @@ class TestWc12ClearCacheTeardown:
         assert ec._engines == {}
         assert ec.cached_engine_count() == 0
 
-    def test_raising_close_never_raises_and_cache_still_cleared(
-            self, clean_engine_cache):
+    def test_raising_close_never_raises_and_cache_still_cleared(self, clean_engine_cache):
         ec = clean_engine_cache
         stuck = _FakeEngine(hooks=("close",), raise_on="close")
         good = _FakeEngine(hooks=("close",))
@@ -516,8 +507,7 @@ class TestWc12ClearCacheTeardown:
         assert good.calls == ["close"]
         assert ec._engines == {}
 
-    def test_engine_without_any_teardown_hook_is_dropped(
-            self, clean_engine_cache):
+    def test_engine_without_any_teardown_hook_is_dropped(self, clean_engine_cache):
         ec = clean_engine_cache
         bare = object()  # no close/quit/stop/shutdown/_cleanup* at all
         ec._engines["plain"] = bare
@@ -541,8 +531,9 @@ class TestWc12ClearCacheTeardown:
         """An engine exposing several hooks is torn down exactly ONCE —
         the first match in the documented preference order."""
         ec = clean_engine_cache
-        both = _FakeEngine(hooks=("close", "quit", "stop", "shutdown",
-                                  "_cleanup_process", "_cleanup"))
+        both = _FakeEngine(
+            hooks=("close", "quit", "stop", "shutdown", "_cleanup_process", "_cleanup")
+        )
         ec._engines["multi"] = both
         ec.clear_cache()
         assert both.calls == ["close"]
@@ -550,8 +541,7 @@ class TestWc12ClearCacheTeardown:
     def test_all_engines_raising_still_clears(self, clean_engine_cache):
         ec = clean_engine_cache
         for i in range(3):
-            ec._engines[f"bad:{i}"] = _FakeEngine(
-                hooks=("close",), raise_on="close")
+            ec._engines[f"bad:{i}"] = _FakeEngine(hooks=("close",), raise_on="close")
         ec.clear_cache()
         assert ec._engines == {}
 
@@ -598,7 +588,7 @@ class TestWc12AppShutdownWiring:
         src = _strip_comments(self._close_event())
         release = src.find("clear_cache()")
         assert release != -1
-        window = src[max(0, release - 400):release + 200]
+        window = src[max(0, release - 400) : release + 200]
         assert "try:" in window
         assert "except Exception:" in window
         assert "pass" in window.split("clear_cache()", 1)[1]
@@ -607,8 +597,7 @@ class TestWc12AppShutdownWiring:
         """ui_qt/app.py must NOT import engine_cache at module level — the
         rig's UI tests run without PySide6, and the import stays lazy in
         the shutdown path (matches the brief's wiring)."""
-        assert "engine_cache" not in _strip_comments(
-            _src(_APP).split("class ElixirWindow", 1)[0])
+        assert "engine_cache" not in _strip_comments(_src(_APP).split("class ElixirWindow", 1)[0])
 
 
 class TestWc12EngineCacheSourcePins:
@@ -618,8 +607,7 @@ class TestWc12EngineCacheSourcePins:
         # private per-engine teardown contract — order matters (first found
         # wins), so pin the tuple verbatim modulo line wrapping.
         flat = " ".join(body.split())
-        assert '("close", "quit", "stop", "shutdown", ' \
-               '"_cleanup_process", "_cleanup")' in flat
+        assert '("close", "quit", "stop", "shutdown", "_cleanup_process", "_cleanup")' in flat
 
     def test_iterates_a_snapshot_of_the_dict(self):
         """list(_engines.items()) — hooks may mutate the cache; iteration
@@ -633,9 +621,11 @@ class TestWc12EngineCacheSourcePins:
         # the dict clear happens AFTER the teardown loop, unconditionally
         # (rindex: the docstring also mentions ``_engines.clear()`` — pin
         # the LAST, i.e. the executed, occurrence)
-        assert body.index("for key, engine in list(_engines.items()):") \
-            < body.index("except Exception") \
+        assert (
+            body.index("for key, engine in list(_engines.items()):")
+            < body.index("except Exception")
             < body.rindex("_engines.clear()")
+        )
 
     def test_getters_unchanged(self):
         """The cache getters keep their get-or-create shape — only the
@@ -657,6 +647,7 @@ class TestWc12EngineCacheSourcePins:
 
 
 # ── file hygiene ────────────────────────────────────────────────────────────
+
 
 class TestFilesParse:
     def test_all_touched_runtime_files_still_parse(self):

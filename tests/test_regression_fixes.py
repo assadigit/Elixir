@@ -1,4 +1,5 @@
 """V18.2.28 (regression fix) — Tests for dropped-digit year + pronoun auto-fix."""
+
 from __future__ import annotations
 
 from pathlib import Path

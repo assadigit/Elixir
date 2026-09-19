@@ -42,6 +42,7 @@ guard the ban).
 
 Run: pytest tests/test_v182037_audit_fixes.py -v
 """
+
 from __future__ import annotations
 
 import ast
@@ -76,9 +77,9 @@ from core.summarisation.bullet_consolidation import consolidate_bullets
 from core.system import provenance
 
 # ── Real-run constants (V18.20.3.6 rig run, 2026-08-31 02:10–02:40) ───────
-CONSOL_IN = 42          # bullets into the degenerated consolidation call
-CONSOL_OUT = 37         # bullets salvaged from the truncated response
-CONSOL_CHARS = 25735    # response length at the 6144-token cut
+CONSOL_IN = 42  # bullets into the degenerated consolidation call
+CONSOL_OUT = 37  # bullets salvaged from the truncated response
+CONSOL_CHARS = 25735  # response length at the 6144-token cut
 RECALL_FLOOR = "34/37"  # theorists in final bullets (Klein/Searles/Khan lost)
 GAP_ROUNDS_NOOP = (2, 3, 4)  # ~1s empty no-op rounds (identical prompts)
 
@@ -146,9 +147,11 @@ def _author_coverage_fn(authors, bullets):
     """Deterministic coverage closure for tests: an author is covered when
     their surname appears in the joined bullet text (same shape as
     check_coverage on the deterministic analysis)."""
+
     def fn(bs):
         text = " ".join(str(b) for b in bs).lower()
         return {a for a in authors if a.lower() in text}
+
     return bullets and fn or None
 
 
@@ -158,6 +161,7 @@ def _coverage_fn_for(authors):
             return set()
         text = " ".join(str(b) for b in bs).lower()
         return {a for a in authors if a.lower() in text}
+
     return fn
 
 
@@ -178,10 +182,7 @@ def _llm_output_missing(bullets, drop_authors):
     """Simulate a consolidation response that 'merges' bullets away for the
     given authors (they vanish from the output — the RC-A defect)."""
     drop_lower = {a.lower() for a in drop_authors}
-    return "\n".join(
-        f"- {b}" for b in bullets
-        if not any(d in b.lower() for d in drop_lower)
-    )
+    return "\n".join(f"- {b}" for b in bullets if not any(d in b.lower() for d in drop_lower))
 
 
 # ══ RC-A.1 — consolidation coverage assertion ══════════════════════════════
@@ -195,13 +196,17 @@ class TestConsolidationCoverageAssertion:
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         cap = _CapturingLog()
         out, fire = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS), **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS),
+            **deps,
         )
         assert out == SIX_BULLETS  # originals — not the lossy LLM output
         assert fire == 0
-        assert any("REJECTED" in w and "Klein" in w and "Winnicott" in w
-                   for w in cap.warnings()), cap.warnings()
+        assert any("REJECTED" in w and "Klein" in w and "Winnicott" in w for w in cap.warnings()), (
+            cap.warnings()
+        )
 
     def test_all_authors_preserved_accepted(self):
         """A consolidation that keeps every covered author ships normally."""
@@ -212,8 +217,11 @@ class TestConsolidationCoverageAssertion:
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         cap = _CapturingLog()
         out, fire = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS), **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS),
+            **deps,
         )
         assert out != SIX_BULLETS  # the consolidated set shipped
         assert any("Bullet consolidation: 6 →" in i for i in cap.infos())
@@ -225,21 +233,29 @@ class TestConsolidationCoverageAssertion:
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         cap = _CapturingLog()
         out, _ = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=lambda bs: None, **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=lambda bs: None,
+            **deps,
         )
         assert len(out) == 5 and out != SIX_BULLETS
         assert not any("REJECTED" in w for w in cap.warnings())
 
     def test_coverage_fn_raising_disables_assertion(self):
         """A raising closure is treated as 'probe failed' → disabled."""
+
         def boom(bs):
             raise RuntimeError("analysis unreadable")
+
         llm_out = _llm_output_missing(SIX_BULLETS, ["Klein"])
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         out, _ = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=_CapturingLog(),
-            author_coverage_fn=boom, **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=_CapturingLog(),
+            author_coverage_fn=boom,
+            **deps,
         )
         assert len(out) == 5  # LLM output accepted (assertion off)
 
@@ -248,7 +264,9 @@ class TestConsolidationCoverageAssertion:
         llm_out = _llm_output_missing(SIX_BULLETS, ["Klein"])
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         out, _ = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=_CapturingLog(),
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=_CapturingLog(),
             **deps,
         )
         assert len(out) == 5
@@ -260,18 +278,41 @@ class TestConsolidationCoverageAssertion:
         bullets = [
             f"{a} (19xx) contributed finding number {i} to the chapter."
             for i, a in enumerate(
-                ["Kernberg", "Klein", "Erikson", "Jacobson", "Blos",
-                 "Winnicott", "Mahler", "Loewald", "Searles", "Spitz"]
+                [
+                    "Kernberg",
+                    "Klein",
+                    "Erikson",
+                    "Jacobson",
+                    "Blos",
+                    "Winnicott",
+                    "Mahler",
+                    "Loewald",
+                    "Searles",
+                    "Spitz",
+                ]
             )
         ]
-        authors = ["Kernberg", "Klein", "Erikson", "Jacobson", "Blos",
-                   "Winnicott", "Mahler", "Loewald", "Searles", "Spitz"]
+        authors = [
+            "Kernberg",
+            "Klein",
+            "Erikson",
+            "Jacobson",
+            "Blos",
+            "Winnicott",
+            "Mahler",
+            "Loewald",
+            "Searles",
+            "Spitz",
+        ]
         llm_out = _llm_output_missing(bullets, ["Loewald", "Searles", "Spitz"])
         deps = _make_deps(llm_response=llm_out, llm_truncated=False)
         cap = _CapturingLog()
         out, _ = consolidate_bullets(
-            list(bullets), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(authors), **deps,
+            list(bullets),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(authors),
+            **deps,
         )
         assert out == bullets  # the 10 originals, not the lossy 7
         assert any("3 covered author(s)" in w for w in cap.warnings())
@@ -289,8 +330,11 @@ class TestTruncationAwareSalvage:
         deps = _make_deps(llm_response=llm_out, llm_truncated=True)
         cap = _CapturingLog()
         out, _ = consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS), **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS),
+            **deps,
         )
         # 4 merged survivors + 2 restored originals = 6 (<= input count)
         assert len(out) == 6
@@ -303,12 +347,28 @@ class TestTruncationAwareSalvage:
         bullets = [
             f"{a} (19xx) contributed finding number {i} to the chapter."
             for i, a in enumerate(
-                ["Kernberg", "Klein", "Erikson", "Jacobson", "Blos",
-                 "Winnicott", "Mahler", "Loewald"]
+                [
+                    "Kernberg",
+                    "Klein",
+                    "Erikson",
+                    "Jacobson",
+                    "Blos",
+                    "Winnicott",
+                    "Mahler",
+                    "Loewald",
+                ]
             )
         ]
-        authors = ["Kernberg", "Klein", "Erikson", "Jacobson", "Blos",
-                   "Winnicott", "Mahler", "Loewald"]
+        authors = [
+            "Kernberg",
+            "Klein",
+            "Erikson",
+            "Jacobson",
+            "Blos",
+            "Winnicott",
+            "Mahler",
+            "Loewald",
+        ]
         # LLM keeps 7 (loses only Loewald) — but ALSO duplicates Klein's
         # content into two near-identical bullets, so restoring Loewald
         # would still fit; force the exceed case with a wide loss instead:
@@ -323,8 +383,11 @@ class TestTruncationAwareSalvage:
         deps = _make_deps(llm_response=llm_out, llm_truncated=True)
         cap = _CapturingLog()
         out, _ = consolidate_bullets(
-            list(bullets), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(authors + ["Searles"]), **deps,
+            list(bullets),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(authors + ["Searles"]),
+            **deps,
         )
         # consolidated=5, restored: Loewald, Mahler, Searles → 5+3=8 <= 8 OK
         assert len(out) == 8
@@ -333,27 +396,30 @@ class TestTruncationAwareSalvage:
         """consolidated + restored > len(bullets) → reject outright."""
         bullets = [
             f"{a} (19xx) contributed finding number {i} to the chapter."
-            for i, a in enumerate(
-                ["Kernberg", "Klein", "Erikson", "Jacobson", "Blos", "Winnicott"]
-            )
+            for i, a in enumerate(["Kernberg", "Klein", "Erikson", "Jacobson", "Blos", "Winnicott"])
         ]
         # LLM output keeps 6 lines (nothing merged — each survivor distinct
         # in the first 60 chars) but drops every author's NAME except via a
         # fabricated restatement that loses Klein + Winnicott coverage:
-        llm_out = "\n".join([
-            "- Kernberg (1967) proposed internalization of object relationships.",
-            "- Erikson (1956) defined ego identity as persistent sameness.",
-            "- Jacobson (1964) formulated five categories of contribution.",
-            "- Blos (1962) described the second individuation of adolescence.",
-            "- Mahler (1958) distinguished psychological from biological birth.",
-            "- Freud (1926) used the term identity technically only once.",
-        ])
+        llm_out = "\n".join(
+            [
+                "- Kernberg (1967) proposed internalization of object relationships.",
+                "- Erikson (1956) defined ego identity as persistent sameness.",
+                "- Jacobson (1964) formulated five categories of contribution.",
+                "- Blos (1962) described the second individuation of adolescence.",
+                "- Mahler (1958) distinguished psychological from biological birth.",
+                "- Freud (1926) used the term identity technically only once.",
+            ]
+        )
         authors = SIX_AUTHORS  # Klein + Winnicott expected, absent above
         deps = _make_deps(llm_response=llm_out, llm_truncated=True)
         cap = _CapturingLog()
         out, _ = consolidate_bullets(
-            list(bullets), leak_guard_fire_count=0, log=cap,
-            author_coverage_fn=_coverage_fn_for(authors), **deps,
+            list(bullets),
+            leak_guard_fire_count=0,
+            log=cap,
+            author_coverage_fn=_coverage_fn_for(authors),
+            **deps,
         )
         # consolidated=6, restored=2 → 8 > 6 → reject, originals kept
         assert out == bullets
@@ -365,8 +431,11 @@ class TestTruncationAwareSalvage:
         llm_out = _llm_output_missing(SIX_BULLETS, ["Klein"])
         deps = _make_deps(llm_response=llm_out, llm_truncated=True)
         consolidate_bullets(
-            list(SIX_BULLETS), leak_guard_fire_count=0, log=_CapturingLog(),
-            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS), **deps,
+            list(SIX_BULLETS),
+            leak_guard_fire_count=0,
+            log=_CapturingLog(),
+            author_coverage_fn=_coverage_fn_for(SIX_AUTHORS),
+            **deps,
         )
         assert consume_call_truncated() is False
 
@@ -382,7 +451,8 @@ class TestConsolidationCoverageWiring:
 
     def _src(self):
         return (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8")
+            encoding="utf-8"
+        )
 
     def test_delegate_builds_coverage_closure(self):
         src = self._src()
@@ -400,13 +470,13 @@ class TestConsolidationCoverageWiring:
         # V18.20.3.12: pin modernized List[str]/Optional[str] -> list[str]/
         # str | None (ruff UP006/UP045 annotation sweep — same types).
         assert (
-            "def _consolidate_bullets(self, bullets: list[str], "
-            "heading: str | None = None)" in src
+            "def _consolidate_bullets(self, bullets: list[str], heading: str | None = None)" in src
         )
 
     def test_consolidation_module_has_assertion(self):
-        src = (_project_root / "core" / "summarisation" /
-               "bullet_consolidation.py").read_text(encoding="utf-8")
+        src = (_project_root / "core" / "summarisation" / "bullet_consolidation.py").read_text(
+            encoding="utf-8"
+        )
         assert "author_coverage_fn" in src
         assert "consume_call_truncated" in src
         assert "REJECTED" in src
@@ -428,7 +498,8 @@ class TestGapFillLoopControlFlow:
 
     def _src(self):
         return (_project_root / "core" / "summarisation" / "gap_fill_batch.py").read_text(
-            encoding="utf-8")
+            encoding="utf-8"
+        )
 
     def test_no_yield_counter_initialized(self):
         assert "_no_yield_counts: dict = {}" in self._src()
@@ -461,7 +532,7 @@ class TestGapFillLoopControlFlow:
         src = self._src()
         assert "_tl_t0 = time.monotonic()" in src
         assert "EMPTY response" in src
-        assert 'response=EMPTY' in src
+        assert "response=EMPTY" in src
         assert "dup={_tl['dup']}" in src
         assert "vetoed={_tl['veto']}" in src
 
@@ -497,15 +568,16 @@ class TestProvenanceModule:
 
     def test_has_complete_sentinel_accepts_both_forms(self):
         assert provenance.has_complete_sentinel("x\n<!-- COMPLETE -->\n")
-        assert provenance.has_complete_sentinel(
-            "x\n<!-- COMPLETE run_id=abc-123 -->\n")
+        assert provenance.has_complete_sentinel("x\n<!-- COMPLETE run_id=abc-123 -->\n")
         assert not provenance.has_complete_sentinel("no sentinel here")
         assert not provenance.has_complete_sentinel("")
 
     def test_provenance_comment_round_trip(self):
         c = provenance.provenance_comment(
-            "18.20.3.7", "20260831-021017-ab12cd34",
-            "2026-08-31T02:10:17", 41,
+            "18.20.3.7",
+            "20260831-021017-ab12cd34",
+            "2026-08-31T02:10:17",
+            41,
         )
         assert c.startswith("<!-- generated-by: Elixir v18.20.3.7")
         parsed = provenance.parse_provenance(f"# Summary: X\n\n{c}\n\nbody")
@@ -517,9 +589,13 @@ class TestProvenanceModule:
     def test_parse_provenance_legacy_file(self):
         # The stale .3.4 file shape: no comment, bare sentinel → empties.
         parsed = provenance.parse_provenance(
-            "# Summary: X\n\n## Executive Summary\n\ntext\n\n<!-- COMPLETE -->\n")
+            "# Summary: X\n\n## Executive Summary\n\ntext\n\n<!-- COMPLETE -->\n"
+        )
         assert parsed == {
-            "run_id": "", "app_version": "", "started": "", "bullets": "",
+            "run_id": "",
+            "app_version": "",
+            "started": "",
+            "bullets": "",
         }
 
     def test_parse_provenance_sentinel_only(self):
@@ -556,8 +632,8 @@ class TestProvenanceModule:
         """core/system modules must stay stdlib-only (AST-verified — same
         policy as crash_visibility.py)."""
         tree = ast.parse(
-            (_project_root / "core" / "system" / "provenance.py").read_text(
-                encoding="utf-8"))
+            (_project_root / "core" / "system" / "provenance.py").read_text(encoding="utf-8")
+        )
         allowed = {"re", "uuid", "datetime", "pathlib", "typing", "__future__"}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -587,11 +663,14 @@ def _summ(**kw):
 class TestRendererProvenance:
     def test_stamped_render_contains_comment_and_sentinel(self):
         from core.pipeline.chapter_checkpoint import render_summary_markdown
-        md = render_summary_markdown(_summ(
-            run_id="20260831-021017-ab12cd34",
-            app_version="18.20.3.7",
-            run_started="2026-08-31T02:10:17",
-        ))
+
+        md = render_summary_markdown(
+            _summ(
+                run_id="20260831-021017-ab12cd34",
+                app_version="18.20.3.7",
+                run_started="2026-08-31T02:10:17",
+            )
+        )
         assert "generated-by: Elixir v18.20.3.7" in md
         assert "run_id=20260831-021017-ab12cd34" in md
         assert "bullets=2" in md
@@ -604,13 +683,13 @@ class TestRendererProvenance:
         comment, bare sentinel) — backward compatibility for every caller
         that builds SummaryResults without provenance."""
         from core.pipeline.chapter_checkpoint import render_summary_markdown
+
         md = render_summary_markdown(_summ())
         assert "generated-by" not in md
         assert md.rstrip().endswith("<!-- COMPLETE -->")
 
     def test_summary_result_has_provenance_fields(self):
-        s = SummaryResult(chapter_heading="h", executive_summary="e",
-                          thorough_summary="t")
+        s = SummaryResult(chapter_heading="h", executive_summary="e", thorough_summary="t")
         assert s.run_id == "" and s.app_version == "" and s.run_started == ""
 
 
@@ -620,10 +699,15 @@ class TestRendererProvenance:
 class TestResumeProvenance:
     def _write_summary(self, tmp_path, *, run_id, app_version, started, bullets):
         from core.pipeline.chapter_checkpoint import render_summary_markdown
-        md = render_summary_markdown(_summ(
-            run_id=run_id, app_version=app_version, run_started=started,
-            bullet_points=bullets,
-        ))
+
+        md = render_summary_markdown(
+            _summ(
+                run_id=run_id,
+                app_version=app_version,
+                run_started=started,
+                bullet_points=bullets,
+            )
+        )
         f = tmp_path / "summaries" / "001_X_summary.md"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(md, encoding="utf-8")
@@ -631,11 +715,14 @@ class TestResumeProvenance:
 
     def test_parse_summary_file_returns_provenance(self, tmp_path):
         self._write_summary(
-            tmp_path, run_id="run-A", app_version="18.20.3.6",
+            tmp_path,
+            run_id="run-A",
+            app_version="18.20.3.6",
             started="2026-08-31T02:10:17",
             bullets=["Tausk (1919) introduced the term.", "Erikson (1956) defined it."],
         )
         from core.pipeline.chapter_resume import detect_processed_chapters
+
         processed = detect_processed_chapters(tmp_path)
         assert len(processed) == 1
         (result,) = processed.values()
@@ -654,6 +741,7 @@ class TestResumeProvenance:
             encoding="utf-8",
         )
         from core.pipeline.chapter_resume import detect_processed_chapters
+
         processed = detect_processed_chapters(tmp_path)
         assert len(processed) == 1
 
@@ -661,7 +749,9 @@ class TestResumeProvenance:
         """The .3.6 confusion killer: when resume adopts a file from another
         run, the log says which run + app version produced it."""
         self._write_summary(
-            tmp_path, run_id="run-old-34", app_version="18.20.3.4",
+            tmp_path,
+            run_id="run-old-34",
+            app_version="18.20.3.4",
             started="2026-08-30T20:44:12",
             bullets=["Tausk (1919) introduced the term.", "Erikson (1956) defined it."],
         )
@@ -669,10 +759,12 @@ class TestResumeProvenance:
             detect_processed_chapters,
             split_chapters_for_resume,
         )
+
         processed = detect_processed_chapters(tmp_path)
         cap = _CapturingLog()
         todo, loaded = split_chapters_for_resume(
-            [{"heading": "1 - IDENTITY AND ITS ORIGINS"}], processed,
+            [{"heading": "1 - IDENTITY AND ITS ORIGINS"}],
+            processed,
             log_callback=cap,
         )
         assert not todo and len(loaded) == 1
@@ -694,6 +786,7 @@ class TestResumeProvenance:
             detect_processed_chapters,
             split_chapters_for_resume,
         )
+
         processed = detect_processed_chapters(tmp_path)
         cap = _CapturingLog()
         split_chapters_for_resume([{"heading": "X"}], processed, log_callback=cap)
@@ -707,22 +800,25 @@ class TestResumeProvenance:
 
 class TestProvenanceWiring:
     def test_write_once_uses_sentinel_helper(self):
-        src = (_project_root / "core" / "pipeline" / "chapter_checkpoint.py"
-               ).read_text(encoding="utf-8")
+        src = (_project_root / "core" / "pipeline" / "chapter_checkpoint.py").read_text(
+            encoding="utf-8"
+        )
         assert "has_complete_sentinel" in src
         assert "adoption_note" in src
 
     def test_end_of_run_writer_uses_sentinel_helper(self):
-        src = (_project_root / "core" / "pipeline" / "conversion" /
-               "summarization.py").read_text(encoding="utf-8")
+        src = (_project_root / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
+            encoding="utf-8"
+        )
         assert "has_complete_sentinel" in src
         assert "adoption_note" in src
         # Book-level summary gets the provenance comment too:
         assert "provenance_comment" in src
 
     def test_summarizer_stamps_every_summary(self):
-        src = (_project_root / "core" / "summarisation" / "summarizer.py"
-               ).read_text(encoding="utf-8")
+        src = (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
+            encoding="utf-8"
+        )
         assert "self._run_id = make_run_id()" in src
         assert 'run_id=getattr(self, "_run_id", "")' in src
         assert 'app_version=getattr(self, "_app_version", "")' in src
@@ -746,8 +842,11 @@ class TestPronounAntecedentGate:
 
     def _detect(self, text, src=None):
         from core.summarisation.postcheck_detectors import detect_pronoun_mismatch
+
         return detect_pronoun_mismatch(
-            text, src or self.SRC, "bullet[N]",
+            text,
+            src or self.SRC,
+            "bullet[N]",
             source_authors=["Winnicott", "Kris", "Jacobson"],
         )
 
@@ -774,8 +873,8 @@ class TestPronounAntecedentGate:
             "his contributions and his writings alongside Hartmann."
         )
         _, issues = self._detect(
-            "Kris: Her metapsychological works were combined by Jacobson "
-            "with her own findings.", src=src,
+            "Kris: Her metapsychological works were combined by Jacobson with her own findings.",
+            src=src,
         )
         assert len(issues) == 1
         assert "pronoun mismatch" in issues[0].detail
@@ -795,15 +894,27 @@ class TestPronounAntecedentGate:
     def test_gate_uses_closed_class_determiners_only(self):
         """Policy: the gate must not ship chapter-derived vocabulary —
         only closed-class English determiners (content-agnostic)."""
-        src = (_project_root / "core" / "summarisation" /
-               "postcheck_detectors.py").read_text(encoding="utf-8")
-        m = re.search(r'_DETERMINERS = \{(.*?)\}', src, re.DOTALL)
+        src = (_project_root / "core" / "summarisation" / "postcheck_detectors.py").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(r"_DETERMINERS = \{(.*?)\}", src, re.DOTALL)
         assert m, "determiner set not found"
         words = re.findall(r'"([a-z]+)"', m.group(1))
         # All closed-class function words — no content vocabulary.
         assert set(words) <= {
-            "a", "an", "the", "this", "that", "these", "those",
-            "his", "her", "their", "its", "each", "every",
+            "a",
+            "an",
+            "the",
+            "this",
+            "that",
+            "these",
+            "those",
+            "his",
+            "her",
+            "their",
+            "its",
+            "each",
+            "every",
         }
 
 
@@ -813,10 +924,8 @@ class TestPronounAntecedentGate:
 class TestNoChapterDerivedLists:
     def test_provenance_module_has_no_content_words(self):
         """Provenance stamps carry metadata only — no book content."""
-        src = (_project_root / "core" / "system" / "provenance.py").read_text(
-            encoding="utf-8")
-        for banned in ("Klein", "Winnicott", "Kernberg", "identity",
-                       "psychoanaly", "mother"):
+        src = (_project_root / "core" / "system" / "provenance.py").read_text(encoding="utf-8")
+        for banned in ("Klein", "Winnicott", "Kernberg", "identity", "psychoanaly", "mother"):
             assert banned.lower() not in src.lower(), banned
 
 

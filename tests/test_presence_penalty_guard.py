@@ -21,6 +21,7 @@ scanned the shim and failed; they now scan the real home of the code while
 keeping the SAME behavioral assertions (the guard must exist and fire for
 Qwen3 + pp=0).
 """
+
 from __future__ import annotations
 
 import sys
@@ -78,7 +79,7 @@ class TestPresencePenaltyGuardContract:
         """The guard's raise happens BEFORE the HTTP request (fail-closed)."""
         src = self._read_source()
         guard_idx = src.find("raise ThinkingModeViolation(model=_model)")
-        http_idx = src.find("safe_ollama_request(\"POST\", url, json=payload")
+        http_idx = src.find('safe_ollama_request("POST", url, json=payload')
         assert guard_idx != -1, "Guard must raise ThinkingModeViolation"
         assert http_idx != -1, "complete() must send the payload via safe_ollama_request"
         assert guard_idx < http_idx, (
@@ -99,6 +100,7 @@ class TestPresencePenaltyGuardContract:
         """llm_provider.py (re-export shim) still exposes OllamaProvider —
         the import path used by these tests and production callers."""
         from core.llm.llm_provider import OllamaProvider  # noqa: F401
+
         src = LLM_PROVIDER_PATH.read_text(encoding="utf-8")
         assert "OllamaProvider" in src, "The shim must keep the re-export"
 

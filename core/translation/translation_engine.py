@@ -40,6 +40,7 @@ Usage::
     # Or batch:
     results = engine.translate_files(["file1.md", "file2.md"], output_dir=Path("/out"))
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,15 +67,15 @@ LogFn = Callable[[str, str], None]  # (message, level)
 # This is model-agnostic and works for ANY text, not just texts with known terms.
 
 # Persian/Arabic Unicode ranges for language auto-detection.
-_PERSIAN_RE = re.compile(
-    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
-)
+_PERSIAN_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 
 # ── Exceptions ────────────────────────────────────────────────────────
 
+
 class ModelNotFoundError(Exception):
     """Raised when the Ollama model is not installed (HTTP 404)."""
+
     pass
 
 
@@ -92,28 +93,29 @@ _REFUSAL_PATTERNS = [
 ]
 
 _REFUSAL_REGEX_PATTERNS = [
-    r'^\[?لطفا[ًّ]? متن.*?ترجمه.*?\]?\s*$',
-    r'^\[?Please provide.*?text.*?translate.*?\]?\s*$',
-    r'^متاسفم.*?نمی‌توانم.*?$',
-    r'^متأسفم.*?نمی‌توانم.*?$',
-    r'^I (cannot|can\'t) (process|translate).*?$',
+    r"^\[?لطفا[ًّ]? متن.*?ترجمه.*?\]?\s*$",
+    r"^\[?Please provide.*?text.*?translate.*?\]?\s*$",
+    r"^متاسفم.*?نمی‌توانم.*?$",
+    r"^متأسفم.*?نمی‌توانم.*?$",
+    r"^I (cannot|can\'t) (process|translate).*?$",
 ]
 
 
 # ── Echo patterns (instruction echoes in output) ──────────────────────
 
 _ECHO_PATTERNS = [
-    r'^ترجمه به فارسی[/فارسی]*:\s*',
-    r'^Translate to (Farsi|Persian).*?:\s*',
-    r'^ترجمه به انگلیسی:\s*',
-    r'^(Farsi|Persian|فارسی):\s*',
-    r'^(English|انگلیسی):\s*',
+    r"^ترجمه به فارسی[/فارسی]*:\s*",
+    r"^Translate to (Farsi|Persian).*?:\s*",
+    r"^ترجمه به انگلیسی:\s*",
+    r"^(Farsi|Persian|فارسی):\s*",
+    r"^(English|انگلیسی):\s*",
 ]
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TranslationEngine
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TranslationEngine:
     """Robust line-by-line translation engine via Ollama.
@@ -168,7 +170,7 @@ class TranslationEngine:
         """
         self._start_time = time.time()
         lines = text.split("\n")
-        non_empty = sum(1 for l in lines if l.strip())
+        non_empty = sum(1 for line in lines if line.strip())
         translated_lines: list[str] = []
         done = 0
 
@@ -188,10 +190,12 @@ class TranslationEngine:
         self._progress(100, f"✅ Translation complete — {self._format_elapsed(elapsed)}")
         return "\n".join(translated_lines)
 
-    def translate_files(self, file_paths: list[str], output_dir: Path,
-                         ext: str = ".md") -> list[str]:
+    def translate_files(
+        self, file_paths: list[str], output_dir: Path, ext: str = ".md"
+    ) -> list[str]:
         """Translate multiple files. Returns a list of result strings."""
         from core.outputs.service_formatters import write_output
+
         self._start_time = time.time()
         results = []
         total = len(file_paths)
@@ -200,7 +204,7 @@ class TranslationEngine:
             p = Path(file_path)
             self._progress(
                 int((i / total) * 100) if total > 0 else 0,
-                f"🌐 Translating file {i+1}/{total}: {p.name}…"
+                f"🌐 Translating file {i + 1}/{total}: {p.name}…",
             )
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
@@ -210,7 +214,9 @@ class TranslationEngine:
                 translated = self.translate_text(text)
                 out_file = output_dir / f"{p.stem}_translated{ext}"
                 ok, msg = write_output(
-                    translated, out_file, fmt=ext,
+                    translated,
+                    out_file,
+                    fmt=ext,
                     title=f"Translation of {p.name}",
                     source_filename=p.stem,
                     quality=self.mode,
@@ -251,7 +257,11 @@ class TranslationEngine:
             return line
 
         # Pass-through: YAML front-matter key-value lines (first 20 lines).
-        if line_idx < 20 and re.match(r'^[\w\-]+:\s', stripped) and not stripped.startswith(("-", "#", ">")):
+        if (
+            line_idx < 20
+            and re.match(r"^[\w\-]+:\s", stripped)
+            and not stripped.startswith(("-", "#", ">"))
+        ):
             return line
 
         # Build the prompt based on model type.
@@ -270,7 +280,10 @@ class TranslationEngine:
 
                 if not result:
                     # Refusal or empty after stripping — try next prompt.
-                    self._log(f"  ⚠️ Line {line_idx+1}: refusal/empty on attempt {attempt+1}, retrying", "WARNING")
+                    self._log(
+                        f"  ⚠️ Line {line_idx + 1}: refusal/empty on attempt {attempt + 1}, retrying",
+                        "WARNING",
+                    )
                     continue
 
                 # Glossary enforcement.
@@ -279,14 +292,20 @@ class TranslationEngine:
                 return result
 
             except requests.exceptions.Timeout:
-                self._log(f"  ⚠️ Line {line_idx+1}: timeout on attempt {attempt+1}", "WARNING")
+                self._log(f"  ⚠️ Line {line_idx + 1}: timeout on attempt {attempt + 1}", "WARNING")
                 continue
             except Exception as e:
-                self._log(f"  ⚠️ Line {line_idx+1}: {type(e).__name__}: {e} on attempt {attempt+1}", "WARNING")
+                self._log(
+                    f"  ⚠️ Line {line_idx + 1}: {type(e).__name__}: {e} on attempt {attempt + 1}",
+                    "WARNING",
+                )
                 continue
 
         # All retries failed — return original line.
-        self._log(f"  ❌ Line {line_idx+1}: all {self.MAX_RETRIES} attempts failed, keeping original", "ERROR")
+        self._log(
+            f"  ❌ Line {line_idx + 1}: all {self.MAX_RETRIES} attempts failed, keeping original",
+            "ERROR",
+        )
         return line
 
     # ── Prompt building ──────────────────────────────────────────────
@@ -377,7 +396,8 @@ class TranslationEngine:
         # V18.20.4.11 (P3 / O-c5): pooled transport — same timeout, same
         # 404 → ModelNotFoundError handling; connection reuse added.
         resp = session_for_url(self.ollama_url).post(
-            f"{self.ollama_url}/api/generate", json=payload,
+            f"{self.ollama_url}/api/generate",
+            json=payload,
             timeout=self.TIMEOUT,
         )
         if resp.status_code == 404:
@@ -410,18 +430,18 @@ class TranslationEngine:
 
     def _postprocess(self, text: str, original_line: str) -> str:
         """Post-process the model output:
-          1. Strip <think> blocks.
-          2. Strip echo patterns (instruction echoes).
-          3. Detect refusals → return empty (triggers retry).
-          4. Detect repetition loops → return empty (triggers retry).
-          5. Preserve markdown formatting (bullets, headings, blockquotes).
+        1. Strip <think> blocks.
+        2. Strip echo patterns (instruction echoes).
+        3. Detect refusals → return empty (triggers retry).
+        4. Detect repetition loops → return empty (triggers retry).
+        5. Preserve markdown formatting (bullets, headings, blockquotes).
         """
         # 1. Strip <think> blocks.
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
         # 2. Strip echo patterns.
         for pat in _ECHO_PATTERNS:
-            text = re.sub(pat, '', text, flags=re.IGNORECASE | re.MULTILINE).strip()
+            text = re.sub(pat, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
 
         # 3. Detect refusals.
         for phrase in _REFUSAL_PATTERNS:
@@ -448,28 +468,28 @@ class TranslationEngine:
 
         # Bullet markers: -, *, +
         if orig_stripped[:2] in ("- ", "* ", "+ ") and trans_stripped[:2] not in ("- ", "* ", "+ "):
-            prefix = original[:len(original) - len(orig_stripped)]
+            prefix = original[: len(original) - len(orig_stripped)]
             bullet = orig_stripped[0]
             return f"{prefix}{bullet} {trans_stripped}"
 
         # Heading markers: #, ##, ###
         if orig_stripped.startswith("#") and not trans_stripped.startswith("#"):
-            heading_match = re.match(r'^(#{1,6})\s', orig_stripped)
+            heading_match = re.match(r"^(#{1,6})\s", orig_stripped)
             if heading_match:
-                prefix = original[:len(original) - len(orig_stripped)]
+                prefix = original[: len(original) - len(orig_stripped)]
                 hashes = heading_match.group(1)
                 return f"{prefix}{hashes} {trans_stripped}"
 
         # Blockquote: >
         if orig_stripped.startswith(">") and not trans_stripped.startswith(">"):
-            prefix = original[:len(original) - len(orig_stripped)]
+            prefix = original[: len(original) - len(orig_stripped)]
             return f"{prefix}> {trans_stripped}"
 
         # Numbered list: 1., 2., etc.
-        if re.match(r'^\d+\.\s', orig_stripped) and not re.match(r'^\d+\.\s', trans_stripped):
-            num_match = re.match(r'^(\d+\.)\s', orig_stripped)
+        if re.match(r"^\d+\.\s", orig_stripped) and not re.match(r"^\d+\.\s", trans_stripped):
+            num_match = re.match(r"^(\d+\.)\s", orig_stripped)
             if num_match:
-                prefix = original[:len(original) - len(orig_stripped)]
+                prefix = original[: len(original) - len(orig_stripped)]
                 num = num_match.group(1)
                 return f"{prefix}{num} {trans_stripped}"
 
@@ -516,7 +536,6 @@ class TranslationEngine:
                 # CAN detect if the model used a completely different word
                 # by checking if the first translation's key Farsi words
                 # appear in this translation.
-                first_translation = self._term_memory[term_lower]
                 # Extract the most likely Farsi translation of this term from
                 # the first occurrence's translation (heuristic: find the
                 # Farsi word(s) closest to where the term appeared in the source).
@@ -541,7 +560,7 @@ class TranslationEngine:
         terms: list[str] = []
 
         # Multi-word capitalized phrases (2+ words, each starting with uppercase).
-        for m in re.finditer(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b', text):
+        for m in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b", text):
             terms.append(m.group(1))
 
         # Quoted terms: "monk mode", "vassa"
@@ -549,22 +568,58 @@ class TranslationEngine:
             terms.append(m.group(1))
 
         # Terms in parentheses: (vassa), (cocoon)
-        for m in re.finditer(r'\(([a-z]{2,30})\)', text):
+        for m in re.finditer(r"\(([a-z]{2,30})\)", text):
             terms.append(m.group(1))
 
         # Single capitalized words (not at sentence start — heuristic: preceded
         # by a space or non-word char, and followed by a non-uppercase).
-        for m in re.finditer(r'(?<=[\s,;:(])\b([A-Z][a-z]{2,15})\b(?!\s+[A-Z])', text):
+        for m in re.finditer(r"(?<=[\s,;:(])\b([A-Z][a-z]{2,15})\b(?!\s+[A-Z])", text):
             word = m.group(1)
             # Filter out common sentence-start words.
-            if word.lower() not in ("The", "This", "That", "These", "Those",
-                                     "Most", "Many", "Some", "Every", "Each",
-                                     "He", "She", "It", "We", "They", "You",
-                                     "His", "Her", "Its", "Our", "Their",
-                                     "A", "An", "In", "On", "At", "By", "For",
-                                     "But", "And", "Or", "Not", "If", "When",
-                                     "While", "Finally", "First", "Second",
-                                     "Modern", "Historical", "Central", "True"):
+            if word.lower() not in (
+                "The",
+                "This",
+                "That",
+                "These",
+                "Those",
+                "Most",
+                "Many",
+                "Some",
+                "Every",
+                "Each",
+                "He",
+                "She",
+                "It",
+                "We",
+                "They",
+                "You",
+                "His",
+                "Her",
+                "Its",
+                "Our",
+                "Their",
+                "A",
+                "An",
+                "In",
+                "On",
+                "At",
+                "By",
+                "For",
+                "But",
+                "And",
+                "Or",
+                "Not",
+                "If",
+                "When",
+                "While",
+                "Finally",
+                "First",
+                "Second",
+                "Modern",
+                "Historical",
+                "Central",
+                "True",
+            ):
                 terms.append(word)
 
         # Deduplicate + lowercase.
@@ -622,7 +677,7 @@ class TranslationEngine:
         for plen in range(min_phrase_words, min(16, len(words) // 2 + 1)):
             seen: dict[str, int] = {}
             for i in range(len(words) - plen + 1):
-                phrase = " ".join(words[i:i + plen])
+                phrase = " ".join(words[i : i + plen])
                 seen[phrase] = seen.get(phrase, 0) + 1
                 if seen[phrase] >= min_repeats:
                     return True

@@ -26,6 +26,7 @@ Characterization tests for the IMPL-C batch (pipeline/system/controller):
 
 Run: ``pytest tests/test_v18202_system_fixes.py -v -o addopts=""``
 """
+
 from __future__ import annotations
 
 import ast
@@ -63,9 +64,11 @@ if "tiktoken" not in sys.modules:
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _make_monitor(logs, pause_calls=None):
     """HardwareMonitor with a capturing log sink + optional pause spy."""
     from core.system.hardware_monitor import HardwareMonitor
+
     mon = HardwareMonitor(
         log_callback=lambda msg, level="INFO": logs.append((msg, level)),
         auto_pause_callback=(
@@ -78,6 +81,7 @@ def _make_monitor(logs, pause_calls=None):
 def _zotac_profile():
     """The EMERGENCY Zotac profile (the target rig's card)."""
     from core.system.hardware_monitor import _PROFILE_ZOTAC_3060_TWIN_EDGE
+
     return _PROFILE_ZOTAC_3060_TWIN_EDGE
 
 
@@ -95,19 +99,21 @@ def _no_pynvml():
 # A9 — sustained-load recommendation must emit (est_hotspot NameError)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestA9SustainedLoadWarning:
     """V18.20.2.0 (SWOT A9): _check_thresholds survives sustained load."""
 
     def _drive(self, logs, vram_temp=None):
         from core.system.hardware_monitor import HardwareSnapshot
+
         mon = _make_monitor(logs)
         mon._profile = _zotac_profile()  # sustained_pause_interval_min=20
         now = time.time()
         snap = HardwareSnapshot(
             timestamp=now,
-            gpu_temp_c=60,                 # below warning → no tier spam
+            gpu_temp_c=60,  # below warning → no tier spam
             gpu_vram_temp_c=vram_temp,
-            gpu_utilization_pct=95,        # sustained load >80%
+            gpu_utilization_pct=95,  # sustained load >80%
         )
         # 21 min of sustained load, no cool-down taken yet
         mon._sustained_load_start = now - 21 * 60
@@ -144,6 +150,7 @@ class TestA9SustainedLoadWarning:
 # A10 — duplicate except ImportError (dead NVMLError handler)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestA10NVMLErrorHandling:
     """V18.20.2.0 (SWOT A10): nvmlInit failures reach the intended handler."""
 
@@ -164,8 +171,10 @@ class TestA10NVMLErrorHandling:
     def test_nvml_error_from_init_is_swallowed(self):
         """NVMLError (no NVIDIA driver) → falls back to nvidia-smi, no raise."""
         mod, err_cls = self._fake_pynvml(exc=None)
+
         def _raise():
             raise err_cls("Driver Not Loaded")
+
         mod.nvmlInit = _raise
         logs = []
         mon = _make_monitor(logs)
@@ -179,8 +188,10 @@ class TestA10NVMLErrorHandling:
     def test_other_error_from_init_is_swallowed_not_raised(self):
         """A non-NVMLError failure must also never crash the monitor."""
         mod, _ = self._fake_pynvml(exc=None)
+
         def _raise():
             raise RuntimeError("weird pynvml build")
+
         mod.nvmlInit = _raise
         mon = _make_monitor([])
         with patch.dict(sys.modules, {"pynvml": mod}):
@@ -208,6 +219,7 @@ class TestA10NVMLErrorHandling:
     def test_no_duplicate_except_import_error(self):
         """Source guard: _init_nvml has exactly one ``except ImportError``."""
         import re
+
         src = (_project_root / "core" / "system" / "hardware_monitor.py").read_text(
             encoding="utf-8"
         )
@@ -225,22 +237,28 @@ class TestA10NVMLErrorHandling:
 # A11 — _auto_pause_triggered must re-arm after cooldown
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestA11AutoPauseRelatch:
     """V18.20.2.0 (SWOT A11): a second overheat re-pauses."""
 
     def test_pause_cooldown_repause(self):
         from core.system.hardware_monitor import HardwareSnapshot
+
         pause_calls = []
         mon = _make_monitor([], pause_calls)
         mon._profile = _zotac_profile()  # critical 80°C
 
         now = time.time()
         hot = HardwareSnapshot(
-            timestamp=now, gpu_temp_c=85, gpu_utilization_pct=50,
+            timestamp=now,
+            gpu_temp_c=85,
+            gpu_utilization_pct=50,
             gpu_vram_temp_c=None,
         )
         cool = HardwareSnapshot(
-            timestamp=now, gpu_temp_c=60, gpu_utilization_pct=10,
+            timestamp=now,
+            gpu_temp_c=60,
+            gpu_utilization_pct=10,
             gpu_vram_temp_c=None,
         )
 
@@ -256,15 +274,13 @@ class TestA11AutoPauseRelatch:
         # 2. Temp normalizes → latch resets (pre-fix: stayed True forever)
         mon._check_thresholds(cool)
         assert mon._auto_pause_triggered is False, (
-            "the auto-pause latch must re-arm when the GPU cools below the "
-            "warning threshold"
+            "the auto-pause latch must re-arm when the GPU cools below the warning threshold"
         )
 
         # 3. SECOND overheat → pauses again
         mon._check_thresholds(hot)
         assert len(pause_calls) == 2, (
-            "a second overheat later in the same run must re-trigger the "
-            "auto-pause"
+            "a second overheat later in the same run must re-trigger the auto-pause"
         )
 
 
@@ -272,11 +288,13 @@ class TestA11AutoPauseRelatch:
 # A12 — CooldownScheduler cannot hang; wait_if_paused honors cancel_event
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestA12CooldownScheduler:
     """V18.20.2.0 (SWOT A12): cool-downs always terminate."""
 
     def _scheduler(self, logs):
         from core.system.thermal_safety import CooldownScheduler
+
         return CooldownScheduler(log_callback=lambda m, l="INFO": logs.append((m, l)))
 
     def test_first_cooldown_ends_at_hard_cap_under_sustained_load(self):
@@ -285,6 +303,7 @@ class TestA12CooldownScheduler:
             COOLDOWN_DURATION_MIN,
             COOLDOWN_INTERVAL_MIN,
         )
+
         logs = []
         sched = self._scheduler(logs)
         t0 = 1_000_000.0
@@ -325,6 +344,7 @@ class TestA12CooldownScheduler:
         """Even when the utilization sensor reports None, the end-condition
         check runs (truly unconditional — the old code returned early)."""
         from core.system.thermal_safety import COOLDOWN_DURATION_MIN
+
         logs = []
         sched = self._scheduler(logs)
         t0 = 3_000_000.0
@@ -337,23 +357,21 @@ class TestA12CooldownScheduler:
         assert sched.is_paused is True
         sched.update(None, 75, start + COOLDOWN_DURATION_MIN * 60 + 1)
         assert sched.is_paused is False, (
-            "the hard cap must end the cool-down even when utilization "
-            "readings are unavailable"
+            "the hard cap must end the cool-down even when utilization readings are unavailable"
         )
 
     def test_budget_forced_cooldown_uses_30min_cap(self):
         """force_cooldown (thermal budget) caps at 30 min, not 3 min."""
         from core.system.thermal_safety import THERMAL_BUDGET_REACHED_COOLDOWN_MIN
+
         logs = []
         sched = self._scheduler(logs)
         sched.force_cooldown("thermal budget exceeded")
         assert sched.is_paused is True
-        assert sched._cooldown_max_duration_sec == (
-            THERMAL_BUDGET_REACHED_COOLDOWN_MIN * 60
-        )
+        assert sched._cooldown_max_duration_sec == (THERMAL_BUDGET_REACHED_COOLDOWN_MIN * 60)
         # +3 min (the regular cap) does NOT end a budget cool-down…
         t0 = sched._cooldown_started_at
-        sched.update(10, 75, t0 + 3 * 60 + 1)   # idle util, temp still hot
+        sched.update(10, 75, t0 + 3 * 60 + 1)  # idle util, temp still hot
         assert sched.is_paused is True
         # …but +30 min does.
         sched.update(10, 75, t0 + THERMAL_BUDGET_REACHED_COOLDOWN_MIN * 60 + 1)
@@ -372,14 +390,14 @@ class TestA12CooldownScheduler:
         sched.wait_if_paused(timeout_per_check=5.0, cancel_event=cancel)
         elapsed = time.monotonic() - t0
         assert elapsed < 1.0, (
-            "a cancelled run must exit the cool-down wait promptly "
-            f"(took {elapsed:.2f}s)"
+            f"a cancelled run must exit the cool-down wait promptly (took {elapsed:.2f}s)"
         )
         assert any("interrupted by cancellation" in m for m, _ in logs)
 
     def test_controller_wait_if_paused_forwards_cancel_event(self):
         """ThermalSafetyController.wait_if_paused forwards the cancel_event."""
         from core.system.thermal_safety import ThermalSafetyController
+
         logs = []
         ts = ThermalSafetyController(log_callback=lambda m, l="INFO": logs.append((m, l)))
         ts.start()
@@ -397,9 +415,7 @@ class TestA12CooldownScheduler:
         """A12 wiring discipline: ThermalSafetyController.update() must have
         ZERO production call sites (deferred to real-rig golden-master run).
         """
-        src = (_project_root / "core" / "system" / "thermal_safety.py").read_text(
-            encoding="utf-8"
-        )
+        src = (_project_root / "core" / "system" / "thermal_safety.py").read_text(encoding="utf-8")
         assert "READY TO WIRE" in src, (
             "the deliberate not-wired-yet note on update() must stay until "
             "golden-master validation on the real rig"
@@ -418,6 +434,7 @@ class TestA12CooldownScheduler:
 # A14 — cancel clicked in the thread-start window survives
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestA14CancelRace:
     """V18.20.2.0 (SWOT A14): no redundant cancel_event.clear() in the worker."""
 
@@ -433,9 +450,14 @@ class TestA14CancelRace:
         captured = {}
 
         class _SpyConverter:
-            def __init__(self, request=None, progress_callback=None,
-                         status_callback=None, log_callback=None,
-                         cancel_event=None):
+            def __init__(
+                self,
+                request=None,
+                progress_callback=None,
+                status_callback=None,
+                log_callback=None,
+                cancel_event=None,
+            ):
                 captured["cancel_set_at_worker_start"] = bool(
                     cancel_event and cancel_event.is_set()
                 )
@@ -460,14 +482,14 @@ class TestA14CancelRace:
     def test_no_redundant_clear_in_worker(self):
         """Source guard: _run_conversion must not clear cancel_event."""
         import re
+
         src = (_project_root / "controller.py").read_text(encoding="utf-8")
         start = src.index("def _run_conversion")
         end = src.index("def start_conversion")
         body = src[start:end]
         code_clears = re.findall(r"^\s*self\.cancel_event\.clear\(\)", body, re.M)
         assert code_clears == [], (
-            "the only cancel_event.clear() lives under the lock in "
-            "start_conversion()"
+            "the only cancel_event.clear() lives under the lock in start_conversion()"
         )
         # …and the clear under the lock is still there:
         start2 = src.index("def start_conversion")
@@ -478,6 +500,7 @@ class TestA14CancelRace:
 # ═══════════════════════════════════════════════════════════════════════════
 # A15 — cancel observed during the chapter loop skips downstream phases
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class _SettingsStub:
     """Minimal settings stub: everything default/off."""
@@ -568,63 +591,83 @@ class TestA15CancelSkipsDownstreamPhases:
             output_tokens=200,
         )
         segment = Segment(
-            heading="Chapter 1", content="Chapter body text.",
-            start_page=1, end_page=3, segment_type="chapter",
+            heading="Chapter 1",
+            content="Chapter body text.",
+            start_page=1,
+            end_page=3,
+            segment_type="chapter",
         )
         raw_md = "# Chapter 1\n\nChapter body text."
 
         extract_ns = SimpleNamespace(
-            analysis=MagicMock(), pages_to_ocr=set(),
-            effective_start_page=1, effective_end_page=3,
-            effective_total_pages=3, toc_entries=[],
-            valid_pages=None, raw_markdown=raw_md,
+            analysis=MagicMock(),
+            pages_to_ocr=set(),
+            effective_start_page=1,
+            effective_end_page=3,
+            effective_total_pages=3,
+            toc_entries=[],
+            valid_pages=None,
+            raw_markdown=raw_md,
             # V18.20.3.6: ExtractionResult.selected_pages — mirrors the real
             # dataclass contract (None = no chapter/range selection).
             selected_pages=None,
         )
         seg_ns = SimpleNamespace(segments=[segment], page_markers=[], total_pages=3)
         save_ns = SimpleNamespace(
-            book_title="Test Book", detected_lang="en",
-            source_name="test_book.pdf", segments_folder=tmp_path / "segments",
+            book_title="Test Book",
+            detected_lang="en",
+            source_name="test_book.pdf",
+            segments_folder=tmp_path / "segments",
         )
         summ_ns = SimpleNamespace(summaries=[summary])
 
         spies = {}
-        with patch("core.system.preflight_check.run_preflight_check",
-                   return_value="") as spies["preflight"], \
-             patch("core.pipeline.checkpoint.Checkpoint", _FakeCheckpoint), \
-             patch("core.pipeline.conversion.extraction.run_extraction",
-                   return_value=extract_ns) as spies["extraction"], \
-             patch("core.pipeline.conversion.postprocess.run_postprocess",
-                   return_value=raw_md) as spies["postprocess"], \
-             patch("core.pipeline.conversion.segmentation.run_segmentation",
-                   return_value=seg_ns) as spies["segmentation"], \
-             patch("core.pipeline.conversion.segmentation.log_segment_summary",
-                   ) as spies["seg_log"], \
-             patch("core.pipeline.conversion.output_save.run_output_save",
-                   return_value=save_ns) as spies["output_save"], \
-             patch("core.pipeline.conversion.summarization.run_summarization",
-                   return_value=summ_ns) as spies["summarization"], \
-             patch("core.pipeline.converter_impl.DocxBuilder") as spies["docx"], \
-             patch("core.summarisation.KeypointsBuilder") as spies["keypoints"], \
-             patch("core.summarisation.SimplifiedKeypointsBuilder") as spies["simplified"], \
-             patch("core.pipeline.conversion.output_runner.run_output_studio",
-                   return_value={}) as spies["studio"], \
-             patch("core.outputs.citation_graph.generate_citation_graph",
-                   ) as spies["citation"], \
-             patch("core.pdf.footnote_extractor.extract_footnotes",
-                   return_value={"total_notes": 0, "footnotes": [], "endnotes": []}
-                   ) as spies["footnotes"], \
-             patch("core.pipeline.library_manager.LibraryManager") as spies["library"]:
+        with (
+            patch("core.system.preflight_check.run_preflight_check", return_value="") as spies[
+                "preflight"
+            ],
+            patch("core.pipeline.checkpoint.Checkpoint", _FakeCheckpoint),
+            patch(
+                "core.pipeline.conversion.extraction.run_extraction", return_value=extract_ns
+            ) as spies["extraction"],
+            patch(
+                "core.pipeline.conversion.postprocess.run_postprocess", return_value=raw_md
+            ) as spies["postprocess"],
+            patch(
+                "core.pipeline.conversion.segmentation.run_segmentation", return_value=seg_ns
+            ) as spies["segmentation"],
+            patch(
+                "core.pipeline.conversion.segmentation.log_segment_summary",
+            ) as spies["seg_log"],
+            patch(
+                "core.pipeline.conversion.output_save.run_output_save", return_value=save_ns
+            ) as spies["output_save"],
+            patch(
+                "core.pipeline.conversion.summarization.run_summarization", return_value=summ_ns
+            ) as spies["summarization"],
+            patch("core.pipeline.converter_impl.DocxBuilder") as spies["docx"],
+            patch("core.summarisation.KeypointsBuilder") as spies["keypoints"],
+            patch("core.summarisation.SimplifiedKeypointsBuilder") as spies["simplified"],
+            patch(
+                "core.pipeline.conversion.output_runner.run_output_studio", return_value={}
+            ) as spies["studio"],
+            patch(
+                "core.outputs.citation_graph.generate_citation_graph",
+            ) as spies["citation"],
+            patch(
+                "core.pdf.footnote_extractor.extract_footnotes",
+                return_value={"total_notes": 0, "footnotes": [], "endnotes": []},
+            ) as spies["footnotes"],
+            patch("core.pipeline.library_manager.LibraryManager") as spies["library"],
+        ):
             # Configure spy return values so the NON-cancelled control run
             # flows through each phase the way the real builders do.
             spies["docx"].return_value.build_report.return_value = True
             spies["keypoints"].return_value.build.return_value = (
-                tmp_path / "keypoints.md", tmp_path / "keypoints.docx"
+                tmp_path / "keypoints.md",
+                tmp_path / "keypoints.docx",
             )
-            spies["simplified"].return_value.build.return_value = (
-                tmp_path / "simplified.md"
-            )
+            spies["simplified"].return_value.build.return_value = tmp_path / "simplified.md"
             spies["quality_report"] = MagicMock()
             conv._generate_quality_report = spies["quality_report"]
             yield conv, spies
@@ -649,11 +692,17 @@ class TestA15CancelSkipsDownstreamPhases:
 
         # Checkpoint: nothing marked done for skipped phases
         marked = list(_FakeCheckpoint.mark_done_calls)
-        for phase in ("docx", "keypoints", "simplified_keypoints",
-                      "summarization", "briefing", "podcast_script", "flashcards"):
+        for phase in (
+            "docx",
+            "keypoints",
+            "simplified_keypoints",
+            "summarization",
+            "briefing",
+            "podcast_script",
+            "flashcards",
+        ):
             assert phase not in marked, (
-                f"cancelled run must not mark '{phase}' checkpoint-done "
-                f"(marked: {marked})"
+                f"cancelled run must not mark '{phase}' checkpoint-done (marked: {marked})"
             )
 
         # Result: reported via the existing cancelled plumbing
@@ -680,8 +729,9 @@ class TestA15CancelSkipsDownstreamPhases:
     def test_summarization_checkpoint_not_marked_done_when_cancelled(self):
         """run_summarization leaves the summarization phase PENDING on a
         cancelled run (AST guard on summarization.py)."""
-        src = (_project_root / "core" / "pipeline" / "conversion" /
-               "summarization.py").read_text(encoding="utf-8")
+        src = (_project_root / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
+            encoding="utf-8"
+        )
         tree = ast.parse(src)
         guard_found = False
         for node in ast.walk(tree):
@@ -694,12 +744,13 @@ class TestA15CancelSkipsDownstreamPhases:
             body_src = ast.unparse(node)
             if "summarization checkpoint left pending" in body_src:
                 for sub in ast.walk(node):
-                    if (isinstance(sub, ast.Call)
-                            and isinstance(sub.func, ast.Attribute)
-                            and sub.func.attr == "mark_done"):
+                    if (
+                        isinstance(sub, ast.Call)
+                        and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr == "mark_done"
+                    ):
                         for arg in sub.args:
-                            if (isinstance(arg, ast.Constant)
-                                    and arg.value == "summarization"):
+                            if isinstance(arg, ast.Constant) and arg.value == "summarization":
                                 guard_found = True
         assert guard_found, (
             "the mark_done('summarization') call must sit in the else-branch "
@@ -712,22 +763,35 @@ class TestA15CancelSkipsDownstreamPhases:
             encoding="utf-8"
         )
         gates = [
-            "DOCX build", "keypoints build", "simplified keypoints",
-            "output studio", "citation graph", "quality report",
-            "footnote extraction", "library tracking", "screenshots/graphs",
+            "DOCX build",
+            "keypoints build",
+            "simplified keypoints",
+            "output studio",
+            "citation graph",
+            "quality report",
+            "footnote extraction",
+            "library tracking",
+            "screenshots/graphs",
         ]
+        import re as _re_gate
+
+        # V0.13: some gates are format-wrapped onto continuation lines — pin
+        # via whitespace-flexible regex instead of a contiguous substring.
         for gate in gates:
-            assert f'_cancel_requested("{gate}")' in src, (
+            assert _re_gate.search(rf'_cancel_requested\(\s*"{gate}"', src), (
                 f"phase gate '{gate}' missing from converter_impl.py"
             )
         # Final result mirrors the existing cancelled early-exit plumbing
-        assert 'error_msg=("Cancelled by user" if _cancelled' in src
+        # V0.13: the ternary is format-wrapped — pin the pieces
+        assert '"Cancelled by user"' in src
+        assert "if _cancelled" in src
         assert "and not _cancelled" in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # A28 — settings.py duplicate fast_model keys removed
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestA28SettingsFastModel:
     """V18.20.2.0 (SWOT A28): exactly one fast_model key per location."""
@@ -739,8 +803,11 @@ class TestA28SettingsFastModel:
         dups = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Dict):
-                keys = [k.value for k in node.keys
-                        if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+                keys = [
+                    k.value
+                    for k in node.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)
+                ]
                 seen = set()
                 for k in keys:
                     if k in seen:
@@ -757,8 +824,11 @@ class TestA28SettingsFastModel:
             if isinstance(node, ast.List):
                 firsts = []
                 for el in node.elts:
-                    if (isinstance(el, ast.Tuple) and el.elts
-                            and isinstance(el.elts[0], ast.Constant)):
+                    if (
+                        isinstance(el, ast.Tuple)
+                        and el.elts
+                        and isinstance(el.elts[0], ast.Constant)
+                    ):
                         firsts.append(el.elts[0].value)
                 for v in set(firsts):
                     if firsts.count(v) > 1:
@@ -769,6 +839,7 @@ class TestA28SettingsFastModel:
         """Behavioral: the effective default stays "" (the value that was
         silently winning by dict-literal semantics pre-dedupe)."""
         from utils.settings import Settings
+
         defaults = Settings._defaults()
         assert defaults["summarisation"]["fast_model"] == ""
 
@@ -776,6 +847,7 @@ class TestA28SettingsFastModel:
 # ═══════════════════════════════════════════════════════════════════════════
 # A30 — atomic writes across the converter flow
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _tmp_artifacts(directory: Path):
     return [p for p in Path(directory).rglob("*") if p.suffix == ".tmp"]
@@ -787,6 +859,7 @@ class TestA30AtomicWrites:
     def test_atomic_json_identical_bytes_and_no_tmp(self, tmp_path):
         """atomic_write_json serializes exactly like the old json.dump call."""
         from utils.atomic_io import atomic_write_json
+
         data = {"name": "کتاب Test", "nested": {"fast_model": "", "n": 1}}
         p = tmp_path / "sub" / "config.json"
         atomic_write_json(p, data, indent=2, ensure_ascii=False)
@@ -796,6 +869,7 @@ class TestA30AtomicWrites:
 
     def test_atomic_text_preserves_unicode_and_no_tmp(self, tmp_path):
         from utils.atomic_io import atomic_write_text
+
         content = "# Book summary\n\nخلاصه — test ✔\n"
         p = tmp_path / "deep" / "nested" / "Book.summary.md"
         atomic_write_text(p, content)
@@ -825,12 +899,23 @@ class TestA30AtomicWrites:
 
     def test_chapter_manifest_atomic_identical_payload(self, tmp_path):
         from core.obs.conversion_manifest import write_chapter_manifest
+
         p = write_chapter_manifest(
-            output_dir=tmp_path, chapter_index=1, chapter_total=2,
-            chapter_heading="1 - TEST", model="test:latest", num_ctx=26758,
-            coverage=0.89, phases_ran=["primary"], leak_guard_fires=0,
-            post_check_fixes=1, post_check_flags=0, duration_seconds=123.4,
-            bullet_count=7, exec_summary_chars=500, hallucinations=0,
+            output_dir=tmp_path,
+            chapter_index=1,
+            chapter_total=2,
+            chapter_heading="1 - TEST",
+            model="test:latest",
+            num_ctx=26758,
+            coverage=0.89,
+            phases_ran=["primary"],
+            leak_guard_fires=0,
+            post_check_fixes=1,
+            post_check_flags=0,
+            duration_seconds=123.4,
+            bullet_count=7,
+            exec_summary_chars=500,
+            hallucinations=0,
         )
         assert p.exists()
         data = json.loads(p.read_text(encoding="utf-8"))
@@ -852,13 +937,27 @@ class TestA30AtomicWrites:
             paths=_Paths(tmp_path / "logs" / "quality_report.json"),
             _log=lambda m, l="INFO": None,
         )
-        summaries = [SummaryResult(
-            chapter_heading="Ch 1", executive_summary="e", thorough_summary="t",
-            bullet_points=["b1", "b2"], success=True, model_used="m",
-            input_tokens=900, output_tokens=100,
-        )]
-        segments = [Segment(heading="Ch 1", content="text " * 50,
-                            start_page=1, end_page=2, segment_type="chapter")]
+        summaries = [
+            SummaryResult(
+                chapter_heading="Ch 1",
+                executive_summary="e",
+                thorough_summary="t",
+                bullet_points=["b1", "b2"],
+                success=True,
+                model_used="m",
+                input_tokens=900,
+                output_tokens=100,
+            )
+        ]
+        segments = [
+            Segment(
+                heading="Ch 1",
+                content="text " * 50,
+                start_page=1,
+                end_page=2,
+                segment_type="chapter",
+            )
+        ]
         Converter._generate_quality_report(fake, segments, summaries)
 
         qr = fake.paths.quality_report
@@ -871,13 +970,15 @@ class TestA30AtomicWrites:
     def test_output_save_and_book_summary_use_atomic_helpers(self):
         """Source guard: the full-markdown + Book.summary.md writes route
         through utils.atomic_io."""
-        out_save = (_project_root / "core" / "pipeline" / "conversion" /
-                    "output_save.py").read_text(encoding="utf-8")
+        out_save = (
+            _project_root / "core" / "pipeline" / "conversion" / "output_save.py"
+        ).read_text(encoding="utf-8")
         assert "atomic_write_text(converter.full_markdown_path, full_markdown)" in out_save
         assert "full_markdown_path).write_text(" not in out_save
 
-        summ = (_project_root / "core" / "pipeline" / "conversion" /
-                "summarization.py").read_text(encoding="utf-8")
+        summ = (_project_root / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
+            encoding="utf-8"
+        )
         assert "atomic_write_text(converter.summary_md_path, book_summary)" in summ
         # the old plain write is gone
         assert "summary_md_path).write_text(" not in summ

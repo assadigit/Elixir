@@ -15,6 +15,7 @@ V13.30.0 changes:
 
 Card click behavior unchanged — see convert_view.py for routing.
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
@@ -39,38 +40,92 @@ from ui_qt.theme import theme_manager
 #   - Hallucination Audit → tab (also accessible from Packets output)
 TOOL_CARDS: list[tuple[str, str, str, str, str, bool]] = [
     # Row 1: Main entry points (PROCESS)
-    ("full_conversion", "Full Conversion", "Complete 10-step wizard with all output types",
-     "🚀", "PROCESS", True),
-    ("summarization", "Summarization", "Paste text → get summary + keypoints",
-     "Σ", "PROCESS", False),
-    ("pdf_to_markdown", "Document → Markdown",
-     "AnyDoc/markitdown: PDF/DOCX/EPUB → clean Markdown",
-     "📄", "PROCESS", False),
-
+    (
+        "full_conversion",
+        "Full Conversion",
+        "Complete 10-step wizard with all output types",
+        "🚀",
+        "PROCESS",
+        True,
+    ),
+    (
+        "summarization",
+        "Summarization",
+        "Paste text → get summary + keypoints",
+        "Σ",
+        "PROCESS",
+        False,
+    ),
+    (
+        "pdf_to_markdown",
+        "Document → Markdown",
+        "AnyDoc/markitdown: PDF/DOCX/EPUB → clean Markdown",
+        "📄",
+        "PROCESS",
+        False,
+    ),
     # Row 2: Transform tools
-    ("translation", "Translation", "EN ↔ FA translation with auto best-backend",
-     "🌐", "TRANSFORM", False),
-    ("markdown_styler", "Markdown Styler", "Messy notes → clean Obsidian markdown",
-     "✨", "TRANSFORM", False),
-    ("packets_tool", "Packets of Knowledge", "Cluster notes → synthesized knowledge packets",
-     "📦", "TRANSFORM", False),
-
+    (
+        "translation",
+        "Translation",
+        "EN ↔ FA translation with auto best-backend",
+        "🌐",
+        "TRANSFORM",
+        False,
+    ),
+    (
+        "markdown_styler",
+        "Markdown Styler",
+        "Messy notes → clean Obsidian markdown",
+        "✨",
+        "TRANSFORM",
+        False,
+    ),
+    (
+        "packets_tool",
+        "Packets of Knowledge",
+        "Cluster notes → synthesized knowledge packets",
+        "📦",
+        "TRANSFORM",
+        False,
+    ),
     # Row 3: Extraction tools
-    ("ocr_service", "OCR Service", "Extract text from PDFs or images with auto-cascade",
-     "🔍", "EXTRACT", False),
-    ("pdf_docx_cutter", "PDF/DOCX Cutter", "Extract a page range from PDF or DOCX",
-     "✂️", "EXTRACT", False),
-    ("image_extractor", "Image Extractor", "Extract all images/charts/tables from books",
-     "🖼️", "EXTRACT", False),
-
+    (
+        "ocr_service",
+        "OCR Service",
+        "Extract text from PDFs or images with auto-cascade",
+        "🔍",
+        "EXTRACT",
+        False,
+    ),
+    (
+        "pdf_docx_cutter",
+        "PDF/DOCX Cutter",
+        "Extract a page range from PDF or DOCX",
+        "✂️",
+        "EXTRACT",
+        False,
+    ),
+    (
+        "image_extractor",
+        "Image Extractor",
+        "Extract all images/charts/tables from books",
+        "🖼️",
+        "EXTRACT",
+        False,
+    ),
     # Row 4: Audio tools (next to each other in a row, per user request)
     # V13.31.0 (#6): Podcast Maker now opens as modal (was a tab)
-    ("tts_service", "TTS Service", "Text → natural speech audio",
-     "🔊", "AUDIO", False),
-    ("podcast_maker", "Podcast Maker", "Script → multi-voice podcast audio",
-     "🎙️", "AUDIO", False),
-    ("transcribe", "Transcribe Service", "Video/audio → text transcript + summary",
-     "📝", "AUDIO", False),
+    ("tts_service", "TTS Service", "Text → natural speech audio", "🔊", "AUDIO", False),
+    ("podcast_maker", "Podcast Maker", "Script → multi-voice podcast audio", "🎙️", "AUDIO", False),
+    (
+        "transcribe",
+        "Transcribe Service",
+        "Video/audio → text transcript + summary",
+        "📝",
+        "AUDIO",
+        False,
+    ),
 ]
 
 

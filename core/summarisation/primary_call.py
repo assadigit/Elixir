@@ -30,6 +30,7 @@ Characterization tests: ``tests/test_primary_call.py`` captures the
 chunked-path success, chunked-failure fallback, thermal-skip, structured-JSON
 success, empty-response None, and the XML-parse success path.
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,15 +81,19 @@ def _read_gpu_temp_c() -> float:
     did. Reset by tests via ``_gpu_temp_cache["valid"] = 0.0``.
     """
     import time as _time_thermal
+
     _now = _time_thermal.monotonic()
     if _gpu_temp_cache["valid"] and (_now - _gpu_temp_cache["ts"]) < _GPU_TEMP_CACHE_TTL_SEC:
         return _gpu_temp_cache["temp"]
     _temp = 0.0
     try:
         import subprocess as _sub_thermal
+
         _r = _sub_thermal.run(
             ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if _r.returncode == 0 and _r.stdout.strip():
             _temp = float(_r.stdout.strip().split()[0])
@@ -108,6 +113,7 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
 
 
 # ── summarize_with_model (extracted verbatim) ──────────────────────────────
+
 
 def summarize_with_model(
     heading: str,
@@ -129,20 +135,21 @@ def summarize_with_model(
 ) -> dict[str, Any] | None:
     """Primary single-chapter summarization call.
 
-    V18.3.5 (F1+F3): CHUNKED OUTPUT for large chapters — FIXED thresholds.
-V18.3.4 had 3 bugs that caused the rig-test book's failure:
-      1. len(text)//4 overestimates (4.7 chars/token) → chunked unnecessarily.
-      2. The 10000 threshold was too low — 9,139-token chapters fit in a
-         single 8192-output call (proven by V18.2.44 gold standard).
-      3. No thermal guard — chunking makes 2 calls (2× heat) → thermal
-         throttling → 300s timeout → model stall.
-    FIX: use ACTUAL token count (not char estimate), raise threshold to
-    12000, and DON'T chunk when the GPU is already hot (≥78°C).
+        V18.3.5 (F1+F3): CHUNKED OUTPUT for large chapters — FIXED thresholds.
+    V18.3.4 had 3 bugs that caused the rig-test book's failure:
+          1. len(text)//4 overestimates (4.7 chars/token) → chunked unnecessarily.
+          2. The 10000 threshold was too low — 9,139-token chapters fit in a
+             single 8192-output call (proven by V18.2.44 gold standard).
+          3. No thermal guard — chunking makes 2 calls (2× heat) → thermal
+             throttling → 300s timeout → model stall.
+        FIX: use ACTUAL token count (not char estimate), raise threshold to
+        12000, and DON'T chunk when the GPU is already hot (≥78°C).
     """
     if log is None:
         log = _noop_log
 
     from utils.token_counter import count_tokens as _count_tokens_chunk
+
     _input_tokens_actual = _count_tokens_chunk(text)  # actual token count
     _max_out = max_tokens or getattr(request, "summarisation_max_output_tokens", 8192) or 8192
     # F1: raised threshold from 10000 → 12000 (a 9,139-token chapter must NOT chunk).
@@ -176,7 +183,14 @@ V18.3.4 had 3 bugs that caused the rig-test book's failure:
             "INFO",
         )
         _chunked_result = chunked_summarize(
-            heading, text, model, temp, with_cot, concepts, callouts, _max_out,
+            heading,
+            text,
+            model,
+            temp,
+            with_cot,
+            concepts,
+            callouts,
+            _max_out,
         )
         if _chunked_result is not None:
             return _chunked_result

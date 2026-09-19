@@ -21,6 +21,7 @@ parse behavior:
 
 Run: pytest tests/test_v1820411_p1_parser_logging.py -v
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,6 +53,7 @@ def _records(caplog, level=None):
 # Routine transitions — tagged (non-JSON) response → DEBUG fallback trace
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestTaggedResponseTrace:
     TAGGED = (
         "<executive_summary>The chapter links anxiety to defence mechanisms.</executive_summary>\n"
@@ -71,7 +73,9 @@ class TestTaggedResponseTrace:
         assert "thorough discussion" in result["thorough_summary"]
         # fallback trace: non-JSON → universal (routine → DEBUG)
         debug_msgs = [r.message for r in _records(caplog, logging.DEBUG)]
-        assert any("non-JSON response" in m and "universal parser" in m for m in debug_msgs), debug_msgs
+        assert any("non-JSON response" in m and "universal parser" in m for m in debug_msgs), (
+            debug_msgs
+        )
         # ...and the universal parser's outcome line naming the winning rung
         assert any("universal parser" in m and "2 bullets" in m for m in debug_msgs), debug_msgs
 
@@ -85,6 +89,7 @@ class TestTaggedResponseTrace:
 # JSON paths
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestJsonPaths:
     def test_json_decode_failure_traced_at_debug(self, caplog):
         with caplog.at_level(logging.DEBUG, logger=_LOGGER):
@@ -92,7 +97,9 @@ class TestJsonPaths:
         # salvaged by the universal parser → thorough carries the text
         assert isinstance(result, dict)
         debug_msgs = [r.message for r in _records(caplog, logging.DEBUG)]
-        assert any("JSON decode failed" in m and "universal parser" in m for m in debug_msgs), debug_msgs
+        assert any("JSON decode failed" in m and "universal parser" in m for m in debug_msgs), (
+            debug_msgs
+        )
 
     def test_json_success_traced_at_debug(self, caplog):
         raw = (
@@ -110,6 +117,7 @@ class TestJsonPaths:
 # ═══════════════════════════════════════════════════════════════════════════
 # Degenerate outcomes — WARNING records
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDegenerateWarnings:
     def test_zero_content_parse_warns(self, caplog):
@@ -137,7 +145,9 @@ class TestDegenerateWarnings:
             bullets = extract_sentences_as_bullets(text)
         assert len(bullets) == 2  # behavior unchanged
         warnings = [r.message for r in _records(caplog, logging.WARNING)]
-        assert any("sentence fallback" in w and "salvaged 2 bullets" in w for w in warnings), warnings
+        assert any("sentence fallback" in w and "salvaged 2 bullets" in w for w in warnings), (
+            warnings
+        )
 
     def test_sentence_fallback_zero_yield_warns(self, caplog):
         with caplog.at_level(logging.DEBUG, logger=_LOGGER):
@@ -151,10 +161,11 @@ class TestDegenerateWarnings:
 # strip_thinking — pathological removal WARNING, no false alarms
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestStripThinkingLogging:
     def test_majority_removal_warns_with_counts(self, caplog):
         raw = (
-            "<think lang=\"x\">" + ("reasoning " * 500) + "</think"
+            '<think lang="x">' + ("reasoning " * 500) + "</think"
             ">\n<executive_summary>Short but real.</executive_summary>"
         )
         with caplog.at_level(logging.DEBUG, logger=_LOGGER):
@@ -184,7 +195,7 @@ class TestStripThinkingLogging:
         """primary_call strips the raw response before parse_response strips
         it again — the second pass must be a no-op (no duplicate WARNING)."""
         raw = (
-            "<think lang=\"x\">" + ("reasoning " * 500) + "</think"
+            '<think lang="x">' + ("reasoning " * 500) + "</think"
             ">\n<executive_summary>Short but real.</executive_summary>"
         )
         with caplog.at_level(logging.DEBUG, logger=_LOGGER):
@@ -198,19 +209,25 @@ class TestStripThinkingLogging:
 # Behavior preservation — logging only, no parse changes
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBehaviorUnchanged:
     def test_parse_response_shapes(self):
         r = parse_response(
             "<bullet_points>\n- One bullet that is long enough\n- Two bullet that is long enough\n</bullet_points>"
         )
         assert set(r) == {
-            "executive_summary", "bullet_points", "thorough_summary",
-            "key_distinctions", "theoretical_tensions",
+            "executive_summary",
+            "bullet_points",
+            "thorough_summary",
+            "key_distinctions",
+            "theoretical_tensions",
         }
         assert len(r["bullet_points"]) == 2
 
     def test_plain_text_bullets(self):
-        r = parse_response("Summary line.\n\n- First plain bullet is long enough\n- Second plain bullet is long enough")
+        r = parse_response(
+            "Summary line.\n\n- First plain bullet is long enough\n- Second plain bullet is long enough"
+        )
         assert len(r["bullet_points"]) == 2
 
     def test_empty_and_none_safe(self):

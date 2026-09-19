@@ -88,17 +88,11 @@ class FilePickerRow(QWidget):
         start_dir = self.field.text() or str(Path.home())
 
         if self._mode == "folder":
-            chosen = QFileDialog.getExistingDirectory(
-                self, self._caption, start_dir
-            )
+            chosen = QFileDialog.getExistingDirectory(self, self._caption, start_dir)
         elif self._mode == "save_file":
-            chosen, _ = QFileDialog.getSaveFileName(
-                self, self._caption, start_dir, self._filter
-            )
+            chosen, _ = QFileDialog.getSaveFileName(self, self._caption, start_dir, self._filter)
         else:
-            chosen, _ = QFileDialog.getOpenFileName(
-                self, self._caption, start_dir, self._filter
-            )
+            chosen, _ = QFileDialog.getOpenFileName(self, self._caption, start_dir, self._filter)
 
         if chosen:
             self.field.setText(chosen)

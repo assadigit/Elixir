@@ -10,6 +10,7 @@ Covers:
   6. cached_encode returns same shape as model.encode (single + batch).
   7. Stats (hits, misses, disk_loads, disk_writes) increment correctly.
 """
+
 from __future__ import annotations
 
 import sys
@@ -89,9 +90,7 @@ class FakeModel:
 @pytest.fixture
 def fresh_cache(tmp_path: Path) -> EmbeddingCache:
     """A fresh, isolated in-memory-only cache (no disk, no singleton pollution)."""
-    return EmbeddingCache(
-        max_entries=5000, persist_to_disk=False, cache_file=None
-    )
+    return EmbeddingCache(max_entries=5000, persist_to_disk=False, cache_file=None)
 
 
 @pytest.fixture
@@ -256,6 +255,7 @@ class TestDiskPersistence:
         cache.put("format test", "model-y", vec)
 
         import json
+
         with open(cache_file, encoding="utf-8") as f:
             lines = [ln for ln in f.read().splitlines() if ln.strip()]
         assert len(lines) == 1, "exactly one JSONL line per put"
@@ -308,15 +308,28 @@ class TestDiskPersistence:
         good_vec = _make_vec(7)
         with open(cache_file, "w", encoding="utf-8") as f:
             import json
-            f.write(json.dumps({
-                "key": "k1", "dim": 8,
-                "vec": [float(x) for x in good_vec.tolist()],
-            }) + "\n")
+
+            f.write(
+                json.dumps(
+                    {
+                        "key": "k1",
+                        "dim": 8,
+                        "vec": [float(x) for x in good_vec.tolist()],
+                    }
+                )
+                + "\n"
+            )
             f.write("this is not valid json\n")
-            f.write(json.dumps({
-                "key": "k2", "dim": 8,
-                "vec": [float(x) for x in _make_vec(8).tolist()],
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "key": "k2",
+                        "dim": 8,
+                        "vec": [float(x) for x in _make_vec(8).tolist()],
+                    }
+                )
+                + "\n"
+            )
 
         cache = EmbeddingCache(persist_to_disk=True, cache_file=cache_file)
         assert cache.disk_loads == 2, "should load 2 valid entries, skip the corrupt one"
@@ -371,20 +384,22 @@ class TestThreadSafety:
             def compute(t: str) -> np.ndarray:
                 time.sleep(0.001)
                 return _make_vec(seed)
+
             return compute
 
         def worker(idx: int) -> np.ndarray:
-            return fresh_cache.get_or_compute(
-                f"text-{idx}", "model-t", make_compute(idx)
-            )
+            return fresh_cache.get_or_compute(f"text-{idx}", "model-t", make_compute(idx))
 
         threads: list[threading.Thread] = []
         results: list[np.ndarray | None] = [None] * N
         for i in range(N):
+
             def make_runner(idx: int):
                 def run() -> None:
                     results[idx] = worker(idx)
+
                 return run
+
             t = threading.Thread(target=make_runner(i))
             threads.append(t)
         for t in threads:
@@ -569,7 +584,9 @@ class TestCachedEncodeShape:
             f"got {encode_calls_after - encode_calls_before}"
         )
 
-    def test_duplicate_texts_in_batch_encoded_once(self, isolated_singleton: EmbeddingCache) -> None:
+    def test_duplicate_texts_in_batch_encoded_once(
+        self, isolated_singleton: EmbeddingCache
+    ) -> None:
         """Duplicate texts within a single batch must only be encoded ONCE."""
         model = FakeModel(dim=8, model_name="fake")
         texts = ["dup", "dup", "dup", "unique"]
@@ -586,7 +603,9 @@ class TestCachedEncodeShape:
         last_call = model.calls[-1]
         assert list(last_call) == ["dup", "unique"]
 
-    def test_model_name_inferred_from_model_object(self, isolated_singleton: EmbeddingCache) -> None:
+    def test_model_name_inferred_from_model_object(
+        self, isolated_singleton: EmbeddingCache
+    ) -> None:
         """If model_name is empty, cached_encode should infer it from
         ``model.model_name`` (OllamaEmbedBackend exposes this)."""
         model = FakeModel(dim=8, model_name="inferred-model-name")
@@ -603,7 +622,9 @@ class TestCachedEncodeShape:
             "different name should miss and call encode"
         )
 
-    def test_model_name_defaults_to_default_when_no_attr(self, isolated_singleton: EmbeddingCache) -> None:
+    def test_model_name_defaults_to_default_when_no_attr(
+        self, isolated_singleton: EmbeddingCache
+    ) -> None:
         """If model has no .model_name attribute and name is empty, fall back
         to 'default'."""
         # MagicMock with no .model_name attribute -> getattr returns the
@@ -615,9 +636,7 @@ class TestCachedEncodeShape:
         # V18.2.24: for single-string input, cached_encode calls
         # ``model.encode(text)`` directly (the string, NOT a list) to match
         # ``SentenceTransformer.encode("text")`` semantics (returns 1-D).
-        model.encode = MagicMock(
-            return_value=np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        )
+        model.encode = MagicMock(return_value=np.array([1.0, 2.0, 3.0], dtype=np.float32))
         cached_encode(model, "hello")
         model.encode.assert_called_once_with("hello")
 
@@ -650,8 +669,13 @@ class TestStats:
         fresh_cache.get("missing", "m")
         s = fresh_cache.stats()
         assert set(s.keys()) == {
-            "hits", "misses", "size", "max", "hit_rate",
-            "disk_loads", "disk_writes",
+            "hits",
+            "misses",
+            "size",
+            "max",
+            "hit_rate",
+            "disk_loads",
+            "disk_writes",
         }
         assert s["hits"] == 1
         assert s["misses"] == 1
@@ -660,9 +684,7 @@ class TestStats:
         assert s["hit_rate"] == 0.5
 
     def test_disk_loads_zero_when_no_file(self, tmp_path: Path) -> None:
-        cache = EmbeddingCache(
-            persist_to_disk=True, cache_file=tmp_path / "nonexistent.jsonl"
-        )
+        cache = EmbeddingCache(persist_to_disk=True, cache_file=tmp_path / "nonexistent.jsonl")
         assert cache.disk_loads == 0
 
     def test_disk_writes_increment_on_put(self, tmp_path: Path) -> None:
@@ -788,21 +810,18 @@ class TestBatchHelpers:
 class TestDiskFlushAndErrors:
     """Cover _flush_to_disk + the exception handlers in disk load/append/clear."""
 
-    def test_flush_to_disk_rewrites_file_in_memory_order(
-        self, tmp_path: Path
-    ) -> None:
+    def test_flush_to_disk_rewrites_file_in_memory_order(self, tmp_path: Path) -> None:
         """_flush_to_disk must rewrite the JSONL with ONLY the in-memory entries
         (dropping stale append-only entries that were evicted)."""
         cache_file = tmp_path / "embed_cache.jsonl"
-        cache = EmbeddingCache(
-            max_entries=2, persist_to_disk=True, cache_file=cache_file
-        )
+        cache = EmbeddingCache(max_entries=2, persist_to_disk=True, cache_file=cache_file)
         # Append 3 entries -> "a" gets evicted from memory but stays on disk.
         cache.put("a", "m", _make_vec(1))
         cache.put("b", "m", _make_vec(2))
         cache.put("c", "m", _make_vec(3))  # evicts "a"
         # File has 3 lines (append-only).
         import json
+
         with open(cache_file) as f:
             assert len([ln for ln in f if ln.strip()]) == 3
         # After flush, file should have only 2 lines (b and c).
@@ -889,6 +908,7 @@ class TestDiskFlushAndErrors:
         cache_file = tmp_path / "embed_cache.jsonl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         # Entry with dim=8 but only 4 floats in vec -> mismatch -> skip.
         with open(cache_file, "w") as f:
             f.write(json.dumps({"key": "bad", "dim": 8, "vec": [0.1, 0.2, 0.3, 0.4]}) + "\n")
@@ -901,8 +921,11 @@ class TestDiskFlushAndErrors:
         cache_file = tmp_path / "embed_cache.jsonl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         with open(cache_file, "w") as f:
-            f.write(json.dumps({"key": "", "dim": 4, "vec": [0.1, 0.2, 0.3, 0.4]}) + "\n")  # empty key
+            f.write(
+                json.dumps({"key": "", "dim": 4, "vec": [0.1, 0.2, 0.3, 0.4]}) + "\n"
+            )  # empty key
             f.write(json.dumps({"key": "k2", "dim": 0, "vec": []}) + "\n")  # zero dim
             f.write(json.dumps({"key": "k3", "dim": 4, "vec": []}) + "\n")  # empty vec
         cache = EmbeddingCache(persist_to_disk=True, cache_file=cache_file)
@@ -913,12 +936,14 @@ class TestDiskFlushAndErrors:
         cache_file = tmp_path / "embed_cache.jsonl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         vec = _make_vec(1)
         with open(cache_file, "w") as f:
             f.write("\n")  # blank line at start
             f.write("   \n")  # whitespace-only line
-            f.write(json.dumps({"key": "k1", "dim": 8,
-                                "vec": [float(x) for x in vec.tolist()]}) + "\n")
+            f.write(
+                json.dumps({"key": "k1", "dim": 8, "vec": [float(x) for x in vec.tolist()]}) + "\n"
+            )
             f.write("\n")  # blank line in middle
         cache = EmbeddingCache(persist_to_disk=True, cache_file=cache_file)
         assert cache.disk_loads == 1, "blank lines must be skipped"
@@ -929,12 +954,14 @@ class TestDiskFlushAndErrors:
         cache_file = tmp_path / "embed_cache.jsonl"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         with open(cache_file, "w") as f:
-            f.write(json.dumps({"key": "zero", "dim": 4,
-                                "vec": [0.0, 0.0, 0.0, 0.0]}) + "\n")
+            f.write(json.dumps({"key": "zero", "dim": 4, "vec": [0.0, 0.0, 0.0, 0.0]}) + "\n")
             good_vec = _make_vec(2, dim=4)
-            f.write(json.dumps({"key": "good", "dim": 4,
-                                "vec": [float(x) for x in good_vec.tolist()]}) + "\n")
+            f.write(
+                json.dumps({"key": "good", "dim": 4, "vec": [float(x) for x in good_vec.tolist()]})
+                + "\n"
+            )
         cache = EmbeddingCache(persist_to_disk=True, cache_file=cache_file)
         assert cache.disk_loads == 1, "all-zero entry must be skipped on load"
 
@@ -969,9 +996,7 @@ class TestCachedEncodeEdgeCases:
         backend), cached_encode must reshape it to 2-D without crashing."""
         model = MagicMock()
         # Simulate a backend that returns 1-D for a single-item batch.
-        model.encode = MagicMock(
-            return_value=np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32)
-        )
+        model.encode = MagicMock(return_value=np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32))
         model.model_name = "buggy"
         # Must not crash on the reshape.
         result = cached_encode(model, ["solo-miss"], model_name="buggy")

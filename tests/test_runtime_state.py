@@ -9,6 +9,7 @@ shared ``_runtime_state.state`` object.
 These tests verify the fix: patches via the re-export module name propagate to
 the impl module (and vice versa) because both reference the SAME state object.
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,12 +29,14 @@ if "tiktoken" not in sys.modules:
 # 1. The shared state object is the SAME across re-export + impl modules
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSharedStateObject:
     """The re-export module and impl module must reference the SAME state object."""
 
     def test_content_judge_shares_state(self):
         import core.summarisation.content_judge as cj_reexport
         import core.summarisation.content_judge_impl as cj_impl
+
         assert cj_reexport._runtime_state is cj_impl._runtime_state, (
             "content_judge re-export and content_judge_impl must share the SAME "
             "_runtime_state object (D3 fix)"
@@ -42,6 +45,7 @@ class TestSharedStateObject:
     def test_text_preprocessor_shares_state(self):
         import core.summarisation.text_preprocessor as tp_reexport
         import core.summarisation.text_preprocessor_impl as tp_impl
+
         assert tp_reexport._runtime_state is tp_impl._runtime_state, (
             "text_preprocessor re-export and impl must share _runtime_state"
         )
@@ -49,6 +53,7 @@ class TestSharedStateObject:
     def test_llm_provider_shares_state(self):
         import core.llm.llm_provider as lp_reexport
         import core.llm.llm_provider_impl as lp_impl
+
         assert lp_reexport._runtime_state is lp_impl._runtime_state, (
             "llm_provider re-export and impl must share _runtime_state"
         )
@@ -58,12 +63,14 @@ class TestSharedStateObject:
 # 2. Patches via the re-export module propagate to the impl module (THE FIX)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPatchPropagation:
     """The D3 root-cause fix: patches via the re-export module propagate."""
 
     def test_content_judge_warned_embedding_disabled_propagates(self):
         import core.summarisation.content_judge as cj_reexport
         import core.summarisation.content_judge_impl as cj_impl
+
         cj_reexport._runtime_state.warned_embedding_disabled = True
         assert cj_impl._runtime_state.warned_embedding_disabled is True
         cj_reexport._runtime_state.reset()
@@ -71,6 +78,7 @@ class TestPatchPropagation:
     def test_content_judge_warned_semantic_fallback_propagates(self):
         import core.summarisation.content_judge as cj_reexport
         import core.summarisation.content_judge_impl as cj_impl
+
         cj_reexport._runtime_state.warned_semantic_fallback = True
         assert cj_impl._runtime_state.warned_semantic_fallback is True
         cj_reexport._runtime_state.reset()
@@ -78,6 +86,7 @@ class TestPatchPropagation:
     def test_text_preprocessor_spacy_nlp_propagates(self):
         import core.summarisation.text_preprocessor as tp_reexport
         import core.summarisation.text_preprocessor_impl as tp_impl
+
         _sentinel = object()
         tp_reexport._runtime_state.spacy_nlp = _sentinel
         assert tp_impl._runtime_state.spacy_nlp is _sentinel
@@ -86,6 +95,7 @@ class TestPatchPropagation:
     def test_text_preprocessor_warned_no_embed_model_propagates(self):
         import core.summarisation.text_preprocessor as tp_reexport
         import core.summarisation.text_preprocessor_impl as tp_impl
+
         tp_reexport._runtime_state.warned_no_embed_model = True
         assert tp_impl._runtime_state.warned_no_embed_model is True
         tp_reexport._runtime_state.reset()
@@ -93,6 +103,7 @@ class TestPatchPropagation:
     def test_llm_provider_keep_alive_cache_propagates(self):
         import core.llm.llm_provider as lp_reexport
         import core.llm.llm_provider_impl as lp_impl
+
         lp_reexport._runtime_state.keep_alive_cache = "45m"
         assert lp_impl._runtime_state.keep_alive_cache == "45m"
         lp_reexport._runtime_state.reset()
@@ -102,12 +113,14 @@ class TestPatchPropagation:
 # 3. Patches via the impl module propagate to the re-export module (symmetric)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPatchPropagationReverse:
     """Symmetric: patches via the impl module propagate to the re-export."""
 
     def test_impl_to_reexport_propagation(self):
         import core.summarisation.content_judge as cj_reexport
         import core.summarisation.content_judge_impl as cj_impl
+
         cj_impl._runtime_state.warned_embedding_disabled = True
         assert cj_reexport._runtime_state.warned_embedding_disabled is True
         cj_impl._runtime_state.reset()
@@ -117,11 +130,13 @@ class TestPatchPropagationReverse:
 # 4. The reset() method clears all 5 singletons
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestStateReset:
     """The reset() method restores all 5 singletons to defaults."""
 
     def test_reset_clears_all_singletons(self):
         from core.summarisation._runtime_state import state
+
         # Pollute all 5
         state.warned_embedding_disabled = True
         state.warned_semantic_fallback = True
@@ -146,6 +161,7 @@ class TestStateReset:
 # 5. Autouse fixture: reset state before each test (prevents cross-test pollution)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.fixture(autouse=True)
 def _reset_runtime_state():
     """Reset the shared runtime state before each test.
@@ -156,6 +172,7 @@ def _reset_runtime_state():
     test_embedder_optional.py (which manually reset 2 of these 5).
     """
     from core.summarisation._runtime_state import state
+
     state.reset()
     yield
     state.reset()

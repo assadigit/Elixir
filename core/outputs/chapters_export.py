@@ -56,12 +56,14 @@ FILE FORMAT
 
     - ...
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 from core.models import SummaryResult
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -161,10 +163,7 @@ def read_chapters_md(path: Path) -> tuple[str, list[SummaryResult]]:
     matches = list(chapter_pattern.finditer(text))
 
     # Filter out "Table of Contents" heading
-    chapter_starts = [
-        m for m in matches
-        if m.group(1).strip().lower() != "table of contents"
-    ]
+    chapter_starts = [m for m in matches if m.group(1).strip().lower() != "table of contents"]
 
     if not chapter_starts:
         # Fallback: no chapter structure found — treat whole file as 1 chapter
@@ -175,13 +174,15 @@ def read_chapters_md(path: Path) -> tuple[str, list[SummaryResult]]:
                 "Expected format: # Title, ## Chapter, ### Executive Summary, "
                 "### Bullet Points."
             )
-        return book_title, [SummaryResult(
-            chapter_heading=book_title,
-            executive_summary="",
-            thorough_summary="",
-            bullet_points=bullets,
-            success=True,
-        )]
+        return book_title, [
+            SummaryResult(
+                chapter_heading=book_title,
+                executive_summary="",
+                thorough_summary="",
+                bullet_points=bullets,
+                success=True,
+            )
+        ]
 
     summaries: list[SummaryResult] = []
     for i, match in enumerate(chapter_starts):
@@ -202,13 +203,15 @@ def read_chapters_md(path: Path) -> tuple[str, list[SummaryResult]]:
             # Skip empty sections
             continue
 
-        summaries.append(SummaryResult(
-            chapter_heading=heading,
-            executive_summary=exec_summary,
-            thorough_summary="",
-            bullet_points=bullets,
-            success=True,
-        ))
+        summaries.append(
+            SummaryResult(
+                chapter_heading=heading,
+                executive_summary=exec_summary,
+                thorough_summary="",
+                bullet_points=bullets,
+                success=True,
+            )
+        )
 
     if not summaries:
         raise ValueError("No valid chapter sections with content found.")

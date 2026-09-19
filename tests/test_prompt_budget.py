@@ -10,6 +10,7 @@ Covers:
 7. diagnostics: compaction_count, tokens_saved, summary()
 8. edge cases: empty text, tiny budget, tail-only reduction
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -117,7 +118,9 @@ class TestCompact:
         # head=0.5 would be 5000 chars (1250 tokens) — way over.
         # Tail + head must be reduced to fit 90 tokens.
         compacted_tokens = estimate_tokens(compacted)
-        assert compacted_tokens <= 90 + 50, f"compacted is {compacted_tokens} tokens (target ~90)"  # within tolerance
+        assert compacted_tokens <= 90 + 50, (
+            f"compacted is {compacted_tokens} tokens (target ~90)"
+        )  # within tolerance
 
 
 class TestAllocate:

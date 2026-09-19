@@ -37,6 +37,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -46,41 +47,225 @@ from utils.atomic_io import atomic_write_text
 logger = logging.getLogger(__name__)
 
 _WIN_RESERVED = {
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
 }
 
 # Domain-term hints — words likely to be meaningful concepts in non-fiction.
 # Used to bias tag extraction toward substance rather than stop-words.
 _DOMAIN_HINTS = {
-    "strategy", "leadership", "marketing", "branding", "psychology",
-    "philosophy", "stoicism", "management", "innovation", "creativity",
-    "negotiation", "persuasion", "habit", "mindset", "growth", "value",
-    "trust", "risk", "decision", "system", "framework", "model", "principle",
-    "bias", "heuristic", "cognitive", "behaviour", "behavior", "culture",
-    "change", "influence", "network", "feedback", "loop", "leverage",
-    "narrative", "storytelling", "audience", "customer", "product", "design",
-    "data", "evidence", "research", "theory", "method", "practice", "skill",
-    "goal", "outcome", "process", "structure", "pattern", "tradeoff",
+    "strategy",
+    "leadership",
+    "marketing",
+    "branding",
+    "psychology",
+    "philosophy",
+    "stoicism",
+    "management",
+    "innovation",
+    "creativity",
+    "negotiation",
+    "persuasion",
+    "habit",
+    "mindset",
+    "growth",
+    "value",
+    "trust",
+    "risk",
+    "decision",
+    "system",
+    "framework",
+    "model",
+    "principle",
+    "bias",
+    "heuristic",
+    "cognitive",
+    "behaviour",
+    "behavior",
+    "culture",
+    "change",
+    "influence",
+    "network",
+    "feedback",
+    "loop",
+    "leverage",
+    "narrative",
+    "storytelling",
+    "audience",
+    "customer",
+    "product",
+    "design",
+    "data",
+    "evidence",
+    "research",
+    "theory",
+    "method",
+    "practice",
+    "skill",
+    "goal",
+    "outcome",
+    "process",
+    "structure",
+    "pattern",
+    "tradeoff",
 }
 
 # Words too common to be useful as standalone tags.
 _STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for",
-    "with", "without", "is", "are", "was", "were", "be", "been", "being",
-    "this", "that", "these", "those", "it", "its", "as", "at", "by", "from",
-    "into", "about", "than", "then", "so", "if", "when", "how", "what", "why",
-    "who", "which", "you", "your", "we", "our", "they", "their", "he", "she",
-    "his", "her", "not", "no", "yes", "can", "could", "should", "would",
-    "will", "may", "might", "must", "do", "does", "did", "have", "has", "had",
-    "more", "most", "less", "least", "very", "much", "many", "some", "any",
-    "all", "each", "every", "other", "another", "such", "same", "own", "new",
-    "old", "first", "last", "next", "one", "two", "three", "also", "only",
-    "just", "even", "still", "well", "too", "here", "there", "now", "because", "while", "during", "before", "after", "through", "between",
-    "among", "against", "upon", "within", "around", "them",
-    "make", "makes", "made", "use", "used", "using", "get", "got", "like",
-    "way", "ways", "thing", "things", "people", "person", "time", "times",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "with",
+    "without",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "as",
+    "at",
+    "by",
+    "from",
+    "into",
+    "about",
+    "than",
+    "then",
+    "so",
+    "if",
+    "when",
+    "how",
+    "what",
+    "why",
+    "who",
+    "which",
+    "you",
+    "your",
+    "we",
+    "our",
+    "they",
+    "their",
+    "he",
+    "she",
+    "his",
+    "her",
+    "not",
+    "no",
+    "yes",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "may",
+    "might",
+    "must",
+    "do",
+    "does",
+    "did",
+    "have",
+    "has",
+    "had",
+    "more",
+    "most",
+    "less",
+    "least",
+    "very",
+    "much",
+    "many",
+    "some",
+    "any",
+    "all",
+    "each",
+    "every",
+    "other",
+    "another",
+    "such",
+    "same",
+    "own",
+    "new",
+    "old",
+    "first",
+    "last",
+    "next",
+    "one",
+    "two",
+    "three",
+    "also",
+    "only",
+    "just",
+    "even",
+    "still",
+    "well",
+    "too",
+    "here",
+    "there",
+    "now",
+    "because",
+    "while",
+    "during",
+    "before",
+    "after",
+    "through",
+    "between",
+    "among",
+    "against",
+    "upon",
+    "within",
+    "around",
+    "them",
+    "make",
+    "makes",
+    "made",
+    "use",
+    "used",
+    "using",
+    "get",
+    "got",
+    "like",
+    "way",
+    "ways",
+    "thing",
+    "things",
+    "people",
+    "person",
+    "time",
+    "times",
 }
 
 
@@ -130,8 +315,12 @@ def _extract_tags_from_heading(heading: str) -> list[str]:
     if not heading:
         return []
     # Strip common leading numbering: "1. ", "Chapter 3: ", "Part II — "
-    h = re.sub(r"^(chapter|part|section|appendix)\s+[ivxlcdm0-9]+[:.\-\s]*",
-               "", heading, flags=re.IGNORECASE)
+    h = re.sub(
+        r"^(chapter|part|section|appendix)\s+[ivxlcdm0-9]+[:.\-\s]*",
+        "",
+        heading,
+        flags=re.IGNORECASE,
+    )
     h = re.sub(r"^\d+([.\-]\d+)*\s*", "", h)
     tokens = re.findall(r"[A-Za-z][A-Za-z\-']{2,}", h)
     tags: list[str] = []
@@ -189,9 +378,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
             self.log("  ℹ️ Obsidian KB: No chapter summaries to index.", "INFO")
             return None
 
-        self.log(
-            f"  🗂️  Building Obsidian KB from {len(chapters)} chapters…", "INFO"
-        )
+        self.log(f"  🗂️  Building Obsidian KB from {len(chapters)} chapters…", "INFO")
 
         # ── Prepare the vault folder ──────────────────────────────────────
         safe_book = _sanitize_filename(book_title, max_len=50)
@@ -199,8 +386,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         try:
             vault_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            self.log(f"  ⚠️ Obsidian KB: cannot create folder {vault_dir}: {e}",
-                     "WARNING")
+            self.log(f"  ⚠️ Obsidian KB: cannot create folder {vault_dir}: {e}", "WARNING")
             return None
 
         today = date.today().isoformat()
@@ -243,9 +429,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         concepts = _extract_concepts_from_bullets(all_bullets)
 
         # ── Optional LLM cross-chapter synthesis ──────────────────────────
-        synthesis, llm_tags = self._llm_synthesis(
-            chapters, book_title, all_bullets
-        )
+        synthesis, llm_tags = self._llm_synthesis(chapters, book_title, all_bullets)
 
         # ── Write the MOC index note ──────────────────────────────────────
         index_path = self._write_index_note(
@@ -262,8 +446,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         )
 
         self.log(
-            f"  ✅ Obsidian KB saved to: {vault_dir} "
-            f"({len(chapter_link_map)} notes + index)",
+            f"  ✅ Obsidian KB saved to: {vault_dir} ({len(chapter_link_map)} notes + index)",
             "SUCCESS",
         )
         return index_path
@@ -302,9 +485,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         lines: list[str] = []
         lines.append(f"# {heading}")
         lines.append("")
-        lines.append(
-            f"> Part of **[[{_sanitize_filename(book_title, 50)}|{book_title}]]**."
-        )
+        lines.append(f"> Part of **[[{_sanitize_filename(book_title, 50)}|{book_title}]]**.")
         lines.append("")
 
         if summary.executive_summary:
@@ -356,9 +537,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         Returns (synthesis_text, tag_list). On any failure, returns a
         deterministic fallback so the MOC is never empty.
         """
-        headings = "\n".join(
-            f"- {s.chapter_heading}" for s in chapters[:30] if s.chapter_heading
-        )
+        headings = "\n".join(f"- {s.chapter_heading}" for s in chapters[:30] if s.chapter_heading)
         bullets_sample = "\n".join(f"- {bp}" for bp in all_bullets[:30])
 
         prompt = self.prompt_manager.render_template(
@@ -382,10 +561,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
                     synthesis = line.split(":", 1)[1].strip()
                 elif line.lower().startswith("tags:"):
                     raw = line.split(":", 1)[1].strip()
-                    tags = [
-                        re.sub(r"[^a-z0-9_]", "", t.lower()).strip()
-                        for t in raw.split(",")
-                    ]
+                    tags = [re.sub(r"[^a-z0-9_]", "", t.lower()).strip() for t in raw.split(",")]
                     tags = [t for t in tags if t][:10]
 
         if not synthesis:
@@ -431,7 +607,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
 
         # Merge tag sources, de-duplicated, preserving order.
         merged_tags: list[str] = [f"book/{book_tag}", "type/moc"]
-        seen = {t for t in merged_tags}
+        seen = set(merged_tags)
         for t in llm_tags + heading_tags:
             if t and t not in seen:
                 merged_tags.append(t)
@@ -453,8 +629,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         lines: list[str] = []
         lines.append(f"# {book_title}")
         lines.append("")
-        lines.append(f"> Map of Content · {chapter_count} chapters · "
-                     f"generated {today}")
+        lines.append(f"> Map of Content · {chapter_count} chapters · generated {today}")
         lines.append("")
         lines.append("## Synthesis")
         lines.append("")
@@ -483,8 +658,7 @@ class ObsidianKBGenerator(OutputGeneratorBase):
         lines.append("## Tags")
         lines.append("")
         tag_inline = " ".join(
-            f"#{t}" for t in merged_tags
-            if not t.startswith("book/") and not t.startswith("type/")
+            f"#{t}" for t in merged_tags if not t.startswith("book/") and not t.startswith("type/")
         )
         lines.append(tag_inline if tag_inline else f"#{book_tag}")
         lines.append("")

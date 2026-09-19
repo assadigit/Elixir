@@ -13,6 +13,7 @@ an explicit import — transitive stdlib leakage (``logging``/``re``/
 All existing imports ``from core.summarisation.postchecks import X`` continue
 to work unchanged.
 """
+
 from __future__ import annotations
 
 import logging
@@ -155,13 +156,14 @@ def run_post_checks(
     # omitted, so existing direct callers/tests keep working).
     _src_lower_full: str = source_text.lower() if source_text else ""
     _src_lower: str = _src_lower_full[:200000] if source_text else ""
-    _src_words: set = set(re.findall(r'\b[a-z]+\b', _src_lower_full)) if source_text else set()
+    _src_words: set = set(re.findall(r"\b[a-z]+\b", _src_lower_full)) if source_text else set()
 
     # Lazy: extract source authors only once, if we have source text.
     source_authors: list[str] | None = None
     if source_text:
         try:
             from core.preprocessing.deterministic_analyzer import extract_citations
+
             cites = extract_citations(source_text)
             # De-dup, preserve order, surnames only (first capitalized token).
             seen: set = set()
@@ -171,7 +173,7 @@ def run_post_checks(
                 if not a or len(a) < 3:
                     continue
                 # Take the surname (last token) for matching — handles
-# "First Middle Last" → "Last".
+                # "First Middle Last" → "Last".
                 surname = a.split()[-1] if " " in a else a
                 key = surname.casefold()
                 if key in seen:
@@ -188,7 +190,8 @@ def run_post_checks(
             logger.warning(
                 "postcheck: source-author extraction failed — year/attribution/"
                 "pronoun detectors degrade to source-text-only mode: %s: %s",
-                type(e).__name__, e,
+                type(e).__name__,
+                e,
             )
             source_authors = None  # degrade to range-only year check
 
@@ -199,24 +202,36 @@ def run_post_checks(
         label = f"bullet[{i}]"
         bp_str, leak1 = detect_prompt_leakage(bp_str, label)
         bp_str, space1 = detect_missing_spaces(
-            bp_str, label, source_text or "",
-            source_lower=_src_lower_full, source_words=_src_words,
+            bp_str,
+            label,
+            source_text or "",
+            source_lower=_src_lower_full,
+            source_words=_src_words,
         )
         # Re-run prompt-leakage once more — missing-space split can expose
         # a leakage phrase that was hidden inside a merged token.
         bp_str, leak2 = detect_prompt_leakage(bp_str, label)
         # V18.2.17 Fix 5: interpretive-leap strip/flag (source-aware).
-        bp_str, interp = detect_interpretive_leaps(bp_str, label, source_text, source_lower=_src_lower)
+        bp_str, interp = detect_interpretive_leaps(
+            bp_str, label, source_text, source_lower=_src_lower
+        )
         # V18.2.19 Improvement 1: extra-space detector (auto-fixes split words).
         bp_str, extra_space = detect_extra_spaces(
-            bp_str, label, source_text or "",
-            source_lower=_src_lower_full, source_words=_src_words,
+            bp_str,
+            label,
+            source_text or "",
+            source_lower=_src_lower_full,
+            source_words=_src_words,
         )
-        _, garbled_issues = detect_garbled_tokens(bp_str, label, source_text or "", source_words=_src_words)
+        _, garbled_issues = detect_garbled_tokens(
+            bp_str, label, source_text or "", source_words=_src_words
+        )
         # V18.2.18 Improvement 2: grammatical coherence (catches broken bullets).
         _, grammar_issues = detect_grammatical_incoherence(bp_str, label)
         # V18.2.19 Improvement 2: word-fragment merge (flag-only).
-        _, fragment_issues = detect_word_fragment_merge(bp_str, label, source_text or "", source_words=_src_words)
+        _, fragment_issues = detect_word_fragment_merge(
+            bp_str, label, source_text or "", source_words=_src_words
+        )
         # V18.20.2.0 (SWOT A19): dropped-letter garble detector on BULLETS.
         # The V18.19.2.3 detector ran on exec (:221) and thorough (:277) only —
         # the exact "emergs"→"emerges" single-word garble class it was built
@@ -228,29 +243,68 @@ def run_post_checks(
         # bullet and the thorough of the V18.20.3.3 run). Ambiguous garbles
         # remain flag-only.
         bp_str, dropped_issues = detect_dropped_letter_garble(
-            bp_str, label, source_text or "", source_words=_src_words,
+            bp_str,
+            label,
+            source_text or "",
+            source_words=_src_words,
             auto_repair=auto_repair_garble,
         )
         _, year_issues = validate_years(bp_str, label, source_authors)
         # V18.2.17 Fix 7: attribution verification (source-aware).
-        _, attrib_issues = verify_attribution(bp_str, source_text or "", label, source_authors, source_lower=_src_lower) if source_text else (None, [])
+        _, attrib_issues = (
+            verify_attribution(
+                bp_str, source_text or "", label, source_authors, source_lower=_src_lower
+            )
+            if source_text
+            else (None, [])
+        )
         # V18.2.18 Improvement 1: bold-name attribution check (catches
         # **Author**: claim format that verify_attribution misses).
-        _, bold_attrib = verify_bold_name_attribution(bp_str, source_text or "", label, source_authors, source_lower=_src_lower) if source_text else (None, [])
+        _, bold_attrib = (
+            verify_bold_name_attribution(
+                bp_str, source_text or "", label, source_authors, source_lower=_src_lower
+            )
+            if source_text
+            else (None, [])
+        )
         # V18.20.3.0 (Audit FLAG-01): subject-swap attribution check — catches
         # "X's work provides …" bullets where the source attributes the same
         # claim to a different subject and X is only a parenthetical citation
-# (the cited-vs-holder class — invisible to overlap + embedding judges).
-        _, swap_attrib = detect_attribution_subject_swap(bp_str, source_text or "", label, source_authors, source_lower=_src_lower) if source_text else (None, [])
+        # (the cited-vs-holder class — invisible to overlap + embedding judges).
+        _, swap_attrib = (
+            detect_attribution_subject_swap(
+                bp_str, source_text or "", label, source_authors, source_lower=_src_lower
+            )
+            if source_text
+            else (None, [])
+        )
         # V18.2.17 Fix 8: consistency check (source-aware).
-        _, consist_issues = detect_inconsistency(bp_str, source_text or "", label, source_lower=_src_lower) if source_text else (None, [])
+        _, consist_issues = (
+            detect_inconsistency(bp_str, source_text or "", label, source_lower=_src_lower)
+            if source_text
+            else (None, [])
+        )
         # V18.2.19 Improvement 3: pronoun mismatch check (source-aware).
         # V18.20.3.1 (D2): source_authors gate passed — non-cited "authors"
         # (ordinary nouns like 'views'/'fails') no longer produce flags.
-        _, pronoun_issues = detect_pronoun_mismatch(bp_str, source_text or "", label, source_lower=_src_lower, source_authors=source_authors) if source_text else (None, [])
+        _, pronoun_issues = (
+            detect_pronoun_mismatch(
+                bp_str,
+                source_text or "",
+                label,
+                source_lower=_src_lower,
+                source_authors=source_authors,
+            )
+            if source_text
+            else (None, [])
+        )
         # V18.2.28 (regression fix): dropped-digit year check (source-aware).
-# Catches "Author (181)" when the source says "Author (1981)".
-        bp_str, year_digit_issues = detect_dropped_digit_years(bp_str, source_text or "", label) if source_text else (bp_str, [])
+        # Catches "Author (181)" when the source says "Author (1981)".
+        bp_str, year_digit_issues = (
+            detect_dropped_digit_years(bp_str, source_text or "", label)
+            if source_text
+            else (bp_str, [])
+        )
         # V18.15.5.0 (DEBT-07 / Known Issue #3): re-run is_truncated on the
         # FINAL bullet (post-consolidation). Pre-V18.15.5.0, is_truncated ran
         # only PRE-consolidation (via classify_bullets at post_processing.py:398,
@@ -270,17 +324,19 @@ def run_post_checks(
         # punctuate your way out of a cut sentence.
         trunc_issues: list = []
         if bp_str.strip() and is_truncated(bp_str):
-            trunc_issues = [Issue(
-                detector="truncated",
-                severity="fix",
-                field=label,
-                snippet=bp_str[:60],
-                detail=(
-                    "dropped truncated bullet (unmatched quote/paren, no "
-                    "terminal punctuation, or dangling function-word tail) — "
-                    "an unverifiable cut claim"
-                ),
-            )]
+            trunc_issues = [
+                Issue(
+                    detector="truncated",
+                    severity="fix",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "dropped truncated bullet (unmatched quote/paren, no "
+                        "terminal punctuation, or dangling function-word tail) — "
+                        "an unverifiable cut claim"
+                    ),
+                )
+            ]
         # Collect ALL issues so the report fully accounts for every fix/flag.
         report.issues.extend(leak1)
         report.issues.extend(space1)
@@ -306,26 +362,34 @@ def run_post_checks(
         # is NEVER summary content — drop it outright (severity=fix records
         # the drop in the quality report).
         if bp_str.strip() and SELF_TALK_PATTERNS.search(bp_str):
-            report.issues.append(Issue(
-                detector="self_talk", severity="fix", field=label,
-                snippet=bp_str[:60],
-                detail=(
-                    "dropped model self-talk bullet (include this! / let me "
-                    "add / be more specific / the source says / looking at "
-                    "the text) — CoT planning note, not summary content"
-                ),
-            ))
+            report.issues.append(
+                Issue(
+                    detector="self_talk",
+                    severity="fix",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "dropped model self-talk bullet (include this! / let me "
+                        "add / be more specific / the source says / looking at "
+                        "the text) — CoT planning note, not summary content"
+                    ),
+                )
+            )
             continue
         # V18.20.3.2 (audit N5 / P1-c): ship-time citation-only drop.
         if bp_str.strip() and is_citation_only_fragment(bp_str):
-            report.issues.append(Issue(
-                detector="citation_only", severity="fix", field=label,
-                snippet=bp_str[:60],
-                detail=(
-                    "dropped citation-only fragment (no predicate, <8 "
-                    "content words after citation strip) — carries no claim"
-                ),
-            ))
+            report.issues.append(
+                Issue(
+                    detector="citation_only",
+                    severity="fix",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "dropped citation-only fragment (no predicate, <8 "
+                        "content words after citation strip) — carries no claim"
+                    ),
+                )
+            )
             continue
         # V18.20.3.2 (audit N4 / P1-a): PRE-SHIP parenthetical-promotion
         # veto. Upgrades the D3 subject-swap class from flag-only to a real
@@ -336,22 +400,27 @@ def run_post_checks(
         # by construction), so it must not ship.
         if source_text and bp_str.strip():
             _promo = detect_parenthetical_promotion(
-                bp_str, source_text, source_authors,
+                bp_str,
+                source_text,
+                source_authors,
             )
             if _promo:
                 _claimed, _real = _promo
-                report.issues.append(Issue(
-                    detector="parenthetical_promotion", severity="fix",
-                    field=label,
-                    snippet=bp_str[:60],
-                    detail=(
-                        f"dropped misattributed bullet: '{_claimed}' is "
-                        f"credited with a claim the source attributes to "
-                        f"'{_real}' ('{_claimed}' appears there only as a "
-                        f"citation/list item). Verified via the generation-"
-                        f"time active-subject veto."
-                    ),
-                ))
+                report.issues.append(
+                    Issue(
+                        detector="parenthetical_promotion",
+                        severity="fix",
+                        field=label,
+                        snippet=bp_str[:60],
+                        detail=(
+                            f"dropped misattributed bullet: '{_claimed}' is "
+                            f"credited with a claim the source attributes to "
+                            f"'{_real}' ('{_claimed}' appears there only as a "
+                            f"citation/list item). Verified via the generation-"
+                            f"time active-subject veto."
+                        ),
+                    )
+                )
                 continue
         # V18.20.3.4 (RC-3, audit v182033): ENFORCED truncation drop. The
         # flag was recorded above; a bullet whose claim is cut mid-sentence
@@ -369,7 +438,7 @@ def run_post_checks(
         # injection). The five scar classes: checklist stubs ("Two
         # directions - covered"), summary self-assessment ("a topic the
         # summary omits entirely"), truncation markers ("(text cuts off)"),
-# bare terminal ellipsis, and verbless label stubs ("Author five
+        # bare terminal ellipsis, and verbless label stubs ("Author five
         # categories"). None of these is ever summary content; all 8
         # defective bullets in the V18.20.3.3 Key Takeaways fall in these
         # classes (F1-F6; F7 is repaired by the dropped-letter auto-fix;
@@ -399,20 +468,30 @@ def run_post_checks(
                         "names a topic but carries no claim"
                     ),
                 }.get(_scar, f"dropped process-scar bullet ({_scar})")
-                report.issues.append(Issue(
-                    detector=f"scar_{_scar}", severity="fix", field=label,
-                    snippet=bp_str[:60], detail=_scar_detail,
-                ))
+                report.issues.append(
+                    Issue(
+                        detector=f"scar_{_scar}",
+                        severity="fix",
+                        field=label,
+                        snippet=bp_str[:60],
+                        detail=_scar_detail,
+                    )
+                )
                 continue
         # Drop the bullet if it became empty after leakage stripping
         # (the entire bullet was a CoT leak with no content).
         if bp_str.strip():
             cleaned_bullets.append(bp_str)
         else:
-            report.add(Issue(
-                detector="prompt", severity="fix", field=label,
-                snippet="(empty after leakage strip)", detail="dropped empty bullet",
-            ))
+            report.add(
+                Issue(
+                    detector="prompt",
+                    severity="fix",
+                    field=label,
+                    snippet="(empty after leakage strip)",
+                    detail="dropped empty bullet",
+                )
+            )
     report.bullets = cleaned_bullets
 
     # ── Executive summary ────────────────────────────────────────────────
@@ -426,38 +505,90 @@ def run_post_checks(
     exec_str, exec_cot = detect_cot_narrative(exec_str, "exec")
     exec_str, exec_leak1 = detect_prompt_leakage(exec_str, "exec")
     exec_str, exec_space = detect_missing_spaces(
-        exec_str, "exec", source_text or "",
-        source_lower=_src_lower_full, source_words=_src_words,
+        exec_str,
+        "exec",
+        source_text or "",
+        source_lower=_src_lower_full,
+        source_words=_src_words,
     )
     exec_str, exec_leak2 = detect_prompt_leakage(exec_str, "exec")
     # V18.2.17 Fix 5: interpretive-leap strip/flag.
-    exec_str, exec_interp = detect_interpretive_leaps(exec_str, "exec", source_text, source_lower=_src_lower)
+    exec_str, exec_interp = detect_interpretive_leaps(
+        exec_str, "exec", source_text, source_lower=_src_lower
+    )
     # V18.2.19 Improvement 1: extra-space detector.
     exec_str, exec_extra = detect_extra_spaces(
-        exec_str, "exec", source_text or "",
-        source_lower=_src_lower_full, source_words=_src_words,
+        exec_str,
+        "exec",
+        source_text or "",
+        source_lower=_src_lower_full,
+        source_words=_src_words,
     )
-    _, exec_garbled = detect_garbled_tokens(exec_str, "exec", source_text or "", source_words=_src_words)
+    _, exec_garbled = detect_garbled_tokens(
+        exec_str, "exec", source_text or "", source_words=_src_words
+    )
     # V18.2.18 Improvement 2: grammatical coherence.
     _, exec_grammar = detect_grammatical_incoherence(exec_str, "exec")
     # V18.2.19 Improvement 2: word-fragment merge.
-    _, exec_fragment = detect_word_fragment_merge(exec_str, "exec", source_text or "", source_words=_src_words)
-    exec_str, exec_dropped = detect_dropped_letter_garble(exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble)  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    _, exec_fragment = detect_word_fragment_merge(
+        exec_str, "exec", source_text or "", source_words=_src_words
+    )
+    exec_str, exec_dropped = detect_dropped_letter_garble(
+        exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble
+    )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
     _, exec_year = validate_years(exec_str, "exec", source_authors)
     # V18.2.17 Fix 7: attribution verification.
-    _, exec_attrib = verify_attribution(exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, exec_attrib = (
+        verify_attribution(
+            exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.18 Improvement 1: bold-name attribution check.
-    _, exec_bold = verify_bold_name_attribution(exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, exec_bold = (
+        verify_bold_name_attribution(
+            exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.20.3.0 (Audit FLAG-01): subject-swap attribution check.
-    _, exec_swap = detect_attribution_subject_swap(exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, exec_swap = (
+        detect_attribution_subject_swap(
+            exec_str, source_text or "", "exec", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.17 Fix 6: hedge-loss check.
-    _, exec_hedge = detect_hedge_loss(exec_str, source_text or "", "exec") if source_text else (None, [])
+    _, exec_hedge = (
+        detect_hedge_loss(exec_str, source_text or "", "exec") if source_text else (None, [])
+    )
     # V18.2.17 Fix 8: consistency check.
-    _, exec_consist = detect_inconsistency(exec_str, source_text or "", "exec", source_lower=_src_lower) if source_text else (None, [])
+    _, exec_consist = (
+        detect_inconsistency(exec_str, source_text or "", "exec", source_lower=_src_lower)
+        if source_text
+        else (None, [])
+    )
     # V18.2.19 Improvement 3: pronoun mismatch.
-    _, exec_pronoun = detect_pronoun_mismatch(exec_str, source_text or "", "exec", source_lower=_src_lower, source_authors=source_authors) if source_text else (None, [])
+    _, exec_pronoun = (
+        detect_pronoun_mismatch(
+            exec_str,
+            source_text or "",
+            "exec",
+            source_lower=_src_lower,
+            source_authors=source_authors,
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.28 (regression fix): dropped-digit year check for exec summary.
-    exec_str, exec_year_digit = detect_dropped_digit_years(exec_str, source_text or "", "exec") if source_text else (exec_str, [])
+    exec_str, exec_year_digit = (
+        detect_dropped_digit_years(exec_str, source_text or "", "exec")
+        if source_text
+        else (exec_str, [])
+    )
     report.issues.extend(exec_cot)  # V18.16.0.1 (Fix 2): CoT-narrative detector for exec
     report.issues.extend(exec_leak1)
     report.issues.extend(exec_space)
@@ -491,38 +622,94 @@ def run_post_checks(
     tho_str, tho_cot = detect_cot_narrative(tho_str, "thorough")
     tho_str, tho_leak1 = detect_prompt_leakage(tho_str, "thorough")
     tho_str, tho_space = detect_missing_spaces(
-        tho_str, "thorough", source_text or "",
-        source_lower=_src_lower_full, source_words=_src_words,
+        tho_str,
+        "thorough",
+        source_text or "",
+        source_lower=_src_lower_full,
+        source_words=_src_words,
     )
     tho_str, tho_leak2 = detect_prompt_leakage(tho_str, "thorough")
     # V18.2.17 Fix 5: interpretive-leap strip/flag.
-    tho_str, tho_interp = detect_interpretive_leaps(tho_str, "thorough", source_text, source_lower=_src_lower)
+    tho_str, tho_interp = detect_interpretive_leaps(
+        tho_str, "thorough", source_text, source_lower=_src_lower
+    )
     # V18.2.19 Improvement 1: extra-space detector.
     tho_str, tho_extra = detect_extra_spaces(
-        tho_str, "thorough", source_text or "",
-        source_lower=_src_lower_full, source_words=_src_words,
+        tho_str,
+        "thorough",
+        source_text or "",
+        source_lower=_src_lower_full,
+        source_words=_src_words,
     )
-    _, tho_garbled = detect_garbled_tokens(tho_str, "thorough", source_text or "", source_words=_src_words)
+    _, tho_garbled = detect_garbled_tokens(
+        tho_str, "thorough", source_text or "", source_words=_src_words
+    )
     # V18.2.18 Improvement 2: grammatical coherence.
     _, tho_grammar = detect_grammatical_incoherence(tho_str, "thorough")
     # V18.2.19 Improvement 2: word-fragment merge.
-    _, tho_fragment = detect_word_fragment_merge(tho_str, "thorough", source_text or "", source_words=_src_words)
-    tho_str, tho_dropped = detect_dropped_letter_garble(tho_str, "thorough", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble)  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    _, tho_fragment = detect_word_fragment_merge(
+        tho_str, "thorough", source_text or "", source_words=_src_words
+    )
+    tho_str, tho_dropped = detect_dropped_letter_garble(
+        tho_str,
+        "thorough",
+        source_text or "",
+        source_words=_src_words,
+        auto_repair=auto_repair_garble,
+    )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
     _, tho_year = validate_years(tho_str, "thorough", source_authors)
     # V18.2.17 Fix 7: attribution verification.
-    _, tho_attrib = verify_attribution(tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, tho_attrib = (
+        verify_attribution(
+            tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.18 Improvement 1: bold-name attribution check.
-    _, tho_bold = verify_bold_name_attribution(tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, tho_bold = (
+        verify_bold_name_attribution(
+            tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.20.3.0 (Audit FLAG-01): subject-swap attribution check.
-    _, tho_swap = detect_attribution_subject_swap(tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower) if source_text else (None, [])
+    _, tho_swap = (
+        detect_attribution_subject_swap(
+            tho_str, source_text or "", "thorough", source_authors, source_lower=_src_lower
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.17 Fix 6: hedge-loss check.
-    _, tho_hedge = detect_hedge_loss(tho_str, source_text or "", "thorough") if source_text else (None, [])
+    _, tho_hedge = (
+        detect_hedge_loss(tho_str, source_text or "", "thorough") if source_text else (None, [])
+    )
     # V18.2.17 Fix 8: consistency check.
-    _, tho_consist = detect_inconsistency(tho_str, source_text or "", "thorough", source_lower=_src_lower) if source_text else (None, [])
+    _, tho_consist = (
+        detect_inconsistency(tho_str, source_text or "", "thorough", source_lower=_src_lower)
+        if source_text
+        else (None, [])
+    )
     # V18.2.19 Improvement 3: pronoun mismatch.
-    _, tho_pronoun = detect_pronoun_mismatch(tho_str, source_text or "", "thorough", source_lower=_src_lower, source_authors=source_authors) if source_text else (None, [])
+    _, tho_pronoun = (
+        detect_pronoun_mismatch(
+            tho_str,
+            source_text or "",
+            "thorough",
+            source_lower=_src_lower,
+            source_authors=source_authors,
+        )
+        if source_text
+        else (None, [])
+    )
     # V18.2.28 (regression fix): dropped-digit year check for thorough summary.
-    tho_str, tho_year_digit = detect_dropped_digit_years(tho_str, source_text or "", "thorough") if source_text else (tho_str, [])
+    tho_str, tho_year_digit = (
+        detect_dropped_digit_years(tho_str, source_text or "", "thorough")
+        if source_text
+        else (tho_str, [])
+    )
     report.issues.extend(tho_cot)  # V18.15.7.0 (Fix 1): CoT-narrative detector
     report.issues.extend(tho_leak1)
     report.issues.extend(tho_space)
@@ -561,13 +748,19 @@ def run_post_checks(
         # Run the same auto-fixing detectors as exec/thorough
         _sec, _sec_leak = detect_prompt_leakage(_sec, _section_name)
         _sec, _sec_space = detect_missing_spaces(
-            _sec, _section_name, source_text or "",
-            source_lower=_src_lower_full, source_words=_src_words,
+            _sec,
+            _section_name,
+            source_text or "",
+            source_lower=_src_lower_full,
+            source_words=_src_words,
         )
         _sec, _sec_leak2 = detect_prompt_leakage(_sec, _section_name)
         _sec, _sec_extra = detect_extra_spaces(
-            _sec, _section_name, source_text or "",
-            source_lower=_src_lower_full, source_words=_src_words,
+            _sec,
+            _section_name,
+            source_text or "",
+            source_lower=_src_lower_full,
+            source_words=_src_words,
         )
         report.issues.extend(_sec_leak)
         report.issues.extend(_sec_space)
@@ -576,33 +769,35 @@ def run_post_checks(
         # V18.15.3.4: Truncation check on each line of the section.
         # These sections are often bullet-like (one item per line).
         # V18.20.3.1 (real-rig audit D1): DROP truncated lines (was: keep +
-# cosmetic period-append). The V18.20.3.0 rig-test
-# shipped a bullet with an unmatched parenthetical mid-citation
+        # cosmetic period-append). The V18.20.3.0 rig-test
+        # shipped a bullet with an unmatched parenthetical mid-citation
         # affectively charged." — a distinction missing its entire contrast
         # half is noise, not content (unlike a bullet, where "more bullets >
         # lower coverage" argues for keeping). The drop is recorded as a
         # severity="fix" issue so the quality report accounts for it.
         # V18.15.5.0: is_truncated now imported at module top (also used in
         # the bullet loop above — see DEBT-07 / Known Issue #3 fix).
-        _lines = _sec.split('\n')
+        _lines = _sec.split("\n")
         _clean_lines = []
         for _line in _lines:
-            _line_stripped = _line.strip().lstrip('-•* ').strip()
+            _line_stripped = _line.strip().lstrip("-•* ").strip()
             if _line_stripped and is_truncated(_line_stripped):
-                report.issues.append(Issue(
-                    detector="truncated",
-                    severity="fix",
-                    field=_section_name,
-                    snippet=_line_stripped[:60],
-                    detail=(
-                        f"dropped truncated line in {_section_name} (unmatched "
-                        f"quote/paren, dangling tail, or no terminal punctuation — "
-                        f"an additive item missing its contrast half is noise)"
-                    ),
-                ))
+                report.issues.append(
+                    Issue(
+                        detector="truncated",
+                        severity="fix",
+                        field=_section_name,
+                        snippet=_line_stripped[:60],
+                        detail=(
+                            f"dropped truncated line in {_section_name} (unmatched "
+                            f"quote/paren, dangling tail, or no terminal punctuation — "
+                            f"an additive item missing its contrast half is noise)"
+                        ),
+                    )
+                )
                 continue  # drop the truncated line entirely
             _clean_lines.append(_line)
-        _sec = '\n'.join(_clean_lines)
+        _sec = "\n".join(_clean_lines)
         setattr(report, _section_name, _sec)
 
     # ── V0.05 (rig audit F8 — P3): verbatim-quote verification ───────────
@@ -613,14 +808,14 @@ def run_post_checks(
     # never happen…". Verbatim excerpts from _find_source_sentence are
     # already exact; this targets model-typed quotation marks.
     def _quote_norm(s: str) -> str:
-        return re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+        return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
     _src_quote_norm = _quote_norm(source_text or "")
     if _src_quote_norm:
         _QUOTE_SPAN_RE = re.compile(r'[“"]([^“”"\n]{20,})[”"]')
 
         def _verify_quotes(text: str, field: str) -> str:
-            if not text or '"' not in text and '“' not in text:
+            if not text or '"' not in text and "“" not in text:
                 return text
             out = text
             for _m in list(_QUOTE_SPAN_RE.finditer(text)):
@@ -630,27 +825,28 @@ def run_post_checks(
                 if _quote_norm(_span) not in _src_quote_norm:
                     # failing span: strip the quotation marks, keep the words
                     out = out.replace(_m.group(0), _span, 1)
-                    report.issues.append(Issue(
-                        detector="quote_verification", severity="fix", field=field,
-                        snippet=_span[:60],
-                        detail=(
-                            "quoted span is not verbatim in the source — shipped "
-                            "as a paraphrase (quotation marks stripped) instead "
-                            "of a misquote"
-                        ),
-                    ))
+                    report.issues.append(
+                        Issue(
+                            detector="quote_verification",
+                            severity="fix",
+                            field=field,
+                            snippet=_span[:60],
+                            detail=(
+                                "quoted span is not verbatim in the source — shipped "
+                                "as a paraphrase (quotation marks stripped) instead "
+                                "of a misquote"
+                            ),
+                        )
+                    )
             return out
 
-        report.bullets = [_verify_quotes(b, f"bullet[{i}]")
-                          for i, b in enumerate(report.bullets)]
-        report.executive_summary = _verify_quotes(
-            report.executive_summary, "exec")
-        report.thorough_summary = _verify_quotes(
-            report.thorough_summary, "thorough")
-        report.key_distinctions = _verify_quotes(
-            report.key_distinctions, "key_distinctions")
+        report.bullets = [_verify_quotes(b, f"bullet[{i}]") for i, b in enumerate(report.bullets)]
+        report.executive_summary = _verify_quotes(report.executive_summary, "exec")
+        report.thorough_summary = _verify_quotes(report.thorough_summary, "thorough")
+        report.key_distinctions = _verify_quotes(report.key_distinctions, "key_distinctions")
         report.theoretical_tensions = _verify_quotes(
-            report.theoretical_tensions, "theoretical_tensions")
+            report.theoretical_tensions, "theoretical_tensions"
+        )
 
         # ── V0.06 (rig audit F6): trailing-quote dedupe + byline strip ────
         # GENERAL RULE: a bullet states its claim ONCE. Two rig leak shapes:
@@ -666,12 +862,8 @@ def run_post_checks(
         #       … "By Neal Ford"'). A byline is attribution metadata, never
         #       a content quote — the span is stripped regardless of
         #       containment.
-        _BYLINE_SPAN_RE = re.compile(
-            r'^\s*By\s+[A-Z][\w\'’-]*(?:\s+[A-Z][\w\'’-]*){0,3}\.?\s*$'
-        )
-        _TRAILING_QUOTE_SPAN_RE = re.compile(
-            r'["\u201c]([^"\u201d\n]{4,400})["\u201d]\s*[.!]?\s*$'
-        )
+        _BYLINE_SPAN_RE = re.compile(r"^\s*By\s+[A-Z][\w\'’-]*(?:\s+[A-Z][\w\'’-]*){0,3}\.?\s*$")
+        _TRAILING_QUOTE_SPAN_RE = re.compile(r'["\u201c]([^"\u201d\n]{4,400})["\u201d]\s*[.!]?\s*$')
 
         def _strip_trailing_quote_dup(text: str, field: str) -> str:
             if not text or not text.strip():
@@ -680,33 +872,42 @@ def run_post_checks(
             if not m:
                 return text
             span = m.group(1).strip()
-            rest = text.rstrip()[:m.start()].rstrip().rstrip(',;:—–-').rstrip()
+            rest = text.rstrip()[: m.start()].rstrip().rstrip(",;:—–-").rstrip()
             if not span or not rest:
                 return text
             if _BYLINE_SPAN_RE.match(span):
-                report.issues.append(Issue(
-                    detector="quote_dedupe", severity="fix", field=field,
-                    snippet=span[:60],
-                    detail=(
-                        "stripped trailing byline quote (\u201cBy <Author>\u201d) — "
-                        "attribution metadata quoted as evidence, not content"
-                    ),
-                ))
+                report.issues.append(
+                    Issue(
+                        detector="quote_dedupe",
+                        severity="fix",
+                        field=field,
+                        snippet=span[:60],
+                        detail=(
+                            "stripped trailing byline quote (\u201cBy <Author>\u201d) — "
+                            "attribution metadata quoted as evidence, not content"
+                        ),
+                    )
+                )
                 return rest
             if _quote_norm(span) and _quote_norm(span) in _quote_norm(rest):
-                report.issues.append(Issue(
-                    detector="quote_dedupe", severity="fix", field=field,
-                    snippet=span[:60],
-                    detail=(
-                        "stripped trailing duplicate quote — the same span "
-                        "is already quoted/embedded in the bullet"
-                    ),
-                ))
+                report.issues.append(
+                    Issue(
+                        detector="quote_dedupe",
+                        severity="fix",
+                        field=field,
+                        snippet=span[:60],
+                        detail=(
+                            "stripped trailing duplicate quote — the same span "
+                            "is already quoted/embedded in the bullet"
+                        ),
+                    )
+                )
                 return rest
             return text
 
-        report.bullets = [_strip_trailing_quote_dup(b, f"bullet[{i}]")
-                          for i, b in enumerate(report.bullets)]
+        report.bullets = [
+            _strip_trailing_quote_dup(b, f"bullet[{i}]") for i, b in enumerate(report.bullets)
+        ]
 
     # ── V0.05 (rig audit F6 — P2): ship-time near-duplicate removal ──────
     # Normalized token-set containment >= 0.8 → keep the FIRST, drop the
@@ -720,7 +921,7 @@ def run_post_checks(
         # conversations) — mirrors summary_validator's plural tolerance so
         # inflection alone never defeats the near-dup detector.
         _out = set()
-        for w in re.findall(r'[a-z0-9]+', s.lower()):
+        for w in re.findall(r"[a-z0-9]+", s.lower()):
             if len(w) <= 2:
                 continue
             if len(w) > 3 and w.endswith("s"):
@@ -740,15 +941,18 @@ def run_post_checks(
                     _dup_of = _pi
                     break
         if _dup_of is not None:
-            report.issues.append(Issue(
-                detector="near_duplicate", severity="fix",
-                field=f"bullet[{_i}]",
-                snippet=_b[:60],
-                detail=(
-                    f"near-duplicate of bullet[{_dup_of}] (token-set "
-                    f"containment >= 0.8) — kept the first, dropped this one"
-                ),
-            ))
+            report.issues.append(
+                Issue(
+                    detector="near_duplicate",
+                    severity="fix",
+                    field=f"bullet[{_i}]",
+                    snippet=_b[:60],
+                    detail=(
+                        f"near-duplicate of bullet[{_dup_of}] (token-set "
+                        f"containment >= 0.8) — kept the first, dropped this one"
+                    ),
+                )
+            )
             continue
         _seen_token_sets.append((_toks, _i))
         _deduped_bullets.append(_b)
@@ -784,5 +988,3 @@ def run_post_checks(
 # attribution checks.
 
 # V18.18.0.2: _is_subsequence moved to postcheck_detectors.py (re-exported via import *)
-
-

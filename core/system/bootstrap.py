@@ -40,6 +40,7 @@ Steps (in execution order):
 All steps are best-effort: a failure logs a DEBUG message and continues.
 The app launches regardless of bootstrap step outcomes.
 """
+
 from __future__ import annotations
 
 import json
@@ -108,7 +109,8 @@ class Bootstrap:
             except BootstrapError as exc:
                 logger.debug(
                     "bootstrap step %s failed: %s (continuing — non-fatal)",
-                    step_name, exc,
+                    step_name,
+                    exc,
                 )
                 self._steps_failed.append((step_name, str(exc)))
             except Exception as exc:
@@ -116,11 +118,11 @@ class Bootstrap:
                 # app launch. This is the defense-in-depth principle.
                 logger.debug(
                     "bootstrap step %s raised %s: %s (continuing — non-fatal)",
-                    step_name, type(exc).__name__, exc,
+                    step_name,
+                    type(exc).__name__,
+                    exc,
                 )
-                self._steps_failed.append(
-                    (step_name, f"{type(exc).__name__}: {exc}")
-                )
+                self._steps_failed.append((step_name, f"{type(exc).__name__}: {exc}"))
         if self._steps_failed:
             logger.info(
                 "Bootstrap completed: %d step(s) ok, %d failed: %s",
@@ -155,7 +157,9 @@ class Bootstrap:
             except Exception as exc:
                 logger.debug(
                     "could not remove %s: %s: %s",
-                    pc, type(exc).__name__, exc,
+                    pc,
+                    type(exc).__name__,
+                    exc,
                 )
         if deleted > 0:
             logger.info("Cleaned %d stale __pycache__ directory(ies).", deleted)
@@ -177,9 +181,7 @@ class Bootstrap:
             shutil.rmtree(prompts_dir)
             logger.info("Refreshed user prompts directory (deleted stale copies).")
         except Exception as exc:
-            raise BootstrapError(
-                f"could not delete prompts dir {prompts_dir}: {exc}"
-            ) from exc
+            raise BootstrapError(f"could not delete prompts dir {prompts_dir}: {exc}") from exc
 
     # ── Step 3: settings migration ────────────────────────────────────────
 
@@ -201,9 +203,7 @@ class Bootstrap:
             with open(settings_file, encoding="utf-8") as f:
                 settings = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
-            raise BootstrapError(
-                f"could not read settings.json: {exc}"
-            ) from exc
+            raise BootstrapError(f"could not read settings.json: {exc}") from exc
 
         reset_count = 0
 
@@ -254,7 +254,9 @@ class Bootstrap:
         if tr.get("backend", "").lower() == "nllb":
             tr["backend"] = "ollama"  # default — TranslateGemma via Ollama
             reset_count += 1
-            logger.info("Migrated deprecated translation.backend='nllb' to 'ollama' (V18.2.26 A14).")
+            logger.info(
+                "Migrated deprecated translation.backend='nllb' to 'ollama' (V18.2.26 A14)."
+            )
         settings["translation"] = tr
 
         if reset_count > 0:
@@ -266,9 +268,7 @@ class Bootstrap:
                     reset_count,
                 )
             except OSError as exc:
-                raise BootstrapError(
-                    f"could not write settings.json: {exc}"
-                ) from exc
+                raise BootstrapError(f"could not write settings.json: {exc}") from exc
 
     # ── Step 4: secret migration ──────────────────────────────────────────
 
@@ -285,9 +285,7 @@ class Bootstrap:
                 migrate_all_secrets,
             )
         except ImportError as exc:
-            raise BootstrapError(
-                f"secrets module unavailable: {exc}"
-            ) from exc
+            raise BootstrapError(f"secrets module unavailable: {exc}") from exc
         if not is_keyring_available():
             logger.debug(
                 "keyring not installed — secrets stay in settings.json "
@@ -296,6 +294,7 @@ class Bootstrap:
             return
         try:
             from utils.settings import Settings
+
             migrated = migrate_all_secrets(Settings())
             if migrated > 0:
                 logger.info(
@@ -303,9 +302,7 @@ class Bootstrap:
                     migrated,
                 )
         except Exception as exc:
-            raise BootstrapError(
-                f"keyring migration failed: {exc}"
-            ) from exc
+            raise BootstrapError(f"keyring migration failed: {exc}") from exc
 
     # ── Diagnostics ──────────────────────────────────────────────────────
 

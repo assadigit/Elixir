@@ -5,6 +5,7 @@ that the 4 UI surfaces (wizard, dialog, settings, controller) depend on.
 
 Run: ``pytest tests/test_output_registry.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -43,8 +44,16 @@ class TestRegistryStructure:
     def test_studio_keys_include_v10_20_21_35(self):
         """The V10.20.0/V10.21.0/V10.35.0 outputs must be present."""
         keys = [o.key for o in _mod.get_studio_outputs()]
-        for k in ["qa", "glossary", "patterns", "cheatsheet", "skill", "evidence_map",
-                  "epub", "quote_bank"]:
+        for k in [
+            "qa",
+            "glossary",
+            "patterns",
+            "cheatsheet",
+            "skill",
+            "evidence_map",
+            "epub",
+            "quote_bank",
+        ]:
             assert k in keys, f"{k} missing from studio outputs"
 
 
@@ -92,11 +101,25 @@ class TestAccessors:
         """The regenerate map must have all 17 studio outputs (V10.35.0: +2)."""
         m = _mod.get_regenerate_map()
         assert len(m) == 17
-        for k in ["briefing", "podcast_script", "flashcards", "packets",
-                   "obsidian", "study_guide", "social", "mindmap",
-                   "podcast_audio", "evidence_map", "qa", "glossary",
-                   "patterns", "cheatsheet", "skill",
-                   "epub", "quote_bank"]:
+        for k in [
+            "briefing",
+            "podcast_script",
+            "flashcards",
+            "packets",
+            "obsidian",
+            "study_guide",
+            "social",
+            "mindmap",
+            "podcast_audio",
+            "evidence_map",
+            "qa",
+            "glossary",
+            "patterns",
+            "cheatsheet",
+            "skill",
+            "epub",
+            "quote_bank",
+        ]:
             assert k in m, f"{k} missing from regenerate map"
 
     def test_get_dialog_outputs_returns_21_tuples(self):

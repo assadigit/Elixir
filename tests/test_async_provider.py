@@ -12,6 +12,7 @@ Covers:
 9. _adaptive_context mirrors sync provider
 10. graceful degradation when httpx absent
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -206,9 +207,13 @@ class TestGatherCalls:
             await asyncio.sleep(delay)
             return val
 
-        results = run_async(gather_calls(
-            make("a", 0.02), make("b", 0.01), make("c", 0.03),
-        ))
+        results = run_async(
+            gather_calls(
+                make("a", 0.02),
+                make("b", 0.01),
+                make("c", 0.03),
+            )
+        )
         assert results == ["a", "b", "c"]
 
 
@@ -233,12 +238,13 @@ class TestParallelComplete:
             return httpx.Response(200, json={"response": f"resp to {body['prompt'][:10]}"})
 
         provider = AsyncOllamaProvider(model="test", timeout=30, retries=0)
+
         # httpx.MockTransport accepts a sync handler; for async we wrap it.
-        transport = httpx.MockTransport(lambda req: None)  # placeholder
-        # Use the async handler directly via a custom transport
+        # (V0.13: removed an unused placeholder MockTransport)
         class _AsyncTransport(httpx.AsyncBaseTransport):
             async def handle_async_request(self, request):
                 return await async_handler(request)
+
         provider._client = httpx.AsyncClient(transport=_AsyncTransport(), timeout=30)
 
         prompts = [f"prompt {i}" for i in range(8)]
@@ -259,6 +265,7 @@ class TestJsonMode:
 
         def handler(request: httpx.Request) -> httpx.Response:
             import json
+
             body = json.loads(request.content)
             captured["format"] = body.get("format")
             captured["model"] = body.get("model")
@@ -275,6 +282,7 @@ class TestJsonMode:
 
         def handler(request: httpx.Request) -> httpx.Response:
             import json
+
             body = json.loads(request.content)
             captured["format"] = body.get("format")
             return httpx.Response(200, json={"response": "plain text"})
@@ -287,12 +295,14 @@ class TestJsonMode:
 class TestAdaptiveContext:
     def test_short_prompt_uses_minimum(self):
         from core.llm.async_provider import AsyncOllamaProvider
+
         p = AsyncOllamaProvider(model="m", context_tokens=65536)
         ctx = p._adaptive_context("short", 4096)
         assert ctx == 16000  # minimum
 
     def test_long_prompt_uses_more(self):
         from core.llm.async_provider import AsyncOllamaProvider
+
         p = AsyncOllamaProvider(model="m", context_tokens=65536)
         long_prompt = "x" * 120000  # 30k tokens
         ctx = p._adaptive_context(long_prompt, 4096)
@@ -301,6 +311,7 @@ class TestAdaptiveContext:
 
     def test_capped_at_context_tokens(self):
         from core.llm.async_provider import AsyncOllamaProvider
+
         p = AsyncOllamaProvider(model="m", context_tokens=32768)
         very_long = "x" * 200000
         ctx = p._adaptive_context(very_long, 4096)

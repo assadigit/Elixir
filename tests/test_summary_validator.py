@@ -11,6 +11,7 @@ real psychoanalytic text — not synthetic.
 
 Run: pytest tests/test_summary_validator.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,18 +34,23 @@ from core.summarisation.summary_validator import (
 # ── Trust-ground source (real psychoanalytic text) ───────────────────────────
 # Load the trust-ground source chapter for realistic characterization inputs.
 _SOURCE_PATH = _project_root / "tests" / "test_ground" / "source_chapter.md"
-TRUST_SOURCE = _SOURCE_PATH.read_text() if _SOURCE_PATH.exists() else (
-    "Erikson defined ego identity as selfsameness within oneself and a "
-    "persistent sharing of some kind of essential character with others. "
-    "Jacobson 1964, Kernberg 1967 regard identity as sine qua non of "
-    "borderline and narcissistic disorders. Mahler distinguished the "
-    "psychological birth of the human infant from its biological birth."
+TRUST_SOURCE = (
+    _SOURCE_PATH.read_text()
+    if _SOURCE_PATH.exists()
+    else (
+        "Erikson defined ego identity as selfsameness within oneself and a "
+        "persistent sharing of some kind of essential character with others. "
+        "Jacobson 1964, Kernberg 1967 regard identity as sine qua non of "
+        "borderline and narcissistic disorders. Mahler distinguished the "
+        "psychological birth of the human infant from its biological birth."
+    )
 )
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # 1. normalize_empty_section
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestNormalizeEmptySection:
     """Characterization tests for normalize_empty_section."""
@@ -88,6 +94,7 @@ class TestNormalizeEmptySection:
 # ════════════════════════════════════════════════════════════════════════════
 # 2. verify_additive_section_item
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestVerifyAdditiveSectionItem:
     """Characterization tests for verify_additive_section_item."""
@@ -141,6 +148,7 @@ class TestVerifyAdditiveSectionItem:
 # 3. verify_additive_sections
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestVerifyAdditiveSections:
     """Characterization tests for verify_additive_sections."""
 
@@ -177,15 +185,19 @@ class TestVerifyAdditiveSections:
     def test_quarantine_logged(self):
         """Dropped items should be logged to quarantine."""
         quarantine_calls = []
+
         class MockQuarantine:
             def add(self, **kwargs):
                 quarantine_calls.append(kwargs)
+
         result = {
             "key_distinctions": "- Quantum entanglement explains consciousness",
             "theoretical_tensions": "",
         }
         q = MockQuarantine()
-        verify_additive_sections("heading", TRUST_SOURCE, result, quarantine=q, log=lambda m, l: None)
+        verify_additive_sections(
+            "heading", TRUST_SOURCE, result, quarantine=q, log=lambda m, l: None
+        )
         assert len(quarantine_calls) == 1
         assert quarantine_calls[0]["actually_dropped"] is True
 
@@ -199,13 +211,16 @@ class TestVerifyAdditiveSections:
     def test_no_quarantine_no_crash(self):
         """Should work even when quarantine is None."""
         result = {"key_distinctions": "None", "theoretical_tensions": "None"}
-        verify_additive_sections("heading", TRUST_SOURCE, result, quarantine=None, log=lambda m, l: None)
+        verify_additive_sections(
+            "heading", TRUST_SOURCE, result, quarantine=None, log=lambda m, l: None
+        )
         assert result["key_distinctions"] == ""
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # 4. anti_false_precision_check
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestAntiFalsePrecisionCheck:
     """Characterization tests for anti_false_precision_check."""
@@ -227,13 +242,17 @@ class TestAntiFalsePrecisionCheck:
             "of borderline and narcissistic disorders"
         )
         log_calls = []
-        anti_false_precision_check("heading", source, result, log=lambda m, l: log_calls.append((m, l)))
+        anti_false_precision_check(
+            "heading", source, result, log=lambda m, l: log_calls.append((m, l))
+        )
         assert "Jacobson and Kernberg both" in result["bullet_points"][0]
         assert any("rewrote" in m for m, _ in log_calls)
 
     def test_no_false_precision_no_change(self):
         """When the source separates the authors, no rewrite should happen."""
-        original = "Erikson views identity as a lifespan task, whereas Kernberg views it as structural."
+        original = (
+            "Erikson views identity as a lifespan task, whereas Kernberg views it as structural."
+        )
         result = {
             "bullet_points": [original],
             "executive_summary": "",
@@ -242,7 +261,11 @@ class TestAntiFalsePrecisionCheck:
             "theoretical_tensions": "",
         }
         # Source separates them (not within 120 chars)
-        source = "Erikson 1956 said identity is a lifespan development. " + ("x" * 200) + " Kernberg 1967 said identity is structural."
+        source = (
+            "Erikson 1956 said identity is a lifespan development. "
+            + ("x" * 200)
+            + " Kernberg 1967 said identity is structural."
+        )
         anti_false_precision_check("heading", source, result, log=lambda m, l: None)
         assert result["bullet_points"][0] == original
 
@@ -292,6 +315,7 @@ class TestAntiFalsePrecisionCheck:
 # 5. semantic_dedup_bullets
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestSemanticDedupBullets:
     """Characterization tests for semantic_dedup_bullets.
 
@@ -334,14 +358,17 @@ class TestSemanticDedupBullets:
 # 6. compute_coverage
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestComputeCoverage:
     """Characterization tests for compute_coverage."""
 
     def test_full_coverage_returns_1(self):
         """When all keywords appear in the summary, coverage should be 1.0."""
         cache = {}
+
         def extract_kw(text, n):
             return ["identity", "erikson", "jacobson", "kernberg", "mahler"]
+
         source = "identity erikson jacobson kernberg mahler"
         summary = "identity erikson jacobson kernberg mahler"
         cov = compute_coverage(source, summary, cache, extract_kw)
@@ -350,8 +377,10 @@ class TestComputeCoverage:
     def test_zero_coverage_returns_0(self):
         """When no keywords appear in the summary, coverage should be 0.0."""
         cache = {}
+
         def extract_kw(text, n):
             return ["identity", "erikson", "jacobson"]
+
         source = "identity erikson jacobson test source"
         summary = "quantum physics string theory relativity"
         cov = compute_coverage(source, summary, cache, extract_kw)
@@ -360,8 +389,10 @@ class TestComputeCoverage:
     def test_partial_coverage(self):
         """Partial keyword overlap should give fractional coverage."""
         cache = {}
+
         def extract_kw(text, n):
             return ["identity", "erikson", "jacobson", "kernberg"]
+
         source = "identity erikson jacobson kernberg"
         summary = "identity erikson"
         cov = compute_coverage(source, summary, cache, extract_kw)
@@ -370,8 +401,10 @@ class TestComputeCoverage:
     def test_cache_populated(self):
         """The coverage_cache should be populated after the first call."""
         cache = {}
+
         def extract_kw(text, n):
             return ["identity", "erikson"]
+
         source = "identity erikson source"
         summary = "identity erikson"
         compute_coverage(source, summary, cache, extract_kw)
@@ -383,9 +416,11 @@ class TestComputeCoverage:
         """On cache hit, extract_keywords should NOT be called again."""
         cache = {}
         call_count = [0]
+
         def extract_kw(text, n):
             call_count[0] += 1
             return ["identity", "erikson"]
+
         source = "identity erikson source"
         compute_coverage(source, "identity", cache, extract_kw)
         compute_coverage(source, "identity", cache, extract_kw)  # cache hit
@@ -394,16 +429,20 @@ class TestComputeCoverage:
     def test_no_keywords_returns_1(self):
         """When no keywords can be extracted, coverage should default to 1.0."""
         cache = {}
+
         def extract_kw(text, n):
             return []
+
         cov = compute_coverage("source", "summary", cache, extract_kw)
         assert cov == 1.0
 
     def test_cache_lru_eviction(self):
         """Cache should evict the oldest entry when it exceeds 50 entries."""
         cache = {}
+
         def extract_kw(text, n):
             return ["keyword"]
+
         for i in range(52):
             source = f"unique_source_{i} keyword"
             compute_coverage(source, "keyword", cache, extract_kw)
@@ -414,6 +453,7 @@ class TestComputeCoverage:
 # 7. verify_bullets
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestVerifyBullets:
     """Characterization tests for verify_bullets."""
 
@@ -421,8 +461,11 @@ class TestVerifyBullets:
         """A bullet that matches the source should be kept."""
         cache = {}
         quarantine_calls = []
+
         class MockQ:
-            def add(self, **kw): quarantine_calls.append(kw)
+            def add(self, **kw):
+                quarantine_calls.append(kw)
+
         source = "Erikson defined ego identity as selfsameness within oneself and a persistent sharing of some kind of essential character with others."
         bullets = ["Erikson defined ego identity as selfsameness within oneself"]
         result = verify_bullets(bullets, source, cache, MockQ(), lambda m, l: None)
@@ -433,8 +476,11 @@ class TestVerifyBullets:
         """A bullet that doesn't match should be kept but logged to quarantine."""
         cache = {}
         quarantine_calls = []
+
         class MockQ:
-            def add(self, **kw): quarantine_calls.append(kw)
+            def add(self, **kw):
+                quarantine_calls.append(kw)
+
         source = "Erikson defined ego identity as selfsameness within oneself."
         bullets = ["Quantum entanglement explains consciousness in multiverse theory"]
         result = verify_bullets(bullets, source, cache, MockQ(), lambda m, l: None)
@@ -494,6 +540,7 @@ class TestVerifyBullets:
 # Integration: Summarizer delegation
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestSummarizerDelegation:
     """Verify that Summarizer methods delegate correctly to summary_validator.
 
@@ -507,35 +554,41 @@ class TestSummarizerDelegation:
         import inspect
 
         from core.summarisation.summarizer import Summarizer
+
         sig = inspect.signature(Summarizer._compute_coverage)
         params = list(sig.parameters.keys())
-        assert params == ['self', 'source', 'summary'], f"Unexpected params: {params}"
+        assert params == ["self", "source", "summary"], f"Unexpected params: {params}"
 
     def test_verify_bullets_delegates(self):
         """Summarizer._verify_bullets should delegate to sv_verify_bullets."""
         import inspect
 
         from core.summarisation.summarizer import Summarizer
+
         sig = inspect.signature(Summarizer._verify_bullets)
         params = list(sig.parameters.keys())
-        assert params == ['self', 'bullets', 'source_text'], f"Unexpected params: {params}"
+        assert params == ["self", "bullets", "source_text"], f"Unexpected params: {params}"
 
     def test_f3_deleted(self):
         """_simplify_for_reading_level should be deleted (Phase 6.8)."""
         from core.summarisation.summarizer import Summarizer
-        assert not hasattr(Summarizer, '_simplify_for_reading_level'), \
+
+        assert not hasattr(Summarizer, "_simplify_for_reading_level"), (
             "F3 _simplify_for_reading_level should be deleted (Phase 6.8)"
+        )
 
     def test_verify_windows_cache_initialized(self):
         """_verify_windows_cache should be initialized in __init__ or a sub-constructor."""
         import inspect
 
         from core.summarisation.summarizer import Summarizer
+
         # V18.17.0.1: _verify_windows_cache moved to _init_coverage_and_counters
         # sub-constructor. Check both __init__ and the sub-constructor source.
         source = inspect.getsource(Summarizer.__init__)
-        if '_verify_windows_cache' not in source:
+        if "_verify_windows_cache" not in source:
             # Check the sub-constructor
             source += inspect.getsource(Summarizer._init_coverage_and_counters)
-        assert '_verify_windows_cache' in source, \
+        assert "_verify_windows_cache" in source, (
             "_verify_windows_cache should be initialized in __init__ or _init_coverage_and_counters"
+        )

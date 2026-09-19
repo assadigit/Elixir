@@ -12,6 +12,7 @@ Byte-for-byte stability gate for the 4 fixes bundled in V18.15.8.0:
 
 Run: pytest tests/test_v18_15_8_pipeline.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -69,6 +70,7 @@ class TestBuildExecFromThoroughPrompt:
         1-word source → a tiny scaled range), never the absolute 150-250.
         """
         import re as _re
+
         p = build_exec_from_thorough_prompt("Chapter", "Thorough.", "en")
         assert _re.search(r"\b\d+-\d+ word executive summary", p)
         assert _re.search(r"\b\d+-\d+ word \(strict\)", p)
@@ -106,42 +108,48 @@ class TestBuildExecFromThoroughPrompt:
 class TestMatchesPromptLeakagePattern:
     """V18.15.8.0 (Fix 3): the prompt-instruction-pattern matcher."""
 
-    @pytest.mark.parametrize("bullet", [
-        "Reading level: IELTS 7-9, sentences under 20 words, active voice, common words.",
-        "Keep sentences under 20 words",
-        "Sentences under 20 words",
-        "Preserve technical terms",
-        "Preserve all citations",
-        "Use active voice",
-        "Use common words",
-        "Executive summary: 150-250 words",
-        "Bullet points: 20-40 items",
-        "5 sections in XML format",
-        "Cover all named contributors",
-        "Include the full progression",
-        "End with the conclusion's enumerated list",
-        "Distinguish philosophical from developmental contributions",
-        "Preserve developmental mechanisms as sequences",
-        "These two requirements seem contradictory.",
-        "Theoretical tensions: 2-4",
-        "Key distinctions: 2-5",
-        "Active voice",
-        "No invented facts",
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "Reading level: IELTS 7-9, sentences under 20 words, active voice, common words.",
+            "Keep sentences under 20 words",
+            "Sentences under 20 words",
+            "Preserve technical terms",
+            "Preserve all citations",
+            "Use active voice",
+            "Use common words",
+            "Executive summary: 150-250 words",
+            "Bullet points: 20-40 items",
+            "5 sections in XML format",
+            "Cover all named contributors",
+            "Include the full progression",
+            "End with the conclusion's enumerated list",
+            "Distinguish philosophical from developmental contributions",
+            "Preserve developmental mechanisms as sequences",
+            "These two requirements seem contradictory.",
+            "Theoretical tensions: 2-4",
+            "Key distinctions: 2-5",
+            "Active voice",
+            "No invented facts",
+        ],
+    )
     def test_prompt_instruction_bullets_detected(self, bullet):
         """Each prompt-instruction bullet must be detected (returns True)."""
         assert _matches_prompt_leakage_pattern(bullet) is True, (
             f"expected True for prompt-instruction bullet: {bullet!r}"
         )
 
-    @pytest.mark.parametrize("bullet", [
-        "Tausk (1919) introduced the term identity into psychoanalytic literature.",
-        "Erikson (1956) defined ego identity as persistent sameness within oneself.",
-        "Jacobson (1964) formulated five categories of contributions to identity development.",
-        "Kernberg (1967) proposed that ego identity development requires two essential tasks.",
-        "Mahler distinguished psychological birth from biological birth.",
-        "The chapter concludes by identifying seven characteristics of solid identity.",
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "Tausk (1919) introduced the term identity into psychoanalytic literature.",
+            "Erikson (1956) defined ego identity as persistent sameness within oneself.",
+            "Jacobson (1964) formulated five categories of contributions to identity development.",
+            "Kernberg (1967) proposed that ego identity development requires two essential tasks.",
+            "Mahler distinguished psychological birth from biological birth.",
+            "The chapter concludes by identifying seven characteristics of solid identity.",
+        ],
+    )
     def test_real_bullets_not_detected(self, bullet):
         """Real summary bullets must NOT be flagged (returns False)."""
         assert _matches_prompt_leakage_pattern(bullet) is False, (
@@ -177,7 +185,9 @@ class TestRecoverySkipPhase22:
             stage="Phase2.2_semantic_fact_check",
             threshold=0.5,
             source_overlap=0.45,  # above the 0.30 recovery threshold
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         resurrected = q.recover("identity formation psychoanalytic theory")
         assert len(resurrected) == 0, (
@@ -193,9 +203,13 @@ class TestRecoverySkipPhase22:
             "psychoanalytic literature. He examined how a child discovers his self."
         )
         q.add(
-            bp, stage="F4_source_overlap", threshold=0.25,
+            bp,
+            stage="F4_source_overlap",
+            threshold=0.25,
             source_overlap=0.0,  # initially dropped
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         resurrected = q.recover(source)
         assert len(resurrected) == 1, (
@@ -219,7 +233,9 @@ class TestRecoverySkipPromptLeakage:
             stage="F4_source_overlap",  # NOT Phase2.2 — so Fix 2 doesn't skip it
             threshold=0.25,
             source_overlap=0.45,  # false-positive high word overlap
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         # Source contains the words "developmental" + "mechanisms" → fresh overlap > 0.30
         source = (
@@ -228,8 +244,7 @@ class TestRecoverySkipPromptLeakage:
         )
         resurrected = q.recover(source)
         assert len(resurrected) == 0, (
-            f"prompt-instruction bullet must NOT be resurrected (Fix 3). "
-            f"Got: {len(resurrected)}"
+            f"prompt-instruction bullet must NOT be resurrected (Fix 3). Got: {len(resurrected)}"
         )
 
     def test_reading_level_bullet_not_resurrected(self):
@@ -240,7 +255,9 @@ class TestRecoverySkipPromptLeakage:
             stage="F4_source_overlap",
             threshold=0.25,
             source_overlap=0.45,  # false-positive high word overlap
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         source = "The chapter covers identity, words, active, common, voice, reading level."
         resurrected = q.recover(source)
@@ -256,7 +273,9 @@ class TestRecoverySkipPromptLeakage:
             stage="F4_source_overlap",
             threshold=0.25,
             source_overlap=0.45,
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         source = "The executive summary covers the chapter's main thesis."
         resurrected = q.recover(source)
@@ -271,9 +290,13 @@ class TestRecoverySkipPromptLeakage:
             "psychoanalytic literature. He examined how a child discovers his self."
         )
         q.add(
-            bp, stage="F4_source_overlap", threshold=0.25,
+            bp,
+            stage="F4_source_overlap",
+            threshold=0.25,
             source_overlap=0.0,
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         resurrected = q.recover(source)
         assert len(resurrected) == 1
@@ -297,8 +320,12 @@ class TestEnsureExecFromThorough:
         the content is extracted."""
         # Simulate the parsing logic from _ensure_exec_from_thorough
         import re
-        raw = "Some preamble\n<executive_summary>\nThis is the executive summary. " * 20 + "\n</executive_summary>"
-        m = re.search(r'<executive_summary>(.*?)</executive_summary>', raw, re.DOTALL)
+
+        raw = (
+            "Some preamble\n<executive_summary>\nThis is the executive summary. " * 20
+            + "\n</executive_summary>"
+        )
+        m = re.search(r"<executive_summary>(.*?)</executive_summary>", raw, re.DOTALL)
         assert m is not None
         exec_sum = m.group(1).strip()
         assert "This is the executive summary" in exec_sum
@@ -306,8 +333,9 @@ class TestEnsureExecFromThorough:
     def test_no_xml_tag_fallback_to_raw(self):
         """When the LLM returns no XML tag, the raw text is used (fallback)."""
         import re
+
         raw = "This is the executive summary without XML tags. " * 20
-        m = re.search(r'<executive_summary>(.*?)</executive_summary>', raw, re.DOTALL)
+        m = re.search(r"<executive_summary>(.*?)</executive_summary>", raw, re.DOTALL)
         if m:
             exec_sum = m.group(1).strip()
         else:
@@ -317,7 +345,10 @@ class TestEnsureExecFromThorough:
     def test_word_count_validation(self):
         """The derived exec must be ≥50 words (validation gate)."""
         short_exec = "Too short. Only a few words."
-        long_exec = "This is a proper executive summary with enough words to pass the validation gate. " * 10
+        long_exec = (
+            "This is a proper executive summary with enough words to pass the validation gate. "
+            * 10
+        )
         assert len(short_exec.split()) < 50, "short exec should fail validation"
         assert len(long_exec.split()) >= 50, "long exec should pass validation"
 

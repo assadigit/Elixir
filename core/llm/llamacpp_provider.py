@@ -56,6 +56,7 @@ Connection verification (wizard "Test connection", preflight, CLI)::
     ok, msg = test_llamacpp_connection(base_url, api_key, model)
     models = list_llamacpp_models(base_url, api_key)   # GET /v1/models
 """
+
 from __future__ import annotations
 
 import json
@@ -166,7 +167,9 @@ class LlamaCppProvider(LLMProvider):
         log_callback: Callable[[str, str], None] | None = None,
         label: str = "llama.cpp",
     ):
-        super().__init__(model, temperature, max_tokens, context_tokens, timeout, retries, log_callback)
+        super().__init__(
+            model, temperature, max_tokens, context_tokens, timeout, retries, log_callback
+        )
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key or "local"
         self.label = label
@@ -218,10 +221,7 @@ class LlamaCppProvider(LLMProvider):
         # (a huge prompt squeezed the budget below usable). A deliberately
         # tiny request (smoke-test probes ask for 1-3 tokens) must never be
         # inflated: max(fitted, 256) would turn a 3-token probe into 256.
-        if (
-            fitted < LLAMACPP_MIN_OUTPUT_TOKENS
-            and requested >= LLAMACPP_MIN_OUTPUT_TOKENS
-        ):
+        if fitted < LLAMACPP_MIN_OUTPUT_TOKENS and requested >= LLAMACPP_MIN_OUTPUT_TOKENS:
             fitted = LLAMACPP_MIN_OUTPUT_TOKENS
         if fitted != requested:
             why = []
@@ -347,20 +347,14 @@ class LlamaCppProvider(LLMProvider):
         )
         sess = _no_proxy_session()
         try:
-            resp = sess.post(
-                url, headers=self._headers(), json=payload, timeout=effective_timeout
-            )
+            resp = sess.post(url, headers=self._headers(), json=payload, timeout=effective_timeout)
             if resp.status_code != 200:
-                raise _requests.exceptions.HTTPError(
-                    _extract_error_message(resp), response=resp
-                )
+                raise _requests.exceptions.HTTPError(_extract_error_message(resp), response=resp)
             # V0.05 (rig audit F1): pin UTF-8 before the JSON/text decode.
             _pin_utf8(resp)
             text = (resp.json()["choices"][0]["message"]["content"] or "").strip()
             if not text:
-                raise _requests.exceptions.ConnectionError(
-                    "empty response from llama.cpp model"
-                )
+                raise _requests.exceptions.ConnectionError("empty response from llama.cpp model")
             return text
         finally:
             sess.close()
@@ -417,8 +411,7 @@ class LlamaCppProvider(LLMProvider):
                 # early reset). One non-streaming attempt with a
                 # budget-derived timeout before the retry policy takes over.
                 self.log(
-                    "    ⚠️ llama.cpp streaming transport failed — retrying "
-                    "non-streaming",
+                    "    ⚠️ llama.cpp streaming transport failed — retrying non-streaming",
                     "WARNING",
                 )
                 return self._chat_nonstreaming(payload)
@@ -488,8 +481,7 @@ class LlamaCppProvider(LLMProvider):
                 None,
             )
             self.log(
-                f"    ✅ {self.label} smoke-test OK: '{self.model}' responded "
-                f"({len(text)} chars)",
+                f"    ✅ {self.label} smoke-test OK: '{self.model}' responded ({len(text)} chars)",
                 "DEBUG",
             )
             return True

@@ -23,6 +23,7 @@ Requirements:
 
 Exit gate: ``overall_score >= 9`` for PASS, ``< 9`` for FAIL.
 """
+
 from __future__ import annotations
 
 import json
@@ -122,8 +123,9 @@ def run_audit(
         coverage_score, clarity_score, hallucinations_detected,
         critical_omissions_detected, verdict, justification.
     """
-    summary = Path(summary_path).read_text(encoding="utf-8")
-    source = Path(source_path).read_text(encoding="utf-8")
+    # Underscore names: the reads double as existence/permission validation.
+    _summary = Path(summary_path).read_text(encoding="utf-8")
+    _source = Path(source_path).read_text(encoding="utf-8")
 
     if not use_sdk:
         return {
@@ -269,9 +271,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register the audit marker."""
-    config.addinivalue_line(
-        "markers", "audit: run the golden-master 4-pillar audit"
-    )
+    config.addinivalue_line("markers", "audit: run the golden-master 4-pillar audit")
 
 
 @pytest.fixture

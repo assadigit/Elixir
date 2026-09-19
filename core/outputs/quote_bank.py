@@ -9,6 +9,7 @@ organized by chapter.
 
 No LLM calls — this is deterministic text extraction.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -33,15 +35,15 @@ _QUOTE_PATTERNS = [
     # Single quotes: 'text...' (only if >40 chars to avoid apostrophes)
     re.compile(r"'([^']{40,})'"),
     # Guillemets: «text...»
-    re.compile(r'«([^»]{40,})»'),
+    re.compile(r"«([^»]{40,})»"),
     # Smart double quotes: "text..."
-    re.compile(r'\u201c([^\u201d]{40,})\u201d'),
+    re.compile(r"\u201c([^\u201d]{40,})\u201d"),
     # Smart single quotes: 'text...'
-    re.compile(r'\u2018([^\u2019]{40,})\u2019'),
+    re.compile(r"\u2018([^\u2019]{40,})\u2019"),
 ]
 
 #: Page marker pattern: <!-- original page N -->
-_PAGE_MARKER = re.compile(r'<!--\s*original page (\d+)\s*-->')
+_PAGE_MARKER = re.compile(r"<!--\s*original page (\d+)\s*-->")
 
 
 class QuoteBankGenerator(OutputGeneratorBase):
@@ -91,14 +93,18 @@ class QuoteBankGenerator(OutputGeneratorBase):
 
             # Build the markdown
             lines = [f"# Quote Bank — {book_title}", ""]
-            lines.append(f"> {sum(len(q) for _, q in all_quotes)} direct quotes "
-                         f"({MIN_QUOTE_LENGTH}+ chars) extracted from "
-                         f"{len(summaries)} chapter(s).")
+            lines.append(
+                f"> {sum(len(q) for _, q in all_quotes)} direct quotes "
+                f"({MIN_QUOTE_LENGTH}+ chars) extracted from "
+                f"{len(summaries)} chapter(s)."
+            )
             lines.append("")
 
             if not all_quotes:
-                lines.append("*No direct quotes found (the summaries may not "
-                             "contain text in quotation marks).*")
+                lines.append(
+                    "*No direct quotes found (the summaries may not "
+                    "contain text in quotation marks).*"
+                )
             else:
                 for heading, quotes in all_quotes:
                     lines.append(f"## {heading}")
@@ -113,7 +119,10 @@ class QuoteBankGenerator(OutputGeneratorBase):
             # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
             atomic_write_text(out_path, "\n".join(lines), encoding="utf-8")
             total = sum(len(q) for _, q in all_quotes)
-            self.log(f"  ✅ Quote bank: {total} quotes from {len(all_quotes)} chapters → {out_path.name}", "INFO")
+            self.log(
+                f"  ✅ Quote bank: {total} quotes from {len(all_quotes)} chapters → {out_path.name}",
+                "INFO",
+            )
             return out_path
 
         except Exception as exc:
@@ -131,7 +140,6 @@ class QuoteBankGenerator(OutputGeneratorBase):
         quotes = []
         # Split text into page segments (by page markers)
         page_markers = list(_PAGE_MARKER.finditer(text))
-        current_page = None
 
         for pattern in _QUOTE_PATTERNS:
             for m in pattern.finditer(text):

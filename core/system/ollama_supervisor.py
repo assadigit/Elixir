@@ -11,6 +11,7 @@ Usage (from the converter or summarizer)::
         # Ollama is down and couldn't be restarted — abort
         raise RuntimeError("Ollama is not running and could not be restarted")
 """
+
 from __future__ import annotations
 
 import logging
@@ -182,14 +183,13 @@ class OllamaSupervisor:
             #     session leader so SIGINT/SIGHUP delivered to the app's
             #     process group don't tear down the freshly-restarted
             #     ollama serve mid-request.
-            popen_kwargs = dict(
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            popen_kwargs = {
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = (
-                    subprocess.CREATE_NEW_PROCESS_GROUP
-                    | subprocess.CREATE_NO_WINDOW
+                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
                 )
             else:
                 popen_kwargs["start_new_session"] = True
@@ -217,6 +217,7 @@ class OllamaSupervisor:
         """Check if Ollama is reachable."""
         try:
             from utils.network import is_ollama_reachable
+
             return is_ollama_reachable(self._url)
         except Exception as _e:
             return False

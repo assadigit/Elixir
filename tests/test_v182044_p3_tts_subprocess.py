@@ -43,16 +43,11 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-QWEN_SRC = (PROJECT_ROOT / "core" / "tts" / "qwen_tts_engine.py").read_text(
-    encoding="utf-8")
-VIBE_SRC = (PROJECT_ROOT / "core" / "tts" / "vibevoice_engine.py").read_text(
-    encoding="utf-8")
-ENGINE_SRC = (PROJECT_ROOT / "core" / "tts" / "engine.py").read_text(
-    encoding="utf-8")
-NEUTTS_SRC = (PROJECT_ROOT / "core" / "tts" / "neutts_engine.py").read_text(
-    encoding="utf-8")
-BASE_SRC = (PROJECT_ROOT / "core" / "tts" / "_json_subprocess.py").read_text(
-    encoding="utf-8")
+QWEN_SRC = (PROJECT_ROOT / "core" / "tts" / "qwen_tts_engine.py").read_text(encoding="utf-8")
+VIBE_SRC = (PROJECT_ROOT / "core" / "tts" / "vibevoice_engine.py").read_text(encoding="utf-8")
+ENGINE_SRC = (PROJECT_ROOT / "core" / "tts" / "engine.py").read_text(encoding="utf-8")
+NEUTTS_SRC = (PROJECT_ROOT / "core" / "tts" / "neutts_engine.py").read_text(encoding="utf-8")
+BASE_SRC = (PROJECT_ROOT / "core" / "tts" / "_json_subprocess.py").read_text(encoding="utf-8")
 
 
 # ── Fake subprocess machinery (hermetic) ───────────────────────────────────
@@ -148,12 +143,13 @@ def _install_fake_popen(monkeypatch, procs: list[_FakeProc]):
     return calls
 
 
-def _spawned_sub(name: str, logs, proc: _FakeProc) -> "object":
+def _spawned_sub(name: str, logs, proc: _FakeProc) -> object:
     """A real PersistentJsonSubprocess spawned onto a fake Popen."""
     from core.tts._json_subprocess import PersistentJsonSubprocess
 
     sub = PersistentJsonSubprocess(
-        name=name, log=logs, stderr_prefix=f"[{name}]", stderr_level="DEBUG")
+        name=name, log=logs, stderr_prefix=f"[{name}]", stderr_level="DEBUG"
+    )
     sub.spawn([sys.executable, "fake-script.py"], env={"PATH": ""})
     return sub
 
@@ -176,8 +172,7 @@ def vibe_engine(tmp_path):
     from core.tts.vibevoice_engine import VibeVoiceEngine
 
     logs = _LogCollector()
-    engine = VibeVoiceEngine(
-        model_path=str(tmp_path / "vibe-model"), log_callback=logs)
+    engine = VibeVoiceEngine(model_path=str(tmp_path / "vibe-model"), log_callback=logs)
     return engine, logs
 
 
@@ -190,7 +185,7 @@ class TestSourcePins:
         assert "class PersistentJsonSubprocess" in BASE_SRC
         assert "queue.Queue" in BASE_SRC
         assert "def read_json(self, timeout: float)" in BASE_SRC
-        assert "def kill(self, reason: str = \"\")" in BASE_SRC
+        assert 'def kill(self, reason: str = "")' in BASE_SRC
         assert "def close(self" in BASE_SRC
         # Reader thread moves stdout lines into the queue — REAL timeouts.
         assert "self._lines.put(line)" in BASE_SRC
@@ -215,19 +210,16 @@ class TestSourcePins:
         assert "self._proc" not in VIBE_SRC
 
     def test_timeout_constants_exist_unchanged(self):
-        from core.tts.qwen_tts_engine import (
-            QWEN_CHUNK_TIMEOUT_S as q_chunk,
-            QWEN_LOAD_TIMEOUT_S as q_load)
-        from core.tts.vibevoice_engine import (
-            VIBEVOICE_LINE_TIMEOUT_S as v_line,
-            VIBEVOICE_LOAD_TIMEOUT_S as v_load)
+        from core.tts.qwen_tts_engine import QWEN_CHUNK_TIMEOUT_S as q_chunk
+        from core.tts.qwen_tts_engine import QWEN_LOAD_TIMEOUT_S as q_load
+        from core.tts.vibevoice_engine import VIBEVOICE_LINE_TIMEOUT_S as v_line
+        from core.tts.vibevoice_engine import VIBEVOICE_LOAD_TIMEOUT_S as v_load
 
         assert (q_load, q_chunk, v_load, v_line) == (120, 120, 300, 600)
 
     def test_w_c2_qwen_timeout_path_kills_before_raise(self):
         kill_idx = QWEN_SRC.find("model load not ready (timeout,")
-        raise_idx = QWEN_SRC.find(
-            '"Qwen3-TTS subprocess failed to load model (timeout)"')
+        raise_idx = QWEN_SRC.find('"Qwen3-TTS subprocess failed to load model (timeout)"')
         assert kill_idx != -1, "qwen load-timeout must call _kill_subprocess"
         assert raise_idx != -1
         assert kill_idx < raise_idx, "kill must precede the raise (W-c2)"
@@ -245,10 +237,8 @@ class TestSourcePins:
 
     def test_w_c2_vibevoice_timeout_path_kills_before_raise(self):
         kill_idx = VIBE_SRC.find("model load not ready (timeout,")
-        raise_idx = VIBE_SRC.find(
-            '"VibeVoice subprocess failed to load model (timeout)"')
-        assert kill_idx != -1, (
-            "vibevoice load-timeout must call _kill_subprocess")
+        raise_idx = VIBE_SRC.find('"VibeVoice subprocess failed to load model (timeout)"')
+        assert kill_idx != -1, "vibevoice load-timeout must call _kill_subprocess"
         assert raise_idx != -1
         assert kill_idx < raise_idx
 
@@ -267,17 +257,15 @@ class TestSourcePins:
         assert timeout_log < kill_idx
 
     def test_w_c11_qwen_dead_stdout_reaps_handle(self):
-        closed_log = QWEN_SRC.find(
-            '"  ❌ Subprocess closed unexpectedly"')
-        kill_idx = QWEN_SRC.find(
-            '"stdout closed mid-generation"')
+        closed_log = QWEN_SRC.find('"  ❌ Subprocess closed unexpectedly"')
+        kill_idx = QWEN_SRC.find('"stdout closed mid-generation"')
         assert closed_log != -1
         assert kill_idx != -1
         assert closed_log < kill_idx
 
     def test_qwen_kill_subprocess_resets_both_markers(self):
-        assert "def _kill_subprocess(self, reason: str = \"\")" in QWEN_SRC
-        method = QWEN_SRC[QWEN_SRC.find("def _kill_subprocess"):]
+        assert 'def _kill_subprocess(self, reason: str = "")' in QWEN_SRC
+        method = QWEN_SRC[QWEN_SRC.find("def _kill_subprocess") :]
         method = method[: method.find("def _cleanup")]
         assert "sub.kill(reason)" in method
         assert "self._sub = None" in method
@@ -293,7 +281,9 @@ class TestSourcePins:
         assert kw_idx < run_idx, "timeout must be set before the run call"
 
     def test_w_c8_piper_timeout_expired_converted(self):
-        assert "except subprocess.TimeoutExpired:" in ENGINE_SRC
+        # V0.13 (B904 fix): the handler now captures the exception
+        # (`as e`) so the RuntimeError chains with `from e`.
+        assert "except subprocess.TimeoutExpired as e:" in ENGINE_SRC
         assert "Piper timed out after" in ENGINE_SRC
 
     def test_neutts_deliberately_not_ported(self):
@@ -303,7 +293,7 @@ class TestSourcePins:
         assert "_json_subprocess" not in NEUTTS_SRC
         assert "def _cleanup_process" in NEUTTS_SRC
         # The neutts load-failure cleanup-before-raise reference remains.
-        ensure = NEUTTS_SRC[NEUTTS_SRC.find("def _ensure_process"):]
+        ensure = NEUTTS_SRC[NEUTTS_SRC.find("def _ensure_process") :]
         ensure = ensure[: ensure.find("def _cleanup_process")]
         assert "self._cleanup_process()" in ensure
 
@@ -311,7 +301,7 @@ class TestSourcePins:
         """V11.55/V11.57 vibevoice per-line timeout kill remains, now via
         the shared base with a REAL timeout."""
         assert 'f"timeout ({VIBEVOICE_LINE_TIMEOUT_S}s)"' in VIBE_SRC
-        assert 'VibeVoice subprocess timed out (600s)' in VIBE_SRC
+        assert "VibeVoice subprocess timed out (600s)" in VIBE_SRC
 
 
 # ── Behavioral: the shared base itself (O-c2) ───────────────────────────────
@@ -322,7 +312,8 @@ class TestJsonSubprocessBase:
         from core.tts._json_subprocess import PersistentJsonSubprocess
 
         sub = PersistentJsonSubprocess(
-            name="base-test", log=logs, stderr_prefix="[t]", stderr_level="DEBUG")
+            name="base-test", log=logs, stderr_prefix="[t]", stderr_level="DEBUG"
+        )
         sub.spawn([sys.executable, "x.py"], env={"PATH": ""})
         return sub
 
@@ -337,10 +328,12 @@ class TestJsonSubprocessBase:
 
     def test_read_json_yields_scripted_json_and_skips_noise(self, monkeypatch):
         logs = _LogCollector()
-        proc = _FakeProc([
-            "noise from some library\n",
-            json.dumps({"status": "loading", "device": "cpu"}) + "\n",
-        ])
+        proc = _FakeProc(
+            [
+                "noise from some library\n",
+                json.dumps({"status": "loading", "device": "cpu"}) + "\n",
+            ]
+        )
         monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: proc)
         sub = self._sub(logs, proc)
 
@@ -422,9 +415,11 @@ class TestQwenWc2:
         """Child closes stdout before ready → RuntimeError AND the proc
         is killed (the old code dropped the handle — W-c2)."""
         engine, logs = qwen_engine
-        proc = _FakeProc([
-            json.dumps({"status": "loading", "device": "cpu"}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "loading", "device": "cpu"}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         with pytest.raises(RuntimeError, match="failed to load model"):
@@ -457,26 +452,28 @@ class TestQwenWc2:
 
     def test_load_error_status_kills_subprocess(self, qwen_engine, monkeypatch):
         engine, logs = qwen_engine
-        proc = _FakeProc([
-            json.dumps({"status": "error", "error": "OOM on load"}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "error", "error": "OOM on load"}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         with pytest.raises(RuntimeError, match="Model load failed: OOM"):
             engine._ensure_model()
 
-        assert proc.killed == 1, (
-            "load-error must not leave the subprocess holding VRAM (W-c2)")
+        assert proc.killed == 1, "load-error must not leave the subprocess holding VRAM (W-c2)"
         assert engine._sub is None
 
     def test_ready_load_is_unchanged(self, qwen_engine, monkeypatch):
         """Golden path: ready handshake still works, no kill."""
         engine, logs = qwen_engine
-        proc = _FakeProc([
-            json.dumps({"status": "loading", "device": "cuda"}),
-            json.dumps({"status": "ready", "device": "cuda",
-                        "speakers": ["Vivian", "Ryan"]}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "loading", "device": "cuda"}),
+                json.dumps({"status": "ready", "device": "cuda", "speakers": ["Vivian", "Ryan"]}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         engine._ensure_model()
@@ -499,8 +496,7 @@ class TestQwenWc11:
         engine._model = True
         return engine, logs, sub
 
-    def test_chunk_timeout_on_silent_child_kills_and_resets(
-            self, qwen_engine, monkeypatch):
+    def test_chunk_timeout_on_silent_child_kills_and_resets(self, qwen_engine, monkeypatch):
         """THE T-c6 wedge at GENERATE time: silent-but-alive child → the
         per-chunk timeout must actually FIRE (the old blocking readline
         hung forever), then kill + reset (W-c11 protocol resync)."""
@@ -516,15 +512,13 @@ class TestQwenWc11:
         assert result is False
         assert proc.killed == 1, "timed-out chunk must kill (W-c11)"
         assert engine._sub is None, "kill must reset the engine (W-c11)"
-        assert engine._model is None, (
-            "loaded marker must reset so the next synthesize reloads")
+        assert engine._model is None, "loaded marker must reset so the next synthesize reloads"
         assert "timed out" in logs.joined()
         assert "chunk timeout" in logs.joined()
 
     def test_dead_stdout_reaps_and_resets(self, qwen_engine, monkeypatch):
         """stdout EOF mid-generation → kill + reset (not a bricked engine)."""
-        engine, logs, _sub = self._armed_engine(
-            qwen_engine, monkeypatch, _FakeProc([]))
+        engine, logs, _sub = self._armed_engine(qwen_engine, monkeypatch, _FakeProc([]))
 
         result = engine._run_subprocess("hello", "Vivian", "out.wav")
         assert result is False
@@ -533,17 +527,18 @@ class TestQwenWc11:
         assert engine._sub is None
         assert engine._model is None
 
-    def test_next_ensure_reloads_fresh_subprocess(
-            self, qwen_engine, monkeypatch):
+    def test_next_ensure_reloads_fresh_subprocess(self, qwen_engine, monkeypatch):
         """After a dead-stdout kill, _ensure_model starts a FRESH proc
         (recovery contract — the engine is not permanently bricked)."""
         import core.tts.qwen_tts_engine as qmod  # noqa: F401
 
         engine, logs = qwen_engine
         dead = _FakeProc([])
-        fresh = _FakeProc([
-            json.dumps({"status": "ready", "device": "cuda", "speakers": []}),
-        ])
+        fresh = _FakeProc(
+            [
+                json.dumps({"status": "ready", "device": "cuda", "speakers": []}),
+            ]
+        )
         calls = _install_fake_popen(monkeypatch, [dead, fresh])
         engine._sub = _spawned_sub("Qwen3-TTS", logs, dead)
         engine._model = True
@@ -558,13 +553,14 @@ class TestQwenWc11:
         assert len(calls) == 2, "one spawn for the armed sub + one reload"
         assert fresh.killed == 0
 
-    def test_error_response_keeps_protocol_running(
-            self, qwen_engine, monkeypatch):
+    def test_error_response_keeps_protocol_running(self, qwen_engine, monkeypatch):
         """A reported generation error is a terminal response to OUR
         command — protocol stays in sync, so NO kill (bounded change)."""
         engine, logs, _sub = self._armed_engine(
-            qwen_engine, monkeypatch,
-            _FakeProc([json.dumps({"status": "error", "error": "bad chunk"})]))
+            qwen_engine,
+            monkeypatch,
+            _FakeProc([json.dumps({"status": "error", "error": "bad chunk"})]),
+        )
 
         result = engine._run_subprocess("hello", "Vivian", "out.wav")
         assert result is False
@@ -585,22 +581,22 @@ class TestQwenWc11:
 class TestVibeVoiceWc2:
     def test_load_eof_kills_subprocess(self, vibe_engine, monkeypatch):
         engine, logs = vibe_engine
-        proc = _FakeProc([
-            json.dumps({"status": "loading", "device": "cpu"}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "loading", "device": "cpu"}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         with pytest.raises(RuntimeError, match="failed to load model"):
             engine._ensure_model()
 
-        assert proc.killed == 1, (
-            "300s timeout must kill the still-loading 2.6 GB model (W-c2)")
+        assert proc.killed == 1, "300s timeout must kill the still-loading 2.6 GB model (W-c2)"
         assert engine._sub is None
         assert engine._loaded is False
         assert "Killing VibeVoice subprocess" in logs.joined()
 
-    def test_load_silent_child_real_timeout_kills(
-            self, vibe_engine, monkeypatch):
+    def test_load_silent_child_real_timeout_kills(self, vibe_engine, monkeypatch):
         import core.tts.vibevoice_engine as vmod
 
         engine, logs = vibe_engine
@@ -615,12 +611,13 @@ class TestVibeVoiceWc2:
         assert proc.killed == 1
         assert "model load not ready (timeout" in logs.joined()
 
-    def test_load_error_status_kills_subprocess(
-            self, vibe_engine, monkeypatch):
+    def test_load_error_status_kills_subprocess(self, vibe_engine, monkeypatch):
         engine, _logs = vibe_engine
-        proc = _FakeProc([
-            json.dumps({"status": "error", "error": "CUDA init failed"}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "error", "error": "CUDA init failed"}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         with pytest.raises(RuntimeError, match="Model load failed"):
@@ -631,9 +628,11 @@ class TestVibeVoiceWc2:
 
     def test_ready_load_is_unchanged(self, vibe_engine, monkeypatch):
         engine, _logs = vibe_engine
-        proc = _FakeProc([
-            json.dumps({"status": "ready", "device": "cuda"}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "ready", "device": "cuda"}),
+            ]
+        )
         _install_fake_popen(monkeypatch, [proc])
 
         engine._ensure_model()
@@ -642,7 +641,8 @@ class TestVibeVoiceWc2:
         assert engine.get_device() == "cuda"
 
     def test_line_timeout_on_silent_child_kills_and_raises(
-            self, vibe_engine, monkeypatch, tmp_path):
+        self, vibe_engine, monkeypatch, tmp_path
+    ):
         """The 600s per-line timeout must be REAL (silent child), then
         kill + raise per the V11.57 no-restart policy."""
         import core.tts.vibevoice_engine as vmod
@@ -663,12 +663,13 @@ class TestVibeVoiceWc2:
         assert engine._sub is None
         assert engine._loaded is False
 
-    def test_line_ok_golden_path_unchanged(
-            self, vibe_engine, monkeypatch, tmp_path):
+    def test_line_ok_golden_path_unchanged(self, vibe_engine, monkeypatch, tmp_path):
         engine, logs = vibe_engine
-        proc = _FakeProc([
-            json.dumps({"status": "ok", "duration": 12}),
-        ])
+        proc = _FakeProc(
+            [
+                json.dumps({"status": "ok", "duration": 12}),
+            ]
+        )
         monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: proc)
         engine._sub = _spawned_sub("VibeVoice", logs, proc)
         engine._loaded = True
@@ -692,13 +693,11 @@ class TestPiperWc8:
         binary = tmp_path / "piper.exe"
         binary.write_bytes(b"fake")
         logs = _LogCollector()
-        return PiperEngine(
-            binary_path=binary, voices_dir=tmp_path, log_callback=logs)
+        return PiperEngine(binary_path=binary, voices_dir=tmp_path, log_callback=logs)
 
     def test_timeout_kwarg_is_passed(self, tmp_path, monkeypatch):
         engine = self._engine(tmp_path)
-        monkeypatch.setattr(
-            engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
+        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
 
         captured: dict = {}
 
@@ -709,16 +708,13 @@ class TestPiperWc8:
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(RuntimeError, match="timed out after 120s"):
             engine._synthesize("سلام", tmp_path / "out.wav", "fa_FA", 1.0)
-        assert captured.get("timeout") == 120, (
-            "piper subprocess.run must be bounded (W-c8)")
+        assert captured.get("timeout") == 120, "piper subprocess.run must be bounded (W-c8)"
 
-    def test_timeout_is_fail_soft_through_synthesize(
-            self, tmp_path, monkeypatch):
+    def test_timeout_is_fail_soft_through_synthesize(self, tmp_path, monkeypatch):
         """The house fail-soft contract: synthesize() returns None and
         records last_error (the TTS thread never sees a raw exception)."""
         engine = self._engine(tmp_path)
-        monkeypatch.setattr(
-            engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
+        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
 
         def fake_run(cmd, **kwargs):
             raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
@@ -730,8 +726,7 @@ class TestPiperWc8:
 
     def test_successful_run_is_unchanged(self, tmp_path, monkeypatch):
         engine = self._engine(tmp_path)
-        monkeypatch.setattr(
-            engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
+        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
         out = tmp_path / "out.wav"
         # Write a >44-byte "wav" so the base-class size check passes.
         out.write_bytes(b"WAV" * 64)
@@ -740,8 +735,7 @@ class TestPiperWc8:
             returncode = 0
             stderr = ""
 
-        monkeypatch.setattr(
-            subprocess, "run", lambda cmd, **kwargs: _FakeCompleted())
+        monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: _FakeCompleted())
         result = engine.synthesize("سلام", out, "fa_FA", 1.0)
         assert result == out
         assert engine.last_error is None

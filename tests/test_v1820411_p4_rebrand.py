@@ -8,12 +8,10 @@ The app formerly known as MarkItDown Pro is Elixir. This file pins:
      (moves once, preserves content, never raises, skips when target exists)
   4. the keychain legacy-service read-fallback works
 """
+
 from __future__ import annotations
 
-import re
 from pathlib import Path
-
-import pytest
 
 import utils.settings as settings_mod
 
@@ -23,12 +21,13 @@ _REPO = Path(__file__).resolve().parent.parent
 #  - the two migration anchors (runtime code, deliberate)
 #  - the historical record (what shipped, when — records are not rewritten)
 _ALLOWED = {
-    "utils/settings.py",           # _LEGACY_USER_DIR_NAME migration source
-    "core/system/secrets.py",      # _LEGACY_KEYCHAIN_SERVICE read-fallback
-    "CHANGELOG.md",                # historical entries + this release's note
-    "Project-History.md",          # historical development log
-    "README.md",                   # the "previously known as" callout
-    "NEW_SESSION_PROMPT.md",       # working-agreement history note (checked below)
+    "utils/settings.py",  # _LEGACY_USER_DIR_NAME migration source
+    "core/system/secrets.py",  # _LEGACY_KEYCHAIN_SERVICE read-fallback
+    "CHANGELOG.md",  # historical entries + this release's note
+    "docs/AUDIT_SWOT_V0.11.md",  # V0.12/V0.13 audit deliverable — historical references
+    "Project-History.md",  # historical development log
+    "README.md",  # the "previously known as" callout
+    "NEW_SESSION_PROMPT.md",  # working-agreement history note (checked below)
 }
 _BRAND_PATTERNS = [
     "MarkItDown Pro Ultimate",
@@ -47,8 +46,11 @@ def _iter_repo_files():
             continue
         if any(part in {".git", "__pycache__", ".pytest_cache"} for part in p.parts):
             continue
-        if p.suffix.lower() not in {".py", ".md", ".toml", ".iss", ".txt", ".json", ".yml", ".bat", ".cfg"} \
-                and p.name != "Makefile":
+        if (
+            p.suffix.lower()
+            not in {".py", ".md", ".toml", ".iss", ".txt", ".json", ".yml", ".bat", ".cfg"}
+            and p.name != "Makefile"
+        ):
             continue
         yield p
 
@@ -60,7 +62,7 @@ class TestRebrandSweepComplete:
             rel = p.relative_to(_REPO).as_posix()
             if (
                 rel in _ALLOWED
-                or rel.startswith("tests/test_ground/")   # historical run records
+                or rel.startswith("tests/test_ground/")  # historical run records
                 or rel == "tests/test_v1820411_p4_rebrand.py"  # this file's own pins
             ):
                 continue
@@ -80,7 +82,9 @@ class TestRebrandSweepComplete:
         src = (_REPO / "utils/settings.py").read_text(encoding="utf-8")
         assert '_LEGACY_USER_DIR_NAME = ".markitdown_pro"' in src
         ssrc = (_REPO / "core/system/secrets.py").read_text(encoding="utf-8")
-        assert '_LEGACY_KEYCHAIN_SERVICE = "MarkItDownPro"' in ssrc
+        # V0.13: format-wrapped — the string literal moved to its own line
+        assert "_LEGACY_KEYCHAIN_SERVICE = (" in ssrc
+        assert '"MarkItDownPro"  # pre-rebrand keychain service' in ssrc
 
     def test_markitdown_library_references_survive(self):
         """The markitdown PyPI library (Microsoft's extraction engine) is a

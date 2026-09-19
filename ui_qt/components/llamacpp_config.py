@@ -12,6 +12,7 @@ All endpoint state reads/writes the ``summarisation.llamacpp_*`` settings
 block (single source of truth — the provider factory reads the same keys),
 so the wizard, the Settings dialog and the provider can never disagree.
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
@@ -60,7 +61,8 @@ class LlamaCppConfigMixin:
         )
         self.llamacpp_key_edit.setEchoMode(QLineEdit.Password)
         self.llamacpp_key_edit.setPlaceholderText(
-            "local (ignored unless llama-server uses --api-key)")
+            "local (ignored unless llama-server uses --api-key)"
+        )
         key_row.addWidget(QLabel("API key:"))
         key_row.addWidget(self.llamacpp_key_edit, 1)
         lay.addLayout(key_row)
@@ -122,14 +124,13 @@ class LlamaCppConfigMixin:
             from core.llm.llamacpp_provider import list_llamacpp_models
 
             base = self.controller.get_setting(
-                "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL)
-            key = self.controller.get_setting(
-                "summarisation.llamacpp_api_key", "local")
+                "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL
+            )
+            key = self.controller.get_setting("summarisation.llamacpp_api_key", "local")
             models = list_llamacpp_models(base, key, timeout=10)
             if models:
                 return models
-            configured = self.controller.get_setting(
-                "summarisation.llamacpp_model", "")
+            configured = self.controller.get_setting("summarisation.llamacpp_model", "")
             return [configured] if configured else []
         except Exception:
             return []
@@ -165,10 +166,14 @@ class LlamaCppConfigMixin:
         try:
             backend = self.backend_combo.currentData() or "ollama"
             if backend == "llamacpp":
-                _lc_ctx = int(self.controller.get_setting(
-                    "summarisation.llamacpp_context_tokens", 65536) or 65536)
-                _lc_out = int(self.controller.get_setting(
-                    "summarisation.llamacpp_max_output_tokens", 12288) or 12288)
+                _lc_ctx = int(
+                    self.controller.get_setting("summarisation.llamacpp_context_tokens", 65536)
+                    or 65536
+                )
+                _lc_out = int(
+                    self.controller.get_setting("summarisation.llamacpp_max_output_tokens", 12288)
+                    or 12288
+                )
                 if self.heavy_ctx_spin.value() == 32768:
                     self.heavy_ctx_spin.setValue(min(max(_lc_ctx, 1024), 262144))
                 if self.heavy_out_spin.value() in (8192, 16000):
@@ -179,10 +184,12 @@ class LlamaCppConfigMixin:
                 # Switching back to Ollama/LM Studio: restore the persisted
                 # summarisation token settings when the spins still show
                 # the llama.cpp defaults.
-                _ctx = int(self.controller.get_setting(
-                    "summarisation.max_context_tokens", 32768) or 32768)
-                _out = int(self.controller.get_setting(
-                    "summarisation.max_output_tokens", 16000) or 16000)
+                _ctx = int(
+                    self.controller.get_setting("summarisation.max_context_tokens", 32768) or 32768
+                )
+                _out = int(
+                    self.controller.get_setting("summarisation.max_output_tokens", 16000) or 16000
+                )
                 if self.heavy_ctx_spin.value() == 65536 and _ctx != 65536:
                     self.heavy_ctx_spin.setValue(min(max(_ctx, 1024), 262144))
                 if self.heavy_out_spin.value() == 12288 and _out != 12288:
@@ -214,7 +221,8 @@ class LlamaCppConfigMixin:
                 from PySide6.QtCore import Qt as _Qt
 
                 QMetaObject.invokeMethod(
-                    self, "_set_llamacpp_test_result",
+                    self,
+                    "_set_llamacpp_test_result",
                     _Qt.ConnectionType.QueuedConnection,
                 )
             except Exception:

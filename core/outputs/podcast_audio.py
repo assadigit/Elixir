@@ -30,6 +30,7 @@ from pathlib import Path
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
 from core.tts.engine import TTSRouter, detect_language
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -115,7 +116,8 @@ class PodcastAudioGenerator(OutputGeneratorBase):
             # Generate a brief on-the-fly from the summaries
             self.log(
                 "  ℹ️ No briefing file found — generating a short brief "
-                "from summaries for the intro podcast…", "INFO"
+                "from summaries for the intro podcast…",
+                "INFO",
             )
             briefing_text = self._build_briefing_from_summaries(summaries, book_title)
             if not briefing_text:
@@ -159,11 +161,14 @@ class PodcastAudioGenerator(OutputGeneratorBase):
 
         # Load TTS settings
         from utils.settings import Settings
+
         s = Settings()
-        piper_binary = Path(s.get(
-            "tts.piper_binary",
-            r"C:\piper_windows_amd64\piper\piper.exe",
-        ))
+        piper_binary = Path(
+            s.get(
+                "tts.piper_binary",
+                r"C:\piper_windows_amd64\piper\piper.exe",
+            )
+        )
         piper_voices_dir = piper_binary.parent / "voices"
         host_a_voice = s.get("tts.host_a_voice", "")
         host_b_voice = s.get("tts.host_b_voice", "")
@@ -197,7 +202,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
             en_engine=en_engine,
             neutts_gguf_path=Path(neutts_gguf) if neutts_gguf else None,
             neutts_project_path=Path(neutts_project) if neutts_project else None,
-            fa_engine=s.get("tts.fa_engine", "piper"),          # V10.37.0
+            fa_engine=s.get("tts.fa_engine", "piper"),  # V10.37.0
             coqui_model=s.get("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
             coqui_speaker=s.get("tts.coqui_speaker", "Ana"),
             coqui_voice_sample=s.get("tts.coqui_voice_sample", ""),
@@ -207,6 +212,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         normalizer = None
         try:
             from core.tts.normalizer import create_normalizer_from_settings
+
             normalizer = create_normalizer_from_settings(log_callback=self.log)
             if normalizer:
                 self.log("  ✨ Text normalization enabled", "INFO")
@@ -225,15 +231,19 @@ class PodcastAudioGenerator(OutputGeneratorBase):
                     continue
                 lang = detect_language(chunks[0])
                 voice = self._resolve_voice(
-                    speaker, lang, host_a_voice, host_b_voice,
-                    en_voice, fa_voice, en_engine,
+                    speaker,
+                    lang,
+                    host_a_voice,
+                    host_b_voice,
+                    en_voice,
+                    fa_voice,
+                    en_engine,
                 )
                 if normalizer:
                     chunks = [normalizer.normalize(c, lang) for c in chunks]
                 seg_path = Path(tmp) / f"seg_{idx:04d}.wav"
                 self.log(
-                    f"  [{idx}/{len(segments)}] {speaker} ({lang}) "
-                    f"→ {voice}: {text[:60]}…",
+                    f"  [{idx}/{len(segments)}] {speaker} ({lang}) → {voice}: {text[:60]}…",
                     "INFO",
                 )
                 if len(chunks) == 1:
@@ -255,21 +265,14 @@ class PodcastAudioGenerator(OutputGeneratorBase):
                 self.log("  ⚠️ No audio segments generated", "WARNING")
                 return []
 
-            self.log(
-                f"  🔀 Stitching {len(audio_segments)} segments → "
-                f"{output_path.name}…", "INFO"
-            )
+            self.log(f"  🔀 Stitching {len(audio_segments)} segments → {output_path.name}…", "INFO")
             try:
                 self._concat_wavs(audio_segments, output_path)
             except Exception as e:
                 self.log(f"  ⚠️ Stitch failed ({e})", "WARNING")
                 return []
 
-        self.log(
-            f"  ✅ {output_path.name} "
-            f"({output_path.stat().st_size // 1024} KB)",
-            "SUCCESS"
-        )
+        self.log(f"  ✅ {output_path.name} ({output_path.stat().st_size // 1024} KB)", "SUCCESS")
         return [output_path]
 
     # ── V7.6.0 R2: intro dialogue generation ─────────────────────────────
@@ -342,6 +345,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
     ) -> tuple[str, str]:
         """Resolve + deduplicate host voices (ensures A ≠ B)."""
         from core.tts.voices import KOKORO_VOICES
+
         kokoro_ids = {v[0] for v in KOKORO_VOICES}
 
         if en_engine == "kokoro":
@@ -361,6 +365,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
                 host_b = "af_heart" if host_a != "af_heart" else "am_michael"
             else:
                 from core.tts.voice_manager import VoiceManager
+
                 vm = VoiceManager(log_callback=self.log)
                 all_voices = [v["name"] for v in vm.list_voices() if v["has_wav"]]
                 for alt in all_voices:
@@ -370,17 +375,24 @@ class PodcastAudioGenerator(OutputGeneratorBase):
                 if host_a == host_b:
                     host_b = "af_heart"  # Kokoro fallback for Host B
             self.log(
-                f"  🔀 Host A and Host B had the same voice — switched "
-                f"Host B to {host_b}", "WARNING"
+                f"  🔀 Host A and Host B had the same voice — switched Host B to {host_b}",
+                "WARNING",
             )
         return host_a, host_b
 
     def _resolve_voice(
-        self, speaker: str, lang: str, host_a: str, host_b: str,
-        en_voice: str, fa_voice: str, en_engine: str,
+        self,
+        speaker: str,
+        lang: str,
+        host_a: str,
+        host_b: str,
+        en_voice: str,
+        fa_voice: str,
+        en_engine: str,
     ) -> str:
         """Pick the right voice for a speaker given the detected language."""
         from core.tts.voices import KOKORO_VOICES, PIPER_FA_VOICES
+
         kokoro_ids = {v[0] for v in KOKORO_VOICES}
         piper_ids = {v[0] for v in PIPER_FA_VOICES}
         host_voice = host_a if speaker == "A" else host_b
@@ -403,6 +415,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         """Concatenate WAV files into one using pydub (falls back to wave)."""
         try:
             from pydub import AudioSegment
+
             combined = AudioSegment.empty()
             for wp in wav_paths:
                 seg = AudioSegment.from_wav(str(wp))
@@ -412,6 +425,7 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         except ImportError:
             pass
         import wave as _wave
+
         if not wav_paths:
             return
         with _wave.open(str(wav_paths[0]), "rb") as first:
@@ -428,10 +442,11 @@ class _TempDir:
 
     def __enter__(self) -> str:
         import tempfile
+
         self._d = tempfile.mkdtemp(prefix="tts_")
         return self._d
 
     def __exit__(self, *exc) -> None:
         import shutil
-        shutil.rmtree(self._d, ignore_errors=True)
 
+        shutil.rmtree(self._d, ignore_errors=True)

@@ -26,6 +26,7 @@ by ``tests/test_bullet_pipeline_golden.py`` (Sprint 3.5).
 
 Run: ``pytest tests/test_summarizer.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -70,6 +71,7 @@ def _stub_module(name: str, **attrs):
 _stub_module("tiktoken")
 _stub_module("tiktoken_ext")
 _stub_module("tiktoken_ext.openai_public")
+
 
 # token_counter stub functions
 def _count_tokens(text: str) -> int:
@@ -117,6 +119,7 @@ def _unstub_modules_after_tests():
         sys.modules.pop(_name, None)
     _STUBBED.clear()
 
+
 # Now we can import the quarantine module + the summarizer module.
 # We load summarizer.py via importlib to control the import, but it will
 # still execute `from utils.token_counter import count_tokens` — which now
@@ -126,6 +129,7 @@ def _unstub_modules_after_tests():
 # check if that's importable.
 try:
     from core.summarisation import quarantine as _q_mod  # noqa: F401
+
     _QUARANTINE_OK = True
 except Exception:
     _QUARANTINE_OK = False
@@ -191,7 +195,7 @@ QuarantineLog = _q_mod.QuarantineLog
 pytestmark = pytest.mark.skipif(
     not _SUMMARIZER_OK,
     reason=f"Summarizer module import failed in sandbox: "
-           f"{getattr(_SUMMARIZER_IMPORT_ERROR, '__class__.__name__', 'unknown') if not _SUMMARIZER_OK else ''}",
+    f"{getattr(_SUMMARIZER_IMPORT_ERROR, '__class__.__name__', 'unknown') if not _SUMMARIZER_OK else ''}",
 )
 
 if _SUMMARIZER_OK:
@@ -236,7 +240,7 @@ class TestFilterThinkingBullets:
         s = _make_bare_summarizer(tmp_path=tmp_path)
         bullets = [
             "Analyze the structure of the argument carefully.",  # thinking
-            "The study found 50% improvement in participants.",   # good
+            "The study found 50% improvement in participants.",  # good
         ]
         result = s._filter_thinking_bullets(bullets, source_text="study found 50% improvement")
         assert "The study found 50% improvement in participants." in result
@@ -250,7 +254,7 @@ class TestFilterThinkingBullets:
         s = _make_bare_summarizer(conservative=True, tmp_path=tmp_path)
         bullets = [
             "Source Text: the original passage to summarize",  # prompt leakage
-            "The mechanism requires careful calibration.",      # good
+            "The mechanism requires careful calibration.",  # good
         ]
         result = s._filter_thinking_bullets(bullets, source_text="mechanism requires calibration")
         # The good bullet survives
@@ -291,9 +295,7 @@ class TestFilterThinkingBullets:
     def test_quarantine_records_stage(self, tmp_path):
         """Quarantine entries record the correct stage name."""
         s = _make_bare_summarizer(tmp_path=tmp_path)
-        s._filter_thinking_bullets(
-            ["Analyze this carefully."], source_text=""
-        )
+        s._filter_thinking_bullets(["Analyze this carefully."], source_text="")
         stages = [e.stage for e in s.quarantine.entries]
         assert any("thinking_filter" in st for st in stages)
 
@@ -354,7 +356,9 @@ class TestScoreBullet:
         """A well-formed bullet with concept + action verb + number scores high."""
         s = _make_bare_summarizer(tmp_path=tmp_path)
         bullet = "The study demonstrates that 50% of participants improved significantly after treatment."
-        score = s._score_bullet(bullet, concepts=["study", "treatment"], source_text="50% participants improved")
+        score = s._score_bullet(
+            bullet, concepts=["study", "treatment"], source_text="50% participants improved"
+        )
         assert score >= 40  # above the drop threshold
 
     def test_low_score_for_short_bullet(self, tmp_path):
@@ -417,8 +421,10 @@ class TestRecoverQuarantined:
         s = _make_bare_summarizer(tmp_path=tmp_path)
         bullet = "The study found 50% improvement in participants."
         s.quarantine.add(
-            bullet, stage="F4_source_overlap",
-            source_overlap=0.90, actually_dropped=True,
+            bullet,
+            stage="F4_source_overlap",
+            source_overlap=0.90,
+            actually_dropped=True,
         )
         result = s._recover_quarantined([bullet], "study found 50% improvement")
         assert result.count(bullet) == 1

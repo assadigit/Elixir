@@ -39,27 +39,37 @@ logger = logging.getLogger(__name__)
 # The model_subdir is the folder name inside the extracted tar.bz2.
 SHERPA_PERSIAN_VOICES: list[tuple[str, str, str, str]] = [
     # The user's favorite — "نیما" (gyro Piper model)
-    ("nima",
-     "💧 نیما (Nima) — gyro",
-     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-gyro-medium.tar.bz2",
-     "vits-piper-fa_IR-gyro-medium"),
+    (
+        "nima",
+        "💧 نیما (Nima) — gyro",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-gyro-medium.tar.bz2",
+        "vits-piper-fa_IR-gyro-medium",
+    ),
     # Other Piper voices
-    ("aria",
-     "⚡️ آریا (Aria) — amir",
-     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-amir-medium.tar.bz2",
-     "vits-piper-fa_IR-amir-medium"),
-    ("payam",
-     "🌠 پیام (Payam) — bilingual fa/en",
-     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_en-rezahedayatfar-ibrahimwalk-medium.tar.bz2",
-     "vits-piper-fa_en-rezahedayatfar-ibrahimwalk-medium"),
-    ("rima",
-     "🌹 ریما (Rima) — mimic3 haaniye",
-     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-mimic3-fa-haaniye_low.tar.bz2",
-     "vits-mimic3-fa-haaniye_low"),
+    (
+        "aria",
+        "⚡️ آریا (Aria) — amir",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-amir-medium.tar.bz2",
+        "vits-piper-fa_IR-amir-medium",
+    ),
+    (
+        "payam",
+        "🌠 پیام (Payam) — bilingual fa/en",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_en-rezahedayatfar-ibrahimwalk-medium.tar.bz2",
+        "vits-piper-fa_en-rezahedayatfar-ibrahimwalk-medium",
+    ),
+    (
+        "rima",
+        "🌹 ریما (Rima) — mimic3 haaniye",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-mimic3-fa-haaniye_low.tar.bz2",
+        "vits-mimic3-fa-haaniye_low",
+    ),
 ]
 
 # espeak-ng-data is needed for phonemization of Piper models.
-_ESPEAK_NG_DATA_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2"
+_ESPEAK_NG_DATA_URL = (
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2"
+)
 _ESPEAK_NG_DATA_SUBDIR = "espeak-ng-data"
 
 
@@ -163,13 +173,13 @@ class SherpaPersianEngine(TTSEngine):
             if espeak_data_dirs:
                 self._espeak_data_dir = espeak_data_dirs[0].parent
 
-        self.log(
-            f"  🔄 Loading sherpa-onnx Persian TTS: {display_name}", "INFO")
+        self.log(f"  🔄 Loading sherpa-onnx Persian TTS: {display_name}", "INFO")
         self.log(f"     Model: {model_onnx.name}", "DEBUG")
         self.log(f"     Tokens: {tokens_path.name if tokens_path else 'N/A'}", "DEBUG")
         self.log(f"     Espeak: {self._espeak_data_dir}", "DEBUG")
 
         import sherpa_onnx
+
         kwargs = {
             "vits_model": str(model_onnx),
             "num_speakers": 1,
@@ -204,14 +214,15 @@ class SherpaPersianEngine(TTSEngine):
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
             self.log(
-                f"  🎙️ Sherpa Persian [{self._voice_id}]: "
-                f"generating {len(text)} chars…", "INFO")
+                f"  🎙️ Sherpa Persian [{self._voice_id}]: generating {len(text)} chars…", "INFO"
+            )
 
             # sherpa_onnx generates audio as a list of float samples.
             audio_obj = self._tts.generate(text, sid=0, speed=speed)
             # The result has .samples and .sample_rate attributes.
             import numpy as np
             import soundfile as sf
+
             samples = np.array(audio_obj.samples, dtype=np.float32)
             sample_rate = audio_obj.sample_rate
             sf.write(str(out_path), samples, sample_rate)

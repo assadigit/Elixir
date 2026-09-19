@@ -41,6 +41,7 @@ from core.models import SummaryResult
 
 logger = logging.getLogger(__name__)
 
+
 def _sanitize_heading(heading: str) -> str:
     """Sanitize a chapter heading for filename matching.
 
@@ -109,6 +110,7 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
     # run wrote it) onto the loaded SummaryResult — so resume can report
     # WHERE a reused summary came from.
     from core.system.provenance import has_complete_sentinel, parse_provenance
+
     if not has_complete_sentinel(content):
         return None
     _prov = parse_provenance(content)
@@ -122,7 +124,8 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
     # Extract executive summary
     exec_match = re.search(
         r"##\s+Executive Summary\s*\n(.*?)(?=\n##\s+|\Z)",
-        content, re.DOTALL,
+        content,
+        re.DOTALL,
     )
     executive_summary = exec_match.group(1).strip() if exec_match else ""
     # V0.05 (F9a): no single section is individually REQUIRED anymore — the
@@ -134,7 +137,8 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
     # Extract bullet points
     bullets_match = re.search(
         r"##\s+Key Takeaways\s*\n(.*?)(?=\n##\s+|\Z)",
-        content, re.DOTALL,
+        content,
+        re.DOTALL,
     )
     bullet_points: list[str] = []
     if bullets_match:
@@ -147,7 +151,8 @@ def parse_summary_file(path: Path) -> SummaryResult | None:
     # Extract thorough summary
     thorough_match = re.search(
         r"##\s+Thorough Summary\s*\n(.*?)(?=\n##\s+|\Z)",
-        content, re.DOTALL,
+        content,
+        re.DOTALL,
     )
     thorough_summary = thorough_match.group(1).strip() if thorough_match else ""
 
@@ -234,22 +239,17 @@ def split_chapters_for_resume(
             if getattr(_src, "run_id", ""):
                 _prov_tag = (
                     f" (file from run {_src.run_id}"
-                    + (
-                        f", app v{_src.app_version}"
-                        if getattr(_src, "app_version", "") else ""
-                    )
+                    + (f", app v{_src.app_version}" if getattr(_src, "app_version", "") else "")
                     + ")"
                 )
-            log(f"  ⏭️  Resume: '{heading[:50]}' already processed — skipping LLM{_prov_tag}", "INFO")
+            log(
+                f"  ⏭️  Resume: '{heading[:50]}' already processed — skipping LLM{_prov_tag}", "INFO"
+            )
         else:
             todo.append(cd)
 
     if loaded:
-        log(
-            f"  📂 Chapter resume: {len(loaded)} already done, "
-            f"{len(todo)} to process",
-            "INFO"
-        )
+        log(f"  📂 Chapter resume: {len(loaded)} already done, {len(todo)} to process", "INFO")
     return todo, loaded
 
 

@@ -13,6 +13,7 @@ contract, this test fails.
 Uses a mocked LLM provider (no real Ollama/HTTP needed) and a stubbed
 embedder (returns None → Jaccard fallback in content_judge).
 """
+
 from __future__ import annotations
 
 import json
@@ -55,18 +56,20 @@ class TestGoldenPathPipeline:
 
     def _mock_json_response(self) -> str:
         """A well-formed JSON response for the structured-output path."""
-        return json.dumps({
-            "executive_summary": "Erikson (1959) described identity formation.",
-            "bullet_points": [
-                "Erikson (1959) described eight stages of development",
-                "Freud (1923) described the structural model",
-                "Mahler (1968) described separation-individuation",
-            ],
-            "thorough_summary": "Erikson described identity. Freud described the psyche. "
-            "Mahler described separation.",
-            "key_distinctions": "Erikson vs Freud: developmental vs structural",
-            "theoretical_tensions": "Identity: continuous vs stage-based",
-        })
+        return json.dumps(
+            {
+                "executive_summary": "Erikson (1959) described identity formation.",
+                "bullet_points": [
+                    "Erikson (1959) described eight stages of development",
+                    "Freud (1923) described the structural model",
+                    "Mahler (1968) described separation-individuation",
+                ],
+                "thorough_summary": "Erikson described identity. Freud described the psyche. "
+                "Mahler described separation.",
+                "key_distinctions": "Erikson vs Freud: developmental vs structural",
+                "theoretical_tensions": "Identity: continuous vs stage-based",
+            }
+        )
 
     def test_prompt_sanitizer_wraps_chapter_text(self):
         """Phase 1.1: PromptManager sanitizes {{text}} with the fence."""
@@ -167,13 +170,21 @@ class TestGoldenPathPipeline:
         """Phase 4.3: no flag when summary covers ≥80% of source authors."""
         from core.summarisation.postchecks import detect_citation_coverage_gap
 
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans",
-                 "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join(
-            f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)
-        )
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names))
         summary = ". ".join(
-            f"{n} ({1900+i}) discussed topic {i}." for i, n in enumerate(names[:9])
+            f"{n} ({1900 + i}) discussed topic {i}." for i, n in enumerate(names[:9])
         )
         issues = detect_citation_coverage_gap(source, summary)
         assert issues == []  # 9/10 = 90% ≥ 80%
@@ -182,11 +193,19 @@ class TestGoldenPathPipeline:
         """Phase 4.3: flag when summary covers <80% of source authors."""
         from core.summarisation.postchecks import detect_citation_coverage_gap
 
-        names = ["Adams", "Baker", "Clark", "Davis", "Evans",
-                 "Foster", "Green", "Harris", "Irwin", "Jones"]
-        source = ". ".join(
-            f"{n} ({1900+i}) wrote about topic {i}." for i, n in enumerate(names)
-        )
+        names = [
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Green",
+            "Harris",
+            "Irwin",
+            "Jones",
+        ]
+        source = ". ".join(f"{n} ({1900 + i}) wrote about topic {i}." for i, n in enumerate(names))
         summary = "Only Adams (1900) is mentioned."
         issues = detect_citation_coverage_gap(source, summary)
         assert len(issues) == 1
@@ -195,12 +214,14 @@ class TestGoldenPathPipeline:
     def test_retry_module_imports(self):
         """Phase 1.4: the retry module is importable and has the decorator."""
         from core.llm.retry import classify_ollama_exception, retry_llm_call
+
         assert callable(retry_llm_call)
         assert callable(classify_ollama_exception)
 
     def test_async_provider_imports(self):
         """Phase 3.1: the async provider module is importable."""
         from core.llm.async_provider import AsyncOllamaProvider, gather_calls, run_async
+
         assert AsyncOllamaProvider is not None
         assert callable(run_async)
         assert callable(gather_calls)
@@ -208,6 +229,7 @@ class TestGoldenPathPipeline:
     def test_prompt_budget_imports(self):
         """Phase 3.2: the prompt budget module is importable."""
         from core.llm.prompt_budget import PromptBudget, estimate_tokens
+
         b = PromptBudget()
         assert b.max_context_tokens > 0
         assert estimate_tokens("test") > 0
@@ -215,6 +237,7 @@ class TestGoldenPathPipeline:
     def test_embedding_cache_imports(self):
         """Phase 3.3: the embedding cache module is importable."""
         from core.llm.embedding_cache import EmbeddingCache, cached_encode
+
         c = EmbeddingCache()
         assert c.hits == 0
         assert callable(cached_encode)
@@ -222,6 +245,7 @@ class TestGoldenPathPipeline:
     def test_tracing_module_imports(self):
         """Phase 4.1: the tracing module is importable."""
         from core.obs.tracing import flush, is_tracing_enabled, span
+
         assert callable(span)
         assert callable(is_tracing_enabled)
         assert callable(flush)
@@ -231,6 +255,7 @@ class TestGoldenPathPipeline:
     def test_bootstrap_imports(self):
         """Phase 2.1: the Bootstrap class is importable."""
         from core.system.bootstrap import Bootstrap
+
         b = Bootstrap(Path("/tmp"), app_dir=Path("/tmp"))
         assert b is not None
         assert b.steps_run == []
@@ -244,6 +269,7 @@ class TestGoldenPathPipeline:
         """
         # 1. Render a sanitized prompt
         from core.summarisation.prompt_manager import PromptManager
+
         user_dir = Path.home() / ".elixir" / "prompts"
         user_dir.mkdir(parents=True, exist_ok=True)
         template = user_dir / "_e2e_golden.md"
@@ -264,6 +290,7 @@ class TestGoldenPathPipeline:
 
             # 2. Mock the provider and call complete_structured
             from core.llm.structured_io import complete_structured
+
             mock_provider = MagicMock()
             mock_provider.complete.return_value = self._mock_json_response()
             result = complete_structured(
@@ -278,6 +305,7 @@ class TestGoldenPathPipeline:
             # 3. Verify the XML fallback path also works
             mock_provider.complete.return_value = self._mock_xml_response()
             from core.summarisation.response_parser import parse_response
+
             result_xml = complete_structured(
                 mock_provider,
                 prompt,

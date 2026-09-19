@@ -21,6 +21,7 @@ Usage (replaces the old pattern)::
 
 The worker auto-deletes after finishing (``worker.deleteLater()``).
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

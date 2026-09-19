@@ -28,6 +28,7 @@ Usage from ``utils/settings.py``::
     for e in errors:
         logger.warning(e)
 """
+
 from __future__ import annotations
 
 import logging
@@ -124,11 +125,13 @@ def _levenshtein(a: str, b: str) -> int:
     for i, ca in enumerate(a, 1):
         curr = [i]
         for j, cb in enumerate(b, 1):
-            curr.append(min(
-                prev[j] + 1,
-                curr[j - 1] + 1,
-                prev[j - 1] + (0 if ca == cb else 1),
-            ))
+            curr.append(
+                min(
+                    prev[j] + 1,
+                    curr[j - 1] + 1,
+                    prev[j - 1] + (0 if ca == cb else 1),
+                )
+            )
         prev = curr
     return prev[-1]
 
@@ -200,10 +203,13 @@ def validate_settings(data: dict[str, Any], defaults: dict[str, Any]) -> list[st
                 suggestion = _suggest(key, sibling_keys)
                 msg = f"Unknown setting '{full}'."
                 if suggestion:
-                    msg += f" Did you mean '{parent_path + '.' if parent_path else ''}{suggestion}'?"
+                    msg += (
+                        f" Did you mean '{parent_path + '.' if parent_path else ''}{suggestion}'?"
+                    )
                 msg += (
                     f" Valid keys at this level: {', '.join(sorted(sibling_keys))}."
-                    if sibling_keys else ""
+                    if sibling_keys
+                    else ""
                 )
                 errors.append(msg)
                 continue
@@ -312,6 +318,7 @@ if _PYDANTIC_AVAILABLE:
         threshold_scale) are allowed through ``extra="allow"`` so the schema
         never blocks forward-compat additions.
         """
+
         model_config = ConfigDict(extra="allow")
         enabled: bool = True
         fallback: str = "jaccard"
@@ -320,9 +327,7 @@ if _PYDANTIC_AVAILABLE:
         @classmethod
         def _validate_fallback(cls, v: Any) -> Any:
             if v not in ("jaccard", "skip"):
-                raise ValueError(
-                    f"embedding.fallback must be 'jaccard' or 'skip' (got {v!r})"
-                )
+                raise ValueError(f"embedding.fallback must be 'jaccard' or 'skip' (got {v!r})")
             return v
 
     class _UiSchema(BaseModel):
@@ -338,6 +343,7 @@ if _PYDANTIC_AVAILABLE:
         known-keys validator above; this model catches *type* errors (e.g.
         ``max_workers: "two"`` instead of ``2``).
         """
+
         model_config = ConfigDict(extra="allow")
         summarisation: _SummarisationSchema | None = None
         ocr: _OcrSchema | None = None

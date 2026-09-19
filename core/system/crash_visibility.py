@@ -44,6 +44,7 @@ NEVER block startup.  This module is therefore stdlib-only (no PySide6,
 no torch, no numpy, no project imports) so it can be imported before
 anything else in ``main.py``.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -122,7 +123,7 @@ def arm_faulthandler(log_path: Path = FAULTHANDLER_LOG) -> bool:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         # V18.20.4.12 (W-c14): rotate the append-only crash log before open.
         rotate_log_if_large(log_path)
-        _fh_file = open(log_path, "a", encoding="utf-8")
+        _fh_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115 — deliberate process-lifetime handle for faulthandler
         _fh_file.write(
             f"\n{'=' * 60}\n"
             f"[{_stamp()}] faulthandler armed "
@@ -160,10 +161,7 @@ def _format_thread_death(args: Any) -> str:
     except Exception:
         tb_text = f"{args.exc_type}: {args.exc_value}\n(no traceback available)\n"
     return (
-        f"\n{'=' * 60}\n"
-        f"[{_stamp()}] BACKGROUND THREAD DIED: {thread_name}\n"
-        f"{tb_text}"
-        f"{'=' * 60}\n"
+        f"\n{'=' * 60}\n[{_stamp()}] BACKGROUND THREAD DIED: {thread_name}\n{tb_text}{'=' * 60}\n"
     )
 
 

@@ -37,6 +37,7 @@ from core.common import (
 )
 from core.llm import ModelManager, ModelType
 from utils.logging import get_main_logger
+
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport (localhost → no-proxy
 # pooled session, cloud → proxy-trusting pooled session).
 from utils.network import session_for_url
@@ -52,37 +53,37 @@ class TocExtractor:
     """Extract the Table of Contents from a PDF file, with adaptive pipeline."""
 
     TOC_PAGE_PATTERN = re.compile(
-        r'\b(?:table\s+of\s+contents?|contents?|فهرست(?:\s+مطالب)?)\b',
+        r"\b(?:table\s+of\s+contents?|contents?|فهرست(?:\s+مطالب)?)\b",
         re.IGNORECASE | re.UNICODE,
     )
 
     ENTRY_PATTERNS = [
-        re.compile(r'^(.+?)\s*[.·•\-]{3,}\s*(\d{1,4})\s*$'),
-        re.compile(r'^(.+?)\t+(\d{1,4})\s*$'),
-        re.compile(r'^(.{8,}?)\s{3,}(\d{1,4})\s*$'),
-        re.compile(r'^(.{12,}?)\s{1,2}(\d{1,4})\s*$'),
+        re.compile(r"^(.+?)\s*[.·•\-]{3,}\s*(\d{1,4})\s*$"),
+        re.compile(r"^(.+?)\t+(\d{1,4})\s*$"),
+        re.compile(r"^(.{8,}?)\s{3,}(\d{1,4})\s*$"),
+        re.compile(r"^(.{12,}?)\s{1,2}(\d{1,4})\s*$"),
     ]
 
     CHAPTER_LIKE = re.compile(
-        r'^(?:'
-        r'\d+[\.:]\s|'
-        r'\d+\s*[-–—]\s|'
-        r'Chapter\s+\d|Part\s+\d|Section\s+\d|Appendix|'
-        r'Introduction|Conclusion|Foreword|Preface|Epilogue|Afterword|'
-        r'فصل|بخش'
-        r')',
+        r"^(?:"
+        r"\d+[\.:]\s|"
+        r"\d+\s*[-–—]\s|"
+        r"Chapter\s+\d|Part\s+\d|Section\s+\d|Appendix|"
+        r"Introduction|Conclusion|Foreword|Preface|Epilogue|Afterword|"
+        r"فصل|بخش"
+        r")",
         re.IGNORECASE | re.UNICODE,
     )
 
-    NUMBERED_SECTION = re.compile(r'^(\d+)\s*[-–—.]\s+(.+)$', re.UNICODE)
+    NUMBERED_SECTION = re.compile(r"^(\d+)\s*[-–—.]\s+(.+)$", re.UNICODE)
 
     ROMAN_NUMERAL_PATTERN = re.compile(
-        r'^(?P<roman>[IVXLCDM]+)\s*[.·•\-]\s+(?P<title>.+)$',
+        r"^(?P<roman>[IVXLCDM]+)\s*[.·•\-]\s+(?P<title>.+)$",
         re.IGNORECASE | re.UNICODE,
     )
 
     NOISE = re.compile(
-        r'^(?:page|p\.?\s*\d|\d{1,4}\s*$|[ivxlcIVXLC]+\s*$)',
+        r"^(?:page|p\.?\s*\d|\d{1,4}\s*$|[ivxlcIVXLC]+\s*$)",
         re.IGNORECASE,
     )
 
@@ -100,8 +101,7 @@ class TocExtractor:
         # Adaptive pipeline settings
         self._adaptive_enabled = self._settings.get("advanced.toc_adaptive", True)
         self._llm_model = self._settings.get(
-            "summarisation.fast_model",
-            self._settings.get("summarisation.model", "llama3.1:8b")
+            "summarisation.fast_model", self._settings.get("summarisation.model", "llama3.1:8b")
         )
         # V18.20.4.3 (P2 / W-c9): canonical URL from settings — the
         # hardcoded localhost split behavior on remote-Ollama rigs.
@@ -135,9 +135,12 @@ class TocExtractor:
         total_pages = len(reader.pages)
         page_labels = None
         try:
-            if hasattr(reader, 'page_labels') and reader.page_labels:
+            if hasattr(reader, "page_labels") and reader.page_labels:
                 page_labels = reader.page_labels
-                self.log(f"[TOC] PDF page labels available: {page_labels[:10]}{'…' if len(page_labels)>10 else ''}", "DEBUG")
+                self.log(
+                    f"[TOC] PDF page labels available: {page_labels[:10]}{'…' if len(page_labels) > 10 else ''}",
+                    "DEBUG",
+                )
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
@@ -160,7 +163,9 @@ class TocExtractor:
                     self.log(f"[TOC] LLM extraction: {len(llm_entries)} entries.", "INFO")
                     # Validate: check monotonic pages and enough entries
                     pages = [e.page for e in llm_entries if e.page is not None]
-                    if len(pages) >= 4 and all(pages[i] < pages[i+1] for i in range(len(pages)-1)):
+                    if len(pages) >= 4 and all(
+                        pages[i] < pages[i + 1] for i in range(len(pages) - 1)
+                    ):
                         return llm_entries  # V13.32.7: return TOCEntry objects
                     else:
                         self.log("[TOC] LLM entries failed monotonic check, falling back.", "DEBUG")
@@ -168,7 +173,9 @@ class TocExtractor:
                 # 2b. Clustering
                 cluster_entries = self._extract_by_clustering(md_text)
                 if cluster_entries and len(cluster_entries) >= 3:
-                    self.log(f"[TOC] Clustering extraction: {len(cluster_entries)} entries.", "INFO")
+                    self.log(
+                        f"[TOC] Clustering extraction: {len(cluster_entries)} entries.", "INFO"
+                    )
                     return cluster_entries  # V13.32.7: return TOCEntry objects
 
         # ── 3. Rule‑based parsers (existing) ──────────────────────────────────
@@ -198,6 +205,7 @@ class TocExtractor:
                     self.log(f"[TOC] Vision model '{model_name}' loaded.", "INFO")
                     poppler_path = self._settings.get("paths.poppler") or None
                     from core.ocr.qwen_ocr import QwenOCREngine
+
                     vision_engine = QwenOCREngine(
                         model_name=model_name,
                         image_max_size=1200,
@@ -206,9 +214,15 @@ class TocExtractor:
                         retries=1,
                     )
                 else:
-                    self.log(f"[TOC] Failed to load vision model '{model_name}'. Falling back to Tesseract.", "WARNING")
+                    self.log(
+                        f"[TOC] Failed to load vision model '{model_name}'. Falling back to Tesseract.",
+                        "WARNING",
+                    )
             else:
-                self.log(f"[TOC] Vision model '{model_name}' not available. Falling back to Tesseract.", "WARNING")
+                self.log(
+                    f"[TOC] Vision model '{model_name}' not available. Falling back to Tesseract.",
+                    "WARNING",
+                )
 
         # ── Collect text from TOC pages ──────────────────────────────────────
         toc_lines: list[str] = []
@@ -229,8 +243,8 @@ class TocExtractor:
             return []
 
         # Normalise tabs and collapse multiple spaces
-        toc_lines = [re.sub(r"\t+", " ", l).strip() for l in toc_lines if l.strip()]
-        toc_lines = [re.sub(r" {2,}", " ", l) for l in toc_lines]
+        toc_lines = [re.sub(r"\t+", " ", line).strip() for line in toc_lines if line.strip()]
+        toc_lines = [re.sub(r" {2,}", " ", line) for line in toc_lines]
 
         # Debug raw text
         raw_sample = "\n".join(toc_lines[:25])
@@ -260,7 +274,10 @@ class TocExtractor:
                     unique.append((h, p))
             entries = unique
 
-            footer_pattern = re.compile(r'^(About the Author|Copyright|Credits|Permissions|Index|Glossary|Bibliography|References|Notes|Further Reading)\b', re.IGNORECASE)
+            footer_pattern = re.compile(
+                r"^(About the Author|Copyright|Credits|Permissions|Index|Glossary|Bibliography|References|Notes|Further Reading)\b",
+                re.IGNORECASE,
+            )
             entries = [(h, p) for h, p in entries if not footer_pattern.match(h.strip())]
 
             if not entries:
@@ -280,7 +297,7 @@ class TocExtractor:
             self.log(
                 f"[TOC] Best parser '{best_name}' score {best_score:.1f}% below minimum "
                 f"{self.MIN_ACCEPTABLE_SCORE}%. Using it anyway as a fallback.",
-                "WARNING"
+                "WARNING",
             )
 
         self.log(f"[TOC] Selected parser: '{best_name}' with score {best_score:.1f}%", "INFO")
@@ -304,14 +321,14 @@ class TocExtractor:
     def _get_markdown_preview(self, reader, max_pages: int = 30) -> str | None:
         """Convert first max_pages to markdown (or plain text) for LLM/clustering."""
         try:
-            from markitdown import MarkItDown
-            md = MarkItDown()
-            # Write first max_pages to a temp PDF? Simpler: extract text page by page.
-            # We'll use pypdf to extract text and combine with page markers.
+            # V0.13 (Phase 0 lint triage): removed a vestigial MarkItDown
+            # import + instantiation (abandoned approach — the comment said
+            # "Simpler: extract text page by page" and pypdf does the work).
+            # Extract text page by page and combine with page markers.
             parts = []
             for i in range(min(max_pages, len(reader.pages))):
                 text = reader.pages[i].extract_text() or ""
-                parts.append(f"<!-- original page {i+1} -->\n{text}")
+                parts.append(f"<!-- original page {i + 1} -->\n{text}")
             return "\n\n".join(parts)
         except Exception as e:
             self.log(f"[TOC] Could not get markdown preview: {e}", "DEBUG")
@@ -327,6 +344,7 @@ class TocExtractor:
         text = "\n".join(front)
 
         from core.summarisation.prompt_manager import PromptManager
+
         _pm = PromptManager()
         prompt = _pm.render_template(
             "pdf/toc_extract",
@@ -340,14 +358,14 @@ class TocExtractor:
             response = session_for_url(self._ollama_base_url).post(
                 f"{self._ollama_base_url}/api/generate",
                 json={"model": self._llm_model, "prompt": prompt, "stream": False},
-                timeout=120
+                timeout=120,
             )
             if response.status_code != 200:
                 return None
             data = response.json()
             raw = data.get("response", "")
             # Extract JSON block
-            json_match = re.search(r'\[\s*\{.*\}\s*\]', raw, re.DOTALL)
+            json_match = re.search(r"\[\s*\{.*\}\s*\]", raw, re.DOTALL)
             if not json_match:
                 return None
             parsed = json.loads(json_match.group(0))
@@ -383,13 +401,18 @@ class TocExtractor:
             stripped = line.strip()
             if not stripped:
                 continue
-            if stripped.startswith('```') or stripped.startswith('|'):
+            if stripped.startswith("```") or stripped.startswith("|"):
                 continue
             if len(stripped) < 5 or len(stripped) > 200:
                 continue
-            if (stripped.startswith('#') or
-                stripped.isupper() or
-                any(key in stripped for key in ["Chapter", "Part", "Section", "CHAPTER", "PART", "SECTION"])):
+            if (
+                stripped.startswith("#")
+                or stripped.isupper()
+                or any(
+                    key in stripped
+                    for key in ["Chapter", "Part", "Section", "CHAPTER", "PART", "SECTION"]
+                )
+            ):
                 candidates.append((i, stripped))
 
         if len(candidates) < 3:
@@ -397,7 +420,10 @@ class TocExtractor:
 
         # Simple density clustering: sort by line, group where gap > average_gap * 1.5
         sorted_candidates = sorted(candidates, key=lambda x: x[0])
-        gaps = [sorted_candidates[i+1][0] - sorted_candidates[i][0] for i in range(len(sorted_candidates)-1)]
+        gaps = [
+            sorted_candidates[i + 1][0] - sorted_candidates[i][0]
+            for i in range(len(sorted_candidates) - 1)
+        ]
         if not gaps:
             return None
         avg_gap = sum(gaps) / len(gaps)
@@ -406,7 +432,7 @@ class TocExtractor:
         clusters = []
         current_cluster = [sorted_candidates[0]]
         for i in range(1, len(sorted_candidates)):
-            if sorted_candidates[i][0] - sorted_candidates[i-1][0] > threshold:
+            if sorted_candidates[i][0] - sorted_candidates[i - 1][0] > threshold:
                 clusters.append(current_cluster[0][1])
                 current_cluster = [sorted_candidates[i]]
             else:
@@ -435,16 +461,18 @@ class TocExtractor:
             def flatten(outline_list, level=0):
                 entries = []
                 for item in outline_list:
-                    if hasattr(item, 'title') and hasattr(item, 'page'):
+                    if hasattr(item, "title") and hasattr(item, "page"):
                         # It's a Destination
                         title = item.title
                         try:
                             page_num = reader.get_destination_page_number(item) + 1
                         except Exception as _e:
                             page_num = 0
-                        entries.append(TOCEntry(title=title, page=page_num, confidence=1.0, level=level))
+                        entries.append(
+                            TOCEntry(title=title, page=page_num, confidence=1.0, level=level)
+                        )
                     elif isinstance(item, list):
-                        entries.extend(flatten(item, level+1))
+                        entries.extend(flatten(item, level + 1))
                 return entries
 
             raw = flatten(outlines)
@@ -488,11 +516,14 @@ class TocExtractor:
 
         # 2. Vision OCR (if engine provided and text is poor)
         if vision_engine and (not text.strip() or len(text.strip()) < 50):
-            self.log(f"  [TOC] Vision OCR attempt for page {page_idx+1}...", "DEBUG")
+            self.log(f"  [TOC] Vision OCR attempt for page {page_idx + 1}...", "DEBUG")
             try:
                 result = vision_engine.process_page(reader.pages[page_idx], page_idx + 1)
                 if result.success and result.text.strip():
-                    self.log(f"  [TOC] Vision OCR extracted {len(result.text)} chars from page {page_idx+1}", "INFO")
+                    self.log(
+                        f"  [TOC] Vision OCR extracted {len(result.text)} chars from page {page_idx + 1}",
+                        "INFO",
+                    )
                     return result.text
             except Exception as e:
                 self.log(f"  [TOC] Vision OCR failed: {e}", "WARNING")
@@ -503,7 +534,6 @@ class TocExtractor:
 
             import pytesseract
             from pdf2image import convert_from_bytes
-            from PIL import Image
             from pypdf import PdfWriter
 
             writer = PdfWriter()
@@ -528,7 +558,10 @@ class TocExtractor:
                 pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
                 ocr_text = pytesseract.image_to_string(images[0], lang="eng+fas")
                 if ocr_text.strip():
-                    self.log(f"  [TOC] Tesseract OCR extracted {len(ocr_text)} chars from page {page_idx+1}", "INFO")
+                    self.log(
+                        f"  [TOC] Tesseract OCR extracted {len(ocr_text)} chars from page {page_idx + 1}",
+                        "INFO",
+                    )
                     return ocr_text
         except ImportError:
             pass
@@ -543,7 +576,7 @@ class TocExtractor:
 
     def _roman_to_int(self, roman: str) -> int:
         roman = roman.upper()
-        values = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+        values = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
         total = 0
         prev = 0
         for ch in reversed(roman):
@@ -587,14 +620,17 @@ class TocExtractor:
             if not m:
                 continue
 
-            roman_str = m.group('roman')
-            title = m.group('title').strip()
+            roman_str = m.group("roman")
+            title = m.group("title").strip()
 
             page_num = self._map_roman_page(roman_str, page_labels)
 
             if page_num < 1 or page_num > total_pages:
                 if page_num > total_pages:
-                    self.log(f"[TOC] Roman numeral '{roman_str}' maps to {page_num} > {total_pages}; treating as chapter number (page=0).", "DEBUG")
+                    self.log(
+                        f"[TOC] Roman numeral '{roman_str}' maps to {page_num} > {total_pages}; treating as chapter number (page=0).",
+                        "DEBUG",
+                    )
                     page_num = 0
                 else:
                     continue
@@ -632,7 +668,7 @@ class TocExtractor:
             return toc_entries
 
         # Build marker map: page -> char position
-        marker_map = {p: pos for p, pos in page_markers}
+        marker_map = dict(page_markers)
         total_pages = max(marker_map.keys()) if marker_map else 1
 
         # Prepare lines and fuzzy matching helpers
@@ -721,7 +757,7 @@ class TocExtractor:
 
         # Now apply correction
         corrected = []
-        for heading, toc_page, actual_page, raw_offset in entry_offsets:
+        for heading, toc_page, _actual_page, raw_offset in entry_offsets:
             # Determine if this entry should be corrected
             # If the raw_offset is in offset_to_median, apply the median
             # Otherwise, keep original (no correction)
@@ -733,7 +769,7 @@ class TocExtractor:
                     self.log(
                         f"[TOC] Adaptive offset: '{heading[:40]}' TOC p.{toc_page} → "
                         f"p.{new_page} (offset {median_offset:+d})",
-                        "DEBUG"
+                        "DEBUG",
                     )
                     corrected.append((heading, new_page))
                 else:
@@ -743,7 +779,10 @@ class TocExtractor:
 
         # If we corrected any entries, log summary
         if any(c[1] != toc_entries[i][1] for i, c in enumerate(corrected)):
-            self.log("[TOC] Adaptive offset correction applied to entries with consistent offsets.", "INFO")
+            self.log(
+                "[TOC] Adaptive offset correction applied to entries with consistent offsets.",
+                "INFO",
+            )
 
         return corrected
 
@@ -765,7 +804,7 @@ class TocExtractor:
             if sorted_pages[0] <= 2:
                 is_sequential = True
                 for i in range(1, len(sorted_pages)):
-                    if sorted_pages[i] - sorted_pages[i-1] != 1:
+                    if sorted_pages[i] - sorted_pages[i - 1] != 1:
                         is_sequential = False
                         break
                 if is_sequential:
@@ -796,7 +835,7 @@ class TocExtractor:
                 m = pat.match(s)
                 if not m:
                     continue
-                heading = re.sub(r' {2,}', ' ', m.group(1).strip()).strip()
+                heading = re.sub(r" {2,}", " ", m.group(1).strip()).strip()
                 page_num = int(m.group(2))
                 if len(heading) < 3 or not (1 <= page_num <= total_pages):
                     continue
@@ -824,13 +863,13 @@ class TocExtractor:
             if j >= len(lines):
                 continue
             nxt = lines[j].strip()
-            m = re.match(r'^(\d{1,4})\s*$', nxt)
+            m = re.match(r"^(\d{1,4})\s*$", nxt)
             if not m:
                 continue
             page_num = int(m.group(1))
             if not (1 <= page_num <= total_pages):
                 continue
-            heading = re.sub(r' {2,}', ' ', s).strip()
+            heading = re.sub(r" {2,}", " ", s).strip()
             key = (heading.lower(), page_num)
             if key not in seen:
                 seen.add(key)
@@ -845,21 +884,23 @@ class TocExtractor:
             s = line.strip()
             if not s or self.TOC_PAGE_PATTERN.match(s) or self.NOISE.match(s):
                 continue
-            m = re.match(r'^(\d{1,4})\s*$', s)
+            m = re.match(r"^(\d{1,4})\s*$", s)
             if m:
                 n = int(m.group(1))
                 if 1 <= n <= total_pages:
                     pages.append(n)
                 continue
             if self.CHAPTER_LIKE.match(s) and len(s.split()) >= 2:
-                headings.append(re.sub(r' {2,}', ' ', s).strip())
+                headings.append(re.sub(r" {2,}", " ", s).strip())
 
         if not headings or not pages:
             return []
         min_len = min(len(headings), len(pages))
         if min_len == 0 or abs(len(headings) - len(pages)) > 3:
             return []
-        self.log(f"[TOC] Column layout detected: {len(headings)} titles, {len(pages)} pages", "INFO")
+        self.log(
+            f"[TOC] Column layout detected: {len(headings)} titles, {len(pages)} pages", "INFO"
+        )
         entries = [(headings[i], pages[i]) for i in range(min_len) if 1 <= pages[i] <= total_pages]
         entries.sort(key=lambda x: x[1])
         return entries
@@ -880,12 +921,14 @@ class TocExtractor:
                         j -= 1
                     if j >= 0:
                         candidate = lines[j].strip()
-                        if (not self.NOISE.match(candidate) and
-                            not re.match(r'^\d+$', candidate) and
-                            len(candidate) > 3):
+                        if (
+                            not self.NOISE.match(candidate)
+                            and not re.match(r"^\d+$", candidate)
+                            and len(candidate) > 3
+                        ):
                             heading = candidate
                     if heading:
-                        heading = re.sub(r' {2,}', ' ', heading).strip()
+                        heading = re.sub(r" {2,}", " ", heading).strip()
                         if heading.lower() not in seen:
                             seen.add(heading.lower())
                             entries.append((heading, page_num))
@@ -905,7 +948,7 @@ class TocExtractor:
         page_numbers = []
         for line in lines:
             s = line.strip()
-            if re.match(r'^\d{1,4}\s*$', s):
+            if re.match(r"^\d{1,4}\s*$", s):
                 p = int(s)
                 if 1 <= p <= total_pages:
                     page_numbers.append(p)
@@ -918,15 +961,15 @@ class TocExtractor:
                 num = int(m.group(1))
                 title = m.group(2).strip()
                 page_num = 0
-                num_at_end = re.search(r'\b(\d{1,4})\b$', s)
+                num_at_end = re.search(r"\b(\d{1,4})\b$", s)
                 if num_at_end:
                     p = int(num_at_end.group(1))
                     if 1 <= p <= total_pages:
                         page_num = p
                 else:
                     if i + 1 < len(lines):
-                        nxt = lines[i+1].strip()
-                        if re.match(r'^\d{1,4}\s*$', nxt):
+                        nxt = lines[i + 1].strip()
+                        if re.match(r"^\d{1,4}\s*$", nxt):
                             p = int(nxt)
                             if 1 <= p <= total_pages:
                                 page_num = p
@@ -939,7 +982,9 @@ class TocExtractor:
                     entries.append((heading, page_num if page_num else 0))
         entries.sort(key=lambda x: x[1])
         if entries:
-            self.log(f"[TOC] Strategy 5 (numbered sections): extracted {len(entries)} entries.", "INFO")
+            self.log(
+                f"[TOC] Strategy 5 (numbered sections): extracted {len(entries)} entries.", "INFO"
+            )
         return entries
 
     def _parse_headings_only(self, lines: list[str], total_pages: int) -> list[tuple[str, int]]:
@@ -950,9 +995,9 @@ class TocExtractor:
             s = raw.strip()
             if not s or self.TOC_PAGE_PATTERN.match(s) or self.NOISE.match(s):
                 if pending:
-                    h = re.sub(r' {2,}', ' ', pending).strip()
+                    h = re.sub(r" {2,}", " ", pending).strip()
                     page_num = 0
-                    num_match = re.search(r'\b(\d{1,4})\b', pending)
+                    num_match = re.search(r"\b(\d{1,4})\b", pending)
                     if num_match:
                         page_num = int(num_match.group(1))
                         if not (1 <= page_num <= total_pages):
@@ -976,7 +1021,7 @@ class TocExtractor:
                 if pending:
                     h = re.sub(r" {2,}", " ", pending).strip()
                     page_num = 0
-                    num_match = re.search(r'\b(\d{1,4})\b', pending)
+                    num_match = re.search(r"\b(\d{1,4})\b", pending)
                     if num_match:
                         page_num = int(num_match.group(1))
                         if not (1 <= page_num <= total_pages):
@@ -992,14 +1037,17 @@ class TocExtractor:
                     r"Dedication|Copyright|Preface|Foreword)\b",
                     re.IGNORECASE,
                 )
-                if (pending and len(s.split()) >= 2
-                        and not re.match(r"^[A-Z][A-Z\s]+$", s)
-                        and not _SECTION_STARTERS.match(s)):
+                if (
+                    pending
+                    and len(s.split()) >= 2
+                    and not re.match(r"^[A-Z][A-Z\s]+$", s)
+                    and not _SECTION_STARTERS.match(s)
+                ):
                     pending = pending + " " + s
         if pending:
             h = re.sub(r" {2,}", " ", pending).strip()
             page_num = 0
-            num_match = re.search(r'\b(\d{1,4})\b', pending)
+            num_match = re.search(r"\b(\d{1,4})\b", pending)
             if num_match:
                 page_num = int(num_match.group(1))
                 if not (1 <= page_num <= total_pages):
@@ -1025,7 +1073,7 @@ class TocExtractor:
         return None
 
     def _looks_like_body(self, lines: list[str]) -> bool:
-        return sum(1 for l in lines if len(l.strip()) > 90) > 3
+        return sum(1 for ln in lines if len(ln.strip()) > 90) > 3
 
     # ─────────────────────────────────────────────────────────────────────────
     # Validation and Correction (Phase 1.1 + Phase 3.1)
@@ -1038,7 +1086,7 @@ class TocExtractor:
             return False
         sorted_nums = sorted(page_numbers)
         for i in range(1, len(sorted_nums)):
-            if sorted_nums[i] - sorted_nums[i-1] != 1:
+            if sorted_nums[i] - sorted_nums[i - 1] != 1:
                 return False
         if sorted_nums[0] > 3:
             return False
@@ -1062,7 +1110,7 @@ class TocExtractor:
             self.log(
                 "[TOC] Page numbers appear to be chapter numbers (sequential, <=30). "
                 "Setting page numbers to 0; segmenter will locate by heading matching.",
-                "WARNING"
+                "WARNING",
             )
             return [(h, 0) for h, _ in toc_entries]
 
@@ -1072,7 +1120,7 @@ class TocExtractor:
                 new_page = 1 if page < 1 else total_pages
                 self.log(
                     f"[TOC] Page number {page} for '{heading[:40]}' out of range ({total_pages} total). Clamping to {new_page}.",
-                    "WARNING"
+                    "WARNING",
                 )
                 page = new_page
             corrected.append((heading, page))
@@ -1081,13 +1129,15 @@ class TocExtractor:
             corrected = self._detect_and_correct_offset(corrected, markdown_text, page_markers)
 
         if markdown_text is not None and page_markers is not None and page_markers:
-            marker_map = {p: pos for p, pos in page_markers}
+            marker_map = dict(page_markers)
             anchored = []
             for heading, page in corrected:
                 if page == 0:
                     anchored.append((heading, page))
                     continue
-                pattern = re.compile(r'^#+\s*' + re.escape(heading.strip()) + r'\s*$', re.MULTILINE | re.IGNORECASE)
+                pattern = re.compile(
+                    r"^#+\s*" + re.escape(heading.strip()) + r"\s*$", re.MULTILINE | re.IGNORECASE
+                )
                 match = pattern.search(markdown_text)
                 if match:
                     pos = match.start()
@@ -1100,7 +1150,7 @@ class TocExtractor:
                     if nearest_page != page:
                         self.log(
                             f"[TOC] Anchored '{heading[:40]}': TOC page {page} → actual page {nearest_page}",
-                            "INFO"
+                            "INFO",
                         )
                         page = nearest_page
                 anchored.append((heading, page))
@@ -1130,7 +1180,9 @@ class TocExtractor:
         Returns a TOCResult with entries containing line numbers and match details.
         """
         if not toc_entries:
-            return TOCResult(entries=[], method="none", confidence=0.0, validation_report="No TOC entries")
+            return TOCResult(
+                entries=[], method="none", confidence=0.0, validation_report="No TOC entries"
+            )
 
         # Convert toc_entries to TOCEntry objects if they aren't already
         entries = []
@@ -1170,7 +1222,9 @@ class TocExtractor:
                 end_line = min(total_lines - 1, estimated_line + 150)
 
             # Candidates in window
-            window_candidates = [(ln, txt) for ln, txt in candidates if start_line <= ln <= end_line]
+            window_candidates = [
+                (ln, txt) for ln, txt in candidates if start_line <= ln <= end_line
+            ]
 
             # If window empty, use fallback
             if not window_candidates:
@@ -1225,7 +1279,7 @@ class TocExtractor:
             report_parts.append(f"{count} via {method}")
         validation_report = (
             f"TOC entries: {len(entries)}, located: {found}/{len(entries)} "
-            f"({found/len(entries)*100:.1f}%) | " + ", ".join(report_parts)
+            f"({found / len(entries) * 100:.1f}%) | " + ", ".join(report_parts)
         )
 
         method = "rule_based"
@@ -1233,7 +1287,7 @@ class TocExtractor:
             entries=entries,
             method=method,
             confidence=confidence,
-            validation_report=validation_report
+            validation_report=validation_report,
         )
 
     def _build_marker_map(self, markdown_text: str) -> dict[int, int]:
@@ -1241,10 +1295,9 @@ class TocExtractor:
         markers = {}
         lines = markdown_text.splitlines()
         for line_no, line in enumerate(lines):
-            m = re.search(r'<!-- original page (\d+) -->', line)
+            m = re.search(r"<!-- original page (\d+) -->", line)
             if m:
                 page = int(m.group(1))
                 if page not in markers:  # keep the first occurrence
                     markers[page] = line_no
         return markers
-

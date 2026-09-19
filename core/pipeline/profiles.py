@@ -38,8 +38,9 @@ def _ensure_dir() -> Path:
 def _sanitize_name(name: str) -> str:
     """Sanitize a profile name for use as a filename."""
     import re
-    safe = re.sub(r'[:?*<>|"\\/]', '', name)
-    safe = re.sub(r'\s+', '_', safe.strip())
+
+    safe = re.sub(r'[:?*<>|"\\/]', "", name)
+    safe = re.sub(r"\s+", "_", safe.strip())
     return safe[:60]
 
 
@@ -82,11 +83,13 @@ def list_profiles() -> list[dict[str, Any]]:
     for f in sorted(_PROFILES_DIR.glob("*.json")):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            profiles.append({
-                "name": data.get("name", f.stem),
-                "created_at": data.get("created_at", ""),
-                "path": str(f),
-            })
+            profiles.append(
+                {
+                    "name": data.get("name", f.stem),
+                    "created_at": data.get("created_at", ""),
+                    "path": str(f),
+                }
+            )
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
     return profiles

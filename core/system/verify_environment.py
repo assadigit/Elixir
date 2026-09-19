@@ -28,6 +28,7 @@ The function returns a list of ``DependencyIssue`` objects (empty list = all
 OK). It is safe to call multiple times (no side effects). It never raises —
 a broken check returns a DependencyIssue rather than crashing the launch.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,6 +50,7 @@ __all__ = [
 @dataclass
 class DependencyIssue:
     """A single system-dependency problem found at launch."""
+
     title: str
     detail: str
     fix: str
@@ -68,6 +70,7 @@ def _check_settings_poppler() -> str | None:
     """
     try:
         from utils.settings import Settings
+
         poppler_dir = Settings().get("paths.poppler", "")
         if not poppler_dir:
             return None
@@ -102,7 +105,8 @@ def check_tesseract() -> DependencyIssue | None:
         if default.exists():
             logger.warning(
                 "Tesseract found at %s but NOT on PATH. Add it to PATH "
-                "or set tesseract_cmd in settings.", default
+                "or set tesseract_cmd in settings.",
+                default,
             )
             return DependencyIssue(
                 title="Tesseract installed but not on PATH",
@@ -113,10 +117,7 @@ def check_tesseract() -> DependencyIssue | None:
 
     return DependencyIssue(
         title="Tesseract-OCR not installed",
-        detail=(
-            "The 'tesseract' command was not found on PATH. OCR on scanned "
-            "PDFs will fail."
-        ),
+        detail=("The 'tesseract' command was not found on PATH. OCR on scanned PDFs will fail."),
         fix=(
             "Install Tesseract-OCR from "
             "https://github.com/UB-Mannheim/tesseract/wiki "
@@ -198,10 +199,12 @@ def verify_system_dependencies() -> list[DependencyIssue]:
         except Exception as exc:
             # A broken check shouldn't crash the launch.
             logger.debug("System check %s failed: %s", checker.__name__, exc)
-            issues.append(DependencyIssue(
-                title=f"Check failed: {checker.__name__}",
-                detail=f"The {checker.__name__} check raised {type(exc).__name__}: {exc}",
-                fix="Report this — the check itself has a bug.",
-                severity="warning",
-            ))
+            issues.append(
+                DependencyIssue(
+                    title=f"Check failed: {checker.__name__}",
+                    detail=f"The {checker.__name__} check raised {type(exc).__name__}: {exc}",
+                    fix="Report this — the check itself has a bug.",
+                    severity="warning",
+                )
+            )
     return issues

@@ -31,6 +31,7 @@ Contract (strict + documented):
 Pure module (stdlib ``json`` only) — importable from both the core
 summarisation pipeline and the Qt UI layer without cycles.
 """
+
 from __future__ import annotations
 
 import json
@@ -83,7 +84,7 @@ def parse_progress_line(msg: str) -> dict | None:
     stripped = msg.lstrip()
     if not stripped.startswith(PROGRESS_PREFIX):
         return None
-    payload = stripped[len(PROGRESS_PREFIX):]
+    payload = stripped[len(PROGRESS_PREFIX) :]
     try:
         data = json.loads(payload)
     except (ValueError, TypeError):

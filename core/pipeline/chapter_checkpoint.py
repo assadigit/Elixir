@@ -68,6 +68,7 @@ Design rules
   summaries never produce COMPLETE files, so they are reprocessed on
   resume).
 """
+
 from __future__ import annotations
 
 import logging
@@ -105,9 +106,7 @@ def _style_years_in_parens(match: re.Match) -> str:
     inner = match.group(1)
     if not _BARE_YEAR_RE.search(inner):
         return match.group(0)  # no years — leave untouched
-    return "(" + _BARE_YEAR_RE.sub(
-        r'<em style="font-size:0.9em">\1</em>', inner
-    ) + ")"
+    return "(" + _BARE_YEAR_RE.sub(r'<em style="font-size:0.9em">\1</em>', inner) + ")"
 
 
 def format_years(text: str) -> str:
@@ -193,6 +192,7 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     _run_id = _rid_raw if isinstance(_rid_raw, str) and _rid_raw else ""
     if _run_id:
         from core.system.provenance import provenance_comment, visible_footer
+
         _app_ver = getattr(summ, "app_version", "") or "unknown"
         _started = getattr(summ, "run_started", "") or "unknown"
         prov_md = (
@@ -210,10 +210,14 @@ def render_summary_markdown(summ: SummaryResult) -> str:
         # got mistaken for fresh output. Rendered only for stamped
         # summaries; legacy output stays byte-identical.
         footer_md = visible_footer(
-            _app_ver, _run_id, _started, len(formatted_bullets),
+            _app_ver,
+            _run_id,
+            _started,
+            len(formatted_bullets),
         )
 
     from core.system.provenance import complete_sentinel
+
     # (Type guard rationale above — a MagicMock run_id must render as a
     # legacy bare sentinel, never as garbage text.)
     # V0.05 (rig audit F9a — GENERAL RULE: no empty headings): every section
@@ -282,7 +286,9 @@ class ChapterCheckpointSaver:
         self._summaries_dir: Path = Path(converter.paths.summaries_dir)
         self._chapters_root: Path = self._output_dir / "checkpoints" / "chapters"
         self._manifest_path: Path = self._output_dir / "checkpoints" / "chapter_manifest.json"
-        self._sanitize = getattr(converter, "_sanitize_filename", None) or (lambda h: re.sub(r"[^\w\s\-]", "", re.sub(r"\s+", "_", (h or "").strip()))[:80])
+        self._sanitize = getattr(converter, "_sanitize_filename", None) or (
+            lambda h: re.sub(r"[^\w\s\-]", "", re.sub(r"\s+", "_", (h or "").strip()))[:80]
+        )
         self._build_docx = build_docx
         # Counters (for logging + tests)
         self.saved_count = 0
@@ -372,7 +378,8 @@ class ChapterCheckpointSaver:
         docx_path: Path | None = None
         if self._build_docx:
             docx_path = self._build_chapter_docx(
-                summary, chapter or {"heading": heading, "content": ""},
+                summary,
+                chapter or {"heading": heading, "content": ""},
                 chapter_folder / f"{pos:03d}_{safe}_summary.docx",
             )
             if docx_path is not None:
@@ -416,6 +423,7 @@ class ChapterCheckpointSaver:
                     adoption_note,
                     has_complete_sentinel,
                 )
+
                 if has_complete_sentinel(_existing):
                     if not quiet:
                         _note = adoption_note(_existing, content)
@@ -431,7 +439,9 @@ class ChapterCheckpointSaver:
         atomic_write_text(path, content)
         return True
 
-    def _build_chapter_docx(self, summary: SummaryResult, chapter: dict[str, Any], out_path: Path) -> Path | None:
+    def _build_chapter_docx(
+        self, summary: SummaryResult, chapter: dict[str, Any], out_path: Path
+    ) -> Path | None:
         """Build the per-chapter DOCX report atomically (tmp + os.replace).
 
         V18.20.3.1 (real-rig audit D4): the builder's own "✅ DOCX saved to …"
@@ -458,8 +468,12 @@ class ChapterCheckpointSaver:
             builder = DocxBuilder(self._request, log_callback=_truthful_log)
             ok = builder.build_report(
                 [summary],
-                [{"heading": chapter.get("heading", summary.chapter_heading),
-                  "content": chapter.get("content", "")}],
+                [
+                    {
+                        "heading": chapter.get("heading", summary.chapter_heading),
+                        "content": chapter.get("content", ""),
+                    }
+                ],
                 getattr(self._request, "input_path", self._output_dir),
                 tmp_path,
             )

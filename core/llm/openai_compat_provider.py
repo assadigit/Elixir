@@ -3,6 +3,7 @@
 OpenAI-compatible provider (OpenRouter, OpenAI, FreeLLMAPI). Extracted verbatim
 from llm_provider_impl.py (lines 769-1043 of the pre-V18.20.1.0 file).
 """
+
 from __future__ import annotations
 
 import logging
@@ -106,10 +107,11 @@ class OpenAICompatProvider(LLMProvider):
             self.log(f"    ⚠️ {self.label} call failed: {e}", "WARNING")
             return None
 
-
     def batch_complete(
         self,
-        prompts: list[str],  # V18.20.3.12 (F821): List was undefined — modernized like the rest of the tree
+        prompts: list[
+            str
+        ],  # V18.20.3.12 (F821): List was undefined — modernized like the rest of the tree
         temperature: float | None = None,
         max_tokens: int | None = None,
         use_batch_api: bool = False,
@@ -149,6 +151,7 @@ class OpenAICompatProvider(LLMProvider):
 
         # V10.36.0: Parallel execution (3-5× faster than sequential)
         import concurrent.futures
+
         max_workers = min(len(prompts), 5)  # cap at 5 concurrent requests
         results: list[str | None] = [None] * len(prompts)  # V18.20.3.12 (F821): List was undefined
 
@@ -198,19 +201,24 @@ class OpenAICompatProvider(LLMProvider):
 
             # 1. Build the batch input file (JSONL)
             import json
+
             batch_lines = []
             for idx, prompt in enumerate(prompts):
-                batch_lines.append(json.dumps({
-                    "custom_id": f"request-{idx}",
-                    "method": "POST",
-                    "url": "/v1/chat/completions",
-                    "body": {
-                        "model": self.model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": _max_tok,
-                        "temperature": _temp,
-                    },
-                }))
+                batch_lines.append(
+                    json.dumps(
+                        {
+                            "custom_id": f"request-{idx}",
+                            "method": "POST",
+                            "url": "/v1/chat/completions",
+                            "body": {
+                                "model": self.model,
+                                "messages": [{"role": "user", "content": prompt}],
+                                "max_tokens": _max_tok,
+                                "temperature": _temp,
+                            },
+                        }
+                    )
+                )
             batch_content = "\n".join(batch_lines)
 
             # 2. Upload the file
@@ -219,9 +227,14 @@ class OpenAICompatProvider(LLMProvider):
                 "file": ("batch.jsonl", batch_content, "application/json"),
                 "purpose": (None, "batch"),
             }
-            upload_resp = _requests.post(upload_url, headers={
-                "Authorization": f"Bearer {self.api_key}",
-            }, files=files, timeout=30)
+            upload_resp = _requests.post(
+                upload_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+                files=files,
+                timeout=30,
+            )
             if upload_resp.status_code != 200:
                 self.log(f"  ⚠️ Batch API: file upload failed ({upload_resp.status_code})", "DEBUG")
                 return None
@@ -238,13 +251,16 @@ class OpenAICompatProvider(LLMProvider):
             }
             batch_resp = _requests.post(batch_url, headers=headers, json=batch_payload, timeout=30)
             if batch_resp.status_code != 200:
-                self.log(f"  ⚠️ Batch API: batch creation failed ({batch_resp.status_code})", "DEBUG")
+                self.log(
+                    f"  ⚠️ Batch API: batch creation failed ({batch_resp.status_code})", "DEBUG"
+                )
                 return None
             batch_id = batch_resp.json().get("id")
             self.log(f"  📦 Batch API: job created ({batch_id}), polling…", "INFO")
 
             # 4. Poll until complete (max 10 minutes)
             import time as _time
+
             for _poll in range(60):  # 60 × 10s = 10 min max
                 _time.sleep(10)
                 poll_resp = _requests.get(
@@ -272,7 +288,9 @@ class OpenAICompatProvider(LLMProvider):
                 return None
 
             # 6. Parse results (JSONL with custom_id → response)
-            results: list[str | None] = [None] * len(prompts)  # V18.20.3.12 (F821): List was undefined
+            results: list[str | None] = [None] * len(
+                prompts
+            )  # V18.20.3.12 (F821): List was undefined
             for line in dl_resp.text.strip().splitlines():
                 try:
                     entry = json.loads(line)
@@ -285,10 +303,11 @@ class OpenAICompatProvider(LLMProvider):
                 except (json.JSONDecodeError, KeyError, ValueError, IndexError):
                     continue
 
-            self.log(f"  ✅ Batch API: {sum(1 for r in results if r)}/{len(results)} completed", "INFO")
+            self.log(
+                f"  ✅ Batch API: {sum(1 for r in results if r)}/{len(results)} completed", "INFO"
+            )
             return results
 
         except Exception as e:
             self.log(f"  ⚠️ Batch API failed: {e}", "DEBUG")
             return None
-

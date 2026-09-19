@@ -37,6 +37,7 @@ from dataclasses import dataclass
 @dataclass
 class ModelVRAMEstimate:
     """VRAM estimate for a single model."""
+
     name: str
     role: str  # "OCR", "Summarization", "Translation", "Judge", "Harakat", "TTS"
     estimated_vram_gb: float
@@ -54,15 +55,15 @@ class ModelVRAMEstimate:
 _QUANT_MULTIPLIERS: dict[str, float] = {
     # ── IQ (importance-matrix) quants — sub-2-bit to 4-bit ──
     "iq2_xxs": 0.21,
-    "iq2_xs":  0.22,
-    "iq2_s":   0.23,
-    "iq2_m":   0.25,   # Unsloth Qwen3.8-27B-UD-IQ2_M uses this
+    "iq2_xs": 0.22,
+    "iq2_s": 0.23,
+    "iq2_m": 0.25,  # Unsloth Qwen3.8-27B-UD-IQ2_M uses this
     "iq3_xxs": 0.30,
-    "iq3_xs":  0.31,
-    "iq3_s":   0.32,
-    "iq3_m":   0.33,
-    "iq4_xs":  0.40,
-    "iq4_nl":  0.45,
+    "iq3_xs": 0.31,
+    "iq3_s": 0.32,
+    "iq3_m": 0.33,
+    "iq4_xs": 0.40,
+    "iq4_nl": 0.45,
     # ── V0.04: ternary (1.58-bit / BitNet-style) weights ──
     # Ternary packs weights at ~1.58 bits ≈ 0.20 raw bytes/param; with
     # scales/zero-points and f16 embeddings the effective GGUF footprint
@@ -71,7 +72,7 @@ _QUANT_MULTIPLIERS: dict[str, float] = {
     # estimating a 27B ternary at ~18 GB — a bogus "overbudget" verdict
     # for a model that actually fits a 12 GB card.
     "ternary": 0.31,
-    "tn23":    0.31,   # common ternary tag suffix (e.g. …-tn23.gguf)
+    "tn23": 0.31,  # common ternary tag suffix (e.g. …-tn23.gguf)
     # ── Standard K-quants ──
     "q4_0": 0.55,
     "q4_1": 0.58,
@@ -110,13 +111,13 @@ def _parse_param_count(model_name: str) -> float | None:
     low = model_name.lower()
 
     # Match patterns like "12b", "9b", "1.3b", "600m", "1.5b"
-    m = re.search(r'(\d+\.?\d*)\s*([bm])', low)
+    m = re.search(r"(\d+\.?\d*)\s*([bm])", low)
     if m:
         count = float(m.group(1))
         unit = m.group(2)
-        if unit == 'b':
+        if unit == "b":
             return count  # already in billions
-        elif unit == 'm':
+        elif unit == "m":
             return count / 1000.0  # convert millions to billions
     return None
 
@@ -135,27 +136,48 @@ def _parse_quantization(model_name: str) -> tuple[str, float]:
     # V18.1: IQ quants checked first (they're longer than their Q counterparts).
     # V0.04: ternary FIRST — "Ternary-Bonsai-2-27B…" must not fall through
     # to the Q4_K_M default (see the _QUANT_MULTIPLIERS note above).
-    for tag in ["ternary", "tn23",
-                "iq2_xxs", "iq2_xs", "iq2_s", "iq2_m",
-                "iq3_xxs", "iq3_xs", "iq3_s", "iq3_m",
-                "iq4_xs", "iq4_nl",
-                "q5_k_xl", "q5_k_m", "q5_k_s", "q4_k_m", "q4_k_s",
-                "q6_k", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1", "f16", "f32"]:
+    for tag in [
+        "ternary",
+        "tn23",
+        "iq2_xxs",
+        "iq2_xs",
+        "iq2_s",
+        "iq2_m",
+        "iq3_xxs",
+        "iq3_xs",
+        "iq3_s",
+        "iq3_m",
+        "iq4_xs",
+        "iq4_nl",
+        "q5_k_xl",
+        "q5_k_m",
+        "q5_k_s",
+        "q4_k_m",
+        "q4_k_s",
+        "q6_k",
+        "q8_0",
+        "q5_0",
+        "q5_1",
+        "q4_0",
+        "q4_1",
+        "f16",
+        "f32",
+    ]:
         if tag in low:
             return tag, _QUANT_MULTIPLIERS[tag]
 
     # Check for "q4" / "q5" / "q8" / "iq2" / "iq3" / "iq4" without subtype
-    if re.search(r'\biq2\b', low):
+    if re.search(r"\biq2\b", low):
         return "iq2", _QUANT_MULTIPLIERS["iq2_m"]
-    if re.search(r'\biq3\b', low):
+    if re.search(r"\biq3\b", low):
         return "iq3", _QUANT_MULTIPLIERS["iq3_m"]
-    if re.search(r'\biq4\b', low):
+    if re.search(r"\biq4\b", low):
         return "iq4", _QUANT_MULTIPLIERS["iq4_xs"]
-    if re.search(r'\bq4\b', low):
+    if re.search(r"\bq4\b", low):
         return "q4", _QUANT_MULTIPLIERS["q4_k_m"]
-    if re.search(r'\bq5\b', low):
+    if re.search(r"\bq5\b", low):
         return "q5", _QUANT_MULTIPLIERS["q5_k_m"]
-    if re.search(r'\bq8\b', low):
+    if re.search(r"\bq8\b", low):
         return "q8", _QUANT_MULTIPLIERS["q8_0"]
 
     return "unknown", _DEFAULT_QUANT_MULTIPLIER
@@ -253,6 +275,7 @@ def get_total_vram() -> float | None:
     """Get total VRAM in GB, or None if unavailable."""
     try:
         import torch
+
         if not torch.cuda.is_available():
             return None
         return torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -327,9 +350,7 @@ def calculate_vram_budget(
     # Phase 3: Translation (if enabled)
     # V13.40.2: Translation is a separate phase — never overlaps with OCR or Summarization.
     if translation_backend == "nllb":
-        estimates.append(ModelVRAMEstimate(
-            "NLLB-200-600M", "Translation", 2.5, True
-        ))
+        estimates.append(ModelVRAMEstimate("NLLB-200-600M", "Translation", 2.5, True))
     elif translation_backend == "ollama" and translation_model:
         vram = _estimate_model_vram(translation_model, "Translation", context_tokens)
         estimates.append(ModelVRAMEstimate(translation_model, "Translation", vram, True))
@@ -347,9 +368,7 @@ def calculate_vram_budget(
     # TTS (loaded during audio generation — separate phase)
     if tts_enabled:
         tts_vram = 1.5 if tts_engine == "neutts" else 0.5
-        estimates.append(ModelVRAMEstimate(
-            f"{tts_engine} (TTS)", "TTS", tts_vram, True
-        ))
+        estimates.append(ModelVRAMEstimate(f"{tts_engine} (TTS)", "TTS", tts_vram, True))
 
     # V13.40.2: Calculate peak VRAM correctly.
     # The old code summed ALL models marked loaded_simultaneously=True,
@@ -387,9 +406,11 @@ def calculate_vram_budget(
     # Only applies to summarization (parallel chapter processing)
     if max_workers > 1 and summarization_model:
         # Each additional worker adds ~60% of the model VRAM (shared layers)
-        extra = (max_workers - 1) * _estimate_model_vram(
-            summarization_model, "Summarization", context_tokens
-        ) * 0.6
+        extra = (
+            (max_workers - 1)
+            * _estimate_model_vram(summarization_model, "Summarization", context_tokens)
+            * 0.6
+        )
         peak_vram += extra
 
     total = get_total_vram()
@@ -406,18 +427,18 @@ def calculate_vram_budget(
         elif peak_vram > total * 0.95:
             recommendation = (
                 f"⚠️ TIGHT: Peak VRAM {peak_vram:.1f} GB is close to "
-                f"available {total:.1f} GB ({peak_vram/total*100:.0f}%). "
+                f"available {total:.1f} GB ({peak_vram / total * 100:.0f}%). "
                 f"Consider reducing max_workers to 1."
             )
         elif peak_vram > total * 0.85:
             recommendation = (
                 f"✅ Fits: Peak VRAM {peak_vram:.1f} GB / {total:.1f} GB "
-                f"({peak_vram/total*100:.0f}%). Should work but monitor for OOM."
+                f"({peak_vram / total * 100:.0f}%). Should work but monitor for OOM."
             )
         else:
             recommendation = (
                 f"✅ Comfortable: Peak VRAM {peak_vram:.1f} GB / {total:.1f} GB "
-                f"({peak_vram/total*100:.0f}%)."
+                f"({peak_vram / total * 100:.0f}%)."
             )
     else:
         recommendation = f"Peak VRAM estimate: {peak_vram:.1f} GB (GPU detection unavailable)"
@@ -438,11 +459,21 @@ def format_vram_report(
     """
     lines = ["━━━ VRAM Budget (by phase — peak is max, not sum) ━━━"]
     current_phase = 0
-    _PHASE_NAMES = {1: "Phase 1 (Extraction)", 2: "Phase 2 (Summarization)",
-                     3: "Phase 3 (Translation)", 4: "Phase 4 (TTS)"}
+    _PHASE_NAMES = {
+        1: "Phase 1 (Extraction)",
+        2: "Phase 2 (Summarization)",
+        3: "Phase 3 (Translation)",
+        4: "Phase 4 (TTS)",
+    }
     _PHASE_MAP = {
-        "OCR": 1, "Summarization": 2, "Fast/Simplification": 2, "Heavy model": 2,
-        "Translation": 3, "Harakat": 3, "Judge": 3, "TTS": 4,
+        "OCR": 1,
+        "Summarization": 2,
+        "Fast/Simplification": 2,
+        "Heavy model": 2,
+        "Translation": 3,
+        "Harakat": 3,
+        "Judge": 3,
+        "TTS": 4,
     }
     for e in estimates:
         phase = _PHASE_MAP.get(e.role, 0)

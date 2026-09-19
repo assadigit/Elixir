@@ -32,6 +32,7 @@ no Qt, no network, no __init__ (except the one full-init smoke test).
 
 Run: ``pytest tests/test_v1820411_p2_tls_logs_literals.py -v``
 """
+
 from __future__ import annotations
 
 import ast
@@ -90,6 +91,7 @@ def _unstub_modules_after_tests():
         sys.modules.pop(_name, None)
     try:
         import tiktoken  # noqa: F401 — re-import the real package
+
         import utils.token_counter  # noqa: F401
     except Exception:  # pragma: no cover - defensive
         pass
@@ -102,9 +104,9 @@ from core.llm.model_taxonomy import (  # noqa: E402
 from core.summarisation.quarantine import QuarantineLog  # noqa: E402
 from core.summarisation.summarizer import Summarizer  # noqa: E402
 
-_SUMMARIZER_SRC = (
-    _project_root / "core" / "summarisation" / "summarizer.py"
-).read_text(encoding="utf-8")
+_SUMMARIZER_SRC = (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
+    encoding="utf-8"
+)
 
 
 def _capturing_log(calls: list):
@@ -265,9 +267,7 @@ class TestChapterContextTLS:
         chapter runs."""
         from core.models import ConversionRequest
 
-        req = ConversionRequest(
-            input_path=Path("book.pdf"), output_dir=Path(tmp_path)
-        )
+        req = ConversionRequest(input_path=Path("book.pdf"), output_dir=Path(tmp_path))
         s = Summarizer(req, log_callback=lambda msg, level="INFO": None)
         assert isinstance(getattr(s, "_chapter_tls", None), threading.local)
         assert s._chapter_deadline_start is None
@@ -295,8 +295,11 @@ class TestChapterContextTLS:
             with lock:
                 observed.append((heading, getattr(s, "_chapter_deadline_start", None)))
             return SummaryResult(
-                chapter_heading=heading, executive_summary="",
-                bullet_points=[], thorough_summary="", success=True,
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary="",
+                success=True,
             )
 
         s._summarize_inner = fake_inner
@@ -327,8 +330,11 @@ class TestChapterContextTLS:
         def fake_inner(heading, content, concepts=None, callouts=None, book_context=""):
             observed.append(getattr(s, "_chapter_deadline_start", None))
             return SummaryResult(
-                chapter_heading=heading, executive_summary="",
-                bullet_points=[], thorough_summary="", success=True,
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary="",
+                success=True,
             )
 
         s._summarize_inner = fake_inner
@@ -340,9 +346,9 @@ class TestChapterContextTLS:
         """bullet_pipeline.py was NOT edited (per the fix design): its
         ``getattr(s, "_current_heading", "")`` reads must resolve through the
         property transparently — pinned by source + a live resolution check."""
-        bp_src = (
-            _project_root / "core" / "summarisation" / "bullet_pipeline.py"
-        ).read_text(encoding="utf-8")
+        bp_src = (_project_root / "core" / "summarisation" / "bullet_pipeline.py").read_text(
+            encoding="utf-8"
+        )
         assert bp_src.count('getattr(s, "_current_heading", "")') >= 6
         s = self._bare()
         s._current_heading = "Live Chapter"
@@ -437,9 +443,7 @@ def _drive_summarizer(tmp_path, primary_thorough: str, calls: list) -> Summarize
     s.overdeliver_target = 1.0
     s.max_bullets_per_chapter = 99999
     s.conservative_drops = False
-    s.quarantine = QuarantineLog(
-        output_dir=None, log_callback=lambda msg, level="DEBUG": None
-    )
+    s.quarantine = QuarantineLog(output_dir=None, log_callback=lambda msg, level="DEBUG": None)
     s._last_quarantined = []
     s._coverage_cache = {}
     s._verify_windows_cache = {}
@@ -469,12 +473,12 @@ def _drive_summarizer(tmp_path, primary_thorough: str, calls: list) -> Summarize
         "model": "test-model",
     }
     s._summarize_with_model = (
-        lambda heading, text, model, temperature=None, with_cot=True,
-        concepts=None, callouts=None: dict(_primary_result)
+        lambda heading, text, model, temperature=None, with_cot=True, concepts=None, callouts=None: (
+            dict(_primary_result)
+        )
     )
     s._call_dedicated_thorough_with_fallback = (
-        lambda prompt, exec_sum="", bullets=None, min_words=800:
-        _CANNED_DEDICATED_THOROUGH
+        lambda prompt, exec_sum="", bullets=None, min_words=800: _CANNED_DEDICATED_THOROUGH
     )
     s._call_llm_with_empty_retry = lambda prompt, **kw: ""
     s._call_llm = lambda prompt, **kw: ""
@@ -566,9 +570,9 @@ class TestBuriedLogsRaised:
         (test_deadline_watchdog.py:149-157) we pin the handler: the except
         after _generate_quality_report must log at WARNING and no longer at
         DEBUG."""
-        src = (
-            _project_root / "core" / "pipeline" / "converter_impl.py"
-        ).read_text(encoding="utf-8")
+        src = (_project_root / "core" / "pipeline" / "converter_impl.py").read_text(
+            encoding="utf-8"
+        )
         anchor = src.find("self._generate_quality_report(segments, summaries)")
         assert anchor > 0, "quality-report call site must exist"
         window = src[anchor : anchor + 900]
@@ -578,8 +582,10 @@ class TestBuriedLogsRaised:
     def test_cot_gate_and_rerun_handlers_keep_debug_trace(self):
         """The logger.debug traces are KEPT (only the visible WARNING was
         added) — pinned so a future cleanup doesn't drop the debug detail."""
-        assert 'logger.debug("parse-time CoT gate crashed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
-        assert 'logger.debug("thorough-judge re-run failed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
+        # V0.13: format-wrapped logger.debug( calls — pin message + logger call
+        assert "logger.debug(" in _SUMMARIZER_SRC
+        assert '"parse-time CoT gate crashed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
+        assert '"thorough-judge re-run failed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -623,7 +629,9 @@ class TestModelLiterals:
             fast_model_temperature=0.1,
         )
         out = call_fast_llm(
-            "prompt", request=req, call_llm_with_empty_retry=heavy,
+            "prompt",
+            request=req,
+            call_llm_with_empty_retry=heavy,
             log=lambda msg, level="INFO": None,
         )
         assert out == "HEAVY" and state["heavy"] == 1
@@ -635,8 +643,12 @@ class TestModelLiterals:
         for node in ast.walk(tree):
             if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
                 body = getattr(node, "body", None)
-                if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-                        and isinstance(body[0].value.value, str):
+                if (
+                    body
+                    and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)
+                ):
                     docs.add(id(body[0].value))
         return docs
 
@@ -682,9 +694,7 @@ class TestModelLiterals:
     def test_normalizer_known_bad_default_uses_constant_source_pin(self):
         """normalizer.py's known-bad-default tuple wires the constant (the
         'qwen2.5:3b' companion literal is out of scope and stays)."""
-        src = (
-            _project_root / "core" / "tts" / "normalizer.py"
-        ).read_text(encoding="utf-8")
+        src = (_project_root / "core" / "tts" / "normalizer.py").read_text(encoding="utf-8")
         assert 'model in ("qwen2.5:3b", LEGACY_DEFAULT_MODEL, "")' in src
 
     def test_taxonomy_exports_constants(self):

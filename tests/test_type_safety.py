@@ -5,6 +5,7 @@ Tests verify:
 2. B3/M3: ConversionContext Protocol is defined + Converter satisfies it
 3. M7: pre-commit config exists with ruff + mypy hooks
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,6 +25,7 @@ from core.summarisation.text_preprocessor import repair_hyphenation
 # ═══════════════════════════════════════════════════════════════════════════
 # O4: repair_hyphenation — Capitalized + accented proper nouns
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestRepairHyphenationProperNouns:
     """V18.2.18 (O4): repair_hyphenation joins Capitalized + accented words."""
@@ -67,6 +69,7 @@ class TestRepairHyphenationProperNouns:
 # B3/M3: ConversionContext Protocol
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestConversionContextProtocol:
     """V18.2.18 (B3/M3): The Protocol is defined + importable."""
 
@@ -77,7 +80,10 @@ class TestConversionContextProtocol:
         import sys
         from importlib.util import module_from_spec, spec_from_file_location
         from pathlib import Path
-        proto_path = Path(__file__).resolve().parent.parent / "core" / "pipeline" / "conversion_context.py"
+
+        proto_path = (
+            Path(__file__).resolve().parent.parent / "core" / "pipeline" / "conversion_context.py"
+        )
         # V18.2.27 (warnings fix): use importlib.util spec + exec_module
         # instead of the deprecated SourceFileLoader.load_module() (removed in 3.15).
         # Register in sys.modules BEFORE exec_module so @dataclass resolves.
@@ -104,7 +110,10 @@ class TestConversionContextProtocol:
     def test_protocol_declares_expected_attributes(self):
         """The Protocol's expected attributes are documented."""
         from pathlib import Path
-        proto_src = Path(__file__).resolve().parent.parent / "core" / "pipeline" / "conversion_context.py"
+
+        proto_src = (
+            Path(__file__).resolve().parent.parent / "core" / "pipeline" / "conversion_context.py"
+        )
         content = proto_src.read_text()
         expected_attrs = [
             "request",
@@ -127,17 +136,20 @@ class TestConversionContextProtocol:
 # M7: pre-commit config
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPreCommitConfig:
     """V18.2.18 (M7): pre-commit config exists with ruff + mypy hooks."""
 
     def test_pre_commit_config_exists(self):
         """The .pre-commit-config.yaml file exists."""
         from pathlib import Path
+
         config = Path(__file__).resolve().parent.parent / ".pre-commit-config.yaml"
         assert config.exists(), ".pre-commit-config.yaml not found"
 
     def test_config_has_ruff_hook(self):
         from pathlib import Path
+
         config = Path(__file__).resolve().parent.parent / ".pre-commit-config.yaml"
         content = config.read_text()
         assert "ruff-pre-commit" in content
@@ -145,6 +157,7 @@ class TestPreCommitConfig:
 
     def test_config_has_mypy_hook(self):
         from pathlib import Path
+
         config = Path(__file__).resolve().parent.parent / ".pre-commit-config.yaml"
         content = config.read_text()
         assert "mirrors-mypy" in content
@@ -152,6 +165,7 @@ class TestPreCommitConfig:
 
     def test_config_has_basic_hygiene_hooks(self):
         from pathlib import Path
+
         config = Path(__file__).resolve().parent.parent / ".pre-commit-config.yaml"
         content = config.read_text()
         assert "trailing-whitespace" in content

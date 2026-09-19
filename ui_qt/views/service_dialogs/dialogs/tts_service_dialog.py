@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
     _confirm_close_with_running_worker,
@@ -83,6 +82,7 @@ def _tts_cuda_available() -> bool:
     if _tts_cuda_cache is None:
         try:
             import torch
+
             _tts_cuda_cache = bool(torch.cuda.is_available())
         except Exception:
             _tts_cuda_cache = False
@@ -103,6 +103,7 @@ def _tts_torch_cuda_tag() -> str | None:
         _tts_cuda_tag_checked = True
         try:
             import torch
+
             _tts_cuda_tag_cache = getattr(torch.version, "cuda", None)
         except Exception:
             _tts_cuda_tag_cache = None
@@ -118,10 +119,18 @@ def _is_cpu_tts_error(err_text: str) -> bool:
     if not err_text:
         return False
     t = err_text.lower()
-    return any(kw in t for kw in (
-        "cuda", "gpu", "cpu", "torch.cuda.is_available",
-        "out of memory", "device", "no cuda",
-    ))
+    return any(
+        kw in t
+        for kw in (
+            "cuda",
+            "gpu",
+            "cpu",
+            "torch.cuda.is_available",
+            "out of memory",
+            "device",
+            "no cuda",
+        )
+    )
 
 
 def _show_cpu_tts_warning_modal(parent) -> bool:
@@ -175,8 +184,11 @@ def _show_cpu_tts_warning_modal(parent) -> bool:
             "only Kokoro will work, slowly.)</p>"
         )
     btn = QMessageBox.warning(
-        parent, title, body,
-        QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        parent,
+        title,
+        body,
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.No,
     )
     if btn == QMessageBox.Yes:
         _cpu_confirmed_session = True
@@ -199,8 +211,8 @@ def _show_tts_gpu_error_modal(parent, err_text: str = "") -> None:
         "<p>The engine raised an error during synthesis. This usually "
         "means a CUDA out-of-memory, a driver issue, or a torch/CUDA "
         "version mismatch.</p>"
-        + detail +
-        "<p><b>To fix:</b> install the CUDA build of PyTorch:</p>"
+        + detail
+        + "<p><b>To fix:</b> install the CUDA build of PyTorch:</p>"
         "<pre>pip install torch --index-url "
         "https://download.pytorch.org/whl/cu126</pre>"
         "<p>Then restart the app.</p>",
@@ -219,14 +231,14 @@ class TtsServiceDialog(BaseServiceDialog):
     # The text prefix is stripped from the final audio because NeuTTS
     # treats it as part of the input — but the prosody influence remains.
     _STYLE_PROFILES = {
-        "natural":      (1.0, ""),
-        "inspiring":    (0.95, "[inspiring tone] "),
+        "natural": (1.0, ""),
+        "inspiring": (0.95, "[inspiring tone] "),
         "enthusiastic": (1.10, "[enthusiastic] "),
-        "calm":         (0.90, "[calm, soothing] "),
-        "authoritative":(0.95, "[authoritative] "),
-        "friendly":     (1.05, "[friendly, casual] "),
-        "energetic":    (1.15, "[energetic] "),
-        "dramatic":     (0.80, "[slow, dramatic] "),
+        "calm": (0.90, "[calm, soothing] "),
+        "authoritative": (0.95, "[authoritative] "),
+        "friendly": (1.05, "[friendly, casual] "),
+        "energetic": (1.15, "[energetic] "),
+        "dramatic": (0.80, "[slow, dramatic] "),
     }
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
@@ -340,9 +352,7 @@ class TtsServiceDialog(BaseServiceDialog):
         gpu_row.setSpacing(8)
         self.gpu_status_lbl = QLabel("GPU: checking…")
         self.gpu_status_lbl.setObjectName("Compact")
-        self.gpu_status_lbl.setStyleSheet(
-            "padding: 4px 8px; border-radius: 4px; font-size: 11px;"
-        )
+        self.gpu_status_lbl.setStyleSheet("padding: 4px 8px; border-radius: 4px; font-size: 11px;")
         gpu_recheck_btn = QPushButton("🔄 Re-check")
         gpu_recheck_btn.setObjectName("Compact")
         gpu_recheck_btn.setFixedWidth(90)
@@ -352,6 +362,7 @@ class TtsServiceDialog(BaseServiceDialog):
         layout.addLayout(gpu_row)
         # Measure immediately (deferred so the dialog shows first).
         from PySide6.QtCore import QTimer
+
         QTimer.singleShot(100, self._refresh_gpu_status)
 
     def _on_format_changed(self) -> None:
@@ -371,8 +382,7 @@ class TtsServiceDialog(BaseServiceDialog):
             f"All files (*.*)"
         )
         start_path = str(Path.home() / "Desktop" / f"{default_name}{cur_ext}")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save audio output", start_path, filter_str)
+        path, _ = QFileDialog.getSaveFileName(self, "Save audio output", start_path, filter_str)
         if path:
             # If the user typed a name without extension, add the selected one.
             p = Path(path)
@@ -399,6 +409,7 @@ class TtsServiceDialog(BaseServiceDialog):
           Sherpa[nima][20260728-143022][30].wav
         """
         from datetime import datetime
+
         # Determine engine + speaker from the current selection
         voice_data = ""
         if self.voice_combo:
@@ -408,10 +419,10 @@ class TtsServiceDialog(BaseServiceDialog):
         # Determine engine name
         if voice_data and voice_data.startswith("omnivoice:"):
             engine = "OmniVoice"
-            speaker = voice_data[len("omnivoice:"):]
+            speaker = voice_data[len("omnivoice:") :]
         elif voice_data and voice_data.startswith("vibevoice:"):
             engine = "VibeVoice"
-            speaker = voice_data[len("vibevoice:"):]
+            speaker = voice_data[len("vibevoice:") :]
         elif lang == "fa":
             engine = "Kokoro"
             speaker = voice_data or "af_heart"
@@ -421,7 +432,7 @@ class TtsServiceDialog(BaseServiceDialog):
             speaker = voice_data or "af_heart"
 
         # V11.40.1: count words in the input text
-        input_text = self._get_input_text() if hasattr(self, '_get_input_text') else ""
+        input_text = self._get_input_text() if hasattr(self, "_get_input_text") else ""
         word_count = len(input_text.split()) if input_text else 0
 
         ext = ".wav"
@@ -443,12 +454,18 @@ class TtsServiceDialog(BaseServiceDialog):
             return
         current = self.out_path_edit.text().strip()
         # Fill if empty, or if it's a previous auto-generated name.
-        import re
         # V11.40.1: match [Engine][Speaker][Timestamp][WordCount] format
-        is_auto = bool(
-            re.match(r"^[A-Za-z]+\[[A-Za-z0-9_]+\]\[\d{8}-\d{6}\]\[\d+\]\.(wav|mp3)$",
-                     Path(current).name, re.IGNORECASE)
-        ) if current else True
+        is_auto = (
+            bool(
+                re.match(
+                    r"^[A-Za-z]+\[[A-Za-z0-9_]+\]\[\d{8}-\d{6}\]\[\d+\]\.(wav|mp3)$",
+                    Path(current).name,
+                    re.IGNORECASE,
+                )
+            )
+            if current
+            else True
+        )
         if not is_auto:
             return  # user typed a custom name — don't overwrite
         # Use the parent directory of the current path (or Desktop as default).
@@ -500,7 +517,7 @@ class TtsServiceDialog(BaseServiceDialog):
             idx = self.voice_combo.count() - 1
             # Make the separator non-selectable.
             model = self.voice_combo.model()
-            if hasattr(model, 'item'):
+            if hasattr(model, "item"):
                 item = model.item(idx)
                 if item:
                     item.setEnabled(False)
@@ -509,20 +526,22 @@ class TtsServiceDialog(BaseServiceDialog):
             # V11.43.1: Kokoro (fast) + VibeVoice (quality). Both kept.
             # ── Kokoro (Fast) ──
             from core.tts.voices import KOKORO_VOICES
+
             _add_sep("── Kokoro (Fast) ──")
             for entry in KOKORO_VOICES[:10]:
                 voice_id, _lang, gender, desc = entry
                 self.voice_combo.addItem(
-                    f"Kokoro — {voice_id} ({gender}, {desc.split(',')[0]})",
-                    voice_id)
+                    f"Kokoro — {voice_id} ({gender}, {desc.split(',')[0]})", voice_id
+                )
 
             # ── VibeVoice (Higher Quality, Slower) ──
             from core.tts.vibevoice_engine import VIBEVOICE_ENGLISH_VOICES
+
             _add_sep("── VibeVoice (Phone Quality, ~0.6x realtime = SLOW, 48kHz upsampled) ──")
-            for voice_id, display_name, gender, native in VIBEVOICE_ENGLISH_VOICES:
+            for voice_id, display_name, gender, _native in VIBEVOICE_ENGLISH_VOICES:
                 self.voice_combo.addItem(
-                    f"VibeVoice — {display_name} ({gender})",
-                    f"vibevoice:{voice_id}")
+                    f"VibeVoice — {display_name} ({gender})", f"vibevoice:{voice_id}"
+                )
 
         if lang in ("fa", "auto"):
             # V11.44.0: Kokoro for Farsi (no Farsi-specific engine, Kokoro handles it)
@@ -558,6 +577,7 @@ class TtsServiceDialog(BaseServiceDialog):
 
         try:
             import torch
+
             cuda_tag = getattr(torch.version, "cuda", None)
             avail = bool(torch.cuda.is_available())
             if avail:
@@ -613,13 +633,10 @@ class TtsServiceDialog(BaseServiceDialog):
             return True
         # Log the ACTUAL measured values so the user sees them.
         self.status_label.setText(
-            f"⚠️ No CUDA in app process (torch.cuda=False, cu={cuda_tag}). "
-            f"See the warning modal."
+            f"⚠️ No CUDA in app process (torch.cuda=False, cu={cuda_tag}). See the warning modal."
         )
         if _show_cpu_tts_warning_modal(self):
-            self.status_label.setText(
-                "⚠️ Proceeding on CPU (slow) — confirmed for this session."
-            )
+            self.status_label.setText("⚠️ Proceeding on CPU (slow) — confirmed for this session.")
             return True
         self.status_label.setText("🚫 TTS cancelled — no CUDA GPU.")
         return False
@@ -659,22 +676,25 @@ class TtsServiceDialog(BaseServiceDialog):
                 from pathlib import Path as _P
 
                 from utils.settings import Settings
+
                 s = Settings()
 
                 # Determine language
                 if lang == "auto":
                     from core.tts.engine import detect_language
+
                     detected = detect_language(preview_text)
                 else:
                     detected = lang
 
                 # V11.40.0: simplified preview — Kokoro, VibeVoice, Sherpa only.
                 if voice and voice.startswith("vibevoice:"):
-                    voice_name = voice[len("vibevoice:"):]
+                    voice_name = voice[len("vibevoice:") :]
                     vv_path = s.get("tts.vibevoice_model_path", "")
                     vv_voices = s.get("tts.vibevoice_voices_dir", "")
                     if vv_path:
                         from core.tts.engine_cache import get_vibevoice_engine
+
                         engine = get_vibevoice_engine(
                             model_path=vv_path,
                             voices_dir=vv_voices,
@@ -683,14 +703,17 @@ class TtsServiceDialog(BaseServiceDialog):
                         )
                     else:
                         from core.tts.engine import KokoroEngine
+
                         engine = KokoroEngine(log_callback=lambda msg, level="INFO": None)
                 elif detected == "fa":
                     # V11.44.0: Farsi preview: Kokoro
                     from core.tts.engine import KokoroEngine
+
                     engine = KokoroEngine(log_callback=lambda msg, level="INFO": None)
                 else:
                     # English default: Kokoro (fast)
                     from core.tts.engine import KokoroEngine
+
                     engine = KokoroEngine(log_callback=lambda msg, level="INFO": None)
 
                 tmp_path = _P(tempfile.mktemp(suffix=".wav"))
@@ -717,6 +740,7 @@ class TtsServiceDialog(BaseServiceDialog):
             try:
                 from PySide6.QtCore import QUrl
                 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+
                 player = QMediaPlayer()
                 audio = QAudioOutput()
                 player.setAudioOutput(audio)
@@ -752,7 +776,11 @@ class TtsServiceDialog(BaseServiceDialog):
                         break
         lang = self.lang_combo.currentData() if self.lang_combo else "auto"
         fmt = self.fmt_combo.currentData() if self.fmt_combo else ".wav"
-        style = self.style_combo.currentData() if hasattr(self, "style_combo") and self.style_combo else "natural"
+        style = (
+            self.style_combo.currentData()
+            if hasattr(self, "style_combo") and self.style_combo
+            else "natural"
+        )
         self._save_setting("voice", voice)
         self._save_setting("language", lang)
         self._save_setting("format", fmt)
@@ -785,18 +813,23 @@ class TtsServiceDialog(BaseServiceDialog):
             # V11.33.1: WAV → MP3 conversion via pydub.
             try:
                 from pydub import AudioSegment
+
                 audio = AudioSegment.from_wav(result)
                 audio.export(str(path), format="mp3", bitrate="192k")
                 return str(path)
             except Exception as e:
                 # ffmpeg not installed or conversion failed — fall back to WAV.
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "MP3 conversion failed (%s) — saving as WAV instead. "
-                    "Install ffmpeg for MP3 support.", e)
+                    "Install ffmpeg for MP3 support.",
+                    e,
+                )
                 # Change the extension to .wav.
                 wav_path = path.with_suffix(".wav")
                 import shutil
+
                 shutil.copy2(result, wav_path)
                 # Update the out_path_edit so the UI shows the correct path.
                 if hasattr(self, "out_path_edit"):
@@ -805,6 +838,7 @@ class TtsServiceDialog(BaseServiceDialog):
         else:
             # .wav — just copy.
             import shutil
+
             shutil.copy2(result, path)
             return str(path)
 
@@ -838,10 +872,9 @@ class TtsServiceDialog(BaseServiceDialog):
                     "🚫 TTS failed — GPU/CUDA error. See the dialog for details."
                 )
             else:
-                self.status_label.setText(
-                    f"❌ Script generation failed: {result}")
+                self.status_label.setText(f"❌ Script generation failed: {result}")
             return
-        if not hasattr(result, 'error'):
+        if not hasattr(result, "error"):
             # result might be a string path (from TTS _process)
             pass
         if result:
@@ -852,16 +885,17 @@ class TtsServiceDialog(BaseServiceDialog):
                 actual_path = str(out_path)
 
             # V11.41.1: Write proof file at the ACTUAL output location
-            engine_name = getattr(self, '_last_engine_name', 'Unknown')
-            engine_class = getattr(self, '_last_engine_class', 'Unknown')
-            engine_model = getattr(self, '_last_engine_model', 'N/A')
-            engine_voice = getattr(self, '_last_engine_voice', 'N/A')
-            engine_device = getattr(self, '_last_engine_device', 'unknown')
+            engine_name = getattr(self, "_last_engine_name", "Unknown")
+            engine_class = getattr(self, "_last_engine_class", "Unknown")
+            engine_model = getattr(self, "_last_engine_model", "N/A")
+            engine_voice = getattr(self, "_last_engine_voice", "N/A")
+            engine_device = getattr(self, "_last_engine_device", "unknown")
             # V11.42.0: show GPU/CPU prominently
             device_tag = f" ({engine_device.upper()})" if engine_device != "unknown" else ""
             proof_path = Path(actual_path).with_suffix(".proof.txt")
             try:
                 import datetime as _dt
+
                 proof_content = f"""TTS Engine Proof File
 =====================
 Generated: {_dt.datetime.now().isoformat()}
@@ -882,29 +916,34 @@ VibeVoice on your GPU.
                 logger.debug("best-effort op failed", exc_info=True)
 
             from pathlib import Path as _P
+
             p = _P(actual_path)
-            self.status_label.setText(
-                f"✅ Audio saved to: {actual_path}")
+            self.status_label.setText(f"✅ Audio saved to: {actual_path}")
             self.result_preview.setPlainText(
                 f"🎙️ TTS Complete\n\n"
                 f"Output file: {actual_path}\n"
                 f"Engine: {engine_name}{device_tag}\n"
                 f"File size: {p.stat().st_size // 1024} KB"
-                if p.exists() else
-                f"🎙️ TTS Complete\n\nOutput: {actual_path}"
+                if p.exists()
+                else f"🎙️ TTS Complete\n\nOutput: {actual_path}"
             )
             self.result_preview.setVisible(True)
             self.again_btn.setVisible(True)
             from PySide6.QtCore import QTimer
-            file_arg = str(p) if p.exists() else (
-                str(p.parent) if str(p.parent) != "." else None)
-            QTimer.singleShot(0, lambda: _show_success_modal(
-                self,
-                "🎙️ TTS Complete",
-                f"Engine: {engine_name}{device_tag}\nAudio saved to:\n{actual_path}",
-                file_path=file_arg,
-                on_try_another=self._on_try_another if hasattr(self, "_on_try_another") else None,
-            ))
+
+            file_arg = str(p) if p.exists() else (str(p.parent) if str(p.parent) != "." else None)
+            QTimer.singleShot(
+                0,
+                lambda: _show_success_modal(
+                    self,
+                    "🎙️ TTS Complete",
+                    f"Engine: {engine_name}{device_tag}\nAudio saved to:\n{actual_path}",
+                    file_path=file_arg,
+                    on_try_another=self._on_try_another
+                    if hasattr(self, "_on_try_another")
+                    else None,
+                ),
+            )
         else:
             self.status_label.setText("❌ No output produced.")
             self.again_btn.setVisible(True)
@@ -924,7 +963,8 @@ VibeVoice on your GPU.
         # speed adjustment. The style is passed to VibeVoiceEngine via
         # cfg_scale (handled in the engine itself).
         speed_mult, emotion_prefix = self._STYLE_PROFILES.get(
-            style, self._STYLE_PROFILES["natural"])
+            style, self._STYLE_PROFILES["natural"]
+        )
         synth_text = input_text  # V11.42.1: never prepend emotion prefix to text
         if speed_mult != 1.0:
             self._emit_progress(-1, f"🎙️ Style '{style}': speed={speed_mult}×")
@@ -934,10 +974,12 @@ VibeVoice on your GPU.
             from pathlib import Path as _P
 
             from utils.settings import Settings
+
             s = Settings()
 
             if lang == "auto":
                 from core.tts.engine import detect_language
+
                 detected = detect_language(input_text)
             else:
                 detected = lang
@@ -953,28 +995,32 @@ VibeVoice on your GPU.
             self._emit_progress(-1, f"🎙️ Engine selection: detected={detected}, voice={voice!r}")
             if voice and voice.startswith("vibevoice:"):
                 # V11.43.1: VibeVoice for English (restored)
-                voice_name = voice[len("vibevoice:"):]
+                voice_name = voice[len("vibevoice:") :]
                 vv_path = s.get("tts.vibevoice_model_path", "")
                 vv_voices = s.get("tts.vibevoice_voices_dir", "")
                 if vv_path:
                     from core.tts.engine_cache import get_vibevoice_engine
+
                     self._emit_progress(-1, "🎙️ ═══ VIBEVOICE ENGINE SELECTED ═══")
                     self._emit_progress(-1, f"🎙️ Voice: {voice_name}")
                     engine = get_vibevoice_engine(
                         model_path=vv_path,
                         voices_dir=vv_voices,
                         default_voice=voice_name,
-                        log_callback=lambda msg, level="INFO": self._emit_progress(-1, f"🎙️ {msg}") if level != "DEBUG" else None,
+                        log_callback=lambda msg, level="INFO": (
+                            self._emit_progress(-1, f"🎙️ {msg}") if level != "DEBUG" else None
+                        ),
                     )
                     voice_for_engine = voice_name
                     self._last_engine_name = "VibeVoice"
                     self._last_engine_class = type(engine).__name__
                     self._last_engine_model = vv_path
                     self._last_engine_voice = voice_name
-                    self._last_engine_device = getattr(engine, 'get_device', lambda: 'unknown')()
+                    self._last_engine_device = getattr(engine, "get_device", lambda: "unknown")()
                 else:
                     self._emit_progress(-1, "🎙️ ⚠️ VibeVoice path not set, using Kokoro")
                     from core.tts.engine_cache import get_kokoro_engine
+
                     engine = get_kokoro_engine(log_callback=lambda msg, level="INFO": None)
                     voice_for_engine = voice
                     self._last_engine_name = "Kokoro (fallback)"
@@ -986,6 +1032,7 @@ VibeVoice on your GPU.
             elif detected == "fa":
                 # V11.44.0: Farsi default: Kokoro
                 from core.tts.engine_cache import get_kokoro_engine
+
                 self._emit_progress(-1, "🎙️ Using Kokoro (default Farsi)")
                 engine = get_kokoro_engine(log_callback=lambda msg, level="INFO": None)
                 voice_for_engine = voice or "af_heart"
@@ -998,6 +1045,7 @@ VibeVoice on your GPU.
             else:
                 # English default: Kokoro (fast)
                 from core.tts.engine_cache import get_kokoro_engine
+
                 self._emit_progress(-1, "🎙️ Using Kokoro (fast)")
                 engine = get_kokoro_engine(log_callback=lambda msg, level="INFO": None)
                 voice_for_engine = voice
@@ -1019,17 +1067,21 @@ VibeVoice on your GPU.
             self._emit_progress(-1, f"🎙️ Synthesizing… ({detected})")
             # VibeVoiceEngine accepts a 'style' param; other engines ignore it
             try:
-                result = engine.synthesize(synth_text, tmp_path, voice_for_engine or None, speed_mult, style=style)
+                result = engine.synthesize(
+                    synth_text, tmp_path, voice_for_engine or None, speed_mult, style=style
+                )
             except TypeError:
                 # Engine doesn't accept 'style' param — call without it
-                result = engine.synthesize(synth_text, tmp_path, voice_for_engine or None, speed_mult)
+                result = engine.synthesize(
+                    synth_text, tmp_path, voice_for_engine or None, speed_mult
+                )
 
             if result and Path(result).exists():
                 self._emit_progress(100, "✅ TTS complete")
                 return str(result)
             else:
                 # V11.31.11: synthesize returned None — check engine.last_error.
-                err = getattr(engine, 'last_error', 'unknown error')
+                err = getattr(engine, "last_error", "unknown error")
                 self._emit_progress(100, f"❌ TTS failed: {err}")
                 return f"Error: TTS engine failed: {err}"
         except Exception as e:

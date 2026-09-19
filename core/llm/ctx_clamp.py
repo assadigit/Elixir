@@ -20,6 +20,7 @@ Hard constraints honored (unchanged):
     the provider's external /api/ps reading — SWOT A1); callers of this
     clamp get the SAFE 26758 ceiling (quality > speed).
 """
+
 from __future__ import annotations
 
 from core.llm.model_taxonomy import is_27b_plus, is_iq2_s, is_low_bit_quant
@@ -44,8 +45,9 @@ def gpu_total_gb() -> float | None:
     """
     try:
         import torch
+
         if torch.cuda.is_available():
-            return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            return torch.cuda.get_device_properties(0).total_memory / (1024**3)
     except Exception:
         pass
     return None

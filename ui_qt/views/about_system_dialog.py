@@ -39,8 +39,10 @@ def _detect_tesseract() -> str:
     if found:
         return found
     if os.name == "nt":
-        for cand in (r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"):
+        for cand in (
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ):
             if os.path.isfile(cand):
                 return cand
     for cand in ("/usr/local/bin/tesseract", "/opt/homebrew/bin/tesseract"):
@@ -53,8 +55,11 @@ def _detect_poppler() -> str:
     if shutil.which("pdftoppm"):
         return ""
     if os.name == "nt":
-        for cand in (r"C:\poppler\Library\bin", r"C:\poppler-24.08.0\Library\bin",
-                     r"C:\poppler-23.11.0\Library\bin"):
+        for cand in (
+            r"C:\poppler\Library\bin",
+            r"C:\poppler-24.08.0\Library\bin",
+            r"C:\poppler-23.11.0\Library\bin",
+        ):
             if os.path.isdir(cand):
                 return cand
     return ""
@@ -70,6 +75,7 @@ class _DepScanThread(QThread):
     def run(self) -> None:  # type: ignore[override]
         try:
             from utils.dependencies import DependencyChecker
+
             deps = DependencyChecker().check_all()
         except Exception:
             deps = {}
@@ -108,24 +114,36 @@ class AboutSystemDialog(QDialog):
             controller.get_setting("paths.tesseract", "") or _detect_tesseract()
         )
         self.tesseract_edit.setPlaceholderText("Auto-detected · click Browse to override")
-        tr = QHBoxLayout(); tr.setContentsMargins(0, 0, 0, 0); tr.setSpacing(6)
+        tr = QHBoxLayout()
+        tr.setContentsMargins(0, 0, 0, 0)
+        tr.setSpacing(6)
         tr.addWidget(self.tesseract_edit, 1)
-        tb = QPushButton("Browse…"); tb.setObjectName("Compact")
-        tb.clicked.connect(self._browse_tess); tr.addWidget(tb)
-        td = QPushButton("Auto-detect"); td.setObjectName("Compact")
-        td.clicked.connect(lambda: self.tesseract_edit.setText(_detect_tesseract())); tr.addWidget(td)
+        tb = QPushButton("Browse…")
+        tb.setObjectName("Compact")
+        tb.clicked.connect(self._browse_tess)
+        tr.addWidget(tb)
+        td = QPushButton("Auto-detect")
+        td.setObjectName("Compact")
+        td.clicked.connect(lambda: self.tesseract_edit.setText(_detect_tesseract()))
+        tr.addWidget(td)
         pf.addRow("Tesseract", tr)
 
         self.poppler_edit = QLineEdit(
             controller.get_setting("paths.poppler", "") or _detect_poppler()
         )
         self.poppler_edit.setPlaceholderText("Leave blank to use system PATH")
-        pr = QHBoxLayout(); pr.setContentsMargins(0, 0, 0, 0); pr.setSpacing(6)
+        pr = QHBoxLayout()
+        pr.setContentsMargins(0, 0, 0, 0)
+        pr.setSpacing(6)
         pr.addWidget(self.poppler_edit, 1)
-        pb = QPushButton("Browse…"); pb.setObjectName("Compact")
-        pb.clicked.connect(self._browse_pop); pr.addWidget(pb)
-        pd = QPushButton("Auto-detect"); pd.setObjectName("Compact")
-        pd.clicked.connect(lambda: self.poppler_edit.setText(_detect_poppler())); pr.addWidget(pd)
+        pb = QPushButton("Browse…")
+        pb.setObjectName("Compact")
+        pb.clicked.connect(self._browse_pop)
+        pr.addWidget(pb)
+        pd = QPushButton("Auto-detect")
+        pd.setObjectName("Compact")
+        pd.clicked.connect(lambda: self.poppler_edit.setText(_detect_poppler()))
+        pr.addWidget(pd)
         pf.addRow("Poppler", pr)
         paths_gb.setLayout(pf)
         root.addWidget(paths_gb)
@@ -133,7 +151,9 @@ class AboutSystemDialog(QDialog):
         # ── Dependencies + models ───────────────────────────────────────
         dep_gb = QGroupBox("Dependencies & models")
         dl = QVBoxLayout(dep_gb)
-        head = QHBoxLayout(); head.setContentsMargins(0, 0, 0, 0); head.setSpacing(8)
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(8)
         head.addStretch()
         self.refresh_btn = QPushButton("  Refresh")
         self.refresh_btn.setObjectName("Compact")
@@ -162,8 +182,9 @@ class AboutSystemDialog(QDialog):
         return "1.0.0"
 
     def _browse_tess(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Locate tesseract", "",
-                                              "tesseract (tesseract tesseract.exe);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Locate tesseract", "", "tesseract (tesseract tesseract.exe);;All files (*)"
+        )
         if path:
             self.tesseract_edit.setText(path)
 
@@ -196,7 +217,9 @@ class AboutSystemDialog(QDialog):
         lines.append("")
         lines.append("OLLAMA")
         lines.append(f"  {'✅' if deps.get('ollama') else '❌'} installed")
-        lines.append(f"  {'✅' if deps.get('ollama_running') else '❌'} server running (localhost:11434)")
+        lines.append(
+            f"  {'✅' if deps.get('ollama_running') else '❌'} server running (localhost:11434)"
+        )
         models = deps.get("models", []) or []
         if models:
             vision_kw = ("vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo")

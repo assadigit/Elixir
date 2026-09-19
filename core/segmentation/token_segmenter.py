@@ -3,7 +3,6 @@ Token-based segmenter – splits document into fixed-size chunks by token count.
 Used as the ultimate fallback when no structural headings or semantic info is available.
 """
 
-
 from core.models import ConversionRequest, Segment
 from utils.logging import get_main_logger
 from utils.token_counter import count_tokens
@@ -29,7 +28,7 @@ class TokenSegmenter:
     ) -> list[Segment]:
         logger.info(f"[TokenSegmenter] Splitting — limit: {self.token_limit} tokens/segment")
 
-        paragraphs = markdown_text.split('\n\n')
+        paragraphs = markdown_text.split("\n\n")
         segments: list[Segment] = []
         current_content: list[str] = []
         current_tokens = 0
@@ -47,14 +46,12 @@ class TokenSegmenter:
             para_tokens = count_tokens(para)
 
             if current_tokens + para_tokens > self.token_limit and current_content:
-                start_page = get_page_for_offset(
-                    text_pointer - len('\n\n'.join(current_content))
-                )
+                start_page = get_page_for_offset(text_pointer - len("\n\n".join(current_content)))
                 end_page = get_page_for_offset(text_pointer)
                 segments.append(
                     Segment(
                         heading=f"Chunk {chunk_num}",
-                        content='\n\n'.join(current_content).strip(),
+                        content="\n\n".join(current_content).strip(),
                         start_page=max(1, start_page),
                         end_page=max(1, end_page),
                         segment_type="chunk",
@@ -70,13 +67,11 @@ class TokenSegmenter:
             text_pointer += len(para) + 2  # +2 for \n\n
 
         if current_content:
-            start_page = get_page_for_offset(
-                text_pointer - len('\n\n'.join(current_content))
-            )
+            start_page = get_page_for_offset(text_pointer - len("\n\n".join(current_content)))
             segments.append(
                 Segment(
                     heading=f"Chunk {chunk_num}",
-                    content='\n\n'.join(current_content).strip(),
+                    content="\n\n".join(current_content).strip(),
                     start_page=max(1, start_page),
                     end_page=total_pages,
                     segment_type="chunk",

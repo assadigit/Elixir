@@ -11,6 +11,7 @@ Tests verify:
 4. Fix 8: detect_inconsistency — flags false "not mentioned" claims
 5. Agnostic safety: clean text from DIFFERENT disciplines doesn't false-positive
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,6 +42,7 @@ from core.summarisation.postchecks import (
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix 5: detect_interpretive_leaps
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDetectInterpretiveLeaps:
     """V18.2.17 Fix 5: Strip first-person interpretation, flag leaps."""
@@ -116,6 +118,7 @@ class TestDetectInterpretiveLeaps:
 # Fix 6: detect_hedge_loss
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDetectHedgeLoss:
     """V18.2.17 Fix 6: Detect when summary drops source hedging."""
 
@@ -169,6 +172,7 @@ class TestDetectHedgeLoss:
 # Fix 7: verify_attribution
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestVerifyAttribution:
     """V18.2.17 Fix 7: Verify (Author Year) claims match source."""
 
@@ -193,6 +197,7 @@ class TestVerifyAttribution:
         # the same value, it's the stub from test_integration_pipeline.py.
         try:
             from rapidfuzz import fuzz as _rf
+
             _v1 = _rf.token_set_ratio("aaa", "bbb")
             _v2 = _rf.token_set_ratio("xyz", "123")
             if _v1 == _v2:
@@ -239,6 +244,7 @@ class TestVerifyAttribution:
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix 8: detect_inconsistency
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDetectInconsistency:
     """V18.2.17 Fix 8: Detect false 'not mentioned' claims."""
@@ -295,6 +301,7 @@ class TestDetectInconsistency:
 # Integration: run_post_checks with all 4 new detectors
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRunPostChecksWithFixes:
     """V18.2.17: Full coordinator with Fix 5-8 wired in."""
 
@@ -321,23 +328,27 @@ class TestRunPostChecksWithFixes:
         """Clean summaries from different disciplines don't false-positive."""
         domains = [
             # Biology
-            ("Darwin (1859) proposed natural selection.",
-             "Darwin (1859) proposed natural selection as the mechanism of evolution."),
+            (
+                "Darwin (1859) proposed natural selection.",
+                "Darwin (1859) proposed natural selection as the mechanism of evolution.",
+            ),
             # History
-            ("The treaty was signed in 1648.",
-             "The treaty was signed in 1648 ending the war."),
+            ("The treaty was signed in 1648.", "The treaty was signed in 1648 ending the war."),
             # Philosophy
-            ("Kant (1781) argued that space is a priori.",
-             "Kant (1781) argued that space is a form of a priori intuition."),
+            (
+                "Kant (1781) argued that space is a priori.",
+                "Kant (1781) argued that space is a form of a priori intuition.",
+            ),
             # Economics
-            ("Smith (1776) described the invisible hand.",
-             "Smith (1776) described the invisible hand of market self-regulation."),
+            (
+                "Smith (1776) described the invisible hand.",
+                "Smith (1776) described the invisible hand of market self-regulation.",
+            ),
         ]
         for summary, source in domains:
             report = run_post_checks([summary], summary, summary, source)
             # No interpretation/hedge/consistency false positives.
             interp = [i for i in report.issues if i.detector == "interpretation"]
-            hedge = [i for i in report.issues if i.detector == "hedge"]
             consist = [i for i in report.issues if i.detector == "consistency"]
             # Interpretation: no first-person, no leaps → empty.
             assert interp == [], f"interpretation false positive on: {summary}"

@@ -6,6 +6,7 @@ Byte-for-byte stability gate for ``self_review_batched`` extracted from
 
 Run: pytest tests/test_self_review.py -v
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -17,12 +18,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.self_review import self_review_batched
 
@@ -38,7 +42,7 @@ class _CapturingLog:
 class _FakePromptManager:
     def render_template(self, name, **kw):
         # Return a deterministic prompt string capturing the kwargs
-        return f"REVIEW name={name} heading={kw.get('heading')} batch={kw.get('batch_index')}/{kw.get('batch_count')} bullets={kw.get('numbered_bullets','')[:40]}..."
+        return f"REVIEW name={name} heading={kw.get('heading')} batch={kw.get('batch_index')}/{kw.get('batch_count')} bullets={kw.get('numbered_bullets', '')[:40]}..."
 
 
 def _make_deps(
@@ -106,7 +110,9 @@ class TestNoModel:
         kw["heavy_model"] = None
         kw["primary_model"] = ""
         cap = kw["log"]
-        out = self_review_batched("Ch", "text", ["b1", "b2"], "thorough", **{k: v for k, v in kw.items()})
+        out = self_review_batched(
+            "Ch", "text", ["b1", "b2"], "thorough", **{k: v for k, v in kw.items()}
+        )
         assert out is None
         # No LLM call
         assert len(deps["_llm_calls"]) == 0
@@ -140,9 +146,13 @@ class TestNoModel:
 class TestBatching:
     def test_single_batch_under_10_bullets(self):
         """≤10 bullets → 1 batch → 1 LLM call → returns the verdicts as JSON."""
-        verdicts = '[{"claim": "one", "verdict": "supported"}, {"claim": "two", "verdict": "unsupported"}]'
+        verdicts = (
+            '[{"claim": "one", "verdict": "supported"}, {"claim": "two", "verdict": "unsupported"}]'
+        )
         deps = _make_deps(llm_responses=[verdicts])
-        out = self_review_batched("Ch", "src text", ["b1", "b2"], "t", **{k: v for k, v in _common_kwargs(deps).items()})
+        out = self_review_batched(
+            "Ch", "src text", ["b1", "b2"], "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert out is not None
         parsed = _json.loads(out)
         assert len(parsed) == 2
@@ -154,10 +164,14 @@ class TestBatching:
         verdicts_per_batch = [
             _json.dumps([{"claim": f"b{i}", "verdict": "supported"} for i in range(10)]),
             _json.dumps([{"claim": f"b{i}", "verdict": "unsupported"} for i in range(10, 20)]),
-            _json.dumps([{"claim": f"b{i}", "verdict": "partially_supported"} for i in range(20, 25)]),
+            _json.dumps(
+                [{"claim": f"b{i}", "verdict": "partially_supported"} for i in range(20, 25)]
+            ),
         ]
         deps = _make_deps(llm_responses=verdicts_per_batch)
-        out = self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()})
+        out = self_review_batched(
+            "Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         parsed = _json.loads(out)
         assert len(parsed) == 25
         assert len(deps["_llm_calls"]) == 3
@@ -167,9 +181,14 @@ class TestBatching:
         3 batches → 2 recover_vram calls (before batch 2 and 3)."""
         bullets = [f"b{i}" for i in range(25)]
         deps = _make_deps(llm_responses=['[{"verdict":"supported"}]'] * 3)
-        self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()})
+        self_review_batched(
+            "Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert len(deps["_rvram_calls"]) == 2
-        assert [c["context"] for c in deps["_rvram_calls"]] == ["self-review-batch-2", "self-review-batch-3"]
+        assert [c["context"] for c in deps["_rvram_calls"]] == [
+            "self-review-batch-2",
+            "self-review-batch-3",
+        ]
         assert all(c["delay_sec"] == 30.0 for c in deps["_rvram_calls"])  # V15.1.0: 30s
 
 
@@ -183,7 +202,8 @@ class TestBatchFailures:
         bullets = [f"b{i}" for i in range(15)]  # 2 batches
         deps = _make_deps(llm_responses=[None, '[{"verdict":"supported"}]'])
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out = self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in kw.items()})
         # 1 verdict from the surviving batch
         assert out is not None
@@ -197,7 +217,8 @@ class TestBatchFailures:
         bullets = [f"b{i}" for i in range(5)]  # 1 batch
         deps = _make_deps(llm_responses=["This is plain text with no JSON array."])
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out = self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in kw.items()})
         assert out is None  # no verdicts collected
         warnings = [m for m, l in cap.calls if l == "WARNING"]
@@ -211,7 +232,8 @@ class TestBatchFailures:
             llm_raises=[RuntimeError("ollama crashed"), None],
         )
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out = self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in kw.items()})
         # batch 1 crashed, batch 2 returned 1 verdict
         assert out is not None
@@ -224,7 +246,8 @@ class TestBatchFailures:
         bullets = [f"b{i}" for i in range(25)]  # 3 batches
         deps = _make_deps(llm_responses=[None, None, None])
         cap = _CapturingLog()
-        kw = _common_kwargs(deps); kw["log"] = cap
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
         out = self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in kw.items()})
         assert out is None
         warnings = [m for m, l in cap.calls if l == "WARNING"]
@@ -239,24 +262,33 @@ class TestByteForByte:
         """Same inputs → same JSON output across calls."""
         bullets = [f"b{i}" for i in range(5)]
         verdicts = '[{"verdict":"supported"}]'
+
         def _run():
             deps = _make_deps(llm_responses=[verdicts])
-            return self_review_batched("Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()})
+            return self_review_batched(
+                "Ch", "src", bullets, "t", **{k: v for k, v in _common_kwargs(deps).items()}
+            )
+
         assert _run() == _run()
 
     def test_returns_optional_str(self):
         """Returns Optional[str] — None or a JSON array string."""
         deps = _make_deps(llm_responses=['[{"verdict":"supported"}]'])
-        out = self_review_batched("Ch", "src", ["b1"], "t", **{k: v for k, v in _common_kwargs(deps).items()})
+        out = self_review_batched(
+            "Ch", "src", ["b1"], "t", **{k: v for k, v in _common_kwargs(deps).items()}
+        )
         assert isinstance(out, str)
         _json.loads(out)  # valid JSON
         deps2 = _make_deps(llm_responses=[None])
-        out2 = self_review_batched("Ch", "src", ["b1"], "t", **{k: v for k, v in _common_kwargs(deps2).items()})
+        out2 = self_review_batched(
+            "Ch", "src", ["b1"], "t", **{k: v for k, v in _common_kwargs(deps2).items()}
+        )
         assert out2 is None
 
     def test_no_log_callback_does_not_raise(self):
         """log=None (default) → _noop_log → no raise."""
         deps = _make_deps(llm_responses=['[{"verdict":"supported"}]'])
-        kw = _common_kwargs(deps); kw.pop("log")
+        kw = _common_kwargs(deps)
+        kw.pop("log")
         out = self_review_batched("Ch", "src", ["b1"], "t", **{k: v for k, v in kw.items()})
         assert out is not None

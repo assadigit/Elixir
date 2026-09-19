@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
 )
@@ -35,6 +34,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 # V11.72.0: Image Extractor — extract all visuals from PDF/EPUB/DOCX
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class ImageExtractorDialog(QDialog):
     """V11.72.0: Image Extractor — extract all images/charts/tables from books.
@@ -105,9 +105,11 @@ class ImageExtractorDialog(QDialog):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        desc = _QL("Extract all images, charts, tables, and diagrams from "
-                   "PDF/EPUB/DOCX books. Output organized by type with "
-                   "page numbers in filenames.")
+        desc = _QL(
+            "Extract all images, charts, tables, and diagrams from "
+            "PDF/EPUB/DOCX books. Output organized by type with "
+            "page numbers in filenames."
+        )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
         lay.addWidget(desc)
@@ -228,10 +230,12 @@ class ImageExtractorDialog(QDialog):
         super().closeEvent(event)
 
     def _add_files(self):
-        from PySide6.QtWidgets import QFileDialog
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Select books to extract images from", "",
-            "Books (*.pdf *.epub *.docx);;PDF (*.pdf);;EPUB (*.epub);;DOCX (*.docx);;All files (*.*)")
+            self,
+            "Select books to extract images from",
+            "",
+            "Books (*.pdf *.epub *.docx);;PDF (*.pdf);;EPUB (*.epub);;DOCX (*.docx);;All files (*.*)",
+        )
         if files:
             for f in files:
                 self._files.append(f)
@@ -244,9 +248,9 @@ class ImageExtractorDialog(QDialog):
             self.file_list.takeItem(row)
 
     def _pick_output(self):
-        from PySide6.QtWidgets import QFileDialog
         folder = QFileDialog.getExistingDirectory(
-            self, "Choose output folder for extracted images", "")
+            self, "Choose output folder for extracted images", ""
+        )
         if folder:
             self.out_edit.setText(folder)
 
@@ -286,7 +290,6 @@ class ImageExtractorDialog(QDialog):
         def _work():
             return self._extract_all(options)
 
-        from ui_qt.components.simple_worker import SimpleWorker
         self._worker = SimpleWorker(_work)
         self._worker.finished.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
@@ -311,7 +314,7 @@ class ImageExtractorDialog(QDialog):
 
         for i, filepath in enumerate(files):
             file_pct = int(i / len(files) * 100)
-            self._emit_progress(file_pct, f"📂 File {i+1}/{len(files)}: {Path(filepath).name}")
+            self._emit_progress(file_pct, f"📂 File {i + 1}/{len(files)}: {Path(filepath).name}")
 
             # Create subfolder per file
             file_stem = Path(filepath).stem
@@ -321,25 +324,34 @@ class ImageExtractorDialog(QDialog):
             try:
                 if ext == ".pdf":
                     counts = extract_images_from_pdf(
-                        filepath, file_output, page_range,
-                        full_pages, cropped, dpi,
+                        filepath,
+                        file_output,
+                        page_range,
+                        full_pages,
+                        cropped,
+                        dpi,
                         log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-                        progress_callback=lambda pct, msg: self._emit_progress(
-                            int(file_pct + pct / len(files)), msg),
+                        progress_callback=lambda pct, msg, _base=file_pct: self._emit_progress(
+                            int(_base + pct / len(files)), msg
+                        ),
                     )
                 elif ext == ".epub":
                     counts = extract_images_from_epub(
-                        filepath, file_output,
+                        filepath,
+                        file_output,
                         log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-                        progress_callback=lambda pct, msg: self._emit_progress(
-                            int(file_pct + pct / len(files)), msg),
+                        progress_callback=lambda pct, msg, _base=file_pct: self._emit_progress(
+                            int(_base + pct / len(files)), msg
+                        ),
                     )
                 elif ext == ".docx":
                     counts = extract_images_from_docx(
-                        filepath, file_output,
+                        filepath,
+                        file_output,
                         log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-                        progress_callback=lambda pct, msg: self._emit_progress(
-                            int(file_pct + pct / len(files)), msg),
+                        progress_callback=lambda pct, msg, _base=file_pct: self._emit_progress(
+                            int(_base + pct / len(files)), msg
+                        ),
                     )
                 else:
                     results.append(f"❌ {file_stem}: unsupported format ({ext})")
@@ -349,7 +361,8 @@ class ImageExtractorDialog(QDialog):
                     f"✅ {file_stem}: {counts['total']} images "
                     f"(photos: {counts['photos']}, charts: {counts['charts']}, "
                     f"tables: {counts['tables']}, diagrams: {counts['diagrams']}, "
-                    f"figures: {counts['figures']}, full_pages: {counts['full_pages']})")
+                    f"figures: {counts['figures']}, full_pages: {counts['full_pages']})"
+                )
             except Exception as e:
                 results.append(f"❌ {file_stem}: {e}")
 
@@ -392,8 +405,9 @@ class ImageExtractorDialog(QDialog):
             # Success modal
             out_folder = self.out_edit.text().strip()
             QMessageBox.information(
-                self, "✅ Extraction Complete",
-                f"Image extraction complete!\n\n{summary}\n\n"
-                f"Output: {out_folder}")
+                self,
+                "✅ Extraction Complete",
+                f"Image extraction complete!\n\n{summary}\n\nOutput: {out_folder}",
+            )
         else:
             self.status_label.setText("⚠️ No images extracted")

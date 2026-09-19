@@ -22,6 +22,7 @@ in the sandbox without stubbing.
 
 Run: ``pytest tests/test_content_judge.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -74,9 +75,11 @@ class TestJudgeResult:
         """format_report shows ✅ PASS when passed=True."""
         r = JudgeResult(
             chapter_heading="Ch.1",
-            total_source_claims=10, covered_claims=8,
+            total_source_claims=10,
+            covered_claims=8,
             coverage_pct=0.80,
-            total_bullets=5, grounded_bullets=5,
+            total_bullets=5,
+            grounded_bullets=5,
             grounding_pct=1.0,
             passed=True,
         )
@@ -120,10 +123,7 @@ class TestExtractKeyClaims:
 
     def test_extracts_causal_claims(self):
         """Sentences with causal language are extracted."""
-        text = (
-            "Therefore the mechanism activates. "
-            "The weather is nice today."
-        )
+        text = "Therefore the mechanism activates. The weather is nice today."
         claims = _extract_key_claims(text)
         assert any("Therefore" in c for c in claims)
 
@@ -138,10 +138,7 @@ class TestExtractKeyClaims:
 
     def test_skips_figure_table_captions(self):
         """Figure/Table captions are skipped."""
-        text = (
-            "Figure 1 shows the results. "
-            "The results demonstrate a 30% improvement."
-        )
+        text = "Figure 1 shows the results. The results demonstrate a 30% improvement."
         claims = _extract_key_claims(text)
         # "Figure 1 shows the results." should be skipped, the second kept
         assert not any("Figure" in c for c in claims)
@@ -295,27 +292,27 @@ class TestLlmJudgeGrounding:
 
     def test_llm_judge_returns_none_on_empty_response(self, judge: ContentJudge):
         """Empty LLM response → None."""
-        result = judge.llm_judge_grounding(
-            ["b1"], "source", lambda p: ""
-        )
+        result = judge.llm_judge_grounding(["b1"], "source", lambda p: "")
         assert result is None
 
     def test_llm_judge_returns_none_on_exception(self, judge: ContentJudge):
         """LLM call exception → None (graceful fallback)."""
+
         def raising_llm(prompt):
             raise RuntimeError("connection error")
-        result = judge.llm_judge_grounding(
-            ["b1"], "source", raising_llm
-        )
+
+        result = judge.llm_judge_grounding(["b1"], "source", raising_llm)
         assert result is None
 
     def test_llm_judge_missing_verdict_assumes_grounded(self, judge: ContentJudge):
         """A bullet with no explicit verdict is assumed grounded (safe default)."""
         bullets = ["bullet one", "bullet two"]
         source = "source. " * 50
+
         # Only verdict for bullet 1; bullet 2 is missing
         def fake_llm(prompt):
             return "GROUNDED: 1\n"
+
         result = judge.llm_judge_grounding(bullets, source, fake_llm)
         assert result is not None
         grounded_count, total, ungrounded = result

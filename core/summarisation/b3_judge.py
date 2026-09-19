@@ -20,6 +20,7 @@ Characterization tests: ``tests/test_b3_judge.py`` captures the success path
 (defaults to #0), the exception-fallback path (coverage-based picking), and
 the out-of-range index path.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,6 +49,7 @@ def _default_compute_coverage(source: str, candidate: str) -> float:
 
 # ── b3_cloud_judge (extracted verbatim) ────────────────────────────────────
 
+
 def b3_cloud_judge(
     samples: list[dict],
     source: str,
@@ -75,7 +77,7 @@ def b3_cloud_judge(
         # Judge executive summaries
         candidates_block = ""
         for i, e in enumerate(execs):
-            candidates_block += f"--- Summary {i+1} ---\n{e[:1000]}\n\n"
+            candidates_block += f"--- Summary {i + 1} ---\n{e[:1000]}\n\n"
         exec_prompt = prompt_manager.render_template(
             "summarisation/b3_judge_exec",
             heading=heading,
@@ -83,11 +85,10 @@ def b3_cloud_judge(
             candidates_block=candidates_block,
         )
 
-        exec_resp = call_cloud(exec_prompt, max_tokens=10,
-                               temperature=fusion_cloud_temperature)
+        exec_resp = call_cloud(exec_prompt, max_tokens=10, temperature=fusion_cloud_temperature)
         best_exec_idx = 0
         if exec_resp:
-            m = re.search(r'(\d+)', exec_resp.strip())
+            m = re.search(r"(\d+)", exec_resp.strip())
             if m:
                 idx = int(m.group(1)) - 1
                 if 0 <= idx < len(samples):
@@ -96,7 +97,7 @@ def b3_cloud_judge(
         # Judge thorough summaries
         candidates_block = ""
         for i, t in enumerate(thoroughs):
-            candidates_block += f"--- Summary {i+1} ---\n{t[:1500]}\n\n"
+            candidates_block += f"--- Summary {i + 1} ---\n{t[:1500]}\n\n"
         thorough_prompt = prompt_manager.render_template(
             "summarisation/b3_judge_thorough",
             heading=heading,
@@ -104,22 +105,29 @@ def b3_cloud_judge(
             candidates_block=candidates_block,
         )
 
-        thorough_resp = call_cloud(thorough_prompt, max_tokens=10,
-                                   temperature=fusion_cloud_temperature)
+        thorough_resp = call_cloud(
+            thorough_prompt, max_tokens=10, temperature=fusion_cloud_temperature
+        )
         best_thorough_idx = 0
         if thorough_resp:
-            m = re.search(r'(\d+)', thorough_resp.strip())
+            m = re.search(r"(\d+)", thorough_resp.strip())
             if m:
                 idx = int(m.group(1)) - 1
                 if 0 <= idx < len(samples):
                     best_thorough_idx = idx
 
-        log(f"    🔀 B3 cloud judge picked exec#{best_exec_idx+1}, thorough#{best_thorough_idx+1}", "DEBUG")
+        log(
+            f"    🔀 B3 cloud judge picked exec#{best_exec_idx + 1}, thorough#{best_thorough_idx + 1}",
+            "DEBUG",
+        )
         return samples[best_exec_idx], samples[best_thorough_idx]
     except Exception as e:
         log(f"    🔀 B3 cloud judge failed ({e}) — falling back to coverage", "WARNING")
         logger.debug("B3 cloud judge failed: %s: %s", type(e).__name__, e)
-        best_exec = max(samples, key=lambda s: compute_coverage(source, s.get("executive_summary", "")))
-        best_thorough = max(samples, key=lambda s: compute_coverage(source, s.get("thorough_summary", "")))
+        best_exec = max(
+            samples, key=lambda s: compute_coverage(source, s.get("executive_summary", ""))
+        )
+        best_thorough = max(
+            samples, key=lambda s: compute_coverage(source, s.get("thorough_summary", ""))
+        )
         return best_exec, best_thorough
-

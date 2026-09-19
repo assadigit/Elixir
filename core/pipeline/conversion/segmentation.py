@@ -22,6 +22,7 @@ on success, or a :class:`ConversionResult` (success=False) on early exit
 Extracted into its own module so the converter's ``convert()`` method is
 shorter and the segmentation logic is testable independently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,6 +50,7 @@ class SegmentationResult:
         total_pages: the total page count from the analysis (used by
             frontmatter, checkpoint, validation, and screenshots).
     """
+
     segments: list[Segment]
     page_markers: list
     total_pages: int
@@ -127,7 +129,7 @@ def run_segmentation(
                 f"  [Converter] PDF has {len(toc_entries)} native outline entries "
                 f"\u2014 skipping LLM heading labeler (outlines are authoritative). "
                 f"The 3-Layer chapter-level segmentation will use these directly.",
-                "INFO"
+                "INFO",
             )
             toc_result = None
         else:
@@ -140,9 +142,15 @@ def run_segmentation(
             )
             if toc_result and toc_result.entries:
                 located = sum(1 for e in toc_result.entries if e.is_heading_found)
-                log(f"  [Converter] Located {located}/{len(toc_result.entries)} headings (confidence: {toc_result.confidence:.2f})", "INFO")
+                log(
+                    f"  [Converter] Located {located}/{len(toc_result.entries)} headings (confidence: {toc_result.confidence:.2f})",
+                    "INFO",
+                )
                 for e in toc_result.entries[:3]:
-                    log(f"    - '{e.title[:40]}' → line {e.line} (conf: {e.confidence:.2f})", "DEBUG")
+                    log(
+                        f"    - '{e.title[:40]}' → line {e.line} (conf: {e.confidence:.2f})",
+                        "DEBUG",
+                    )
 
                 # V10.12.9: Ultra-Precise TOC — if the fuzzy locate_headings
                 # failed to find most headings (confidence < 0.50 or located <
@@ -159,6 +167,7 @@ def run_segmentation(
                     )
                     try:
                         from core.pdf.llm_heading_labeler import label_headings_with_llm
+
                         _llm_headings = label_headings_with_llm(
                             raw_markdown=raw_markdown,
                             page_markers=page_markers,
@@ -178,7 +187,9 @@ def run_segmentation(
                     except Exception as _e:
                         log(f"  ⚠️ Ultra-Precise TOC failed: {_e}", "DEBUG")
             else:
-                log("  [Converter] TOC location failed – will use fallback segmentation.", "WARNING")
+                log(
+                    "  [Converter] TOC location failed – will use fallback segmentation.", "WARNING"
+                )
                 # V10.12.9: Even if we have no TOC result, try LLM labeling
                 # if we have TOC entries (the segmenter can use them directly)
                 if toc_entries and len(toc_entries) >= 3:
@@ -188,6 +199,7 @@ def run_segmentation(
                     )
                     try:
                         from core.pdf.llm_heading_labeler import label_headings_with_llm
+
                         _llm_headings = label_headings_with_llm(
                             raw_markdown=raw_markdown,
                             page_markers=page_markers,
@@ -232,14 +244,26 @@ def run_segmentation(
             _p = _e[1] if isinstance(_e, (tuple, list)) else getattr(_e, "page", None)
             if _p is None or _p <= 0:
                 continue
-            _lvl = _e[2] if (isinstance(_e, (tuple, list)) and len(_e) > 2) else getattr(_e, "level", 0)
-            _by_level.setdefault(_lvl, []).append((_e[0] if isinstance(_e, (tuple, list)) else getattr(_e, "title", ""), _p))
+            _lvl = (
+                _e[2]
+                if (isinstance(_e, (tuple, list)) and len(_e) > 2)
+                else getattr(_e, "level", 0)
+            )
+            _by_level.setdefault(_lvl, []).append(
+                (_e[0] if isinstance(_e, (tuple, list)) else getattr(_e, "title", ""), _p)
+            )
         _mc = compute_metadata_child_levels(_by_level)
         if _mc:
             _mc_levels = set(_mc)
             _toc_list = [
-                _e for _e in _toc_list
-                if (_e[2] if (isinstance(_e, (tuple, list)) and len(_e) > 2) else getattr(_e, "level", 0)) not in _mc_levels
+                _e
+                for _e in _toc_list
+                if (
+                    _e[2]
+                    if (isinstance(_e, (tuple, list)) and len(_e) > 2)
+                    else getattr(_e, "level", 0)
+                )
+                not in _mc_levels
             ]
             log(
                 f"  [Selection] Dropped metadata-children level(s) "
@@ -251,7 +275,9 @@ def run_segmentation(
         _toc_list, _dropped = filter_toc_entries_for_selection(
             _toc_list, request.selected_chapters, log
         )
-        _seg_toc = _toc_list  # a plain list — Segmenter accepts it (elements keep their type/line info)
+        _seg_toc = (
+            _toc_list  # a plain list — Segmenter accepts it (elements keep their type/line info)
+        )
 
     segmenter = Segmenter(
         request,
@@ -267,10 +293,15 @@ def run_segmentation(
 
     if not segments:
         log("⚠️ No segments — creating single fallback", "WARNING")
-        segments = [Segment(
-            heading=request.input_path.stem.replace("_", " ").title(),
-            content=raw_markdown, start_page=1, end_page=total_pages, segment_type="chunk",
-        )]
+        segments = [
+            Segment(
+                heading=request.input_path.stem.replace("_", " ").title(),
+                content=raw_markdown,
+                start_page=1,
+                end_page=total_pages,
+                segment_type="chunk",
+            )
+        ]
 
     # Release raw_markdown — segments now hold their own content copies.
     # This frees 50-100K chars of memory for the summarization phase.
@@ -289,6 +320,7 @@ def run_segmentation(
         log(f"     Selected: {selected_list[:3]}{'…' if len(selected_list) > 3 else ''}", "DEBUG")
 
         from core.segmentation.chapter_matcher import ChapterMatcher
+
         _toc_entries = getattr(converter, "toc_entries", []) or []
         _matcher = ChapterMatcher(toc_entries=_toc_entries)
         # Convert segments to dicts for the matcher (it works with dicts)
@@ -312,7 +344,10 @@ def run_segmentation(
             segments = filtered_segments
             log(f"  📑 Filtered segments: kept {len(segments)} of {original_count}", "INFO")
         else:
-            log(f"  ⚠️ No matches found (heading + aliases + page); keeping all {original_count} segments.", "WARNING")
+            log(
+                f"  ⚠️ No matches found (heading + aliases + page); keeping all {original_count} segments.",
+                "WARNING",
+            )
 
     return SegmentationResult(
         segments=segments,
@@ -337,11 +372,13 @@ def log_segment_summary(
     suffix = f" | [{elapsed}]" if elapsed else ""
     log(f"📚 {len(segments)} segment(s) detected{suffix}", "INFO")
     from utils.token_counter import count_tokens as _ct
+
     for _si, _seg in enumerate(segments, 1):
         _tok = _ct(_seg.content)
         _flag = "⚠️ SHORT" if _tok < 150 else "✅"
         log(
             f"  {_flag} Seg {_si}/{len(segments)}: "
             f"'{_seg.heading[:45]}' | {_tok:,} tokens | "
-            f"p.{_seg.start_page}–{_seg.end_page}", "DEBUG"
+            f"p.{_seg.start_page}–{_seg.end_page}",
+            "DEBUG",
         )

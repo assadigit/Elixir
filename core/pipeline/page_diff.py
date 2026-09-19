@@ -10,6 +10,7 @@ Usage::
     changed = get_changed_pages(pdf_path, output_dir)
     # changed = set of page numbers that differ from the last run
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -26,6 +27,7 @@ def compute_page_hashes(pdf_path: Path, password: str | None = None) -> dict:
     Returns {page_num: sha256_hash} for all pages.
     """
     from pypdf import PdfReader
+
     reader = PdfReader(str(pdf_path))
     if reader.is_encrypted and password:
         reader.decrypt(password)

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -68,19 +69,14 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
         for s in chapters:
             if s.bullet_points:
                 all_bullets.extend(
-                    bp.strip().lstrip("-•* ").strip()
-                    for bp in s.bullet_points
-                    if bp.strip()
+                    bp.strip().lstrip("-•* ").strip() for bp in s.bullet_points if bp.strip()
                 )
 
         if not all_bullets:
             self.log("  ℹ️ Social pack: No keypoints to work with.", "INFO")
             return None
 
-        self.log(
-            f"  📱 Generating social media pack from {len(all_bullets)} "
-            f"keypoints…", "INFO"
-        )
+        self.log(f"  📱 Generating social media pack from {len(all_bullets)} keypoints…", "INFO")
 
         # Cap the bullets fed to the prompts to keep them manageable.
         bullets_text = "\n".join(f"- {bp}" for bp in all_bullets[:35])
@@ -89,9 +85,7 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
         thread = self._gen_x_thread(book_title, bullets_text)
 
         # ── Section 2+3+4: LinkedIn + hooks + hashtags (one call) ─────────
-        linkedin, hooks, hashtags = self._gen_linkedin_and_meta(
-            book_title, bullets_text
-        )
+        linkedin, hooks, hashtags = self._gen_linkedin_and_meta(book_title, bullets_text)
 
         md = self._assemble_markdown(
             book_title=book_title,
@@ -190,10 +184,7 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
                         hooks.append(h)
                 elif section == "tags" and upper.startswith("TAGS:"):
                     raw = stripped.split(":", 1)[1].strip()
-                    hashtags = [
-                        re.sub(r"[^a-zA-Z0-9_]", "", t).strip()
-                        for t in raw.split(",")
-                    ]
+                    hashtags = [re.sub(r"[^a-zA-Z0-9_]", "", t).strip() for t in raw.split(",")]
                     hashtags = [t for t in hashtags if t][:15]
             # Flush any trailing LinkedIn content if no HOOKS section followed.
             if post_lines and not linkedin:
@@ -210,8 +201,7 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
             ]
         if not hashtags:
             base = re.sub(r"[^a-zA-Z0-9]", "", book_title).lower()
-            hashtags = [base, "booksummary", "reading", "learning",
-                        "nonfiction", "ideas"][:6]
+            hashtags = [base, "booksummary", "reading", "learning", "nonfiction", "ideas"][:6]
         return linkedin, hooks, hashtags
 
     # ══════════════════════════════════════════════════════════════════════
@@ -220,11 +210,7 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
 
     def _fallback_linkedin(self, book_title: str, bullets_text: str) -> str:
         """Minimal LinkedIn post built straight from the keypoints."""
-        top = [
-            bp.lstrip("- ").strip()
-            for bp in bullets_text.splitlines()
-            if bp.strip()
-        ][:3]
+        top = [bp.lstrip("- ").strip() for bp in bullets_text.splitlines() if bp.strip()][:3]
         body = "\n\n".join(f"• {bp}" for bp in top)
         return (
             f"Just finished working through “{book_title}”. Here are the ideas "
@@ -258,10 +244,7 @@ class SocialMediaPackGenerator(OutputGeneratorBase):
         lines.append("## X / Twitter Thread")
         lines.append("")
         if thread:
-            lines.append(
-                f"*{len(thread)} tweets. Each is ≤ 280 characters. "
-                "Copy-paste in order.*"
-            )
+            lines.append(f"*{len(thread)} tweets. Each is ≤ 280 characters. Copy-paste in order.*")
             lines.append("")
             for i, tweet in enumerate(thread, 1):
                 lines.append(f"**{i}/{len(thread)}** {tweet}")

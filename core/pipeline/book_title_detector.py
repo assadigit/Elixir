@@ -28,6 +28,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
 def _looks_like_real_name(stem: str) -> bool:
     """Return True if the PDF stem looks like a genuine book name."""
     # Replace underscores/hyphens with spaces for the check
@@ -85,13 +86,18 @@ def _scan_markdown_for_title(raw_markdown: str) -> str | None:
             title = stripped[2:].strip()
             # Sanity: must be 3-80 chars, not a generic word like "Contents"
             if 3 <= len(title) <= 80 and title.lower() not in (
-                "contents", "table of contents", "index", "preface",
-                "introduction", "chapter", "chapter 1"
+                "contents",
+                "table of contents",
+                "index",
+                "preface",
+                "introduction",
+                "chapter",
+                "chapter 1",
             ):
                 return title
 
     # 2. Short Title Case / ALL CAPS line in first 20 non-empty lines
-    non_empty = [l.strip() for l in head if l.strip()]
+    non_empty = [line.strip() for line in head if line.strip()]
     for line in non_empty[:20]:
         # Skip lines that are clearly not titles
         if len(line) > 80 or len(line) < 3:
@@ -109,9 +115,7 @@ def _scan_markdown_for_title(raw_markdown: str) -> str | None:
         # Title Case check: most words start with uppercase
         words = line.split()
         if len(words) >= 1:
-            title_case_words = sum(
-                1 for w in words if w and w[0].isupper()
-            )
+            title_case_words = sum(1 for w in words if w and w[0].isupper())
             if title_case_words >= len(words) * 0.6 and len(words) <= 12:
                 return line
         # ALL CAPS check (at least 4 chars, all alpha uppercase)
@@ -155,15 +159,14 @@ def detect_book_title(
             log(
                 f"  📖 Book title: detected from content ({title}) "
                 f"— PDF stem '{pdf_stem}' looked like a hash",
-                "INFO"
+                "INFO",
             )
             return title
 
     # Step 3: fallback — use the stem, cleaned up.
     title = _sanitize_title_for_folder(stem_cleaned.title() if stem_cleaned else pdf_stem)
     log(
-        f"  📖 Book title: using PDF stem as fallback ({title}) "
-        f"— could not detect from content",
-        "DEBUG"
+        f"  📖 Book title: using PDF stem as fallback ({title}) — could not detect from content",
+        "DEBUG",
     )
     return title

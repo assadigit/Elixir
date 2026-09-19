@@ -34,6 +34,7 @@ NOT moved (stays in summarizer.py): ``_recover_vram`` (generic VRAM
 recovery, not additive-sections machinery) and ``_summarize_inner``
 itself (too entangled — explicitly out of the approved P5 scope).
 """
+
 from __future__ import annotations
 
 import re
@@ -100,6 +101,7 @@ class SummarizerAdditiveMixin:
             result: the parsed result dict (mutated in place — adds 1 bullet).
         """
         from core.summarisation.post_processing import detect_enumerated_conclusions
+
         conclusions = detect_enumerated_conclusions(text)
         if not conclusions:
             return  # no enumerated conclusion in source — nothing to do
@@ -113,7 +115,7 @@ class SummarizerAdditiveMixin:
             # V18.15.9.1: strip leading "- " / "* " list markers (but NOT the
             # ** bold markers we're looking for). Use a targeted regex: strip
             # leading whitespace + an optional "- " or "* " prefix.
-            _bp_clean = re.sub(r'^\s*(?:[-\u2022]\s+)?', '', str(bp)).strip()
+            _bp_clean = re.sub(r"^\s*(?:[-\u2022]\s+)?", "", str(bp)).strip()
             # V18.15.9.1: check if the bullet starts with "**Characteristics" or
             # "**Conclusions" (the label prefix). We check the prefix (not the
             # full "**Characteristics**") because the label may be
@@ -165,6 +167,7 @@ class SummarizerAdditiveMixin:
         ``summary_validator.normalize_empty_section``. Pure static method.
         """
         return sv_normalize_empty_section(text)
+
     @staticmethod
     def _verify_additive_section_item(item: str, source_text: str) -> bool:
         """V13.39.0: Verify additive item — delegates to summary_validator.verify_additive_section_item.
@@ -173,6 +176,7 @@ class SummarizerAdditiveMixin:
         ``summary_validator.verify_additive_section_item``. Pure static method.
         """
         return sv_verify_additive_section_item(item, source_text)
+
     def _verify_additive_sections(self, heading: str, text: str, result: dict) -> None:
         """V13.39.0: Verify additive sections — delegates to summary_validator.verify_additive_sections.
 
@@ -180,8 +184,11 @@ class SummarizerAdditiveMixin:
         ``summary_validator.verify_additive_sections``.
         """
         sv_verify_additive_sections(
-            heading=heading, text=text, result=result,
-            quarantine=getattr(self, 'quarantine', None), log=self.log,
+            heading=heading,
+            text=text,
+            result=result,
+            quarantine=getattr(self, "quarantine", None),
+            log=self.log,
         )
 
     def _ensure_additive_sections(self, heading: str, text: str, result: dict) -> None:
@@ -203,10 +210,13 @@ class SummarizerAdditiveMixin:
             return  # both already populated — nothing to do
 
         # At least one section is empty — run a followup call for both
-        self.log("    📝 Additive sections missing — running followup call for distinctions + tensions…", "INFO")
+        self.log(
+            "    📝 Additive sections missing — running followup call for distinctions + tensions…",
+            "INFO",
+        )
         lang = "Write in Persian (Farsi)." if self.language == "fa" else "Write in English."
         max_src = max(self.request.summarisation_max_context_tokens - 1500, 8000)
-        src_text = text[:max_src * 4]
+        src_text = text[: max_src * 4]
 
         prompt = self.prompt_manager.render_template(
             self._select_prompt("summarisation/additive_sections"),
@@ -238,19 +248,28 @@ class SummarizerAdditiveMixin:
 
                 from core.summarisation.post_processing import is_truncated as _is_trunc
                 from core.summarisation.response_parser import strip_truncated_section_tail
+
                 _raw_lower2 = raw_text.lower()
-                kdm2 = _re2.search(r'<key_distinctions>\s*(.*?)(?:</key_distinctions>|<theoretical_tensions>|$)', raw_text, _re2.DOTALL | _re2.IGNORECASE)
-                ttm2 = _re2.search(r'<theoretical_tensions>\s*(.*?)(?:</theoretical_tensions>|$)', raw_text, _re2.DOTALL | _re2.IGNORECASE)
+                kdm2 = _re2.search(
+                    r"<key_distinctions>\s*(.*?)(?:</key_distinctions>|<theoretical_tensions>|$)",
+                    raw_text,
+                    _re2.DOTALL | _re2.IGNORECASE,
+                )
+                ttm2 = _re2.search(
+                    r"<theoretical_tensions>\s*(.*?)(?:</theoretical_tensions>|$)",
+                    raw_text,
+                    _re2.DOTALL | _re2.IGNORECASE,
+                )
                 kd_out, tt_out, kd_cut2, tt_cut2 = "", "", False, False
                 if kdm2:
                     _body = kdm2.group(1).strip()
-                    _closed = '</key_distinctions>' in _raw_lower2
+                    _closed = "</key_distinctions>" in _raw_lower2
                     _clean = strip_truncated_section_tail(_body, closing_tag_present=_closed)
                     kd_cut2 = _clean != _body
                     kd_out = _clean
                 if ttm2:
                     _body = ttm2.group(1).strip()
-                    _closed = '</theoretical_tensions>' in _raw_lower2
+                    _closed = "</theoretical_tensions>" in _raw_lower2
                     _clean = strip_truncated_section_tail(_body, closing_tag_present=_closed)
                     tt_cut2 = _clean != _body
                     tt_out = _clean
@@ -268,7 +287,9 @@ class SummarizerAdditiveMixin:
                             _trunc_n += 1
                 return kd_out, tt_out, kd_cut2, tt_cut2, _trunc_n, _total_n
 
-            raw = self._call_llm_with_empty_retry(prompt, temperature=self.temperature, max_tokens=4096)
+            raw = self._call_llm_with_empty_retry(
+                prompt, temperature=self.temperature, max_tokens=4096
+            )
             if not raw:
                 self.log("    ⚠️ Additive-section followup returned empty", "WARNING")
                 return
@@ -276,8 +297,11 @@ class SummarizerAdditiveMixin:
             _kd_body, _tt_body, _kd_cut, _tt_cut, _trunc_lines, _total_lines = _parse_additive(raw)
 
             # P1-e: mass-drop → ONE retry with a fresh generation.
-            if (_total_lines >= 3 and _trunc_lines / _total_lines > 0.5
-                    and not self._deadline_exceeded("additive-section retry")):
+            if (
+                _total_lines >= 3
+                and _trunc_lines / _total_lines > 0.5
+                and not self._deadline_exceeded("additive-section retry")
+            ):
                 self.log(
                     f"    ⚠️ V18.20.3.2: additive followup mass-truncation "
                     f"({_trunc_lines}/{_total_lines} lines would be dropped) — "
@@ -285,7 +309,9 @@ class SummarizerAdditiveMixin:
                     "WARNING",
                 )
                 _retry_raw = self._call_llm_with_empty_retry(
-                    prompt, temperature=self.temperature, max_tokens=4096,
+                    prompt,
+                    temperature=self.temperature,
+                    max_tokens=4096,
                 )
                 if _retry_raw:
                     _retry_raw = self._strip_thinking(_retry_raw)
@@ -338,10 +364,16 @@ class SummarizerAdditiveMixin:
                 self.log(
                     f"    ✅ Additive sections via followup call: key_distinctions={_kd_state}, "
                     f"theoretical_tensions={_tt_state}"
-                    + (f" ({_trunc_lines}/{_total_lines} lines will be dropped as truncated)"
-                       if _trunc_lines else "")
-                    + (" (response hit the output cap — retry may recover the missing section)"
-                       if (_kd_cut or _tt_cut or not _tt_now.strip() or not _kd_now.strip()) else ""),
+                    + (
+                        f" ({_trunc_lines}/{_total_lines} lines will be dropped as truncated)"
+                        if _trunc_lines
+                        else ""
+                    )
+                    + (
+                        " (response hit the output cap — retry may recover the missing section)"
+                        if (_kd_cut or _tt_cut or not _tt_now.strip() or not _kd_now.strip())
+                        else ""
+                    ),
                     "INFO",
                 )
             elif _kd_cut or _tt_cut:

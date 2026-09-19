@@ -37,6 +37,7 @@ documented fallback (None → the caller's XML path). Behavior is byte-for-byte
 identical to the accidental-but-golden "always None" contract; the difference
 is purely visibility.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,6 +73,7 @@ def _noop_parse_response(raw: str) -> dict[str, Any]:
 
 
 # ── call_llm_structured (extracted verbatim) ───────────────────────────────
+
 
 def call_llm_structured(
     prompt: str,
@@ -144,6 +146,7 @@ def call_llm_structured(
     try:
         from core.llm.llm_provider import create_provider
         from utils.settings import Settings as _Settings
+
         _s = _Settings()
         prov = create_provider(provider=provider_name, settings=_s)
         # create_provider uses the settings default model — override it with
@@ -152,8 +155,9 @@ def call_llm_structured(
             prov.model = model
     except Exception as exc:
         logger.info(
-            "structured path unavailable (provider construction failed: %s: %s) "
-            "— using fallback", type(exc).__name__, exc,
+            "structured path unavailable (provider construction failed: %s: %s) — using fallback",
+            type(exc).__name__,
+            exc,
         )
         return None  # provider unavailable — caller uses XML path
 

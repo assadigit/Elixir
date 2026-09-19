@@ -7,6 +7,7 @@ Tests verify:
 4. ``prescan_pages`` returns the right page split (mocked PDF reader)
 5. Fail-open: pre-scan crash returns an empty result (doesn't propagate)
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,6 +32,7 @@ from core.ocr.ocr_prescan import (
 # ═══════════════════════════════════════════════════════════════════════════
 # _is_text_meaningful heuristic
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestIsTextMeaningful:
     """V18.2.16: The text-meaningful heuristic classifies digital vs scanned."""
@@ -63,7 +65,7 @@ class TestIsTextMeaningful:
         assert _is_text_meaningful(text) is False
 
     def test_persian_text_passes(self):
-        """Persian text (Unicode range \u0600-\u06FF) is recognized as words."""
+        """Persian text (Unicode range \u0600-\u06ff) is recognized as words."""
         # Persian text with enough chars
         text = "این یک متن فارسی است که برای تست سیستم تشخیص متن دیجیتال نوشته شده است"
         assert _is_text_meaningful(text) is True
@@ -73,38 +75,51 @@ class TestIsTextMeaningful:
 # intersect_with_valid_pages
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestIntersectWithValidPages:
     """V18.2.16: The candidate-page filter respects chapter selection + page range."""
 
     def test_no_filters_returns_all(self):
         """Without valid_pages or page_range, all pages are candidates."""
         result = intersect_with_valid_pages(
-            [1, 2, 3, 4, 5], valid_pages=None,
-            page_range_start=None, page_range_end=None, total_pages=5,
+            [1, 2, 3, 4, 5],
+            valid_pages=None,
+            page_range_start=None,
+            page_range_end=None,
+            total_pages=5,
         )
         assert result == [1, 2, 3, 4, 5]
 
     def test_valid_pages_filters(self):
         """Chapter selection (valid_pages) restricts candidates."""
         result = intersect_with_valid_pages(
-            [1, 2, 3, 4, 5], valid_pages={2, 3, 4},
-            page_range_start=None, page_range_end=None, total_pages=5,
+            [1, 2, 3, 4, 5],
+            valid_pages={2, 3, 4},
+            page_range_start=None,
+            page_range_end=None,
+            total_pages=5,
         )
         assert result == [2, 3, 4]
 
     def test_page_range_filters(self):
         """Page range restricts candidates."""
         result = intersect_with_valid_pages(
-            [1, 2, 3, 4, 5], valid_pages=None,
-            page_range_start=2, page_range_end=4, total_pages=5,
+            [1, 2, 3, 4, 5],
+            valid_pages=None,
+            page_range_start=2,
+            page_range_end=4,
+            total_pages=5,
         )
         assert result == [2, 3, 4]
 
     def test_both_filters_combine(self):
         """Both valid_pages AND page_range apply (intersection)."""
         result = intersect_with_valid_pages(
-            [1, 2, 3, 4, 5, 6, 7], valid_pages={3, 4, 5, 6},
-            page_range_start=2, page_range_end=5, total_pages=7,
+            [1, 2, 3, 4, 5, 6, 7],
+            valid_pages={3, 4, 5, 6},
+            page_range_start=2,
+            page_range_end=5,
+            total_pages=7,
         )
         # valid_pages ∩ page_range = {3,4,5}
         assert result == [3, 4, 5]
@@ -112,15 +127,21 @@ class TestIntersectWithValidPages:
     def test_result_is_sorted(self):
         """The result is always sorted (deterministic)."""
         result = intersect_with_valid_pages(
-            [5, 3, 1, 4, 2], valid_pages=None,
-            page_range_start=None, page_range_end=None, total_pages=5,
+            [5, 3, 1, 4, 2],
+            valid_pages=None,
+            page_range_start=None,
+            page_range_end=None,
+            total_pages=5,
         )
         assert result == [1, 2, 3, 4, 5]
 
     def test_empty_input_returns_empty(self):
         result = intersect_with_valid_pages(
-            [], valid_pages={1, 2, 3},
-            page_range_start=None, page_range_end=None, total_pages=5,
+            [],
+            valid_pages={1, 2, 3},
+            page_range_start=None,
+            page_range_end=None,
+            total_pages=5,
         )
         assert result == []
 
@@ -128,6 +149,7 @@ class TestIntersectWithValidPages:
 # ═══════════════════════════════════════════════════════════════════════════
 # PreScanResult
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPreScanResult:
     """V18.2.16: The PreScanResult dataclass."""
@@ -157,6 +179,7 @@ class TestPreScanResult:
 # prescan_pages (mocked)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPrescanPages:
     """V18.2.16: The prescan_pages function with a mocked PDF reader."""
 
@@ -180,11 +203,13 @@ class TestPrescanPages:
 
     def test_all_digital_pages_skip_model(self):
         """When all candidate pages have digital text, skip_model_load is True."""
-        reader = self._make_mock_reader({
-            1: "This is page one with enough text to be considered digital and meaningful.",
-            2: "This is page two with enough text to be considered digital and meaningful.",
-            3: "This is page three with enough text to be considered digital and meaningful.",
-        })
+        reader = self._make_mock_reader(
+            {
+                1: "This is page one with enough text to be considered digital and meaningful.",
+                2: "This is page two with enough text to be considered digital and meaningful.",
+                3: "This is page three with enough text to be considered digital and meaningful.",
+            }
+        )
         with patch("pypdf.PdfReader", return_value=reader):
             result = prescan_pages(
                 pdf_path="/fake/path.pdf",
@@ -197,11 +222,13 @@ class TestPrescanPages:
 
     def test_all_scanned_pages_need_ocr(self):
         """When all candidate pages are empty (scanned), all need OCR."""
-        reader = self._make_mock_reader({
-            1: "",
-            2: "",
-            3: "",
-        })
+        reader = self._make_mock_reader(
+            {
+                1: "",
+                2: "",
+                3: "",
+            }
+        )
         with patch("pypdf.PdfReader", return_value=reader):
             result = prescan_pages(
                 pdf_path="/fake/path.pdf",
@@ -214,13 +241,15 @@ class TestPrescanPages:
 
     def test_mixed_pages_split_correctly(self):
         """Some pages digital, some scanned — the split is correct."""
-        reader = self._make_mock_reader({
-            1: "Digital page one with enough text to pass the meaningful text heuristic check.",
-            2: "",  # scanned
-            3: "Digital page three with enough text to pass the meaningful text heuristic check.",
-            4: "",  # scanned
-            5: "Digital page five with enough text to pass the meaningful text heuristic check.",
-        })
+        reader = self._make_mock_reader(
+            {
+                1: "Digital page one with enough text to pass the meaningful text heuristic check.",
+                2: "",  # scanned
+                3: "Digital page three with enough text to pass the meaningful text heuristic check.",
+                4: "",  # scanned
+                5: "Digital page five with enough text to pass the meaningful text heuristic check.",
+            }
+        )
         with patch("pypdf.PdfReader", return_value=reader):
             result = prescan_pages(
                 pdf_path="/fake/path.pdf",
@@ -272,9 +301,11 @@ class TestPrescanPages:
 
     def test_elapsed_sec_is_positive(self):
         """The elapsed time is recorded and positive."""
-        reader = self._make_mock_reader({
-            1: "Digital page one with enough text to pass the meaningful text heuristic check.",
-        })
+        reader = self._make_mock_reader(
+            {
+                1: "Digital page one with enough text to pass the meaningful text heuristic check.",
+            }
+        )
         with patch("pypdf.PdfReader", return_value=reader):
             result = prescan_pages(
                 pdf_path="/fake/path.pdf",
@@ -284,10 +315,12 @@ class TestPrescanPages:
 
     def test_log_fn_called_with_results(self):
         """The log_fn callback is called with traceable messages."""
-        reader = self._make_mock_reader({
-            1: "",
-            2: "Digital page two with enough text to pass the meaningful text heuristic check.",
-        })
+        reader = self._make_mock_reader(
+            {
+                1: "",
+                2: "Digital page two with enough text to pass the meaningful text heuristic check.",
+            }
+        )
         logs = []
         with patch("pypdf.PdfReader", return_value=reader):
             prescan_pages(

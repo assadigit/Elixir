@@ -40,19 +40,27 @@ def extract_audio_from_video(
     log = log_callback or (lambda msg, level="INFO": None)
 
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(video_path),
-        "-vn",              # no video
-        "-acodec", "pcm_s16le",  # 16-bit PCM
-        "-ar", "16000",     # 16kHz
-        "-ac", "1",         # mono
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-vn",  # no video
+        "-acodec",
+        "pcm_s16le",  # 16-bit PCM
+        "-ar",
+        "16000",  # 16kHz
+        "-ac",
+        "1",  # mono
         str(output_path),
     ]
 
     try:
         log(f"  🎬 Extracting audio from {Path(video_path).name}...", "INFO")
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=600,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         if result.returncode != 0:
@@ -106,6 +114,7 @@ def transcribe_audio(
     if device == "auto":
         try:
             import torch
+
             device = "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             device = "cpu"
@@ -120,9 +129,7 @@ def transcribe_audio(
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        return {
-            "error": "faster-whisper not installed. Run: pip install faster-whisper"
-        }
+        return {"error": "faster-whisper not installed. Run: pip install faster-whisper"}
 
     try:
         model = WhisperModel(
@@ -151,14 +158,16 @@ def transcribe_audio(
 
         segments = []
         full_text_parts = []
-        total_duration = info.duration if hasattr(info, 'duration') else 0
+        total_duration = info.duration if hasattr(info, "duration") else 0
 
         for i, segment in enumerate(segments_iter):
-            segments.append({
-                "start": segment.start,
-                "end": segment.end,
-                "text": segment.text.strip(),
-            })
+            segments.append(
+                {
+                    "start": segment.start,
+                    "end": segment.end,
+                    "text": segment.text.strip(),
+                }
+            )
             full_text_parts.append(segment.text.strip())
 
             # Update progress
@@ -166,12 +175,15 @@ def transcribe_audio(
                 pct = 20 + int(70 * segment.end / total_duration)
                 progress(min(90, pct), f"Transcribing... {segment.end:.0f}s/{total_duration:.0f}s")
             else:
-                progress(50, f"Transcribing... segment {i+1}")
+                progress(50, f"Transcribing... segment {i + 1}")
 
         full_text = " ".join(full_text_parts)
 
-        log(f"  ✅ Transcription complete: {len(segments)} segments, "
-            f"{len(full_text)} chars, language: {info.language}", "INFO")
+        log(
+            f"  ✅ Transcription complete: {len(segments)} segments, "
+            f"{len(full_text)} chars, language: {info.language}",
+            "INFO",
+        )
 
         return {
             "text": full_text,
@@ -219,6 +231,7 @@ def summarize_transcript(
     import re
 
     from core.summarisation.prompt_manager import PromptManager
+
     _pm = PromptManager()
     prompt = _pm.render_template(
         "transcribe/transcript_notes",
@@ -256,8 +269,8 @@ def summarize_transcript(
         # for consistency with the old behavior)
         result = strip_thinking(result)
         # Strip code fences
-        result = re.sub(r'^```(?:markdown)?\s*\n', '', result)
-        result = re.sub(r'\n```\s*$', '', result)
+        result = re.sub(r"^```(?:markdown)?\s*\n", "", result)
+        result = re.sub(r"\n```\s*$", "", result)
 
         log(f"  ✅ Summary complete: {len(result)} chars", "INFO")
         return result.strip()

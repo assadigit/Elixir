@@ -69,9 +69,8 @@ class EvidenceMapGenerator:
             if request is not None:
                 from core.grounding import ClaimExtractor
                 from utils.settings import Settings
-                self._extractor = ClaimExtractor(
-                    settings=Settings(), log_callback=self.log
-                )
+
+                self._extractor = ClaimExtractor(settings=Settings(), log_callback=self.log)
         except Exception as e:
             self.log(
                 f"  🗺️ EvidenceMap: could not init ClaimExtractor ({e}) — "
@@ -112,13 +111,15 @@ class EvidenceMapGenerator:
             self.log("  🗺️ EvidenceMap: no chapters to process.", "INFO")
             # Still write a minimal HTML so the scanner sees "generated"
             self._write_guidance_html(
-                html_path, book_title,
+                html_path,
+                book_title,
                 "No chapters were available to build the evidence map.",
             )
             return html_path
 
         # ── Check langextract availability up front ────────────────────
         from core.grounding import is_langextract_available
+
         if not is_langextract_available():
             self.log(
                 "  🗺️⚠️ langextract not installed — writing guidance HTML. "
@@ -126,7 +127,8 @@ class EvidenceMapGenerator:
                 "WARNING",
             )
             self._write_guidance_html(
-                html_path, book_title,
+                html_path,
+                book_title,
                 "langextract is not installed. The Scientific Evidence Map "
                 "requires Google's langextract library. Run "
                 "<code>pip install langextract</code> and re-run this output "
@@ -144,7 +146,8 @@ class EvidenceMapGenerator:
                 "WARNING",
             )
             self._write_guidance_html(
-                html_path, book_title,
+                html_path,
+                book_title,
                 "Source grounding is disabled. Enable "
                 "<code>grounding.enabled</code> in Settings to use the "
                 "Scientific Evidence Map.",
@@ -154,8 +157,7 @@ class EvidenceMapGenerator:
 
         # ── Run langextract over each chapter's source text ────────────
         self.log(
-            f"  🗺️ Generating Scientific Evidence Map for "
-            f"{len(chapters)} chapter(s)…",
+            f"  🗺️ Generating Scientific Evidence Map for {len(chapters)} chapter(s)…",
             "INFO",
         )
         all_chapter_data: list[dict[str, Any]] = []
@@ -166,8 +168,11 @@ class EvidenceMapGenerator:
                 f"    🗺️ [{idx}/{len(chapters)}] {heading[:50]}…",
                 "DEBUG",
             )
-            content_type = getattr(self.request, "source_type", "normal_book") \
-                if self.request else "normal_book"
+            content_type = (
+                getattr(self.request, "source_type", "normal_book")
+                if self.request
+                else "normal_book"
+            )
             t0 = time.monotonic()
             result = self._extractor.extract(
                 source_text=source_text,
@@ -184,37 +189,44 @@ class EvidenceMapGenerator:
             # Build the chapter's data block
             claims_data = []
             for c in result.claims:
-                claims_data.append({
-                    "text": c.text,
-                    "class": c.extraction_class,
-                    "grounded": c.is_grounded,
-                    "char_interval": list(c.char_interval) if c.char_interval else None,
-                    "attributes": c.attributes,
-                    "source_snippet": c.source_snippet,
-                })
-            all_chapter_data.append({
-                "chapter_index": idx,
-                "chapter_heading": heading,
-                "source_text": source_text,
-                "source_length": len(source_text),
-                "available": result.available,
-                "backend": result.backend_used,
-                "elapsed_sec": round(elapsed, 2),
-                "alarm": (
+                claims_data.append(
                     {
-                        "severity": result.alarm.severity,
-                        "code": result.alarm.code,
-                        "message": result.alarm.message,
-                    } if (not result.available and result.alarm) else None
-                ),
-                "claims": claims_data,
-                "grounded_count": result.grounded_count,
-                "ungrounded_count": result.ungrounded_count,
-            })
+                        "text": c.text,
+                        "class": c.extraction_class,
+                        "grounded": c.is_grounded,
+                        "char_interval": list(c.char_interval) if c.char_interval else None,
+                        "attributes": c.attributes,
+                        "source_snippet": c.source_snippet,
+                    }
+                )
+            all_chapter_data.append(
+                {
+                    "chapter_index": idx,
+                    "chapter_heading": heading,
+                    "source_text": source_text,
+                    "source_length": len(source_text),
+                    "available": result.available,
+                    "backend": result.backend_used,
+                    "elapsed_sec": round(elapsed, 2),
+                    "alarm": (
+                        {
+                            "severity": result.alarm.severity,
+                            "code": result.alarm.code,
+                            "message": result.alarm.message,
+                        }
+                        if (not result.available and result.alarm)
+                        else None
+                    ),
+                    "claims": claims_data,
+                    "grounded_count": result.grounded_count,
+                    "ungrounded_count": result.ungrounded_count,
+                }
+            )
 
         # ── Write the JSON dump ────────────────────────────────────────
         try:
             from utils.atomic_io import atomic_write_text
+
             atomic_write_text(
                 json_path,
                 json.dumps(
@@ -236,6 +248,7 @@ class EvidenceMapGenerator:
         html = self._render_html(book_title, all_chapter_data, any_alarm)
         try:
             from utils.atomic_io import atomic_write_text
+
             atomic_write_text(html_path, html)
         except Exception as e:
             self.log(f"  🗺️❌ Failed to write evidence HTML: {e}", "ERROR")
@@ -265,7 +278,7 @@ class EvidenceMapGenerator:
             return out
         segs = list(segments or [])
         for i, s in enumerate(summaries):
-            heading = s.chapter_heading or f"Chapter {i+1}"
+            heading = s.chapter_heading or f"Chapter {i + 1}"
             source = ""
             if i < len(segs):
                 source = getattr(segs[i], "content", "") or ""
@@ -314,6 +327,7 @@ Scanner will replace this notice with the full interactive evidence map.</p>
 </body></html>"""
         try:
             from utils.atomic_io import atomic_write_text
+
             atomic_write_text(html_path, html)
         except OSError as _e:
             # V10.4.0 (Phase 6A-4): Log the atomic-write failure (e.g.
@@ -357,16 +371,16 @@ Scanner will replace this notice with the full interactive evidence map.</p>
                     f'<div class="chapter-alarm">⚠️ {self._esc(ch["alarm"]["message"])}</div>'
                 )
             chapters_html.append(f"""
-<section class="chapter" id="ch-{ch['chapter_index']}">
-  <h2>{ch['chapter_index']}. {self._esc(ch['chapter_heading'])}</h2>
+<section class="chapter" id="ch-{ch["chapter_index"]}">
+  <h2>{ch["chapter_index"]}. {self._esc(ch["chapter_heading"])}</h2>
   {alarm_banner}
   <div class="chapter-meta">
-    {ch.get('grounded_count',0)} grounded ·
-    {ch.get('ungrounded_count',0)} ungrounded ·
-    backend: {self._esc(ch.get('backend',''))} ·
-    {ch.get('elapsed_sec',0)}s
+    {ch.get("grounded_count", 0)} grounded ·
+    {ch.get("ungrounded_count", 0)} ungrounded ·
+    backend: {self._esc(ch.get("backend", ""))} ·
+    {ch.get("elapsed_sec", 0)}s
   </div>
-  <details open><summary>Extracted claims ({len(ch.get('claims',[]))})</summary>
+  <details open><summary>Extracted claims ({len(ch.get("claims", []))})</summary>
     <ul class="claims">{claims_html}</ul>
   </details>
   <details><summary>Source with highlights</summary>
@@ -441,7 +455,7 @@ Scanner will replace this notice with the full interactive evidence map.</p>
   <span class="entity">entity</span>
   <span class="ungrounded">ungrounded</span>
 </div>
-{''.join(chapters_html)}
+{"".join(chapters_html)}
 <footer style="margin-top:3rem;color:var(--muted);font-size:0.8rem;border-top:1px solid #ddd;padding-top:1rem;">
   Generated by Elixir V10.1.0 · Powered by Google langextract (Apache-2.0)
 </footer>
@@ -457,20 +471,20 @@ Scanner will replace this notice with the full interactive evidence map.</p>
             attrs = c.get("attributes") or {}
             attrs_str = " · ".join(f"{k}: {v}" for k, v in attrs.items())
             attrs_html = (
-                f'<span class="claim-attrs">{self._esc(attrs_str)}</span>'
-                if attrs_str else ""
+                f'<span class="claim-attrs">{self._esc(attrs_str)}</span>' if attrs_str else ""
             )
             snippet = c.get("source_snippet", "")
             snippet_html = (
                 f'<span class="claim-snippet">📖 "{self._esc(snippet[:200])}"</span>'
-                if snippet else ""
+                if snippet
+                else ""
             )
             badge = "✓" if grounded else "⚠️"
             items.append(
                 f'<li class="{self._esc(li_cls)}">'
                 f'<span class="claim-class">{self._esc(cls)}</span>'
-                f'{badge} {self._esc(c.get("text",""))}'
-                f'{attrs_html}{snippet_html}</li>'
+                f"{badge} {self._esc(c.get('text', ''))}"
+                f"{attrs_html}{snippet_html}</li>"
             )
         return "\n".join(items)
 

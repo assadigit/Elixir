@@ -21,12 +21,11 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
-from ui_qt.components.simple_worker import SimpleWorker
 
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
-
+from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     PlainTextTextEdit,
     _confirm_close_with_running_worker,
@@ -113,6 +112,7 @@ class SummarizationServiceDialog(QDialog):
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
+
         # V11.66.0: PlainTextTextEdit is defined at the top of this file,
         # NOT in PySide6.QtWidgets. This was causing an ImportError.
         _QTE = PlainTextTextEdit
@@ -197,7 +197,9 @@ class SummarizationServiceDialog(QDialog):
 
         # ── Obsidian toggle (V11.18) ──────────────────────────────────
         obs_row = _HL()
-        self.obsidian_chk = _QChB("Obsidian-style markdown (callouts + front-matter — for paste-into-Obsidian)")
+        self.obsidian_chk = _QChB(
+            "Obsidian-style markdown (callouts + front-matter — for paste-into-Obsidian)"
+        )
         self.obsidian_chk.setToolTip(
             "When ON and format is .md: wraps the summary in YAML front-matter and "
             "converts section headings into Obsidian callouts (> [!summary], > [!info], …)."
@@ -238,6 +240,7 @@ class SummarizationServiceDialog(QDialog):
 
         # V11.20: busy progress bar — visible only during processing.
         from PySide6.QtWidgets import QProgressBar as _QPB2
+
         self.progress_bar = _QPB2()
         self.progress_bar.setRange(0, 0)  # busy/indeterminate mode
         self.progress_bar.setFixedHeight(8)
@@ -293,6 +296,7 @@ class SummarizationServiceDialog(QDialog):
         Now reads ``summarisation.endpoint`` (same key the Summarizer uses).
         """
         from utils.settings import Settings
+
         s = Settings()
         url = s.get("summarisation.endpoint", "http://localhost:11434")
         if not url:
@@ -313,11 +317,13 @@ class SummarizationServiceDialog(QDialog):
         from list_ollama_models means Ollama is up but has no models).
         """
         from utils.network import list_ollama_models
+
         base = self._ollama_base_url()
         # list_ollama_models returns [] on connection failure (not None),
         # so we need to distinguish "unreachable" from "empty".
         # We do a quick reachability check first.
         import requests as _req
+
         try:
             _req.get(f"{base}/api/tags", timeout=timeout)
         except Exception:
@@ -334,6 +340,7 @@ class SummarizationServiceDialog(QDialog):
         (falling back to ``summarisation.model``).
         """
         from utils.settings import Settings
+
         s = Settings()
         configured = s.get("summarisation.model", self._DEFAULT_MODEL)
 
@@ -355,7 +362,9 @@ class SummarizationServiceDialog(QDialog):
                 # Show the configured-but-missing model so the user sees it.
                 self.model_combo.addItem(configured, configured)
                 idx_missing = self.model_combo.count() - 1
-                self.model_combo.setItemData(idx_missing, "⚠️ not installed — pull it first", role=Qt.ToolTipRole)
+                self.model_combo.setItemData(
+                    idx_missing, "⚠️ not installed — pull it first", role=Qt.ToolTipRole
+                )
         else:
             self.model_combo.addItem(configured, configured)
             self.model_combo.setItemData(
@@ -394,18 +403,14 @@ class SummarizationServiceDialog(QDialog):
                     f"{len(models)} model(s) available — pick one above or pull it."
                 )
             else:
-                self.status_label.setText(
-                    f"✅ Ollama online — {len(models)} model(s) available."
-                )
+                self.status_label.setText(f"✅ Ollama online — {len(models)} model(s) available.")
 
     # ── File / action helpers ─────────────────────────────────────────
 
     def _add_files(self):
         """V11.18: Add multiple text/markdown files to the batch list."""
-        from PySide6.QtWidgets import QFileDialog
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add text files", "",
-            "Text (*.txt *.md);;All files (*.*)"
+            self, "Add text files", "", "Text (*.txt *.md);;All files (*.*)"
         )
         if paths:
             for p in paths:
@@ -420,10 +425,11 @@ class SummarizationServiceDialog(QDialog):
             self.file_list.takeItem(row)
 
     def _pick_output(self):
-        from PySide6.QtWidgets import QFileDialog
         # If on the multi-file tab, pick a FOLDER; otherwise pick a FILE.
         if self.tabs.currentIndex() == 1:
-            folder = QFileDialog.getExistingDirectory(self, "Choose output folder for summaries", "")
+            folder = QFileDialog.getExistingDirectory(
+                self, "Choose output folder for summaries", ""
+            )
             if folder:
                 self.out_edit.setText(folder)
         else:
@@ -435,18 +441,22 @@ class SummarizationServiceDialog(QDialog):
             ext = self.fmt_combo.currentData()
             if not ext or ext == "__default__":
                 from utils.settings import Settings
+
                 ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
             filter_str = {
                 ".md": "Markdown (*.md)",
                 ".docx": "Word document (*.docx)",
                 ".pdf": "PDF (*.pdf)",
             }.get(ext, "All files (*.*)")
-            path, _ = QFileDialog.getSaveFileName(self, "Save summary as", "", f"{filter_str};;All files (*.*)")
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save summary as", "", f"{filter_str};;All files (*.*)"
+            )
             if path:
                 # V11.67.0: only append the extension if the path doesn't
                 # already end with a valid extension. Don't append if the
                 # user already typed .md/.docx/.pdf manually.
                 from pathlib import Path as _P
+
                 p = _P(path)
                 if not p.suffix or p.suffix.lower() not in (".md", ".docx", ".pdf", ".txt"):
                     if not path.endswith(ext):
@@ -463,6 +473,7 @@ class SummarizationServiceDialog(QDialog):
         if ext == "__default__":
             # Resolve from settings to decide whether Obsidian applies.
             from utils.settings import Settings
+
             ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
         self.obsidian_chk.setEnabled(ext == ".md")
         if ext != ".md":
@@ -489,7 +500,9 @@ class SummarizationServiceDialog(QDialog):
         if self.fmt_combo.count() > 0:
             self.fmt_combo.setCurrentIndex(0)  # "Default"
         self.obsidian_chk.setCheckState(Qt.PartiallyChecked)
-        self.status_label.setText("Ready for the next file — paste text or add files and click Summarize.")
+        self.status_label.setText(
+            "Ready for the next file — paste text or add files and click Summarize."
+        )
         self.again_btn.setVisible(False)
         self.action_btn.setText("Summarize")
         self.action_btn.setEnabled(True)
@@ -544,7 +557,7 @@ class SummarizationServiceDialog(QDialog):
             # copies built-ins to ~/.elixir/prompts/ on first run)
             rendered = (
                 "You are an expert summariser.\n\n"
-                f"Summarising: \"{heading}\"\n\n"
+                f'Summarising: "{heading}"\n\n'
                 f"Chapter content:\n{input_text}\n\n"
                 "Output ONLY the three XML sections:\n"
                 "<executive_summary>...</executive_summary>\n"
@@ -556,8 +569,9 @@ class SummarizationServiceDialog(QDialog):
         max_tokens = {"fast": 1024, "standard": 2048, "thorough": 4096}.get(quality, 2048)
         return rendered, max_tokens
 
-    def _call_llm(self, model: str, prompt: str, max_tokens: int,
-                  temp: float, report=None) -> tuple[str | None, str | None]:
+    def _call_llm(
+        self, model: str, prompt: str, max_tokens: int, temp: float, report=None
+    ) -> tuple[str | None, str | None]:
         """V13.25.0: Call the LLM via llm_provider (not direct requests.post).
 
         Delegates to ``llm_provider.create_provider()`` +
@@ -602,6 +616,7 @@ class SummarizationServiceDialog(QDialog):
         # The legacy no-report path updates the status label directly
         # (main-thread callers only).
         chunk_count = [0]  # mutable closure
+
         def _on_chunk(accumulated_text: str):
             chunk_count[0] += 1
             if chunk_count[0] % 20 == 0:
@@ -636,6 +651,7 @@ class SummarizationServiceDialog(QDialog):
         # Strip <think> blocks (response_parser also does this, but do it
         # here too so the streaming status display is clean)
         from core.summarisation.response_parser import strip_thinking
+
         result = strip_thinking(result)
         return result, None
 
@@ -649,7 +665,9 @@ class SummarizationServiceDialog(QDialog):
         # V18.20.4.5 (W-b5): re-entrancy guard — a second click while a
         # batch summarizes would spawn a second LLM worker.
         if self._worker is not None and self._worker.is_running():
-            self.status_label.setText("⏳ Already summarizing — wait for the current batch to finish.")
+            self.status_label.setText(
+                "⏳ Already summarizing — wait for the current batch to finish."
+            )
             return
 
         # V11.19: resolve "__default__" sentinels from quick_services.defaults.*
@@ -659,12 +677,15 @@ class SummarizationServiceDialog(QDialog):
         model_data = self.model_combo.currentData()
         if model_data == "__default__" or not model_data:
             # Use the default from settings, falling back to summarisation.model.
-            model = (s.get("quick_services.defaults.summarize_model", "")
-                     or s.get("summarisation.model", self._DEFAULT_MODEL))
+            model = s.get("quick_services.defaults.summarize_model", "") or s.get(
+                "summarisation.model", self._DEFAULT_MODEL
+            )
         else:
             model = model_data
         if not model:
-            self.status_label.setText("⚠️ Please pick or type an Ollama model name (or set a default in Settings).")
+            self.status_label.setText(
+                "⚠️ Please pick or type an Ollama model name (or set a default in Settings)."
+            )
             return
 
         # ── Quality ────────────────────────────────────────────────────
@@ -681,7 +702,9 @@ class SummarizationServiceDialog(QDialog):
         obs_state = self.obsidian_chk.checkState()
         if obs_state == Qt.PartiallyChecked:
             # "Default" — follow the setting
-            obsidian = bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ext == ".md"
+            obsidian = (
+                bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ext == ".md"
+            )
         elif obs_state == Qt.Checked:
             obsidian = ext == ".md"
         else:  # Qt.Unchecked → user explicitly turned it off
@@ -691,7 +714,9 @@ class SummarizationServiceDialog(QDialog):
         is_multi = self.tabs.currentIndex() == 1
         if is_multi:
             if not self._files:
-                self.status_label.setText("⚠️ Add at least one file to the list (or switch to the Paste Text tab).")
+                self.status_label.setText(
+                    "⚠️ Add at least one file to the list (or switch to the Paste Text tab)."
+                )
                 return
             out_folder = self.out_edit.text().strip()
             if not out_folder:
@@ -715,7 +740,9 @@ class SummarizationServiceDialog(QDialog):
                 self.status_label.setText("⚠️ Please paste text (or switch to the Pick Files tab).")
                 return
             if len(input_text.strip()) < 100:
-                self.status_label.setText("⚠️ Text too short (need at least 100 characters for a meaningful summary).")
+                self.status_label.setText(
+                    "⚠️ Text too short (need at least 100 characters for a meaningful summary)."
+                )
                 return
             out_path = self.out_edit.text().strip()
             if not out_path:
@@ -754,18 +781,39 @@ class SummarizationServiceDialog(QDialog):
         # late-bind, so at call time (worker thread) the attribute exists
         # and refers to THIS worker.
         self._worker = SimpleWorker(
-            lambda: self._summarize_work(inputs, is_multi, out_folder, out_path,
-                                         model, model_data, quality, ext,
-                                         obsidian, temp,
-                                         report=self._worker.progress.emit))
+            lambda: self._summarize_work(
+                inputs,
+                is_multi,
+                out_folder,
+                out_path,
+                model,
+                model_data,
+                quality,
+                ext,
+                obsidian,
+                temp,
+                report=self._worker.progress.emit,
+            )
+        )
         self._worker.progress.connect(self._on_summarize_progress)
         self._worker.finished.connect(self._on_summarize_finished)
         self._worker.failed.connect(self._on_summarize_failed)
         self._worker.start()
 
-    def _summarize_work(self, inputs, is_multi, out_folder, out_path, model,
-                        model_data, quality, ext, obsidian, temp,
-                        report=None) -> dict:
+    def _summarize_work(
+        self,
+        inputs,
+        is_multi,
+        out_folder,
+        out_path,
+        model,
+        model_data,
+        quality,
+        ext,
+        obsidian,
+        temp,
+        report=None,
+    ) -> dict:
         """V18.20.4.5 (W-b5): the pre-flight check + per-input LLM loop,
         worker-thread edition.
 
@@ -793,16 +841,14 @@ class SummarizationServiceDialog(QDialog):
             avail = ", ".join(installed) if installed else "(none installed)"
             pull_hint = f"<br>👉 Fix: <code>ollama pull {model}</code>"
             alt_hint = (
-                "<br>Or pick one of the installed models above: "
-                f"<code>{avail}</code>"
-                if installed else
-                "<br>Or pull a model first: <code>ollama pull llama3.1:8b</code>"
+                f"<br>Or pick one of the installed models above: <code>{avail}</code>"
+                if installed
+                else "<br>Or pull a model first: <code>ollama pull llama3.1:8b</code>"
             )
             return {
                 "model_missing": True,
                 "error_html": (
-                    f"❌ Model '<b>{model}</b>' is not installed in Ollama."
-                    f"{pull_hint}{alt_hint}"
+                    f"❌ Model '<b>{model}</b>' is not installed in Ollama.{pull_hint}{alt_hint}"
                 ),
             }
         # If installed is None (Ollama unreachable / timed out), skip the
@@ -832,22 +878,24 @@ class SummarizationServiceDialog(QDialog):
             # V11.20: bigger, bolder, eye-catching progress text (identical
             # HTML to the old inline version, now via the queued signal).
             if report is not None:
-                report(int(i * 100 / total) if total else 0, (
-                    f"<div style='font-size:15px; font-weight:600;'>"
-                    f"🤖 Summarizing {i+1}/{total}: <span style='color: var(--primary);'>{stem}</span>"
-                    f"</div>"
-                    f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
-                    f"model: {model}  |  quality: {quality}  |  format: {ext}"
-                    f"</div>"
-                ))
+                report(
+                    int(i * 100 / total) if total else 0,
+                    (
+                        f"<div style='font-size:15px; font-weight:600;'>"
+                        f"🤖 Summarizing {i + 1}/{total}: <span style='color: var(--primary);'>{stem}</span>"
+                        f"</div>"
+                        f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
+                        f"model: {model}  |  quality: {quality}  |  format: {ext}"
+                        f"</div>"
+                    ),
+                )
 
             prompt, max_tokens = self._build_prompt(text, quality)
             # V13.25.0: Use _call_llm (delegates to llm_provider) instead of
             # _call_ollama (direct requests.post with no supervisor/retry).
             # V18.20.4.5 (W-b5): forward ``report`` so the streaming chunks
             # ride the queued progress signal instead of touching widgets.
-            raw_response, err = self._call_llm(model, prompt, max_tokens, temp,
-                                               report=report)
+            raw_response, err = self._call_llm(model, prompt, max_tokens, temp, report=report)
             if err:
                 results.append(f"❌ {stem} → {err}")
                 # On a model-level error (404, connection), bail out of the
@@ -891,9 +939,7 @@ class SummarizationServiceDialog(QDialog):
                 model=model,
             )
             if ok:
-                results.append(
-                    f"✅ {stem} → {_P(out_path_i).name} ({len(summary_text):,} chars)"
-                )
+                results.append(f"✅ {stem} → {_P(out_path_i).name} ({len(summary_text):,} chars)")
             else:
                 results.append(f"⚠️ {stem} → {msg}")
 
@@ -944,6 +990,7 @@ class SummarizationServiceDialog(QDialog):
         # settings alone — the user's default configuration is authoritative.
         if result.get("persist_model"):
             from utils.settings import Settings
+
             s = Settings()
             s.set("summarisation.model", result.get("model"))
             s.save()

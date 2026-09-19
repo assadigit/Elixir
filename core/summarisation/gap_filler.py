@@ -26,6 +26,7 @@ Characterization tests: ``tests/test_gap_filler.py`` captures the
 analysis-skip path, coverage-threshold-skip path, concept gap-fill, and
 deterministic-judge paths with mocked ``call_fast_llm`` / ``prompt_manager``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -110,6 +111,7 @@ def gap_fill_concepts(
     # V17.5 fix: uses analysis_exists() instead of fragile heading matching.
     try:
         from core.preprocessing.deterministic_analyzer import analysis_exists
+
         _has_analysis = analysis_exists(
             output_dir,
             log_fn=lambda msg, level="DEBUG": log(msg, level),
@@ -118,7 +120,7 @@ def gap_fill_concepts(
             log(
                 "    \U0001f4ca V17.4: Deterministic analysis found \u2014 "
                 "skipping old sequential gap-fill (V17.3 judge will handle it, saves ~20 min)",
-                "INFO"
+                "INFO",
             )
             return bullets
     except Exception as _e:
@@ -131,12 +133,12 @@ def gap_fill_concepts(
     # extraction) or when the summary used different whitespace. Now we
     # normalize all whitespace to single spaces on both sides.
     all_summary_text = f"{exec_summary} {' '.join(bullets)} {thorough_summary}"
-    all_summary_norm = re.sub(r'\s+', ' ', all_summary_text).strip().lower()
+    all_summary_norm = re.sub(r"\s+", " ", all_summary_text).strip().lower()
     covered = []
     uncovered = []
     for concept in concepts:
         # Normalize the concept the same way (newlines → spaces)
-        concept_norm = re.sub(r'\s+', ' ', concept).strip().lower()
+        concept_norm = re.sub(r"\s+", " ", concept).strip().lower()
         if not concept_norm:
             continue  # skip empty/garbage concepts
         if concept_norm in all_summary_norm:
@@ -153,7 +155,7 @@ def gap_fill_concepts(
             locations = []
             if c.lower() in exec_summary.lower():
                 locations.append("exec")
-            if c.lower() in ' '.join(bullets).lower():
+            if c.lower() in " ".join(bullets).lower():
                 locations.append("bullets")
             if c.lower() in thorough_summary.lower():
                 locations.append("thorough")
@@ -205,12 +207,14 @@ def gap_fill_concepts(
     )
 
     # Find source sentences for each uncovered concept
-    sentences = re.split(r'(?<=[.!?])\s+', content)
+    sentences = re.split(r"(?<=[.!?])\s+", content)
     gap_bullets = []
-    for _gi, concept in enumerate(uncovered[:12]):  # V15.2.0: raised cap 8→12 (better concepts worth filling)
+    for _gi, concept in enumerate(
+        uncovered[:12]
+    ):  # V15.2.0: raised cap 8→12 (better concepts worth filling)
         # V15.1.0: VRAM recovery between gap-fill calls (from V15.0.2).
         if _gi > 0:
-            recover_vram(context=f"gap-fill-{_gi+1}", delay_sec=30.0)
+            recover_vram(context=f"gap-fill-{_gi + 1}", delay_sec=30.0)
         # Find sentences containing this concept
         concept_lower = concept.lower()
         relevant = [s.strip() for s in sentences if concept_lower in s.lower()][:3]
@@ -239,11 +243,13 @@ def gap_fill_concepts(
             if _gi == 0:
                 switch_to_fast_model()
             raw = call_fast_llm(
-                prompt, max_tokens=200, temperature=temperature,
+                prompt,
+                max_tokens=200,
+                temperature=temperature,
             )
         except Exception as _gfe:
             log(
-                f"    \u26a0\ufe0f Gap-fill call {_gi+1} crashed "
+                f"    \u26a0\ufe0f Gap-fill call {_gi + 1} crashed "
                 f"({type(_gfe).__name__}: {_gfe}) \u2014 skipping concept "
                 f"'{concept[:40]}'",
                 "WARNING",
@@ -254,9 +260,9 @@ def gap_fill_concepts(
             # Clean up the response
             gap_bullet = strip_thinking(raw).strip()
             # Remove leading "- " if the model added it
-            gap_bullet = re.sub(r'^[-\d.\s]+', '', gap_bullet).strip()
+            gap_bullet = re.sub(r"^[-\d.\s]+", "", gap_bullet).strip()
             # Remove surrounding quotes if present
-            gap_bullet = gap_bullet.strip('"\'')
+            gap_bullet = gap_bullet.strip("\"'")
             if gap_bullet and 10 < len(gap_bullet) < 300:
                 gap_bullets.append(gap_bullet)
 
@@ -264,15 +270,22 @@ def gap_fill_concepts(
         log(f"    \u2705 Gap-fill: added {len(gap_bullets)} bullets for uncovered concepts", "INFO")
         bullets.extend(gap_bullets)
     else:
-        log("    \u2139\ufe0f Gap-fill: no bullets generated (LLM returned nothing useful)", "DEBUG")
+        log(
+            "    \u2139\ufe0f Gap-fill: no bullets generated (LLM returned nothing useful)", "DEBUG"
+        )
 
     # V16.0.4: Post-gap-fill coverage matrix
     try:
         _post_summary = f"{exec_summary} {' '.join(bullets)} {thorough_summary}"
-        _post_norm = re.sub(r'\s+', ' ', _post_summary).strip().lower()
-        _post_covered = sum(1 for c in concepts if re.sub(r'\s+', ' ', c).strip().lower() in _post_norm)
+        _post_norm = re.sub(r"\s+", " ", _post_summary).strip().lower()
+        _post_covered = sum(
+            1 for c in concepts if re.sub(r"\s+", " ", c).strip().lower() in _post_norm
+        )
         _post_pct = _post_covered / len(concepts) if concepts else 1.0
-        log(f"    \U0001f4cb V16.0.4 Post-gap-fill coverage: {_post_covered}/{len(concepts)} ({_post_pct:.0%})", "INFO")
+        log(
+            f"    \U0001f4cb V16.0.4 Post-gap-fill coverage: {_post_covered}/{len(concepts)} ({_post_pct:.0%})",
+            "INFO",
+        )
         set_last_coverage(_post_pct)
     except Exception as _e:
         # V18.2.14 (B4): was silent ``pass`` — now traceable.
@@ -289,8 +302,10 @@ def gap_fill_concepts(
             extract_authors_from_analysis,
             find_analysis_for_heading,
         )
+
         _seg_path, _analysis = find_analysis_for_heading(
-            output_dir, heading,
+            output_dir,
+            heading,
             log_fn=lambda msg, level="DEBUG": log(msg, level),
         )
         if _analysis:
@@ -305,8 +320,12 @@ def gap_fill_concepts(
                 log(
                     f"    \U0001f4ca V17.3 Deterministic judge: {_cov['covered']}/{_total} "
                     f"authors covered ({_pct:.0%})"
-                    + (f" \u2014 MISSING: {_missing[:5]}" if _missing else " \u2014 ALL COVERED \u2705"),
-                    "INFO"
+                    + (
+                        f" \u2014 MISSING: {_missing[:5]}"
+                        if _missing
+                        else " \u2014 ALL COVERED \u2705"
+                    ),
+                    "INFO",
                 )
                 # If authors are missing, do targeted gap-fill for them
                 # V17.9: raised cap from 12 to 20
@@ -314,13 +333,15 @@ def gap_fill_concepts(
                     log(
                         f"    \U0001f50d V17.3: Gap-filling {len(_missing)} missing authors: "
                         f"{_missing[:5]}\u2026{'\u2026' if len(_missing) > 5 else ''}",
-                        "INFO"
+                        "INFO",
                     )
                     # Find source sentences for each missing author
-                    _sentences = re.split(r'(?<=[.!?])\s+', content)
+                    _sentences = re.split(r"(?<=[.!?])\s+", content)
                     for _author in _missing[:8]:  # cap at 8
                         _author_lower = _author.lower()
-                        _relevant = [s.strip() for s in _sentences if _author_lower in s.lower()][:3]
+                        _relevant = [s.strip() for s in _sentences if _author_lower in s.lower()][
+                            :3
+                        ]
                         if not _relevant:
                             continue
                         _context = " ".join(_relevant)[:800]
@@ -333,22 +354,30 @@ def gap_fill_concepts(
                         if _gap_prompt:
                             try:
                                 _raw = call_fast_llm(
-                                    _gap_prompt, max_tokens=200,
+                                    _gap_prompt,
+                                    max_tokens=200,
                                     temperature=temperature,
                                 )
                                 if _raw:
                                     _gap_bullet = strip_thinking(_raw).strip()
-                                    _gap_bullet = re.sub(r'^[-\d.\s]+', '', _gap_bullet).strip()
-                                    _gap_bullet = _gap_bullet.strip('"\'')
+                                    _gap_bullet = re.sub(r"^[-\d.\s]+", "", _gap_bullet).strip()
+                                    _gap_bullet = _gap_bullet.strip("\"'")
                                     if _gap_bullet and 10 < len(_gap_bullet) < 300:
                                         bullets.append(f"- {_gap_bullet}")
-                                        log(f"    \u2705 V17.3: Added gap-fill for '{_author}'", "INFO")
+                                        log(
+                                            f"    \u2705 V17.3: Added gap-fill for '{_author}'",
+                                            "INFO",
+                                        )
                             except Exception as _e:
                                 # V18.2.14 (B4): was silent ``pass`` — now traceable.
-                                log_swallow("gap_fill_concept_individual", _e,
-                                            detail=f"author={_author}")
+                                log_swallow(
+                                    "gap_fill_concept_individual", _e, detail=f"author={_author}"
+                                )
         else:
-            log("    [V17.5] No analysis found for judge \u2014 skipping deterministic coverage check", "DEBUG")
+            log(
+                "    [V17.5] No analysis found for judge \u2014 skipping deterministic coverage check",
+                "DEBUG",
+            )
     except Exception as _e:
         log(f"    \u26a0\ufe0f V17.5: Deterministic judge failed: {_e}", "WARNING")
 

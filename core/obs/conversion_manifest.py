@@ -26,6 +26,7 @@ Usage (called by the pipeline after each chapter)::
         duration_seconds=1398,
     )
 """
+
 from __future__ import annotations
 
 import json
@@ -154,6 +155,7 @@ def write_chapter_manifest(
     # atomic_write_json serializes identically to the old to_json() call
     # (indent=2, ensure_ascii=False) and creates the parent dir itself.
     from utils.atomic_io import atomic_write_json
+
     atomic_write_json(manifest_path, manifest.to_dict(), indent=2, ensure_ascii=False)
 
     return manifest_path

@@ -29,6 +29,7 @@ Pins the RESTORED V18 behavior for the three user-reported regressions:
 
 Run: pytest tests/test_p15_output_regressions.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -225,12 +226,9 @@ class TestParagraphHeadlineFix:
 
         toc = [(f"Chapter {i}: Topic {i}", i * 10) for i in range(1, 31)]
         # Selection matches exactly ONE entry (Chapter 1)
-        filtered, dropped = filter_toc_entries_for_selection(
-            toc, ["Chapter 1: Topic 1"], log=None
-        )
+        filtered, dropped = filter_toc_entries_for_selection(toc, ["Chapter 1: Topic 1"], log=None)
         assert filtered is toc or filtered == toc, (
-            "a single match must return the FULL TOC (1-entry TOC disables "
-            "TOC segmentation)"
+            "a single match must return the FULL TOC (1-entry TOC disables TOC segmentation)"
         )
         assert dropped == 0
 
@@ -253,9 +251,7 @@ class TestParagraphHeadlineFix:
         cannot mask the rule-3 change."""
         from core.common.heading_utils import is_likely_heading
 
-        assert not is_likely_heading(
-            "as noted in Chapter 3 the theory holds for all adolescents"
-        )
+        assert not is_likely_heading("as noted in Chapter 3 the theory holds for all adolescents")
         assert is_likely_heading("Chapter 5: Conclusion")
         assert is_likely_heading("## Chapter 3 — Methods")
         assert is_likely_heading("PART TWO")

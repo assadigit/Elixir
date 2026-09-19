@@ -25,6 +25,7 @@ or thermal pre-flight failure).
 Extracted into its own module so the converter's ``convert()`` method
 is shorter and the summarization orchestration is testable independently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,6 +36,7 @@ from typing import Any
 
 from core.models import ConversionResult, SummaryResult
 from core.summarisation import Summarizer
+
 # V18.20.4.12 (W-a11): /no_think gated on Qwen-family models via the
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
@@ -55,6 +57,7 @@ class SummarizationResult:
     Fields:
         summaries: the list of SummaryResult objects (merged loaded + new).
     """
+
     summaries: list[SummaryResult]
 
 
@@ -109,15 +112,19 @@ def run_summarization(
     # ── Force-unload OCR model to free VRAM ──────────────────────────
     if request.use_llm_ocr and request.primary_ocr_model:
         from core.llm import ModelManager
+
         mm = ModelManager()
         loaded = mm.get_loaded_models()
         if request.primary_ocr_model in loaded:
             log(
                 f"  🔓 Force-unloading OCR model '{request.primary_ocr_model}' "
-                "before summarisation to free VRAM…", "INFO"
+                "before summarisation to free VRAM…",
+                "INFO",
             )
             mm.force_unload(request.primary_ocr_model)
-        import time as _time; _time.sleep(2)
+        import time as _time
+
+        _time.sleep(2)
 
     # ── Determine summary language ───────────────────────────────────
     lang_setting = converter.settings.get("summarisation.language", "auto")
@@ -150,23 +157,23 @@ def run_summarization(
         segments_for_summary = segments
     else:
         _skip_patterns = [
-            (r'^references\s*$', 'references'),
-            (r'^bibliography\s*$', 'bibliography'),
-            (r'^works cited\s*$', 'works cited'),
-            (r'^supplementary', 'supplementary materials'),
-            (r'^appendix', 'appendix'),
-            (r'^supporting information', 'supporting information'),
-            (r'^acknowledg', 'acknowledgements'),
+            (r"^references\s*$", "references"),
+            (r"^bibliography\s*$", "bibliography"),
+            (r"^works cited\s*$", "works cited"),
+            (r"^supplementary", "supplementary materials"),
+            (r"^appendix", "appendix"),
+            (r"^supporting information", "supporting information"),
+            (r"^acknowledg", "acknowledgements"),
             # V10.24.0: Add dedication, preface, foreword, copyright, table of contents
             # These sections are too short for meaningful summarization and produce
             # garbage output (the LLM has < 100 tokens of source → hallucinates).
-            (r'^dedication', 'dedication'),
-            (r'^preface', 'preface'),
-            (r'^foreword', 'foreword'),
-            (r'^copyright', 'copyright'),
-            (r'^table of contents', 'table of contents'),
-            (r'^about the author', 'about the author'),
-            (r'^index\s*$', 'index'),
+            (r"^dedication", "dedication"),
+            (r"^preface", "preface"),
+            (r"^foreword", "foreword"),
+            (r"^copyright", "copyright"),
+            (r"^table of contents", "table of contents"),
+            (r"^about the author", "about the author"),
+            (r"^index\s*$", "index"),
         ]
         _filtered_segments = []
         _skipped_count = 0
@@ -198,8 +205,10 @@ def run_summarization(
     try:
         from core.grounding import ClaimExtractor, is_langextract_available
         from utils.settings import Settings as _S
+
         _claim_extractor = ClaimExtractor(
-            settings=_S(), log_callback=log,
+            settings=_S(),
+            log_callback=log,
         )
         if _claim_extractor._is_enabled():
             if is_langextract_available():
@@ -257,6 +266,7 @@ def run_summarization(
     _gpu_profile = None
     try:
         from core.system.hardware_monitor import detect_gpu_profile_from_system
+
         _gpu_name, _gpu_profile = detect_gpu_profile_from_system()
         if _gpu_name:
             log(f"  🎯 GPU detected: {_gpu_name}", "INFO")
@@ -287,11 +297,14 @@ def run_summarization(
             # current worker count. If peak VRAM > 85% of total, cap to 1.
             try:
                 from core.vram_calculator import calculate_vram_budget, get_total_vram
+
                 _total_vram = get_total_vram()
                 if _total_vram and request.max_workers > 1:
-                    _sum_model = getattr(request, "summarisation_model", "") or \
-                                  getattr(request, "primary_model", "") or \
-                                  converter.settings.get("summarisation.model", "")
+                    _sum_model = (
+                        getattr(request, "summarisation_model", "")
+                        or getattr(request, "primary_model", "")
+                        or converter.settings.get("summarisation.model", "")
+                    )
                     _ctx_tokens = converter.settings.get("summarisation.max_context_tokens", 32768)
                     _estimates, _peak, _total, _rec = calculate_vram_budget(
                         summarization_model=_sum_model,
@@ -303,9 +316,9 @@ def run_summarization(
                             f"  🧠 VRAM calculator: max_workers capped "
                             f"{request.max_workers} → 1 — peak VRAM "
                             f"{_peak:.1f} GB / {_total_vram:.1f} GB "
-                            f"({_peak/_total_vram*100:.0f}%) at "
+                            f"({_peak / _total_vram * 100:.0f}%) at "
                             f"{request.max_workers} workers would risk OOM. "
-                            f"Model: {_sum_model} at {_ctx_tokens//1000}k context.",
+                            f"Model: {_sum_model} at {_ctx_tokens // 1000}k context.",
                             "WARNING",
                         )
                         request.max_workers = 1
@@ -339,6 +352,7 @@ def run_summarization(
         )
         try:
             from core.system.hardware_monitor import _PROFILE_DEFAULT
+
             _gpu_profile = _PROFILE_DEFAULT
         except Exception as _e:
             _gpu_profile = None
@@ -350,6 +364,7 @@ def run_summarization(
         )
         try:
             from core.system.hardware_monitor import _PROFILE_DEFAULT
+
             _gpu_profile = _PROFILE_DEFAULT
         except Exception as _e:
             _gpu_profile = None
@@ -357,57 +372,60 @@ def run_summarization(
     # ── Thermal Safety System — pre-flight + start ──────────────────
     _thermal_safety = None
     if _gpu_profile is not None:
-      try:
-        from core.system.thermal_safety import (
-            ThermalSafetyController,
-            check_output_count_safety,
-            recommend_thermal_safe_models,
-        )
-        _thermal_safety = ThermalSafetyController(
-            log_callback=log,
-            profile=_gpu_profile,
-        )
-
-        # 1. Output count guard
-        check_output_count_safety(
-            request, _gpu_profile, log_callback=log,
-        )
-
-        # 2. Model recommendation
-        recommend_thermal_safe_models(
-            getattr(request, "summarisation_model", ""),
-            _gpu_profile,
-            log_callback=log,
-        )
-
-        # 3. Pre-flight thermal check
-        _nvidia_smi = ""
         try:
-            from core.system.hardware_monitor import HardwareMonitor
-            _nvidia_smi = HardwareMonitor._find_nvidia_smi() or ""
-        except Exception as _e:
-            logger.debug("ignored %s: %s", type(_e).__name__, _e)
-        _pf_passed, _pf_msg = _thermal_safety.preflight_check(
-            nvidia_smi_path=_nvidia_smi,
-            model_manager=None,  # skip warmup — too slow for pre-flight
-            model_name=getattr(request, "summarisation_model", ""),
-        )
-        if not _pf_passed:
-            log(
-                "  🚨 Pre-flight thermal check FAILED. "
-                "Conversion aborted to protect the GPU.",
-                "ERROR",
+            from core.system.thermal_safety import (
+                ThermalSafetyController,
+                check_output_count_safety,
+                recommend_thermal_safe_models,
             )
-            return converter._build_error_result(_pf_msg)
 
-        # 4. Start the thermal safety controller
-        _thermal_safety.start()
-        converter._thermal_safety = _thermal_safety  # stash for later
-      except Exception as _tse:
-        log(
-            f"  ℹ️ Thermal Safety System init skipped ({_tse})",
-            "DEBUG",
-        )
+            _thermal_safety = ThermalSafetyController(
+                log_callback=log,
+                profile=_gpu_profile,
+            )
+
+            # 1. Output count guard
+            check_output_count_safety(
+                request,
+                _gpu_profile,
+                log_callback=log,
+            )
+
+            # 2. Model recommendation
+            recommend_thermal_safe_models(
+                getattr(request, "summarisation_model", ""),
+                _gpu_profile,
+                log_callback=log,
+            )
+
+            # 3. Pre-flight thermal check
+            _nvidia_smi = ""
+            try:
+                from core.system.hardware_monitor import HardwareMonitor
+
+                _nvidia_smi = HardwareMonitor._find_nvidia_smi() or ""
+            except Exception as _e:
+                logger.debug("ignored %s: %s", type(_e).__name__, _e)
+            _pf_passed, _pf_msg = _thermal_safety.preflight_check(
+                nvidia_smi_path=_nvidia_smi,
+                model_manager=None,  # skip warmup — too slow for pre-flight
+                model_name=getattr(request, "summarisation_model", ""),
+            )
+            if not _pf_passed:
+                log(
+                    "  🚨 Pre-flight thermal check FAILED. Conversion aborted to protect the GPU.",
+                    "ERROR",
+                )
+                return converter._build_error_result(_pf_msg)
+
+            # 4. Start the thermal safety controller
+            _thermal_safety.start()
+            converter._thermal_safety = _thermal_safety  # stash for later
+        except Exception as _tse:
+            log(
+                f"  ℹ️ Thermal Safety System init skipped ({_tse})",
+                "DEBUG",
+            )
     else:
         log(
             "  ℹ️ Thermal Safety System skipped (GPU profile not available)",
@@ -432,6 +450,7 @@ def run_summarization(
             DeterministicPreprocessor,
             extract_concepts_rich,
         )
+
         pp = DeterministicPreprocessor()
         # V15.2.0: Build a lightweight LLM call function for Technique #5.
         # This calls the primary summarisation model with a low temp for
@@ -449,21 +468,28 @@ def run_summarization(
             # Lazy import to avoid circular dependency
             from core.llm.llm_provider import create_provider
             from utils.settings import Settings as _S
+
             _settings = _S()
-            _arch = getattr(request, "model_architecture", None) or \
-                    _settings.get("summarisation.model_architecture", "single_local") or "single_local"
+            _arch = (
+                getattr(request, "model_architecture", None)
+                or _settings.get("summarisation.model_architecture", "single_local")
+                or "single_local"
+            )
             # V16.0.9: backward-compat — legacy "single" → "single_local"
             if _arch == "single":
                 _arch = "single_local"
 
             if _arch == "dual_api":
                 # Use the OpenAI-compatible cloud API for fast concept extraction.
-                _api_url = getattr(request, "fast_api_url", "") or \
-                           _settings.get("summarisation.fast_api_url", "")
-                _api_key = getattr(request, "fast_api_key", "") or \
-                           _settings.get("summarisation.fast_api_key", "")
-                _api_model = getattr(request, "fast_api_model", "") or \
-                             _settings.get("summarisation.fast_api_model", "")
+                _api_url = getattr(request, "fast_api_url", "") or _settings.get(
+                    "summarisation.fast_api_url", ""
+                )
+                _api_key = getattr(request, "fast_api_key", "") or _settings.get(
+                    "summarisation.fast_api_key", ""
+                )
+                _api_model = getattr(request, "fast_api_model", "") or _settings.get(
+                    "summarisation.fast_api_model", ""
+                )
                 if _api_url and _api_model:
                     _provider = create_provider(
                         provider="openai_compatible",
@@ -506,8 +532,9 @@ def run_summarization(
                         _provider.timeout = 300
             elif _arch == "dual_local":
                 # Use the local fast model via Ollama for fast concept extraction.
-                _fast_model = getattr(request, "fast_model", "") or \
-                              _settings.get("summarisation.fast_model", "")
+                _fast_model = getattr(request, "fast_model", "") or _settings.get(
+                    "summarisation.fast_model", ""
+                )
                 if _fast_model:
                     _provider = create_provider(
                         provider="ollama",
@@ -564,7 +591,8 @@ def run_summarization(
                         supervisor=None,
                     )
                     _summ_model = _settings.get(
-                        "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+                        "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
+                    )
                     if hasattr(_provider, "model"):
                         _provider.model = _summ_model
                     log(
@@ -610,6 +638,7 @@ def run_summarization(
                         f"(heavy cloud model = {_summ_model})",
                         "INFO",
                     )
+
             def _llm_call_fn(prompt):
                 # V18.20.4.12 (W-a11): /no_think is now GATED on Qwen-family
                 # models via the shared ``qwen_no_think`` helper — was the
@@ -653,6 +682,7 @@ def run_summarization(
             _concept_cap = 18  # default
             try:
                 from core.preprocessing.deterministic_analyzer import analysis_exists
+
                 _has_analysis = analysis_exists(
                     request.output_dir,
                     log_fn=lambda msg, level="DEBUG": log(msg, level),
@@ -660,40 +690,59 @@ def run_summarization(
                 if _has_analysis:
                     _skip_llm_concepts = True
                     _concept_cap = 50  # V17.5: raised from 18 — don't cap authors
-                    log("  📊 V17.4: Deterministic analysis found — skipping LLM concept extraction #5 + raising cap to 50 (saves ~3 min)", "INFO")
+                    log(
+                        "  📊 V17.4: Deterministic analysis found — skipping LLM concept extraction #5 + raising cap to 50 (saves ~3 min)",
+                        "INFO",
+                    )
             except Exception as _e:
                 log(f"  ⚠️ V17.5: analysis_exists check failed: {_e}", "WARNING")
 
             try:
                 concepts = extract_concepts_rich(
-                    s.content, max_terms=_concept_cap,
+                    s.content,
+                    max_terms=_concept_cap,
                     llm_call_fn=(None if _skip_llm_concepts else _llm_call_fn),
                     log_fn=log,
                 )
             except Exception as _e:
-                log(f"  ⚠️ V15.2.0 enhanced extraction failed ({_e}), falling back to old method", "DEBUG")
+                log(
+                    f"  ⚠️ V15.2.0 enhanced extraction failed ({_e}), falling back to old method",
+                    "DEBUG",
+                )
                 try:
                     from core.summarisation.text_preprocessor import extract_all_concepts
+
                     concepts = extract_all_concepts(s.content)
                 except Exception:
                     concepts = pp.extract_concepts(s.content)
             callouts = pp.extract_callouts(s.content)
             if concepts:
-                log(f"  🎯 '{s.heading[:40]}…': {len(concepts)} concepts extracted (V15.2.0 enhanced)", "DEBUG")
-            chapter_dicts.append({
-                "heading": s.heading,
-                "content": s.content,
-                "concepts": concepts,
-                "callouts": callouts,
-                # V18.3.2 (P3-partial): thread page info for page-based matching fallback.
-                "start_page": getattr(s, "start_page", None),
-                "end_page": getattr(s, "end_page", None),
-            })
+                log(
+                    f"  🎯 '{s.heading[:40]}…': {len(concepts)} concepts extracted (V15.2.0 enhanced)",
+                    "DEBUG",
+                )
+            chapter_dicts.append(
+                {
+                    "heading": s.heading,
+                    "content": s.content,
+                    "concepts": concepts,
+                    "callouts": callouts,
+                    # V18.3.2 (P3-partial): thread page info for page-based matching fallback.
+                    "start_page": getattr(s, "start_page", None),
+                    "end_page": getattr(s, "end_page", None),
+                }
+            )
     except Exception as e:
         log(f"  ⚠️ Concept extraction skipped: {e}", "DEBUG")
-        chapter_dicts = [{"heading": s.heading, "content": s.content,
-                          "start_page": getattr(s, "start_page", None),
-                          "end_page": getattr(s, "end_page", None)} for s in segments]
+        chapter_dicts = [
+            {
+                "heading": s.heading,
+                "content": s.content,
+                "start_page": getattr(s, "start_page", None),
+                "end_page": getattr(s, "end_page", None),
+            }
+            for s in segments
+        ]
 
     # ── Chapter-level resume ─────────────────────────────────────────
     resume_enabled = converter.settings.get("summarisation.resume_enabled", True)
@@ -703,11 +752,13 @@ def run_summarization(
             detect_processed_chapters,
             split_chapters_for_resume,
         )
+
         processed = detect_processed_chapters(converter.output_dir)
         if processed:
-            chapter_order = [cd["heading"] for cd in chapter_dicts]
             todo_chapters, loaded_summaries = split_chapters_for_resume(
-                chapter_dicts, processed, log,
+                chapter_dicts,
+                processed,
+                log,
             )
             if loaded_summaries and not todo_chapters:
                 log(
@@ -726,6 +777,7 @@ def run_summarization(
         for _cd in chapter_dicts:
             try:
                 from utils.token_counter import count_tokens
+
                 _tok = count_tokens(_cd.get("content", ""))
                 if _tok < 200:
                     log(
@@ -738,8 +790,7 @@ def run_summarization(
         _selected_count = len(request.selected_chapters) if request.selected_chapters else 0
         _to_summarize = len(chapter_dicts)
         log(
-            f"📚 Summarising {_to_summarize} chapter(s) with "
-            f"{request.max_workers} worker(s)...",
+            f"📚 Summarising {_to_summarize} chapter(s) with {request.max_workers} worker(s)...",
             "INFO",
         )
         for _ci, _cd in enumerate(chapter_dicts, 1):
@@ -761,16 +812,18 @@ def run_summarization(
             _selected_titles = request.selected_chapters or []
             # V18.3.1 (P0): capture the available headings BEFORE filtering,
             # so the ChapterMatchFailure error can list what segments exist.
-            _all_available_headings = [cd['heading'] for cd in chapter_dicts]
+            _all_available_headings = [cd["heading"] for cd in chapter_dicts]
             # V18.3.3 (F4): use the unified ChapterMatcher — replaces the
             # inline heading-text + page-based logic. This is the SAME matcher
             # used by Stage 1 (segmentation), so the two stages now agree.
             from core.segmentation.chapter_matcher import ChapterMatcher
+
             _matcher = ChapterMatcher(
                 toc_entries=getattr(converter, "toc_entries", []) or [],
             )
             _matched = _matcher.match(
-                _selected_titles, chapter_dicts,
+                _selected_titles,
+                chapter_dicts,
                 max_results=len(_selected_titles) if _selected_titles else None,
             )
             chapter_dicts = [seg for _, seg in _matched]
@@ -786,6 +839,7 @@ def run_summarization(
             # an actionable error instead of silently producing an empty summary.
             if _selected_titles and not chapter_dicts:
                 from core.errors import ChapterMatchFailure
+
                 _sel_preview = [t[:50] for t in _selected_titles[:3]]
                 _avail_preview = [h[:50] for h in _all_available_headings[:8]]
                 _msg = (
@@ -822,6 +876,7 @@ def run_summarization(
         _cp_saver = None
         if converter.settings.get("summarisation.incremental_chapter_save", True):
             from core.pipeline.chapter_checkpoint import ChapterCheckpointSaver
+
             _cp_saver = ChapterCheckpointSaver(
                 converter,
                 heading_positions=_final_positions,
@@ -836,7 +891,8 @@ def run_summarization(
                 "INFO",
             )
         summaries = summarizer.summarize_chapters(
-            chapter_dicts, progress_callback=converter._summarisation_progress,
+            chapter_dicts,
+            progress_callback=converter._summarisation_progress,
             cancel_event=converter.cancel_event,
             thermal_pause_callback=_thermal_cb,
             chapter_done_callback=(_cp_saver.on_chapter_done if _cp_saver is not None else None),
@@ -845,6 +901,7 @@ def run_summarization(
     # ── Merge loaded + new summaries ────────────────────────────────
     if loaded_summaries:
         from core.pipeline.chapter_resume import merge_summaries
+
         all_headings = [s.heading for s in segments]
         summaries = merge_summaries(summaries, loaded_summaries, all_headings)
         log(
@@ -866,6 +923,7 @@ def run_summarization(
     summary_folder = converter.paths.book_summary.parent
     summary_folder.mkdir(exist_ok=True)
     from core.pipeline.chapter_checkpoint import render_summary_markdown
+
     for i, summ in enumerate(summaries, 1):
         # V18.2.4: Don't save failed/empty summaries. Previously the pipeline
         # saved EVERY summary (including failed ones with empty exec_summary),
@@ -902,9 +960,11 @@ def run_summarization(
                     adoption_note,
                     has_complete_sentinel,
                 )
+
                 if has_complete_sentinel(_existing_sf):
                     _prov_note = adoption_note(
-                        _existing_sf, render_summary_markdown(summ),
+                        _existing_sf,
+                        render_summary_markdown(summ),
                     )
                     log(
                         f"  💾 Summary {i}/{len(summaries)} already saved — leaving untouched: {sf_name}"
@@ -935,10 +995,10 @@ def run_summarization(
         # provenance stamp previously passed len(summaries) (the CHAPTER
         # count) as "bullets=N", stamping bullets=2 on a 70-bullet book.
         _bk_stats: dict = {}
-        book_summary = summarizer.build_book_summary(
-            summaries, book_title, stats=_bk_stats)
+        book_summary = summarizer.build_book_summary(summaries, book_title, stats=_bk_stats)
         _bk_bullet_count = _bk_stats.get("bullets") or sum(
-            len(s.bullet_points or []) for s in summaries)
+            len(s.bullet_points or []) for s in summaries
+        )
         # V18.20.3.7: provenance stamp — the book-level summary names the
         # app version + run id that produced it (same self-identification
         # the chapter summaries carry; no sentinel — this file is always
@@ -951,18 +1011,19 @@ def run_summarization(
                 run_started_iso,
                 visible_footer,
             )
+
             _first_stamped = next(
-                (s for s in summaries if getattr(s, "run_id", "")), None,
+                (s for s in summaries if getattr(s, "run_id", "")),
+                None,
             )
             _bk_rid = getattr(_first_stamped, "run_id", "") or make_run_id()
-            _bk_started = (
-                getattr(_first_stamped, "run_started", "") or run_started_iso()
-            )
-            _bk_ver = (
-                getattr(_first_stamped, "app_version", "") or get_app_version()
-            )
+            _bk_started = getattr(_first_stamped, "run_started", "") or run_started_iso()
+            _bk_ver = getattr(_first_stamped, "app_version", "") or get_app_version()
             _bk_prov = provenance_comment(
-                _bk_ver, _bk_rid, _bk_started, _bk_bullet_count,  # V0.03: real bullet count
+                _bk_ver,
+                _bk_rid,
+                _bk_started,
+                _bk_bullet_count,  # V0.03: real bullet count
             )
             if not book_summary.startswith("<!--"):
                 book_summary = f"{_bk_prov}\n\n{book_summary}"
@@ -970,9 +1031,7 @@ def run_summarization(
             # the book summary too — the comment stamp alone is invisible
             # in rendered markdown, which is how stale artifacts from old
             # app-version folders pass a casual glance.
-            book_summary = (
-                f"{book_summary.rstrip()}\n{visible_footer(_bk_ver, _bk_rid, _bk_started, _bk_bullet_count)}"  # V0.03: real bullet count
-            )
+            book_summary = f"{book_summary.rstrip()}\n{visible_footer(_bk_ver, _bk_rid, _bk_started, _bk_bullet_count)}"  # V0.03: real bullet count
         except Exception:
             pass  # stamping must never break the book summary write
         # V18.20.2.0 (SWOT A30): atomic write (same-dir temp + fsync +
@@ -1003,7 +1062,8 @@ def run_summarization(
     converter._judge_results = list(getattr(summarizer, "judge_results", []))
     if converter._judge_results:
         _l8_active = sum(
-            1 for jr in converter._judge_results
+            1
+            for jr in converter._judge_results
             if jr and getattr(jr, "grounding_layer8_available", False)
         )
         if _l8_active:
@@ -1021,6 +1081,7 @@ def run_summarization(
     # phases.  Best-effort — never crashes if torch is unavailable.
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             log("  🧹 VRAM cache cleared (torch.cuda.empty_cache)", "DEBUG")

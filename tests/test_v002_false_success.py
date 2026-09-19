@@ -30,6 +30,7 @@ This file pins the four fixes:
 
 Headless: no PySide6 import (the dialog is covered by source pins).
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,8 +42,16 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # House pattern (test_v1820410): mock heavy optional deps ONLY when missing.
-for _mod in ("markitdown", "pdfplumber", "pdf2image", "pytesseract",
-             "spacy", "wordninja", "PIL", "docx"):
+for _mod in (
+    "markitdown",
+    "pdfplumber",
+    "pdf2image",
+    "pytesseract",
+    "spacy",
+    "wordninja",
+    "PIL",
+    "docx",
+):
     if _mod in sys.modules:
         continue
     try:
@@ -58,8 +67,10 @@ from core.segmentation.segmenter import Segmenter, compute_metadata_child_levels
 
 def _collect():
     logs: list[tuple[str, str]] = []
+
     def log(msg, level="INFO"):
         logs.append((level, msg))
+
     return logs, log
 
 
@@ -74,7 +85,7 @@ def _incident_toc() -> list[TOCEntry]:
         TOCEntry(title="Seb Rose", page=28, level=1),
         TOCEntry(title="Apply Functional Programming Principles", page=30, level=0),
         TOCEntry(title="Edward Garson", page=30, level=1),
-        TOCEntry(title="Ask, \"What Would the User Do?\"", page=32, level=0),
+        TOCEntry(title='Ask, "What Would the User Do?"', page=32, level=0),
         TOCEntry(title="Dan McCoy", page=32, level=1),
         TOCEntry(title="Automate Your Coding Standard", page=34, level=0),
         TOCEntry(title="Filip van Laenen", page=34, level=1),
@@ -85,8 +96,10 @@ def _incident_toc() -> list[TOCEntry]:
 
 
 _INCIDENT_SELECTION = [
-    "Act with Prudence", "Seb Rose",
-    "Apply Functional Programming Principles", "Edward Garson",
+    "Act with Prudence",
+    "Seb Rose",
+    "Apply Functional Programming Principles",
+    "Edward Garson",
 ]
 
 
@@ -94,8 +107,8 @@ _INCIDENT_SELECTION = [
 # FIX 1 — shared metadata-children rule (compute_metadata_child_levels)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestComputeMetadataChildLevels:
 
+class TestComputeMetadataChildLevels:
     def test_authors_level_excluded_with_stats(self):
         by_level = {
             0: [(e.title, e.page) for e in _incident_toc() if e.level == 0],
@@ -127,7 +140,7 @@ class TestComputeMetadataChildLevels:
         # level-0 pages; the pin guards the continue-semantics).
         by_level = {
             0: [("Title A", 10), ("Title B", 20)],
-            1: [("Author A", 10), ("Author B", 20)],      # excluded (2/2 same page)
+            1: [("Author A", 10), ("Author B", 20)],  # excluded (2/2 same page)
             2: [("Section A.1", 11), ("Section B.1", 21)],  # own pages → kept
         }
         excluded = compute_metadata_child_levels(by_level)
@@ -147,8 +160,8 @@ class TestComputeMetadataChildLevels:
 # FIX 2 — selection-aware TOC restriction (filter_toc_entries_for_selection)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestFilterTocEntriesForSelection:
 
+class TestFilterTocEntriesForSelection:
     def test_incident_selection_yields_only_real_chapters(self):
         """The exact incident input: 4 picks (2 titles + 2 authors) against
         the metadata-children-cleaned TOC → only the 2 real chapter entries
@@ -162,8 +175,7 @@ class TestFilterTocEntriesForSelection:
 
     def test_elements_returned_as_is(self):
         entries = _incident_toc()
-        kept, _ = filter_toc_entries_for_selection(
-            entries, ["Act with Prudence"])
+        kept, _ = filter_toc_entries_for_selection(entries, ["Act with Prudence"])
         assert all(e is entries[i] for i, e in enumerate(entries) if e in kept)
         assert all(isinstance(e, TOCEntry) for e in kept)
 
@@ -177,9 +189,7 @@ class TestFilterTocEntriesForSelection:
         """
         entries = [("Alpha Chapter", 10), ("Beta Chapter", 20), ("Gamma", 30)]
         # Two matches -> restricted (the V0.02 false-success fix intact)
-        kept, dropped = filter_toc_entries_for_selection(
-            entries, ["Beta Chapter", "Gamma"]
-        )
+        kept, dropped = filter_toc_entries_for_selection(entries, ["Beta Chapter", "Gamma"])
         assert kept == [("Beta Chapter", 20), ("Gamma", 30)]
         assert dropped == 1
         # Single match -> full TOC (V0.07: 1-entry TOCs are worse than none)
@@ -205,6 +215,7 @@ class TestFilterTocEntriesForSelection:
 # FIX 2 — full incident replay through the REAL Segmenter
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _incident_markdown() -> str:
     """The 6 extracted pages (27-32) with page markers — what the extraction
     phase produces under the incident's chapter selection."""
@@ -212,9 +223,10 @@ def _incident_markdown() -> str:
         27: "Preface\n\nThis preface text leaked in via the ±1 boundary page.",
         28: "Act with Prudence\n\n" + ("prudence debt rewrite value " * 40),
         29: ("continuation of the prudence essay. " * 30),
-        30: "Apply Functional Programming Principles\n\n" + ("pure functions avoid side effects " * 40),
+        30: "Apply Functional Programming Principles\n\n"
+        + ("pure functions avoid side effects " * 40),
         31: ("more functional programming guidance here. " * 30),
-        32: "Ask, \"What Would the User Do?\"\n\nAn unselected chapter that leaked via the boundary page.",
+        32: 'Ask, "What Would the User Do?"\n\nAn unselected chapter that leaked via the boundary page.',
     }
     parts = []
     for p in range(27, 33):
@@ -223,7 +235,6 @@ def _incident_markdown() -> str:
 
 
 class TestIncidentReplaySelectionAwareSegmentation:
-
     def _run(self, selected):
         """Mirror run_segmentation's V0.02 composition: under a selection,
         metadata-children drop → selection filter → real Segmenter.segment().
@@ -242,14 +253,16 @@ class TestIncidentReplaySelectionAwareSegmentation:
             toc, _dropped = filter_toc_entries_for_selection(toc, selected)
 
         request = ConversionRequest(
-            input_path=Path("t.pdf"), output_dir=Path("out"),
+            input_path=Path("t.pdf"),
+            output_dir=Path("out"),
             selected_chapters=selected or None,
         )
         logs, log = _collect()
         seg = Segmenter(request, log_callback=log, toc_entries=toc)
         markers = []
         import re as _re
-        for m in _re.finditer(r'<!-- original page (\d+) -->', _incident_markdown()):
+
+        for m in _re.finditer(r"<!-- original page (\d+) -->", _incident_markdown()):
             markers.append((int(m.group(1)), m.start()))
         segments = seg.segment(_incident_markdown(), 257, markers)
         return segments, logs
@@ -262,8 +275,12 @@ class TestIncidentReplaySelectionAwareSegmentation:
         selection filter drops gap segments, which never match.)"""
         segments, logs = self._run(_INCIDENT_SELECTION)
         assert segments, "selection run must produce segments"
-        allowed = {"Act with Prudence", "Apply Functional Programming Principles",
-                   "Seb Rose", "Edward Garson"}
+        allowed = {
+            "Act with Prudence",
+            "Apply Functional Programming Principles",
+            "Seb Rose",
+            "Edward Garson",
+        }
         real = [s for s in segments if not s.heading.strip().lower().startswith("gap (")]
         assert real, "selection run must produce non-gap segments"
         for s in real:
@@ -301,6 +318,7 @@ class TestIncidentReplaySelectionAwareSegmentation:
 # FIX 1 — dialog source pins (PySide6 absent in the sandbox)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDialogSourcePins:
     _DIALOG = Path("ui_qt/views/chapter_selector_dialog.py")
 
@@ -329,6 +347,7 @@ class TestDialogSourcePins:
 # FIX 3 — front-matter skip is selection-aware (source pins)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFrontMatterSkipSelectionAware:
     _SUMM = Path("core/pipeline/conversion/summarization.py")
 
@@ -347,15 +366,21 @@ class TestFrontMatterSkipSelectionAware:
     def test_skip_patterns_themselves_unchanged(self):
         """The full-book skip list keeps its exact V10.24.0 shape."""
         import re as _re
+
         src = self._SUMM.read_text(encoding="utf-8")
-        for pat in (r"\(r'\^preface', 'preface'\)", r"\(r'\^foreword', 'foreword'\)",
-                    r"\(r'\^index\\s\*\$', 'index'\)"):
+        # V0.13: quote style ' -> " (ruff-format, pyproject quote-style=double)
+        for pat in (
+            r'\(r"\^preface", "preface"\)',
+            r'\(r"\^foreword", "foreword"\)',
+            r'\(r"\^index\\s\*\$", "index"\)',
+        ):
             assert _re.search(pat, src), pat
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FIX 4 — zero-summaries completion is loud (source pins + semantics)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestZeroSummariesLoudFailure:
     _CONV = Path("core/pipeline/converter_impl.py")
@@ -387,6 +412,7 @@ class TestZeroSummariesLoudFailure:
 
     def test_semantics_matrix(self):
         """The guard expression, evaluated standalone for all four cases."""
+
         def zero(summaries, generate, cancelled):
             return (not summaries) and bool(generate) and not cancelled
 
@@ -403,6 +429,7 @@ class TestZeroSummariesLoudFailure:
 # ═══════════════════════════════════════════════════════════════════════════
 # FIX 2 — wiring source pins (run_segmentation pre-filters before Segmenter)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestSegmentationWiringPins:
     _SEG = Path("core/pipeline/conversion/segmentation.py")
@@ -422,8 +449,8 @@ class TestSegmentationWiringPins:
         # All three acceptance gates use the helper (no raw >= MIN_TOC_SEGMENTS
         # acceptance checks remain in segment()).
         import re as _re
-        raw_gates = _re.findall(
-            r"if segments and len\(segments\) >= MIN_TOC_SEGMENTS", src)
+
+        raw_gates = _re.findall(r"if segments and len\(segments\) >= MIN_TOC_SEGMENTS", src)
         assert raw_gates == [], "acceptance gates must go through _segments_meet_minimum"
 
     def test_segmenter_layer1_uses_shared_helper(self):

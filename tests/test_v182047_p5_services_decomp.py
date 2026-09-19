@@ -34,6 +34,7 @@ PRE-CHANGE files out of the shipped V18.20.4.6 zip and are skipped when
 that reference zip is absent. No line-number peeking — everything is
 located by name/anchor via ``ast``.
 """
+
 from __future__ import annotations
 
 import ast
@@ -50,8 +51,9 @@ _PACKETS_MODELS = _PACKETS_DIR / "models.py"
 _PACKETS_GENERATOR = _PACKETS_DIR / "generator.py"
 _OLD_PACKETS = _project_root / "core" / "outputs" / "packets.py"
 _OUTPUTS_INIT = _project_root / "core" / "outputs" / "__init__.py"
-_PACKETS_TOOL_DIALOG = (_project_root / "ui_qt" / "views" /
-                        "service_dialogs" / "dialogs" / "packets_tool_dialog.py")
+_PACKETS_TOOL_DIALOG = (
+    _project_root / "ui_qt" / "views" / "service_dialogs" / "dialogs" / "packets_tool_dialog.py"
+)
 _PACKETS_INTEGRATION_TEST = _project_root / "tests" / "test_packets_integration.py"
 
 _SERVICE = _project_root / "core" / "translation" / "service.py"
@@ -60,12 +62,12 @@ _NLLB_MODULE = _project_root / "core" / "translation" / "nllb_translator.py"
 _SETTINGS = _project_root / "utils" / "settings.py"
 
 # The shipped pre-change reference (the P5-2b moves happened after .4.6).
-_REF_ZIP = _project_root.parent.parent / "download" / (
-    "Elixir-V18.20.4.6.zip")
+_REF_ZIP = _project_root.parent.parent / "download" / ("Elixir-V18.20.4.6.zip")
 _REF_ROOT = "Elixir-V18.20.4.6/"
 
 
 # ── helpers (headless-safe: source text + AST only, by name) ──────────────
+
 
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -79,11 +81,9 @@ def _top_level_defs(tree: ast.Module) -> dict[str, ast.AST]:
     """Top-level classes + functions + simple assignments, by name."""
     out: dict[str, ast.AST] = {}
     for node in tree.body:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef,
-                             ast.AsyncFunctionDef)):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             out[node.name] = node
-        elif (isinstance(node, ast.Assign)
-                and isinstance(node.targets[0], ast.Name)):
+        elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
             out[node.targets[0].id] = node
     return out
 
@@ -135,6 +135,7 @@ def _signature(fn: ast.FunctionDef) -> tuple:
 # O-c4 — packets.py split into the core/outputs/packets/ package
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class TestOc4PacketsSplit:
     def test_old_module_gone_package_present(self):
         assert not _OLD_PACKETS.exists(), (
@@ -143,7 +144,10 @@ class TestOc4PacketsSplit:
         )
         assert _PACKETS_DIR.is_dir()
         assert sorted(p.name for p in _PACKETS_DIR.glob("*.py")) == [
-            "__init__.py", "generator.py", "models.py"]
+            "__init__.py",
+            "generator.py",
+            "models.py",
+        ]
 
     def test_per_class_modules(self):
         # models.py = the shared data model (LogFn + the two dataclasses)
@@ -158,28 +162,37 @@ class TestOc4PacketsSplit:
         # the class inventory matches the pre-split 3 classes exactly
         ref = _skip_without_ref(_ref_member("core/outputs/packets.py"))
         ref_defs = _top_level_defs(ast.parse(ref))
-        assert set(ref_defs) == {"LogFn", "Packet", "PacketCollection",
-                                 "PacketGenerator", "logger"}
+        assert set(ref_defs) == {"LogFn", "Packet", "PacketCollection", "PacketGenerator", "logger"}
 
     def test_facade_is_pure_and_reexports(self):
         tree = _tree(_PACKETS_FACADE)
-        assert not [n for n in tree.body if isinstance(
-            n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))], (
-            "the packets facade must define nothing — pure re-export")
+        assert not [
+            n
+            for n in tree.body
+            if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        ], "the packets facade must define nothing — pure re-export"
         reexported: set[str] = set()
         for node in tree.body:
             if isinstance(node, ast.ImportFrom) and node.module:
                 assert node.module == "__future__" or node.module.startswith(
-                    "core.outputs.packets."), node.module
+                    "core.outputs.packets."
+                ), node.module
                 if node.module.startswith("core.outputs.packets."):
                     reexported.update(a.name for a in node.names)
-        assert reexported == {"Packet", "PacketCollection",
-                              "PacketGenerator", "LogFn"}
-        all_node = next(n for n in tree.body if isinstance(n, ast.Assign)
-                        and isinstance(n.targets[0], ast.Name)
-                        and n.targets[0].id == "__all__")
+        assert reexported == {"Packet", "PacketCollection", "PacketGenerator", "LogFn"}
+        all_node = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and isinstance(n.targets[0], ast.Name)
+            and n.targets[0].id == "__all__"
+        )
         assert sorted(ast.literal_eval(all_node.value)) == [
-            "LogFn", "Packet", "PacketCollection", "PacketGenerator"]
+            "LogFn",
+            "Packet",
+            "PacketCollection",
+            "PacketGenerator",
+        ]
 
     def test_acyclic_module_graph(self):
         # models.py: no imports from the generator or the facade
@@ -188,20 +201,20 @@ class TestOc4PacketsSplit:
                 assert "packets.generator" not in (node.module or "")
                 assert "core.outputs.packets import" not in ast.unparse(node)
         # generator.py: imports models, never the facade/parent package
-        gen_imports = [ast.unparse(n) for n in _tree(_PACKETS_GENERATOR).body
-                       if isinstance(n, ast.ImportFrom)]
-        assert any("from core.outputs.packets.models import" in s
-                   for s in gen_imports)
-        assert not any(s.startswith("from core.outputs.packets import")
-                       or "core.outputs import" in s for s in gen_imports)
+        gen_imports = [
+            ast.unparse(n) for n in _tree(_PACKETS_GENERATOR).body if isinstance(n, ast.ImportFrom)
+        ]
+        assert any("from core.outputs.packets.models import" in s for s in gen_imports)
+        assert not any(
+            s.startswith("from core.outputs.packets import") or "core.outputs import" in s
+            for s in gen_imports
+        )
 
     def test_real_importer_sites_unchanged(self):
         # The grep-verified external importers (pre-split) still import
         # PacketGenerator from core.outputs.packets — facade contract.
-        assert "from core.outputs.packets import PacketGenerator" in _src(
-            _OUTPUTS_INIT)
-        assert "from core.outputs.packets import PacketGenerator" in _src(
-            _PACKETS_TOOL_DIALOG)
+        assert "from core.outputs.packets import PacketGenerator" in _src(_OUTPUTS_INIT)
+        assert "from core.outputs.packets import PacketGenerator" in _src(_PACKETS_TOOL_DIALOG)
         ti = _src(_PACKETS_INTEGRATION_TEST)
         assert ti.count("from core.outputs.packets import PacketGenerator") == 3
 
@@ -209,8 +222,7 @@ class TestOc4PacketsSplit:
         # headless + hermetic: pure-Python package import (no Qt, no network)
         import core.outputs.packets as pk
 
-        assert pk.__all__ == ["Packet", "PacketCollection",
-                              "PacketGenerator", "LogFn"]
+        assert pk.__all__ == ["Packet", "PacketCollection", "PacketGenerator", "LogFn"]
         assert pk.PacketGenerator.__module__ == "core.outputs.packets.generator"
         assert pk.Packet.__module__ == "core.outputs.packets.models"
         assert pk.PacketCollection.__module__ == "core.outputs.packets.models"
@@ -222,18 +234,19 @@ class TestOc4PacketsSplit:
         ref = _skip_without_ref(_ref_member("core/outputs/packets.py"))
         ref_tree = ast.parse(ref)
         # all three classes + LogFn byte-identical vs the pre-split file
-        for name, path in (("Packet", _PACKETS_MODELS),
-                           ("PacketCollection", _PACKETS_MODELS),
-                           ("PacketGenerator", _PACKETS_GENERATOR)):
+        for name, path in (
+            ("Packet", _PACKETS_MODELS),
+            ("PacketCollection", _PACKETS_MODELS),
+            ("PacketGenerator", _PACKETS_GENERATOR),
+        ):
             ref_seg = ast.get_source_segment(ref, _top_level_defs(ref_tree)[name])
-            new_seg = ast.get_source_segment(
-                _src(path), _top_level_defs(_tree(path))[name])
+            new_seg = ast.get_source_segment(_src(path), _top_level_defs(_tree(path))[name])
             assert ref_seg is not None and new_seg is not None
             assert new_seg == ref_seg, f"{name} body not byte-identical"
-        ref_logfn = ast.get_source_segment(
-            ref, _top_level_defs(ref_tree)["LogFn"])
+        ref_logfn = ast.get_source_segment(ref, _top_level_defs(ref_tree)["LogFn"])
         new_logfn = ast.get_source_segment(
-            _src(_PACKETS_MODELS), _top_level_defs(_tree(_PACKETS_MODELS))["LogFn"])
+            _src(_PACKETS_MODELS), _top_level_defs(_tree(_PACKETS_MODELS))["LogFn"]
+        )
         assert new_logfn == ref_logfn == "LogFn = Callable[[str, str], None]"
 
     def test_method_spot_checks_verbatim_vs_zip(self):
@@ -242,14 +255,19 @@ class TestOc4PacketsSplit:
         # verbatim, so those open items stay OPEN unchanged.
         ref = _skip_without_ref(_ref_member("core/outputs/packets.py"))
         ref_methods = _methods(_class(ast.parse(ref), "PacketGenerator"))
-        new_methods = _methods(
-            _class(_tree(_PACKETS_GENERATOR), "PacketGenerator"))
-        for name in ("generate", "_deduplicate_bullets", "_cluster_bullets",
-                     "_call_llm", "_validate_packet", "_write_full_document",
-                     "_write_knowledge_map", "_write_coverage_report"):
+        new_methods = _methods(_class(_tree(_PACKETS_GENERATOR), "PacketGenerator"))
+        for name in (
+            "generate",
+            "_deduplicate_bullets",
+            "_cluster_bullets",
+            "_call_llm",
+            "_validate_packet",
+            "_write_full_document",
+            "_write_knowledge_map",
+            "_write_coverage_report",
+        ):
             ref_seg = ast.get_source_segment(ref, ref_methods[name])
-            new_seg = ast.get_source_segment(_src(_PACKETS_GENERATOR),
-                                             new_methods[name])
+            new_seg = ast.get_source_segment(_src(_PACKETS_GENERATOR), new_methods[name])
             assert new_seg == ref_seg, f"PacketGenerator.{name} differs"
         assert set(new_methods) == set(ref_methods), "method inventory drift"
 
@@ -282,19 +300,22 @@ def _ref_translate_file() -> str:
 class TestOc7TranslateFileDecompose:
     def test_translate_file_signature_unchanged(self):
         ref = _skip_without_ref(_ref_member("core/translation/service.py"))
-        ref_sig = _signature(_methods(_class(ast.parse(ref),
-                                             "TranslationService"))["translate_file"])
-        new_sig = _signature(_methods(
-            _class(_tree(_SERVICE), "TranslationService"))["translate_file"])
+        ref_sig = _signature(
+            _methods(_class(ast.parse(ref), "TranslationService"))["translate_file"]
+        )
+        new_sig = _signature(
+            _methods(_class(_tree(_SERVICE), "TranslationService"))["translate_file"]
+        )
         assert new_sig == ref_sig
 
     def test_extracted_helpers_exist_on_the_class(self):
         methods = _methods(_class(_tree(_SERVICE), "TranslationService"))
-        assert _EXTRACTED_HELPERS <= set(methods)
+        assert set(methods) >= _EXTRACTED_HELPERS
         # same-module decomposition: helpers are methods, not free functions
         tree = _tree(_SERVICE)
-        assert not [n for n in tree.body if isinstance(n, ast.FunctionDef)
-                    and n.name in _EXTRACTED_HELPERS]
+        assert not [
+            n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in _EXTRACTED_HELPERS
+        ]
 
     def test_translate_file_shrunk_not_gutted(self):
         new_src = _src(_SERVICE)
@@ -304,21 +325,25 @@ class TestOc7TranslateFileDecompose:
         # kept phases: guards + chunking + chunk-state setup + reassemble +
         # final progress + the return contract
         for anchor in (
-            'source_path = Path(source_path)',
-            'chunks = self.chunker.chunk(text)',
-            'translated_chunks: list[str] = []',
-            'validation_pairs: list[tuple] = []',
-            'translatable_indices = []',
+            "source_path = Path(source_path)",
+            "chunks = self.chunker.chunk(text)",
+            "translated_chunks: list[str] = []",
+            # V0.13: "validation_pairs: list[tuple] = []" anchor removed —
+            # that dead assignment was an F841 unused variable, deleted in the
+            # Phase 0 lint triage. Replacement anchor below proves the
+            # validation plumbing itself is intact.
+            "report = ValidationReport(",
+            "translatable_indices = []",
             'translated_text = "\\n".join(translated_chunks)',
-            'return translated_path, report if self.validation_enabled else None',
+            "return translated_path, report if self.validation_enabled else None",
         ):
             assert anchor in tf, anchor
         # the extracted bodies are no longer inline in translate_file
         for anchor in (
-            'glossary_mgr = GlossaryManager(',
-            'ThreadPoolExecutor(max_workers=max_workers)',
+            "glossary_mgr = GlossaryManager(",
+            "ThreadPoolExecutor(max_workers=max_workers)",
             'translated_path.write_text(translated_text, encoding="utf-8")',
-            'harakat_path = output_dir /',
+            "harakat_path = output_dir /",
         ):
             assert anchor not in tf, anchor
 
@@ -329,27 +354,30 @@ class TestOc7TranslateFileDecompose:
         def block(start_pred: str, end_pred: str) -> str:
             """Slice the pre-split translate_file between two line prefixes
             (anchor-located — no line-number pins); both ends INCLUSIVE."""
-            start = next(i for i, ln in enumerate(ref_lines)
-                         if ln.startswith(start_pred))
-            end = next(i for i, ln in enumerate(ref_lines)
-                       if i > start and ln.startswith(end_pred))
-            return "".join(ref_lines[start:end + 1])
+            start = next(i for i, ln in enumerate(ref_lines) if ln.startswith(start_pred))
+            end = next(i for i, ln in enumerate(ref_lines) if i > start and ln.startswith(end_pred))
+            return "".join(ref_lines[start : end + 1])
 
         block_glossary = block(
             "        # ── Glossary extraction",
-            '        glossary_context = glossary_mgr.get_context_for_prompt()'
-            ' if glossary_mgr else ""')
+            "        glossary_context = glossary_mgr.get_context_for_prompt()"
+            ' if glossary_mgr else ""',
+        )
         # the parallel block runs from the guard to the LAST
         # avg_judge_score recompute (after the retry pass)
-        start = next(i for i, ln in enumerate(ref_lines)
-                     if ln.strip() == "if translatable_indices:")
-        end = max(i for i, ln in enumerate(ref_lines)
-                  if ln.strip().startswith(
-                      "report.avg_judge_score = sum(cv.judge_score"))
-        block_parallel = "".join(ref_lines[start:end + 1])
+        start = next(
+            i for i, ln in enumerate(ref_lines) if ln.strip() == "if translatable_indices:"
+        )
+        end = max(
+            i
+            for i, ln in enumerate(ref_lines)
+            if ln.strip().startswith("report.avg_judge_score = sum(cv.judge_score")
+        )
+        block_parallel = "".join(ref_lines[start : end + 1])
         block_outputs = block(
             "        # ── Determine output path",
-            "            glossary_mgr.glossary.save(glossary_path)")
+            "            glossary_mgr.glossary.save(glossary_path)",
+        )
 
         new_src = _src(_SERVICE)
         methods = _methods(_class(_tree(_SERVICE), "TranslationService"))
@@ -359,22 +387,29 @@ class TestOc7TranslateFileDecompose:
             seg = ast.get_source_segment(new_src, fn)
             assert seg is not None
             doc_end = fn.body[0].end_lineno  # body[0] = the extraction docstring
-            body_lines = new_src.splitlines(keepends=True)[doc_end:fn.end_lineno]
+            body_lines = new_src.splitlines(keepends=True)[doc_end : fn.end_lineno]
             return "".join(body_lines)
 
         assert helper_body("_extract_glossary_context") == (
-            block_glossary + "        return glossary_mgr, glossary_context\n")
+            block_glossary + "        return glossary_mgr, glossary_context\n"
+        )
         assert helper_body("_translate_chunks_parallel") == block_parallel
         assert helper_body("_write_translation_outputs") == (
-            block_outputs + "        return translated_path\n")
+            block_outputs + "        return translated_path\n"
+        )
 
     def test_sibling_methods_untouched_vs_zip(self):
         ref = _skip_without_ref(_ref_member("core/translation/service.py"))
-        for name in ("translate_book_outputs", "_generate_bilingual_html",
-                     "translate_text", "translate_standalone_text", "__init__"):
-            assert _func_source(_src(_SERVICE), "TranslationService",
-                                name) == _func_source(ref, "TranslationService",
-                                                       name), name
+        for name in (
+            "translate_book_outputs",
+            "_generate_bilingual_html",
+            "translate_text",
+            "translate_standalone_text",
+            "__init__",
+        ):
+            assert _func_source(_src(_SERVICE), "TranslationService", name) == _func_source(
+                ref, "TranslationService", name
+            ), name
 
     def test_translate_file_call_contract(self):
         tf = _func_source(_src(_SERVICE), "TranslationService", "translate_file")
@@ -384,12 +419,14 @@ class TestOc7TranslateFileDecompose:
         assert "translated_path = self._write_translation_outputs(" in tf
         # translate_book_outputs still calls translate_file (public entry)
         assert "self.translate_file(" in _func_source(
-            _src(_SERVICE), "TranslationService", "translate_book_outputs")
+            _src(_SERVICE), "TranslationService", "translate_book_outputs"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # O-c10 — NLLB translator vestige retired
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class TestOc10NllbRetired:
     def test_module_absent(self):
@@ -410,23 +447,30 @@ class TestOc10NllbRetired:
                 continue
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and (
-                        node.module == "core.translation.nllb_translator"):
+                    node.module == "core.translation.nllb_translator"
+                ):
                     offenders.append(f"{rel}:{node.lineno}")
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
-                        if (alias.name == "core.translation.nllb_translator"
-                                or alias.name.endswith("nllb_translator")):
+                        if alias.name == "core.translation.nllb_translator" or alias.name.endswith(
+                            "nllb_translator"
+                        ):
                             offenders.append(f"{rel}:{node.lineno}")
         assert not offenders, offenders
 
     def test_translation_init_shim_gone(self):
         src = _src(_TRANSLATION_INIT)
         tree = ast.parse(src)
-        assert not [n for n in tree.body if isinstance(n, ast.FunctionDef)
-                    and n.name == "__getattr__"]
-        all_node = next(n for n in tree.body if isinstance(n, ast.Assign)
-                        and isinstance(n.targets[0], ast.Name)
-                        and n.targets[0].id == "__all__")
+        assert not [
+            n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "__getattr__"
+        ]
+        all_node = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and isinstance(n.targets[0], ast.Name)
+            and n.targets[0].id == "__all__"
+        )
         names = ast.literal_eval(all_node.value)
         assert "NLLBTranslator" not in names
         assert "TranslationService" in names and "Translator" in names
@@ -441,10 +485,10 @@ class TestOc10NllbRetired:
         # the removed branch) don't false-positive.
         fs = _methods(_class(tree, "TranslationService"))["from_settings"]
         used_names = {n.id for n in ast.walk(fs) if isinstance(n, ast.Name)}
-        assert not used_names & {"NLLBTranslator", "_get_nllb_translator",
-                                 "nllb_model", "backend"}
-        nllb_consts = [n.value for n in ast.walk(fs)
-                       if isinstance(n, ast.Constant) and n.value == "nllb"]
+        assert not used_names & {"NLLBTranslator", "_get_nllb_translator", "nllb_model", "backend"}
+        nllb_consts = [
+            n.value for n in ast.walk(fs) if isinstance(n, ast.Constant) and n.value == "nllb"
+        ]
         assert not nllb_consts, nllb_consts
         seg = ast.get_source_segment(src, fs)
         assert seg is not None
@@ -458,17 +502,22 @@ class TestOc10NllbRetired:
         defaults_seg = ast.get_source_segment(src, defaults_fn)
         assert defaults_seg is not None
         assert '"nllb_model"' not in defaults_seg, (
-            "the dead translation.nllb_model DEFAULTS entry must be gone")
+            "the dead translation.nllb_model DEFAULTS entry must be gone"
+        )
         load_fn = _methods(settings_cls)["_load"]
         # no ("nllb_model", ...) entry in any _load ensure-list tuple
-        tuple_keys = [t.elts[0].value for t in ast.walk(load_fn)
-                      if isinstance(t, ast.Tuple) and t.elts
-                      and isinstance(t.elts[0], ast.Constant)
-                      and isinstance(t.elts[0].value, str)]
+        tuple_keys = [
+            t.elts[0].value
+            for t in ast.walk(load_fn)
+            if isinstance(t, ast.Tuple)
+            and t.elts
+            and isinstance(t.elts[0], ast.Constant)
+            and isinstance(t.elts[0].value, str)
+        ]
         assert "nllb_model" not in tuple_keys
         # load-time deletion migration for legacy settings.json files
         assert 'if "nllb_model" in tr:' in src
-        assert "del tr[\"nllb_model\"]" in src
+        assert 'del tr["nllb_model"]' in src
         # the LIVE legacy-backend guard stays (it is what keeps the retired
         # branch unreachable for hand-edited files)
         assert 'tr.get("backend") == "nllb"' in src
@@ -479,14 +528,18 @@ class TestOc10NllbRetired:
         import core.translation as translation
 
         assert not hasattr(translation, "NLLBTranslator")
-        assert importlib.util.find_spec(
-            "core.translation.nllb_translator") is None
+        assert importlib.util.find_spec("core.translation.nllb_translator") is None
         assert translation.TranslationService is not None
 
     def test_model_settings_still_live_for_ollama_backend(self):
         # the LIVE translation keys survive (UI + controller + service read
         # them); only the NLLB-only key was retired
         src = _src(_SETTINGS)
-        for key in ('"backend"', '"model"', '"harakat_model"',
-                    '"max_chunk_tokens"', '"judge_model"'):
+        for key in (
+            '"backend"',
+            '"model"',
+            '"harakat_model"',
+            '"max_chunk_tokens"',
+            '"judge_model"',
+        ):
             assert key in src

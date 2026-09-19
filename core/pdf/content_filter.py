@@ -27,46 +27,46 @@ from typing import Any
 # ── Patterns for non‑content pages ──────────────────────────────────────────
 
 TOC_PATTERNS = [
-    r'(?i)^\s*(table\s+of\s+contents|contents)\s*$',
-    r'(?i)^\s*فهرست\s+(مطالب)?\s*$',
-    r'(?i)^\s*فهرست\s*$',
+    r"(?i)^\s*(table\s+of\s+contents|contents)\s*$",
+    r"(?i)^\s*فهرست\s+(مطالب)?\s*$",
+    r"(?i)^\s*فهرست\s*$",
 ]
 
 INDEX_PATTERNS = [
-    r'(?i)^\s*index\s*$',
-    r'(?i)^\s*نمایه\s*$',
-    r'(?i)^\s*فهرست\s+(اعلام|موضوعی|واژگان)\s*$',
+    r"(?i)^\s*index\s*$",
+    r"(?i)^\s*نمایه\s*$",
+    r"(?i)^\s*فهرست\s+(اعلام|موضوعی|واژگان)\s*$",
 ]
 
 REFERENCES_PATTERNS = [
-    r'(?i)^\s*(references|bibliography|works\s+cited|sources|further\s+reading)\s*$',
-    r'(?i)^\s*(منابع|مراجع|کتابنامه|منابع\s+و\s+مآخذ)\s*$',
+    r"(?i)^\s*(references|bibliography|works\s+cited|sources|further\s+reading)\s*$",
+    r"(?i)^\s*(منابع|مراجع|کتابنامه|منابع\s+و\s+مآخذ)\s*$",
 ]
 
 COPYRIGHT_PATTERNS = [
-    r'(?i)^\s*copyright\s*[©]?',
-    r'(?i)^\s*©\s*\d{4}',
-    r'(?i)^\s*all\s+rights?\s+reserved',
-    r'(?i)^\s*کپی\s*رایت',
-    r'(?i)^\s*تمامی\s+حقوق\s+محفوظ',
-    r'(?i)^\s*چاپ\s+اول',
-    r'(?i)^\s*ناشر:',
+    r"(?i)^\s*copyright\s*[©]?",
+    r"(?i)^\s*©\s*\d{4}",
+    r"(?i)^\s*all\s+rights?\s+reserved",
+    r"(?i)^\s*کپی\s*رایت",
+    r"(?i)^\s*تمامی\s+حقوق\s+محفوظ",
+    r"(?i)^\s*چاپ\s+اول",
+    r"(?i)^\s*ناشر:",
 ]
 
 DEDICATION_PATTERNS = [
-    r'(?i)^\s*dedication\s*$',
-    r'(?i)^\s*تقدیم\s*(به)?\s*$',
-    r'(?i)^\s*به\s+یاد\s+',
+    r"(?i)^\s*dedication\s*$",
+    r"(?i)^\s*تقدیم\s*(به)?\s*$",
+    r"(?i)^\s*به\s+یاد\s+",
 ]
 
 ACKNOWLEDGMENTS_PATTERNS = [
-    r'(?i)^\s*(acknowledgments|acknowledgements|thanks)\s*$',
-    r'(?i)^\s*(سپاسگزاری|تقدیر|تشکر|قدردانی)\s*$',
+    r"(?i)^\s*(acknowledgments|acknowledgements|thanks)\s*$",
+    r"(?i)^\s*(سپاسگزاری|تقدیر|تشکر|قدردانی)\s*$",
 ]
 
 PREFACE_FOREWORD_PATTERNS = [
-    r'(?i)^\s*(preface|foreword|prologue|introduction)\s*$',
-    r'(?i)^\s*(پیشگفتار|سخن\s+ناشر|یادداشت\s+مترجم|مقدمه)\s*$',
+    r"(?i)^\s*(preface|foreword|prologue|introduction)\s*$",
+    r"(?i)^\s*(پیشگفتار|سخن\s+ناشر|یادداشت\s+مترجم|مقدمه)\s*$",
 ]
 
 # Combine all non‑content category patterns
@@ -81,20 +81,19 @@ NON_CONTENT_CATEGORIES = {
 }
 
 # Patterns that strongly indicate a page is part of a TOC (many lines ending with numbers)
-TOC_LINE_PATTERN = re.compile(r'^\s*(?:\.{2,}|\s{3,})\s*\d{1,4}\s*$')
-NUMBERED_LINE_PATTERN = re.compile(r'^\s*\d{1,4}\s*$')
+TOC_LINE_PATTERN = re.compile(r"^\s*(?:\.{2,}|\s{3,})\s*\d{1,4}\s*$")
+NUMBERED_LINE_PATTERN = re.compile(r"^\s*\d{1,4}\s*$")
 CHAPTER_LIKE_TOC = re.compile(
-    r'^(?:chapter|part|section|appendix|فصل|بخش|قسمت|مبحث)\s+',
-    re.IGNORECASE
+    r"^(?:chapter|part|section|appendix|فصل|بخش|قسمت|مبحث)\s+", re.IGNORECASE
 )
 
 # Academic‑specific patterns
-TABLE_ROW_PATTERN = re.compile(r'^\s*\|.*\|\s*$')
-FIGURE_CAPTION_PATTERN = re.compile(r'^(?:Fig\.|Figure)\s+\d+', re.IGNORECASE)
+TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")
+FIGURE_CAPTION_PATTERN = re.compile(r"^(?:Fig\.|Figure)\s+\d+", re.IGNORECASE)
 ACADEMIC_SECTION_PATTERN = re.compile(
-    r'^(?:abstract|introduction|methods|results|discussion|conclusion|'
-    r'materials\s+and\s+methods|experimental|data\s+analysis)',
-    re.IGNORECASE
+    r"^(?:abstract|introduction|methods|results|discussion|conclusion|"
+    r"materials\s+and\s+methods|experimental|data\s+analysis)",
+    re.IGNORECASE,
 )
 
 
@@ -120,9 +119,9 @@ class ContentFilter:
     ):
         # ── Academic‑specific overrides ──────────────────────────────────
         if is_academic:
-            self.min_content_chars = 20        # much lower for short abstract lines
+            self.min_content_chars = 20  # much lower for short abstract lines
             self.toc_density_threshold = 0.45  # slightly higher to avoid false positives
-            self.min_alnum_for_blank = 5       # allow very short pages
+            self.min_alnum_for_blank = 5  # allow very short pages
         else:
             self.min_content_chars = min_content_chars
             self.toc_density_threshold = toc_density_threshold
@@ -146,7 +145,7 @@ class ContentFilter:
         """Heuristic: line has dots/spaces followed by a number, or is just a number."""
         if TOC_LINE_PATTERN.match(line):
             return True
-        if re.search(r'\s+\d{1,4}\s*$', line) and len(line.split()) >= 2:
+        if re.search(r"\s+\d{1,4}\s*$", line) and len(line.split()) >= 2:
             return True
         return False
 
@@ -176,7 +175,7 @@ class ContentFilter:
         Check if page has enough meaningful text.
         For academic papers, we lower the threshold.
         """
-        stripped = ''.join(text.split())
+        stripped = "".join(text.split())
         if not stripped:
             return False
         alnum_count = sum(1 for c in stripped if c.isalnum())
@@ -187,7 +186,7 @@ class ContentFilter:
         if len(stripped) < 100 and alnum_count / max(1, len(stripped)) < 0.3:
             return False
         # Also require at least 2 words (academic can have very short captions)
-        words = re.findall(r'\b[a-zA-Z\u0600-\u06FF]{2,}\b', text)
+        words = re.findall(r"\b[a-zA-Z\u0600-\u06FF]{2,}\b", text)
         if len(words) < 2 and not self.is_academic:
             return False
         return True
@@ -288,7 +287,7 @@ class ContentFilter:
             }
 
         # Check total character length
-        stripped = ''.join(text.split())
+        stripped = "".join(text.split())
         if len(stripped) < self.min_content_chars:
             return {
                 "is_content": False,
@@ -318,10 +317,7 @@ class ContentFilter:
         results = {}
         for page_num, text in pages.items():
             results[page_num] = self.classify_page(text)
-            self.log(
-                f"    [ContentFilter] Page {page_num}: {results[page_num]['reason']}",
-                "DEBUG"
-            )
+            self.log(f"    [ContentFilter] Page {page_num}: {results[page_num]['reason']}", "DEBUG")
         return results
 
     def filter_pages(self, pages: dict[int, str]) -> dict[int, str]:
@@ -342,7 +338,7 @@ class ContentFilter:
             else:
                 self.log(
                     f"    [ContentFilter] Page {page_num} skipped: {classification['reason']}",
-                    "DEBUG"
+                    "DEBUG",
                 )
         return results
 
@@ -351,7 +347,7 @@ class ContentFilter:
         content: str,
         start_page: int | None = None,
         end_page: int | None = None,
-        min_tokens_keep: int = 100
+        min_tokens_keep: int = 100,
     ) -> str:
         """
         Filter a segment's content page‑by‑page, but with a fallback:
@@ -374,7 +370,7 @@ class ContentFilter:
         from utils.token_counter import count_tokens
 
         # Split content by page markers while preserving the markers.
-        marker_pattern = re.compile(r'(<!-- original page (\d+) -->)')
+        marker_pattern = re.compile(r"(<!-- original page (\d+) -->)")
         parts = marker_pattern.split(content)
 
         filtered_parts = []
@@ -382,8 +378,8 @@ class ContentFilter:
             if i + 2 >= len(parts):
                 break
             marker_full = parts[i]
-            page_num_str = parts[i+1]
-            page_text = parts[i+2]
+            page_num_str = parts[i + 1]
+            page_text = parts[i + 2]
 
             try:
                 page_num = int(page_num_str)
@@ -398,7 +394,7 @@ class ContentFilter:
             else:
                 self.log(
                     f"  ⏭️ Skipping page {page_num} in summarisation: {classification['reason']}",
-                    "DEBUG"
+                    "DEBUG",
                 )
 
         filtered_content = "".join(filtered_parts)
@@ -416,7 +412,7 @@ class ContentFilter:
             self.log(
                 f"  ⚠️ Filtered content has only {filtered_tokens} tokens (< {min_tokens_keep}) – "
                 f"keeping filtered content (short but clean).",
-                "WARNING"
+                "WARNING",
             )
             return filtered_content
 

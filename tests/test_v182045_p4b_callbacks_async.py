@@ -48,6 +48,7 @@ exactly-one-owner-tag count spans wizard_view.py + every
 guard, restore-only-in-else) still slice ``wizard_view.py``, which kept
 the orchestrator. No assertion changed.
 """
+
 from __future__ import annotations
 
 import ast
@@ -93,6 +94,7 @@ _SECTION_CLASSES = ("OcrModelSection", "AiLocalModelSection", "DefaultsSection")
 # Helpers — source access WITHOUT line numbers (AST slicing by name)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -109,21 +111,21 @@ def _class_node(tree: ast.Module, class_name: str) -> ast.ClassDef:
 
 
 def _func_node(
-    tree: ast.Module, func_name: str, class_name: str | None = None,
+    tree: ast.Module,
+    func_name: str,
+    class_name: str | None = None,
 ) -> ast.FunctionDef:
     scope: ast.AST = tree
     if class_name is not None:
         scope = _class_node(tree, class_name)
     for node in ast.walk(scope):
-        if (isinstance(node, ast.FunctionDef)
-                and node.name == func_name):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
             return node
     where = f"{class_name}.{func_name}" if class_name else func_name
     pytest.fail(f"function {where!r} not found")
 
 
-def _func_src(path: Path, func_name: str,
-              class_name: str | None = None) -> str:
+def _func_src(path: Path, func_name: str, class_name: str | None = None) -> str:
     """Full source of a module-level function or a class method, located
     purely by name via AST (the no-line-peeking contract)."""
     src = _src(path)
@@ -141,7 +143,8 @@ def _calls_named(node: ast.AST, name: str) -> list[ast.Call]:
         if isinstance(n, ast.Call):
             f = n.func
             if (isinstance(f, ast.Name) and f.id == name) or (
-                    isinstance(f, ast.Attribute) and f.attr == name):
+                isinstance(f, ast.Attribute) and f.attr == name
+            ):
                 out.append(n)
     return out
 
@@ -155,7 +158,9 @@ def _kw_is_str(value: ast.expr, text: str) -> bool:
 
 
 def _contains_call_with_owner_kw(
-    node: ast.AST, owner: str, callee: str,
+    node: ast.AST,
+    owner: str,
+    callee: str,
 ) -> bool:
     for call in _calls_named(node, callee):
         kw = _call_keywords(call)
@@ -172,8 +177,10 @@ def _hermetic_settings(tmp_dir: Path):
     Settings._instance = None
     Settings._test_override = None
     try:
-        with patch.object(Settings, "_settings_dir", tmp_dir), \
-             patch.object(Settings, "_settings_file", tmp_dir / "settings.json"):
+        with (
+            patch.object(Settings, "_settings_dir", tmp_dir),
+            patch.object(Settings, "_settings_file", tmp_dir / "settings.json"),
+        ):
             yield
     finally:
         Settings._instance = None
@@ -184,13 +191,13 @@ def _hermetic_settings(tmp_dir: Path):
 # W-b10 — Controller: the ``owner`` tag (source pins)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestControllerOwnerPin:
     def test_set_callbacks_signature_has_owner_kwarg(self):
         node = _func_node(_tree(_CONTROLLER), "set_callbacks")
         args = node.args
         names = [a.arg for a in args.args if a.arg != "self"]
-        assert names == ["on_progress", "on_status", "on_log",
-                         "on_complete", "owner"], (
+        assert names == ["on_progress", "on_status", "on_log", "on_complete", "owner"], (
             "set_callbacks must keep the four callback params and add a "
             "trailing ``owner`` param (W-b10)"
         )
@@ -227,6 +234,7 @@ class TestControllerOwnerPin:
 # W-b10 — Controller: the ``owner`` tag (behavioral, REAL Controller)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestControllerOwnerBehavior:
     def test_fresh_controller_owner_is_none(self, tmp_path):
         import controller as controller_mod
@@ -262,8 +270,7 @@ class TestControllerOwnerBehavior:
 
         with _hermetic_settings(tmp_path):
             c = controller_mod.Controller()
-            p, s, lg, k = (lambda v: None, lambda m: None,
-                            lambda m, lv: None, lambda r: None)
+            p, s, lg, k = (lambda v: None, lambda m: None, lambda m, lv: None, lambda r: None)
             c.set_callbacks(p, s, lg, k)
             assert c.on_progress is p
             assert c.on_status is s
@@ -276,10 +283,8 @@ class TestControllerOwnerBehavior:
 
         with _hermetic_settings(tmp_path):
             c = controller_mod.Controller()
-            p, s, lg, k = (lambda v: None, lambda m: None,
-                            lambda m, lv: None, lambda r: None)
-            c.set_callbacks(on_progress=p, on_status=s, on_log=lg,
-                            on_complete=k, owner="wizard")
+            p, s, lg, k = (lambda v: None, lambda m: None, lambda m, lv: None, lambda r: None)
+            c.set_callbacks(on_progress=p, on_status=s, on_log=lg, on_complete=k, owner="wizard")
             assert c.on_progress is p
             assert c.on_status is s
             assert c.on_log is lg
@@ -318,19 +323,22 @@ class TestControllerOwnerBehavior:
 
         with _hermetic_settings(tmp_path):
             c = controller_mod.Controller()
-            cv = (lambda v: None, lambda m: None, lambda m, lv: None,
-                  lambda r: None)
+            cv = (lambda v: None, lambda m: None, lambda m, lv: None, lambda r: None)
             # convert_view._register_callbacks (task 2-c's call shape)
-            c.set_callbacks(on_progress=cv[0], on_status=cv[1],
-                            on_log=cv[2], on_complete=cv[3],
-                            owner="convert_view")
+            c.set_callbacks(
+                on_progress=cv[0],
+                on_status=cv[1],
+                on_log=cv[2],
+                on_complete=cv[3],
+                owner="convert_view",
+            )
             # queue_view._install_queue_callbacks (save + install)
             saved = (c.on_progress, c.on_status, c.on_log, c.on_complete)
             saved_owner = getattr(c, "callback_owner", None)
-            q = (lambda v: None, lambda m: None, lambda m, lv: None,
-                 lambda r: None)
-            c.set_callbacks(on_progress=q[0], on_status=q[1], on_log=q[2],
-                            on_complete=q[3], owner="queue")
+            q = (lambda v: None, lambda m: None, lambda m, lv: None, lambda r: None)
+            c.set_callbacks(
+                on_progress=q[0], on_status=q[1], on_log=q[2], on_complete=q[3], owner="queue"
+            )
             # wizard registers mid-queue (the wizard's own start call) —
             # in the buggy world, closeEvent then re-registered
             # convert_view's callbacks UNCONDITIONALLY, stealing from the
@@ -340,9 +348,13 @@ class TestControllerOwnerBehavior:
                 "callbacks, so the wizard close must leave them alone"
             )
             # queue_view._restore_convert_callbacks (restore + saved owner)
-            c.set_callbacks(on_progress=saved[0], on_status=saved[1],
-                            on_log=saved[2], on_complete=saved[3],
-                            owner=saved_owner)
+            c.set_callbacks(
+                on_progress=saved[0],
+                on_status=saved[1],
+                on_log=saved[2],
+                on_complete=saved[3],
+                owner=saved_owner,
+            )
             assert c.on_progress is cv[0]
             assert c.on_complete is cv[3]
             assert c.callback_owner == "convert_view"
@@ -352,15 +364,14 @@ class TestControllerOwnerBehavior:
 # W-b10 — wizard_view.py pins
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWizardOwnerPins:
     def test_conversion_start_tags_owner_wizard(self):
         """The wizard's bridge set_callbacks (in _start_conversion) must
         tag itself as the wizard's (W-b10)."""
         start = _func_src(_WIZARD, "_start_conversion", "WizardView")
-        assert _contains_call_with_owner_kw(
-            ast.parse(start), "wizard", "set_callbacks"), (
-            "_start_conversion must call set_callbacks with "
-            "owner=\"wizard\" (W-b10)"
+        assert _contains_call_with_owner_kw(ast.parse(start), "wizard", "set_callbacks"), (
+            '_start_conversion must call set_callbacks with owner="wizard" (W-b10)'
         )
         # the same call wires the bridge handlers
         assert "on_complete=self.bridge.emit_complete" in start
@@ -385,9 +396,7 @@ class TestWizardOwnerPins:
         assert 'getattr(self.controller, "callback_owner", None)' in body, (
             "closeEvent must consult controller.callback_owner (W-b10)"
         )
-        assert 'owner == "queue"' in body, (
-            "the guard must refuse to steal from the queue owner"
-        )
+        assert 'owner == "queue"' in body, "the guard must refuse to steal from the queue owner"
 
     def test_close_event_restore_only_in_else_branch(self):
         """The ``convert_view._register_callbacks()`` restore must be
@@ -396,9 +405,7 @@ class TestWizardOwnerPins:
         src = _src(_WIZARD)
         node = _func_node(ast.parse(src), "closeEvent", "WizardView")
         restores = _calls_named(node, "_register_callbacks")
-        assert len(restores) == 1, (
-            "closeEvent must contain exactly one _register_callbacks call"
-        )
+        assert len(restores) == 1, "closeEvent must contain exactly one _register_callbacks call"
         restore = restores[0]
         # find the guard If: ``if owner == "queue":`` (ast.unparse quotes
         # string constants with single quotes — normalize)
@@ -409,21 +416,15 @@ class TestWizardOwnerPins:
                 if 'owner == "queue"' in cond or '"queue" == owner' in cond:
                     guard = n
                     break
-        assert guard is not None, "owner == \"queue\" guard If not found"
-        in_else = any(
-            restore is sub or restore in ast.walk(sub)
-            for sub in guard.orelse
-        )
+        assert guard is not None, 'owner == "queue" guard If not found'
+        in_else = any(restore is sub or restore in ast.walk(sub) for sub in guard.orelse)
         assert in_else, (
             "the _register_callbacks restore must live ONLY in the "
             "guard's else branch (W-b10) — an unconditional restore "
             "steals the queue's callbacks mid-run"
         )
         # and the guard branch itself must NOT restore
-        in_body = any(
-            restore is sub or restore in ast.walk(sub)
-            for sub in guard.body
-        )
+        in_body = any(restore is sub or restore in ast.walk(sub) for sub in guard.body)
         assert not in_body
 
     def test_close_event_logs_the_queue_hold(self):
@@ -439,20 +440,19 @@ class TestWizardOwnerPins:
 # W-b10 — queue_view.py pins
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestQueueOwnerPins:
     def test_install_tags_queue_owner(self):
         body = _func_src(_QUEUE, "_install_queue_callbacks", "QueueView")
-        assert _contains_call_with_owner_kw(
-            ast.parse(body), "queue", "set_callbacks"), (
-            "_install_queue_callbacks must install with owner=\"queue\""
+        assert _contains_call_with_owner_kw(ast.parse(body), "queue", "set_callbacks"), (
+            '_install_queue_callbacks must install with owner="queue"'
         )
 
     def test_install_saves_previous_owner(self):
         body = _func_src(_QUEUE, "_install_queue_callbacks", "QueueView")
-        assert ('self._saved_callback_owner = getattr('
-                'self.controller, "callback_owner", None)') in body, (
-            "the previous owner tag must be saved alongside the callbacks"
-        )
+        assert (
+            'self._saved_callback_owner = getattr(self.controller, "callback_owner", None)'
+        ) in body, "the previous owner tag must be saved alongside the callbacks"
 
     def test_install_still_saves_the_four_callbacks(self):
         # the save-restore mechanism is unchanged (W-b10 is additive)
@@ -466,7 +466,7 @@ class TestQueueOwnerPins:
         body = _func_src(_QUEUE, "_restore_convert_callbacks", "QueueView")
         assert "owner=self._saved_callback_owner" in body, (
             "the restore must hand the callbacks back with their ORIGINAL "
-            "owner tag (usually \"convert_view\")"
+            'owner tag (usually "convert_view")'
         )
 
     def test_restore_resets_saved_owner(self):
@@ -476,14 +476,14 @@ class TestQueueOwnerPins:
     def test_init_initializes_saved_owner(self):
         body = _func_src(_QUEUE, "__init__", "QueueView")
         assert "self._saved_callback_owner: str | None = None" in body, (
-            "the owner tag must be initialized in __init__ alongside "
-            "self._saved_callbacks"
+            "the owner tag must be initialized in __init__ alongside self._saved_callbacks"
         )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-b11 — wizard_view.py: async model refresh
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWizardAsyncModelsPins:
     def test_refresh_models_uses_simple_worker(self):
@@ -503,9 +503,7 @@ class TestWizardAsyncModelsPins:
         """A Python ref must keep the worker alive (the QObject GC hazard)
         and a re-entrancy guard must prevent stacking fetches."""
         body = _func_src(_STEP5_MODELS, "_refresh_models", "Step5Models")
-        assert "is_running()" in body, (
-            "re-entrancy guard: don't stack model fetches"
-        )
+        assert "is_running()" in body, "re-entrancy guard: don't stack model fetches"
         assert "self._models_worker" in body
 
     def test_refresh_models_no_longer_blocks(self):
@@ -524,8 +522,7 @@ class TestWizardAsyncModelsPins:
     def test_refresh_button_disabled_while_loading(self):
         body = _func_src(_STEP5_MODELS, "_refresh_models", "Step5Models")
         assert "self.refresh_btn.setEnabled(False)" in body, (
-            "the refresh button must be disabled while a fetch is in "
-            "flight"
+            "the refresh button must be disabled while a fetch is in flight"
         )
 
     def test_on_models_loaded_reenables_and_populates(self):
@@ -534,9 +531,7 @@ class TestWizardAsyncModelsPins:
         findData/setCurrentIndex) on the MAIN thread."""
         body = _func_src(_STEP5_MODELS, "_on_models_loaded", "Step5Models")
         assert "self.refresh_btn.setEnabled(True)" in body
-        assert "No models found" in body, (
-            "the empty-models information box must survive verbatim"
-        )
+        assert "No models found" in body, "the empty-models information box must survive verbatim"
         assert "ollama pull gemma4-12b:latest" in body
         for attr in ("summ_combo", "ocr_combo", "fast_combo"):
             assert f"self.{attr}.currentData()" in body
@@ -570,6 +565,7 @@ class TestWizardAsyncModelsPins:
 # W-b11 — sections.py: async model refresh
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSectionsAsyncModelsPins:
     def test_imports_simple_worker(self):
         src = _src(_SECTIONS)
@@ -587,7 +583,11 @@ class TestSectionsAsyncModelsPins:
         assert "worker.finished.connect(_apply)" in body
         assert "worker.failed.connect" in body
         assert "worker.start()" in body
-        assert "_populate_models(combo, models or []" in body
+        # V0.13: format-wrapped — pin the arg list on its continuation line
+        assert (
+            "combo, models or [], current=current, allow_empty=allow_empty, prefer_ocr=prefer_ocr"
+            in body
+        )
 
     def test_no_sync_populate_receives_get_ollama_models(self):
         """THE W-b11 core regression pin: no synchronous ``_populate_models``
@@ -601,9 +601,11 @@ class TestSectionsAsyncModelsPins:
             # handler (that one receives the fetched list, not a fetch)
             for arg in call.args:
                 for sub in ast.walk(arg):
-                    if (isinstance(sub, ast.Call)
-                            and isinstance(sub.func, ast.Name)
-                            and sub.func.id == "_get_ollama_models"):
+                    if (
+                        isinstance(sub, ast.Call)
+                        and isinstance(sub.func, ast.Name)
+                        and sub.func.id == "_get_ollama_models"
+                    ):
                         offenders.append(ast.unparse(call))
         assert not offenders, (
             "blocking model fetch passed directly to _populate_models "
@@ -629,16 +631,13 @@ class TestSectionsAsyncModelsPins:
         for cls in _SECTION_CLASSES:
             body = _func_src(_SECTIONS, "_refresh_models", cls)
             assert "_refresh_models_async(" in body, (
-                f"{cls}._refresh_models must route through the shared "
-                "async helper (W-b11)"
+                f"{cls}._refresh_models must route through the shared async helper (W-b11)"
             )
             # no blocking fetch CALL inside the method (AST, so the
             # W-b11 fix comments can't false-trigger the pin)
-            node = _func_node(ast.parse(_src(_SECTIONS)),
-                              "_refresh_models", cls)
+            node = _func_node(ast.parse(_src(_SECTIONS)), "_refresh_models", cls)
             assert not _calls_named(node, "get_ollama_models"), (
-                f"{cls}._refresh_models must not run the blocking HTTP "
-                "fetch on the UI thread"
+                f"{cls}._refresh_models must not run the blocking HTTP fetch on the UI thread"
             )
 
     def test_three_sections_have_models_loaded_handler(self):
@@ -654,10 +653,8 @@ class TestSectionsAsyncModelsPins:
         assert "ocr.fallback_model" in body
 
     def test_ai_local_section_populate_semantics_kept(self):
-        body = _func_src(_SECTIONS, "_on_models_loaded",
-                         "AiLocalModelSection")
-        for combo in ("summary_combo", "fast_model_combo", "heavy_combo",
-                      "simplification_combo"):
+        body = _func_src(_SECTIONS, "_on_models_loaded", "AiLocalModelSection")
+        for combo in ("summary_combo", "fast_model_combo", "heavy_combo", "simplification_combo"):
             assert f"self.{combo}" in body
         assert body.count("allow_empty=True") == 2
         assert "summarisation.model" in body
@@ -700,11 +697,15 @@ class TestSectionsAsyncModelsPins:
         """The blocking constructor-time sites (~337/347/354 + reload
         ~613/621 in the SWOT) are replaced by _populate_models_async."""
         init = _func_src(_SECTIONS, "__init__", "AiLocalModelSection")
-        assert "_populate_models_async(self.fast_model_combo, controller" in init
+        # V0.13: format-wrapped — combo + controller on the following line
+        assert (
+            "_populate_models_async(\n            self.fast_model_combo,\n            controller,"
+            in init
+        )
         # the fast-combo ↻ refresh click routes through the async helper
         assert "lambda: _populate_models_async(" in init
         reload_src = _func_src(_SECTIONS, "reload", "AiLocalModelSection")
-        assert "_populate_models_async(self.fast_model_combo, c" in reload_src
+        assert "_populate_models_async(\n            self.fast_model_combo, c," in reload_src
         # ...and the synchronous shapes are gone everywhere in the file
         src = _src(_SECTIONS)
         assert "lambda: _populate_models(" not in src
@@ -713,16 +714,13 @@ class TestSectionsAsyncModelsPins:
         """AiLocalModelSection's fetch must be callable on the worker
         thread: the URL is snapshotted on the main thread and the actual
         fetch takes it as a plain argument (no combo reads)."""
-        body = _func_src(_SECTIONS, "_fetch_models_from",
-                         "AiLocalModelSection")
+        body = _func_src(_SECTIONS, "_fetch_models_from", "AiLocalModelSection")
         assert "def _fetch_models_from(self, url: str)" in body
         assert "requests" in body
-        assert "self." not in body.replace(
-            "def _fetch_models_from(self, url: str)", ""), (
+        assert "self." not in body.replace("def _fetch_models_from(self, url: str)", ""), (
             "_fetch_models_from must not touch any widget (worker-safe)"
         )
-        wrapper = _func_src(_SECTIONS, "_fetch_models",
-                            "AiLocalModelSection")
+        wrapper = _func_src(_SECTIONS, "_fetch_models", "AiLocalModelSection")
         assert "return self._fetch_models_from(self._backend_url())" in wrapper
 
     def test_ai_local_refresh_snapshots_url_on_main_thread(self):

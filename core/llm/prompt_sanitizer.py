@@ -50,6 +50,7 @@ variable before substitution (Phase 1.1 wiring). The system-prompt templates
 Book-agnostic (Key Decision #3): the defense works on any discipline —
 it's about markup hygiene, not content.
 """
+
 from __future__ import annotations
 
 import logging

@@ -30,9 +30,7 @@ from PySide6.QtSvg import QSvgRenderer
 # ─────────────────────────────────────────────────────────────────────────────
 
 ICONS: dict[str, str] = {
-    "book": (
-        '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>'
-    ),
+    "book": ('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>'),
     "newspaper": (
         '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>'
         '<path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>'
@@ -105,8 +103,7 @@ ICONS: dict[str, str] = {
     ),
     "sigma": '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
     "layout": (
-        '<rect width="18" height="18" x="3" y="3" rx="2"/>'
-        '<path d="M3 9h18"/><path d="M9 21V9"/>'
+        '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'
     ),
     "cpu": (
         '<rect width="16" height="16" x="4" y="4" rx="2"/>'
@@ -114,9 +111,7 @@ ICONS: dict[str, str] = {
         '<path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/>'
         '<path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>'
     ),
-    "cloud": (
-        '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>'
-    ),
+    "cloud": ('<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>'),
     "sparkles": (
         '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/>'
         '<path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>'
@@ -134,14 +129,9 @@ ICONS: dict[str, str] = {
         '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>'
         '<path d="M12 9v4"/><path d="M12 17h.01"/>'
     ),
-    "info": (
-        '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>'
-    ),
+    "info": ('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>'),
     # V13.31.0: shield icon for Hallucination Audit tab
-    "shield": (
-        '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>'
-        '<path d="m9 12 2 2 4-4"/>'
-    ),
+    "shield": ('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>'),
     "list-checks": (
         '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/>'
         '<path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>'
@@ -167,8 +157,7 @@ ICONS: dict[str, str] = {
         '<path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>'
     ),
     "rotate-ccw": (
-        '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
-        '<path d="M3 3v5h5"/>'
+        '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'
     ),
     "eye": (
         '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>'
@@ -186,9 +175,7 @@ ICONS: dict[str, str] = {
         '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>'
         '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'
     ),
-    "plus": (
-        '<path d="M5 12h14"/><path d="M12 5v14"/>'
-    ),
+    "plus": ('<path d="M5 12h14"/><path d="M12 5v14"/>'),
     "copy": (
         '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>'
         '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
@@ -201,12 +188,8 @@ ICONS: dict[str, str] = {
         '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>'
         '<path d="m15 5 4 4"/>'
     ),
-    "message-square": (
-        '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
-    ),
-    "bookmark": (
-        '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>'
-    ),
+    "message-square": ('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+    "bookmark": ('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>'),
     "zap": (
         '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'
     ),
@@ -222,7 +205,7 @@ def _svg(name: str, color: str, size: int, stroke: float = 1.85) -> str:
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
         f'viewBox="0 0 24 24" fill="none" stroke="{color}" '
         f'stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round">'
-        f'{inner}</svg>'
+        f"{inner}</svg>"
     )
 
 
@@ -273,6 +256,7 @@ def icon_for_mode(name: str, is_dark: bool, size: int = 20) -> QIcon:
 # ─────────────────────────────────────────────────────────────────────────────
 # V4.7.25: PNG asset support with SVG fallback
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _project_root() -> Path:
     """Return the project root directory (where main.py lives)."""

@@ -33,7 +33,7 @@ from ui_qt.theme import theme_manager
 class ChapterSelectorDialog(QDialog):
     """Modal TOC selector — detect chapters, list them scrollably, return picks."""
 
-    _detect_done = Signal(list, int)    # (entries, total_pages)
+    _detect_done = Signal(list, int)  # (entries, total_pages)
     _detect_failed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None, output_dir: Path | None = None) -> None:
@@ -98,14 +98,18 @@ class ChapterSelectorDialog(QDialog):
         # Toggle: Main chapters only (deselects front/back matter)
         self.main_chapters_btn = QPushButton("Main chapters only")
         self.main_chapters_btn.setObjectName("Compact")
-        self.main_chapters_btn.setToolTip("Select only main chapters ( deselects front matter, about author, copyright, etc.)")
+        self.main_chapters_btn.setToolTip(
+            "Select only main chapters ( deselects front matter, about author, copyright, etc.)"
+        )
         self.main_chapters_btn.clicked.connect(self._select_main_chapters)
         sel_row.addWidget(self.main_chapters_btn)
 
         # Toggle: Additional parts only (selects only front/back matter)
         self.additional_parts_btn = QPushButton("Additional parts only")
         self.additional_parts_btn.setObjectName("Compact")
-        self.additional_parts_btn.setToolTip("Select only front/back matter (dedication, about author, copyright, etc.)")
+        self.additional_parts_btn.setToolTip(
+            "Select only front/back matter (dedication, about author, copyright, etc.)"
+        )
         self.additional_parts_btn.clicked.connect(self._select_additional_parts)
         sel_row.addWidget(self.additional_parts_btn)
         root.addLayout(sel_row)
@@ -163,6 +167,7 @@ class ChapterSelectorDialog(QDialog):
             from pypdf import PdfReader
 
             from core.pdf import TocExtractor
+
             reader = PdfReader(str(self._input_file))
             total = len(reader.pages)
             toc = TocExtractor(log_callback=lambda *a: None).extract(self._input_file, None)
@@ -181,12 +186,17 @@ class ChapterSelectorDialog(QDialog):
             # (child) bookmark shares its start page previously showed as
             # spanning to the END OF THE BOOK (end = total).
             from core.segmentation.segmenter import compute_metadata_child_levels
+
             _by_level: dict[int, list] = {}
             for e in toc:
                 _p = e[1] if isinstance(e, (tuple, list)) else getattr(e, "page", None)
                 if _p is None or _p <= 0:
                     continue
-                _lvl = e[2] if (isinstance(e, (tuple, list)) and len(e) > 2) else getattr(e, "level", 0)
+                _lvl = (
+                    e[2]
+                    if (isinstance(e, (tuple, list)) and len(e) > 2)
+                    else getattr(e, "level", 0)
+                )
                 _h = e[0] if isinstance(e, (tuple, list)) else getattr(e, "title", "")
                 _by_level.setdefault(_lvl, []).append((_h, _p))
             _excluded = compute_metadata_child_levels(_by_level)
@@ -195,9 +205,14 @@ class ChapterSelectorDialog(QDialog):
                 _excluded_levels = set(_excluded)
                 _before = len(toc)
                 toc = [
-                    e for e in toc
-                    if (e[2] if (isinstance(e, (tuple, list)) and len(e) > 2)
-                        else getattr(e, "level", 0)) not in _excluded_levels
+                    e
+                    for e in toc
+                    if (
+                        e[2]
+                        if (isinstance(e, (tuple, list)) and len(e) > 2)
+                        else getattr(e, "level", 0)
+                    )
+                    not in _excluded_levels
                 ]
                 _hidden = _before - len(toc)
 
@@ -237,21 +252,23 @@ class ChapterSelectorDialog(QDialog):
                     _sanitize_heading,
                     detect_processed_chapters,
                 )
+
                 processed = detect_processed_chapters(self._output_dir)
-                processed_headings = {k for k in processed.keys()}
+                processed_headings = set(processed.keys())
             except Exception:
                 pass  # best-effort (UI — never crash)
         done_count = 0
 
-        for idx, (heading, start, end) in enumerate(entries):
+        for _idx, (heading, start, end) in enumerate(entries):
             # V10.2.5: Hierarchical indentation based on chapter number depth.
             # "1" → level 0 (no indent), "2.1" → level 1 (1 indent),
             # "2.1.1" → level 2 (2 indents), etc.
             import re as _re
-            _num_match = _re.match(r'^(\d+(?:\.\d+)*)\s', heading)
+
+            _num_match = _re.match(r"^(\d+(?:\.\d+)*)\s", heading)
             _indent_level = 0
             if _num_match:
-                _indent_level = _num_match.group(1).count('.')
+                _indent_level = _num_match.group(1).count(".")
             _indent_px = _indent_level * 20  # 20px per level
 
             row = QFrame()
@@ -275,8 +292,7 @@ class ChapterSelectorDialog(QDialog):
                 _prefix = "  " * _indent_level + "↳ "
             title = QLabel(_prefix + (heading if len(heading) <= 60 else heading[:59] + "…"))
             title.setStyleSheet(
-                f"color: {p.text_primary}; font-size: 12px; "
-                f"{_font_weight} background: transparent;"
+                f"color: {p.text_primary}; font-size: 12px; {_font_weight} background: transparent;"
             )
             title.setToolTip(heading)
             pages = QLabel(f"p.{start}–{end}" if start > 0 else "—")
@@ -293,7 +309,9 @@ class ChapterSelectorDialog(QDialog):
                     f"font-size: 10px; font-weight: 600; color: {p.success};"
                     f" background: transparent; padding: 2px 6px;"
                 )
-                done_badge.setToolTip("Already summarized in a previous run — will be skipped if Resume mode is on")
+                done_badge.setToolTip(
+                    "Already summarized in a previous run — will be skipped if Resume mode is on"
+                )
                 rl.addWidget(done_badge)
                 done_count += 1
 
@@ -325,19 +343,37 @@ class ChapterSelectorDialog(QDialog):
 
     # ── Patterns that indicate front/back matter (not main chapters) ────
     _FRONT_BACK_MATTER = {
-        "title page", "dedication", "epigraph", "contents", "table of contents",
-        "acknowledgments", "acknowledgements", "about the author", "about the publisher",
-        "copyright", "colophon", "glossary", "index", "references", "bibliography",
-        "preface", "foreword", "prologue", "epilogue", "author's note", "authors note",
-        "front cover", "back cover", "praise", "reviews", "other books",
+        "title page",
+        "dedication",
+        "epigraph",
+        "contents",
+        "table of contents",
+        "acknowledgments",
+        "acknowledgements",
+        "about the author",
+        "about the publisher",
+        "copyright",
+        "colophon",
+        "glossary",
+        "index",
+        "references",
+        "bibliography",
+        "preface",
+        "foreword",
+        "prologue",
+        "epilogue",
+        "author's note",
+        "authors note",
+        "front cover",
+        "back cover",
+        "praise",
+        "reviews",
+        "other books",
     }
 
     def _is_front_back_matter(self, heading: str) -> bool:
         h = heading.strip().lower()
-        for fm in self._FRONT_BACK_MATTER:
-            if fm in h:
-                return True
-        return False
+        return any(fm in h for fm in self._FRONT_BACK_MATTER)
 
     def _select_main_chapters(self) -> None:
         """Select only main chapters; deselect front/back matter."""

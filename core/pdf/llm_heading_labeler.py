@@ -34,6 +34,7 @@ Usage (from the converter's segmentation phase)::
     )
     # headings = [("1 Introduction", 1), ("2 Currently Available...", 2), ...]
 """
+
 from __future__ import annotations
 
 import logging
@@ -134,6 +135,7 @@ def _build_heading_label_prompt(markdown_text: str) -> str:
     with its page number, in the format "heading title (page N)".
     """
     from core.summarisation.prompt_manager import PromptManager
+
     _pm = PromptManager()
     rendered = _pm.render_template(
         "pdf/heading_label",

@@ -32,8 +32,8 @@ from typing import Any, Optional
 # dashboard parses this JSON line (JSON-first) instead of regex-matching
 # the human "📊 Progress:" wording; the human line stays byte-identical.
 from core.common.progress_events import progress_json_line
-
 from core.llm import ModelManager
+
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
@@ -43,13 +43,12 @@ from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
 # in this module (_call_ollama_nonstreaming, _call_openai_compat, _call_claude,
 # and the two sleeps inside _call_claude's 429 branch).
 from core.models import ConversionRequest, SummaryResult
+from core.summarisation import llm_dispatcher as _ld
 
 # V18.20.4.7 (P5 / O-a2): additive-sections machinery mixin — the 5
 # methods moved VERBATIM (byte-identical bodies) to
 # core.summarisation.additive_sections.
 from core.summarisation.additive_sections import SummarizerAdditiveMixin
-
-from core.summarisation import llm_dispatcher as _ld
 
 # V18.15.3 (Phase 5 Stage 3, Batch 4.2): B3 cloud-judge sample selection.
 from core.summarisation.b3_judge import b3_cloud_judge as bj_b3_cloud_judge
@@ -72,6 +71,8 @@ from core.summarisation.coverage_guarantee import apply_3tier_coverage as cg_app
 # truth: length_policy.bullet_target) as a hard-cap helper for the delegates.
 from core.summarisation.length_policy import (
     bullet_cap as _lp_bullet_cap_mod,
+)
+from core.summarisation.length_policy import (
     count_source_words as _lp_count_source_words_mod,
 )
 
@@ -87,6 +88,7 @@ def _lp_bullet_cap_fn(source_text: str) -> int | None:
         return _lp_bullet_cap_mod(_lp_count_source_words_mod(source_text or ""))
     except Exception:
         return None
+
 
 # V18.15.3 (Phase 5 Stage 3, Batch 4.4): fast/small-model LLM dispatch.
 from core.summarisation.fast_llm import call_fast_llm as fl_call_fast_llm
@@ -135,11 +137,6 @@ from core.summarisation.map_reduce import (
 # V18.11 (Phase 5 Stage 3, Batch 2.2): multi-sample (B3) summarization + voting.
 from core.summarisation.multi_sample import multi_sample_summarize as ms_multi_sample_summarize
 
-# V18.20.4.8 (P6 / O-a5): the single canonical structural-stopwords module
-# (fixes W-a5's 3 drifting hand-curated copies; the class-level literal
-# below is now an alias of this import — membership byte-identical).
-from core.summarisation.structural_stopwords import STRUCTURAL_FUNCTION_WORDS
-
 # V18.15.3 (Phase 5 Stage 3, Batch 4.7): primary summarization call.
 from core.summarisation.primary_call import summarize_with_model as pc_summarize_with_model
 
@@ -178,6 +175,11 @@ from core.summarisation.scholar_reflection import (
 # V18.11 (Phase 5 Stage 3, Batch 2.4): batched self-review.
 from core.summarisation.self_review import self_review_batched as sr_self_review_batched
 
+# V18.20.4.8 (P6 / O-a5): the single canonical structural-stopwords module
+# (fixes W-a5's 3 drifting hand-curated copies; the class-level literal
+# below is now an alias of this import — membership byte-identical).
+from core.summarisation.structural_stopwords import STRUCTURAL_FUNCTION_WORDS
+
 # V18.15.3 (Phase 5 Stage 3, Batch 4.1): structured (JSON) LLM output.
 from core.summarisation.structured_llm import call_llm_structured as sl_call_llm_structured
 from core.summarisation.summary_validator import (
@@ -187,16 +189,7 @@ from core.summarisation.summary_validator import (
     compute_coverage as sv_compute_coverage,
 )
 from core.summarisation.summary_validator import (
-    normalize_empty_section as sv_normalize_empty_section,
-)
-from core.summarisation.summary_validator import (
     semantic_dedup_bullets as sv_semantic_dedup_bullets,
-)
-from core.summarisation.summary_validator import (
-    verify_additive_section_item as sv_verify_additive_section_item,
-)
-from core.summarisation.summary_validator import (
-    verify_additive_sections as sv_verify_additive_sections,
 )
 from core.summarisation.summary_validator import (
     verify_bullets as sv_verify_bullets,
@@ -216,7 +209,6 @@ from core.summarisation.thorough_fallback import (
 from core.summarisation.thorough_theorist_floor import (
     SummarizerThoroughFloorMixin,
 )
-
 from core.system.ollama_supervisor import OllamaSupervisor
 
 # V18.2.14 (B4): traceable error-handling helpers — replace silent
@@ -257,24 +249,36 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # V10.36.0: API keys now go through the keyring-backed secrets manager.
         try:
             from core.system.secrets import get_secret
-            _get = lambda path, default="": get_secret(path, settings, default)
+
+            def _get(path: str, default: str = "") -> str:
+                return get_secret(path, settings, default)
         except ImportError:
-            _get = lambda path, default="": settings.get(path, default)
+
+            def _get(path: str, default: str = "") -> str:  # noqa: F811
+                return settings.get(path, default)
 
         # Cloud / OpenAI-compatible settings
         self.api_key = _get("summarisation.api_key", "")
-        self.api_base_url = settings.get("summarisation.api_base_url", "https://openrouter.ai/api/v1")
-        self.cloud_model = settings.get("summarisation.cloud_model", "google/gemini-2.5-flash-preview:free")
+        self.api_base_url = settings.get(
+            "summarisation.api_base_url", "https://openrouter.ai/api/v1"
+        )
+        self.cloud_model = settings.get(
+            "summarisation.cloud_model", "google/gemini-2.5-flash-preview:free"
+        )
         self.cloud_max_tokens = settings.get("summarisation.cloud_max_tokens", 16000)
 
         # Claude (Anthropic) settings
         self.claude_api_key = _get("summarisation.claude_api_key", "")
         self.claude_model = settings.get("summarisation.claude_model", "claude-3-5-sonnet-20241022")
-        self.claude_base_url = settings.get("summarisation.claude_base_url", "https://api.anthropic.com/v1")
+        self.claude_base_url = settings.get(
+            "summarisation.claude_base_url", "https://api.anthropic.com/v1"
+        )
         self.claude_max_tokens = settings.get("summarisation.claude_max_tokens", 4096)
 
         # FreeLLMAPI
-        self.freellmapi_url = settings.get("summarisation.freellmapi_url", "http://localhost:3001/v1")
+        self.freellmapi_url = settings.get(
+            "summarisation.freellmapi_url", "http://localhost:3001/v1"
+        )
         self.freellmapi_key = _get("summarisation.freellmapi_key", "")
         self.freellmapi_model = settings.get("summarisation.freellmapi_model", "auto")
 
@@ -284,24 +288,36 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # create_provider("llamacpp") re-reads the same keys (single source
         # of truth: the llamacpp_* settings block).
         self.llamacpp_base_url = settings.get(
-            "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+            "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
+        )
         self.llamacpp_api_key = settings.get("summarisation.llamacpp_api_key", "local")
         self.llamacpp_model = settings.get(
-            "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+            "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
+        )
         self.llamacpp_context_tokens = int(
-            settings.get("summarisation.llamacpp_context_tokens", 65536) or 65536)
+            settings.get("summarisation.llamacpp_context_tokens", 65536) or 65536
+        )
         self.llamacpp_max_output = int(
-            settings.get("summarisation.llamacpp_max_output_tokens", 12288) or 12288)
+            settings.get("summarisation.llamacpp_max_output_tokens", 12288) or 12288
+        )
 
         # V13.36.0: Hybrid Fusion (Local + Cloud)
-        self.fusion_enabled = self.provider == "fusion" or settings.get("summarisation.fusion_enabled", False)
-        self.fusion_cloud_provider = settings.get("summarisation.fusion_cloud_provider", "openai_compat")
+        self.fusion_enabled = self.provider == "fusion" or settings.get(
+            "summarisation.fusion_enabled", False
+        )
+        self.fusion_cloud_provider = settings.get(
+            "summarisation.fusion_cloud_provider", "openai_compat"
+        )
         self.fusion_cloud_model = settings.get("summarisation.fusion_cloud_model", self.cloud_model)
         self.fusion_cloud_api_key = _get("summarisation.fusion_cloud_api_key", "") or self.api_key
-        self.fusion_cloud_base_url = settings.get("summarisation.fusion_cloud_base_url", "") or self.api_base_url
+        self.fusion_cloud_base_url = (
+            settings.get("summarisation.fusion_cloud_base_url", "") or self.api_base_url
+        )
         self.fusion_cloud_max_tokens = settings.get("summarisation.fusion_cloud_max_tokens", 4096)
         self.fusion_cloud_temperature = settings.get("summarisation.fusion_cloud_temperature", 0.2)
-        self.fusion_use_for_self_review = settings.get("summarisation.fusion_use_for_self_review", True)
+        self.fusion_use_for_self_review = settings.get(
+            "summarisation.fusion_use_for_self_review", True
+        )
         self.fusion_use_for_grounding = settings.get("summarisation.fusion_use_for_grounding", True)
         self.fusion_use_for_b3_judge = settings.get("summarisation.fusion_use_for_b3_judge", True)
         self.fusion_use_for_gap_fill = settings.get("summarisation.fusion_use_for_gap_fill", False)
@@ -317,10 +333,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         Has 2 external constructions: ModelManager() + OllamaSupervisor().
         The OllamaSupervisor lambda captures self.log (MUST be set before the supervisor).
         """
-        self.request  = request
-        self.log      = log_callback or (lambda msg, level="INFO": None)
+        self.request = request
+        self.log = log_callback or (lambda msg, level="INFO": None)
         self.language = language
-        self.model_manager   = ModelManager()
+        self.model_manager = ModelManager()
         # V18.20.4.3 (P2 / W-c9, +1 same-class site found during the P2
         # sweep): canonical Ollama URL from settings — this value flows to
         # the LLM dispatcher, the OllamaSupervisor and the fast-LLM path;
@@ -331,11 +347,9 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             self.ollama_base_url = Settings().get_ollama_url()
         except Exception:
             self.ollama_base_url = "http://localhost:11434"
-        self.timeout  = 600
-        self.retries  = 1
-        self._streaming_enabled = bool(
-            getattr(request, "_streaming_enabled", False)
-        )
+        self.timeout = 600
+        self.retries = 1
+        self._streaming_enabled = bool(getattr(request, "_streaming_enabled", False))
         self._ollama_supervisor = OllamaSupervisor(
             url=self.ollama_base_url,
             max_consecutive_failures=3,
@@ -355,6 +369,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 make_run_id,
                 run_started_iso,
             )
+
             self._run_id = make_run_id()
             self._app_version = get_app_version()
             self._run_started = run_started_iso()
@@ -403,7 +418,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 "INFO",
             )
         self.timeout = self.local_http_timeout if self.is_local else 300
-        self.log(f"    🔧 HTTP timeout set to {self.timeout}s ({'local' if self.is_local else 'cloud'} mode)", "DEBUG")
+        self.log(
+            f"    🔧 HTTP timeout set to {self.timeout}s ({'local' if self.is_local else 'cloud'} mode)",
+            "DEBUG",
+        )
 
     # V18.17.0.1 (Phase 2b): Sub-constructor for max_workers + VRAM (Group F part 2).
     def _init_max_workers(self) -> None:
@@ -416,6 +434,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         self.max_workers = getattr(self.request, "max_workers", 2)
         try:
             from core.vram_calculator import get_total_vram
+
             _total_vram_gb = get_total_vram()
             if _total_vram_gb and _total_vram_gb < 16 and self.max_workers > 1:
                 self.log(
@@ -430,7 +449,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 "DEBUG",
             )
         if self.heavy_model and self.max_workers > 1:
-            self.log(f"  ⚠️ Heavy model enabled – forcing max_workers from {self.max_workers} to 1 to prevent OOM.", "WARNING")
+            self.log(
+                f"  ⚠️ Heavy model enabled – forcing max_workers from {self.max_workers} to 1 to prevent OOM.",
+                "WARNING",
+            )
             self.max_workers = 1
         model_lower = (self.primary_model or "").lower()
         # V18.20.4.12 (W-a10): dropped dead uppercase entries — model_lower is lowercased
@@ -449,15 +471,15 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             self.max_workers = safe_max
         try:
             from core.vram_calculator import calculate_vram_budget, get_total_vram
+
             estimates, peak, total, _rec = calculate_vram_budget(
                 summarization_model=self.primary_model or "",
                 max_workers=self.max_workers,
             )
             if total:
                 from core.vram_calculator import _estimate_model_vram
-                per_worker = _estimate_model_vram(
-                    self.primary_model or "", "Summarization"
-                ) * 0.6
+
+                per_worker = _estimate_model_vram(self.primary_model or "", "Summarization") * 0.6
                 usable = total - 1.0
                 base = peak - per_worker * (self.max_workers - 1) if self.max_workers > 1 else peak
                 affordable = self.max_workers
@@ -488,9 +510,8 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             DEFAULT_RECOVERY_THRESHOLD,
             QuarantineLog,
         )
-        self.conservative_drops = bool(
-            getattr(self.request, "conservative_drops", False)
-        )
+
+        self.conservative_drops = bool(getattr(self.request, "conservative_drops", False))
         _out_dir = getattr(self.request, "output_dir", None)
         self.quarantine = QuarantineLog(
             output_dir=_out_dir,
@@ -526,6 +547,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         self.MAP_MINI_WORDS = 300
         # Prompt Bank (A1: user-editable prompts)
         from core.summarisation.prompt_manager import PromptManager
+
         self.prompt_manager = PromptManager()
         self.active_prompt = settings.get("summarisation.prompt", "default")
         if not self.prompt_manager.load_prompt(self.active_prompt):
@@ -552,7 +574,6 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
 
         # V18.17.0.0 (Phase 2b): Quarantine state extracted to sub-constructor.
         self._init_quarantine()
-
 
         settings = Settings()
         # V18.16.0.0 (Phase 2b): LLM provider config extracted to sub-constructor.
@@ -701,7 +722,6 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
     def _chapter_deadline_start(self, value: float | None) -> None:
         self._chapter_tls_store().chapter_deadline_start = value
 
-
     # ─────────────────────────────────────────────────────────────────────────
     # V18.19.3.0 (Phase 2f): Group B — quality params, academic rigor, per-model
     # temp, primary_model, IQ2_S/IQ2_XXS overrides, model profile, heavy-model
@@ -746,11 +766,14 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # Quality parameters from request
         self.temperature = getattr(self.request, "temperature", 0.2)
         self.self_consistency = getattr(self.request, "self_consistency", False)
-        self.fast_model = getattr(self.request, "fast_model", "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest")
+        self.fast_model = getattr(
+            self.request, "fast_model", "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest"
+        )
         self.heavy_model = getattr(self.request, "heavy_model", "")
         self.coverage_threshold = getattr(self.request, "coverage_threshold", 0.70)
 
         from core.llm.content_presets import get_content_preset
+
         _preset = get_content_preset(getattr(self.request, "source_type", "normal_book"))
         if self.coverage_threshold == 0.70:
             self.coverage_threshold = _preset.coverage_threshold
@@ -759,8 +782,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         self.overdeliver_target = max(self.coverage_threshold, min(_od_target, 1.0))
         self.b3_voting_enabled = bool(getattr(self.request, "b3_voting_enabled", False))
         self._effective_target = (
-            self.overdeliver_target if self.overdeliver_enabled
-            else self.coverage_threshold
+            self.overdeliver_target if self.overdeliver_enabled else self.coverage_threshold
         )
         self.content_preset = _preset
 
@@ -772,6 +794,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # Per-model temperature enforcement
         try:
             from utils import settings as _settings_mod
+
             _s = _settings_mod.Settings()
             _model_temps = _s.get("model_temperatures", {})
             if _model_temps:
@@ -779,7 +802,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 for _pattern, (_min_t, _rec_t) in _model_temps.items():
                     if _pattern.lower() in _model_lower:
                         if self.temperature < _min_t:
-                            self.log(f"  🌡️ Model temperature {self.temperature} < minimum {_min_t} for {_pattern} — raising to {_rec_t}", "INFO")
+                            self.log(
+                                f"  🌡️ Model temperature {self.temperature} < minimum {_min_t} for {_pattern} — raising to {_rec_t}",
+                                "INFO",
+                            )
                             self.temperature = _rec_t
                         break
         except Exception as _e:
@@ -799,44 +825,71 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # V18.20.1.0 (D9): constants centralized to core.llm.iq2_s_profile.
         from core.llm.iq2_s_profile import IQ2_S_PROFILE
         from core.llm.model_taxonomy import is_iq2_s, is_low_bit_quant
+
         _is_slow_low_bit = is_low_bit_quant(self.primary_model) and not is_iq2_s(self.primary_model)
         if self.is_local and _is_slow_low_bit:
             if self.timeout > IQ2_S_PROFILE.IQ2_XXS_TIMEOUT_SEC:
-                self.log(f"    🔧 V18.2.33: HTTP timeout reduced {self.timeout}s → {IQ2_S_PROFILE.IQ2_XXS_TIMEOUT_SEC}s for IQ2_XXS", "INFO")
+                self.log(
+                    f"    🔧 V18.2.33: HTTP timeout reduced {self.timeout}s → {IQ2_S_PROFILE.IQ2_XXS_TIMEOUT_SEC}s for IQ2_XXS",
+                    "INFO",
+                )
                 self.timeout = IQ2_S_PROFILE.IQ2_XXS_TIMEOUT_SEC
-            if self.local_chapter_deadline > 0 and self.local_chapter_deadline < IQ2_S_PROFILE.IQ2_XXS_DEADLINE_SEC:
+            if (
+                self.local_chapter_deadline > 0
+                and self.local_chapter_deadline < IQ2_S_PROFILE.IQ2_XXS_DEADLINE_SEC
+            ):
                 self.local_chapter_deadline = IQ2_S_PROFILE.IQ2_XXS_DEADLINE_SEC
-                self.log(f"    ⏱️ V18.2.33: Chapter deadline raised → {IQ2_S_PROFILE.IQ2_XXS_DEADLINE_SEC}s for IQ2_XXS", "INFO")
+                self.log(
+                    f"    ⏱️ V18.2.33: Chapter deadline raised → {IQ2_S_PROFILE.IQ2_XXS_DEADLINE_SEC}s for IQ2_XXS",
+                    "INFO",
+                )
 
         if self.is_local and is_iq2_s(self.primary_model):
-            if self.local_chapter_deadline > 0 and self.local_chapter_deadline < IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC:
+            if (
+                self.local_chapter_deadline > 0
+                and self.local_chapter_deadline < IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC
+            ):
                 self.local_chapter_deadline = IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC
-                self.log(f"    ⏱️ V18.15.4.0: Chapter deadline raised → {IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC}s for IQ2_S 27B", "INFO")
+                self.log(
+                    f"    ⏱️ V18.15.4.0: Chapter deadline raised → {IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC}s for IQ2_S 27B",
+                    "INFO",
+                )
             if self.timeout > 0 and self.timeout < IQ2_S_PROFILE.HTTP_TIMEOUT_SEC:
                 self.timeout = IQ2_S_PROFILE.HTTP_TIMEOUT_SEC
-                self.log(f"    🔧 V18.15.6.0: HTTP timeout raised → {IQ2_S_PROFILE.HTTP_TIMEOUT_SEC}s for IQ2_S 27B", "INFO")
+                self.log(
+                    f"    🔧 V18.15.6.0: HTTP timeout raised → {IQ2_S_PROFILE.HTTP_TIMEOUT_SEC}s for IQ2_S 27B",
+                    "INFO",
+                )
 
         self._last_llm_error_type: str | None = None
 
         # Academic Rigor post-primary_model
         if not self.academic_rigor and getattr(self.request, "source_type", "") == "academic_paper":
             from core.llm.model_taxonomy import is_low_bit_quant, is_small_model, param_count_b
+
             _is_low_bit = is_low_bit_quant(self.primary_model)
             _param_count_b = param_count_b(self.primary_model)
             _is_small_model = is_small_model(self.primary_model)
             if _is_low_bit or _is_small_model:
-                _reason = ("low-bit quant (IQ2_XXS/XS)" if _is_low_bit
-                           else f"small model ({_param_count_b:.0f}B < 13B threshold)")
+                _reason = (
+                    "low-bit quant (IQ2_XXS/XS)"
+                    if _is_low_bit
+                    else f"small model ({_param_count_b:.0f}B < 13B threshold)"
+                )
                 self.log(f"  ⚠️ Academic Rigor NOT auto-enabled — model uses a {_reason}", "WARNING")
             else:
                 self.academic_rigor = True
                 self.log("  🔬 Academic Rigor auto-enabled (source_type=academic_paper).", "INFO")
         if self.academic_rigor:
-            self.log(f"  🔬 Academic Rigor mode enabled (temperature stays at {self.temperature})", "INFO")
+            self.log(
+                f"  🔬 Academic Rigor mode enabled (temperature stays at {self.temperature})",
+                "INFO",
+            )
 
         # Model profile
         try:
             from core.llm.model_profiles import get_model_profile
+
             self.profile = get_model_profile(self.primary_model)
             self.log(f"  🎛️ Model profile: {self.profile.name}", "DEBUG")
             if self.profile.thinking_strip_aggressive:
@@ -863,7 +916,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # Ensure context is at least 32k (hardware floor for modern GPUs)
         if self.request.summarisation_max_context_tokens < 32768:
             self.request.summarisation_max_context_tokens = max(auto_ctx, 32768)
-            self.log(f"  🔧 Raised summarisation context to {self.request.summarisation_max_context_tokens} tokens", "INFO")
+            self.log(
+                f"  🔧 Raised summarisation context to {self.request.summarisation_max_context_tokens} tokens",
+                "INFO",
+            )
 
         # V0.09 (P5): ModelRegistry — the context window as DATA. The value
         # computed above (settings → VRAM ladder → 32k floor) stays the
@@ -879,6 +935,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # success, and a model absent from the table/hints, this is a
         # no-op (byte-identical at today's defaults).
         from core.llm.registry import backend_for_provider, get_registry
+
         _reg = get_registry()
         _reg_backend = backend_for_provider(self.provider)
         _reg_ctx = _reg.get_context_window(
@@ -922,7 +979,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 self.request.summarisation_max_output_tokens, _compact_cap
             )
             # V13.45.5: Even in compact mode, don't hard-cap bullets
-            self.log(f"  📦 Compact summaries mode: max {_compact_cap} output tokens (no bullet cap)", "INFO")
+            self.log(
+                f"  📦 Compact summaries mode: max {_compact_cap} output tokens (no bullet cap)",
+                "INFO",
+            )
 
         # V18.2.37d (CRITICAL fix): Force max_output_tokens to 16000 ONLY if
         # the context window can fit it. For low-bit quants (IQ2_XXS, Q2_K)
@@ -942,6 +1002,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # model_taxonomy — single source of truth. Behavior identical for all
         # tested models (see tests/test_small_model_detection.py).
         from core.llm.model_taxonomy import is_low_bit_quant, is_small_model, param_count_b
+
         _model_name = getattr(self.request, "summarisation_model", "") or ""
         _is_low_bit = is_low_bit_quant(_model_name)
         _param_count_b2 = param_count_b(_model_name)
@@ -957,10 +1018,16 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             # Truncation on large chapters is handled by E3 (chunked output),
             # NOT by raising the per-call output cap.
             _safe_max = IQ2_S_PROFILE.LOW_BIT_MAX_OUTPUT  # 8192
-            _reason2 = ("low-bit quant (26758 context cap)" if _is_low_bit
-                        else f"small model ({_param_count_b2:.0f}B < 13B threshold)")
+            _reason2 = (
+                "low-bit quant (26758 context cap)"
+                if _is_low_bit
+                else f"small model ({_param_count_b2:.0f}B < 13B threshold)"
+            )
             if _current_max_tok > _safe_max:
-                self.log(f"  ⚠️ max_output_tokens was {_current_max_tok} — capping to {_safe_max} for {_reason2}", "WARNING")
+                self.log(
+                    f"  ⚠️ max_output_tokens was {_current_max_tok} — capping to {_safe_max} for {_reason2}",
+                    "WARNING",
+                )
                 self.request.summarisation_max_output_tokens = _safe_max
                 _current_max_tok = _safe_max
         else:
@@ -971,14 +1038,23 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             # compact cap survives — the user's explicit compact_summaries=True
             # request is respected for ALL model classes.
             if _current_max_tok < IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT and not _compact_cap:
-                self.log(f"  ⚠️ max_output_tokens was {_current_max_tok} (stale setting) — forcing to {IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT}", "WARNING")
+                self.log(
+                    f"  ⚠️ max_output_tokens was {_current_max_tok} (stale setting) — forcing to {IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT}",
+                    "WARNING",
+                )
                 self.request.summarisation_max_output_tokens = IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT
                 _current_max_tok = IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT
             elif _compact_cap and _current_max_tok > _compact_cap:
                 # V18.20.1.0 (D10): compact mode active — don't force up to 16000.
                 # The compact cap (2048) is the user's explicit choice; respect it.
-                self.log(f"  📦 Compact mode: keeping max_output at {_compact_cap} (not forcing to {IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT} for full-precision large model)", "INFO")
-        self.log(f"  📝 Max output tokens: {_current_max_tok} (context: {getattr(self.request, 'summarisation_max_context_tokens', 32768)})", "INFO")
+                self.log(
+                    f"  📦 Compact mode: keeping max_output at {_compact_cap} (not forcing to {IQ2_S_PROFILE.LARGE_FP_MIN_OUTPUT} for full-precision large model)",
+                    "INFO",
+                )
+        self.log(
+            f"  📝 Max output tokens: {_current_max_tok} (context: {getattr(self.request, 'summarisation_max_context_tokens', 32768)})",
+            "INFO",
+        )
 
         # V18.17.0.0 (Phase 2b): Prompt bank initialization moved to
         # _init_map_reduce_and_prompts (called above). No inline code here.
@@ -1055,6 +1131,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         """
         try:
             import torch
+
             if torch.cuda.is_available():
                 vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
                 if vram_gb < 8:
@@ -1117,6 +1194,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
                 extract_ngram_keywords,
                 get_all_ner_entities,
             )
+
             keywords = extract_ngram_keywords(text, n=n)
             # Exclude NER entities (proper nouns) — book-derived names
             # are never listed here: the entities come from the source
@@ -1125,9 +1203,11 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             # indicating actual concept gaps.
             ner_entities = get_all_ner_entities(text)
             if ner_entities:
-                keywords = [k for k in keywords if not any(
-                    entity.lower() in k.lower() for entity in ner_entities
-                )]
+                keywords = [
+                    k
+                    for k in keywords
+                    if not any(entity.lower() in k.lower() for entity in ner_entities)
+                ]
             return keywords
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -1138,7 +1218,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         # keywords (they're structural glue). Plus the tiny
         # _STRUCTURAL_FUNCTION_WORDS set (the/a/and/of... — grammatical, not
         # content). No hand-curated content word list.
-        words = re.findall(r'\b[a-z]{6,}\b', text.lower())
+        words = re.findall(r"\b[a-z]{6,}\b", text.lower())
         if not words:
             return []
         total = len(words)
@@ -1155,9 +1235,9 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         _freq_threshold = max(3, int(total * 0.05))
         _source_stopwords = {w for w, c in counts.items() if c >= _freq_threshold}
         content_words = [
-            w for w, c in counts.items()
-            if w not in self._STRUCTURAL_FUNCTION_WORDS
-            and w not in _source_stopwords
+            w
+            for w, c in counts.items()
+            if w not in self._STRUCTURAL_FUNCTION_WORDS and w not in _source_stopwords
         ]
         content_words.sort(key=lambda w: counts[w], reverse=True)
         return content_words[:n]
@@ -1175,6 +1255,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             coverage_cache=self._coverage_cache,
             extract_keywords=self._extract_keywords,
         )
+
     def _build_prompt(
         self,
         heading: str,
@@ -1196,7 +1277,11 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         dedicated_bullet, missing_keywords, chunked) REMAIN extracted — only
         the high-risk _build_prompt is rolled back.
         """
-        lang = "Write your entire response in Persian (Farsi)." if self.language == "fa" else "Write your entire response in English."
+        lang = (
+            "Write your entire response in Persian (Farsi)."
+            if self.language == "fa"
+            else "Write your entire response in English."
+        )
 
         # V0.05 (rig audit F9a/F9b — the user's "I didn't ask for a thorough
         # summary but it produced" + "thorough longer than the chapter"):
@@ -1214,6 +1299,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
             length_budget_block,
             thorough_words_phrase,
         )
+
         _source_words = count_source_words(text)
         _exec_words = exec_words_phrase(_source_words)
         _bullet_range = bullet_range_phrase(_source_words)
@@ -1224,7 +1310,7 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
 
         callout_block = ""
         if callouts:
-            callout_list = "\n".join(f"  - \"{c}\"" for c in callouts[:10])
+            callout_list = "\n".join(f'  - "{c}"' for c in callouts[:10])
             callout_block = f"""
 HIGH-VALUE CALLOUTS from the author (these appear as highlighted tips in the chapter — your summary MUST capture the concept behind each):
 {callout_list}
@@ -1232,15 +1318,44 @@ HIGH-VALUE CALLOUTS from the author (these appear as highlighted tips in the cha
         structural_block = ""
         try:
             import re as _re_so
+
             _so_matches = _re_so.findall(
-                r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4})',
+                r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4})",
                 text[:200000],
             )
-            _so_stop = {"The", "This", "These", "Those", "A", "An", "In",
-                        "While", "When", "If", "It", "He", "She", "They",
-                        "We", "Page", "Chapter", "Figure", "Table", "Note",
-                        "See", "As", "For", "Later", "Also", "Then",
-                        "However", "Moreover", "First", "Second", "Third"}
+            _so_stop = {
+                "The",
+                "This",
+                "These",
+                "Those",
+                "A",
+                "An",
+                "In",
+                "While",
+                "When",
+                "If",
+                "It",
+                "He",
+                "She",
+                "They",
+                "We",
+                "Page",
+                "Chapter",
+                "Figure",
+                "Table",
+                "Note",
+                "See",
+                "As",
+                "For",
+                "Later",
+                "Also",
+                "Then",
+                "However",
+                "Moreover",
+                "First",
+                "Second",
+                "Third",
+            }
             _so_seen = set()
             _so_sequence = []
             for _name, _year in _so_matches:
@@ -1253,7 +1368,7 @@ HIGH-VALUE CALLOUTS from the author (these appear as highlighted tips in the cha
             if len(_so_sequence) >= 3:
                 structural_block = f"""
 STRUCTURAL OUTLINE — The source mentions these named contributors in this order:
-{', '.join(_so_sequence[:20])}
+{", ".join(_so_sequence[:20])}
 
 Your THOROUGH SUMMARY must cover the FULL sequence above. Do NOT stop early —
 narrate through the complete progression, ending with the source's conclusion.
@@ -1261,8 +1376,7 @@ If the source ends with an enumerated list or summary framework, your thorough
 summary must reach that conclusion.
 """
         except Exception as _e:
-            log_swallow("structural_outline_build", _e,
-                        detail=f"heading={heading[:60]}")
+            log_swallow("structural_outline_build", _e, detail=f"heading={heading[:60]}")
 
         # V0.03 (P1-5, real-rig audit): ANTHOLOGY ATTRIBUTION. The V0.02 rig
         # summarized an 8-author extract with ZERO author names — for an
@@ -1278,28 +1392,29 @@ summary must reach that conclusion.
         attribution_block = ""
         try:
             from core.preprocessing.deterministic_analyzer import extract_bylines
+
             _bylines = extract_bylines(text[:200000])
             if len(_bylines) >= 2:
                 attribution_block = (
                     "\nANTHOLOGY ATTRIBUTION — This section collects work by "
                     f"multiple named authors ({', '.join(_bylines[:12])}). "
                     "Attribute each idea to the author the source credits "
-                    "(e.g. \"Nygard argues…\", \"per Braithwaite…\"). Do NOT "
+                    '(e.g. "Nygard argues…", "per Braithwaite…"). Do NOT '
                     "collapse multi-author sections into anonymous prose.\n"
                 )
             elif len(_bylines) == 1:
                 attribution_block = (
                     f"\nATTRIBUTION — This chapter is by {_bylines[0]}. Name "
-                    f"the author in the summary prose (e.g. \"{_bylines[0].split()[-1]} "
-                    "argues…\"); a chapter summary that never names its author "
+                    f'the author in the summary prose (e.g. "{_bylines[0].split()[-1]} '
+                    'argues…"); a chapter summary that never names its author '
                     "is incomplete.\n"
                 )
         except Exception as _e:
-            log_swallow("byline_attribution_build", _e,
-                        detail=f"heading={heading[:60]}")
+            log_swallow("byline_attribution_build", _e, detail=f"heading={heading[:60]}")
 
         try:
             from core.summarisation.text_preprocessor import calculate_reading_level
+
             _source_grade = calculate_reading_level(text[:5000])
             if _source_grade > 14:
                 reading_level_instruction = """- Write for a specialist audience. Use technical terminology appropriate to the field. Maintain the academic register of the source."""
@@ -1342,7 +1457,9 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                 if structural_block:
                     inject_so = f"\n{structural_block}\n"
                     if "Chapter content:" in rendered:
-                        rendered = rendered.replace("Chapter content:", inject_so + "Chapter content:")
+                        rendered = rendered.replace(
+                            "Chapter content:", inject_so + "Chapter content:"
+                        )
                     elif "{{text}}" in rendered:
                         rendered = rendered.replace("{{text}}", inject_so + "{{text}}")
                     else:
@@ -1352,16 +1469,17 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                 if attribution_block:
                     if "Chapter content:" in rendered:
                         rendered = rendered.replace(
-                            "Chapter content:", attribution_block + "Chapter content:")
+                            "Chapter content:", attribution_block + "Chapter content:"
+                        )
                     elif "{{text}}" in rendered:
-                        rendered = rendered.replace(
-                            "{{text}}", attribution_block + "{{text}}")
+                        rendered = rendered.replace("{{text}}", attribution_block + "{{text}}")
                     else:
                         rendered += attribution_block
                 rendered += "\n" + reading_level_instruction
                 rendered += "\nIMPORTANT: Only include specific numbers (percentages, dosages, counts, dates) if they appear VERBATIM in the source text. Do NOT invent, approximate, or round any numbers. If you are unsure whether a number is in the source, omit it."
                 rendered += "\nANTI-HALLUCINATION: Use ONLY information from the source text. Do NOT add external knowledge, invented facts, or personal opinions. If you are unsure whether a claim is supported by the source, OMIT it."
                 from core.llm.content_presets import get_content_preset
+
                 _preset = get_content_preset(getattr(self.request, "source_type", "normal_book"))
                 if _preset.prompt_addendum:
                     rendered += "\n" + _preset.prompt_addendum
@@ -1375,33 +1493,40 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                 # on the rig (the flag was logged but never enforced).
                 if not _inc_exec:
                     rendered = re.sub(
-                        r'<executive_summary>.*?</executive_summary>\s*',
-                        '', rendered, flags=re.DOTALL,
+                        r"<executive_summary>.*?</executive_summary>\s*",
+                        "",
+                        rendered,
+                        flags=re.DOTALL,
                     )
                 if not _inc_keypoints:
                     rendered = re.sub(
-                        r'<bullet_points>.*?</bullet_points>\s*',
-                        '', rendered, flags=re.DOTALL,
+                        r"<bullet_points>.*?</bullet_points>\s*",
+                        "",
+                        rendered,
+                        flags=re.DOTALL,
                     )
                 if not _inc_thorough:
                     rendered = re.sub(
-                        r'<thorough_summary>.*?</thorough_summary>\s*',
-                        '', rendered, flags=re.DOTALL,
+                        r"<thorough_summary>.*?</thorough_summary>\s*",
+                        "",
+                        rendered,
+                        flags=re.DOTALL,
                     )
                 _wanted = [
-                    _t for _t, _on in (
+                    _t
+                    for _t, _on in (
                         ("<executive_summary>", _inc_exec),
                         ("<bullet_points>", _inc_keypoints),
                         ("<thorough_summary>", _inc_thorough),
                         ("<key_distinctions>", True),
                         ("<theoretical_tensions>", True),
-                    ) if _on
+                    )
+                    if _on
                 ]
                 if len(_wanted) < 5:
                     rendered += (
                         "\nOUTPUT SECTIONS (OVERRIDES any section list above): "
-                        "output ONLY these sections, in this order: "
-                        + ", ".join(_wanted) + ".\n"
+                        "output ONLY these sections, in this order: " + ", ".join(_wanted) + ".\n"
                     )
                 # V0.05 (F9b): the source-relative length budget — appended to
                 # EVERY rendered template so the scaled targets override any
@@ -1422,15 +1547,15 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
         if _inc_keypoints:
             _sections_json.append(
                 f'- "bullet_points": {_bullet_range} findings. Include ALL '
-                'items from any enumerated lists in the source.'
+                "items from any enumerated lists in the source."
             )
         if _inc_thorough:
             _sections_json.append(
                 f'- "thorough_summary": {_bullet_range} findings. CRITICAL: '
-                'Cover ALL major topics and contributors in the chapter. Do '
-                'NOT truncate — if running low on output space, make claims '
-                'shorter rather than omitting topics. Preserve all '
-                'enumerated lists and multi-step processes.'
+                "Cover ALL major topics and contributors in the chapter. Do "
+                "NOT truncate — if running low on output space, make claims "
+                "shorter rather than omitting topics. Preserve all "
+                "enumerated lists and multi-step processes."
             )
         _sections_json += [
             '- "key_distinctions": 2-5 distinctions (each: "claim" = the contrast + why it matters, "supporting_text" = verbatim quote). Prioritize technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.',
@@ -1439,24 +1564,24 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
         _sections_xml = []
         if _inc_exec:
             _sections_xml.append(
-                f'<executive_summary>\nA {_exec_words} word narrative overview '
-                'of the chapter\'s main argument and conclusions.\n</executive_summary>'
+                f"<executive_summary>\nA {_exec_words} word narrative overview "
+                "of the chapter's main argument and conclusions.\n</executive_summary>"
             )
         if _inc_keypoints:
             _sections_xml.append(
-                f'<bullet_points>\nA comprehensive list of {_bullet_range} '
-                'distinct key takeaways. One bullet per line, each prefixed '
+                f"<bullet_points>\nA comprehensive list of {_bullet_range} "
+                "distinct key takeaways. One bullet per line, each prefixed "
                 'with "- ". Each bullet must be a complete, self-contained '
-                'sentence expressing a single claim, finding, or concept. '
-                'Cover every section of the chapter.\n</bullet_points>'
+                "sentence expressing a single claim, finding, or concept. "
+                "Cover every section of the chapter.\n</bullet_points>"
             )
         if _inc_thorough:
             _sections_xml.append(
-                f'<thorough_summary>\nA {_thorough_words} word detailed '
-                'narrative that walks through the chapter section by section, '
-                'explaining the argument, evidence, and reasoning in depth. '
-                'The target scales to this chapter\'s length — never pad or '
-                'invent content to reach it.\n</thorough_summary>'
+                f"<thorough_summary>\nA {_thorough_words} word detailed "
+                "narrative that walks through the chapter section by section, "
+                "explaining the argument, evidence, and reasoning in depth. "
+                "The target scales to this chapter's length — never pad or "
+                "invent content to reach it.\n</thorough_summary>"
             )
         _sections_xml += [
             '<key_distinctions>\nList 2-5 important DISTINCTIONS the chapter explicitly draws between related concepts. ONLY include distinctions that the chapter ACTUALLY discusses — each must be traceable to a specific passage. If the chapter does not draw any explicit distinctions, output "None" (do NOT invent distinctions). Format: one distinction per line, prefixed with "- ". Prioritize: technical-term contrasts, developmental phase distinctions, competing positions, normal-vs-pathological.\n</key_distinctions>',
@@ -1490,9 +1615,8 @@ PRECISION RULE: Every claim must be traceable to a specific passage. The support
 Do NOT describe the JSON structure. Only output the JSON object.
 """
         else:
-            output_format = (
-                "\nYou MUST output exactly these XML sections:\n\n"
-                + "\n\n".join(_sections_xml)
+            output_format = "\nYou MUST output exactly these XML sections:\n\n" + "\n\n".join(
+                _sections_xml
             )
         # V0.05 (F9b): the length budget rides BOTH inline paths.
         output_format += "\n\n" + length_budget_block(
@@ -1501,8 +1625,6 @@ Do NOT describe the JSON structure. Only output the JSON object.
             include_thorough=_inc_thorough,
             include_keypoints=_inc_keypoints,
         )
-
-        cot_instruction = ""
 
         number_instruction = """
 IMPORTANT: Focus on descriptive findings, mechanisms, relationships, and qualitative conclusions.
@@ -1517,6 +1639,7 @@ Only include specific numbers (percentages, dosages, counts, dates) if they appe
             model_specific = "\nNOTE: Be concise — each bullet should be a single, distinct concept (one sentence, max ~25 words). Do not pad bullets with narrative filler.\n"
 
         from core.llm.content_presets import detect_source_type, get_content_preset
+
         source_type = getattr(self.request, "source_type", "normal_book")
         if source_type == "normal_book":
             detected = detect_source_type(text)
@@ -1576,7 +1699,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     # prompt_assembly.build_thorough_followup stays — it is a pinned live
     # export with its own characterization tests.
 
-    def _build_dedicated_thorough_prompt(self, heading: str, text: str, exec_sum: str, bullets: list[str], draft: str | None = None) -> str:
+    def _build_dedicated_thorough_prompt(
+        self, heading: str, text: str, exec_sum: str, bullets: list[str], draft: str | None = None
+    ) -> str:
         """V18.2.34: Dedicated thorough-summary prompt.
 
         V18.6 (Phase 4, Task 4.2): delegates to
@@ -1594,6 +1719,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         from core.summarisation.prompt_assembly import (
             build_dedicated_thorough_prompt as _pa_ded_thorough,
         )
+
         # V18.20.3.11 (Phase 3.b): the primary's PARTIAL thorough (cut at the
         # 8192 output cap) travels as ``draft`` so the dedicated call is a
         # continuation, not a cold re-derivation.
@@ -1618,19 +1744,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         Byte-for-byte identical behaviour (characterization tests in
         ``tests/test_thorough_fallback.py``).
         """
-        result, self._synthetic_thorough_fallback_count = (
-            tf_call_dedicated_thorough_with_fallback(
-                prompt, exec_sum, bullets,
-                min_words=min_words,
-                max_output_tokens=getattr(self.request, "summarisation_max_output_tokens", 8192) or 8192,
-                primary_model=self.primary_model,
-                temperature=self.temperature,
-                strip_thinking=self._strip_thinking,
-                call_llm=self._call_llm,
-                deadline_exceeded=self._deadline_exceeded,
-                synthetic_fallback_count=self._synthetic_thorough_fallback_count,
-                log=self.log,
-            )
+        result, self._synthetic_thorough_fallback_count = tf_call_dedicated_thorough_with_fallback(
+            prompt,
+            exec_sum,
+            bullets,
+            min_words=min_words,
+            max_output_tokens=getattr(self.request, "summarisation_max_output_tokens", 8192)
+            or 8192,
+            primary_model=self.primary_model,
+            temperature=self.temperature,
+            strip_thinking=self._strip_thinking,
+            call_llm=self._call_llm,
+            deadline_exceeded=self._deadline_exceeded,
+            synthetic_fallback_count=self._synthetic_thorough_fallback_count,
+            log=self.log,
         )
         return result
 
@@ -1639,7 +1766,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     # (SummarizerThoroughFloorMixin) — its call site below in
     # _summarize_inner is unchanged.
 
-    def _build_dedicated_bullet_prompt(self, heading: str, text: str, exec_sum: str, existing_bullets: list[str]) -> str:
+    def _build_dedicated_bullet_prompt(
+        self, heading: str, text: str, exec_sum: str, existing_bullets: list[str]
+    ) -> str:
         """V18.2.34: Dedicated bullet-expansion prompt.
 
         V18.6 (Phase 4, Task 4.2): delegates to
@@ -1654,6 +1783,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         from core.summarisation.prompt_assembly import (
             build_dedicated_bullet_prompt as _pa_ded_bullet,
         )
+
         return _pa_ded_bullet(heading, text, exec_sum, existing_bullets, self.language)
 
     # V0.08 (P2 dead-code removal): the _build_missing_keywords_reprompt
@@ -1671,6 +1801,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         from core.summarisation.prompt_assembly import (
             build_exec_from_thorough_prompt as _pa_exec_from_thorough,
         )
+
         return _pa_exec_from_thorough(heading, thorough_summary, self.language)
 
     def _save_checkpoint(self, heading: str, result: dict, label: str = "primary") -> None:
@@ -1694,9 +1825,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             from pathlib import Path as _P
 
             from utils.atomic_io import atomic_write_text
+
             _ckpt_dir = _P(self.request.output_dir) / "summaries" / ".checkpoints"
             _ckpt_dir.mkdir(parents=True, exist_ok=True)
-            _safe_h = re.sub(r'[^A-Za-z0-9_\-]+', '_', heading)[:60].strip('_')
+            _safe_h = re.sub(r"[^A-Za-z0-9_\-]+", "_", heading)[:60].strip("_")
             _ckpt_path = _ckpt_dir / f"{label}_{_safe_h}_summary.md"
             _exec = result.get("executive_summary", "") or ""
             _thorough = result.get("thorough_summary", "") or ""
@@ -1745,12 +1877,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # the V18.20.1.2 checkpoint), and the user must know. The
             # logger.debug trace stays; only the self.log LEVEL changes.
             self.log(
-                f"    ⚠️ V18.20.1.2: {label} checkpoint save failed "
-                f"(non-fatal): {_ckpt_e}",
+                f"    ⚠️ V18.20.1.2: {label} checkpoint save failed (non-fatal): {_ckpt_e}",
                 "WARNING",
             )
-            logger.debug("%s checkpoint failed: %s: %s",
-                         label, type(_ckpt_e).__name__, _ckpt_e)
+            logger.debug("%s checkpoint failed: %s: %s", label, type(_ckpt_e).__name__, _ckpt_e)
 
     def _ensure_exec_from_thorough(self, heading: str, thorough: str) -> str:
         """V18.15.8.0 (Fix 1): Derive executive summary FROM the thorough summary.
@@ -1778,11 +1908,18 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             if the call failed.
         """
         if not thorough or len(thorough.strip()) < 50:
-            self.log("    ⚠️ V18.15.8.0: Cannot derive exec from thorough — thorough too short", "WARNING")
+            self.log(
+                "    ⚠️ V18.15.8.0: Cannot derive exec from thorough — thorough too short", "WARNING"
+            )
             return ""
-        self.log("    📝 V18.15.8.0: Executive summary empty — deriving from thorough summary (dedicated system, 100% coverage)…", "INFO")
+        self.log(
+            "    📝 V18.15.8.0: Executive summary empty — deriving from thorough summary (dedicated system, 100% coverage)…",
+            "INFO",
+        )
         _prompt = self._build_exec_from_thorough_prompt(heading, thorough)
-        _raw = self._call_llm_with_empty_retry(_prompt, model=self.primary_model, temperature=self.temperature, max_tokens=2048)
+        _raw = self._call_llm_with_empty_retry(
+            _prompt, model=self.primary_model, temperature=self.temperature, max_tokens=2048
+        )
         if not _raw:
             self.log("    ⚠️ V18.15.8.0: Exec-from-thorough call returned empty", "WARNING")
             return ""
@@ -1795,6 +1932,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # catastrophic 2/10 regression. Fix: run detect_cot_narrative on the raw
         # output. If CoT is detected, return empty (trigger last-resort fallback).
         from core.summarisation.postchecks import detect_cot_narrative
+
         _raw_cleaned, _cot_issues = detect_cot_narrative(_raw, "exec")
         if _cot_issues:
             self.log(
@@ -1804,7 +1942,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             )
             return ""
         # Parse <executive_summary>...</executive_summary> tag
-        m = re.search(r'<executive_summary>(.*?)</executive_summary>', _raw, re.DOTALL)
+        m = re.search(r"<executive_summary>(.*?)</executive_summary>", _raw, re.DOTALL)
         if m:
             _exec = m.group(1).strip()
         else:
@@ -1812,10 +1950,17 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # phrases ("me to write", "synthesize", "Draft:", "Key elements"),
             # reject it — it's the model's reasoning, not a summary.
             _lower = _raw[:200].lower().strip()
-            if any(_phrase in _lower for _phrase in (
-                "me to write", "synthesize the key", "draft:", "key elements to capture",
-                "this in flowing prose", "carefully. draft",
-            )):
+            if any(
+                _phrase in _lower
+                for _phrase in (
+                    "me to write",
+                    "synthesize the key",
+                    "draft:",
+                    "key elements to capture",
+                    "this in flowing prose",
+                    "carefully. draft",
+                )
+            ):
                 self.log(
                     "    ⚠️ V18.16.0.1: Exec-from-thorough output looks like CoT "
                     "(no XML tag + CoT preamble) — discarding",
@@ -1826,9 +1971,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # Validate: must be substantive (≥50 words)
         _words = len(_exec.split()) if _exec else 0
         if _words < 50:
-            self.log(f"    ⚠️ V18.15.8.0: Exec-from-thorough too short ({_words} words < 50) — discarding", "WARNING")
+            self.log(
+                f"    ⚠️ V18.15.8.0: Exec-from-thorough too short ({_words} words < 50) — discarding",
+                "WARNING",
+            )
             return ""
-        self.log(f"    ✅ V18.15.8.0: Executive summary derived from thorough ({_words} words)", "INFO")
+        self.log(
+            f"    ✅ V18.15.8.0: Executive summary derived from thorough ({_words} words)", "INFO"
+        )
         return _exec
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1856,22 +2006,32 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z0-9"\u201c])', text)
         for sent in sentences:
             sl = sent.lower().strip()
-            if not sl or len(sl) < 20: continue
-            if ' ' in kl:
+            if not sl or len(sl) < 20:
+                continue
+            if " " in kl:
                 parts = [p for p in kl.split() if len(p) > 2]
-                if parts and all(p in sl for p in parts): return sent.strip()
-            elif kl in sl: return sent.strip()
+                if parts and all(p in sl for p in parts):
+                    return sent.strip()
+            elif kl in sl:
+                return sent.strip()
         return None
 
     def _targeted_gap_fill(self, heading, text, missing_keywords):
-        if not missing_keywords: return []
+        if not missing_keywords:
+            return []
         gap_pairs = []
         for kw in missing_keywords[:12]:
             sent = self._find_source_sentence(kw, text)
-            if sent: gap_pairs.append((kw, sent))
-        if not gap_pairs: return []
-        self.log(f"    \U0001f50d Tier 2: targeted gap-fill for {len(gap_pairs)} missing concepts (parallel, focused calls)\u2026", "INFO")
+            if sent:
+                gap_pairs.append((kw, sent))
+        if not gap_pairs:
+            return []
+        self.log(
+            f"    \U0001f50d Tier 2: targeted gap-fill for {len(gap_pairs)} missing concepts (parallel, focused calls)\u2026",
+            "INFO",
+        )
         import concurrent.futures
+
         def _fill_one(pair):
             kw, sent = pair
             lang = "Write in Persian (Farsi)." if self.language == "fa" else "Write in English."
@@ -1881,16 +2041,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 # use the cloud model for higher-quality paraphrases.
                 # Default is OFF — the local 9B model is fine for paraphrasing.
                 if self.fusion_enabled and self.fusion_use_for_gap_fill:
-                    raw = self._call_cloud(prompt, max_tokens=200,
-                                           temperature=self.fusion_cloud_temperature)
+                    raw = self._call_cloud(
+                        prompt, max_tokens=200, temperature=self.fusion_cloud_temperature
+                    )
                 else:
                     raw = self._call_fast_llm(prompt, max_tokens=200)
-                if not raw: return None
+                if not raw:
+                    return None
                 raw = self._strip_thinking(raw).strip()
-                if raw and not raw.startswith("- "): raw = "- " + raw.lstrip("*-\u2022 ")
-                if raw and len(raw) > 10 and "cannot" not in raw.lower()[:30]: return raw
+                if raw and not raw.startswith("- "):
+                    raw = "- " + raw.lstrip("*-\u2022 ")
+                if raw and len(raw) > 10 and "cannot" not in raw.lower()[:30]:
+                    return raw
                 return None
-            except Exception: return None
+            except Exception:
+                return None
+
         new_bullets = []
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -1898,19 +2064,23 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 for future in concurrent.futures.as_completed(futures):
                     try:
                         bp = future.result(timeout=120)
-                        if bp: new_bullets.append(bp)
+                        if bp:
+                            new_bullets.append(bp)
                     except Exception as _e:
                         # V18.2.14 (B4): was silent ``pass`` — now traceable.
                         # WARNING level because a failed future means a lost
                         # gap-fill bullet — worth surfacing.
-                        log_swallow("gap_fill_future_result", _e,
-                                    level=logging.WARNING)
+                        log_swallow("gap_fill_future_result", _e, level=logging.WARNING)
         except Exception:
             for pair in gap_pairs:
                 bp = _fill_one(pair)
-                if bp: new_bullets.append(bp)
+                if bp:
+                    new_bullets.append(bp)
         if new_bullets:
-            self.log(f"    \u2705 Tier 2: gap-filled {len(new_bullets)}/{len(gap_pairs)} concepts via focused LLM calls", "INFO")
+            self.log(
+                f"    \u2705 Tier 2: gap-filled {len(new_bullets)}/{len(gap_pairs)} concepts via focused LLM calls",
+                "INFO",
+            )
         return new_bullets
 
     def _prune_covered_excerpts(
@@ -1940,7 +2110,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
 
         def _tokens(s: str) -> set[str]:
             out = set()
-            for w in re.findall(r'[a-z0-9]+', (s or "").lower()):
+            for w in re.findall(r"[a-z0-9]+", (s or "").lower()):
                 if len(w) <= 2:
                     continue
                 if len(w) > 3 and w.endswith("s"):
@@ -1949,8 +2119,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             return out
 
         combined_words = _tokens(
-            " ".join([str(exec_sum or ""), " ".join(str(b) for b in (bullets or [])),
-                      str(thorough or "")])
+            " ".join(
+                [
+                    str(exec_sum or ""),
+                    " ".join(str(b) for b in (bullets or [])),
+                    str(thorough or ""),
+                ]
+            )
         )
         kept: list[str] = []
         for ex in excerpts:
@@ -1965,7 +2140,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 continue
             covered = False
             # (a) per-bullet paraphrase containment
-            for b in (bullets or []):
+            for b in bullets or []:
                 b_toks = _tokens(str(b))
                 if not b_toks:
                     continue
@@ -2000,7 +2175,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
           - each excerpt carries explicit framing so a skimming reader
             cannot mistake it for the model's advice.
         """
-        if not still_missing: return 0
+        if not still_missing:
+            return 0
         inserted = 0
         # V0.05 (rig audit F3-b — P1): the dedupe key is the NORMALIZED
         # SOURCE SENTENCE, not the framed excerpt string. The old key
@@ -2009,14 +2185,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # keywords pointing at the SAME sentence each inserted their own
         # copy (the V0.04 rig shipped 9 excerpts for 4 unique sentences in
         # one chapter). The key extracts the quoted sentence tail instead.
-        _norm_ws = re.compile(r'\s+')
+        _norm_ws = re.compile(r"\s+")
         existing = set()
         for x in result.get("source_excerpts", []) or []:
             _body = str(x)
             _qm = re.search(r':\s*"(.*)"\s*$', _body, re.DOTALL)
             if _qm:
                 _body = _qm.group(1)
-            existing.add(_norm_ws.sub(' ', _body.lower().strip()))
+            existing.add(_norm_ws.sub(" ", _body.lower().strip()))
         # V0.05 (F3-c): remediation unit = SENTENCE, not keyword. Keywords
         # resolving to the same source sentence are consolidated into ONE
         # excerpt (the frame lists them together) — overlapping
@@ -2026,8 +2202,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         _sent_cache: dict[str, str] = {}
         for kw in still_missing:
             sent = self._find_source_sentence(kw, text)
-            if not sent: continue
-            _skey = _norm_ws.sub(' ', sent.lower().strip())
+            if not sent:
+                continue
+            _skey = _norm_ws.sub(" ", sent.lower().strip())
             _sent_cache[_skey] = sent
             _by_sentence.setdefault(_skey, []).append(kw)
         for _skey, _kws in _by_sentence.items():
@@ -2041,14 +2218,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # heading echo runs straight into the real sentence. Collapse
             # internal whitespace and strip a leading heading-echo prefix
             # (whitespace-insensitive, optional leading number).
-            sent = _norm_ws.sub(' ', sent).strip()
+            sent = _norm_ws.sub(" ", sent).strip()
             if heading:
-                _head = _norm_ws.sub(' ', str(heading).strip())
-                _head_nn = re.sub(r'^\d+[.)]?\s*', '', _head).strip().lower()
+                _head = _norm_ws.sub(" ", str(heading).strip())
+                _head_nn = re.sub(r"^\d+[.)]?\s*", "", _head).strip().lower()
                 _sent_lc = sent.lower()
                 if _head_nn and len(_head_nn) >= 12 and _sent_lc.startswith(_head_nn):
-                    sent = sent[len(_head_nn):].lstrip(' —–-:,.').strip()
-                    _skey = _norm_ws.sub(' ', sent.lower().strip())
+                    sent = sent[len(_head_nn) :].lstrip(" —–-:,.").strip()
+                    _skey = _norm_ws.sub(" ", sent.lower().strip())
             kw = " / ".join(_kws[:3]) + (" …" if len(_kws) > 3 else "")
             # V0.03 (P0-2): complete-sentence gate — reject fragments.
             _s = sent.strip().strip('"')
@@ -2063,7 +2240,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     "DEBUG",
                 )
                 continue
-            if _skey in existing: continue
+            if _skey in existing:
+                continue
             excerpt = (
                 f'On "{kw}" — verbatim from the source (auto-inserted for '
                 f'coverage; not the summarizer\'s advice): "{sent}"'
@@ -2103,10 +2281,17 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # threaded to Tier-3 so excerpts never open with a heading echo.
         from core.summarisation.length_policy import (
             bullet_cap as _lp_bullet_cap,
+        )
+        from core.summarisation.length_policy import (
             count_source_words as _lp_csw,
         )
+
         return cg_apply_3tier_coverage(
-            heading, text, content, result, coverage,
+            heading,
+            text,
+            content,
+            result,
+            coverage,
             coverage_threshold=self.coverage_threshold,
             extract_keywords=self._extract_keywords,
             log=self.log,
@@ -2131,6 +2316,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         The logic is extracted for testability + reuse.
         """
         from core.summarisation.vram import recover_vram
+
         recover_vram(
             is_local=self.is_local,
             delay_sec=delay_sec,
@@ -2150,7 +2336,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         (characterization tests in ``tests/test_scholar_reflection.py``).
         """
         scr_scholar_reflection(
-            heading, text, result,
+            heading,
+            text,
+            result,
             max_context_tokens=self.request.summarisation_max_context_tokens,
             language=self.language,
             temperature=self.temperature,
@@ -2182,7 +2370,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``_summarize_inner`` is preserved (satisfies test_deadline_watchdog).
         """
         scr_scholar_reflection_gapfill_only(
-            heading, text, result,
+            heading,
+            text,
+            result,
             max_context_tokens=self.request.summarisation_max_context_tokens,
             language=self.language,
             temperature=self.temperature,
@@ -2205,6 +2395,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``summary_validator.anti_false_precision_check``. Pure regex, no LLM call.
         """
         sv_anti_false_precision_check(heading, text, result, log=self.log)
+
     def _semantic_dedup_bullets(self, bullets: list[str], threshold: float = 0.85) -> list[str]:
         """V13.45.5: Semantic dedup — delegates to summary_validator.semantic_dedup_bullets.
 
@@ -2223,6 +2414,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         path is this delegate.
         """
         return sv_semantic_dedup_bullets(bullets, threshold=threshold, log=self.log)
+
     def _self_review(self, heading: str, text: str, summary: str) -> str | None:
         """Ask a model to review the summary against the source and flag unsupported claims.
 
@@ -2243,12 +2435,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             self.log("    ⏭️ Self‑review skipped (no model available).", "INFO")
             return None
         if review_model == self.primary_model:
-            self.log("    ℹ️ Self‑review using same model (no independent reviewer available).", "DEBUG")
+            self.log(
+                "    ℹ️ Self‑review using same model (no independent reviewer available).", "DEBUG"
+            )
 
         # C8: send full source, truncated to fit the context window
         # Reserve 2000 tokens for the summary + prompt overhead
         max_src = max(self.request.summarisation_max_context_tokens - 2000, 8000)
-        src_text = text[:max_src * 4]  # rough chars-per-token estimate
+        src_text = text[: max_src * 4]  # rough chars-per-token estimate
 
         prompt = self.prompt_manager.render_template(
             "summarisation/self_review",
@@ -2271,10 +2465,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # injection). Cloud path above intentionally NOT injected.
         return self._call_llm(
             qwen_no_think(prompt, review_model),
-            model=review_model, temperature=self.temperature,
+            model=review_model,
+            temperature=self.temperature,
         )
 
-    def _self_review_batched(self, heading: str, text: str, bullets: list, thorough: str) -> str | None:
+    def _self_review_batched(
+        self, heading: str, text: str, bullets: list, thorough: str
+    ) -> str | None:
         """V13.45.4: Batched self-review — reviews bullets in chunks of 10.
 
         V18.11 (Phase 5 Stage 3, Batch 2.4): logic extracted verbatim to
@@ -2285,7 +2482,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         unused in the body but kept in the signature for call-site compat.
         """
         return sr_self_review_batched(
-            heading, text, bullets, thorough,
+            heading,
+            text,
+            bullets,
+            thorough,
             heavy_model=self.heavy_model,
             primary_model=self.primary_model,
             max_context_tokens=self.request.summarisation_max_context_tokens,
@@ -2334,10 +2534,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # is now also gated (see below) — previously it wrote to disk even
         # when Cache: False, polluting response_cache.jsonl with entries that
         # became HITs the moment the user toggled Cache back to True.
-        _cache_enabled = bool(getattr(self.request, 'summarisation_cache_enabled', False))
+        _cache_enabled = bool(getattr(self.request, "summarisation_cache_enabled", False))
         if _cache_enabled:
             try:
                 from core.llm.response_cache import response_cache
+
                 cached = response_cache.get(prompt, model or "", temp, max_tok)
                 if cached is not None:
                     # V18.20.3.10 (O7): HIT promoted DEBUG→INFO — the cache
@@ -2351,7 +2552,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     )
                     return cached
             except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)  # cache is best-effort — never block on it
+                logger.debug(
+                    "ignored %s: %s", type(_e).__name__, _e
+                )  # cache is best-effort — never block on it
 
         # V10.31.0 (Sprint 4.3): Cloud providers now delegate to the
         # llm_provider abstraction (create_provider).  The Ollama path
@@ -2363,22 +2566,31 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # supervisor support to OllamaProvider).
         if self.provider == "claude":
             _result = self._call_via_llm_provider(
-                "claude", prompt, model=model or self.claude_model,
-                temp=temp, max_tokens=max_tok,
+                "claude",
+                prompt,
+                model=model or self.claude_model,
+                temp=temp,
+                max_tokens=max_tok,
             )
         elif self.provider == "freellmapi":
             _result = self._call_via_llm_provider(
-                "openai_compat", prompt,
-                base_url=self.freellmapi_url, api_key=self.freellmapi_key,
+                "openai_compat",
+                prompt,
+                base_url=self.freellmapi_url,
+                api_key=self.freellmapi_key,
                 model=model or self.freellmapi_model,
-                temp=temp, max_tokens=max_tok,
+                temp=temp,
+                max_tokens=max_tok,
             )
         elif self.provider in ("openrouter", "openai", "openai_compatible"):
             _result = self._call_via_llm_provider(
-                "openai_compat", prompt,
-                base_url=self.api_base_url, api_key=self.api_key,
+                "openai_compat",
+                prompt,
+                base_url=self.api_base_url,
+                api_key=self.api_key,
                 model=model or self.cloud_model,
-                temp=temp, max_tokens=max_tok,
+                temp=temp,
+                max_tokens=max_tok,
             )
         elif self.provider == "llamacpp":
             # V0.04: llama.cpp server. GENERAL RULE: the backend's own
@@ -2388,10 +2600,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # model's 12288 output cap and fits it into the 65536 window
             # (academic-rigor's 16000 floor cannot 400 the request).
             _result = self._call_via_llm_provider(
-                "llamacpp", prompt,
-                base_url=self.llamacpp_base_url, api_key=self.llamacpp_api_key,
+                "llamacpp",
+                prompt,
+                base_url=self.llamacpp_base_url,
+                api_key=self.llamacpp_api_key,
                 model=self.llamacpp_model or model,
-                temp=temp, max_tokens=max_tok,
+                temp=temp,
+                max_tokens=max_tok,
             )
         else:
             _result = self._call_ollama(prompt, model=model, temp=temp, max_tokens=max_tok)
@@ -2401,6 +2616,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         if _result and _cache_enabled:
             try:
                 from core.llm.response_cache import response_cache
+
                 response_cache.put(prompt, model or "", temp, _result, max_tok)
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)  # cache is best-effort
@@ -2469,6 +2685,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         self.log("    ⚠️ Empty/short LLM response — retrying with nudge after 2s delay", "WARNING")
         try:
             import time as _time
+
             _time.sleep(2)
         except Exception as _e:
             # V18.2.14 (B4): was silent ``pass`` — now traceable.
@@ -2478,7 +2695,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # but we keep it in the nudge too for belt-and-suspenders safety.
         if _is_qwen3:
             nudge = " /no_think\n\nPlease output the response now."
-        raw2 = self._call_llm(prompt + nudge, model=model, temperature=temperature, max_tokens=max_tokens)
+        raw2 = self._call_llm(
+            prompt + nudge, model=model, temperature=temperature, max_tokens=max_tokens
+        )
         if raw2 and len(raw2.strip()) >= min_length:
             return raw2
         return None
@@ -2509,8 +2728,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """
         if not self.fusion_enabled:
             # Fusion not enabled — fall back to local
-            return self._call_llm(prompt, temperature=temperature or self.fusion_cloud_temperature,
-                                  max_tokens=max_tokens or self.fusion_cloud_max_tokens)
+            return self._call_llm(
+                prompt,
+                temperature=temperature or self.fusion_cloud_temperature,
+                max_tokens=max_tokens or self.fusion_cloud_max_tokens,
+            )
 
         _temp = temperature if temperature is not None else self.fusion_cloud_temperature
         _max_tok = max_tokens or self.fusion_cloud_max_tokens
@@ -2520,18 +2742,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         try:
             if _provider == "claude":
                 result = self._call_via_llm_provider(
-                    "claude", prompt,
+                    "claude",
+                    prompt,
                     model=_model or self.claude_model,
-                    temp=_temp, max_tokens=_max_tok,
+                    temp=_temp,
+                    max_tokens=_max_tok,
                 )
             else:
                 # openai_compat (OpenRouter, OpenAI, 9Router, etc.)
                 result = self._call_via_llm_provider(
-                    "openai_compat", prompt,
+                    "openai_compat",
+                    prompt,
                     base_url=self.fusion_cloud_base_url,
                     api_key=self.fusion_cloud_api_key,
                     model=_model,
-                    temp=_temp, max_tokens=_max_tok,
+                    temp=_temp,
+                    max_tokens=_max_tok,
                 )
             if result and result.strip():
                 self.log(f"    🔀 Fusion cloud ({_model}) responded: {len(result)} chars", "DEBUG")
@@ -2539,7 +2765,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # Cloud returned empty — fall back to local
             self.log("    🔀 Fusion cloud returned empty — falling back to local model", "WARNING")
         except Exception as e:
-            self.log(f"    🔀 Fusion cloud failed ({type(e).__name__}: {e}) — falling back to local", "WARNING")
+            self.log(
+                f"    🔀 Fusion cloud failed ({type(e).__name__}: {e}) — falling back to local",
+                "WARNING",
+            )
             logger.debug("fusion cloud call failed: %s: %s", type(e).__name__, e)
 
         # Graceful fallback: use the local model for the same prompt
@@ -2557,13 +2786,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     ) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher.call_via_llm_provider."""
         return ld_call_via_llm_provider(
-            provider_type, prompt, model, base_url, api_key, temp, max_tokens,
+            provider_type,
+            prompt,
+            model,
+            base_url,
+            api_key,
+            temp,
+            max_tokens,
             timeout=self.timeout,
             supervisor=self._ollama_supervisor,
             log=self.log,
             call_claude_fn=self._call_claude,
             call_openai_compat_fn=self._call_openai_compat,
         )
+
     def _call_ollama(self, prompt: str, model: str, temp: float, max_tokens: int) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher.call_ollama.
 
@@ -2577,7 +2813,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # captured by reference inside the dispatcher's closure).
         _tracker: list = []
         result = ld_call_ollama(
-            prompt, model, temp, max_tokens,
+            prompt,
+            model,
+            temp,
+            max_tokens,
             streaming_enabled=self._streaming_enabled,
             ollama_base_url=self.ollama_base_url,
             timeout=self.timeout,
@@ -2596,10 +2835,16 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # Empty response with no tracked error — treat as "empty".
             self._last_llm_error_type = "empty"
         return result
-    def _call_ollama_streaming(self, prompt: str, model: str, temp: float, max_tokens: int) -> str | None:
+
+    def _call_ollama_streaming(
+        self, prompt: str, model: str, temp: float, max_tokens: int
+    ) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher._call_ollama_streaming."""
         return _ld._call_ollama_streaming(
-            prompt, model, temp, max_tokens,
+            prompt,
+            model,
+            temp,
+            max_tokens,
             ollama_base_url=self.ollama_base_url,
             timeout=self.timeout,
             retries=self.retries,
@@ -2607,10 +2852,16 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             supervisor=self._ollama_supervisor,
             log=self.log,
         )
-    def _call_ollama_nonstreaming(self, prompt: str, model: str, temp: float, max_tokens: int) -> str | None:
+
+    def _call_ollama_nonstreaming(
+        self, prompt: str, model: str, temp: float, max_tokens: int
+    ) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher._call_ollama_nonstreaming."""
         return _ld._call_ollama_nonstreaming(
-            prompt, model, temp, max_tokens,
+            prompt,
+            model,
+            temp,
+            max_tokens,
             context_tokens=self.request.summarisation_max_context_tokens,
             timeout=self.timeout,
             retries=self.retries,
@@ -2618,6 +2869,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             supervisor=self._ollama_supervisor,
             log=self.log,
         )
+
     def _call_openai_compat(
         self,
         prompt: str,
@@ -2630,24 +2882,34 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     ) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher.call_openai_compat."""
         return ld_call_openai_compat(
-            prompt, base_url, api_key, model, label, temp, max_tokens,
+            prompt,
+            base_url,
+            api_key,
+            model,
+            label,
+            temp,
+            max_tokens,
             timeout=self.timeout,
             retries=self.retries,
             provider=self.provider,
             log=self.log,
         )
+
     # ── Claude (Anthropic) API call ──────────────────────────────────
 
     def _call_claude(self, prompt: str, max_tokens: int, temperature: float) -> str | None:
         """V18.8 (Phase 5.1): delegates to llm_dispatcher.call_claude."""
         return ld_call_claude(
-            prompt, max_tokens, temperature,
+            prompt,
+            max_tokens,
+            temperature,
             claude_api_key=self.claude_api_key,
             claude_model=self.claude_model,
             claude_base_url=self.claude_base_url,
             retries=self.retries,
             log=self.log,
         )
+
     # ─────────────────────────────────────────────────────────────────────────
     # Parsing (improved for academic rigor) – with unconditional thinking stripping
     # ─────────────────────────────────────────────────────────────────────────
@@ -2664,8 +2926,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """Delegate to response_parser.strip_narrative_from_thorough."""
         return _rp_strip_narrative(text)
 
-    def _score_bullet(self, bullet: str, concepts: list[str] | None = None,
-                      source_text: str = "") -> int:
+    def _score_bullet(
+        self, bullet: str, concepts: list[str] | None = None, source_text: str = ""
+    ) -> int:
         """V3.2.4 C1 / V10.14.0 (D3): Score a bullet 0-100 for quality.
 
         V18.11 (Phase 5 Stage 3, Batch 1.2): logic extracted verbatim to
@@ -2677,8 +2940,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """
         return bs_score_bullet(bullet, concepts=concepts, source_text=source_text)
 
-    def _filter_thinking_bullets(self, bullets: list, concepts: list[str] | None = None,
-                                  source_text: str = "") -> list[str]:
+    def _filter_thinking_bullets(
+        self, bullets: list, concepts: list[str] | None = None, source_text: str = ""
+    ) -> list[str]:
         """Filter out bullets that are thinking-process contamination AND
         narrative/story bullets that describe plot rather than concepts.
 
@@ -2693,7 +2957,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         (characterization tests in ``tests/test_filter_thinking.py``).
         """
         return ft_filter_thinking_bullets(
-            bullets, concepts=concepts, source_text=source_text,
+            bullets,
+            concepts=concepts,
+            source_text=source_text,
             current_heading=getattr(self, "_current_heading", "") or "",
             conservative_drops=self.conservative_drops,
             quarantine=self.quarantine,
@@ -2723,7 +2989,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``tests/test_grounding_check.py``).
         """
         return gc_llm_grounding_check(
-            bullets, source_text,
+            bullets,
+            source_text,
             prompt_manager=self.prompt_manager,
             fusion_enabled=self.fusion_enabled,
             fusion_use_for_grounding=self.fusion_use_for_grounding,
@@ -2747,10 +3014,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             bullets=bullets,
             source_text=source_text,
             verify_windows_cache=self._verify_windows_cache,
-            quarantine=getattr(self, 'quarantine', None),
+            quarantine=getattr(self, "quarantine", None),
             log=self.log,
             chapter=getattr(self, "_current_heading", "") or "",
         )
+
     def _extract_bullets_from_text(self, text: str) -> list[str]:
         """Delegate to response_parser.extract_bullets_from_text."""
         return _rp_extract_bullets(text)
@@ -2783,7 +3051,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``tests/test_structured_llm.py``).
         """
         return sl_call_llm_structured(
-            prompt, model, temperature, max_tokens,
+            prompt,
+            model,
+            temperature,
+            max_tokens,
             provider=getattr(self, "provider", "ollama"),
             parse_response=self._parse_response,
             log=self.log,
@@ -2792,6 +3063,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     def _parse_universal(self, cleaned: str) -> dict[str, Any]:
         """Delegate to response_parser._parse_universal (backward compat)."""
         from core.summarisation.response_parser import _parse_universal as _rp_universal
+
         return _rp_universal(cleaned)
 
     def _summarize_with_model(
@@ -2818,8 +3090,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``_call_llm_with_empty_retry``.
         """
         return pc_summarize_with_model(
-            heading, text, model, temp, with_cot=with_cot,
-            max_tokens=max_tokens, concepts=concepts, callouts=callouts,
+            heading,
+            text,
+            model,
+            temp,
+            with_cot=with_cot,
+            max_tokens=max_tokens,
+            concepts=concepts,
+            callouts=callouts,
             request=self.request,
             log=self.log,
             chunked_summarize=self._chunked_summarize,
@@ -2851,36 +3129,51 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # Build TWO prompts: one for sections 1-3, one for sections 4-5.
         # We reuse _build_prompt but with a "chunk" parameter that limits the output_format.
         # This keeps the prompt-assembly logic in one place.
-        prompt1 = self._build_chunked_prompt(heading, text, with_cot=with_cot,
-                                             concepts=concepts, callouts=callouts, chunk=1)
-        prompt2 = self._build_chunked_prompt(heading, text, with_cot=with_cot,
-                                             concepts=concepts, callouts=callouts, chunk=2)
+        prompt1 = self._build_chunked_prompt(
+            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts, chunk=1
+        )
+        prompt2 = self._build_chunked_prompt(
+            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts, chunk=2
+        )
 
         # Call 1: exec + bullets + thorough
         self.log("    📦 Chunk 1/2: executive_summary + bullet_points + thorough_summary", "INFO")
-        raw1 = self._call_llm_with_empty_retry(prompt1, model=model, temperature=temp, max_tokens=max_tokens)
+        raw1 = self._call_llm_with_empty_retry(
+            prompt1, model=model, temperature=temp, max_tokens=max_tokens
+        )
         if not raw1:
             return None
         raw1 = self._strip_thinking(raw1)
         parsed1 = self._parse_response(raw1)
-        self.log(f"    ✅ Chunk 1/2: exec={len(parsed1.get('executive_summary',''))} chars, "
-                 f"bullets={len(parsed1.get('bullet_points',[]))}, "
-                 f"thorough={len(parsed1.get('thorough_summary',''))} chars", "INFO")
+        self.log(
+            f"    ✅ Chunk 1/2: exec={len(parsed1.get('executive_summary', ''))} chars, "
+            f"bullets={len(parsed1.get('bullet_points', []))}, "
+            f"thorough={len(parsed1.get('thorough_summary', ''))} chars",
+            "INFO",
+        )
 
         # Call 2: key_distinctions + theoretical_tensions
         self.log("    📦 Chunk 2/2: key_distinctions + theoretical_tensions", "INFO")
-        raw2 = self._call_llm_with_empty_retry(prompt2, model=model, temperature=temp, max_tokens=max_tokens)
+        raw2 = self._call_llm_with_empty_retry(
+            prompt2, model=model, temperature=temp, max_tokens=max_tokens
+        )
         if not raw2:
             # Chunk 2 failed — return chunk 1 with empty sections 4-5
-            self.log("    ⚠️ Chunk 2/2 failed — returning chunk 1 with empty distinctions/tensions", "WARNING")
+            self.log(
+                "    ⚠️ Chunk 2/2 failed — returning chunk 1 with empty distinctions/tensions",
+                "WARNING",
+            )
             parsed1["raw"] = raw1
             parsed1["model"] = model
             parsed1["temperature"] = temp
             return parsed1
         raw2 = self._strip_thinking(raw2)
         parsed2 = self._parse_response(raw2)
-        self.log(f"    ✅ Chunk 2/2: distinctions={len(parsed2.get('key_distinctions',''))} chars, "
-                 f"tensions={len(parsed2.get('theoretical_tensions',''))} chars", "INFO")
+        self.log(
+            f"    ✅ Chunk 2/2: distinctions={len(parsed2.get('key_distinctions', ''))} chars, "
+            f"tensions={len(parsed2.get('theoretical_tensions', ''))} chars",
+            "INFO",
+        )
 
         # Merge: take sections 1-3 from chunk 1, sections 4-5 from chunk 2
         merged = parsed1.copy()
@@ -2891,8 +3184,15 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         merged["temperature"] = temp
         return merged
 
-    def _build_chunked_prompt(self, heading: str, text: str, with_cot: bool = True,
-                               concepts=None, callouts=None, chunk: int = 1) -> str:
+    def _build_chunked_prompt(
+        self,
+        heading: str,
+        text: str,
+        with_cot: bool = True,
+        concepts=None,
+        callouts=None,
+        chunk: int = 1,
+    ) -> str:
         """V18.3.4 (E3): Build a chunked prompt — only requests SOME sections.
 
         V18.6 (Phase 4, Task 4.2): delegates to
@@ -2904,14 +3204,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         chunk=2: key_distinctions + theoretical_tensions
         """
         from core.summarisation.prompt_assembly import build_chunked_prompt as _pa_chunked
+
         # Build the full prompt first (still in Summarizer — 9 self deps)
-        full_prompt = self._build_prompt(heading, text, with_cot=with_cot,
-                                          concepts=concepts, callouts=callouts)
+        full_prompt = self._build_prompt(
+            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts
+        )
         # V0.05 (F9a): the chunk override carries the same output-selection
         # flags as the primary prompt — an unrequested section must not be
         # demanded back in through the chunking layer.
         return _pa_chunked(
-            heading, text, full_prompt, with_cot=with_cot, chunk=chunk,
+            heading,
+            text,
+            full_prompt,
+            with_cot=with_cot,
+            chunk=chunk,
             include_executive=bool(getattr(self.request, "include_executive_summary", True)),
             include_thorough=bool(getattr(self.request, "include_thorough_summary", True)),
             include_keypoints=bool(getattr(self.request, "include_keypoints", True)),
@@ -2921,18 +3227,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """Merge multiple summaries. M21 fix: take source_text as parameter
         instead of reading self._source_text (thread-safety)."""
         if not source_text:
-            source_text = getattr(self, '_source_text', '')
+            source_text = getattr(self, "_source_text", "")
         if not summaries:
             return {}
         bullet_counts: dict[str, int] = {}
         for s in summaries:
             for bp in s.get("bullet_points", []):
-                norm = re.sub(r'[^\w\s]', '', bp.lower()).strip()
+                norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
                 bullet_counts[norm] = bullet_counts.get(norm, 0) + 1
-        threshold = max(1, len(summaries) // 2)
-        merged_bullets = [bp for bp, count in bullet_counts.items() if count >= threshold]
-        best_exec = max(summaries, key=lambda s: self._compute_coverage(source_text, s.get("executive_summary", "")))
-        best_thorough = max(summaries, key=lambda s: self._compute_coverage(source_text, s.get("thorough_summary", "")))
+        best_exec = max(
+            summaries,
+            key=lambda s: self._compute_coverage(source_text, s.get("executive_summary", "")),
+        )
+        best_thorough = max(
+            summaries,
+            key=lambda s: self._compute_coverage(source_text, s.get("thorough_summary", "")),
+        )
         all_bullets = []
         seen = set()
         # Fix 5: improved dedup — use fuzzy matching (not just exact
@@ -2941,12 +3251,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # is unavailable.
         try:
             from rapidfuzz import fuzz as rf_fuzz
+
             _has_fuzz = True
         except ImportError:
             _has_fuzz = False
         for s in summaries:
             for bp in s.get("bullet_points", []):
-                norm = re.sub(r'[^\w\s]', '', bp.lower()).strip()
+                norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
                 if not norm or len(norm) < 10:
                     continue
                 if _has_fuzz:
@@ -2959,7 +3270,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         return {
             "executive_summary": best_exec.get("executive_summary", ""),
             "thorough_summary": best_thorough.get("thorough_summary", ""),
-            "bullet_points": all_bullets[:self.max_bullets_per_chapter],
+            "bullet_points": all_bullets[: self.max_bullets_per_chapter],
             "key_distinctions": best_exec.get("key_distinctions", ""),  # V13.38.0
             "theoretical_tensions": best_exec.get("theoretical_tensions", ""),  # V13.38.0
             "raw": "Merged from multiple summaries",
@@ -2982,7 +3293,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         (characterization tests in ``tests/test_b3_judge.py``).
         """
         return bj_b3_cloud_judge(
-            samples, source, heading,
+            samples,
+            source,
+            heading,
             prompt_manager=self.prompt_manager,
             call_cloud=self._call_cloud,
             fusion_cloud_temperature=self.fusion_cloud_temperature,
@@ -2990,22 +3303,27 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             compute_coverage=self._compute_coverage,
         )
 
-    def _multi_sample_summarize(self, heading: str, text: str,
-                                 concepts: list[str] | None = None,
-                                 callouts: list[str] | None = None,
-                                 n_samples: int = 3) -> dict | None:
+    def _multi_sample_summarize(
+        self,
+        heading: str,
+        text: str,
+        concepts: list[str] | None = None,
+        callouts: list[str] | None = None,
+        n_samples: int = 3,
+    ) -> dict | None:
         """V3.3.0 B3: Generate N summaries and vote on the best.
 
         V18.11 (Phase 5 Stage 3, Batch 2.2): logic extracted verbatim to
         ``multi_sample.multi_sample_summarize``. The 12 self-deps are
         passed as explicit kwargs (the proven-safe pattern — NOT a
         context object). ``_compute_coverage`` is itself a delegate to
-        ``summary_validator.compute_coverage`` (Phase 5 Batch A). 
+        ``summary_validator.compute_coverage`` (Phase 5 Batch A).
         Byte-for-byte identical behaviour (characterization tests in
         ``tests/test_multi_sample.py``).
         """
         return ms_multi_sample_summarize(
-            heading, text,
+            heading,
+            text,
             concepts=concepts,
             callouts=callouts,
             n_samples=n_samples,
@@ -3057,7 +3375,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 line = line.strip().lstrip("- •\t").strip()
                 if line and len(line) > 5 and len(line) < 100:
                     items.append(line)
-            self.log(f"    🎯 Pre-flight: identified {len(items)} must-have items: {items[:3]}…", "INFO")
+            self.log(
+                f"    🎯 Pre-flight: identified {len(items)} must-have items: {items[:3]}…", "INFO"
+            )
             return items[:7]  # cap at 7
         except Exception as e:
             self.log(f"    ⚠️ Pre-flight failed: {e}", "WARNING")
@@ -3085,6 +3405,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         (characterization tests in ``tests/test_post_processing.py``).
         """
         from core.summarisation.post_processing import normalize_bullets as _pp_normalize
+
         return _pp_normalize(bullets)
 
     def _select_prompt(self, base_name: str) -> str:
@@ -3114,6 +3435,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         one implementation.
         """
         from core.llm.model_taxonomy import is_low_bit_quant
+
         if not is_low_bit_quant(self.primary_model):
             return base_name
         _lowbit_name = f"{base_name}_lowbit"
@@ -3153,14 +3475,17 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """
         _coverage_fn = None
         if heading:
+
             def _coverage_fn(bs: list[str]):
                 try:
                     from core.preprocessing.deterministic_analyzer import (
                         check_coverage,
                         find_analysis_for_heading,
                     )
+
                     _seg_path_c, _analysis_c = find_analysis_for_heading(
-                        self.request.output_dir, heading,
+                        self.request.output_dir,
+                        heading,
                         log_fn=lambda msg, level="DEBUG": self.log(msg, level),
                     )
                     if not _analysis_c:
@@ -3169,6 +3494,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     return set(cov.get("covered", [])) or None
                 except Exception:
                     return None  # assertion disabled — never break the chapter
+
         result, self._leak_guard_fire_count = bc_consolidate_bullets(
             bullets,
             leak_guard_fire_count=self._leak_guard_fire_count,
@@ -3183,7 +3509,6 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             author_coverage_fn=_coverage_fn,
         )
         return result
-
 
     def _switch_to_fast_model(self):
         """V16.0.9: Unload the heavy model before loading the fast model.
@@ -3227,7 +3552,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``tests/test_fast_llm.py``).
         """
         return fl_call_fast_llm(
-            prompt, max_tokens=max_tokens, temperature=temperature,
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
             request=self.request,
             call_llm_with_empty_retry=self._call_llm_with_empty_retry,
             switch_to_fast_model=self._switch_to_fast_model,
@@ -3237,18 +3564,24 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             log=self.log,
         )
 
-    def _call_fast_ollama(self, prompt: str, model: str, temp: float, max_tokens: int) -> str | None:
+    def _call_fast_ollama(
+        self, prompt: str, model: str, temp: float, max_tokens: int
+    ) -> str | None:
         """V18.8 (Phase 5.3): delegates to llm_dispatcher.call_fast_ollama.
 
         Migrated from inline ``for attempt in range(2)`` loop to
         ``@retry_llm_call`` decorator (the last holdout).
         """
         return ld_call_fast_ollama(
-            prompt, model, temp, max_tokens,
+            prompt,
+            model,
+            temp,
+            max_tokens,
             ollama_base_url=self.ollama_base_url,
             fast_model_context=getattr(self.request, "fast_model_context", 131072),
             log=self.log,
         )
+
     def _consolidate_duplicate_claims(self, bullets: list[str]) -> list[str]:
         """V13.44.0 Idea #5: Dedup consolidation pass.
 
@@ -3261,7 +3594,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         """
         return bc_consolidate_duplicate_claims(bullets, log=self.log)
 
-    def _thematic_synthesis(self, heading: str, merged_thorough: str, source_text: str) -> str | None:
+    def _thematic_synthesis(
+        self, heading: str, merged_thorough: str, source_text: str
+    ) -> str | None:
         """V13.44.0 Idea #3: Thematic synthesis pass.
 
         Takes the merged B4 thorough summary (which is a concatenation of section
@@ -3281,7 +3616,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         )
 
         try:
-            raw = self._call_llm_with_empty_retry(prompt, temperature=self.temperature, max_tokens=2048)
+            raw = self._call_llm_with_empty_retry(
+                prompt, temperature=self.temperature, max_tokens=2048
+            )
             if not raw:
                 self.log("    ⚠️ Thematic synthesis: empty response, keeping original", "WARNING")
                 return None
@@ -3293,9 +3630,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             self.log(f"    ⚠️ Thematic synthesis failed: {e}", "WARNING")
             return None
 
-    def _section_map_reduce(self, heading: str, text: str,
-                            concepts: list[str] | None = None,
-                            callouts: list[str] | None = None) -> dict | None:
+    def _section_map_reduce(
+        self,
+        heading: str,
+        text: str,
+        concepts: list[str] | None = None,
+        callouts: list[str] | None = None,
+    ) -> dict | None:
         """V3.3.0 B4: Split chapter into sections, summarize each, merge.
 
         V18.11 (Phase 5 Stage 3, Batch 2.5): logic extracted verbatim to
@@ -3307,7 +3648,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         ``tests/test_map_reduce.py``).
         """
         return mr_section_map_reduce(
-            heading, text,
+            heading,
+            text,
             concepts=concepts,
             callouts=callouts,
             primary_model=self.primary_model,
@@ -3424,8 +3766,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # heading-to-filename matching. Searches the ENTIRE output tree.
         try:
             from core.preprocessing.deterministic_analyzer import find_analysis_for_heading
+
             _seg_path, _analysis = find_analysis_for_heading(
-                self.request.output_dir, heading,
+                self.request.output_dir,
+                heading,
                 log_fn=lambda msg, level="DEBUG": self.log(msg, level),
             )
             if _analysis:
@@ -3441,11 +3785,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         f"{book_context}\n\n---\n\n"
                     )
                 text = _book_ctx_block + _analysis + "\n\n---\n\n## CHAPTER TEXT\n\n" + text
-                self.log(f"    📊 V17.2: Prepended deterministic analysis ({len(_analysis)} chars) — citation recall 78%→100%", "INFO")
+                self.log(
+                    f"    📊 V17.2: Prepended deterministic analysis ({len(_analysis)} chars) — citation recall 78%→100%",
+                    "INFO",
+                )
                 if book_context:
-                    self.log(f"    📚 V18.1: Cross-chapter context injected ({len(book_context)} chars from previous chapters)", "INFO")
+                    self.log(
+                        f"    📚 V18.1: Cross-chapter context injected ({len(book_context)} chars from previous chapters)",
+                        "INFO",
+                    )
             else:
-                self.log("    ⚠️ V17.5: No deterministic analysis found — running without prepend (old behavior)", "DEBUG")
+                self.log(
+                    "    ⚠️ V17.5: No deterministic analysis found — running without prepend (old behavior)",
+                    "DEBUG",
+                )
         except Exception as _e:
             self.log(f"    ⚠️ V17.5: Deterministic analysis load failed: {_e}", "WARNING")
 
@@ -3481,11 +3834,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # chunks (10+ LLM calls each).
         from core.summarisation.strategy import decide_strategy as _p6_decide_strategy
         from utils.settings import Settings as _P6Settings
+
         _p6_window = int(getattr(self.request, "summarisation_max_context_tokens", 32768) or 32768)
         _p6_output = int(getattr(self.request, "summarisation_max_output_tokens", 8192) or 8192)
         _p6_b4_threshold = int(_P6Settings().get("summarisation.b4_threshold_tokens", 12000))
         _p6_decision = _p6_decide_strategy(
-            src_tokens, _p6_window, _p6_output,
+            src_tokens,
+            _p6_window,
+            _p6_output,
             b4_threshold=_p6_b4_threshold,
             map_reduce_threshold=self.MAP_REDUCE_THRESHOLD,
         )
@@ -3504,13 +3860,23 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 "INFO",
             )
             raw, combined_tokens = self._map_reduce_summarize(
-                heading, content,
+                heading,
+                content,
                 map_chunk_tokens=_p6_decision.map_chunk_tokens,
                 map_chunk_overlap=_p6_decision.overlap,
             )
             tok_in = combined_tokens
             if not raw:
-                return SummaryResult(chapter_heading=heading, executive_summary="[Error: Map-Reduce failed]", bullet_points=[], thorough_summary="", success=False, error_msg="Map-Reduce returned no response", input_tokens=tok_in, output_tokens=0)
+                return SummaryResult(
+                    chapter_heading=heading,
+                    executive_summary="[Error: Map-Reduce failed]",
+                    bullet_points=[],
+                    thorough_summary="",
+                    success=False,
+                    error_msg="Map-Reduce returned no response",
+                    input_tokens=tok_in,
+                    output_tokens=0,
+                )
             parsed = self._parse_response(raw)
         else:
             # ── Prepare text (truncate if needed) ──────────────────────────
@@ -3523,7 +3889,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             model = self.primary_model
             self.log(f"    ⚡ Using primary model: {model}", "INFO")
             if concepts:
-                self.log(f"    🎯 Injecting {len(concepts)} concepts + {len(callouts or [])} callouts into prompt", "DEBUG")
+                self.log(
+                    f"    🎯 Injecting {len(concepts)} concepts + {len(callouts or [])} callouts into prompt",
+                    "DEBUG",
+                )
 
             result = None
             # B4: Section map-reduce for long chapters
@@ -3548,12 +3917,17 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # the P6 decision block above (same value, read once).
             _b4_threshold = _p6_b4_threshold
             _b4_decision = _p6_decide_strategy(
-                tok_in, _p6_window, _p6_output,
+                tok_in,
+                _p6_window,
+                _p6_output,
                 b4_threshold=_b4_threshold,
                 map_reduce_threshold=self.MAP_REDUCE_THRESHOLD,
             )
             if tok_in > _b4_threshold and _b4_decision.strategy == "b4_sections":
-                self.log(f"    📑 Chapter is long ({tok_in:,} tokens > {_b4_threshold:,} threshold) — trying section map-reduce (B4)…", "INFO")
+                self.log(
+                    f"    📑 Chapter is long ({tok_in:,} tokens > {_b4_threshold:,} threshold) — trying section map-reduce (B4)…",
+                    "INFO",
+                )
                 result = self._section_map_reduce(heading, text, concepts, callouts)
                 if result:
                     self.log("    ✅ Section map-reduce succeeded", "INFO")
@@ -3567,8 +3941,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # Standard single-pass if B4 didn't apply or failed
             if not result:
                 result = self._summarize_with_model(
-                    heading, text, model, self.temperature, with_cot=True,
-                    concepts=concepts, callouts=callouts,
+                    heading,
+                    text,
+                    model,
+                    self.temperature,
+                    with_cot=True,
+                    concepts=concepts,
+                    callouts=callouts,
                 )
 
             if not result:
@@ -3622,10 +4001,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 )
 
             # ── Verbose: log what the model returned ───────────────────────
-            _bps_count = len([b for b in result.get('bullet_points', []) if b])
-            _exec_len = len(result.get('executive_summary', ''))
-            _thorough_len = len(result.get('thorough_summary', ''))
-            self.log(f"    📝 Parsed: exec={_exec_len} chars, bullets={_bps_count}, thorough={_thorough_len} chars", "DEBUG")
+            _bps_count = len([b for b in result.get("bullet_points", []) if b])
+            _exec_len = len(result.get("executive_summary", ""))
+            _thorough_len = len(result.get("thorough_summary", ""))
+            self.log(
+                f"    📝 Parsed: exec={_exec_len} chars, bullets={_bps_count}, thorough={_thorough_len} chars",
+                "DEBUG",
+            )
 
             # V0.06 (rig audit F1-b — GENERAL RULE: the output selection is
             # the contract, enforced at PARSE time): when the user did not
@@ -3679,6 +4061,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # everything), and the V18.14 judges measure what ships.
             try:
                 from core.summarisation.postchecks import detect_cot_narrative
+
                 _p_tho = result.get("thorough_summary", "") or ""
                 if _p_tho:
                     _p_tho_clean, _p_tho_cot = detect_cot_narrative(_p_tho, "thorough")
@@ -3706,8 +4089,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         result["executive_summary"] = ""
                         self._primary_exec_cot_nuked = True
             except Exception as _cot_e:
-                logger.debug("parse-time CoT gate crashed (non-fatal): %s: %s",
-                             type(_cot_e).__name__, _cot_e)
+                logger.debug(
+                    "parse-time CoT gate crashed (non-fatal): %s: %s", type(_cot_e).__name__, _cot_e
+                )
                 # V18.20.4.11 (P2 / W-a12): the CoT gate is anti-hallucination
                 # machinery — a crashed gate silently re-admits CoT narrative
                 # as "summary" text. The DEBUG-only trace made that invisible
@@ -3721,11 +4105,18 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 )
 
             # ── Compute coverage ────────────────────────────────────────────
-            _bps = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
+            _bps = [
+                str(b) if not isinstance(b, str) else b
+                for b in result.get("bullet_points", [])
+                if b
+            ]
             combined_summary = f"{result.get('executive_summary', '')} {' '.join(_bps)} {result.get('thorough_summary', '')}"
             coverage = self._compute_coverage(content, combined_summary)
             self._last_coverage = coverage  # V13.40.4: for self-review skip decision
-            self.log(f"    📊 Primary coverage: {coverage:.0%} | keywords: {self._extract_keywords(content, n=8)}", "INFO")
+            self.log(
+                f"    📊 Primary coverage: {coverage:.0%} | keywords: {self._extract_keywords(content, n=8)}",
+                "INFO",
+            )
 
             # DEBUG — log which keywords are found vs missing for
             # diagnosing low-coverage chapters (e.g. Chapter 3 at 61%).
@@ -3747,12 +4138,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # vs V13.45.5's 974 chars) and loses specific theorist details.
             # When disabled, coverage falls through to 3-Tier + gap-fill +
             # over-delivery, which is deterministic and targeted.
-            if (round(coverage, 2) < self.coverage_threshold and not self.heavy_model
-                    and self.b3_voting_enabled):  # V15.1.1: gated
-                self.log(f"    🔄 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – trying multi-sample voting (B3)…", "INFO")
+            if (
+                round(coverage, 2) < self.coverage_threshold
+                and not self.heavy_model
+                and self.b3_voting_enabled
+            ):  # V15.1.1: gated
+                self.log(
+                    f"    🔄 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – trying multi-sample voting (B3)…",
+                    "INFO",
+                )
                 voted = self._multi_sample_summarize(heading, text, concepts, callouts, n_samples=3)
                 if voted:
-                    _vbps = [str(b) if not isinstance(b, str) else b for b in voted.get('bullet_points', []) if b]
+                    _vbps = [
+                        str(b) if not isinstance(b, str) else b
+                        for b in voted.get("bullet_points", [])
+                        if b
+                    ]
                     voted_combined = f"{voted.get('executive_summary', '')} {' '.join(_vbps)} {voted.get('thorough_summary', '')}"
                     voted_coverage = self._compute_coverage(content, voted_combined)
                     self.log(f"    📊 Voted coverage: {voted_coverage:.0%}", "INFO")
@@ -3761,7 +4162,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         coverage = voted_coverage
                         _used_b3_voting = True
                         self._last_coverage = coverage  # V13.40.5: update for self-review skip
-                        self.log(f"    ✅ Multi-sample voting improved coverage to {coverage:.0%}", "INFO")
+                        self.log(
+                            f"    ✅ Multi-sample voting improved coverage to {coverage:.0%}",
+                            "INFO",
+                        )
             elif round(coverage, 2) < self.coverage_threshold and not self.b3_voting_enabled:
                 self.log(
                     f"    ℹ️ Coverage {coverage:.0%} < {self.coverage_threshold:.0%} — B3 voting disabled, "
@@ -3770,10 +4174,19 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 )
 
             if coverage < self.coverage_threshold and self.heavy_model:
-                self.log(f"    🔥 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – using heavy model: {self.heavy_model}", "INFO")
-                heavy_result = self._summarize_with_model(heading, text, self.heavy_model, self.temperature * 0.5, with_cot=True)
+                self.log(
+                    f"    🔥 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – using heavy model: {self.heavy_model}",
+                    "INFO",
+                )
+                heavy_result = self._summarize_with_model(
+                    heading, text, self.heavy_model, self.temperature * 0.5, with_cot=True
+                )
                 if heavy_result:
-                    _hbps = [str(b) if not isinstance(b, str) else b for b in heavy_result.get('bullet_points', []) if b]
+                    _hbps = [
+                        str(b) if not isinstance(b, str) else b
+                        for b in heavy_result.get("bullet_points", [])
+                        if b
+                    ]
                     heavy_combined = f"{heavy_result.get('executive_summary', '')} {' '.join(_hbps)} {heavy_result.get('thorough_summary', '')}"
                     heavy_coverage = self._compute_coverage(content, heavy_combined)
                     self.log(f"    📊 Heavy coverage: {heavy_coverage:.0%}", "INFO")
@@ -3782,16 +4195,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         for bp in result.get("bullet_points", []):
                             if bp not in merged_bullets:
                                 merged_bullets.append(bp)
-                        result["executive_summary"] = heavy_result.get("executive_summary", result.get("executive_summary", ""))
-                        result["thorough_summary"] = heavy_result.get("thorough_summary", result.get("thorough_summary", ""))
-                        result["bullet_points"] = merged_bullets[:self.max_bullets_per_chapter]
+                        result["executive_summary"] = heavy_result.get(
+                            "executive_summary", result.get("executive_summary", "")
+                        )
+                        result["thorough_summary"] = heavy_result.get(
+                            "thorough_summary", result.get("thorough_summary", "")
+                        )
+                        result["bullet_points"] = merged_bullets[: self.max_bullets_per_chapter]
                         result["model"] = "primary+heavy"
                         self.log("    ✅ Merged primary + heavy summaries", "INFO")
                     else:
                         for bp in heavy_result.get("bullet_points", []):
                             if bp not in result.get("bullet_points", []):
                                 result["bullet_points"].append(bp)
-                        result["bullet_points"] = result["bullet_points"][:self.max_bullets_per_chapter]
+                        result["bullet_points"] = result["bullet_points"][
+                            : self.max_bullets_per_chapter
+                        ]
                         result["model"] = "primary+heavy_bullets"
                         self.log("    ✅ Added unique heavy bullets to primary summary", "INFO")
                 else:
@@ -3812,7 +4231,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     "INFO",
                 )
                 coverage = self._apply_3tier_coverage(
-                    heading, text, content, result, coverage,
+                    heading,
+                    text,
+                    content,
+                    result,
+                    coverage,
                 )
 
             # ── Old academic-rigor gap-fill: removed in V0.08 (P2) — it was an
@@ -3830,7 +4253,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     concepts=None,  # None = skip C1 quality scoring
                     source_text="",  # empty = skip C4 numeric verification
                 )
-                self.log(f"    ℹ️ B3 voted bullets — skipping aggressive C1/C4 filtering (kept {len(result.get('bullet_points', []))})", "DEBUG")
+                self.log(
+                    f"    ℹ️ B3 voted bullets — skipping aggressive C1/C4 filtering (kept {len(result.get('bullet_points', []))})",
+                    "DEBUG",
+                )
             else:
                 result["bullet_points"] = self._filter_thinking_bullets(
                     result.get("bullet_points", []),
@@ -3849,9 +4275,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # ── A3: Fact-Checking Pipeline (deterministic) ────────────────
             # For each bullet, fuzzy-match against the source text. If no
             # match > 60% similarity, mark as "⚠️ Unverified".
-            result["bullet_points"] = self._verify_bullets(
-                result.get("bullet_points", []), content
-            )
+            result["bullet_points"] = self._verify_bullets(result.get("bullet_points", []), content)
 
             # V13.39.0: Anti-hallucination verification for additive sections.
             # V13.40.0: First, ensure the sections are populated — in academic-rigor
@@ -3880,9 +4304,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # causing UnboundLocalError when academic_rigor triggered the
             # self-review path.
             from core.summarisation.bullet_pipeline import BulletPipeline, PipelineState
+
             _pipeline = BulletPipeline(self)
             _pstate = PipelineState(
-                heading=heading, content=content,
+                heading=heading,
+                content=content,
                 bullets=result.get("bullet_points", []),
                 exec_sum=result.get("executive_summary", ""),
                 thorough=result.get("thorough_summary", ""),
@@ -3890,7 +4316,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
 
             # V10.36.0: Self-consistency + self-review extracted to BulletPipeline.
             _pipeline.run_self_consistency_and_review(_pstate, result, heading, text)
-            result = _pstate.__dict__.get('_result', result)  # get updated result if modified
+            result = _pstate.__dict__.get("_result", result)  # get updated result if modified
             parsed = result
 
         # ── Ensure thorough is long enough ──────────────────────────────────
@@ -3912,9 +4338,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # the user did not request a thorough summary at all (F9a).
         from core.summarisation.length_policy import (
             bullet_target as _bp_target_lp,
+        )
+        from core.summarisation.length_policy import (
             count_source_words as _csw_lp,
+        )
+        from core.summarisation.length_policy import (
             thorough_target as _th_target_lp,
         )
+
         _src_words_lp = _csw_lp(text)
         _th_lo_lp, _th_hi_lp = _th_target_lp(_src_words_lp)
         _bp_lo_lp, _bp_hi_lp = _bp_target_lp(_src_words_lp)
@@ -3935,7 +4366,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # from the FINAL bullet set in that case (see the postchecks block).
         _syn_fb_before = getattr(self, "_synthetic_thorough_fallback_count", 0)
         if _inc_thorough_lp and (not thorough or _thorough_words < _new_threshold):
-            self.log(f"    ⚠️ thorough_summary too short ({_thorough_words} words < {_new_threshold} threshold) — requesting dedicated expansion…", "WARNING")
+            self.log(
+                f"    ⚠️ thorough_summary too short ({_thorough_words} words < {_new_threshold} threshold) — requesting dedicated expansion…",
+                "WARNING",
+            )
             # V18.2.44 (Next Step #6): replaced the 2-attempt
             # ``_call_llm_with_empty_retry`` with the new 3-attempt +
             # synthetic-fallback helper. The V18.2.43 session noted the
@@ -3945,7 +4379,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # thorough is NEVER empty (was silently degrading to a 1-para
             # ``thorough = exec_sum`` stub before).
             _dedicated_prompt = self._build_dedicated_thorough_prompt(
-                heading, text, exec_sum, bullets,
+                heading,
+                text,
+                exec_sum,
+                bullets,
                 # V18.20.3.11 (Phase 3.b, .3.9 rig audit §2): pass the
                 # primary's partial thorough as the continuation draft —
                 # it was cut at the primary's output cap (423-763 words
@@ -3955,21 +4392,29 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 draft=(thorough or None),
             )
             fu_raw = self._call_dedicated_thorough_with_fallback(
-                _dedicated_prompt, exec_sum=exec_sum, bullets=bullets,
+                _dedicated_prompt,
+                exec_sum=exec_sum,
+                bullets=bullets,
                 min_words=_new_threshold,
             )
             if fu_raw:
                 fu_raw = self._strip_thinking(fu_raw)
-                m = re.search(r'<thorough_summary>(.*?)</thorough_summary>', fu_raw, re.DOTALL)
+                m = re.search(r"<thorough_summary>(.*?)</thorough_summary>", fu_raw, re.DOTALL)
                 if m:
                     _new_thorough = m.group(1).strip()
                 else:
                     _new_thorough = fu_raw.strip()
                 if _new_thorough and len(_new_thorough.split()) > _thorough_words:
                     thorough = _new_thorough
-                    self.log(f"    ✅ thorough_summary expanded via dedicated call: {_thorough_words} → {len(thorough.split())} words", "INFO")
+                    self.log(
+                        f"    ✅ thorough_summary expanded via dedicated call: {_thorough_words} → {len(thorough.split())} words",
+                        "INFO",
+                    )
                 elif _new_thorough:
-                    self.log(f"    ℹ️ Dedicated thorough call returned {len(_new_thorough.split())} words (not longer than original {_thorough_words}) — keeping original", "DEBUG")
+                    self.log(
+                        f"    ℹ️ Dedicated thorough call returned {len(_new_thorough.split())} words (not longer than original {_thorough_words}) — keeping original",
+                        "DEBUG",
+                    )
         # V18.20.3.2 (P0-1b): flag when the dedicated call fell back to the
         # deterministic synthesis (early bullets only) — the final stage
         # rebuilds it from the final bullet set.
@@ -4023,10 +4468,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # chapter toward 30+. A 340-word chapter's target is ~5-7 bullets; the
         # expansion call does not fire at all when the primary already met the
         # SCALED target. Also gated on the user's keypoints selection (F9a).
-        _skip_expansion = (
-            not _inc_kp_lp
-            or bool(bullets and len(bullets) >= _bp_lo_lp)
-        )
+        _skip_expansion = not _inc_kp_lp or bool(bullets and len(bullets) >= _bp_lo_lp)
         if _skip_expansion and _inc_kp_lp:
             self.log(
                 f"    V0.05: Skipping bullet expansion — {len(bullets or [])} bullets "
@@ -4041,20 +4483,28 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 "disabled for this chapter.",
                 "DEBUG",
             )
-        if (_inc_kp_lp and bullets and len(bullets) < _bp_lo_lp
-                and not self._deadline_exceeded("dedicated bullet expansion")
-                and not _skip_expansion):
-            self.log(f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…", "INFO")
+        if (
+            _inc_kp_lp
+            and bullets
+            and len(bullets) < _bp_lo_lp
+            and not self._deadline_exceeded("dedicated bullet expansion")
+            and not _skip_expansion
+        ):
+            self.log(
+                f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
+                "INFO",
+            )
             _bp_raw = self._call_llm_with_empty_retry(
                 self._build_dedicated_bullet_prompt(heading, text, exec_sum, bullets),
-                model=self.primary_model, temperature=self.temperature,
+                model=self.primary_model,
+                temperature=self.temperature,
                 max_tokens=min(self.request.summarisation_max_output_tokens, 8192),
             )
             if _bp_raw:
                 _bp_raw = self._strip_thinking(_bp_raw)
                 _new_bullets = self._extract_bullets_from_text(_bp_raw)
                 if _new_bullets and len(_new_bullets) > len(bullets):
-                    _existing_lower = set(b.lower()[:60] for b in bullets)
+                    _existing_lower = {b.lower()[:60] for b in bullets}
                     # V18.20.3.2 (audit N1 / P0-2): BATCH-filter the expansion
                     # candidates in ONE call, then append the survivors. The
                     # V18.20.3.1 path filtered per-bullet (37 separate filter
@@ -4067,10 +4517,13 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     # with an author-year token). One batch call = one honest
                     # aggregate log + the new mid-bullet self-talk patterns
                     # (SELF_TALK_PATTERNS) catch the planning-note class.
-                    _candidates = [nb for nb in _new_bullets
-                                   if nb.lower()[:60] not in _existing_lower]
+                    _candidates = [
+                        nb for nb in _new_bullets if nb.lower()[:60] not in _existing_lower
+                    ]
                     _filtered = self._filter_thinking_bullets(
-                        _candidates, concepts=None, source_text="",
+                        _candidates,
+                        concepts=None,
+                        source_text="",
                     )
                     _added = 0
                     for fb in _filtered:
@@ -4087,7 +4540,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                             "INFO",
                         )
                     if _added > 0:
-                        self.log(f"    ✅ Bullet expansion: {len(bullets) - _added} → {len(bullets)} bullets (added {_added} new via dedicated call)", "INFO")
+                        self.log(
+                            f"    ✅ Bullet expansion: {len(bullets) - _added} → {len(bullets)} bullets (added {_added} new via dedicated call)",
+                            "INFO",
+                        )
                         parsed["bullet_points"] = bullets
 
         # ── Final coverage check ─────────────────────────────────────────────
@@ -4107,7 +4563,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         if not hasattr(self, "_coverage_retry_counts"):
             self._coverage_retry_counts = {}
         chapter_retry_key = heading[:50]
-        self._coverage_retry_counts[chapter_retry_key] = self._coverage_retry_counts.get(chapter_retry_key, 0) + 1
+        self._coverage_retry_counts[chapter_retry_key] = (
+            self._coverage_retry_counts.get(chapter_retry_key, 0) + 1
+        )
         retry_count = self._coverage_retry_counts[chapter_retry_key]
 
         effective_threshold = self.coverage_threshold
@@ -4119,17 +4577,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     f"    ⚠️ Coverage at {coverage:.0%} after {retry_count} retries — "
                     f"BELOW the 70% target. Accepting best-effort to avoid "
                     f"infinite retries, but this chapter needs manual review.",
-                    "WARNING"
+                    "WARNING",
                 )
             else:
                 self.log(
                     f"    📉 Coverage at {coverage:.0%} after {retry_count} retries — "
                     f"accepting best effort (threshold {self.coverage_threshold:.0%})",
-                    "WARNING"
+                    "WARNING",
                 )
 
         if coverage < effective_threshold:
-            self.log(f"    ⚠️ Final coverage {coverage:.0%} below {effective_threshold:.0%} threshold", "WARNING")
+            self.log(
+                f"    ⚠️ Final coverage {coverage:.0%} below {effective_threshold:.0%} threshold",
+                "WARNING",
+            )
         else:
             self.log(f"    ✅ Final coverage {coverage:.0%}", "INFO")
 
@@ -4272,6 +4733,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             # as new bullets), but the "what's missing" TEXT section is suppressed
             # by default. Enable via settings: summarisation.scholar_reflections_enabled
             from utils.settings import Settings as _Settings
+
             _scholar_enabled = _Settings().get("summarisation.scholar_reflections_enabled", False)
             # V18.2.22 (BUG-4): Skip scholar reflection if the chapter deadline
             # is already exceeded — it's optional and consumes an LLM call
@@ -4343,7 +4805,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         try:
             bullets = self._normalize_bullets(bullets)
             parsed["bullet_points"] = bullets
-            self.log(f"    \U0001f9f9 V16.0.2 Bullet normalization: {len(bullets)} bullets normalized", "DEBUG")
+            self.log(
+                f"    \U0001f9f9 V16.0.2 Bullet normalization: {len(bullets)} bullets normalized",
+                "DEBUG",
+            )
         except Exception as _e:
             self.log(f"    \u26a0\ufe0f Bullet normalization crashed (non-fatal): {_e}", "WARNING")
 
@@ -4370,7 +4835,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 bullets = self._consolidate_bullets(bullets, heading=heading)
                 parsed["bullet_points"] = bullets
             except Exception as _e:
-                self.log(f"    \u26a0\ufe0f Bullet consolidation crashed (non-fatal): {_e}", "WARNING")
+                self.log(
+                    f"    \u26a0\ufe0f Bullet consolidation crashed (non-fatal): {_e}", "WARNING"
+                )
 
         # V17.6: Deterministic judge — moved here from inside _gap_fill_concepts().
         # V17.5 had a bug: the V17.4 early-return from _gap_fill_concepts() skipped
@@ -4388,8 +4855,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 extract_authors_from_analysis,
                 find_analysis_for_heading,
             )
+
             _seg_path, _analysis = find_analysis_for_heading(
-                self.request.output_dir, heading,
+                self.request.output_dir,
+                heading,
                 log_fn=lambda msg, level="DEBUG": self.log(msg, level),
             )
             if _analysis:
@@ -4410,7 +4879,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     #    the thorough, log a WARNING (the thorough is a
                     #    narrative, so we don't force gap-fill, but the user
                     #    is notified).
-                    _bullets_only = ' '.join(bullets) if bullets else ''
+                    _bullets_only = " ".join(bullets) if bullets else ""
                     _cov = check_coverage(_analysis, _bullets_only)
                     _missing = _cov["missing"]
                     _total = _cov["total"]
@@ -4418,19 +4887,27 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     self.log(
                         f"    📊 V18.14 Bullets-only judge: {_cov['covered']}/{_total} "
                         f"authors in bullets ({_pct:.0%})"
-                        + (f" — MISSING from bullets: {_missing[:5]}" if _missing else " — ALL IN BULLETS ✅"),
-                        "INFO"
+                        + (
+                            f" — MISSING from bullets: {_missing[:5]}"
+                            if _missing
+                            else " — ALL IN BULLETS ✅"
+                        ),
+                        "INFO",
                     )
                     # Also check thorough-only coverage (informational)
-                    _thorough_only = thorough or exec_sum or ''
+                    _thorough_only = thorough or exec_sum or ""
                     _cov_thorough = check_coverage(_analysis, _thorough_only)
                     _missing_thorough = _cov_thorough["missing"]
                     _pct_thorough = _cov_thorough["coverage_pct"]
                     self.log(
                         f"    📊 V18.14 Thorough-only judge: {_cov_thorough['covered']}/{_total} "
                         f"authors in thorough ({_pct_thorough:.0%})"
-                        + (f" — MISSING from thorough: {_missing_thorough[:5]}" if _missing_thorough else " — ALL IN THOROUGH ✅"),
-                        "INFO" if not _missing_thorough else "WARNING"
+                        + (
+                            f" — MISSING from thorough: {_missing_thorough[:5]}"
+                            if _missing_thorough
+                            else " — ALL IN THOROUGH ✅"
+                        ),
+                        "INFO" if not _missing_thorough else "WARNING",
                     )
                     # If authors are missing from bullets, do targeted gap-fill.
                     # V18.14.1: Removed the len(_missing) <= 20 cap — the V18.14.0
@@ -4465,7 +4942,12 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         # identical behaviour (characterization tests in
                         # ``tests/test_gap_fill_batch.py``).
                         gfb_batch_gap_fill(
-                            heading, content, bullets, _missing, _analysis, _det_authors,
+                            heading,
+                            content,
+                            bullets,
+                            _missing,
+                            _analysis,
+                            _det_authors,
                             check_coverage=check_coverage,
                             call_fast_llm=self._call_fast_llm,
                             temperature=self.temperature,
@@ -4484,6 +4966,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     # `summarisation.inject_lists_section: true`.
                     try:
                         from utils.settings import Settings as _S
+
                         _inject_lists = _S().get("summarisation.inject_lists_section", False)
                     except Exception:
                         _inject_lists = False
@@ -4494,6 +4977,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                             from core.preprocessing.deterministic_analyzer import (
                                 format_lists_section,
                             )
+
                             _seg_path_obj = _P(_seg_path) if _seg_path else None
                             if _seg_path_obj and _seg_path_obj.exists():
                                 _seg_content = _seg_path_obj.read_text(encoding="utf-8")
@@ -4501,13 +4985,24 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                                 if _lists_section:
                                     _list_count = _lists_section.count("### List ")
                                     thorough = (thorough or "") + "\n\n" + _lists_section
-                                    self.log(f"    📝 V17.7: Injected Lists & Frameworks section ({_list_count} lists, all types) [inject_lists_section=true]", "INFO")
+                                    self.log(
+                                        f"    📝 V17.7: Injected Lists & Frameworks section ({_list_count} lists, all types) [inject_lists_section=true]",
+                                        "INFO",
+                                    )
                         except Exception as _le:
-                            self.log(f"    ⚠️ V17.7: Lists section injection failed: {_le}", "WARNING")
+                            self.log(
+                                f"    ⚠️ V17.7: Lists section injection failed: {_le}", "WARNING"
+                            )
                     else:
-                        self.log("    📝 V18.2.18: Lists & Frameworks section skipped (set summarisation.inject_lists_section=true to enable)", "DEBUG")
+                        self.log(
+                            "    📝 V18.2.18: Lists & Frameworks section skipped (set summarisation.inject_lists_section=true to enable)",
+                            "DEBUG",
+                        )
             else:
-                self.log("    [V17.6] No analysis found for judge — skipping deterministic coverage check", "DEBUG")
+                self.log(
+                    "    [V17.6] No analysis found for judge — skipping deterministic coverage check",
+                    "DEBUG",
+                )
         except Exception as _e:
             self.log(f"    ⚠️ V17.6: Deterministic judge failed: {_e}", "WARNING")
 
@@ -4563,7 +5058,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 )
                 parsed["bullet_points"] = bullets
         except Exception as _e:
-            self.log(f"    ⚠️ V18.20.3.2: Post-gap-fill semantic dedup crashed (non-fatal): {_e}", "WARNING")
+            self.log(
+                f"    ⚠️ V18.20.3.2: Post-gap-fill semantic dedup crashed (non-fatal): {_e}",
+                "WARNING",
+            )
             logger.debug("post-gap-fill dedup crashed: %s: %s", type(_e).__name__, _e)
 
         # V18.2.13: Deterministic post-checks — final sweep for the four
@@ -4578,6 +5076,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         try:
             from core.summarisation.postchecks import run_post_checks
             from utils.settings import Settings as _PcSettings
+
             _pc = run_post_checks(
                 bullets=bullets,
                 executive_summary=exec_sum,
@@ -4684,20 +5183,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 or getattr(self, "_thorough_is_synthetic", False)
             )
             if _need_final_derive:
-                _final_bullets_fd = [b for b in (parsed.get("bullet_points") or bullets or []) if b and b.strip()]
+                _final_bullets_fd = [
+                    b for b in (parsed.get("bullet_points") or bullets or []) if b and b.strip()
+                ]
                 _parts_fd = []
                 if exec_sum and exec_sum.strip():
                     _parts_fd.append(exec_sum.strip())
                 if _final_bullets_fd:
-                    _parts_fd.append(" ".join(
-                        f"\u2022 {b.strip()}." for b in _final_bullets_fd
-                    ))
+                    _parts_fd.append(" ".join(f"\u2022 {b.strip()}." for b in _final_bullets_fd))
                 if _parts_fd:
                     _derive_reason = (
                         "primary-call CoT was nuked at parse time"
                         if getattr(self, "_primary_thorough_cot_nuked", False)
                         else "dedicated thorough call fell back to the synthetic "
-                             "synthesis (early bullets only)"
+                        "synthesis (early bullets only)"
                     )
                     _derived_words = len(" ".join(_parts_fd).split())
                     thorough = "\n\n".join(_parts_fd)
@@ -4735,27 +5234,35 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         extract_authors_from_analysis,
                         find_analysis_for_heading,
                     )
+
                     _seg_path_rr, _analysis_rr = find_analysis_for_heading(
-                        self.request.output_dir, heading,
+                        self.request.output_dir,
+                        heading,
                         log_fn=lambda msg, level="DEBUG": self.log(msg, level),
                     )
                     if _analysis_rr:
                         _det_authors_rr = extract_authors_from_analysis(_analysis_rr)
                         if _det_authors_rr:
                             _cov_rr = check_coverage(
-                                _analysis_rr, thorough or exec_sum or "",
+                                _analysis_rr,
+                                thorough or exec_sum or "",
                             )
                             self.log(
                                 f"    📊 V18.20.3.2: Thorough-judge RE-RUN (post "
                                 f"re-derivation): {_cov_rr['covered']}/{_cov_rr['total']} "
                                 f"authors in the SHIPPED thorough "
                                 f"({_cov_rr['coverage_pct']:.0%})"
-                                + (f" — still missing: {_cov_rr['missing'][:5]}" if _cov_rr['missing'] else " ✅"),
-                                "INFO" if not _cov_rr['missing'] else "WARNING",
+                                + (
+                                    f" — still missing: {_cov_rr['missing'][:5]}"
+                                    if _cov_rr["missing"]
+                                    else " ✅"
+                                ),
+                                "INFO" if not _cov_rr["missing"] else "WARNING",
                             )
             except Exception as _rr_e:
-                logger.debug("thorough-judge re-run failed (non-fatal): %s: %s",
-                             type(_rr_e).__name__, _rr_e)
+                logger.debug(
+                    "thorough-judge re-run failed (non-fatal): %s: %s", type(_rr_e).__name__, _rr_e
+                )
                 # V18.20.4.11 (P2 / W-a12): the re-run exists to make the
                 # logged thorough-coverage verdict HONEST (V18.20.3.2 P0-1c);
                 # a crashed re-run silently reverts to the dishonest verdict
@@ -4858,8 +5365,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             from core.preprocessing.deterministic_analyzer import (
                 find_analysis_for_heading,
             )
+
             _seg_path_rf, _analysis_rf = find_analysis_for_heading(
-                self.request.output_dir, heading,
+                self.request.output_dir,
+                heading,
                 log_fn=lambda msg, level="DEBUG": self.log(msg, level),
             )
         except Exception as _rf_e:
@@ -4871,8 +5380,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 f"{type(_rf_e).__name__}: {_rf_e}",
                 "WARNING",
             )
-            logger.debug("recall-floor analysis lookup failed: %s: %s",
-                         type(_rf_e).__name__, _rf_e)
+            logger.debug("recall-floor analysis lookup failed: %s: %s", type(_rf_e).__name__, _rf_e)
 
         # V18.15.7.0 (Fix 3): Hard-cap bullets at 80 (gold standard ≈ 46;
         # V18.15.6.0 shipped 212). Applied AFTER consolidation + gap-fill +
@@ -4890,8 +5398,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         if bullets and len(bullets) > 80:
             try:
                 from core.summarisation.recall_floor import coverage_aware_cap
+
                 bullets = coverage_aware_cap(
-                    bullets, _analysis_rf or "", limit=80,
+                    bullets,
+                    _analysis_rf or "",
+                    limit=80,
                     log_fn=lambda msg, level="WARNING": self.log(msg, level),
                 )
                 parsed["bullet_points"] = bullets
@@ -4906,7 +5417,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 )
                 logger.warning(
                     "coverage-aware cap failed — plain head-cap: %s: %s",
-                    type(_cap_e).__name__, _cap_e,
+                    type(_cap_e).__name__,
+                    _cap_e,
                 )
                 bullets = bullets[:80]
                 parsed["bullet_points"] = bullets
@@ -4932,15 +5444,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # past its source-scaled ceiling.
         if _inc_thorough_lp:
             thorough = self._thorough_theorist_floor(
-                heading, content, thorough, _analysis_rf or "",
+                heading,
+                content,
+                thorough,
+                _analysis_rf or "",
                 scaled_target_hi=_th_hi_lp,
             )
         parsed["thorough_summary"] = thorough
 
         try:
             from core.summarisation.recall_floor import deterministic_recall_floor
+
             _rf = deterministic_recall_floor(
-                _analysis_rf or "", bullets, thorough, content,
+                _analysis_rf or "",
+                bullets,
+                thorough,
+                content,
             )
             if _rf.get("log_parts"):
                 self.log(
@@ -4962,8 +5481,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 f"{type(_rf_e).__name__}: {_rf_e}",
                 "WARNING",
             )
-            logger.debug("recall-floor probe failed: %s: %s",
-                         type(_rf_e).__name__, _rf_e)
+            logger.debug("recall-floor probe failed: %s: %s", type(_rf_e).__name__, _rf_e)
 
         # ── V0.03 (P1-6): quarantine record for THIS chapter ───────────────
         # V0.06 (rig audit F2 — GENERAL RULE: pipeline bookkeeping never
@@ -4977,7 +5495,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         # populated; the render sites were removed in the same release.
         try:
             _qa_entries = [
-                e for e in (getattr(self.quarantine, "entries", None) or [])
+                e
+                for e in (getattr(self.quarantine, "entries", None) or [])
                 if getattr(e, "chapter", "") == heading and not getattr(e, "recovered", False)
             ]
             if _qa_entries:
@@ -4988,8 +5507,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     "INFO",
                 )
         except Exception as _qa_e:
-            logger.debug("quarantine count log failed: %s: %s",
-                         type(_qa_e).__name__, _qa_e)
+            logger.debug("quarantine count log failed: %s: %s", type(_qa_e).__name__, _qa_e)
 
         model_label = parsed.get("model", self.primary_model)
         return SummaryResult(
@@ -5038,9 +5556,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
     # V10.28.0 (Sprint 1.4): Quarantine recovery pass
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _recover_quarantined(
-        self, bullets: list[str], source_text: str
-    ) -> list[str]:
+    def _recover_quarantined(self, bullets: list[str], source_text: str) -> list[str]:
         """Re-scan the quarantine and resurrect high-overlap bullets.
 
         V18.15 (Phase 5 Stage 3, Batch 3.1): logic extracted verbatim to
@@ -5049,7 +5565,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         in ``tests/test_quarantine_recovery.py``).
         """
         return qr_recover_quarantined(
-            bullets, source_text,
+            bullets,
+            source_text,
             quarantine=self.quarantine,
             log=self.log,
             # V0.06 (F4-b): the source-scaled bullet budget is a hard cap at
@@ -5076,7 +5593,12 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         behaviour (characterization tests in ``tests/test_gap_filler.py``).
         """
         return gf_gap_fill_concepts(
-            heading, content, bullets, concepts, exec_summary, thorough_summary,
+            heading,
+            content,
+            bullets,
+            concepts,
+            exec_summary,
+            thorough_summary,
             output_dir=self.request.output_dir,
             temperature=self.temperature,
             effective_target=self._effective_target,
@@ -5129,23 +5651,31 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         disables the budget (old behaviour).
         """
         from utils.settings import Settings as _MrSettings
+
         _budget = int(_MrSettings().get("local.map_phase_max_seconds", 1800))
         if getattr(self, "local_chapter_deadline", 0) > 0:
             _remaining = self.local_chapter_deadline - (
                 time.time() - getattr(self, "_chapter_deadline_start", time.time())
             )
-            _budget = max(300, int(_remaining)) if _budget <= 0 else min(
-                _budget, max(300, int(_remaining))
+            _budget = (
+                max(300, int(_remaining))
+                if _budget <= 0
+                else min(_budget, max(300, int(_remaining)))
             )
         return mr_map_reduce_summarize(
-            heading, content,
+            heading,
+            content,
             primary_model=self.primary_model,
             cache_dir=self.cache_dir,
             input_path_stem=self.request.input_path.stem,
             cache_enabled=bool(getattr(self.request, "summarisation_cache_enabled", False)),
             temperature=self.temperature,
-            map_chunk_tokens=map_chunk_tokens if map_chunk_tokens is not None else self.MAP_CHUNK_TOKENS,
-            map_chunk_overlap=map_chunk_overlap if map_chunk_overlap is not None else self.MAP_CHUNK_OVERLAP,
+            map_chunk_tokens=map_chunk_tokens
+            if map_chunk_tokens is not None
+            else self.MAP_CHUNK_TOKENS,
+            map_chunk_overlap=map_chunk_overlap
+            if map_chunk_overlap is not None
+            else self.MAP_CHUNK_OVERLAP,
             map_mini_words=self.MAP_MINI_WORDS,
             build_prompt=self._build_prompt,
             call_llm=self._call_llm,
@@ -5155,13 +5685,23 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
 
     def _prepare_text(self, text: str) -> str:
         if self.provider == "freellmapi":
-            max_tok = self.request.summarisation_max_context_tokens - self.request.summarisation_max_output_tokens - 700
+            max_tok = (
+                self.request.summarisation_max_context_tokens
+                - self.request.summarisation_max_output_tokens
+                - 700
+            )
         elif self.provider == "claude":
-            max_tok = min(self.request.summarisation_max_context_tokens, 200000) - 2000  # Claude has 200k context
+            max_tok = (
+                min(self.request.summarisation_max_context_tokens, 200000) - 2000
+            )  # Claude has 200k context
         elif self.provider in ("openrouter", "openai", "openai_compatible"):
             max_tok = self.cloud_max_tokens - 2000
         else:
-            max_tok = self.request.summarisation_max_context_tokens - self.request.summarisation_max_output_tokens - 700
+            max_tok = (
+                self.request.summarisation_max_context_tokens
+                - self.request.summarisation_max_output_tokens
+                - 700
+            )
         if max_tok < 8000:
             max_tok = 8000
         if count_tokens(text) <= max_tok:
@@ -5272,6 +5812,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             _running_book_context = ""
             # V18.1 (audit Q2): Read cross-chapter context setting (Settings is a singleton)
             from utils.settings import Settings as _Settings
+
             _cross_chapter_enabled = _Settings().get("summarisation.cross_chapter_context", True)
             for idx, chap in enumerate(chapters, 1):
                 # check cancel between chapters
@@ -5298,6 +5839,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 # V18.2.25 (Phase 4.1): tracing span for the chapter root.
                 # No-op when tracing disabled (span() yields None internally).
                 from core.obs.tracing import span as _otel_span
+
                 with _otel_span(
                     "chapter.summarize",
                     chapter_idx=idx,
@@ -5307,7 +5849,8 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 ):
                     try:
                         _result = self._summarize_inner(
-                            chap["heading"], chap["content"],
+                            chap["heading"],
+                            chap["content"],
                             concepts=chap.get("concepts"),
                             callouts=chap.get("callouts"),
                             book_context=_running_book_context,
@@ -5325,7 +5868,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                         self.log(f"  ❌ Chapter {idx} failed: {e}", "ERROR")
                         logger.exception(
                             "Chapter %d/%d crashed in sequential loop (heading='%s')",
-                            idx, total, chap["heading"][:60],
+                            idx,
+                            total,
+                            chap["heading"][:60],
                         )
                         _result = SummaryResult(
                             chapter_heading=chap["heading"],
@@ -5342,7 +5887,11 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 # but the WARNING leaves a permanent trace for diagnosis.
                 # If the chapter also FAILED, the elapsed time helps explain
                 # whether it was a stall (long) or a parse error (short).
-                if self.is_local and self.local_chapter_deadline > 0 and _chap_elapsed > self.local_chapter_deadline:
+                if (
+                    self.is_local
+                    and self.local_chapter_deadline > 0
+                    and _chap_elapsed > self.local_chapter_deadline
+                ):
                     self.log(
                         f"  ⏱️⚠️ V18.2.15 Chapter {idx}/{total} exceeded deadline: "
                         f"{_chap_elapsed:.0f}s > {self.local_chapter_deadline}s "
@@ -5353,7 +5902,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     )
                     logger.warning(
                         "Chapter %d/%d exceeded deadline: %.0fs > %ds (heading='%s')",
-                        idx, total, _chap_elapsed, self.local_chapter_deadline,
+                        idx,
+                        total,
+                        _chap_elapsed,
+                        self.local_chapter_deadline,
                         chap["heading"][:60],
                     )
                 else:
@@ -5392,7 +5944,10 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                             _running_book_context, _result.executive_summary, chap["heading"]
                         )
                 else:
-                    self.log(f"❌ Chapter {idx}/{total}: {chap['heading'][:40]}… FAILED: {_result.error_msg}", "ERROR")
+                    self.log(
+                        f"❌ Chapter {idx}/{total}: {chap['heading'][:40]}… FAILED: {_result.error_msg}",
+                        "ERROR",
+                    )
                 results.append(_result)
                 # V18.20.3.0: incremental checkpoint — fire the moment the
                 # chapter's result exists (BEFORE the next chapter starts),
@@ -5428,13 +5983,14 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             self._chapter_deadline_start = time.time()
             try:
                 result = self._summarize_inner(
-                    chap["heading"], chap["content"],
+                    chap["heading"],
+                    chap["content"],
                     concepts=chap.get("concepts"),
                     callouts=chap.get("callouts"),
                 )
                 return idx, result
             except Exception as e:
-                self.log(f"  ❌ Chapter {idx+1} failed: {e}", "ERROR")
+                self.log(f"  ❌ Chapter {idx + 1} failed: {e}", "ERROR")
                 return idx, SummaryResult(
                     chapter_heading=chap["heading"],
                     executive_summary="",
@@ -5459,14 +6015,20 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                 results[idx] = result
                 completed += 1
                 if progress_callback:
-                    progress_callback(completed / total, f"Chapter {idx+1}/{total} – complete")
+                    progress_callback(completed / total, f"Chapter {idx + 1}/{total} – complete")
                 # log FAILED vs SUCCESS correctly — was always
                 # logging "✅ complete" even when the chapter failed, which
                 # was misleading (the user saw green checkmarks for failed chapters).
                 if result.success:
-                    self.log(f"✅ Chapter {idx+1}/{total}: {result.chapter_heading[:40]}… complete", "INFO")
+                    self.log(
+                        f"✅ Chapter {idx + 1}/{total}: {result.chapter_heading[:40]}… complete",
+                        "INFO",
+                    )
                 else:
-                    self.log(f"❌ Chapter {idx+1}/{total}: {result.chapter_heading[:40]}… FAILED: {result.error_msg}", "ERROR")
+                    self.log(
+                        f"❌ Chapter {idx + 1}/{total}: {result.chapter_heading[:40]}… FAILED: {result.error_msg}",
+                        "ERROR",
+                    )
                 # V18.20.3.0: incremental checkpoint — fire as each parallel
                 # future completes (chapters[idx] carries the chapter dict).
                 if chapter_done_callback is not None:
@@ -5475,12 +6037,15 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     except Exception as _cb_e:
                         self.log(
                             f"  ⚠️ V18.20.3.0 chapter checkpoint callback "
-                            f"failed (chapter {idx+1}): {_cb_e!r} — continuing.",
+                            f"failed (chapter {idx + 1}): {_cb_e!r} — continuing.",
                             "WARNING",
                         )
                 # check cancel — cancel remaining futures
                 if cancel_event and cancel_event.is_set():
-                    self.log("  ⏹️ Summarisation cancelled by user — stopping pending chapters.", "WARNING")
+                    self.log(
+                        "  ⏹️ Summarisation cancelled by user — stopping pending chapters.",
+                        "WARNING",
+                    )
                     for f in futures:
                         f.cancel()
                     break
@@ -5490,22 +6055,27 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         for i, r in enumerate(results):
             if r is None:
                 # Fallback for any missing results
-                self.log(f"  ⚠️ Chapter {i+1} returned None – creating error placeholder.", "WARNING")
-                final_results.append(SummaryResult(
-                    chapter_heading=chapters[i]["heading"],
-                    executive_summary="[Error: No result]",
-                    bullet_points=[],
-                    thorough_summary="",
-                    success=False,
-                    error_msg="No result returned from summarisation",
-                ))
+                self.log(
+                    f"  ⚠️ Chapter {i + 1} returned None – creating error placeholder.", "WARNING"
+                )
+                final_results.append(
+                    SummaryResult(
+                        chapter_heading=chapters[i]["heading"],
+                        executive_summary="[Error: No result]",
+                        bullet_points=[],
+                        thorough_summary="",
+                        success=False,
+                        error_msg="No result returned from summarisation",
+                    )
+                )
             else:
                 final_results.append(r)
 
         return final_results
 
-    def build_book_summary(self, summaries: list[SummaryResult], book_title: str,
-                           stats: dict | None = None) -> str:
+    def build_book_summary(
+        self, summaries: list[SummaryResult], book_title: str, stats: dict | None = None
+    ) -> str:
         """V0.03 (P1-6): optional ``stats`` out-param receives the ACTUAL
         aggregated numbers ("bullets" = the deduped cross-chapter count,
         "chapters" = chapter count) so the caller's provenance stamp stops
@@ -5523,14 +6093,22 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         view ONLY. Section content additionally honors the per-chapter
         output-selection flags (F1-c).
         """
-        lines = [f"# Book Summary: {book_title}", "", f"> Provider: {self.provider} | Language: {self.language} | Chapters: {len(summaries)} | {time.strftime('%Y-%m-%d')}", "", "---", ""]
+        lines = [
+            f"# Book Summary: {book_title}",
+            "",
+            f"> Provider: {self.provider} | Language: {self.language} | Chapters: {len(summaries)} | {time.strftime('%Y-%m-%d')}",
+            "",
+            "---",
+            "",
+        ]
         seen = set()
         all_bullets = []
         for s in summaries:
             for bp in s.bullet_points:
                 norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
                 if norm and norm not in seen and len(bp) > 10:
-                    seen.add(norm); all_bullets.append(bp)
+                    seen.add(norm)
+                    all_bullets.append(bp)
         if stats is not None:
             try:
                 stats["bullets"] = len(all_bullets)
@@ -5544,15 +6122,18 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
         lines += ["## 📖 Chapter-by-Chapter Executive Summaries", ""]
         for idx, s in enumerate(summaries, 1):
             if not s.success:
-                lines += [f"### {idx}. {s.chapter_heading}", "",
-                          f"⚠️ Summary failed: {s.error_msg or 'unknown error'}", ""]
+                lines += [
+                    f"### {idx}. {s.chapter_heading}",
+                    "",
+                    f"⚠️ Summary failed: {s.error_msg or 'unknown error'}",
+                    "",
+                ]
                 continue
             _inc_exec_s = getattr(s, "include_executive_summary", True)
             _inc_kp_s = getattr(s, "include_keypoints", True)
             _inc_th_s = getattr(s, "include_thorough_summary", True)
             if _inc_exec_s and (s.executive_summary or "").strip():
-                lines += [f"### {idx}. {s.chapter_heading}", "",
-                          s.executive_summary.strip(), ""]
+                lines += [f"### {idx}. {s.chapter_heading}", "", s.executive_summary.strip(), ""]
             else:
                 lines += [f"### {idx}. {s.chapter_heading}", ""]
             if _inc_kp_s and s.bullet_points:
@@ -5562,5 +6143,12 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
                     lines.append(f"- {bp_str}")
                 lines.append("")
             if _inc_th_s and s.thorough_summary and s.thorough_summary.strip():
-                lines += ["<details><summary>Detailed summary</summary>", "", s.thorough_summary, "", "</details>", ""]
+                lines += [
+                    "<details><summary>Detailed summary</summary>",
+                    "",
+                    s.thorough_summary,
+                    "",
+                    "</details>",
+                    "",
+                ]
         return "\n".join(lines)

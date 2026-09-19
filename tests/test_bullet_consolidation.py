@@ -10,6 +10,7 @@ from ``Summarizer``:
 
 Run: pytest tests/test_bullet_consolidation.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,12 +22,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain (if anything pulls in token_counter) works.
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.bullet_consolidation import (
     consolidate_bullets,
@@ -57,7 +61,10 @@ class TestConsolidateDuplicateClaimsEdge:
 
     def test_two_identical_bullets_deduped(self):
         """Exact duplicates (after punctuation normalization) are deduped to 1."""
-        b = ["Erikson defined identity as a lifelong process.", "Erikson defined identity as a lifelong process."]
+        b = [
+            "Erikson defined identity as a lifelong process.",
+            "Erikson defined identity as a lifelong process.",
+        ]
         out = consolidate_duplicate_claims(b)
         assert len(out) == 1
 
@@ -252,8 +259,15 @@ class TestConsolidateBulletsEdge:
         """< 5 bullets short-circuits: returns (bullets, fire_count) with no
         LLM call and fire count unchanged."""
         deps = _make_deps(llm_response="should-not-be-called")
-        bullets = ["One bullet here.", "Two bullet here.", "Three bullet here.", "Four bullet here."]
-        out, fire = consolidate_bullets(bullets, leak_guard_fire_count=0, log=_CapturingLog(), **deps)
+        bullets = [
+            "One bullet here.",
+            "Two bullet here.",
+            "Three bullet here.",
+            "Four bullet here.",
+        ]
+        out, fire = consolidate_bullets(
+            bullets, leak_guard_fire_count=0, log=_CapturingLog(), **deps
+        )
         assert out == bullets
         assert fire == 0
         # No LLM call was made
@@ -365,7 +379,9 @@ class TestConsolidateBulletsLeakGuard:
         bullets = [f"Bullet {i} content here." for i in range(5)]
         llm_resp = "- Clean consolidated bullet one with content.\n- Clean consolidated bullet two with content."
         deps = _make_deps(llm_response=llm_resp)
-        out, fire = consolidate_bullets(bullets, leak_guard_fire_count=2, log=_CapturingLog(), **deps)
+        out, fire = consolidate_bullets(
+            bullets, leak_guard_fire_count=2, log=_CapturingLog(), **deps
+        )
         assert fire == 2  # unchanged
 
     def test_escalated_warning_at_over_two_fires(self):
@@ -393,7 +409,9 @@ class TestConsolidateBulletsContract:
         bullets = [f"Bullet {i} content here." for i in range(5)]
         llm_resp = "- Clean consolidated bullet one with content.\n- Clean consolidated bullet two with content."
         deps = _make_deps(llm_response=llm_resp)
-        out, fire = consolidate_bullets(bullets, leak_guard_fire_count=0, log=_CapturingLog(), **deps)
+        out, fire = consolidate_bullets(
+            bullets, leak_guard_fire_count=0, log=_CapturingLog(), **deps
+        )
         assert isinstance(out, list)
         assert all(isinstance(x, str) for x in out)
         assert isinstance(fire, int)
@@ -416,4 +434,3 @@ class TestConsolidateBulletsContract:
         out, fire = consolidate_bullets(bullets, leak_guard_fire_count=0, **deps)
         assert isinstance(out, list)
         assert isinstance(fire, int)
-

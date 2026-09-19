@@ -14,6 +14,7 @@ Usage::
     if not is_ok:
         logger.warning("GGUF checksum mismatch: %s", reason)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -123,4 +124,7 @@ def verify_gguf_checksum(gguf_path: str | Path) -> tuple[bool, str]:
     if current_checksum == cached_checksum:
         return True, "checksum matched"
 
-    return False, f"checksum mismatch: expected {cached_checksum[:16]}…, got {current_checksum[:16]}…"
+    return (
+        False,
+        f"checksum mismatch: expected {cached_checksum[:16]}…, got {current_checksum[:16]}…",
+    )

@@ -158,9 +158,7 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="fast",
         version_added="V1.0",
     ),
-
     # ═══ OUTPUT STUDIO (opt-in extra outputs) ═══
-
     # ── V4.0.0 originals ──
     OutputSpec(
         key="briefing",
@@ -204,7 +202,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="fast",
         version_added="V4.0.0",
     ),
-
     # ── V4.1.0 ──
     OutputSpec(
         key="packets",
@@ -291,13 +288,12 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="very_slow",
         version_added="V4.2.0",
     ),
-
     # ── V10.1.0 ──
     OutputSpec(
         key="evidence_map",
         label="Scientific Evidence Map (langextract)",
         subtitle="Interactive HTML: every claim highlighted in its source. "
-                 "Requires langextract + grounding enabled.",
+        "Requires langextract + grounding enabled.",
         icon_name="layout",
         default=False,
         setting_key="outputs.evidence_map",
@@ -308,7 +304,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="slow",
         version_added="V10.1.0",
     ),
-
     # ── V10.17.0 ──
     OutputSpec(
         key="qa",
@@ -324,7 +319,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="medium",
         version_added="V10.17.0",
     ),
-
     # ── V10.20.0 ──
     OutputSpec(
         key="glossary",
@@ -370,7 +364,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         version_added="V10.20.0",
         deprecated=True,  # V13.30.0 (P3.4): low usage, overlap with summary
     ),
-
     # ── V10.21.0 ──
     OutputSpec(
         key="skill",
@@ -387,7 +380,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         version_added="V10.21.0",
         deprecated=True,  # V13.30.0 (P3.4): never used, plugin system removed
     ),
-
     # ── V10.35.0 (Sprint 8): EPUB output ──
     OutputSpec(
         key="epub",
@@ -403,7 +395,6 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
         cost_tier="fast",
         version_added="V10.35.0",
     ),
-
     # ── V10.35.0 (Sprint 9): Quote bank ──
     OutputSpec(
         key="quote_bank",
@@ -495,10 +486,7 @@ def get_dialog_outputs() -> list:
     Kept as a tuple-list so the dialog's existing sort-by-cost code keeps
     working unchanged.
     """
-    return [
-        (o.setting_key, o.label, o.subtitle, o.icon_name, o.default)
-        for o in OUTPUT_REGISTRY
-    ]
+    return [(o.setting_key, o.label, o.subtitle, o.icon_name, o.default) for o in OUTPUT_REGISTRY]
 
 
 def get_settings_section_outputs() -> list:
@@ -507,10 +495,7 @@ def get_settings_section_outputs() -> list:
     hardcoded.  Studio outputs only (core outputs are handled elsewhere
     in the settings dialog).
     """
-    return [
-        (o.setting_key, o.label, o.default)
-        for o in get_studio_outputs()
-    ]
+    return [(o.setting_key, o.label, o.default) for o in get_studio_outputs()]
 
 
 __all__ = [

@@ -28,6 +28,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 8: Review
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step8Review(WizardStep):
     """Review ALL choices + start conversion. Shows every setting with Edit buttons."""
 
@@ -43,7 +44,9 @@ class Step8Review(WizardStep):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        warning = QLabel("⚠️ Conversion is resource and time intensive. Please review every category below before clicking Start.")
+        warning = QLabel(
+            "⚠️ Conversion is resource and time intensive. Please review every category below before clicking Start."
+        )
         warning.setObjectName("Caption")
         warning.setWordWrap(True)
         p = theme_manager.palette
@@ -62,8 +65,14 @@ class Step8Review(WizardStep):
         edit_lbl.setStyleSheet("font-size: 11px; background: transparent;")
         edit_row.addWidget(edit_lbl)
         edit_steps = [
-            (0, "PDF"), (1, "Range"), (2, "OCR"), (3, "Outputs"),
-            (4, "Models"), (5, "Translation"), (6, "Advanced"), (7, "Fine-tune"),
+            (0, "PDF"),
+            (1, "Range"),
+            (2, "OCR"),
+            (3, "Outputs"),
+            (4, "Models"),
+            (5, "Translation"),
+            (6, "Advanced"),
+            (7, "Fine-tune"),
         ]
         self._edit_buttons: list[QPushButton] = []
         for step_idx, label in edit_steps:
@@ -224,7 +233,9 @@ class Step8Review(WizardStep):
         lines.append(f"  Self-consistency: {'yes' if s.self_consistency else 'no'}")
         lines.append(f"  Heavy model: {s.heavy_model or '(disabled)'}")
         lines.append(f"  Coverage threshold: {s.coverage_threshold}%")
-        lines.append(f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}")
+        lines.append(
+            f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}"
+        )
         lines.append(f"  Content filter: {'yes' if s.enable_content_filter else 'no'}")
         lines.append(f"  Max context: {s.max_context_tokens} tokens")
         lines.append(f"  Max output: {s.max_output_tokens} tokens")

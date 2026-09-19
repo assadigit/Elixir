@@ -1,4 +1,5 @@
 """Phase 0 smoke test — verifies the project imports and tooling works."""
+
 from __future__ import annotations
 
 from pathlib import Path

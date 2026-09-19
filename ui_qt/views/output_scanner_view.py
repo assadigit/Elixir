@@ -37,20 +37,20 @@ from ui_qt.theme import theme_manager
 
 # Status → (icon, color_name, label)
 _STATUS_META = {
-    "generated":     ("✅", "success",    "Generated"),
-    "missing":       ("❌", "error",      "Missing"),
-    "failed":        ("⚠️", "error",      "Failed"),
-    "skipped":       ("⏭️", "text_muted", "Skipped"),
-    "not_requested": ("—",  "text_muted", "Not requested"),
+    "generated": ("✅", "success", "Generated"),
+    "missing": ("❌", "error", "Missing"),
+    "failed": ("⚠️", "error", "Failed"),
+    "skipped": ("⏭️", "text_muted", "Skipped"),
+    "not_requested": ("—", "text_muted", "Not requested"),
 }
 
 # Category display order + labels
 _CATEGORIES = [
-    ("markdown",    "📄 Markdown"),
-    ("summaries",   "📝 Summaries & Keypoints"),
-    ("outputs",     "📤 Output Studio"),
+    ("markdown", "📄 Markdown"),
+    ("summaries", "📝 Summaries & Keypoints"),
+    ("outputs", "📤 Output Studio"),
     ("translation", "🌐 Translation"),
-    ("logs",        "📋 Logs & Reports"),
+    ("logs", "📋 Logs & Reports"),
 ]
 
 
@@ -75,12 +75,15 @@ class OutputScannerView(QWidget):
 
         # ── Header card: folder picker + scan ────────────────────────────
         header_card = Card(padding=10, spacing=6)
-        header_card.addWidget(StepHeader(
-            1, "Output Scanner",
-            "Select a book's output folder to check what was generated, "
-            "what's missing, and what failed. Catches silent skips and "
-            "ghost files.",
-        ))
+        header_card.addWidget(
+            StepHeader(
+                1,
+                "Output Scanner",
+                "Select a book's output folder to check what was generated, "
+                "what's missing, and what failed. Catches silent skips and "
+                "ghost files.",
+            )
+        )
 
         pick_row = QHBoxLayout()
         pick_row.setContentsMargins(0, 0, 0, 0)
@@ -196,9 +199,7 @@ class OutputScannerView(QWidget):
 
         # Summary line
         if r.layout == "unknown":
-            self.summary_lbl.setText(
-                "⚠️ This folder doesn't look like a Elixir output directory."
-            )
+            self.summary_lbl.setText("⚠️ This folder doesn't look like a Elixir output directory.")
             self.summary_lbl.setStyleSheet(f"color: {p.warning};")
             return
 
@@ -207,7 +208,6 @@ class OutputScannerView(QWidget):
         failed = r.failed_count
         not_req = r.summary_counts.get("not_requested", 0)
         skipped = r.summary_counts.get("skipped", 0)
-        total = r.total
 
         parts = [f"<b>{r.book_title or r.stem}</b>"]
         parts.append(f"layout: {r.layout}")
@@ -230,19 +230,33 @@ class OutputScannerView(QWidget):
             # scanner's requested/not_requested detection is unreliable for
             # output_studio types (the settings file may not have those flags).
             _REGENERABLE_KEYS = {
-                "briefing", "podcast_script", "packets", "flashcards",
-                "obsidian", "study_guide", "social", "mindmap", "podcast_audio",
-                "evidence_map", "qa", "glossary", "patterns", "cheatsheet", "skill",
-                "epub", "quote_bank",  # V10.35.0
+                "briefing",
+                "podcast_script",
+                "packets",
+                "flashcards",
+                "obsidian",
+                "study_guide",
+                "social",
+                "mindmap",
+                "podcast_audio",
+                "evidence_map",
+                "qa",
+                "glossary",
+                "patterns",
+                "cheatsheet",
+                "skill",
+                "epub",
+                "quote_bank",  # V10.35.0
             }
             _has_actionable = any(
-                res.status in ("missing", "failed")
-                and res.key in _REGENERABLE_KEYS
+                res.status in ("missing", "failed") and res.key in _REGENERABLE_KEYS
                 for res in r.results
             )
             self.complete_all_btn.setVisible(_has_actionable)
         else:
-            self.summary_lbl.setStyleSheet(f"color: {p.success}; font-size: 11px; font-weight: 600;")
+            self.summary_lbl.setStyleSheet(
+                f"color: {p.success}; font-size: 11px; font-weight: 600;"
+            )
             self.complete_all_btn.setVisible(False)
 
         # Group results by category
@@ -266,16 +280,22 @@ class OutputScannerView(QWidget):
             res.status, ("?", "text_muted", res.status)
         )
         color_map = {
-            "success": p.success, "error": p.error, "warning": p.warning,
-            "info": p.info, "text_muted": p.text_muted, "text_primary": p.text_primary,
+            "success": p.success,
+            "error": p.error,
+            "warning": p.warning,
+            "info": p.info,
+            "text_muted": p.text_muted,
+            "text_primary": p.text_primary,
         }
         color = color_map.get(color_name, p.text_muted)
 
         row = QFrame()
         row.setObjectName("ScanRow")
         bg = p.bg_surface if res.status == "generated" else p.bg_input
-        border = p.border if res.status == "generated" else (
-            p.error if res.status in ("missing", "failed") else p.border
+        border = (
+            p.border
+            if res.status == "generated"
+            else (p.error if res.status in ("missing", "failed") else p.border)
         )
         row.setStyleSheet(
             f"QFrame#ScanRow {{ background-color: {bg};"
@@ -305,9 +325,7 @@ class OutputScannerView(QWidget):
         elif res.checkpoint_status == "done" and res.status != "generated":
             detail_text += "  [checkpoint: done but file missing!]"
         detail = QLabel(detail_text)
-        detail.setStyleSheet(
-            f"font-size: 10px; color: {p.text_muted}; background: transparent;"
-        )
+        detail.setStyleSheet(f"font-size: 10px; color: {p.text_muted}; background: transparent;")
         detail.setWordWrap(True)
         text_col.addWidget(detail)
         lay.addLayout(text_col, 1)
@@ -323,8 +341,15 @@ class OutputScannerView(QWidget):
 
         # V7.9.0: Regenerate button for missing/failed regenerable outputs
         _REGENERABLE = {
-            "briefing", "podcast_script", "packets", "flashcards",
-            "obsidian", "study_guide", "social", "mindmap", "podcast_audio",
+            "briefing",
+            "podcast_script",
+            "packets",
+            "flashcards",
+            "obsidian",
+            "study_guide",
+            "social",
+            "mindmap",
+            "podcast_audio",
         }
         if res.key in _REGENERABLE and res.status in ("missing", "failed", "skipped"):
             regen_btn = QPushButton("🔄")
@@ -350,8 +375,15 @@ class OutputScannerView(QWidget):
             return
 
         _REGENERABLE = {
-            "briefing", "podcast_script", "packets", "flashcards",
-            "obsidian", "study_guide", "social", "mindmap", "podcast_audio",
+            "briefing",
+            "podcast_script",
+            "packets",
+            "flashcards",
+            "obsidian",
+            "study_guide",
+            "social",
+            "mindmap",
+            "podcast_audio",
         }
         # Collect all missing/failed outputs that are regenerable.
         # V9.4.1 fix: don't filter by "not_requested" — the scanner's
@@ -360,29 +392,34 @@ class OutputScannerView(QWidget):
         # exactly what will be regenerated, so they can cancel if they
         # don't want something.
         to_regen = [
-            res.key for res in self._report.results
-            if res.status in ("missing", "failed")
-            and res.key in _REGENERABLE
+            res.key
+            for res in self._report.results
+            if res.status in ("missing", "failed") and res.key in _REGENERABLE
         ]
 
         if not to_regen:
             from PySide6.QtWidgets import QMessageBox
+
             QMessageBox.information(
-                self, "Nothing to regenerate",
+                self,
+                "Nothing to regenerate",
                 "No missing/failed regenerable outputs found.\n\n"
                 "All outputs that can be regenerated are either already\n"
-                "generated or not applicable to this content type."
+                "generated or not applicable to this content type.",
             )
             return
 
         from PySide6.QtWidgets import QMessageBox
+
         ret = QMessageBox.question(
-            self, "Complete All Requested",
+            self,
+            "Complete All Requested",
             f"Regenerate {len(to_regen)} missing/failed output(s)?\n\n"
             f"Outputs to regenerate:\n  • " + "\n  • ".join(to_regen) + "\n\n"
             "This re-runs each generator from existing summaries (no re-extraction\n"
             "or re-summarization). LLM-based outputs may take several minutes.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
@@ -431,7 +468,7 @@ class OutputScannerView(QWidget):
 
     def _regen_next(self) -> None:
         """Process the next item in the regeneration queue."""
-        if not hasattr(self, '_regen_queue') or not self._regen_queue:
+        if not hasattr(self, "_regen_queue") or not self._regen_queue:
             self._on_batch_complete()
             return
 
@@ -441,16 +478,17 @@ class OutputScannerView(QWidget):
             f"Completing {self._regen_current}/{self._regen_total}: {output_key}…"
         )
 
-
         def _run():
             ok, msg = self.controller.regenerate_output(
-                self._selected_folder, output_key,
-                log_callback=lambda m, l: None,
+                self._selected_folder,
+                output_key,
+                log_callback=lambda m, lvl: None,
             )
             self._regen_results_log.append((output_key, ok, msg))
             try:
                 from PySide6.QtCore import QMetaObject
                 from PySide6.QtCore import Qt as _Qt
+
                 QMetaObject.invokeMethod(
                     self, "_on_batch_item_done", _Qt.ConnectionType.QueuedConnection
                 )
@@ -465,7 +503,7 @@ class OutputScannerView(QWidget):
     def _on_batch_item_done(self) -> None:
         """Called after each batch item completes."""
         # Process next item
-        if hasattr(self, '_regen_queue') and self._regen_queue:
+        if hasattr(self, "_regen_queue") and self._regen_queue:
             self._regen_next()
         else:
             self._on_batch_complete()
@@ -483,10 +521,10 @@ class OutputScannerView(QWidget):
         total = len(self._regen_results_log)
 
         if failed == 0:
-            self.summary_lbl.setText(
-                f"✅ Completed all {succeeded} output(s) successfully!"
+            self.summary_lbl.setText(f"✅ Completed all {succeeded} output(s) successfully!")
+            self.summary_lbl.setStyleSheet(
+                f"color: {p.success}; font-size: 11px; font-weight: 600;"
             )
-            self.summary_lbl.setStyleSheet(f"color: {p.success}; font-size: 11px; font-weight: 600;")
         else:
             failed_names = [k for k, ok, _ in self._regen_results_log if not ok]
             self.summary_lbl.setText(
@@ -502,13 +540,16 @@ class OutputScannerView(QWidget):
         if not self._selected_folder:
             return
         from PySide6.QtWidgets import QMessageBox
+
         # Confirm
         ret = QMessageBox.question(
-            self, "Regenerate output",
+            self,
+            "Regenerate output",
             f"Regenerate '{output_key}' from existing summaries?\n\n"
             f"This re-runs just that output generator (no re-extraction or\n"
             f"re-summarization). It may take a few minutes for LLM-based outputs.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
@@ -517,16 +558,17 @@ class OutputScannerView(QWidget):
         self.scan_btn.setEnabled(False)
         self.summary_lbl.setText(f"Regenerating {output_key}…")
 
-
         def _run():
             ok, msg = self.controller.regenerate_output(
-                self._selected_folder, output_key,
-                log_callback=lambda m, l: None,  # silent — the generator logs internally
+                self._selected_folder,
+                output_key,
+                log_callback=lambda m, lvl: None,  # silent — the generator logs internally
             )
             self._regen_result = (ok, msg)
             try:
                 from PySide6.QtCore import QMetaObject
                 from PySide6.QtCore import Qt as _Qt
+
                 QMetaObject.invokeMethod(
                     self, "_on_regen_done", _Qt.ConnectionType.QueuedConnection
                 )

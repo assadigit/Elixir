@@ -22,9 +22,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class ContentPreset:
     """Configuration preset for a specific content type."""
+
     name: str
     label: str  # Human-readable label for UI
     description: str  # Short description for UI tooltip
@@ -180,8 +182,8 @@ _CATALOGUE = ContentPreset(
     reading_level_target=8,
     coverage_threshold=0.70,
     # V8.0.0 #5: catalogue-specific behavior
-    extract_images=True,    # crop images from pages for the gallery
-    skip_summaries=True,    # summaries aren't useful for catalogues
+    extract_images=True,  # crop images from pages for the gallery
+    skip_summaries=True,  # summaries aren't useful for catalogues
     recommended_outputs=["full_markdown", "screenshots"],
 )
 
@@ -207,8 +209,8 @@ _MAGAZINE = ContentPreset(
     reading_level_target=8,
     coverage_threshold=0.70,
     # V8.0.0 #5: magazine-specific behavior
-    extract_images=True,    # image gallery
-    skip_summaries=False,   # still summarize articles
+    extract_images=True,  # image gallery
+    skip_summaries=False,  # still summarize articles
     recommended_outputs=["full_markdown", "screenshots", "chapter_summaries"],
 )
 
@@ -242,8 +244,8 @@ _PRESETS: dict[str, ContentPreset] = {
     "self_help": _SELF_HELP,
     "philosophy": _PHILOSOPHY,
     "catalogue": _CATALOGUE,
-    "magazine": _MAGAZINE,       # V8.0.0 #5
-    "scanned_pdf": _SCANNED,     # V8.0.0 #5
+    "magazine": _MAGAZINE,  # V8.0.0 #5
+    "scanned_pdf": _SCANNED,  # V8.0.0 #5
 }
 
 
@@ -275,10 +277,23 @@ def detect_source_type(text: str) -> str:
     # Academic paper indicators
     academic_score = 0
     academic_indicators = [
-        "abstract", "methodology", "hypothesis", "et al.", "references",
-        "doi", "arxiv", "journal of", "proceedings", "citations",
-        "empirical", "qualitative", "quantitative", "regression analysis",
-        "p < 0.05", "p<0.05", "statistically significant",
+        "abstract",
+        "methodology",
+        "hypothesis",
+        "et al.",
+        "references",
+        "doi",
+        "arxiv",
+        "journal of",
+        "proceedings",
+        "citations",
+        "empirical",
+        "qualitative",
+        "quantitative",
+        "regression analysis",
+        "p < 0.05",
+        "p<0.05",
+        "statistically significant",
     ]
     for indicator in academic_indicators:
         if indicator in text_lower:
@@ -289,11 +304,23 @@ def detect_source_type(text: str) -> str:
     # Self-help indicators
     self_help_score = 0
     self_help_indicators = [
-        "transform your", "empower yourself", "achieve your goals",
-        "exercise:", "try this:", "action item:", "worksheet:",
-        "takeaway:", "practice:", "homework:",
-        "motivation", "mindset", "success", "breakthrough",
-        "chapter exercise", "your journey", "step-by-step",
+        "transform your",
+        "empower yourself",
+        "achieve your goals",
+        "exercise:",
+        "try this:",
+        "action item:",
+        "worksheet:",
+        "takeaway:",
+        "practice:",
+        "homework:",
+        "motivation",
+        "mindset",
+        "success",
+        "breakthrough",
+        "chapter exercise",
+        "your journey",
+        "step-by-step",
     ]
     for indicator in self_help_indicators:
         if indicator in text_lower:
@@ -304,11 +331,25 @@ def detect_source_type(text: str) -> str:
     # Philosophy indicators
     philosophy_score = 0
     philosophy_indicators = [
-        "epistemology", "metaphysics", "ontological", "phenomenology",
-        "existentialism", "nihilism", "determinism", "a priori",
-        "dialectic", "syllogism", "categorical imperative",
-        "moral relativism", "virtue ethics", "deontology",
-        "nietzsche", "kant", "hegel", "sartre", "aristotle",
+        "epistemology",
+        "metaphysics",
+        "ontological",
+        "phenomenology",
+        "existentialism",
+        "nihilism",
+        "determinism",
+        "a priori",
+        "dialectic",
+        "syllogism",
+        "categorical imperative",
+        "moral relativism",
+        "virtue ethics",
+        "deontology",
+        "nietzsche",
+        "kant",
+        "hegel",
+        "sartre",
+        "aristotle",
     ]
     for indicator in philosophy_indicators:
         if indicator in text_lower:

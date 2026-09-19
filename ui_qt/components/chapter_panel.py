@@ -34,8 +34,8 @@ class ChapterPanel(QWidget):
     """Detect TOC, list chapters with editable end-pages, emit selection."""
 
     # ── cross-thread signals ────────────────────────────────────────────
-    _detect_done = Signal(list, int)    # (entries_with_range, total_pages)
-    _detect_failed = Signal(str)        # error message
+    _detect_done = Signal(list, int)  # (entries_with_range, total_pages)
+    _detect_failed = Signal(str)  # error message
     selection_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -84,9 +84,7 @@ class ChapterPanel(QWidget):
 
         # manual segments entry
         self.manual_entry = QLineEdit()
-        self.manual_entry.setPlaceholderText(
-            "Manual segments, e.g. 1-6, 7-12, 13-20  (optional)"
-        )
+        self.manual_entry.setPlaceholderText("Manual segments, e.g. 1-6, 7-12, 13-20  (optional)")
         lay.addWidget(self.manual_entry)
 
         # wire cross-thread signals to main-thread slots
@@ -119,9 +117,7 @@ class ChapterPanel(QWidget):
         return [s for s in out if s[0] <= s[1]]
 
     def get_selected_chapters(self) -> list[str] | None:
-        selected = [
-            d["heading"] for d in self._chapter_data if d["var"].isChecked()
-        ]
+        selected = [d["heading"] for d in self._chapter_data if d["var"].isChecked()]
         return selected if selected else None
 
     def clear(self) -> None:
@@ -145,9 +141,7 @@ class ChapterPanel(QWidget):
 
             reader = PdfReader(str(self._input_file))
             total_pages = len(reader.pages)
-            toc = TocExtractor(log_callback=lambda *a: None).extract(
-                self._input_file, None
-            )
+            toc = TocExtractor(log_callback=lambda *a: None).extract(self._input_file, None)
             if not toc:
                 self._detect_failed.emit("No table of contents found in this PDF.")
                 return
@@ -174,7 +168,7 @@ class ChapterPanel(QWidget):
         self._chapter_data.clear()
         self._clear_rows()
 
-        for idx, (heading, start, end) in enumerate(entries):
+        for _idx, (heading, start, end) in enumerate(entries):
             row = QFrame()
             row.setObjectName("ChapterRow")
             row.setStyleSheet(self._row_style())
@@ -216,20 +210,20 @@ class ChapterPanel(QWidget):
             # insert before the trailing stretch
             self.list_lay.insertWidget(self.list_lay.count() - 1, row)
 
-            self._chapter_data.append({
-                "heading": heading,
-                "start": start if start > 0 else 1,
-                "end": end,
-                "original_end": end,
-                "var": var,
-                "end_entry": end_entry,
-                "row": row,
-                "title": title,
-            })
+            self._chapter_data.append(
+                {
+                    "heading": heading,
+                    "start": start if start > 0 else 1,
+                    "end": end,
+                    "original_end": end,
+                    "var": var,
+                    "end_entry": end_entry,
+                    "row": row,
+                    "title": title,
+                }
+            )
 
-        self.hint.setText(
-            f"{len(entries)} chapters detected · edit end-pages to adjust boundaries"
-        )
+        self.hint.setText(f"{len(entries)} chapters detected · edit end-pages to adjust boundaries")
 
     def _on_detect_error(self, msg: str) -> None:
         self.detect_btn.setEnabled(True)

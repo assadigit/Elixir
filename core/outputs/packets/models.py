@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-
 LogFn = Callable[[str, str], None]
 
 
@@ -21,9 +20,11 @@ LogFn = Callable[[str, str], None]
 # Data Structures
 # ════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class Packet:
     """A single Packet of Knowledge — synthesized from 5-8 keypoints."""
+
     index: int
     title: str = ""
     tldr: str = ""
@@ -38,7 +39,7 @@ class Packet:
     validation_passed: bool = False
     validation_details: str = ""
     concept: str = ""  # Level 2 grouping
-    theme: str = ""    # Level 1 grouping
+    theme: str = ""  # Level 1 grouping
     # V13.23.0: Supplementary context from executive summary — used when a
     # chapter has fewer than MIN_BULLETS_PER_PACKET bullets.  These sentences
     # are NOT primary bullets; they provide context so the LLM doesn't
@@ -50,6 +51,7 @@ class Packet:
 @dataclass
 class PacketCollection:
     """All packets for a book + metadata."""
+
     book_title: str
     packets: list[Packet] = field(default_factory=list)
     themes: list[str] = field(default_factory=list)

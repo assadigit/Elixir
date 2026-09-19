@@ -85,7 +85,7 @@ import textwrap
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
@@ -103,10 +103,12 @@ LogFn = Callable[[str, str], None]
 
 # ── Public types ──────────────────────────────────────────────────────────
 
-class GroundingBackend(str, Enum):
+
+class GroundingBackend(StrEnum):
     """Which LLM backend langextract should use."""
+
     OLLAMA = "ollama"  # local, free, no API key
-    CLOUD = "cloud"    # OpenAI-compatible endpoint
+    CLOUD = "cloud"  # OpenAI-compatible endpoint
 
 
 @dataclass
@@ -124,6 +126,7 @@ class GroundedClaim:
         source_snippet: the verbatim source substring at char_interval, or
             "" if char_interval is None (for display in DOCX/HTML).
     """
+
     text: str
     extraction_class: str
     char_interval: tuple[int, int] | None = None
@@ -143,9 +146,10 @@ class GroundingAlarm:
     The caller MUST surface this to the user (log at WARNING/ERROR, show in
     the wizard's status bar).  Never swallow it.
     """
+
     severity: str  # "info" | "warning" | "error"
-    code: str      # short machine code, e.g. "langextract_not_installed"
-    message: str   # human-readable detail
+    code: str  # short machine code, e.g. "langextract_not_installed"
+    message: str  # human-readable detail
 
 
 @dataclass
@@ -165,6 +169,7 @@ class GroundingResult:
         backend_used: "ollama" | "cloud" | "" (if not available).
         elapsed_sec: wall-clock time for the extraction (for diagnostics).
     """
+
     available: bool = False
     claims: list[GroundedClaim] = field(default_factory=list)
     grounded_count: int = 0
@@ -214,9 +219,8 @@ def is_langextract_available() -> bool:
             return _langextract_import_cache
         try:
             import langextract  # noqa: F401
+
             _langextract_import_cache = True
-        except ImportError:
-            _langextract_import_cache = False
         except ImportError:
             # langextract has heavy deps (sentence-transformers, etc.) that
             # might fail at import.  Treat any import error as "unavailable".
@@ -253,18 +257,25 @@ _ACADEMIC_EXAMPLE_TEXT = (
 _ACADEMIC_EXAMPLE_EXTRACTIONS = [
     # (text, extraction_class, attributes)
     ("Memantine", "entity", {"type": "drug"}),
-    ("low-affinity, noncompetitive NMDA receptor antagonist", "definition",
-     {"subject": "Memantine"}),
-    ("moderate-to-severe Alzheimer's disease", "entity",
-     {"type": "indication"}),
+    (
+        "low-affinity, noncompetitive NMDA receptor antagonist",
+        "definition",
+        {"subject": "Memantine"},
+    ),
+    ("moderate-to-severe Alzheimer's disease", "entity", {"type": "indication"}),
     ("28-week randomised controlled trial", "method", {"design": "RCT"}),
     ("252 patients", "dataset", {"size": "252"}),
-    ("mean ADAS-cog score changed by -2.9 points in the treatment group "
-     "versus +2.4 in placebo", "result",
-     {"metric": "ADAS-cog", "treatment": "-2.9", "placebo": "+2.4"}),
+    (
+        "mean ADAS-cog score changed by -2.9 points in the treatment group versus +2.4 in placebo",
+        "result",
+        {"metric": "ADAS-cog", "treatment": "-2.9", "placebo": "+2.4"},
+    ),
     ("p < 0.001", "result", {"stat": "p-value"}),
-    ("dizziness (7% vs 2%)", "result",
-     {"adverse_event": "dizziness", "treatment_pct": "7", "placebo_pct": "2"}),
+    (
+        "dizziness (7% vs 2%)",
+        "result",
+        {"adverse_event": "dizziness", "treatment_pct": "7", "placebo_pct": "2"},
+    ),
 ]
 
 _GENERAL_EXAMPLE_TEXT = (
@@ -277,15 +288,22 @@ _GENERAL_EXAMPLE_TEXT = (
 
 _GENERAL_EXAMPLE_EXTRACTIONS = [
     ("deep work", "entity", {"type": "concept"}),
-    ("working in a state of intense concentration without distraction",
-     "definition", {"subject": "deep work"}),
-    ("A study of 200 knowledge workers", "method",
-     {"design": "observational", "size": "200"}),
-    ("those who blocked 90 minutes of uninterrupted time completed 47% "
-     "more tasks", "result",
-     {"intervention": "90-min blocks", "effect": "+47% tasks"}),
-    ("block the first hour of every day for deep work", "claim",
-     {"prescription": "schedule deep work first"}),
+    (
+        "working in a state of intense concentration without distraction",
+        "definition",
+        {"subject": "deep work"},
+    ),
+    ("A study of 200 knowledge workers", "method", {"design": "observational", "size": "200"}),
+    (
+        "those who blocked 90 minutes of uninterrupted time completed 47% more tasks",
+        "result",
+        {"intervention": "90-min blocks", "effect": "+47% tasks"},
+    ),
+    (
+        "block the first hour of every day for deep work",
+        "claim",
+        {"prescription": "schedule deep work first"},
+    ),
 ]
 
 
@@ -446,8 +464,9 @@ class ClaimExtractor:
         summ_model = s.get("summarisation.model", "gemma4-12b:latest") if s else "gemma4-12b:latest"
         return {
             "model_id": (s.get("grounding.ollama_model", "") or summ_model) if s else summ_model,
-            "model_url": s.get("grounding.ollama_url", "http://localhost:11434") if s
-                          else "http://localhost:11434",
+            "model_url": s.get("grounding.ollama_url", "http://localhost:11434")
+            if s
+            else "http://localhost:11434",
         }
 
     def _extraction_kwargs(self) -> dict[str, Any]:
@@ -470,6 +489,7 @@ class ClaimExtractor:
         if backend == GroundingBackend.OLLAMA:
             try:
                 from langextract.providers.ollama import OLLAMA_FORMAT_HANDLER
+
                 kwargs["resolver_params"] = {
                     "format_handler": OLLAMA_FORMAT_HANDLER,
                     "suppress_parse_errors": True,
@@ -490,13 +510,17 @@ class ClaimExtractor:
     def _cloud_config(self) -> dict[str, Any]:
         """Build kwargs for the cloud (OpenAI-compatible) backend."""
         from langextract.factory import ModelConfig
+
         s = self.settings
-        base = (s.get("grounding.cloud_base_url", "") if s else "") or \
-               (s.get("summarisation.api_base_url", "") if s else "")
-        key = (s.get("grounding.cloud_api_key", "") if s else "") or \
-              (s.get("summarisation.api_key", "") if s else "")
-        model = (s.get("grounding.cloud_model", "") if s else "") or \
-                (s.get("summarisation.cloud_model", "gpt-4o-mini") if s else "gpt-4o-mini")
+        base = (s.get("grounding.cloud_base_url", "") if s else "") or (
+            s.get("summarisation.api_base_url", "") if s else ""
+        )
+        key = (s.get("grounding.cloud_api_key", "") if s else "") or (
+            s.get("summarisation.api_key", "") if s else ""
+        )
+        model = (s.get("grounding.cloud_model", "") if s else "") or (
+            s.get("summarisation.cloud_model", "gpt-4o-mini") if s else "gpt-4o-mini"
+        )
         return {
             "config": ModelConfig(
                 model_id=model,
@@ -530,6 +554,7 @@ class ClaimExtractor:
             surface ``.alarm`` to the user and fall back to semantic layers.
         """
         import time as _time
+
         t0 = _time.monotonic()
 
         # ── Guard 1: disabled in settings ──────────────────────────────
@@ -540,7 +565,7 @@ class ClaimExtractor:
                     severity="info",
                     code="grounding_disabled",
                     message="🛡️ Source grounding is disabled in settings "
-                            "(grounding.enabled=False). Pipeline uses Layers 1-7 only.",
+                    "(grounding.enabled=False). Pipeline uses Layers 1-7 only.",
                 ),
             )
 
@@ -552,8 +577,8 @@ class ClaimExtractor:
                     severity="info",
                     code="langextract_not_installed",
                     message="🛡️ langextract is not installed. Run "
-                            "`pip install langextract` to enable source grounding. "
-                            "Pipeline continues with Layers 1-7.",
+                    "`pip install langextract` to enable source grounding. "
+                    "Pipeline continues with Layers 1-7.",
                 ),
             )
 
@@ -565,7 +590,7 @@ class ClaimExtractor:
                     severity="info",
                     code="source_too_short",
                     message=f"🛡️ Source too short ({len(source_text or '')} chars) "
-                            "for langextract grounding — skipped.",
+                    "for langextract grounding — skipped.",
                 ),
             )
 
@@ -573,9 +598,7 @@ class ClaimExtractor:
         #     reentrant, and Ollama has model-load contention) ───────────
         with self._lock:
             try:
-                claims = self._run_langextract(
-                    source_text, summary_bullets, content_type
-                )
+                claims = self._run_langextract(source_text, summary_bullets, content_type)
             except _BackendUnreachableError as e:
                 return GroundingResult(
                     available=False,
@@ -583,8 +606,8 @@ class ClaimExtractor:
                         severity="warning",
                         code="backend_unreachable",
                         message=f"🛡️⚠️ Grounding backend unreachable: {e}. "
-                                "Pipeline falls back to Layers 1-7 — OUTPUT MAY "
-                                "CONTAIN UNVERIFIED CLAIMS for this chapter.",
+                        "Pipeline falls back to Layers 1-7 — OUTPUT MAY "
+                        "CONTAIN UNVERIFIED CLAIMS for this chapter.",
                     ),
                     elapsed_sec=_time.monotonic() - t0,
                 )
@@ -600,9 +623,9 @@ class ClaimExtractor:
                         severity="error",
                         code="langextract_exception",
                         message=f"🛡️❌ langextract crashed: {type(e).__name__}: {e}. "
-                                "Pipeline falls back to Layers 1-7. "
-                                "Check that the grounding model is pulled and "
-                                "Ollama is running.",
+                        "Pipeline falls back to Layers 1-7. "
+                        "Check that the grounding model is pulled and "
+                        "Ollama is running.",
                     ),
                     elapsed_sec=_time.monotonic() - t0,
                 )
@@ -699,6 +722,7 @@ class ClaimExtractor:
         # via concurrent.futures. On timeout, return an empty result (graceful
         # degradation — Layer 8 just reports "unavailable" for this chapter).
         import concurrent.futures
+
         s = self.settings
         _timeout_sec = int(s.get("grounding.timeout_sec", 120)) if s else 120
         result_doc = None
@@ -727,7 +751,9 @@ class ClaimExtractor:
             # V18.20.4.12 (W-a10): inline literal → model_taxonomy constant
             # (de-magic only — same string value, zero behavior change).
             _qwythos_model = RIG_FALLBACK_MODEL
-            _current_model = backend_kwargs.get("model_id", "") if backend == GroundingBackend.OLLAMA else ""
+            _current_model = (
+                backend_kwargs.get("model_id", "") if backend == GroundingBackend.OLLAMA else ""
+            )
             if backend == GroundingBackend.OLLAMA and _current_model != _qwythos_model:
                 self.log(
                     f"  🛡️ Pass 1 returned 0 extractions with {_current_model} — "
@@ -739,6 +765,7 @@ class ClaimExtractor:
                 _qwythos_kwargs["model_id"] = _qwythos_model
                 try:
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(lx.extract, **_qwythos_kwargs)
                         try:
@@ -792,13 +819,15 @@ class ClaimExtractor:
                     snippet = source_text[start:end]
                 except Exception as _e:
                     interval = None
-            claims.append(GroundedClaim(
-                text=getattr(ext, "extraction_text", "") or "",
-                extraction_class=getattr(ext, "extraction_class", "claim") or "claim",
-                char_interval=interval,
-                attributes=dict(getattr(ext, "attributes", {}) or {}),
-                source_snippet=snippet,
-            ))
+            claims.append(
+                GroundedClaim(
+                    text=getattr(ext, "extraction_text", "") or "",
+                    extraction_class=getattr(ext, "extraction_class", "claim") or "claim",
+                    char_interval=interval,
+                    attributes=dict(getattr(ext, "attributes", {}) or {}),
+                    source_snippet=snippet,
+                )
+            )
 
         # ── If summary bullets were given, match them to Pass 1 extractions.
         # V13.41.2: SKIPPED the second lx.extract() call (Pass 2). Pass 2 was
@@ -808,9 +837,7 @@ class ClaimExtractor:
         # This gives us the same char_interval grounding in <1 second instead
         # of another 190s LLM call.
         if summary_bullets:
-            bullet_claims = self._match_bullets_to_extractions(
-                summary_bullets, claims
-            )
+            bullet_claims = self._match_bullets_to_extractions(summary_bullets, claims)
             claims.extend(bullet_claims)
 
         return claims
@@ -831,14 +858,14 @@ class ClaimExtractor:
         """
         try:
             from rapidfuzz import fuzz as rf_fuzz
+
             has_rf = True
         except ImportError:
             has_rf = False
 
         # Filter to extractions that have char_intervals (only these can ground)
         grounded_extractions = [
-            ext for ext in source_extractions
-            if ext.char_interval is not None and ext.text.strip()
+            ext for ext in source_extractions if ext.char_interval is not None and ext.text.strip()
         ]
 
         if not grounded_extractions:
@@ -869,22 +896,26 @@ class ClaimExtractor:
                     best_ext = ext
 
             if best_ext is not None and best_score >= 0.60:
-                bullet_claims.append(GroundedClaim(
-                    text=bullet,
-                    extraction_class="summary_bullet",
-                    char_interval=best_ext.char_interval,
-                    attributes={"match_score": best_score},
-                    source_snippet=best_ext.source_snippet,
-                ))
+                bullet_claims.append(
+                    GroundedClaim(
+                        text=bullet,
+                        extraction_class="summary_bullet",
+                        char_interval=best_ext.char_interval,
+                        attributes={"match_score": best_score},
+                        source_snippet=best_ext.source_snippet,
+                    )
+                )
                 grounded_count += 1
             else:
-                bullet_claims.append(GroundedClaim(
-                    text=bullet,
-                    extraction_class="summary_bullet",
-                    char_interval=None,
-                    attributes={"match_score": best_score},
-                    source_snippet="",
-                ))
+                bullet_claims.append(
+                    GroundedClaim(
+                        text=bullet,
+                        extraction_class="summary_bullet",
+                        char_interval=None,
+                        attributes={"match_score": best_score},
+                        source_snippet="",
+                    )
+                )
 
         self.log(
             f"  🛡️ Bullet matching: {grounded_count}/{len(bullets)} bullets "
@@ -910,6 +941,7 @@ class ClaimExtractor:
         bullets it can't locate get char_interval=None (→ weak grounding).
         """
         import langextract as lx
+
         # Build a composite "document" that contains the source + the
         # bullets as candidate extractions.  langextract will try to
         # locate each bullet in the source.
@@ -918,14 +950,12 @@ class ClaimExtractor:
         # If a bullet can't be found, its char_interval will be None.
         bullets_block = "\n".join(f"- {b}" for b in bullets if b and b.strip())
         locate_prompt = (
-            prompt
-            + "\n\nAdditionally, locate each of the following summary "
+            prompt + "\n\nAdditionally, locate each of the following summary "
             "statements in the source text.  If a statement appears "
             "verbatim (or near-verbatim) in the source, extract it with "
             "its char_interval.  If a statement does NOT appear in the "
             "source, do NOT extract it (it will be treated as "
-            "ungrounded).\n\nSummary statements to locate:\n"
-            + bullets_block
+            "ungrounded).\n\nSummary statements to locate:\n" + bullets_block
         )
 
         locate_kwargs = {
@@ -946,8 +976,7 @@ class ClaimExtractor:
             # Don't fail the whole extraction just because bullet-location
             # failed — the source-claim extractions are still valid.
             self.log(
-                f"  🛡️ bullet-location sub-pass failed: {e} "
-                "(source-claim grounding still valid)",
+                f"  🛡️ bullet-location sub-pass failed: {e} (source-claim grounding still valid)",
                 "DEBUG",
             )
             return []
@@ -958,6 +987,7 @@ class ClaimExtractor:
         # char_interval AND overlaps the bullet text ≥ 60%.
         try:
             from rapidfuzz import fuzz as rf_fuzz
+
             has_rf = True
         except ImportError:
             has_rf = False
@@ -995,20 +1025,20 @@ class ClaimExtractor:
                         snippet = source_text[start:end]
                     except Exception as _e:
                         interval = None
-            bullet_claims.append(GroundedClaim(
-                text=bullet,
-                extraction_class="summary_bullet",
-                char_interval=interval,
-                attributes={"match_score": f"{best_score:.2f}"},
-                source_snippet=snippet,
-            ))
+            bullet_claims.append(
+                GroundedClaim(
+                    text=bullet,
+                    extraction_class="summary_bullet",
+                    char_interval=interval,
+                    attributes={"match_score": f"{best_score:.2f}"},
+                    source_snippet=snippet,
+                )
+            )
         return bullet_claims
 
     # ── backend probe ───────────────────────────────────────────────────
 
-    def _probe_backend(
-        self, backend: GroundingBackend, backend_kwargs: dict[str, Any]
-    ) -> None:
+    def _probe_backend(self, backend: GroundingBackend, backend_kwargs: dict[str, Any]) -> None:
         """Verify the backend is reachable before the expensive extract call.
 
         Raises ``_BackendUnreachableError`` on failure.  This gives the
@@ -1021,6 +1051,7 @@ class ClaimExtractor:
             # so we get the same retry/proxy logic as the rest of the app.
             try:
                 from utils.network import is_ollama_reachable, list_ollama_models
+
                 if not is_ollama_reachable(url):
                     raise _BackendUnreachableError(
                         f"Ollama not reachable at {url}. Is `ollama serve` running?"
@@ -1028,12 +1059,10 @@ class ClaimExtractor:
                 if model:
                     available = list_ollama_models(url)
                     # Case-insensitive check
-                    if available and not any(
-                        m.lower() == model.lower() for m in available
-                    ):
+                    if available and not any(m.lower() == model.lower() for m in available):
                         raise _BackendUnreachableError(
                             f"Grounding model '{model}' not found in Ollama. "
-                            f"Available: {available[:8]}{'…' if len(available)>8 else ''}. "
+                            f"Available: {available[:8]}{'…' if len(available) > 8 else ''}. "
                             f"Run: ollama pull {model}"
                         )
             except _BackendUnreachableError:
@@ -1067,4 +1096,5 @@ class _BackendUnreachableError(Exception):
     Caught by ``extract()`` and converted to a clean GroundingAlarm so the
     pipeline falls back gracefully.
     """
+
     pass

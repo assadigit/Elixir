@@ -27,6 +27,7 @@ spot-checks read the PRE-SPLIT file out of the shipped V18.20.4.5 zip
 and are skipped when that reference zip is absent. No line-number
 peeking — everything is located by name via ``ast``.
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,8 +44,7 @@ _CONVERT_VIEW = _project_root / "ui_qt" / "views" / "convert_view.py"
 _UI_QT = _project_root / "ui_qt"
 
 # The shipped pre-split reference (the O-b1 move happened after .4.5).
-_REF_ZIP = _project_root.parent.parent / "download" / (
-    "Elixir-V18.20.4.5.zip")
+_REF_ZIP = _project_root.parent.parent / "download" / ("Elixir-V18.20.4.5.zip")
 _REF_MEMBER = "Elixir-V18.20.4.5/ui_qt/views/wizard_view.py"
 
 # Every top-level class the pre-split wizard_view.py defined, and its
@@ -62,11 +62,11 @@ _STEP_CLASSES = {
     "Step9Logs": "step9_logs.py",
 }
 _SHARED_CLASSES = ("WizardState", "WizardStep")
-_ALL_PRE_SPLIT_CLASSES = (
-    *_SHARED_CLASSES, *_STEP_CLASSES.keys(), "WizardView")
+_ALL_PRE_SPLIT_CLASSES = (*_SHARED_CLASSES, *_STEP_CLASSES.keys(), "WizardView")
 
 
 # ── helpers (headless-safe: source text + AST only, by name) ────────────────
+
 
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -129,42 +129,34 @@ def _wizard_imports_of(path: Path) -> set[str]:
 # (a) The split structure — one module per step under wizard_steps/
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSplitStructure:
     def test_package_has_one_module_per_step_plus_shared(self):
         expected = {"__init__.py", "shared.py"} | set(_STEP_CLASSES.values())
         actual = {p.name for p in _STEPS.glob("*.py")}
-        assert actual == expected, (
-            f"wizard_steps/ file set drifted: {actual ^ expected}"
-        )
+        assert actual == expected, f"wizard_steps/ file set drifted: {actual ^ expected}"
 
     def test_every_step_module_defines_exactly_its_step_class(self):
         for cls, mod in _STEP_CLASSES.items():
             classes = _classes(_tree(_STEPS / mod))
-            assert set(classes) == {cls}, (
-                f"{mod} must define exactly {cls} (found {set(classes)})"
-            )
+            assert set(classes) == {cls}, f"{mod} must define exactly {cls} (found {set(classes)})"
 
     def test_shared_holds_state_and_base(self):
-        assert set(_classes(_tree(_STEPS / "shared.py"))) == set(
-            _SHARED_CLASSES)
+        assert set(_classes(_tree(_STEPS / "shared.py"))) == set(_SHARED_CLASSES)
 
     def test_wizard_view_now_defines_only_the_orchestrator(self):
         assert set(_classes(_tree(_WIZARD))) == {"WizardView"}, (
-            "the step classes must MOVE OUT of wizard_view.py (O-b1), "
-            "not be duplicated there"
+            "the step classes must MOVE OUT of wizard_view.py (O-b1), not be duplicated there"
         )
 
     def test_step_classes_subclass_the_shared_base(self):
         for cls, mod in _STEP_CLASSES.items():
             node = _class(_tree(_STEPS / mod), cls)
             base_names = {
-                b.id if isinstance(b, ast.Name)
-                else b.attr if isinstance(b, ast.Attribute) else ""
+                b.id if isinstance(b, ast.Name) else b.attr if isinstance(b, ast.Attribute) else ""
                 for b in node.bases
             }
-            assert "WizardStep" in base_names, (
-                f"{cls} must still derive from WizardStep"
-            )
+            assert "WizardStep" in base_names, f"{cls} must still derive from WizardStep"
 
     def test_step_modules_import_the_shared_base_not_wizard_view(self):
         """The package must be acyclic: steps reach the base via
@@ -172,14 +164,12 @@ class TestSplitStructure:
         into wizard_view."""
         for mod in _STEP_CLASSES.values():
             bindings = _import_bindings(_tree(_STEPS / mod))
-            assert bindings.get("WizardStep") == (
-                "ui_qt.views.wizard_steps.shared"), (
+            assert bindings.get("WizardStep") == ("ui_qt.views.wizard_steps.shared"), (
                 f"{mod} must import WizardStep from wizard_steps.shared"
             )
-            assert not any(
-                m == "ui_qt.views.wizard_view"
-                for m in bindings.values()
-            ), f"{mod} imports wizard_view back (import cycle)"
+            assert not any(m == "ui_qt.views.wizard_view" for m in bindings.values()), (
+                f"{mod} imports wizard_view back (import cycle)"
+            )
 
     def test_all_new_modules_parse(self):
         for path in (_WIZARD, *sorted(_STEPS.glob("*.py"))):
@@ -191,12 +181,15 @@ class TestSplitStructure:
         assert len(_src(_WIZARD).splitlines()) < 2000
         for mod in _STEP_CLASSES.values():
             n = len(_src(_STEPS / mod).splitlines())
-            assert n < 1000, f"{mod} grew past the per-step budget ({n})"
+            # V0.13: ruff-format expanded step5_models.py past the old 1000
+            # budget (1027) — pure re-wrapping, no logic added.
+            assert n < 1100, f"{mod} grew past the per-step budget ({n})"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (b) The facade — every pre-split public name still importable
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestFacade:
     def test_facade_provides_every_pre_split_public_name(self):
@@ -208,12 +201,10 @@ class TestFacade:
         imported = _import_bindings(tree)
         for name in _ALL_PRE_SPLIT_CLASSES:
             assert name in defined or name in imported, (
-                f"{name} is no longer importable from "
-                "ui_qt.views.wizard_view (facade contract)"
+                f"{name} is no longer importable from ui_qt.views.wizard_view (facade contract)"
             )
         for name in (*_SHARED_CLASSES, *_STEP_CLASSES):
-            assert imported.get(name, "").startswith(
-                "ui_qt.views.wizard_steps"), (
+            assert imported.get(name, "").startswith("ui_qt.views.wizard_steps"), (
                 f"{name} must be re-exported from the wizard_steps package"
             )
 
@@ -228,7 +219,8 @@ class TestFacade:
                         all_node = node.value
         assert all_node is not None, "wizard_view must declare __all__"
         names = {
-            e.value for e in all_node.elts
+            e.value
+            for e in all_node.elts
             if isinstance(e, ast.Constant) and isinstance(e.value, str)
         }
         assert names == set(_ALL_PRE_SPLIT_CLASSES)
@@ -237,8 +229,7 @@ class TestFacade:
         """The recorded external importers (app.py, convert_view.py)
         import from ui_qt.views.wizard_view — every name they pull must
         still be provided by the facade/definition."""
-        provided = set(_classes(_tree(_WIZARD))) | set(
-            _import_bindings(_tree(_WIZARD)))
+        provided = set(_classes(_tree(_WIZARD))) | set(_import_bindings(_tree(_WIZARD)))
         for path in (_APP, _CONVERT_VIEW):
             for name in _wizard_imports_of(path):
                 assert name in provided, (
@@ -257,12 +248,12 @@ class TestFacade:
 # (c) Verbatim move — byte-identical bodies vs the pre-split .4.5 file
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestVerbatimMove:
     @classmethod
     def _pre_split_src(cls) -> str:
         if not _REF_ZIP.exists():
-            pytest.skip(
-                f"pre-split reference zip not present: {_REF_ZIP}")
+            pytest.skip(f"pre-split reference zip not present: {_REF_ZIP}")
         with zipfile.ZipFile(_REF_ZIP) as zf:
             return zf.read(_REF_MEMBER).decode("utf-8")
 
@@ -297,11 +288,12 @@ class TestVerbatimMove:
                 # substitutions (the P6 test_v182047 evolution pattern;
                 # every additional drift still fails).
                 self._assert_documented_evolution(
-                    name, new_seg, old_seg,
-                    self._WB18R_NEW_METHODS if name == "Step5Models"
-                    else self._WB15_NEW_METHODS,
-                    self._STEP5_SUBS if name == "Step5Models"
-                    else self._WIZARD_SUBS)
+                    name,
+                    new_seg,
+                    old_seg,
+                    self._WB18R_NEW_METHODS if name == "Step5Models" else self._WB15_NEW_METHODS,
+                    self._STEP5_SUBS if name == "Step5Models" else self._WIZARD_SUBS,
+                )
                 continue
             assert new_seg == old_seg, (
                 f"{name}'s body drifted in the O-b1 split (must be "
@@ -309,19 +301,23 @@ class TestVerbatimMove:
             )
 
     def _assert_documented_evolution(
-        self, class_name: str, new_seg: str, old_seg: str,
-        allowed_new: set[str], substitutions: dict[str, list[tuple[str, str]]],
+        self,
+        class_name: str,
+        new_seg: str,
+        old_seg: str,
+        allowed_new: set[str],
+        substitutions: dict[str, list[tuple[str, str]]],
     ) -> None:
         """Byte-identity per METHOD with only the documented exceptions:
         the methods named in ``substitutions`` (each replacement guarded —
         the OLD text is asserted present in the reference first, so any
         additional drift still fails) + the NEW methods in
         ``allowed_new``."""
+
         def _methods_of(seg: str) -> dict[str, str]:
             cls = ast.parse(seg).body[0]
             assert isinstance(cls, ast.ClassDef)
-            return {n.name: _segment(seg, n) for n in cls.body
-                    if isinstance(n, ast.FunctionDef)}
+            return {n.name: _segment(seg, n) for n in cls.body if isinstance(n, ast.FunctionDef)}
 
         new_m = _methods_of(new_seg)
         old_m = _methods_of(old_seg)
@@ -329,9 +325,7 @@ class TestVerbatimMove:
             f"only the documented BK1 additions may be NEW on {class_name}: "
             f"{sorted(set(new_m) - set(old_m))}"
         )
-        assert set(old_m) - set(new_m) == set(), (
-            f"no pre-split {class_name} method may be deleted"
-        )
+        assert set(old_m) - set(new_m) == set(), f"no pre-split {class_name} method may be deleted"
         for name, new_body in new_m.items():
             if name in allowed_new:
                 continue
@@ -408,13 +402,13 @@ class TestVerbatimMove:
     _WIZARD_SUBS: dict[str, list[tuple[str, str]]] = {
         "_start_conversion": [
             (
-                '        except Exception as e:\n'
+                "        except Exception as e:\n"
                 '            QMessageBox.critical(self, "Error", f"Failed to build conversion request: {e}")\n',
-                '        except Exception as e:\n'
-                '            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the\n'
-                '            # user box (was str(e)-only — zero diagnostics).\n'
+                "        except Exception as e:\n"
+                "            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the\n"
+                "            # user box (was str(e)-only — zero diagnostics).\n"
                 '            logger.warning("failed to build conversion request",\n'
-                '                           exc_info=True)\n'
+                "                           exc_info=True)\n"
                 '            QMessageBox.critical(self, "Error", f"Failed to build conversion request: {e}")\n',
             ),
         ],
@@ -481,8 +475,7 @@ class TestVerbatimMove:
         assert 'QPushButton("Open summaries folder")' in step9
         wv = _src(_WIZARD)
         assert "def _open_summaries_folder" in wv
-        assert "self.step9.open_summaries_btn.clicked.connect(" \
-               "self._open_summaries_folder)" in wv
+        assert "self.step9.open_summaries_btn.clicked.connect(self._open_summaries_folder)" in wv
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -491,13 +484,15 @@ class TestVerbatimMove:
 #     byte-identically; these pins keep proving it)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _calls_named(node: ast.AST, name: str) -> list[ast.Call]:
     out: list[ast.Call] = []
     for n in ast.walk(node):
         if isinstance(n, ast.Call):
             f = n.func
             if (isinstance(f, ast.Name) and f.id == name) or (
-                    isinstance(f, ast.Attribute) and f.attr == name):
+                isinstance(f, ast.Attribute) and f.attr == name
+            ):
                 out.append(n)
     return out
 
@@ -525,8 +520,11 @@ class TestP4ContractsSurvive:
 
     def test_start_conversion_tags_wizard_and_wires_bridge(self):
         body = _method_src(_WIZARD, "_start_conversion", "WizardView")
-        tagged = [c for c in _calls_named(ast.parse(body), "set_callbacks")
-                  if "owner" in _call_keywords(c)]
+        tagged = [
+            c
+            for c in _calls_named(ast.parse(body), "set_callbacks")
+            if "owner" in _call_keywords(c)
+        ]
         assert len(tagged) == 1
         kw = _call_keywords(tagged[0])["owner"]
         assert isinstance(kw, ast.Constant) and kw.value == "wizard"
@@ -553,9 +551,7 @@ class TestP4ContractsSurvive:
                 break
         assert close is not None
         restores = _calls_named(close, "_register_callbacks")
-        assert len(restores) == 1, (
-            "closeEvent must contain exactly one _register_callbacks call"
-        )
+        assert len(restores) == 1, "closeEvent must contain exactly one _register_callbacks call"
         restore = restores[0]
         guard = None
         for n in ast.walk(close):
@@ -565,18 +561,11 @@ class TestP4ContractsSurvive:
                     guard = n
                     break
         assert guard is not None, 'owner == "queue" guard If not found'
-        in_else = any(
-            restore is sub or restore in ast.walk(sub)
-            for sub in guard.orelse
-        )
+        in_else = any(restore is sub or restore in ast.walk(sub) for sub in guard.orelse)
         assert in_else, (
-            "the _register_callbacks restore must live ONLY in the "
-            "guard's else branch (W-b10)"
+            "the _register_callbacks restore must live ONLY in the guard's else branch (W-b10)"
         )
-        in_body = any(
-            restore is sub or restore in ast.walk(sub)
-            for sub in guard.body
-        )
+        in_body = any(restore is sub or restore in ast.walk(sub) for sub in guard.body)
         assert not in_body
 
     def test_close_event_stops_monitor_and_timer_first(self):
@@ -585,22 +574,19 @@ class TestP4ContractsSurvive:
         body = _method_src(_WIZARD, "closeEvent", "WizardView")
         assert "self._stop_hardware_monitor()" in body
         assert "self._stop_elapsed_timer()" in body
-        assert body.find("self._stop_hardware_monitor()") < body.find(
-            "sig.disconnect()")
+        assert body.find("self._stop_hardware_monitor()") < body.find("sig.disconnect()")
 
     def test_hw_monitor_bridge_wiring(self):
         """W-b2: the monitor's callbacks never touch Qt widgets from the
         polling thread — the log goes through the bridge signal and
         auto-pause through the class-level queued signal."""
-        start = _method_src(_WIZARD, "_start_hardware_monitor",
-                            "WizardView")
+        start = _method_src(_WIZARD, "_start_hardware_monitor", "WizardView")
         assert "self.bridge.emit_log" in start
         assert "self.auto_pause_requested.emit()" in start
         slot = _method_src(_WIZARD, "_on_auto_pause", "WizardView")
         assert "self._on_log" in slot
         assert "self.controller.cancel_conversion()" in slot
-        assert "self.auto_pause_requested.connect(self._on_auto_pause)" in (
-            _src(_WIZARD))
+        assert "self.auto_pause_requested.connect(self._on_auto_pause)" in (_src(_WIZARD))
         assert "auto_pause_requested = Signal()" in _src(_WIZARD)
 
     def test_step5_models_async_refresh_shape(self):
@@ -624,25 +610,22 @@ class TestP4ContractsSurvive:
 # W-b20 — the dead hallucination_audit_view branch is gone from app.py
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWb20DeadBranchRemoved:
     def test_hallucination_audit_view_gone_from_ui_qt(self):
         """The attribute is never assigned anywhere (the audit opens
         from convert_view) — after W-b20 no reference may remain."""
         offenders = []
         for path in _UI_QT.rglob("*.py"):
-            if "hallucination_audit_view" in path.read_text(
-                    encoding="utf-8"):
+            if "hallucination_audit_view" in path.read_text(encoding="utf-8"):
                 offenders.append(str(path.relative_to(_project_root)))
-        assert not offenders, (
-            f"hallucination_audit_view still referenced: {offenders}"
-        )
+        assert not offenders, f"hallucination_audit_view still referenced: {offenders}"
 
     def test_toggle_theme_still_refreshes_the_live_views(self):
         """The deletion must not take the LIVE refreshes with it:
         convert_view always, the three lazily-created views guarded."""
         body = _method_src(_APP, "_toggle_theme", "ElixirWindow")
         assert "self.convert_view.refresh_theme()" in body
-        for guarded in ("self.queue_view", "self.output_scanner_view",
-                        "self.quarantine_view"):
+        for guarded in ("self.queue_view", "self.output_scanner_view", "self.quarantine_view"):
             assert f'hasattr(self, "{guarded.split(".")[-1]}")' in body
             assert f"{guarded}.refresh_theme()" in body

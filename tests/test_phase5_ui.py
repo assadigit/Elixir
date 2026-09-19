@@ -7,6 +7,7 @@ Covers:
 - get_error_remediation maps each exception class correctly
 - format_for_log produces a single-line message
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -114,16 +115,20 @@ class TestProgressEmitter:
 
     def test_legacy_callback_exception_swallowed(self):
         """If the legacy callback raises, emit must not crash."""
+
         def bad_callback(frac, msg):
             raise RuntimeError("callback crashed")
+
         emitter = ProgressEmitter(progress_callback=bad_callback, total_chapters=2)
         # Should not raise
         emitter.emit_stage(STAGE_PRIMARY_SUMMARY, chapter=1, pct=0.5)
 
     def test_stage_callback_exception_swallowed(self):
         """If the stage callback raises, emit must not crash."""
+
         def bad_stage_cb(event):
             raise RuntimeError("stage cb crashed")
+
         emitter = ProgressEmitter(stage_callback=bad_stage_cb, total_chapters=2)
         emitter.emit_stage(STAGE_PRIMARY_SUMMARY, chapter=1, pct=0.5)
 
@@ -150,6 +155,7 @@ class TestErrorRemediation:
 
     def test_model_not_found_404(self):
         from core.llm.retry import ModelNotFound404Error
+
         exc = ModelNotFound404Error(model="gemma4-12b:latest", detail="not found")
         r = get_error_remediation(exc)
         assert r.severity == "error"
@@ -159,6 +165,7 @@ class TestErrorRemediation:
 
     def test_ollama_timeout(self):
         from core.llm.retry import OllamaTimeoutError
+
         exc = OllamaTimeoutError(model="test", timeout=300, original=None)
         r = get_error_remediation(exc)
         assert r.severity == "warning"
@@ -167,6 +174,7 @@ class TestErrorRemediation:
 
     def test_ollama_oom(self):
         from core.llm.retry import OllamaOOMError
+
         exc = OllamaOOMError(model="gemma4-12b:latest", num_ctx=32768, detail="CUDA out of memory")
         r = get_error_remediation(exc)
         assert r.severity == "error"
@@ -175,6 +183,7 @@ class TestErrorRemediation:
 
     def test_embedder_unavailable(self):
         from core.llm.embedder_backend import EmbedderUnavailable
+
         exc = EmbedderUnavailable("model 'all-MiniLM-L6-v2' is unhealthy")
         r = get_error_remediation(exc)
         assert r.severity == "warning"
@@ -190,6 +199,7 @@ class TestErrorRemediation:
 
     def test_timeout_exception(self):
         import requests
+
         exc = requests.exceptions.Timeout("read timeout=600")
         r = get_error_remediation(exc)
         assert r.title == "Request timed out"

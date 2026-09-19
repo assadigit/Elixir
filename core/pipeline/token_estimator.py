@@ -25,6 +25,7 @@ Usage (from the wizard's _start_conversion)::
     if dlg.exec() != QDialog.Accepted:
         return  # user cancelled
 """
+
 from __future__ import annotations
 
 import logging
@@ -136,7 +137,7 @@ def estimate_conversion_tokens(
         line = line.strip()
         if not line or len(line) > 100:
             continue
-        if re.match(r'^#{1,3}\s+', line) or re.match(r'^\d+[\.\d]*\s+\S', line):
+        if re.match(r"^#{1,3}\s+", line) or re.match(r"^\d+[\.\d]*\s+\S", line):
             heading_count += 1
 
     if outline_chapter_count and outline_chapter_count >= 1:
@@ -159,7 +160,9 @@ def estimate_conversion_tokens(
                 "INFO",
             )
             heading_count = _heading_cap
-        chapter_count = max(1, heading_count) if heading_count > 0 else max(1, source_tokens // 3000)
+        chapter_count = (
+            max(1, heading_count) if heading_count > 0 else max(1, source_tokens // 3000)
+        )
 
     # ── Step 3: Estimate input tokens per chapter ────────────────────
     # The summarizer sends the chapter content + prompt to the LLM.
@@ -263,8 +266,17 @@ def estimate_conversion_tokens(
     base_calls_per_chapter = 10
     worst_calls_per_chapter = 40
     llm_calls = chapter_count * base_calls_per_chapter
-    for output_name in ["briefing", "podcast_script", "flashcards", "qa",
-                        "study_guide", "social", "mindmap", "packets", "obsidian"]:
+    for output_name in [
+        "briefing",
+        "podcast_script",
+        "flashcards",
+        "qa",
+        "study_guide",
+        "social",
+        "mindmap",
+        "packets",
+        "obsidian",
+    ]:
         if output_name in per_output:
             llm_calls += max(1, per_output[output_name] // max_output)
     llm_calls_worst = llm_calls + chapter_count * (worst_calls_per_chapter - base_calls_per_chapter)
@@ -342,7 +354,11 @@ def estimate_conversion_tokens(
             )
             selected_count = _distinct_selected_pages
 
-        selected_avg = selected_source_tokens // selected_count if selected_count > 0 else selected_source_tokens
+        selected_avg = (
+            selected_source_tokens // selected_count
+            if selected_count > 0
+            else selected_source_tokens
+        )
         selected_input_per_ch = selected_avg + prompt_overhead + concept_overhead
         selected_total_input = selected_input_per_ch * selected_count
 
@@ -352,11 +368,22 @@ def estimate_conversion_tokens(
         selected_total_output = sum(selected_per_output.values())
 
         selected_llm_calls = selected_count * base_calls_per_chapter
-        for output_name in ["briefing", "podcast_script", "flashcards", "qa",
-                            "study_guide", "social", "mindmap", "packets", "obsidian"]:
+        for output_name in [
+            "briefing",
+            "podcast_script",
+            "flashcards",
+            "qa",
+            "study_guide",
+            "social",
+            "mindmap",
+            "packets",
+            "obsidian",
+        ]:
             if output_name in selected_per_output:
                 selected_llm_calls += max(1, selected_per_output[output_name] // max_output)
-        selected_llm_calls_worst = selected_llm_calls + selected_count * (worst_calls_per_chapter - base_calls_per_chapter)
+        selected_llm_calls_worst = selected_llm_calls + selected_count * (
+            worst_calls_per_chapter - base_calls_per_chapter
+        )
 
         selected_total = selected_total_input + selected_total_output
 
@@ -425,6 +452,7 @@ def _compute_selected_source_tokens(
     """
     try:
         from pypdf import PdfReader
+
         reader = PdfReader(str(pdf_path))
         # Try to get the outline (TOC)
         outline = reader.outline if hasattr(reader, "outline") else []
@@ -433,6 +461,7 @@ def _compute_selected_source_tokens(
 
         # Flatten the outline into (title, page_number) pairs
         toc_entries = []
+
         def _flatten(items, level=0):
             for item in items:
                 if isinstance(item, list):
@@ -445,6 +474,7 @@ def _compute_selected_source_tokens(
                             toc_entries.append((title, page_num))
                     except Exception:
                         continue
+
         _flatten(outline)
 
         if not toc_entries:
@@ -455,6 +485,7 @@ def _compute_selected_source_tokens(
 
         # Match selected chapters to TOC entries (fuzzy)
         from core.pipeline.converter import Converter
+
         converter = Converter.__new__(Converter)  # instantiate without __init__
         matched_pages = set()
         for selected_title in selected_chapters:
@@ -484,7 +515,9 @@ def _compute_selected_source_tokens(
                     distinct_start_pages.add(toc_page)
                     break
 
-        selected_text = "\n".join(page_texts[p] for p in sorted(matched_pages) if p < len(page_texts))
+        selected_text = "\n".join(
+            page_texts[p] for p in sorted(matched_pages) if p < len(page_texts)
+        )
         return count_tokens_fn(selected_text), len(distinct_start_pages)
     except Exception as e:
         log(f"  ⚠️ Token estimator: selected-chapter mapping failed ({e})", "DEBUG")

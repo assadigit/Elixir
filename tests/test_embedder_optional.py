@@ -23,6 +23,7 @@ tests are hermetic — no real ``Settings()`` / ``settings.json`` needed.
 
 Run: ``pytest tests/test_embedder_optional.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -80,21 +81,27 @@ class TestEmbeddingSettingsHelper:
 
     def test_returns_defaults_when_settings_unavailable(self, monkeypatch):
         """When Settings() raises, the helper falls back to (True, 'jaccard')."""
+
         def _boom():
             raise RuntimeError("no settings in test sandbox")
+
         # Patch the Settings import inside the helper by making the module's
         # _embedding_settings call a broken Settings. Easiest: patch the
         # function to simulate the except-branch by raising at import time.
         # Instead, directly verify the default-return path via the helper's
         # documented behaviour: it catches Exception and returns (True, "jaccard").
         import utils.settings as settings_mod
-        orig_get = settings_mod.Settings.get if hasattr(settings_mod, "Settings") else None
+
+        _orig_get = settings_mod.Settings.get if hasattr(settings_mod, "Settings") else None
+
         # Force Settings().get to raise
         class _BrokenSettings:
             def get(self, path, default=None):
                 raise RuntimeError("boom")
+
             def _defaults(self):
                 return {}
+
         monkeypatch.setattr(settings_mod, "Settings", lambda: _BrokenSettings())
         enabled, fallback = _embedding_settings()
         assert enabled is True
@@ -103,8 +110,10 @@ class TestEmbeddingSettingsHelper:
     def test_normalises_unknown_fallback_to_jaccard(self, monkeypatch):
         """An unknown fallback value degrades to 'jaccard' (safer than 'skip')."""
         import utils.settings as settings_mod
+
         class _FakeSettings:
             _data = {"embedding": {"enabled": False, "fallback": "banana"}}
+
             def get(self, path, default=None):
                 parts = path.split(".")
                 cur = self._data
@@ -114,8 +123,10 @@ class TestEmbeddingSettingsHelper:
                     else:
                         return default
                 return cur
+
             def _defaults(self):
                 return self._data
+
         monkeypatch.setattr(settings_mod, "Settings", lambda: _FakeSettings())
         enabled, fallback = _embedding_settings()
         assert enabled is False
@@ -146,8 +157,10 @@ class TestSemanticSimilaritySkipPath:
         embedder_called = []
         # Patch get_embed_model to detect any embedder access (should NOT happen).
         import core.llm.model_singletons as ms
-        monkeypatch.setattr(ms, "get_embed_model",
-                            lambda *a, **k: embedder_called.append(1) or None)
+
+        monkeypatch.setattr(
+            ms, "get_embed_model", lambda *a, **k: embedder_called.append(1) or None
+        )
         with pytest.raises(EmbeddingDisabled):
             _semantic_similarity("claim", "candidate")
         assert embedder_called == [], "embedder must not be called in skip mode"
@@ -174,8 +187,10 @@ class TestSemanticSimilarityJaccardPath:
         monkeypatch.setattr(_mod, "_embedding_settings", lambda: (False, "jaccard"))
         embedder_called = []
         import core.llm.model_singletons as ms
-        monkeypatch.setattr(ms, "get_embed_model",
-                            lambda *a, **k: embedder_called.append(1) or None)
+
+        monkeypatch.setattr(
+            ms, "get_embed_model", lambda *a, **k: embedder_called.append(1) or None
+        )
         sim = _semantic_similarity("some claim", "some candidate")
         assert isinstance(sim, float)
         assert embedder_called == [], "embedder must not be called when enabled=False"

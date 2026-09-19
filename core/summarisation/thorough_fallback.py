@@ -28,6 +28,7 @@ Characterization tests: ``tests/test_thorough_fallback.py`` captures the
 3-attempt + synthetic-fallback paths with mocked ``call_llm`` /
 ``strip_thinking`` / ``deadline_exceeded``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -109,7 +110,7 @@ def call_dedicated_thorough_with_fallback(
         if not raw:
             return None
         raw = strip_thinking(raw)
-        m = re.search(r'<thorough_summary>(.*?)</thorough_summary>', raw, re.DOTALL)
+        m = re.search(r"<thorough_summary>(.*?)</thorough_summary>", raw, re.DOTALL)
         if m:
             return m.group(1).strip()
         return raw.strip() or None
@@ -134,9 +135,13 @@ def call_dedicated_thorough_with_fallback(
         # in _call_llm_with_empty_retry (attempts 2/3 carry it in their nudges).
         # Inject it here for Qwen-family models via the shared helper.
         from core.summarisation.filter_thinking import qwen_no_think
+
         raw1 = call_llm(
-            qwen_no_think(prompt, primary_model), model=primary_model,
-            temperature=temperature * 0.5, max_tokens=_max_tok)
+            qwen_no_think(prompt, primary_model),
+            model=primary_model,
+            temperature=temperature * 0.5,
+            max_tokens=_max_tok,
+        )
     except Exception as _e1:
         log(
             f"    \u26a0\ufe0f Attempt 1/3 dedicated thorough crashed "
@@ -156,9 +161,13 @@ def call_dedicated_thorough_with_fallback(
     if deadline_exceeded("dedicated thorough (attempt 2)"):
         log("    \u23f1\ufe0f Skipping thorough attempt 2 (chapter deadline exceeded)", "DEBUG")
     else:
-        log("    \u26a0\ufe0f Attempt 1 empty/short — retrying with directive nudge after 3s", "DEBUG")
+        log(
+            "    \u26a0\ufe0f Attempt 1 empty/short — retrying with directive nudge after 3s",
+            "DEBUG",
+        )
         try:
             import time as _time
+
             _time.sleep(3)
         except Exception:
             pass
@@ -168,8 +177,12 @@ def call_dedicated_thorough_with_fallback(
         )
         raw2 = None
         try:
-            raw2 = call_llm(prompt + _nudge, model=primary_model,
-                            temperature=temperature * 0.5, max_tokens=_max_tok)
+            raw2 = call_llm(
+                prompt + _nudge,
+                model=primary_model,
+                temperature=temperature * 0.5,
+                max_tokens=_max_tok,
+            )
         except Exception as _e2:
             log(
                 f"    \u26a0\ufe0f Attempt 2/3 dedicated thorough crashed "
@@ -190,11 +203,12 @@ def call_dedicated_thorough_with_fallback(
     if deadline_exceeded("dedicated thorough (attempt 3)"):
         log("    \u23f1\ufe0f Skipping thorough attempt 3 (chapter deadline exceeded)", "DEBUG")
     else:
-        log("    \u26a0\ufe0f Attempt 2 empty/short — retrying at temperature 0.0 (greedy)", "DEBUG")
+        log(
+            "    \u26a0\ufe0f Attempt 2 empty/short — retrying at temperature 0.0 (greedy)", "DEBUG"
+        )
         raw3 = None
         try:
-            raw3 = call_llm(prompt, model=primary_model,
-                            temperature=0.0, max_tokens=_max_tok)
+            raw3 = call_llm(prompt, model=primary_model, temperature=0.0, max_tokens=_max_tok)
         except Exception as _e3:
             log(
                 f"    \u26a0\ufe0f Attempt 3/3 dedicated thorough crashed "

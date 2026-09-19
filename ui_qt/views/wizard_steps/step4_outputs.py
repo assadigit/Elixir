@@ -24,6 +24,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 4: Output Selection
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step4Outputs(WizardStep):
     """Output type selection (15 Output Studio types + 4 core = 19 total).
 
@@ -65,12 +66,32 @@ class Step4Outputs(WizardStep):
             # chapter's length (a summary section is never longer than a
             # fraction of its source). Promising "800-1200 words" here
             # while the engine scales down would be dishonest UI.
-            ("include_executive_summary", "  Executive summary (short overview, scaled to chapter)", self.state.include_executive_summary),
-            ("include_thorough_summary", "  Thorough summary (detailed prose, scaled to chapter)", self.state.include_thorough_summary),
+            (
+                "include_executive_summary",
+                "  Executive summary (short overview, scaled to chapter)",
+                self.state.include_executive_summary,
+            ),
+            (
+                "include_thorough_summary",
+                "  Thorough summary (detailed prose, scaled to chapter)",
+                self.state.include_thorough_summary,
+            ),
             ("include_keypoints", "Keypoints (bullet points)", self.state.include_keypoints),
-            ("simplified_keypoints_enabled", "Simplified keypoints (jargon-free)", self.state.simplified_keypoints_enabled),
-            ("compact_summaries", "📦 Compact summaries (~1000 tokens/chapter)", self.state.compact_summaries),
-            ("_streaming_enabled", "📡 Streaming LLM output (show partial summaries)", self.state._streaming_enabled),
+            (
+                "simplified_keypoints_enabled",
+                "Simplified keypoints (jargon-free)",
+                self.state.simplified_keypoints_enabled,
+            ),
+            (
+                "compact_summaries",
+                "📦 Compact summaries (~1000 tokens/chapter)",
+                self.state.compact_summaries,
+            ),
+            (
+                "_streaming_enabled",
+                "📡 Streaming LLM output (show partial summaries)",
+                self.state._streaming_enabled,
+            ),
             ("generate_docx", "DOCX report (Word document)", self.state.generate_docx),
         ]
         for key, label, checked in core_items:
@@ -89,25 +110,77 @@ class Step4Outputs(WizardStep):
         # V10.29.0 (Sprint 2.1): getattr fallbacks removed — the fields are
         # now declared on WizardState so they survive profile save/load.
         studio_items = [
-            ("outputs_briefing", "Executive briefing (one-page synthesis)", self.state.outputs_briefing),
-            ("outputs_podcast", "Podcast script (2-host dialogue text)", self.state.outputs_podcast),
-            ("outputs_tts", "Podcast audio (TTS — requires podcast script enabled above)", self.state.outputs_tts),
-            ("outputs_flashcards", "Flashcards (Anki-compatible TSV + MD)", self.state.outputs_flashcards),
-            ("outputs_packets", "Packets of Knowledge (clustered synthesis + Q&A)", self.state.outputs_packets),
-            ("outputs_obsidian", "Obsidian knowledge base (linked notes)", self.state.outputs_obsidian),
-            ("outputs_study_guide", "Study guide (objectives, glossary, Q&A)", self.state.outputs_study_guide),
-            ("outputs_social", "Social media pack (X thread + LinkedIn)", self.state.outputs_social),
+            (
+                "outputs_briefing",
+                "Executive briefing (one-page synthesis)",
+                self.state.outputs_briefing,
+            ),
+            (
+                "outputs_podcast",
+                "Podcast script (2-host dialogue text)",
+                self.state.outputs_podcast,
+            ),
+            (
+                "outputs_tts",
+                "Podcast audio (TTS — requires podcast script enabled above)",
+                self.state.outputs_tts,
+            ),
+            (
+                "outputs_flashcards",
+                "Flashcards (Anki-compatible TSV + MD)",
+                self.state.outputs_flashcards,
+            ),
+            (
+                "outputs_packets",
+                "Packets of Knowledge (clustered synthesis + Q&A)",
+                self.state.outputs_packets,
+            ),
+            (
+                "outputs_obsidian",
+                "Obsidian knowledge base (linked notes)",
+                self.state.outputs_obsidian,
+            ),
+            (
+                "outputs_study_guide",
+                "Study guide (objectives, glossary, Q&A)",
+                self.state.outputs_study_guide,
+            ),
+            (
+                "outputs_social",
+                "Social media pack (X thread + LinkedIn)",
+                self.state.outputs_social,
+            ),
             ("outputs_mindmap", "Mind map (Mermaid + outline)", self.state.outputs_mindmap),
             # V10.20.0 + V10.21.0: New output types
             ("outputs_qa", "❓ Study Questions (open-ended Q&A)", self.state.outputs_qa),
-            ("outputs_glossary", "📖 Glossary (key terms + definitions)", self.state.outputs_glossary),
+            (
+                "outputs_glossary",
+                "📖 Glossary (key terms + definitions)",
+                self.state.outputs_glossary,
+            ),
             ("outputs_patterns", "🔧 Patterns & Techniques", self.state.outputs_patterns),
-            ("outputs_cheatsheet", "📋 Cheatsheet (decision tables)", self.state.outputs_cheatsheet),
-            ("outputs_skill", "🤖 Agent Skill (SKILL.md for Claude/Copilot)", self.state.outputs_skill),
-            ("outputs_evidence_map", "🗺️ Scientific Evidence Map (langextract)", self.state.outputs_evidence_map),
+            (
+                "outputs_cheatsheet",
+                "📋 Cheatsheet (decision tables)",
+                self.state.outputs_cheatsheet,
+            ),
+            (
+                "outputs_skill",
+                "🤖 Agent Skill (SKILL.md for Claude/Copilot)",
+                self.state.outputs_skill,
+            ),
+            (
+                "outputs_evidence_map",
+                "🗺️ Scientific Evidence Map (langextract)",
+                self.state.outputs_evidence_map,
+            ),
             # V10.36.0: New outputs
             ("outputs_epub", "📚 EPUB (annotated, for e-readers)", self.state.outputs_epub),
-            ("outputs_quote_bank", "💬 Quote Bank (direct quotes with citations)", self.state.outputs_quote_bank),
+            (
+                "outputs_quote_bank",
+                "💬 Quote Bank (direct quotes with citations)",
+                self.state.outputs_quote_bank,
+            ),
         ]
         for key, label, checked in studio_items:
             cb = QCheckBox(label)

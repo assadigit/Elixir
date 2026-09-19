@@ -18,6 +18,7 @@ torch is NOT installed in this sandbox.  We mock ``torch`` via
 ``sys.modules`` injection — a ``FakeTorch`` module that reports a 12 GB
 card with low allocated memory.
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,8 +34,10 @@ if str(_project_root) not in sys.path:
 
 # ── Fake torch module ──────────────────────────────────────────────────────
 
+
 class _FakeCudaProperties:
     """Simulates torch.cuda.get_device_properties(0).total_memory."""
+
     def __init__(self, total_memory_bytes: int):
         self.total_memory = total_memory_bytes
 
@@ -52,9 +55,7 @@ class _FakeTorch:
     def __init__(self, gpu_gb: float = 12.0, allocated_gb: float = 0.0):
         self.cuda = MagicMock()
         self.cuda.is_available.return_value = True
-        self.cuda.get_device_properties.return_value = _FakeCudaProperties(
-            int(gpu_gb * 1024**3)
-        )
+        self.cuda.get_device_properties.return_value = _FakeCudaProperties(int(gpu_gb * 1024**3))
         self.cuda.memory_allocated.return_value = int(allocated_gb * 1024**3)
 
 
@@ -86,6 +87,7 @@ def mock_torch_24gb():
 
 # ── Provider construction helper ────────────────────────────────────────────
 
+
 def _make_provider(model: str, context_tokens: int = 32768):
     """Create an OllamaProvider with a specific model + context setting.
 
@@ -93,6 +95,7 @@ def _make_provider(model: str, context_tokens: int = 32768):
     is just an object, no network connection.  Safe to construct.
     """
     from core.llm.llm_provider import OllamaProvider
+
     return OllamaProvider(
         model=model,
         context_tokens=context_tokens,
@@ -100,6 +103,7 @@ def _make_provider(model: str, context_tokens: int = 32768):
 
 
 # ── Tests: the cap branching matrix ─────────────────────────────────────────
+
 
 class TestCtxCapOn12GB:
     """On a 12 GB card, 27B low-bit quants get a context cap.
@@ -111,22 +115,25 @@ class TestCtxCapOn12GB:
     cap stays in force.
     """
 
-    @pytest.mark.parametrize("model,expected_cap", [
-        # The gold-standard model: IQ2_S → 26758 (V18.20.2.0 SWOT A1: the
-        # VRAM-aware raise to 32768 needs an external /api/ps reading
-        # showing ≥1.2 GB free — unavailable here, so the SAFE cap applies.
-        # Pre-V18.20.2.0 the app-process torch metric made the raise fire
-        # unconditionally — the VRAM illusion this fix removes.)
-        ("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest", 26758),
-        ("Qwen3.8-27B-UD-IQ2_S:latest", 26758),
-        # Q2_K_XL → 16000 (VRAM-aware raise only fires for IQ2_S, not Q2_K)
-        ("Qwen3.8-27B-UD-Q2_K_XL:latest", 16000),
-        ("Qwen3.8-27B-UD-Q2_K:latest", 16000),
-        # IQ2_XXS → 16000 (VRAM-aware raise only fires for IQ2_S specifically)
-        ("Qwen3.8-27B-UD-IQ2_XXS:latest", 16000),
-        # IQ2_XS → 16000
-        ("Qwen3.8-27B-UD-IQ2_XS:latest", 16000),
-    ])
+    @pytest.mark.parametrize(
+        "model,expected_cap",
+        [
+            # The gold-standard model: IQ2_S → 26758 (V18.20.2.0 SWOT A1: the
+            # VRAM-aware raise to 32768 needs an external /api/ps reading
+            # showing ≥1.2 GB free — unavailable here, so the SAFE cap applies.
+            # Pre-V18.20.2.0 the app-process torch metric made the raise fire
+            # unconditionally — the VRAM illusion this fix removes.)
+            ("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest", 26758),
+            ("Qwen3.8-27B-UD-IQ2_S:latest", 26758),
+            # Q2_K_XL → 16000 (VRAM-aware raise only fires for IQ2_S, not Q2_K)
+            ("Qwen3.8-27B-UD-Q2_K_XL:latest", 16000),
+            ("Qwen3.8-27B-UD-Q2_K:latest", 16000),
+            # IQ2_XXS → 16000 (VRAM-aware raise only fires for IQ2_S specifically)
+            ("Qwen3.8-27B-UD-IQ2_XXS:latest", 16000),
+            # IQ2_XS → 16000
+            ("Qwen3.8-27B-UD-IQ2_XS:latest", 16000),
+        ],
+    )
     def test_27b_low_bit_capped(self, mock_torch_12gb, model, expected_cap):
         """27B low-bit quants on 12 GB get the model-specific cap."""
         provider = _make_provider(model)
@@ -135,9 +142,7 @@ class TestCtxCapOn12GB:
         # uncapped ctx = min(32768, max(16000, 27288)) = 27288 > 26758 → cap fires.
         long_prompt = "x " * 30000  # ~15000 tokens → needed > 26758
         ctx = provider._adaptive_context(long_prompt, max_tokens=8192)
-        assert ctx == expected_cap, (
-            f"{model} on 12 GB should cap at {expected_cap}, got {ctx}"
-        )
+        assert ctx == expected_cap, f"{model} on 12 GB should cap at {expected_cap}, got {ctx}"
 
     def test_iq2_s_capped_to_26758_without_external_reading(self, mock_torch_12gb):
         """V18.20.2.0 (SWOT A1): IQ2_S WITHOUT an external /api/ps reading is
@@ -150,8 +155,7 @@ class TestCtxCapOn12GB:
         long_prompt = "x " * 30000  # needed ~27288 > 26758
         ctx = provider._adaptive_context(long_prompt, max_tokens=8192)
         assert ctx == 26758, (
-            f"IQ2_S without an external VRAM reading must stay at the safe "
-            f"26758 cap, got {ctx}"
+            f"IQ2_S without an external VRAM reading must stay at the safe 26758 cap, got {ctx}"
         )
 
     def test_iq2_s_not_capped_to_26758_with_real_external_reading(self, mock_torch_12gb):
@@ -161,6 +165,7 @@ class TestCtxCapOn12GB:
         ceiling, so no cap fires and ctx stays above 26758.
         """
         from unittest.mock import MagicMock
+
         provider = _make_provider("Qwen3.8-27B-UD-IQ2_S:latest")
         long_prompt = "x " * 30000  # needed ~27288
 
@@ -172,7 +177,9 @@ class TestCtxCapOn12GB:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("utils.network.safe_ollama_request", lambda *a, **k: _resp)
             ctx = provider._adaptive_context(long_prompt, max_tokens=8192)
-        assert ctx > 26758, f"IQ2_S with verified ≥1.2 GB free should NOT be capped to 26758, got {ctx}"
+        assert ctx > 26758, (
+            f"IQ2_S with verified ≥1.2 GB free should NOT be capped to 26758, got {ctx}"
+        )
         assert ctx <= 32768, f"Should not exceed 32768, got {ctx}"
 
     def test_q2_k_xl_cap_is_16000_not_32768(self, mock_torch_12gb):
@@ -189,11 +196,14 @@ class TestCtxCapOn12GB:
 class TestNoCapOn24GB:
     """On a 24 GB card, no cap is needed — the model fits with headroom."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-27B-UD-IQ2_S:latest",
-        "Qwen3.8-27B-UD-Q2_K_XL:latest",
-        "Qwen3.8-27B-UD-IQ2_XXS:latest",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-27B-UD-IQ2_S:latest",
+            "Qwen3.8-27B-UD-Q2_K_XL:latest",
+            "Qwen3.8-27B-UD-IQ2_XXS:latest",
+        ],
+    )
     def test_no_cap_on_24gb(self, mock_torch_24gb, model):
         """24 GB cards have enough VRAM — no cap, full context_tokens used."""
         provider = _make_provider(model, context_tokens=32768)
@@ -202,9 +212,7 @@ class TestNoCapOn24GB:
         # Should be the full calculated ctx (not capped to 26758 or 16000).
         # The uncapped value is min(32768, max(16000, needed)) where
         # needed = 10000 + 8192 + 4096 = 22288 → ctx = 22288.
-        assert ctx >= 20000, (
-            f"24 GB card should NOT cap {model} — got {ctx}"
-        )
+        assert ctx >= 20000, f"24 GB card should NOT cap {model} — got {ctx}"
         assert ctx != 26758, "24 GB should not apply the 12 GB cap"
         assert ctx != 16000, "24 GB should not apply the 12 GB cap"
 
@@ -212,20 +220,21 @@ class TestNoCapOn24GB:
 class TestNoCapForSmallOrFullPrecision:
     """Small models (< 27B) and full-precision models don't get a cap."""
 
-    @pytest.mark.parametrize("model", [
-        "Qwen3.8-9B-Q8:latest",       # 9B — small, no cap
-        "Qwen3.8-27B-Q8:latest",       # 27B but Q8 (not low-bit), no cap
-        "Qwen3.8-27B-F16:latest",       # 27B FP16, no cap
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "Qwen3.8-9B-Q8:latest",  # 9B — small, no cap
+            "Qwen3.8-27B-Q8:latest",  # 27B but Q8 (not low-bit), no cap
+            "Qwen3.8-27B-F16:latest",  # 27B FP16, no cap
+        ],
+    )
     def test_no_cap(self, mock_torch_12gb, model):
         """Non-low-bit or small models on 12 GB → no cap."""
         provider = _make_provider(model, context_tokens=32768)
         long_prompt = "x " * 30000  # needed > 26758 — but no cap for non-low-bit models
         ctx = provider._adaptive_context(long_prompt, max_tokens=8192)
         assert ctx >= 20000, f"{model} should not be capped — got {ctx}"
-        assert ctx != 26758 and ctx != 16000, (
-            f"{model} should not get the low-bit cap — got {ctx}"
-        )
+        assert ctx != 26758 and ctx != 16000, f"{model} should not get the low-bit cap — got {ctx}"
 
 
 class TestAdaptiveContextFloor:

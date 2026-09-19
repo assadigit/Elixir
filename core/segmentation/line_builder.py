@@ -20,8 +20,9 @@ class ChapterSegment:
 
 # Back‑matter patterns
 BACK_MATTER_PATTERNS = [
-    r'(?i)^(references|bibliography|credits|index|about\s+the\s+author|acknowledgments?|glossary|notes|further\s+reading)$'
+    r"(?i)^(references|bibliography|credits|index|about\s+the\s+author|acknowledgments?|glossary|notes|further\s+reading)$"
 ]
+
 
 def build_segments(toc_result: TOCResult, md_lines: list[str]) -> list[ChapterSegment]:
     """
@@ -42,7 +43,7 @@ def build_segments(toc_result: TOCResult, md_lines: list[str]) -> list[ChapterSe
         start = entry.line
         end = None
         # Look ahead for the next entry with a line
-        for j in range(i+1, len(entries)):
+        for j in range(i + 1, len(entries)):
             if entries[j].line is not None:
                 end = entries[j].line - 1
                 break
@@ -57,23 +58,27 @@ def build_segments(toc_result: TOCResult, md_lines: list[str]) -> list[ChapterSe
         elif any(re.search(pattern, title_lower) for pattern in BACK_MATTER_PATTERNS):
             seg_type = "back_matter"
 
-        segments.append(ChapterSegment(
-            title=entry.title,
-            start_line=start,
-            end_line=end,
-            confidence=entry.confidence,
-            segment_type=seg_type
-        ))
+        segments.append(
+            ChapterSegment(
+                title=entry.title,
+                start_line=start,
+                end_line=end,
+                confidence=entry.confidence,
+                segment_type=seg_type,
+            )
+        )
 
     # If no segments, create a fallback
     if not segments:
-        segments.append(ChapterSegment(
-            title="Full Document",
-            start_line=0,
-            end_line=len(md_lines)-1,
-            confidence=0.0,
-            segment_type="chapter"
-        ))
+        segments.append(
+            ChapterSegment(
+                title="Full Document",
+                start_line=0,
+                end_line=len(md_lines) - 1,
+                confidence=0.0,
+                segment_type="chapter",
+            )
+        )
         return segments
 
     # ---- Post‑processing: merge back‑matter segments ----
@@ -96,8 +101,9 @@ def build_segments(toc_result: TOCResult, md_lines: list[str]) -> list[ChapterSe
                     title="Back Matter",
                     start_line=first.start_line,
                     end_line=last.end_line,
-                    confidence=sum(s.confidence for s in back_matter_group) / len(back_matter_group),
-                    segment_type="back_matter"
+                    confidence=sum(s.confidence for s in back_matter_group)
+                    / len(back_matter_group),
+                    segment_type="back_matter",
                 )
                 merged_segments.append(merged)
             i = j

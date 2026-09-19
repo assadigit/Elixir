@@ -15,6 +15,7 @@ Branches covered:
 
 Run: pytest tests/test_filter_thinking.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,12 +26,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation import filter_thinking as ft_mod
 
@@ -58,19 +62,25 @@ class _QEntry:
 def _patch_classify(monkeypatch, kept, drops):
     """Replace post_processing.classify_bullets with a canned result."""
     import core.summarisation.post_processing as pp
-    monkeypatch.setattr(pp, "classify_bullets",
-                        lambda bullets, concepts=None, source_text="": (list(kept), list(drops)))
+
+    monkeypatch.setattr(
+        pp,
+        "classify_bullets",
+        lambda bullets, concepts=None, source_text="": (list(kept), list(drops)),
+    )
 
 
 class TestFilterThinkingBullets:
-
     def test_no_drops_returns_filtered_no_quarantine_add(self, monkeypatch):
         q = _FakeQuarantine()
         last_set = {"v": None}
         _patch_classify(monkeypatch, kept=["good bullet"], drops=[])
         result = ft_mod.filter_thinking_bullets(
-            ["good bullet"], concepts=None, source_text="",
-            quarantine=q, log=lambda m, l="INFO": None,
+            ["good bullet"],
+            concepts=None,
+            source_text="",
+            quarantine=q,
+            log=lambda m, l="INFO": None,
             set_last_quarantined=lambda v: last_set.__setitem__("v", v),
         )
         assert result == ["good bullet"]
@@ -83,8 +93,10 @@ class TestFilterThinkingBullets:
         _patch_classify(monkeypatch, kept=["kept bullet"], drops=drops)
         logs = []
         result = ft_mod.filter_thinking_bullets(
-            ["kept bullet", "leaky bullet"], concepts=None,
-            quarantine=q, log=lambda m, l="INFO": logs.append((m, l)),
+            ["kept bullet", "leaky bullet"],
+            concepts=None,
+            quarantine=q,
+            log=lambda m, l="INFO": logs.append((m, l)),
         )
         assert result == ["kept bullet"]
         assert len(q.entries) == 1
@@ -100,9 +112,11 @@ class TestFilterThinkingBullets:
         drops = [("narrative bp", "narrative", "story bullet", False)]
         _patch_classify(monkeypatch, kept=["good"], drops=drops)
         result = ft_mod.filter_thinking_bullets(
-            ["good", "narrative bp"], concepts=None,
+            ["good", "narrative bp"],
+            concepts=None,
             conservative_drops=True,
-            quarantine=q, log=lambda m, l="INFO": None,
+            quarantine=q,
+            log=lambda m, l="INFO": None,
         )
         # gated drop kept (len > 2)
         assert "narrative bp" in result
@@ -117,8 +131,11 @@ class TestFilterThinkingBullets:
         drops = [("ab", "narrative", "short", False)]  # len == 2
         _patch_classify(monkeypatch, kept=["good"], drops=drops)
         result = ft_mod.filter_thinking_bullets(
-            ["good", "ab"], concepts=None, conservative_drops=True,
-            quarantine=q, log=lambda m, l="INFO": None,
+            ["good", "ab"],
+            concepts=None,
+            conservative_drops=True,
+            quarantine=q,
+            log=lambda m, l="INFO": None,
         )
         assert "ab" not in result  # too short to keep back
 
@@ -126,12 +143,18 @@ class TestFilterThinkingBullets:
         """concepts provided → bullets scored, <25 dropped, quality_scorer logged."""
         q = _FakeQuarantine()
         _patch_classify(monkeypatch, kept=["high", "low"], drops=[])
+
         # score: "high"=80, "low"=10 → low dropped
         def score(bullet, concepts=None, source_text=""):
             return 80 if bullet == "high" else 10
+
         result = ft_mod.filter_thinking_bullets(
-            ["high", "low"], concepts=["c1"], source_text="src",
-            quarantine=q, score_bullet=score, max_bullets_per_chapter=30,
+            ["high", "low"],
+            concepts=["c1"],
+            source_text="src",
+            quarantine=q,
+            score_bullet=score,
+            max_bullets_per_chapter=30,
             log=lambda m, l="INFO": None,
         )
         assert result == ["high"]
@@ -145,12 +168,18 @@ class TestFilterThinkingBullets:
         """conservative mode → quality scoring runs but ALL bullets kept."""
         q = _FakeQuarantine()
         _patch_classify(monkeypatch, kept=["high", "low"], drops=[])
+
         def score(bullet, concepts=None, source_text=""):
             return 80 if bullet == "high" else 10
+
         result = ft_mod.filter_thinking_bullets(
-            ["high", "low"], concepts=["c1"], source_text="src",
+            ["high", "low"],
+            concepts=["c1"],
+            source_text="src",
             conservative_drops=True,
-            quarantine=q, score_bullet=score, max_bullets_per_chapter=30,
+            quarantine=q,
+            score_bullet=score,
+            max_bullets_per_chapter=30,
             log=lambda m, l="INFO": None,
         )
         # conservative → both kept (score trim bypassed)
@@ -168,8 +197,10 @@ class TestFilterThinkingBullets:
         _patch_classify(monkeypatch, kept=[], drops=drops)
         last_set = {"v": None}
         ft_mod.filter_thinking_bullets(
-            [long_bullet], concepts=None,
-            quarantine=q, log=lambda m, l="INFO": None,
+            [long_bullet],
+            concepts=None,
+            quarantine=q,
+            log=lambda m, l="INFO": None,
             set_last_quarantined=lambda v: last_set.__setitem__("v", v),
         )
         assert last_set["v"] is not None
@@ -187,7 +218,9 @@ class TestFilterThinkingBullets:
         last_set = {"v": None}
         logs = []
         ft_mod.filter_thinking_bullets(
-            ["good"], concepts=None, quarantine=q,
+            ["good"],
+            concepts=None,
+            quarantine=q,
             log=lambda m, l="INFO": logs.append((m, l)),
             set_last_quarantined=lambda v: last_set.__setitem__("v", v),
         )
@@ -200,12 +233,17 @@ class TestFilterThinkingBullets:
         q = _FakeQuarantine()
         _patch_classify(monkeypatch, kept=["a", "b"], drops=[])
         score_calls = {"n": 0}
+
         def score(b, concepts=None, source_text=""):
             score_calls["n"] += 1
             return 50
+
         result = ft_mod.filter_thinking_bullets(
-            ["a", "b"], concepts=None,  # None → skip scoring
-            quarantine=q, score_bullet=score, max_bullets_per_chapter=30,
+            ["a", "b"],
+            concepts=None,  # None → skip scoring
+            quarantine=q,
+            score_bullet=score,
+            max_bullets_per_chapter=30,
             log=lambda m, l="INFO": None,
         )
         assert set(result) == {"a", "b"}

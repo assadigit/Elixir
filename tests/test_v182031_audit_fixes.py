@@ -38,6 +38,7 @@ D7 — CONSOLIDATION/SCHOLAR CAPS TOO SMALL: 2048/3000-token budgets cut
    mid-generation (consolidation "merged 11" was partly silent loss;
    scholar "could not fill them" was the truncation, not the verdict).
 """
+
 from __future__ import annotations
 
 import sys
@@ -182,9 +183,7 @@ class _FakeAdditiveSelf:
     temperature = 0.7
 
     def __init__(self, raw_response, max_ctx_tokens=12000):
-        self.request = types.SimpleNamespace(
-            summarisation_max_context_tokens=max_ctx_tokens
-        )
+        self.request = types.SimpleNamespace(summarisation_max_context_tokens=max_ctx_tokens)
         self.prompt_manager = _FakePromptManager()
         self.raw_response = raw_response
         self.calls = []
@@ -209,7 +208,9 @@ class TestAdditiveFollowupHardening:
         """The V18.20.3.0 failure came from the 2048 cap (V18.20.3.1: 4096)."""
         from core.summarisation.summarizer import Summarizer
 
-        fake = _FakeAdditiveSelf("<key_distinctions>\n- Complete distinction line here.\n</key_distinctions>\n<theoretical_tensions>\n- Complete tension line here.\n</theoretical_tensions>")
+        fake = _FakeAdditiveSelf(
+            "<key_distinctions>\n- Complete distinction line here.\n</key_distinctions>\n<theoretical_tensions>\n- Complete tension line here.\n</theoretical_tensions>"
+        )
         result = {"key_distinctions": "", "theoretical_tensions": ""}
         Summarizer._ensure_additive_sections(fake, "Ch 1", "source text", result)
         assert fake.calls and fake.calls[0].get("max_tokens") == 4096
@@ -240,8 +241,7 @@ class TestAdditiveFollowupHardening:
         # The old single "✅ populated" line hid the missing section; now the
         # log names each section's state.
         assert any(
-            "key_distinctions=" in m and "theoretical_tensions=MISSING" in m
-            for _, m in fake.logs
+            "key_distinctions=" in m and "theoretical_tensions=MISSING" in m for _, m in fake.logs
         )
 
     def test_source_scan_no_2048_budget_remains(self):
@@ -255,11 +255,10 @@ class TestAdditiveFollowupHardening:
         slice also ends at end-of-module). Assertions unchanged."""
         import re as _re
 
-        src = (PROJECT_ROOT / "core" / "summarisation" /
-               "additive_sections.py").read_text(encoding="utf-8")
-        m = _re.search(
-            r"def _ensure_additive_sections\(.*?(?=\n    def |\Z)", src, _re.DOTALL
+        src = (PROJECT_ROOT / "core" / "summarisation" / "additive_sections.py").read_text(
+            encoding="utf-8"
         )
+        m = _re.search(r"def _ensure_additive_sections\(.*?(?=\n    def |\Z)", src, _re.DOTALL)
         assert m, "_ensure_additive_sections not found"
         body = m.group(0)
         assert "max_tokens=4096" in body
@@ -280,8 +279,7 @@ class TestPostcheckDropsTruncatedAdditiveLines:
             executive_summary="Exec summary text.",
             thorough_summary="Thorough summary text with content.",
             key_distinctions=(
-                "- Complete distinction line here.\n"
-                "- Truncated line without end (unbalanced paren"
+                "- Complete distinction line here.\n- Truncated line without end (unbalanced paren"
             ),
             theoretical_tensions="",
             source_text="concepts bullet complete distinction summary content text.",
@@ -289,8 +287,7 @@ class TestPostcheckDropsTruncatedAdditiveLines:
         assert "Truncated line" not in rep.key_distinctions
         assert "Complete distinction" in rep.key_distinctions
         trunc = [
-            i for i in rep.issues
-            if i.detector == "truncated" and i.field == "key_distinctions"
+            i for i in rep.issues if i.detector == "truncated" and i.field == "key_distinctions"
         ]
         assert trunc and trunc[0].severity == "fix"
         assert "dropped truncated line" in trunc[0].detail
@@ -344,7 +341,9 @@ class TestPronounDetectorHonesty:
         # says "His continuum" right after the Greenacre citation.
         text = "Greenacre (1958) described the body image. His continuum was foundational."
         out, issues = detect_pronoun_mismatch(
-            text, self._SOURCE, "bullet[0]",
+            text,
+            self._SOURCE,
+            "bullet[0]",
             source_authors=["Greenacre", "Freud", "Winnicott"],
         )
         assert out == text  # flag-only — NEVER rewritten
@@ -374,7 +373,9 @@ class TestPronounDetectorHonesty:
             "influential, and his developmental hypothesis was combined."
         )
         _, issues = detect_pronoun_mismatch(
-            text, self._SOURCE, "bullet[16]",
+            text,
+            self._SOURCE,
+            "bullet[16]",
             source_authors=["Greenacre", "Freud", "Winnicott"],
         )
         # None of the noun "authors" are source-cited → zero flags
@@ -394,9 +395,7 @@ class TestPronounDetectorHonesty:
         src = (PROJECT_ROOT / "core" / "summarisation" / "postchecks.py").read_text(
             encoding="utf-8"
         )
-        assert src.count(
-            "detect_pronoun_mismatch("
-        ) >= 3  # 3 call sites (bullets/exec/thorough)
+        assert src.count("detect_pronoun_mismatch(") >= 3  # 3 call sites (bullets/exec/thorough)
         assert src.count("source_authors=source_authors") >= 3
 
 
@@ -426,8 +425,16 @@ class TestSubjectSwapColonForm:
         "self-image to identity. She emphasized that identity always "
         "involves relation to others."
     )
-    _AUTHORS = ["Winnicott", "Kernberg", "Khan", "Klein", "Greenacre",
-                "Erikson", "Jacobson", "Mahler"]
+    _AUTHORS = [
+        "Winnicott",
+        "Kernberg",
+        "Khan",
+        "Klein",
+        "Greenacre",
+        "Erikson",
+        "Jacobson",
+        "Mahler",
+    ]
 
     def test_khan_colon_bullet_flagged(self):
         """The EXACT Khan gap-fill bullet from the V18.20.3.0 run (source
@@ -496,9 +503,9 @@ class TestSubjectSwapColonForm:
             _, issues = detect_attribution_subject_swap(
                 bullet, self._SOURCE, "bullet[X]", source_authors=self._AUTHORS
             )
-            assert not [
-                i for i in issues if i.detector == "attribution_swap"
-            ], f"FP for: {bullet[:50]}"
+            assert not [i for i in issues if i.detector == "attribution_swap"], (
+                f"FP for: {bullet[:50]}"
+            )
 
     def test_bold_and_dashed_bullet_forms_matched(self):
         from core.summarisation.postcheck_detectors import detect_attribution_subject_swap
@@ -570,9 +577,7 @@ class TestCheckpointDocxLogTruthfulPath:
             fake_converter = types.SimpleNamespace(
                 _log=lambda msg, level="INFO": captured_logs.append((level, msg)),
                 output_dir=tmp_path,
-                paths=types.SimpleNamespace(
-                    summaries_dir=tmp_path / "summaries"
-                ),
+                paths=types.SimpleNamespace(summaries_dir=tmp_path / "summaries"),
                 request=types.SimpleNamespace(input_path=tmp_path),
                 _sanitize_filename=lambda h: "Ch1",
                 checkpoint=None,
@@ -581,7 +586,8 @@ class TestCheckpointDocxLogTruthfulPath:
             summary = MagicMock()
             summary.chapter_heading = "Chapter One"
             out = saver._build_chapter_docx(
-                summary, {"heading": "Chapter One", "content": "text"},
+                summary,
+                {"heading": "Chapter One", "content": "text"},
                 tmp_path / "chapters" / "001_Ch1" / "001_Ch1_summary.docx",
             )
             assert out is not None and out.suffix == ".docx"
@@ -608,10 +614,14 @@ class _FakeQuarantine:
         self.entries = []
 
     def add(self, bullet, stage="", reason="", chapter="", actually_dropped=False, **kw):
-        self.entries.append(types.SimpleNamespace(
-            bullet=bullet, stage=stage, reason=reason,
-            actually_dropped=actually_dropped,
-        ))
+        self.entries.append(
+            types.SimpleNamespace(
+                bullet=bullet,
+                stage=stage,
+                reason=reason,
+                actually_dropped=actually_dropped,
+            )
+        )
 
     def summary(self):
         out = {}
@@ -642,14 +652,16 @@ class TestQuarantineLogDedupe:
 
         # First call: one thinking bullet dropped → summary logs
         filter_thinking_bullets(
-            ["Let me think about this more carefully"], quarantine=q,
+            ["Let me think about this more carefully"],
+            quarantine=q,
             log=lambda m, l="INFO": logs.append(m),
             set_last_quarantined=lambda entries: None,
         )
         # Eight subsequent clean calls (the gap-fill pattern) → NO re-log
         for _ in range(8):
             filter_thinking_bullets(
-                ["A perfectly clean bullet sentence."], quarantine=q,
+                ["A perfectly clean bullet sentence."],
+                quarantine=q,
                 log=lambda m, l="INFO": logs.append(m),
                 set_last_quarantined=lambda entries: None,
             )
@@ -673,7 +685,8 @@ class TestQuarantineLogDedupe:
         q = _FakeQuarantine()
         logs = []
         common = dict(
-            quarantine=q, log=lambda m, l="INFO": logs.append(m),
+            quarantine=q,
+            log=lambda m, l="INFO": logs.append(m),
             set_last_quarantined=lambda entries: None,
         )
         filter_thinking_bullets(["Let me think about this more carefully"], **common)
@@ -686,13 +699,15 @@ class TestQuarantineLogDedupe:
         from core.summarisation.filter_thinking import filter_thinking_bullets
 
         monkeypatch.setattr(
-            pp, "classify_bullets",
+            pp,
+            "classify_bullets",
             lambda bullets, concepts=None, source_text="": (list(bullets), []),
         )
         q = _FakeQuarantine()
         logs = []
         filter_thinking_bullets(
-            ["A clean bullet."], quarantine=q,
+            ["A clean bullet."],
+            quarantine=q,
             log=lambda m, l="INFO": logs.append(m),
             set_last_quarantined=lambda entries: None,
         )
@@ -711,17 +726,17 @@ class TestFollowupTokenBudgets:
     # These pins were re-based from 4096 to 6144 by the V18.20.3.2 release.
 
     def test_consolidation_budget_6144(self):
-        src = (
-            PROJECT_ROOT / "core" / "summarisation" / "bullet_consolidation.py"
-        ).read_text(encoding="utf-8")
+        src = (PROJECT_ROOT / "core" / "summarisation" / "bullet_consolidation.py").read_text(
+            encoding="utf-8"
+        )
         assert "max_tokens=6144" in src
         assert "max_tokens=4096" not in src
         assert "max_tokens=2048" not in src
 
     def test_scholar_budget_6144(self):
-        src = (
-            PROJECT_ROOT / "core" / "summarisation" / "scholar_reflection.py"
-        ).read_text(encoding="utf-8")
+        src = (PROJECT_ROOT / "core" / "summarisation" / "scholar_reflection.py").read_text(
+            encoding="utf-8"
+        )
         assert "max_tokens=6144" in src
         assert "max_tokens=4096" not in src
         assert "max_tokens=3000" not in src
@@ -732,8 +747,7 @@ class TestFollowupTokenBudgets:
         from core.summarisation.response_parser import strip_truncated_section_tail
 
         gap_text = (
-            "- A complete grounded bullet with a quote.\n"
-            "- A cut bullet ending mid (parenthetical"
+            "- A complete grounded bullet with a quote.\n- A cut bullet ending mid (parenthetical"
         )
         out = strip_truncated_section_tail(gap_text, closing_tag_present=False)
         assert "complete grounded" in out

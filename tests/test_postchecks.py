@@ -12,6 +12,7 @@ Tests verify each of the four detectors + the coordinator:
 The V18.2.12 run scored 6/10 (down from 9/10) entirely because of four
 garbled tokens the IQ2_XXS quant produced. These tests verify each is caught.
 """
+
 from __future__ import annotations
 
 import sys
@@ -40,6 +41,7 @@ from core.summarisation.postchecks import (
 # Detector 1: validate_years
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestValidateYears:
     """V18.2.13: Year range + author-name grounding."""
 
@@ -59,6 +61,7 @@ class TestValidateYears:
     def test_year_above_max_flagged(self):
         """Years in the far future are flagged."""
         from core.summarisation import postchecks as pc
+
         future = pc.MAX_YEAR + 5
         text, issues = validate_years(f"Predicted for {future}.", "exec")
         assert any(i.detector == "year" and str(future) in i.detail for i in issues)
@@ -102,6 +105,7 @@ class TestValidateYears:
 # ═══════════════════════════════════════════════════════════════════════════
 # Detector 2: detect_prompt_leakage
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDetectPromptLeakage:
     """V18.2.13: Strip prompt-leakage phrases + stray parentheses."""
@@ -158,6 +162,7 @@ class TestDetectPromptLeakage:
 # Detector 3: detect_garbled_tokens
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDetectGarbledTokens:
     """V18.2.13: Flag consonant clusters, impossible bigrams, vowel-less words."""
 
@@ -208,6 +213,7 @@ class TestDetectGarbledTokens:
 # ═══════════════════════════════════════════════════════════════════════════
 # Detector 4: detect_missing_spaces
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDetectMissingSpaces:
     """V18.2.13: Fix 'the'+word merges + camelCase merges."""
@@ -287,6 +293,7 @@ class TestDetectMissingSpaces:
 # Coordinator: run_post_checks
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRunPostChecks:
     """V18.2.13: Full coordinator on the 4 V18.2.12 garbled tokens."""
 
@@ -311,25 +318,17 @@ class TestRunPostChecks:
         # All 4 findings recorded.
         assert report.total_findings >= 4
         # Dukhaim flagged (name corruption).
-        assert any(
-            i.detector == "year" and "Dukhaim" in i.detail
-            for i in report.issues
-        )
+        assert any(i.detector == "year" and "Dukhaim" in i.detail for i in report.issues)
         # thesonic fixed.
         assert any("thesonic" in i.detail for i in report.issues)
-        assert any(
-            "the sonic" in b for b in report.bullets
-        )
+        assert any("the sonic" in b for b in report.bullets)
         # prompt leakage stripped.
         assert any(
-            i.detector == "prompt" and "provided in the input" in i.detail
-            for i in report.issues
+            i.detector == "prompt" and "provided in the input" in i.detail for i in report.issues
         )
         assert all("provided in the input" not in b for b in report.bullets)
         # thephallic fixed.
-        assert any(
-            "the phallic-oedipal" in b for b in report.bullets
-        )
+        assert any("the phallic-oedipal" in b for b in report.bullets)
 
     def test_clean_summary_zero_findings(self):
         """A clean summary with matching authors produces zero findings."""
@@ -391,13 +390,17 @@ class TestRunPostChecks:
 # Dataclasses
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDataclasses:
     """V18.2.13: Issue + PostCheckReport dataclass behavior."""
 
     def test_issue_fields(self):
         iss = Issue(
-            detector="year", severity="flag", field="exec",
-            snippet="…Dukhaim 1951…", detail="name corruption",
+            detector="year",
+            severity="flag",
+            field="exec",
+            snippet="…Dukhaim 1951…",
+            detail="name corruption",
         )
         assert iss.detector == "year"
         assert iss.severity == "flag"
@@ -422,6 +425,7 @@ class TestDataclasses:
 # V18.15.5.0 (DEBT-07 / Known Issue #3): post-consolidation truncation check
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPostConsolidationTruncation:
     """V18.15.5.0 — run_post_checks now runs is_truncated on the FINAL
     (post-consolidation, post-gap-fill) bullet list.
@@ -441,8 +445,8 @@ class TestPostConsolidationTruncation:
         be verified against the source."""
         # The exact Greenacre-style truncation (unmatched quote, no terminal punct).
         truncated = (
-            'Greenacre (1958a) saw a continuum from body image through '
-            'self-image to identity, emphasizing that identity always '
+            "Greenacre (1958a) saw a continuum from body image through "
+            "self-image to identity, emphasizing that identity always "
             'involves some relation to others and that knowing "I am different'
         )
         report = run_post_checks(
@@ -464,8 +468,8 @@ class TestPostConsolidationTruncation:
         """A well-formed bullet is NOT flagged as truncated."""
         complete = (
             'Tausk (1919) introduced the term "identity" into psychoanalytic '
-            'literature, asserting that man must constantly find and experience '
-            'himself anew throughout life.'
+            "literature, asserting that man must constantly find and experience "
+            "himself anew throughout life."
         )
         report = run_post_checks(
             bullets=[complete],
@@ -474,19 +478,22 @@ class TestPostConsolidationTruncation:
             source_text="Tausk identity psychoanalytic",
         )
         trunc_issues = [i for i in report.issues if i.detector == "truncated"]
-        assert len(trunc_issues) == 0, \
-            f"complete bullet should not be flagged, got: {trunc_issues}"
+        assert len(trunc_issues) == 0, f"complete bullet should not be flagged, got: {trunc_issues}"
         # Bullet unchanged (no period appended)
         assert report.bullets[0] == complete
 
     def test_multiple_truncated_bullets_each_dropped(self):
         """Multiple truncated bullets each get their own drop record (one per
         bullet); the well-formed bullet is kept."""
-        b1 = ('First theorist saw a continuum that emphasizes identity always '
-              'involves some relation to others and that knowing "I am different')
-        b2 = ('Second theorist described the process as requiring emotional '
-              'disengagement from internalized infantile objects (with caveats')
-        b3 = 'Well-formed bullet that ends with a period.'
+        b1 = (
+            "First theorist saw a continuum that emphasizes identity always "
+            'involves some relation to others and that knowing "I am different'
+        )
+        b2 = (
+            "Second theorist described the process as requiring emotional "
+            "disengagement from internalized infantile objects (with caveats"
+        )
+        b3 = "Well-formed bullet that ends with a period."
         report = run_post_checks(
             bullets=[b1, b2, b3],
             executive_summary="",
@@ -495,8 +502,9 @@ class TestPostConsolidationTruncation:
         )
         trunc_issues = [i for i in report.issues if i.detector == "truncated"]
         # b1 (unmatched "), b2 (unmatched (), b3 (well-formed) → 2 truncated drops
-        assert len(trunc_issues) == 2, \
+        assert len(trunc_issues) == 2, (
             f"expected 2 truncated issues, got {len(trunc_issues)}: {trunc_issues}"
+        )
         flagged_fields = {i.field for i in trunc_issues}
         assert flagged_fields == {"bullet[0]", "bullet[1]"}
         # Only the well-formed bullet ships (V18.20.3.4 RC-3 enforced drop)
@@ -507,9 +515,9 @@ class TestPostConsolidationTruncation:
         mid-curly-quote (U+201C) is dropped (the curly-quote fix flows
         through to the post-consolidation check too)."""
         truncated_curly = (
-            'Greenacre (1958a) saw a continuum from body image through '
-            'self-image to identity, emphasizing that identity always '
-            'involves some relation to others and that knowing \u201cI am different'
+            "Greenacre (1958a) saw a continuum from body image through "
+            "self-image to identity, emphasizing that identity always "
+            "involves some relation to others and that knowing \u201cI am different"
         )
         report = run_post_checks(
             bullets=[truncated_curly],
@@ -518,8 +526,9 @@ class TestPostConsolidationTruncation:
             source_text="identity Greenacre",
         )
         trunc_issues = [i for i in report.issues if i.detector == "truncated"]
-        assert len(trunc_issues) == 1, \
+        assert len(trunc_issues) == 1, (
             f"curly-quote truncated bullet should be flagged, got: {trunc_issues}"
+        )
         assert trunc_issues[0].severity == "fix"
         assert report.bullets == []
 
@@ -527,8 +536,10 @@ class TestPostConsolidationTruncation:
         """V18.20.3.4 (RC-3): unmatched punctuation marks the bullet as a cut
         claim regardless of the trailing character — the bullet is dropped
         whether or not it happens to end with a terminal char."""
-        b = ('Some theorist (1950 proposed a long theory about identity '
-             'formation that spans multiple developmental phases.')
+        b = (
+            "Some theorist (1950 proposed a long theory about identity "
+            "formation that spans multiple developmental phases."
+        )
         # '(' unmatched → is_truncated True → dropped (V18.20.3.4).
         report = run_post_checks(
             bullets=[b],
@@ -540,4 +551,3 @@ class TestPostConsolidationTruncation:
         assert len(trunc_issues) == 1
         assert trunc_issues[0].severity == "fix"
         assert report.bullets == []
-

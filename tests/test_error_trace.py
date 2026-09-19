@@ -11,6 +11,7 @@ Verifies that:
    site, not the helper).
 5. The helpers themselves never raise (fail-open).
 """
+
 from __future__ import annotations
 
 import logging

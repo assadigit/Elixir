@@ -8,8 +8,9 @@ from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 class Card(QFrame):
     """A simple bordered, rounded surface used to group content."""
 
-    def __init__(self, parent: QWidget | None = None, *, padding: int = 16,
-                 spacing: int = 4) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, padding: int = 16, spacing: int = 4
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("Card")
         self._layout = QVBoxLayout(self)

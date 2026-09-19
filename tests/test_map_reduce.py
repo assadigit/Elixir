@@ -7,6 +7,7 @@ deterministically.
 
 Run: pytest tests/test_map_reduce.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,17 +19,20 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so utils.token_counter imports cleanly.
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
     class _E:
         def encode(self, s, disallowed_special=()):  # pragma: no cover - stub
             return s.split()
+
         def decode(self, tokens):  # pragma: no cover - stub
-            return ' '.join(tokens)
+            return " ".join(tokens)
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: _E()
     tk.encoding_for_model = lambda *a, **k: _E()
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.map_reduce import map_reduce_summarize
 
@@ -98,7 +102,8 @@ class TestMapReduceChunking:
         deps = _make_deps(llm_responses=[f"mini {i}" for i in range(20)] + ["REDUCED"])
         cap = _CapturingLog()
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
+            "Chapter 1",
+            content,
             primary_model="test-model",
             cache_dir=Path("/tmp/nonexistent_cache_dir"),
             input_path_stem="book",
@@ -124,7 +129,8 @@ class TestMapReduceChunking:
         content = "A short paragraph with a few words."
         deps = _make_deps(llm_responses=["mini 1", "REDUCED"])
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
+            "Chapter 1",
+            content,
             primary_model="test-model",
             cache_dir=Path("/tmp/nonexistent_cache_dir"),
             input_path_stem="book",
@@ -149,7 +155,8 @@ class TestMapReduceReduce:
         content = "A paragraph with enough content to summarise meaningfully here."
         deps = _make_deps(llm_responses=["mini summary", "FINAL REDUCED SUMMARY"])
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
+            "Chapter 1",
+            content,
             primary_model="test-model",
             cache_dir=Path("/tmp/nonexistent_cache_dir"),
             input_path_stem="book",
@@ -170,7 +177,8 @@ class TestMapReduceReduce:
         content = _build_multi_para_content(n=5, words_per_para=300)
         deps = _make_deps(llm_responses=[None, None, None, None, None])  # all fail
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
+            "Chapter 1",
+            content,
             primary_model="test-model",
             cache_dir=Path("/tmp/nonexistent_cache_dir"),
             input_path_stem="book",
@@ -190,11 +198,17 @@ class TestMapReduceReduce:
         content = "Short content here."
         deps = _make_deps(llm_responses=["mini", "reduced"])
         out, tokens = map_reduce_summarize(
-            "Ch", content,
-            primary_model="m", cache_dir=Path("/tmp/x"),
-            input_path_stem="b", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=_CapturingLog(),
+            "Ch",
+            content,
+            primary_model="m",
+            cache_dir=Path("/tmp/x"),
+            input_path_stem="b",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         assert isinstance(tokens, int)
@@ -213,11 +227,17 @@ class TestMapReduceCache:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         map_reduce_summarize(
-            "Chapter 1", content,
-            primary_model="m", cache_dir=cache_dir,
-            input_path_stem="book", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=_CapturingLog(),
+            "Chapter 1",
+            content,
+            primary_model="m",
+            cache_dir=cache_dir,
+            input_path_stem="book",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         # No cache files written
@@ -230,11 +250,17 @@ class TestMapReduceCache:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
-            primary_model="m", cache_dir=cache_dir,
-            input_path_stem="book", cache_enabled=True,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=_CapturingLog(),
+            "Chapter 1",
+            content,
+            primary_model="m",
+            cache_dir=cache_dir,
+            input_path_stem="book",
+            cache_enabled=True,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         cache_files = list(cache_dir.glob("mapreduce_*.mini_summaries.md"))
@@ -269,6 +295,7 @@ class TestMapReduceCache:
         #   model_tag    = (primary_model or "unknown")[:20]  → "m" for "m"
         #   cache_key    = md5(f"{heading}_{input_path_stem}_{content_hash}_{model_tag}")
         import hashlib
+
         content_hash = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()[:16]
         model_tag = "m"  # (primary_model or "unknown")[:20] with primary_model="m"
         key = hashlib.md5(f"Chapter 1_book_{content_hash}_{model_tag}".encode()).hexdigest()
@@ -280,11 +307,17 @@ class TestMapReduceCache:
         )
         cap = _CapturingLog()
         out, tokens = map_reduce_summarize(
-            "Chapter 1", content,
-            primary_model="m", cache_dir=cache_dir,
-            input_path_stem="book", cache_enabled=True,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=cap,
+            "Chapter 1",
+            content,
+            primary_model="m",
+            cache_dir=cache_dir,
+            input_path_stem="book",
+            cache_enabled=True,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=cap,
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         # Exactly 1 LLM call (the reduce) — the map phase was skipped.
@@ -308,11 +341,17 @@ class TestMapReducePromptComposition:
         content = "A paragraph for the map reduce prompt composition test here."
         deps = _make_deps(llm_responses=["mini", "reduced"])
         map_reduce_summarize(
-            "My Chapter", content,
-            primary_model="m", cache_dir=Path("/tmp/x"),
-            input_path_stem="b", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=_CapturingLog(),
+            "My Chapter",
+            content,
+            primary_model="m",
+            cache_dir=Path("/tmp/x"),
+            input_path_stem="b",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         # The first LLM call is the map call; its prompt contains the heading
@@ -327,11 +366,17 @@ class TestMapReducePromptComposition:
         content = "A paragraph for the reduce prompt test here with content."
         deps = _make_deps(llm_responses=["mini summary one", "reduced"])
         map_reduce_summarize(
-            "Reduce Chapter", content,
-            primary_model="m", cache_dir=Path("/tmp/x"),
-            input_path_stem="b", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
-            map_mini_words=300, log=_CapturingLog(),
+            "Reduce Chapter",
+            content,
+            primary_model="m",
+            cache_dir=Path("/tmp/x"),
+            input_path_stem="b",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
         # build_prompt was called (at least once, for the reduce step)
@@ -352,14 +397,24 @@ class TestMapReduceByteForByte:
         cache_dir = tmp_path / "c"
         cache_dir.mkdir()
         kwargs = dict(
-            primary_model="m", cache_dir=cache_dir, input_path_stem="b",
-            cache_enabled=False, temperature=0.7, map_chunk_tokens=4000,
-            map_chunk_overlap=0.10, map_mini_words=300, log=_CapturingLog(),
+            primary_model="m",
+            cache_dir=cache_dir,
+            input_path_stem="b",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
+            map_mini_words=300,
+            log=_CapturingLog(),
         )
         deps1 = _make_deps(llm_responses=["mini", "reduced"])
-        r1 = map_reduce_summarize("Ch", content, **{**kwargs, **{k: v for k, v in deps1.items() if not k.startswith("_")}})
+        r1 = map_reduce_summarize(
+            "Ch", content, **{**kwargs, **{k: v for k, v in deps1.items() if not k.startswith("_")}}
+        )
         deps2 = _make_deps(llm_responses=["mini", "reduced"])
-        r2 = map_reduce_summarize("Ch", content, **{**kwargs, **{k: v for k, v in deps2.items() if not k.startswith("_")}})
+        r2 = map_reduce_summarize(
+            "Ch", content, **{**kwargs, **{k: v for k, v in deps2.items() if not k.startswith("_")}}
+        )
         assert r1 == r2
 
     def test_no_log_callback_does_not_raise(self):
@@ -367,10 +422,15 @@ class TestMapReduceByteForByte:
         content = "Content for the no log test."
         deps = _make_deps(llm_responses=["mini", "reduced"])
         out, tokens = map_reduce_summarize(
-            "Ch", content,
-            primary_model="m", cache_dir=Path("/tmp/x"),
-            input_path_stem="b", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.10,
+            "Ch",
+            content,
+            primary_model="m",
+            cache_dir=Path("/tmp/x"),
+            input_path_stem="b",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.10,
             map_mini_words=300,
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )

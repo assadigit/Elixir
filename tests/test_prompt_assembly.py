@@ -14,6 +14,7 @@ with it. The 5 live-function sections below are unchanged.
 
 Run: pytest tests/test_prompt_assembly.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,12 +26,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain works
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.prompt_assembly import (
     build_chunked_prompt,
@@ -76,6 +80,7 @@ class TestBuildThoroughFollowup:
         result = build_thorough_followup("Ch.1", "Text.", "Exec.", "en")
         # 1-word source -> a tiny scaled target ("N-N word"), never 800-1200
         import re as _re
+
         assert _re.search(r"\b\d+-\d+ word", result)  # source-scaled word count
         assert "800-1200" not in result  # the absolute demand is gone
         assert "FLOWING PROSE PARAGRAPHS" in result
@@ -88,7 +93,9 @@ class TestBuildThoroughFollowup:
 class TestBuildDedicatedThoroughPrompt:
     def test_english_basic(self):
         """Basic English prompt structure is correct."""
-        result = build_dedicated_thorough_prompt("Ch.1", "Chapter text.", "Exec summary.", ["bullet 1", "bullet 2"], "en")
+        result = build_dedicated_thorough_prompt(
+            "Ch.1", "Chapter text.", "Exec summary.", ["bullet 1", "bullet 2"], "en"
+        )
         assert "### ROLE ###" in result
         assert "Write in English." in result
         assert "Ch.1" in result

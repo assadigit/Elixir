@@ -34,6 +34,7 @@ closing framing sentence synthesizes across all bullets — it won't trace
 to any single bullet above 0.50, but 0.42 catches real hallucinations.
 (See V13.22.0 CHANGELOG for the full rationale.)
 """
+
 from __future__ import annotations
 
 # V18.1 (audit O1): threshold scale factor. Read from settings.embedding.threshold_scale.
@@ -71,6 +72,7 @@ def _get_threshold_scale() -> float:
         return _THRESHOLD_SCALE
     try:
         from utils.settings import Settings
+
         _s = Settings()
         _manual_scale = float(_s.get("embedding.threshold_scale", 1.0))
         _embed_model = str(_s.get("embedding.model", "all-MiniLM-L6-v2"))
@@ -98,11 +100,14 @@ def _get_threshold_scale() -> float:
         _THRESHOLD_SCALE = _auto_scale
         if _auto_scale != 1.0:
             import logging as _logging
+
             _logging.getLogger(__name__).info(
                 "V18.2.7: Auto-calibrated threshold_scale=%.2f for embedder '%s' "
                 "(drop threshold: %.2f → %.2f)",
-                _auto_scale, _embed_model,
-                SEMANTIC_FACT_CHECK_DROP, SEMANTIC_FACT_CHECK_DROP * _auto_scale,
+                _auto_scale,
+                _embed_model,
+                SEMANTIC_FACT_CHECK_DROP,
+                SEMANTIC_FACT_CHECK_DROP * _auto_scale,
             )
     except Exception:
         pass
@@ -113,6 +118,7 @@ def scaled_threshold(base: float) -> float:
     """Apply the threshold_scale to a base threshold value."""
     scale = _get_threshold_scale()
     return min(0.99, max(0.1, base * scale))
+
 
 # ── Token overlap thresholds (rapidfuzz / content-word overlap) ─────────────
 

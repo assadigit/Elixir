@@ -20,6 +20,7 @@ so a stale True can never leak across calls.
 
 Content-agnostic by construction — no text inspection at all.
 """
+
 from __future__ import annotations
 
 import contextvars

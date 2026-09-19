@@ -23,6 +23,7 @@ from docx.shared import Inches, Pt, RGBColor
 from core.llm import ModelManager, ModelType
 from core.llm.retry import retry_llm_call
 from core.models import ConversionRequest, SummaryResult
+
 # V18.20.4.12 (W-a11): /no_think gated on Qwen-family models via the
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
@@ -62,12 +63,18 @@ class SimplifiedKeypointsBuilder:
 
         # Cloud / OpenAI‑compatible settings
         self.api_key = settings.get("summarisation.api_key", "")
-        self.api_base_url = settings.get("summarisation.api_base_url", "https://openrouter.ai/api/v1")
-        self.cloud_model = settings.get("summarisation.cloud_model", "google/gemini-2.5-flash-preview:free")
+        self.api_base_url = settings.get(
+            "summarisation.api_base_url", "https://openrouter.ai/api/v1"
+        )
+        self.cloud_model = settings.get(
+            "summarisation.cloud_model", "google/gemini-2.5-flash-preview:free"
+        )
         self.cloud_max_tokens = settings.get("summarisation.cloud_max_tokens", 16000)
 
         # FreeLLMAPI
-        self.freellmapi_url = settings.get("summarisation.freellmapi_url", "http://localhost:3001/v1")
+        self.freellmapi_url = settings.get(
+            "summarisation.freellmapi_url", "http://localhost:3001/v1"
+        )
         self.freellmapi_key = settings.get("summarisation.freellmapi_key", "")
         self.freellmapi_model = settings.get("summarisation.freellmapi_model", "auto")
 
@@ -75,7 +82,11 @@ class SimplifiedKeypointsBuilder:
         # V3.5.0: If simplification_model is set, use it (sequential model loading).
         # Otherwise fall back to fast_model or summarisation_model.
         self.simplification_model = getattr(request, "simplification_model", "") or ""
-        self.model = self.simplification_model or getattr(request, "fast_model", None) or request.summarisation_model
+        self.model = (
+            self.simplification_model
+            or getattr(request, "fast_model", None)
+            or request.summarisation_model
+        )
         self.summarisation_model = request.summarisation_model  # for model swap logic
         self.temperature = 0.1  # low temperature for translation
 
@@ -89,7 +100,7 @@ class SimplifiedKeypointsBuilder:
         # was removed (it caused 41% data loss), so the model now thinks again.
         # Smaller batches compensate for thinking overhead and complete within
         # the timeout. 10 keypoints × thinking model ≈ 60-80s per batch.
-        self.batch_size = 10    # number of keypoints per batch
+        self.batch_size = 10  # number of keypoints per batch
         # FIX V3.1.5: Raised timeout from 300 → 420 to accommodate thinking
         # model overhead (no /no_think directive). 10-item batches with
         # thinking take ~60-80s; 420s gives ample headroom for retries.
@@ -107,6 +118,7 @@ class SimplifiedKeypointsBuilder:
         self._enchant_dict = None
         try:
             import enchant
+
             self._enchant_dict = enchant.Dict("en_US")
         except ImportError:
             pass  # No pyenchant — will fall back to length-based detection
@@ -164,7 +176,9 @@ class SimplifiedKeypointsBuilder:
         # Ollama: let model think (no /no_think), 512 max_predict, 120s timeout
         return self._call_ollama(prompt, no_think=False, max_predict=512)
 
-    def _call_ollama(self, prompt: str, no_think: bool = False, max_predict: int | None = None) -> str | None:
+    def _call_ollama(
+        self, prompt: str, no_think: bool = False, max_predict: int | None = None
+    ) -> str | None:
         """Call local Ollama.
 
         V3.2.1: Added no_think parameter for per-bullet simplification.
@@ -187,7 +201,9 @@ class SimplifiedKeypointsBuilder:
         pre-check) — documented in the P6 worklog.
         """
         if not self.model_manager.model_exists(self.model):
-            self.log(f"  ⚠️ Model '{self.model}' not found. Skipping simplified keypoints.", "WARNING")
+            self.log(
+                f"  ⚠️ Model '{self.model}' not found. Skipping simplified keypoints.", "WARNING"
+            )
             return None
 
         ctx = max(8000, self.request.summarisation_max_context_tokens)
@@ -228,9 +244,7 @@ class SimplifiedKeypointsBuilder:
             if not text:
                 # Empty response — raise ConnectionError so the decorator
                 # retries (preserves the old "log empty + retry" behavior).
-                raise _requests.exceptions.ConnectionError(
-                    "empty response from model"
-                )
+                raise _requests.exceptions.ConnectionError("empty response from model")
             return text
 
         try:
@@ -242,7 +256,9 @@ class SimplifiedKeypointsBuilder:
             self.log(f"    ⚠️ {self.model} call failed: {e}", "WARNING")
             return None
 
-    def _call_openai_compat(self, prompt: str, base_url: str, api_key: str, model: str, label: str) -> str | None:
+    def _call_openai_compat(
+        self, prompt: str, base_url: str, api_key: str, model: str, label: str
+    ) -> str | None:
         """Call OpenAI‑compatible API (OpenRouter, Z.ai, DeepSeek, etc.).
 
         V18.20.4.8 (P6 / W-a4 + O-a7): migrated to the house LLM dispatcher
@@ -291,6 +307,7 @@ class SimplifiedKeypointsBuilder:
         # (academic_paper, philosophy), skip simplification entirely. These
         # content types should keep their technical/philosophical terminology.
         from core.llm.content_presets import get_content_preset
+
         source_type = getattr(self.request, "source_type", "normal_book")
         preset = get_content_preset(source_type)
         if preset.preserve_domain_terms:
@@ -311,7 +328,9 @@ class SimplifiedKeypointsBuilder:
             self.log("  ℹ️ No keypoints found to simplify.", "INFO")
             return None
 
-        self.log(f"  📌 Found {len(all_bullets)} keypoints across {len(summaries)} chapters.", "INFO")
+        self.log(
+            f"  📌 Found {len(all_bullets)} keypoints across {len(summaries)} chapters.", "INFO"
+        )
 
         # V3.10.1 G3: Pre-build jargon dictionary cache from all bullets.
         # This scans all 10+ char words ONCE against pyenchant, so subsequent
@@ -343,20 +362,29 @@ class SimplifiedKeypointsBuilder:
 
             # Load the simplification model
             if self.model_manager.model_exists(self.simplification_model):
-                self.log(f"    ⏳ Loading simplification model '{self.simplification_model}'…", "INFO")
+                self.log(
+                    f"    ⏳ Loading simplification model '{self.simplification_model}'…", "INFO"
+                )
                 loaded_ok = self.model_manager.acquire_model(
                     self.simplification_model,
                     ModelType.SUMMARISATION,
                     skip_vram_check=True,
                 )
                 if loaded_ok:
-                    self.log(f"    ✅ Simplification model loaded: {self.simplification_model}", "INFO")
+                    self.log(
+                        f"    ✅ Simplification model loaded: {self.simplification_model}", "INFO"
+                    )
                     self.model = self.simplification_model
                 else:
-                    self.log("    ⚠️ Failed to load simplification model — using fallback", "WARNING")
+                    self.log(
+                        "    ⚠️ Failed to load simplification model — using fallback", "WARNING"
+                    )
                     self.model = self.summarisation_model
             else:
-                self.log(f"    ⚠️ Model '{self.simplification_model}' not found — using fallback", "WARNING")
+                self.log(
+                    f"    ⚠️ Model '{self.simplification_model}' not found — using fallback",
+                    "WARNING",
+                )
                 self.model = self.summarisation_model
 
         # V3.3.3: Sequential processing — no concurrency. Concurrent workers were
@@ -379,6 +407,7 @@ class SimplifiedKeypointsBuilder:
                 # "0% simplified" problem (bullets that don't need simplification
                 # aren't counted as failures).
                 from core.summarisation.text_preprocessor import should_skip_simplification
+
                 should_skip, skip_reason = should_skip_simplification(bullet)
                 if should_skip:
                     self.log(f"    ⏭️ Keypoint {idx} skipped ({skip_reason})", "DEBUG")
@@ -412,10 +441,9 @@ class SimplifiedKeypointsBuilder:
         # model can't handle rapid concurrent requests. Sequential is slower
         # (~18 × 15s = 4.5 min) but crash-free.
         self.log(f"  📝 Simplifying {total} keypoints (sequential mode)…", "INFO")
-        for idx, bullet in bullet_list:
+        for completed, (idx, bullet) in enumerate(bullet_list, 1):
             idx_result, simplified = _simplify_one(idx, bullet)
             results[idx_result] = simplified if simplified else bullet
-            completed += 1
             if completed % 5 == 0 or completed == total:
                 self.log(f"    📝 Simplified {completed}/{total} keypoints…", "INFO")
 
@@ -440,6 +468,7 @@ class SimplifiedKeypointsBuilder:
                 was_simplified_flags.append(False)
                 # Check if this was skipped (already simple) or actually failed
                 from core.summarisation.text_preprocessor import should_skip_simplification
+
                 was_skipped, _ = should_skip_simplification(original_bullet)
                 if was_skipped:
                     skip_count += 1
@@ -463,7 +492,8 @@ class SimplifiedKeypointsBuilder:
 
         # V4.7.7: Include simplification stats in the markdown header
         md_content = self._build_markdown(
-            book_title, translated_bullets,
+            book_title,
+            translated_bullets,
             simplified_count=success_count,
             preserved_count=skip_count,
             failed_count=fail_count,
@@ -481,7 +511,9 @@ class SimplifiedKeypointsBuilder:
         try:
             # V3.9.6: Pass original bullets + simplified flags for comparison view
             self._build_docx(
-                book_title, translated_bullets, docx_path,
+                book_title,
+                translated_bullets,
+                docx_path,
                 original_bullets=original_bullets_ordered,
                 was_simplified=was_simplified_flags,
             )
@@ -507,8 +539,8 @@ class SimplifiedKeypointsBuilder:
         self-contained for the simplified-keypoints pipeline.
         """
         # Strip <think> and <thinking> blocks
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
 
         # Strip inline reasoning that appears AFTER the translated text on the
         # same line, e.g.:
@@ -517,34 +549,40 @@ class SimplifiedKeypointsBuilder:
         #   "30. Starting a chat... Double check Point 14/16 terms..."
         # These are internal-monologue fragments the model appends to items.
         text = re.sub(
-            r'\s*(?:Original:|I\'ll|I will|Let\'s|Let me|So:|Double check|I can|I should|Wait|Hmm|Okay so|Now I|This means|Rule says|Keep term|Keep the term)[^\n]*$',
-            '', text, flags=re.IGNORECASE | re.MULTILINE,
+            r"\s*(?:Original:|I\'ll|I will|Let\'s|Let me|So:|Double check|I can|I should|Wait|Hmm|Okay so|Now I|This means|Rule says|Keep term|Keep the term)[^\n]*$",
+            "",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
         )
 
         # Strip parenthetical reasoning like "(Original: '...'). I'll keep..."
         text = re.sub(
-            r'\s*\(Original:.*?\)(?:\.\s*I[^\n]*)?',
-            '', text, flags=re.DOTALL,
+            r"\s*\(Original:.*?\)(?:\.\s*I[^\n]*)?",
+            "",
+            text,
+            flags=re.DOTALL,
         )
 
         # Strip standalone thinking-process lines
         thinking_line_re = re.compile(
-            r'^\s*(?:\*?\*?)?(?:Analyze|Process|Draft|Check|Review|Refine|Identify|'
-            r'Extract|Read|Understand|Consider|Note|Step|Plan|Determine|Evaluate|'
-            r'Scan|Simplification|Translation|Final|Refinement|Polish|'
-            r'I\s+will|I\'ll|Let\'s|Let me|Looks good|Wait|Ready|Okay|'
-            r'One more|Now|First|Next|Then|After that|Moving on|'
-            r'Double check|I can|I should|This means|Rule says|'
-            r'Input|Output|Rules?|Instructions?|Task|Format|Language|Condition|'
-            r'Original|Simplified|Plain language|Review against|Refine for)\b.*$',
+            r"^\s*(?:\*?\*?)?(?:Analyze|Process|Draft|Check|Review|Refine|Identify|"
+            r"Extract|Read|Understand|Consider|Note|Step|Plan|Determine|Evaluate|"
+            r"Scan|Simplification|Translation|Final|Refinement|Polish|"
+            r"I\s+will|I\'ll|Let\'s|Let me|Looks good|Wait|Ready|Okay|"
+            r"One more|Now|First|Next|Then|After that|Moving on|"
+            r"Double check|I can|I should|This means|Rule says|"
+            r"Input|Output|Rules?|Instructions?|Task|Format|Language|Condition|"
+            r"Original|Simplified|Plain language|Review against|Refine for)\b.*$",
             re.IGNORECASE | re.MULTILINE,
         )
-        text = thinking_line_re.sub('', text)
+        text = thinking_line_re.sub("", text)
 
         # Strip sub-bullet analysis lines starting with * (Jargon:, Context:, etc.)
         text = re.sub(
-            r'^\s*\*\s*\*?\*?(?:Jargon|Context|Draft|Simplification|Translation|Refinement|Check|Original|Point)\s*[:\d].*$',
-            '', text, flags=re.IGNORECASE | re.MULTILINE,
+            r"^\s*\*\s*\*?\*?(?:Jargon|Context|Draft|Simplification|Translation|Refinement|Check|Original|Point)\s*[:\d].*$",
+            "",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
         )
 
         # Strip common preambles at the very start
@@ -558,7 +596,7 @@ class SimplifiedKeypointsBuilder:
             re.IGNORECASE | re.MULTILINE,
         )
         for _ in range(5):
-            text = preamble.sub('', text, count=1)
+            text = preamble.sub("", text, count=1)
 
         return text.strip()
 
@@ -595,32 +633,36 @@ class SimplifiedKeypointsBuilder:
         # ── Guardrail 1: Unicode normalization ──────────────────────────
         # Qwythos outputs smart quotes/apostrophes that bypass ASCII patterns.
         # Normalize: " → ", " → ", ' → ', ‐ → -, — → -, … → ..., etc.
-        response = unicodedata.normalize('NFKD', response)
-        response = response.replace('\u201c', '"').replace('\u201d', '"')  # smart quotes
-        response = response.replace('\u2018', "'").replace('\u2019', "'")  # smart apostrophes
-        response = response.replace('\u2010', '-').replace('\u2011', '-')  # non-breaking hyphens
-        response = response.replace('\u2013', '-').replace('\u2014', '-')  # en/em dashes
-        response = response.replace('\u2026', '...')  # ellipsis
-        response = response.replace('\u00a0', ' ')  # non-breaking space
+        response = unicodedata.normalize("NFKD", response)
+        response = response.replace("\u201c", '"').replace("\u201d", '"')  # smart quotes
+        response = response.replace("\u2018", "'").replace("\u2019", "'")  # smart apostrophes
+        response = response.replace("\u2010", "-").replace("\u2011", "-")  # non-breaking hyphens
+        response = response.replace("\u2013", "-").replace("\u2014", "-")  # en/em dashes
+        response = response.replace("\u2026", "...")  # ellipsis
+        response = response.replace("\u00a0", " ")  # non-breaking space
 
         # ── Guardrail 2: Strip <think> blocks (all variants) ────────────
         response = self._strip_thinking(response)
-        response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
-        response = re.sub(r'<thinking>.*?</thinking>', '', response, flags=re.DOTALL)
-        response = re.sub(r'<think>(?!.*</think>).*$', '', response, flags=re.DOTALL | re.IGNORECASE)
-        response = re.sub(r'<thinking>(?!.*</thinking>).*$', '', response, flags=re.DOTALL | re.IGNORECASE)
+        response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL)
+        response = re.sub(r"<thinking>.*?</thinking>", "", response, flags=re.DOTALL)
+        response = re.sub(
+            r"<think>(?!.*</think>).*$", "", response, flags=re.DOTALL | re.IGNORECASE
+        )
+        response = re.sub(
+            r"<thinking>(?!.*</thinking>).*$", "", response, flags=re.DOTALL | re.IGNORECASE
+        )
 
         # ── Guardrail 3: Strip numbering, dashes, quotes ────────────────
         response = response.strip()
-        response = re.sub(r'^\s*\d+[\.\)]\s*', '', response)  # "1. " or "1) "
-        response = re.sub(r'^\s*[-\*]\s*', '', response)      # "- " or "* "
-        response = response.strip('"\'')
+        response = re.sub(r"^\s*\d+[\.\)]\s*", "", response)  # "1. " or "1) "
+        response = re.sub(r"^\s*[-\*]\s*", "", response)  # "- " or "* "
+        response = response.strip("\"'")
 
         # ── Guardrail 4: REJECT reasoning prefixes ──────────────────────
         # The model is outputting reasoning format, not a simplified bullet.
         _REASONING_PREFIX = re.compile(
-            r'^(?:Rewritten|Simplified|Translated|Original|Result|Answer'
-            r'|Input|Output|Example|Version)\s*:\s*',
+            r"^(?:Rewritten|Simplified|Translated|Original|Result|Answer"
+            r"|Input|Output|Example|Version)\s*:\s*",
             re.IGNORECASE,
         )
         if _REASONING_PREFIX.match(response):
@@ -629,31 +671,31 @@ class SimplifiedKeypointsBuilder:
         # ── Guardrail 5: REJECT meta-commentary ─────────────────────────
         # Qwythos leaks its reasoning process. These patterns are NEVER valid.
         _META_COMMENTARY = re.compile(
-            r'(?:^|\s)(?:'
+            r"(?:^|\s)(?:"
             # First-person reasoning (the #1 indicator)
-            r'I replaced|I might|If I replace|I need to|I must|I simplified|'
-            r'I could|I will|I\'ll|I can|I should|I\'ve|I also|'
-            r'Let me|Let\'s|So:|Yes,|Wait,|Hmm,|Now I|'
+            r"I replaced|I might|If I replace|I need to|I must|I simplified|"
+            r"I could|I will|I\'ll|I can|I should|I\'ve|I also|"
+            r"Let me|Let\'s|So:|Yes,|Wait,|Hmm,|Now I|"
             # Meta about the original/task
-            r'The original says|The original keypoint|The original sentence|'
-            r'The original includes|The original mentions|'
-            r'My translation|My simplified|In plain language|'
-            r'Replace jargon:|This captures|So the key facts|'
-            r'reading level must be|8th grade|can be rephrased to|'
+            r"The original says|The original keypoint|The original sentence|"
+            r"The original includes|The original mentions|"
+            r"My translation|My simplified|In plain language|"
+            r"Replace jargon:|This captures|So the key facts|"
+            r"reading level must be|8th grade|can be rephrased to|"
             # Self-evaluation
-            r'That seems|That also works|That\'s still|That\'s more|'
-            r'That is appropriate|Double-check|Double check|'
-            r'All good|is present\.|is retained\.|is okay|'
+            r"That seems|That also works|That\'s still|That\'s more|"
+            r"That is appropriate|Double-check|Double check|"
+            r"All good|is present\.|is retained\.|is okay|"
             # Word-choice reasoning
-            r'The first option|The phrase|The meaning of|The sentence uses|'
-            r'The name of the tactic|The emphasis on|'
-            r'is a bit formal|might be simpler|might be too|might be considered|'
-            r'becomes |replaces |closer to |'
+            r"The first option|The phrase|The meaning of|The sentence uses|"
+            r"The name of the tactic|The emphasis on|"
+            r"is a bit formal|might be simpler|might be too|might be considered|"
+            r"becomes |replaces |closer to |"
             # Format leakage
-            r'Input:|Output:|Example:|Version \d|'
-            r'Combine them into|Break it into|'
-            r'Since the prompt|The prompt explicitly'
-            r')',
+            r"Input:|Output:|Example:|Version \d|"
+            r"Combine them into|Break it into|"
+            r"Since the prompt|The prompt explicitly"
+            r")",
             re.IGNORECASE,
         )
         if _META_COMMENTARY.search(response):
@@ -661,17 +703,17 @@ class SimplifiedKeypointsBuilder:
 
         # ── Guardrail 6: REJECT arrow notation ──────────────────────────
         # "X -> Y", "X → Y", 'X" becomes "Y' — reasoning about translation
-        if '->' in response or '→' in response:
+        if "->" in response or "→" in response:
             return None
         if re.search(r'"[^"]*"\s+becomes\s+"', response, re.IGNORECASE):
             return None
 
         # ── Guardrail 7: REJECT reasoning-format (newline + bullet list) ─
-        if re.search(r'\n\s*[-\*]\s', response):
+        if re.search(r"\n\s*[-\*]\s", response):
             return None
 
         # ── Guardrail 8: REJECT multi-line responses ────────────────────
-        if '\n' in response:
+        if "\n" in response:
             return None
 
         # ── Guardrail 8.5: REJECT foreign-script leakage ─────────────────
@@ -680,7 +722,9 @@ class SimplifiedKeypointsBuilder:
         # English; no CJK should ever appear in a simplified keypoint.
         # Blocks: CJK Unified (\u4e00-\u9fff), CJK Radicals (\u2E80-\u2EFF),
         # CJK Symbols (\u3000-\u303f), Hiragana/Katakana (\u3040-\u30ff).
-        if re.search(r'[\u2e80-\u2eff\u3000-\u303f\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]', response):
+        if re.search(
+            r"[\u2e80-\u2eff\u3000-\u303f\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]", response
+        ):
             return None
 
         # ── Guardrail 9: REJECT too-short (< 5 words) ───────────────────
@@ -696,14 +740,50 @@ class SimplifiedKeypointsBuilder:
         #       opening quote/paren never closed = truncated)
         _TRUNCATION_WORDS = frozenset(
             # function words
-            ["of", "the", "a", "an", "and", "or", "but", "who", "which", "that", "with", "for", "in", "on", "at", "to", "from", "by", "is", "are", "was"]
-            + ["just", "also", "only", "even", "still", "very", "too", "so", "then", "now", "here", "there", "than"]
+            [
+                "of",
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "but",
+                "who",
+                "which",
+                "that",
+                "with",
+                "for",
+                "in",
+                "on",
+                "at",
+                "to",
+                "from",
+                "by",
+                "is",
+                "are",
+                "was",
+            ]
+            + [
+                "just",
+                "also",
+                "only",
+                "even",
+                "still",
+                "very",
+                "too",
+                "so",
+                "then",
+                "now",
+                "here",
+                "there",
+                "than",
+            ]
         )
-        response_clean = response.rstrip('"\'\n ')
+        response_clean = response.rstrip("\"'\n ")
 
         # 10a: Unclosed bracket/quote check — if a ( [ { " opens but never
         # closes, the generation was cut off mid-clause.
-        _BRACKET_PAIRS = [('(', ')'), ('[', ']'), ('{', '}')]
+        _BRACKET_PAIRS = [("(", ")"), ("[", "]"), ("{", "}")]
         for opener, closer in _BRACKET_PAIRS:
             if response_clean.count(opener) != response_clean.count(closer):
                 return None  # unbalanced brackets — truncated
@@ -712,23 +792,23 @@ class SimplifiedKeypointsBuilder:
             return None  # unclosed quote — truncated
 
         # 10b: Original truncation-word check (no terminal punctuation)
-        if response_clean and response_clean[-1] not in '.!?':
-            last_word = re.split(r'\s+', response_clean)[-1].lower().strip('"\';:,')
+        if response_clean and response_clean[-1] not in ".!?":
+            last_word = re.split(r"\s+", response_clean)[-1].lower().strip("\"';:,")
             if last_word in _TRUNCATION_WORDS or len(last_word) <= 2:
                 return None  # truncated — fall back to original
-            response = response_clean + '.'  # add period to complete
+            response = response_clean + "."  # add period to complete
         else:
             # 10c: Has terminal punctuation — but check if the LAST WORD
             # before the period is a truncation word ("...instead of just.")
-            response_stripped = response_clean.rstrip('.!?')
-            last_word = re.split(r'\s+', response_stripped)[-1].lower().strip('"\';:,')
+            response_stripped = response_clean.rstrip(".!?")
+            last_word = re.split(r"\s+", response_stripped)[-1].lower().strip("\"';:,")
             if last_word in _TRUNCATION_WORDS:
                 return None  # ends with a function word = truncated mid-clause
 
         # ── Guardrail 11: STRUCTURAL — single sentence ──────────────────
         # Split at sentence-ending punctuation. A valid bullet has exactly 1 sentence.
         # (Allow 2 sentences if the second is very short, e.g., "Do X. This works.")
-        sentences = re.split(r'(?<=[.!?])\s+', response)
+        sentences = re.split(r"(?<=[.!?])\s+", response)
         sentences = [s.strip() for s in sentences if s.strip()]
         if len(sentences) > 2:
             return None  # 3+ sentences — too complex for a single bullet
@@ -744,24 +824,53 @@ class SimplifiedKeypointsBuilder:
         response_lower = response.lower()
         _REASONING_INDICATORS = [
             # First-person (reasoning always uses "I")
-            ' i ', " i'", ' my ', ' me ', ' myself',
+            " i ",
+            " i'",
+            " my ",
+            " me ",
+            " myself",
             # Meta about the task
-            'original', 'rewritten', 'translation', 'version', 'prompt',
-            'jargon', 'simplified', 'plain language',
+            "original",
+            "rewritten",
+            "translation",
+            "version",
+            "prompt",
+            "jargon",
+            "simplified",
+            "plain language",
             # Comparison/reasoning
-            'becomes', 'replaces', 'closer to', 'might be',
-            'could say', 'could combine', 'could break', 'could phrase',
-            'need to ensure', 'need to make sure', 'need to preserve',
-            'need to check', 'also need', 'must keep',
+            "becomes",
+            "replaces",
+            "closer to",
+            "might be",
+            "could say",
+            "could combine",
+            "could break",
+            "could phrase",
+            "need to ensure",
+            "need to make sure",
+            "need to preserve",
+            "need to check",
+            "also need",
+            "must keep",
             # Self-commentary
-            'that seems', 'that also works', "that's still",
-            'double-check', 'double check',
+            "that seems",
+            "that also works",
+            "that's still",
+            "double-check",
+            "double check",
             # Format leakage
-            'input:', 'output:', 'example:',
+            "input:",
+            "output:",
+            "example:",
             # Observed V3.9.4 garbage patterns
-            'the first option', 'the name of the tactic',
-            'the emphasis on', 'is present.', 'is retained.',
-            'this matches the style', 'since the prompt',
+            "the first option",
+            "the name of the tactic",
+            "the emphasis on",
+            "is present.",
+            "is retained.",
+            "this matches the style",
+            "since the prompt",
         ]
         for indicator in _REASONING_INDICATORS:
             if indicator in response_lower:
@@ -772,16 +881,14 @@ class SimplifiedKeypointsBuilder:
         # different text (<10%, which means the LLM generated new content
         # instead of simplifying).
         if original and len(original) > 5:
-            similarity = difflib.SequenceMatcher(
-                None, original.lower(), response.lower()
-            ).ratio()
+            similarity = difflib.SequenceMatcher(None, original.lower(), response.lower()).ratio()
             if similarity > 0.90:
                 return None  # verbatim copy — didn't simplify
             if similarity < 0.10:
                 return None  # completely different — not a simplification
 
         # ── Final cleanup ───────────────────────────────────────────────
-        response = re.sub(r'\s+', ' ', response).strip()
+        response = re.sub(r"\s+", " ", response).strip()
         if not response or len(response) < 5 or len(response) > 500:
             return None
 
@@ -808,6 +915,7 @@ class SimplifiedKeypointsBuilder:
         if custom_prompt_name:
             try:
                 from core.summarisation.prompt_manager import PromptManager
+
                 pm = PromptManager()
                 template = pm.load_prompt(custom_prompt_name)
                 if template and "{{keypoints}}" in template:
@@ -822,6 +930,7 @@ class SimplifiedKeypointsBuilder:
             # example, one bullet. /no_think suppresses Qwen/Qwythos reasoning.
             try:
                 from core.summarisation.prompt_manager import PromptManager
+
                 pm = PromptManager()
                 prompt = pm.render_template(
                     "summarisation/simplified_d1",
@@ -860,7 +969,7 @@ class SimplifiedKeypointsBuilder:
         # Extract all unique 10+ char words from all bullets
         all_words = set()
         for bullet in all_bullets:
-            words = re.findall(r'\b[a-zA-Z]{10,}\b', bullet)
+            words = re.findall(r"\b[a-zA-Z]{10,}\b", bullet)
             all_words.update(w.lower() for w in words)
 
         if not all_words:
@@ -900,7 +1009,7 @@ class SimplifiedKeypointsBuilder:
         instead of calling enchant.check() per word per bullet. Falls back
         to per-word check if cache not built (backward compatibility).
         """
-        words = re.findall(r'\b[a-zA-Z]{10,}\b', bullet)
+        words = re.findall(r"\b[a-zA-Z]{10,}\b", bullet)
         jargon = []
         # V18.20.3.9 (Phase 2 / residuals sweep): removed a hardcoded
         # character-name frozenset here. It was DEAD CODE by construction —
@@ -954,6 +1063,7 @@ class SimplifiedKeypointsBuilder:
         # V3.9.5: Changed "Rewritten:" to "Output:" to prevent echo.
         # Removed "Do NOT output thinking process" instruction (echo source).
         from core.summarisation.prompt_manager import PromptManager
+
         pm = PromptManager()
         prompt = pm.render_template(
             "summarisation/simplified_d2_jargon",
@@ -987,6 +1097,7 @@ class SimplifiedKeypointsBuilder:
         if custom_prompt_name:
             try:
                 from core.summarisation.prompt_manager import PromptManager
+
                 pm = PromptManager()
                 template = pm.load_prompt(custom_prompt_name)
                 if template and "{{keypoints}}" in template:
@@ -998,6 +1109,7 @@ class SimplifiedKeypointsBuilder:
             # Built-in default prompt
             try:
                 from core.summarisation.prompt_manager import PromptManager
+
                 pm = PromptManager()
                 prompt = pm.render_template(
                     "summarisation/simplified_translate_batch",
@@ -1014,42 +1126,95 @@ class SimplifiedKeypointsBuilder:
         response = self._strip_thinking(response)
 
         # Also strip <think> blocks that might survive
-        response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
-        response = re.sub(r'<thinking>.*?</thinking>', '', response, flags=re.DOTALL)
+        response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL)
+        response = re.sub(r"<thinking>.*?</thinking>", "", response, flags=re.DOTALL)
 
         lines = response.splitlines()
-        numbered_pattern = re.compile(r'^\s*(\d+)[\.)]\s+(.*)')
+        numbered_pattern = re.compile(r"^\s*(\d+)[\.)]\s+(.*)")
 
         THINKING_MARKERS = [
-            'Analyze', 'Process Each', 'Process', 'Draft', 'Refine', 'Refinement',
-            'Check facts', 'Check Fact', 'Check', 'Final Review', 'Final Polish', 'Final',
-            'Simplification:', 'Translation:', 'Jargon:', 'Context:',
-            'Point 1:', 'Point 2:', 'Point 3:', 'Point 4:', 'Point 5:',
-            'Point 6:', 'Point 7:', 'Point 8:', 'Point 9:',
-            'I will', 'I\'ll', 'Let\'s', 'Let me', 'Looks good', 'Wait',
-            'Ready', 'Okay', 'One more', 'As requested', 'Below is',
-            'Here is', 'Here are', 'The following', 'Sure', 'Certainly',
-            'Of course', 'Happy to', 'Please find', 'To summarize',
-            'Moving on', 'Now', 'Next', 'Then', 'After that',
-            'Step 1', 'Step 2', 'Step 3', 'Step 4', 'Step 5',
-            'Input keypoints', 'Output keypoints',
-            'Original:', 'Simplified:', 'Plain language:',
-            'Review against Rules', 'Refine for Flow',
-            'Double check', 'I can', 'I should', 'This means',
-            'Rule says', 'Keep term', 'Keep the term', 'So:',
+            "Analyze",
+            "Process Each",
+            "Process",
+            "Draft",
+            "Refine",
+            "Refinement",
+            "Check facts",
+            "Check Fact",
+            "Check",
+            "Final Review",
+            "Final Polish",
+            "Final",
+            "Simplification:",
+            "Translation:",
+            "Jargon:",
+            "Context:",
+            "Point 1:",
+            "Point 2:",
+            "Point 3:",
+            "Point 4:",
+            "Point 5:",
+            "Point 6:",
+            "Point 7:",
+            "Point 8:",
+            "Point 9:",
+            "I will",
+            "I'll",
+            "Let's",
+            "Let me",
+            "Looks good",
+            "Wait",
+            "Ready",
+            "Okay",
+            "One more",
+            "As requested",
+            "Below is",
+            "Here is",
+            "Here are",
+            "The following",
+            "Sure",
+            "Certainly",
+            "Of course",
+            "Happy to",
+            "Please find",
+            "To summarize",
+            "Moving on",
+            "Now",
+            "Next",
+            "Then",
+            "After that",
+            "Step 1",
+            "Step 2",
+            "Step 3",
+            "Step 4",
+            "Step 5",
+            "Input keypoints",
+            "Output keypoints",
+            "Original:",
+            "Simplified:",
+            "Plain language:",
+            "Review against Rules",
+            "Refine for Flow",
+            "Double check",
+            "I can",
+            "I should",
+            "This means",
+            "Rule says",
+            "Keep term",
+            "Keep the term",
+            "So:",
         ]
         # Match with or without ** bold markers
         thinking_re = re.compile(
-            r'^\*?\*?(?:' + '|'.join(re.escape(m) for m in THINKING_MARKERS) + r')\b',
-            re.IGNORECASE
+            r"^\*?\*?(?:" + "|".join(re.escape(m) for m in THINKING_MARKERS) + r")\b", re.IGNORECASE
         )
         internal_thinking_re = re.compile(
-            r'\*(?:Jargon|Draft|Check|Refine|Simplification|Translation|Context|Refinement)\s*(?::|1|2)',
-            re.IGNORECASE
+            r"\*(?:Jargon|Draft|Check|Refine|Simplification|Translation|Context|Refinement)\s*(?::|1|2)",
+            re.IGNORECASE,
         )
         # Detect inline thinking appended to a numbered item
         inline_thinking_re = re.compile(
-            r'\s*(?:\.\s*)?(?:Original:|I\'ll|I will|Let\'s|Let me|So:|Double check|I can|I should|Wait|Hmm|Okay so|Now I|This means|Rule says|Keep term|Keep the term)\b',
+            r"\s*(?:\.\s*)?(?:Original:|I\'ll|I will|Let\'s|Let me|So:|Double check|I can|I should|Wait|Hmm|Okay so|Now I|This means|Rule says|Keep term|Keep the term)\b",
             re.IGNORECASE,
         )
 
@@ -1065,7 +1230,7 @@ class SimplifiedKeypointsBuilder:
                 # Strip inline thinking from the content itself
                 content = inline_thinking_re.split(content)[0].strip()
                 # Strip parenthetical (Original: ...) notes
-                content = re.sub(r'\s*\(Original:.*?\).*$', '', content, flags=re.DOTALL).strip()
+                content = re.sub(r"\s*\(Original:.*?\).*$", "", content, flags=re.DOTALL).strip()
                 if thinking_re.match(content) or internal_thinking_re.search(content):
                     if current_run:
                         runs.append(current_run)
@@ -1089,11 +1254,11 @@ class SimplifiedKeypointsBuilder:
                         runs.append(current_run)
                     current_run = []
                     expected_num = 1
-                elif not stripped.startswith('*'):
+                elif not stripped.startswith("*"):
                     # Strip inline thinking before appending continuation
                     cleaned = inline_thinking_re.split(stripped)[0].strip()
                     if cleaned:
-                        current_run[-1] += ' ' + cleaned
+                        current_run[-1] += " " + cleaned
         if current_run:
             runs.append(current_run)
 
@@ -1104,11 +1269,13 @@ class SimplifiedKeypointsBuilder:
                 item = item.strip()
                 # Final cleanup: strip any residual inline thinking
                 item = inline_thinking_re.split(item)[0].strip()
-                item = re.sub(r'\s*\(Original:.*?\).*$', '', item, flags=re.DOTALL).strip()
-                if (item
+                item = re.sub(r"\s*\(Original:.*?\).*$", "", item, flags=re.DOTALL).strip()
+                if (
+                    item
                     and len(item) > 10
                     and not thinking_re.match(item)
-                    and not internal_thinking_re.search(item)):
+                    and not internal_thinking_re.search(item)
+                ):
                     translated.append(item)
         else:
             translated = []
@@ -1116,8 +1283,11 @@ class SimplifiedKeypointsBuilder:
         return translated if translated else None
 
     def _build_markdown(
-        self, book_title: str, translated_bullets: list[str],
-        simplified_count: int = 0, preserved_count: int = 0,
+        self,
+        book_title: str,
+        translated_bullets: list[str],
+        simplified_count: int = 0,
+        preserved_count: int = 0,
         failed_count: int = 0,
     ) -> str:
         """Assemble the final Markdown output.
@@ -1147,11 +1317,13 @@ class SimplifiedKeypointsBuilder:
                 stats_parts.append(f"**{failed_count} Failed** (kept original)")
             lines.append(f"📊 {' | '.join(stats_parts)}")
 
-        lines.extend([
-            "",
-            "---",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+            ]
+        )
         for i, point in enumerate(translated_bullets, 1):
             lines.append(f"{i}. {point}")
             lines.append("")  # blank line after each keypoint
@@ -1188,8 +1360,8 @@ class SimplifiedKeypointsBuilder:
         simplification preserved the meaning.
         """
         doc = Document()
-        style = doc.styles['Normal']
-        style.font.name = 'Helvetica'
+        style = doc.styles["Normal"]
+        style.font.name = "Helvetica"
         style.font.size = Pt(11)
 
         # Title
@@ -1198,13 +1370,17 @@ class SimplifiedKeypointsBuilder:
 
         # Subtitle / intro
         p = doc.add_paragraph()
-        run = p.add_run("This document presents all key takeaways from the book, translated into plain, everyday language.")
+        run = p.add_run(
+            "This document presents all key takeaways from the book, translated into plain, everyday language."
+        )
         run.font.size = Pt(11)
         run.font.italic = True
         p.paragraph_format.space_after = Pt(12)
 
         p = doc.add_paragraph()
-        run = p.add_run("Facts are preserved; jargon has been simplified for broader accessibility.")
+        run = p.add_run(
+            "Facts are preserved; jargon has been simplified for broader accessibility."
+        )
         run.font.size = Pt(11)
         run.font.italic = True
         p.paragraph_format.space_after = Pt(24)
@@ -1227,7 +1403,7 @@ class SimplifiedKeypointsBuilder:
         # Shows a 2-column table: Original | Simplified, with status indicator
         if original_bullets and len(original_bullets) == len(translated_bullets):
             # Section heading
-            h = doc.add_heading("Side-by-Side Comparison", level=1)
+            doc.add_heading("Side-by-Side Comparison", level=1)
             p = doc.add_paragraph()
             run = p.add_run("Original keypoints next to their simplified versions. ")
             run.font.italic = True
@@ -1242,8 +1418,9 @@ class SimplifiedKeypointsBuilder:
 
             # Build comparison table
             from docx.shared import Inches as DocxInches
+
             table = doc.add_table(rows=1, cols=3)
-            table.style = 'Light Shading Accent 1'
+            table.style = "Light Shading Accent 1"
             table.autofit = False
 
             # Header row
@@ -1260,7 +1437,13 @@ class SimplifiedKeypointsBuilder:
 
             # Data rows
             for i, (orig, simp, was_simp) in enumerate(
-                zip(original_bullets, translated_bullets, was_simplified or [True] * len(translated_bullets)), 1
+                zip(
+                    original_bullets,
+                    translated_bullets,
+                    was_simplified or [True] * len(translated_bullets),
+                    strict=False,
+                ),
+                1,
             ):
                 row = table.add_row().cells
                 # Number + status indicator
@@ -1290,14 +1473,16 @@ class SimplifiedKeypointsBuilder:
             sep_run.font.color.rgb = RGBColor(150, 150, 150)
             p.paragraph_format.space_after = Pt(12)
 
-            h2 = doc.add_heading("Simplified List", level=1)
+            doc.add_heading("Simplified List", level=1)
 
         # Bullet points (simple list — always included)
-        for i, point in enumerate(translated_bullets, 1):
+        for _i, point in enumerate(translated_bullets, 1):
             p = doc.add_paragraph(style="List Number")
             run = p.add_run(point)
             run.font.size = Pt(11)
             p.paragraph_format.left_indent = Inches(0.25)
-            p.paragraph_format.space_after = Pt(20)  # V3.4.2: increased from 14 → 20 for more line height
+            p.paragraph_format.space_after = Pt(
+                20
+            )  # V3.4.2: increased from 14 → 20 for more line height
 
         doc.save(str(docx_path))

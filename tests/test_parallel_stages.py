@@ -1,4 +1,5 @@
 """V18.2.26 (A1 wiring) — Tests for parallel stage runner."""
+
 from __future__ import annotations
 
 import time
@@ -30,6 +31,7 @@ class TestParallelJudgeAndGrounding:
 
     def test_runs_concurrently(self):
         """Wall-clock should be ~max(t1, t2), not t1 + t2."""
+
         def slow_judge():
             time.sleep(0.1)
             return "judge"
@@ -48,6 +50,7 @@ class TestParallelJudgeAndGrounding:
     def test_judge_raises_propagates(self):
         def bad_judge():
             raise RuntimeError("judge failed")
+
         def good_grounding():
             return "grounding"
 
@@ -119,6 +122,7 @@ class TestParallelStages:
 
     def test_max_workers_caps_concurrency(self):
         in_flight = {"max": 0, "current": 0}
+
         def track():
             in_flight["current"] += 1
             in_flight["max"] = max(in_flight["max"], in_flight["current"])
@@ -142,18 +146,21 @@ class TestParallelStages:
 class TestSafeGet:
     def test_returns_result(self):
         from concurrent.futures import ThreadPoolExecutor
+
         with ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(lambda: 42)
             assert _safe_get(fut) == 42
 
     def test_returns_none_on_failure(self):
         from concurrent.futures import ThreadPoolExecutor
+
         with ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(lambda: (_ for _ in ()).throw(ValueError("fail")))
             assert _safe_get(fut) is None
 
     def test_returns_none_on_timeout(self):
         from concurrent.futures import ThreadPoolExecutor
+
         with ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(lambda: time.sleep(1) or "late")
             assert _safe_get(fut, timeout=0.01) is None

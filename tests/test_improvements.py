@@ -7,6 +7,7 @@ Tests verify:
 3. detect_grammatical_incoherence catches the V18.2.15 broken Key Distinctions bullet
 4. detect_grammatical_incoherence doesn't false-positive on clean bullets
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,7 +28,9 @@ from importlib.util import module_from_spec as _mfs
 from importlib.util import spec_from_file_location as _spec
 from pathlib import Path as _Path
 
-_postchecks_path = _Path(__file__).resolve().parent.parent / "core" / "summarisation" / "postchecks.py"
+_postchecks_path = (
+    _Path(__file__).resolve().parent.parent / "core" / "summarisation" / "postchecks.py"
+)
 # V18.2.27 (warnings fix): use importlib.util spec + exec_module instead of
 # the deprecated SourceFileLoader.load_module() (removed in Python 3.15).
 _spec_obj = _spec("_improvements_postchecks", str(_postchecks_path))
@@ -42,6 +45,7 @@ detect_grammatical_incoherence = _pc.detect_grammatical_incoherence
 # ═══════════════════════════════════════════════════════════════════════════
 # Improvement 1: verify_bold_name_attribution
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestVerifyBoldNameAttribution:
     """V18.2.18 Improvement 1: Bold-name attribution verification."""
@@ -59,7 +63,7 @@ class TestVerifyBoldNameAttribution:
             "Winnicott Although Winnicott did not use the term identity "
             "specifically, his views on early development are of great "
             "significance to the formation of identity. His work provides "
-            "the developmental basis for (1) authenticity; (2) \"corporeality\" "
+            'the developmental basis for (1) authenticity; (2) "corporeality" '
             "(Khan 1983), or a deeply assimilated and personalized bodily "
             "foundation for one's self-experience; and (3) the experience of "
             "temporal continuity in the self."
@@ -114,6 +118,7 @@ class TestVerifyBoldNameAttribution:
 # ═══════════════════════════════════════════════════════════════════════════
 # Improvement 2: detect_grammatical_incoherence
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDetectGrammaticalIncoherence:
     """V18.2.18 Improvement 2: Grammatical coherence check."""

@@ -33,6 +33,7 @@ Usage::
     matches = matcher.match(selected_titles, chapter_dicts)
     # matches = [(score, chapter_dict), ...] sorted by score descending
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from rapidfuzz import fuzz
+
     _RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     _RAPIDFUZZ_AVAILABLE = False
@@ -50,22 +52,61 @@ except ImportError:
 
 # Common words excluded from significant-word matching.
 _COMMON_WORDS = {
-    "chapter", "part", "section", "appendix", "the", "of", "a", "an",
-    "and", "or", "to", "in", "for", "with", "on", "at", "by", "from",
-    "treatment", "acute", "preventive", "prevention", "study",
-    "evidence", "trial", "clinical", "practice", "review",
-    "introduction", "conclusion", "conclusions", "future",
-    "therapeutics", "management", "therapy", "drug", "drugs",
-    "migraine", "headache", "pain", "receptor", "antagonist",
-    "agonist", "inhibition", "action", "mode", "proposed",
+    "chapter",
+    "part",
+    "section",
+    "appendix",
+    "the",
+    "of",
+    "a",
+    "an",
+    "and",
+    "or",
+    "to",
+    "in",
+    "for",
+    "with",
+    "on",
+    "at",
+    "by",
+    "from",
+    "treatment",
+    "acute",
+    "preventive",
+    "prevention",
+    "study",
+    "evidence",
+    "trial",
+    "clinical",
+    "practice",
+    "review",
+    "introduction",
+    "conclusion",
+    "conclusions",
+    "future",
+    "therapeutics",
+    "management",
+    "therapy",
+    "drug",
+    "drugs",
+    "migraine",
+    "headache",
+    "pain",
+    "receptor",
+    "antagonist",
+    "agonist",
+    "inhibition",
+    "action",
+    "mode",
+    "proposed",
 }
 
 
 def _normalize(s: str) -> str:
     """Normalize a heading for comparison (lowercase, strip punctuation)."""
     s = s.lower()
-    s = re.sub(r'[^\w\s]', '', s)
-    s = re.sub(r'\s+', ' ', s).strip()
+    s = re.sub(r"[^\w\s]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 
@@ -74,11 +115,11 @@ def _extract_chapter_number(s: str) -> str | None:
 
     Returns None if the heading doesn't start with a number.
     """
-    m = re.match(r'^(\d+(?:\.\d+)*)\s', s)
+    m = re.match(r"^(\d+(?:\.\d+)*)\s", s)
     if m:
         return m.group(1)
     # Also match "Chapter N" / "Lesson N"
-    m = re.match(r'^(?:chapter|lesson|section|part)\s+(\d+(?:\.\d+)*)\b', s, re.IGNORECASE)
+    m = re.match(r"^(?:chapter|lesson|section|part)\s+(\d+(?:\.\d+)*)\b", s, re.IGNORECASE)
     if m:
         return m.group(1)
     return None
@@ -87,7 +128,7 @@ def _extract_chapter_number(s: str) -> str | None:
 def _significant_words(s: str) -> set:
     """Extract significant words (>2 chars, not in _COMMON_WORDS)."""
     norm = _normalize(s)
-    return set(w for w in norm.split() if len(w) > 2 and w not in _COMMON_WORDS)
+    return {w for w in norm.split() if len(w) > 2 and w not in _COMMON_WORDS}
 
 
 def _is_gap_segment(heading: str, segment_type: str = "") -> bool:
@@ -105,10 +146,10 @@ def _validate_toc_title(title: str) -> bool:
     if not t or len(t) < 3:
         return False
     # Pure number (e.g. "42" — a page number misinterpreted as a heading)
-    if re.match(r'^\d+$', t):
+    if re.match(r"^\d+$", t):
         return False
     # Single character + punctuation (e.g. "1." or "a)")
-    if len(re.sub(r'[^\w]', '', t)) < 2:
+    if len(re.sub(r"[^\w]", "", t)) < 2:
         return False
     return True
 
@@ -139,7 +180,7 @@ class ChapterMatcher:
         """
         result = []
         for e in entries:
-            if hasattr(e, 'title') and hasattr(e, 'page'):
+            if hasattr(e, "title") and hasattr(e, "page"):
                 title, page = e.title, e.page
             elif isinstance(e, (tuple, list)) and len(e) >= 2:
                 title, page = e[0], e[1]
@@ -210,11 +251,11 @@ class ChapterMatcher:
         best_score = 0
         matched = False
         # Check the primary heading
-        m, s = self._match_heading_text(segment.get('heading', ''), selected)
+        m, s = self._match_heading_text(segment.get("heading", ""), selected)
         if m and s > best_score:
             matched, best_score = True, s
         # V18.3.3 (F2): check aliases
-        for alias in (segment.get('aliases') or []):
+        for alias in segment.get("aliases") or []:
             m, s = self._match_heading_text(alias, selected)
             if m and s > best_score:
                 matched, best_score = True, s
@@ -225,12 +266,12 @@ class ChapterMatcher:
         if not self.toc_entries:
             return None
         best_idx, best_score = -1, 0.0
-        for idx, (title, page) in enumerate(self.toc_entries):
+        for idx, (title, _page) in enumerate(self.toc_entries):
             if _RAPIDFUZZ_AVAILABLE:
                 sc = fuzz.token_set_ratio(selected.lower(), title.lower()) / 100.0
             else:
-                sw = set(re.findall(r'[a-z0-9]+', selected.lower()))
-                tw = set(re.findall(r'[a-z0-9]+', title.lower()))
+                sw = set(re.findall(r"[a-z0-9]+", selected.lower()))
+                tw = set(re.findall(r"[a-z0-9]+", title.lower()))
                 sc = len(sw & tw) / max(len(sw | tw), 1) if (sw or tw) else 0.0
             if sc > best_score:
                 best_score, best_idx = sc, idx
@@ -246,10 +287,10 @@ class ChapterMatcher:
         if sel_page is None:
             return None
         for seg in segments:
-            if _is_gap_segment(seg.get('heading', ''), seg.get('segment_type', '')):
+            if _is_gap_segment(seg.get("heading", ""), seg.get("segment_type", "")):
                 continue
-            sp = seg.get('start_page')
-            ep = seg.get('end_page')
+            sp = seg.get("start_page")
+            ep = seg.get("end_page")
             if sp is not None and ep is not None and sp <= sel_page <= ep:
                 return seg
         return None
@@ -276,8 +317,11 @@ class ChapterMatcher:
             Empty list if no matches (caller should raise ChapterMatchFailure).
         """
         # Filter out gap segments — they're never matchable
-        matchable = [s for s in segments
-                     if not _is_gap_segment(s.get('heading', ''), s.get('segment_type', ''))]
+        matchable = [
+            s
+            for s in segments
+            if not _is_gap_segment(s.get("heading", ""), s.get("segment_type", ""))
+        ]
 
         results: list[tuple[int, dict]] = []
         for sel in selected_titles:
@@ -376,13 +420,15 @@ def filter_toc_entries_for_selection(
     _toc_dicts = []
     for e in toc_entries:
         _p = _entry_page(e)
-        _toc_dicts.append({
-            "heading": _entry_heading(e),
-            "start_page": _p,
-            "end_page": _p,
-            "aliases": [],
-            "segment_type": "chapter",
-        })
+        _toc_dicts.append(
+            {
+                "heading": _entry_heading(e),
+                "start_page": _p,
+                "end_page": _p,
+                "aliases": [],
+                "segment_type": "chapter",
+            }
+        )
     _matched_headings: set[str] = set()
     for _sel in selected_titles:
         for _d in _toc_dicts:
@@ -396,10 +442,7 @@ def filter_toc_entries_for_selection(
         )
         return toc_entries, 0
 
-    filtered = [
-        e for e in toc_entries
-        if _normalize(_entry_heading(e)) in _matched_headings
-    ]
+    filtered = [e for e in toc_entries if _normalize(_entry_heading(e)) in _matched_headings]
     # V0.07 (output-regression fix): a 1-entry TOC is worse than no filter.
     # ALL THREE TOC segmentation strategies require len(toc_entries) >= 2
     # (segmenter.py step-0 chapter-level / located-TOC / TOC-driven) — a

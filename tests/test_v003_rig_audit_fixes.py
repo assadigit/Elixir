@@ -32,14 +32,15 @@ summaries) found six systemic defects, fixed in V0.03:
 Every test here pins GENERAL behavior — the logic is content-agnostic; the
 rig shapes appear only as regression fixtures.
 """
+
 from __future__ import annotations
 
 import sys
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 # ── Minimal heavy-dep stubs (matches test_v18202_system_fixes.py) ──────────
 # tiktoken + markitdown are not installed in this sandbox; the stubs keep
@@ -55,7 +56,7 @@ if "markitdown" not in sys.modules:
     _md.MarkItDown = MagicMock()
     sys.modules["markitdown"] = _md
 
-from core.models import ConversionRequest, Segment, SummaryResult
+from core.models import ConversionRequest, SummaryResult
 from core.preprocessing.deterministic_analyzer import (
     extract_bylines,
     run_deterministic_analysis,
@@ -69,7 +70,6 @@ from core.summarisation.summary_validator import (
     _normalize_for_coverage,
     compute_coverage,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # P0-1 — dropped-letter auto-repair neutralized
@@ -118,8 +118,7 @@ class TestDroppedLetterNeutralized:
             "The chapter covers complexity, negotiation, and deployment trade-offs."
         )
         text = self._text_with(word)
-        fixed, issues = detect_dropped_letter_garble(
-            text, "thorough", source, auto_repair=True)
+        fixed, issues = detect_dropped_letter_garble(text, "thorough", source, auto_repair=True)
         assert fixed == text, f"valid word {word!r} was rewritten (attractor {attractor!r})"
         assert not any(i.severity == "fix" for i in issues)
 
@@ -142,8 +141,7 @@ class TestDroppedLetterNeutralized:
             "The sense of identity emergs gradually through the developmental "
             "stages described in this chapter."
         )
-        fixed, issues = detect_dropped_letter_garble(
-            text, "exec", source, auto_repair=True)
+        fixed, issues = detect_dropped_letter_garble(text, "exec", source, auto_repair=True)
         assert "emerges" in fixed
         assert any(i.severity == "fix" for i in issues)
 
@@ -156,8 +154,7 @@ class TestDroppedLetterNeutralized:
         # 'emergs' ↔ 'emerges' (insert e) and 'emerges'/'emerge' both present.
         source = "It emerges and will emerge fully in time."
         text = "The emergs of identity is key to the argument about development."
-        fixed, issues = detect_dropped_letter_garble(
-            text, "exec", source, auto_repair=True)
+        fixed, issues = detect_dropped_letter_garble(text, "exec", source, auto_repair=True)
         assert fixed == text, "ambiguous reconstruction must not repair"
 
     def test_guard_b_paragraph_corroboration_rejects_cross_section_candidate(self):
@@ -190,8 +187,7 @@ class TestDroppedLetterNeutralized:
             "The emergss of identity is key. The emergss happens slowly over "
             "the developmental stages of early childhood formation processes."
         )
-        fixed, issues = detect_dropped_letter_garble(
-            text, "exec", source, auto_repair=True)
+        fixed, issues = detect_dropped_letter_garble(text, "exec", source, auto_repair=True)
         assert "emergss" in fixed, "repeated vocabulary must be left alone"
         assert not [i for i in issues if i.detector == "dropped_letter"]
 
@@ -199,11 +195,13 @@ class TestDroppedLetterNeutralized:
 class TestDroppedLetterSettingsPlumbing:
     def test_setting_defaults_to_off(self):
         from utils.settings import Settings
+
         val = Settings().get("summarisation.dropped_letter_auto_repair", None)
         assert val is False, "the repair must be disabled by default (V0.03 P0-1)"
 
     def test_run_post_checks_default_does_not_mutate_bullets(self):
         from core.summarisation.postchecks import run_post_checks
+
         source = (
             "The process of identity formation emerges from the analysis of "
             "detailed case material across many longitudinal cohorts."
@@ -220,6 +218,7 @@ class TestDroppedLetterSettingsPlumbing:
 # P0-3 — normalized, parts-tolerant coverage matching
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestNormalizedCoverageMatching:
     def test_hyphen_variant_matches(self):
         """'hamster wheels' (keyword) vs 'hamster-wheel' (summary) — the exact
@@ -230,7 +229,8 @@ class TestNormalizedCoverageMatching:
     def test_paraphrase_parts_match(self):
         """'system crashing' vs 'system will come crashing down' — parts present."""
         sl = _normalize_for_coverage(
-            "Without a second server the whole system will come crashing down.")
+            "Without a second server the whole system will come crashing down."
+        )
         assert _keyword_covered("system crashing", sl)
 
     def test_plural_tolerance(self):
@@ -245,8 +245,7 @@ class TestNormalizedCoverageMatching:
         assert _keyword_covered("budgetecture conversation", sl)
 
     def test_genuinely_missing_keyword_still_fails(self):
-        sl = _normalize_for_coverage(
-            "a completely unrelated summary about gardening and patience")
+        sl = _normalize_for_coverage("a completely unrelated summary about gardening and patience")
         assert not _keyword_covered("thrust-to-weight ratio", sl)
 
     def test_compute_coverage_end_to_end_hyphen_case(self):
@@ -275,10 +274,12 @@ class TestNormalizedCoverageMatching:
 # P0-2 — Tier-3 excerpts: complete sentences, framed, never Key Takeaways
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestTier3SourceExcerpts:
     def _summarizer(self):
         """A minimal duck-typed harness for _force_insert_missing."""
         from core.summarisation.summarizer import Summarizer
+
         req = ConversionRequest(input_path=Path("t.pdf"), output_dir=Path("out"))
         s = Summarizer.__new__(Summarizer)  # skip __init__ (no LLM needed)
         s.request = req
@@ -354,6 +355,7 @@ class TestTier3SourceExcerpts:
         Tier-2 gap-fill or Tier-3 insertion (the P0-3 principle applied inside
         the 3-tier machinery)."""
         from core.summarisation.coverage_guarantee import apply_3tier_coverage
+
         source = (
             "Deploy early and often. The hamster wheel infrastructure powers "
             "the whole data center. Response times matter greatly."
@@ -371,8 +373,12 @@ class TestTier3SourceExcerpts:
         calls = {"gap_fill": [], "force_insert": []}
 
         apply_3tier_coverage(
-            heading="H", text=source, content=source, result=result,
-            coverage=0.1, coverage_threshold=0.85,
+            heading="H",
+            text=source,
+            content=source,
+            result=result,
+            coverage=0.1,
+            coverage_threshold=0.85,
             extract_keywords=lambda t, n: ["hamster wheel", "deploy early"],
             log=lambda m, l="INFO": None,
             targeted_gap_fill=lambda h, t, missing: (calls["gap_fill"].extend(missing), [])[1],
@@ -394,21 +400,26 @@ class TestTier3SourceExcerpts:
 # P0-4 — selection-aware segmentation + TOC-boundary headings
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _rig_shape_markdown() -> str:
     """The 97-Things selection shape: pages 5–16, one numbered essay per
     1–2 pages, general structure (any anthology looks like this)."""
     pages = {
-        5: "1. Don't put your resume ahead of the requirements\n\n" + ("resume customer fiduciary " * 30),
+        5: "1. Don't put your resume ahead of the requirements\n\n"
+        + ("resume customer fiduciary " * 30),
         6: "2. Simplify essential complexity\n\n" + ("essential accidental complexity " * 30),
-        7: "3. Chances are your biggest problem isn't technical\n\n" + ("people conversation technology " * 25),
+        7: "3. Chances are your biggest problem isn't technical\n\n"
+        + ("people conversation technology " * 25),
         8: ("conversation skills continue here " * 25),
         9: "4. Communication is King\n\n" + ("clarity leadership communication " * 30),
         10: "5. Architecting is about balancing\n\n" + ("stakeholders balancing priorities " * 30),
-        11: "6. Seek the value in requested capabilities\n\n" + ("value requirements customer " * 30),
+        11: "6. Seek the value in requested capabilities\n\n"
+        + ("value requirements customer " * 30),
         12: "7. Stand Up!\n\n" + ("standing authority communication " * 30),
         13: "8. Skyscrapers aren't scalable\n\n" + ("deployment incremental components " * 30),
         14: ("component deployment continues here " * 25),
-        15: "9. You're negotiating more often than you think\n\n" + ("budgetecture negotiation sponsor " * 30),
+        15: "9. You're negotiating more often than you think\n\n"
+        + ("budgetecture negotiation sponsor " * 30),
         16: ("negotiation continues with the gambit " * 25),
     }
     return "\n".join(f"<!-- original page {p} -->\n{t}\n" for p, t in pages.items())
@@ -416,9 +427,11 @@ def _rig_shape_markdown() -> str:
 
 def _rig_shape_toc():
     from core.models import TOCEntry
+
     entries = []
     for title, page in [
-        ("97 Things - The Book", 1), ("Revision History", 2),
+        ("97 Things - The Book", 1),
+        ("Revision History", 2),
         ("1. Don't put your resume ahead of the requirements", 5),
         ("2. Simplify essential complexity; diminish accidental complexity", 6),
         ("3. Chances are your biggest problem isn't technical", 7),
@@ -454,19 +467,23 @@ class TestSelectionAwareSegmentation:
     def _segment(self, selected):
         from core.segmentation.chapter_matcher import filter_toc_entries_for_selection
         from core.segmentation.segmenter import Segmenter
+
         toc = _rig_shape_toc()
         if selected:
             toc, _ = filter_toc_entries_for_selection(toc, selected, None)
         request = ConversionRequest(
-            input_path=Path("t.pdf"), output_dir=Path("out"),
+            input_path=Path("t.pdf"),
+            output_dir=Path("out"),
             selected_chapters=selected or None,
         )
         logs, log = [], (lambda m, l="INFO": logs.append(m))
         seg = Segmenter(request, log_callback=log, toc_entries=toc)
         import re as _re
+
         md = _rig_shape_markdown()
-        markers = [(int(m.group(1)), m.start())
-                   for m in _re.finditer(r"<!-- original page (\d+) -->", md)]
+        markers = [
+            (int(m.group(1)), m.start()) for m in _re.finditer(r"<!-- original page (\d+) -->", md)
+        ]
         return seg.segment(md, 119, markers), logs
 
     def test_selected_entries_stay_separate(self):
@@ -493,8 +510,7 @@ class TestSelectionAwareSegmentation:
         negot = [s for s in segments if "negotiating" in s.heading]
         assert negot, "thing 9 must be its own segment"
         assert negot[0].end_page == 16, (
-            f"last selected entry must end at the last extracted page (16), "
-            f"got {negot[0].end_page}"
+            f"last selected entry must end at the last extracted page (16), got {negot[0].end_page}"
         )
         # and thing 10 (p.17, NOT selected) must not be inside its content
         assert "Quantify" not in negot[0].content
@@ -512,6 +528,7 @@ class TestSelectionAwareSegmentation:
 class TestDerivePageRangesSamePageFix:
     def _converter_stub(self):
         from core.pipeline.converter_impl import Converter
+
         stub = types.SimpleNamespace()
         stub._log = lambda msg, level="DEBUG": None
         return Converter._derive_page_ranges_from_toc.__get__(stub, type(stub))
@@ -523,7 +540,7 @@ class TestDerivePageRangesSamePageFix:
         toc = [
             ("Preface", 27),
             ("Act with Prudence", 28),
-            ("Seb Rose", 28),          # author bookmark, same page
+            ("Seb Rose", 28),  # author bookmark, same page
             ("Apply Functional Programming Principles", 32),
         ]
         pages = derive(toc, ["Act with Prudence"], 257)
@@ -536,8 +553,7 @@ class TestDerivePageRangesSamePageFix:
     def test_last_selected_entry_stops_before_next_entry(self):
         derive = self._converter_stub()
         toc = _rig_shape_toc()
-        pages = derive(
-            [tuple(e) for e in toc], _RIG_SELECTION, 119)
+        pages = derive([tuple(e) for e in toc], _RIG_SELECTION, 119)
         assert pages is not None
         # thing 9: 15–16 (thing 10 starts p.17 — NOT leaked).
         assert 15 in pages and 16 in pages
@@ -552,7 +568,9 @@ class TestExtractionOverlapClamp:
         """Source pin: the ±1 expand_with_overlap must NOT run for
         TOC-derived selections (it leaked p.17 in the rig run)."""
         import inspect
+
         from core.pipeline.conversion import extraction
+
         src = inspect.getsource(extraction.run_extraction)
         assert "_toc_derived_selection" in src
         assert "expand_with_overlap" in src
@@ -568,6 +586,7 @@ class TestTocBoundaryHeadings:
         """The RAG fix: a segment spanning multiple TOC entries gets a real
         '##' heading at every interior boundary."""
         from core.pipeline.conversion.output_save import insert_toc_boundary_headings
+
         md = _rig_shape_markdown()
         # One mega-segment over pages 5–16 (the merged shape).
         new_md, n = insert_toc_boundary_headings(md, 5, 16, self._toc())
@@ -581,6 +600,7 @@ class TestTocBoundaryHeadings:
 
     def test_same_page_entries_deduped_keep_first(self):
         from core.pipeline.conversion.output_save import insert_toc_boundary_headings
+
         md = _rig_shape_markdown()
         new_md, n = insert_toc_boundary_headings(md, 5, 16, self._toc())
         # Thing 5 + its subtitle share p.10 → ONE heading (the numbered thing).
@@ -589,6 +609,7 @@ class TestTocBoundaryHeadings:
 
     def test_no_markers_no_insertion(self):
         from core.pipeline.conversion.output_save import insert_toc_boundary_headings
+
         content = "Plain text with no page markers at all. " * 20
         new_md, n = insert_toc_boundary_headings(content, 5, 16, self._toc())
         assert new_md == content
@@ -596,6 +617,7 @@ class TestTocBoundaryHeadings:
 
     def test_existing_heading_not_duplicated(self):
         from core.pipeline.conversion.output_save import insert_toc_boundary_headings
+
         md = (
             "<!-- original page 6 -->\n\n## 2. Simplify essential complexity\n\n"
             "essential accidental complexity " * 10
@@ -607,6 +629,7 @@ class TestTocBoundaryHeadings:
 # ═══════════════════════════════════════════════════════════════════════════
 # P1-5 — byline detection + attribution
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestBylineExtraction:
     def test_anthology_bylines_in_order(self):
@@ -648,15 +671,17 @@ class TestPromptAttribution:
                     return "ollama"
                 return default
 
-        monkeypatch.setattr(
-            "core.summarisation.summarizer.Settings", lambda: _FakeSettings())
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: _FakeSettings())
         monkeypatch.setattr("utils.settings.Settings", lambda: _FakeSettings())
         from core.summarisation.summarizer import Summarizer
+
         req = ConversionRequest(input_path=Path("t.pdf"), output_dir=Path("out"))
         req.summarisation_model = "gemma3:12b"
         return Summarizer(
-            request=req, log_callback=lambda m, l="INFO": None,
-            language="en", claim_extractor=None,
+            request=req,
+            log_callback=lambda m, l="INFO": None,
+            language="en",
+            claim_extractor=None,
         )
 
     def test_multi_byline_text_gets_attribution_block(self, monkeypatch):
@@ -691,6 +716,7 @@ class TestPromptAttribution:
 # P1-6 — deliverable metadata honesty
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestMetadataHonesty:
     def _mk(self, bullets, heading="Chapter", excerpts=None, appendix=""):
         return SummaryResult(
@@ -704,6 +730,7 @@ class TestMetadataHonesty:
 
     def test_book_summary_stats_real_bullet_count(self):
         from core.summarisation.summarizer import Summarizer
+
         s = Summarizer.__new__(Summarizer)
         s.provider = "ollama"
         s.language = "en"
@@ -721,13 +748,22 @@ class TestMetadataHonesty:
         """Source pin: the provenance stamp passes _bk_bullet_count, not
         len(summaries) (the bullets=2-on-70-bullets incident)."""
         import inspect
+
         from core.pipeline.conversion import summarization
+
         src = inspect.getsource(summarization.run_summarization)
         assert "_bk_bullet_count" in src
-        assert "provenance_comment(\n                _bk_ver, _bk_rid, _bk_started, _bk_bullet_count" in src
+        # V0.13: ruff-format put each argument on its own line — pin the call
+        # plus all four arguments (order preserved).
+        assert "provenance_comment(" in src
+        assert (
+            "_bk_ver,\n                _bk_rid,\n                _bk_started,\n                _bk_bullet_count,"
+            in src
+        )
 
     def test_render_includes_source_excerpts_section(self):
         from core.pipeline.chapter_checkpoint import render_summary_markdown
+
         summ = self._mk(
             ["A bullet."],
             excerpts=['On "budgetecture" — verbatim from the source: "The whole text."'],
@@ -745,6 +781,7 @@ class TestMetadataHonesty:
         # docx output (keep it for your logs)"). Even a result that still
         # carries a legacy quarantine_appendix value must NOT render it.
         from core.pipeline.chapter_checkpoint import render_summary_markdown
+
         appendix = (
             "## Quarantine Log (quality-pipeline drops)\n\n"
             "- [thinking_filter · dropped] prompt leakage — “The user wants…”"
@@ -759,6 +796,7 @@ class TestMetadataHonesty:
 
     def test_render_without_new_sections_byte_compatible(self):
         from core.pipeline.chapter_checkpoint import render_summary_markdown
+
         summ = self._mk(["A bullet."])
         md = render_summary_markdown(summ)
         assert "Source Excerpts" not in md
@@ -768,13 +806,14 @@ class TestMetadataHonesty:
     def test_fact_check_log_no_longer_claims_marker(self):
         """The V13.33.2 lie: 'marked ⚠️' in the log while no marker is written."""
         from core.summarisation.summary_validator import verify_bullets
+
         logs = []
         # A bullet with zero source overlap → unverified → kept + logged.
         source = "The chapter covers modular design and interfaces. " * 3
         bullet = "Completely unrelated quantum entanglement butterfly migration."
         result = verify_bullets(
-            [bullet], source, {}, quarantine=None,
-            log=lambda m, l="INFO": logs.append(m))
+            [bullet], source, {}, quarantine=None, log=lambda m, l="INFO": logs.append(m)
+        )
         assert result == [bullet], "conservative mode keeps the bullet"
         joined = "\n".join(logs)
         if "unverified" in joined:
@@ -795,7 +834,12 @@ class TestMetadataHonesty:
         source = "The chapter covers modular design and interfaces. " * 3
         verify_bullets(
             ["Completely unrelated quantum entanglement butterfly migration."],
-            source, {}, quarantine=q, log=None, chapter="Chapter Nine")
+            source,
+            {},
+            quarantine=q,
+            log=None,
+            chapter="Chapter Nine",
+        )
         assert q.entries, "unverified bullet must be quarantined"
         assert q.entries[0].get("chapter") == "Chapter Nine", (
             "quarantine entries must carry the chapter tag (P1-6 appendix)"

@@ -98,9 +98,7 @@ def _strip_think_blocks(text: str) -> str:
 # ── Language detection ───────────────────────────────────────────────────
 
 # Persian/Arabic Unicode ranges
-_PERSIAN_RE = re.compile(
-    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
-)
+_PERSIAN_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 
 def detect_language(text: str) -> str:
@@ -120,6 +118,7 @@ def detect_language(text: str) -> str:
 
 
 # ── Translator ───────────────────────────────────────────────────────────
+
 
 class Translator:
     """LLM-based translator via Ollama's OpenAI-compatible endpoint.
@@ -199,8 +198,7 @@ class Translator:
             return self._cache[cache_key]
 
         try:
-            result = self._call_llm(text, source_lang, target_lang,
-                                     glossary_context, prev_context)
+            result = self._call_llm(text, source_lang, target_lang, glossary_context, prev_context)
             if result and result.strip():
                 self._failure_count = 0  # reset on success
                 result = result.strip()
@@ -212,8 +210,7 @@ class Translator:
                     del self._cache[oldest]
                 return result
             else:
-                self.log("  [Translation] Empty LLM response, returning original",
-                         "WARNING")
+                self.log("  [Translation] Empty LLM response, returning original", "WARNING")
         except Exception as e:
             self._failure_count += 1
             if self._failure_count >= self._max_failures:
@@ -222,13 +219,13 @@ class Translator:
                     f"  [Translation] Disabled after {self._failure_count} "
                     f"failures (last: {e}). Returning original text for "
                     f"remaining chunks.",
-                    "WARNING"
+                    "WARNING",
                 )
             else:
                 self.log(
                     f"  [Translation] Failed ({e}), returning original "
                     f"(failure {self._failure_count}/{self._max_failures})",
-                    "WARNING"
+                    "WARNING",
                 )
 
         return text  # graceful degradation: return original
@@ -276,7 +273,7 @@ class Translator:
 
         # Add context note if available
         if prev_context:
-            prompt += f"\n\n(Context from previous section: \"{prev_context[:200]}...\")"
+            prompt += f'\n\n(Context from previous section: "{prev_context[:200]}...")'
 
         # /no_think directive to suppress thinking blocks
         # V18.20.4.12 (W-a11): gated on Qwen-family via the shared helper —
@@ -329,9 +326,7 @@ class Translator:
     ) -> str:
         """Build a cache key from text + language pair + model + glossary hash."""
         text_hash = hashlib.md5(text.encode("utf-8")).hexdigest()[:12]
-        glossary_hash = hashlib.md5(
-            (glossary_context or "").encode("utf-8")
-        ).hexdigest()[:8]
+        glossary_hash = hashlib.md5((glossary_context or "").encode("utf-8")).hexdigest()[:8]
         model_hash = hashlib.md5(self.model.encode("utf-8")).hexdigest()[:6]
         return f"{source_lang}->{target_lang}:{model_hash}:{text_hash}:{glossary_hash}"
 

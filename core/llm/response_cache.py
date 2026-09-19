@@ -23,6 +23,7 @@ FIFO cap as the in-memory cache (1000 entries).
 Thread-safety: the cache uses a lock so concurrent workers (ThreadPoolExecutor)
 don't corrupt the dict or the disk file.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -85,9 +86,7 @@ class ResponseCache:
         h = hashlib.md5()  # noqa: S324 — cache key, not a security primitive
         h.update(str(model).encode())
         h.update(f"_{temperature:.2f}_".encode())
-        h.update(
-            f"_{max_tokens if max_tokens is not None else 'default'}_".encode()
-        )
+        h.update(f"_{max_tokens if max_tokens is not None else 'default'}_".encode())
         # V18.1 (O2): hash the FULL prompt — the old ``prompt[:2000]``
         # truncation caused long prompts that share their first 2000
         # chars (e.g. same chapter header + system prompt) to collide
@@ -96,8 +95,11 @@ class ResponseCache:
         # surface: an attacker who can control the prompt can already
         # cause cache misses, not incorrect hits — the worst case is a
         # performance degradation, not a correctness/security bug).
-        # V18.2.26 (A13): added `# noqa: S324` to silence ruff/bandit
-        # security scanners that flag hashlib.md5 without context.
+        # V18.2.26 (A13): added the noqa directive on the line above to
+        # silence ruff/bandit security scanners that flag hashlib.md5
+        # without context. (Note: this comment avoids spelling the directive
+        # inline — a literal '# noqa: S324' inside a comment is itself parsed
+        # as an invalid directive by newer ruff.)
         h.update(str(prompt).encode())
         return h.hexdigest()
 

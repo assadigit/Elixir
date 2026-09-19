@@ -51,8 +51,8 @@ class QtControllerBridge(QObject):
 
     progress = Signal(float)
     status = Signal(str)
-    log = Signal(str, str)        # (message, level)
-    complete = Signal(object)     # ConversionResult
+    log = Signal(str, str)  # (message, level)
+    complete = Signal(object)  # ConversionResult
 
     # ── emitters the controller registers as its callbacks ──────────────
     def emit_progress(self, value: float) -> None:

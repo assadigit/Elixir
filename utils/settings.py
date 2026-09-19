@@ -14,10 +14,11 @@ import json
 import logging
 import shutil
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from utils.atomic_io import atomic_write_json
 from utils.settings_schema import (
@@ -61,13 +62,15 @@ def user_data_dir() -> Path:
                 logger.info(
                     "Elixir rebrand: migrated user data %s → %s (settings, "
                     "models, caches, prompts preserved)",
-                    legacy, new_dir,
+                    legacy,
+                    new_dir,
                 )
         except Exception:
             logger.warning(
                 "Elixir rebrand: user-data migration %s → %s failed — "
                 "starting fresh (legacy directory left untouched)",
-                legacy, new_dir,
+                legacy,
+                new_dir,
                 exc_info=True,
             )
         _user_dir_resolved = True
@@ -107,35 +110,35 @@ class Settings:
     def _defaults() -> dict[str, Any]:
         return {
             "ocr": {
-                "primary_model":       "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
-                "fallback_model":      "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
-                "vlm_fallback_model":  "",              # V10.35.0: local VLM for OCR fallback (e.g. "llava:13b")
-                "use_llm":             True,
+                "primary_model": "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
+                "fallback_model": "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
+                "vlm_fallback_model": "",  # V10.35.0: local VLM for OCR fallback (e.g. "llava:13b")
+                "use_llm": True,
                 "auto_detect_scanned": True,
                 "force_ocr_all_pages": False,
-                "image_max_size":      1200,
-                "image_dpi":           300,
-                "unlimited_ocr_path":  "",
-                "deepseek_ocr2_path":  "",
-                "timeout":             120,
-                "retries":             2,
-                "use_paddleocr":       False,
+                "image_max_size": 1200,
+                "image_dpi": 300,
+                "unlimited_ocr_path": "",
+                "deepseek_ocr2_path": "",
+                "timeout": 120,
+                "retries": 2,
+                "use_paddleocr": False,
             },
             "postprocess": {
-                "clean_markdown":                 True,
-                "fix_missing_spaces":             False,
-                "token_saver":                    True,
-                "remove_page_number_headings":    True,
+                "clean_markdown": True,
+                "fix_missing_spaces": False,
+                "token_saver": True,
+                "remove_page_number_headings": True,
                 "convert_separators_to_comments": False,
             },
             "segmentation": {
-                "strategy":              "auto",
-                "custom_keywords":       ["فصل", "بخش", "قانون", "درس", "باب"],
+                "strategy": "auto",
+                "custom_keywords": ["فصل", "بخش", "قانون", "درس", "باب"],
                 "custom_regex_patterns": [],
-                "page_group_size":       10,
-                "token_limit":           2000,
-                "enable_semantic":       True,
-                "chunk_by_page_groups":  True,
+                "page_group_size": 10,
+                "token_limit": 2000,
+                "enable_semantic": True,
+                "chunk_by_page_groups": True,
             },
             # ── V13.27.0 (P2.6): Canonical LLM settings ──────────────────────
             # The single source of truth for Ollama URL + provider. All modules
@@ -144,14 +147,14 @@ class Settings:
             # summarisation.endpoint, translation.endpoint). The legacy keys
             # are kept for backward compat but resolve to this value.
             "llm": {
-                "ollama_url":           "http://localhost:11434",
-                "provider":             "ollama",  # "ollama" | "cloud"
+                "ollama_url": "http://localhost:11434",
+                "provider": "ollama",  # "ollama" | "cloud"
                 # V18.1 (audit): How long Ollama keeps a model resident in VRAM
                 # after the last request. Default "30m" (30 minutes). The old
                 # code had no keep_alive, so Ollama used its 5-minute default —
                 # models cold-reloaded between chapters if the user waited >5 min.
                 # Set to "0" to unload immediately, or "-1" to keep forever.
-                "keep_alive":           "30m",
+                "keep_alive": "30m",
                 # V13.34.0: Per-model sampling profiles.
                 "model_profiles": {
                     "gemma4-12b:latest": {
@@ -198,38 +201,38 @@ class Settings:
                 },
             },
             "summarisation": {
-                "enabled":              False,
-                "model":                "gemma4-12b:latest",  # V13.45.4: primary summarization model (was wrong Qwythos variant)
-                "language":             "auto",
-                "max_context_tokens":   32768,  # V13.34.0: 32k for local models (cloud uses 128k+)
+                "enabled": False,
+                "model": "gemma4-12b:latest",  # V13.45.4: primary summarization model (was wrong Qwythos variant)
+                "language": "auto",
+                "max_context_tokens": 32768,  # V13.34.0: 32k for local models (cloud uses 128k+)
                 # V18.2 (audit): For 12 GB cards running a 27B model, the KV
                 # cache at 32k context uses ~2 GB VRAM. If the model is CPU-
                 # offloading (VRAM > 11 GB), reducing this to 16384 frees ~1 GB
                 # and may eliminate CPU offloading entirely. Most chapters are
                 # under 10k tokens, so 16k context is plenty. Set to 8192 for
                 # extreme VRAM pressure (short chapters only).
-                "adaptive_context_enabled":  True,  # auto-reduce context for short chapters
-                "max_output_tokens":    16000,  # V13.45.4: raised from 8192 (user has 32K context, 8K was too low for 100+ bullets)
-                "cache_enabled":        False,
+                "adaptive_context_enabled": True,  # auto-reduce context for short chapters
+                "max_output_tokens": 16000,  # V13.45.4: raised from 8192 (user has 32K context, 8K was too low for 100+ bullets)
+                "cache_enabled": False,
                 "include_book_summary": True,
                 # V0.04: fresh installs default to the llama.cpp backend
                 # (the rig's primary). Existing installs are migrated in
                 # _load() — and only when still at the untouched "ollama"
                 # default, so explicit choices survive.
-                "provider":             "llamacpp",
-                "api_key":              "",
-                "api_base_url":         "https://openrouter.ai/api/v1",
-                "cloud_model":          "google/gemini-2.5-flash-preview:free",
-                "cloud_max_tokens":     16000,
+                "provider": "llamacpp",
+                "api_key": "",
+                "api_base_url": "https://openrouter.ai/api/v1",
+                "cloud_model": "google/gemini-2.5-flash-preview:free",
+                "cloud_max_tokens": 16000,
                 # ── Claude (Anthropic) settings ──────────────────────────
-                "claude_api_key":       "",
-                "claude_model":         "claude-3-5-sonnet-20241022",
-                "claude_base_url":      "https://api.anthropic.com/v1",
-                "claude_max_tokens":    4096,
+                "claude_api_key": "",
+                "claude_model": "claude-3-5-sonnet-20241022",
+                "claude_base_url": "https://api.anthropic.com/v1",
+                "claude_max_tokens": 4096,
                 # ── FreeLLMAPI ─────────────────────────────────────────────
-                "freellmapi_url":       "http://localhost:3001/v1",
-                "freellmapi_key":       "",
-                "freellmapi_model":     "auto",
+                "freellmapi_url": "http://localhost:3001/v1",
+                "freellmapi_key": "",
+                "freellmapi_model": "auto",
                 # ── llama.cpp server (llama-server) — V0.04 ────────────────
                 # The first non-Ollama LOCAL backend, wired end-to-end
                 # (provider + wizard + settings dialog). Defaults match the
@@ -238,21 +241,21 @@ class Settings:
                 # (65536) and 12k output (12288). ``llamacpp_api_key`` is
                 # sent as a Bearer token — llama.cpp only enforces it when
                 # started with --api-key, otherwise the header is ignored.
-                "llamacpp_base_url":           "http://127.0.0.1:8080/v1",
-                "llamacpp_api_key":            "local",
-                "llamacpp_model":              "Ternary-Bonsai-2-27B-Instruct-Vision",
-                "llamacpp_context_tokens":     65536,   # the 65k window
-                "llamacpp_max_output_tokens":  12288,   # the 12k output cap
+                "llamacpp_base_url": "http://127.0.0.1:8080/v1",
+                "llamacpp_api_key": "local",
+                "llamacpp_model": "Ternary-Bonsai-2-27B-Instruct-Vision",
+                "llamacpp_context_tokens": 65536,  # the 65k window
+                "llamacpp_max_output_tokens": 12288,  # the 12k output cap
                 # One-time activation flag for the V0.04 migration (see
                 # _load). After the first run the flag stays True so a user
                 # who later switches BACK to Ollama is never re-flipped.
-                "llamacpp_activation_done":    False,
+                "llamacpp_activation_done": False,
                 # ── Quality controls ──────────────────────────────────────
                 # V10.1.7: default temperature raised 0.2 → 0.6 per user request.
                 # 0.6 works better with Qwythos/Qwen models (0.2 produced empty output).
-                "temperature":          1.0,  # V13.34.0: Gemma 4 recommended temp
-                "self_consistency":     False,
-                "heavy_model":          "",
+                "temperature": 1.0,  # V13.34.0: Gemma 4 recommended temp
+                "self_consistency": False,
+                "heavy_model": "",
                 # V18.20.2.0 (SWOT A28): duplicate ``fast_model`` key removed.
                 # The dict literal used to declare it twice — first
                 # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest", then "" —
@@ -266,26 +269,26 @@ class Settings:
                 # "single_api"   — one CLOUD API model does everything
                 # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
                 # Legacy "single" accepted (mapped → "single_local").
-                "model_architecture":   "single_local",
-                "fast_model":           "",  # V17.0.0: fast/small model for simple tasks
+                "model_architecture": "single_local",
+                "fast_model": "",  # V17.0.0: fast/small model for simple tasks
                 "fast_model_temperature": 0.1,  # V17.0.0: LFM2.5 recommends 0.1
-                "fast_model_context":    131072,  # V17.0.0: LFM2.5 max 128K context
-                "fast_api_url":          "",  # V17.0.0: API URL for dual_api mode
-                "fast_api_key":          "",  # V17.0.0: API key for dual_api mode
-                "fast_api_model":        "",  # V17.0.0: Model name for dual_api mode
-                "coverage_threshold":   85,  # V13.34.0: raised from 50 to 85
+                "fast_model_context": 131072,  # V17.0.0: LFM2.5 max 128K context
+                "fast_api_url": "",  # V17.0.0: API URL for dual_api mode
+                "fast_api_key": "",  # V17.0.0: API key for dual_api mode
+                "fast_api_model": "",  # V17.0.0: Model name for dual_api mode
+                "coverage_threshold": 85,  # V13.34.0: raised from 50 to 85
                 # V15.1.0: Over-delivery — keep improving coverage past the minimum
                 # threshold toward the target. Default ON, target 92%.
-                "overdeliver_enabled":   True,
-                "overdeliver_target":    100,  # V15.1.1: 100% (the more the better)
-                "b3_voting_enabled":     False,  # V15.1.1: disabled (damages depth); toggleable
+                "overdeliver_enabled": True,
+                "overdeliver_target": 100,  # V15.1.1: 100% (the more the better)
+                "b3_voting_enabled": False,  # V15.1.1: disabled (damages depth); toggleable
                 # V18.1 (audit Q2): Cross-chapter running context. When enabled,
                 # each chapter's executive summary is distilled into a 150-word
                 # entry and injected into the NEXT chapter's prompt. This gives
                 # the LLM cross-chapter continuity (prevents repeating content,
                 # improves narrative flow). Only applies in sequential mode
                 # (max_workers=1). Default ON — no extra LLM cost (deterministic).
-                "cross_chapter_context":       True,
+                "cross_chapter_context": True,
                 # V18.2 (audit Fix 2): Scholar's Reflections section (the
                 # "what's missing" self-audit). Default OFF — the user's
                 # analysis showed this was the #1 defect, contradicting itself
@@ -293,7 +296,7 @@ class Settings:
                 # The gap-fill mechanism (adds missing content as bullets)
                 # still runs regardless; this only controls the TEXT section.
                 # Set to True to restore the full reflections output (debugging).
-                "scholar_reflections_enabled":  False,
+                "scholar_reflections_enabled": False,
                 # V18.2 (audit): B4 section map-reduce threshold. Chapters
                 # above this token count are split into sections and summarized
                 # via map-reduce (multiple LLM calls). Was hardcoded 8000.
@@ -301,7 +304,7 @@ class Settings:
                 # ~1 hour vs single-pass ~10 min. Most chapters under ~50 pages
                 # fit in a single 32k context window. Lower to 8000 if you
                 # notice coverage dropping on long chapters.
-                "b4_threshold_tokens":         12000,
+                "b4_threshold_tokens": 12000,
                 # V0.03 (P0-1, real-rig audit): dropped-letter auto-repair.
                 # DEFAULT OFF. The V0.02 rig run showed 12 of 13 auto-repairs
                 # corrupted valid paraphrase words ('contrast'→'contract',
@@ -311,9 +314,9 @@ class Settings:
                 # legitimately coined. With this enabled, repairs require the
                 # English-lexicon guard + paragraph corroboration + strict
                 # single-candidate uniqueness. Flags (log-only) always run.
-                "dropped_letter_auto_repair":  False,
+                "dropped_letter_auto_repair": False,
                 # V7.7.0: Chapter-level resume — skip chapters with valid summaries on disk
-                "resume_enabled":       True,
+                "resume_enabled": True,
                 # V18.20.3.0: Incremental chapter checkpointing — save each
                 # chapter's summary (.md) + per-chapter DOCX to
                 # checkpoints/chapters/ the moment it completes (crash-safe:
@@ -340,17 +343,17 @@ class Settings:
                 # used ONLY for strategic/surgical decisions: self-review,
                 # grounding checks, B3 judging, gap-fill. This gives near-local
                 # cost (~90% of calls are local/free) with cloud-quality judging.
-                "fusion_enabled":              False,
-                "fusion_cloud_provider":       "openai_compat",  # "openai_compat" | "claude"
-                "fusion_cloud_model":          "google/gemini-2.5-flash-preview:free",
-                "fusion_cloud_api_key":        "",   # "" = reuse summarisation.api_key
-                "fusion_cloud_base_url":       "",   # "" = reuse summarisation.api_base_url
-                "fusion_cloud_max_tokens":     4096,
-                "fusion_cloud_temperature":    0.2,  # low temp for judging/fact-checking
-                "fusion_use_for_self_review":  True,   # site A: independent fact-checker
-                "fusion_use_for_grounding":    True,   # site B+C: bullet verification
-                "fusion_use_for_b3_judge":     True,   # site D: pick best summary
-                "fusion_use_for_gap_fill":     False,  # site E: local is fine (default off)
+                "fusion_enabled": False,
+                "fusion_cloud_provider": "openai_compat",  # "openai_compat" | "claude"
+                "fusion_cloud_model": "google/gemini-2.5-flash-preview:free",
+                "fusion_cloud_api_key": "",  # "" = reuse summarisation.api_key
+                "fusion_cloud_base_url": "",  # "" = reuse summarisation.api_base_url
+                "fusion_cloud_max_tokens": 4096,
+                "fusion_cloud_temperature": 0.2,  # low temp for judging/fact-checking
+                "fusion_use_for_self_review": True,  # site A: independent fact-checker
+                "fusion_use_for_grounding": True,  # site B+C: bullet verification
+                "fusion_use_for_b3_judge": True,  # site D: pick best summary
+                "fusion_use_for_gap_fill": False,  # site E: local is fine (default off)
             },
             # ── V13.44.3: Local mode settings ──────────────────────────────
             # These only apply when using a local model (Ollama/LM Studio).
@@ -360,13 +363,13 @@ class Settings:
                 # MSI Afterburner — no thermal pressure, so the 120s sleep between B4
                 # sections was pure wasted time (6+ min per 4-section chapter).
                 # Users with thermal issues can raise this back to 60-120.
-                "vram_recovery_delay_sec":  0,    # 0 = disable VRAM recovery delays
+                "vram_recovery_delay_sec": 0,  # 0 = disable VRAM recovery delays
                 # V18.1 (audit P5): default raised 3 → 6. The old cap of 3 silently
                 # skipped sections 4+ in long chapters — a hidden quality cliff.
                 # 6 covers most academic chapters; 0 = unlimited (cloud-like).
-                "b4_max_sections":          6,    # 0 = unlimited (process ALL sections)
-                "preflight_skip_temp_c":    60,   # 0 = never skip pre-flight
-                "http_timeout_sec":         600,  # HTTP read timeout for local Ollama
+                "b4_max_sections": 6,  # 0 = unlimited (process ALL sections)
+                "preflight_skip_temp_c": 60,  # 0 = never skip pre-flight
+                "http_timeout_sec": 600,  # HTTP read timeout for local Ollama
                 # V18.2.15 (P4): Per-chapter wall-clock deadline (seconds).
                 # If a single chapter exceeds this, the summarizer logs a
                 # traceable WARNING + marks the chapter as failed (but does NOT
@@ -375,7 +378,7 @@ class Settings:
                 # The deadline is checked BETWEEN chapters (not mid-call), so
                 # a stuck generation blocks at most one chapter's HTTP timeout
                 # (~600s) before the deadline fires on the next check.
-                "chapter_deadline_sec":     480,
+                "chapter_deadline_sec": 480,
                 # V18.2.15 (P6): OCR page-processing parallelism. The OCR
                 # model is loaded ONCE, scans all needed pages, then unloads
                 # (see core/ocr/service.py). This setting controls how many
@@ -383,7 +386,7 @@ class Settings:
                 # Default 1 (sequential) — safe for the 6 GB OCR model which
                 # is single-instance on Ollama (parallel HTTP calls just queue).
                 # Set to 2-4 only when using PaddleOCR/Tesseract (CPU-bound).
-                "ocr_parallel_workers":     1,
+                "ocr_parallel_workers": 1,
                 # V18.20.4.10 (P0-c): what to do when the pre-flight VRAM
                 # budget check says the model does NOT fit on the GPU
                 # (peak > total). The V18.20.4.9 behaviour was warn-and-
@@ -398,7 +401,7 @@ class Settings:
                 #   "abort"   — always abort with a clear error.
                 #   "proceed" — always continue (the old behaviour, now an
                 #                explicit user choice).
-                "vram_overbudget_policy":   "ask",
+                "vram_overbudget_policy": "ask",
                 # V18.20.4.10 (P0-d): hard wall-clock budget for the ENTIRE
                 # map phase of a map-reduce chapter (all map chunks + the
                 # reduce call). When exceeded, the chapter FAILS loudly
@@ -406,26 +409,26 @@ class Settings:
                 # Default 1800s (30 min): enough for ~9 chunks at the 300s
                 # IQ2_XXS HTTP timeout; a legit larger chapter should be
                 # segmented, not map-reduced (see the segmenter fixes).
-                "map_phase_max_seconds":    1800,
+                "map_phase_max_seconds": 1800,
             },
             "source_type": "normal_book",
             "is_academic": False,
             "generate_keypoints": True,
             "docx": {
-                "enabled":     True,   # V13.34.0: enabled by default
-                "author":      "Elixir",
+                "enabled": True,  # V13.34.0: enabled by default
+                "author": "Elixir",
                 "include_toc": True,
-                "font":        "Helvetica",
-                "theme":       "apple",
+                "font": "Helvetica",
+                "theme": "apple",
             },
             "rag": {
-                "enabled":             True,
+                "enabled": True,
                 "include_frontmatter": True,
-                "clean_page_markers":  True,
-                "target_format":       "chromadb",
+                "clean_page_markers": True,
+                "target_format": "chromadb",
             },
             "logging": {
-                "verbose":       True,
+                "verbose": True,
                 "max_log_files": 5,
                 # V13.28.0 (P2.11): Per-module log level overrides.
                 # Dict of module_name → level_string.
@@ -434,7 +437,7 @@ class Settings:
                 "module_levels": {},
             },
             "ui": {
-                "theme":            "dark",
+                "theme": "dark",
                 "auto_scroll_logs": True,
                 # V8.0.0 #12: auto-open the output folder in the file explorer
                 # when a conversion completes. Off by default (opt-in).
@@ -445,28 +448,28 @@ class Settings:
                 "shutdown_countdown_sec": 60,
             },
             "output": {
-                "last_input_dir":  "",
+                "last_input_dir": "",
                 "last_output_dir": "",
                 "per_book_folder": True,
             },
             "paths": {
-                "poppler":   "",
+                "poppler": "",
                 "tesseract": r"C:\Program Files\Tesseract-OCR\tesseract.exe",
             },
             "advanced": {
-                "extract_tables":     False,
-                "extract_math":       False,
-                "layout_analysis":    False,
-                "table_method":       "camelot",
-                "math_model":         "pix2tex",
-                "toc_vision_ocr":     False,
+                "extract_tables": False,
+                "extract_math": False,
+                "layout_analysis": False,
+                "table_method": "camelot",
+                "math_model": "pix2tex",
+                "toc_vision_ocr": False,
                 # ── NEW: Sprint 3 – Vision OCR for Figures ──────────────
                 "extract_figure_text": False,
                 "vision_model_for_figures": "OlmOCR-2-7B:latest",
             },
             # ── V4.7.25: Translation (EN ↔ FA) ───────────────────────────
             "translation": {
-                "enabled":              False,
+                "enabled": False,
                 # V13.31.0 (#13): NLLB backend removed from the default UI.
                 # Translation is now done exclusively by TranslateGemma
                 # (Ollama). V18.20.4.6+ (P5-2b / O-c10): the NLLB fallback
@@ -475,50 +478,50 @@ class Settings:
                 # V11.22: Default changed to "ollama" per user request —
                 # TranslateGemma produces more professional translations and
                 # can do harakat in the same model.
-                "backend":              "ollama",
+                "backend": "ollama",
                 # Ollama translator (used when backend="ollama")
                 # V11.29.1: default = 12B for better quality.
-                "model":                "translategemma-12b-it.Q4_K_M_mradermacher:latest",
+                "model": "translategemma-12b-it.Q4_K_M_mradermacher:latest",
                 # Harakat model (always Ollama)
-                "harakat_model":        "translategemma-12b-it.Q4_K_M_mradermacher:latest",
-                "judge_model":          "",  # empty = use summarisation.model
-                "default_target_lang":  "fa",   # "en" or "fa"
-                "temperature":          0.1,
-                "no_think":             True,   # avoid <think> blocks
-                "max_chunk_tokens":     2000,   # Ollama chunk size (NLLB uses 400)
+                "harakat_model": "translategemma-12b-it.Q4_K_M_mradermacher:latest",
+                "judge_model": "",  # empty = use summarisation.model
+                "default_target_lang": "fa",  # "en" or "fa"
+                "temperature": 0.1,
+                "no_think": True,  # avoid <think> blocks
+                "max_chunk_tokens": 2000,  # Ollama chunk size (NLLB uses 400)
                 # Validation (zero hallucination tolerance)
-                "validation_enabled":           True,
-                "back_translation_threshold":   0.6,   # semantic similarity
-                "judge_threshold":              0.7,   # judge LLM faithfulness
-                "max_retries":                  1,     # retry failed chunks
+                "validation_enabled": True,
+                "back_translation_threshold": 0.6,  # semantic similarity
+                "judge_threshold": 0.7,  # judge LLM faithfulness
+                "max_retries": 1,  # retry failed chunks
                 # Harakat (اعراب‌گذاری) for Farsi TTS output
-                "harakat_enabled":       True,
+                "harakat_enabled": True,
                 "harakat_confident_only": True,
                 # Glossary (terminology consistency)
-                "glossary_enabled":      True,
+                "glossary_enabled": True,
                 # API (reuse Ollama endpoint)
-                "endpoint":              "http://localhost:11434/v1",
-                "api_key":               "",
+                "endpoint": "http://localhost:11434/v1",
+                "api_key": "",
                 # Per-output selection (which outputs to translate)
                 "outputs": {
-                    "full_markdown":         False,  # Book.md (huge — off by default)
-                    "chapter_summaries":     True,   # per-chapter + Book.summary.md
-                    "keypoints":             True,   # Book.keypoints.md
-                    "simplified_keypoints":  False,
-                    "briefing":              False,
-                    "podcast":               True,   # podcast script → harakat for TTS
-                    "flashcards":            False,
-                    "packets":               False,  # V7.3.0: Packets of Knowledge
-                    "obsidian":              False,
-                    "study_guide":           False,
-                    "social":                False,
-                    "mindmap":               False,
+                    "full_markdown": False,  # Book.md (huge — off by default)
+                    "chapter_summaries": True,  # per-chapter + Book.summary.md
+                    "keypoints": True,  # Book.keypoints.md
+                    "simplified_keypoints": False,
+                    "briefing": False,
+                    "podcast": True,  # podcast script → harakat for TTS
+                    "flashcards": False,
+                    "packets": False,  # V7.3.0: Packets of Knowledge
+                    "obsidian": False,
+                    "study_guide": False,
+                    "social": False,
+                    "mindmap": False,
                 },
             },
             # ── V7.0.0 S20: RAG indexing and screenshots are now opt-in ────
             "outputs_optin": {
-                "rag_indexing":   False,  # V7.0.0: Was auto-on, now opt-in
-                "screenshots":    False,  # V7.0.0: Was auto-on, now opt-in
+                "rag_indexing": False,  # V7.0.0: Was auto-on, now opt-in
+                "screenshots": False,  # V7.0.0: Was auto-on, now opt-in
             },
             # ── V10.1.0: Source Grounding (Google langextract) ──────────────
             # Layer 8 of the anti-hallucination defense.  When enabled, the
@@ -534,17 +537,17 @@ class Settings:
             # overnight-run reliability goal).  Cloud backend is opt-in for
             # maximum-rigor scientific articles.
             "grounding": {
-                "enabled":             True,
-                "backend":             "ollama",  # "ollama" | "cloud"
-                "ollama_model":        "",         # "" = use summarisation.model
-                "ollama_url":          "http://localhost:11434",
-                "cloud_model":         "gpt-4o-mini",
-                "cloud_base_url":      "",         # "" = use summarisation.api_base_url
-                "cloud_api_key":       "",         # "" = use summarisation.api_key
-                "extraction_passes":   1,          # 1-3 (recall vs cost)
-                "max_workers":         1,          # V13.41.2: 1 worker (sequential, less VRAM pressure)
-                "max_char_buffer":     8000,       # V13.41.2: 4000→8000 (halves chunk count)
-                "timeout_sec":         600,        # V13.41.2: 120→600 (Gemma 4 12B needs ~35s/chunk × 6 chunks)
+                "enabled": True,
+                "backend": "ollama",  # "ollama" | "cloud"
+                "ollama_model": "",  # "" = use summarisation.model
+                "ollama_url": "http://localhost:11434",
+                "cloud_model": "gpt-4o-mini",
+                "cloud_base_url": "",  # "" = use summarisation.api_base_url
+                "cloud_api_key": "",  # "" = use summarisation.api_key
+                "extraction_passes": 1,  # 1-3 (recall vs cost)
+                "max_workers": 1,  # V13.41.2: 1 worker (sequential, less VRAM pressure)
+                "max_char_buffer": 8000,  # V13.41.2: 4000→8000 (halves chunk count)
+                "timeout_sec": 600,  # V13.41.2: 120→600 (Gemma 4 12B needs ~35s/chunk × 6 chunks)
             },
             # ── V18.1 (audit O1/O3): Embedding model config ──────────────────
             # The embedder is used for semantic fact-checking (hallucination
@@ -584,35 +587,35 @@ class Settings:
                 #                          ENTIRELY (explicit, one WARNING per
                 #                          chapter). Use only when you trust
                 #                          the LLM output or need max speed.
-                "enabled":             True,
-                "fallback":            "jaccard",  # "jaccard" | "skip"
-                "model":               "nomic-embed-text",  # V18.15.1: switched from BAAI/bge-small-en-v1.5 (HF, needs sentence_transformers) to nomic-embed-text (Ollama, just needs `ollama pull nomic-embed-text`). This fixes the "embedder unhealthy" issue — Ollama is already running, no extra Python packages needed.
-                "device":              "auto",  # "auto" = cuda if >0.6 GB free, else cpu
-                "cache_enabled":       True,   # on-disk embedding cache (~/.elixir/embed_cache/)
-                "load_mode":           "resident",  # "resident" | "sequential" (sequential for 8B embedders)
+                "enabled": True,
+                "fallback": "jaccard",  # "jaccard" | "skip"
+                "model": "nomic-embed-text",  # V18.15.1: switched from BAAI/bge-small-en-v1.5 (HF, needs sentence_transformers) to nomic-embed-text (Ollama, just needs `ollama pull nomic-embed-text`). This fixes the "embedder unhealthy" issue — Ollama is already running, no extra Python packages needed.
+                "device": "auto",  # "auto" = cuda if >0.6 GB free, else cpu
+                "cache_enabled": True,  # on-disk embedding cache (~/.elixir/embed_cache/)
+                "load_mode": "resident",  # "resident" | "sequential" (sequential for 8B embedders)
                 # Threshold scale factor: multiplies all similarity thresholds
                 # in core/summarisation/thresholds.py. 1.0 = use defaults.
-                "threshold_scale":     1.0,
+                "threshold_scale": 1.0,
             },
             # ── Output Studio — all 17 output toggles ───────────────────────
             "outputs": {
-                "briefing":      True,   # V4.0.0
-                "podcast":       True,   # V4.0.0
-                "flashcards":    True,   # V4.0.0
-                "packets":       False,  # V7.3.0
-                "obsidian":      False,  # V4.1.0
-                "study_guide":   False,  # V4.1.0
-                "social":        False,  # V4.1.0
-                "mindmap":       False,  # V4.1.0
-                "tts":           False,  # V4.2.0
-                "evidence_map":  False,  # V10.1.0
-                "qa":            False,  # V10.17.0
-                "glossary":      False,  # V10.20.0
-                "patterns":      False,  # V10.20.0
-                "cheatsheet":    False,  # V10.20.0
-                "skill":         False,  # V10.21.0
-                "epub":          False,  # V10.35.0
-                "quote_bank":    False,  # V10.35.0
+                "briefing": True,  # V4.0.0
+                "podcast": True,  # V4.0.0
+                "flashcards": True,  # V4.0.0
+                "packets": False,  # V7.3.0
+                "obsidian": False,  # V4.1.0
+                "study_guide": False,  # V4.1.0
+                "social": False,  # V4.1.0
+                "mindmap": False,  # V4.1.0
+                "tts": False,  # V4.2.0
+                "evidence_map": False,  # V10.1.0
+                "qa": False,  # V10.17.0
+                "glossary": False,  # V10.20.0
+                "patterns": False,  # V10.20.0
+                "cheatsheet": False,  # V10.20.0
+                "skill": False,  # V10.21.0
+                "epub": False,  # V10.35.0
+                "quote_bank": False,  # V10.35.0
             },
             # ── V10.1.6: Manual GPU thermal profile override ─────────────────
             # For cards where nvidia-smi doesn't report the board partner name
@@ -634,82 +637,98 @@ class Settings:
             # Pre-seeded with the user's known models:
             "model_temperatures": {
                 "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M-empero-v3:latest": {
-                    "min": 0.6, "max": 0.8, "recommended": 0.7,
+                    "min": 0.6,
+                    "max": 0.8,
+                    "recommended": 0.7,
                 },
                 "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest": {
-                    "min": 0.6, "max": 0.8, "recommended": 0.7,
+                    "min": 0.6,
+                    "max": 0.8,
+                    "recommended": 0.7,
                 },
                 "gemma2:7b": {
-                    "min": 0.4, "max": 0.9, "recommended": 0.6,
+                    "min": 0.4,
+                    "max": 0.9,
+                    "recommended": 0.6,
                 },
                 "gemma2:9b": {
-                    "min": 0.4, "max": 0.9, "recommended": 0.6,
+                    "min": 0.4,
+                    "max": 0.9,
+                    "recommended": 0.6,
                 },
                 # V13.34.0: Gemma 4 12B — official recommended settings
                 "gemma4-12b:latest": {
-                    "min": 0.8, "max": 1.2, "recommended": 1.0,
+                    "min": 0.8,
+                    "max": 1.2,
+                    "recommended": 1.0,
                 },
                 "qwen2.5:7b": {
-                    "min": 0.3, "max": 0.9, "recommended": 0.6,
+                    "min": 0.3,
+                    "max": 0.9,
+                    "recommended": 0.6,
                 },
                 "mistral:7b": {
-                    "min": 0.3, "max": 0.9, "recommended": 0.5,
+                    "min": 0.3,
+                    "max": 0.9,
+                    "recommended": 0.5,
                 },
                 # V10.2.1: Ornith-1.0-9B (coding model — tested at t=1.0)
                 # Not recommended for summarization (it's a coding model), but
                 # included so the app enforces its temperature range if used.
                 "ornith-1.0-9b-Q5_K_M_deepreinforce_AI.gguf:latest": {
-                    "min": 0.7, "max": 1.2, "recommended": 1.0,
+                    "min": 0.7,
+                    "max": 1.2,
+                    "recommended": 1.0,
                 },
             },
             # ── V10.36.0: Content filter settings ───────────────────────────
             "content_filter": {
-                "enabled":              True,
-                "min_content_chars":    60,
-                "min_word_count":       2,
+                "enabled": True,
+                "min_content_chars": 60,
+                "min_word_count": 2,
             },
             # ── V4.7.25: TTS settings ────────────────────────────────────────
             "tts": {
-                "en_engine":            "neutts",
-                "en_voice":              "af_heart",
-                "fa_voice":              "fa_IR-amir-medium",
-                "host_a_voice":          "",
-                "host_b_voice":          "",
-                "speed":                 1.0,
-                "piper_binary":          r"C:\piper_windows_amd64\piper\piper.exe",
-                "neutts_gguf_path":      r"G:\Program Files\neutts-air\models\neutts-air-Q8_0.gguf",
-                "neutts_project_path":   r"G:\Program Files\neutts-air",
+                "en_engine": "neutts",
+                "en_voice": "af_heart",
+                "fa_voice": "fa_IR-amir-medium",
+                "host_a_voice": "",
+                "host_b_voice": "",
+                "speed": 1.0,
+                "piper_binary": r"C:\piper_windows_amd64\piper\piper.exe",
+                "neutts_gguf_path": r"G:\Program Files\neutts-air\models\neutts-air-Q8_0.gguf",
+                "neutts_project_path": r"G:\Program Files\neutts-air",
                 # V11.32.0: NeuTTS device configuration.
                 "neutts_backbone_device": "cuda",
-                "neutts_codec_device":    "cuda",
-                "neutts_use_subprocess":  False,
+                "neutts_codec_device": "cuda",
+                "neutts_use_subprocess": False,
                 # V11.38.0: Qwen3-TTS (replaces NeuTTS as primary English engine)
-                "qwen_model_path":       r"C:\Qwen3-TTS-12Hz-1.7B-CustomVoice",
-                "qwen_speaker":          "Vivian",
+                "qwen_model_path": r"C:\Qwen3-TTS-12Hz-1.7B-CustomVoice",
+                "qwen_speaker": "Vivian",
                 # V11.40.0: VibeVoice (high-quality English TTS)
-                "vibevoice_model_path":  r"C:\VibeVoice-Realtime-0.5B",
-                "vibevoice_voices_dir":  r"C:\VibeVoice\demo\voices\streaming_model",
+                "vibevoice_model_path": r"C:\VibeVoice-Realtime-0.5B",
+                "vibevoice_voices_dir": r"C:\VibeVoice\demo\voices\streaming_model",
                 "vibevoice_default_voice": "en-Carter_man",
-                "normalize_enabled":     True,
-                "australian_enabled":    False,
-                "australian_reference_wav":  "",
+                "normalize_enabled": True,
+                "australian_enabled": False,
+                "australian_reference_wav": "",
                 "australian_reference_text": "",
                 # V10.36.0: Coqui XTTS v2
-                "fa_engine":             "piper",
-                "coqui_model":           "tts_models/multilingual/multi-dataset/xtts_v2",
-                "coqui_speaker":         "Ana",
-                "coqui_voice_sample":    "",
+                "fa_engine": "piper",
+                "coqui_model": "tts_models/multilingual/multi-dataset/xtts_v2",
+                "coqui_speaker": "Ana",
+                "coqui_voice_sample": "",
             },
             # ── V4.7.3: Podcast settings ─────────────────────────────────────
             "podcast": {
-                "format":                "conversational",
-                "depth":                 "thorough",
-                "style":                 "engaging",
-                "tone":                  "informative",
-                "human_fillers":         True,
-                "host_a_name":           "Alex",
-                "host_b_name":           "Sam",
-                "target_duration_min":   15,
+                "format": "conversational",
+                "depth": "thorough",
+                "style": "engaging",
+                "tone": "informative",
+                "human_fillers": True,
+                "host_a_name": "Alex",
+                "host_b_name": "Sam",
+                "target_duration_min": 15,
             },
             # ── V13.23.0: Packets of Knowledge mode ──────────────────────────
             # "chapter" (default, new architecture): 1+ packets per chapter,
@@ -718,7 +737,7 @@ class Settings:
             # "cross_chapter" (legacy): cross-chapter semantic clustering.
             #   May produce mismatched packets — use at own risk.
             "packets": {
-                "mode":                  "chapter",
+                "mode": "chapter",
             },
             # ── V11: Quick service preferences ────────────────────────────────
             "quick_services": {
@@ -731,46 +750,46 @@ class Settings:
                 # Without these, the validator logs "Unknown setting" warnings
                 # on every write (non-fatal, but noisy).
                 "summarization": {
-                    "quality":  "standard",
-                    "format":   ".md",
+                    "quality": "standard",
+                    "format": ".md",
                     "obsidian": False,
                 },
                 "translation": {
-                    "target_lang":     "fa",
-                    "backend":         "__default__",
-                    "format":          "__default__",
-                    "obsidian":        False,
-                    "save_to_folder":  "",
+                    "target_lang": "fa",
+                    "backend": "__default__",
+                    "format": "__default__",
+                    "obsidian": False,
+                    "save_to_folder": "",
                 },
                 "tts": {
-                    "engine":   "__default__",
-                    "voice":    "",
-                    "speed":    1.0,
+                    "engine": "__default__",
+                    "voice": "",
+                    "speed": 1.0,
                     "language": "auto",
-                    "format":   ".wav",   # V11.36.2: .wav or .mp3
-                    "style":    "natural", # V11.35.0: speaking style
+                    "format": ".wav",  # V11.36.2: .wav or .mp3
+                    "style": "natural",  # V11.35.0: speaking style
                 },
                 # V11.19: Default engines/models/formats used by the standalone
                 # service dialogs. Each tool's dialog shows a "Default (change
                 # in Settings)" option that, when selected, reads from here.
                 "defaults": {
                     # Summarization Service
-                    "summarize_model":    "",          # "" = use summarisation.model
-                    "summarize_quality":  "standard",  # fast | standard | thorough
-                    "summarize_format":   ".md",       # .md | .docx | .pdf
-                    "summarize_obsidian": False,       # Obsidian-style markdown
+                    "summarize_model": "",  # "" = use summarisation.model
+                    "summarize_quality": "standard",  # fast | standard | thorough
+                    "summarize_format": ".md",  # .md | .docx | .pdf
+                    "summarize_obsidian": False,  # Obsidian-style markdown
                     # OCR Service
-                    "ocr_engine":         "auto",      # auto | pypdf | ollama | vlm | tesseract
-                    "ocr_format":         ".md",       # .md | .txt | .docx | .pdf
-                    "ocr_model":          "",          # "" = use ocr.primary_model
+                    "ocr_engine": "auto",  # auto | pypdf | ollama | vlm | tesseract
+                    "ocr_format": ".md",  # .md | .txt | .docx | .pdf
+                    "ocr_model": "",  # "" = use ocr.primary_model
                     # PDF → Markdown
-                    "pdf_format":         ".md",       # .md | .docx | .pdf
+                    "pdf_format": ".md",  # .md | .docx | .pdf
                     # TTS Service
-                    "tts_engine":         "",          # "" = use tts.en_engine
+                    "tts_engine": "",  # "" = use tts.en_engine
                     # Translation Service
-                    "translation_backend": "ollama",   # "ollama" only — NLLB removed from Translation Service (V11.31)
-                    "translation_format":   ".md",       # .md | .docx | .pdf
-                    "translation_obsidian": False,       # Obsidian-style markdown
+                    "translation_backend": "ollama",  # "ollama" only — NLLB removed from Translation Service (V11.31)
+                    "translation_format": ".md",  # .md | .docx | .pdf
+                    "translation_obsidian": False,  # Obsidian-style markdown
                 },
             },
         }
@@ -811,7 +830,10 @@ class Settings:
                 # entry ever fired), but the effective default they back
                 # up is "" — the single remaining entry matches it.
                 # V16.0.9: 4-mode model architecture
-                ("model_architecture", "single_local"),  # single_local | dual_local | single_api | dual_api
+                (
+                    "model_architecture",
+                    "single_local",
+                ),  # single_local | dual_local | single_api | dual_api
                 ("fast_model", ""),
                 ("fast_model_temperature", 0.1),
                 ("fast_model_context", 131072),
@@ -819,9 +841,9 @@ class Settings:
                 ("fast_api_key", ""),
                 ("fast_api_model", ""),
                 ("coverage_threshold", 50),
-                ("overdeliver_enabled", True),     # V15.1.0
-                ("overdeliver_target", 100),       # V15.1.1: was 92, now 100
-                ("b3_voting_enabled", False),      # V15.1.1: new
+                ("overdeliver_enabled", True),  # V15.1.0
+                ("overdeliver_target", 100),  # V15.1.1: was 92, now 100
+                ("b3_voting_enabled", False),  # V15.1.1: new
                 ("resume_enabled", True),  # V7.7.0
                 ("include_executive_summary", True),
                 ("include_thorough_summary", True),
@@ -968,6 +990,7 @@ class Settings:
             # Auto-upgrade CPU → CUDA when a GPU is present.
             try:
                 import torch as _torch
+
                 if _torch.cuda.is_available() and _torch.cuda.device_count() > 0:
                     upgraded = []
                     if tts.get("neutts_backbone_device") == "cpu":
@@ -992,8 +1015,12 @@ class Settings:
             # Python packages needed, just `ollama pull nomic-embed-text`.
             # Auto-migrate any old HF-based embedding model to nomic-embed-text.
             emb = merged.setdefault("embedding", {})
-            _old_embed_models = {"all-MiniLM-L6-v2", "BAAI/bge-small-en-v1.5",
-                                 "BAAI/bge-base-en-v1.5", "sentence-transformers/all-MiniLM-L6-v2"}
+            _old_embed_models = {
+                "all-MiniLM-L6-v2",
+                "BAAI/bge-small-en-v1.5",
+                "BAAI/bge-base-en-v1.5",
+                "sentence-transformers/all-MiniLM-L6-v2",
+            }
             if emb.get("model", "") in _old_embed_models:
                 logger.warning(
                     "[Settings] V18.15.1: migrating embedding.model '%s' "
@@ -1015,9 +1042,9 @@ class Settings:
                 ("cloud_base_url", ""),
                 ("cloud_api_key", ""),
                 ("extraction_passes", 1),
-                ("max_workers", 1),       # V13.41.2: 2→1 (sequential, less VRAM pressure)
-                ("max_char_buffer", 8000), # V13.41.2: 4000→8000 (halves chunk count)
-                ("timeout_sec", 600),      # V13.41.2: 120→600 (Gemma 4 12B needs ~35s/chunk × 6)
+                ("max_workers", 1),  # V13.41.2: 2→1 (sequential, less VRAM pressure)
+                ("max_char_buffer", 8000),  # V13.41.2: 4000→8000 (halves chunk count)
+                ("timeout_sec", 600),  # V13.41.2: 120→600 (Gemma 4 12B needs ~35s/chunk × 6)
             ]:
                 if key not in gr:
                     gr[key] = default_val
@@ -1086,11 +1113,15 @@ class Settings:
             # V18.1: vram_recovery_delay_sec 120→0 (user undervolted GPU)
             if _local.get("vram_recovery_delay_sec", 0) == 120:
                 _local["vram_recovery_delay_sec"] = 0
-                logger.info("[Settings] V18.1: migrating local.vram_recovery_delay_sec 120→0 (undervolted GPU)")
+                logger.info(
+                    "[Settings] V18.1: migrating local.vram_recovery_delay_sec 120→0 (undervolted GPU)"
+                )
             # V18.1: b4_max_sections 3→6 (was silently skipping sections 4+)
             if _local.get("b4_max_sections", 6) == 3:
                 _local["b4_max_sections"] = 6
-                logger.info("[Settings] V18.1: migrating local.b4_max_sections 3→6 (stop skipping sections)")
+                logger.info(
+                    "[Settings] V18.1: migrating local.b4_max_sections 3→6 (stop skipping sections)"
+                )
             # V18.1: max_output_tokens <16000 → 16000 (was 8192 in old versions)
             # V0.04 GUARD: skip when the llama.cpp backend is active — its
             # 12288 output cap is a MODEL limit, and this legacy floor would
@@ -1102,8 +1133,10 @@ class Settings:
                 and _summ_mig.get("provider", "ollama") != "llamacpp"
             ):
                 _summ_mig["max_output_tokens"] = 16000
-                logger.info("[Settings] V18.1: migrating summarisation.max_output_tokens %d→16000",
-                            _summ_mig.get("max_output_tokens", 8192))
+                logger.info(
+                    "[Settings] V18.1: migrating summarisation.max_output_tokens %d→16000",
+                    _summ_mig.get("max_output_tokens", 8192),
+                )
 
             # ── V0.04 (llama.cpp backend): one-time activation ─────────────
             # The rig's primary LLM backend moves from Ollama to a local
@@ -1116,8 +1149,13 @@ class Settings:
             # configurable regardless of the activation flip.
             _summ_lc = merged.setdefault("summarisation", {})
             _lc_defaults = defaults.get("summarisation", {})
-            for _k in ("llamacpp_base_url", "llamacpp_api_key", "llamacpp_model",
-                       "llamacpp_context_tokens", "llamacpp_max_output_tokens"):
+            for _k in (
+                "llamacpp_base_url",
+                "llamacpp_api_key",
+                "llamacpp_model",
+                "llamacpp_context_tokens",
+                "llamacpp_max_output_tokens",
+            ):
                 if _k in _lc_defaults and _k not in _summ_lc:
                     _summ_lc[_k] = _lc_defaults[_k]
             if not _summ_lc.get("llamacpp_activation_done", False):
@@ -1125,25 +1163,30 @@ class Settings:
                 if _summ_lc.get("provider", "ollama") == "ollama":
                     _summ_lc["provider"] = "llamacpp"
                     _summ_lc["model"] = _lc_defaults.get(
-                        "llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision")
+                        "llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
+                    )
                     # 32k→65k only when still at the old default (a user's
                     # custom ctx survives untouched).
                     if _summ_lc.get("max_context_tokens", 32768) == 32768:
                         _summ_lc["max_context_tokens"] = _lc_defaults.get(
-                            "llamacpp_context_tokens", 65536)
+                            "llamacpp_context_tokens", 65536
+                        )
                     # The old 16000 output default EXCEEDS the new model's
                     # 12288 output cap — clamp down (again: only at the old
                     # default; custom values survive).
                     if _summ_lc.get("max_output_tokens", 16000) == 16000:
                         _summ_lc["max_output_tokens"] = _lc_defaults.get(
-                            "llamacpp_max_output_tokens", 12288)
+                            "llamacpp_max_output_tokens", 12288
+                        )
                     logger.info(
                         "[Settings] V0.04: activating llama.cpp backend "
-                        "(provider ollama→llamacpp, ctx 65536, output 12288)")
+                        "(provider ollama→llamacpp, ctx 65536, output 12288)"
+                    )
                 else:
                     logger.info(
-                        "[Settings] V0.04: llama.cpp backend available "
-                        "(kept provider=%s)", _summ_lc.get("provider", "?"))
+                        "[Settings] V0.04: llama.cpp backend available (kept provider=%s)",
+                        _summ_lc.get("provider", "?"),
+                    )
 
             self._data = merged
 
@@ -1167,7 +1210,7 @@ class Settings:
 
             return merged
 
-        except Exception as e:
+        except Exception:
             # V18.20.4.3 (P2 / W-c4): a corrupt settings.json is now
             # BACKED UP before the reset (``settings.json.corrupt-<ts>``)
             # instead of being silently replaced — the user's models, API
@@ -1189,15 +1232,11 @@ class Settings:
         """
         try:
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-            backup = self._settings_file.with_name(
-                f"{self._settings_file.name}.corrupt-{ts}"
-            )
+            backup = self._settings_file.with_name(f"{self._settings_file.name}.corrupt-{ts}")
             shutil.copy2(self._settings_file, backup)
             return str(backup)
         except Exception as _be:
-            logger.warning(
-                "[Settings] Could not back up corrupt settings file: %s", _be
-            )
+            logger.warning("[Settings] Could not back up corrupt settings file: %s", _be)
             return None
 
     def _deep_merge(self, base: dict, override: dict) -> dict:
@@ -1267,8 +1306,12 @@ class Settings:
         url = self.get("llm.ollama_url", "")
         if not url:
             # Fall back to legacy keys
-            for legacy in ("summarisation.endpoint", "summarisation.ollama_url",
-                          "ocr.ollama_url", "translation.endpoint"):
+            for legacy in (
+                "summarisation.endpoint",
+                "summarisation.ollama_url",
+                "ocr.ollama_url",
+                "translation.endpoint",
+            ):
                 url = self.get(legacy, "")
                 if url:
                     break
@@ -1365,12 +1408,8 @@ class Settings:
             # mask the in-block exception.
             flush = False
             with self._lock:
-                self._batch_depth = max(
-                    0, getattr(self, "_batch_depth", 1) - 1
-                )
-                if self._batch_depth == 0 and getattr(
-                    self, "_batch_dirty", False
-                ):
+                self._batch_depth = max(0, getattr(self, "_batch_depth", 1) - 1)
+                if self._batch_depth == 0 and getattr(self, "_batch_dirty", False):
                     self._batch_dirty = False
                     flush = True
             if flush:
@@ -1394,6 +1433,7 @@ class Settings:
 
 
 # ── DI helpers ────────────────────────────────────────────────────────────
+
 
 def get_settings() -> Settings:
     """Get the Settings singleton (or test override if set).

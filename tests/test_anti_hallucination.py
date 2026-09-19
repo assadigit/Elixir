@@ -30,6 +30,7 @@ from core.summarisation.summarizer import Summarizer
 # _normalize_empty_section tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestNormalizeEmptySection:
     """V13.39.0: Verify 'None' / 'chapter does not discuss' is normalized to empty."""
 
@@ -40,12 +41,14 @@ class TestNormalizeEmptySection:
         assert Summarizer._normalize_empty_section("Not applicable") == ""
 
     def test_chapter_does_not_discuss_becomes_empty(self):
-        assert Summarizer._normalize_empty_section(
-            "The chapter does not discuss any distinctions."
-        ) == ""
-        assert Summarizer._normalize_empty_section(
-            "No explicit distinctions found in this chapter."
-        ) == ""
+        assert (
+            Summarizer._normalize_empty_section("The chapter does not discuss any distinctions.")
+            == ""
+        )
+        assert (
+            Summarizer._normalize_empty_section("No explicit distinctions found in this chapter.")
+            == ""
+        )
 
     def test_real_content_is_preserved(self):
         real = "- Ego identity vs. existential identity: the former is inner sameness."
@@ -59,6 +62,7 @@ class TestNormalizeEmptySection:
 # ═══════════════════════════════════════════════════════════════════════════
 # _verify_additive_section_item tests
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestVerifyAdditiveSectionItem:
     """V13.39.0: Verify individual items are source-grounded."""
@@ -104,11 +108,13 @@ class TestVerifyAdditiveSectionItem:
 # _verify_additive_sections tests (full method)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestVerifyAdditiveSections:
     """V13.39.0: Verify the full method drops fabricated items, keeps real ones."""
 
     class _FakeSummarizer:
         """A fake summarizer that uses the REAL static methods (no mocking)."""
+
         log = MagicMock()
         quarantine = None
 
@@ -217,7 +223,10 @@ class TestVerifyAdditiveSections:
         # Quarantine.add should have been called for the dropped item
         assert mock_quarantine.add.called
         call_args = mock_quarantine.add.call_args
-        assert "quantum entanglement" in str(call_args).lower() or "fabricated" in str(call_args).lower()
+        assert (
+            "quantum entanglement" in str(call_args).lower()
+            or "fabricated" in str(call_args).lower()
+        )
 
 
 if __name__ == "__main__":

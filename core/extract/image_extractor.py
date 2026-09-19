@@ -97,7 +97,7 @@ def extract_images_from_pdf(
     start_page = max(0, start_page)
     end_page = min(end_page, total_pages)
 
-    log(f"  📖 Processing pages {start_page+1}-{end_page} of {total_pages}...", "INFO")
+    log(f"  📖 Processing pages {start_page + 1}-{end_page} of {total_pages}...", "INFO")
 
     # V11.74.0: track ALL extracted xrefs globally to prevent duplicates
     # across the entire document (same image reused on multiple pages)
@@ -178,7 +178,7 @@ def extract_images_from_pdf(
 
                 category = _classify_image(pil_img)
 
-                filename = f"page_{page_idx:04d}_img_{img_idx+1:03d}.jpg"
+                filename = f"page_{page_idx:04d}_img_{img_idx + 1:03d}.jpg"
                 filepath = output / category / filename
                 pil_img.save(str(filepath), "JPEG", quality=90)
                 counts[category] += 1
@@ -186,7 +186,7 @@ def extract_images_from_pdf(
                 log(f"  📷 {category}/{filename} ({pil_img.size[0]}x{pil_img.size[1]})", "DEBUG")
 
             except Exception as e:
-                log(f"  ⚠️ Image {img_idx+1} on page {page_idx}: {e}", "WARNING")
+                log(f"  ⚠️ Image {img_idx + 1} on page {page_idx}: {e}", "WARNING")
 
         # ── STEP 3: Crop vector graphics regions (charts/tables) ─────
         # V11.74.0/V11.77.0: ONLY run vector crop if NO embedded images
@@ -196,7 +196,8 @@ def extract_images_from_pdf(
         if extract_cropped and meaningful_drawings and not page_has_images:
             try:
                 cropped = _crop_vector_regions(
-                    page, page_idx, output, dpi, meaningful_drawings, log)
+                    page, page_idx, output, dpi, meaningful_drawings, log
+                )
                 for cat, count in cropped.items():
                     counts[cat] += count
                     counts["total"] += count
@@ -237,10 +238,16 @@ def extract_images_from_pdf(
     doc.close()
     progress(100, f"✅ Done! {counts['total']} images extracted")
     log(f"  ✅ Extraction complete: {counts['total']} total images", "INFO")
-    log(f"     Photos: {counts['photos']}, Charts: {counts['charts']}, "
+    log(
+        f"     Photos: {counts['photos']}, Charts: {counts['charts']}, "
         f"Tables: {counts['tables']}, Diagrams: {counts['diagrams']}, "
-        f"Figures: {counts['figures']}, Full pages: {counts['full_pages']}", "INFO")
-    log(f"     Pages with images: {pages_with_images}, text-only pages skipped: {pages_skipped}", "INFO")
+        f"Figures: {counts['figures']}, Full pages: {counts['full_pages']}",
+        "INFO",
+    )
+    log(
+        f"     Pages with images: {pages_with_images}, text-only pages skipped: {pages_skipped}",
+        "INFO",
+    )
     return counts
 
 
@@ -356,7 +363,7 @@ def _smart_crop_page_v2(page, page_idx, output, dpi, log):
             continue  # skip tiny blocks
 
         # Find content columns for this row range
-        block_mask = content_mask[row_start:row_end + 1]
+        block_mask = content_mask[row_start : row_end + 1]
         col_has_content = block_mask.any(axis=0)
         content_cols = np.where(col_has_content)[0]
 
@@ -410,8 +417,10 @@ def _smart_crop_page_v2(page, page_idx, output, dpi, log):
             filepath = output / category / filename
             region.save(str(filepath), "JPEG", quality=90)
             counts[category] += 1
-            log(f"  🎯 Smart-cropped: {category}/{filename} "
-                f"({region.size[0]}x{region.size[1]})", "DEBUG")
+            log(
+                f"  🎯 Smart-cropped: {category}/{filename} ({region.size[0]}x{region.size[1]})",
+                "DEBUG",
+            )
 
     return counts
 
@@ -470,9 +479,7 @@ def _classify_image(pil_img) -> str:
         return "figures"
 
 
-def _crop_vector_regions(
-    page, page_idx: int, output: Path, dpi: int, drawings: list, log
-) -> dict:
+def _crop_vector_regions(page, page_idx: int, output: Path, dpi: int, drawings: list, log) -> dict:
     """V11.74.0: Crop vector graphics regions (charts, tables, diagrams).
 
     ONLY processes vector drawings — NOT embedded images (those are
@@ -545,7 +552,7 @@ def _crop_vector_regions(
             pil_img = _auto_trim_whitespace(pil_img)
             category = _classify_image(pil_img)
 
-            filename = f"page_{page_idx:04d}_vec_{counts[category]+1:03d}.jpg"
+            filename = f"page_{page_idx:04d}_vec_{counts[category] + 1:03d}.jpg"
             filepath = output / category / filename
             Path(filepath).write_bytes(img_data)
             counts[category] += 1
@@ -597,7 +604,6 @@ def _smart_crop_page(page, page_idx, output, dpi, log):
 
     # Find content rows and columns
     row_has_content = content_mask.any(axis=1)
-    col_has_content = content_mask.any(axis=0)
 
     # Find content blocks by detecting row-gaps
     # A "gap" is a row where no content exists
@@ -623,7 +629,7 @@ def _smart_crop_page(page, page_idx, output, dpi, log):
             continue
 
         # Get the content columns for this row range
-        block_content = content_mask[row_start:row_end+1]
+        block_content = content_mask[row_start : row_end + 1]
         block_cols = np.where(block_content.any(axis=0))[0]
         if len(block_cols) == 0:
             continue
@@ -638,7 +644,7 @@ def _smart_crop_page(page, page_idx, output, dpi, log):
 
         # Check if this block is an IMAGE (not text):
         # Images have high color variance, text has low variance
-        block_arr = arr[row_start:row_end+1, col_start:col_end+1]
+        block_arr = arr[row_start : row_end + 1, col_start : col_end + 1]
         color_std = float(block_arr.std())
         unique_colors = len(np.unique(block_arr.reshape(-1, 3), axis=0))
 
@@ -651,7 +657,6 @@ def _smart_crop_page(page, page_idx, output, dpi, log):
 
         # Render this region at full DPI
         # Convert pixel coordinates back to PDF points
-        scale = dpi / analyze_dpi
         pdf_x0 = col_start / analyze_dpi * 72
         pdf_y0 = row_start / analyze_dpi * 72
         pdf_x1 = (col_end + 1) / analyze_dpi * 72
@@ -673,12 +678,11 @@ def _smart_crop_page(page, page_idx, output, dpi, log):
         crop_img = Image.open(io.BytesIO(crop_data))
         category = _classify_image(crop_img)
 
-        filename = f"page_{page_idx:04d}_smart_{block_idx+1:03d}.jpg"
+        filename = f"page_{page_idx:04d}_smart_{block_idx + 1:03d}.jpg"
         filepath = output / category / filename
         Path(filepath).write_bytes(crop_data)
         counts[category] += 1
-        log(f"  🎯 Smart-cropped: {category}/{filename} "
-            f"({block_width}x{block_height})", "DEBUG")
+        log(f"  🎯 Smart-cropped: {category}/{filename} ({block_width}x{block_height})", "DEBUG")
 
     return counts
 
@@ -697,23 +701,21 @@ def _merge_rects(rects, threshold=20):
     for rect in sorted_rects[1:]:
         last = merged[-1]
         # Check if rect is near the last merged rect
-        if (abs(rect.x0 - last.x1) < threshold and
-                abs(rect.y0 - last.y1) < threshold):
+        if abs(rect.x0 - last.x1) < threshold and abs(rect.y0 - last.y1) < threshold:
             # Merge
             merged[-1] = fitz.Rect(
                 min(last.x0, rect.x0),
                 min(last.y0, rect.y0),
                 max(last.x1, rect.x1),
-                max(last.y1, rect.y1)
+                max(last.y1, rect.y1),
             )
-        elif (abs(rect.x0 - last.x0) < threshold and
-              abs(rect.y0 - last.y1) < threshold):
+        elif abs(rect.x0 - last.x0) < threshold and abs(rect.y0 - last.y1) < threshold:
             # Vertically adjacent
             merged[-1] = fitz.Rect(
                 min(last.x0, rect.x0),
                 min(last.y0, rect.y0),
                 max(last.x1, rect.x1),
-                max(last.y1, rect.y1)
+                max(last.y1, rect.y1),
             )
         else:
             merged.append(rect)
@@ -745,17 +747,18 @@ def extract_images_from_epub(
     counts["total"] = 0
 
     try:
-        with zipfile.ZipFile(epub_path, 'r') as zf:
+        with zipfile.ZipFile(epub_path, "r") as zf:
             image_files = [
-                f for f in zf.namelist()
-                if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg'))
+                f
+                for f in zf.namelist()
+                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg"))
             ]
             total = len(image_files)
             log(f"  📖 Found {total} images in EPUB", "INFO")
 
             for i, img_path in enumerate(image_files):
                 pct = int(i / max(total, 1) * 100)
-                progress(pct, f"🖼️ {i+1}/{total}")
+                progress(pct, f"🖼️ {i + 1}/{total}")
                 try:
                     img_data = zf.read(img_path)
                     pil_img = Image.open(io.BytesIO(img_data))
@@ -763,7 +766,7 @@ def extract_images_from_epub(
                         pil_img = pil_img.convert("RGB")
 
                     category = _classify_image(pil_img)
-                    filename = f"epub_{i+1:04d}.jpg"
+                    filename = f"epub_{i + 1:04d}.jpg"
                     filepath = output / category / filename
                     pil_img.save(str(filepath), "JPEG", quality=92)
                     counts[category] += 1
@@ -802,17 +805,14 @@ def extract_images_from_docx(
     counts["total"] = 0
 
     try:
-        with zipfile.ZipFile(docx_path, 'r') as zf:
-            media_files = [
-                f for f in zf.namelist()
-                if f.startswith("word/media/")
-            ]
+        with zipfile.ZipFile(docx_path, "r") as zf:
+            media_files = [f for f in zf.namelist() if f.startswith("word/media/")]
             total = len(media_files)
             log(f"  📖 Found {total} images in DOCX", "INFO")
 
             for i, media_path in enumerate(media_files):
                 pct = int(i / max(total, 1) * 100)
-                progress(pct, f"🖼️ {i+1}/{total}")
+                progress(pct, f"🖼️ {i + 1}/{total}")
                 try:
                     img_data = zf.read(media_path)
                     pil_img = Image.open(io.BytesIO(img_data))
@@ -820,7 +820,7 @@ def extract_images_from_docx(
                         pil_img = pil_img.convert("RGB")
 
                     category = _classify_image(pil_img)
-                    filename = f"docx_{i+1:04d}.jpg"
+                    filename = f"docx_{i + 1:04d}.jpg"
                     filepath = output / category / filename
                     pil_img.save(str(filepath), "JPEG", quality=92)
                     counts[category] += 1

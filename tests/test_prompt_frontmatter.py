@@ -16,6 +16,7 @@ Uses ``importlib`` to load prompt_manager.py directly (bypasses the heavy
 
 Run: ``pytest tests/test_prompt_frontmatter.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -31,12 +32,15 @@ if str(_project_root) not in sys.path:
 
 # Stub tiktoken so Summarizer can be imported in the TestSelectPrompt class
 # (tiktoken is not installed in the test sandbox).
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _Encoding: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _Encoding:
+        pass
+
     tk.Encoding = _Encoding
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 # Load prompt_manager.py directly (bypasses core.summarisation.__init__)
 _spec = importlib.util.spec_from_file_location(
@@ -61,7 +65,9 @@ def pm():
 class TestParseFrontmatter:
     def test_parses_frontmatter_with_quotes(self, pm):
         """version: "18.5.0" → strips quotes → '18.5.0'."""
-        template = '---\nversion: "18.5.0"\ncompatible_model_class: "low_bit_quant"\n---\n\n### BODY ###'
+        template = (
+            '---\nversion: "18.5.0"\ncompatible_model_class: "low_bit_quant"\n---\n\n### BODY ###'
+        )
         fm, body = pm._parse_frontmatter(template)
         assert fm["version"] == "18.5.0"
         assert fm["compatible_model_class"] == "low_bit_quant"
@@ -113,7 +119,9 @@ class TestRenderStripsFrontmatter:
         """render_template must strip front-matter before returning."""
         rendered = pm.render_template(
             "default_lowbit",
-            heading="Test", text="content", language="",
+            heading="Test",
+            text="content",
+            language="",
         )
         assert rendered is not None
         assert not rendered.startswith("---"), "rendered prompt must not start with ---"
@@ -126,7 +134,9 @@ class TestRenderStripsFrontmatter:
             bullets="- bullet 1\n- bullet 2",
         )
         assert rendered is not None
-        assert "version:" not in rendered.lower() or "version" not in rendered.split("\n")[0].lower()
+        assert (
+            "version:" not in rendered.lower() or "version" not in rendered.split("\n")[0].lower()
+        )
 
     def test_render_without_frontmatter_still_works(self, pm):
         """Prompts without front-matter render normally (no regression)."""
@@ -151,18 +161,22 @@ class TestSelectPrompt:
 
     def _make_stub(self, model_name, pm):
         """Create a minimal Summarizer-like object with _select_prompt."""
+
         # _select_prompt is a method on Summarizer; we can call it unbound
         # with a simple object that has the needed attributes.
         class _Stub:
             primary_model = model_name
             prompt_manager = pm
+
             def log(self, msg, level="INFO"):
                 pass
+
         return _Stub()
 
     def test_non_lowbit_model_returns_base_name(self, pm):
         """Full-precision model → base name unchanged."""
         from core.summarisation.summarizer import Summarizer
+
         stub = self._make_stub("gemma2:9b", pm)
         # Use the REAL active_prompt value ("default", root-level) — not
         # "summarisation/default" (which doesn't exist as a file).
@@ -181,9 +195,8 @@ class TestSelectPrompt:
         selected.
         """
         from core.summarisation.summarizer import Summarizer
-        stub = self._make_stub(
-            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm
-        )
+
+        stub = self._make_stub("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm)
         name = Summarizer._select_prompt(stub, "default")
         assert name == "default_lowbit", (
             f"expected 'default_lowbit', got '{name}' — the main summary "
@@ -193,9 +206,8 @@ class TestSelectPrompt:
     def test_lowbit_model_falls_back_when_no_variant(self, pm):
         """IQ2_S model + base prompt without _lowbit variant → base name."""
         from core.summarisation.summarizer import Summarizer
-        stub = self._make_stub(
-            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm
-        )
+
+        stub = self._make_stub("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm)
         # content_judge has no _lowbit variant
         name = Summarizer._select_prompt(stub, "summarisation/content_judge")
         assert name == "summarisation/content_judge"
@@ -203,27 +215,24 @@ class TestSelectPrompt:
     def test_additive_sections_lowbit_selected(self, pm):
         """IQ2_S model → additive_sections_lowbit selected."""
         from core.summarisation.summarizer import Summarizer
-        stub = self._make_stub(
-            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm
-        )
+
+        stub = self._make_stub("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm)
         name = Summarizer._select_prompt(stub, "summarisation/additive_sections")
         assert name == "summarisation/additive_sections_lowbit"
 
     def test_thematic_synthesis_lowbit_selected(self, pm):
         """IQ2_S model → thematic_synthesis_lowbit selected."""
         from core.summarisation.summarizer import Summarizer
-        stub = self._make_stub(
-            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm
-        )
+
+        stub = self._make_stub("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm)
         name = Summarizer._select_prompt(stub, "summarisation/thematic_synthesis")
         assert name == "summarisation/thematic_synthesis_lowbit"
 
     def test_bullet_consolidation_lowbit_selected(self, pm):
         """IQ2_S model → bullet_consolidation_lowbit selected (V18.2.44 prompt)."""
         from core.summarisation.summarizer import Summarizer
-        stub = self._make_stub(
-            "Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm
-        )
+
+        stub = self._make_stub("Qwen3.8-27B-UD-IQ2_S-Instruct-Vision:latest", pm)
         name = Summarizer._select_prompt(stub, "summarisation/bullet_consolidation")
         assert name == "summarisation/bullet_consolidation_lowbit"
 
@@ -234,23 +243,29 @@ class TestSelectPrompt:
 class TestLowbitVariantsExist:
     """Verify the Phase 3 _lowbit prompt files exist and are non-empty."""
 
-    @pytest.mark.parametrize("name", [
-        "default_lowbit",
-        "summarisation/additive_sections_lowbit",
-        "summarisation/thematic_synthesis_lowbit",
-        "summarisation/bullet_consolidation_lowbit",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "default_lowbit",
+            "summarisation/additive_sections_lowbit",
+            "summarisation/thematic_synthesis_lowbit",
+            "summarisation/bullet_consolidation_lowbit",
+        ],
+    )
     def test_lowbit_variant_exists_and_has_content(self, pm, name):
         """Each _lowbit variant must exist and be > 100 chars."""
         tpl = pm.load_prompt(name)
         assert tpl is not None, f"{name}.md must exist"
         assert len(tpl) > 100, f"{name}.md is suspiciously short ({len(tpl)} chars)"
 
-    @pytest.mark.parametrize("name", [
-        "default_lowbit",
-        "summarisation/additive_sections_lowbit",
-        "summarisation/thematic_synthesis_lowbit",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "default_lowbit",
+            "summarisation/additive_sections_lowbit",
+            "summarisation/thematic_synthesis_lowbit",
+        ],
+    )
     def test_lowbit_variant_has_forbidden_section(self, pm, name):
         """Each new _lowbit variant must have a ### FORBIDDEN ### section.
 
@@ -261,12 +276,15 @@ class TestLowbitVariantsExist:
         tpl = pm.load_prompt(name)
         assert "FORBIDDEN" in tpl.upper(), f"{name}.md must have a FORBIDDEN section"
 
-    @pytest.mark.parametrize("name", [
-        "default_lowbit",
-        "summarisation/additive_sections_lowbit",
-        "summarisation/thematic_synthesis_lowbit",
-        "summarisation/bullet_consolidation_lowbit",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "default_lowbit",
+            "summarisation/additive_sections_lowbit",
+            "summarisation/thematic_synthesis_lowbit",
+            "summarisation/bullet_consolidation_lowbit",
+        ],
+    )
     def test_lowbit_variant_has_frontmatter(self, pm, name):
         """Each _lowbit variant must have YAML front-matter with version + class."""
         tpl = pm.load_prompt(name)

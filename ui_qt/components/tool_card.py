@@ -14,6 +14,7 @@ This makes the transition to SVG/PNG icons a data-only change (no code
 modification needed — just swap the emoji strings for file paths in the
 dashboard definition).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -124,8 +125,12 @@ class ToolCard(QFrame):
                 if not pixmap.isNull():
                     size = 48 if self._is_primary else 40
                     self._icon_label.setPixmap(
-                        pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
-                                      Qt.TransformationMode.SmoothTransformation)
+                        pixmap.scaled(
+                            size,
+                            size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
                     )
                     return
 
@@ -134,6 +139,7 @@ class ToolCard(QFrame):
             # ASCII-only — might be an icon name
             try:
                 from ui_qt.components.icons import icon
+
                 p = theme_manager.palette
                 size = 48 if self._is_primary else 40
                 color = p.accent if self._is_primary else p.text_secondary

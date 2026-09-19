@@ -33,14 +33,14 @@ import logging
 import re
 from collections.abc import Callable
 
-import requests
+# V18.20.4.12 (T-c7): shared 404 detection + the canonical `ollama pull`
+# hint (single source with the LLM providers — see core/llm/model_errors.py).
+from core.llm.model_errors import is_model_not_found, model_not_found_hint
 
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
-# V18.20.4.12 (T-c7): shared 404 detection + the canonical `ollama pull`
-# hint (single source with the LLM providers — see core/llm/model_errors.py).
-from core.llm.model_errors import is_model_not_found, model_not_found_hint
+
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
 # response extraction (replaces the bare requests.post + deep-index parse).
 from utils.network import extract_openai_content, session_for_url
@@ -134,6 +134,7 @@ def _load_default_prompt(name: str, fallback: str) -> str:
     """
     try:
         from core.summarisation.prompt_manager import PromptManager
+
         pm = PromptManager()
         template = pm.load_prompt(name)
         if template and "{{text}}" in template:
@@ -154,14 +155,44 @@ _DEFAULT_PROMPT_FA = _load_default_prompt("tts/normalize_fa", _FALLBACK_PROMPT_F
 _FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
 _EN_DIGITS = "0123456789"
 _FA_NUMERAL_WORDS = {
-    0: "صفر", 1: "یک", 2: "دو", 3: "سه", 4: "چهار", 5: "پنج",
-    6: "شش", 7: "هفت", 8: "هشت", 9: "نه", 10: "ده",
-    11: "یازده", 12: "دوازده", 13: "سیزده", 14: "چهارده", 15: "پانزده",
-    16: "شانزده", 17: "هفده", 18: "هجده", 19: "نوزده", 20: "بیست",
-    30: "سی", 40: "چهل", 50: "پنجاه", 60: "شصت", 70: "هفتاد",
-    80: "هشتاد", 90: "نود", 100: "صد", 200: "دویست", 300: "سیصد",
-    400: "چهارصد", 500: "پانصد", 600: "ششصد", 700: "هفتصد",
-    800: "هشتصد", 900: "نهصد", 1000: "هزار",
+    0: "صفر",
+    1: "یک",
+    2: "دو",
+    3: "سه",
+    4: "چهار",
+    5: "پنج",
+    6: "شش",
+    7: "هفت",
+    8: "هشت",
+    9: "نه",
+    10: "ده",
+    11: "یازده",
+    12: "دوازده",
+    13: "سیزده",
+    14: "چهارده",
+    15: "پانزده",
+    16: "شانزده",
+    17: "هفده",
+    18: "هجده",
+    19: "نوزده",
+    20: "بیست",
+    30: "سی",
+    40: "چهل",
+    50: "پنجاه",
+    60: "شصت",
+    70: "هفتاد",
+    80: "هشتاد",
+    90: "نود",
+    100: "صد",
+    200: "دویست",
+    300: "سیصد",
+    400: "چهارصد",
+    500: "پانصد",
+    600: "ششصد",
+    700: "هفتصد",
+    800: "هشتصد",
+    900: "نهصد",
+    1000: "هزار",
 }
 
 
@@ -201,6 +232,7 @@ def _expand_fa_numbers(text: str) -> str:
     Used as a fallback when the LLM is unavailable. Handles standalone
     integers; leaves decimals and mixed alphanumeric strings alone.
     """
+
     def repl(m):
         raw = m.group(0)
         # Convert Persian digits to ASCII for int()
@@ -210,6 +242,7 @@ def _expand_fa_numbers(text: str) -> str:
             return _fa_number_to_words(n)
         except ValueError:
             return raw
+
     # Match runs of Persian or ASCII digits
     return re.sub(r"[\d" + _FA_DIGITS + "]+", repl, text)
 
@@ -231,6 +264,7 @@ def _split_paragraphs(text: str) -> list:
 
 
 # ── Main normalizer class ─────────────────────────────────────────────────
+
 
 class TextNormalizer:
     """LLM-based text normalizer for TTS pre-processing.
@@ -325,8 +359,7 @@ class TextNormalizer:
                 self._failure_count = 0
                 return llm_result.strip()
             # LLM returned empty — fall back
-            self.log("  ⚠️ Normalization: empty LLM response, using fallback",
-                     "DEBUG")
+            self.log("  ⚠️ Normalization: empty LLM response, using fallback", "DEBUG")
         except Exception as e:
             self._failure_count += 1
             if self._failure_count >= self._max_failures:
@@ -335,13 +368,13 @@ class TextNormalizer:
                     f"  ⚠️ Normalization disabled after {self._failure_count} "
                     f"failabilities (last: {e}). Using deterministic fallback "
                     f"for remaining segments.",
-                    "WARNING"
+                    "WARNING",
                 )
             else:
                 self.log(
                     f"  ⚠️ Normalization failed ({e}), using fallback "
                     f"(failure {self._failure_count}/{self._max_failures})",
-                    "WARNING"
+                    "WARNING",
                 )
 
         # Deterministic fallback
@@ -388,8 +421,7 @@ class TextNormalizer:
         content = extract_openai_content(resp.json())
 
         # Strip any <think> blocks the model might have included
-        content = re.sub(r"<think>.*?</think>", "", content,
-                         flags=re.DOTALL).strip()
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
         return content
 
     def _cache_key(self, text: str, language: str) -> str:
@@ -406,6 +438,7 @@ class TextNormalizer:
 
 # ── Module-level convenience ──────────────────────────────────────────────
 
+
 def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNormalizer | None:
     """Factory: create a TextNormalizer from saved settings, or None if disabled.
 
@@ -414,6 +447,7 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
     This prevents the 404 error when the default model name doesn't exist.
     """
     from utils.settings import Settings
+
     s = Settings()
 
     if not s.get("tts.normalize_enabled", False):
@@ -433,7 +467,9 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
     if not model or model in ("qwen2.5:3b", LEGACY_DEFAULT_MODEL, ""):
         try:
             _tags_url = f"{s.get_ollama_url()}/api/tags"
-            resp = session_for_url(_tags_url).get(_tags_url, timeout=5)  # V18.20.4.3 (W-c9): canonical URL; V18.20.4.11: pooled
+            resp = session_for_url(_tags_url).get(
+                _tags_url, timeout=5
+            )  # V18.20.4.3 (W-c9): canonical URL; V18.20.4.11: pooled
             if resp.status_code == 200:
                 models = resp.json().get("models", [])
                 if models:
@@ -446,10 +482,7 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
                     if not model and models:
                         model = models[0].get("name", "")
                     if log_callback:
-                        log_callback(
-                            f"  ℹ️ Normalization auto-selected model: {model}",
-                            "INFO"
-                        )
+                        log_callback(f"  ℹ️ Normalization auto-selected model: {model}", "INFO")
                     # Save it so future calls don't re-discover
                     s.set("tts.normalize_model", model)
         except Exception as _e:
@@ -461,15 +494,11 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
 
     if not model:
         if log_callback:
-            log_callback(
-                "  ⚠️ No model found for normalization — disabling",
-                "WARNING"
-            )
+            log_callback("  ⚠️ No model found for normalization — disabling", "WARNING")
         return None
 
     return TextNormalizer(
-        endpoint=s.get("tts.normalize_endpoint",
-                       "http://localhost:11434/v1"),
+        endpoint=s.get("tts.normalize_endpoint", "http://localhost:11434/v1"),
         api_key=s.get("tts.normalize_api_key", ""),
         model=model,
         custom_prompt_en=s.get("tts.normalize_prompt_en", ""),

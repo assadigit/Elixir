@@ -21,6 +21,7 @@ shim; pre-V18.20.2.0 these tests scanned the shim and failed).
 E3's chunking markers moved to ``core/summarisation/primary_call.py`` in the
 V18.15.3 extraction — the scans follow the code.
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,8 +42,10 @@ PROMPT_ASSEMBLY_PATH = _project_root / "core" / "summarisation" / "prompt_assemb
 
 # ── Fake torch module (same pattern as tests/test_ctx_cap_branching.py) ─────
 
+
 class _FakeCudaProperties:
     """Simulates torch.cuda.get_device_properties(0).total_memory."""
+
     def __init__(self, total_memory_bytes: int):
         self.total_memory = total_memory_bytes
 
@@ -59,9 +62,7 @@ class _FakeTorch:
     def __init__(self, gpu_gb: float = 12.0, allocated_gb: float = 0.0):
         self.cuda = MagicMock()
         self.cuda.is_available.return_value = True
-        self.cuda.get_device_properties.return_value = _FakeCudaProperties(
-            int(gpu_gb * 1024**3)
-        )
+        self.cuda.get_device_properties.return_value = _FakeCudaProperties(int(gpu_gb * 1024**3))
         self.cuda.memory_allocated.return_value = int(allocated_gb * 1024**3)
 
 
@@ -81,6 +82,7 @@ def mock_torch_12gb():
 def _make_provider(model: str, context_tokens: int = 32768):
     """Create an OllamaProvider with a specific model + context setting."""
     from core.llm.ollama_provider import OllamaProvider
+
     return OllamaProvider(model=model, context_tokens=context_tokens)
 
 
@@ -94,6 +96,7 @@ def _ps_response(size_vram_gb: float):
 
 
 # ── E1: VRAM-aware num_ctx cap ──────────────────────────────────────────────
+
 
 class TestVRAMAwareCtxCap:
     """V18.20.2.0 (SWOT A1): the 26758→32768 raise fires ONLY when a REAL
@@ -112,9 +115,7 @@ class TestVRAMAwareCtxCap:
     def test_raise_only_fires_for_iq2_s(self):
         """The VRAM-aware raise only fires for IQ2_S (not Q2_K_XL)."""
         src = OLLAMA_PROVIDER_PATH.read_text(encoding="utf-8")
-        assert "if _is_iq2_s_model:" in src, (
-            "The raise must be gated on IQ2_S detection"
-        )
+        assert "if _is_iq2_s_model:" in src, "The raise must be gated on IQ2_S detection"
 
     def test_raise_requires_external_reading(self):
         """V18.20.2.0 (SWOT A1): the raise is gated on the EXTERNAL reading
@@ -193,25 +194,23 @@ class TestVRAMAwareCtxCap:
                 lambda *a, **k: _ps_response(10.5),
             )
             ctx = provider._adaptive_context(long_prompt, max_tokens=8192)
-        assert ctx == 16000, (
-            f"Q2_K_XL must stay at 16000 (raise is IQ2_S-only); got {ctx}"
-        )
+        assert ctx == 16000, f"Q2_K_XL must stay at 16000 (raise is IQ2_S-only); got {ctx}"
 
     def test_logs_the_raise(self):
         """The raise logs a structured "ctx_raise" line so ops can see it fire."""
         src = OLLAMA_PROVIDER_PATH.read_text(encoding="utf-8")
-        assert "ctx_raise:" in src, (
-            "Must log a ctx_raise line (kept for ops continuity)"
-        )
+        assert "ctx_raise:" in src, "Must log a ctx_raise line (kept for ops continuity)"
 
     def test_safe_ctx_default_is_26758_via_shared_clamp(self):
         """The 26758 safe default is the shared clamp's IQ2_S value."""
         from core.llm.ctx_clamp import low_bit_ctx_cap
+
         assert low_bit_ctx_cap("Qwen3.8-27B-UD-IQ2_S:latest", 12.0) == 26758
         assert low_bit_ctx_cap("Qwen3.8-27B-UD-Q2_K_XL:latest", 12.0) == 16000
 
 
 # ── E2: VRAM-aware max_output expansion ──────────────────────────────────────
+
 
 class TestVRAMAwareMaxOutput:
     """V18.3.6: E2 REVERTED — max_output stays at 8192 (the raise caused thermal throttling).
@@ -234,6 +233,7 @@ class TestVRAMAwareMaxOutput:
             "Must cap at the profile's LOW_BIT_MAX_OUTPUT"
         )
         from core.llm.iq2_s_profile import IQ2_S_PROFILE
+
         assert IQ2_S_PROFILE.LOW_BIT_MAX_OUTPUT == 8192, (
             "The profile constant must stay 8192 (hard constraint: max_output=8192)"
         )
@@ -244,6 +244,7 @@ class TestVRAMAwareMaxOutput:
 
 
 # ── E3: Chunked output ──────────────────────────────────────────────────────
+
 
 class TestChunkedOutput:
     """V18.3.4 (E3): large chapters get 2 sequential calls (no truncation).
@@ -291,11 +292,16 @@ class TestChunkedOutput:
         both files (the Summarizer delegates, prompt_assembly holds the text).
         """
         src_summ = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        src_pa = PROMPT_ASSEMBLY_PATH.read_text(encoding="utf-8") if PROMPT_ASSEMBLY_PATH.exists() else ""
-        combined = src_summ + src_pa
-        assert "Do NOT output executive_summary" in combined or "Do NOT output key_distinctions" in combined, (
-            "Each chunk must tell the model what NOT to output"
+        src_pa = (
+            PROMPT_ASSEMBLY_PATH.read_text(encoding="utf-8")
+            if PROMPT_ASSEMBLY_PATH.exists()
+            else ""
         )
+        combined = src_summ + src_pa
+        assert (
+            "Do NOT output executive_summary" in combined
+            or "Do NOT output key_distinctions" in combined
+        ), "Each chunk must tell the model what NOT to output"
 
     def test_merge_takes_1_3_from_chunk1_4_5_from_chunk2(self):
         """The merge takes sections 1-3 from chunk 1, sections 4-5 from chunk 2."""
@@ -310,9 +316,10 @@ class TestChunkedOutput:
     def test_fallback_to_single_pass_on_chunk1_failure(self):
         """If chunk 1 fails, fall back to single-pass (not silent failure)."""
         src = PRIMARY_CALL_PATH.read_text(encoding="utf-8")
-        assert "falling back to single-pass" in src.lower() or "fall back to single-pass" in src.lower(), (
-            "Must fall back to single-pass if chunked output fails"
-        )
+        assert (
+            "falling back to single-pass" in src.lower()
+            or "fall back to single-pass" in src.lower()
+        ), "Must fall back to single-pass if chunked output fails"
 
     def test_chunk2_failure_returns_chunk1_with_empty_4_5(self):
         """If chunk 2 fails, return chunk 1 with empty distinctions/tensions."""
@@ -323,6 +330,7 @@ class TestChunkedOutput:
 
 
 # ── VRAM math verification ──────────────────────────────────────────────────
+
 
 class TestVRAMMath:
     """Verify the VRAM math is correct (KV cache = ctx × 0.0000614 GB)."""

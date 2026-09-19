@@ -13,6 +13,7 @@ Byte-for-byte stability gate for the 3 fixes bundled in V18.15.6.0:
 
 Run: pytest tests/test_v18_15_6_timeout.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,6 +50,7 @@ def _retry_symbols():
     object from ``sys.modules``, making the tests order-independent.
     """
     import core.llm.retry as _retry
+
     return _retry
 
 
@@ -170,6 +172,7 @@ class TestIQ2SHttpTimeoutRaise:
     def _apply_iq2_s_block(self, obj):
         """Apply the V18.15.4.0 + V18.15.6.0 (Fix A) IQ2_S block to a mini-summarizer."""
         from core.llm.model_taxonomy import is_iq2_s
+
         if obj.is_local and is_iq2_s(obj.primary_model):
             # V18.15.4.0 chapter deadline raise
             if obj.local_chapter_deadline > 0 and obj.local_chapter_deadline < 2400:
@@ -254,8 +257,13 @@ class TestErrorTracker:
         with patch("core.summarisation.llm_dispatcher.safe_ollama_request") as mock_req:
             mock_req.side_effect = _requests.exceptions.Timeout("timed out")
             result = _call_ollama_nonstreaming(
-                "test prompt", "Qwen3.8-27B-UD-IQ2_S:latest", 0.7, 8192,
-                context_tokens=32768, timeout=1200, retries=0,
+                "test prompt",
+                "Qwen3.8-27B-UD-IQ2_S:latest",
+                0.7,
+                8192,
+                context_tokens=32768,
+                timeout=1200,
+                retries=0,
                 ollama_base_url="http://localhost:11434",
                 supervisor=supervisor,
                 log=lambda msg, level: None,
@@ -278,8 +286,13 @@ class TestErrorTracker:
         with patch("core.summarisation.llm_dispatcher.safe_ollama_request") as mock_req:
             mock_req.side_effect = ModelNotFound404Error(model="nonexistent:latest")
             result = _call_ollama_nonstreaming(
-                "test prompt", "nonexistent:latest", 0.7, 8192,
-                context_tokens=32768, timeout=600, retries=0,
+                "test prompt",
+                "nonexistent:latest",
+                0.7,
+                8192,
+                context_tokens=32768,
+                timeout=600,
+                retries=0,
                 ollama_base_url="http://localhost:11434",
                 supervisor=supervisor,
                 log=lambda msg, level: None,
@@ -301,8 +314,13 @@ class TestErrorTracker:
         with patch("core.summarisation.llm_dispatcher.safe_ollama_request") as mock_req:
             mock_req.return_value = mock_resp
             result = _call_ollama_nonstreaming(
-                "test prompt", "Qwen3.8-27B-UD-IQ2_S:latest", 0.7, 8192,
-                context_tokens=32768, timeout=1200, retries=0,
+                "test prompt",
+                "Qwen3.8-27B-UD-IQ2_S:latest",
+                0.7,
+                8192,
+                context_tokens=32768,
+                timeout=1200,
+                retries=0,
                 ollama_base_url="http://localhost:11434",
                 supervisor=supervisor,
                 log=lambda msg, level: None,
@@ -323,8 +341,13 @@ class TestErrorTracker:
             mock_req.side_effect = _requests.exceptions.Timeout("timed out")
             # No error_tracker kwarg — must NOT crash.
             result = _call_ollama_nonstreaming(
-                "test prompt", "Qwen3.8-27B-UD-IQ2_S:latest", 0.7, 8192,
-                context_tokens=32768, timeout=1200, retries=0,
+                "test prompt",
+                "Qwen3.8-27B-UD-IQ2_S:latest",
+                0.7,
+                8192,
+                context_tokens=32768,
+                timeout=1200,
+                retries=0,
                 ollama_base_url="http://localhost:11434",
                 supervisor=supervisor,
                 log=lambda msg, level: None,

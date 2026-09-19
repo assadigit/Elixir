@@ -9,6 +9,7 @@ Three new output types inspired by the book-to-skill project:
 All three use the LLM to extract structured information from chapter summaries
 (different from keypoints which are general bullets).
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 # 1. Glossary Generator
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class GlossaryGenerator(OutputGeneratorBase):
     """V10.20.0: Extract all key terms + definitions with chapter references.
 
@@ -36,7 +39,9 @@ class GlossaryGenerator(OutputGeneratorBase):
     are general bullets) — this is a reference tool.
     """
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a glossary from chapter summaries."""
         chapter_summaries = []
         for s in summaries:
@@ -52,9 +57,7 @@ class GlossaryGenerator(OutputGeneratorBase):
         self.log(f"  📖 Generating glossary from {len(chapter_summaries)} chapters…", "INFO")
 
         # Build prompt — ask for structured glossary entries
-        chapters_text = "\n\n".join(
-            f"## {heading}\n{text}" for heading, text in chapter_summaries
-        )
+        chapters_text = "\n\n".join(f"## {heading}\n{text}" for heading, text in chapter_summaries)
 
         prompt = self.prompt_manager.render_template(
             "outputs/glossary",
@@ -109,15 +112,15 @@ class GlossaryGenerator(OutputGeneratorBase):
             if not line or line.startswith("#") or line.startswith("---"):
                 continue
             # Strip leading numbering/bullets
-            line = re.sub(r'^\d+[\.\)]\s*', '', line)
-            line = re.sub(r'^[-\*]\s*', '', line)
+            line = re.sub(r"^\d+[\.\)]\s*", "", line)
+            line = re.sub(r"^[-\*]\s*", "", line)
             # Try format: "Term: Definition (Chapter: heading)"
-            m = re.match(r'^(.+?):\s*(.+?)\s*\(Chapter:\s*(.+?)\)\s*$', line)
+            m = re.match(r"^(.+?):\s*(.+?)\s*\(Chapter:\s*(.+?)\)\s*$", line)
             if m:
                 entries.append((m.group(1).strip(), m.group(2).strip(), m.group(3).strip()))
                 continue
             # Try format: "Term: Definition" (no chapter)
-            m2 = re.match(r'^(.+?):\s*(.+)$', line)
+            m2 = re.match(r"^(.+?):\s*(.+)$", line)
             if m2 and len(m2.group(1)) < 50:  # term should be short
                 entries.append((m2.group(1).strip(), m2.group(2).strip(), ""))
         return entries
@@ -127,6 +130,7 @@ class GlossaryGenerator(OutputGeneratorBase):
 # 2. Patterns/Techniques Generator
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class PatternsGenerator(OutputGeneratorBase):
     """V10.20.0: Extract algorithms, design patterns, and decision rules.
 
@@ -134,7 +138,9 @@ class PatternsGenerator(OutputGeneratorBase):
     general keypoints.  This is a practitioner's reference, not a summary.
     """
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a patterns/techniques reference from chapter summaries."""
         chapter_summaries = []
         for s in summaries:
@@ -147,11 +153,11 @@ class PatternsGenerator(OutputGeneratorBase):
             self.log("  ℹ️ Patterns: No chapter summaries to process.", "INFO")
             return None
 
-        self.log(f"  🔧 Generating patterns/techniques from {len(chapter_summaries)} chapters…", "INFO")
-
-        chapters_text = "\n\n".join(
-            f"## {heading}\n{text}" for heading, text in chapter_summaries
+        self.log(
+            f"  🔧 Generating patterns/techniques from {len(chapter_summaries)} chapters…", "INFO"
         )
+
+        chapters_text = "\n\n".join(f"## {heading}\n{text}" for heading, text in chapter_summaries)
 
         prompt = self.prompt_manager.render_template(
             "outputs/patterns",
@@ -214,15 +220,17 @@ class PatternsGenerator(OutputGeneratorBase):
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("---"):
                 continue
-            line = re.sub(r'^\d+[\.\)]\s*', '', line)
-            line = re.sub(r'^[-\*]\s*', '', line)
+            line = re.sub(r"^\d+[\.\)]\s*", "", line)
+            line = re.sub(r"^[-\*]\s*", "", line)
             # Try format: "[Category] Name: Description (Chapter: heading)"
-            m = re.match(r'^\[([^\]]+)\]\s*(.+?):\s*(.+?)\s*\(Chapter:\s*(.+?)\)\s*$', line)
+            m = re.match(r"^\[([^\]]+)\]\s*(.+?):\s*(.+?)\s*\(Chapter:\s*(.+?)\)\s*$", line)
             if m:
-                patterns.append((m.group(1).strip(), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()))
+                patterns.append(
+                    (m.group(1).strip(), m.group(2).strip(), m.group(3).strip(), m.group(4).strip())
+                )
                 continue
             # Try format: "[Category] Name: Description" (no chapter)
-            m2 = re.match(r'^\[([^\]]+)\]\s*(.+?):\s*(.+)$', line)
+            m2 = re.match(r"^\[([^\]]+)\]\s*(.+?):\s*(.+)$", line)
             if m2:
                 patterns.append((m2.group(1).strip(), m2.group(2).strip(), m2.group(3).strip(), ""))
         return patterns
@@ -232,6 +240,7 @@ class PatternsGenerator(OutputGeneratorBase):
 # 3. Cheatsheet Generator
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class CheatsheetGenerator(OutputGeneratorBase):
     """V10.20.0: Generate decision tables + quick-reference rules.
 
@@ -239,7 +248,9 @@ class CheatsheetGenerator(OutputGeneratorBase):
     and quick-reference rules for practitioners.
     """
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a cheatsheet from chapter summaries."""
         chapter_summaries = []
         for s in summaries:
@@ -254,9 +265,7 @@ class CheatsheetGenerator(OutputGeneratorBase):
 
         self.log(f"  📋 Generating cheatsheet from {len(chapter_summaries)} chapters…", "INFO")
 
-        chapters_text = "\n\n".join(
-            f"## {heading}\n{text}" for heading, text in chapter_summaries
-        )
+        chapters_text = "\n\n".join(f"## {heading}\n{text}" for heading, text in chapter_summaries)
 
         prompt = self.prompt_manager.render_template(
             "outputs/cheatsheet",
@@ -291,6 +300,7 @@ class CheatsheetGenerator(OutputGeneratorBase):
 # V10.21.0: Agent Skill export (SKILL.md format)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class AgentSkillGenerator(OutputGeneratorBase):
     """V10.21.0: Generate a SKILL.md file for AI coding assistants.
 
@@ -301,7 +311,9 @@ class AgentSkillGenerator(OutputGeneratorBase):
     Output: SKILL.md (~4000 tokens) + per-chapter files.
     """
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a SKILL.md from chapter summaries."""
         chapter_summaries = []
         for s in summaries:
@@ -340,19 +352,23 @@ class AgentSkillGenerator(OutputGeneratorBase):
             md_lines.append("")
 
         # Chapter index
-        md_lines.extend([
-            "## Chapter Index",
-            "",
-        ])
+        md_lines.extend(
+            [
+                "## Chapter Index",
+                "",
+            ]
+        )
         for i, (heading, _, _) in enumerate(chapter_summaries, 1):
             md_lines.append(f"{i}. {heading}")
 
-        md_lines.extend([
-            "",
-            "---",
-            "",
-            "*Generated by Elixir V10.21.0 · Agent Skill format*",
-        ])
+        md_lines.extend(
+            [
+                "",
+                "---",
+                "",
+                "*Generated by Elixir V10.21.0 · Agent Skill format*",
+            ]
+        )
 
         md_content = "\n".join(md_lines)
         output_path = output_dir / f"{book_title}.SKILL.md"

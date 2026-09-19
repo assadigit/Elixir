@@ -59,6 +59,7 @@ _SAMPLES_DIR = Path(__file__).resolve().parents[3] / "config" / "voice_samples"
 
 # ── Section 1: Voices ─────────────────────────────────────────────────────
 
+
 class TtsVoicesSection(QGroupBox):
     """Voice selectors for English, Persian, and the two podcast hosts.
 
@@ -155,13 +156,14 @@ class TtsVoicesSection(QGroupBox):
         en_engine = self.en_engine_combo.currentData() or "neutts"
         if en_engine == "kokoro":
             # Kokoro preset voices
-            for group_label, voices in kokoro_voice_groups():
+            for _group_label, voices in kokoro_voice_groups():
                 for vid, _lang, _gender, desc in voices:
                     self.en_combo.addItem(f"{vid} — {desc}", vid)
             current = self.controller.get_setting("tts.en_voice", KOKORO_DEFAULT_HOST_A)
         else:
             # NeuTTS reference voices
             from core.tts.voice_manager import VoiceManager
+
             vm = VoiceManager()
             voices = vm.list_voices()
             if not voices:
@@ -184,6 +186,7 @@ class TtsVoicesSection(QGroupBox):
     def _refresh_ref_voices_list(self) -> None:
         """Refresh the read-only list of available reference voices."""
         from core.tts.voice_manager import VoiceManager
+
         vm = VoiceManager()
         voices = vm.list_voices()
         if not voices:
@@ -213,11 +216,11 @@ class TtsVoicesSection(QGroupBox):
         wav_path_edit = QLineEdit()
         wav_path_edit.setPlaceholderText("Path to a 3-15s WAV file…")
         browse_btn = QPushButton("Browse…")
-        browse_btn.clicked.connect(lambda: (
-            wav_path_edit.setText(
+        browse_btn.clicked.connect(
+            lambda: wav_path_edit.setText(
                 QFileDialog.getOpenFileName(dlg, "Select reference WAV", "", "WAV files (*.wav)")[0]
             )
-        ))
+        )
         wav_row = QHBoxLayout()
         wav_row.addWidget(wav_path_edit, 1)
         wav_row.addWidget(browse_btn)
@@ -246,14 +249,16 @@ class TtsVoicesSection(QGroupBox):
             wav_path = wav_path_edit.text().strip()
             transcript = transcript_edit.text().strip()
             if not name or not wav_path or not transcript:
-                QMessageBox.warning(self, "Missing info",
-                                    "Name, audio path, and transcript are all required.")
+                QMessageBox.warning(
+                    self, "Missing info", "Name, audio path, and transcript are all required."
+                )
                 return
             try:
                 vm = VoiceManager()
                 vm.add_voice(name, Path(wav_path), transcript)
-                QMessageBox.information(self, "Voice added",
-                                        f"Reference voice '{name}' added successfully.")
+                QMessageBox.information(
+                    self, "Voice added", f"Reference voice '{name}' added successfully."
+                )
                 self._refresh_ref_voices_list()
                 self._populate_en_voices()  # refresh the dropdown
             except Exception as e:
@@ -280,7 +285,8 @@ class TtsVoicesSection(QGroupBox):
         )
         if ok and name:
             reply = QMessageBox.question(
-                self, "Confirm removal",
+                self,
+                "Confirm removal",
                 f"Remove reference voice '{name}'? This deletes the wav + txt files.",
                 QMessageBox.Yes | QMessageBox.No,
             )
@@ -296,12 +302,13 @@ class TtsVoicesSection(QGroupBox):
 
         # NeuTTS reference voices
         from core.tts.voice_manager import VoiceManager
+
         vm = VoiceManager()
         for v in vm.list_voices():
             combo.addItem(f"EN · {v['name']} — {v['description']}", v["name"])
 
         # Kokoro preset voices
-        for group_label, voices in kokoro_voice_groups():
+        for _group_label, voices in kokoro_voice_groups():
             for vid, _lang, _gender, desc in voices:
                 combo.addItem(f"EN · {vid} — {desc}", vid)
 
@@ -337,19 +344,14 @@ class TtsVoicesSection(QGroupBox):
         if idx >= 0:
             self.en_engine_combo.setCurrentIndex(idx)
         self._populate_en_voices()
-        self._select_combo_by_data(
-            self.fa_combo, c.get_setting("tts.fa_voice", PIPER_FA_DEFAULT)
-        )
-        self._select_combo_by_data(
-            self.host_a_combo, c.get_setting("tts.host_a_voice", "")
-        )
-        self._select_combo_by_data(
-            self.host_b_combo, c.get_setting("tts.host_b_voice", "")
-        )
+        self._select_combo_by_data(self.fa_combo, c.get_setting("tts.fa_voice", PIPER_FA_DEFAULT))
+        self._select_combo_by_data(self.host_a_combo, c.get_setting("tts.host_a_voice", ""))
+        self._select_combo_by_data(self.host_b_combo, c.get_setting("tts.host_b_voice", ""))
         self._refresh_ref_voices_list()
 
 
 # ── Section 2: Engines (with connectivity indicators) ─────────────────────
+
 
 class TtsEnginesSection(QGroupBox):
     """Engine paths + live connectivity circles for all three engines.
@@ -426,8 +428,7 @@ class TtsEnginesSection(QGroupBox):
         self.neutts_codec_combo.addItem("CPU", "cpu")
         self.neutts_codec_combo.addItem("Auto", "auto")
         self.neutts_codec_combo.setToolTip(
-            "Where to run the audio codec.\n"
-            "GPU is faster; CPU is the safe fallback."
+            "Where to run the audio codec.\nGPU is faster; CPU is the safe fallback."
         )
         cd_pref = controller.get_setting("tts.neutts_codec_device", "cuda")
         idx = self.neutts_codec_combo.findData(cd_pref)
@@ -548,13 +549,15 @@ class TtsEnginesSection(QGroupBox):
         # NeuTTS: check GGUF + project folder exist
         gguf = self.neutts_gguf_picker.path()
         proj = self.neutts_project_picker.path()
-        neutts_ok = (gguf is not None and gguf.exists()
-                     and proj is not None and proj.exists()
-                     and (Path(proj) / "neutts").is_dir())
-        self._set_dot(self.neutts_dot, neutts_ok)
-        self.neutts_label.setText(
-            f"NeuTTS-Air — {'connected' if neutts_ok else 'not found'}"
+        neutts_ok = (
+            gguf is not None
+            and gguf.exists()
+            and proj is not None
+            and proj.exists()
+            and (Path(proj) / "neutts").is_dir()
         )
+        self._set_dot(self.neutts_dot, neutts_ok)
+        self.neutts_label.setText(f"NeuTTS-Air — {'connected' if neutts_ok else 'not found'}")
 
         # Kokoro: try to import (async — see docstring, W-b8)
         self._check_kokoro_async()
@@ -572,6 +575,7 @@ class TtsEnginesSection(QGroupBox):
         """W-b8: the Kokoro import probe — widget-free, safe off-thread."""
         try:
             import importlib
+
             importlib.import_module("kokoro")
             return True
         except Exception:
@@ -599,9 +603,7 @@ class TtsEnginesSection(QGroupBox):
     def _on_kokoro_probed(self, kokoro_ok: bool) -> None:
         """W-b8: main-thread handler — update the Kokoro indicator."""
         self._set_dot(self.kokoro_dot, bool(kokoro_ok))
-        self.kokoro_label.setText(
-            f"Kokoro — {'connected' if kokoro_ok else 'not installed'}"
-        )
+        self.kokoro_label.setText(f"Kokoro — {'connected' if kokoro_ok else 'not installed'}")
 
     def _on_kokoro_probe_failed(self, error: str) -> None:
         """W-b8/W-b18: fail-soft — the probe itself raised (log only; the
@@ -620,14 +622,10 @@ class TtsEnginesSection(QGroupBox):
         c.update_setting("tts.piper_binary", str(piper) if piper else "")
         # V11.32.0: device prefs.
         c.update_setting(
-            "tts.neutts_backbone_device",
-            self.neutts_backbone_combo.currentData() or "cuda")
-        c.update_setting(
-            "tts.neutts_codec_device",
-            self.neutts_codec_combo.currentData() or "cuda")
-        c.update_setting(
-            "tts.neutts_use_subprocess",
-            bool(self.neutts_subprocess_cb.isChecked()))
+            "tts.neutts_backbone_device", self.neutts_backbone_combo.currentData() or "cuda"
+        )
+        c.update_setting("tts.neutts_codec_device", self.neutts_codec_combo.currentData() or "cuda")
+        c.update_setting("tts.neutts_use_subprocess", bool(self.neutts_subprocess_cb.isChecked()))
 
     def reload(self) -> None:
         c = self.controller
@@ -657,11 +655,13 @@ class TtsEnginesSection(QGroupBox):
         idx = self.neutts_codec_combo.findData(cd)
         self.neutts_codec_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.neutts_subprocess_cb.setChecked(
-            bool(c.get_setting("tts.neutts_use_subprocess", False)))
+            bool(c.get_setting("tts.neutts_use_subprocess", False))
+        )
         self._recheck()
 
 
 # ── Section 2b: Coqui XTTS v2 (V10.37.0) ─────────────────────────────────
+
 
 class TtsCoquiSection(QGroupBox):
     """V10.37.0: Coqui XTTS v2 settings — better Persian TTS.
@@ -687,14 +687,14 @@ class TtsCoquiSection(QGroupBox):
 
         # Coqui model name
         self.coqui_model_edit = QLineEdit(
-            controller.get_setting("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2")
+            controller.get_setting(
+                "tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"
+            )
         )
         f.addRow("Coqui model", self.coqui_model_edit)
 
         # Speaker name
-        self.coqui_speaker_edit = QLineEdit(
-            controller.get_setting("tts.coqui_speaker", "Ana")
-        )
+        self.coqui_speaker_edit = QLineEdit(controller.get_setting("tts.coqui_speaker", "Ana"))
         f.addRow("Speaker name", self.coqui_speaker_edit)
 
         # Voice sample (for cloning)
@@ -731,12 +731,15 @@ class TtsCoquiSection(QGroupBox):
         idx = self.fa_engine_combo.findData(c.get_setting("tts.fa_engine", "piper"))
         if idx >= 0:
             self.fa_engine_combo.setCurrentIndex(idx)
-        self.coqui_model_edit.setText(c.get_setting("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"))
+        self.coqui_model_edit.setText(
+            c.get_setting("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2")
+        )
         self.coqui_speaker_edit.setText(c.get_setting("tts.coqui_speaker", "Ana"))
         self.coqui_sample_picker.set_path(c.get_setting("tts.coqui_voice_sample", ""))
 
 
 # ── Section 3: Speed ──────────────────────────────────────────────────────
+
 
 class TtsSpeedSection(QGroupBox):
     """Synthesis speed slider (0.5×–2.0×), shared across both engines."""
@@ -754,9 +757,7 @@ class TtsSpeedSection(QGroupBox):
         self.value_label = QLabel(f"{current:.2f}×")
         self.value_label.setMinimumWidth(48)
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.slider.valueChanged.connect(
-            lambda v: self.value_label.setText(f"{v / 100:.2f}×")
-        )
+        self.slider.valueChanged.connect(lambda v: self.value_label.setText(f"{v / 100:.2f}×"))
         row = QHBoxLayout()
         row.addWidget(self.slider)
         row.addWidget(self.value_label)
@@ -784,6 +785,7 @@ class TtsSpeedSection(QGroupBox):
 
 # ── Section 3.5: Normalization (V4.4.0) ───────────────────────────────────
 
+
 class TtsNormalizationSection(QGroupBox):
     """LLM-based text normalization before TTS.
 
@@ -807,9 +809,7 @@ class TtsNormalizationSection(QGroupBox):
 
         # Enable toggle
         self.enabled_cb = QCheckBox("Enable LLM text normalization before TTS")
-        self.enabled_cb.setChecked(
-            controller.get_setting("tts.normalize_enabled", True)
-        )
+        self.enabled_cb.setChecked(controller.get_setting("tts.normalize_enabled", True))
         self.enabled_cb.setToolTip(
             "Pre-processes each text segment via an LLM before synthesis.\n"
             "English: expands numbers, abbreviations, dates.\n"
@@ -820,17 +820,13 @@ class TtsNormalizationSection(QGroupBox):
 
         # Endpoint
         self.endpoint_edit = QLineEdit(
-            controller.get_setting(
-                "tts.normalize_endpoint", "http://localhost:11434/v1"
-            )
+            controller.get_setting("tts.normalize_endpoint", "http://localhost:11434/v1")
         )
         self.endpoint_edit.setPlaceholderText("http://localhost:11434/v1")
         f.addRow("Endpoint (OpenAI-compatible)", self.endpoint_edit)
 
         # API key (optional)
-        self.apikey_edit = QLineEdit(
-            controller.get_setting("tts.normalize_api_key", "")
-        )
+        self.apikey_edit = QLineEdit(controller.get_setting("tts.normalize_api_key", ""))
         self.apikey_edit.setEchoMode(QLineEdit.Password)
         self.apikey_edit.setPlaceholderText("(optional — leave blank for local Ollama)")
         f.addRow("API key", self.apikey_edit)
@@ -886,6 +882,7 @@ class TtsNormalizationSection(QGroupBox):
     def _edit_prompts(self) -> None:
         """Open a dialog to edit the EN/FA normalization prompts."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTabWidget, QTextEdit
+
         dlg = QDialog(self)
         dlg.setWindowTitle("Normalization Prompts")
         dlg.setMinimumSize(620, 480)
@@ -902,26 +899,22 @@ class TtsNormalizationSection(QGroupBox):
 
         # Reset to default button
         reset_btn = QPushButton("Reset to defaults")
-        reset_btn.clicked.connect(lambda: (
-            en_tab.setPlainText(self._default_prompt("en")),
-            fa_tab.setPlainText(self._default_prompt("fa")),
-        ))
+        reset_btn.clicked.connect(
+            lambda: (
+                en_tab.setPlainText(self._default_prompt("en")),
+                fa_tab.setPlainText(self._default_prompt("fa")),
+            )
+        )
         lay.addWidget(reset_btn)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
 
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.controller.update_setting(
-                "tts.normalize_prompt_en", en_tab.toPlainText()
-            )
-            self.controller.update_setting(
-                "tts.normalize_prompt_fa", fa_tab.toPlainText()
-            )
+            self.controller.update_setting("tts.normalize_prompt_en", en_tab.toPlainText())
+            self.controller.update_setting("tts.normalize_prompt_fa", fa_tab.toPlainText())
 
     def _load_prompt(self, lang: str) -> str:
         """Load the saved prompt, or the default if none saved."""
@@ -934,6 +927,7 @@ class TtsNormalizationSection(QGroupBox):
     @staticmethod
     def _default_prompt(lang: str) -> str:
         from core.tts.normalizer import _DEFAULT_PROMPT_EN, _DEFAULT_PROMPT_FA
+
         return _DEFAULT_PROMPT_FA if lang == "fa" else _DEFAULT_PROMPT_EN
 
     def _on_test_clicked(self) -> None:
@@ -983,7 +977,7 @@ class TtsNormalizationSection(QGroupBox):
                 custom_prompt_en=prompt_en,
                 custom_prompt_fa=prompt_fa,
                 context_mode=context_mode,
-                log_callback=lambda m, l="INFO": None,
+                log_callback=lambda m, lvl="INFO": None,
             )
             results = []
             for label, text, lang in samples:
@@ -991,8 +985,8 @@ class TtsNormalizationSection(QGroupBox):
                     normalized = norm.normalize(text, lang)
                 except Exception as e:
                     logger.warning(
-                        "normalization test failed for the %s sample", lang,
-                        exc_info=True)
+                        "normalization test failed for the %s sample", lang, exc_info=True
+                    )
                     normalized = f"(failed: {e})"
                 results.append((label, text, normalized))
             return results
@@ -1040,8 +1034,9 @@ class TtsNormalizationSection(QGroupBox):
         # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
         c.update_setting("tts.normalize_api_key", self.apikey_edit.text().strip())
         c.update_setting("tts.normalize_model", self.model_edit.text().strip())
-        c.update_setting("tts.normalize_context_mode",
-                         self.context_combo.currentData() or "sentence")
+        c.update_setting(
+            "tts.normalize_context_mode", self.context_combo.currentData() or "sentence"
+        )
 
     def reload(self) -> None:
         c = self.controller
@@ -1063,6 +1058,7 @@ class TtsNormalizationSection(QGroupBox):
 
 # ── Section 4: Preview (in-app, cached samples) ───────────────────────────
 
+
 class TtsPreviewSection(QGroupBox):
     """'Test voice' button — plays a cached sample WAV in-app via QMediaPlayer.
 
@@ -1078,7 +1074,7 @@ class TtsPreviewSection(QGroupBox):
 
     _SAMPLES = {
         "en": "Hello, this is a test of the selected voice. "
-              "The quick brown fox jumps over the lazy dog.",
+        "The quick brown fox jumps over the lazy dog.",
         "fa": "سلام، این یک تست برای صدای انتخاب‌شده است.",
     }
 
@@ -1208,8 +1204,9 @@ class TtsPreviewSection(QGroupBox):
             ),
         }
 
-    def _generate_sample(self, lang: str, voice: str, speed: float,
-                         cfg: dict | None = None) -> tuple:
+    def _generate_sample(
+        self, lang: str, voice: str, speed: float, cfg: dict | None = None
+    ) -> tuple:
         """Generate a sample WAV and cache it. Returns (path_or_None, error_or_None).
 
         V18.20.4.9 (W-b8): ``cfg`` is the engine-settings snapshot
@@ -1228,25 +1225,29 @@ class TtsPreviewSection(QGroupBox):
             if en_engine == "neutts":
                 # Use NeuTTS-Air
                 from core.tts.neutts_engine import NeuTTSEngine
+
                 gguf = Path(cfg["neutts_gguf"])
                 proj = Path(cfg["neutts_project"])
                 eng = NeuTTSEngine(
                     gguf_path=gguf,
                     neutts_project_path=proj,
-                    log_callback=lambda m, l="INFO": None,
+                    log_callback=lambda m, lvl="INFO": None,
                 )
             else:
                 # Use Kokoro
                 from core.tts.engine import KokoroEngine
-                eng = KokoroEngine(log_callback=lambda m, l="INFO": None)
+
+                eng = KokoroEngine(log_callback=lambda m, lvl="INFO": None)
             ok = eng.synthesize(text, out_path, voice, speed)
             error = eng.last_error if not ok else None
         else:
             from core.tts.engine import PiperEngine
+
             piper_bin = Path(cfg["piper_binary"])
             eng = PiperEngine(
-                piper_bin, piper_bin.parent / "voices",
-                log_callback=lambda m, l="INFO": None,
+                piper_bin,
+                piper_bin.parent / "voices",
+                log_callback=lambda m, lvl="INFO": None,
             )
             ok = eng.synthesize(text, out_path, voice, speed)
             error = eng.last_error if not ok else None
@@ -1294,8 +1295,8 @@ class TtsPreviewSection(QGroupBox):
                     return self._generate_sample(lang, voice, speed, cfg)
                 except Exception:
                     logger.warning(
-                        "TTS sample generation raised — traceback follows",
-                        exc_info=True)
+                        "TTS sample generation raised — traceback follows", exc_info=True
+                    )
                     raise
 
             w = SimpleWorker(_work)
@@ -1330,7 +1331,8 @@ class TtsPreviewSection(QGroupBox):
         if not path:
             # Show the ACTUAL error, not a generic message
             QMessageBox.warning(
-                self, "Preview failed",
+                self,
+                "Preview failed",
                 f"Could not generate audio with voice '{voice}'.\n\n"
                 f"Error: {error}\n\n"
                 f"Language: {lang}\n"
@@ -1360,6 +1362,7 @@ class TtsPreviewSection(QGroupBox):
         (W-b19: connected once in _ensure_player — the one-time setup
         site — instead of on every preview click.)"""
         from PySide6.QtMultimedia import QMediaPlayer as QMP
+
         if status == QMP.MediaStatus.EndOfMedia:
             self._on_lang_changed(0)
 
@@ -1393,9 +1396,7 @@ class TtsPreviewSection(QGroupBox):
             try:
                 return self._generate_sample(lang, voice, speed, cfg)
             except Exception:
-                logger.warning(
-                    "TTS sample regeneration raised — traceback follows",
-                    exc_info=True)
+                logger.warning("TTS sample regeneration raised — traceback follows", exc_info=True)
                 raise
 
         w = SimpleWorker(_work)
@@ -1420,7 +1421,8 @@ class TtsPreviewSection(QGroupBox):
             self._play_in_app(path)
         else:
             QMessageBox.warning(
-                self, "Regeneration failed",
+                self,
+                "Regeneration failed",
                 f"Could not generate audio with voice '{voice}'.\n\n"
                 f"Error: {error}\n\n"
                 "See the Engines tab to verify connectivity.",
@@ -1436,4 +1438,3 @@ class TtsPreviewSection(QGroupBox):
 
     def reload(self) -> None:
         self._on_lang_changed(0)
-

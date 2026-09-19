@@ -33,6 +33,7 @@ Two layers per the house pattern: pure-Py behavioral tests for the
 geometry helpers (always run) + headless-safe source pins for the
 Qt-touching edits (PySide6 is not installed on the rig).
 """
+
 from __future__ import annotations
 
 import re
@@ -91,12 +92,13 @@ def _exec_contexts(src: str, window: int = 4):
     lines = src.splitlines()
     for i, line in enumerate(lines):
         if "dlg.exec()" in line:
-            yield i + 1, "\n".join(lines[max(0, i - window): i + 1])
+            yield i + 1, "\n".join(lines[max(0, i - window) : i + 1])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Behavioral — utils/geometry.py (pure Python, no Qt)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestRectsIntersect:
     def test_identical_rects_intersect(self):
@@ -132,26 +134,21 @@ class TestRestoredGeometryIsVisible:
         assert restored_geometry_is_visible(100, 100, 608, 432, [self.SCREEN])
 
     def test_window_fully_offscreen_right(self):
-        assert restored_geometry_is_visible(
-            2500, 100, 608, 432, [self.SCREEN]) is False
+        assert restored_geometry_is_visible(2500, 100, 608, 432, [self.SCREEN]) is False
 
     def test_window_fully_offscreen_below(self):
-        assert restored_geometry_is_visible(
-            100, 2000, 608, 432, [self.SCREEN]) is False
+        assert restored_geometry_is_visible(100, 2000, 608, 432, [self.SCREEN]) is False
 
     def test_1px_edge_graze_is_invisible(self):
         # Grazing the right edge by 1px × 50px = 50px² < the 100px²
         # default threshold — still effectively invisible.
-        assert restored_geometry_is_visible(
-            1919, 0, 50, 50, [self.SCREEN]) is False
+        assert restored_geometry_is_visible(1919, 0, 50, 50, [self.SCREEN]) is False
         # Same for the bottom edge.
-        assert restored_geometry_is_visible(
-            960, 1079, 50, 40, [self.SCREEN]) is False
+        assert restored_geometry_is_visible(960, 1079, 50, 40, [self.SCREEN]) is False
 
     def test_partial_overlap_over_threshold_is_visible(self):
         # 320px × 400px = 128,000px² of overlap — clearly visible.
-        assert restored_geometry_is_visible(
-            1600, 500, 600, 400, [self.SCREEN]) is True
+        assert restored_geometry_is_visible(1600, 500, 600, 400, [self.SCREEN]) is True
 
     def test_no_screens_is_false(self):
         # Fail-safe: no screens (headless / probe failure) → caller falls
@@ -166,31 +163,33 @@ class TestRestoredGeometryIsVisible:
     def test_left_monitor_negative_coordinates(self):
         # Classic monitor-change case: a second monitor LEFT of primary.
         screens = [(-1920, 0, 1920, 1080), (0, 0, 1920, 1080)]
-        assert restored_geometry_is_visible(
-            -1820, 100, 600, 400, screens) is True
+        assert restored_geometry_is_visible(-1820, 100, 600, 400, screens) is True
 
     def test_offscreen_left_of_all_monitors(self):
         screens = [(-1920, 0, 1920, 1080), (0, 0, 1920, 1080)]
-        assert restored_geometry_is_visible(
-            -3000, 0, 600, 400, screens) is False
+        assert restored_geometry_is_visible(-3000, 0, 600, 400, screens) is False
 
     def test_custom_min_overlap_area_threshold(self):
         # The 50px² graze is invisible at the default 100px² threshold...
-        assert restored_geometry_is_visible(
-            1919, 0, 50, 50, [self.SCREEN], min_overlap_area=100) is False
+        assert (
+            restored_geometry_is_visible(1919, 0, 50, 50, [self.SCREEN], min_overlap_area=100)
+            is False
+        )
         # ...but visible if the caller lowers the bar to 40px².
-        assert restored_geometry_is_visible(
-            1919, 0, 50, 50, [self.SCREEN], min_overlap_area=40) is True
+        assert (
+            restored_geometry_is_visible(1919, 0, 50, 50, [self.SCREEN], min_overlap_area=40)
+            is True
+        )
 
     def test_degenerate_screen_rect_is_ignored(self):
         # A zero-width "screen" can never satisfy the overlap threshold.
-        assert restored_geometry_is_visible(
-            0, 0, 600, 400, [(0, 0, 0, 1080)]) is False
+        assert restored_geometry_is_visible(0, 0, 600, 400, [(0, 0, 0, 1080)]) is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Source pins — W-b9 / W-b10 (convert_view.py)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestConvertViewPins:
     def test_wa_delete_on_close_exact_site_count(self):
@@ -212,8 +211,7 @@ class TestConvertViewPins:
         src = _src(_CONVERT_VIEW)
         execs = list(_exec_contexts(src))
         assert len(execs) == _CONVERT_VIEW_WA_SITES, (
-            f"expected {_CONVERT_VIEW_WA_SITES} dlg.exec() opens, "
-            f"found {len(execs)}"
+            f"expected {_CONVERT_VIEW_WA_SITES} dlg.exec() opens, found {len(execs)}"
         )
         for lineno, ctx in execs:
             assert _WA_LINE in ctx, (
@@ -223,8 +221,8 @@ class TestConvertViewPins:
 
     def test_podcast_maker_inline_dialog_is_covered(self):
         m = re.search(
-            r'elif tool_key == "podcast_maker".*?dlg\.exec\(\)',
-            _src(_CONVERT_VIEW), re.S)
+            r'elif tool_key == "podcast_maker".*?dlg\.exec\(\)', _src(_CONVERT_VIEW), re.S
+        )
         assert m is not None, "podcast_maker branch not found"
         assert _WA_LINE in m.group(0), (
             "the podcast_maker inline QDialog must also delete on close (W-b9)"
@@ -245,6 +243,7 @@ class TestConvertViewPins:
 # Source pins — W-b9 / T-b5 (app.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestAppPins:
     def test_wa_delete_on_close_exact_site_count(self):
         """5 sites exactly: _open_wizard, _open_hallucination_audit,
@@ -252,8 +251,7 @@ class TestAppPins:
         src = _src(_APP)
         code = _strip_comments(src)
         assert code.count(_WA_LINE) == _APP_WA_SITES, (
-            f"expected exactly {_APP_WA_SITES} WA_DeleteOnClose calls, "
-            f"found {code.count(_WA_LINE)}"
+            f"expected exactly {_APP_WA_SITES} WA_DeleteOnClose calls, found {code.count(_WA_LINE)}"
         )
         assert src.count("# V18.20.4.5 (W-b9):") == _APP_WA_SITES
 
@@ -309,6 +307,7 @@ class TestAppPins:
 # Source pins — T-b2 (live_transcribe.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLiveTranscribePins:
     def test_worker_is_constructed_unparented(self):
         src = _strip_comments(_src(_LIVE))
@@ -320,9 +319,7 @@ class TestLiveTranscribePins:
 
     def test_close_event_guards_running_thread(self):
         body = _method_body(_src(_LIVE), "closeEvent")
-        assert "worker.isRunning()" in body, (
-            "closeEvent must guard on the running worker (T-b2)"
-        )
+        assert "worker.isRunning()" in body, "closeEvent must guard on the running worker (T-b2)"
         assert "worker.stop()" in body
         assert "worker.wait(2000)" in body
         # The user is asked first, and No keeps the dialog open.

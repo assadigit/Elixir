@@ -17,6 +17,7 @@ back to deterministic rapidfuzz dedup.
 EXISTING leak-guard behavior.  They serve as the regression gate for
 Phase 3 (prompt redesign) and Phase 1.1 (model_taxonomy wiring).
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,13 +40,16 @@ class TestLeakDetection:
 
     # ── Clean bullets (no leak) ────────────────────────────────────────────
 
-    @pytest.mark.parametrize("bullet", [
-        "The author defines identity as an internal psychic structure.",
-        "Erikson described identity formation as a lifelong process.",
-        "Lichtenstein (1961) distinguished identity from identification.",
-        "Kernberg's model includes three structural components: splitting, idealization, and devaluation.",
-        "The chapter notes three clinical implications of this model.",
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "The author defines identity as an internal psychic structure.",
+            "Erikson described identity formation as a lifelong process.",
+            "Lichtenstein (1961) distinguished identity from identification.",
+            "Kernberg's model includes three structural components: splitting, idealization, and devaluation.",
+            "The chapter notes three clinical implications of this model.",
+        ],
+    )
     def test_clean_bullet_not_flagged(self, bullet):
         """Legitimate summary bullets must NOT be flagged as leaks."""
         leaked, samples = self._detect([bullet])
@@ -66,31 +70,47 @@ class TestLeakDetection:
 
     # ── Leaked patterns ────────────────────────────────────────────────────
 
-    @pytest.mark.parametrize("bullet,pattern_desc", [
-        # "Bullet N:" prefix
-        ("Bullet 11: Lichtenstein (1961) distinguished identity from identification.", "Bullet N:"),
-        ("Bullet 27 says that identity formation is lifelong.", "Bullet N says"),
-        ("Bullet 8 (Kernberg 1967) describes three structural components.", "Bullet N (Author)"),
-        # "KEEP BOTH" / "KEEP ALL"
-        ("These are related but different claims. KEEP BOTH.", "KEEP BOTH"),
-        ("Similar but distinct. KEEP ALL.", "KEEP ALL"),
-        # "This is similar to bullet N"
-        ("This is similar to bullet 27 but attributes the claim to a different author.", "similar to bullet"),
-        # "These are related but different"
-        ("These are related but different facts/claims.", "related but different"),
-        # "different facts/claims" phrasing
-        ("These bullets discuss different facts/claims about identity.", "different facts/"),
-        # "but different years"
-        ("Both mention Kernberg but different years and slightly different claims.", "different years"),
-        # Comparison header: "Bullet N (Author) and bullet M (Author)"
-        ("Bullet 8 (Kernberg 1967) and bullet 9 (Kernberg 1980): Both discuss identity.", "Bullet N and bullet M"),
-    ])
+    @pytest.mark.parametrize(
+        "bullet,pattern_desc",
+        [
+            # "Bullet N:" prefix
+            (
+                "Bullet 11: Lichtenstein (1961) distinguished identity from identification.",
+                "Bullet N:",
+            ),
+            ("Bullet 27 says that identity formation is lifelong.", "Bullet N says"),
+            (
+                "Bullet 8 (Kernberg 1967) describes three structural components.",
+                "Bullet N (Author)",
+            ),
+            # "KEEP BOTH" / "KEEP ALL"
+            ("These are related but different claims. KEEP BOTH.", "KEEP BOTH"),
+            ("Similar but distinct. KEEP ALL.", "KEEP ALL"),
+            # "This is similar to bullet N"
+            (
+                "This is similar to bullet 27 but attributes the claim to a different author.",
+                "similar to bullet",
+            ),
+            # "These are related but different"
+            ("These are related but different facts/claims.", "related but different"),
+            # "different facts/claims" phrasing
+            ("These bullets discuss different facts/claims about identity.", "different facts/"),
+            # "but different years"
+            (
+                "Both mention Kernberg but different years and slightly different claims.",
+                "different years",
+            ),
+            # Comparison header: "Bullet N (Author) and bullet M (Author)"
+            (
+                "Bullet 8 (Kernberg 1967) and bullet 9 (Kernberg 1980): Both discuss identity.",
+                "Bullet N and bullet M",
+            ),
+        ],
+    )
     def test_leaked_bullet_detected(self, bullet, pattern_desc):
         """Each known leak pattern must be detected."""
         leaked, samples = self._detect([bullet])
-        assert leaked == 1, (
-            f"Leak pattern not detected ({pattern_desc}): {bullet!r}"
-        )
+        assert leaked == 1, f"Leak pattern not detected ({pattern_desc}): {bullet!r}"
         assert len(samples) == 1
         idx, matched, preview = samples[0]
         assert idx == 0  # first (and only) bullet
@@ -135,9 +155,9 @@ class TestLeakDetection:
         """A mix of clean + leaked bullets → only leaked ones counted."""
         bullets = [
             "Erikson described identity formation as a lifelong process.",  # clean
-            "Bullet 5: This is a leaked bullet.",                            # leaked
-            "The author defines identity as an internal structure.",        # clean
-            "KEEP BOTH.",                                                    # leaked
+            "Bullet 5: This is a leaked bullet.",  # leaked
+            "The author defines identity as an internal structure.",  # clean
+            "KEEP BOTH.",  # leaked
         ]
         leaked, samples = self._detect(bullets)
         assert leaked == 2
@@ -174,10 +194,12 @@ class TestLeakGuardFallbackContract:
 
     def test_clean_bullets_return_zero(self):
         """Clean bullets → (0, []) → _consolidate_bullets uses LLM output."""
-        leaked, samples = BulletPipeline.detect_leaked_consolidation_metadata([
-            "Clean bullet one.",
-            "Clean bullet two.",
-        ])
+        leaked, samples = BulletPipeline.detect_leaked_consolidation_metadata(
+            [
+                "Clean bullet one.",
+                "Clean bullet two.",
+            ]
+        )
         assert leaked == 0
         assert samples == []
         # _consolidate_bullets checks: if leaked_count > 0 → fallback.
@@ -185,9 +207,11 @@ class TestLeakGuardFallbackContract:
 
     def test_leaked_bullets_return_nonzero(self):
         """Leaked bullets → (N>0, [...]) → _consolidate_bullets falls back."""
-        leaked, samples = BulletPipeline.detect_leaked_consolidation_metadata([
-            "Bullet 1: leaked",
-        ])
+        leaked, samples = BulletPipeline.detect_leaked_consolidation_metadata(
+            [
+                "Bullet 1: leaked",
+            ]
+        )
         assert leaked > 0
         assert len(samples) > 0
         # Each sample is a (index, matched_pattern, preview) tuple.

@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+
 # V18.20.4.12 (W-b15): JSON-first structured progress parse — the Summarizer
 # emits an ``ELIXIR_PROGRESS {...}`` line per completed chapter
 # (core/common/progress_events.py); the regex fallbacks in _on_log stay
@@ -104,14 +105,25 @@ logger = logging.getLogger(__name__)
 # log line (thousands per conversion); the old per-call ``import re`` +
 # recompiles were pure overhead on the hot path. Patterns are verbatim
 # from the old inline ``re.search`` calls (behavior identical).
-_PROGRESS_RE = re.compile(r'Progress: (\d+)/(\d+) done.*?(\d+) bullets')
-_CHAPTER_RE = re.compile(r'Chapter (\d+)/(\d+)')
+_PROGRESS_RE = re.compile(r"Progress: (\d+)/(\d+) done.*?(\d+) bullets")
+_CHAPTER_RE = re.compile(r"Chapter (\d+)/(\d+)")
 
 # ════════════════════════════════════════════════════════════════════════════
 # Wizard View (main container)
 # ════════════════════════════════════════════════════════════════════════════
 
-_STEP_LABELS = ["PDF", "Range", "OCR", "Outputs", "Models", "Translation", "Advanced", "Fine-tune", "Review", "Logs"]
+_STEP_LABELS = [
+    "PDF",
+    "Range",
+    "OCR",
+    "Outputs",
+    "Models",
+    "Translation",
+    "Advanced",
+    "Fine-tune",
+    "Review",
+    "Logs",
+]
 
 
 class WizardView(QDialog):
@@ -148,7 +160,7 @@ class WizardView(QDialog):
         self.setWindowTitle("Process Wizard — Step by Step Conversion")
         self.setModal(True)
         self.setMinimumSize(740, 540)  # V7.4.0: was 900x680 — compact
-        self.resize(820, 600)            # V7.4.0: was 960x720
+        self.resize(820, 600)  # V7.4.0: was 960x720
 
         self._build_ui()
         self._wire_controller()
@@ -178,14 +190,18 @@ class WizardView(QDialog):
             dot_col.addWidget(dot)
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("font-size: 10px; color: palette(text-muted); background: transparent;")
+            lbl.setStyleSheet(
+                "font-size: 10px; color: palette(text-muted); background: transparent;"
+            )
             self._step_labels.append(lbl)
             dot_col.addWidget(lbl)
             pw_lay.addLayout(dot_col)
             if i < len(_STEP_LABELS) - 1:
                 line = QLabel("━")
                 line.setAlignment(Qt.AlignCenter)
-                line.setStyleSheet("font-size: 10px; color: palette(border); background: transparent;")
+                line.setStyleSheet(
+                    "font-size: 10px; color: palette(border); background: transparent;"
+                )
                 pw_lay.addWidget(line)
 
         root.addWidget(self.progress_widget)
@@ -202,9 +218,18 @@ class WizardView(QDialog):
         self.step7b = Step7bFineTune(self.controller, self.state)
         self.step8 = Step8Review(self.controller, self.state)
         self.step9 = Step9Logs(self.controller, self.state)
-        self.steps = [self.step1, self.step2, self.step3, self.step4,
-                      self.step5, self.step6, self.step7, self.step7b,
-                      self.step8, self.step9]
+        self.steps = [
+            self.step1,
+            self.step2,
+            self.step3,
+            self.step4,
+            self.step5,
+            self.step6,
+            self.step7,
+            self.step7b,
+            self.step8,
+            self.step9,
+        ]
         for s in self.steps:
             self.stack.addWidget(s)
         root.addWidget(self.stack, 1)
@@ -281,7 +306,9 @@ class WizardView(QDialog):
             _ocr = s.get_setting("ocr.primary_model", "")
             _source = s.get_setting("source_type", "normal_book")
             _cov = s.get_setting("summarisation.coverage_threshold", 50)
-            _arch = s.get_setting("summarisation.model_architecture", "single_local") or "single_local"
+            _arch = (
+                s.get_setting("summarisation.model_architecture", "single_local") or "single_local"
+            )
             # Apply to state
             self.state.max_workers = int(_mw)
             self.state.temperature = float(_temp)
@@ -299,19 +326,29 @@ class WizardView(QDialog):
             # V18.2.1: Load performance + embedding settings into wizard state
             self.state.embedding_model = s.get_setting("embedding.model", "all-MiniLM-L6-v2")
             self.state.embedding_device = s.get_setting("embedding.device", "auto")
-            self.state.vram_recovery_delay_sec = int(s.get_setting("local.vram_recovery_delay_sec", 0))
+            self.state.vram_recovery_delay_sec = int(
+                s.get_setting("local.vram_recovery_delay_sec", 0)
+            )
             self.state.b4_max_sections = int(s.get_setting("local.b4_max_sections", 6))
-            self.state.b4_threshold_tokens = int(s.get_setting("summarisation.b4_threshold_tokens", 12000))
+            self.state.b4_threshold_tokens = int(
+                s.get_setting("summarisation.b4_threshold_tokens", 12000)
+            )
             # V0.04: load the token budget settings into the wizard state.
             # The state's hardcoded 32768/8192 defaults used to override the
             # persisted values — the wizard showed 32k even when settings
             # said 65k (llama.cpp backend), and step 7b's spinboxes started
             # from the stale defaults. GENERAL RULE: the wizard must show
             # what is actually configured, not its own literals.
-            self.state.max_context_tokens = int(s.get_setting("summarisation.max_context_tokens", 32768))
-            self.state.max_output_tokens = int(s.get_setting("summarisation.max_output_tokens", 16000))
+            self.state.max_context_tokens = int(
+                s.get_setting("summarisation.max_context_tokens", 32768)
+            )
+            self.state.max_output_tokens = int(
+                s.get_setting("summarisation.max_output_tokens", 16000)
+            )
         except Exception as _e:
-            logger.debug("ignored %s: %s", type(_e).__name__, _e)  # if settings can't be loaded, use WizardState defaults
+            logger.debug(
+                "ignored %s: %s", type(_e).__name__, _e
+            )  # if settings can't be loaded, use WizardState defaults
 
     # ── Navigation ────────────────────────────────────────────────────
 
@@ -320,7 +357,7 @@ class WizardView(QDialog):
         # Update dots — V7.6.0 R3: current step is visually distinct via
         # larger dot + accent-colored background pill + bold label.
         p = theme_manager.palette
-        for i, (dot, lbl) in enumerate(zip(self._step_dots, self._step_labels)):
+        for i, (dot, lbl) in enumerate(zip(self._step_dots, self._step_labels, strict=False)):
             if i < self._current_step:
                 # Completed step — muted green, normal size
                 color = p.success
@@ -405,9 +442,11 @@ class WizardView(QDialog):
 
     def _cancel_wizard(self) -> None:
         ret = QMessageBox.question(
-            self, "Cancel wizard",
+            self,
+            "Cancel wizard",
             "Cancel the wizard? Your choices will be lost.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret == QMessageBox.Yes:
             self.reject()  # Close the modal dialog
@@ -437,9 +476,18 @@ class WizardView(QDialog):
         self.step7b = Step7bFineTune(self.controller, self.state)
         self.step8 = Step8Review(self.controller, self.state)
         self.step9 = Step9Logs(self.controller, self.state)
-        self.steps = [self.step1, self.step2, self.step3, self.step4,
-                      self.step5, self.step6, self.step7, self.step7b,
-                      self.step8, self.step9]
+        self.steps = [
+            self.step1,
+            self.step2,
+            self.step3,
+            self.step4,
+            self.step5,
+            self.step6,
+            self.step7,
+            self.step7b,
+            self.step8,
+            self.step9,
+        ]
         for s in self.steps:
             self.stack.addWidget(s)
         # Re-wire
@@ -502,9 +550,7 @@ class WizardView(QDialog):
         self._save_translation_settings()
 
         # V7.7.0: persist resume_enabled to settings (converter reads it from there)
-        self.controller.update_setting(
-            "summarisation.resume_enabled", self.state.resume_enabled
-        )
+        self.controller.update_setting("summarisation.resume_enabled", self.state.resume_enabled)
 
         # V8.1.0: capture post-completion action from Step8's combo + persist
         self.state.post_completion_action = self.step8.post_action_combo.currentData()
@@ -519,8 +565,7 @@ class WizardView(QDialog):
         except Exception as e:
             # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the
             # user box (was str(e)-only — zero diagnostics).
-            logger.warning("failed to build conversion request",
-                           exc_info=True)
+            logger.warning("failed to build conversion request", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to build conversion request: {e}")
             return
 
@@ -549,6 +594,7 @@ class WizardView(QDialog):
         except Exception as e:
             # Don't block conversion if the estimator fails
             import logging
+
             logging.getLogger(__name__).debug(f"Token estimator skipped: {e}")
 
         # Jump to logs step (index 9)
@@ -615,6 +661,7 @@ class WizardView(QDialog):
         """
         try:
             from core.vram_calculator import calculate_vram_budget, format_vram_report
+
             s = self.state
             estimates, peak, total, recommendation = calculate_vram_budget(
                 ocr_model=s.primary_ocr_model,
@@ -639,9 +686,10 @@ class WizardView(QDialog):
             # V7.1.0 S3: If overbudget, let the policy decide (P0-c).
             if total and peak > total:
                 from utils.settings import Settings as _VramSettings
-                policy = str(
-                    _VramSettings().get("local.vram_overbudget_policy", "ask")
-                ).strip().lower()
+
+                policy = (
+                    str(_VramSettings().get("local.vram_overbudget_policy", "ask")).strip().lower()
+                )
                 if policy == "proceed":
                     self.step9.log_viewer.append(
                         "⚠️ VRAM overbudget — policy=proceed: continuing at "
@@ -694,7 +742,9 @@ class WizardView(QDialog):
                 return False
             return True
         except Exception as _e:
-            logger.debug("ignored %s: %s", type(_e).__name__, _e)  # VRAM check should never block conversion
+            logger.debug(
+                "ignored %s: %s", type(_e).__name__, _e
+            )  # VRAM check should never block conversion
             return True  # check itself failed — never block (V7.1.0 semantics)
 
     # ── V8.1.0: Hardware monitor ─────────────────────────────────────────
@@ -703,6 +753,7 @@ class WizardView(QDialog):
         """V10.25.0: Start a live elapsed timer shown in Step9Logs."""
         from PySide6.QtCore import QTime
         from PySide6.QtCore import QTimer as _QTimer
+
         self._elapsed_start = QTime.currentTime()
         self._elapsed_timer = _QTimer(self)
         self._elapsed_timer.timeout.connect(self._update_elapsed)
@@ -711,6 +762,7 @@ class WizardView(QDialog):
     def _update_elapsed(self) -> None:
         """Update the elapsed time label."""
         from PySide6.QtCore import QTime
+
         if not hasattr(self, "_elapsed_start") or not hasattr(self.step9, "elapsed_label"):
             return
         elapsed = self._elapsed_start.secsTo(QTime.currentTime())
@@ -729,6 +781,7 @@ class WizardView(QDialog):
     def _start_hardware_monitor(self) -> None:
         """Start the GPU/CPU/RAM monitor + a UI timer to update the label."""
         from core.system.hardware_monitor import HardwareMonitor
+
         # V9.0.0 E3: auto-pause callback — triggers cancel_conversion when
         # GPU temp reaches critical (88°C), preventing hardware damage.
         # V18.20.4.1 (P0 / W-b2): BOTH monitor callbacks run on the monitor's
@@ -744,6 +797,7 @@ class WizardView(QDialog):
         # slot, also queued to the main thread.
         def _auto_pause():
             self.auto_pause_requested.emit()
+
         self._hw_monitor = HardwareMonitor(
             log_callback=lambda msg, level: self.bridge.emit_log(msg, level),
             interval_sec=5.0,
@@ -752,6 +806,7 @@ class WizardView(QDialog):
         self._hw_monitor.start()
         # QTimer to poll the snapshot + update the label (every 5s)
         from PySide6.QtCore import QTimer
+
         self._hw_timer = QTimer(self)
         self._hw_timer.timeout.connect(self._update_hw_label)
         self._hw_timer.start(5000)
@@ -798,9 +853,7 @@ class WizardView(QDialog):
         self._hw_log_counter += 1
         if self._hw_log_counter >= 12:
             self._hw_log_counter = 0
-            self.step9.log_viewer.append(
-                f"  📊 HW: {snap.format_compact()}", "DEBUG"
-            )
+            self.step9.log_viewer.append(f"  📊 HW: {snap.format_compact()}", "DEBUG")
 
     def _log_settings(self) -> None:
         """Dump all wizard settings to the log for diagnostics."""
@@ -818,23 +871,39 @@ class WizardView(QDialog):
         log.append(f"  Auto-detect scanned: {s.auto_detect_scanned}", "INFO")
         log.append(f"  LLM OCR: {s.use_llm_ocr}, Force OCR: {s.force_ocr_all_pages}", "INFO")
         log.append(f"  PaddleOCR: {s.use_paddleocr}, Timeout: {s.ocr_timeout}s", "INFO")
-        log.append(f"  Extract figures: {s.extract_figure_text}, Tables: {s.extract_tables}", "INFO")
+        log.append(
+            f"  Extract figures: {s.extract_figure_text}, Tables: {s.extract_tables}", "INFO"
+        )
         # Outputs
         outs = []
-        if s.generate_summaries and s.include_executive_summary: outs.append("exec_summary")
-        if s.generate_summaries and s.include_thorough_summary: outs.append("thorough_summary")
-        if s.include_keypoints: outs.append("keypoints")
-        if s.simplified_keypoints_enabled: outs.append("simplified_keypoints")
-        if s.generate_docx: outs.append("docx")
-        if s.outputs_briefing: outs.append("briefing")
-        if s.outputs_podcast: outs.append("podcast_script")
-        if s.outputs_tts: outs.append("podcast_audio")
-        if s.outputs_flashcards: outs.append("flashcards")
-        if s.outputs_packets: outs.append("packets")
-        if s.outputs_obsidian: outs.append("obsidian")
-        if s.outputs_study_guide: outs.append("study_guide")
-        if s.outputs_social: outs.append("social")
-        if s.outputs_mindmap: outs.append("mindmap")
+        if s.generate_summaries and s.include_executive_summary:
+            outs.append("exec_summary")
+        if s.generate_summaries and s.include_thorough_summary:
+            outs.append("thorough_summary")
+        if s.include_keypoints:
+            outs.append("keypoints")
+        if s.simplified_keypoints_enabled:
+            outs.append("simplified_keypoints")
+        if s.generate_docx:
+            outs.append("docx")
+        if s.outputs_briefing:
+            outs.append("briefing")
+        if s.outputs_podcast:
+            outs.append("podcast_script")
+        if s.outputs_tts:
+            outs.append("podcast_audio")
+        if s.outputs_flashcards:
+            outs.append("flashcards")
+        if s.outputs_packets:
+            outs.append("packets")
+        if s.outputs_obsidian:
+            outs.append("obsidian")
+        if s.outputs_study_guide:
+            outs.append("study_guide")
+        if s.outputs_social:
+            outs.append("social")
+        if s.outputs_mindmap:
+            outs.append("mindmap")
         log.append(f"  Outputs: {', '.join(outs) if outs else '(none)'}", "INFO")
         # Models
         log.append(f"  Summarization model: {s.summarisation_model or '(default)'}", "INFO")
@@ -847,22 +916,35 @@ class WizardView(QDialog):
             log.append(f"    Backend: {s.translation_backend}", "INFO")
             log.append(f"    Target: {s.translation_target_lang}", "INFO")
             log.append(f"    Harakat model: {s.translation_harakat_model or '(default)'}", "INFO")
-            log.append(f"    Judge model: {s.translation_judge_model or '(use summarization)'}", "INFO")
+            log.append(
+                f"    Judge model: {s.translation_judge_model or '(use summarization)'}", "INFO"
+            )
             tr_outs = [k for k, v in s.translation_outputs.items() if v]
-            log.append(f"    Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}", "INFO")
+            log.append(
+                f"    Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}", "INFO"
+            )
         # Advanced
         log.append(f"  Segmentation: {s.segment_strategy} (tokens: {s.token_limit})", "INFO")
-        log.append(f"  Semantic: {s.enable_semantic}, Academic rigor: {s.academic_rigor}, "
-                    f"Conservative drops: {s.conservative_drops}", "INFO")
+        log.append(
+            f"  Semantic: {s.enable_semantic}, Academic rigor: {s.academic_rigor}, "
+            f"Conservative drops: {s.conservative_drops}",
+            "INFO",
+        )
         # Fine-tuning
         log.append(f"  Clean markdown: {s.clean_markdown}, Token saver: {s.token_saver}", "INFO")
-        log.append(f"  Self-consistency: {s.self_consistency}, Coverage: {s.coverage_threshold}%", "INFO")
+        log.append(
+            f"  Self-consistency: {s.self_consistency}, Coverage: {s.coverage_threshold}%", "INFO"
+        )
         log.append(f"  Content filter: {s.enable_content_filter}", "INFO")
-        log.append(f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO")
+        log.append(
+            f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO"
+        )
         log.append(f"  Cache: {s.cache_enabled}", "INFO")
         log.append(f"  Heavy model: {s.heavy_model or '(disabled)'}", "INFO")
         log.append(f"  Simplification model: {s.simplification_model or '(use fast)'}", "INFO")
-        log.append(f"  Extract math: {s.extract_math}, Layout analysis: {s.layout_analysis}", "INFO")
+        log.append(
+            f"  Extract math: {s.extract_math}, Layout analysis: {s.layout_analysis}", "INFO"
+        )
         log.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━", "INFO")
 
     def _save_translation_settings(self) -> None:
@@ -999,6 +1081,7 @@ class WizardView(QDialog):
             # Close the wizard + the main window
             self.accept()  # close the wizard dialog
             from PySide6.QtWidgets import QApplication
+
             QApplication.instance().quit()
             return
 
@@ -1013,7 +1096,7 @@ class WizardView(QDialog):
         countdown_sec = int(self.controller.get_setting("ui.shutdown_countdown_sec", 60))
         self.step9.log_viewer.append(
             f"  ⏳ {label} in {countdown_sec} seconds (click Cancel in the dialog to abort)…",
-            "WARNING"
+            "WARNING",
         )
 
         from PySide6.QtCore import QTimer
@@ -1049,6 +1132,7 @@ class WizardView(QDialog):
 
         # Countdown timer — V9.0.0 E2: configurable duration
         remaining = [countdown_sec]
+
         def _tick():
             remaining[0] -= 1
             if remaining[0] <= 0:
@@ -1074,6 +1158,7 @@ class WizardView(QDialog):
         # Execute the action
         try:
             from core.system.hardware_monitor import execute_post_completion_action
+
             execute_post_completion_action(action, delay_seconds=0, log_callback=self._on_log)
             self.step9.log_viewer.append(f"  🔌 {label} command executed.", "INFO")
         except Exception as e:
@@ -1094,8 +1179,10 @@ class WizardView(QDialog):
         except Exception:
             # Fallback: if the modal fails, at least show a basic message
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, "Conversion Complete",
-                f"Conversion finished. Success: {result.success}")
+
+            QMessageBox.information(
+                self, "Conversion Complete", f"Conversion finished. Success: {result.success}"
+            )
 
     def _update_quality_dashboard_from_report(self) -> None:
         """V18.20.4.9 (W-b15): refresh the step9 quality dashboard from the
@@ -1113,10 +1200,11 @@ class WizardView(QDialog):
         try:
             import json
 
-            base = (Path(self.state.output_dir)
-                    if self.state.output_dir
-                    else (Path(self.state.input_path).parent
-                          if self.state.input_path else None))
+            base = (
+                Path(self.state.output_dir)
+                if self.state.output_dir
+                else (Path(self.state.input_path).parent if self.state.input_path else None)
+            )
             if base is None:
                 return
             report_path = base / "logs" / "quality_report.json"
@@ -1128,8 +1216,7 @@ class WizardView(QDialog):
             done = totals.get("successful_summaries")
             total = totals.get("chapters_summarized")
             bullets = totals.get("total_bullets")
-            if not (isinstance(done, int) and isinstance(total, int)
-                    and isinstance(bullets, int)):
+            if not (isinstance(done, int) and isinstance(total, int) and isinstance(bullets, int)):
                 return  # non-numeric/missing — keep the fallback values
             self.step9.quality_label.setText(
                 f"Quality: {done}/{total} chapters done | {bullets} bullets total"
@@ -1153,7 +1240,9 @@ class WizardView(QDialog):
             self.step9.log_viewer.append("✅ CONVERSION FULLY COMPLETE!", "SUCCESS")
             self.step9.log_viewer.append(f"  Pages processed: {result.pages_processed}", "INFO")
             self.step9.log_viewer.append(f"  Chapters detected: {result.chapters_detected}", "INFO")
-            self.step9.log_viewer.append(f"  Summaries generated: {result.summaries_generated}", "INFO")
+            self.step9.log_viewer.append(
+                f"  Summaries generated: {result.summaries_generated}", "INFO"
+            )
             if result.warnings:
                 self.step9.log_viewer.append(f"  Warnings: {len(result.warnings)}", "WARNING")
                 for w in result.warnings[:5]:
@@ -1164,20 +1253,24 @@ class WizardView(QDialog):
             self.step9.open_summaries_btn.setVisible(True)
             self.step9.again_btn.setVisible(True)
             QMessageBox.information(
-                self, "Conversion Complete",
+                self,
+                "Conversion Complete",
                 f"✅ Conversion fully complete!\n\n"
                 f"Pages processed: {result.pages_processed}\n"
                 f"Chapters: {result.chapters_detected}\n"
                 f"Summaries: {result.summaries_generated}\n\n"
                 f"Output saved to:\n{result.full_markdown_path.parent if result.full_markdown_path else '(unknown)'}\n\n"
-                f"Click 'Open output folder' to see the results."
+                f"Click 'Open output folder' to see the results.",
             )
             # Auto-open output folder on completion (if enabled)
             if self.controller.get_setting("ui.auto_open_output_folder", False):
                 try:
                     import subprocess
                     import sys
-                    folder = str(result.full_markdown_path.parent) if result.full_markdown_path else ""
+
+                    folder = (
+                        str(result.full_markdown_path.parent) if result.full_markdown_path else ""
+                    )
                     if folder:
                         if sys.platform == "win32":
                             subprocess.Popen(["explorer", folder])
@@ -1198,9 +1291,9 @@ class WizardView(QDialog):
             self.step9.cancel_btn.setVisible(False)
             self.step9.again_btn.setVisible(True)
             QMessageBox.critical(
-                self, "Conversion Failed",
-                f"❌ Conversion failed:\n\n{result.error_msg}\n\n"
-                f"Check the log for details."
+                self,
+                "Conversion Failed",
+                f"❌ Conversion failed:\n\n{result.error_msg}\n\nCheck the log for details.",
             )
         self.conversion_complete.emit(result)
 
@@ -1225,8 +1318,12 @@ class WizardView(QDialog):
         # V5.4.1: Safe disconnect — wrap each in try/except to avoid
         # "Failed to disconnect (None)" runtime warnings when signals
         # were never connected (e.g., user closed before starting conversion)
-        for sig in [self.bridge.progress, self.bridge.status,
-                       self.bridge.log, self.bridge.complete]:
+        for sig in [
+            self.bridge.progress,
+            self.bridge.status,
+            self.bridge.log,
+            self.bridge.complete,
+        ]:
             try:
                 sig.disconnect()
             except Exception:
@@ -1243,12 +1340,13 @@ class WizardView(QDialog):
             if main_window and hasattr(main_window, "convert_view"):
                 owner = getattr(self.controller, "callback_owner", None)
                 if owner == "queue":
-                    log_target = getattr(
-                        getattr(self, "step9", None), "log_viewer", None)
+                    log_target = getattr(getattr(self, "step9", None), "log_viewer", None)
                     if log_target is not None:
                         log_target.append(
                             "ℹ️ Queue owns the controller callbacks — wizard "
-                            "close leaves them in place (W-b10).", "INFO")
+                            "close leaves them in place (W-b10).",
+                            "INFO",
+                        )
                 else:
                     main_window.convert_view._register_callbacks()
         except Exception:
@@ -1257,9 +1355,11 @@ class WizardView(QDialog):
 
     def _cancel_conversion(self) -> None:
         ret = QMessageBox.question(
-            self, "Cancel conversion",
+            self,
+            "Cancel conversion",
             "Cancel the running conversion?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret == QMessageBox.Yes:
             self.controller.cancel_conversion()
@@ -1268,6 +1368,7 @@ class WizardView(QDialog):
     def _open_output_folder(self) -> None:
         import subprocess
         import sys
+
         out_dir = self.state.output_dir or str(Path(self.state.input_path).parent)
         if sys.platform == "win32":
             subprocess.Popen(["explorer", out_dir])
@@ -1286,7 +1387,12 @@ class WizardView(QDialog):
         """
         import subprocess
         import sys
-        base = Path(self.state.output_dir) if self.state.output_dir else Path(self.state.input_path).parent
+
+        base = (
+            Path(self.state.output_dir)
+            if self.state.output_dir
+            else Path(self.state.input_path).parent
+        )
         target = base / "summaries"
         if not target.exists():
             target = base  # graceful fallback — never error from a button

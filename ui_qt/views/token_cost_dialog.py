@@ -27,6 +27,7 @@ Usage::
     else:
         # user cancelled
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -121,6 +122,7 @@ class TokenCostDialog(QDialog):
         max_h = self._DLG_HEIGHT
         try:
             from PySide6.QtGui import QGuiApplication
+
             screen = self.screen() or QGuiApplication.primaryScreen()
             if screen is not None:
                 avail = screen.availableGeometry()
@@ -156,9 +158,7 @@ class TokenCostDialog(QDialog):
         # every button in the scroll content. Scoping to the objectName
         # styles only this container.
         content.setObjectName("CostDialogContent")
-        content.setStyleSheet(
-            "QWidget#CostDialogContent { background: transparent; }"
-        )
+        content.setStyleSheet("QWidget#CostDialogContent { background: transparent; }")
         lay = QVBoxLayout(content)
         lay.setSpacing(12)
         lay.setContentsMargins(20, 16, 20, 12)
@@ -187,8 +187,9 @@ class TokenCostDialog(QDialog):
             selected_count = self._estimate.get("selected_chapter_count", 0)
             selected_total = self._estimate.get("selected_total_tokens", 0)
             full_total = self._estimate.get("total_tokens", 0)
-            full_chapters = self._estimate.get("full_book_chapter_count",
-                                                self._estimate.get("chapter_count", 0))
+            full_chapters = self._estimate.get(
+                "full_book_chapter_count", self._estimate.get("chapter_count", 0)
+            )
 
             header = QLabel("📊 This conversion will use approximately:")
             header.setStyleSheet("font-size: 14px; font-weight: bold;")
@@ -205,7 +206,9 @@ class TokenCostDialog(QDialog):
             # Caption: "for N selected chapter(s)"
             caption = QLabel(f"for {selected_count} selected chapter(s)")
             caption.setAlignment(Qt.AlignCenter)
-            caption.setStyleSheet("color: #5B9BD5; font-size: 12px; font-weight: bold; padding-bottom: 4px;")
+            caption.setStyleSheet(
+                "color: #5B9BD5; font-size: 12px; font-weight: bold; padding-bottom: 4px;"
+            )
             lay.addWidget(caption)
 
             # SECONDARY: full book (muted, smaller)
@@ -236,7 +239,9 @@ class TokenCostDialog(QDialog):
             header.setStyleSheet("font-size: 14px; font-weight: bold;")
             lay.addWidget(header)
 
-            total_label = QLabel(f"<span style='font-size: 22px; font-weight: bold;'>{total:,}</span> tokens")
+            total_label = QLabel(
+                f"<span style='font-size: 22px; font-weight: bold;'>{total:,}</span> tokens"
+            )
             total_label.setAlignment(Qt.AlignCenter)
             total_label.setStyleSheet("padding: 8px;")
             lay.addWidget(total_label)
@@ -248,21 +253,44 @@ class TokenCostDialog(QDialog):
         stats_lay.setSpacing(4)
 
         if self._has_selection:
-            stats_lay.addRow("Selected chapters:", QLabel(str(self._estimate.get("selected_chapter_count", "?"))))
-            stats_lay.addRow("Selected source:", QLabel(f"{self._estimate.get('selected_source_tokens', 0):,} tokens"))
-            stats_lay.addRow("Selected LLM calls:", QLabel(str(self._estimate.get("selected_llm_calls", "?"))))
-            stats_lay.addRow("Avg tokens/selected ch:", QLabel(f"{self._estimate.get('selected_avg_chapter_tokens', 0):,}"))
+            stats_lay.addRow(
+                "Selected chapters:", QLabel(str(self._estimate.get("selected_chapter_count", "?")))
+            )
+            stats_lay.addRow(
+                "Selected source:",
+                QLabel(f"{self._estimate.get('selected_source_tokens', 0):,} tokens"),
+            )
+            stats_lay.addRow(
+                "Selected LLM calls:", QLabel(str(self._estimate.get("selected_llm_calls", "?")))
+            )
+            stats_lay.addRow(
+                "Avg tokens/selected ch:",
+                QLabel(f"{self._estimate.get('selected_avg_chapter_tokens', 0):,}"),
+            )
             stats_lay.addRow("━━━━━━━━━━━━━━━", QLabel("━━━━━━━━━━━━━━━"))
-            stats_lay.addRow("Full book chapters:", QLabel(str(self._estimate.get("full_book_chapter_count", "?"))))
+            stats_lay.addRow(
+                "Full book chapters:",
+                QLabel(str(self._estimate.get("full_book_chapter_count", "?"))),
+            )
             stats_lay.addRow("PDF pages:", QLabel(str(self._estimate.get("pdf_pages", "?"))))
-            stats_lay.addRow("Full book source:", QLabel(f"{self._estimate.get('source_tokens', 0):,} tokens"))
+            stats_lay.addRow(
+                "Full book source:", QLabel(f"{self._estimate.get('source_tokens', 0):,} tokens")
+            )
         else:
             stats_lay.addRow("PDF pages:", QLabel(str(self._estimate.get("pdf_pages", "?"))))
-            stats_lay.addRow("Source text:", QLabel(f"{self._estimate.get('source_tokens', 0):,} tokens"))
-            stats_lay.addRow("Extracted chars:", QLabel(f"{self._estimate.get('extracted_chars', 0):,}"))
-            stats_lay.addRow("Est. chapters:", QLabel(str(self._estimate.get("chapter_count", "?"))))
+            stats_lay.addRow(
+                "Source text:", QLabel(f"{self._estimate.get('source_tokens', 0):,} tokens")
+            )
+            stats_lay.addRow(
+                "Extracted chars:", QLabel(f"{self._estimate.get('extracted_chars', 0):,}")
+            )
+            stats_lay.addRow(
+                "Est. chapters:", QLabel(str(self._estimate.get("chapter_count", "?")))
+            )
             stats_lay.addRow("Est. LLM calls:", QLabel(str(self._estimate.get("llm_calls", "?"))))
-            stats_lay.addRow("Avg tokens/chapter:", QLabel(f"{self._estimate.get('avg_chapter_tokens', 0):,}"))
+            stats_lay.addRow(
+                "Avg tokens/chapter:", QLabel(f"{self._estimate.get('avg_chapter_tokens', 0):,}")
+            )
 
         lay.addWidget(stats_group)
 
@@ -284,7 +312,9 @@ class TokenCostDialog(QDialog):
         breakdown_lay.setSpacing(4)
 
         breakdown_lay.addRow("📥 Input (source + prompts):", QLabel(f"{input_tokens:,} tokens"))
-        breakdown_lay.addRow("📤 Output (summaries + outputs):", QLabel(f"{output_tokens:,} tokens"))
+        breakdown_lay.addRow(
+            "📤 Output (summaries + outputs):", QLabel(f"{output_tokens:,} tokens")
+        )
         breakdown_lay.addRow("━━━━━━━━━━━━━━━", QLabel("━━━━━━━━━━━━━━━"))
         breakdown_lay.addRow("Total:", QLabel(f"<b>{total:,} tokens</b>"))
 
@@ -406,11 +436,7 @@ class TokenCostDialog(QDialog):
         """
         rate = self.cost_per_million_spin.value()
         if rate <= 0:
-            self.total_cost_label.setText(
-                "<b>$0.00</b> (enter a cost above to estimate)"
-            )
+            self.total_cost_label.setText("<b>$0.00</b> (enter a cost above to estimate)")
             return
         total_cost = (self._total_tokens / 1_000_000) * rate
-        self.total_cost_label.setText(
-            f"<b>${total_cost:,.2f}</b> (based on your input)"
-        )
+        self.total_cost_label.setText(f"<b>${total_cost:,.2f}</b> (based on your input)")

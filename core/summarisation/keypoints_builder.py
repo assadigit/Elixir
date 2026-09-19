@@ -100,6 +100,7 @@ class KeypointsBuilder:
         # (it's a different algorithm — cosine similarity vs token_set_ratio).
         try:
             from rapidfuzz import fuzz
+
             _has_rf = True
         except ImportError:
             _has_rf = False
@@ -111,6 +112,7 @@ class KeypointsBuilder:
         _embed_model = None
         try:
             from core.llm.model_singletons import get_embed_model
+
             _embed_model = get_embed_model()
             if _embed_model is not None:
                 _has_embeddings = True
@@ -133,7 +135,9 @@ class KeypointsBuilder:
                     "DEBUG",
                 )
         except Exception as _e:
-            logger.debug("ignored %s: %s", type(_e).__name__, _e)  # not installed — fall back to rapidfuzz
+            logger.debug(
+                "ignored %s: %s", type(_e).__name__, _e
+            )  # not installed — fall back to rapidfuzz
 
         seen_norms: list = []
         seen_embeddings: list = []  # for C3 embedding dedup
@@ -144,8 +148,8 @@ class KeypointsBuilder:
             if not bp or len(bp.strip()) < 2:
                 continue
             # Normalize: lowercase, collapse whitespace, keep digits and %, $, /
-            norm = re.sub(r'\s+', ' ', bp.lower().strip())
-            norm = re.sub(r'[^\w\s%$/\-]', '', norm)  # keep word chars, spaces, %, $, /, -
+            norm = re.sub(r"\s+", " ", bp.lower().strip())
+            norm = re.sub(r"[^\w\s%$/\-]", "", norm)  # keep word chars, spaces, %, $, /, -
 
             # Exact dedup
             if norm in seen_norms:
@@ -163,6 +167,7 @@ class KeypointsBuilder:
                 import numpy as np
 
                 from core.llm.embedding_cache import cached_encode
+
                 bp_embedding = cached_encode(_embed_model, [bp])[0]
                 is_dup = False
                 for existing_emb in seen_embeddings:
@@ -183,6 +188,7 @@ class KeypointsBuilder:
                 # DedupService so the threshold + algorithm are unified.
                 # V3.9.2: Cross-chapter dedup uses a FIXED 75% threshold.
                 from core.summarisation.dedup_service import WITHIN_CHAPTER_THRESHOLD
+
                 is_dup = False
                 for existing in seen_norms:
                     if fuzz.token_set_ratio(norm, existing) >= WITHIN_CHAPTER_THRESHOLD:
@@ -219,6 +225,7 @@ class KeypointsBuilder:
         # V3.4.1 J1: Order bullets by topic clustering for structured readability
         try:
             from core.summarisation.text_preprocessor import order_bullets_by_topic
+
             ordered_bullets = order_bullets_by_topic(unique_bullets)
             self.log("  📑 J1: Bullets reordered by topic clustering", "DEBUG")
         except Exception as _e:
@@ -232,7 +239,9 @@ class KeypointsBuilder:
             source_text = " ".join(s.content for s in segments)
             # Try to get page markers from segments
             try:
-                page_markers = [(s.start_page, s.start_page) for s in segments if hasattr(s, 'start_page')]
+                page_markers = [
+                    (s.start_page, s.start_page) for s in segments if hasattr(s, "start_page")
+                ]
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
@@ -255,7 +264,7 @@ class KeypointsBuilder:
                 for bp_text, snippet in be.items():
                     if snippet:
                         # Normalize the key the same way bullets are compared
-                        norm = re.sub(r'\s+', ' ', bp_text.lower().strip())
+                        norm = re.sub(r"\s+", " ", bp_text.lower().strip())
                         evidence_lookup[norm] = (snippet, True)
 
         bullet_metadata = []
@@ -266,15 +275,18 @@ class KeypointsBuilder:
                 find_source_excerpt,
                 find_source_page,
             )
+
             verified_count = 0
             for bp in ordered_bullets:
-                confidence = compute_bullet_confidence(bp, source_text, all_concepts) if source_text else 50
+                confidence = (
+                    compute_bullet_confidence(bp, source_text, all_concepts) if source_text else 50
+                )
                 excerpt = find_source_excerpt(bp, source_text) if source_text else None
                 page = find_source_page(bp, source_text, page_markers) if page_markers else None
                 # V3.6.0: Classify bullet as core/supporting/additional
                 classification = classify_bullet(bp, all_concepts, source_text)
                 # V10.1.0: Layer 8 evidence lookup
-                bp_norm = re.sub(r'\s+', ' ', bp.lower().strip())
+                bp_norm = re.sub(r"\s+", " ", bp.lower().strip())
                 l8_evidence = evidence_lookup.get(bp_norm)
                 verified = False
                 if l8_evidence:
@@ -286,14 +298,16 @@ class KeypointsBuilder:
                     # — bump confidence toward 100 (floor at 85 so a verified
                     # bullet never shows as "low confidence").
                     confidence = max(confidence, 85)
-                bullet_metadata.append({
-                    "text": bp,
-                    "confidence": confidence,
-                    "excerpt": excerpt,
-                    "page": page,
-                    "classification": classification,
-                    "verified": verified,  # V10.1.0
-                })
+                bullet_metadata.append(
+                    {
+                        "text": bp,
+                        "confidence": confidence,
+                        "excerpt": excerpt,
+                        "page": page,
+                        "classification": classification,
+                        "verified": verified,  # V10.1.0
+                    }
+                )
             core_count = sum(1 for b in bullet_metadata if b["classification"] == "core")
             supp_count = sum(1 for b in bullet_metadata if b["classification"] == "supporting")
             addl_count = sum(1 for b in bullet_metadata if b["classification"] == "additional")
@@ -305,9 +319,17 @@ class KeypointsBuilder:
             )
         except Exception:
             # Fallback: no metadata
-            bullet_metadata = [{"text": bp, "confidence": 50, "excerpt": None, "page": None,
-                               "classification": "additional", "verified": False}
-                              for bp in ordered_bullets]
+            bullet_metadata = [
+                {
+                    "text": bp,
+                    "confidence": 50,
+                    "excerpt": None,
+                    "page": None,
+                    "classification": "additional",
+                    "verified": False,
+                }
+                for bp in ordered_bullets
+            ]
 
         # Generate Markdown
         md_path = output_dir / f"{book_title}.Keypoints.md"
@@ -316,6 +338,7 @@ class KeypointsBuilder:
         # may not have created it yet if keypoints is the first output to write here).
         md_path.parent.mkdir(parents=True, exist_ok=True)
         from utils.atomic_io import atomic_write_text
+
         try:
             atomic_write_text(md_path, md_content)
         except OSError as _owe:
@@ -376,11 +399,15 @@ class KeypointsBuilder:
             run.font.size = Pt(11)
             run.font.name = "Helvetica"
             p.paragraph_format.left_indent = Inches(0.25)
-            p.paragraph_format.space_after = Pt(20)  # V3.4.2: increased from 14 → 20 for more line height
+            p.paragraph_format.space_after = Pt(
+                20
+            )  # V3.4.2: increased from 14 → 20 for more line height
 
         doc.save(str(docx_path))
 
-    def _build_docx_enhanced(self, book_title: str, bullet_metadata: list[dict], docx_path: Path) -> None:
+    def _build_docx_enhanced(
+        self, book_title: str, bullet_metadata: list[dict], docx_path: Path
+    ) -> None:
         """V3.4.1 K1+K2+H2 + V3.4.2 K3: Build DOCX with confidence indicators,
         source excerpts, page citations, and progressive disclosure structure."""
         from docx.shared import RGBColor
@@ -397,7 +424,7 @@ class KeypointsBuilder:
         p.paragraph_format.space_after = Pt(12)
 
         # Legend (Level 2 heading — collapsible in Word)
-        legend_heading = doc.add_heading("Legend", level=2)
+        doc.add_heading("Legend", level=2)
         legend = doc.add_paragraph()
         # V10.1.0: added 🛡️ verified line when Layer 8 grounding is active
         verified_total = sum(1 for m in bullet_metadata if m.get("verified"))
@@ -407,8 +434,7 @@ class KeypointsBuilder:
         )
         if verified_total > 0:
             legend_text += (
-                "\n🛡️ Verified = verbatim source span confirmed by "
-                "langextract (Layer 8 grounding)"
+                "\n🛡️ Verified = verbatim source span confirmed by langextract (Layer 8 grounding)"
             )
         legend_run = legend.add_run(legend_text)
         legend_run.font.size = Pt(9)

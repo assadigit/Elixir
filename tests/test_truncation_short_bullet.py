@@ -18,6 +18,7 @@ legitimately lack terminal punctuation).
 
 Run: ``pytest tests/test_truncation_short_bullet.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,6 +38,7 @@ from core.summarisation.post_processing import is_truncated
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. The exact V18.19.3.0 audit defect: "Kernberg (198"
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestKernberg198Case:
     """The exact truncated bullet from the V18.19.3.0 audit."""
@@ -60,17 +62,21 @@ class TestKernberg198Case:
 # 2. Other short-bullet truncation forms (unmatched parens/quotes)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestShortBulletUnmatchedDelimiters:
     """Short bullets with unmatched parens/quotes must be flagged (any length)."""
 
-    @pytest.mark.parametrize("bullet", [
-        "Erikson (195",           # 13 chars, unmatched paren
-        "Freud (1926",             # 11 chars, unmatched paren
-        "Mahler (1958a,b, 1968",   # 22 chars, unmatched paren
-        "Jacobson (1964",          # 15 chars, unmatched paren
-        '"incomplete quote',      # 17 chars, unmatched quote
-        '"another unclosed',      # 17 chars, unmatched quote
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "Erikson (195",  # 13 chars, unmatched paren
+            "Freud (1926",  # 11 chars, unmatched paren
+            "Mahler (1958a,b, 1968",  # 22 chars, unmatched paren
+            "Jacobson (1964",  # 15 chars, unmatched paren
+            '"incomplete quote',  # 17 chars, unmatched quote
+            '"another unclosed',  # 17 chars, unmatched quote
+        ],
+    )
     def test_short_unmatched_paren_or_quote_flagged(self, bullet):
         assert is_truncated(bullet) is True, (
             f"Short bullet with unmatched delimiter must be flagged: {bullet!r}"
@@ -81,19 +87,23 @@ class TestShortBulletUnmatchedDelimiters:
 # 3. Regression guard: legitimate short labels must NOT be flagged
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLegitimateShortLabelsNotFlagged:
     """Short bullets with MATCHED parens/quotes are intentional labels, not
     truncated. They must NOT be flagged."""
 
-    @pytest.mark.parametrize("bullet", [
-        "Freud (1926a)",           # 13 chars, matched parens — citation label
-        "Erikson (1950)",          # 14 chars, matched parens — citation label
-        "See above.",              # 10 chars, ends in '.' — complete
-        "Tausk (1919)",            # 12 chars, matched parens
-        "Mahler et al. (1975)",    # 19 chars, matched parens
-        "Kernberg (1967, 1976, 1980b)",  # 28 chars, matched parens — complete
-        '"complete quote"',        # 16 chars, matched quotes
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "Freud (1926a)",  # 13 chars, matched parens — citation label
+            "Erikson (1950)",  # 14 chars, matched parens — citation label
+            "See above.",  # 10 chars, ends in '.' — complete
+            "Tausk (1919)",  # 12 chars, matched parens
+            "Mahler et al. (1975)",  # 19 chars, matched parens
+            "Kernberg (1967, 1976, 1980b)",  # 28 chars, matched parens — complete
+            '"complete quote"',  # 16 chars, matched quotes
+        ],
+    )
     def test_legitimate_short_label_not_flagged(self, bullet):
         assert is_truncated(bullet) is False, (
             f"Legitimate short label must NOT be flagged: {bullet!r}"
@@ -103,6 +113,7 @@ class TestLegitimateShortLabelsNotFlagged:
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Long-bullet truncation still works (regression guard)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestLongBulletTruncationStillWorks:
     """The existing long-bullet truncation checks must still work."""
@@ -116,19 +127,24 @@ class TestLongBulletTruncationStillWorks:
         assert is_truncated(bullet) is False
 
     def test_long_unmatched_quote(self):
-        bullet = ('"He said the identity concept was important '
-                  'but the quote never closes in this very long bullet')
+        bullet = (
+            '"He said the identity concept was important '
+            "but the quote never closes in this very long bullet"
+        )
         assert is_truncated(bullet) is True
 
     def test_long_unmatched_paren(self):
-        bullet = ("The author (Kernberg described this in his 1967 work "
-                  "on borderline pathology but never closed the paren")
+        bullet = (
+            "The author (Kernberg described this in his 1967 work "
+            "on borderline pathology but never closed the paren"
+        )
         assert is_truncated(bullet) is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. Edge cases
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestEdgeCases:
     def test_empty_string(self):

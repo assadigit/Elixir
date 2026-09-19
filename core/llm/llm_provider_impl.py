@@ -31,6 +31,7 @@ Usage::
         log_callback=log,
     )
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,6 +69,7 @@ def _get_keep_alive() -> str:
         return _runtime_state.keep_alive_cache
     try:
         from utils.settings import Settings
+
         _runtime_state.keep_alive_cache = str(Settings().get("llm.keep_alive", "30m"))
     except Exception:
         _runtime_state.keep_alive_cache = "30m"
@@ -158,6 +160,7 @@ class LLMProvider:
 
 # ── Factory ────────────────────────────────────────────────────────────────
 
+
 def create_provider(
     provider: str,
     settings: Any,
@@ -182,6 +185,7 @@ def create_provider(
     if provider == "ollama":
         from core.llm.ollama_provider import OllamaProvider
         from core.llm.registry import get_registry
+
         # V0.09 (P5): context window resolved through the ModelRegistry.
         # The SETTINGS value (passed as the registry's ``configured``)
         # WINS over every discovery source, so factory behavior is
@@ -215,6 +219,7 @@ def create_provider(
         # backend timeout) instead of the cloud-style 300s.
         from core.llm.llamacpp_provider import LlamaCppProvider
         from core.llm.registry import get_registry
+
         # V0.09 (P5): same registry routing as the ollama branch — the
         # settings value (65k window) stays the ``configured`` override so
         # nothing changes at today's defaults (pinned by
@@ -239,6 +244,7 @@ def create_provider(
         )
     elif provider in ("openrouter", "openai", "openai_compatible"):
         from core.llm.openai_compat_provider import OpenAICompatProvider
+
         return OpenAICompatProvider(
             model=settings.get("summarisation.cloud_model", ""),
             base_url=settings.get("summarisation.api_base_url", "https://openrouter.ai/api/v1"),
@@ -252,6 +258,7 @@ def create_provider(
         )
     elif provider == "freellmapi":
         from core.llm.openai_compat_provider import OpenAICompatProvider
+
         return OpenAICompatProvider(
             model=settings.get("summarisation.freellmapi_model", "auto"),
             base_url=settings.get("summarisation.freellmapi_url", "http://localhost:3001/v1"),
@@ -265,6 +272,7 @@ def create_provider(
         )
     elif provider == "claude":
         from core.llm.claude_provider import ClaudeProvider
+
         return ClaudeProvider(
             model=settings.get("summarisation.claude_model", "claude-3-5-sonnet-20241022"),
             api_key=settings.get("summarisation.claude_api_key", ""),
@@ -297,6 +305,7 @@ def __getattr__(name: str):
     """Lazy-load provider classes on first access (breaks circular import)."""
     if name in _LAZY_PROVIDER_NAMES:
         import importlib
+
         mod = importlib.import_module(_LAZY_PROVIDER_NAMES[name])
         cls = getattr(mod, name)
         # Cache on the module so subsequent accesses don't re-import

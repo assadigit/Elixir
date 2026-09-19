@@ -33,6 +33,7 @@ Covered here:
 
 Run: pytest tests/test_v1820411_p1_analysis_heading.py -v
 """
+
 from __future__ import annotations
 
 import re
@@ -105,6 +106,7 @@ def _clear_analysis_scan_cache():
 # Slug helper pin — byte-identical to the former output_save transformation
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSegmentFilenameSlug:
     @pytest.mark.parametrize(
         "heading",
@@ -114,9 +116,9 @@ class TestSegmentFilenameSlug:
             "Tab\tinside\tand\ncollapsed newlines",
             "Double  spaces   collapsed",
             "Em — dash and – en dash",
-            "???",                                     # empty after strip
-            "",                                       # empty heading
-            "A" * 200,                                # >60-char cap
+            "???",  # empty after strip
+            "",  # empty heading
+            "A" * 200,  # >60-char cap
             "Unicode ünïcödé heading ✓ works",
             "Mixed 123 numbers & (parens) [brackets]",
             " word boundaries kept ",
@@ -133,7 +135,7 @@ class TestSegmentFilenameSlug:
 
     def test_empty_after_strip(self):
         assert segment_filename_slug("?!.,;:") == ""
-        assert segment_filename_slug(None) == ""   # defensive: None heading
+        assert segment_filename_slug(None) == ""  # defensive: None heading
 
     def test_special_chars_removed_after_space_collapse(self):
         # order matters: spaces collapse BEFORE special-char removal, so
@@ -152,6 +154,7 @@ class TestSegmentFilenameSlug:
 # regexes without changing naming (source-level, house _strip_comments pin)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOutputSaveIntegrationPin:
     def _strip_comments(self, text: str) -> str:
         out = []
@@ -165,10 +168,10 @@ class TestOutputSaveIntegrationPin:
         src = self._strip_comments(_OS.read_text(encoding="utf-8"))
         # the shared helper is imported and used at BOTH former sites
         assert "from core.common.heading_utils import segment_filename_slug" in src
-        assert src.count("safe = segment_filename_slug(seg.heading) or f\"segment_{idx:03d}\"") == 2
+        assert src.count('safe = segment_filename_slug(seg.heading) or f"segment_{idx:03d}"') == 2
         # the former duplicated inline computation is gone
         assert 're.sub(r"[^\\w\\s\\-]", "", _h)' not in src
-        assert "_h = re.sub(r\"[\\t\\r\\n]+\", \" \", seg.heading)" not in src
+        assert '_h = re.sub(r"[\\t\\r\\n]+", " ", seg.heading)' not in src
 
     def test_deterministic_analyzer_uses_shared_helper(self):
         src = self._strip_comments(_DA.read_text(encoding="utf-8"))
@@ -186,7 +189,7 @@ class TestOutputSaveIntegrationPin:
             "Part II — The Middle Years",
             "Appendix A: Data Tables (2023)",
             "97 Things Every Programmer Should Know About Psychology",
-            "فصل اول",                       # non-Latin script (\w keeps it)
+            "فصل اول",  # non-Latin script (\w keeps it)
             "Conclusion",
             "Tab\tand\nnewline heading",
             "!!! ???",
@@ -202,7 +205,10 @@ class TestOutputSaveIntegrationPin:
 _HEADINGS_AND_MARKERS = [
     ("Chapter One: Beginnings", "AlphaAuthor"),
     ('Chapter 5: "Quotes" & Symbols/Slash', "BetaAuthor"),
-    ("This Heading Is Deliberately Much Longer Than Sixty Characters To Force Truncation", "GammaAuthor"),
+    (
+        "This Heading Is Deliberately Much Longer Than Sixty Characters To Force Truncation",
+        "GammaAuthor",
+    ),
 ]
 
 
@@ -220,9 +226,7 @@ class TestMultiFileExactSlugMatch:
         log = _Log()
         seg_path, analysis = find_analysis_for_heading(multi_tree, heading, log_fn=log)
         assert analysis, f"heading {heading!r} found no analysis"
-        assert marker in analysis, (
-            f"heading {heading!r} got the WRONG analysis (expected {marker})"
-        )
+        assert marker in analysis, f"heading {heading!r} got the WRONG analysis (expected {marker})"
         # the segment path is the slug-named twin, and the match is logged
         assert seg_path.endswith(".md") and "segments" in seg_path
         assert any("exact slug" in m for m in log.infos()), log.infos()
@@ -249,6 +253,7 @@ class TestMultiFileExactSlugMatch:
 # Fuzzy fallback — case/whitespace drift
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFuzzyFallback:
     def test_case_drifted_heading_matches_via_fuzzy(self, tmp_path):
         seg = tmp_path / "segments"
@@ -258,9 +263,7 @@ class TestFuzzyFallback:
         log = _Log()
         # different case + collapsed/extra whitespace → no exact slug hit,
         # but the fuzzy rung (ratio ≥ 0.75) must find chapter one's file.
-        _, analysis = find_analysis_for_heading(
-            tmp_path, "chapter one:  beginnings", log_fn=log
-        )
+        _, analysis = find_analysis_for_heading(tmp_path, "chapter one:  beginnings", log_fn=log)
         assert "AlphaAuthor" in analysis
         assert any("fuzzy" in m for m in log.infos()), log.infos()
 
@@ -268,6 +271,7 @@ class TestFuzzyFallback:
 # ═══════════════════════════════════════════════════════════════════════════
 # Single-file legacy behavior (V17.5 contract — pinned by test_v182048 too)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestSingleFileLegacy:
     def test_single_file_returned_for_any_heading_without_warning(self, tmp_path):
@@ -290,6 +294,7 @@ class TestSingleFileLegacy:
 # ═══════════════════════════════════════════════════════════════════════════
 # Fail-closed — unmatchable heading among multiple files
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestFailClosed:
     def test_unmatchable_heading_returns_empty_and_warns(self, tmp_path):
@@ -326,6 +331,7 @@ class TestFailClosed:
 # Duplicate chapter headings — ambiguous slug, first wins + WARNING
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDuplicateHeadings:
     def test_duplicate_slug_returns_first_with_warning(self, tmp_path):
         seg = tmp_path / "segments"
@@ -333,9 +339,7 @@ class TestDuplicateHeadings:
         _write_segment_pair(seg, 1, "Conclusion", "FirstAuthor")
         _write_segment_pair(seg, 2, "Conclusion", "SecondAuthor")
         log = _Log()
-        seg_path, analysis = find_analysis_for_heading(
-            tmp_path, "Conclusion", log_fn=log
-        )
+        seg_path, analysis = find_analysis_for_heading(tmp_path, "Conclusion", log_fn=log)
         # deterministic: the FIRST file wins (no worse than the old
         # first-match), and the ambiguity is LOUD.
         assert "FirstAuthor" in analysis
@@ -352,6 +356,7 @@ class TestDuplicateHeadings:
 # Scan-cache contract (O-a6) is untouched by the heading-aware selection
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestCacheStillDrivesLookup:
     def test_source_pins_cache_still_used(self):
         src = _DA.read_text(encoding="utf-8")
@@ -360,7 +365,6 @@ class TestCacheStillDrivesLookup:
         assert "analysis_files = _list_analysis_files(output_dir)" in src
 
     def test_repeated_calls_hit_cache_and_agree(self, tmp_path):
-        import core.preprocessing.deterministic_analyzer as da
 
         seg = tmp_path / "segments"
         seg.mkdir()

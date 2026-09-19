@@ -14,6 +14,7 @@ Pinned:
 
 Run: pytest tests/test_v182048_p6_icon_cache.py -v
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,11 +44,7 @@ def _strip_comments(text: str) -> str:
 
 
 def _icon_func(tree: ast.Module) -> ast.FunctionDef:
-    funcs = [
-        n
-        for n in tree.body
-        if isinstance(n, ast.FunctionDef) and n.name == "icon"
-    ]
+    funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "icon"]
     assert len(funcs) == 1, "exactly one module-level icon() definition"
     return funcs[0]
 
@@ -106,9 +103,7 @@ class TestOb6IconCachePins:
         ] or [
             ast.unparse(n)
             for n in ast.walk(fn)
-            if isinstance(n, ast.Compare)
-            and isinstance(n.left, ast.Name)
-            and n.left.id == "key"
+            if isinstance(n, ast.Compare) and isinstance(n.left, ast.Name) and n.left.id == "key"
         ]
         assert reads, "icon() must read the cache (dict.get or `in` test)"
         # the read must precede the build (QIcon(pixmap(...))) in source order

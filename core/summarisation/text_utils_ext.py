@@ -27,6 +27,7 @@ Characterization tests: ``tests/test_text_utils_ext.py`` captures canned
 inputs → golden outputs. Byte-for-byte stability gate (the log callback is
 injected, so the returned truncated string is deterministic).
 """
+
 from __future__ import annotations
 
 import re
@@ -71,7 +72,7 @@ def smart_truncate(
       "[… content omitted …]".
     """
     log = log or _noop_log
-    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     if len(paragraphs) <= 3:
         return truncate_by_tokens(text, max_tokens=max_tokens, add_ellipsis=True)
 
@@ -84,24 +85,96 @@ def smart_truncate(
         t = count_tokens(p)
         if used + t > anchor_budget:
             break
-        anchor_parts.append(p); used += t
+        anchor_parts.append(p)
+        used += t
     if not anchor_parts:
-        anchor_parts = [truncate_by_tokens(paragraphs[0], max_tokens=anchor_budget, add_ellipsis=False)]
+        anchor_parts = [
+            truncate_by_tokens(paragraphs[0], max_tokens=anchor_budget, add_ellipsis=False)
+        ]
 
     tail_parts, used = [], 0
     for p in reversed(paragraphs):
         t = count_tokens(p)
         if used + t > tail_budget:
             break
-        tail_parts.insert(0, p); used += t
+        tail_parts.insert(0, p)
+        used += t
     if not tail_parts:
-        tail_parts = [truncate_by_tokens(paragraphs[-1], max_tokens=tail_budget, add_ellipsis=False)]
+        tail_parts = [
+            truncate_by_tokens(paragraphs[-1], max_tokens=tail_budget, add_ellipsis=False)
+        ]
 
-    anchor_set = set(id(p) for p in anchor_parts)
-    tail_set = set(id(p) for p in tail_parts)
-    middle_paras = [(i, p) for i, p in enumerate(paragraphs) if id(p) not in anchor_set and id(p) not in tail_set]
+    anchor_set = {id(p) for p in anchor_parts}
+    tail_set = {id(p) for p in tail_parts}
+    middle_paras = [
+        (i, p)
+        for i, p in enumerate(paragraphs)
+        if id(p) not in anchor_set and id(p) not in tail_set
+    ]
 
-    STOPWORDS = {"the","a","an","in","on","at","to","for","of","and","or","but","is","it","its","this","that","was","are","were","be","been","have","has","had","with","from","by","as","not","he","she","they","we","you","i","their","our","his","her","which","who","what","when","where","how","all","one","two","three","also","can","will","would","could","should","may","might","do","did"}
+    STOPWORDS = {
+        "the",
+        "a",
+        "an",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "and",
+        "or",
+        "but",
+        "is",
+        "it",
+        "its",
+        "this",
+        "that",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "have",
+        "has",
+        "had",
+        "with",
+        "from",
+        "by",
+        "as",
+        "not",
+        "he",
+        "she",
+        "they",
+        "we",
+        "you",
+        "i",
+        "their",
+        "our",
+        "his",
+        "her",
+        "which",
+        "who",
+        "what",
+        "when",
+        "where",
+        "how",
+        "all",
+        "one",
+        "two",
+        "three",
+        "also",
+        "can",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "do",
+        "did",
+    }
+
     def score(p: str) -> float:
         """H5 fix: score paragraphs by information density, not just
         content-word ratio.  Keep dialogue/quotes/conclusions (which the
@@ -114,8 +187,8 @@ def smart_truncate(
         content_ratio = len(content) / len(words)
         # Boost paragraphs with named entities (Capitalized words),
         # numbers, or quotation marks — these carry key claims.
-        has_entity = bool(re.search(r'\b[A-Z][a-z]{2,}', p))
-        has_number = bool(re.search(r'\b\d+%?\b', p))
+        has_entity = bool(re.search(r"\b[A-Z][a-z]{2,}", p))
+        has_number = bool(re.search(r"\b\d+%?\b", p))
         has_quote = '"' in p or '"' in p or '"' in p
         boost = 0.15 * (has_entity + has_number + has_quote)
         # Penalise only clearly-filler paragraphs (very short, no verbs)
@@ -151,7 +224,10 @@ def smart_truncate(
     parts += tail_parts
 
     result = "\n\n".join(parts)
-    log(f"    \U0001f50d Smart truncation: {count_tokens(text):,} \u2192 {count_tokens(result):,} tokens", "INFO")
+    log(
+        f"    \U0001f50d Smart truncation: {count_tokens(text):,} \u2192 {count_tokens(result):,} tokens",
+        "INFO",
+    )
     return result
 
 

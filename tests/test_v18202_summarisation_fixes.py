@@ -20,6 +20,7 @@ Covers the SWOT-A action-plan fixes in core/summarisation/:
 
 Run: pytest tests/test_v18202_summarisation_fixes.py -v
 """
+
 from __future__ import annotations
 
 import ast
@@ -142,7 +143,8 @@ class TestA4PromptOverfitting:
         s = object.__new__(Summarizer)
         s.log = lambda msg, level="INFO": None
         source = (
-            "Background filler text. " * 30
+            "Background filler text. "
+            * 30
             + " The theory rests on three pillars: (1) evidence quality, "
             "(2) replication, (3) transparency."
         )
@@ -167,7 +169,8 @@ class TestA4PromptOverfitting:
         s = object.__new__(Summarizer)
         s.log = lambda msg, level="INFO": None
         source = (
-            "Background filler text. " * 30
+            "Background filler text. "
+            * 30
             + " The theory rests on three pillars: (1) evidence quality, "
             "(2) replication, (3) transparency."
         )
@@ -270,11 +273,17 @@ class TestA5SiteBehavior:
     def test_map_reduce_injects_for_qwen(self, tmp_path):
         calls, call_llm = self._mr_deps()
         mr_mod.map_reduce_summarize(
-            "Chapter 1", "Para one text.\n\nPara two text.",
-            primary_model="qwen3:27b", cache_dir=tmp_path,
-            input_path_stem="book", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.1,
-            map_mini_words=300, log=_CapturingLog(),
+            "Chapter 1",
+            "Para one text.\n\nPara two text.",
+            primary_model="qwen3:27b",
+            cache_dir=tmp_path,
+            input_path_stem="book",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.1,
+            map_mini_words=300,
+            log=_CapturingLog(),
             build_prompt=lambda h, t, with_cot=True: "REDUCE_PROMPT",
             call_llm=call_llm,
         )
@@ -285,11 +294,17 @@ class TestA5SiteBehavior:
     def test_map_reduce_gemma_unchanged(self, tmp_path):
         calls, call_llm = self._mr_deps()
         mr_mod.map_reduce_summarize(
-            "Chapter 1", "Para one text.\n\nPara two text.",
-            primary_model="gemma3:12b", cache_dir=tmp_path,
-            input_path_stem="book", cache_enabled=False,
-            temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.1,
-            map_mini_words=300, log=_CapturingLog(),
+            "Chapter 1",
+            "Para one text.\n\nPara two text.",
+            primary_model="gemma3:12b",
+            cache_dir=tmp_path,
+            input_path_stem="book",
+            cache_enabled=False,
+            temperature=0.7,
+            map_chunk_tokens=4000,
+            map_chunk_overlap=0.1,
+            map_mini_words=300,
+            log=_CapturingLog(),
             build_prompt=lambda h, t, with_cot=True: "REDUCE_PROMPT",
             call_llm=call_llm,
         )
@@ -306,17 +321,21 @@ class TestA5SiteBehavior:
 
         def call_llm(prompt, model=None, temperature=None, max_tokens=None, **kw):
             calls.append(prompt)
-            return (
-                "<thorough_summary>" + ("thorough word. " * 900) + "</thorough_summary>"
-            )
+            return "<thorough_summary>" + ("thorough word. " * 900) + "</thorough_summary>"
 
         out, _fb = call_dedicated_thorough_with_fallback(
-            "PROMPT", "Exec summary.", ["bullet one"],
-            min_words=800, max_output_tokens=8192,
-            primary_model="qwen3:27b", temperature=0.7,
-            strip_thinking=lambda x: x, call_llm=call_llm,
+            "PROMPT",
+            "Exec summary.",
+            ["bullet one"],
+            min_words=800,
+            max_output_tokens=8192,
+            primary_model="qwen3:27b",
+            temperature=0.7,
+            strip_thinking=lambda x: x,
+            call_llm=call_llm,
             deadline_exceeded=lambda phase: False,
-            synthetic_fallback_count=0, log=_CapturingLog(),
+            synthetic_fallback_count=0,
+            log=_CapturingLog(),
         )
         assert calls and calls[0].endswith(" /no_think")
         assert out and len(out.split()) >= 800
@@ -387,8 +406,7 @@ class TestA6JudgeSilentCrash:
             thorough="Thorough.",
         )
         with caplog.at_level("WARNING", logger="core.summarisation.bullet_pipeline"):
-            ret = pipeline.run_content_judge(state, coverage=0.9, tok_in=100,
-                                             final_summary="final")
+            ret = pipeline.run_content_judge(state, coverage=0.9, tok_in=100, final_summary="final")
         # Pipeline continues: None = chapter should continue (no exception,
         # no failed SummaryResult).
         assert ret is None
@@ -397,8 +415,7 @@ class TestA6JudgeSilentCrash:
         assert any("content_judge" in m and "RuntimeError" in m for m in warnings), warnings
         # And the module logger saw it too.
         assert any(
-            "content_judge" in r.message and "RuntimeError" in r.message
-            for r in caplog.records
+            "content_judge" in r.message and "RuntimeError" in r.message for r in caplog.records
         ), [r.message for r in caplog.records]
 
 
@@ -483,8 +500,11 @@ class TestA8ParallelDeadline:
         def fake_inner(heading, content, concepts=None, callouts=None, book_context=""):
             observed.append((heading, getattr(s, "_chapter_deadline_start", None)))
             return SummaryResult(
-                chapter_heading=heading, executive_summary="",
-                bullet_points=[], thorough_summary="", success=True,
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary="",
+                success=True,
             )
 
         monkeypatch.setattr(s, "_summarize_inner", fake_inner)
@@ -606,8 +626,11 @@ class TestA18VramDelay:
         slept = self._patch_sleep(monkeypatch)
         logs = _CapturingLog()
         vram_mod.recover_vram(
-            is_local=True, delay_sec=30.0, configured_delay=5.0,
-            context="test", log_fn=logs,
+            is_local=True,
+            delay_sec=30.0,
+            configured_delay=5.0,
+            context="test",
+            log_fn=logs,
         )
         assert slept == [5.0]
 
@@ -617,8 +640,11 @@ class TestA18VramDelay:
         slept = self._patch_sleep(monkeypatch)
         logs = _CapturingLog()
         vram_mod.recover_vram(
-            is_local=True, delay_sec=30.0, configured_delay=0.0,
-            context="test", log_fn=logs,
+            is_local=True,
+            delay_sec=30.0,
+            configured_delay=0.0,
+            context="test",
+            log_fn=logs,
         )
         assert slept == []
         # Recovery (cache clear attempt) still ran — a log line was emitted.
@@ -627,8 +653,11 @@ class TestA18VramDelay:
     def test_cloud_noop(self, monkeypatch):
         slept = self._patch_sleep(monkeypatch)
         vram_mod.recover_vram(
-            is_local=False, delay_sec=30.0, configured_delay=120.0,
-            context="test", log_fn=_CapturingLog(),
+            is_local=False,
+            delay_sec=30.0,
+            configured_delay=120.0,
+            context="test",
+            log_fn=_CapturingLog(),
         )
         assert slept == []
 
@@ -695,15 +724,23 @@ class TestA19DroppedLetterOnBullets:
         bullets = ["The process of identity formation emergs from the analysis of material."]
         # V0.03 default: no repair — the bullet ships as the model wrote it.
         report = pc_mod.run_post_checks(
-            bullets, "Exec.", "Thorough.", self.SOURCE,
+            bullets,
+            "Exec.",
+            "Thorough.",
+            self.SOURCE,
         )
         assert report.bullets == bullets
         # Explicitly enabled: the guarded repair applies.
         report = pc_mod.run_post_checks(
-            bullets, "Exec.", "Thorough.", self.SOURCE,
+            bullets,
+            "Exec.",
+            "Thorough.",
+            self.SOURCE,
             auto_repair_garble=True,
         )
-        assert report.bullets == ["The process of identity formation emerges from the analysis of material."]
+        assert report.bullets == [
+            "The process of identity formation emerges from the analysis of material."
+        ]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -770,8 +807,10 @@ class TestA23JudgeEmbedHoist:
     @staticmethod
     def _fixture():
         """3 chunks × 3 bullets (one with negation for the Q4 loop)."""
-        para = ("Identity formation involves the synthesis of experiences "
-                "across developmental stages. Researchers study this. " * 60)
+        para = (
+            "Identity formation involves the synthesis of experiences "
+            "across developmental stages. Researchers study this. " * 60
+        )
         source = "\n\n".join([para, para, para])
         bullets = [
             "Identity formation involves the synthesis of experiences.",
@@ -803,9 +842,15 @@ class TestA23JudgeEmbedHoist:
         monkeypatch.setattr(ci_mod, "_encode_chunks_cached", lambda chunks: None)
         r_persource = self._judge(monkeypatch)
         for attr in (
-            "total_source_claims", "covered_claims", "coverage_pct",
-            "grounded_bullets", "grounding_pct", "hallucination_count",
-            "deviation_count", "ungrounded_bullets", "passed",
+            "total_source_claims",
+            "covered_claims",
+            "coverage_pct",
+            "grounded_bullets",
+            "grounding_pct",
+            "hallucination_count",
+            "deviation_count",
+            "ungrounded_bullets",
+            "passed",
         ):
             assert getattr(r_hoist, attr) == getattr(r_persource, attr), attr
 
@@ -820,8 +865,11 @@ class TestA23JudgeEmbedHoist:
         source, bullets = self._fixture()
         judge = ci_mod.ContentJudge(log_callback=lambda m, l="INFO": None)
         summary = SummaryResult(
-            chapter_heading="C1", executive_summary="Exec.",
-            bullet_points=bullets, thorough_summary="Thorough.", success=True,
+            chapter_heading="C1",
+            executive_summary="Exec.",
+            bullet_points=bullets,
+            thorough_summary="Thorough.",
+            success=True,
         )
         judge.judge(summary, source)
         n_hoist = len(fake.encode_calls)
@@ -868,22 +916,25 @@ class TestA24SourceWordset:
         text = "The proces emerges from the analysis."
         label = "bullet[0]"
 
-        a_text, a_issues = det.detect_missing_spaces(
-            text, label, self.SOURCE)
+        a_text, a_issues = det.detect_missing_spaces(text, label, self.SOURCE)
         b_text, b_issues = det.detect_missing_spaces(
-            text, label, self.SOURCE,
-            source_lower=source_lower, source_words=source_words,
+            text,
+            label,
+            self.SOURCE,
+            source_lower=source_lower,
+            source_words=source_words,
         )
         assert a_text == b_text
-        assert [(i.detector, i.severity, i.detail) for i in a_issues] == \
-               [(i.detector, i.severity, i.detail) for i in b_issues]
+        assert [(i.detector, i.severity, i.detail) for i in a_issues] == [
+            (i.detector, i.severity, i.detail) for i in b_issues
+        ]
 
         a_text, a_iss = det.detect_garbled_tokens(text, label, self.SOURCE)
         b_text, b_iss = det.detect_garbled_tokens(
-            text, label, self.SOURCE, source_words=source_words)
+            text, label, self.SOURCE, source_words=source_words
+        )
         assert a_text == b_text
-        assert [(i.detector, i.detail) for i in a_iss] == \
-               [(i.detector, i.detail) for i in b_iss]
+        assert [(i.detector, i.detail) for i in a_iss] == [(i.detector, i.detail) for i in b_iss]
 
     def test_run_post_checks_precomputes_once(self):
         """Source scan: run_post_checks computes the source word-set ONCE
@@ -1021,7 +1072,10 @@ class TestA26GpuTempCache:
 
         for _ in range(2):
             pr_mod.summarize_with_model(
-                "h", "short text", "m", 0.7,
+                "h",
+                "short text",
+                "m",
+                0.7,
                 request=_Req(),
                 log=lambda m, l="INFO": None,
                 chunked_summarize=lambda *a, **k: None,
@@ -1060,10 +1114,7 @@ class TestA27DuplicateStaticmethod:
             tree = ast.parse(_read(rel))
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    names = [
-                        d.id for d in node.decorator_list
-                        if isinstance(d, ast.Name)
-                    ]
+                    names = [d.id for d in node.decorator_list if isinstance(d, ast.Name)]
                     for n in set(names):
                         if names.count(n) > 1:
                             offenders.append((node.name, n))
@@ -1094,11 +1145,17 @@ class TestA29MapReduceCache:
             cache_dir = tmp_path / tag
             cache_dir.mkdir()
             mr_mod.map_reduce_summarize(
-                "Chapter 1", content,
-                primary_model="m", cache_dir=cache_dir,
-                input_path_stem="book", cache_enabled=True,
-                temperature=0.7, map_chunk_tokens=4000, map_chunk_overlap=0.1,
-                map_mini_words=300, log=_CapturingLog(),
+                "Chapter 1",
+                content,
+                primary_model="m",
+                cache_dir=cache_dir,
+                input_path_stem="book",
+                cache_enabled=True,
+                temperature=0.7,
+                map_chunk_tokens=4000,
+                map_chunk_overlap=0.1,
+                map_mini_words=300,
+                log=_CapturingLog(),
                 build_prompt=lambda h, t, with_cot=True: "REDUCE",
                 call_llm=lambda p, model=None, temperature=None, **kw: "R",
             )
@@ -1166,13 +1223,16 @@ class TestThresholdsWiring:
 
     def test_five_call_sites_import_from_thresholds(self):
         for rel, needle in (
-            ("core/summarisation/bullet_pipeline.py",
-             "from core.summarisation.thresholds import"),
-            ("core/summarisation/content_judge_impl.py",
-             "from core.summarisation.thresholds import SEMANTIC_FACT_CHECK_DROP"),
+            ("core/summarisation/bullet_pipeline.py", "from core.summarisation.thresholds import"),
+            (
+                "core/summarisation/content_judge_impl.py",
+                "from core.summarisation.thresholds import SEMANTIC_FACT_CHECK_DROP",
+            ),
         ):
             assert needle in _read(rel), rel
 
     def test_thresholds_module_docstring_single_source(self):
-        assert "SINGLE SOURCE OF TRUTH" in _read("core/summarisation/thresholds.py") \
+        assert (
+            "SINGLE SOURCE OF TRUTH" in _read("core/summarisation/thresholds.py")
             or "single source of truth" in _read("core/summarisation/thresholds.py").lower()
+        )

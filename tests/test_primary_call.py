@@ -17,6 +17,7 @@ Branches covered:
 
 Run: pytest tests/test_primary_call.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,12 +30,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation import primary_call as pc_mod
 
@@ -63,35 +67,42 @@ class _FakeRequest:
 def _no_gpu(monkeypatch):
     """Make nvidia-smi 'fail' so _gpu_temp_c stays 0 → thermal_ok True."""
     import subprocess
+
     def _fake_run(*a, **kw):
         raise FileNotFoundError("no nvidia-smi in test env")
+
     monkeypatch.setattr(subprocess, "run", _fake_run)
 
 
 def _hot_gpu(monkeypatch, temp=80):
     """Simulate a hot GPU (≥78°C)."""
     import subprocess
+
     class _R:
         returncode = 0
         stdout = f"{temp}\n"
+
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _R())
 
 
 def _set_tokens(monkeypatch, n):
     """Patch count_tokens to return a fixed token count."""
     import utils.token_counter as tc
+
     monkeypatch.setattr(tc, "count_tokens", lambda text: n)
 
 
 class TestSummarizeWithModel:
-
     def test_small_text_structured_success(self, monkeypatch):
         """< 12000 tokens → no chunking → structured returns dict → annotated."""
         _set_tokens(monkeypatch, 5000)
         _no_gpu(monkeypatch)
         logs = []
         result = pc_mod.summarize_with_model(
-            "h", "text", "model-x", 0.7,
+            "h",
+            "text",
+            "model-x",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": logs.append((m, l)),
             chunked_summarize=lambda *a, **k: None,
@@ -101,14 +112,22 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {"bullet_points": []},
         )
-        assert result == {"bullet_points": ["b1"], "raw": "", "model": "model-x", "temperature": 0.7}
+        assert result == {
+            "bullet_points": ["b1"],
+            "raw": "",
+            "model": "model-x",
+            "temperature": 0.7,
+        }
 
     def test_structured_none_retry_empty_returns_none(self, monkeypatch):
         """structured None + retry empty → returns None."""
         _set_tokens(monkeypatch, 5000)
         _no_gpu(monkeypatch)
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": None,
             chunked_summarize=lambda *a, **k: None,
@@ -126,7 +145,10 @@ class TestSummarizeWithModel:
         _no_gpu(monkeypatch)
         logs = []
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": logs.append((m, l)),
             chunked_summarize=lambda *a, **k: None,
@@ -149,12 +171,17 @@ class TestSummarizeWithModel:
         _set_tokens(monkeypatch, 15000)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
+
         def chunked(*a, **k):
             chunked_calls["n"] += 1
             return {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+
         logs = []
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": logs.append((m, l)),
             chunked_summarize=chunked,
@@ -175,7 +202,10 @@ class TestSummarizeWithModel:
         _no_gpu(monkeypatch)
         logs = []
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": logs.append((m, l)),
             chunked_summarize=lambda *a, **k: None,  # chunked fails
@@ -196,11 +226,16 @@ class TestSummarizeWithModel:
         _set_tokens(monkeypatch, 15000)
         _hot_gpu(monkeypatch, temp=80)  # ≥78
         chunked_calls = {"n": 0}
+
         def chunked(*a, **k):
             chunked_calls["n"] += 1
             return None
+
         result = pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7,
+            "h",
+            "text",
+            "m",
+            0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": None,
             chunked_summarize=chunked,
@@ -223,11 +258,17 @@ class TestSummarizeWithModel:
         _set_tokens(monkeypatch, 15000)
         _no_gpu(monkeypatch)
         captured = {}
+
         def chunked(heading, text, model, temp, with_cot, concepts, callouts, max_out):
             captured["max_out"] = max_out
             return {"bullet_points": []}
+
         pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7, max_tokens=None,
+            "h",
+            "text",
+            "m",
+            0.7,
+            max_tokens=None,
             request=_FakeRequest(summarisation_max_output_tokens=8192),
             log=lambda m, l="INFO": None,
             chunked_summarize=chunked,
@@ -244,11 +285,17 @@ class TestSummarizeWithModel:
         _set_tokens(monkeypatch, 15000)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
+
         def chunked(*a, **k):
             chunked_calls["n"] += 1
             return None
+
         pc_mod.summarize_with_model(
-            "h", "text", "m", 0.7, max_tokens=16000,  # >= 14000 → no chunk
+            "h",
+            "text",
+            "m",
+            0.7,
+            max_tokens=16000,  # >= 14000 → no chunk
             request=_FakeRequest(),
             log=lambda m, l="INFO": None,
             chunked_summarize=chunked,

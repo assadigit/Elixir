@@ -1,4 +1,5 @@
 """Unit tests for utils/text_quality.py — extracted garbled-text detection."""
+
 from __future__ import annotations
 
 from utils.text_quality import (
@@ -22,7 +23,8 @@ CLEAN_TEXT = (
     "two phase III trials demonstrating efficacy relative to placebo."
 ) * 5  # repeat to get > 200 chars
 
-GARBLED_TEXT = """N. Karsan, P. J. Goadsby
+GARBLED_TEXT = (
+    """N. Karsan, P. J. Goadsby
 
 h t
 i w e
@@ -58,10 +60,13 @@ e i
 c ffi
 u s
 n i
-""" * 3  # repeat to get > 200 chars
+"""
+    * 3
+)  # repeat to get > 200 chars
 
 
 # ── is_text_garbled ────────────────────────────────────────────────────────
+
 
 def test_clean_text_not_garbled() -> None:
     """Clean English text should not be flagged as garbled."""
@@ -96,6 +101,7 @@ def test_partially_garbled_detected() -> None:
 
 # ── find_garbled_ranges ───────────────────────────────────────────────────
 
+
 def test_find_garbled_ranges_clean_text() -> None:
     """Clean text should return no garbled ranges."""
     assert find_garbled_ranges(CLEAN_TEXT) == []
@@ -118,6 +124,7 @@ def test_find_garbled_ranges_empty() -> None:
 
 # ── find_partial_garbled_ranges ───────────────────────────────────────────
 
+
 def test_find_partial_garbled_ranges_clean() -> None:
     """Clean text should have no partial garbled ranges."""
     assert find_partial_garbled_ranges(CLEAN_TEXT) == []
@@ -130,6 +137,7 @@ def test_find_partial_garbled_ranges_garbled() -> None:
 
 
 # ── _merge_ranges ─────────────────────────────────────────────────────────
+
 
 def test_merge_empty() -> None:
     """Empty list should return empty."""

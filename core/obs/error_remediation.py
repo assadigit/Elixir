@@ -24,6 +24,7 @@ command).
 
 Book-agnostic (Key Decision #3): error messages are structural.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -86,6 +87,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
         if not model_name:
             # Fallback: extract from the message
             import re
+
             m = re.search(r"model['\"]?\s*[:=]?\s*['\"]?([^'\"\s]+)", exc_msg, re.IGNORECASE)
             if m:
                 model_name = m.group(1)
@@ -143,6 +145,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
     # ── EmbedderUnavailable ──────────────────────────────────────────────
     if exc_type == "EmbedderUnavailable" or "EmbedderUnavailable" in exc_type:
         import re
+
         # Extract model name from the message if present
         m = re.search(r"model ['\"]([^'\"]+)['\"]", exc_msg, re.IGNORECASE)
         model_name = m.group(1) if m else "all-MiniLM-L6-v2"
@@ -160,7 +163,11 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
         )
 
     # ── ConnectionError (Ollama not running) ────────────────────────────
-    if "ConnectionError" in exc_type or "Connection refused" in exc_msg or "Connection aborted" in exc_msg:
+    if (
+        "ConnectionError" in exc_type
+        or "Connection refused" in exc_msg
+        or "Connection aborted" in exc_msg
+    ):
         return RemediationInfo(
             severity="error",
             title="Can't reach Ollama",
@@ -200,8 +207,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
                 "aggressive quantizations (IQ2_XXS) at low temperatures."
             ),
             action=(
-                "Raise temperature to 0.7+ in Settings, or switch to IQ2_M "
-                "quant for stability."
+                "Raise temperature to 0.7+ in Settings, or switch to IQ2_M quant for stability."
             ),
             action_type="settings",
             technical=technical,
@@ -212,8 +218,7 @@ def get_error_remediation(exc: BaseException) -> RemediationInfo:
         severity="error",
         title="Unexpected error",
         message=(
-            f"An unexpected error occurred: {exc_type}. "
-            f"Check the conversion log for details."
+            f"An unexpected error occurred: {exc_type}. Check the conversion log for details."
         ),
         action="Check the log at ~/.elixir/system.log",
         action_type="command",

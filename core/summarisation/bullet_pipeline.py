@@ -31,6 +31,7 @@ The class is constructed with a reference to the ``Summarizer`` instance
 not a fully-decoupled class.  Full decoupling (passing only the needed
 data) is a session-2 refinement.
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,8 +61,10 @@ except ImportError:
 try:
     from utils.token_counter import count_tokens
 except ImportError:
+
     def count_tokens(text):
         return max(1, len(str(text).split()))
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,7 @@ class PipelineState:
     still uses local variables in ``_summarize_inner`` (session 2 will
     migrate them).
     """
+
     heading: str
     content: str
     bullets: list[str] = field(default_factory=list)
@@ -135,6 +139,7 @@ class BulletPipeline:
         _F4_THRESHOLD = _F4_SOURCE_OVERLAP_DROP
         try:
             from core.summarisation.text_preprocessor import compute_source_overlap
+
             weak_bullets = []
             kept_bullets = []
             for bp in state.bullets:
@@ -146,10 +151,12 @@ class BulletPipeline:
             if weak_bullets:
                 for bp, ov in weak_bullets:
                     s.quarantine.add(
-                        bp, stage="F4_source_overlap",
-                        threshold=_F4_THRESHOLD, source_overlap=ov,
+                        bp,
+                        stage="F4_source_overlap",
+                        threshold=_F4_THRESHOLD,
+                        source_overlap=ov,
                         reason=f"Source overlap {ov:.0%} < {_F4_THRESHOLD:.0%} threshold"
-                               + (" (kept — conservative mode)" if s.conservative_drops else ""),
+                        + (" (kept — conservative mode)" if s.conservative_drops else ""),
                         chapter=getattr(s, "_current_heading", "") or "",
                         actually_dropped=not s.conservative_drops,
                     )
@@ -178,8 +185,9 @@ class BulletPipeline:
             except Exception:
                 pass
             logger.warning(
-                "F4 source-overlap gate crashed — stage skipped (fail-open): "
-                "%s: %s", type(_e).__name__, _e,
+                "F4 source-overlap gate crashed — stage skipped (fail-open): %s: %s",
+                type(_e).__name__,
+                _e,
             )
 
     # ── Stage: Phase 2.2 semantic fact-check ───────────────────────────
@@ -203,13 +211,18 @@ class BulletPipeline:
         # V18.2.30: short-circuit when embedder is unhealthy.
         try:
             from core.llm.model_singletons import is_embedder_healthy
+
             if not is_embedder_healthy():
-                s.log("    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)", "WARNING")
+                s.log(
+                    "    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)",
+                    "WARNING",
+                )
                 return
         except Exception:
             pass
         try:
             from core.summarisation.text_preprocessor import semantic_fact_check
+
             hallucinated = []
             kept_bullets = []
             for bp in state.bullets:
@@ -240,6 +253,7 @@ class BulletPipeline:
                         from core.summarisation.text_preprocessor import (
                             compute_source_overlap,
                         )
+
                         _genuine_overlap = float(compute_source_overlap(bp, state.content))
                     except Exception as _ov_e:
                         # V18.20.3.8 (Phase 1 / W1): keep 0.0 (fail-safe — the
@@ -252,17 +266,23 @@ class BulletPipeline:
                             "Phase 2.2: genuine-overlap computation failed for "
                             "a quarantined bullet — recorded as 0.00 (recovery "
                             "eligibility degraded): %s: %s",
-                            type(_ov_e).__name__, _ov_e,
+                            type(_ov_e).__name__,
+                            _ov_e,
                         )
                     s.quarantine.add(
-                        bp, stage="Phase2.2_semantic_fact_check",
-                        threshold=_P22_THRESHOLD, source_overlap=_genuine_overlap,
+                        bp,
+                        stage="Phase2.2_semantic_fact_check",
+                        threshold=_P22_THRESHOLD,
+                        source_overlap=_genuine_overlap,
                         reason=f"Semantic similarity {sim:.2f} < {_P22_THRESHOLD:.2f} threshold "
-                               f"(genuine source overlap: {_genuine_overlap:.2f}"
-                               + (" — COMPUTATION FAILED, recorded as 0.00, recovery eligibility degraded"
-                                  if _overlap_failed else "")
-                               + ")"
-                               + (" (kept — conservative mode)" if s.conservative_drops else ""),
+                        f"(genuine source overlap: {_genuine_overlap:.2f}"
+                        + (
+                            " — COMPUTATION FAILED, recorded as 0.00, recovery eligibility degraded"
+                            if _overlap_failed
+                            else ""
+                        )
+                        + ")"
+                        + (" (kept — conservative mode)" if s.conservative_drops else ""),
                         chapter=getattr(s, "_current_heading", "") or "",
                         actually_dropped=not s.conservative_drops,
                     )
@@ -296,8 +316,9 @@ class BulletPipeline:
             except Exception:
                 pass
             logger.warning(
-                "Phase 2.2 semantic fact-check crashed — stage skipped "
-                "(fail-open): %s: %s", type(_e).__name__, _e,
+                "Phase 2.2 semantic fact-check crashed — stage skipped (fail-open): %s: %s",
+                type(_e).__name__,
+                _e,
             )
 
     # ── Stage: recovery pass (delegates to Summarizer) ─────────────────
@@ -314,7 +335,9 @@ class BulletPipeline:
 
     # ── Stage: thinking-bullets filter (delegates to Summarizer) ───────
 
-    def filter_thinking_bullets(self, state: PipelineState, concepts: list[str] | None = None) -> None:
+    def filter_thinking_bullets(
+        self, state: PipelineState, concepts: list[str] | None = None
+    ) -> None:
         """Thinking-filter: drop thinking/prompt-leakage/narrative bullets.
 
         V10.31.0 (Sprint 4.1): delegates to ``Summarizer._filter_thinking_bullets``
@@ -353,6 +376,7 @@ class BulletPipeline:
                 truncate_summary,
                 validate_summary_length,
             )
+
             _src_words = len((state.content or "").split())
             _elo, _ehi = executive_target(_src_words)
             _tlo, _thi = thorough_target(_src_words)
@@ -380,14 +404,23 @@ class BulletPipeline:
             )
             if not exec_valid and exec_wc > _exec_cap:
                 state.exec_sum = truncate_summary(state.exec_sum, max_words=_exec_cap)
-                s.log(f"    ✂️ F1: Truncated exec_summary to {_exec_cap} words (source-scaled cap)", "DEBUG")
+                s.log(
+                    f"    ✂️ F1: Truncated exec_summary to {_exec_cap} words (source-scaled cap)",
+                    "DEBUG",
+                )
             thorough_valid, thorough_wc, _ = validate_summary_length(
                 state.thorough, min_words=40, max_words=_thorough_cap, section="thorough_summary"
             )
             if not thorough_valid and thorough_wc > _thorough_cap:
                 state.thorough = truncate_summary(state.thorough, max_words=_thorough_cap)
-                s.log(f"    ✂️ F1: Truncated thorough_summary to {_thorough_cap} words (source-scaled cap)", "DEBUG")
-            s.log(f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w (source={_src_words}w; targets exec<={_ehi}w, thorough<={_thi}w)", "DEBUG")
+                s.log(
+                    f"    ✂️ F1: Truncated thorough_summary to {_thorough_cap} words (source-scaled cap)",
+                    "DEBUG",
+                )
+            s.log(
+                f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w (source={_src_words}w; targets exec<={_ehi}w, thorough<={_thi}w)",
+                "DEBUG",
+            )
             # V0.05 honest measurement: the compression-ratio audit the rig
             # run was missing. A summary section in expansion territory is
             # a defect worth a visible WARNING, not a DEBUG line.
@@ -420,6 +453,7 @@ class BulletPipeline:
         s = self.s
         try:
             from core.summarisation.text_preprocessor import assess_reading_level
+
             rl = assess_reading_level(
                 state.content,
                 f"{state.exec_sum} {' '.join(state.bullets)} {state.thorough}",
@@ -430,7 +464,7 @@ class BulletPipeline:
                 "DEBUG",
             )
             if not rl["summary_is_simpler"]:
-                _gap = rl['summary_grade'] - rl['source_grade']
+                _gap = rl["summary_grade"] - rl["source_grade"]
                 if _gap > 5.0:
                     s.log(
                         f"    ⚠️ F3: Summary is {_gap:.1f} grade levels HARDER to "
@@ -453,48 +487,48 @@ class BulletPipeline:
     # internal deduplication reasoning as bullet content, instead of
     # producing clean consolidated bullets. The V18.2.37 conversion log
     # showed the Q2_K_XL model producing malformed Key Takeaways like:
-#   - "Bullet 11: 'AuthorG (1961) distinguished...'"
+    #   - "Bullet 11: 'AuthorG (1961) distinguished...'"
     #   - "This is similar to bullet 27 but bullet 27 is attributed to..."
-#   - "Bullet 8 (AuthorD 1967) and bullet 9 (AuthorD 1980): Both about..."
+    #   - "Bullet 8 (AuthorD 1967) and bullet 9 (AuthorD 1980): Both about..."
     #   - "...These are related but different facts/claims. KEEP BOTH."
     # When detected, the consolidation result is rejected and the caller
     # falls back to the deterministic rapidfuzz-based dedup
     # (`_consolidate_duplicate_claims`), which never leaks metadata.
     _LEAKED_METADATA_PATTERNS = (
-# "Bullet 11:", "Bullet 27 says", "Bullet 8 (AuthorD 1967)"
-        re.compile(r'\bBullet\s+\d+\b', re.IGNORECASE),
+        # "Bullet 11:", "Bullet 27 says", "Bullet 8 (AuthorD 1967)"
+        re.compile(r"\bBullet\s+\d+\b", re.IGNORECASE),
         # "KEEP BOTH", "KEEP ALL" — explicit dedup verdicts
-        re.compile(r'\bKEEP\s+(?:BOTH|ALL)\b', re.IGNORECASE),
+        re.compile(r"\bKEEP\s+(?:BOTH|ALL)\b", re.IGNORECASE),
         # "This is similar to bullet 27 but..."
-        re.compile(r'\bThis is similar to bullet\b', re.IGNORECASE),
+        re.compile(r"\bThis is similar to bullet\b", re.IGNORECASE),
         # "These are related but different facts/claims"
-        re.compile(r'\bThese are related but\b', re.IGNORECASE),
+        re.compile(r"\bThese are related but\b", re.IGNORECASE),
         # "These are different facts"
-        re.compile(r'\bThese are different facts\b', re.IGNORECASE),
+        re.compile(r"\bThese are different facts\b", re.IGNORECASE),
         # "but different years and slightly different claims"
-        re.compile(r'\bbut different years\b', re.IGNORECASE),
+        re.compile(r"\bbut different years\b", re.IGNORECASE),
         # "different facts/claims" (dedup verdict phrasing)
-        re.compile(r'\bdifferent facts\s*[/\.]', re.IGNORECASE),
+        re.compile(r"\bdifferent facts\s*[/\.]", re.IGNORECASE),
         # "Bullet N (Author YYYY) and bullet M (Author YYYY)" comparison header
-        re.compile(r'\bBullet\s+\d+\s*\([^)]*\)\s+and\s+bullet\s+\d+', re.IGNORECASE),
+        re.compile(r"\bBullet\s+\d+\s*\([^)]*\)\s+and\s+bullet\s+\d+", re.IGNORECASE),
     )
 
     @classmethod
     def detect_leaked_consolidation_metadata(cls, bullets: list[str]) -> tuple:
         """V18.2.38: Detect leaked dedup-reasoning in consolidated bullets.
 
-        Returns ``(leaked_count, leaked_samples)`` where:
-          - ``leaked_count``: number of bullets containing metadata patterns
-          - ``leaked_samples``: list of (index, pattern_matched, bullet_preview)
+                Returns ``(leaked_count, leaked_samples)`` where:
+                  - ``leaked_count``: number of bullets containing metadata patterns
+                  - ``leaked_samples``: list of (index, pattern_matched, bullet_preview)
 
-        If ``leaked_count > 0``, the caller should reject the LLM
-        consolidation result and fall back to deterministic dedup.
+                If ``leaked_count > 0``, the caller should reject the LLM
+                consolidation result and fall back to deterministic dedup.
 
-        The detection is deliberately tight — these patterns are
-        unambiguous markers of leaked internal reasoning (the model echoing
-        the input bullet numbering, KEEP/REJECT verdicts, comparison
-        commentary). They do NOT appear in legitimate summary bullets
-# about humanities domains, climate science, etc.
+                The detection is deliberately tight — these patterns are
+                unambiguous markers of leaked internal reasoning (the model echoing
+                the input bullet numbering, KEEP/REJECT verdicts, comparison
+                commentary). They do NOT appear in legitimate summary bullets
+        # about humanities domains, climate science, etc.
         """
         if not bullets:
             return (0, [])
@@ -506,11 +540,13 @@ class BulletPipeline:
                 m = pattern.search(bp_str)
                 if m:
                     leaked_count += 1
-                    leaked_samples.append((
-                        idx,
-                        m.group(0),
-                        bp_str[:80] + ("…" if len(bp_str) > 80 else ""),
-                    ))
+                    leaked_samples.append(
+                        (
+                            idx,
+                            m.group(0),
+                            bp_str[:80] + ("…" if len(bp_str) > 80 else ""),
+                        )
+                    )
                     break  # one match per bullet is enough
         return (leaked_count, leaked_samples)
 
@@ -526,6 +562,7 @@ class BulletPipeline:
         # I2: Chapter difficulty
         try:
             from core.summarisation.text_preprocessor import score_chapter_difficulty
+
             diff = score_chapter_difficulty(state.content)
             s.log(
                 f"    📊 I2: Chapter difficulty {diff['score']:.2f}/1.0 "
@@ -537,7 +574,10 @@ class BulletPipeline:
         # J2: Cross-section redundancy
         try:
             from core.summarisation.text_preprocessor import check_cross_section_redundancy
-            redundancy = check_cross_section_redundancy(state.exec_sum, state.bullets, state.thorough)
+
+            redundancy = check_cross_section_redundancy(
+                state.exec_sum, state.bullets, state.thorough
+            )
             if redundancy["total_redundant"] > 0:
                 s.log(
                     f"    🔄 J2: {redundancy['total_redundant']} cross-section redundancy(ies) found "
@@ -550,6 +590,7 @@ class BulletPipeline:
         # J3: Exec summary coherence
         try:
             from core.summarisation.text_preprocessor import check_exec_summary_coherence
+
             coherence = check_exec_summary_coherence(state.exec_sum)
             if not coherence["coherent"]:
                 s.log(
@@ -591,6 +632,7 @@ class BulletPipeline:
             return
         try:
             from core.summarisation.text_preprocessor import verify_numbers_and_quotes
+
             _unverified = []
             _kept = []
             for bp in state.bullets:
@@ -746,8 +788,12 @@ class BulletPipeline:
             return
         old_count = len(state.bullets)
         state.bullets = s._gap_fill_concepts(
-            state.heading, state.content, state.bullets, concepts,
-            exec_summary=state.exec_sum, thorough_summary=state.thorough,
+            state.heading,
+            state.content,
+            state.bullets,
+            concepts,
+            exec_summary=state.exec_sum,
+            thorough_summary=state.thorough,
         )
         # V13.24.0 P0.3: Validate any newly-added gap-fill bullets
         new_bullets = state.bullets[old_count:]
@@ -776,10 +822,11 @@ class BulletPipeline:
         if state.thorough and len(state.thorough.strip()) > 100:
             # V13.40.3: Check if thorough is raw JSON — if so, re-parse it
             _thorough = state.thorough.strip()
-            if _thorough.startswith('{') or _thorough.startswith('['):
+            if _thorough.startswith("{") or _thorough.startswith("["):
                 s.log("    🔧 Salvage: thorough appears to be raw JSON — re-parsing", "DEBUG")
                 try:
                     import json as _json
+
                     # Try to parse as JSON
                     _data = _json.loads(_thorough)
                     if isinstance(_data, dict):
@@ -790,7 +837,9 @@ class BulletPipeline:
                             if isinstance(_items, list):
                                 for _item in _items:
                                     if isinstance(_item, dict):
-                                        _claim = _item.get("claim", "") or _item.get("text", "") or ""
+                                        _claim = (
+                                            _item.get("claim", "") or _item.get("text", "") or ""
+                                        )
                                         if _claim:
                                             _claims.append(f"- {_claim}")
                                     elif isinstance(_item, str) and _item.strip():
@@ -799,7 +848,9 @@ class BulletPipeline:
                                 _claims.append(f"- {_items}")
                         if _claims:
                             state.thorough = "\n".join(_claims)
-                            s.log(f"    🔧 Salvage: re-parsed JSON → {len(_claims)} claims", "DEBUG")
+                            s.log(
+                                f"    🔧 Salvage: re-parsed JSON → {len(_claims)} claims", "DEBUG"
+                            )
                 except Exception:
                     pass  # not valid JSON, continue with original thorough
 
@@ -818,19 +869,21 @@ class BulletPipeline:
                 )
             if not state.exec_sum.strip():
                 # V13.40.3: Clean the exec extraction — strip JSON artifacts + backslashes
-                sentences = re.split(r'(?<=[.!?])\s+', state.thorough.strip())
+                sentences = re.split(r"(?<=[.!?])\s+", state.thorough.strip())
                 # Filter out sentences that look like JSON fragments
                 clean_sentences = []
                 for sent in sentences[:5]:
                     sent = sent.strip()
                     # Skip JSON-looking fragments
-                    if sent.startswith('{') or sent.startswith('[') or sent.startswith('"'):
+                    if sent.startswith("{") or sent.startswith("[") or sent.startswith('"'):
                         continue
                     # Strip trailing backslashes (JSON escape artifacts)
-                    sent = sent.rstrip('\\').strip()
+                    sent = sent.rstrip("\\").strip()
                     if len(sent) > 10:
                         clean_sentences.append(sent)
-                state.exec_sum = " ".join(clean_sentences[:3]) if clean_sentences else state.thorough[:500]
+                state.exec_sum = (
+                    " ".join(clean_sentences[:3]) if clean_sentences else state.thorough[:500]
+                )
                 s.log(
                     f"    🔧 Salvage: extracted exec_sum ({len(state.exec_sum)} chars) from thorough",
                     "DEBUG",
@@ -847,8 +900,9 @@ class BulletPipeline:
 
     # ── Stage: Self-consistency + Self-review ──────────────────────────
 
-    def run_self_consistency_and_review(self, state: PipelineState, result: dict,
-                                        heading: str, text: str) -> None:
+    def run_self_consistency_and_review(
+        self, state: PipelineState, result: dict, heading: str, text: str
+    ) -> None:
         """V10.36.0: Self-consistency + self-review (extracted from _summarize_inner)."""
         s = self.s
         if s.self_consistency and s.provider == "ollama":
@@ -863,9 +917,15 @@ class BulletPipeline:
             if extra_results:
                 all_results = [result] + extra_results
                 merged = s._merge_summaries(all_results)
-                result["executive_summary"] = merged.get("executive_summary", result.get("executive_summary", ""))
-                result["thorough_summary"] = merged.get("thorough_summary", result.get("thorough_summary", ""))
-                result["bullet_points"] = merged.get("bullet_points", result.get("bullet_points", []))
+                result["executive_summary"] = merged.get(
+                    "executive_summary", result.get("executive_summary", "")
+                )
+                result["thorough_summary"] = merged.get(
+                    "thorough_summary", result.get("thorough_summary", "")
+                )
+                result["bullet_points"] = merged.get(
+                    "bullet_points", result.get("bullet_points", [])
+                )
                 result["model"] = "self_consistency"
                 s.log("    ✅ Self‑consistency merged", "INFO")
         if s.academic_rigor:
@@ -873,11 +933,15 @@ class BulletPipeline:
             # said: "Quality first, time second." Self-review now ALWAYS runs
             # (with batching for >10 bullets). This ensures every bullet is
             # fact-checked even when coverage is already high.
-            _primary_cov = getattr(s, '_last_coverage', 0.0)
+            _primary_cov = getattr(s, "_last_coverage", 0.0)
             # V13.45.4: Batched self-review — reviews bullets in chunks of 10
             # when the total exceeds 10. This preserves quality while avoiding
             # the 600s timeout that single-pass review hits with 100+ bullets.
-            _bps_for_review = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
+            _bps_for_review = [
+                str(b) if not isinstance(b, str) else b
+                for b in result.get("bullet_points", [])
+                if b
+            ]
             if not _bps_for_review:
                 # V0.11 (real-rig audit, BUG-VACUOUS-QA): with 0 bullets the
                 # self-review LLM call is pure waste (the V0.10 rig burned
@@ -909,7 +973,11 @@ class BulletPipeline:
             # V13.40.4: Increased from 8s → 20s. The 8s delay was insufficient
             # after B4's 3 calls (~12 min) + additive followup (~2 min).
             s._recover_vram(context="pre-self-review", delay_sec=20.0)
-            _bps3 = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
+            _bps3 = [
+                str(b) if not isinstance(b, str) else b
+                for b in result.get("bullet_points", [])
+                if b
+            ]
             full_summary = f"{result.get('executive_summary', '')} {' '.join(_bps3)} {result.get('thorough_summary', '')}"
             # V13.45.5: Self-review ALWAYS runs (no coverage-threshold skip).
             # Use BATCHED self-review when >10 bullets (preserves quality, avoids timeout)
@@ -918,7 +986,9 @@ class BulletPipeline:
             reviewed = None
             if _bps_for_review:
                 if _use_batched_review:
-                    reviewed = s._self_review_batched(heading, text, _bps3, result.get('thorough_summary', ''))
+                    reviewed = s._self_review_batched(
+                        heading, text, _bps3, result.get("thorough_summary", "")
+                    )
                 else:
                     reviewed = s._self_review(heading, text, full_summary)
             if reviewed:
@@ -929,17 +999,18 @@ class BulletPipeline:
                 reviewed = s._strip_thinking(reviewed).strip()
             if reviewed:
                 import json
+
                 try:
                     # V13.37.0: The self-review prompt asks for a JSON ARRAY:
                     # [{"index": 1, "verdict": "supported", "reason": "", ...}, ...]
                     # The old parser looked for a JSON OBJECT {...} and accessed
                     # .get('bullet_points', []) — which never matched. Now we
                     # look for an array and iterate verdicts to find unsupported.
-                    json_match = re.search(r'(\[.*\])', reviewed, re.DOTALL)
+                    json_match = re.search(r"(\[.*\])", reviewed, re.DOTALL)
                     if not json_match:
                         # Fallback: try object format (for backward compat with
                         # any model that returns {"bullet_points": [...]} format)
-                        json_match = re.search(r'(\{.*\})', reviewed, re.DOTALL)
+                        json_match = re.search(r"(\{.*\})", reviewed, re.DOTALL)
                     if json_match:
                         json_str = json_match.group(0)
                         try:
@@ -952,22 +1023,26 @@ class BulletPipeline:
                             # [{"index":1,...}]\n\nSome extra text
                             # json.loads fails with "Extra data: line 1 column N"
                             import re as _re_json
+
                             # Try to extract just the first complete JSON array/object
-                            _arr_match = _re_json.search(r'(\[[\s\S]*?\])\s*$', json_str)
+                            _arr_match = _re_json.search(r"(\[[\s\S]*?\])\s*$", json_str)
                             if _arr_match:
                                 json_str = _arr_match.group(1)
                             else:
-                                _obj_match = _re_json.search(r'(\{[\s\S]*?\})\s*$', json_str)
+                                _obj_match = _re_json.search(r"(\{[\s\S]*?\})\s*$", json_str)
                                 if _obj_match:
                                     json_str = _obj_match.group(1)
                             # Clean up trailing commas
-                            cleaned = _re_json.sub(r',\s*}', '}', json_str)
-                            cleaned = _re_json.sub(r',\s*]', ']', cleaned)
+                            cleaned = _re_json.sub(r",\s*}", "}", json_str)
+                            cleaned = _re_json.sub(r",\s*]", "]", cleaned)
                             cleaned = cleaned.replace("'", '"')
                             try:
                                 reviewed_json = json.loads(cleaned)
                             except json.JSONDecodeError:
-                                s.log("    ⚠️ Self-review JSON still unparseable after cleanup — skipping", "WARNING")
+                                s.log(
+                                    "    ⚠️ Self-review JSON still unparseable after cleanup — skipping",
+                                    "WARNING",
+                                )
                                 reviewed_json = None
 
                         # V13.40.3: Skip processing if JSON parsing failed
@@ -977,7 +1052,7 @@ class BulletPipeline:
                             # V13.37.0: Handle BOTH array format (new) and object
                             # format (legacy). The prompt asks for an array of
                             # {"index", "verdict", "reason", "evidence_quote"}.
-                            orig_bullets = list(result.get('bullet_points', []))
+                            orig_bullets = list(result.get("bullet_points", []))
                             dropped_bullets = []
 
                             if isinstance(reviewed_json, list):
@@ -987,16 +1062,25 @@ class BulletPipeline:
                                         continue
                                     idx = item.get("index", 0)
                                     verdict = str(item.get("verdict", "")).lower()
-                                    if verdict in ("unsupported", "not_supported") and 1 <= idx <= len(orig_bullets):
+                                    if verdict in (
+                                        "unsupported",
+                                        "not_supported",
+                                    ) and 1 <= idx <= len(orig_bullets):
                                         dropped_bullets.append(orig_bullets[idx - 1])
                                 rev_bullets = [b for b in orig_bullets if b not in dropped_bullets]
                             elif isinstance(reviewed_json, dict):
                                 # Legacy object format: {"bullet_points": [...]}
-                                rev_bullets = reviewed_json.get('bullet_points', [])
+                                rev_bullets = reviewed_json.get("bullet_points", [])
                                 if rev_bullets:
                                     rev_set = {str(b).strip().lower() for b in rev_bullets}
-                                    dropped_bullets = [b for b in orig_bullets if str(b).strip().lower() not in rev_set]
-                                    rev_bullets = [b for b in orig_bullets if str(b).strip().lower() in rev_set]
+                                    dropped_bullets = [
+                                        b
+                                        for b in orig_bullets
+                                        if str(b).strip().lower() not in rev_set
+                                    ]
+                                    rev_bullets = [
+                                        b for b in orig_bullets if str(b).strip().lower() in rev_set
+                                    ]
 
                             if dropped_bullets:
                                 # V13.25.0 P1.5: Respect conservative mode + log to quarantine
@@ -1022,23 +1106,27 @@ class BulletPipeline:
                                         "WARNING",
                                     )
                                 else:
-                                    result['bullet_points'] = rev_bullets
-                                    s.log(f"    ✅ Self‑review: dropped {len(dropped_bullets)} unsupported bullet(s).", "INFO")
+                                    result["bullet_points"] = rev_bullets
+                                    s.log(
+                                        f"    ✅ Self‑review: dropped {len(dropped_bullets)} unsupported bullet(s).",
+                                        "INFO",
+                                    )
                             else:
                                 s.log("    ✅ Self‑review: all bullets confirmed.", "INFO")
-                            result['model'] = "primary+self_review"
+                            result["model"] = "primary+self_review"
                     else:
                         s.log("    ⚠️ Self‑review returned no structured content.", "WARNING")
                 except Exception as e:
                     s.log(f"    ⚠️ Self‑review parsing failed: {e}.", "WARNING")
             else:
                 s.log("    ⚠️ Self‑review returned no response.", "WARNING")
-        state.__dict__['_result'] = result
+        state.__dict__["_result"] = result
 
     # ── Stage: Content Judge (grounding + coverage + gap-fill) ─────────
 
-    def run_content_judge(self, state: PipelineState, coverage: float, tok_in: int,
-                          final_summary: str) -> SummaryResult | None:
+    def run_content_judge(
+        self, state: PipelineState, coverage: float, tok_in: int, final_summary: str
+    ) -> SummaryResult | None:
         """Content Judge: final pre-output validation (grounding + coverage).
 
         V10.32.0 (Sprint 4 s2): extracted verbatim from ``_summarize_inner``.
@@ -1058,6 +1146,7 @@ class BulletPipeline:
         thorough = state.thorough
         try:
             from core.summarisation.content_judge import ContentJudge
+
             _judge = ContentJudge(
                 log_callback=s.log,
                 min_coverage=s.coverage_threshold,
@@ -1085,10 +1174,11 @@ class BulletPipeline:
             # easy to miss. This dedicated WARNING surfaces the risk: the
             # ungrounded bullets were NOT dropped, so they reach the final
             # output. Threshold: >=5 hallucinations OR grounding < 70%.
-            if (not _judge_result.grounding_layer8_available
-                    and _judge_result.grounding_alarm
-                    and (_judge_result.hallucination_count >= 5
-                         or _judge_result.grounding_pct < 0.70)):
+            if (
+                not _judge_result.grounding_layer8_available
+                and _judge_result.grounding_alarm
+                and (_judge_result.hallucination_count >= 5 or _judge_result.grounding_pct < 0.70)
+            ):
                 s.log(
                     f"    ⚠️🛡️ V18.19.2.3: Layer 8 grounding is OFF "
                     f"({_judge_result.grounding_alarm}) — "
@@ -1105,7 +1195,9 @@ class BulletPipeline:
             if _judge_result.ungrounded_bullets:
                 _grounding_enabled = False
                 try:
-                    _grounding_enabled = bool(s._claim_extractor and s._claim_extractor._is_enabled())
+                    _grounding_enabled = bool(
+                        s._claim_extractor and s._claim_extractor._is_enabled()
+                    )
                 except Exception as _e:
                     logger.debug("ignored %s: %s", type(_e).__name__, _e)
                 if not _grounding_enabled:
@@ -1131,6 +1223,7 @@ class BulletPipeline:
                                 SELF_TALK_PATTERNS as _STP,
                             )
                             from core.summarisation.text_preprocessor import compute_source_overlap
+
                             _selftalk_dropped = []
                             for bp in _llm_ungrounded:
                                 if _STP.search(bp):
@@ -1150,12 +1243,14 @@ class BulletPipeline:
                                 # Self-talk: unconditional drop (conservative
                                 # mode still drops — it is NEVER content).
                                 s.quarantine.add(
-                                    bp, stage="judge_grounding.self_talk",
-                                    threshold=0.25, source_overlap=1.0,
+                                    bp,
+                                    stage="judge_grounding.self_talk",
+                                    threshold=0.25,
+                                    source_overlap=1.0,
                                     reason="LLM-as-judge flagged + model self-talk "
-                                           "(include this! / let me add / the source "
-                                           "says) — self-talk quoting the source "
-                                           "defeats the overlap rescue; dropped",
+                                    "(include this! / let me add / the source "
+                                    "says) — self-talk quoting the source "
+                                    "defeats the overlap rescue; dropped",
                                     chapter=getattr(s, "_current_heading", "") or "",
                                     actually_dropped=True,
                                 )
@@ -1181,10 +1276,12 @@ class BulletPipeline:
                     if _actually_ungrounded:
                         for bp, ov in _actually_ungrounded:
                             s.quarantine.add(
-                                bp, stage="judge_grounding.llm_f4_crosscheck",
-                                threshold=0.25, source_overlap=ov,
+                                bp,
+                                stage="judge_grounding.llm_f4_crosscheck",
+                                threshold=0.25,
+                                source_overlap=ov,
                                 reason="LLM-as-judge said NO + F4 source overlap <25%"
-                                       + (" (kept — conservative mode)" if s.conservative_drops else ""),
+                                + (" (kept — conservative mode)" if s.conservative_drops else ""),
                                 chapter=getattr(s, "_current_heading", "") or "",
                                 actually_dropped=not s.conservative_drops,
                             )
@@ -1217,6 +1314,7 @@ class BulletPipeline:
                     _source_garbled_j = False
                     try:
                         from utils.text_quality import is_text_garbled
+
                         _source_garbled_j = is_text_garbled(content)
                     except (ImportError, ValueError) as exc:
                         s.log(f"    ℹ️ Source garble check skipped ({exc})", "DEBUG")
@@ -1242,21 +1340,32 @@ class BulletPipeline:
                         )
                     elif _verbatim_bullets:
                         _ungrounded_set = {b[:80] for b in _judge_result.ungrounded_bullets}
-                        _kept = [bp for bp in bullets if bp[:80] not in _ungrounded_set or bp[:80] in _verbatim_bullets]
-                        _dropped_here = [bp for bp in bullets if bp[:80] in _ungrounded_set and bp[:80] not in _verbatim_bullets]
+                        _kept = [
+                            bp
+                            for bp in bullets
+                            if bp[:80] not in _ungrounded_set or bp[:80] in _verbatim_bullets
+                        ]
+                        _dropped_here = [
+                            bp
+                            for bp in bullets
+                            if bp[:80] in _ungrounded_set and bp[:80] not in _verbatim_bullets
+                        ]
                         for _dbp in _dropped_here:
                             try:
                                 from core.summarisation.text_preprocessor import (
                                     compute_source_overlap as _cso,
                                 )
+
                                 _dov = _cso(_dbp, content)
                             except Exception as _e:
                                 _dov = 0.0
                             s.quarantine.add(
-                                _dbp, stage="judge_grounding.verbatim_exempt",
-                                threshold=0.0, source_overlap=_dov,
+                                _dbp,
+                                stage="judge_grounding.verbatim_exempt",
+                                threshold=0.0,
+                                source_overlap=_dov,
                                 reason="Judge flagged ungrounded (no verbatim quote exempting it)"
-                                       + (" (kept — conservative mode)" if s.conservative_drops else ""),
+                                + (" (kept — conservative mode)" if s.conservative_drops else ""),
                                 chapter=getattr(s, "_current_heading", "") or "",
                                 actually_dropped=not s.conservative_drops,
                             )
@@ -1282,14 +1391,17 @@ class BulletPipeline:
                                 from core.summarisation.text_preprocessor import (
                                     compute_source_overlap as _cso,
                                 )
+
                                 _dov = _cso(_dbp, content)
                             except Exception as _e:
                                 _dov = 0.0
                             s.quarantine.add(
-                                _dbp, stage="judge_grounding.ungrounded",
-                                threshold=0.0, source_overlap=_dov,
+                                _dbp,
+                                stage="judge_grounding.ungrounded",
+                                threshold=0.0,
+                                source_overlap=_dov,
                                 reason="Content Judge flagged as ungrounded (hallucination)"
-                                       + (" (kept — conservative mode)" if s.conservative_drops else ""),
+                                + (" (kept — conservative mode)" if s.conservative_drops else ""),
                                 chapter=getattr(s, "_current_heading", "") or "",
                                 actually_dropped=not s.conservative_drops,
                             )
@@ -1314,7 +1426,7 @@ class BulletPipeline:
                 s.log(
                     f"    🔄 Judge: coverage {_judge_result.coverage_pct:.0%} < {s.coverage_threshold:.0%} — "
                     f"gap-filling {len(_judge_result.uncovered_claims)} uncovered claim(s)",
-                    "WARNING"
+                    "WARNING",
                 )
                 _gap_prompt = _judge.build_gap_fill_prompt(
                     heading, _judge_result.uncovered_claims[:15], bullets
@@ -1323,6 +1435,7 @@ class BulletPipeline:
                 # for Qwen-family models (bypasses _call_llm_with_empty_retry's
                 # V18.2.41 injection).
                 from core.summarisation.filter_thinking import qwen_no_think
+
                 _gap_response = s._call_llm(
                     qwen_no_think(_gap_prompt, s.primary_model),
                     model=s.primary_model,
@@ -1339,14 +1452,16 @@ class BulletPipeline:
                         # Phase 2.2 before appending. Previously these bypassed
                         # all hallucination filters — a back-door.
                         _validated_gap = self._validate_gap_fill_bullets(
-                            _gap_bullets[:7], content, s,
+                            _gap_bullets[:7],
+                            content,
+                            s,
                         )
                         if _validated_gap:
                             s.log(
                                 f"    ✅ Judge: gap-fill added {len(_validated_gap)}/"
                                 f"{len(_gap_bullets[:7])} bullet(s) "
                                 f"(after F4 + Phase 2.2 validation)",
-                                "INFO"
+                                "INFO",
                             )
                             bullets.extend(_validated_gap)
                             state.bullets = bullets
@@ -1354,13 +1469,13 @@ class BulletPipeline:
                             s.log(
                                 f"    🚫 Judge: all {len(_gap_bullets[:7])} gap-fill "
                                 f"bullet(s) rejected by F4 + Phase 2.2 validation",
-                                "WARNING"
+                                "WARNING",
                             )
 
             if _judge_result.deviation_count > 0:
                 s.log(
                     f"    ⚠️ Judge: {_judge_result.deviation_count} potential deviation(s) detected",
-                    "WARNING"
+                    "WARNING",
                 )
                 for d in _judge_result.deviation_details[:3]:
                     s.log(f"      → {d}", "WARNING")
@@ -1382,18 +1497,21 @@ class BulletPipeline:
                 "WARNING",
             )
             logger.warning(
-                "content_judge stage crashed: %s: %s", type(e).__name__, e,
+                "content_judge stage crashed: %s: %s",
+                type(e).__name__,
+                e,
             )
 
         # Hard rejection
         try:
-            if hasattr(s, '_last_judge_result') and s._last_judge_result:
+            if hasattr(s, "_last_judge_result") and s._last_judge_result:
                 _jr = s._last_judge_result
                 _ungrounded_pct = 1.0 - _jr.grounding_pct if _jr.total_bullets > 0 else 0.0
 
                 _source_garbled = False
                 try:
                     from utils.text_quality import is_text_garbled
+
                     _source_garbled = is_text_garbled(content)
                 except (ImportError, ValueError) as exc:
                     s.log(f"    ℹ️ Source garble check skipped ({exc})", "DEBUG")
@@ -1485,8 +1603,10 @@ class BulletPipeline:
                         "INFO",
                     )
                 else:
-                    msg = (f"Content Judge: coverage {_jr.coverage_pct:.0%} is catastrophically "
-                           f"low (<30%) — summary rejected for safety")
+                    msg = (
+                        f"Content Judge: coverage {_jr.coverage_pct:.0%} is catastrophically "
+                        f"low (<30%) — summary rejected for safety"
+                    )
                     s.log(f"    🚫 {msg}", "ERROR")
                     return SummaryResult(
                         chapter_heading=heading,

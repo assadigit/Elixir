@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
     _show_success_modal,
@@ -130,8 +129,9 @@ class PdfDocxCutterDialog(QDialog):
     def _pick_input(self):
         from pathlib import Path as _P
 
-        from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(self, "Pick a file", "", "Documents (*.pdf *.docx);;All files (*.*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Pick a file", "", "Documents (*.pdf *.docx);;All files (*.*)"
+        )
         if path:
             self.in_edit.setText(path)
             p = _P(path)
@@ -141,7 +141,6 @@ class PdfDocxCutterDialog(QDialog):
     def _pick_output(self):
         from pathlib import Path as _P
 
-        from PySide6.QtWidgets import QFileDialog
         in_path = self.in_edit.text().strip()
         ext = _P(in_path).suffix if in_path else ".pdf"
         filter_str = f"{'PDF' if ext == '.pdf' else 'Word'} (*{ext});;All files (*.*)"
@@ -211,15 +210,14 @@ class PdfDocxCutterDialog(QDialog):
         # late-bind, so at call time (worker thread) the attribute exists
         # and refers to THIS worker.
         self._worker = SimpleWorker(
-            lambda: self._cut_work(in_path, out_path, pages,
-                                   report=self._worker.progress.emit))
+            lambda: self._cut_work(in_path, out_path, pages, report=self._worker.progress.emit)
+        )
         self._worker.progress.connect(self._on_cut_progress)
         self._worker.finished.connect(self._on_cut_finished)
         self._worker.failed.connect(self._on_cut_failed)
         self._worker.start()
 
-    def _cut_work(self, in_path: str, out_path: str,
-                  pages: list[int] | None, report=None) -> dict:
+    def _cut_work(self, in_path: str, out_path: str, pages: list[int] | None, report=None) -> dict:
         """V18.20.4.5 (W-b5): the pypdf / python-docx cut, worker-thread
         edition.
 
@@ -277,6 +275,7 @@ class PdfDocxCutterDialog(QDialog):
         from pathlib import Path as _P
 
         import pypdf
+
         reader = pypdf.PdfReader(in_path)
         writer = pypdf.PdfWriter()
         if pages is None:
@@ -316,7 +315,7 @@ class PdfDocxCutterDialog(QDialog):
             has_break = False
             for run in para.runs:
                 for elem in run._element:
-                    if elem.tag == qn('w:br') and elem.get(qn('w:type')) == 'page':
+                    if elem.tag == qn("w:br") and elem.get(qn("w:type")) == "page":
                         has_break = True
                         break
                 if has_break:
@@ -336,9 +335,9 @@ class PdfDocxCutterDialog(QDialog):
             for para in doc.paragraphs:
                 current_group.append(para)
                 # Check for section properties (page/section break).
-                sect_pr = para._element.find(qn('w:pPr'))
+                sect_pr = para._element.find(qn("w:pPr"))
                 if sect_pr is not None:
-                    sect = sect_pr.find(qn('w:sectPr'))
+                    sect = sect_pr.find(qn("w:sectPr"))
                     if sect is not None:
                         page_groups.append(current_group)
                         current_group = []
@@ -351,7 +350,7 @@ class PdfDocxCutterDialog(QDialog):
             PARAS_PER_PAGE = 40
             page_groups = []
             for i in range(0, len(doc.paragraphs), PARAS_PER_PAGE):
-                page_groups.append(doc.paragraphs[i:i + PARAS_PER_PAGE])
+                page_groups.append(doc.paragraphs[i : i + PARAS_PER_PAGE])
 
         # ── Strategy 4: Last resort — each paragraph is a "page" ──
         if not page_groups:

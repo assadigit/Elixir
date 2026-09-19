@@ -10,6 +10,7 @@ breaks the hierarchy builder).
 The test uses mock summaries (no LLM calls, no real PDF) so it runs in
 <5 seconds and works in the sandbox (no Ollama, no PySide6).
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,6 +28,7 @@ if str(_project_root) not in sys.path:
 def mock_summaries():
     """Create 3 mock SummaryResult objects (chapters with bullets + exec summary)."""
     from core.models import SummaryResult
+
     return [
         SummaryResult(
             chapter_heading="Chapter 1: Introduction",
@@ -106,8 +108,10 @@ def test_packets_generation_chapter_aligned(mock_summaries, mock_request, tmp_pa
     )
 
     # Mock the LLM calls (no Ollama in sandbox)
-    with patch.object(gen, '_call_llm') as mock_llm, \
-         patch.object(gen, '_generate_one_page') as mock_one_page:
+    with (
+        patch.object(gen, "_call_llm") as mock_llm,
+        patch.object(gen, "_generate_one_page") as mock_one_page,
+    ):
         # Return a valid JSON response for synthesis
         mock_llm.return_value = '{"paragraph": "This is a synthesized paragraph about the chapter content. It covers the main concepts discussed.", "tldr": "A brief summary."}'
         # Mock one-page distillation
@@ -141,8 +145,10 @@ def test_packets_coverage_report(mock_summaries, mock_request, tmp_path):
         log_callback=lambda msg, level="INFO": None,
     )
 
-    with patch.object(gen, '_call_llm') as mock_llm, \
-         patch.object(gen, '_generate_one_page') as mock_one_page:
+    with (
+        patch.object(gen, "_call_llm") as mock_llm,
+        patch.object(gen, "_generate_one_page") as mock_one_page,
+    ):
         mock_llm.return_value = '{"paragraph": "Synthesized content here.", "tldr": "Summary."}'
         mock_one_page.return_value = "# Distillation"
 
@@ -170,8 +176,10 @@ def test_packets_chapter_aligned_concept_names(mock_summaries, mock_request, tmp
         log_callback=lambda msg, level="INFO": None,
     )
 
-    with patch.object(gen, '_call_llm') as mock_llm, \
-         patch.object(gen, '_generate_one_page') as mock_one_page:
+    with (
+        patch.object(gen, "_call_llm") as mock_llm,
+        patch.object(gen, "_generate_one_page") as mock_one_page,
+    ):
         mock_llm.return_value = '{"paragraph": "Content.", "tldr": "TLDR."}'
         mock_one_page.return_value = "# Distillation"
 
@@ -187,12 +195,15 @@ def test_packets_chapter_aligned_concept_names(mock_summaries, mock_request, tmp
     content = map_md.read_text(encoding="utf-8")
     # In chapter-aligned mode, each chapter heading is a concept node
     # The map should contain sanitized versions of the chapter headings
-    assert "Chapter 1" in content or "chapter_1" in content.lower(), \
+    assert "Chapter 1" in content or "chapter_1" in content.lower(), (
         "Map should reference Chapter 1"
-    assert "Chapter 2" in content or "chapter_2" in content.lower(), \
+    )
+    assert "Chapter 2" in content or "chapter_2" in content.lower(), (
         "Map should reference Chapter 2"
-    assert "Chapter 3" in content or "chapter_3" in content.lower(), \
+    )
+    assert "Chapter 3" in content or "chapter_3" in content.lower(), (
         "Map should reference Chapter 3"
+    )
 
 
 def test_packets_chapters_md_export(mock_summaries, mock_request, tmp_path):

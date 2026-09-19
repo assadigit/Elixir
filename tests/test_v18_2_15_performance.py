@@ -6,6 +6,7 @@ Tests verify:
 3. P6: ``ocr_parallel_workers`` setting exists + is read by OCRService
 4. P4: per-chapter elapsed time is logged at DEBUG (always) + WARNING (over deadline)
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,12 +26,14 @@ if "tiktoken" not in sys.modules:
 # P4: Per-chapter deadline setting
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestChapterDeadlineSetting:
     """V18.2.15 (P4): The chapter_deadline_sec setting exists and is read."""
 
     def test_setting_exists_with_default_480(self):
         """The default deadline is 480s (8 min, per audit suggestion)."""
         from utils.settings import Settings
+
         s = Settings()
         # The default should be 480 (the audit's suggested 8 min).
         # Use the _defaults() static method to check the schema.
@@ -42,6 +45,7 @@ class TestChapterDeadlineSetting:
     def test_setting_zero_disables_deadline(self):
         """Setting 0 means no deadline (disabled)."""
         from utils.settings import Settings
+
         s = Settings()
         s.set("local.chapter_deadline_sec", 0)
         assert s.get("local.chapter_deadline_sec", 480) == 0
@@ -53,12 +57,14 @@ class TestChapterDeadlineSetting:
 # P6: OCR parallelism setting
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOCRParallelWorkersSetting:
     """V18.2.15 (P6): The ocr_parallel_workers setting exists and defaults to 1."""
 
     def test_setting_exists_with_default_1(self):
         """Default is 1 (sequential) — safe for the 6 GB single-instance OCR model."""
         from utils.settings import Settings
+
         s = Settings()
         defaults = s._defaults().get("local", {})
         assert defaults.get("ocr_parallel_workers") == 1, (
@@ -68,6 +74,7 @@ class TestOCRParallelWorkersSetting:
 
     def test_setting_can_be_overridden(self):
         from utils.settings import Settings
+
         s = Settings()
         s.set("local.ocr_parallel_workers", 3)
         assert s.get("local.ocr_parallel_workers", 1) == 3
@@ -78,6 +85,7 @@ class TestOCRParallelWorkersSetting:
 # ═══════════════════════════════════════════════════════════════════════════
 # P5: Adaptive B4 cap (VRAM-aware)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestAdaptiveB4Cap:
     """V18.2.15 (P5): The B4 section cap raises when VRAM permits.
@@ -91,6 +99,7 @@ class TestAdaptiveB4Cap:
 
     def test_b4_cap_setting_exists(self):
         from utils.settings import Settings
+
         s = Settings()
         defaults = s._defaults().get("local", {})
         assert "b4_max_sections" in defaults
@@ -99,6 +108,7 @@ class TestAdaptiveB4Cap:
     def test_b4_cap_zero_means_unlimited(self):
         """Setting 0 means process ALL sections (no cap)."""
         from utils.settings import Settings
+
         s = Settings()
         s.set("local.b4_max_sections", 0)
         assert s.get("local.b4_max_sections", 6) == 0
@@ -109,6 +119,7 @@ class TestAdaptiveB4Cap:
         """The VRAM check helper used by the adaptive cap is importable."""
         # This may return None in CI (no GPU), but the import must work.
         from core.vram_calculator import get_total_vram
+
         # Don't assert the value (CI has no GPU) — just that it's callable.
         assert callable(get_total_vram)
 
@@ -116,6 +127,7 @@ class TestAdaptiveB4Cap:
 # ═══════════════════════════════════════════════════════════════════════════
 # P4: Deadline logging (integration smoke test)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDeadlineLogging:
     """V18.2.15 (P4): The deadline-elapsed log is emitted per chapter.
@@ -129,6 +141,7 @@ class TestDeadlineLogging:
     def test_summarizer_reads_deadline_setting(self):
         """Summarizer.__init__ reads local.chapter_deadline_sec into self.local_chapter_deadline."""
         from utils.settings import Settings
+
         s = Settings()
         s.set("local.chapter_deadline_sec", 300)  # 5 min test value
         try:
@@ -142,6 +155,7 @@ class TestDeadlineLogging:
     def test_deadline_zero_means_disabled(self):
         """When the deadline is 0, no WARNING is ever logged for slow chapters."""
         from utils.settings import Settings
+
         s = Settings()
         s.set("local.chapter_deadline_sec", 0)
         try:

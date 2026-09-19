@@ -9,6 +9,7 @@ Covers all the failure modes identified in the segmenter + TOC audit:
   F5: Gap segments excluded from matching
   F6: TOC validation (garbage filtering)
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,8 +22,17 @@ if str(_project_root) not in sys.path:
 
 # V18.3.3: mock the heavy optional deps so we can import the chapter_matcher
 # without the full markitdown/pypdf/pdfplumber stack.
-for _mod in ("markitdown", "pypdf", "pdfplumber", "pdf2image", "pytesseract",
-             "PIL", "PIL.Image", "spacy", "wordninja"):
+for _mod in (
+    "markitdown",
+    "pypdf",
+    "pdfplumber",
+    "pdf2image",
+    "pytesseract",
+    "PIL",
+    "PIL.Image",
+    "spacy",
+    "wordninja",
+):
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 if "docx" not in sys.modules:
@@ -39,13 +49,19 @@ from core.segmentation.chapter_matcher import (
 
 # ── F1: Segment.aliases + all_headings ─────────────────────────────────────
 
+
 class TestSegmentAliases:
     """V18.3.3 (F1): Segment has an aliases field + all_headings property."""
 
     def test_segment_has_aliases_field(self):
         """Segment accepts an aliases parameter."""
-        seg = Segment(heading="Title Page", content="...", start_page=1, end_page=5,
-                      aliases=["Dedication", "Epigraph"])
+        seg = Segment(
+            heading="Title Page",
+            content="...",
+            start_page=1,
+            end_page=5,
+            aliases=["Dedication", "Epigraph"],
+        )
         assert seg.aliases == ["Dedication", "Epigraph"]
 
     def test_segment_aliases_defaults_to_empty(self):
@@ -55,8 +71,13 @@ class TestSegmentAliases:
 
     def test_all_headings_includes_aliases(self):
         """all_headings returns [heading] + aliases."""
-        seg = Segment(heading="Title Page", content="...", start_page=1, end_page=5,
-                      aliases=["Dedication", "Epigraph"])
+        seg = Segment(
+            heading="Title Page",
+            content="...",
+            start_page=1,
+            end_page=5,
+            aliases=["Dedication", "Epigraph"],
+        )
         assert seg.all_headings == ["Title Page", "Dedication", "Epigraph"]
 
     def test_all_headings_no_aliases(self):
@@ -66,8 +87,13 @@ class TestSegmentAliases:
 
     def test_is_gap_property(self):
         """V18.3.3 (F5): is_gap detects gap segments."""
-        gap = Segment(heading="Gap (pages 1–1)", content="[No content]", start_page=1, end_page=1,
-                      segment_type="gap")
+        gap = Segment(
+            heading="Gap (pages 1–1)",
+            content="[No content]",
+            start_page=1,
+            end_page=1,
+            segment_type="gap",
+        )
         assert gap.is_gap is True
 
         normal = Segment(heading="Chapter 1", content="...", start_page=1, end_page=10)
@@ -75,6 +101,7 @@ class TestSegmentAliases:
 
 
 # ── F4: ChapterMatcher — heading-text matching ──────────────────────────────
+
 
 class TestChapterMatcherHeadingText:
     """The matcher's heading-text matching (exact, number, word-overlap, fuzzy)."""
@@ -112,7 +139,13 @@ class TestChapterMatcherHeadingText:
     def test_word_overlap_majority(self):
         """V18.3.1 P2: 3+ word selection with majority overlap → match."""
         m = ChapterMatcher()
-        segs = [{"heading": "Part Three: Confidence Building and Active Listening Skills", "start_page": 1, "end_page": 10}]
+        segs = [
+            {
+                "heading": "Part Three: Confidence Building and Active Listening Skills",
+                "start_page": 1,
+                "end_page": 10,
+            }
+        ]
         result = m.match(["Chapter 3: Confidence Building Through Active Listening"], segs)
         assert len(result) == 1
 
@@ -126,17 +159,21 @@ class TestChapterMatcherHeadingText:
 
 # ── F4: ChapterMatcher — alias-aware matching ────────────────────────────────
 
+
 class TestChapterMatcherAliases:
     """V18.3.3 (F2): the matcher checks aliases, not just the primary heading."""
 
     def test_match_via_alias(self):
         """If the primary heading doesn't match but an alias does, it matches."""
         m = ChapterMatcher()
-        segs = [{
-            "heading": "Title Page",
-            "aliases": ["Dedication", "Epigraph"],
-            "start_page": 1, "end_page": 5,
-        }]
+        segs = [
+            {
+                "heading": "Title Page",
+                "aliases": ["Dedication", "Epigraph"],
+                "start_page": 1,
+                "end_page": 5,
+            }
+        ]
         result = m.match(["Dedication"], segs)
         assert len(result) == 1
         assert result[0][1]["heading"] == "Title Page"
@@ -144,11 +181,14 @@ class TestChapterMatcherAliases:
     def test_exact_match_via_alias(self):
         """Exact match via alias gets score 3."""
         m = ChapterMatcher()
-        segs = [{
-            "heading": "Title Page",
-            "aliases": ["Dedication"],
-            "start_page": 1, "end_page": 5,
-        }]
+        segs = [
+            {
+                "heading": "Title Page",
+                "aliases": ["Dedication"],
+                "start_page": 1,
+                "end_page": 5,
+            }
+        ]
         result = m.match(["Dedication"], segs)
         assert len(result) == 1
         assert result[0][0] == 3  # exact match via alias
@@ -164,11 +204,14 @@ class TestChapterMatcherAliases:
         """The exact scenario from 'Agent of Influence': 'Dedication' was merged
         into 'Title Page'. With aliases, the user can still match on 'Dedication'."""
         m = ChapterMatcher()
-        segs = [{
-            "heading": "Title Page",
-            "aliases": ["Dedication", "Epigraph", "Contents", "Introduction: Spy Skills"],
-            "start_page": 1, "end_page": 10,
-        }]
+        segs = [
+            {
+                "heading": "Title Page",
+                "aliases": ["Dedication", "Epigraph", "Contents", "Introduction: Spy Skills"],
+                "start_page": 1,
+                "end_page": 10,
+            }
+        ]
         result = m.match(["Dedication"], segs)
         assert len(result) == 1
         result = m.match(["Epigraph"], segs)
@@ -178,6 +221,7 @@ class TestChapterMatcherAliases:
 
 
 # ── F4: ChapterMatcher — page-based matching ─────────────────────────────────
+
 
 class TestChapterMatcherPageBased:
     """V18.3.3 (F4): page-based fallback when heading-text fails."""
@@ -198,7 +242,9 @@ class TestChapterMatcherPageBased:
         ]
         m = ChapterMatcher(toc_entries=toc)
         result = m.match(
-            ["Chapter 7: Putting It All Together: How I Used the SADR Cycle to Create Million-Dollar Marketing Campaigns"],
+            [
+                "Chapter 7: Putting It All Together: How I Used the SADR Cycle to Create Million-Dollar Marketing Campaigns"
+            ],
             segs,
         )
         assert len(result) == 1
@@ -233,6 +279,7 @@ class TestChapterMatcherPageBased:
 
 
 # ── F5: Gap segment filtering ───────────────────────────────────────────────
+
 
 class TestGapSegmentFiltering:
     """V18.3.3 (F5): gap segments are excluded from matching."""
@@ -273,6 +320,7 @@ class TestGapSegmentFiltering:
 
 # ── F6: TOC validation ──────────────────────────────────────────────────────
 
+
 class TestTOCValidation:
     """V18.3.3 (F6): garbage TOC entries are filtered."""
 
@@ -299,7 +347,7 @@ class TestTOCValidation:
         toc = [
             ("Chapter 1: Introduction", 5),
             ("42", 10),  # garbage
-            ("", 15),   # garbage
+            ("", 15),  # garbage
             ("Chapter 2: Conclusion", 20),
         ]
         m = ChapterMatcher(toc_entries=toc)
@@ -310,6 +358,7 @@ class TestTOCValidation:
 
 
 # ── F4: ChapterMatcher — unified behavior (both stages agree) ────────────────
+
 
 class TestUnifiedMatching:
     """V18.3.3 (F4): Stage 1 + Stage 2 use the same matcher — they agree."""
@@ -363,13 +412,12 @@ class TestUnifiedMatching:
         """If a segment matches multiple selected titles, it appears once."""
         m = ChapterMatcher()
         segs = [{"heading": "Chapter 1: Introduction", "start_page": 1, "end_page": 10}]
-        result = m.match(
-            ["Chapter 1: Introduction", "1 - INTRODUCTION"], segs
-        )
+        result = m.match(["Chapter 1: Introduction", "1 - INTRODUCTION"], segs)
         assert len(result) == 1  # deduped
 
 
 # ── F3: _filter_to_chapter_level (level preference) ──────────────────────────
+
 
 class TestFilterToChapterLevel:
     """V18.3.3 (F3): prefers the most granular level with real chapters.
@@ -381,11 +429,22 @@ class TestFilterToChapterLevel:
     def _choose_level(self, toc_entries_with_levels):
         """Standalone copy of the _filter_to_chapter_level level-selection logic."""
         import re as _re
+
         _FRONT_MATTER = {
-            "dedication", "epigraph", "contents", "table of contents",
-            "copyright", "title page", "about the author", "about the publisher",
-            "acknowledgments", "acknowledgements", "author's note", "author note",
-            "front matter", "cover",
+            "dedication",
+            "epigraph",
+            "contents",
+            "table of contents",
+            "copyright",
+            "title page",
+            "about the author",
+            "about the publisher",
+            "acknowledgments",
+            "acknowledgements",
+            "author's note",
+            "author note",
+            "front matter",
+            "cover",
         }
 
         def _is_real_chapter(title):
@@ -394,16 +453,16 @@ class TestFilterToChapterLevel:
                 return False
             if t in _FRONT_MATTER:
                 return False
-            if _re.match(r'^(chapter|lesson|section|part)\s+\d+', t):
+            if _re.match(r"^(chapter|lesson|section|part)\s+\d+", t):
                 return True
-            if _re.match(r'^\d+[\.\s\-]', t):
+            if _re.match(r"^\d+[\.\s\-]", t):
                 return True
             if len(t) > 10:
                 return True
             return False
 
         by_level = {}
-        for title, page, level in toc_entries_with_levels:
+        for title, _page, level in toc_entries_with_levels:
             by_level.setdefault(level, []).append(title)
 
         chosen = 0

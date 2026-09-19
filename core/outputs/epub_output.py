@@ -13,6 +13,7 @@ No LLM calls — this is a deterministic post-processing output that
 assembles existing summaries + chapter text into an e-reader-friendly
 format.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,8 +49,8 @@ class EPUBGenerator(OutputGeneratorBase):
         epub_path = output_dir / f"{book_title}.epub"
 
         try:
-            import ebooklib
             from ebooklib import epub
+
             self._generate_with_ebooklib(summaries, book_title, epub_path, epub)
             self.log(f"  ✅ EPUB generated: {epub_path.name} ({len(summaries)} chapters)", "INFO")
             return epub_path
@@ -153,12 +154,15 @@ class EPUBGenerator(OutputGeneratorBase):
             zf.writestr("mimetype", "application/epub+zip")
 
             # container.xml
-            zf.writestr("META-INF/container.xml", """<?xml version="1.0"?>
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
-</container>""")
+</container>""",
+            )
 
             # content.opf
             manifest_items = ""
@@ -170,7 +174,9 @@ class EPUBGenerator(OutputGeneratorBase):
                 heading = summ.chapter_heading or f"Chapter {idx}"
                 toc_entries += f'<navPoint id="ch{idx}"><navLabel><text>{heading}</text></navLabel><content src="ch_{idx:03d}.xhtml"/></navPoint>\n'
 
-            zf.writestr("OEBPS/content.opf", f"""<?xml version="1.0" encoding="UTF-8"?>
+            zf.writestr(
+                "OEBPS/content.opf",
+                f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">{book_id}</dc:identifier>
@@ -183,22 +189,28 @@ class EPUBGenerator(OutputGeneratorBase):
 {manifest_items}  </manifest>
   <spine toc="ncx">
 {spine_items}  </spine>
-</package>""")
+</package>""",
+            )
 
             # toc.ncx
-            zf.writestr("OEBPS/toc.ncx", f"""<?xml version="1.0" encoding="UTF-8"?>
+            zf.writestr(
+                "OEBPS/toc.ncx",
+                f"""<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head><meta name="dtb:uid" content="{book_id}"/></head>
   <docTitle><text>{book_title}</text></docTitle>
   <navMap>
 {toc_entries}  </navMap>
-</ncx>""")
+</ncx>""",
+            )
 
             # Chapter files
             for idx, summ in enumerate(summaries, 1):
                 html = self._build_chapter_html(summ, idx)
-                zf.writestr(f"OEBPS/ch_{idx:03d}.xhtml",
-                           f'<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><title>{summ.chapter_heading or f"Chapter {idx}"}</title></head><body>{html}</body></html>')
+                zf.writestr(
+                    f"OEBPS/ch_{idx:03d}.xhtml",
+                    f'<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><title>{summ.chapter_heading or f"Chapter {idx}"}</title></head><body>{html}</body></html>',
+                )
 
 
 __all__ = ["EPUBGenerator"]

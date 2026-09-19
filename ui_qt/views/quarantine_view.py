@@ -51,21 +51,21 @@ from ui_qt.theme import theme_manager
 
 # Stage → (display label, colour-name in palette)
 _STAGE_META = {
-    "thinking_filter.thinking_process":  ("Thinking process",   "warning"),
-    "thinking_filter.backtick_words":    ("Backtick words",     "warning"),
-    "thinking_filter.internal_markers":  ("Internal markers",   "warning"),
-    "thinking_filter.prompt_leakage":    ("Prompt leakage",     "warning"),
-    "thinking_filter.meta_commentary":   ("Meta commentary",    "text_muted"),
-    "thinking_filter.too_long_500chars": ("Too long (>500ch)",  "text_muted"),
+    "thinking_filter.thinking_process": ("Thinking process", "warning"),
+    "thinking_filter.backtick_words": ("Backtick words", "warning"),
+    "thinking_filter.internal_markers": ("Internal markers", "warning"),
+    "thinking_filter.prompt_leakage": ("Prompt leakage", "warning"),
+    "thinking_filter.meta_commentary": ("Meta commentary", "text_muted"),
+    "thinking_filter.too_long_500chars": ("Too long (>500ch)", "text_muted"),
     "thinking_filter.narrative_no_concept": ("Narrative (no concept)", "text_muted"),
-    "thinking_filter.numeric_verify":    ("Numeric verify",     "text_muted"),
-    "quality_scorer":                    ("Quality scorer",     "text_muted"),
-    "F4_source_overlap":                 ("F4 source overlap",  "error"),
-    "Phase2.2_semantic_fact_check":      ("Phase 2.2 fact-check", "error"),
-    "B3_dedup":                          ("B3 dedup",           "text_secondary"),
-    "judge_grounding.llm_f4_crosscheck": ("Judge (LLM+F4)",     "error"),
-    "judge_grounding.verbatim_exempt":   ("Judge (verbatim)",   "error"),
-    "judge_grounding.ungrounded":        ("Judge (ungrounded)", "error"),
+    "thinking_filter.numeric_verify": ("Numeric verify", "text_muted"),
+    "quality_scorer": ("Quality scorer", "text_muted"),
+    "F4_source_overlap": ("F4 source overlap", "error"),
+    "Phase2.2_semantic_fact_check": ("Phase 2.2 fact-check", "error"),
+    "B3_dedup": ("B3 dedup", "text_secondary"),
+    "judge_grounding.llm_f4_crosscheck": ("Judge (LLM+F4)", "error"),
+    "judge_grounding.verbatim_exempt": ("Judge (verbatim)", "error"),
+    "judge_grounding.ungrounded": ("Judge (ungrounded)", "error"),
 }
 
 
@@ -96,13 +96,15 @@ class QuarantineView(QWidget):
 
         # ── Header card: folder picker + load ───────────────────────────
         header_card = Card(padding=10, spacing=6)
-        header_card.addWidget(StepHeader(
-            number=0,
-            title="Quarantine — dropped-bullet audit & restore",
-            caption="Pick a book's output folder to review every bullet the "
-                    "pipeline dropped, why it was dropped, and restore any "
-                    "that should have survived.",
-        ))
+        header_card.addWidget(
+            StepHeader(
+                number=0,
+                title="Quarantine — dropped-bullet audit & restore",
+                caption="Pick a book's output folder to review every bullet the "
+                "pipeline dropped, why it was dropped, and restore any "
+                "that should have survived.",
+            )
+        )
 
         pick_row = QHBoxLayout()
         pick_row.setSpacing(6)
@@ -241,9 +243,7 @@ class QuarantineView(QWidget):
                         if drops:
                             self._load_from_folder(sub)
                             return
-        self.stats_label.setText(
-            "Auto-detect found no drops.jsonl.  Pick a book folder manually."
-        )
+        self.stats_label.setText("Auto-detect found no drops.jsonl.  Pick a book folder manually.")
 
     def _guess_start_dir(self) -> Path | None:
         try:
@@ -461,14 +461,10 @@ class QuarantineView(QWidget):
                     updated = True
                     break
             if updated:
-                self._drops_path.write_text(
-                    "\n".join(lines) + "\n", encoding="utf-8"
-                )
+                self._drops_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
                 self._reload()
         except Exception as exc:
-            self.stats_label.setText(
-                f"⚠️ Failed to update drops.jsonl: {type(exc).__name__}: {exc}"
-            )
+            self.stats_label.setText(f"⚠️ Failed to update drops.jsonl: {type(exc).__name__}: {exc}")
 
     def _export_visible(self) -> None:
         if not self._entries:
@@ -495,14 +491,10 @@ class QuarantineView(QWidget):
                 continue
             out.append(e)
         try:
-            Path(dest).write_text(
-                json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            Path(dest).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
             self.stats_label.setText(f"Exported {len(out)} drop(s) to {dest}.")
         except Exception as exc:
-            self.stats_label.setText(
-                f"⚠️ Export failed: {type(exc).__name__}: {exc}"
-            )
+            self.stats_label.setText(f"⚠️ Export failed: {type(exc).__name__}: {exc}")
 
     # ── theme ───────────────────────────────────────────────────────────
 
@@ -518,6 +510,7 @@ def _qcolor_from_hex(hex_str: str):
     """Convert a #RRGGBB palette colour into a QColor (lazy import of QtGui)."""
     try:
         from PySide6.QtGui import QColor
+
         return QColor(hex_str)
     except Exception:
         # Fallback: return None and let the item use its default colour.

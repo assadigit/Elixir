@@ -46,6 +46,7 @@ V18.20.3.3 (crash fixes #1/#2/#3) — the startup-crash hardening:
       is treated as "not installable" + a LOUD error, instead of silently
       killing the conversion worker thread.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -71,6 +72,7 @@ def _resolve_embed_model_name() -> str:
     """
     try:
         from utils.settings import Settings
+
         return str(Settings().get("embedding.model", "nomic-embed-text") or "nomic-embed-text")
     except Exception:
         return "nomic-embed-text"
@@ -107,6 +109,7 @@ def _sentence_transformers_needed(request: Any) -> tuple[bool, str]:
     model_name = "nomic-embed-text"
     try:
         from utils.settings import Settings
+
         _s = Settings()
         if not _s.get("embedding.enabled", True):
             return False, "embedder disabled (embedding.enabled=false → Jaccard fallback)"
@@ -115,6 +118,7 @@ def _sentence_transformers_needed(request: Any) -> tuple[bool, str]:
         model_name = "nomic-embed-text"  # same fallback as get_embed_model()
     try:
         from core.llm.embedder_backend import is_ollama_embed_model
+
         if is_ollama_embed_model(model_name):
             return False, f"embedder '{model_name}' runs via Ollama (no Python package needed)"
     except Exception as exc:
@@ -135,41 +139,56 @@ _REQUIRED_DEPS: list[tuple] = [
     # Core — always needed
     ("pypdf", "pypdf (PDF reading)", "pip install pypdf", lambda r: True),
     ("pdf2image", "pdf2image (cover screenshots)", "pip install pdf2image", lambda r: True),
-
     # Token counting — needed for summarization
-    ("tiktoken", "tiktoken (token counting)", "pip install tiktoken",
-     lambda r: getattr(r, "generate_summaries", False)),
-
+    (
+        "tiktoken",
+        "tiktoken (token counting)",
+        "pip install tiktoken",
+        lambda r: getattr(r, "generate_summaries", False),
+    ),
     # OCR — needed when use_llm_ocr is True
     # markitdown is imported at module level by core.pdf — always needed
-    ("markitdown", "markitdown (text extraction)", "pip install markitdown",
-     lambda r: True),
-
+    ("markitdown", "markitdown (text extraction)", "pip install markitdown", lambda r: True),
     # Dedup — needed for keypoints
-    ("rapidfuzz", "rapidfuzz (fuzzy dedup)", "pip install rapidfuzz",
-     lambda r: getattr(r, "include_keypoints", False)),
-
+    (
+        "rapidfuzz",
+        "rapidfuzz (fuzzy dedup)",
+        "pip install rapidfuzz",
+        lambda r: getattr(r, "include_keypoints", False),
+    ),
     # Tables — needed when extract_tables is True
-    ("camelot", "camelot (table extraction)", "pip install camelot-py[cv]",
-     lambda r: getattr(r, "extract_tables", False)),
-
+    (
+        "camelot",
+        "camelot (table extraction)",
+        "pip install camelot-py[cv]",
+        lambda r: getattr(r, "extract_tables", False),
+    ),
     # Math — needed when extract_math is True
-    ("pix2tex", "pix2tex (math extraction)", "pip install pix2tex",
-     lambda r: getattr(r, "extract_math", False)),
-
+    (
+        "pix2tex",
+        "pix2tex (math extraction)",
+        "pip install pix2tex",
+        lambda r: getattr(r, "extract_math", False),
+    ),
     # Layout — needed when layout_analysis is True
-    ("pdfplumber", "pdfplumber (layout analysis)", "pip install pdfplumber",
-     lambda r: getattr(r, "layout_analysis", False)),
-
+    (
+        "pdfplumber",
+        "pdfplumber (layout analysis)",
+        "pip install pdfplumber",
+        lambda r: getattr(r, "layout_analysis", False),
+    ),
     # Embedding dedup — needed for keypoints, but ONLY when the ACTIVE
     # embedder is the sentence-transformers (HF/local) backend.
     # V18.20.3.3 (crash fix #1): resolved from settings.embedding.model +
     # is_ollama_embed_model() — the Ollama embedder (nomic-embed-text,
     # default since V18.15.1) needs NO Python package, so rigs using it
     # skip the ~15-20 s sentence_transformers import entirely.
-    ("sentence_transformers", "sentence-transformers (embedding dedup)",
-     "pip install sentence-transformers",
-     lambda r: _sentence_transformers_needed(r)[0]),
+    (
+        "sentence_transformers",
+        "sentence-transformers (embedding dedup)",
+        "pip install sentence-transformers",
+        lambda r: _sentence_transformers_needed(r)[0],
+    ),
 ]
 
 # Deps that are ALWAYS optional (never block conversion, just log a warning)
@@ -260,15 +279,19 @@ def check_disk_space(
     than our estimate.
     """
     if log is None:
-        log = lambda msg, level="DEBUG": None
+
+        def _noop_log(msg: str, level: str = "DEBUG") -> None:
+            pass
+
+        log = _noop_log
     try:
         import shutil
+
         output_path = Path(str(output_dir))
         # Create the dir if it doesn't exist (so we can check its drive)
         output_path.mkdir(parents=True, exist_ok=True)
         total, used, free = shutil.disk_usage(output_path)
-        free_gb = free / (1024 ** 3)
-        free_mb = free / (1024 ** 2)
+        free_gb = free / (1024**3)
 
         if free_gb < min_free_gb:
             msg = (

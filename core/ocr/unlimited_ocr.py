@@ -49,12 +49,12 @@ class UnlimitedOCREngine(OCREngine):
         max_length: int = 32768,
         log_callback: Callable[[str, str], None] | None = None,
     ):
-        self.model_path  = model_path
-        self.image_size  = image_size
-        self.max_length  = max_length
-        self.log         = log_callback or (lambda msg, lvl="INFO": None)
-        self._model      = None
-        self._tokenizer  = None
+        self.model_path = model_path
+        self.image_size = image_size
+        self.max_length = max_length
+        self.log = log_callback or (lambda msg, lvl="INFO": None)
+        self._model = None
+        self._tokenizer = None
 
     def engine_name(self) -> str:
         name = Path(self.model_path).name if os.path.exists(self.model_path) else self.model_path
@@ -94,7 +94,7 @@ class UnlimitedOCREngine(OCREngine):
                         "  ❌ No config.json found near the .safetensors file.\n"
                         "  Please set the path to the model FOLDER containing config.json.\n"
                         "  Alternatively, disable UnlimitedOCR by setting the path to empty.",
-                        "ERROR"
+                        "ERROR",
                     )
                     return False
 
@@ -104,9 +104,7 @@ class UnlimitedOCREngine(OCREngine):
 
             # ── Try loading, catching common errors ─────────────────────────
             try:
-                self._tokenizer = AutoTokenizer.from_pretrained(
-                    load_path, trust_remote_code=True
-                )
+                self._tokenizer = AutoTokenizer.from_pretrained(load_path, trust_remote_code=True)
                 self._model = AutoModel.from_pretrained(
                     load_path,
                     trust_remote_code=True,
@@ -117,7 +115,7 @@ class UnlimitedOCREngine(OCREngine):
                     f"  ❌ Failed to parse config.json: {e}\n"
                     "  The model's config.json file is corrupted or incomplete.\n"
                     "  Please re-download the model files or disable UnlimitedOCR.",
-                    "ERROR"
+                    "ERROR",
                 )
                 self._model = None
                 return False
@@ -129,7 +127,7 @@ class UnlimitedOCREngine(OCREngine):
                         "  Please downgrade to transformers==4.36.0:\n"
                         "    pip install transformers==4.36.0\n"
                         "  OR disable UnlimitedOCR by setting its path to empty.",
-                        "ERROR"
+                        "ERROR",
                     )
                 else:
                     self.log(f"  ❌ Import error: {e}", "ERROR")
@@ -143,8 +141,7 @@ class UnlimitedOCREngine(OCREngine):
             device = "cuda" if torch.cuda.is_available() else "cpu"
             self._model = self._model.to(device).eval()
             self.log(
-                f"  ✅ UnlimitedOCR loaded on {device} "
-                f"(dtype={str(dtype).split('.')[-1]})",
+                f"  ✅ UnlimitedOCR loaded on {device} (dtype={str(dtype).split('.')[-1]})",
                 "INFO",
             )
             return True
@@ -158,6 +155,7 @@ class UnlimitedOCREngine(OCREngine):
         """Release model from VRAM."""
         try:
             import torch
+
             if self._model is not None:
                 del self._model
                 self._model = None
@@ -176,7 +174,7 @@ class UnlimitedOCREngine(OCREngine):
 
     def process_batch(
         self,
-        pages: list,           # list of pypdf PageObject
+        pages: list,  # list of pypdf PageObject
         page_numbers: list[int],
         image_max_size: int = 1024,
         poppler_path: str = "",
@@ -192,7 +190,9 @@ class UnlimitedOCREngine(OCREngine):
             if not self.load():
                 return {
                     p: OcrResult(
-                        page_num=p, text="", success=False,
+                        page_num=p,
+                        text="",
+                        success=False,
                         engine_used=OcrEngine.NONE,
                         error_msg="UnlimitedOCR not loaded",
                     )
@@ -202,21 +202,23 @@ class UnlimitedOCREngine(OCREngine):
         # Render all scanned pages to JPEG images in a temp directory
         tmp_dir = Path(tempfile.mkdtemp(prefix="unlimited_ocr_"))
         image_paths: list[str] = []
-        page_map: dict[int, int] = {}   # image_index → page_number
+        page_map: dict[int, int] = {}  # image_index → page_number
 
         try:
             from pdf2image import convert_from_bytes
             from pypdf import PdfWriter
 
-            for idx, (page, page_num) in enumerate(zip(pages, page_numbers)):
+            for idx, (page, page_num) in enumerate(zip(pages, page_numbers, strict=False)):
                 writer = PdfWriter()
                 writer.add_page(page)
                 buf = io.BytesIO()
                 writer.write(buf)
                 buf.seek(0)
                 kwargs: dict = {
-                    "first_page": 1, "last_page": 1,
-                    "dpi": 200, "fmt": "jpeg",
+                    "first_page": 1,
+                    "last_page": 1,
+                    "dpi": 200,
+                    "fmt": "jpeg",
                 }
                 if poppler_path:
                     kwargs["poppler_path"] = poppler_path
@@ -229,15 +231,20 @@ class UnlimitedOCREngine(OCREngine):
 
         except Exception as e:
             self.log(f"  ❌ UnlimitedOCR image prep failed: {e}", "ERROR")
-            import shutil; shutil.rmtree(tmp_dir, ignore_errors=True)
+            import shutil
+
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             return {
-                p: OcrResult(page_num=p, text="", success=False,
-                             engine_used=OcrEngine.NONE, error_msg=str(e))
+                p: OcrResult(
+                    page_num=p, text="", success=False, engine_used=OcrEngine.NONE, error_msg=str(e)
+                )
                 for p in page_numbers
             }
 
         if not image_paths:
-            import shutil; shutil.rmtree(tmp_dir, ignore_errors=True)
+            import shutil
+
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             return {}
 
         # Run infer_multi() — outputs files into tmp_dir/output/
@@ -261,8 +268,8 @@ class UnlimitedOCREngine(OCREngine):
 
             # Read output files — UnlimitedOCR writes per-image .md or .json files
             for idx, img_path in enumerate(image_paths):
-                page_num  = page_map.get(idx, -1)
-                stem      = Path(img_path).stem
+                page_num = page_map.get(idx, -1)
+                stem = Path(img_path).stem
 
                 # Try .md output first, then .json, then .txt
                 text = ""
@@ -283,13 +290,17 @@ class UnlimitedOCREngine(OCREngine):
                 if text.strip():
                     self.log(f"    ✅ UnlimitedOCR p.{page_num}: {len(text)} chars", "INFO")
                     results[page_num] = OcrResult(
-                        page_num=page_num, text=text.strip(),
-                        success=True, engine_used=OcrEngine.QWEN_VL,  # reuse enum for now
+                        page_num=page_num,
+                        text=text.strip(),
+                        success=True,
+                        engine_used=OcrEngine.QWEN_VL,  # reuse enum for now
                     )
                 else:
                     self.log(f"    ⚠️ UnlimitedOCR p.{page_num}: empty output", "WARNING")
                     results[page_num] = OcrResult(
-                        page_num=page_num, text="", success=False,
+                        page_num=page_num,
+                        text="",
+                        success=False,
                         engine_used=OcrEngine.QWEN_VL,
                         error_msg="UnlimitedOCR returned empty output",
                     )
@@ -299,11 +310,15 @@ class UnlimitedOCREngine(OCREngine):
             for page_num in page_numbers:
                 if page_num not in results:
                     results[page_num] = OcrResult(
-                        page_num=page_num, text="", success=False,
-                        engine_used=OcrEngine.NONE, error_msg=str(e),
+                        page_num=page_num,
+                        text="",
+                        success=False,
+                        engine_used=OcrEngine.NONE,
+                        error_msg=str(e),
                     )
         finally:
             import shutil
+
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
         return results
@@ -317,6 +332,11 @@ class UnlimitedOCREngine(OCREngine):
         batch = self.process_batch([page], [page_num])
         return batch.get(
             page_num,
-            OcrResult(page_num=page_num, text="", success=False,
-                      engine_used=OcrEngine.NONE, error_msg="Batch returned no result"),
+            OcrResult(
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
+                error_msg="Batch returned no result",
+            ),
         )

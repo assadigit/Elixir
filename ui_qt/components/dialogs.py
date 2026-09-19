@@ -40,9 +40,7 @@ class PasswordDialog(QDialog):
         head.setObjectName("H2")
         lay.addWidget(head)
 
-        body = QLabel(
-            f"“{file_name}” is password-protected. Enter the password to continue."
-        )
+        body = QLabel(f"“{file_name}” is password-protected. Enter the password to continue.")
         body.setObjectName("Body")
         body.setWordWrap(True)
         lay.addWidget(body)

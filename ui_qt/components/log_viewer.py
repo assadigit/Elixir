@@ -44,6 +44,7 @@ class LogViewer(QTextBrowser):
         menu = self.createStandardContextMenu()
         # V4.7.14: QAction is in QtGui, not QtWidgets in some PySide6 versions
         from PySide6.QtGui import QAction
+
         copy_all_action = QAction("📋  Copy All", self)
         copy_all_action.triggered.connect(self._copy_all)
         clear_action = QAction("🗑  Clear Log", self)
@@ -100,7 +101,8 @@ class LogViewer(QTextBrowser):
         if doc.blockCount() > self._max_lines:
             cursor.movePosition(QTextCursor.Start)
             cursor.movePosition(
-                QTextCursor.Down, QTextCursor.KeepAnchor,
+                QTextCursor.Down,
+                QTextCursor.KeepAnchor,
                 doc.blockCount() - self._max_lines,
             )
             cursor.removeSelectedText()

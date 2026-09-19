@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
     _show_success_modal,
@@ -112,7 +111,9 @@ class OcrServiceDialog(QDialog):
         self.engine_combo.addItem("Default (change in Settings)", "__default__")
         self.engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
         self.engine_combo.addItem("Ollama Vision — OlmOCR/Qwen (local LLM)", "ollama")
-        self.engine_combo.addItem("Local VLM — llava/minicpm (local LLM, better for infographics)", "vlm")
+        self.engine_combo.addItem(
+            "Local VLM — llava/minicpm (local LLM, better for infographics)", "vlm"
+        )
         self.engine_combo.addItem("Tesseract (lightweight, fast)", "tesseract")
         self.engine_combo.addItem("Auto (pypdf → Ollama → VLM → Tesseract)", "auto")
         # V11.19: default to "Default" (index 0). The old quick_services.ocr.engine
@@ -146,7 +147,7 @@ class OcrServiceDialog(QDialog):
         self.range_edit.setText("all")
         self.range_edit.setMinimumWidth(200)
         range_row.addWidget(self.range_edit, 1)
-        range_hint = _QL("💡 PDFs only — e.g. \"1-10\" for pages 1–10")
+        range_hint = _QL('💡 PDFs only — e.g. "1-10" for pages 1–10')
         range_hint.setObjectName("Caption")
         range_row.addWidget(range_hint)
         lay.addLayout(range_row)
@@ -173,6 +174,7 @@ class OcrServiceDialog(QDialog):
 
         # V11.20: busy progress bar during OCR processing.
         from PySide6.QtWidgets import QProgressBar as _QPB2
+
         self.progress_bar = _QPB2()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setFixedHeight(8)
@@ -206,16 +208,16 @@ class OcrServiceDialog(QDialog):
         super().closeEvent(event)
 
     def _pick_output_folder(self):
-        from PySide6.QtWidgets import QFileDialog
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
         if folder:
             self.out_edit.setText(folder)
 
     def _add_files(self):
-        from PySide6.QtWidgets import QFileDialog
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add documents", "",
-            "Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff);;All files (*.*)"
+            self,
+            "Add documents",
+            "",
+            "Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff);;All files (*.*)",
         )
         if paths:
             for p in paths:
@@ -287,7 +289,9 @@ class OcrServiceDialog(QDialog):
         # batch runs would spawn a second worker writing the same output
         # paths (the guard class V11.29.2 ported to this dialog).
         if self._worker is not None and self._worker.is_running():
-            self.status_label.setText("⏳ Already converting — wait for the current batch to finish.")
+            self.status_label.setText(
+                "⏳ Already converting — wait for the current batch to finish."
+            )
             return
 
         if not self._files:
@@ -309,13 +313,18 @@ class OcrServiceDialog(QDialog):
 
         # V11.19: resolve "__default__" sentinels from quick_services.defaults.*
         from utils.settings import Settings as _S
+
         _s = _S()
         engine = self.engine_combo.currentData()
         if engine == "__default__" or not engine:
-            engine = _s.get("quick_services.defaults.ocr_engine", "") or _s.get("quick_services.ocr.engine", "auto")
+            engine = _s.get("quick_services.defaults.ocr_engine", "") or _s.get(
+                "quick_services.ocr.engine", "auto"
+            )
         suffix = self.fmt_combo.currentData()
         if suffix == "__default__" or not suffix:
-            suffix = _s.get("quick_services.defaults.ocr_format", "") or _s.get("quick_services.ocr.format", ".md")
+            suffix = _s.get("quick_services.defaults.ocr_format", "") or _s.get(
+                "quick_services.ocr.format", ".md"
+            )
 
         # V11.19: only persist the legacy quick_services.ocr.* keys when the
         # user picked a concrete value (not "Default").
@@ -342,16 +351,22 @@ class OcrServiceDialog(QDialog):
         # late-bind, so at call time (worker thread) the attribute exists
         # and refers to THIS worker.
         self._worker = SimpleWorker(
-            lambda: self._ocr_work(files, out_folder, engine, suffix,
-                                   pages, pages_desc,
-                                   report=self._worker.progress.emit))
+            lambda: self._ocr_work(
+                files,
+                out_folder,
+                engine,
+                suffix,
+                pages,
+                pages_desc,
+                report=self._worker.progress.emit,
+            )
+        )
         self._worker.progress.connect(self._on_convert_progress)
         self._worker.finished.connect(self._on_convert_finished)
         self._worker.failed.connect(self._on_convert_failed)
         self._worker.start()
 
-    def _ocr_work(self, files, out_folder, engine, suffix, pages, pages_desc,
-                  report=None) -> dict:
+    def _ocr_work(self, files, out_folder, engine, suffix, pages, pages_desc, report=None) -> dict:
         """V18.20.4.5 (W-b5): the per-file OCR loop, worker-thread edition.
 
         Pure file/HTTP/LLM work — NO widget access. Per-file progress goes
@@ -368,14 +383,17 @@ class OcrServiceDialog(QDialog):
             # V11.20: bigger, bolder progress text (identical to the old
             # inline version, now emitted instead of set directly).
             if report is not None:
-                report(int(i * 100 / total) if total else 0, (
-                    f"<div style='font-size:15px; font-weight:600;'>"
-                    f"🔍 OCR {i+1}/{total}: <span style='color: var(--primary);'>{_P(file_path).name}</span>"
-                    f"</div>"
-                    f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
-                    f"engine: {engine}  |  format: {suffix}  |  {pages_desc}"
-                    f"</div>"
-                ))
+                report(
+                    int(i * 100 / total) if total else 0,
+                    (
+                        f"<div style='font-size:15px; font-weight:600;'>"
+                        f"🔍 OCR {i + 1}/{total}: <span style='color: var(--primary);'>{_P(file_path).name}</span>"
+                        f"</div>"
+                        f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
+                        f"engine: {engine}  |  format: {suffix}  |  {pages_desc}"
+                        f"</div>"
+                    ),
+                )
 
             try:
                 path = _P(file_path)
@@ -401,6 +419,7 @@ class OcrServiceDialog(QDialog):
                         out_path.write_text(text, encoding="utf-8")
                     else:
                         from core.outputs.service_formatters import write_output
+
                         write_output(text, out_path, fmt=suffix, title=path.stem)
                     results.append(f"✅ {path.name} → {out_path.name} ({len(text):,} chars)")
                 else:
@@ -488,6 +507,7 @@ class OcrServiceDialog(QDialog):
         V11.20: ``pages`` filters to specific 1-indexed page numbers.
         """
         import pypdf
+
         reader = pypdf.PdfReader(str(path))
         out_pages = []
         page_indices = pages if pages is not None else range(1, len(reader.pages) + 1)
@@ -517,6 +537,7 @@ class OcrServiceDialog(QDialog):
         """
         from core.ocr.qwen_ocr import QwenOCREngine
         from utils.settings import Settings
+
         s = Settings()
 
         if vlm:
@@ -551,6 +572,7 @@ class OcrServiceDialog(QDialog):
             from io import BytesIO
 
             from pdf2image import convert_from_path
+
             first_page = min(pages) if pages else None
             last_page = max(pages) if pages else None
             kwargs = {"dpi": 300}
@@ -579,12 +601,14 @@ class OcrServiceDialog(QDialog):
         efficiency, then filters to the exact set.
         """
         from utils.settings import Settings
+
         s = Settings()
         tess_cmd = s.get("paths.tesseract", "")
 
         if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
             # Direct image OCR — page range doesn't apply.
             import subprocess
+
             cmd = [tess_cmd, str(path), "-", "-l", "eng+fas"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             return result.stdout.strip()
@@ -592,6 +616,7 @@ class OcrServiceDialog(QDialog):
             # PDF: convert to images then OCR each.
             import pytesseract
             from pdf2image import convert_from_path
+
             if tess_cmd:
                 pytesseract.pytesseract.tesseract_cmd = tess_cmd
             # V11.20: if a page range is specified, only convert that range.

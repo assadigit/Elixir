@@ -31,18 +31,14 @@ logger = logging.getLogger(__name__)
 # Catalog of available Persian VITS models.
 # Each entry: (model_id, huggingface_repo, description, gender)
 PERSIAN_VITS_MODELS = [
-    ("karim-female-best",
-     "karim23657/persian-tts-female-GPTInformal-Persian-vits",
-     "Best quality — trained on GPTInformal-Persian dataset",
-     "Female"),
-    ("kamtera-female",
-     "Kamtera/persian-tts-female-vits",
-     "Good quality female voice",
-     "Female"),
-    ("kamtera-male",
-     "Kamtera/persian-tts-male-vits",
-     "Male voice",
-     "Male"),
+    (
+        "karim-female-best",
+        "karim23657/persian-tts-female-GPTInformal-Persian-vits",
+        "Best quality — trained on GPTInformal-Persian dataset",
+        "Female",
+    ),
+    ("kamtera-female", "Kamtera/persian-tts-female-vits", "Good quality female voice", "Female"),
+    ("kamtera-male", "Kamtera/persian-tts-male-vits", "Male voice", "Male"),
 ]
 
 
@@ -81,6 +77,7 @@ class PersianVitsEngine(TTSEngine):
     def _cuda_available() -> bool:
         try:
             import torch
+
             return bool(torch.cuda.is_available() and torch.cuda.device_count() > 0)
         except Exception:
             return False
@@ -99,9 +96,7 @@ class PersianVitsEngine(TTSEngine):
         local_dir = self._model_dir / repo_short
 
         if not local_dir.exists() or not any(local_dir.iterdir()):
-            self.log(
-                f"  ⬇️ Downloading Persian VITS model: {self._model_repo}…",
-                "INFO")
+            self.log(f"  ⬇️ Downloading Persian VITS model: {self._model_repo}…", "INFO")
             snapshot_download(
                 repo_id=self._model_repo,
                 local_dir=str(local_dir),
@@ -116,8 +111,7 @@ class PersianVitsEngine(TTSEngine):
             if configs:
                 config_path = configs[0]
             else:
-                raise FileNotFoundError(
-                    f"config.json not found in {local_dir}")
+                raise FileNotFoundError(f"config.json not found in {local_dir}")
 
         model_path = None
         for pattern in ("*.pth", "*.pt", "*.ckpt"):
@@ -126,18 +120,17 @@ class PersianVitsEngine(TTSEngine):
                 model_path = files[0]
                 break
         if model_path is None:
-            raise FileNotFoundError(
-                f"No model file (.pth/.pt/.ckpt) found in {local_dir}")
+            raise FileNotFoundError(f"No model file (.pth/.pt/.ckpt) found in {local_dir}")
 
         self._config_path = config_path
         self._model_path = model_path
 
-        self.log(
-            f"  🔄 Loading Persian VITS model on {self._device}…", "INFO")
+        self.log(f"  🔄 Loading Persian VITS model on {self._device}…", "INFO")
         self.log(f"     Config: {config_path.name}", "DEBUG")
         self.log(f"     Model:  {model_path.name}", "DEBUG")
 
         from TTS.utils.synthesizer import Synthesizer
+
         self._synthesizer = Synthesizer(
             tts_checkpoint=str(model_path),
             tts_config_path=str(config_path),
@@ -167,8 +160,8 @@ class PersianVitsEngine(TTSEngine):
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
             self.log(
-                f"  🎙️ Persian VITS [{self._device.upper()}]: "
-                f"generating {len(text)} chars…", "INFO")
+                f"  🎙️ Persian VITS [{self._device.upper()}]: generating {len(text)} chars…", "INFO"
+            )
 
             # VITS synthesizer returns a numpy array.
             wavs = self._synthesizer.tts(text, speaker_name=None, language_name="fa")

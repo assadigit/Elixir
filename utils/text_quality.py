@@ -5,6 +5,7 @@ circular import between core.pipeline.converter and core.summarisation.summarize
 
 This module has NO dependencies on any core/ module — it's pure Python.
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,17 +56,19 @@ def _is_section_garbled(sample: str) -> bool:
     avg_word_len = sum(len(w) for w in words) / len(words)
     short_ratio = sum(1 for w in words if len(w) <= 2) / len(words)
     lines = sample.splitlines()
-    line_ratio = sum(
-        1 for l in lines if l.strip() and len(l.strip()) <= 2
-    ) / max(1, len(lines))
-    space_ratio = sample.count(' ') / max(1, len(sample))
+    line_ratio = sum(1 for line in lines if line.strip() and len(line.strip()) <= 2) / max(
+        1, len(lines)
+    )
+    space_ratio = sample.count(" ") / max(1, len(sample))
 
-    signals = sum([
-        avg_word_len < 2.5,
-        short_ratio > 0.5,
-        line_ratio > 0.3,
-        space_ratio < 0.08,
-    ])
+    signals = sum(
+        [
+            avg_word_len < 2.5,
+            short_ratio > 0.5,
+            line_ratio > 0.3,
+            space_ratio < 0.08,
+        ]
+    )
     return signals >= 2
 
 
@@ -85,7 +88,7 @@ def find_garbled_ranges(text: str) -> list[tuple[int, int]]:
     text_len = len(text)
     i = 0
     while i < text_len:
-        sample = text[i:i + window]
+        sample = text[i : i + window]
         if len(sample) < 200:
             break
         if _is_section_garbled(sample):
@@ -111,7 +114,7 @@ def find_partial_garbled_ranges(text: str) -> list[tuple[int, int]]:
     text_len = len(text)
     i = 0
     while i < text_len:
-        sample = text[i:i + window]
+        sample = text[i : i + window]
         if len(sample) < 200:
             break
         words = sample.split()

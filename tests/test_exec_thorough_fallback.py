@@ -23,6 +23,7 @@ These tests verify:
 
 Run: ``pytest tests/test_exec_thorough_fallback.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -56,13 +57,16 @@ REAL_EXEC = (
     "characteristics of solid identity and positions identity diffusion as a "
     "disturbance in these specific areas."
 )
-SOURCE = ("Tausk 1919 Erikson Freud Fromm Lynd Lasch Mahler Jacobson Winnicott "
-          "identity ego self seven characteristics")
+SOURCE = (
+    "Tausk 1919 Erikson Freud Fromm Lynd Lasch Mahler Jacobson Winnicott "
+    "identity ego self seven characteristics"
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. Reproduce the V18.19.2.0 bug: CoT thorough → truncated to empty
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestCoTThoroughTruncatedToEmpty:
     """run_post_checks MUST truncate 100%-CoT thorough to empty (V18.15.7.0
@@ -70,8 +74,10 @@ class TestCoTThoroughTruncatedToEmpty:
 
     def test_cot_thorough_becomes_empty(self):
         pc = run_post_checks(
-            bullets=[], executive_summary=REAL_EXEC,
-            thorough_summary=COT_THOROUGH, source_text=SOURCE,
+            bullets=[],
+            executive_summary=REAL_EXEC,
+            thorough_summary=COT_THOROUGH,
+            source_text=SOURCE,
         )
         assert pc.thorough_summary == "", (
             "100%-CoT thorough must be truncated to empty by detect_cot_narrative"
@@ -79,17 +85,18 @@ class TestCoTThoroughTruncatedToEmpty:
 
     def test_exec_survives_when_thorough_is_cot(self):
         pc = run_post_checks(
-            bullets=[], executive_summary=REAL_EXEC,
-            thorough_summary=COT_THOROUGH, source_text=SOURCE,
+            bullets=[],
+            executive_summary=REAL_EXEC,
+            thorough_summary=COT_THOROUGH,
+            source_text=SOURCE,
         )
-        assert len(pc.executive_summary) > 50, (
-            "Exec must survive when thorough is CoT-truncated"
-        )
+        assert len(pc.executive_summary) > 50, "Exec must survive when thorough is CoT-truncated"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. The V18.19.2.2 fallback logic (extracted as a pure function for testing)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _apply_postcheck_fallback(exec_sum: str, thorough: str, min_words: int = 50):
     """Pure mirror of the V18.19.2.2 fallback logic at summarizer.py:3689-3724.
@@ -114,7 +121,8 @@ class TestPostcheckFallback:
         """The exact V18.19.2.0 audit scenario: thorough CoT-truncated to empty,
         exec populated → fallback copies exec into thorough."""
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum=REAL_EXEC, thorough="",
+            exec_sum=REAL_EXEC,
+            thorough="",
         )
         assert thorough == REAL_EXEC, "Thorough must be repopulated from exec"
         assert not both_empty
@@ -124,7 +132,8 @@ class TestPostcheckFallback:
         """Symmetric case: exec CoT-truncated to empty, thorough populated."""
         real_thorough = REAL_EXEC + " " + REAL_EXEC  # make it distinct + longer
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum="", thorough=real_thorough,
+            exec_sum="",
+            thorough=real_thorough,
         )
         assert exec_sum == real_thorough, "Exec must be repopulated from thorough"
         assert not both_empty
@@ -133,7 +142,8 @@ class TestPostcheckFallback:
     def test_both_populated_unchanged(self):
         """Normal case: both survived → no fallback applied."""
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum=REAL_EXEC, thorough=REAL_EXEC + " extra detail.",
+            exec_sum=REAL_EXEC,
+            thorough=REAL_EXEC + " extra detail.",
         )
         assert not both_empty
         assert exec_sum == REAL_EXEC
@@ -142,7 +152,8 @@ class TestPostcheckFallback:
     def test_both_empty_returns_both_empty_flag(self):
         """Catastrophic case: both empty → both_empty=True (caller logs ERROR)."""
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum="", thorough="",
+            exec_sum="",
+            thorough="",
         )
         assert both_empty is True
         assert exec_sum == ""
@@ -152,7 +163,8 @@ class TestPostcheckFallback:
         """If exec is too short (< 50 words), don't pollute thorough with a stub."""
         short_exec = "Too short to be a real exec summary."
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum=short_exec, thorough="",
+            exec_sum=short_exec,
+            thorough="",
         )
         assert thorough == "", (
             "Short exec (<50 words) must not pollute thorough — would create "
@@ -170,6 +182,7 @@ class TestPostcheckFallback:
 # 3. End-to-end: run_post_checks + fallback = the V18.19.2.0 bug is fixed
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestEndToEndBugFixed:
     """The full V18.19.2.0 scenario: CoT thorough → postchecks truncates →
     fallback repopulates. The delivered summary must NOT have an empty thorough."""
@@ -177,20 +190,21 @@ class TestEndToEndBugFixed:
     def test_v18_19_2_0_scenario_thorough_not_empty_after_fallback(self):
         # Step 1: run_post_checks truncates the CoT thorough to empty
         pc = run_post_checks(
-            bullets=[], executive_summary=REAL_EXEC,
-            thorough_summary=COT_THOROUGH, source_text=SOURCE,
+            bullets=[],
+            executive_summary=REAL_EXEC,
+            thorough_summary=COT_THOROUGH,
+            source_text=SOURCE,
         )
         assert pc.thorough_summary == ""  # bug reproduced
         assert len(pc.executive_summary) > 50  # exec survived
 
         # Step 2: apply the V18.19.2.2 fallback (mirrors summarizer.py:3689)
         exec_sum, thorough, both_empty = _apply_postcheck_fallback(
-            exec_sum=pc.executive_summary, thorough=pc.thorough_summary,
+            exec_sum=pc.executive_summary,
+            thorough=pc.thorough_summary,
         )
 
         # The delivered summary's thorough section is NOT empty
-        assert thorough != "", (
-            "V18.19.2.0 regression: thorough must be repopulated by the fallback"
-        )
+        assert thorough != "", "V18.19.2.0 regression: thorough must be repopulated by the fallback"
         assert thorough == pc.executive_summary
         assert not both_empty

@@ -15,6 +15,7 @@ method is now a thin delegate to :func:`log_conversion_settings`.
 The function takes a "context" dict (everything it needs to know about the
 conversion) + a log callback, and emits the settings block.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,6 +57,7 @@ def log_conversion_settings(
     log(f"  Python: {platform.python_version()} on {platform.platform()}", "INFO")
     try:
         import torch
+
         cuda = torch.cuda.is_available()
         log(f"  PyTorch: {torch.__version__}, CUDA available: {cuda}", "INFO")
         if cuda:
@@ -69,6 +71,7 @@ def log_conversion_settings(
     # Ollama reachability
     try:
         from utils.network import is_ollama_reachable
+
         log(f"  Ollama reachable (localhost:11434): {is_ollama_reachable()}", "INFO")
     except Exception as _e:
         logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -88,12 +91,15 @@ def log_conversion_settings(
     # ── VRAM budget (pre-flight snapshot) ─────────────────────────────
     try:
         from core.vram_calculator import calculate_vram_budget, format_vram_report
+
         estimates, peak, total, rec = calculate_vram_budget(
             ocr_model=r.primary_ocr_model if r.use_llm_ocr else "",
             summarization_model=r.summarisation_model,
             fast_model=r.fast_model,
             heavy_model=r.heavy_model or "",
-            translation_backend=settings.get("translation.backend", "") if settings.get("translation.enabled") else "",
+            translation_backend=settings.get("translation.backend", "")
+            if settings.get("translation.enabled")
+            else "",
             translation_model=settings.get("translation.model", ""),
             harakat_model=settings.get("translation.harakat_model", ""),
             judge_model=settings.get("translation.judge_model", ""),
@@ -152,12 +158,18 @@ def log_conversion_settings(
             f"Consider 0.2-0.4 if summaries come back empty or repetitive.",
             "WARNING",
         )
-    log(f"  Self-consistency: {r.self_consistency}, Coverage threshold: {r.coverage_threshold*100:.0f}%", "INFO")
+    log(
+        f"  Self-consistency: {r.self_consistency}, Coverage threshold: {r.coverage_threshold * 100:.0f}%",
+        "INFO",
+    )
     # V15.1.0: Over-delivery
     _od = getattr(r, "overdeliver_enabled", True)
     _od_t = getattr(r, "overdeliver_target", 0.92)
     if _od and _od_t > r.coverage_threshold:
-        log(f"  📈 Over-delivery: ENABLED (floor {r.coverage_threshold*100:.0f}% → target {_od_t*100:.0f}%)", "INFO")
+        log(
+            f"  📈 Over-delivery: ENABLED (floor {r.coverage_threshold * 100:.0f}% → target {_od_t * 100:.0f}%)",
+            "INFO",
+        )
     else:
         log("  Over-delivery: disabled", "DEBUG")
     # V15.1.1: B3 voting status
@@ -186,6 +198,7 @@ def log_conversion_settings(
         logger.debug("keep_alive banner log failed: %s", _ka_e)
     try:
         from core.llm.modelfile_integrity import _run_ollama_show, parse_modelfile
+
         _mf_text = _run_ollama_show(r.summarisation_model)
         if _mf_text:
             _mf_params = parse_modelfile(_mf_text)
@@ -209,20 +222,34 @@ def log_conversion_settings(
 
     # ── Outputs ───────────────────────────────────────────────────────
     outs = []
-    if r.include_executive_summary: outs.append("exec_summary")
-    if r.include_thorough_summary: outs.append("thorough_summary")
-    if r.include_keypoints: outs.append("keypoints")
-    if r.simplified_keypoints_enabled: outs.append("simplified_keypoints")
-    if r.generate_docx: outs.append("docx")
-    if r.output_briefing: outs.append("briefing")
-    if r.output_podcast: outs.append("podcast_script")
-    if r.output_tts: outs.append("podcast_audio")
-    if r.output_flashcards: outs.append("flashcards")
-    if getattr(r, "output_packets", False): outs.append("packets")
-    if r.output_obsidian: outs.append("obsidian")
-    if r.output_study_guide: outs.append("study_guide")
-    if r.output_social: outs.append("social")
-    if r.output_mindmap: outs.append("mindmap")
+    if r.include_executive_summary:
+        outs.append("exec_summary")
+    if r.include_thorough_summary:
+        outs.append("thorough_summary")
+    if r.include_keypoints:
+        outs.append("keypoints")
+    if r.simplified_keypoints_enabled:
+        outs.append("simplified_keypoints")
+    if r.generate_docx:
+        outs.append("docx")
+    if r.output_briefing:
+        outs.append("briefing")
+    if r.output_podcast:
+        outs.append("podcast_script")
+    if r.output_tts:
+        outs.append("podcast_audio")
+    if r.output_flashcards:
+        outs.append("flashcards")
+    if getattr(r, "output_packets", False):
+        outs.append("packets")
+    if r.output_obsidian:
+        outs.append("obsidian")
+    if r.output_study_guide:
+        outs.append("study_guide")
+    if r.output_social:
+        outs.append("social")
+    if r.output_mindmap:
+        outs.append("mindmap")
     log(f"  Outputs: {', '.join(outs) if outs else '(none)'}", "INFO")
 
     # ── Translation ───────────────────────────────────────────────────
@@ -233,13 +260,24 @@ def log_conversion_settings(
         log(f"    Target lang: {settings.get('translation.default_target_lang', 'fa')}", "INFO")
         if t_backend == "nllb":
             # DEPRECATED (V13.31.0): NLLB branch kept for legacy settings.json
-            log(f"    NLLB model: {settings.get('translation.nllb_model', '')} [DEPRECATED]", "INFO")
-            log("    Warning: NLLB backend is deprecated — switch to 'ollama' (TranslateGemma).", "WARNING")
+            log(
+                f"    NLLB model: {settings.get('translation.nllb_model', '')} [DEPRECATED]", "INFO"
+            )
+            log(
+                "    Warning: NLLB backend is deprecated — switch to 'ollama' (TranslateGemma).",
+                "WARNING",
+            )
         else:
             log(f"    Ollama model: {settings.get('translation.model', '')}", "INFO")
         log(f"    Harakat model: {settings.get('translation.harakat_model', '')}", "INFO")
-        log(f"    Judge model: {settings.get('translation.judge_model', '') or '(uses summariser)'}", "INFO")
-        log(f"    Validation: {settings.get('translation.validation_enabled', True)}, max_retries: {settings.get('translation.max_retries', 1)}", "INFO")
+        log(
+            f"    Judge model: {settings.get('translation.judge_model', '') or '(uses summariser)'}",
+            "INFO",
+        )
+        log(
+            f"    Validation: {settings.get('translation.validation_enabled', True)}, max_retries: {settings.get('translation.max_retries', 1)}",
+            "INFO",
+        )
         tr_outs = settings.get("translation.outputs", {})
         log(f"    Translate outputs: {tr_outs}", "INFO")
     else:
@@ -248,7 +286,10 @@ def log_conversion_settings(
     # ── Post-processing ───────────────────────────────────────────────
     log(f"  Clean markdown: {r.clean_markdown}, Token saver: {r.token_saver}", "INFO")
     log(f"  Content filter: {r.enable_content_filter}", "INFO")
-    log(f"  Extract tables: {r.extract_tables}, Math: {r.extract_math}, Figures: {r.extract_figure_text}", "INFO")
+    log(
+        f"  Extract tables: {r.extract_tables}, Math: {r.extract_math}, Figures: {r.extract_figure_text}",
+        "INFO",
+    )
     log(f"  Layout analysis: {r.layout_analysis}", "INFO")
 
     # ── DOCX ──────────────────────────────────────────────────────────
@@ -266,17 +307,27 @@ def log_conversion_settings(
 
     # ── Resume status ─────────────────────────────────────────────────
     resume_enabled = settings.get("summarisation.resume_enabled", True)
-    log(f"  Resume mode: {'enabled — will skip done chapters' if resume_enabled else 'disabled — reprocess all'}", "INFO")
+    log(
+        f"  Resume mode: {'enabled — will skip done chapters' if resume_enabled else 'disabled — reprocess all'}",
+        "INFO",
+    )
     if resume_enabled:
         try:
             from pathlib import Path as _Path
 
             from core.pipeline.chapter_resume import detect_processed_chapters
+
             processed = detect_processed_chapters(_Path(ctx["output_dir"]))
             if processed:
-                log(f"  📂 Found {len(processed)} already-processed chapter(s) on disk — will skip these", "INFO")
+                log(
+                    f"  📂 Found {len(processed)} already-processed chapter(s) on disk — will skip these",
+                    "INFO",
+                )
             else:
-                log("  📂 No previously-processed chapters found — all chapters will be summarized", "INFO")
+                log(
+                    "  📂 No previously-processed chapters found — all chapters will be summarized",
+                    "INFO",
+                )
         except Exception as e:
             log(f"  ⚠️ Resume detection failed: {e}", "DEBUG")
 

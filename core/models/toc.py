@@ -12,6 +12,7 @@ class TOCEntry:
     This is the PDF reader's sidebar TOC — the authoritative hierarchy from the
     PDF's native outline/bookmarks. No guesswork needed.
     """
+
     title: str
     page: int | None = None
     line: int | None = None
@@ -35,6 +36,7 @@ class TOCEntry:
 
     def __len__(self) -> int:
         return 2
+
 
 @dataclass
 class TOCResult:

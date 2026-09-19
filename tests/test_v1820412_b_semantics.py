@@ -27,6 +27,7 @@ Four fixes, all per the V18.20.4.12 batch-B task:
 Headless-safe: no PySide6 import (Qt sites are source/AST-pinned per the
 house pattern, precedent tests/test_deadline_watchdog.py:149-157).
 """
+
 from __future__ import annotations
 
 import ast
@@ -38,12 +39,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.common.progress_events import (
     PROGRESS_PREFIX,
@@ -54,12 +58,10 @@ from core.llm.call_meta import mark_call_truncated
 from core.summarisation.scholar_reflection import scholar_reflection
 
 # ── source paths (house pattern: pins assert source text, no line numbers) ──
-_P_SUMMARIZATION = (
-    _project_root / "core" / "pipeline" / "conversion" / "summarization.py")
+_P_SUMMARIZATION = _project_root / "core" / "pipeline" / "conversion" / "summarization.py"
 _P_TRANSLATOR = _project_root / "core" / "translation" / "translator.py"
 _P_HARAKAT = _project_root / "core" / "translation" / "harakat.py"
-_P_SK = (
-    _project_root / "core" / "summarisation" / "simplified_keypoints.py")
+_P_SK = _project_root / "core" / "summarisation" / "simplified_keypoints.py"
 _P_SUMMARIZER = _project_root / "core" / "summarisation" / "summarizer.py"
 _P_WIZARD = _project_root / "ui_qt" / "views" / "wizard_view.py"
 
@@ -85,12 +87,10 @@ def _method_src(path: Path, class_name: str, method_name: str) -> str:
     (house pattern — no line-number peeking)."""
     src = _src(path)
     tree = ast.parse(src)
-    cls = next(
-        n for n in tree.body
-        if isinstance(n, ast.ClassDef) and n.name == class_name)
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name)
     node = next(
-        n for n in ast.walk(cls)
-        if isinstance(n, ast.FunctionDef) and n.name == method_name)
+        n for n in ast.walk(cls) if isinstance(n, ast.FunctionDef) and n.name == method_name
+    )
     seg = ast.get_source_segment(src, node)
     assert seg is not None
     return seg
@@ -136,9 +136,7 @@ class _ScriptedLLM:
         self.calls = []
 
     def __call__(self, prompt, temperature=None, max_tokens=None, **kw):
-        self.calls.append(
-            {"prompt": prompt, "temperature": temperature,
-             "max_tokens": max_tokens})
+        self.calls.append({"prompt": prompt, "temperature": temperature, "max_tokens": max_tokens})
         if not self.script:
             raise AssertionError("unexpected extra LLM call")
         flag, resp = self.script.pop(0)
@@ -157,7 +155,9 @@ def _run_scholar(script, *, text=_SRC_GROUNDED):
         "thorough_summary": "t",
     }
     scholar_reflection(
-        "Ch", text, result,
+        "Ch",
+        text,
+        result,
         max_context_tokens=32768,
         language="en",
         temperature=0.7,
@@ -199,10 +199,12 @@ class TestOa4ScholarContinuationRetry:
         """(b) Truncated on BOTH attempts (the .3.4 rig shape: cut before
         any section ever closed) → exactly 2 calls, then the EXISTING
         verdict-qualification path runs unchanged."""
-        llm, log, result = _run_scholar([
-            (False, "<scholar_refle"),   # cut mid-open-tag
-            (False, "ctions>none"),      # continuation also cut (no close)
-        ])
+        llm, log, result = _run_scholar(
+            [
+                (False, "<scholar_refle"),  # cut mid-open-tag
+                (False, "ctions>none"),  # continuation also cut (no close)
+            ]
+        )
         assert len(llm.calls) == 2
         # the existing drop/qualification behavior is preserved
         assert any("VERDICT UNRELIABLE" in w for w in log.warnings())
@@ -212,9 +214,11 @@ class TestOa4ScholarContinuationRetry:
     def test_non_truncated_exactly_one_call(self):
         """(c) A complete, closed response → exactly 1 call, ZERO retry
         overhead."""
-        llm, log, result = _run_scholar([
-            (False, "<scholar_reflections>none</scholar_reflections>"),
-        ])
+        llm, log, result = _run_scholar(
+            [
+                (False, "<scholar_reflections>none</scholar_reflections>"),
+            ]
+        )
         assert len(llm.calls) == 1
         assert not any("continuation retry" in i for i in log.infos())
         assert any("no significant gaps" in i for i in log.infos())
@@ -223,10 +227,12 @@ class TestOa4ScholarContinuationRetry:
         """(d) The continuation call RAISES → fail-open: WARNING logged,
         the original single-parse path runs on the FIRST response, no
         crash propagates."""
-        llm, log, result = _run_scholar([
-            (False, "<scholar_reflections>none"),  # unclosed → truncated
-            (False, RuntimeError("ollama died mid-retry")),
-        ])
+        llm, log, result = _run_scholar(
+            [
+                (False, "<scholar_reflections>none"),  # unclosed → truncated
+                (False, RuntimeError("ollama died mid-retry")),
+            ]
+        )
         assert len(llm.calls) == 2
         assert any("continuation retry failed" in w for w in log.warnings())
         # the single-parse path still ran (original verdict qualification)
@@ -254,20 +260,24 @@ class TestOa4ScholarContinuationRetry:
         """Provider flag True on BOTH calls → combined still qualified as
         unreliable (the flag is consume-on-read and re-read after the
         second call)."""
-        llm, log, result = _run_scholar([
-            (True, "<scholar_reflections>none</scholar_reflections>"),
-            (True, ""),
-        ])
+        llm, log, result = _run_scholar(
+            [
+                (True, "<scholar_reflections>none</scholar_reflections>"),
+                (True, ""),
+            ]
+        )
         assert len(llm.calls) == 2
         assert any("VERDICT UNRELIABLE" in w for w in log.warnings())
 
     def test_retry_empty_response_no_concat(self):
         """An empty continuation response → nothing concatenated, the
         original truncation state stands (existing qualification path)."""
-        llm, log, result = _run_scholar([
-            (False, "<scholar_reflections>none"),  # unclosed → truncated
-            (False, ""),                           # empty continuation
-        ])
+        llm, log, result = _run_scholar(
+            [
+                (False, "<scholar_reflections>none"),  # unclosed → truncated
+                (False, ""),  # empty continuation
+            ]
+        )
         assert len(llm.calls) == 2
         assert any("VERDICT UNRELIABLE" in w for w in log.warnings())
         assert result["scholar_reflections"] == ""
@@ -282,13 +292,11 @@ class TestOa4ScholarContinuationRetry:
         llm, log, result = _run_scholar([(False, first), (False, second)])
         assert len(llm.calls) == 2
         orig, cont = llm.calls[0]["prompt"], llm.calls[1]["prompt"]
-        assert cont.startswith(orig), (
-            "continuation prompt must be the original prompt + suffix")
+        assert cont.startswith(orig), "continuation prompt must be the original prompt + suffix"
         assert "CONTINUATION REQUEST" in cont
         assert "do NOT repeat" in cont
         assert "close all open section tags" in cont
-        assert cont.endswith(first), (
-            "the partial output tail must be included")
+        assert cont.endswith(first), "the partial output tail must be included"
         assert llm.calls[0]["max_tokens"] == 6144
         assert llm.calls[1]["max_tokens"] == 6144
         # ONE retry max — the script has no third response; a third call
@@ -299,6 +307,7 @@ class TestOa4ScholarContinuationRetry:
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix 2 (W-a11) — /no_think gated on the Qwen family at the 4 raw sites
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class _FakeResp:
     def __init__(self, payload):
@@ -313,23 +322,21 @@ class _FakeResp:
 
 class _FakeSession:
     def __init__(self, content="ok"):
-        self._resp = _FakeResp(
-            {"choices": [{"message": {"content": content}}]})
+        self._resp = _FakeResp({"choices": [{"message": {"content": content}}]})
         self.calls = []
 
     def post(self, url, json=None, headers=None, timeout=None):
-        self.calls.append(
-            {"url": url, "json": json, "headers": headers, "timeout": timeout})
+        self.calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
         return self._resp
 
 
 class TestWa11Translator:
     def test_qwen_model_gets_directive(self, monkeypatch):
         import core.translation.translator as tr
+
         sess = _FakeSession(content="سلام")
         monkeypatch.setattr(tr, "session_for_url", lambda url: sess)
-        t = tr.Translator(endpoint="http://localhost:11434/v1",
-                          model="qwen3:8b", no_think=True)
+        t = tr.Translator(endpoint="http://localhost:11434/v1", model="qwen3:8b", no_think=True)
         out = t._call_llm("Hello world", "en", "fa", "", "")
         assert out == "سلام"
         prompt = sess.calls[0]["json"]["messages"][0]["content"]
@@ -340,16 +347,19 @@ class TestWa11Translator:
         """The DEFAULT translator model (TranslateGemma) no longer gets the
         directive — V18.20.4.12 (W-a11): gated on Qwen — was unconditional."""
         import core.translation.translator as tr
+
         sess = _FakeSession(content="سلام")
         monkeypatch.setattr(tr, "session_for_url", lambda url: sess)
-        t = tr.Translator(endpoint="http://localhost:11434/v1",
-                          model="translategemma:4b", no_think=True)
+        t = tr.Translator(
+            endpoint="http://localhost:11434/v1", model="translategemma:4b", no_think=True
+        )
         t._call_llm("Hello world", "en", "fa", "", "")
         prompt = sess.calls[0]["json"]["messages"][0]["content"]
         assert "/no_think" not in prompt
 
     def test_no_think_false_never_injects(self, monkeypatch):
         import core.translation.translator as tr
+
         sess = _FakeSession(content="سلام")
         monkeypatch.setattr(tr, "session_for_url", lambda url: sess)
         t = tr.Translator(model="qwen3:8b", no_think=False)
@@ -360,17 +370,19 @@ class TestWa11Translator:
 class TestWa11Harakat:
     def test_qwen_model_gets_directive(self, monkeypatch):
         import core.translation.harakat as hk
+
         sess = _FakeSession(content="سَلام")
         monkeypatch.setattr(hk, "session_for_url", lambda url: sess)
         hg = hk.HarakatGenerator(
-            endpoint="http://localhost:11434/v1", model="qwen3:8b",
-            no_think=True)
+            endpoint="http://localhost:11434/v1", model="qwen3:8b", no_think=True
+        )
         hg._call_llm("سلام دنیا")
         prompt = sess.calls[0]["json"]["messages"][0]["content"]
         assert prompt.endswith(" /no_think")
 
     def test_non_qwen_model_ships_clean(self, monkeypatch):
         import core.translation.harakat as hk
+
         sess = _FakeSession(content="سَلام")
         monkeypatch.setattr(hk, "session_for_url", lambda url: sess)
         hg = hk.HarakatGenerator(model="translategemma:4b", no_think=True)
@@ -381,6 +393,7 @@ class TestWa11Harakat:
         """The fallback retry's ``model_override`` is the model THIS call
         uses — the gate must follow it, not ``self.model``."""
         import core.translation.harakat as hk
+
         sess = _FakeSession(content="سَلام")
         monkeypatch.setattr(hk, "session_for_url", lambda url: sess)
         hg = hk.HarakatGenerator(model="translategemma:4b", no_think=True)
@@ -398,6 +411,7 @@ class TestWa11SimplifiedKeypoints:
         from core.summarisation.simplified_keypoints import (
             SimplifiedKeypointsBuilder,
         )
+
         b = object.__new__(SimplifiedKeypointsBuilder)
         b.provider = "ollama"
         b.model = model
@@ -424,6 +438,7 @@ class TestWa11SimplifiedKeypoints:
         test_v182048_p6_perf_polish.py (which now asserts the non-Qwen
         clean prompt)."""
         import core.summarisation.simplified_keypoints as sk
+
         captured = {}
 
         def _capture(method, url, json=None, timeout=None):
@@ -445,9 +460,7 @@ class TestWa11SourcePins:
 
     def test_summarization_llm_call_fn_uses_helper(self):
         src = _strip_comments(_src(_P_SUMMARIZATION))
-        assert (
-            "from core.summarisation.filter_thinking import qwen_no_think"
-            in src)
+        assert "from core.summarisation.filter_thinking import qwen_no_think" in src
         assert "qwen_no_think(prompt, _summ_model)" in src
         # the raw unconditional injection is gone
         assert '"/no_think\\n\\n" + prompt' not in src
@@ -460,21 +473,21 @@ class TestWa11SourcePins:
         for path in (_P_SUMMARIZATION, _P_TRANSLATOR, _P_HARAKAT, _P_SK):
             src = _strip_comments(_src(path))
             assert '"/no_think' not in src, (
-                f"{path.name}: raw /no_think literal must be gone "
-                "(use qwen_no_think)")
-            assert "qwen_no_think(" in src, (
-                f"{path.name}: the shared helper must be wired")
+                f"{path.name}: raw /no_think literal must be gone (use qwen_no_think)"
+            )
+            assert "qwen_no_think(" in src, f"{path.name}: the shared helper must be wired"
 
     def test_empty_retry_nudge_untouched(self):
         """The empty-response nudge-retry logic at the summarization site
         is byte-identical (still appends to _actual_prompt)."""
         src = _src(_P_SUMMARIZATION)
-        assert 'Please output the response now.' in src
+        assert "Please output the response now." in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix 3 (W-b15) — structured progress line: emitter + JSON-first parser
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestProgressEventsPure:
     def test_round_trip(self):
@@ -482,15 +495,17 @@ class TestProgressEventsPure:
         assert line.startswith(PROGRESS_PREFIX)
         d = parse_progress_line(line)
         assert d == {
-            "done": 3, "total": 12, "bullets": 31,
-            "exec_chars": 1204, "chapter_done": True,
+            "done": 3,
+            "total": 12,
+            "bullets": 31,
+            "exec_chars": 1204,
+            "chapter_done": True,
         }
 
     def test_compact_separators_and_keys(self):
         line = progress_json_line(1, 2, 3, 4)
-        payload = line[len(PROGRESS_PREFIX):]
-        assert ", " not in payload and ": " not in payload, (
-            "compact JSON (separators=(',', ':'))")
+        payload = line[len(PROGRESS_PREFIX) :]
+        assert ", " not in payload and ": " not in payload, "compact JSON (separators=(',', ':'))"
         assert '"chapter_done":true' in payload
 
     def test_malformed_json_returns_none(self):
@@ -513,8 +528,8 @@ class TestProgressEventsPure:
         NOT."""
         line = progress_json_line(1, 1, 5, 100)
         assert parse_progress_line("   " + line) is not None  # leading ws ok
-        assert parse_progress_line("📊 " + line) is None      # emoji prefix NO
-        assert parse_progress_line("x" + line) is None        # any prefix NO
+        assert parse_progress_line("📊 " + line) is None  # emoji prefix NO
+        assert parse_progress_line("x" + line) is None  # any prefix NO
 
     def test_unusable_dict_is_returned_as_is(self):
         """A hand-crafted line whose JSON parses but lacks int keys is
@@ -527,17 +542,14 @@ class TestProgressEventsPure:
 class TestWb15EmitterSourcePin:
     def test_summarizer_imports_and_calls_progress_json_line(self):
         src = _src(_P_SUMMARIZER)
-        assert (
-            "from core.common.progress_events import progress_json_line"
-            in src)
+        assert "from core.common.progress_events import progress_json_line" in src
         assert "progress_json_line(idx, total, _bp_count, _exec_len)" in src
 
     def test_structured_line_emitted_immediately_before_human_line(self):
         src = _src(_P_SUMMARIZER)
         structured = src.index("progress_json_line(idx, total, _bp_count, _exec_len)")
         human = src.index('f"  📊 Progress: {idx}/{total} done | "')
-        assert structured < human, (
-            "the structured line must be logged BEFORE the human line")
+        assert structured < human, "the structured line must be logged BEFORE the human line"
 
     def test_human_line_byte_identical(self):
         """The human '📊 Progress:' line is pinned byte-identical (logs and
@@ -550,16 +562,13 @@ class TestWb15EmitterSourcePin:
 class TestWb15ParserSourcePin:
     def test_wizard_imports_parse_progress_line(self):
         src = _src(_P_WIZARD)
-        assert (
-            "from core.common.progress_events import parse_progress_line"
-            in src)
+        assert "from core.common.progress_events import parse_progress_line" in src
 
     def test_json_first_before_regex_fallback(self):
         body = _method_src(_P_WIZARD, "WizardView", "_on_log")
         structured = body.index("parse_progress_line(msg)")
         regex = body.index("_PROGRESS_RE.search(msg)")
-        assert structured < regex, (
-            "the structured parse must run BEFORE the regex fallback")
+        assert structured < regex, "the structured parse must run BEFORE the regex fallback"
 
     def test_regex_paths_gated_on_no_structured_match(self):
         """When the structured line matches, the regex paths are SKIPPED
@@ -570,9 +579,7 @@ class TestWb15ParserSourcePin:
         # comments stripped: the W-b14 comment quotes ``import re``.
         assert "import re" not in _strip_comments(body)
         assert '_pd is None and hasattr(self.step9, "quality_label")' in body
-        assert (
-            '_pd is None and hasattr(self.step9, "chapter_status_label")'
-            in body)
+        assert '_pd is None and hasattr(self.step9, "chapter_status_label")' in body
         # the fallback regexes themselves are untouched
         assert "_PROGRESS_RE.search(msg)" in body
         assert "_CHAPTER_RE.search(msg)" in body
@@ -581,16 +588,16 @@ class TestWb15ParserSourcePin:
         """The JSON-first branch updates BOTH labels with the EXACT format
         strings the regex fallback uses (display parity)."""
         body = _method_src(_P_WIZARD, "WizardView", "_on_log")
-        quality_fmt = (
-            'f"Quality: {done}/{total} chapters done | {bullets} bullets total"')
-        chapter_fmt = (
-            'f"Chapters: {done}/{total} " + "✅" * min(done, 8) + "🔄"')
+        quality_fmt = 'f"Quality: {done}/{total} chapters done | {bullets} bullets total"'
+        chapter_fmt = 'f"Chapters: {done}/{total} " + "✅" * min(done, 8) + "🔄"'
         assert body.count(quality_fmt) >= 2, (
             "both the structured branch AND the regex fallback must use "
-            "the identical quality format")
+            "the identical quality format"
+        )
         assert body.count(chapter_fmt) >= 2, (
             "both the structured branch AND the regex fallback must use "
-            "the identical chapter format")
+            "the identical chapter format"
+        )
 
     def test_display_parity_with_emitted_line(self):
         """End-to-end (pure): the emitted structured line drives the same
@@ -598,15 +605,18 @@ class TestWb15ParserSourcePin:
         line = progress_json_line(3, 12, 31, 1204)
         d = parse_progress_line(line)
         done, total, bullets = d["done"], d["total"], d["bullets"]
-        assert (f"Quality: {done}/{total} chapters done | {bullets} bullets "
-                f"total") == "Quality: 3/12 chapters done | 31 bullets total"
-        assert (f"Chapters: {done}/{total} " + "✅" * min(done, 8) + "🔄"
-                ) == "Chapters: 3/12 ✅✅✅🔄"
+        assert (
+            f"Quality: {done}/{total} chapters done | {bullets} bullets total"
+        ) == "Quality: 3/12 chapters done | 31 bullets total"
+        assert (
+            f"Chapters: {done}/{total} " + "✅" * min(done, 8) + "🔄"
+        ) == "Chapters: 3/12 ✅✅✅🔄"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix 4 (W-a10 part) — dead uppercase entries in _init_max_workers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWa10DeadUppercaseEntries:
     def test_lowercase_only_tuples_pinned(self):
@@ -616,8 +626,7 @@ class TestWa10DeadUppercaseEntries:
         assert 'for k in ("14b", "32b", "70b")' in body
         assert 'for k in ("9b", "8b", "12b", "13b")' in body
         # the dead uppercase variants are gone
-        for dead in ('"14B"', '"32B"', '"70B"', '"9B"', '"8B"', '"12B"',
-                     '"13B"'):
+        for dead in ('"14B"', '"32B"', '"70B"', '"9B"', '"8B"', '"12B"', '"13B"'):
             assert dead not in body, f"dead entry {dead} must be gone"
 
     def test_uppercase_entries_could_never_match(self):
@@ -637,8 +646,15 @@ class TestWa10DeadUppercaseEntries:
         t2 = ("9b", "8b", "12b", "13b")
         old_t1 = ("14b", "14B", "32b", "32B", "70b", "70B")
         old_t2 = ("9b", "9B", "8b", "8B", "12b", "12B", "13b", "13B")
-        for model in ("qwen2.5:14b", "Qwen2.5:14B", "llama3:70b",
-                      "gemma2:9b", "qwen3:8b", "gemma3:12b", "mistral:7b"):
+        for model in (
+            "qwen2.5:14b",
+            "Qwen2.5:14B",
+            "llama3:70b",
+            "gemma2:9b",
+            "qwen3:8b",
+            "gemma3:12b",
+            "mistral:7b",
+        ):
             m = model.lower()
             assert any(k in m for k in t1) == any(k in m for k in old_t1)
             assert any(k in m for k in t2) == any(k in m for k in old_t2)

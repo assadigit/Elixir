@@ -12,6 +12,7 @@ Byte-for-byte stability gate for the 3 fixes bundled in V18.15.7.0:
 
 Run: pytest tests/test_v18_15_7_pipeline.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -135,6 +136,7 @@ class TestDetectCotNarrative:
         # V18.18.0.0: detect_cot_narrative moved to postcheck_detectors.py
         # Must patch _COT_NARRATIVE_RE on the defining module, not the re-export
         import core.summarisation.postcheck_detectors as _pd
+
         _crash_re = MagicMock()
         _crash_re.search.side_effect = RuntimeError("test crash")
         with patch.object(_pd, "_COT_NARRATIVE_RE", [_crash_re]):
@@ -170,9 +172,7 @@ class TestExtendedPromptLeakagePatterns:
 
     def test_let_me_draft_stripped(self):
         """'Let me draft each section now' is now stripped."""
-        text, issues = detect_prompt_leakage(
-            "Let me draft each section now.", "thorough"
-        )
+        text, issues = detect_prompt_leakage("Let me draft each section now.", "thorough")
         assert "Let me draft" not in text
 
     def test_named_contributors_in_order_stripped(self):
@@ -184,32 +184,24 @@ class TestExtendedPromptLeakagePatterns:
 
     def test_write_the_five_sections_stripped(self):
         """'write the five sections carefully' is now stripped."""
-        text, issues = detect_prompt_leakage(
-            "write the five sections carefully.", "thorough"
-        )
+        text, issues = detect_prompt_leakage("write the five sections carefully.", "thorough")
         assert "write the five sections" not in text.lower()
 
     def test_keep_sentences_under_stripped(self):
         """'Keep sentences under 20 words' (prompt-instruction echo) is now
         stripped. This was the V18.15.6.0 regression — this bullet shipped
         in the final output as a standalone bullet."""
-        text, issues = detect_prompt_leakage(
-            "Keep sentences under 20 words", "bullet[0]"
-        )
+        text, issues = detect_prompt_leakage("Keep sentences under 20 words", "bullet[0]")
         assert "Keep sentences under" not in text
 
     def test_preserve_technical_terms_stripped(self):
         """'Preserve technical terms' (prompt-instruction echo) is now stripped."""
-        text, issues = detect_prompt_leakage(
-            "Preserve technical terms", "bullet[1]"
-        )
+        text, issues = detect_prompt_leakage("Preserve technical terms", "bullet[1]")
         assert "Preserve technical terms" not in text
 
     def test_use_active_voice_stripped(self):
         """'Use active voice' (prompt-instruction echo) is now stripped."""
-        text, issues = detect_prompt_leakage(
-            "Use active voice", "bullet[2]"
-        )
+        text, issues = detect_prompt_leakage("Use active voice", "bullet[2]")
         assert "Use active voice" not in text
 
     def test_what_appears_to_be_stripped(self):
@@ -282,6 +274,7 @@ class TestPhase22GenuineSourceOverlap:
         ~0% source overlap with the chapter text → recorded as 0.0, NOT as
         the semantic similarity (which was 0.45 in the V18.15.6.0 run)."""
         from core.summarisation.text_preprocessor import compute_source_overlap
+
         # The prompt-instruction bullet
         bp = "Keep sentences under 20 words"
         # A representative source text (does NOT contain this phrase)
@@ -300,6 +293,7 @@ class TestPhase22GenuineSourceOverlap:
         """A real bullet (Tausk's identity contribution) has high source
         overlap with the chapter → correctly recorded as high."""
         from core.summarisation.text_preprocessor import compute_source_overlap
+
         bp = "Tausk (1919) introduced the term identity into psychoanalytic literature"
         source = (
             "Tausk (1919) was the first to use the word 'identity' in the "
@@ -318,6 +312,7 @@ class TestQuarantineRecoveryPrefersFresh:
         the fresh computation is 0.0 (genuine overlap), recovery should use
         0.0 → bullet NOT resurrected."""
         from core.summarisation.quarantine import QuarantineLog
+
         q = QuarantineLog(output_dir=None, recovery_threshold=0.30)
         # Simulate the V18.15.6.0 bug: recorded 0.45 (semantic sim mislabeled)
         q.add(
@@ -345,6 +340,7 @@ class TestQuarantineRecoveryPrefersFresh:
     def test_recovery_resurrects_genuine_high_overlap(self):
         """Regression guard: a genuinely high-overlap bullet IS resurrected."""
         from core.summarisation.quarantine import QuarantineLog
+
         q = QuarantineLog(output_dir=None, recovery_threshold=0.30)
         bp = "Tausk (1919) introduced the term identity into psychoanalytic literature"
         source = (
@@ -352,9 +348,13 @@ class TestQuarantineRecoveryPrefersFresh:
             "psychoanalytic literature. He examined how a child discovers his self."
         )
         q.add(
-            bp, stage="F4_source_overlap", threshold=0.25,
+            bp,
+            stage="F4_source_overlap",
+            threshold=0.25,
             source_overlap=0.0,  # initially dropped
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         resurrected = q.recover(source)
         # High overlap → should resurrect
@@ -366,12 +366,16 @@ class TestQuarantineRecoveryPrefersFresh:
         """When no source_text is provided, recovery uses the recorded value
         (backward compat for the no-source case)."""
         from core.summarisation.quarantine import QuarantineLog
+
         q = QuarantineLog(output_dir=None, recovery_threshold=0.30)
         q.add(
             "Some bullet with decent overlap",
-            stage="test", threshold=0.25,
+            stage="test",
+            threshold=0.25,
             source_overlap=0.5,  # recorded high
-            reason="test", chapter="test", actually_dropped=True,
+            reason="test",
+            chapter="test",
+            actually_dropped=True,
         )
         # No source_text → can't recompute → uses recorded 0.5 → resurrects
         resurrected = q.recover("")

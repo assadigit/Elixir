@@ -117,6 +117,7 @@ class GpuThermalProfile:
             thermal stress.
         notes: human-readable explanation shown in the UI.
     """
+
     name: str
     warning_c: int = 78
     caution_c: int = 82
@@ -220,6 +221,7 @@ def detect_gpu_profile(gpu_name: str) -> GpuThermalProfile:
     if not gpu_name:
         return _PROFILE_DEFAULT
     import re
+
     name_lower = gpu_name.lower()
     for pattern, profile in _PROFILE_PATTERNS:
         if re.search(pattern, name_lower):
@@ -253,6 +255,7 @@ def detect_gpu_profile_from_system() -> tuple:
     # V10.1.6: check manual override first
     try:
         from utils.settings import Settings
+
         _s = Settings()
         _override = _s.get("hardware.gpu_profile_override", "auto")
         if _override and _override != "auto":
@@ -269,6 +272,7 @@ def detect_gpu_profile_from_system() -> tuple:
             nvidia_smi = shutil.which("nvidia-smi")
             if not nvidia_smi and sys.platform == "win32":
                 from pathlib import Path
+
                 for candidate in [
                     r"C:\Windows\System32\nvidia-smi.exe",
                     r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
@@ -280,13 +284,15 @@ def detect_gpu_profile_from_system() -> tuple:
                 try:
                     result = subprocess.run(
                         [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
-                        capture_output=True, text=True, timeout=10,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                     )
                     if result.returncode == 0 and result.stdout.strip():
                         _gpu_name = result.stdout.strip().split(", ")[0].strip()
                 except Exception as _e:
                     logger.debug("ignored %s: %s", type(_e).__name__, _e)
-            return (_gpu_name or "(override: %s)" % _override, _profile)
+            return (_gpu_name or f"(override: {_override})", _profile)
     except Exception as _e:
         logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
@@ -294,6 +300,7 @@ def detect_gpu_profile_from_system() -> tuple:
     nvidia_smi = shutil.which("nvidia-smi")
     if not nvidia_smi and sys.platform == "win32":
         from pathlib import Path
+
         for candidate in [
             r"C:\Windows\System32\nvidia-smi.exe",
             r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
@@ -306,7 +313,9 @@ def detect_gpu_profile_from_system() -> tuple:
     try:
         result = subprocess.run(
             [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             gpu_name = result.stdout.strip().split(", ")[0].strip()
@@ -322,13 +331,14 @@ def detect_gpu_profile_from_system() -> tuple:
 # HardwareMonitor class uses the per-instance profile (which may differ).
 GPU_TEMP_WARNING = _PROFILE_DEFAULT.warning_c
 GPU_TEMP_CRITICAL = _PROFILE_DEFAULT.critical_c
-RAM_PCT_WARNING = 90       # % — log a warning (swap/OOM risk)
+RAM_PCT_WARNING = 90  # % — log a warning (swap/OOM risk)
 CPU_SUSTAINED_HIGH_SEC = 300  # 5 min of >95% CPU before logging info
 
 
 @dataclass
 class HardwareSnapshot:
     """A point-in-time snapshot of hardware stats."""
+
     timestamp: float = 0.0
     # GPU (None if nvidia-smi unavailable)
     gpu_name: str | None = None  # V10.1.3: card model for profile detection
@@ -347,11 +357,7 @@ class HardwareSnapshot:
 
     def is_empty(self) -> bool:
         """True if no stats could be collected (no GPU + no psutil)."""
-        return (
-            self.gpu_temp_c is None
-            and self.cpu_utilization_pct is None
-            and self.ram_pct is None
-        )
+        return self.gpu_temp_c is None and self.cpu_utilization_pct is None and self.ram_pct is None
 
     def format_compact(self) -> str:
         """One-line compact summary for the UI status bar."""
@@ -448,6 +454,7 @@ class HardwareMonitor:
         pynvml = None
         try:
             import pynvml  # noqa: F811 — re-binds the local on success
+
             pynvml.nvmlInit()
             self._nvml_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             self._nvml_available = True
@@ -465,7 +472,8 @@ class HardwareMonitor:
             else:
                 logger.debug(
                     "pyNVML init failed (%s: %s) — falling back to nvidia-smi",
-                    type(e).__name__, e,
+                    type(e).__name__,
+                    e,
                 )
         return self._nvml_available
 
@@ -475,6 +483,7 @@ class HardwareMonitor:
             return {}
         try:
             import pynvml
+
             h = self._nvml_handle
             # GPU name
             name = pynvml.nvmlDeviceGetName(h)
@@ -497,7 +506,9 @@ class HardwareMonitor:
             try:
                 vram_temp = pynvml.nvmlDeviceGetTemperature(h, pynvml.NVML_TEMPERATURE_MEMORY)
             except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)  # not all cards expose this sensor
+                logger.debug(
+                    "ignored %s: %s", type(_e).__name__, _e
+                )  # not all cards expose this sensor
             return {
                 "gpu_name": name,
                 "gpu_temp_c": temp,
@@ -523,6 +534,7 @@ class HardwareMonitor:
         """
         import shutil
         import sys
+
         # Check PATH first
         path = shutil.which("nvidia-smi")
         if path:
@@ -535,6 +547,7 @@ class HardwareMonitor:
                 r"C:\Program Files\NVIDIA Corporation\nvidia-smi\nvidia-smi.exe",
             ]:
                 from pathlib import Path
+
                 if Path(candidate).exists():
                     return candidate
         return None
@@ -559,7 +572,9 @@ class HardwareMonitor:
                     "--query-gpu=name,temperature.gpu,temperature.memory,utilization.gpu,memory.used,memory.total,fan.speed",
                     "--format=csv,noheader,nounits",
                 ],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return {}
@@ -617,6 +632,7 @@ class HardwareMonitor:
     def _check_psutil() -> bool:
         try:
             import psutil  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -627,6 +643,7 @@ class HardwareMonitor:
             return {}
         try:
             import psutil
+
             ram = psutil.virtual_memory()
             return {
                 "cpu_utilization_pct": psutil.cpu_percent(interval=0.5),
@@ -722,7 +739,7 @@ class HardwareMonitor:
                     f"likely (this is what causes the red dots/lines on your "
                     f"monitor). Force-pausing to protect the VRAM from "
                     f"permanent damage. (profile: {p.name})",
-                    "ERROR"
+                    "ERROR",
                 )
                 self._gpu_temp_critical_warned = True
                 if self._auto_pause_callback and not self._auto_pause_triggered:
@@ -730,7 +747,7 @@ class HardwareMonitor:
                     self.log(
                         f"  ⏸️ Auto-pausing: VRAM at {snap.gpu_vram_temp_c}°C "
                         f"is in the danger zone.",
-                        "ERROR"
+                        "ERROR",
                     )
                     try:
                         self._auto_pause_callback()
@@ -749,7 +766,7 @@ class HardwareMonitor:
                         f"{vram_str}! "
                         f"Force-pausing to protect the card. "
                         f"(profile: {p.name}, critical: {p.critical_c}°C)",
-                        "ERROR"
+                        "ERROR",
                     )
                     self._gpu_temp_critical_warned = True
                     # V9.0.0 E3: auto-pause if callback is registered
@@ -759,7 +776,7 @@ class HardwareMonitor:
                             f"  ⏸️ Auto-pausing conversion due to critical GPU "
                             f"temperature. The GPU needs to cool down before "
                             f"resuming. (profile: {p.name})",
-                            "ERROR"
+                            "ERROR",
                         )
                         try:
                             self._auto_pause_callback()
@@ -776,7 +793,7 @@ class HardwareMonitor:
                         f"Recommend: reduce max_workers, improve airflow, or "
                         f"pause for 5 min to cool. "
                         f"(profile: {p.name}, caution: {p.caution_c}°C)",
-                        "WARNING"
+                        "WARNING",
                     )
                     self._gpu_temp_caution_warned = True
             elif snap.gpu_temp_c >= p.warning_c:
@@ -785,7 +802,7 @@ class HardwareMonitor:
                         f"  ⚠️ GPU temperature high: {snap.gpu_temp_c}°C"
                         f"{vram_str}. Monitor closely. "
                         f"(profile: {p.name}, warning: {p.warning_c}°C)",
-                        "WARNING"
+                        "WARNING",
                     )
                     self._gpu_temp_warned = True
             else:
@@ -807,18 +824,23 @@ class HardwareMonitor:
             # than the interval, log an INFO recommending a 5-min cool-down.
             # This is NOT an auto-pause — just a recommendation.  The user
             # can ignore it if their temps are in the safe zone.
-            if (p.sustained_pause_interval_min > 0
-                    and snap.gpu_utilization_pct is not None
-                    and snap.gpu_utilization_pct > 80):
+            if (
+                p.sustained_pause_interval_min > 0
+                and snap.gpu_utilization_pct is not None
+                and snap.gpu_utilization_pct > 80
+            ):
                 if self._sustained_load_start is None:
                     self._sustained_load_start = now
                 elapsed_min = (now - self._sustained_load_start) / 60.0
                 cooldown_elapsed = (
                     (now - self._last_cooldown_time) / 60.0
-                    if self._last_cooldown_time else elapsed_min
+                    if self._last_cooldown_time
+                    else elapsed_min
                 )
-                if (elapsed_min >= p.sustained_pause_interval_min
-                        and cooldown_elapsed >= p.sustained_pause_interval_min):
+                if (
+                    elapsed_min >= p.sustained_pause_interval_min
+                    and cooldown_elapsed >= p.sustained_pause_interval_min
+                ):
                     # V18.20.2.0 (SWOT A9): ``est_hotspot`` was referenced
                     # here but never assigned (AST-verified) — the NameError
                     # crashed the log call, was swallowed at DEBUG by the
@@ -833,7 +855,7 @@ class HardwareMonitor:
                         f"stress. (Current: {snap.gpu_temp_c}°C core, "
                         f"~{_hotspot_c}°C hotspot. This is an INFO notice, "
                         f"not an error — ignore if temps are in the safe zone.)",
-                        "INFO"
+                        "INFO",
                     )
                     self._last_cooldown_time = now  # don't repeat for a while
             elif snap.gpu_utilization_pct is not None and snap.gpu_utilization_pct < 50:
@@ -848,7 +870,7 @@ class HardwareMonitor:
                         f"  ⚠️ RAM usage high: {snap.ram_pct:.0f}% "
                         f"({snap.ram_used_gb:.1f}/{snap.ram_total_gb:.1f} GB). "
                         f"Risk of swap/OOM — consider reducing max_workers.",
-                        "WARNING"
+                        "WARNING",
                     )
                     self._ram_warned = True
             else:
@@ -903,6 +925,7 @@ class HardwareMonitor:
 
 # ── Post-completion actions (shutdown/sleep/quit) ─────────────────────────
 
+
 def execute_post_completion_action(
     action: str,
     delay_seconds: int = 60,
@@ -920,6 +943,7 @@ def execute_post_completion_action(
     It should be called from a background thread, not the UI thread.
     """
     import sys
+
     log = log_callback or (lambda msg, level: None)
 
     if action == "none":
@@ -993,6 +1017,7 @@ def _run_post_completion_command(action: str, cmd: list[str], log: LogFn) -> Non
     call site already wraps this in try/except.
     """
     import sys
+
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
     except subprocess.TimeoutExpired:
@@ -1029,8 +1054,7 @@ def _run_post_completion_command(action: str, cmd: list[str], log: LogFn) -> Non
             )
         else:
             hint = (
-                " — hint: shutdown requires root — use `systemctl poweroff` "
-                "polkit or run as root"
+                " — hint: shutdown requires root — use `systemctl poweroff` polkit or run as root"
             )
     log(
         f"  ⚠️ {action.capitalize()} FAILED (rc={result.returncode}): "

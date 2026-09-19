@@ -38,12 +38,14 @@ def _get_nlp():
     V10.31.0 (Sprint 4.6): delegates to the shared singleton.
     """
     from core.llm.model_singletons import get_spacy_nlp
+
     nlp = get_spacy_nlp("en_core_web_sm")
     _nlp_available = nlp is not None
     return nlp
 
 
 # ── Data structures ───────────────────────────────────────────────────────
+
 
 @dataclass
 class GlossaryEntry:
@@ -56,6 +58,7 @@ class GlossaryEntry:
         entity_type: "PERSON", "ORG", "GPE", "PRODUCT", "WORK_OF_ART", or "TERM".
         frequency:   how many times the term appeared in the source text.
     """
+
     source: str
     translation: str = ""
     entity_type: str = "TERM"
@@ -65,6 +68,7 @@ class GlossaryEntry:
 @dataclass
 class Glossary:
     """A collection of glossary entries."""
+
     entries: dict[str, GlossaryEntry] = field(default_factory=dict)
     source_lang: str = "en"
     target_lang: str = "fa"
@@ -128,8 +132,7 @@ class Glossary:
     @classmethod
     def from_dict(cls, d: dict) -> Glossary:
         """Deserialize from a dict."""
-        g = cls(source_lang=d.get("source_lang", "en"),
-                target_lang=d.get("target_lang", "fa"))
+        g = cls(source_lang=d.get("source_lang", "en"), target_lang=d.get("target_lang", "fa"))
         for key, entry_d in d.get("entries", {}).items():
             g.entries[key] = GlossaryEntry(
                 source=entry_d["source"],
@@ -159,6 +162,7 @@ class Glossary:
 
 # ── Glossary manager ─────────────────────────────────────────────────────
 
+
 class GlossaryManager:
     """Extracts and manages a terminology glossary from source text.
 
@@ -173,13 +177,9 @@ class GlossaryManager:
     """
 
     # Regex patterns for fallback entity extraction (when spaCy is unavailable)
-    _CAPITALIZED_PHRASE_RE = re.compile(
-        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b"
-    )
+    _CAPITALIZED_PHRASE_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b")
     # English book titles in quotes or italics
-    _QUOTED_TITLE_RE = re.compile(
-        r'["\u201c"]([^""]{3,60})["\u201d"]'
-    )
+    _QUOTED_TITLE_RE = re.compile(r'["\u201c"]([^""]{3,60})["\u201d"]')
 
     def __init__(self, source_lang: str = "en", target_lang: str = "fa") -> None:
         self.glossary = Glossary(source_lang=source_lang, target_lang=target_lang)
@@ -207,8 +207,16 @@ class GlossaryManager:
             try:
                 doc = nlp(text)
                 for ent in doc.ents:
-                    if ent.label_ in ("PERSON", "ORG", "GPE", "PRODUCT",
-                                      "WORK_OF_ART", "NORP", "EVENT", "FAC"):
+                    if ent.label_ in (
+                        "PERSON",
+                        "ORG",
+                        "GPE",
+                        "PRODUCT",
+                        "WORK_OF_ART",
+                        "NORP",
+                        "EVENT",
+                        "FAC",
+                    ):
                         self.glossary.add(ent.text, ent.label_)
                 return
             except Exception as _e:
@@ -218,8 +226,16 @@ class GlossaryManager:
         for m in self._CAPITALIZED_PHRASE_RE.finditer(text):
             phrase = m.group(1)
             # Skip common false positives
-            if phrase.lower() in ("The", "This", "That", "These", "Those",
-                                   "It Is", "There Is", "There Are"):
+            if phrase.lower() in (
+                "The",
+                "This",
+                "That",
+                "These",
+                "Those",
+                "It Is",
+                "There Is",
+                "There Are",
+            ):
                 continue
             if len(phrase.split()) >= 2:  # only multi-word phrases
                 self.glossary.add(phrase, "TERM")

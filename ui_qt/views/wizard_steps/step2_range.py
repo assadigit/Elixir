@@ -30,6 +30,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 2: Page Range
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step2Range(WizardStep):
     """Page range + page group size + auto-detect scanned + chapter selection."""
 
@@ -165,7 +166,6 @@ class Step2Range(WizardStep):
         clicked, so the UI state is consistent without requiring the user
         to check the box first.
         """
-        from PySide6.QtWidgets import QDialog
 
         from ui_qt.views.chapter_selector_dialog import ChapterSelectorDialog
 

@@ -32,6 +32,7 @@ storage.  A true split (moving storage into nested objects) would break all
 500+ call sites; this approach gives the structural benefit without the
 risk.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -161,9 +162,7 @@ class _WritableConfig:
         # (the old f"'{...self, "_config_name"...}'" used Python 3.12+ nested
         # double-quotes inside an f-string, which breaks on 3.11 and earlier).
         cfg_name = object.__getattribute__(self, "_config_name")
-        raise AttributeError(
-            f"'{cfg_name}' has no attribute '{name}'"
-        )
+        raise AttributeError(f"'{cfg_name}' has no attribute '{name}'")
 
     def __setattr__(self, name: str, value: Any) -> None:
         field_map = object.__getattribute__(self, "_field_map")
@@ -183,31 +182,48 @@ class _WritableConfig:
 
 # Config classes are now thin wrappers around _WritableConfig
 class OCRConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "ocr")
+    def __init__(self, request):
+        super().__init__(request, "ocr")
+
 
 class PostprocessConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "postprocess")
+    def __init__(self, request):
+        super().__init__(request, "postprocess")
+
 
 class SegmentationConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "segmentation")
+    def __init__(self, request):
+        super().__init__(request, "segmentation")
+
 
 class SummarizationConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "summarization")
+    def __init__(self, request):
+        super().__init__(request, "summarization")
+
 
 class OutputConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "outputs")
+    def __init__(self, request):
+        super().__init__(request, "outputs")
+
 
 class QualityConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "quality")
+    def __init__(self, request):
+        super().__init__(request, "quality")
+
 
 class AdvancedConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "advanced")
+    def __init__(self, request):
+        super().__init__(request, "advanced")
+
 
 class SelectionConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "selection")
+    def __init__(self, request):
+        super().__init__(request, "selection")
+
 
 class DocxConfig(_WritableConfig):
-    def __init__(self, request): super().__init__(request, "docx")
+    def __init__(self, request):
+        super().__init__(request, "docx")
 
 
 def build_config_views(request: Any) -> dict[str, Any]:

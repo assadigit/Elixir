@@ -13,6 +13,7 @@ exact behaviour the fix bundle was designed to produce:
         (1946)" grounds Kris + Hartmann, not just Loewenstein)
   RC-5c borderline attribution band verifies named entities before flagging
 """
+
 import sys
 import types
 
@@ -73,7 +74,7 @@ F2_TRUNCATION_MARKER = (
 F3_CHECKLIST = "Two directions - covered"
 F4_CHECKLIST = "Federn, Glover, Spiegel - covered"
 F5_LABEL = "Jacobson five categories"
-F6_LABEL = "Walt Whitman \"Song of Myself\" epigraph"
+F6_LABEL = 'Walt Whitman "Song of Myself" epigraph'
 F7_TYPO_BULLET = (
     "Greenacre (1958) conceptualized the child as beginning to have a "
     "preliminary sense of identity in the phallic/edipal phase."
@@ -119,29 +120,37 @@ SOURCE_EXCERPT = (
 # RC-1 — classify_scar / scar predicates
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestClassifyScar:
-    @pytest.mark.parametrize("bullet,expected", [
-        (F1_SELF_REFERENTIAL, "summary_self_assessment"),
-        (F2_TRUNCATION_MARKER, "truncation_marker"),
-        (F3_CHECKLIST, "checklist_stub"),
-        (F4_CHECKLIST, "checklist_stub"),
-        # En-dash / em-dash variants of the checklist idiom.
-        ("Two directions \u2013 covered", "checklist_stub"),
-        ("Two directions \u2014 covered", "checklist_stub"),
-        (F5_LABEL, "label_stub"),
-        (F6_LABEL, "label_stub"),
-        ("The model was cut off mid-word here\u2026", "bare_ellipsis"),
-        ("Some bullet ends abruptly...", "bare_ellipsis"),
-    ])
+    @pytest.mark.parametrize(
+        "bullet,expected",
+        [
+            (F1_SELF_REFERENTIAL, "summary_self_assessment"),
+            (F2_TRUNCATION_MARKER, "truncation_marker"),
+            (F3_CHECKLIST, "checklist_stub"),
+            (F4_CHECKLIST, "checklist_stub"),
+            # En-dash / em-dash variants of the checklist idiom.
+            ("Two directions \u2013 covered", "checklist_stub"),
+            ("Two directions \u2014 covered", "checklist_stub"),
+            (F5_LABEL, "label_stub"),
+            (F6_LABEL, "label_stub"),
+            ("The model was cut off mid-word here\u2026", "bare_ellipsis"),
+            ("Some bullet ends abruptly...", "bare_ellipsis"),
+        ],
+    )
     def test_scar_classes_detected(self, bullet, expected):
         assert classify_scar(bullet) == expected
 
-    @pytest.mark.parametrize("bullet", GOOD_BULLETS + [
-        # "covered" mid-sentence is fine — only the terminal idiom is a stub.
-        "Erikson covered four connotations of ego identity in depth.",
-        # A completed trailing quote is not a bare ellipsis.
-        "Lichtenstein called it a \u2018destiny neurosis\u2019 capable of variation.",
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        GOOD_BULLETS
+        + [
+            # "covered" mid-sentence is fine — only the terminal idiom is a stub.
+            "Erikson covered four connotations of ego identity in depth.",
+            # A completed trailing quote is not a bare ellipsis.
+            "Lichtenstein called it a \u2018destiny neurosis\u2019 capable of variation.",
+        ],
+    )
     def test_good_bullets_pass(self, bullet):
         assert classify_scar(bullet) is None
 
@@ -168,17 +177,21 @@ class TestClassifyScar:
 # RC-1 layer 2 — classify_bullets drops the scar classes at generation time
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestClassifyBulletsScars:
     def test_generation_time_scar_drops(self):
         # Checklist stubs, self-assessment and truncation markers are
         # dropped at GENERATION time (they are structural self-reference,
         # never summary content).
-        bullets = [F1_SELF_REFERENTIAL, F2_TRUNCATION_MARKER, F3_CHECKLIST,
-                   F4_CHECKLIST] + GOOD_BULLETS
+        bullets = [
+            F1_SELF_REFERENTIAL,
+            F2_TRUNCATION_MARKER,
+            F3_CHECKLIST,
+            F4_CHECKLIST,
+        ] + GOOD_BULLETS
         kept, drops = classify_bullets(bullets)
         kept_set = set(kept)
-        for bad in (F1_SELF_REFERENTIAL, F2_TRUNCATION_MARKER,
-                    F3_CHECKLIST, F4_CHECKLIST):
+        for bad in (F1_SELF_REFERENTIAL, F2_TRUNCATION_MARKER, F3_CHECKLIST, F4_CHECKLIST):
             assert bad not in kept_set
         for good in GOOD_BULLETS:
             assert good in kept_set
@@ -204,10 +217,17 @@ class TestClassifyBulletsScars:
 # RC-1 layer 1 + RC-3 — ship-time quarantine in run_post_checks
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestShipTimeQuarantine:
     def test_scarred_bullets_dropped_at_ship_time(self):
-        bullets = [F1_SELF_REFERENTIAL, F2_TRUNCATION_MARKER, F3_CHECKLIST,
-                   F4_CHECKLIST, F5_LABEL, F6_LABEL] + GOOD_BULLETS
+        bullets = [
+            F1_SELF_REFERENTIAL,
+            F2_TRUNCATION_MARKER,
+            F3_CHECKLIST,
+            F4_CHECKLIST,
+            F5_LABEL,
+            F6_LABEL,
+        ] + GOOD_BULLETS
         report = run_post_checks(
             bullets=bullets,
             executive_summary="A faithful executive summary.",
@@ -215,8 +235,14 @@ class TestShipTimeQuarantine:
             source_text=SOURCE_EXCERPT,
         )
         shipped = set(report.bullets)
-        for bad in (F1_SELF_REFERENTIAL, F2_TRUNCATION_MARKER, F3_CHECKLIST,
-                    F4_CHECKLIST, F5_LABEL, F6_LABEL):
+        for bad in (
+            F1_SELF_REFERENTIAL,
+            F2_TRUNCATION_MARKER,
+            F3_CHECKLIST,
+            F4_CHECKLIST,
+            F5_LABEL,
+            F6_LABEL,
+        ):
             assert bad not in shipped
         for good in GOOD_BULLETS:
             assert good in shipped
@@ -228,8 +254,10 @@ class TestShipTimeQuarantine:
 
     def test_truncated_bullet_enforced_drop(self):
         # F1's tail form: unmatched quote, no terminal punctuation.
-        truncated = ("Roiphe (1971) are identified as significant "
-                     "contributors to gender identity: 'This specific area")
+        truncated = (
+            "Roiphe (1971) are identified as significant "
+            "contributors to gender identity: 'This specific area"
+        )
         report = run_post_checks(
             bullets=[truncated] + GOOD_BULLETS,
             executive_summary="Exec.",
@@ -242,6 +270,7 @@ class TestShipTimeQuarantine:
 
     def test_edipal_autorepaired_in_bullets_and_thorough(self):
         import re as _re
+
         report = run_post_checks(
             bullets=[F7_TYPO_BULLET] + GOOD_BULLETS,
             executive_summary="Exec.",
@@ -254,8 +283,7 @@ class TestShipTimeQuarantine:
         # The standalone "edipal" token is gone everywhere (word-boundary
         # check — "oedipal" contains the substring "edipal").
         assert not _re.search(r"(?<!\w)edipal(?!\w)", joined)
-        fixes = [i for i in report.issues if i.detector == "dropped_letter"
-                 and i.severity == "fix"]
+        fixes = [i for i in report.issues if i.detector == "dropped_letter" and i.severity == "fix"]
         assert fixes  # the repair is recorded
 
 
@@ -263,9 +291,11 @@ class TestShipTimeQuarantine:
 # RC-3 — dropped-letter auto-repair unit behaviour
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDroppedLetterAutoRepair:
     def test_edipal_repaired(self):
         import re as _re
+
         text = "The phallic/edipal phase is when the preliminary identity forms."
         # V0.03 (P0-1): auto_repair must be EXPLICITLY enabled (default off).
         fixed, issues = detect_dropped_letter_garble(
@@ -279,6 +309,7 @@ class TestDroppedLetterAutoRepair:
 
     def test_capitalized_garble_preserves_case(self):
         import re as _re
+
         text = "Edipal resolution begins in the phallic phase."
         # V0.03 (P0-1): auto_repair must be EXPLICITLY enabled (default off).
         fixed, issues = detect_dropped_letter_garble(
@@ -300,9 +331,15 @@ class TestDroppedLetterAutoRepair:
         else:
             assert any(i.severity == "flag" for i in issues)
 
-    @pytest.mark.parametrize("word", [
-        "psychoanalysis", "bases", "meant", "elated",
-    ])
+    @pytest.mark.parametrize(
+        "word",
+        [
+            "psychoanalysis",
+            "bases",
+            "meant",
+            "elated",
+        ],
+    )
     def test_audit_false_positives_suppressed(self, word):
         # RC-5a (V18.20.3.4) → V18.20.3.5: these words were suppressed by
         # HAND-ADDED STOPWORD ENTRIES in .3.4 — the exact chapter-derived
@@ -312,13 +349,14 @@ class TestDroppedLetterAutoRepair:
         # rule 9: final-char inflection swap; position-0 inflected-form
         # guard for "elated"), so the same outcome holds with no
         # chapter-specific lexicon.
-        src = ("The psychoanalysts worked on many bases of the mind and "
-               "meant every word, speaking elatedly about means.")
+        src = (
+            "The psychoanalysts worked on many bases of the mind and "
+            "meant every word, speaking elatedly about means."
+        )
         text = f"The summary mentions {word} in a sentence."
         fixed, issues = detect_dropped_letter_garble(text, "bullet[3]", src)
         assert fixed == text
-        assert not [i for i in issues
-                    if i.detector == "dropped_letter"]
+        assert not [i for i in issues if i.detector == "dropped_letter"]
 
     def test_no_chapter_derived_stoplist_entries(self):
         # V18.20.3.5 POLICY (user rule): the .3.4 chapter-derived entries
@@ -330,8 +368,8 @@ class TestDroppedLetterAutoRepair:
         from core.summarisation.postcheck_detectors import (
             _COMMON_ENGLISH_WORDS,
         )
-        for banned in ("psychoanalysis", "elate", "elated",
-                       "argues", "asserts", "noted", "means"):
+
+        for banned in ("psychoanalysis", "elate", "elated", "argues", "asserts", "noted", "means"):
             assert banned not in _COMMON_ENGLISH_WORDS, (
                 f"{banned!r} is a chapter-derived/redundant stoplist entry — "
                 f"replace it with a morphology rule (user rule V18.20.3.5)"
@@ -344,6 +382,7 @@ class TestDroppedLetterAutoRepair:
         from core.summarisation.postcheck_detectors import (
             _is_legitimate_inflection_pair as pair,
         )
+
         assert pair("diagnoses", "diagnosis")
         assert pair("crises", "crisis")
         assert pair("theses", "thesis")
@@ -358,46 +397,61 @@ class TestDroppedLetterAutoRepair:
 # RC-5b — multi-author citation extraction
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestMultiAuthorCitations:
     def test_kris_grounded_via_three_author_form(self):
         # The audit's exact false positive: "Kris (1946) not found in
         # source's 34 citations" although the source cites
         # "Hartmann, Kris, and Loewenstein (1946)".
-        names = {c["author"] for c in extract_citations(
-            "The framework was consolidated by Hartmann, Kris, and "
-            "Loewenstein (1946) and extended."
-        )}
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "The framework was consolidated by Hartmann, Kris, and "
+                "Loewenstein (1946) and extended."
+            )
+        }
         assert {"Hartmann", "Kris", "Loewenstein"} <= names
 
     def test_and_pair_form(self):
-        names = {c["author"] for c in extract_citations(
-            "Jacobson and Kernberg (1967) described the distinction."
-        )}
+        names = {
+            c["author"]
+            for c in extract_citations("Jacobson and Kernberg (1967) described the distinction.")
+        }
         assert {"Jacobson", "Kernberg"} <= names
 
     def test_comma_list_without_and(self):
-        names = {c["author"] for c in extract_citations(
-            "Fromm, Wheelis, Lynd (1958) contributed to the sociocultural strand."
-        )}
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "Fromm, Wheelis, Lynd (1958) contributed to the sociocultural strand."
+            )
+        }
         assert {"Fromm", "Wheelis", "Lynd"} <= names
 
     def test_no_year_no_match(self):
-        names = {c["author"] for c in extract_citations(
-            "Freud, Abraham, and Jones wrote extensively without a year here."
-        )}
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "Freud, Abraham, and Jones wrote extensively without a year here."
+            )
+        }
         assert "Freud" not in names
 
     def test_single_author_forms_unchanged(self):
-        names = {c["author"] for c in extract_citations(
-            "Erikson (1956) wrote. Federn\u2019s (1952) concept. Freud 1926a. "
-            "Chasseguet-Smirgel (1984) analyzed the ego ideal."
-        )}
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "Erikson (1956) wrote. Federn\u2019s (1952) concept. Freud 1926a. "
+                "Chasseguet-Smirgel (1984) analyzed the ego ideal."
+            )
+        }
         assert {"Erikson", "Federn", "Freud", "Chasseguet-Smirgel"} <= names
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RC-5c — borderline attribution band
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestBorderlineAttribution:
     def _make_source(self):
@@ -439,6 +493,7 @@ class TestBorderlineAttribution:
 # RC-2 — post-gap-fill dedup no longer deadline-gated (source-level pins)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDedupNotSkippable:
     def test_deadline_gate_removed_from_source(self):
         # The old code skipped the post-gap-fill dedup when the chapter
@@ -448,6 +503,7 @@ class TestDedupNotSkippable:
         import inspect
 
         from core.summarisation import summarizer as sm
+
         src = inspect.getsource(sm.Summarizer._summarize_inner)
         assert "skipping optional phase: post-gap-fill semantic dedup" not in src
         assert src.count("Post-gap-fill semantic dedup crashed") == 1
@@ -464,6 +520,7 @@ class TestDedupNotSkippable:
         import inspect
 
         from core.summarisation import gap_fill_batch as gfb
+
         src = inspect.getsource(gfb.batch_gap_fill)
         assert "_veto_counts" in src
         assert "_mention_only" in src
@@ -482,6 +539,7 @@ class TestDedupNotSkippable:
         from core.summarisation.recall_floor import (
             deterministic_recall_floor,
         )
+
         src = inspect.getsource(sm.Summarizer._summarize_inner)
         assert "Deterministic recall floor" in src
         assert "deterministic_recall_floor" in src
@@ -489,11 +547,13 @@ class TestDedupNotSkippable:
         # that killed the inline version. (Source must be >= 200 chars —
         # detect_enumerated_conclusions short-circuits on shorter text, and
         # it focuses on the last 30% where conclusions live.)
-        _src = ("Background paragraph with enough ordinary prose to pass the "
-                "two-hundred character minimum of the conclusion detector. "
-                "It mentions nothing numbered at all, just filler text. "
-                "Now the conclusion: (1) first item here (2) second item "
-                "follows (3) third item ends.")
+        _src = (
+            "Background paragraph with enough ordinary prose to pass the "
+            "two-hundred character minimum of the conclusion detector. "
+            "It mentions nothing numbered at all, just filler text. "
+            "Now the conclusion: (1) first item here (2) second item "
+            "follows (3) third item ends."
+        )
         rf = deterministic_recall_floor(
             "",
             ["bullet one"],
@@ -508,18 +568,21 @@ class TestDedupNotSkippable:
 # RC-1 layer 2 — scholar-reflection gap-fill filter wiring
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestScholarGapFillFilter:
     @staticmethod
     def _fake_prompt_manager():
         class _PM:
             def render_template(self, name, **kw):
                 return "PROMPT BODY"
+
         return _PM()
 
     def test_filter_callback_wired(self):
         import inspect
 
         from core.summarisation import scholar_reflection as sr
+
         sig = inspect.signature(sr.scholar_reflection)
         assert "filter_thinking_bullets" in sig.parameters
         sig2 = inspect.signature(sr.scholar_reflection_gapfill_only)
@@ -542,7 +605,9 @@ class TestScholarGapFillFilter:
 
         logs = []
         scholar_reflection(
-            "Chapter", SOURCE_EXCERPT, result,
+            "Chapter",
+            SOURCE_EXCERPT,
+            result,
             max_context_tokens=4096,
             language="English",
             temperature=0.7,
@@ -551,8 +616,7 @@ class TestScholarGapFillFilter:
             call_fast_llm=fake_llm,
             strip_thinking=lambda s: s,
             filter_thinking_bullets=lambda bs, **kw: [
-                b for b in bs
-                if classify_scar(b) is None and len(b.split()) >= 4
+                b for b in bs if classify_scar(b) is None and len(b.split()) >= 4
             ],
             log=lambda m, l="INFO": logs.append((m, l)),
         )
@@ -571,7 +635,9 @@ class TestScholarGapFillFilter:
             "<gap_fill_bullets>\nnone\n</gap_fill_bullets>"
         )
         scholar_reflection(
-            "Chapter", "source text", result,
+            "Chapter",
+            "source text",
+            result,
             max_context_tokens=4096,
             language="English",
             temperature=0.7,
@@ -588,11 +654,13 @@ class TestScholarGapFillFilter:
 # Keypoints embedder log honesty (non-defect note from the audit)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestKeypointsLogHonesty:
     def test_log_names_actual_backend(self):
         import inspect
 
         from core.summarisation import keypoints_builder as kb
+
         src = inspect.getsource(kb)
         assert "sentence-transformers loaded (shared singleton)" not in src
         assert "backend=" in src

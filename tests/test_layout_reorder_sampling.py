@@ -6,6 +6,7 @@ requiring a real PDF file — uses mock word lists.
 
 Run: pytest tests/test_layout_reorder_sampling.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,6 +59,7 @@ def _make_words_1column(n=100, page_width=612.0):
 
 class _MockPage:
     """Mock pdfplumber page with width + extract_words()."""
+
     def __init__(self, words, width=612.0):
         self.width = width
         self._words = words
@@ -68,18 +70,23 @@ class _MockPage:
 
 class _MockPdfplumber:
     """Mock pdfplumber module."""
+
     def __init__(self, pages):
         self._pages = pages
 
     def open(self, path):
         outer = self
+
         class _Ctx:
             def __enter__(self):
                 class _Pdf:
                     pages = outer._pages
+
                 return _Pdf()
+
             def __exit__(self, *a):
                 pass
+
         return _Ctx()
 
 
@@ -181,11 +188,16 @@ class TestMultiColumnDetection:
     def test_reorder_skips_when_single_column(self):
         """reorder_markdown returns the original markdown unchanged when the
         sample pages are single-column (the 95% case — the V18.13 optimization)."""
-        markdown = ("<!-- original page 1 -->\nSome text on page 1.\n\n"
-                    "<!-- original page 2 -->\nMore text on page 2.\n\n"
-                    "<!-- original page 3 -->\nEven more text on page 3.")
-        pages = [_MockPage(_make_words_1column(100)), _MockPage(_make_words_1column(100)),
-                 _MockPage(_make_words_1column(100))]
+        markdown = (
+            "<!-- original page 1 -->\nSome text on page 1.\n\n"
+            "<!-- original page 2 -->\nMore text on page 2.\n\n"
+            "<!-- original page 3 -->\nEven more text on page 3."
+        )
+        pages = [
+            _MockPage(_make_words_1column(100)),
+            _MockPage(_make_words_1column(100)),
+            _MockPage(_make_words_1column(100)),
+        ]
         lr, old = self._make_reorder(pages)
         log_msgs = []
         lr.log = lambda msg, level="INFO": log_msgs.append((msg, level))
@@ -202,20 +214,23 @@ class TestMultiColumnDetection:
     def test_reorder_proceeds_when_two_column(self):
         """reorder_markdown proceeds with the per-page reorder when the sample
         pages ARE multi-column (the 5% case — actual scientific papers)."""
-        markdown = ("<!-- original page 1 -->\nSome text on page 1.\n\n"
-                    "<!-- original page 2 -->\nMore text on page 2.")
+        markdown = (
+            "<!-- original page 1 -->\nSome text on page 1.\n\n"
+            "<!-- original page 2 -->\nMore text on page 2."
+        )
         pages = [_MockPage(_make_words_2column(50, 50)), _MockPage(_make_words_2column(50, 50))]
         lr, old = self._make_reorder(pages)
         log_msgs = []
         lr.log = lambda msg, level="INFO": log_msgs.append((msg, level))
         try:
-            result = lr.reorder_markdown(markdown, Path("/fake.pdf"))
+            _result = lr.reorder_markdown(markdown, Path("/fake.pdf"))
             # Did NOT return the original unchanged (the reorder ran)
             # (The reorder may not change the content since our mock words
             # produce different text than the markdown, but the key check is
             # that it did NOT log the skip.)
             infos = [m for m, l in log_msgs if l == "INFO"]
-            assert not any("Layout reorder skipped" in i for i in infos), \
+            assert not any("Layout reorder skipped" in i for i in infos), (
                 "Should NOT have skipped — multi-column detected"
+            )
         finally:
             self._cleanup(old)

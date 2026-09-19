@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # seams (the values are UNCHANGED from the old inline literals; no cap
 # changes). The shared base makes both timeouts REAL: a silent-but-alive
 # child can no longer block a readline() past the deadline.
-QWEN_LOAD_TIMEOUT_S = 120   # was the inline `120` in _ensure_model
+QWEN_LOAD_TIMEOUT_S = 120  # was the inline `120` in _ensure_model
 QWEN_CHUNK_TIMEOUT_S = 120  # was the inline `120` in _run_subprocess
 
 
@@ -41,34 +41,42 @@ QWEN_CHUNK_TIMEOUT_S = 120  # was the inline `120` in _run_subprocess
 # Source: official model card on HuggingFace.
 # Each entry: (speaker_name, description, native_language)
 QWEN_TTS_KNOWN_SPEAKERS = [
-    "Vivian",     # Bright, slightly edgy young female voice. Chinese.
-    "Serena",     # Warm, gentle young female voice. Chinese.
-    "Uncle_Fu",   # Seasoned male voice with a low, mellow timbre. Chinese.
-    "Dylan",      # Youthful Beijing male voice with a clear, natural timbre. Chinese (Beijing Dialect).
-    "Eric",       # Lively Chengdu male voice with a slightly husky brightness. Chinese (Sichuan Dialect).
-    "Ryan",       # Dynamic male voice with strong rhythmic drive. English.
-    "Aidan",      # Sunny American male voice with a clear midrange. English.
-    "Ono_Anna",   # Playful Japanese female voice with a light, nimble timbre. Japanese.
-    "Sohee",      # Warm Korean female voice with rich emotion. Korean.
+    "Vivian",  # Bright, slightly edgy young female voice. Chinese.
+    "Serena",  # Warm, gentle young female voice. Chinese.
+    "Uncle_Fu",  # Seasoned male voice with a low, mellow timbre. Chinese.
+    "Dylan",  # Youthful Beijing male voice with a clear, natural timbre. Chinese (Beijing Dialect).
+    "Eric",  # Lively Chengdu male voice with a slightly husky brightness. Chinese (Sichuan Dialect).
+    "Ryan",  # Dynamic male voice with strong rhythmic drive. English.
+    "Aidan",  # Sunny American male voice with a clear midrange. English.
+    "Ono_Anna",  # Playful Japanese female voice with a light, nimble timbre. Japanese.
+    "Sohee",  # Warm Korean female voice with rich emotion. Korean.
 ]
 
 # Speaker descriptions for the UI
 QWEN_TTS_SPEAKER_INFO = {
-    "Vivian":    ("Female", "Bright, slightly edgy young female voice", "Chinese"),
-    "Serena":    ("Female", "Warm, gentle young female voice", "Chinese"),
-    "Uncle_Fu":  ("Male",   "Seasoned male voice with a low, mellow timbre", "Chinese"),
-    "Dylan":     ("Male",   "Youthful Beijing male voice, clear natural timbre", "Chinese (Beijing)"),
-    "Eric":      ("Male",   "Lively Chengdu male voice, slightly husky", "Chinese (Sichuan)"),
-    "Ryan":      ("Male",   "Dynamic male voice with strong rhythmic drive", "English"),
-    "Aidan":     ("Male",   "Sunny American male voice with clear midrange", "English"),
-    "Ono_Anna":  ("Female", "Playful Japanese female voice, light nimble", "Japanese"),
-    "Sohee":     ("Female", "Warm Korean female voice with rich emotion", "Korean"),
+    "Vivian": ("Female", "Bright, slightly edgy young female voice", "Chinese"),
+    "Serena": ("Female", "Warm, gentle young female voice", "Chinese"),
+    "Uncle_Fu": ("Male", "Seasoned male voice with a low, mellow timbre", "Chinese"),
+    "Dylan": ("Male", "Youthful Beijing male voice, clear natural timbre", "Chinese (Beijing)"),
+    "Eric": ("Male", "Lively Chengdu male voice, slightly husky", "Chinese (Sichuan)"),
+    "Ryan": ("Male", "Dynamic male voice with strong rhythmic drive", "English"),
+    "Aidan": ("Male", "Sunny American male voice with clear midrange", "English"),
+    "Ono_Anna": ("Female", "Playful Japanese female voice, light nimble", "Japanese"),
+    "Sohee": ("Female", "Warm Korean female voice with rich emotion", "Korean"),
 }
 
 # Supported languages (from the model card)
 QWEN_TTS_LANGUAGES = [
-    "English", "Chinese", "Japanese", "Korean", "German",
-    "French", "Russian", "Portuguese", "Spanish", "Italian",
+    "English",
+    "Chinese",
+    "Japanese",
+    "Korean",
+    "German",
+    "French",
+    "Russian",
+    "Portuguese",
+    "Spanish",
+    "Italian",
 ]
 
 
@@ -108,6 +116,7 @@ class QwenTtsEngine(TTSEngine):
     def _cuda_available() -> bool:
         try:
             import torch
+
             avail = torch.cuda.is_available()
             count = torch.cuda.device_count() if avail else 0
             return bool(avail and count > 0)
@@ -125,11 +134,13 @@ class QwenTtsEngine(TTSEngine):
         QWEN_TTS_USE_FLASH_ATTN=1.
         """
         import os
+
         if os.environ.get("QWEN_TTS_USE_FLASH_ATTN", "0") != "1":
             return False
         try:
             import flash_attn  # noqa: F401
             import torch
+
             if torch.cuda.is_available():
                 major, _ = torch.cuda.get_device_capability()
                 return major >= 8
@@ -157,12 +168,12 @@ class QwenTtsEngine(TTSEngine):
         if not self._model_path:
             raise ValueError(
                 "Qwen3-TTS model path not set. Configure it in "
-                "Settings → TTS → Qwen3-TTS model path.")
+                "Settings → TTS → Qwen3-TTS model path."
+            )
 
         model_dir = Path(self._model_path)
         if not model_dir.exists():
-            raise FileNotFoundError(
-                f"Qwen3-TTS model folder not found: {model_dir}")
+            raise FileNotFoundError(f"Qwen3-TTS model folder not found: {model_dir}")
 
         import os
         import sys
@@ -177,21 +188,21 @@ class QwenTtsEngine(TTSEngine):
             env["PYTHONIOENCODING"] = "utf-8"
 
         sub = PersistentJsonSubprocess(
-            name="Qwen3-TTS", log=self.log,
-            stderr_prefix="[qwen-sub]", stderr_level="DEBUG")
+            name="Qwen3-TTS", log=self.log, stderr_prefix="[qwen-sub]", stderr_level="DEBUG"
+        )
         sub.spawn([sys.executable, script_path], env=env)
         self._sub = sub
 
         # Send the load command
         if not sub.send({"action": "load", "model_path": str(model_dir)}):
             self._kill_subprocess("cannot send load command")
-            raise RuntimeError(
-                "Qwen3-TTS subprocess not accepting the load command")
+            raise RuntimeError("Qwen3-TTS subprocess not accepting the load command")
 
         # Wait for "ready" response (timeout 120s for model loading — a
         # REAL timeout now: the base's queue-based reader thread means a
         # silent-but-alive child cannot block the handshake forever)
         import time
+
         start = time.time()
         while True:
             remaining = QWEN_LOAD_TIMEOUT_S - (time.time() - start)
@@ -216,8 +227,7 @@ class QwenTtsEngine(TTSEngine):
                 # V18.20.4.4 (W-c2): a reported load error can leave the
                 # subprocess alive — kill before raising so VRAM is freed
                 # (the neutts cleanup-before-raise pattern).
-                self._kill_subprocess(
-                    f"load error: {msg.get('error', 'unknown')}")
+                self._kill_subprocess(f"load error: {msg.get('error', 'unknown')}")
                 raise RuntimeError(f"Model load failed: {msg.get('error', 'unknown')}")
 
         # V18.20.4.4 (W-c2): kill the still-loading subprocess instead of
@@ -231,8 +241,7 @@ class QwenTtsEngine(TTSEngine):
         if sub.eof or not sub.alive:
             self._kill_subprocess("stdout closed during model load")
         else:
-            self._kill_subprocess(
-                f"model load not ready (timeout, {QWEN_LOAD_TIMEOUT_S}s)")
+            self._kill_subprocess(f"model load not ready (timeout, {QWEN_LOAD_TIMEOUT_S}s)")
         raise RuntimeError("Qwen3-TTS subprocess failed to load model (timeout)")
 
     def get_available_speakers(self) -> list[str]:
@@ -255,12 +264,13 @@ class QwenTtsEngine(TTSEngine):
         fast (5-10s on GPU per chunk).
         """
         import re
+
         text = text.strip()
         if len(text) <= max_chars:
             return [text] if text else []
 
         # Split on sentence boundaries
-        sentences = re.split(r'(?<=[\.!?؟\n])\s+', text)
+        sentences = re.split(r"(?<=[\.!?؟\n])\s+", text)
         chunks = []
         current = ""
         for sent in sentences:
@@ -303,13 +313,15 @@ class QwenTtsEngine(TTSEngine):
             return False
 
         # Send generate command
-        ok = sub.send({
-            "action": "generate",
-            "text": text,
-            "speaker": speaker,
-            "language": self._language,
-            "out_path": str(out_path),
-        })
+        ok = sub.send(
+            {
+                "action": "generate",
+                "text": text,
+                "speaker": speaker,
+                "language": self._language,
+                "out_path": str(out_path),
+            }
+        )
         if not ok:
             # send() already logged the reason (dead child / broken pipe).
             # V18.20.4.4 (W-c11): reap + reset so the engine recovers on
@@ -320,6 +332,7 @@ class QwenTtsEngine(TTSEngine):
         # Wait for response (timeout 120s per chunk — REAL timeout, see
         # the docstring)
         import time
+
         start = time.time()
         while True:
             remaining = QWEN_CHUNK_TIMEOUT_S - (time.time() - start)
@@ -351,9 +364,7 @@ class QwenTtsEngine(TTSEngine):
             self._kill_subprocess("stdout closed mid-generation")
             return False
 
-        self.log(
-            f"  ❌ Subprocess timed out ({QWEN_CHUNK_TIMEOUT_S}s per chunk)",
-            "ERROR")
+        self.log(f"  ❌ Subprocess timed out ({QWEN_CHUNK_TIMEOUT_S}s per chunk)", "ERROR")
         # V18.20.4.4 (W-c11): a timed-out chunk leaves the subprocess
         # mid-generation — its stale JSON response ("ok"/"error" for the
         # command that already gave up) would be consumed by the NEXT
@@ -363,8 +374,7 @@ class QwenTtsEngine(TTSEngine):
         # ("Subprocess not running" — bounded failure, no 120s hang per
         # chunk) and the NEXT synthesize() call reloads a fresh, in-sync
         # subprocess via _ensure_model().
-        self._kill_subprocess(
-            f"chunk timeout ({QWEN_CHUNK_TIMEOUT_S}s per chunk)")
+        self._kill_subprocess(f"chunk timeout ({QWEN_CHUNK_TIMEOUT_S}s per chunk)")
         return False
 
     def _kill_subprocess(self, reason: str = "") -> None:
@@ -427,7 +437,7 @@ class QwenTtsEngine(TTSEngine):
             # Strip "qwen:" prefix if present
             speaker = voice or self._speaker
             if speaker and speaker.startswith("qwen:"):
-                speaker = speaker[len("qwen:"):]
+                speaker = speaker[len("qwen:") :]
 
             # Split into chunks for faster generation
             chunks = self._split_text(text, max_chars=200)
@@ -435,8 +445,9 @@ class QwenTtsEngine(TTSEngine):
                 return None
 
             self.log(
-                f"  🎙️ Qwen3-TTS: {len(text)} chars in {len(chunks)} chunks "
-                f"(speaker={speaker})...", "INFO")
+                f"  🎙️ Qwen3-TTS: {len(text)} chars in {len(chunks)} chunks (speaker={speaker})...",
+                "INFO",
+            )
 
             import tempfile
             from pathlib import Path as _P
@@ -454,17 +465,17 @@ class QwenTtsEngine(TTSEngine):
                 with tempfile.TemporaryDirectory(prefix="qwen_tts_") as tmp:
                     for i, chunk in enumerate(chunks):
                         self.log(
-                            f"  ⏳ Chunk {i+1}/{len(chunks)} "
-                            f"({len(chunk)} chars)...", "INFO")
+                            f"  ⏳ Chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)...", "INFO"
+                        )
                         cp = _P(tmp) / f"chunk_{i:03d}.wav"
                         if self._run_subprocess(chunk, speaker, str(cp)):
                             if cp.exists():
                                 chunk_paths.append(cp)
-                                self.log(f"  ✅ Chunk {i+1} done", "INFO")
+                                self.log(f"  ✅ Chunk {i + 1} done", "INFO")
                             else:
-                                self.log(f"  ⚠️ Chunk {i+1} file missing", "WARNING")
+                                self.log(f"  ⚠️ Chunk {i + 1} file missing", "WARNING")
                         else:
-                            self.log(f"  ⚠️ Chunk {i+1} failed", "WARNING")
+                            self.log(f"  ⚠️ Chunk {i + 1} failed", "WARNING")
 
                     if not chunk_paths:
                         self.last_error = "All chunks failed"
@@ -473,6 +484,7 @@ class QwenTtsEngine(TTSEngine):
                     # Stitch chunks with 150ms silence
                     import numpy as np
                     import soundfile as sf
+
                     self.log(f"  🔗 Stitching {len(chunk_paths)} chunks...", "INFO")
                     audio_parts = []
                     for cp in chunk_paths:
@@ -488,8 +500,8 @@ class QwenTtsEngine(TTSEngine):
                     sf.write(str(out_path), final_audio, sr)
                     if out_path.exists():
                         self.log(
-                            f"  ✅ Qwen3-TTS complete: "
-                            f"{len(final_audio)/sr:.1f}s audio", "INFO")
+                            f"  ✅ Qwen3-TTS complete: {len(final_audio) / sr:.1f}s audio", "INFO"
+                        )
                         return out_path
 
             self.last_error = "No audio produced"

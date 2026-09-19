@@ -34,8 +34,10 @@ from core.summarisation.summarizer import Summarizer
 # Anti-false-precision check tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class _FakeSummarizerForAFP:
     """A fake summarizer that uses the REAL _anti_false_precision_check."""
+
     log = MagicMock()
     quarantine = None
 
@@ -219,14 +221,13 @@ class TestAntiFalsePrecisionCheck:
         rewritten = result["bullet_points"][0]
         # At least one of the two contrasts should be rewritten
         # (both source-grouped pairs should trigger)
-        assert "both" in rewritten.lower(), (
-            f"Multiple contrasts not rewritten. Got: {rewritten}"
-        )
+        assert "both" in rewritten.lower(), f"Multiple contrasts not rewritten. Got: {rewritten}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Theorist extraction tests (deterministic regex pre-pass)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTheoristExtraction:
     """V13.45.0: Verify the theorist-extraction regex finds named authors."""
@@ -234,7 +235,7 @@ class TestTheoristExtraction:
     def test_finds_single_author_year(self):
         text = "Erikson (1956) used the term ego identity."
         matches = re.findall(
-            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
             text,
         )
         assert ("Erikson", "1956") in matches
@@ -246,7 +247,7 @@ class TestTheoristExtraction:
             "contributed to the sense of identity."
         )
         matches = re.findall(
-            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
             text,
         )
         names = [m[0] for m in matches]
@@ -261,7 +262,7 @@ class TestTheoristExtraction:
         'Anna Freud' should."""
         text = "Anna Freud (1958) wrote about the topic."
         matches = re.findall(
-            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
             text,
         )
         names = [m[0] for m in matches]
@@ -271,7 +272,7 @@ class TestTheoristExtraction:
         """Year with letter suffix like '1958a' should match."""
         text = "Greenacre (1958a) and Greenacre (1958b) both contributed."
         matches = re.findall(
-            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
             text,
         )
         years = [m[1] for m in matches]
@@ -285,7 +286,7 @@ class TestTheoristExtraction:
         # The regex will still match them, but the scholar reflection filters them.
         # Here we just verify the regex itself works.
         matches = re.findall(
-            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
             text,
         )
         # The regex WILL match "The" and "In" — the filtering happens in the method
@@ -295,6 +296,7 @@ class TestTheoristExtraction:
 # ═══════════════════════════════════════════════════════════════════════════
 # Prompt-content tests (verify the new instructions are present)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPromptContent:
     """V13.45.0: Verify the new prompt instructions are present in templates."""
@@ -314,6 +316,7 @@ class TestPromptContent:
         # all-caps markers would re-introduce book-specific framing and
         # violate the book-agnostic principle.
         from pathlib import Path
+
         prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "default.md"
         content = prompt_path.read_text(encoding="utf-8")
         # ANTI-FALSE-PRECISION → "Accuracy" + "Anti-Interpretation" constraints
@@ -364,6 +367,7 @@ class TestPromptContent:
 
     def test_default_prompt_has_enriched_distinctions(self):
         from pathlib import Path
+
         prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "default.md"
         content = prompt_path.read_text(encoding="utf-8")
         # The enriched key_distinctions should have prioritization guidance
@@ -380,6 +384,7 @@ class TestPromptContent:
 # Gap-fill fix verification (the V13.42.0 bug)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestGapFillFix:
     """V13.45.0: Verify that gap-fill bullets from scholar reflection are NO
     LONGER discarded — the SummaryResult must use parsed["bullet_points"]
@@ -393,7 +398,10 @@ class TestGapFillFix:
         """The _summarize_inner method must read bullets back from parsed after
         scholar reflection runs (so gap-fill bullets survive)."""
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+        )
         content = src_path.read_text(encoding="utf-8")
         # The V13.45.0 fix comment must be present
         assert "V13.45.0: CRITICAL FIX" in content, (
@@ -407,7 +415,10 @@ class TestGapFillFix:
     def test_anti_false_precision_is_wired(self):
         """The _anti_false_precision_check must be called in the pipeline."""
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+        )
         content = src_path.read_text(encoding="utf-8")
         assert "_anti_false_precision_check" in content, (
             "_anti_false_precision_check method not found in summarizer.py"
@@ -422,13 +433,17 @@ class TestGapFillFix:
 # V13.45.4: Batched self-review + max_output_tokens tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestV13_45_4_BatchedSelfReview:
     """V13.45.4: Verify batched self-review replaces the >50 bullet skip."""
 
     def test_self_review_batched_method_exists(self):
         """The _self_review_batched method must exist."""
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+        )
         content = src_path.read_text(encoding="utf-8")
         assert "_self_review_batched" in content, (
             "_self_review_batched method not found — batched self-review not implemented"
@@ -440,19 +455,23 @@ class TestV13_45_4_BatchedSelfReview:
     def test_batched_review_is_wired_in_pipeline(self):
         """The batched self-review must be called when >10 bullets."""
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "bullet_pipeline.py"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "bullet_pipeline.py"
+        )
         content = src_path.read_text(encoding="utf-8")
         assert "_self_review_batched" in content, (
             "batched self-review not wired in bullet_pipeline.py"
         )
-        assert "_use_batched_review" in content, (
-            "batched review flag not found in pipeline"
-        )
+        assert "_use_batched_review" in content, "batched review flag not found in pipeline"
 
     def test_no_bullet_count_skip(self):
         """V13.45.4: The >50 bullet skip must be REMOVED (replaced by batching)."""
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "bullet_pipeline.py"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "bullet_pipeline.py"
+        )
         content = src_path.read_text(encoding="utf-8")
         # The V13.45.2 skip condition should NOT be present
         assert "len(_bps_for_review) > 50" not in content, (
@@ -465,19 +484,21 @@ class TestV13_45_4_MaxOutputTokens:
 
     def test_default_max_output_tokens_is_16000(self):
         from pathlib import Path
+
         src_path = Path(__file__).resolve().parent.parent / "utils" / "settings.py"
         content = src_path.read_text(encoding="utf-8")
-        assert '"max_output_tokens":    16000' in content or '"max_output_tokens": 16000' in content, (
-            "max_output_tokens default is not 16000"
-        )
+        assert (
+            '"max_output_tokens":    16000' in content or '"max_output_tokens": 16000' in content
+        ), "max_output_tokens default is not 16000"
 
     def test_academic_rigor_floor_is_16000(self):
         from pathlib import Path
-        src_path = Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
-        content = src_path.read_text(encoding="utf-8")
-        assert "max_tok < 16000" in content, (
-            "academic_rigor max_tokens floor is not 16000"
+
+        src_path = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
         )
+        content = src_path.read_text(encoding="utf-8")
+        assert "max_tok < 16000" in content, "academic_rigor max_tokens floor is not 16000"
 
 
 class TestV13_45_4_Gemma4Default:
@@ -485,6 +506,7 @@ class TestV13_45_4_Gemma4Default:
 
     def test_default_model_is_gemma4(self):
         from pathlib import Path
+
         src_path = Path(__file__).resolve().parent.parent / "utils" / "settings.py"
         content = src_path.read_text(encoding="utf-8")
         assert '"gemma4-12b:latest"' in content, (
@@ -497,6 +519,7 @@ class TestV13_45_4_OllamaModelsDoc:
 
     def test_user_ollama_models_doc_exists(self):
         from pathlib import Path
+
         doc_path = Path(__file__).resolve().parent.parent / "docs" / "USER_OLLAMA_MODELS.md"
         assert doc_path.exists(), (
             "docs/USER_OLLAMA_MODELS.md not found — model name reference missing"

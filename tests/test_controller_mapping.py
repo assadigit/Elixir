@@ -31,6 +31,7 @@ Covers ≥15 field mappings:
 
 Run: ``pytest tests/test_controller_mapping.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -63,74 +64,158 @@ class _StubController:
     # V10.31.0 (Sprint 4.4): mirrors controller.py _REQUEST_FIELD_MAP.
     # (request_attr, ui_key, setting_path_or_None, default, transform_or_None)
     _REQUEST_FIELD_MAP = [
-        ("input_path",  "input_path",  None, None, lambda v: Path(v)),
-        ("output_dir",  "output_dir",  None, None, lambda v: Path(v)),
-        ("password",                    "password",                    None, None, None),
-        ("manual_segments",             "manual_segments",             None, None, None),
-        ("page_range_start",            "page_range_start",            None, None, None),
-        ("page_range_end",              "page_range_end",              None, None, None),
-        ("selected_chapters",           "selected_chapters",           None, None, None),
-        ("output_qa",                   "output_qa",                   None, False, None),
-        ("output_glossary",             "output_glossary",             None, False, None),
-        ("output_patterns",             "output_patterns",             None, False, None),
-        ("output_cheatsheet",           "output_cheatsheet",           None, False, None),
-        ("output_skill",                "output_skill",                None, False, None),
-        ("compact_summaries",           "compact_summaries",           None, False, None),
-        ("conservative_drops",          "conservative_drops",          None, False, None),
-        ("use_llm_ocr",                 "use_llm_ocr",                 "ocr.use_llm", True, None),
-        ("primary_ocr_model",           "primary_ocr_model",           "ocr.primary_model", "qwen3-vl:8b", None),
-        ("fallback_ocr_model",          "fallback_ocr_model",          "ocr.fallback_model", "qwen3-vl:8b", None),
-        ("auto_detect_scanned",         "auto_detect_scanned",         "ocr.auto_detect_scanned", True, None),
-        ("force_ocr_all_pages",         "force_ocr_all_pages",         "ocr.force_ocr_all_pages", False, None),
-        ("image_max_size",              "image_max_size",              "ocr.image_max_size", 1200, None),
-        ("clean_markdown",              "clean_markdown",              "postprocess.clean_markdown", True, None),
-        ("fix_missing_spaces",          "fix_missing_spaces",          "postprocess.fix_missing_spaces", False, None),
-        ("token_saver",                 "token_saver",                 "postprocess.token_saver", True, None),
-        ("remove_page_number_headings", "remove_page_number_headings", "postprocess.remove_page_number_headings", True, None),
-        ("convert_separators_to_comments", "convert_separators_to_comments", "postprocess.convert_separators_to_comments", False, None),
-        ("custom_keywords",             "custom_keywords",             "segmentation.custom_keywords", [], None),
-        ("custom_regex_patterns",       "custom_regex_patterns",       "segmentation.custom_regex_patterns", [], None),
-        ("chunk_by_page_groups",        "chunk_by_page_groups",        "segmentation.chunk_by_page_groups", True, None),
-        ("page_group_size",             "page_group_size",             "segmentation.page_group_size", 10, None),
-        ("token_limit_per_segment",     "token_limit_per_segment",     "segmentation.token_limit", 2000, None),
-        ("enable_semantic_segmentation","enable_semantic_segmentation","segmentation.enable_semantic", True, None),
-        ("generate_summaries",          "generate_summaries",          "summarisation.enabled", False, None),
-        ("summarisation_model",         "summarisation_model",         "summarisation.model", "gemma3:12b", None),
-        ("summarisation_max_context_tokens", "summarisation_max_context_tokens", "summarisation.max_context_tokens", 16000, None),
-        ("summarisation_max_output_tokens",  "summarisation_max_output_tokens",  "summarisation.max_output_tokens", 4096, None),
-        ("summarisation_cache_enabled", "summarisation_cache_enabled", "summarisation.cache_enabled", False, None),
-        ("generate_docx",               "generate_docx",               "docx.enabled", False, None),
-        ("docx_author",                 "docx_author",                 "docx.author", "Elixir", None),
-        ("docx_include_toc",            "docx_include_toc",            "docx.include_toc", True, None),
-        ("max_workers",                 "max_workers",                 "summarisation.max_workers", 2, None),
-        ("temperature",                 "temperature",                 "summarisation.temperature", 0.2, None),
-        ("self_consistency",            "self_consistency",            "summarisation.self_consistency", False, None),
-        ("fast_model",                  "fast_model",                  "summarisation.fast_model", "gemma3:12b", None),
-        ("heavy_model",                 "heavy_model",                 "summarisation.heavy_model", "", None),
-        ("simplification_model",        "simplification_model",        "summarisation.simplification_model", "", None),
-        ("extract_tables",              "extract_tables",              "advanced.extract_tables", False, None),
-        ("extract_math",                "extract_math",                "advanced.extract_math", False, None),
-        ("layout_analysis",             "layout_analysis",             "advanced.layout_analysis", False, None),
-        ("table_extraction_method",     "table_extraction_method",     "advanced.table_method", "camelot", None),
-        ("math_model",                  "math_model",                  "advanced.math_model", "pix2tex", None),
-        ("source_type",                 "source_type",                 "source_type", "normal_book", None),
-        ("include_executive_summary",   "include_executive_summary",   "summarisation.include_executive_summary", True, None),
-        ("include_thorough_summary",    "include_thorough_summary",    "summarisation.include_thorough_summary", True, None),
-        ("include_keypoints",           "include_keypoints",           "summarisation.include_keypoints", True, None),
-        ("enable_content_filter",       "enable_content_filter",       "content_filter.enabled", True, None),
-        ("academic_rigor",              "academic_rigor",              "summarisation.academic_rigor", False, None),
-        ("simplified_keypoints_enabled","simplified_keypoints_enabled","summarisation.simplified_keypoints_enabled", False, None),
-        ("extract_figure_text",         "extract_figure_text",         "advanced.extract_figure_text", False, None),
-        ("output_briefing",             "output_briefing",             "outputs.briefing", True, None),
-        ("output_podcast",              "output_podcast",              "outputs.podcast", True, None),
-        ("output_flashcards",           "output_flashcards",           "outputs.flashcards", True, None),
-        ("output_packets",              "output_packets",              "outputs.packets", False, None),
-        ("output_obsidian",             "output_obsidian",             "outputs.obsidian", False, None),
-        ("output_study_guide",          "output_study_guide",          "outputs.study_guide", False, None),
-        ("output_social",               "output_social",               "outputs.social", False, None),
-        ("output_mindmap",              "output_mindmap",              "outputs.mindmap", False, None),
-        ("output_tts",                  "output_tts",                  "outputs.tts", False, None),
-        ("output_evidence_map",         "output_evidence_map",         "outputs.evidence_map", False, None),
+        ("input_path", "input_path", None, None, lambda v: Path(v)),
+        ("output_dir", "output_dir", None, None, lambda v: Path(v)),
+        ("password", "password", None, None, None),
+        ("manual_segments", "manual_segments", None, None, None),
+        ("page_range_start", "page_range_start", None, None, None),
+        ("page_range_end", "page_range_end", None, None, None),
+        ("selected_chapters", "selected_chapters", None, None, None),
+        ("output_qa", "output_qa", None, False, None),
+        ("output_glossary", "output_glossary", None, False, None),
+        ("output_patterns", "output_patterns", None, False, None),
+        ("output_cheatsheet", "output_cheatsheet", None, False, None),
+        ("output_skill", "output_skill", None, False, None),
+        ("compact_summaries", "compact_summaries", None, False, None),
+        ("conservative_drops", "conservative_drops", None, False, None),
+        ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
+        ("primary_ocr_model", "primary_ocr_model", "ocr.primary_model", "qwen3-vl:8b", None),
+        ("fallback_ocr_model", "fallback_ocr_model", "ocr.fallback_model", "qwen3-vl:8b", None),
+        ("auto_detect_scanned", "auto_detect_scanned", "ocr.auto_detect_scanned", True, None),
+        ("force_ocr_all_pages", "force_ocr_all_pages", "ocr.force_ocr_all_pages", False, None),
+        ("image_max_size", "image_max_size", "ocr.image_max_size", 1200, None),
+        ("clean_markdown", "clean_markdown", "postprocess.clean_markdown", True, None),
+        ("fix_missing_spaces", "fix_missing_spaces", "postprocess.fix_missing_spaces", False, None),
+        ("token_saver", "token_saver", "postprocess.token_saver", True, None),
+        (
+            "remove_page_number_headings",
+            "remove_page_number_headings",
+            "postprocess.remove_page_number_headings",
+            True,
+            None,
+        ),
+        (
+            "convert_separators_to_comments",
+            "convert_separators_to_comments",
+            "postprocess.convert_separators_to_comments",
+            False,
+            None,
+        ),
+        ("custom_keywords", "custom_keywords", "segmentation.custom_keywords", [], None),
+        (
+            "custom_regex_patterns",
+            "custom_regex_patterns",
+            "segmentation.custom_regex_patterns",
+            [],
+            None,
+        ),
+        (
+            "chunk_by_page_groups",
+            "chunk_by_page_groups",
+            "segmentation.chunk_by_page_groups",
+            True,
+            None,
+        ),
+        ("page_group_size", "page_group_size", "segmentation.page_group_size", 10, None),
+        (
+            "token_limit_per_segment",
+            "token_limit_per_segment",
+            "segmentation.token_limit",
+            2000,
+            None,
+        ),
+        (
+            "enable_semantic_segmentation",
+            "enable_semantic_segmentation",
+            "segmentation.enable_semantic",
+            True,
+            None,
+        ),
+        ("generate_summaries", "generate_summaries", "summarisation.enabled", False, None),
+        ("summarisation_model", "summarisation_model", "summarisation.model", "gemma3:12b", None),
+        (
+            "summarisation_max_context_tokens",
+            "summarisation_max_context_tokens",
+            "summarisation.max_context_tokens",
+            16000,
+            None,
+        ),
+        (
+            "summarisation_max_output_tokens",
+            "summarisation_max_output_tokens",
+            "summarisation.max_output_tokens",
+            4096,
+            None,
+        ),
+        (
+            "summarisation_cache_enabled",
+            "summarisation_cache_enabled",
+            "summarisation.cache_enabled",
+            False,
+            None,
+        ),
+        ("generate_docx", "generate_docx", "docx.enabled", False, None),
+        ("docx_author", "docx_author", "docx.author", "Elixir", None),
+        ("docx_include_toc", "docx_include_toc", "docx.include_toc", True, None),
+        ("max_workers", "max_workers", "summarisation.max_workers", 2, None),
+        ("temperature", "temperature", "summarisation.temperature", 0.2, None),
+        ("self_consistency", "self_consistency", "summarisation.self_consistency", False, None),
+        ("fast_model", "fast_model", "summarisation.fast_model", "gemma3:12b", None),
+        ("heavy_model", "heavy_model", "summarisation.heavy_model", "", None),
+        (
+            "simplification_model",
+            "simplification_model",
+            "summarisation.simplification_model",
+            "",
+            None,
+        ),
+        ("extract_tables", "extract_tables", "advanced.extract_tables", False, None),
+        ("extract_math", "extract_math", "advanced.extract_math", False, None),
+        ("layout_analysis", "layout_analysis", "advanced.layout_analysis", False, None),
+        (
+            "table_extraction_method",
+            "table_extraction_method",
+            "advanced.table_method",
+            "camelot",
+            None,
+        ),
+        ("math_model", "math_model", "advanced.math_model", "pix2tex", None),
+        ("source_type", "source_type", "source_type", "normal_book", None),
+        (
+            "include_executive_summary",
+            "include_executive_summary",
+            "summarisation.include_executive_summary",
+            True,
+            None,
+        ),
+        (
+            "include_thorough_summary",
+            "include_thorough_summary",
+            "summarisation.include_thorough_summary",
+            True,
+            None,
+        ),
+        ("include_keypoints", "include_keypoints", "summarisation.include_keypoints", True, None),
+        ("enable_content_filter", "enable_content_filter", "content_filter.enabled", True, None),
+        ("academic_rigor", "academic_rigor", "summarisation.academic_rigor", False, None),
+        (
+            "simplified_keypoints_enabled",
+            "simplified_keypoints_enabled",
+            "summarisation.simplified_keypoints_enabled",
+            False,
+            None,
+        ),
+        ("extract_figure_text", "extract_figure_text", "advanced.extract_figure_text", False, None),
+        ("output_briefing", "output_briefing", "outputs.briefing", True, None),
+        ("output_podcast", "output_podcast", "outputs.podcast", True, None),
+        ("output_flashcards", "output_flashcards", "outputs.flashcards", True, None),
+        ("output_packets", "output_packets", "outputs.packets", False, None),
+        ("output_obsidian", "output_obsidian", "outputs.obsidian", False, None),
+        ("output_study_guide", "output_study_guide", "outputs.study_guide", False, None),
+        ("output_social", "output_social", "outputs.social", False, None),
+        ("output_mindmap", "output_mindmap", "outputs.mindmap", False, None),
+        ("output_tts", "output_tts", "outputs.tts", False, None),
+        ("output_evidence_map", "output_evidence_map", "outputs.evidence_map", False, None),
     ]
 
     def __init__(self, settings: dict | None = None):
@@ -154,10 +239,13 @@ class _StubController:
         strat = ui_data.get("segment_strategy", "auto")
         if hasattr(strat, "value"):
             strat = strat.value
-        cov = ui_data.get(
-            "coverage_threshold",
-            self.get_setting("summarisation.coverage_threshold", 50),
-        ) / 100.0
+        cov = (
+            ui_data.get(
+                "coverage_threshold",
+                self.get_setting("summarisation.coverage_threshold", 50),
+            )
+            / 100.0
+        )
         kwargs = {
             "input_path": input_path,
             "output_dir": output_dir,
@@ -255,9 +343,7 @@ class TestSummarisationMapping:
         assert req.max_workers == 3
 
     def test_simplification_model_mapped(self, controller):
-        req = controller.build_request_from_ui(
-            _minimal_ui_data(simplification_model="qwen:7b")
-        )
+        req = controller.build_request_from_ui(_minimal_ui_data(simplification_model="qwen:7b"))
         assert req.simplification_model == "qwen:7b"
 
 
@@ -278,13 +364,26 @@ class TestConservativeDrops:
 
 
 class TestOutputFlags:
-    @pytest.mark.parametrize("flag", [
-        "output_briefing", "output_podcast", "output_flashcards",
-        "output_packets", "output_obsidian", "output_study_guide",
-        "output_social", "output_mindmap", "output_tts",
-        "output_evidence_map", "output_qa", "output_glossary",
-        "output_patterns", "output_cheatsheet", "output_skill",
-    ])
+    @pytest.mark.parametrize(
+        "flag",
+        [
+            "output_briefing",
+            "output_podcast",
+            "output_flashcards",
+            "output_packets",
+            "output_obsidian",
+            "output_study_guide",
+            "output_social",
+            "output_mindmap",
+            "output_tts",
+            "output_evidence_map",
+            "output_qa",
+            "output_glossary",
+            "output_patterns",
+            "output_cheatsheet",
+            "output_skill",
+        ],
+    )
     def test_output_flag_mapped(self, controller, flag):
         """Every output_* flag must map from ui_data to ConversionRequest."""
         req = controller.build_request_from_ui(_minimal_ui_data(**{flag: True}))
@@ -304,10 +403,18 @@ class TestOutputFlags:
         assert req.output_flashcards is True
         # The 12 newer outputs default OFF (opt-in)
         for flag in [
-            "output_packets", "output_obsidian", "output_study_guide",
-            "output_social", "output_mindmap", "output_tts",
-            "output_evidence_map", "output_qa", "output_glossary",
-            "output_patterns", "output_cheatsheet", "output_skill",
+            "output_packets",
+            "output_obsidian",
+            "output_study_guide",
+            "output_social",
+            "output_mindmap",
+            "output_tts",
+            "output_evidence_map",
+            "output_qa",
+            "output_glossary",
+            "output_patterns",
+            "output_cheatsheet",
+            "output_skill",
         ]:
             assert getattr(req, flag) is False, f"{flag} should default to False"
 
@@ -412,9 +519,7 @@ class TestSettingsFallback:
     def test_ui_data_overrides_settings(self):
         """ui_data takes precedence over settings."""
         ctrl = _StubController(settings={"summarisation": {"model": "from-settings"}})
-        req = ctrl.build_request_from_ui(
-            _minimal_ui_data(summarisation_model="from-ui")
-        )
+        req = ctrl.build_request_from_ui(_minimal_ui_data(summarisation_model="from-ui"))
         assert req.summarisation_model == "from-ui"
 
     def test_default_when_neither_ui_nor_setting(self, controller):

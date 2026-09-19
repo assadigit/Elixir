@@ -10,6 +10,7 @@ Tests:
 
 Run: pytest tests/test_phase6_items.py -v
 """
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ if str(_project_root) not in sys.path:
 # 6.1 — Structured-log sink
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestStructuredLogSink:
     """Tests for the structured-log sink (Phase 6.1)."""
 
@@ -34,12 +36,14 @@ class TestStructuredLogSink:
             is_structured_logging_enabled,
             setup_main_logger_gated,
         )
+
         assert callable(is_structured_logging_enabled)
         assert callable(setup_main_logger_gated)
 
     def test_is_structured_logging_disabled_by_default(self):
         """When the setting is missing, structured logging should be OFF."""
         from utils.structured_log_sink import is_structured_logging_enabled
+
         with patch("utils.structured_log_sink.Settings") as mock_settings:
             mock_instance = MagicMock()
             mock_instance.get.return_value = False
@@ -49,6 +53,7 @@ class TestStructuredLogSink:
     def test_is_structured_logging_enabled_when_setting_true(self):
         """When settings.observability.structured=True, it should be ON."""
         from utils.structured_log_sink import is_structured_logging_enabled
+
         with patch("utils.structured_log_sink.Settings") as mock_settings:
             mock_instance = MagicMock()
             mock_instance.get.return_value = True
@@ -58,11 +63,13 @@ class TestStructuredLogSink:
     def test_setup_gated_no_jsonl_when_disabled(self):
         """When structured=False, the JSONL handler should NOT be attached."""
         from utils.structured_log_sink import setup_main_logger_gated
+
         logger = setup_main_logger_gated(structured=False)
         # Check that no handler has StructuredJsonFormatter
         has_json = any(
-            hasattr(h, 'formatter') and h.formatter and
-            type(h.formatter).__name__ == 'StructuredJsonFormatter'
+            hasattr(h, "formatter")
+            and h.formatter
+            and type(h.formatter).__name__ == "StructuredJsonFormatter"
             for h in logger.handlers
         )
         assert not has_json, "JSONL handler should not be attached when structured=False"
@@ -70,10 +77,12 @@ class TestStructuredLogSink:
     def test_setup_gated_has_jsonl_when_enabled(self):
         """When structured=True, the JSONL handler should be attached."""
         from utils.structured_log_sink import setup_main_logger_gated
+
         logger = setup_main_logger_gated(structured=True)
         has_json = any(
-            hasattr(h, 'formatter') and h.formatter and
-            type(h.formatter).__name__ == 'StructuredJsonFormatter'
+            hasattr(h, "formatter")
+            and h.formatter
+            and type(h.formatter).__name__ == "StructuredJsonFormatter"
             for h in logger.handlers
         )
         assert has_json, "JSONL handler should be attached when structured=True"
@@ -83,6 +92,7 @@ class TestStructuredLogSink:
 # 6.2 — Per-chapter conversion manifest
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestConversionManifest:
     """Tests for the per-chapter conversion manifest (Phase 6.2)."""
 
@@ -91,12 +101,14 @@ class TestConversionManifest:
             ChapterManifest,
             write_chapter_manifest,
         )
+
         assert callable(write_chapter_manifest)
         assert ChapterManifest is not None
 
     def test_manifest_to_dict(self):
         """ChapterManifest.to_dict should produce the expected fields."""
         from core.obs.conversion_manifest import ChapterManifest
+
         m = ChapterManifest(
             chapter_index=1,
             chapter_total=1,
@@ -128,11 +140,19 @@ class TestConversionManifest:
     def test_manifest_to_json(self):
         """ChapterManifest.to_json should produce valid JSON."""
         from core.obs.conversion_manifest import ChapterManifest
+
         m = ChapterManifest(
-            chapter_index=1, chapter_total=1, chapter_heading="Test",
-            model="qwen3", num_ctx=32768, coverage=0.85,
-            phases_ran=["primary"], leak_guard_fires=0,
-            post_check_fixes=0, post_check_flags=0, duration_seconds=600.0,
+            chapter_index=1,
+            chapter_total=1,
+            chapter_heading="Test",
+            model="qwen3",
+            num_ctx=32768,
+            coverage=0.85,
+            phases_ran=["primary"],
+            leak_guard_fires=0,
+            post_check_fixes=0,
+            post_check_flags=0,
+            duration_seconds=600.0,
         )
         j = m.to_json()
         parsed = json.loads(j)
@@ -142,6 +162,7 @@ class TestConversionManifest:
     def test_write_chapter_manifest_creates_file(self, tmp_path):
         """write_chapter_manifest should create the JSON file."""
         from core.obs.conversion_manifest import write_chapter_manifest
+
         path = write_chapter_manifest(
             output_dir=tmp_path,
             chapter_index=1,
@@ -167,11 +188,20 @@ class TestConversionManifest:
     def test_write_chapter_manifest_creates_logs_dir(self, tmp_path):
         """Should create the logs/ subdirectory if it doesn't exist."""
         from core.obs.conversion_manifest import write_chapter_manifest
+
         path = write_chapter_manifest(
-            output_dir=tmp_path, chapter_index=2, chapter_total=5,
-            chapter_heading="Ch 2", model="qwen3", num_ctx=16000,
-            coverage=0.90, phases_ran=["primary"], leak_guard_fires=0,
-            post_check_fixes=0, post_check_flags=0, duration_seconds=500.0,
+            output_dir=tmp_path,
+            chapter_index=2,
+            chapter_total=5,
+            chapter_heading="Ch 2",
+            model="qwen3",
+            num_ctx=16000,
+            coverage=0.90,
+            phases_ran=["primary"],
+            leak_guard_fires=0,
+            post_check_fixes=0,
+            post_check_flags=0,
+            duration_seconds=500.0,
         )
         assert path.exists()
         assert (tmp_path / "logs").is_dir()
@@ -181,6 +211,7 @@ class TestConversionManifest:
 # 6.3 — GGUF checksum verification
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestGGUFChecksum:
     """Tests for GGUF checksum verification (Phase 6.3)."""
 
@@ -189,12 +220,14 @@ class TestGGUFChecksum:
             compute_gguf_checksum,
             verify_gguf_checksum,
         )
+
         assert callable(compute_gguf_checksum)
         assert callable(verify_gguf_checksum)
 
     def test_compute_checksum_small_file(self, tmp_path):
         """A small file should produce a stable checksum."""
         from core.llm.gguf_checksum import compute_gguf_checksum
+
         test_file = tmp_path / "test.gguf"
         test_file.write_bytes(b"hello world" * 100)
         cs1 = compute_gguf_checksum(test_file)
@@ -205,6 +238,7 @@ class TestGGUFChecksum:
     def test_compute_checksum_large_file(self, tmp_path):
         """A large file (>2MB) should hash first + last 1MB."""
         from core.llm.gguf_checksum import compute_gguf_checksum
+
         test_file = tmp_path / "large.gguf"
         # Write 3MB of data
         test_file.write_bytes(b"A" * (1024 * 1024) + b"B" * (1024 * 1024) + b"C" * (1024 * 1024))
@@ -214,6 +248,7 @@ class TestGGUFChecksum:
     def test_verify_first_load_registers(self, tmp_path):
         """First load should register the checksum."""
         from core.llm.gguf_checksum import verify_gguf_checksum
+
         # Use a temp cache
         with patch("core.llm.gguf_checksum.get_checksum_cache_path") as mock_path:
             cache_file = tmp_path / "checksums.json"
@@ -227,6 +262,7 @@ class TestGGUFChecksum:
     def test_verify_subsequent_load_matches(self, tmp_path):
         """Second load should match."""
         from core.llm.gguf_checksum import verify_gguf_checksum
+
         with patch("core.llm.gguf_checksum.get_checksum_cache_path") as mock_path:
             cache_file = tmp_path / "checksums.json"
             mock_path.return_value = cache_file
@@ -240,6 +276,7 @@ class TestGGUFChecksum:
     def test_verify_detects_change(self, tmp_path):
         """A changed file should produce a mismatch."""
         from core.llm.gguf_checksum import verify_gguf_checksum
+
         with patch("core.llm.gguf_checksum.get_checksum_cache_path") as mock_path:
             cache_file = tmp_path / "checksums.json"
             mock_path.return_value = cache_file
@@ -254,6 +291,7 @@ class TestGGUFChecksum:
     def test_verify_missing_file(self, tmp_path):
         """A missing file should return (False, 'file not found')."""
         from core.llm.gguf_checksum import verify_gguf_checksum
+
         is_ok, reason = verify_gguf_checksum(tmp_path / "nonexistent.gguf")
         assert is_ok is False
         assert "not found" in reason
@@ -263,6 +301,7 @@ class TestGGUFChecksum:
 # 6.5 — Modelfile integrity check
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestModelfileIntegrity:
     """Tests for Modelfile integrity check (Phase 6.5)."""
 
@@ -271,12 +310,14 @@ class TestModelfileIntegrity:
             check_modelfile_integrity,
             parse_modelfile,
         )
+
         assert callable(check_modelfile_integrity)
         assert callable(parse_modelfile)
 
     def test_parse_modelfile(self):
         """parse_modelfile should extract PARAMETER lines."""
         from core.llm.modelfile_integrity import parse_modelfile
+
         modelfile = """
 FROM ./qwen3.gguf
 PARAMETER temperature 0.7
@@ -292,11 +333,13 @@ ADAPTER ./mmproj.gguf
     def test_parse_modelfile_empty(self):
         """Empty modelfile should produce empty params."""
         from core.llm.modelfile_integrity import parse_modelfile
+
         assert parse_modelfile("") == {}
 
     def test_check_qwen3_presence_penalty_correct(self):
         """Qwen3 with presence_penalty=1.5 should pass."""
         from core.llm.modelfile_integrity import check_modelfile_integrity
+
         modelfile = """
 PARAMETER temperature 0.7
 PARAMETER presence_penalty 1.5
@@ -310,6 +353,7 @@ PARAMETER num_ctx 32768
     def test_check_qwen3_presence_penalty_missing(self):
         """Qwen3 without presence_penalty should ERROR."""
         from core.llm.modelfile_integrity import check_modelfile_integrity
+
         modelfile = """
 PARAMETER temperature 0.7
 PARAMETER num_ctx 32768
@@ -322,6 +366,7 @@ PARAMETER num_ctx 32768
     def test_check_qwen3_presence_penalty_wrong(self):
         """Qwen3 with presence_penalty=0.0 should ERROR (thinking mode)."""
         from core.llm.modelfile_integrity import check_modelfile_integrity
+
         modelfile = """
 PARAMETER temperature 0.7
 PARAMETER presence_penalty 0.0
@@ -337,6 +382,7 @@ PARAMETER num_ctx 32768
     def test_check_non_qwen_no_presence_penalty_check(self):
         """Non-Qwen models should NOT require presence_penalty."""
         from core.llm.modelfile_integrity import check_modelfile_integrity
+
         modelfile = """
 PARAMETER temperature 0.7
 PARAMETER num_ctx 8192
@@ -349,6 +395,7 @@ PARAMETER num_ctx 8192
     def test_check_ollama_unavailable_returns_ok(self):
         """If ollama show fails, should return (True, []) — fail-open."""
         from core.llm.modelfile_integrity import check_modelfile_integrity
+
         with patch("core.llm.modelfile_integrity._run_ollama_show", return_value=None):
             is_ok, issues = check_modelfile_integrity("qwen3:32b")
             assert is_ok is True
@@ -359,6 +406,7 @@ PARAMETER num_ctx 8192
 # 6.6 — Pytest golden-master audit plugin
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class TestGoldenMasterAuditPlugin:
     """Tests for the pytest golden-master audit plugin (Phase 6.6)."""
 
@@ -367,6 +415,7 @@ class TestGoldenMasterAuditPlugin:
             AUDIT_SYSTEM_PROMPT,
             run_audit,
         )
+
         assert callable(run_audit)
         assert "Factual Consistency" in AUDIT_SYSTEM_PROMPT
         assert "Coverage" in AUDIT_SYSTEM_PROMPT
@@ -376,6 +425,7 @@ class TestGoldenMasterAuditPlugin:
     def test_extract_json_scorecard(self):
         """_extract_json_scorecard should extract the JSON from the end of a reply."""
         from tests.plugins.golden_master_audit import _extract_json_scorecard
+
         reply = """
 Part 1: Detailed Report
 Some analysis here.
@@ -403,11 +453,13 @@ Part 2: JSON Scorecard
     def test_extract_json_scorecard_no_json(self):
         """Should return None if no JSON found."""
         from tests.plugins.golden_master_audit import _extract_json_scorecard
+
         assert _extract_json_scorecard("no json here") is None
 
     def test_run_audit_stub_mode(self, tmp_path):
         """run_audit with use_sdk=False should return a stub passing scorecard."""
         from tests.plugins.golden_master_audit import run_audit
+
         summary = tmp_path / "summary.md"
         summary.write_text("# Test Summary\n\n- Test bullet")
         source = tmp_path / "source.md"
@@ -420,6 +472,7 @@ Part 2: JSON Scorecard
     def test_audit_prompt_has_4_pillars(self):
         """The audit prompt should mention all 4 pillars."""
         from tests.plugins.golden_master_audit import AUDIT_SYSTEM_PROMPT
+
         pillars = [
             "Factual Consistency",
             "Informational Coverage",
@@ -432,12 +485,14 @@ Part 2: JSON Scorecard
     def test_pytest_addoption_exists(self):
         """The plugin should define pytest_addoption for --audit."""
         from tests.plugins.golden_master_audit import pytest_addoption
+
         assert callable(pytest_addoption)
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # 6.7 — GitHub Actions CI config
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestCIConfig:
     """Tests for the GitHub Actions CI config (Phase 6.7)."""

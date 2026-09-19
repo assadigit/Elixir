@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
-
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
     _show_success_modal,
@@ -53,15 +52,45 @@ class QuickConvertDialog(QDialog):
 
     # AnyDoc engine, keyed by lowercase extension.
     _ANYDOC_EXTS = {
-        ".pdf", ".docx", ".doc", ".epub", ".pptx", ".ppt",
-        ".xlsx", ".xls", ".odt", ".ods", ".odp", ".rtf", ".csv",
-        ".pptm", ".ppsx", ".ppsm", ".docm", ".xlsm", ".xlsb",
-        ".pps", ".pot",
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".epub",
+        ".pptx",
+        ".ppt",
+        ".xlsx",
+        ".xls",
+        ".odt",
+        ".ods",
+        ".odp",
+        ".rtf",
+        ".csv",
+        ".pptm",
+        ".ppsx",
+        ".ppsm",
+        ".docm",
+        ".xlsm",
+        ".xlsb",
+        ".pps",
+        ".pot",
     }
     _MARKITDOWN_EXTS = {
-        ".pdf", ".docx", ".html", ".htm", ".csv", ".json",
-        ".xml", ".epub", ".ipynb", ".jpg", ".jpeg", ".png",
-        ".mp3", ".wav", ".txt", ".md",
+        ".pdf",
+        ".docx",
+        ".html",
+        ".htm",
+        ".csv",
+        ".json",
+        ".xml",
+        ".epub",
+        ".ipynb",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".mp3",
+        ".wav",
+        ".txt",
+        ".md",
     }
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
@@ -101,8 +130,10 @@ class QuickConvertDialog(QDialog):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        hint = _QL("Supports PDF, DOCX, DOC, EPUB, PPTX, XLSX, ODT, RTF, CSV … "
-                   "Choose engine and output format below.")
+        hint = _QL(
+            "Supports PDF, DOCX, DOC, EPUB, PPTX, XLSX, ODT, RTF, CSV … "
+            "Choose engine and output format below."
+        )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -129,6 +160,7 @@ class QuickConvertDialog(QDialog):
         # If AnyDoc isn't installed, default to markitdown and note it.
         try:
             from core.extract.anydoc_extractor import is_anydoc_available
+
             if not is_anydoc_available():
                 self.engine_combo.setItemText(0, "AnyDoc (not installed)")
                 self.engine_combo.setCurrentIndex(1)
@@ -198,7 +230,6 @@ class QuickConvertDialog(QDialog):
 
     # ── File picking ────────────────────────────────────────────────────
     def _pick_input(self):
-        from PySide6.QtWidgets import QFileDialog
         # Accept AnyDoc + markitdown formats in one filter.
         filt = (
             "Documents (*.pdf *.docx *.doc *.epub *.pptx *.ppt *.xlsx *.xls "
@@ -234,6 +265,7 @@ class QuickConvertDialog(QDialog):
         ext = self.fmt_combo.currentData()
         if ext == "__default__" or not ext:
             from utils.settings import Settings
+
             ext = Settings().get("quick_services.defaults.pdf_format", ".md") or ".md"
         return ext
 
@@ -242,25 +274,28 @@ class QuickConvertDialog(QDialog):
         if not pdf_path:
             return
         from pathlib import Path as _P
+
         p = _P(pdf_path)
         ext = self._resolve_ext()
         self.out_edit.setText(str(p.parent / f"{p.stem}{ext}"))
 
     def _pick_output(self):
-        from PySide6.QtWidgets import QFileDialog
         ext = self._resolve_ext()
         default_name = self.out_edit.text().strip()
         if not default_name:
             pdf_path = self.pdf_edit.text().strip()
             if pdf_path:
                 from pathlib import Path as _P
+
                 default_name = str(_P(pdf_path).parent / f"{_P(pdf_path).stem}{ext}")
         filter_str = {
             ".md": "Markdown (*.md)",
             ".docx": "Word document (*.docx)",
             ".pdf": "PDF (*.pdf)",
         }.get(ext, "All files (*.*)")
-        path, _ = QFileDialog.getSaveFileName(self, "Save as", default_name, f"{filter_str};;All files (*.*)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save as", default_name, f"{filter_str};;All files (*.*)"
+        )
         if path:
             if not path.endswith(ext):
                 path += ext
@@ -283,6 +318,7 @@ class QuickConvertDialog(QDialog):
             self.action_btn.setEnabled(True)
             return True
         from pathlib import Path as _P
+
         ext = _P(pdf_path).suffix.lower()
         if engine == "anydoc":
             ok = ext in self._ANYDOC_EXTS
@@ -296,9 +332,7 @@ class QuickConvertDialog(QDialog):
                 return False
             else:
                 if not silent:
-                    self.status_label.setText(
-                        f"Engine: AnyDoc — {ext} supported. Click Convert."
-                    )
+                    self.status_label.setText(f"Engine: AnyDoc — {ext} supported. Click Convert.")
                     self.action_btn.setEnabled(True)
                 return True
         else:  # markitdown
@@ -338,7 +372,9 @@ class QuickConvertDialog(QDialog):
         # V18.20.4.5 (W-b5): re-entrancy guard — a second click while a
         # document converts would spawn a second worker on the same paths.
         if self._worker is not None and self._worker.is_running():
-            self.status_label.setText("⏳ Already converting — wait for the current document to finish.")
+            self.status_label.setText(
+                "⏳ Already converting — wait for the current document to finish."
+            )
             return
 
         pdf_path = self.pdf_edit.text().strip()
@@ -352,6 +388,7 @@ class QuickConvertDialog(QDialog):
 
         # V15.0.0: format validation (hard block before converting)
         from pathlib import Path as _P
+
         ext = _P(pdf_path).suffix.lower()
         engine = self._selected_engine()
         if engine == "anydoc" and ext not in self._ANYDOC_EXTS:
@@ -374,24 +411,24 @@ class QuickConvertDialog(QDialog):
         # event loop repaints this label naturally while it runs.
         self.action_btn.setEnabled(False)
         self.action_btn.setText("Processing…")
-        self.status_label.setText(
-            f"Extracting with {engine} …"
-        )
+        self.status_label.setText(f"Extracting with {engine} …")
 
         # The lambda referencing self._worker is safe: Python closures
         # late-bind, so at call time (worker thread) the attribute exists
         # and refers to THIS worker.
         self._worker = SimpleWorker(
-            lambda: self._convert_work(pdf_path, out_path, engine, ext,
-                                       out_ext,
-                                       report=self._worker.progress.emit))
+            lambda: self._convert_work(
+                pdf_path, out_path, engine, ext, out_ext, report=self._worker.progress.emit
+            )
+        )
         self._worker.progress.connect(self._on_convert_progress)
         self._worker.finished.connect(self._on_convert_finished)
         self._worker.failed.connect(self._on_convert_failed)
         self._worker.start()
 
-    def _convert_work(self, pdf_path: str, out_path: str, engine: str,
-                      ext: str, out_ext: str, report=None) -> dict:
+    def _convert_work(
+        self, pdf_path: str, out_path: str, engine: str, ext: str, out_ext: str, report=None
+    ) -> dict:
         """V18.20.4.5 (W-b5): the extraction + output write, worker-thread
         edition.
 
@@ -412,6 +449,7 @@ class QuickConvertDialog(QDialog):
                     extract_with_anydoc,
                     is_anydoc_available,
                 )
+
                 if not is_anydoc_available():
                     error_msg = (
                         "AnyDoc is not installed. Run: pip install anydoc  "
@@ -436,10 +474,13 @@ class QuickConvertDialog(QDialog):
             return {"success": False, "status": error_msg}
 
         if not text or len(text.strip()) < 50:
-            return {"success": False, "status": (
-                "⚠️ Very little text extracted. The document may be scanned "
-                "— use OCR Service or Full Conversion instead."
-            )}
+            return {
+                "success": False,
+                "status": (
+                    "⚠️ Very little text extracted. The document may be scanned "
+                    "— use OCR Service or Full Conversion instead."
+                ),
+            }
 
         # Write the output (markdown / docx / pdf)
         out_p = _P(out_path)
@@ -449,6 +490,7 @@ class QuickConvertDialog(QDialog):
                 out_p.write_text(text, encoding="utf-8")
             else:
                 from core.outputs.service_formatters import write_output
+
                 ok, msg = write_output(text, out_p, fmt=out_ext, title=_P(pdf_path).stem)
                 if not ok:
                     return {"success": False, "status": f"⚠️ {msg}"}
@@ -511,21 +553,22 @@ class QuickConvertDialog(QDialog):
         # pipeline understands. For everything else, use markitdown.
         if ext == ".pdf":
             import pypdf
+
             reader = pypdf.PdfReader(pdf_path)
             pages = []
             for i, page in enumerate(reader.pages):
                 page_text = page.extract_text() or ""
                 if page_text.strip():
-                    pages.append(f"<!-- page {i+1} -->\n{page_text}")
+                    pages.append(f"<!-- page {i + 1} -->\n{page_text}")
             text = "\n\n".join(pages)
             return text, len(reader.pages)
         # markitdown for non-PDF
         from markitdown import MarkItDown
+
         md = MarkItDown()
         result = md.convert(pdf_path)
         # markitdown result objects expose `.markdown` (str).
         md_text = getattr(result, "markdown", None) or str(result)
         # Best-effort page count from markers (markitdown doesn't always add them).
-        import re
         page_count = len(re.findall(r"<!--\s*page\s+\d+\s*-->", md_text))
         return md_text, page_count

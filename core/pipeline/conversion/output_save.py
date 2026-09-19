@@ -26,6 +26,7 @@ previous phase already checked).
 Extracted into its own module so the converter's ``convert()`` method is
 shorter and the output-saving logic is testable independently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -102,6 +103,7 @@ def insert_toc_boundary_headings(
             return content, 0
         try:
             from core.postprocess.page_marker import extract_page_markers
+
             markers = extract_page_markers(content)
         except Exception:
             return content, 0
@@ -118,11 +120,11 @@ def insert_toc_boundary_headings(
             line_end = content.find("\n", pos)
             if line_end == -1:
                 line_end = len(content) - 1
-            rest = content[line_end + 1:]
+            rest = content[line_end + 1 :]
             if rest.lstrip().startswith("#"):
                 continue  # a heading already sits at this boundary
             heading_line = f"## {title}\n\n"
-            content = content[:line_end + 1] + heading_line + rest
+            content = content[: line_end + 1] + heading_line + rest
             inserted += 1
         if inserted and log is not None:
             log(
@@ -151,6 +153,7 @@ class OutputSaveResult:
         segments_folder: the folder where segment files were saved (used
             by summarization for the summaries subfolder).
     """
+
     book_title: str
     detected_lang: str
     source_name: str
@@ -213,6 +216,7 @@ def run_output_save(
     # scan the extracted markdown for the actual title (e.g. "Black
     # Swan") and rename the output folder to match.
     from core.pipeline.book_title_detector import detect_book_title
+
     pdf_stem = request.input_path.stem
     book_title = detect_book_title(pdf_stem, raw_markdown, log)
     # If the detected title differs from the current folder name,
@@ -225,6 +229,7 @@ def run_output_save(
             converter.output_dir = desired_folder
             # Rebuild OutputPaths for the new folder + title.
             from core.pipeline.output_paths import OutputPaths
+
             converter.paths = OutputPaths(converter.output_dir, book_title)
             # Re-point the legacy attribute names (they're used downstream).
             converter.full_markdown_path = converter.paths.full_markdown
@@ -236,6 +241,7 @@ def run_output_save(
             # fix stale log_path — re-create the logger
             # in the new folder instead of leaving it pointing at the old one.
             from utils.logging import ConversionLogger
+
             # V18.2.27 (warnings fix): close the OLD logger's file handle before
             # replacing it — otherwise the open file handle leaks (ResourceWarning:
             # unclosed file). The old logger pointed at the pre-rename folder.
@@ -271,16 +277,21 @@ def run_output_save(
 
     full_parts = []
     if include_frontmatter:
-        total_pages_effective = effective_total_pages if request.page_range_start is not None else total_pages
+        total_pages_effective = (
+            effective_total_pages if request.page_range_start is not None else total_pages
+        )
         full_parts.append(
-            converter._book_frontmatter(total_pages_effective, len(segments), source_name, book_title, detected_lang)
+            converter._book_frontmatter(
+                total_pages_effective, len(segments), source_name, book_title, detected_lang
+            )
         )
     _toc_heading_count = 0
     for seg in segments:
         # V0.03 (P0-4): interior TOC boundaries become real markdown headings
         # BEFORE marker stripping (positions come from the page markers).
         _content, _n_ins = insert_toc_boundary_headings(
-            seg.content, seg.start_page, seg.end_page, _toc_entries, log)
+            seg.content, seg.start_page, seg.end_page, _toc_entries, log
+        )
         _toc_heading_count += _n_ins
         content = converter._strip_page_markers(_content) if clean_markers else _content
         full_parts.append(f"# {seg.heading}\n\n{content}")
@@ -300,11 +311,13 @@ def run_output_save(
     # would then read as if it were complete.  atomic_write_text creates the
     # parent dir (replaces the ``_ensure`` call) and keeps utf-8.
     from utils.atomic_io import atomic_write_text
+
     atomic_write_text(converter.full_markdown_path, full_markdown)
     log(f"💾 Full markdown → {converter.full_markdown_path}")
 
     segments_folder = (
-        converter.chapters_folder if any(s.segment_type == "chapter" for s in segments)
+        converter.chapters_folder
+        if any(s.segment_type == "chapter" for s in segments)
         else converter.chunks_folder
     )
     segments_folder.mkdir(parents=True, exist_ok=True)
@@ -319,11 +332,14 @@ def run_output_save(
         # V0.03 (P0-4): interior TOC headings in the per-segment files too —
         # the deterministic analyzer + summarizer see real section structure.
         _content, _ = insert_toc_boundary_headings(
-            seg.content, seg.start_page, seg.end_page, _toc_entries, log)
+            seg.content, seg.start_page, seg.end_page, _toc_entries, log
+        )
         content = converter._strip_page_markers(_content) if clean_markers else _content
         seg_text = ""
         if include_frontmatter:
-            seg_text += converter._chapter_frontmatter(seg, idx, len(segments), book_title, source_name, detected_lang)
+            seg_text += converter._chapter_frontmatter(
+                seg, idx, len(segments), book_title, source_name, detected_lang
+            )
         seg_text += f"# {seg.heading}\n\n{content}"
         # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial
         # segment file behind (same helper as the full-markdown write above).
@@ -342,6 +358,7 @@ def run_output_save(
     # Non-fatal: if analysis fails, the pipeline continues without it.
     try:
         from core.preprocessing.deterministic_analyzer import analyze_segment_file
+
         analysis_count = 0
         for idx, seg in enumerate(segments, 1):
             # V18.20.4.11 (P1): shared slug helper — must stay in lockstep
@@ -356,7 +373,10 @@ def run_output_save(
                 except Exception as _ae:
                     log(f"  ⚠️ Deterministic analysis failed for {seg_file.name}: {_ae}", "WARNING")
         if analysis_count:
-            log(f"📊 V17.2 Deterministic analysis: {analysis_count}/{len(segments)} segments analyzed (regex-based, 100% reliable)", "INFO")
+            log(
+                f"📊 V17.2 Deterministic analysis: {analysis_count}/{len(segments)} segments analyzed (regex-based, 100% reliable)",
+                "INFO",
+            )
             # V17.5: Log the exact path so the summarizer can verify it looks in the right place
             log(f"   [V17.5] Analysis files written to: {segments_folder}", "DEBUG")
             for _sf in segments_folder.glob("*_analysis.md"):
@@ -391,6 +411,7 @@ def run_output_save(
             if request.use_llm_ocr and request.primary_ocr_model:
                 try:
                     from core.llm import ModelManager
+
                     _mm = ModelManager()
                     _loaded = _mm.get_loaded_models()
                     if request.primary_ocr_model in _loaded:
@@ -407,6 +428,7 @@ def run_output_save(
             def _prewarm():
                 try:
                     from core.llm import ModelManager, ModelType
+
                     mm = ModelManager()
                     if mm.is_running() and mm.model_exists(request.summarisation_model):
                         log(
@@ -425,6 +447,7 @@ def run_output_save(
                         )
                 except Exception as e:
                     log(f"  ℹ️ S19: Pre-warm skipped: {e}", "DEBUG")
+
             threading.Thread(target=_prewarm, daemon=True).start()
 
     return OutputSaveResult(

@@ -3,6 +3,7 @@
 Anthropic Claude API provider. Extracted verbatim from llm_provider_impl.py
 (lines 1045-1138 of the pre-V18.20.1.0 file).
 """
+
 from __future__ import annotations
 
 import logging
@@ -84,7 +85,9 @@ class ClaudeProvider(LLMProvider):
             data = resp.json()
             content = data.get("content", [])
             if content and isinstance(content, list):
-                text_parts = [block.get("text", "") for block in content if block.get("type") == "text"]
+                text_parts = [
+                    block.get("text", "") for block in content if block.get("type") == "text"
+                ]
                 text = "".join(text_parts).strip()
                 if text:
                     return text
@@ -109,4 +112,3 @@ class ClaudeProvider(LLMProvider):
         except Exception as e:
             self.log(f"    ⚠️ Claude call failed: {e}", "WARNING")
             return None
-

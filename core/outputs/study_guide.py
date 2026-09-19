@@ -30,11 +30,13 @@ from pathlib import Path
 
 from core.models import SummaryResult
 from core.outputs.new_outputs import OutputGeneratorBase
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
+
 
 class StudyGuideGenerator(OutputGeneratorBase):
     """V4.1: Generate a structured study guide from keypoints."""
@@ -56,21 +58,19 @@ class StudyGuideGenerator(OutputGeneratorBase):
         chapter_overviews: list[str] = []
         for s in chapters:
             if s.executive_summary:
-                chapter_overviews.append(
-                    f"- {s.chapter_heading}: {s.executive_summary.strip()}"
-                )
+                chapter_overviews.append(f"- {s.chapter_heading}: {s.executive_summary.strip()}")
             if s.bullet_points:
                 for bp in s.bullet_points:
                     chapter_bullets.append((s.chapter_heading, bp.strip()))
 
         if not chapter_bullets and not chapter_overviews:
-            self.log("  ℹ️ Study guide: No keypoints or summaries to build from.",
-                     "INFO")
+            self.log("  ℹ️ Study guide: No keypoints or summaries to build from.", "INFO")
             return None
 
         self.log(
             f"  📚 Generating study guide from {len(chapters)} chapters, "
-            f"{len(chapter_bullets)} keypoints…", "INFO"
+            f"{len(chapter_bullets)} keypoints…",
+            "INFO",
         )
 
         # ── Section 1+2: Objectives + Glossary (one call) ────────────────
@@ -82,9 +82,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
         qa_sections = self._gen_concept_qa(book_title, chapter_bullets)
 
         # ── Section 4+5: Self-check + Reflection (one call) ──────────────
-        self_check, reflection = self._gen_selfcheck_and_reflection(
-            book_title, chapter_bullets
-        )
+        self_check, reflection = self._gen_selfcheck_and_reflection(book_title, chapter_bullets)
 
         # ── Assemble the markdown ────────────────────────────────────────
         md = self._assemble_markdown(
@@ -124,9 +122,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
         Falls back to deterministic extraction on failure.
         """
         overviews_text = "\n".join(chapter_overviews[:20])
-        bullets_text = "\n".join(
-            f"- [{chap[:40]}] {bp}" for chap, bp in chapter_bullets[:40]
-        )
+        bullets_text = "\n".join(f"- [{chap[:40]}] {bp}" for chap, bp in chapter_bullets[:40])
 
         prompt = self.prompt_manager.render_template(
             "outputs/study_guide_lo_terms",
@@ -189,7 +185,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
 
         total_batches = (len(chapter_bullets) + batch_size - 1) // batch_size
         for i in range(0, len(chapter_bullets), batch_size):
-            batch = chapter_bullets[i:i + batch_size]
+            batch = chapter_bullets[i : i + batch_size]
             batch_num = i // batch_size + 1
             self.log(
                 f"    📖 Study guide Q&A batch {batch_num}/{total_batches}…",
@@ -197,8 +193,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
             )
 
             bullets_list = "\n".join(
-                f"{j+1}. [{chap[:30]}] {bp}"
-                for j, (chap, bp) in enumerate(batch)
+                f"{j + 1}. [{chap[:30]}] {bp}" for j, (chap, bp) in enumerate(batch)
             )
 
             prompt = self.prompt_manager.render_template(
@@ -248,9 +243,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
         chapter_bullets: list[tuple[str, str]],
     ) -> tuple[list[str], list[str]]:
         """One LLM call → (self-check questions, reflection prompts)."""
-        bullets_text = "\n".join(
-            f"- {bp}" for _, bp in chapter_bullets[:35]
-        )
+        bullets_text = "\n".join(f"- {bp}" for _, bp in chapter_bullets[:35])
 
         prompt = self.prompt_manager.render_template(
             "outputs/study_guide_selfcheck",
@@ -301,9 +294,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
     # Deterministic fallbacks
     # ══════════════════════════════════════════════════════════════════════
 
-    def _fallback_objectives(
-        self, chapter_bullets: list[tuple[str, str]]
-    ) -> list[str]:
+    def _fallback_objectives(self, chapter_bullets: list[tuple[str, str]]) -> list[str]:
         """Build objectives from the first few keypoints if LLM fails."""
         objectives: list[str] = []
         for _, bp in chapter_bullets[:6]:
@@ -320,9 +311,7 @@ class StudyGuideGenerator(OutputGeneratorBase):
             ]
         return objectives
 
-    def _fallback_glossary(
-        self, chapter_bullets: list[tuple[str, str]]
-    ) -> list[tuple[str, str]]:
+    def _fallback_glossary(self, chapter_bullets: list[tuple[str, str]]) -> list[tuple[str, str]]:
         """Pick capitalised terms from bullets as a minimal glossary."""
         seen = set()
         glossary: list[tuple[str, str]] = []
@@ -370,15 +359,11 @@ class StudyGuideGenerator(OutputGeneratorBase):
         # How to use
         lines.append("## How to Use This Guide")
         lines.append("")
-        lines.append("1. **Learning Objectives** — read first; these frame what "
-                     "to focus on.")
+        lines.append("1. **Learning Objectives** — read first; these frame what to focus on.")
         lines.append("2. **Key Terms** — skim to lock in vocabulary.")
-        lines.append("3. **Concept Review** — test yourself with the Q&A, "
-                     "grouped by chapter.")
-        lines.append("4. **Self-Check** — open-ended questions; answer without "
-                     "notes.")
-        lines.append("5. **Further Reflection** — apply the ideas to your own "
-                     "context.")
+        lines.append("3. **Concept Review** — test yourself with the Q&A, grouped by chapter.")
+        lines.append("4. **Self-Check** — open-ended questions; answer without notes.")
+        lines.append("5. **Further Reflection** — apply the ideas to your own context.")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -431,8 +416,10 @@ class StudyGuideGenerator(OutputGeneratorBase):
         # Self-check
         lines.append("## Self-Check Questions")
         lines.append("")
-        lines.append("Answer these without referring back to the material. "
-                     "If you struggle, revisit the relevant chapter.")
+        lines.append(
+            "Answer these without referring back to the material. "
+            "If you struggle, revisit the relevant chapter."
+        )
         lines.append("")
         for i, q in enumerate(self_check, 1):
             lines.append(f"{i}. {q}")
@@ -443,8 +430,10 @@ class StudyGuideGenerator(OutputGeneratorBase):
         # Reflection
         lines.append("## Further Reflection")
         lines.append("")
-        lines.append("Use these prompts to connect the material to your own "
-                     "experience or debate it with others.")
+        lines.append(
+            "Use these prompts to connect the material to your own "
+            "experience or debate it with others."
+        )
         lines.append("")
         for i, r in enumerate(reflection, 1):
             lines.append(f"{i}. {r}")

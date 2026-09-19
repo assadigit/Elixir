@@ -10,6 +10,7 @@ Tests for:
 
 Run: pytest tests/test_v18_10_1_hotfix.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,6 +24,7 @@ if str(_project_root) not in sys.path:
 # ════════════════════════════════════════════════════════════════════════════
 # Fix 1 — IQ2_S deadline raise (1500s → 1800s)
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestIQ2SDedlineRaise:
     """Verify the IQ2_S chapter deadline (V18.20.2.0 test-debt update).
@@ -44,8 +46,9 @@ class TestIQ2SDedlineRaise:
         content = sum_path.read_text(encoding="utf-8")
         # Current IQ2_S deadline: 2400s (docstring + profile constant wiring).
         assert "2400" in content, "2400s IQ2_S deadline must be in summarizer.py"
-        assert "IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC" in content, \
+        assert "IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC" in content, (
             "Deadline floor must come from the centralized profile constant"
+        )
 
     def test_old_deadline_literals_replaced(self):
         """The old 1500s/1800s hardcoded deadline comparisons must be gone.
@@ -56,15 +59,18 @@ class TestIQ2SDedlineRaise:
         """
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        assert "self.local_chapter_deadline < 1500" not in content, \
+        assert "self.local_chapter_deadline < 1500" not in content, (
             "Threshold should be 2400 (was 1500)"
-        assert "self.local_chapter_deadline < 1800" not in content, \
+        )
+        assert "self.local_chapter_deadline < 1800" not in content, (
             "Threshold should be 2400 (was 1800)"
+        )
         # And the centralized constant itself is 2400 (not 1500/1800).
         profile_path = _project_root / "core" / "llm" / "iq2_s_profile.py"
         profile = profile_path.read_text(encoding="utf-8")
-        assert "CHAPTER_DEADLINE_SEC: int = 2400" in profile, \
+        assert "CHAPTER_DEADLINE_SEC: int = 2400" in profile, (
             "IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC must be 2400"
+        )
         assert "CHAPTER_DEADLINE_SEC: int = 1500" not in profile
         assert "CHAPTER_DEADLINE_SEC: int = 1800" not in profile
 
@@ -77,13 +83,15 @@ class TestIQ2SDedlineRaise:
         """
         sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
         content = sum_path.read_text(encoding="utf-8")
-        assert "Chapter deadline raised → {IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC}s" in content, \
+        assert "Chapter deadline raised → {IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC}s" in content, (
             "The deadline-raise log must carry the centralized 2400s constant"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Fix 2 — Anti-false-precision grammar guard
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestAntiFalsePrecisionGrammarGuard:
     """Verify the V18.10.1 grammar guard prevents broken rewrites."""
@@ -91,6 +99,7 @@ class TestAntiFalsePrecisionGrammarGuard:
     def _run_check(self, bullet: str, source: str):
         """Run anti_false_precision_check and return (result, log_calls)."""
         from core.summarisation.summary_validator import anti_false_precision_check
+
         result = {
             "bullet_points": [bullet],
             "executive_summary": "",
@@ -99,7 +108,9 @@ class TestAntiFalsePrecisionGrammarGuard:
             "theoretical_tensions": "",
         }
         log_calls = []
-        anti_false_precision_check("heading", source, result, log=lambda m, l: log_calls.append((m, l)))
+        anti_false_precision_check(
+            "heading", source, result, log=lambda m, l: log_calls.append((m, l))
+        )
         return result["bullet_points"][0], log_calls
 
     def test_broken_jacobson_case_skipped(self):
@@ -116,8 +127,7 @@ class TestAntiFalsePrecisionGrammarGuard:
         # Should NOT contain "both and" (the broken merge)
         assert "both and" not in result, f"Broken rewrite still present: {result}"
         # Should have a SKIPPED log message
-        assert any("SKIPPED" in m for m, _ in logs), \
-            f"Expected SKIPPED log, got: {logs}"
+        assert any("SKIPPED" in m for m, _ in logs), f"Expected SKIPPED log, got: {logs}"
         # The original should be preserved
         assert "Jacobson (1964) and Mahler" in result
 
@@ -126,8 +136,9 @@ class TestAntiFalsePrecisionGrammarGuard:
         bullet = "Jacobson views identity as borderline while Kernberg views it as narcissistic."
         source = "Jacobson 1964, Kernberg 1967 regard identity as borderline and narcissistic"
         result, logs = self._run_check(bullet, source)
-        assert "Jacobson and Kernberg both" in result, \
+        assert "Jacobson and Kernberg both" in result, (
             f"Valid rewrite should still work, got: {result}"
+        )
 
     def test_claim_starting_with_and_skipped(self):
         """claim1 starting with 'and' should be skipped."""

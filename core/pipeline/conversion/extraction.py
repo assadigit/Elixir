@@ -22,6 +22,7 @@ result or returns the error immediately.
 Extracted into its own module so the converter's ``convert()`` method is
 shorter and the extraction logic is testable independently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,6 +63,7 @@ class ExtractionResult:
             completion modal misleads (a 397-page book showed "397" for an
             18-page chapter run).  None when no selection is active.
     """
+
     raw_markdown: str
     analysis: Any
     pages_to_ocr: Any  # list or set
@@ -118,10 +120,11 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     _input_suffix = Path(request.input_path).suffix.lower()
     if _input_suffix != ".pdf":
         from core.pipeline.multi_format_reader import extract_text, is_supported_format
+
         if not is_supported_format(Path(request.input_path)):
             return ConversionResult(
                 success=False,
-                error_msg=f"Unsupported format: {_input_suffix}. Supported: PDF, EPUB, DOCX, TXT, MD, HTML"
+                error_msg=f"Unsupported format: {_input_suffix}. Supported: PDF, EPUB, DOCX, TXT, MD, HTML",
             )
         log(f"  📄 Non-PDF input ({_input_suffix}) — using multi-format reader.", "INFO")
         raw_text, page_count = extract_text(Path(request.input_path), request.password, log)
@@ -130,8 +133,23 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
         # Build synthetic analysis (all text pages, no scanned)
         from core.models import PageAnalysis, PdfAnalysisResult
         from core.models import PdfRecommendation as PR
-        per_page = [PageAnalysis(page_num=i+1, is_scanned=False, extracted_text_preview="", recommended_action="skip") for i in range(page_count)]
-        analysis = PdfAnalysisResult(total_pages=page_count, scanned_pages=[], text_pages=list(range(1, page_count+1)), recommendation=PR.NO_OCR, per_page=per_page)
+
+        per_page = [
+            PageAnalysis(
+                page_num=i + 1,
+                is_scanned=False,
+                extracted_text_preview="",
+                recommended_action="skip",
+            )
+            for i in range(page_count)
+        ]
+        analysis = PdfAnalysisResult(
+            total_pages=page_count,
+            scanned_pages=[],
+            text_pages=list(range(1, page_count + 1)),
+            recommendation=PR.NO_OCR,
+            per_page=per_page,
+        )
         pages_to_ocr = []
         effective_total_pages = page_count
         effective_start_page = 1
@@ -143,9 +161,14 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
         # Skip to Step 4 — build raw markdown (already done)
         update_progress(0.18)
         return ExtractionResult(
-            raw_markdown=raw_markdown, analysis=analysis, pages_to_ocr=[],
-            effective_start_page=1, effective_end_page=page_count,
-            effective_total_pages=page_count, toc_entries=[], valid_pages=None,
+            raw_markdown=raw_markdown,
+            analysis=analysis,
+            pages_to_ocr=[],
+            effective_start_page=1,
+            effective_end_page=page_count,
+            effective_total_pages=page_count,
+            toc_entries=[],
+            valid_pages=None,
             selected_pages=None,
         )
 
@@ -156,6 +179,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # V10.22.1: Differential re-run — check which pages changed
     try:
         from core.pipeline.page_diff import get_changed_pages
+
         _changed = get_changed_pages(Path(request.input_path), converter.output_dir)
         if _changed and len(_changed) < 100:  # only log if meaningful
             log(f"  📄 Differential: {len(_changed)} pages changed since last run.", "INFO")
@@ -166,9 +190,13 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     _use_docling = False
     try:
         import docling  # noqa: F401
+
         if request.source_type == "academic_paper" and not request.force_ocr_all_pages:
             _use_docling = True
-            log("  🔧 Docling available — using for technical PDF extraction (tables + code).", "INFO")
+            log(
+                "  🔧 Docling available — using for technical PDF extraction (tables + code).",
+                "INFO",
+            )
     except ImportError:
         pass
 
@@ -190,7 +218,10 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
         effective_total_pages = end - start + 1
         effective_start_page = start
         effective_end_page = end
-        log(f"  📄 Page range applied: {start}–{end} (effective pages: {effective_total_pages})", "INFO")
+        log(
+            f"  📄 Page range applied: {start}–{end} (effective pages: {effective_total_pages})",
+            "INFO",
+        )
     else:
         effective_total_pages = analysis.total_pages
         effective_start_page = 1
@@ -199,7 +230,8 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     if pages_to_ocr:
         log(
             f"📋 {len(pages_to_ocr)} scanned pages will be OCR'd: "
-            f"{pages_to_ocr[:10]}{'…' if len(pages_to_ocr) > 10 else ''}", "INFO"
+            f"{pages_to_ocr[:10]}{'…' if len(pages_to_ocr) > 10 else ''}",
+            "INFO",
         )
     else:
         log("📄 All pages have extractable text — no OCR needed", "INFO")
@@ -211,6 +243,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # detection runs later (after Step 4) when we have text.
     try:
         from core.llm.content_presets import detect_scanned_pdf
+
         if detect_scanned_pdf(len(pages_to_ocr), analysis.total_pages):
             log(
                 f"  📋 Auto-detected scanned PDF ({len(pages_to_ocr)}/"
@@ -239,9 +272,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # extracted first, then passed to _extract_covers as a parameter.
     update_status("Reading Table of Contents…")
     toc_extractor = TocExtractor(log_callback=log)
-    toc_entries = toc_extractor.extract(
-        request.input_path, request.password
-    )
+    toc_entries = toc_extractor.extract(request.input_path, request.password)
     if toc_entries:
         log(f"📑 TOC: {len(toc_entries)} entries found → will be used for chapter headings", "INFO")
         log(f"  [TOC] Entries passed to segmenter: {len(toc_entries)}", "DEBUG")
@@ -322,9 +353,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # boundary overlap is merged below.  This is the number the completion
     # modal reports as "Pages processed" (see compute_pages_processed in
     # converter_impl) — the overlap pages are context-only, deduped later.
-    _selected_pages: set | None = (
-        set(valid_pages) if valid_pages is not None else None
-    )
+    _selected_pages: set | None = set(valid_pages) if valid_pages is not None else None
 
     # If we have valid_pages (chapter selection active), filter
     # pages_to_ocr and pass to OCRService so it ONLY processes those pages.
@@ -374,6 +403,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     _docling_used = False
     try:
         import docling  # noqa: F401
+
         if request.source_type in ("academic_paper",) and not request.force_ocr_all_pages:
             log("  🔧 Docling available — will use for technical PDF extraction.", "INFO")
             _docling_used = True
@@ -403,7 +433,9 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     #
     # The ONLY case where we still force OlmOCR on all pages is when
     # force_ocr_all_pages is explicitly True (user override).
-    if getattr(request, "source_type", "") == "academic_paper" and not getattr(request, "force_ocr_all_pages", False):
+    if getattr(request, "source_type", "") == "academic_paper" and not getattr(
+        request, "force_ocr_all_pages", False
+    ):
         log(
             "  🔬 Academic paper detected — using two-stage OCR: "
             "markitdown first, OlmOCR only on garbled pages. "
@@ -412,7 +444,9 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
         )
         # Don't force all pages as scanned — let markitdown try first.
         # The postprocess phase's targeted OCR repair will catch garbled pages.
-    elif getattr(request, "source_type", "") == "academic_paper" and getattr(request, "force_ocr_all_pages", False):
+    elif getattr(request, "source_type", "") == "academic_paper" and getattr(
+        request, "force_ocr_all_pages", False
+    ):
         log(
             "  🔬 Academic paper + Force OCR All Pages — forcing OlmOCR on ALL pages.",
             "INFO",
@@ -430,7 +464,9 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
         pages_to_ocr = set(_all_pages)
 
     ocr_service = OCRService(
-        request, analysis, pages_to_ocr,
+        request,
+        analysis,
+        pages_to_ocr,
         log_callback=log,
         progress_callback=update_progress,
         status_callback=update_status,
@@ -448,7 +484,10 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
             if effective_start_page <= page_num <= effective_end_page:
                 filtered_results[page_num] = result
         ocr_results = filtered_results
-        log(f"  📄 Filtered OCR results to pages {effective_start_page}–{effective_end_page} ({len(ocr_results)} pages)", "INFO")
+        log(
+            f"  📄 Filtered OCR results to pages {effective_start_page}–{effective_end_page} ({len(ocr_results)} pages)",
+            "INFO",
+        )
 
     # ── Step 4: Build raw markdown ───────────────────────────────────
     update_progress(0.18)  # OCR done, building markdown

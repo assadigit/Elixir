@@ -20,6 +20,7 @@ output audit (``audit/results/AUDIT_V18.20.2.0_001_1_identity.md``):
 3. Coverage follow-up — QUOTE-ANCHOR PROMPT LINES (all three critical
    omissions were block quotes / enumerative conclusions).
 """
+
 from __future__ import annotations
 
 import sys
@@ -62,9 +63,25 @@ class TestEndsOnDanglingWord:
     def test_common_dangling_tails(self):
         from core.summarisation.post_processing import is_truncated
 
-        for tail in ("and.", "or.", "of.", "in.", "to.", "with.", "for.",
-                     "by.", "from.", "the.", "a.", "that.", "which.",
-                     "including.", "is.", "between.", "as."):
+        for tail in (
+            "and.",
+            "or.",
+            "of.",
+            "in.",
+            "to.",
+            "with.",
+            "for.",
+            "by.",
+            "from.",
+            "the.",
+            "a.",
+            "that.",
+            "which.",
+            "including.",
+            "is.",
+            "between.",
+            "as.",
+        ):
             bullet = f"The chapter situates the concept within a broader framework {tail}"
             assert is_truncated(bullet) is True, f"tail {tail!r} must be flagged"
 
@@ -81,18 +98,21 @@ class TestEndsOnDanglingWord:
         assert ends_on_dangling_word('…self-delineation, and)."') is True
         assert ends_on_dangling_word("…self-delineation, and.\u201d") is True
 
-    @pytest.mark.parametrize("bullet", [
-        "Erikson defined ego identity as selfsameness and sharing of essential character with others.",
-        "Freud (1926a)",
-        "See above.",
-        "The chapter concludes with seven characteristics of identity.",
-        "Erikson dropped the ego prefix in part to accommodate Hartmann's differentiation.",
-        "Kernberg wrote 'it is the presence or absence of identity diffusion' (p. 14).",
-        # Elliptical-but-complete endings deliberately NOT flagged:
-        "The evidence suggests so.",
-        "He decided it did not.",
-        "Kahn replied no.",
-    ])
+    @pytest.mark.parametrize(
+        "bullet",
+        [
+            "Erikson defined ego identity as selfsameness and sharing of essential character with others.",
+            "Freud (1926a)",
+            "See above.",
+            "The chapter concludes with seven characteristics of identity.",
+            "Erikson dropped the ego prefix in part to accommodate Hartmann's differentiation.",
+            "Kernberg wrote 'it is the presence or absence of identity diffusion' (p. 14).",
+            # Elliptical-but-complete endings deliberately NOT flagged:
+            "The evidence suggests so.",
+            "He decided it did not.",
+            "Kahn replied no.",
+        ],
+    )
     def test_complete_bullets_not_flagged(self, bullet):
         from core.summarisation.post_processing import is_truncated
 
@@ -168,7 +188,9 @@ class TestDetectAttributionSubjectSwap:
         )
 
         text, issues = detect_attribution_subject_swap(
-            _KHAN_BULLET, _WINNICOTT_SOURCE, "bullet[0]",
+            _KHAN_BULLET,
+            _WINNICOTT_SOURCE,
+            "bullet[0]",
             source_authors=["Winnicott", "Khan", "Erikson", "Jacobson"],
         )
         assert text == _KHAN_BULLET  # flag-only — text never modified
@@ -182,10 +204,14 @@ class TestDetectAttributionSubjectSwap:
             detect_attribution_subject_swap,
         )
 
-        ok = ("Winnicott's work provides the developmental basis for "
-              "authenticity and temporal continuity in the self.")
+        ok = (
+            "Winnicott's work provides the developmental basis for "
+            "authenticity and temporal continuity in the self."
+        )
         _, issues = detect_attribution_subject_swap(
-            ok, _WINNICOTT_SOURCE, "bullet[0]",
+            ok,
+            _WINNICOTT_SOURCE,
+            "bullet[0]",
             source_authors=["Winnicott", "Khan"],
         )
         assert not issues
@@ -196,13 +222,20 @@ class TestDetectAttributionSubjectSwap:
             detect_attribution_subject_swap,
         )
 
-        bullet = ("Khan's work provides the framework for understanding "
-                  "the false self and its defensive organisation.")
-        source = ("Blos's work provides the framework for understanding "
-                  "the false self and its defensive organisation, a theme "
-                  "later extended (Khan 1983).")
+        bullet = (
+            "Khan's work provides the framework for understanding "
+            "the false self and its defensive organisation."
+        )
+        source = (
+            "Blos's work provides the framework for understanding "
+            "the false self and its defensive organisation, a theme "
+            "later extended (Khan 1983)."
+        )
         _, issues = detect_attribution_subject_swap(
-            bullet, source, "bullet[0]", source_authors=["Blos", "Khan"],
+            bullet,
+            source,
+            "bullet[0]",
+            source_authors=["Blos", "Khan"],
         )
         assert len(issues) == 1
         assert "Blos" in issues[0].detail
@@ -214,12 +247,19 @@ class TestDetectAttributionSubjectSwap:
             detect_attribution_subject_swap,
         )
 
-        source = ("Freud's (1923) work provides the structural model of "
-                  "the psyche for all later theorising about identity.")
-        bullet = ("Freud's work provides the structural model of the "
-                  "psyche for all later theorising about identity.")
+        source = (
+            "Freud's (1923) work provides the structural model of "
+            "the psyche for all later theorising about identity."
+        )
+        bullet = (
+            "Freud's work provides the structural model of the "
+            "psyche for all later theorising about identity."
+        )
         _, issues = detect_attribution_subject_swap(
-            bullet, source, "bullet[0]", source_authors=["Freud"],
+            bullet,
+            source,
+            "bullet[0]",
+            source_authors=["Freud"],
         )
         assert not issues
 
@@ -230,8 +270,9 @@ class TestDetectAttributionSubjectSwap:
             detect_attribution_subject_swap,
         )
 
-        bullet = ("Khan's work provides the developmental basis for "
-                  "authenticity and temporal continuity.")
+        bullet = (
+            "Khan's work provides the developmental basis for authenticity and temporal continuity."
+        )
         source = (
             "Winnicott did not use the term. His work provides the "
             "developmental basis for authenticity and temporal continuity "
@@ -240,7 +281,10 @@ class TestDetectAttributionSubjectSwap:
             "facilitating environment and its failures."
         )
         _, issues = detect_attribution_subject_swap(
-            bullet, source, "bullet[0]", source_authors=["Winnicott", "Khan"],
+            bullet,
+            source,
+            "bullet[0]",
+            source_authors=["Winnicott", "Khan"],
         )
         assert not issues, f"escape hatch failed: {issues}"
 
@@ -251,7 +295,10 @@ class TestDetectAttributionSubjectSwap:
 
         plain = "The chapter surveys six sociocultural writers on identity."
         _, issues = detect_attribution_subject_swap(
-            plain, _WINNICOTT_SOURCE, "exec", source_authors=["Khan"],
+            plain,
+            _WINNICOTT_SOURCE,
+            "exec",
+            source_authors=["Khan"],
         )
         assert not issues
 
@@ -276,7 +323,9 @@ class TestRunPostChecksIntegration:
         from core.summarisation.postchecks import run_post_checks
 
         report = run_post_checks(
-            [_KHAN_BULLET], "Executive summary text.", "Thorough summary text.",
+            [_KHAN_BULLET],
+            "Executive summary text.",
+            "Thorough summary text.",
             source_text=_WINNICOTT_SOURCE,
         )
         swaps = [i for i in report.issues if i.detector == "attribution_swap"]
@@ -309,15 +358,18 @@ class TestRunPostChecksIntegration:
 class TestQuoteAnchorPrompts:
     """All summary prompts carry the V18.20.3.0 quote-anchor instruction."""
 
-    @pytest.mark.parametrize("relpath", [
-        "prompts/default.md",
-        "prompts/default_lowbit.md",
-        "prompts/academic.md",
-        "prompts/technical.md",
-        "prompts/creative.md",
-        "prompts/summarisation/thematic_synthesis.md",
-        "prompts/summarisation/thematic_synthesis_lowbit.md",
-    ])
+    @pytest.mark.parametrize(
+        "relpath",
+        [
+            "prompts/default.md",
+            "prompts/default_lowbit.md",
+            "prompts/academic.md",
+            "prompts/technical.md",
+            "prompts/creative.md",
+            "prompts/summarisation/thematic_synthesis.md",
+            "prompts/summarisation/thematic_synthesis_lowbit.md",
+        ],
+    )
     def test_prompt_has_quote_anchor(self, relpath):
         p = PROJECT_ROOT / relpath
         assert p.exists(), f"missing prompt: {relpath}"
@@ -331,8 +383,12 @@ class TestQuoteAnchorPrompts:
         """No book-specific fingerprint in the new instruction (A4 lesson)."""
         for relpath in ("prompts/default.md", "prompts/academic.md"):
             text = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
-            anchor_block = text[text.lower().find("quote anchor"):]
-            anchor_block = anchor_block[: anchor_block.lower().find("**context")] if "**context" in anchor_block.lower() else anchor_block[:2000]
+            anchor_block = text[text.lower().find("quote anchor") :]
+            anchor_block = (
+                anchor_block[: anchor_block.lower().find("**context")]
+                if "**context" in anchor_block.lower()
+                else anchor_block[:2000]
+            )
             for banned in ("identity", "erikson", "ego", "adolescence", "winnicott"):
                 assert banned not in anchor_block.lower(), (
                     f"{relpath}: quote-anchor block has book fingerprint {banned!r}"

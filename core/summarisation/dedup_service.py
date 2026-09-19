@@ -31,6 +31,7 @@ DedupService with embedding + Jaccard + resurrection support).
 Thread-safety: ``DedupService`` is stateless (each call creates fresh
 ``seen`` lists), so it's safe to call from the ThreadPoolExecutor.
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,6 +75,7 @@ class DedupService:
         self.log = log_callback or (lambda msg, level="DEBUG": None)
         try:
             from rapidfuzz import fuzz as rf_fuzz
+
             self._fuzz = rf_fuzz
         except ImportError:
             self._fuzz = None
@@ -117,7 +119,7 @@ class DedupService:
         deduped: list[str] = []
         dropped = 0
         for bp in bullets:
-            norm = re.sub(r'[^\w\s]', '', str(bp).lower()).strip()
+            norm = re.sub(r"[^\w\s]", "", str(bp).lower()).strip()
             is_dup = False
             if self._fuzz is not None:
                 for existing in seen_norms:
@@ -132,12 +134,13 @@ class DedupService:
                 dropped += 1
                 if quarantine is not None:
                     quarantine.add(
-                        bp, stage=stage,
+                        bp,
+                        stage=stage,
                         threshold=float(threshold) / 100.0,
                         source_overlap=0.0,
                         reason=f"Near-duplicate of an earlier bullet "
-                               f"(token_set_ratio ≥ {threshold}%)"
-                               + (" — kept in conservative mode" if conservative else ""),
+                        f"(token_set_ratio ≥ {threshold}%)"
+                        + (" — kept in conservative mode" if conservative else ""),
                         chapter=chapter,
                         actually_dropped=not conservative,
                     )
@@ -185,7 +188,7 @@ class DedupService:
         for heading, bullets in chapter_bullets:
             deduped = []
             for bp in bullets:
-                norm = re.sub(r'[^\w\s]', '', str(bp).lower()).strip()
+                norm = re.sub(r"[^\w\s]", "", str(bp).lower()).strip()
                 is_dup = False
                 matched_heading = ""
                 if self._fuzz is not None:

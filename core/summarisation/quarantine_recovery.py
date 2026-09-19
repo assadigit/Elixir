@@ -12,6 +12,7 @@ whose source overlap exceeds the recovery threshold.
 
 **V18.6.3 crash mitigation**: Uses EXPLICIT PARAMETERS (not a context object).
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,7 +70,8 @@ def recover_quarantined(
         logger.warning(
             "recovery pass crashed: %s: %s — bullets returned unchanged "
             "(no resurrection attempted)",
-            type(_e).__name__, _e,
+            type(_e).__name__,
+            _e,
         )
         log(
             f"  ⚠️ Quarantine recovery pass CRASHED "
@@ -83,13 +85,12 @@ def recover_quarantined(
 
     try:
         from rapidfuzz import fuzz as rf_fuzz
+
         _has_fuzz = True
     except Exception:
         _has_fuzz = False
 
-    existing_norms = [
-        re.sub(r'[^\w\s]', '', str(b).lower()).strip() for b in bullets
-    ]
+    existing_norms = [re.sub(r"[^\w\s]", "", str(b).lower()).strip() for b in bullets]
     # V0.06 (F4-b): the source-scaled bullet budget is a hard cap at this
     # insertion site too — no resurrection past the cap.
     _cap_qr = int(bullet_cap) if isinstance(bullet_cap, (int, float)) and bullet_cap else 0
@@ -108,7 +109,7 @@ def recover_quarantined(
         bp = entry.bullet
         if not bp or bp.strip() in [b.strip() for b in bullets]:
             continue
-        norm = re.sub(r'[^\w\s]', '', bp.lower()).strip()
+        norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
         is_dup = False
         if _has_fuzz:
             for ex in existing_norms:

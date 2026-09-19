@@ -53,17 +53,22 @@ _stub_optional_deps()
 # Settings tests — verify fusion keys exist with correct defaults
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFusionSettings:
     """V13.36.0: Verify the fusion settings keys exist with correct defaults."""
 
     def test_fusion_defaults_exist(self):
         """All fusion_* keys should exist in the settings defaults."""
         from utils.settings import Settings
+
         s = Settings()
         # Read each fusion key — should return the default, not raise
         assert s.get("summarisation.fusion_enabled", None) is False
         assert s.get("summarisation.fusion_cloud_provider", None) == "openai_compat"
-        assert s.get("summarisation.fusion_cloud_model", None) == "google/gemini-2.5-flash-preview:free"
+        assert (
+            s.get("summarisation.fusion_cloud_model", None)
+            == "google/gemini-2.5-flash-preview:free"
+        )
         assert s.get("summarisation.fusion_cloud_max_tokens", None) == 4096
         assert s.get("summarisation.fusion_cloud_temperature", None) == 0.2
         assert s.get("summarisation.fusion_use_for_self_review", None) is True
@@ -74,12 +79,14 @@ class TestFusionSettings:
     def test_fusion_cloud_api_key_defaults_to_empty(self):
         """The fusion_cloud_api_key should default to empty (reuses summarisation.api_key)."""
         from utils.settings import Settings
+
         s = Settings()
         assert s.get("summarisation.fusion_cloud_api_key", None) == ""
 
     def test_fusion_cloud_base_url_defaults_to_empty(self):
         """The fusion_cloud_base_url should default to empty (reuses summarisation.api_base_url)."""
         from utils.settings import Settings
+
         s = Settings()
         assert s.get("summarisation.fusion_cloud_base_url", None) == ""
 
@@ -87,6 +94,7 @@ class TestFusionSettings:
 # ═══════════════════════════════════════════════════════════════════════════
 # _call_cloud() routing tests — test the method logic directly
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestCallCloudRouting:
     """V13.36.0: Verify _call_cloud() routes correctly based on fusion_enabled.
@@ -100,6 +108,7 @@ class TestCallCloudRouting:
         """Import the Summarizer class and return the _call_cloud method."""
         try:
             from core.summarisation.summarizer import Summarizer
+
             return Summarizer._call_cloud
         except ImportError as e:
             pytest.skip(f"Cannot import Summarizer: {e}")
@@ -172,6 +181,7 @@ class TestCallCloudRouting:
 # B3 cloud judge tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestB3CloudJudge:
     """V13.36.0: Verify _b3_cloud_judge() picks the cloud-selected sample."""
 
@@ -179,6 +189,7 @@ class TestB3CloudJudge:
         """Import the Summarizer class and return the _b3_cloud_judge method."""
         try:
             from core.summarisation.summarizer import Summarizer
+
             return Summarizer._b3_cloud_judge
         except ImportError as e:
             pytest.skip(f"Cannot import Summarizer: {e}")

@@ -49,6 +49,7 @@ Consumers (all read the SAME functions — one source of truth):
     thorough is already at its scaled ceiling)
   * ``structured_io.build_json_instruction`` (json-mode schema wording)
 """
+
 from __future__ import annotations
 
 import re
@@ -119,11 +120,9 @@ def thorough_target(source_words: int) -> tuple[int, int]:
     """
     w = max(0, int(source_words))
     if w >= THOROUGH_V18_FLOOR:
-        hi = min(THOROUGH_ABS_MAX,
-                 max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR))
+        hi = min(THOROUGH_ABS_MAX, max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR))
     else:
-        hi = min(w, max(round(THOROUGH_SOURCE_FRACTION * w),
-                        min(THOROUGH_SMALL_SOURCE, w)))
+        hi = min(w, max(round(THOROUGH_SOURCE_FRACTION * w), min(THOROUGH_SMALL_SOURCE, w)))
     lo = max(80, round(hi * THOROUGH_LO_FRACTION))
     if lo > hi:
         lo = hi
@@ -133,8 +132,7 @@ def thorough_target(source_words: int) -> tuple[int, int]:
 def executive_target(source_words: int) -> tuple[int, int]:
     """(lo, hi) word target for the executive summary, scaled to the source."""
     w = max(0, int(source_words))
-    hi = min(EXEC_ABS_MAX, max(round(EXEC_SOURCE_FRACTION * w),
-                               min(EXEC_SMALL_SOURCE, w)))
+    hi = min(EXEC_ABS_MAX, max(round(EXEC_SOURCE_FRACTION * w), min(EXEC_SMALL_SOURCE, w)))
     lo = max(40, round(hi * EXEC_LO_FRACTION))
     if lo > hi:
         lo = hi
@@ -170,6 +168,7 @@ def bullet_cap(source_words: int) -> int:
 
 
 # ── Prompt-facing strings (one phrasing, every consumer) ────────────────────
+
 
 def thorough_words_phrase(source_words: int) -> str:
     lo, hi = thorough_target(source_words)
@@ -208,9 +207,7 @@ def length_budget_block(
     ]
     if include_executive:
         elo, ehi = executive_target(source_words)
-        lines.append(
-            f"- executive_summary: {elo}-{ehi} words."
-        )
+        lines.append(f"- executive_summary: {elo}-{ehi} words.")
     if include_keypoints:
         blo, bhi = bullet_target(source_words)
         lines.append(
@@ -220,9 +217,7 @@ def length_budget_block(
         )
     if include_thorough:
         tlo, thi = thorough_target(source_words)
-        lines.append(
-            f"- thorough_summary: {tlo}-{thi} words."
-        )
+        lines.append(f"- thorough_summary: {tlo}-{thi} words.")
     lines.append(
         "COMPRESSION CONTRACT: this is a SUMMARY — every section must be"
         " SHORTER than the chapter itself. If you cannot fill a section's"
@@ -235,6 +230,7 @@ def length_budget_block(
 
 
 # ── Ship-time honest measurement ────────────────────────────────────────────
+
 
 def expansion_audit(
     source_words: int,
@@ -253,16 +249,20 @@ def expansion_audit(
     findings: list[str] = []
     if source_words > 0 and thorough_words > 0:
         _tlo, thi = thorough_target(source_words)
-        if (thorough_words >= thi * EXPANSION_WARN_TARGET_MULTIPLE
-                and thorough_words >= source_words * EXPANSION_WARN_SOURCE_FRACTION):
+        if (
+            thorough_words >= thi * EXPANSION_WARN_TARGET_MULTIPLE
+            and thorough_words >= source_words * EXPANSION_WARN_SOURCE_FRACTION
+        ):
             findings.append(
                 f"thorough {thorough_words}w = {thorough_words / source_words:.1f}x "
                 f"its {source_words}w source (target {thi}w) — expansion, not summary"
             )
     if source_words > 0 and exec_words > 0:
         _elo, ehi = executive_target(source_words)
-        if (exec_words >= ehi * EXPANSION_WARN_TARGET_MULTIPLE
-                and exec_words >= source_words * EXPANSION_WARN_SOURCE_FRACTION):
+        if (
+            exec_words >= ehi * EXPANSION_WARN_TARGET_MULTIPLE
+            and exec_words >= source_words * EXPANSION_WARN_SOURCE_FRACTION
+        ):
             findings.append(
                 f"exec {exec_words}w = {exec_words / source_words:.1f}x "
                 f"its {source_words}w source (target {ehi}w) — expansion, not summary"
@@ -289,10 +289,14 @@ _BACKSTOP_RULES: list[tuple[re.Pattern[str], str]] = [
     # "20-40 distinct key takeaways" / "A comprehensive list of 20-40 ..."
     (re.compile(r"\b20\s*-\s*40\s+distinct\b"), "{bullet_range} distinct"),
     # academic json inline: "15-25 findings" (bullets + thorough)
-    (re.compile(r'"bullet_points":\s*15\s*-\s*25\s+findings'),
-     '"bullet_points": {bullet_range} findings'),
-    (re.compile(r'"thorough_summary":\s*15\s*-\s*25\s+findings'),
-     '"thorough_summary": {bullet_range} findings'),
+    (
+        re.compile(r'"bullet_points":\s*15\s*-\s*25\s+findings'),
+        '"bullet_points": {bullet_range} findings',
+    ),
+    (
+        re.compile(r'"thorough_summary":\s*15\s*-\s*25\s+findings'),
+        '"thorough_summary": {bullet_range} findings',
+    ),
 ]
 
 

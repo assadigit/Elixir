@@ -24,6 +24,7 @@ threshold-satisfied short-circuit, the no-missing-keywords path, the Tier 2
 gap-fill (filtered) path, the max_bullets cap, the Tier 3 force-insert path,
 and the coverage-breakdown log.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,12 +65,14 @@ def _kw_missing(kw: str, normalized_combined: str) -> bool:
     """
     try:
         from core.summarisation.summary_validator import _keyword_covered
+
         return not _keyword_covered(kw, normalized_combined)
     except Exception:
         return (kw or "").lower() not in normalized_combined
 
 
 # ── apply_3tier_coverage (extracted verbatim) ──────────────────────────────
+
 
 def apply_3tier_coverage(
     heading: str,
@@ -97,18 +100,19 @@ def apply_3tier_coverage(
 
     if round(coverage, 2) >= coverage_threshold:
         return coverage  # V13.34.2: round to avoid float edge cases
-    _bps = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
+    _bps = [str(b) if not isinstance(b, str) else b for b in result.get("bullet_points", []) if b]
     # V13.39.0: Include key_distinctions + theoretical_tensions in coverage check
     # so the additive sections contribute to (and are checked by) coverage.
     # V0.03 (P0-2/P0-3): source_excerpts count too — a keyword already covered
     # by a framed excerpt must not re-trigger Tier-2/Tier-3 remediation.
-    _kd = result.get('key_distinctions', '') or ''
-    _tt = result.get('theoretical_tensions', '') or ''
-    _ex = [str(e) if not isinstance(e, str) else e for e in result.get('source_excerpts', []) or []]
+    _kd = result.get("key_distinctions", "") or ""
+    _tt = result.get("theoretical_tensions", "") or ""
+    _ex = [str(e) if not isinstance(e, str) else e for e in result.get("source_excerpts", []) or []]
     combined = f"{result.get('executive_summary', '')} {' '.join(_bps)} {result.get('thorough_summary', '')} {_kd} {_tt} {' '.join(_ex)}"
     all_kw = extract_keywords(content, n=18)
     # V0.05 (F3-a): normalized matcher for the Tier-2 trigger list.
     from core.summarisation.summary_validator import _normalize_for_coverage
+
     _combined_norm = _normalize_for_coverage(combined)
     missing = [k for k in all_kw if _kw_missing(k, _combined_norm)]
     if not missing:
@@ -163,8 +167,10 @@ def apply_3tier_coverage(
                     )
         result["bullet_points"] = result["bullet_points"][:max_bullets_per_chapter]
         result["model"] = result.get("model", "primary") + "+gapfill"
-    _bps2 = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
-    _ex2 = [str(e) if not isinstance(e, str) else e for e in result.get('source_excerpts', []) or []]
+    _bps2 = [str(b) if not isinstance(b, str) else b for b in result.get("bullet_points", []) if b]
+    _ex2 = [
+        str(e) if not isinstance(e, str) else e for e in result.get("source_excerpts", []) or []
+    ]
     combined2 = f"{result.get('executive_summary', '')} {' '.join(_bps2)} {result.get('thorough_summary', '')} {' '.join(_ex2)}"
     coverage2 = compute_coverage(content, combined2)
     if coverage2 < coverage_threshold:
@@ -174,14 +180,22 @@ def apply_3tier_coverage(
         still_missing = [k for k in all_kw if _kw_missing(k, _combined2_norm)]
         if still_missing:
             force_insert_missing(text, still_missing, result)
-    _bps3 = [str(b) if not isinstance(b, str) else b for b in result.get('bullet_points', []) if b]
+    _bps3 = [str(b) if not isinstance(b, str) else b for b in result.get("bullet_points", []) if b]
     # V0.03 (P0-2): Tier-3 excerpts live in result['source_excerpts'] now —
     # they are part of the delivered summary (framed section), so they must
     # count toward the final coverage recompute.
-    _ex3 = [str(e) if not isinstance(e, str) else e for e in result.get('source_excerpts', []) or []]
+    _ex3 = [
+        str(e) if not isinstance(e, str) else e for e in result.get("source_excerpts", []) or []
+    ]
     combined3 = f"{result.get('executive_summary', '')} {' '.join(_bps3)} {result.get('thorough_summary', '')} {' '.join(_ex3)}"
     final_coverage = compute_coverage(content, combined3)
-    log(f"    \U0001f4ca Coverage breakdown: Tier 1 (synthesis) {coverage:.0%} \u2192 Tier 2 (gap-fill) {coverage2:.0%} \u2192 Tier 3 (force-insert) {final_coverage:.0%}", "INFO")
+    log(
+        f"    \U0001f4ca Coverage breakdown: Tier 1 (synthesis) {coverage:.0%} \u2192 Tier 2 (gap-fill) {coverage2:.0%} \u2192 Tier 3 (force-insert) {final_coverage:.0%}",
+        "INFO",
+    )
     if final_coverage >= coverage_threshold:
-        log(f"    \u2705 Coverage {final_coverage:.0%} \u2265 {coverage_threshold:.0%} \u2014 GUARANTEED", "INFO")
+        log(
+            f"    \u2705 Coverage {final_coverage:.0%} \u2265 {coverage_threshold:.0%} \u2014 GUARANTEED",
+            "INFO",
+        )
     return final_coverage

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # dialogs that accept pasted text (Summarize, Translation, TTS).
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class PlainTextTextEdit(QTextEdit):
     """QTextEdit that strips ALL formatting on paste — only plain text."""
 
@@ -71,8 +72,10 @@ class PlainTextTextEdit(QTextEdit):
 # Offers "Try Another" (reset dialog) + "Open File/Folder" (file explorer).
 # ════════════════════════════════════════════════════════════════════════════
 
-def _show_success_modal(parent, title: str, message: str, file_path: str | None = None,
-                         on_try_another=None) -> None:
+
+def _show_success_modal(
+    parent, title: str, message: str, file_path: str | None = None, on_try_another=None
+) -> None:
     """Show a success modal with 'Try Another' + 'Open File/Folder' buttons.
 
     Args:
@@ -103,7 +106,7 @@ def _show_success_modal(parent, title: str, message: str, file_path: str | None 
         open_btn = msg.addButton("📂 Open File Location", QMessageBox.AcceptRole)
     if on_try_another:
         again_btn = msg.addButton("🔄 Try Another", QMessageBox.ActionRole)
-    close_btn = msg.addButton("✓ Close", QMessageBox.RejectRole)
+    msg.addButton("✓ Close", QMessageBox.RejectRole)
 
     msg.exec()
 
@@ -116,19 +119,19 @@ def _show_success_modal(parent, title: str, message: str, file_path: str | None 
             if sys.platform == "win32":
                 # Windows: `explorer /select,"file"` opens folder + selects file.
                 if p.is_file():
-                    subprocess.Popen(['explorer', '/select,', str(p)])
+                    subprocess.Popen(["explorer", "/select,", str(p)])
                 else:
-                    subprocess.Popen(['explorer', str(p)])
+                    subprocess.Popen(["explorer", str(p)])
             elif sys.platform == "darwin":
                 # macOS: `open -R` reveals the file in Finder.
                 if p.is_file():
-                    subprocess.Popen(['open', '-R', str(p)])
+                    subprocess.Popen(["open", "-R", str(p)])
                 else:
-                    subprocess.Popen(['open', str(p)])
+                    subprocess.Popen(["open", str(p)])
             else:
                 # Linux: xdg-open the folder.
                 folder = p.parent if p.is_file() else p
-                subprocess.Popen(['xdg-open', str(folder)])
+                subprocess.Popen(["xdg-open", str(folder)])
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
     elif clicked is not None and again_btn is not None and clicked == again_btn:
@@ -151,6 +154,7 @@ def _show_success_modal(parent, title: str, message: str, file_path: str | None 
 # (disconnect its signals; unparent raw QThreads) so its result is
 # discarded instead of crashing.
 # ════════════════════════════════════════════════════════════════════════════
+
 
 def _worker_is_running(worker) -> bool:
     """V18.20.4.5 (T-b2): True if ``worker`` is actively running.
@@ -222,10 +226,13 @@ def _confirm_close_with_running_worker(dialog, worker) -> bool:
     if not _worker_is_running(worker):
         return True
     ret = QMessageBox.question(
-        dialog, "Work in progress",
+        dialog,
+        "Work in progress",
         "A background task is still running.\n\nClose anyway? "
         "The task will continue but its result will be discarded.",
-        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.No,
+    )
     if ret != QMessageBox.Yes:
         return False
     _detach_worker_signals(worker)
@@ -404,7 +411,9 @@ class BaseServiceDialog(QDialog):
 
     def _pick_output(self) -> None:
         suffix = self._get_output_suffix()
-        path, _ = QFileDialog.getSaveFileName(self, "Save output", "", f"Output (*{suffix});;All files (*.*)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save output", "", f"Output (*{suffix});;All files (*.*)"
+        )
         if path:
             if not path.endswith(suffix):
                 path += suffix
@@ -478,9 +487,7 @@ class BaseServiceDialog(QDialog):
             self.progress_bar.setValue(pct)
         else:
             self.progress_bar.setRange(0, 0)  # indeterminate
-        self.status_label.setText(
-            f"<div style='font-size:14px; font-weight:600;'>{msg}</div>"
-        )
+        self.status_label.setText(f"<div style='font-size:14px; font-weight:600;'>{msg}</div>")
         # V11.51.0: also append to the live log panel (if it exists)
         if hasattr(self, "live_log"):
             self._append_live_log(msg)
@@ -504,8 +511,7 @@ class BaseServiceDialog(QDialog):
     def _toggle_live_log(self, checked: bool) -> None:
         """V11.51.0: Toggle the live log panel visibility."""
         self.live_log.setVisible(checked)
-        self._log_toggle_btn.setText(
-            "📋 Hide Live Log" if checked else "📋 Show Live Log")
+        self._log_toggle_btn.setText("📋 Hide Live Log" if checked else "📋 Show Live Log")
 
     def _append_live_log(self, msg: str) -> None:
         """V11.51.0: Append a message to the live log panel.
@@ -514,6 +520,7 @@ class BaseServiceDialog(QDialog):
         Auto-scrolls to the bottom.
         """
         import datetime as _dt
+
         ts = _dt.datetime.now().strftime("%H:%M:%S")
         self.live_log.appendPlainText(f"[{ts}] {msg}")
         # Auto-scroll to bottom
@@ -521,7 +528,9 @@ class BaseServiceDialog(QDialog):
         sb.setValue(sb.maximum())
 
     def _on_cancel(self) -> None:
-        reply = QMessageBox.question(self, "Cancel?", "Are you sure you want to cancel?", QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.question(
+            self, "Cancel?", "Are you sure you want to cancel?", QMessageBox.Yes | QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
             self._cancel_requested = True
             self._reset_ui()
@@ -545,6 +554,7 @@ class BaseServiceDialog(QDialog):
             if actual_path is None:
                 actual_path = str(out_path)
             from pathlib import Path as _P
+
             self.status_label.setText(f"✅ Done — saved to {_P(actual_path).name}")
             # V11.18: surface "Try Another File".
             self.again_btn.setVisible(True)
@@ -556,13 +566,19 @@ class BaseServiceDialog(QDialog):
             p = _P(actual_path)
             file_arg = str(p) if p.exists() else (str(p.parent) if str(p.parent) != "." else None)
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: _show_success_modal(
-                self,
-                f"✅ {self.windowTitle()} Complete",
-                f"Saved to: {actual_path}",
-                file_path=file_arg,
-                on_try_another=self._on_try_another if hasattr(self, "_on_try_another") else None,
-            ))
+
+            QTimer.singleShot(
+                0,
+                lambda: _show_success_modal(
+                    self,
+                    f"✅ {self.windowTitle()} Complete",
+                    f"Saved to: {actual_path}",
+                    file_path=file_arg,
+                    on_try_another=self._on_try_another
+                    if hasattr(self, "_on_try_another")
+                    else None,
+                ),
+            )
         else:
             self.status_label.setText("⚠️ No result returned.")
 
@@ -627,4 +643,6 @@ class BaseServiceDialog(QDialog):
         self.controller.update_setting(f"quick_services.{self._get_service_name()}.{key}", value)
 
     def _get_setting(self, key: str, default: Any = None) -> Any:
-        return self.controller.get_setting(f"quick_services.{self._get_service_name()}.{key}", default)
+        return self.controller.get_setting(
+            f"quick_services.{self._get_service_name()}.{key}", default
+        )

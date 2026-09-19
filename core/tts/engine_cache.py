@@ -37,6 +37,7 @@ def get_neutts_engine(
     key = f"neutts:{gguf_path}"
     if key not in _engines:
         from core.tts.neutts_engine import NeuTTSEngine
+
         engine = NeuTTSEngine(
             gguf_path=Path(gguf_path),
             neutts_project_path=Path(neutts_project_path),
@@ -63,6 +64,7 @@ def get_qwen_tts_engine(
     key = f"qwen_tts:{model_path}"
     if key not in _engines:
         from core.tts.qwen_tts_engine import QwenTtsEngine
+
         engine = QwenTtsEngine(
             model_path=model_path,
             speaker=speaker,
@@ -84,6 +86,7 @@ def get_sherpa_engine(
     key = f"sherpa:{voice_id}"
     if key not in _engines:
         from core.tts.sherpa_persian_engine import SherpaPersianEngine
+
         engine = SherpaPersianEngine(
             voice_id=voice_id,
             log_callback=log_callback or (lambda msg, level="INFO": None),
@@ -105,6 +108,7 @@ def get_vibevoice_engine(
     key = f"vibevoice:{model_path}"
     if key not in _engines:
         from core.tts.vibevoice_engine import VibeVoiceEngine
+
         engine = VibeVoiceEngine(
             model_path=model_path,
             voices_dir=voices_dir,
@@ -118,8 +122,6 @@ def get_vibevoice_engine(
     return _engines[key]
 
 
-
-
 def get_kokoro_engine(
     log_callback: LogFn | None = None,
 ) -> object:
@@ -127,6 +129,7 @@ def get_kokoro_engine(
     key = "kokoro"
     if key not in _engines:
         from core.tts.engine import KokoroEngine
+
         engine = KokoroEngine(
             log_callback=log_callback or (lambda msg, level="INFO": None),
         )
@@ -144,6 +147,7 @@ def get_piper_engine(
     key = f"piper:{piper_binary}"
     if key not in _engines:
         from core.tts.engine import PiperEngine
+
         engine = PiperEngine(
             piper_binary,
             piper_voices_dir,
@@ -176,8 +180,7 @@ def clear_cache() -> None:
     for key, engine in list(_engines.items()):
         try:
             torn_down = False
-            for name in ("close", "quit", "stop", "shutdown",
-                         "_cleanup_process", "_cleanup"):
+            for name in ("close", "quit", "stop", "shutdown", "_cleanup_process", "_cleanup"):
                 hook = getattr(engine, name, None)
                 if callable(hook):
                     hook()
@@ -185,15 +188,16 @@ def clear_cache() -> None:
                     break
             if not torn_down:
                 logger.debug(
-                    "cached engine %r (%s) exposes no teardown hook — "
-                    "dropping reference only",
-                    key, type(engine).__name__,
+                    "cached engine %r (%s) exposes no teardown hook — dropping reference only",
+                    key,
+                    type(engine).__name__,
                 )
         except Exception as e:
             logger.warning(
-                "TTS engine cache: teardown of %r failed (%s: %s) — "
-                "dropping the reference anyway",
-                key, type(e).__name__, e,
+                "TTS engine cache: teardown of %r failed (%s: %s) — dropping the reference anyway",
+                key,
+                type(e).__name__,
+                e,
             )
     _engines.clear()
     logger.info("TTS engine cache cleared")

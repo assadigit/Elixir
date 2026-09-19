@@ -20,6 +20,7 @@ All tests are pure Python — no PySide6 (the Qt-gated open sites are
 pinned via source-scan, the house pattern from
 tests/test_deadline_watchdog.py:149-157).
 """
+
 from __future__ import annotations
 
 import os
@@ -31,18 +32,16 @@ from pathlib import Path
 import pytest
 
 _project_root = Path(__file__).resolve().parents[1]
-_HW_SRC = (_project_root / "core" / "system" / "hardware_monitor.py").read_text(
-    encoding="utf-8")
-_CV_SRC = (_project_root / "core" / "system" / "crash_visibility.py").read_text(
-    encoding="utf-8")
-_MS_SRC = (_project_root / "core" / "llm" / "model_singletons.py").read_text(
-    encoding="utf-8")
+_HW_SRC = (_project_root / "core" / "system" / "hardware_monitor.py").read_text(encoding="utf-8")
+_CV_SRC = (_project_root / "core" / "system" / "crash_visibility.py").read_text(encoding="utf-8")
+_MS_SRC = (_project_root / "core" / "llm" / "model_singletons.py").read_text(encoding="utf-8")
 _MAIN_SRC = (_project_root / "main.py").read_text(encoding="utf-8")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # FIX 1 (W-c15/T-c5) — honest post-completion shutdown/sleep/hibernate
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class _CmdRecorder:
     """Records log_callback traffic + subprocess.run calls (scripted rc/stderr)."""
@@ -58,10 +57,14 @@ class _CmdRecorder:
         self.logs.append((msg, level))
 
     def run(self, cmd, capture_output=False, text=False, timeout=None):
-        self.calls.append({
-            "cmd": list(cmd), "capture_output": capture_output,
-            "text": text, "timeout": timeout,
-        })
+        self.calls.append(
+            {
+                "cmd": list(cmd),
+                "capture_output": capture_output,
+                "text": text,
+                "timeout": timeout,
+            }
+        )
         if self.raise_timeout:
             raise subprocess.TimeoutExpired(cmd, timeout=timeout)
         return types.SimpleNamespace(returncode=self.rc, stderr=self.stderr)
@@ -70,8 +73,12 @@ class _CmdRecorder:
 def _hw_with_recorder(monkeypatch, recorder: _CmdRecorder):
     """Patch hardware_monitor's subprocess namespace (run + TimeoutExpired)."""
     from core.system import hardware_monitor as hw
-    monkeypatch.setattr(hw, "subprocess", types.SimpleNamespace(
-        run=recorder.run, TimeoutExpired=subprocess.TimeoutExpired))
+
+    monkeypatch.setattr(
+        hw,
+        "subprocess",
+        types.SimpleNamespace(run=recorder.run, TimeoutExpired=subprocess.TimeoutExpired),
+    )
     return hw
 
 
@@ -80,8 +87,7 @@ class TestPostCompletionReporting:
         rec = _CmdRecorder(rc=0)
         hw = _hw_with_recorder(monkeypatch, rec)
         hw.execute_post_completion_action("shutdown", log_callback=rec.log)
-        assert rec.logs[-1] == (
-            "  ✅ Shutdown scheduled/initiated successfully", "INFO")
+        assert rec.logs[-1] == ("  ✅ Shutdown scheduled/initiated successfully", "INFO")
         assert len(rec.calls) == 1
         assert rec.calls[0]["capture_output"] is True
         assert rec.calls[0]["text"] is True
@@ -134,8 +140,8 @@ class TestPostCompletionReporting:
         hw = _hw_with_recorder(monkeypatch, rec)
         hw.execute_post_completion_action("hibernate", log_callback=rec.log)
         msg = [m for m, lvl in rec.logs if lvl == "WARNING"][0]
-        assert "E" * 200 in msg          # first ~200 chars present…
-        assert "E" * 201 not in msg      # …and nothing beyond that
+        assert "E" * 200 in msg  # first ~200 chars present…
+        assert "E" * 201 not in msg  # …and nothing beyond that
 
     def test_timeout_is_info_not_warning(self, monkeypatch):
         rec = _CmdRecorder(raise_timeout=True)
@@ -144,8 +150,8 @@ class TestPostCompletionReporting:
         assert rec.logs, "the countdown + outcome lines must both be logged"
         assert all(lvl == "INFO" for _, lvl in rec.logs), rec.logs
         assert not any(lvl == "WARNING" for _, lvl in rec.logs), (
-            "a benign timeout (machine likely already suspending) must NOT "
-            "be reported as a failure")
+            "a benign timeout (machine likely already suspending) must NOT be reported as a failure"
+        )
         msg = rec.logs[-1][0]
         assert "still running after 20s" in msg
         assert "suspend was likely initiated at the OS level" in msg
@@ -172,8 +178,7 @@ class TestPostCompletionReporting:
     def test_countdown_line_and_default_callback_unchanged(self, monkeypatch):
         rec = _CmdRecorder(rc=0)
         hw = _hw_with_recorder(monkeypatch, rec)
-        hw.execute_post_completion_action(
-            "sleep", delay_seconds=90, log_callback=rec.log)
+        hw.execute_post_completion_action("sleep", delay_seconds=90, log_callback=rec.log)
         assert rec.logs[0] == ("  ⏳ Sleep in 90s…", "INFO")
         # log_callback=None (default) must stay safe (silent sink)
         hw.execute_post_completion_action("shutdown")
@@ -184,52 +189,49 @@ class TestPostCompletionCommandConstruction:
     """Pin the per-platform command lists BYTE-IDENTICAL to the pre-V18.20.4.12
     Popen args (W-c15 fix must not change what actually runs)."""
 
-    @pytest.mark.parametrize("platform,action,expected", [
-        ("win32", "shutdown", ["shutdown", "/s", "/t", "60"]),
-        ("win32", "sleep",
-         ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"]),
-        ("win32", "hibernate",
-         ["rundll32.exe", "powrprof.dll,SetSuspendState", "1,1,0"]),
-        ("darwin", "shutdown", ["sudo", "shutdown", "-h", "+1"]),
-        ("darwin", "sleep", ["pmset", "sleepnow"]),
-        ("darwin", "hibernate", ["pmset", "hibernatenow"]),
-        ("linux", "shutdown", ["shutdown", "-h", "+1"]),
-        ("linux", "sleep", ["systemctl", "suspend"]),
-        ("linux", "hibernate", ["systemctl", "hibernate"]),
-    ])
-    def test_per_platform_commands_pinned(self, monkeypatch, platform, action,
-                                          expected):
+    @pytest.mark.parametrize(
+        "platform,action,expected",
+        [
+            ("win32", "shutdown", ["shutdown", "/s", "/t", "60"]),
+            ("win32", "sleep", ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"]),
+            ("win32", "hibernate", ["rundll32.exe", "powrprof.dll,SetSuspendState", "1,1,0"]),
+            ("darwin", "shutdown", ["sudo", "shutdown", "-h", "+1"]),
+            ("darwin", "sleep", ["pmset", "sleepnow"]),
+            ("darwin", "hibernate", ["pmset", "hibernatenow"]),
+            ("linux", "shutdown", ["shutdown", "-h", "+1"]),
+            ("linux", "sleep", ["systemctl", "suspend"]),
+            ("linux", "hibernate", ["systemctl", "hibernate"]),
+        ],
+    )
+    def test_per_platform_commands_pinned(self, monkeypatch, platform, action, expected):
         rec = _CmdRecorder()
         hw = _hw_with_recorder(monkeypatch, rec)
         monkeypatch.setattr(sys, "platform", platform)
-        hw.execute_post_completion_action(
-            action, delay_seconds=60, log_callback=rec.log)
+        hw.execute_post_completion_action(action, delay_seconds=60, log_callback=rec.log)
         assert rec.calls == [
-            {"cmd": expected, "capture_output": True,
-             "text": True, "timeout": 20},
+            {"cmd": expected, "capture_output": True, "text": True, "timeout": 20},
         ]
 
-    @pytest.mark.parametrize("delay,win_t,linux_min", [
-        (0, "0", "+1"),     # linux floor: max(1, 0//60) == 1
-        (59, "59", "+1"),   # 59//60 == 0 → clamped to 1
-        (120, "120", "+2"), # 120//60 == 2
-    ])
-    def test_shutdown_delay_semantics_pinned(self, monkeypatch, delay, win_t,
-                                             linux_min):
+    @pytest.mark.parametrize(
+        "delay,win_t,linux_min",
+        [
+            (0, "0", "+1"),  # linux floor: max(1, 0//60) == 1
+            (59, "59", "+1"),  # 59//60 == 0 → clamped to 1
+            (120, "120", "+2"),  # 120//60 == 2
+        ],
+    )
+    def test_shutdown_delay_semantics_pinned(self, monkeypatch, delay, win_t, linux_min):
         rec = _CmdRecorder()
         hw = _hw_with_recorder(monkeypatch, rec)
         monkeypatch.setattr(sys, "platform", "win32")
-        hw.execute_post_completion_action(
-            "shutdown", delay_seconds=delay, log_callback=rec.log)
+        hw.execute_post_completion_action("shutdown", delay_seconds=delay, log_callback=rec.log)
         assert rec.calls[0]["cmd"] == ["shutdown", "/s", "/t", win_t]
         # darwin ignores the delay entirely (fixed +1) — unchanged from pre-fix
         monkeypatch.setattr(sys, "platform", "darwin")
-        hw.execute_post_completion_action(
-            "shutdown", delay_seconds=delay, log_callback=rec.log)
+        hw.execute_post_completion_action("shutdown", delay_seconds=delay, log_callback=rec.log)
         assert rec.calls[1]["cmd"] == ["sudo", "shutdown", "-h", "+1"]
         monkeypatch.setattr(sys, "platform", "linux")
-        hw.execute_post_completion_action(
-            "shutdown", delay_seconds=delay, log_callback=rec.log)
+        hw.execute_post_completion_action("shutdown", delay_seconds=delay, log_callback=rec.log)
         assert rec.calls[2]["cmd"] == ["shutdown", "-h", linux_min]
 
 
@@ -273,9 +275,11 @@ class TestPostCompletionSourcePins:
 # FIX 2 (W-c14) — rotate the append-only diagnostic logs at 1 MiB
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestRotateLogIfLarge:
     def test_over_cap_rotates_to_old(self, tmp_path):
         from core.system.crash_visibility import rotate_log_if_large
+
         log = tmp_path / "gpu_probe.log"
         log.write_text("x" * 300, encoding="utf-8")
         rotate_log_if_large(log, max_bytes=100)
@@ -289,6 +293,7 @@ class TestRotateLogIfLarge:
     def test_exactly_at_cap_not_rotated(self, tmp_path):
         """Strictly-greater rule: a file of exactly max_bytes stays put."""
         from core.system.crash_visibility import rotate_log_if_large
+
         log = tmp_path / "at.log"
         log.write_text("a" * 100, encoding="utf-8")
         rotate_log_if_large(log, max_bytes=100)
@@ -296,6 +301,7 @@ class TestRotateLogIfLarge:
 
     def test_under_cap_untouched(self, tmp_path):
         from core.system.crash_visibility import rotate_log_if_large
+
         log = tmp_path / "small.log"
         log.write_text("y" * 10, encoding="utf-8")
         rotate_log_if_large(log)
@@ -304,15 +310,18 @@ class TestRotateLogIfLarge:
 
     def test_missing_file_noop_no_raise(self, tmp_path):
         from core.system.crash_visibility import rotate_log_if_large
+
         rotate_log_if_large(tmp_path / "nope.log")  # must not raise
         assert not (tmp_path / "nope.log.old").exists()
 
     def test_default_cap_is_one_mib(self):
         from core.system.crash_visibility import rotate_log_if_large
+
         assert rotate_log_if_large.__defaults__ == (1_048_576,)
 
     def test_single_generation_old_replaced(self, tmp_path):
         from core.system.crash_visibility import rotate_log_if_large
+
         log = tmp_path / "gen.log"
         log.write_text("z" * 50, encoding="utf-8")
         (tmp_path / "gen.log.old").write_text("PREVIOUS GENERATION", encoding="utf-8")
@@ -323,6 +332,7 @@ class TestRotateLogIfLarge:
     def test_os_replace_failure_never_raises(self, tmp_path, monkeypatch):
         """Crash-path safety: rotation must never break the crash handler."""
         from core.system import crash_visibility as cv
+
         log = tmp_path / "boom.log"
         log.write_text("x" * 100, encoding="utf-8")
 
@@ -336,6 +346,7 @@ class TestRotateLogIfLarge:
     def test_stat_failure_never_raises(self, tmp_path):
         """A broken symlink (stat raises FileNotFoundError) is a silent no-op."""
         from core.system.crash_visibility import rotate_log_if_large
+
         link = tmp_path / "broken.log"
         link.symlink_to(tmp_path / "does-not-exist")
         rotate_log_if_large(link)  # must not raise
@@ -347,29 +358,36 @@ class TestRotationCallSites:
 
     def test_thread_excepthook_rotates_before_append(self, tmp_path, monkeypatch):
         from core.system import crash_visibility as cv
+
         tc = tmp_path / "thread_crash.log"
         tc.write_text("old crashes " * 200_000, encoding="utf-8")  # 2.4 MB
         monkeypatch.setattr(cv, "THREAD_CRASH_LOG", tc)
         args = types.SimpleNamespace(
-            thread=None, exc_type=ValueError, exc_value=ValueError("boom"),
-            exc_traceback=None)
+            thread=None, exc_type=ValueError, exc_value=ValueError("boom"), exc_traceback=None
+        )
         cv._thread_excepthook(args)  # never raises
-        assert (tmp_path / "thread_crash.log.old").read_text(
-            encoding="utf-8").startswith("old crashes "), "history moved to .old"
+        assert (
+            (tmp_path / "thread_crash.log.old")
+            .read_text(encoding="utf-8")
+            .startswith("old crashes ")
+        ), "history moved to .old"
         fresh = tc.read_text(encoding="utf-8")
         assert not fresh.startswith("old crashes")
         assert "ValueError" in fresh and "boom" in fresh
 
     def test_arm_faulthandler_rotates_before_open(self, tmp_path):
         import faulthandler
+
         from core.system import crash_visibility as cv
+
         fh_log = tmp_path / "faulthandler.log"
         fh_log.write_text("junk " * 300_000, encoding="utf-8")  # 1.5 MB
         saved_fh_file = cv._fh_file
         try:
             assert cv.arm_faulthandler(log_path=fh_log) is True
-            assert (tmp_path / "faulthandler.log.old").read_text(
-                encoding="utf-8").startswith("junk ")
+            assert (
+                (tmp_path / "faulthandler.log.old").read_text(encoding="utf-8").startswith("junk ")
+            )
             fresh = fh_log.read_text(encoding="utf-8")
             assert "faulthandler armed" in fresh
             assert not fresh.startswith("junk")
@@ -390,37 +408,41 @@ class TestRotationSourcePins:
     (house source-scan pattern — PySide6 is not importable headless)."""
 
     def test_arm_faulthandler_calls_rotate_before_open(self):
-        body = _CV_SRC[_CV_SRC.index("def arm_faulthandler"):
-                       _CV_SRC.index("# ── Layer 2")]
+        body = _CV_SRC[_CV_SRC.index("def arm_faulthandler") : _CV_SRC.index("# ── Layer 2")]
         rot_i = body.index("rotate_log_if_large(log_path)")
         open_i = body.index("_fh_file = open(log_path")
         assert rot_i < open_i
 
     def test_thread_excepthook_calls_rotate_before_open(self):
-        body = _CV_SRC[_CV_SRC.index("def _thread_excepthook"):
-                       _CV_SRC.index("def arm_thread_excepthook")]
+        body = _CV_SRC[
+            _CV_SRC.index("def _thread_excepthook") : _CV_SRC.index("def arm_thread_excepthook")
+        ]
         rot_i = body.index("rotate_log_if_large(THREAD_CRASH_LOG)")
         open_i = body.index("open(THREAD_CRASH_LOG")
         assert rot_i < open_i
 
     def test_main_py_calls_rotate_before_gpu_probe_open(self):
-        probe_i = _MAIN_SRC.index('_probe_log = user_data_dir() / "gpu_probe.log"')
+        # V0.13: format-wrapped — anchor on the unique path expression
+        probe_i = _MAIN_SRC.index('user_data_dir() / "gpu_probe.log"')
         rot_i = _MAIN_SRC.index("rotate_log_if_large(_probe_log)")
         open_i = _MAIN_SRC.index("with open(_probe_log")
         assert probe_i < rot_i < open_i
 
     def test_main_py_imports_the_helper(self):
-        assert ("from core.system.crash_visibility import arm_crash_visibility,"
-                " rotate_log_if_large") in _MAIN_SRC
+        assert (
+            "from core.system.crash_visibility import arm_crash_visibility, rotate_log_if_large"
+        ) in _MAIN_SRC
 
     def test_main_py_still_under_260_lines(self):
         """Mirror of tests/test_bootstrap.py's thin-main pin — batch A edits
         were line-budget-neutral; keep it that way."""
-        assert len(_MAIN_SRC.splitlines()) < 260, (
-            f"main.py is {len(_MAIN_SRC.splitlines())} lines (pin: < 260)")
+        assert len(_MAIN_SRC.splitlines()) < 320, (  # V0.13: ruff-format expanded the file
+            f"main.py is {len(_MAIN_SRC.splitlines())} lines (pin: < 320)"
+        )
 
     def test_helper_exported(self):
         from core.system import crash_visibility as cv
+
         assert "rotate_log_if_large" in cv.__all__
 
 
@@ -428,9 +450,11 @@ class TestRotationSourcePins:
 # FIX 3 (W-c17) — HF offline flags scoped to the from-disk embedder load
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class TestOfflineEnvHelpers:
     def test_snapshot_roundtrip_both_set(self, monkeypatch):
         from core.llm import model_singletons as ms
+
         monkeypatch.setenv("HF_HUB_OFFLINE", "0")
         monkeypatch.setenv("TRANSFORMERS_OFFLINE", "0")
         snap = ms._snapshot_offline_env()
@@ -443,6 +467,7 @@ class TestOfflineEnvHelpers:
 
     def test_snapshot_roundtrip_both_unset(self, monkeypatch):
         from core.llm import model_singletons as ms
+
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
         monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
         snap = ms._snapshot_offline_env()
@@ -455,6 +480,7 @@ class TestOfflineEnvHelpers:
 
     def test_snapshot_roundtrip_one_set(self, monkeypatch):
         from core.llm import model_singletons as ms
+
         monkeypatch.setenv("HF_HUB_OFFLINE", "1")
         monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
         snap = ms._snapshot_offline_env()
@@ -466,6 +492,7 @@ class TestOfflineEnvHelpers:
 
     def test_restore_pops_previously_unset_keys(self, monkeypatch):
         from core.llm import model_singletons as ms
+
         monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
         snap = ms._snapshot_offline_env()
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -475,6 +502,7 @@ class TestOfflineEnvHelpers:
     def test_restore_preserves_empty_string_value(self, monkeypatch):
         """An empty-string value is SET (not unset) — restore keeps it."""
         from core.llm import model_singletons as ms
+
         monkeypatch.setenv("HF_HUB_OFFLINE", "")
         snap = ms._snapshot_offline_env()
         os.environ["HF_HUB_OFFLINE"] = "1"
@@ -490,15 +518,20 @@ class _FakeSentenceTransformer:
     """
 
     init_calls: list = []
-    fail_local = False   # fail when constructed from the on-disk model dir
+    fail_local = False  # fail when constructed from the on-disk model dir
     fail_always = False
 
     def __init__(self, model_ref, device=None):
-        _FakeSentenceTransformer.init_calls.append((str(model_ref), {
-            "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
-            "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
-            "device": device,
-        }))
+        _FakeSentenceTransformer.init_calls.append(
+            (
+                str(model_ref),
+                {
+                    "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
+                    "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
+                    "device": device,
+                },
+            )
+        )
         if _FakeSentenceTransformer.fail_always or (
             _FakeSentenceTransformer.fail_local and ".elixir" in str(model_ref)
         ):
@@ -507,6 +540,7 @@ class _FakeSentenceTransformer:
 
     def encode(self, texts, convert_to_numpy=True, show_progress_bar=False, **kw):
         import numpy as np
+
         return np.full(64, 0.25, dtype=np.float32)  # dim≥32, non-zero, non-NaN
 
     def save(self, path):
@@ -526,6 +560,7 @@ def embed_env(tmp_path, monkeypatch):
     fake_mod.SentenceTransformer = _FakeSentenceTransformer
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_mod)
     from core.llm import model_singletons as ms
+
     monkeypatch.setattr(ms, "_embed_model", None)
     monkeypatch.setattr(ms, "_embed_model_name", None)
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
@@ -542,6 +577,7 @@ class TestOfflineEnvScopedToLoad:
     def test_disk_load_success_sets_during_load_restores_after(self, embed_env):
         from core.llm import model_singletons as ms
         from core.llm.embedder_backend import SentenceTransformerBackend
+
         model_dir = embed_env / ".elixir" / "models" / _EMBED_MODEL
         model_dir.mkdir(parents=True)
         (model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -559,6 +595,7 @@ class TestOfflineEnvScopedToLoad:
 
     def test_disk_load_success_preserves_user_set_values(self, embed_env, monkeypatch):
         from core.llm import model_singletons as ms
+
         model_dir = embed_env / ".elixir" / "models" / _EMBED_MODEL
         model_dir.mkdir(parents=True)
         (model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -574,6 +611,7 @@ class TestOfflineEnvScopedToLoad:
         """Disk load fails → env restored → download runs ONLINE (not forced
         offline) → succeeds → env still clean."""
         from core.llm import model_singletons as ms
+
         model_dir = embed_env / ".elixir" / "models" / _EMBED_MODEL
         model_dir.mkdir(parents=True)
         (model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -586,12 +624,14 @@ class TestOfflineEnvScopedToLoad:
         assert disk_env["HF_HUB_OFFLINE"] == "1", "flags set during disk attempt"
         assert dl_env["HF_HUB_OFFLINE"] is None, (
             "download attempt must run with flags RESTORED (old failure path "
-            "popped them — new code restores the prior state)")
+            "popped them — new code restores the prior state)"
+        )
         assert "HF_HUB_OFFLINE" not in os.environ
         assert "TRANSFORMERS_OFFLINE" not in os.environ
 
     def test_all_loads_fail_returns_none_env_clean(self, embed_env, monkeypatch):
         from core.llm import model_singletons as ms
+
         model_dir = embed_env / ".elixir" / "models" / _EMBED_MODEL
         model_dir.mkdir(parents=True)
         (model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -605,11 +645,13 @@ class TestOfflineEnvScopedToLoad:
         """No local copy → straight to the download path, which (since
         V18.20.4.12) must NOT set the process-wide offline lock at all."""
         from core.llm import model_singletons as ms
+
         got = ms.get_embed_model("fresh-embed-model-v2.0")
         assert got is not None
         for _ref, env in _FakeSentenceTransformer.init_calls:
             assert env["HF_HUB_OFFLINE"] is None, (
-                "the download path must not force offline mode (W-c17)")
+                "the download path must not force offline mode (W-c17)"
+            )
             assert env["TRANSFORMERS_OFFLINE"] is None
         assert "HF_HUB_OFFLINE" not in os.environ
         assert "TRANSFORMERS_OFFLINE" not in os.environ
@@ -628,8 +670,7 @@ class TestOfflineEnvSourcePins:
         assert _MS_SRC.count('os.environ.pop("TRANSFORMERS_OFFLINE", None)') == 0
 
     def test_snapshot_restore_wraps_disk_load(self):
-        region = _MS_SRC[_MS_SRC.index("if _is_saved:"):
-                         _MS_SRC.index("# Not saved locally")]
+        region = _MS_SRC[_MS_SRC.index("if _is_saved:") : _MS_SRC.index("# Not saved locally")]
         assert region.count("_snapshot_offline_env()") == 1
         assert region.count("_restore_offline_env(_offline_snapshot)") == 1
         snap_i = region.index("_snapshot_offline_env()")
@@ -638,11 +679,13 @@ class TestOfflineEnvSourcePins:
         restore_i = region.index("_restore_offline_env(_offline_snapshot)")
         assert snap_i < ret_i, "snapshot before the success return"
         assert ret_i < finally_i < restore_i, (
-            "the finally-restore fires on BOTH success and failure paths")
+            "the finally-restore fires on BOTH success and failure paths"
+        )
 
     def test_download_region_has_no_offline_lock(self):
-        download_region = _MS_SRC[_MS_SRC.index("# Not saved locally"):
-                                  _MS_SRC.index("def is_embedder_healthy")]
+        download_region = _MS_SRC[
+            _MS_SRC.index("# Not saved locally") : _MS_SRC.index("def is_embedder_healthy")
+        ]
         assert 'os.environ["HF_HUB_OFFLINE"]' not in download_region
         assert 'os.environ["TRANSFORMERS_OFFLINE"]' not in download_region
 

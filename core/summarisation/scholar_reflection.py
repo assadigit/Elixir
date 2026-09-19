@@ -27,6 +27,7 @@ Characterization tests: ``tests/test_scholar_reflection.py`` captures the
 gap-identification, gap-fill (source-grounded), and gapfill-only paths with
 mocked ``call_fast_llm`` / ``prompt_manager`` / ``recover_vram``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -121,7 +122,7 @@ def scholar_reflection(
 {_exec}
 
 KEY TAKEAWAYS ({len(_bullets)} bullets):
-{chr(10).join(f'- {bp}' for bp in _bullets)}
+{chr(10).join(f"- {bp}" for bp in _bullets)}
 
 THOROUGH SUMMARY:
 {_thorough}
@@ -134,12 +135,12 @@ THEORETICAL TENSIONS:
 
     # Truncate source text to fit context window
     max_src = max(max_context_tokens - 2500, 8000)
-    src_text = text[:max_src * 4]
+    src_text = text[: max_src * 4]
 
     # V13.45.0: Deterministic theorist extraction — find all "Surname (year)"
     # patterns in the source so we can ask the LLM to verify each is covered.
     theorist_matches = re.findall(
-        r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)',
+        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4}[a-z]?(?:,\s*[a-z])?)\)",
         src_text,
     )
     # Filter out non-theorist matches (common false positives)
@@ -190,10 +191,7 @@ THEORETICAL TENSIONS:
         try:
             _joined = " ".join(_bullets)
             _joined_lower = _joined.lower()
-            _probe_missing = sum(
-                1 for _t in theorists_found
-                if _t.lower() not in _joined_lower
-            )
+            _probe_missing = sum(1 for _t in theorists_found if _t.lower() not in _joined_lower)
         except Exception:
             _probe_missing = -1  # assertion disabled — never break the chapter
     if _probe_missing == 0:
@@ -212,7 +210,7 @@ THEORETICAL TENSIONS:
     theorists_hint = ""
     if theorists_found:
         theorists_hint = f"""
-THEORIST COVERAGE CHECK — Authors cited in source: {', '.join(theorists_found)}
+THEORIST COVERAGE CHECK — Authors cited in source: {", ".join(theorists_found)}
 Verify EACH appears in the summary with their specific contribution. Flag ANY missing. Secondary contributors are EASIEST to miss.
 """
 
@@ -264,6 +262,7 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
         # finished. The provider flag has no such blind spot.
         try:
             from core.llm.call_meta import consume_call_truncated
+
             _provider_truncated = consume_call_truncated()
         except Exception:  # pragma: no cover — flag must never break the stage
             _provider_truncated = False
@@ -284,10 +283,10 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
         # fallback signal because it is provider-agnostic; the provider
         # flag above is the primary.
         _rl = raw.lower()
-        _has_refl_open = '<scholar_reflections>' in _rl
-        _has_refl_close = '</scholar_reflections>' in _rl
-        _has_gf_open = '<gap_fill_bullets>' in _rl
-        _has_gf_close = '</gap_fill_bullets>' in _rl
+        _has_refl_open = "<scholar_reflections>" in _rl
+        _has_refl_close = "</scholar_reflections>" in _rl
+        _has_gf_open = "<gap_fill_bullets>" in _rl
+        _has_gf_close = "</gap_fill_bullets>" in _rl
         _response_truncated = (
             _provider_truncated
             or (_has_gf_open and not _has_gf_close)
@@ -320,17 +319,17 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
             )
             try:
                 _cont_prompt = (
-                    prompt
-                    + "\n\nCONTINUATION REQUEST: your previous response was "
+                    prompt + "\n\nCONTINUATION REQUEST: your previous response was "
                     "cut off at the output token cap before it completed. "
                     "Continue EXACTLY where the previous output stopped \u2014 "
                     "do NOT repeat any content you already produced, and "
                     "close all open section tags (</scholar_reflections>, "
-                    "</gap_fill_bullets>). Your previous output ended with:\n\n"
-                    + raw[-2000:]
+                    "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
                 )
                 _cont = call_fast_llm(
-                    _cont_prompt, temperature=temperature, max_tokens=6144,
+                    _cont_prompt,
+                    temperature=temperature,
+                    max_tokens=6144,
                 )
                 if _cont:
                     _cont = strip_thinking(_cont)
@@ -340,19 +339,19 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                     # heuristic on the COMBINED text.
                     try:
                         from core.llm.call_meta import consume_call_truncated
+
                         _provider_truncated = consume_call_truncated()
                     except Exception:  # pragma: no cover — flag must never break the stage
                         _provider_truncated = False
                     _rl = _combined.lower()
-                    _has_refl_open = '<scholar_reflections>' in _rl
-                    _has_refl_close = '</scholar_reflections>' in _rl
-                    _has_gf_open = '<gap_fill_bullets>' in _rl
-                    _has_gf_close = '</gap_fill_bullets>' in _rl
+                    _has_refl_open = "<scholar_reflections>" in _rl
+                    _has_refl_close = "</scholar_reflections>" in _rl
+                    _has_gf_open = "<gap_fill_bullets>" in _rl
+                    _has_gf_close = "</gap_fill_bullets>" in _rl
                     _still_truncated = (
                         _provider_truncated
                         or (_has_gf_open and not _has_gf_close)
-                        or (not _has_gf_open
-                            and not (_has_refl_open and _has_refl_close))
+                        or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
                     )
                     raw = _combined
                     _response_truncated = _still_truncated
@@ -367,24 +366,27 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                 )
                 logger.debug(
                     "scholar continuation retry failed: %s: %s",
-                    type(_cont_e).__name__, _cont_e,
+                    type(_cont_e).__name__,
+                    _cont_e,
                 )
 
         # Parse the <scholar_reflections> section (identification)
         srm = re.search(
-            r'<scholar_reflections>\s*(.*?)(?:</scholar_reflections>|<gap_fill_bullets>|$)',
-            raw, re.DOTALL | re.IGNORECASE,
+            r"<scholar_reflections>\s*(.*?)(?:</scholar_reflections>|<gap_fill_bullets>|$)",
+            raw,
+            re.DOTALL | re.IGNORECASE,
         )
         # V13.42.0: Parse the <gap_fill_bullets> section (the actual fill content)
         gfm = re.search(
-            r'<gap_fill_bullets>\s*(.*?)(?:</gap_fill_bullets>|$)',
-            raw, re.DOTALL | re.IGNORECASE,
+            r"<gap_fill_bullets>\s*(.*?)(?:</gap_fill_bullets>|$)",
+            raw,
+            re.DOTALL | re.IGNORECASE,
         )
         # V18.20.3.1 (real-rig audit D1 class): if the response was cut at
         # the output cap mid-gap-fill, the `$` fallback captures an
         # incomplete trailing bullet — drop it (same helper as the additive
         # sections; complete sections are never touched).
-        _gfm_closed = '</gap_fill_bullets>' in raw.lower()
+        _gfm_closed = "</gap_fill_bullets>" in raw.lower()
 
         # Process scholar reflections (identification)
         reflections_text = ""
@@ -418,7 +420,7 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                     items = [reflections.strip()]
                 grounded_items = []
                 for item in items:
-                    if '"' in item or '\u201c' in item or '\u201d' in item:
+                    if '"' in item or "\u201c" in item or "\u201d" in item:
                         grounded_items.append(item)
                     else:
                         grounded_items.append(item)
@@ -430,6 +432,7 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
             gap_text = gfm.group(1).strip()
             if not _gfm_closed and gap_text:
                 from core.summarisation.response_parser import strip_truncated_section_tail
+
                 _gap_clean = strip_truncated_section_tail(gap_text, closing_tag_present=False)
                 if _gap_clean != gap_text:
                     log(
@@ -454,18 +457,27 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                     grounded_bullets = []
                     for gb in gap_bullets:
                         # Check if the bullet contains a quote
-                        has_quote = ('"' in gb or '\u201c' in gb or '\u201d' in gb or
-                                   "''" in gb or "\u2014" in gb)
+                        has_quote = (
+                            '"' in gb
+                            or "\u201c" in gb
+                            or "\u201d" in gb
+                            or "''" in gb
+                            or "\u2014" in gb
+                        )
                         if has_quote:
                             # Verify the quote appears in the source (at least partially)
                             # Extract quoted portions and check against source
-                            quotes = re.findall(r'["\u201c\u201d]([^"\u201c\u201d]{15,})["\u201c\u201d]', gb)
+                            quotes = re.findall(
+                                r'["\u201c\u201d]([^"\u201c\u201d]{15,})["\u201c\u201d]', gb
+                            )
                             if quotes:
                                 source_lower = src_text.lower()
                                 quote_found = False
                                 for q in quotes:
                                     # Check if at least 60% of the quote words appear in source
-                                    q_words = [w.lower().strip(".,;:!?") for w in q.split() if len(w) > 3]
+                                    q_words = [
+                                        w.lower().strip(".,;:!?") for w in q.split() if len(w) > 3
+                                    ]
                                     if q_words:
                                         found = sum(1 for w in q_words if w in source_lower)
                                         if found / len(q_words) >= 0.6:
@@ -474,23 +486,31 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                                 if quote_found:
                                     grounded_bullets.append(f"- {gb}")
                                 else:
-                                    log(f"    \U0001f393 Dropped ungrounded gap-fill: {gb[:60]}\u2026", "DEBUG")
+                                    log(
+                                        f"    \U0001f393 Dropped ungrounded gap-fill: {gb[:60]}\u2026",
+                                        "DEBUG",
+                                    )
                             else:
-                                grounded_bullets.append(f"- {gb}")  # has quotes but can't extract — keep
+                                grounded_bullets.append(
+                                    f"- {gb}"
+                                )  # has quotes but can't extract — keep
                         else:
-                            log(f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026", "DEBUG")
+                            log(
+                                f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026",
+                                "DEBUG",
+                            )
 
                     if grounded_bullets:
                         # Add the gap-fill bullets to the summary's bullet_points
                         existing_bps = result.get("bullet_points", [])
                         existing_norms = set()
                         for bp in existing_bps:
-                            norm = re.sub(r'[^\w\s]', '', str(bp).lower().strip()[:60])
+                            norm = re.sub(r"[^\w\s]", "", str(bp).lower().strip()[:60])
                             existing_norms.add(norm)
 
                         new_bullets = []
                         for gb in grounded_bullets:
-                            norm = re.sub(r'[^\w\s]', '', gb.lower()).strip()[:60]
+                            norm = re.sub(r"[^\w\s]", "", gb.lower()).strip()[:60]
                             if norm not in existing_norms:
                                 new_bullets.append(gb)
                                 existing_norms.add(norm)
@@ -511,10 +531,11 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                             try:
                                 _pre_n = len(new_bullets)
                                 new_bullets = [
-                                    nb for nb in filter_thinking_bullets(
-                                        [b.lstrip("- \u2022\t").strip()
-                                         for b in new_bullets],
-                                        concepts=None, source_text=text,
+                                    nb
+                                    for nb in filter_thinking_bullets(
+                                        [b.lstrip("- \u2022\t").strip() for b in new_bullets],
+                                        concepts=None,
+                                        source_text=text,
                                     )
                                     if nb and nb.strip()
                                 ]
@@ -544,9 +565,11 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                         # budget is full the addition is skipped and logged
                         # honestly; with partial room only the first
                         # ``room`` grounded bullets merge.
-                        _cap_sg = int(bullet_cap) if isinstance(
-                            bullet_cap, (int, float)
-                        ) and bullet_cap else 0
+                        _cap_sg = (
+                            int(bullet_cap)
+                            if isinstance(bullet_cap, (int, float)) and bullet_cap
+                            else 0
+                        )
                         if _cap_sg > 0:
                             _room_sg = _cap_sg - len(existing_bps)
                             if _room_sg <= 0:
@@ -591,7 +614,9 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                 "INFO",
             )
         elif reflections_text:
-            log("    \U0001f393 Scholar reflection: identified gaps but could not fill them", "INFO")
+            log(
+                "    \U0001f393 Scholar reflection: identified gaps but could not fill them", "INFO"
+            )
         elif not reflections_text and gap_bullets_added == 0:
             # V18.20.3.5 (audit v182034): this is the exact path that lied
             # in the rig run — the response was truncated before the gap
@@ -660,7 +685,9 @@ def scholar_reflection_gapfill_only(
     # parses both sections, and adds gap-fill bullets to result.
     # We just need to suppress the reflections_text afterward.
     scholar_reflection(
-        heading, text, result,
+        heading,
+        text,
+        result,
         max_context_tokens=max_context_tokens,
         language=language,
         temperature=temperature,

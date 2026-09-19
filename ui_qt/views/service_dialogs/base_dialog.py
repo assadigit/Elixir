@@ -13,6 +13,30 @@ No class definitions remain here."""
 
 from __future__ import annotations
 
+from ui_qt.views.service_dialogs.dialogs.hallucination_audit_dialog import (
+    HallucinationAuditDialog,
+    _HallucinationAuditWorker,
+)
+from ui_qt.views.service_dialogs.dialogs.image_extractor_dialog import (
+    ImageExtractorDialog,
+)
+from ui_qt.views.service_dialogs.dialogs.markdown_styler_dialog import (
+    MarkdownStylerDialog,
+)
+from ui_qt.views.service_dialogs.dialogs.ocr_service_dialog import (
+    OcrServiceDialog,
+)
+from ui_qt.views.service_dialogs.dialogs.packets_tool_dialog import (
+    PacketsToolDialog,
+    _PacketWorker,
+)
+from ui_qt.views.service_dialogs.dialogs.pdf_docx_cutter_dialog import (
+    PdfDocxCutterDialog,
+)
+from ui_qt.views.service_dialogs.dialogs.quick_convert_dialog import (
+    QuickConvertDialog,
+)
+
 # V18.20.4.6 (P5 / O-b2): the dialog classes now live in
 # ui_qt/views/service_dialogs/dialogs/ (one module per dialog, bodies
 # verbatim). These imports are the back-compat facade — every
@@ -25,11 +49,11 @@ from ui_qt.views.service_dialogs.dialogs.shared import (
     _show_success_modal,
     _worker_is_running,
 )
-from ui_qt.views.service_dialogs.dialogs.ocr_service_dialog import (
-    OcrServiceDialog,
-)
 from ui_qt.views.service_dialogs.dialogs.summarization_service_dialog import (
     SummarizationServiceDialog,
+)
+from ui_qt.views.service_dialogs.dialogs.transcribe_service_dialog import (
+    TranscribeServiceDialog,
 )
 from ui_qt.views.service_dialogs.dialogs.translation_service_dialog import (
     TranslationServiceDialog,
@@ -41,29 +65,6 @@ from ui_qt.views.service_dialogs.dialogs.tts_service_dialog import (
     _show_tts_gpu_error_modal,
     _tts_cuda_available,
     _tts_torch_cuda_tag,
-)
-from ui_qt.views.service_dialogs.dialogs.quick_convert_dialog import (
-    QuickConvertDialog,
-)
-from ui_qt.views.service_dialogs.dialogs.pdf_docx_cutter_dialog import (
-    PdfDocxCutterDialog,
-)
-from ui_qt.views.service_dialogs.dialogs.markdown_styler_dialog import (
-    MarkdownStylerDialog,
-)
-from ui_qt.views.service_dialogs.dialogs.packets_tool_dialog import (
-    PacketsToolDialog,
-    _PacketWorker,
-)
-from ui_qt.views.service_dialogs.dialogs.hallucination_audit_dialog import (
-    HallucinationAuditDialog,
-    _HallucinationAuditWorker,
-)
-from ui_qt.views.service_dialogs.dialogs.image_extractor_dialog import (
-    ImageExtractorDialog,
-)
-from ui_qt.views.service_dialogs.dialogs.transcribe_service_dialog import (
-    TranscribeServiceDialog,
 )
 
 __all__ = [

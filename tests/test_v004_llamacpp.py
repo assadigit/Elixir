@@ -23,6 +23,7 @@ The rig's primary LLM moves from Ollama to a local ``llama-server``
   E. VRAM: the ternary (1.58-bit) size class — a 27B ternary is ~8 GB,
      not the ~18 GB the Q4_K_M fallback claimed.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,8 +60,10 @@ def _hermetic_settings(tmp_dir: Path):
     Settings._instance = None
     Settings._test_override = None
     try:
-        with patch.object(Settings, "_settings_dir", tmp_dir), \
-             patch.object(Settings, "_settings_file", tmp_dir / "settings.json"):
+        with (
+            patch.object(Settings, "_settings_dir", tmp_dir),
+            patch.object(Settings, "_settings_file", tmp_dir / "settings.json"),
+        ):
             yield
     finally:
         Settings._instance = None
@@ -170,9 +173,7 @@ class TestProviderComplete:
     def test_server_down_returns_none(self):
         from core.llm.llamacpp_provider import LlamaCppProvider
 
-        p = LlamaCppProvider(
-            model="x", base_url="http://127.0.0.1:9/v1", timeout=2, retries=0
-        )
+        p = LlamaCppProvider(model="x", base_url="http://127.0.0.1:9/v1", timeout=2, retries=0)
         assert p.complete("hi") is None  # port 9 = discard, nothing listens
 
 
@@ -261,8 +262,8 @@ class TestModelDiscoveryAndConnection:
         assert "cannot reach" in msg.lower()
 
     def test_connection_probe_auth_rejected(self):
-        from tests.mock_llamacpp_server import MockLlamaCppServer
         from core.llm.llamacpp_provider import test_llamacpp_connection
+        from tests.mock_llamacpp_server import MockLlamaCppServer
 
         srv = MockLlamaCppServer(api_key="real-key").start()
         try:
@@ -273,8 +274,8 @@ class TestModelDiscoveryAndConnection:
             srv.stop()
 
     def test_connection_probe_model_mismatch(self):
-        from tests.mock_llamacpp_server import MockLlamaCppServer
         from core.llm.llamacpp_provider import test_llamacpp_connection
+        from tests.mock_llamacpp_server import MockLlamaCppServer
 
         srv = MockLlamaCppServer(models=["bonsai"], strict_model=True).start()
         try:
@@ -365,14 +366,19 @@ class TestSummarizerDispatchPins:
     def test_call_llm_llamacpp_branch(self):
         src = _strip_comments(_src("core/summarisation/summarizer.py"))
         assert 'elif self.provider == "llamacpp":' in src
-        assert '"llamacpp", prompt,' in src
-        assert "self.llamacpp_base_url, api_key=self.llamacpp_api_key" in src
+        # V0.13: the _call_via_llm_provider("llamacpp", prompt, …) call is
+        # format-wrapped — pin the provider string + prompt arg on their lines.
+        assert '"llamacpp",' in src
+        assert "prompt," in src
+        # V0.13: kwargs are one-per-line now — pin them individually
+        assert "base_url=self.llamacpp_base_url," in src
+        assert "api_key=self.llamacpp_api_key," in src
         assert "model=self.llamacpp_model or model" in src
 
     def test_llamacpp_attrs_initialized(self):
         src = _strip_comments(_src("core/summarisation/summarizer.py"))
-        assert 'self.llamacpp_base_url = settings.get(' in src
-        assert 'self.llamacpp_model = settings.get(' in src
+        assert "self.llamacpp_base_url = settings.get(" in src
+        assert "self.llamacpp_model = settings.get(" in src
         assert "self.llamacpp_max_output = int(" in src
 
     def test_is_local_includes_llamacpp(self):
@@ -398,7 +404,7 @@ class TestSummarizerDispatchPins:
     def test_dispatcher_endpoint_override_branch(self):
         src = _strip_comments(_src("core/summarisation/llm_dispatcher.py"))
         assert 'if provider_type == "llamacpp":' in src
-        assert "provider.base_url = base_url.rstrip(\"/\")" in src
+        assert 'provider.base_url = base_url.rstrip("/")' in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -467,9 +473,7 @@ class TestActivationMigration:
 
     def test_explicit_choice_not_flipped(self, tmp_path):
         """A user who chose lmstudio/cloud explicitly is NEVER overridden."""
-        self._write_settings(
-            tmp_path, {"provider": "lmstudio", "llamacpp_activation_done": False}
-        )
+        self._write_settings(tmp_path, {"provider": "lmstudio", "llamacpp_activation_done": False})
         with _hermetic_settings(tmp_path):
             from utils.settings import Settings
 
@@ -567,8 +571,9 @@ class TestWizardStep5Pins:
         """The NEW heavy-model output spinbox covers 12288 (256–65536)."""
         src = _strip_comments(_src(self.STEP5))
         assert "self.heavy_out_spin.setRange(256, 65536)" in src
-        assert 'self.state.max_output_tokens = self.heavy_out_spin.value()' in src
-        assert 'update_setting("summarisation.max_output_tokens"' in src
+        assert "self.state.max_output_tokens = self.heavy_out_spin.value()" in src
+        # V0.13: format-wrapped — pin the key + the spinbox source together
+        assert '"summarisation.max_output_tokens", self.heavy_out_spin.value()' in src
 
     def test_backend_aware_model_discovery(self):
         """llamacpp lists models via the mixin's Settings-only worker fn;
@@ -601,7 +606,7 @@ class TestWizardStep5Pins:
         src5 = _strip_comments(_src(self.STEP5))
         src_mix = _strip_comments(_src(self.MIXIN))
         assert "self.llamacpp_set_visible(is_local, backend)" in src5
-        assert "self.llamacpp_widget.setVisible(is_local and backend == \"llamacpp\")" in src_mix
+        assert 'self.llamacpp_widget.setVisible(is_local and backend == "llamacpp")' in src_mix
 
 
 class TestSettingsDialogPins:
@@ -640,14 +645,15 @@ class TestWizardStateFlow:
         """_load_settings_into_state must reflect the persisted 65k/12k
         (the old hardcoded 32768/8192 state defaults used to mask them)."""
         src = _strip_comments(_src("ui_qt/views/wizard_view.py"))
-        assert 'self.state.max_context_tokens = int(s.get_setting("summarisation.max_context_tokens"' in src
-        assert 'self.state.max_output_tokens = int(s.get_setting("summarisation.max_output_tokens"' in src
+        # V0.13: format-wrapped — pin the setting key + default instead
+        assert 's.get_setting("summarisation.max_context_tokens", 32768)' in src
+        assert 's.get_setting("summarisation.max_output_tokens", 16000)' in src
 
     def test_step7b_spinboxes_cover_new_numbers(self):
         """Step 7b's ctx/out spins (the fine-tune surface) accept 65k/12k."""
         src = _strip_comments(_src("ui_qt/views/wizard_steps/step7b_fine_tune.py"))
-        assert "setRange(1000, 128000)" in src   # 65536 ✓
-        assert "setRange(256, 32768)" in src     # 12288 ✓
+        assert "setRange(1000, 128000)" in src  # 65536 ✓
+        assert "setRange(256, 32768)" in src  # 12288 ✓
 
 
 # ═══════════════════════════════════════════════════════════════════════════

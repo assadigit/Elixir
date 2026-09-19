@@ -70,6 +70,7 @@ class _MockSettings:
 # _ollama_config() tests — the core regression
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOllamaConfigFallback:
     """V13.35.0: Verify _ollama_config() falls back to summarisation.model
     when grounding.ollama_model is empty (the bug that crashed langextract)."""
@@ -125,12 +126,14 @@ class TestOllamaConfigFallback:
     def test_summarisation_model_also_empty(self):
         """Edge case: both grounding.ollama_model AND summarisation.model are empty.
         The `or` chain falls through to the hardcoded default 'gemma2:9b'."""
-        settings = _MockSettings({
-            "grounding.ollama_model": "",
-            "summarisation.model": "",  # empty — should fall to hardcoded default
-        })
+        settings = _MockSettings(
+            {
+                "grounding.ollama_model": "",
+                "summarisation.model": "",  # empty — should fall to hardcoded default
+            }
+        )
         extractor = ClaimExtractor(settings=settings)
-        config = extractor._ollama_config()
+        _config = extractor._ollama_config()
 
         # dict.get("summarisation.model", "gemma2:9b") returns "" (stored value),
         # then "" or "" = "", but wait — summ_model = s.get("summarisation.model", "gemma2:9b")
@@ -146,16 +149,19 @@ class TestOllamaConfigFallback:
 # _cloud_config() tests — verify the cloud path (already correct, but test for parity)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestCloudConfigFallback:
     """V13.35.0: Verify _cloud_config() also falls back correctly (it already
     used the `or` pattern, but we test it for parity and to prevent regression)."""
 
     def test_empty_cloud_model_falls_back_to_summarisation_cloud_model(self):
         """When grounding.cloud_model is empty, fall back to summarisation.cloud_model."""
-        settings = _MockSettings({
-            "grounding.cloud_model": "",
-            "summarisation.cloud_model": "gpt-4o-mini",
-        })
+        settings = _MockSettings(
+            {
+                "grounding.cloud_model": "",
+                "summarisation.cloud_model": "gpt-4o-mini",
+            }
+        )
         extractor = ClaimExtractor(settings=settings)
         config = extractor._cloud_config()
 
@@ -168,10 +174,12 @@ class TestCloudConfigFallback:
 
     def test_explicit_cloud_model_is_used(self):
         """When grounding.cloud_model is set, it takes priority."""
-        settings = _MockSettings({
-            "grounding.cloud_model": "claude-3-5-sonnet",
-            "summarisation.cloud_model": "gpt-4o-mini",
-        })
+        settings = _MockSettings(
+            {
+                "grounding.cloud_model": "claude-3-5-sonnet",
+                "summarisation.cloud_model": "gpt-4o-mini",
+            }
+        )
         extractor = ClaimExtractor(settings=settings)
         config = extractor._cloud_config()
 
@@ -182,6 +190,7 @@ class TestCloudConfigFallback:
 # Integration: _ollama_config → langextract call path (mocked)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOllamaConfigWouldNotCrashLangextract:
     """Verify that the model_id produced by _ollama_config() would NOT trigger
     langextract's 'Either model_id or provider must be specified' ValueError.
@@ -189,12 +198,15 @@ class TestOllamaConfigWouldNotCrashLangextract:
     This is the integration test that would have caught the V10.1.0 bug.
     """
 
-    @pytest.mark.parametrize("ollama_model_value,expected_model_id", [
-        ("", "gemma4-12b:latest"),                     # empty → fallback
-        ("llama3:8b", "llama3:8b"),                    # explicit
-        ("qwen2.5:7b", "qwen2.5:7b"),                  # explicit
-        ("gemma2:9b", "gemma2:9b"),                    # explicit
-    ])
+    @pytest.mark.parametrize(
+        "ollama_model_value,expected_model_id",
+        [
+            ("", "gemma4-12b:latest"),  # empty → fallback
+            ("llama3:8b", "llama3:8b"),  # explicit
+            ("qwen2.5:7b", "qwen2.5:7b"),  # explicit
+            ("gemma2:9b", "gemma2:9b"),  # explicit
+        ],
+    )
     def test_model_id_is_never_empty(self, ollama_model_value, expected_model_id):
         """For all common configurations, model_id must be non-empty."""
         settings = _MockSettings({"grounding.ollama_model": ollama_model_value})

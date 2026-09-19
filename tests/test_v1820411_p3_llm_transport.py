@@ -17,13 +17,13 @@ This file pins: session routing, session properties, pooling identity,
 payload-shape safety, and (source-scan) that no bare requests.post/get call
 remains in the unified modules.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-import requests
 
 import utils.network as net
 
@@ -51,14 +51,18 @@ _UNIFIED_MODULES = [
 # 1. session_for_url — the ONE routing rule
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSessionForUrl:
-    @pytest.mark.parametrize("url", [
-        "http://localhost:11434/api/generate",
-        "http://127.0.0.1:11434/v1/chat/completions",
-        "http://[::1]:11434/api/tags",
-        "http://0.0.0.0:11500/api/generate",
-        "http://localhost:11500",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://localhost:11434/api/generate",
+            "http://127.0.0.1:11434/v1/chat/completions",
+            "http://[::1]:11434/api/tags",
+            "http://0.0.0.0:11500/api/generate",
+            "http://localhost:11500",
+        ],
+    )
     def test_localhost_routes_to_no_proxy_session(self, url):
         sess = net.session_for_url(url)
         assert sess is net.get_shared_session()
@@ -66,12 +70,15 @@ class TestSessionForUrl:
         assert sess.trust_env is False
         assert sess.proxies == {"http": "", "https": ""}
 
-    @pytest.mark.parametrize("url", [
-        "https://openrouter.ai/api/v1/chat/completions",
-        "https://api.openai.com/v1/chat/completions",
-        "https://api.anthropic.com/v1/messages",
-        "http://llama-server.lan:8080/v1/chat/completions",  # non-local host
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://openrouter.ai/api/v1/chat/completions",
+            "https://api.openai.com/v1/chat/completions",
+            "https://api.anthropic.com/v1/messages",
+            "http://llama-server.lan:8080/v1/chat/completions",  # non-local host
+        ],
+    )
     def test_cloud_routes_to_cloud_session(self, url):
         sess = net.session_for_url(url)
         assert sess is net.get_shared_cloud_session()
@@ -81,13 +88,11 @@ class TestSessionForUrl:
     def test_pooled_identity(self):
         """Both sessions are process-lifetime singletons — repeated routing
         returns the SAME object (connection reuse, no per-call sessions)."""
-        assert (
-            net.session_for_url("http://localhost:11434")
-            is net.session_for_url("http://localhost:99999")
+        assert net.session_for_url("http://localhost:11434") is net.session_for_url(
+            "http://localhost:99999"
         )
-        assert (
-            net.session_for_url("https://a.example.com")
-            is net.session_for_url("https://b.example.org")
+        assert net.session_for_url("https://a.example.com") is net.session_for_url(
+            "https://b.example.org"
         )
         assert net.session_for_url("http://localhost:1") is not net.session_for_url("https://x.com")
 
@@ -104,40 +109,48 @@ class TestSessionForUrl:
 # 2. extract_openai_content — shape-safe deep-index
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestExtractOpenAIContent:
     def test_valid_payload(self):
-        assert net.extract_openai_content(
-            {"choices": [{"message": {"content": "  hello  "}}]}
-        ) == "hello"
+        assert (
+            net.extract_openai_content({"choices": [{"message": {"content": "  hello  "}}]})
+            == "hello"
+        )
 
-    @pytest.mark.parametrize("bad", [
-        None,
-        "not a dict",
-        42,
-        [],
-        {},
-        {"choices": []},
-        {"choices": "nope"},
-        {"choices": [None, ]},
-        {"choices": [{"no_message": 1}]},
-        {"choices": [{"message": "not-a-dict"}]},
-        {"choices": [{"message": {"content": None}}]},
-        {"choices": [{"message": {"content": 123}}]},
-        {"error": {"message": "provider error payload"}},
-    ])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            None,
+            "not a dict",
+            42,
+            [],
+            {},
+            {"choices": []},
+            {"choices": "nope"},
+            {
+                "choices": [
+                    None,
+                ]
+            },
+            {"choices": [{"no_message": 1}]},
+            {"choices": [{"message": "not-a-dict"}]},
+            {"choices": [{"message": {"content": None}}]},
+            {"choices": [{"message": {"content": 123}}]},
+            {"error": {"message": "provider error payload"}},
+        ],
+    )
     def test_malformed_payloads_return_empty(self, bad):
         assert net.extract_openai_content(bad) == ""
 
     def test_real_provider_error_shape(self):
         # OpenRouter-style error body: no choices key at all
-        assert net.extract_openai_content(
-            {"error": {"code": 429, "message": "Rate limited"}}
-        ) == ""
+        assert net.extract_openai_content({"error": {"code": 429, "message": "Rate limited"}}) == ""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. Source pins — the unification is complete and stays complete
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _strip_comments(src: str) -> str:
     out = []
@@ -186,7 +199,9 @@ class TestSourcePins:
         """The V13.31/V13.35 packets contract (tuple timeout, stream=True,
         2-attempt loop) must survive the transport swap — it was lost 3
         times by rewrites before being pinned."""
-        src = _strip_comments((_REPO / "core/outputs/packets/generator.py").read_text(encoding="utf-8"))
+        src = _strip_comments(
+            (_REPO / "core/outputs/packets/generator.py").read_text(encoding="utf-8")
+        )
         assert "timeout = (10, 300)" in src
         assert src.count("stream=True") >= 3  # payload flag + transport kwarg ×3 branches
         assert "max_retries = 2" in src
@@ -200,15 +215,18 @@ class TestSourcePins:
             src = _strip_comments((_REPO / rel).read_text(encoding="utf-8"))
             for m in re.finditer(r"\.post\(\s*\n", src):
                 # multi-line call — look ahead for a timeout= within the call
-                window = src[m.start(): m.start() + 700]
+                window = src[m.start() : m.start() + 700]
                 if "def " in window.split("(")[0]:
                     continue
-                assert "timeout" in window, f"{rel}: .post( call without timeout near: {window[:80]!r}"
+                assert "timeout" in window, (
+                    f"{rel}: .post( call without timeout near: {window[:80]!r}"
+                )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Behavioral pin — the retry-on-empty semantics survived the swap
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDispatcherEmptyRetrySemantics:
     def test_openai_compat_malformed_payload_retries_then_none(self):

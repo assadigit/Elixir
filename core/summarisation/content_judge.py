@@ -10,6 +10,7 @@ V18.20.1.0 (D3): also re-exports ``_runtime_state`` so tests that patch via the
 re-export module name (``content_judge._runtime_state.warned_X = Y``) mutate the
 shared state object — fixing the 5 order-dependent test failures at the root.
 """
+
 from __future__ import annotations
 
 # V18.20.1.0 (D3): re-export the shared runtime state object so tests can patch

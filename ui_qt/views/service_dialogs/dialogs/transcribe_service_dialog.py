@@ -23,12 +23,11 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
-from ui_qt.components.simple_worker import SimpleWorker
 
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
-
+from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
 )
@@ -39,6 +38,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 # V11.78.0: Transcribe Service — video/audio → text + Obsidian summary
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TranscribeServiceDialog(QDialog):
     """V11.78.0: Transcribe Service — video/audio → text + Obsidian summary.
@@ -97,9 +97,11 @@ class TranscribeServiceDialog(QDialog):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        desc = _QL("Import a video or audio file → get a raw transcript + "
-                   "an Obsidian-friendly summarized version. Uses "
-                   "faster-whisper (GPU-accelerated) for transcription.")
+        desc = _QL(
+            "Import a video or audio file → get a raw transcript + "
+            "an Obsidian-friendly summarized version. Uses "
+            "faster-whisper (GPU-accelerated) for transcription."
+        )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
         lay.addWidget(desc)
@@ -109,7 +111,9 @@ class TranscribeServiceDialog(QDialog):
         input_lay = _VL(input_group)
         file_row = _HL()
         self.file_edit = _QLE()
-        self.file_edit.setPlaceholderText("Pick a video (.mp4, .mkv, .avi) or audio (.mp3, .wav, .m4a) file…")
+        self.file_edit.setPlaceholderText(
+            "Pick a video (.mp4, .mkv, .avi) or audio (.mp3, .wav, .m4a) file…"
+        )
         file_btn = _QPB("Browse…")
         file_btn.clicked.connect(self._pick_file)
         file_row.addWidget(self.file_edit, 1)
@@ -187,8 +191,10 @@ class TranscribeServiceDialog(QDialog):
         live_row.addStretch()
         self.live_btn = _QPB("🎤 Live Transcribe (Microphone)")
         self.live_btn.setObjectName("Compact")
-        self.live_btn.setToolTip("Open the live microphone transcription tool — "
-                                 "records audio and transcribes in real-time using Whisper")
+        self.live_btn.setToolTip(
+            "Open the live microphone transcription tool — "
+            "records audio and transcribes in real-time using Whisper"
+        )
         self.live_btn.clicked.connect(self._open_live_transcribe)
         live_row.addWidget(self.live_btn)
         lay.addLayout(live_row)
@@ -224,6 +230,7 @@ class TranscribeServiceDialog(QDialog):
         import requests
 
         from utils.settings import Settings
+
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
@@ -243,23 +250,26 @@ class TranscribeServiceDialog(QDialog):
 
     def _pick_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Pick video or audio file", "",
+            self,
+            "Pick video or audio file",
+            "",
             "Media files (*.mp4 *.mkv *.avi *.mov *.mp3 *.wav *.m4a *.flac *.ogg *.webm);;"
             "Video (*.mp4 *.mkv *.avi *.mov *.webm);;"
             "Audio (*.mp3 *.wav *.m4a *.flac *.ogg);;"
-            "All files (*.*)")
+            "All files (*.*)",
+        )
         if path:
             self.file_edit.setText(path)
 
     def _pick_output(self):
-        folder = QFileDialog.getExistingDirectory(
-            self, "Choose output folder", "")
+        folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
         if folder:
             self.out_edit.setText(folder)
 
     def _open_live_transcribe(self):
         """V13.31.0 (#7): Open the live microphone transcription dialog."""
         from ui_qt.views.service_dialogs.live_transcribe import LiveTranscribeDialog
+
         dlg = LiveTranscribeDialog(self)
         dlg.exec()
 
@@ -291,7 +301,6 @@ class TranscribeServiceDialog(QDialog):
         def _work():
             return self._do_transcribe(options)
 
-        from ui_qt.components.simple_worker import SimpleWorker
         self._worker = SimpleWorker(_work)
         self._worker.finished.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
@@ -331,7 +340,8 @@ class TranscribeServiceDialog(QDialog):
             self._emit_progress(5, "🎬 Extracting audio from video...")
             temp_audio = str(out_folder / f"{file_stem}_audio.wav")
             if not extract_audio_from_video(
-                filepath, temp_audio,
+                filepath,
+                temp_audio,
                 log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
             ):
                 results["error"] = "Failed to extract audio from video. Is ffmpeg installed?"
@@ -439,6 +449,7 @@ class TranscribeServiceDialog(QDialog):
         self.status_label.setText(f"✅ Done!\n{summary_text}")
 
         QMessageBox.information(
-            self, "✅ Transcription Complete",
-            f"Transcription complete!\n\n{summary_text}\n\n"
-            f"Output: {self.out_edit.text()}")
+            self,
+            "✅ Transcription Complete",
+            f"Transcription complete!\n\n{summary_text}\n\nOutput: {self.out_edit.text()}",
+        )

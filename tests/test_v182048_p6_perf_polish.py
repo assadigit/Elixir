@@ -30,6 +30,7 @@ effects, every external call site monkeypatched):
 
 Run: pytest tests/test_v182048_p6_perf_polish.py -v
 """
+
 from __future__ import annotations
 
 import ast
@@ -83,6 +84,7 @@ _ANALYSIS = (
 # O-a3 — memoized check_coverage / extract_authors_from_analysis
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOa3MemoizedCoverage:
     def test_source_pins_cached_cores_exist(self):
         src = _strip_comments(_src(_DA))
@@ -116,7 +118,9 @@ class TestOa3MemoizedCoverage:
         a1 = extract_authors_from_analysis(_ANALYSIS)
         a1.append("MUT")
         assert extract_authors_from_analysis(_ANALYSIS) == [
-            "Erikson", "Winnicott", "Mahler",
+            "Erikson",
+            "Winnicott",
+            "Mahler",
         ]
 
     def test_empty_contracts_unchanged(self):
@@ -126,10 +130,16 @@ class TestOa3MemoizedCoverage:
         )
 
         assert check_coverage("", "x") == {
-            "total": 0, "covered": [], "missing": [], "coverage_pct": 1.0,
+            "total": 0,
+            "covered": [],
+            "missing": [],
+            "coverage_pct": 1.0,
         }
         assert check_coverage(None, "x") == {
-            "total": 0, "covered": [], "missing": [], "coverage_pct": 1.0,
+            "total": 0,
+            "covered": [],
+            "missing": [],
+            "coverage_pct": 1.0,
         }
         assert extract_authors_from_analysis("") == []
         assert extract_authors_from_analysis(None) == []
@@ -163,7 +173,10 @@ class TestOa3MemoizedCoverage:
         assert da.check_coverage("a", "b")["missing"] == ["X"]
         # recall_floor's function-local import sees the stub (not the cache)
         rf = recall_floor.deterministic_recall_floor(
-            _ANALYSIS, ["Erikson bullet"], "", "src",
+            _ANALYSIS,
+            ["Erikson bullet"],
+            "",
+            "src",
         )
         assert rf["theorists_total"] == 1, rf
 
@@ -171,6 +184,7 @@ class TestOa3MemoizedCoverage:
 # ═══════════════════════════════════════════════════════════════════════════
 # O-a6 — find_analysis_for_heading scan cache
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestOa6ScanCache:
     def test_source_pins(self):
@@ -186,6 +200,7 @@ class TestOa6ScanCache:
         (seg / "001_Chapter One.md").write_text("# Chapter One\nbody", encoding="utf-8")
         (seg / "001_Chapter One_analysis.md").write_text(_ANALYSIS, encoding="utf-8")
         import core.preprocessing.deterministic_analyzer as da
+
         da._ANALYSIS_SCAN_CACHE.clear()
         yield tmp_path
         da._ANALYSIS_SCAN_CACHE.clear()
@@ -218,7 +233,8 @@ class TestOa6ScanCache:
         assert "Erikson" in t1
         # a direct-entry change bumps the dir mtime -> rescan -> new result
         (analysis_tree / "000_zero_analysis.md").write_text(
-            "## Citations\n\n1. **Freud** (1 mentions): 1900\n", encoding="utf-8",
+            "## Citations\n\n1. **Freud** (1 mentions): 1900\n",
+            encoding="utf-8",
         )
         p2, t2 = find_analysis_for_heading(analysis_tree, "Chapter One")
         assert "Freud" in t2 or "Erikson" in t2  # rescan saw the new file
@@ -288,8 +304,12 @@ def _literal_stopword_assigns(path: Path, varname: str) -> list:
         if not any(isinstance(t, ast.Name) and t.id == varname for t in node.targets):
             continue
         value = node.value
-        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) \
-                and value.func.id in ("frozenset", "set") and value.args:
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id in ("frozenset", "set")
+            and value.args
+        ):
             value = value.args[0]
         if isinstance(value, (ast.List, ast.Set, ast.Tuple)) and all(
             isinstance(e, ast.Constant) and isinstance(e.value, str) for e in value.elts
@@ -364,10 +384,15 @@ class TestOa5CanonicalStopwordsModule:
         assert "goes" in CONCEPT_STOPWORDS and "opportunity" in CONCEPT_STOPWORDS
 
     def test_former_sites_alias_the_canonical_objects(self):
-        import core.summarisation.text_preprocessor_impl as tpi
         import core.summarisation.text_preprocessor as tp
-        from core.summarisation.simplified_keypoints import SimplifiedKeypointsBuilder  # noqa: F401 — import order guard
-        from core.summarisation.structural_stopwords import CONCEPT_STOPWORDS, STRUCTURAL_FUNCTION_WORDS
+        import core.summarisation.text_preprocessor_impl as tpi
+        from core.summarisation.simplified_keypoints import (
+            SimplifiedKeypointsBuilder,  # noqa: F401 — import order guard
+        )
+        from core.summarisation.structural_stopwords import (
+            CONCEPT_STOPWORDS,
+            STRUCTURAL_FUNCTION_WORDS,
+        )
         from core.summarisation.summarizer import Summarizer
 
         assert tpi._CONCEPT_STOPWORDS is CONCEPT_STOPWORDS
@@ -381,7 +406,7 @@ class TestOa5CanonicalStopwordsModule:
         output (case-sensitive set)."""
         from core.summarisation.structural_stopwords import THEORIST_NAME_STOPWORDS as sw
 
-        parts = "Later Erikson".split()
+        parts = ["Later", "Erikson"]
         assert len(parts) > 1 and parts[0] in sw  # 'Later' stripped
         assert "Erikson" not in sw
         assert "Say" not in sw and "Tell" not in sw and "Key" not in sw  # real surnames survive
@@ -390,6 +415,7 @@ class TestOa5CanonicalStopwordsModule:
 # ═══════════════════════════════════════════════════════════════════════════
 # W-a4 / O-a7 — simplified_keypoints on the house LLM dispatcher
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWa4DispatcherMigration:
     def test_unguarded_choices_parse_gone(self):
@@ -400,9 +426,9 @@ class TestWa4DispatcherMigration:
 
     def test_dispatcher_import_present(self):
         src = _strip_comments(_src(_SK))
-        assert (
-            "from core.summarisation.llm_dispatcher import call_openai_compat" in src
-        ), "the OpenAI-compat call must go through llm_dispatcher"
+        assert "from core.summarisation.llm_dispatcher import call_openai_compat" in src, (
+            "the OpenAI-compat call must go through llm_dispatcher"
+        )
 
     def test_hand_rolled_retry_loops_gone(self):
         src = _strip_comments(_src(_SK))
@@ -443,19 +469,44 @@ class TestWa4DispatcherMigration:
 
         spy = []
 
-        def _fake(prompt, base_url, api_key, model, label, temp, max_tokens,
-                  *, timeout, retries, provider, log=None):
-            spy.append(dict(prompt=prompt, base_url=base_url, api_key=api_key,
-                            model=model, label=label, temp=temp,
-                            max_tokens=max_tokens, timeout=timeout,
-                            retries=retries, provider=provider))
+        def _fake(
+            prompt,
+            base_url,
+            api_key,
+            model,
+            label,
+            temp,
+            max_tokens,
+            *,
+            timeout,
+            retries,
+            provider,
+            log=None,
+        ):
+            spy.append(
+                dict(
+                    prompt=prompt,
+                    base_url=base_url,
+                    api_key=api_key,
+                    model=model,
+                    label=label,
+                    temp=temp,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    retries=retries,
+                    provider=provider,
+                )
+            )
             return "SIMPLIFIED-TEXT"
 
         monkeypatch.setattr(disp, "call_openai_compat", _fake)
         b = self._builder()
         out = b._call_openai_compat(
-            "PROMPT", base_url=b.api_base_url, api_key=b.api_key,
-            model=b.cloud_model, label="Openrouter",
+            "PROMPT",
+            base_url=b.api_base_url,
+            api_key=b.api_key,
+            model=b.cloud_model,
+            label="Openrouter",
         )
         assert out == "SIMPLIFIED-TEXT"
         s = spy[0]
@@ -474,8 +525,20 @@ class TestWa4DispatcherMigration:
 
         spy = []
 
-        def _fake(prompt, base_url, api_key, model, label, temp, max_tokens,
-                  *, timeout, retries, provider, log=None):
+        def _fake(
+            prompt,
+            base_url,
+            api_key,
+            model,
+            label,
+            temp,
+            max_tokens,
+            *,
+            timeout,
+            retries,
+            provider,
+            log=None,
+        ):
             spy.append((label, base_url, model, provider))
             return "OK"
 
@@ -554,8 +617,9 @@ class TestWa4DispatcherMigration:
         assert reqs["n"] == 2  # 1 initial + 1 retry (retries=1, house fallback)
 
     def test_call_ollama_timeout_is_non_retryable(self, monkeypatch):
-        import core.summarisation.simplified_keypoints as sk
         import requests as _rq
+
+        import core.summarisation.simplified_keypoints as sk
 
         reqs = {"n": 0}
 
@@ -566,9 +630,7 @@ class TestWa4DispatcherMigration:
         monkeypatch.setattr(sk, "safe_ollama_request", _timeout)
         b = self._ollama_builder()
         assert b._call_ollama("hello") is None
-        assert reqs["n"] == 1, (
-            "V18.2.19 house rule: timeout = model stall — no pointless retry"
-        )
+        assert reqs["n"] == 1, "V18.2.19 house rule: timeout = model stall — no pointless retry"
 
     def test_call_ollama_model_missing_skips(self, monkeypatch):
         import core.summarisation.simplified_keypoints as sk
@@ -594,11 +656,12 @@ class TestWa4DispatcherMigration:
 # O-a8 / W-a9 — max_tokens in the response-cache key
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestOa8CacheKey:
     def test_source_pins(self):
         rc = _strip_comments(_src(_RC))
         assert "max_tokens: int | None = None" in rc
-        assert 'f"_{max_tokens if max_tokens is not None else \'default\'}_"' in rc
+        assert "f\"_{max_tokens if max_tokens is not None else 'default'}_\"" in rc
         summ = _strip_comments(_src(_SUM))
         assert 'response_cache.get(prompt, model or "", temp, max_tok)' in summ
         assert 'response_cache.put(prompt, model or "", temp, _result, max_tok)' in summ

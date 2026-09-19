@@ -76,25 +76,25 @@ _DROPS_FILENAME = "drops.jsonl"
 # regression shipped bullets like "Reading level: IELTS 7-9" + "Executive
 # summary: 150-250 words" + "5 sections in XML format").
 _PROMPT_INSTRUCTION_PATTERNS = (
-    re.compile(r'^Reading level:\s*IELTS', re.IGNORECASE),
-    re.compile(r'^Keep sentences under \d+ words', re.IGNORECASE),
-    re.compile(r'^Sentences under \d+ words', re.IGNORECASE),
-    re.compile(r'^Preserve (?:technical|all)\s+(?:terms|citations)', re.IGNORECASE),
-    re.compile(r'^Use active voice', re.IGNORECASE),
-    re.compile(r'^Use common words', re.IGNORECASE),
-    re.compile(r'^Executive summary:\s*\d+-\d+\s*words?', re.IGNORECASE),
-    re.compile(r'^Bullet points:\s*\d+-\d+\s*items?', re.IGNORECASE),
-    re.compile(r'^\d+\s+sections?\s+in\s+XML\s+format', re.IGNORECASE),
-    re.compile(r'^Cover all named contributors', re.IGNORECASE),
-    re.compile(r'^Include the full progression', re.IGNORECASE),
-    re.compile(r'^End with the conclusion', re.IGNORECASE),
-    re.compile(r'^Distinguish philosophical from developmental', re.IGNORECASE),
-    re.compile(r'^Preserve developmental mechanisms', re.IGNORECASE),
-    re.compile(r'^These two requirements seem contradictory', re.IGNORECASE),
-    re.compile(r'^Theoretical tensions:\s*\d+-\d+', re.IGNORECASE),
-    re.compile(r'^Key distinctions:\s*\d+-\d+', re.IGNORECASE),
-    re.compile(r'^Active voice$', re.IGNORECASE),
-    re.compile(r'^No invented facts$', re.IGNORECASE),
+    re.compile(r"^Reading level:\s*IELTS", re.IGNORECASE),
+    re.compile(r"^Keep sentences under \d+ words", re.IGNORECASE),
+    re.compile(r"^Sentences under \d+ words", re.IGNORECASE),
+    re.compile(r"^Preserve (?:technical|all)\s+(?:terms|citations)", re.IGNORECASE),
+    re.compile(r"^Use active voice", re.IGNORECASE),
+    re.compile(r"^Use common words", re.IGNORECASE),
+    re.compile(r"^Executive summary:\s*\d+-\d+\s*words?", re.IGNORECASE),
+    re.compile(r"^Bullet points:\s*\d+-\d+\s*items?", re.IGNORECASE),
+    re.compile(r"^\d+\s+sections?\s+in\s+XML\s+format", re.IGNORECASE),
+    re.compile(r"^Cover all named contributors", re.IGNORECASE),
+    re.compile(r"^Include the full progression", re.IGNORECASE),
+    re.compile(r"^End with the conclusion", re.IGNORECASE),
+    re.compile(r"^Distinguish philosophical from developmental", re.IGNORECASE),
+    re.compile(r"^Preserve developmental mechanisms", re.IGNORECASE),
+    re.compile(r"^These two requirements seem contradictory", re.IGNORECASE),
+    re.compile(r"^Theoretical tensions:\s*\d+-\d+", re.IGNORECASE),
+    re.compile(r"^Key distinctions:\s*\d+-\d+", re.IGNORECASE),
+    re.compile(r"^Active voice$", re.IGNORECASE),
+    re.compile(r"^No invented facts$", re.IGNORECASE),
 )
 
 
@@ -116,10 +116,7 @@ def _matches_prompt_leakage_pattern(bullet: str) -> bool:
     _bullet_stripped = bullet.strip()
     # Check the first 200 chars (prompt-instruction echoes are short + at the start)
     _check = _bullet_stripped[:200]
-    for pat in _PROMPT_INSTRUCTION_PATTERNS:
-        if pat.search(_check):
-            return True
-    return False
+    return any(pat.search(_check) for pat in _PROMPT_INSTRUCTION_PATTERNS)
 
 
 # ── Data classes ─────────────────────────────────────────────────────────────
@@ -134,13 +131,13 @@ class QuarantineEntry:
     """
 
     bullet: str
-    stage: str                       # e.g. "F4_source_overlap", "B3_dedup"
-    threshold: float = 0.0           # the threshold that was applied
-    source_overlap: float = 0.0      # measured overlap 0.0–1.0
-    reason: str = ""                 # human-readable explanation
-    chapter: str = ""                # chapter heading ("" if unknown)
-    actually_dropped: bool = True    # False in conservative mode (logged but kept)
-    recovered: bool = False          # True after the recovery pass resurrects it
+    stage: str  # e.g. "F4_source_overlap", "B3_dedup"
+    threshold: float = 0.0  # the threshold that was applied
+    source_overlap: float = 0.0  # measured overlap 0.0–1.0
+    reason: str = ""  # human-readable explanation
+    chapter: str = ""  # chapter heading ("" if unknown)
+    actually_dropped: bool = True  # False in conservative mode (logged but kept)
+    recovered: bool = False  # True after the recovery pass resurrects it
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -190,9 +187,7 @@ class QuarantineLog:
         # summarizer is instantiated outside a real conversion (e.g. unit
         # tests) — in that case we keep the in-memory log but skip disk.
         if output_dir is not None:
-            self._drops_path: Path | None = (
-                Path(output_dir) / _DROPS_SUBDIR / _DROPS_FILENAME
-            )
+            self._drops_path: Path | None = Path(output_dir) / _DROPS_SUBDIR / _DROPS_FILENAME
         else:
             self._drops_path = None
 
@@ -343,6 +338,7 @@ class QuarantineLog:
                     from core.summarisation.text_preprocessor import (
                         compute_source_overlap,
                     )
+
                     fresh = compute_source_overlap(entry.bullet, source_text)
                     # V18.15.7.0 (Fix 2): PREFER the fresh computation when it's
                     # available. Pre-V18.15.7.0, this used `overlap = max(overlap,
@@ -365,7 +361,8 @@ class QuarantineLog:
                         "quarantine recovery: fresh overlap recompute failed "
                         "— keeping the stale recorded value for this entry: "
                         "%s: %s",
-                        type(_e).__name__, _e,
+                        type(_e).__name__,
+                        _e,
                     )
                     pass  # keep recorded value (fresh computation failed)
             if overlap > self._recovery_threshold:
@@ -465,16 +462,12 @@ class QuarantineLog:
                         and obj.get("stage") == entry.stage
                     ):
                         obj["recovered"] = True
-                        obj["source_overlap"] = round(
-                            float(entry.source_overlap), 4
-                        )
+                        obj["source_overlap"] = round(float(entry.source_overlap), 4)
                         lines[i] = json.dumps(obj, ensure_ascii=False)
                         updated = True
                         break
                 if updated:
-                    self._drops_path.write_text(
-                        "\n".join(lines) + "\n", encoding="utf-8"
-                    )
+                    self._drops_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:  # pragma: no cover
             self._log(
                 f"  ⚠️ Quarantine: failed to update drops.jsonl ({type(exc).__name__}: {exc})",
@@ -515,14 +508,17 @@ class QuarantineLog:
             logger.warning(
                 "drops.jsonl unreadable (%s: %s) — treating as empty; "
                 "salvaged %d entry(ies) before the failure",
-                type(_e).__name__, _e, len(out),
+                type(_e).__name__,
+                _e,
+                len(out),
             )
             return out
         if unreadable:
             logger.warning(
-                "drops.jsonl: %d of %d line(s) unreadable (corrupt JSON) — "
-                "salvaged %d entr%s",
-                unreadable, total_lines, len(out),
+                "drops.jsonl: %d of %d line(s) unreadable (corrupt JSON) — salvaged %d entr%s",
+                unreadable,
+                total_lines,
+                len(out),
                 "y" if len(out) == 1 else "ies",
             )
         return out

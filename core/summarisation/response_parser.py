@@ -17,6 +17,7 @@ Also handles text stripping:
 This module is stateless — all functions take input + return output, no
 instance state.  The Summarizer delegates to these functions.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,79 +31,80 @@ logger = logging.getLogger(__name__)
 # ── Compiled regex patterns ────────────────────────────────────────────────
 
 _THINK_RE = re.compile(
-    r'</?(?:think|thinking|thought|analysis|reasoning|'
-    r'reflection|internal_monologue|scratchpad)\s*>',
+    r"</?(?:think|thinking|thought|analysis|reasoning|"
+    r"reflection|internal_monologue|scratchpad)\s*>",
     re.IGNORECASE | re.DOTALL,
 )
 
 _THINK_BLOCK_RE = re.compile(
-    r'<(?:think|thinking|thought|analysis|reasoning|reflection)\b[^>]*>.*?</(?:think|thinking|thought|analysis|reasoning|reflection)\s*>',
+    r"<(?:think|thinking|thought|analysis|reasoning|reflection)\b[^>]*>.*?</(?:think|thinking|thought|analysis|reasoning|reflection)\s*>",
     re.IGNORECASE | re.DOTALL,
 )
 
 _THINKING_PROCESS_RE = re.compile(
-    r'(?i)thinking\s*process\s*:.*?(?=<executive_summary>|<bullet|<thorough|\\*\\*Executive|\\*\\*Key|##|\\n\\s*[-\\*]\\s)',
+    r"(?i)thinking\s*process\s*:.*?(?=<executive_summary>|<bullet|<thorough|\\*\\*Executive|\\*\\*Key|##|\\n\\s*[-\\*]\\s)",
     re.DOTALL,
 )
 
 _MARKUP_TAG_RE = re.compile(
-    r'</?(?:'
-    r'finding|claim|snippet|source_ref|evidence_quote|'
-    r'verdict|reason|index'
-    r'|executive_summary|bullet_points|point|reference|'
-    r'summary|response|output|result|'
-    r'thought|thinking|analysis|reasoning|'
-    r'key_point|key_takeaway|takeaway|'
-    r'chapter|section|paragraph|sentence|'
-    r'quote|quotation|citation|cite|'
-    r'metadata|meta|tag|label|'
-    r'json|xml|html|code|pre'
-    r')\s*/?>',
+    r"</?(?:"
+    r"finding|claim|snippet|source_ref|evidence_quote|"
+    r"verdict|reason|index"
+    r"|executive_summary|bullet_points|point|reference|"
+    r"summary|response|output|result|"
+    r"thought|thinking|analysis|reasoning|"
+    r"key_point|key_takeaway|takeaway|"
+    r"chapter|section|paragraph|sentence|"
+    r"quote|quotation|citation|cite|"
+    r"metadata|meta|tag|label|"
+    r"json|xml|html|code|pre"
+    r")\s*/?>",
     re.IGNORECASE,
 )
 
 _GENERIC_MARKUP_TAG_RE = re.compile(
-    r'</?[a-z_][a-z_0-9]{0,29}\s*/?>',
+    r"</?[a-z_][a-z_0-9]{0,29}\s*/?>",
     re.IGNORECASE,
 )
 
 _PAGE_REF_RE = re.compile(
-    r'\s*[Pp]age\s+\d+,\s*[Ll]ines?\s+\d+[-\d]*\s*',
+    r"\s*[Pp]age\s+\d+,\s*[Ll]ines?\s+\d+[-\d]*\s*",
 )
 
-_PAGE_REF_END_RE = re.compile(r'\s*[Pp]age\s+\d+\s*$')
+_PAGE_REF_END_RE = re.compile(r"\s*[Pp]age\s+\d+\s*$")
 
 _REASONING_PATTERNS = [
-    r'(?:This is a|These are) (?:missed|missing) concept[s]? because[^.]*\.',
-    r'this suggests[^.]*\.',
-    r'[Tt]his (?:is also|refers to) (?:a |an )?(?:missed|missing) concept[^.]*\.',
-    r'[Tt]he existing bullets (?:probably )?(?:don\'t|do not) cover[^.]*\.',
-    r'I should focus on[^.]*\.',
-    r'[Tt]he abstract (?:also )?mentions[^.]*\.',
-    r'[Tt]he user specifically wants[^.]*\.',
-    r'I\'ll check[^.]*\.',
-    r'[Ss]ince I don\'t have[^.]*\.',
-    r'I\'ll (?:prioritize|assume|include|add|focus)[^.]*\.',
-    r'[Hh]owever, the (?:instruction|user) says[^.]*\.',
-    r'[Tt]he (?:missed|missing) concepts (?:are|is)[^.]*\.',
-    r'[Tt]his could be a missed concept[^.]*\.',
-    r'I can still include[^.]*\.',
-    r'I might (?:not )?(?:need|skip|include)[^.]*\.',
+    r"(?:This is a|These are) (?:missed|missing) concept[s]? because[^.]*\.",
+    r"this suggests[^.]*\.",
+    r"[Tt]his (?:is also|refers to) (?:a |an )?(?:missed|missing) concept[^.]*\.",
+    r"[Tt]he existing bullets (?:probably )?(?:don\'t|do not) cover[^.]*\.",
+    r"I should focus on[^.]*\.",
+    r"[Tt]he abstract (?:also )?mentions[^.]*\.",
+    r"[Tt]he user specifically wants[^.]*\.",
+    r"I\'ll check[^.]*\.",
+    r"[Ss]ince I don\'t have[^.]*\.",
+    r"I\'ll (?:prioritize|assume|include|add|focus)[^.]*\.",
+    r"[Hh]owever, the (?:instruction|user) says[^.]*\.",
+    r"[Tt]he (?:missed|missing) concepts (?:are|is)[^.]*\.",
+    r"[Tt]his could be a missed concept[^.]*\.",
+    r"I can still include[^.]*\.",
+    r"I might (?:not )?(?:need|skip|include)[^.]*\.",
 ]
 
 
 # ── Text stripping functions ───────────────────────────────────────────────
+
 
 def strip_thinking(text: str) -> str:
     """Strip <think>/<thinking> blocks from text."""
     if not text:
         return text
     # Remove complete <think>...</think> blocks
-    cleaned = _THINK_BLOCK_RE.sub('', text)
+    cleaned = _THINK_BLOCK_RE.sub("", text)
     # Remove orphaned <think> or </think> tags
-    cleaned = _THINK_RE.sub('', cleaned)
+    cleaned = _THINK_RE.sub("", cleaned)
     # Remove "thinking process:" prefixes
-    cleaned = _THINKING_PROCESS_RE.sub('', cleaned)
+    cleaned = _THINKING_PROCESS_RE.sub("", cleaned)
 
     # V18.20.4.11 (P1 / T-a2): instrument the stripping — this module's
     # logger existed but was never used and every strip/fallback was
@@ -113,22 +115,23 @@ def strip_thinking(text: str) -> str:
     # V18.2.12: Strip plain-text CoT leakage before the first XML tag.
     # The model sometimes leaks reasoning as plain text before <executive_summary>.
     _first_tag = re.search(
-        r'<(executive_summary|bullet_points|thorough_summary|key_distinctions|'
-        r'theoretical_tensions|summary|chapter_summary)',
-        cleaned, re.IGNORECASE
+        r"<(executive_summary|bullet_points|thorough_summary|key_distinctions|"
+        r"theoretical_tensions|summary|chapter_summary)",
+        cleaned,
+        re.IGNORECASE,
     )
     if _first_tag:
-        _before = cleaned[:_first_tag.start()]
+        _before = cleaned[: _first_tag.start()]
         _cot_patterns = [
-            r'The user wants',
-            r'Let me (go|work|carefully|identify|extract)',
-            r'I need to',
-            r'I must',
-            r'\d+\.\s+[A-Z][a-z]+\s+\(\d{4}\)',
+            r"The user wants",
+            r"Let me (go|work|carefully|identify|extract)",
+            r"I need to",
+            r"I must",
+            r"\d+\.\s+[A-Z][a-z]+\s+\(\d{4}\)",
         ]
         _is_cot = any(re.search(p, _before, re.IGNORECASE) for p in _cot_patterns)
         if _is_cot and len(_before) > 50:
-            cleaned = cleaned[_first_tag.start():]
+            cleaned = cleaned[_first_tag.start() :]
 
     # V18.20.4.11 (P1 / T-a2): pathological removal → WARNING with counts.
     # >50% of a response consumed by think-blocks/CoT means the model
@@ -139,7 +142,8 @@ def strip_thinking(text: str) -> str:
         logger.warning(
             "strip_thinking removed >50%% of text: %d -> %d chars "
             "(possible CoT/thinking leak past /no_think)",
-            _len_before, _len_after,
+            _len_before,
+            _len_after,
         )
 
     return cleaned.strip()
@@ -149,14 +153,14 @@ def strip_markup_tags(text: str) -> str:
     """Strip XML/JSON markup tags + page/line references from text."""
     if not text:
         return text
-    cleaned = _MARKUP_TAG_RE.sub('', text)
-    cleaned = _GENERIC_MARKUP_TAG_RE.sub('', cleaned)
+    cleaned = _MARKUP_TAG_RE.sub("", text)
+    cleaned = _GENERIC_MARKUP_TAG_RE.sub("", cleaned)
     # V10.12.9: Strip inline page/line references
-    cleaned = _PAGE_REF_RE.sub(' ', cleaned)
-    cleaned = _PAGE_REF_END_RE.sub('', cleaned)
+    cleaned = _PAGE_REF_RE.sub(" ", cleaned)
+    cleaned = _PAGE_REF_END_RE.sub("", cleaned)
     # Clean up whitespace
-    cleaned = re.sub(r'  +', ' ', cleaned)
-    cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
+    cleaned = re.sub(r"  +", " ", cleaned)
+    cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)
     return cleaned.strip()
 
 
@@ -165,9 +169,9 @@ def strip_reasoning_leaks(text: str) -> str:
     if not text:
         return text
     for pattern in _REASONING_PATTERNS:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-    text = re.sub(r'  +', ' ', text)
-    text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    text = re.sub(r"  +", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
     return text.strip()
 
 
@@ -183,24 +187,25 @@ def strip_narrative_from_thorough(text: str) -> str:
 
     # Narrative patterns — sentences describing what someone DID
     NARRATIVE_SENTENCE = re.compile(
-        r'(?:^|\.\s+)([A-Z][a-z]+\s+(?:went|goes|arrives|arrived|meets|met|'
-        r'tells|told|says|said|decides|decided|begins|began|walks|walked|'
-        r'runs|ran|drives|drove|calls|called|visits|visited|finds|found|'
-        r'moves|moved|returns|returned|leaves|left|joins|joined|leaves))',
+        r"(?:^|\.\s+)([A-Z][a-z]+\s+(?:went|goes|arrives|arrived|meets|met|"
+        r"tells|told|says|said|decides|decided|begins|began|walks|walked|"
+        r"runs|ran|drives|drove|calls|called|visits|visited|finds|found|"
+        r"moves|moved|returns|returned|leaves|left|joins|joined|leaves))",
         re.IGNORECASE,
     )
 
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = re.split(r"(?<=[.!?])\s+", text)
     kept = []
     for sent in sentences:
         if not NARRATIVE_SENTENCE.search(sent):
             kept.append(sent)
 
-    result = ' '.join(kept).strip()
+    result = " ".join(kept).strip()
     return result if result else text
 
 
 # ── V0.11 (real-rig audit, BUG-PRIMARY-FORMAT): LLM-JSON salvage helpers ────
+
 
 def _repair_llm_json(text: str) -> str:
     """V0.11 (real-rig audit, BUG-PRIMARY-FORMAT): repair the common
@@ -290,7 +295,11 @@ def _extract_json_result(data: dict) -> dict[str, Any] | None:
         _exec_claims = []
         exec_summary = str(exec_items)
     bullet_points = _extract_claims(bullet_items) if isinstance(bullet_items, list) else []
-    thorough = "\n".join(_extract_claims(thorough_items)) if isinstance(thorough_items, list) else str(thorough_items)
+    thorough = (
+        "\n".join(_extract_claims(thorough_items))
+        if isinstance(thorough_items, list)
+        else str(thorough_items)
+    )
 
     # V0.11 claims-mirror (see docstring). Threshold 12: pinned tests and
     # genuine academic-mode responses carry 1-3 claims; the rig failure
@@ -350,6 +359,7 @@ def _extract_json_result(data: dict) -> dict[str, Any] | None:
 
 # ── Bullet extraction helpers ─────────────────────────────────────────────
 
+
 def extract_bullets_from_text(text: str) -> list[str]:
     """Extract bullets from plain text using • / - / * / numbered markers."""
     bullets = []
@@ -357,9 +367,9 @@ def extract_bullets_from_text(text: str) -> list[str]:
         line = line.strip()
         if not line:
             continue
-        if re.match(r'^[\-\*•·▸]\s+', line) or re.match(r'^\d+[\.\)]\s+', line):
-            line = re.sub(r'^[\-\*•·▸]\s+', '', line)
-            line = re.sub(r'^\d+[\.\)]\s+', '', line)
+        if re.match(r"^[\-\*•·▸]\s+", line) or re.match(r"^\d+[\.\)]\s+", line):
+            line = re.sub(r"^[\-\*•·▸]\s+", "", line)
+            line = re.sub(r"^\d+[\.\)]\s+", "", line)
             if line and len(line) > 5:
                 bullets.append(line)
     return bullets
@@ -371,17 +381,17 @@ def extract_bullets_from_block(block: str) -> list[str]:
     Handles <point>, <bullet>, <finding><claim> tags + bullet markers.
     """
     # Try <point> tags
-    point_matches = re.findall(r'<point>\s*(.*?)\s*</point>', block, re.DOTALL | re.IGNORECASE)
+    point_matches = re.findall(r"<point>\s*(.*?)\s*</point>", block, re.DOTALL | re.IGNORECASE)
     if point_matches:
         return [p.strip() for p in point_matches if p.strip() and len(p.strip()) > 5]
 
     # Try <bullet> tags
-    bullet_matches = re.findall(r'<bullet>\s*(.*?)\s*</bullet>', block, re.DOTALL | re.IGNORECASE)
+    bullet_matches = re.findall(r"<bullet>\s*(.*?)\s*</bullet>", block, re.DOTALL | re.IGNORECASE)
     if bullet_matches:
         return [b.strip() for b in bullet_matches if b.strip() and len(b.strip()) > 5]
 
     # Try <finding><claim> tags
-    claim_matches = re.findall(r'<claim>\s*(.*?)\s*</claim>', block, re.DOTALL | re.IGNORECASE)
+    claim_matches = re.findall(r"<claim>\s*(.*?)\s*</claim>", block, re.DOTALL | re.IGNORECASE)
     if claim_matches:
         return [c.strip() for c in claim_matches if c.strip() and len(c.strip()) > 5]
 
@@ -390,6 +400,7 @@ def extract_bullets_from_block(block: str) -> list[str]:
 
 
 # ── Response parser ────────────────────────────────────────────────────────
+
 
 def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
     """Parse an LLM response into {executive_summary, bullet_points, thorough_summary}.
@@ -404,19 +415,19 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
     # Try JSON first (academic rigor OR if the response looks like JSON)
     # V13.34.1: Also try JSON when the response starts with { even if academic_rigor is False.
     # The model sometimes returns JSON format even in non-academic mode.
-    looks_like_json = cleaned.strip().startswith('{') or '```json' in cleaned[:20].lower()
+    looks_like_json = cleaned.strip().startswith("{") or "```json" in cleaned[:20].lower()
     if academic_rigor or looks_like_json:
         # V13.34.1: Strip markdown code fences before parsing
         json_text = cleaned
-        json_text = re.sub(r'^```json\s*\n?', '', json_text, flags=re.IGNORECASE)
-        json_text = re.sub(r'^```\s*\n?', '', json_text)
-        json_text = re.sub(r'\n?```\s*$', '', json_text)
+        json_text = re.sub(r"^```json\s*\n?", "", json_text, flags=re.IGNORECASE)
+        json_text = re.sub(r"^```\s*\n?", "", json_text)
+        json_text = re.sub(r"\n?```\s*$", "", json_text)
         json_text = json_text.strip()
         # Try to find the first complete JSON object
-        json_match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', json_text, re.DOTALL)
+        json_match = re.search(r"(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})", json_text, re.DOTALL)
         if not json_match:
             # Fallback: try the greedy match
-            json_match = re.search(r'(\{.*\})', json_text, re.DOTALL)
+            json_match = re.search(r"(\{.*\})", json_text, re.DOTALL)
         if json_match:
             _json_fields: dict[str, Any] | None = None
             _json_parsed = False
@@ -442,7 +453,10 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
                     logger.debug(
                         "parse_response: JSON decode failed (%s: %s) → universal "
                         "parser (%d chars, head=%r)",
-                        type(_jde).__name__, _jde.msg, len(cleaned), cleaned[:80],
+                        type(_jde).__name__,
+                        _jde.msg,
+                        len(cleaned),
+                        cleaned[:80],
                     )
                 else:
                     _json_parsed = True
@@ -452,7 +466,8 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
                             "parse_response: strict JSON decode failed (%s: %s) "
                             "but the V0.11 repair pass recovered it — %d "
                             "bullets, exec %d chars, thorough %d chars",
-                            type(_jde).__name__, _jde.msg,
+                            type(_jde).__name__,
+                            _jde.msg,
                             len(_json_fields["bullet_points"]),
                             len(_json_fields["executive_summary"]),
                             len(_json_fields["thorough_summary"]),
@@ -461,8 +476,7 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
                 # V18.20.4.11 (P1 / T-a2): routine trace of the winning
                 # path — counts only, content never logged above DEBUG.
                 logger.debug(
-                    "parse_response: JSON path OK (%d bullets, exec %d "
-                    "chars, thorough %d chars)",
+                    "parse_response: JSON path OK (%d bullets, exec %d chars, thorough %d chars)",
                     len(_json_fields["bullet_points"]),
                     len(_json_fields["executive_summary"]),
                     len(_json_fields["thorough_summary"]),
@@ -481,8 +495,7 @@ def parse_response(raw: str, academic_rigor: bool = False) -> dict[str, Any]:
             # V18.20.4.11 (P1 / T-a2): looked like JSON but no JSON object
             # found at all → universal parser. DEBUG (routine salvage).
             logger.debug(
-                "parse_response: no JSON object found in %d-char response → "
-                "universal parser",
+                "parse_response: no JSON object found in %d-char response → universal parser",
                 len(cleaned),
             )
 
@@ -510,16 +523,18 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
 
     # Step A: Extract executive_summary
     em = re.search(
-        r'<executive_summary>\s*(.*?)(?:</executive_summary>|<bullet_points>|<thorough_summary>|<key_takeaways>|<key_points>|$)',
-        cleaned, re.DOTALL | re.IGNORECASE,
+        r"<executive_summary>\s*(.*?)(?:</executive_summary>|<bullet_points>|<thorough_summary>|<key_takeaways>|<key_points>|$)",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
     )
     if em:
         exec_sum = em.group(1).strip()
 
     # Step B: Extract bullet_points block
     bm = re.search(
-        r'<bullet_points>\s*(.*?)(?:</bullet_points>|<thorough_summary>|<key_takeaways>|$)',
-        cleaned, re.DOTALL | re.IGNORECASE,
+        r"<bullet_points>\s*(.*?)(?:</bullet_points>|<thorough_summary>|<key_takeaways>|$)",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
     )
     if bm:
         bullets_block = bm.group(1).strip()
@@ -529,14 +544,18 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
 
     # Step C: Try <point>/<bullet>/<finding> tags
     if not bullets:
-        point_matches = re.findall(r'<point>\s*(.*?)\s*</point>', cleaned, re.DOTALL | re.IGNORECASE)
+        point_matches = re.findall(
+            r"<point>\s*(.*?)\s*</point>", cleaned, re.DOTALL | re.IGNORECASE
+        )
         if point_matches:
             bullets = [p.strip() for p in point_matches if p.strip() and len(p.strip()) > 5]
             if bullets:
                 _bp_src = "<point> tags"
 
     if not bullets:
-        bullet_matches = re.findall(r'<bullet>\s*(.*?)\s*</bullet>', cleaned, re.DOTALL | re.IGNORECASE)
+        bullet_matches = re.findall(
+            r"<bullet>\s*(.*?)\s*</bullet>", cleaned, re.DOTALL | re.IGNORECASE
+        )
         if bullet_matches:
             bullets = [b.strip() for b in bullet_matches if b.strip() and len(b.strip()) > 5]
             if bullets:
@@ -544,7 +563,9 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
 
     if not bullets:
         finding_matches = re.findall(
-            r'<claim>\s*(.*?)\s*</claim>', cleaned, re.DOTALL | re.IGNORECASE,
+            r"<claim>\s*(.*?)\s*</claim>",
+            cleaned,
+            re.DOTALL | re.IGNORECASE,
         )
         if finding_matches:
             bullets = [c.strip() for c in finding_matches if c.strip() and len(c.strip()) > 5]
@@ -566,8 +587,9 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
 
     # Step F: Extract thorough_summary
     tm = re.search(
-        r'<thorough_summary>\s*(.*?)(?:</thorough_summary>|$)',
-        cleaned, re.DOTALL | re.IGNORECASE,
+        r"<thorough_summary>\s*(.*?)(?:</thorough_summary>|$)",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
     )
     if tm:
         thorough = tm.group(1).strip()
@@ -576,11 +598,11 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     if not thorough:
         remaining = cleaned
         if em:
-            remaining = remaining.replace(em.group(0), '', 1)
+            remaining = remaining.replace(em.group(0), "", 1)
         if bm:
-            remaining = remaining.replace(bm.group(0), '', 1)
+            remaining = remaining.replace(bm.group(0), "", 1)
         if tm:
-            remaining = remaining.replace(tm.group(0), '', 1)
+            remaining = remaining.replace(tm.group(0), "", 1)
         # V0.06 (rig audit F1-a — GENERAL RULE): the additive sections are
         # parsed into their OWN fields below — they must never fall into the
         # leftover-thorough fallback. The V0.05 rig run proved the failure
@@ -594,24 +616,34 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
         # Distinctions + Theoretical Tensions. The leftover may only ever
         # contain genuinely unclaimed content.
         remaining = re.sub(
-            r'<key_distinctions>.*?(?:</key_distinctions>|<theoretical_tensions>|$)',
-            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+            r"<key_distinctions>.*?(?:</key_distinctions>|<theoretical_tensions>|$)",
+            "",
+            remaining,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         remaining = re.sub(
-            r'<theoretical_tensions>.*?(?:</theoretical_tensions>|$)',
-            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+            r"<theoretical_tensions>.*?(?:</theoretical_tensions>|$)",
+            "",
+            remaining,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         remaining = re.sub(
-            r'<scholar_reflections?>.*?(?:</scholar_reflections?>|$)',
-            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+            r"<scholar_reflections?>.*?(?:</scholar_reflections?>|$)",
+            "",
+            remaining,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         remaining = re.sub(
-            r'<source_excerpts?>.*?(?:</source_excerpts?>|$)',
-            '', remaining, flags=re.DOTALL | re.IGNORECASE,
+            r"<source_excerpts?>.*?(?:</source_excerpts?>|$)",
+            "",
+            remaining,
+            flags=re.DOTALL | re.IGNORECASE,
         )
         remaining = re.sub(
-            r'</?(?:summary|chapter_summary|response|output)\s*/?>',
-            '', remaining, flags=re.IGNORECASE,
+            r"</?(?:summary|chapter_summary|response|output)\s*/?>",
+            "",
+            remaining,
+            flags=re.IGNORECASE,
         )
         # V0.11 (real-rig audit, BUG-THOROUGH-LOSS): the leftover fallback
         # must NEVER bank a raw JSON claims blob as the thorough_summary.
@@ -623,9 +655,8 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
         # quote-mangled) and leave thorough EMPTY so the pipeline's dedicated
         # thorough call regenerates real prose.
         _rem_json = remaining.strip()
-        if (
-            _rem_json.startswith(("{", "["))
-            and ('"claim"' in _rem_json or '"executive_summary"' in _rem_json)
+        if _rem_json.startswith(("{", "[")) and (
+            '"claim"' in _rem_json or '"executive_summary"' in _rem_json
         ):
             _salvaged = _salvage_json_claims(_rem_json)
             if not bullets and len(_salvaged) >= 3:
@@ -636,7 +667,8 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
                 "(%d chars) — NOT banked as thorough_summary (%d claims "
                 "salvaged to bullets); thorough left empty for the "
                 "dedicated thorough call",
-                len(_rem_json), len(_salvaged),
+                len(_rem_json),
+                len(_salvaged),
             )
             thorough = ""
         else:
@@ -665,14 +697,15 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
         if _th_stripped.lower() in ("none", "n/a", "null", "none."):
             thorough = ""
         else:
-            thorough = re.sub(r'(?<=[.!?:])\s*\bNone\s*$', '', _th_stripped)
+            thorough = re.sub(r"(?<=[.!?:])\s*\bNone\s*$", "", _th_stripped)
 
     # V13.38.0: Extract new additive sections
     key_distinctions = ""
     tensions = ""
     kdm = re.search(
-        r'<key_distinctions>\s*(.*?)(?:</key_distinctions>|<theoretical_tensions>|$)',
-        cleaned, re.DOTALL | re.IGNORECASE,
+        r"<key_distinctions>\s*(.*?)(?:</key_distinctions>|<theoretical_tensions>|$)",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
     )
     if kdm:
         key_distinctions = kdm.group(1).strip()
@@ -684,17 +717,18 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
         # trailing line. Complete (closed-tag) sections are never touched.
         key_distinctions = strip_truncated_section_tail(
             key_distinctions,
-            closing_tag_present='</key_distinctions>' in cleaned.lower(),
+            closing_tag_present="</key_distinctions>" in cleaned.lower(),
         )
     ttm = re.search(
-        r'<theoretical_tensions>\s*(.*?)(?:</theoretical_tensions>|$)',
-        cleaned, re.DOTALL | re.IGNORECASE,
+        r"<theoretical_tensions>\s*(.*?)(?:</theoretical_tensions>|$)",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
     )
     if ttm:
         tensions = ttm.group(1).strip()
         tensions = strip_truncated_section_tail(  # V18.20.3.1 (D1) — same class
             tensions,
-            closing_tag_present='</theoretical_tensions>' in cleaned.lower(),
+            closing_tag_present="</theoretical_tensions>" in cleaned.lower(),
         )
     key_distinctions = strip_thinking(key_distinctions)
     key_distinctions = strip_markup_tags(key_distinctions)
@@ -709,8 +743,13 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
     # (bullet_pipeline) also has nothing to work with, and this used to be
     # completely silent. Counts only — no content at WARNING.
     if cleaned and cleaned.strip():
-        if not (exec_sum.strip() or bullets or thorough.strip()
-                or key_distinctions.strip() or tensions.strip()):
+        if not (
+            exec_sum.strip()
+            or bullets
+            or thorough.strip()
+            or key_distinctions.strip()
+            or tensions.strip()
+        ):
             logger.warning(
                 "universal parser: non-empty input (%d chars) produced ZERO "
                 "content (exec/bullets/thorough/additive sections all empty)",
@@ -718,9 +757,11 @@ def _parse_universal(cleaned: str) -> dict[str, Any]:
             )
         else:
             logger.debug(
-                "universal parser: %d bullets (via %s), exec %d chars, "
-                "thorough %d chars",
-                len(bullets), _bp_src, len(exec_sum), len(thorough),
+                "universal parser: %d bullets (via %s), exec %d chars, thorough %d chars",
+                len(bullets),
+                _bp_src,
+                len(exec_sum),
+                len(thorough),
             )
 
     return {
@@ -791,7 +832,7 @@ def truncate_to_sentences(text: str, max_sentences: int = 2, max_words: int = 35
     N sentences. If a single sentence exceeds ``max_words``, truncates at
     the word boundary.
     """
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
     kept = []
     word_count = 0
     for sent in sentences[:max_sentences]:
@@ -799,11 +840,11 @@ def truncate_to_sentences(text: str, max_sentences: int = 2, max_words: int = 35
         if word_count + len(sent_words) > max_words:
             remaining = max_words - word_count
             if remaining > 5:
-                kept.append(' '.join(sent_words[:remaining]) + '…')
+                kept.append(" ".join(sent_words[:remaining]) + "…")
             break
         kept.append(sent)
         word_count += len(sent_words)
-    return ' '.join(kept).strip() if kept else text[:200].strip()
+    return " ".join(kept).strip() if kept else text[:200].strip()
 
 
 def extract_sentences_as_bullets(text: str, max_bullets: int = 15) -> list[str]:
@@ -816,13 +857,13 @@ def extract_sentences_as_bullets(text: str, max_bullets: int = 15) -> list[str]:
     """
     if not text or not text.strip():
         return []
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text.strip())
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text.strip())
     bullets = []
     for sent in sentences:
         sent = sent.strip()
         if len(sent) < 20:
             continue
-        if sent.startswith('#') or sent.startswith('['):
+        if sent.startswith("#") or sent.startswith("["):
             continue
         bullets.append(sent)
         if len(bullets) >= max_bullets:
@@ -835,14 +876,13 @@ def extract_sentences_as_bullets(text: str, max_bullets: int = 15) -> list[str]:
     # and zero-yield (degenerate input even for the fallback).
     if bullets:
         logger.warning(
-            "sentence fallback: salvaged %d bullets from %d chars "
-            "(structured parsers found none)",
-            len(bullets), len(text),
+            "sentence fallback: salvaged %d bullets from %d chars (structured parsers found none)",
+            len(bullets),
+            len(text),
         )
     else:
         logger.warning(
-            "sentence fallback: %d-char input yielded 0 bullets "
-            "(no qualifying sentence found)",
+            "sentence fallback: %d-char input yielded 0 bullets (no qualifying sentence found)",
             len(text),
         )
     return bullets

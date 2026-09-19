@@ -33,6 +33,7 @@ def _estimate_tokens(text: str) -> int:
     if _tiktoken_enc is None:
         try:
             import tiktoken
+
             _tiktoken_enc = tiktoken.get_encoding("cl100k_base")
         except ImportError:
             _tiktoken_enc = False  # mark as unavailable
@@ -48,6 +49,7 @@ def _estimate_tokens(text: str) -> int:
 
 # ── Data structures ───────────────────────────────────────────────────────
 
+
 @dataclass
 class Chunk:
     """A single translatable chunk of text.
@@ -60,6 +62,7 @@ class Chunk:
         is_code:      True if this is a code block (should NOT be translated).
         token_estimate: estimated token count of ``text``.
     """
+
     index: int
     text: str
     context: str = ""
@@ -73,6 +76,7 @@ class Chunk:
 
 
 # ── Chunker ──────────────────────────────────────────────────────────────
+
 
 class TranslationChunker:
     """Splits markdown text into translation-friendly chunks.
@@ -120,12 +124,14 @@ class TranslationChunker:
         fm_match = self._FRONTMATTER_RE.match(remaining)
         if fm_match:
             fm_text = fm_match.group(0)
-            chunks.append(Chunk(
-                index=len(chunks),
-                text=fm_text,
-                is_frontmatter=True,
-            ))
-            remaining = remaining[fm_match.end():]
+            chunks.append(
+                Chunk(
+                    index=len(chunks),
+                    text=fm_text,
+                    is_frontmatter=True,
+                )
+            )
+            remaining = remaining[fm_match.end() :]
 
         # ── Step 2: Split out code blocks ──────────────────────────────
         # We use a split-and-keep approach: find all code blocks, and
@@ -134,7 +140,7 @@ class TranslationChunker:
         last_end = 0
         for m in self._CODEBLOCK_RE.finditer(remaining):
             if m.start() > last_end:
-                parts.append((remaining[last_end:m.start()], False))
+                parts.append((remaining[last_end : m.start()], False))
             parts.append((m.group(0), True))
             last_end = m.end()
         if last_end < len(remaining):
@@ -144,12 +150,14 @@ class TranslationChunker:
         prev_context = ""
         for part_text, is_code in parts:
             if is_code:
-                chunks.append(Chunk(
-                    index=len(chunks),
-                    text=part_text,
-                    is_code=True,
-                    context=prev_context[-200:] if prev_context else "",
-                ))
+                chunks.append(
+                    Chunk(
+                        index=len(chunks),
+                        text=part_text,
+                        is_code=True,
+                        context=prev_context[-200:] if prev_context else "",
+                    )
+                )
                 prev_context = part_text[-200:]
                 continue
 
@@ -177,10 +185,12 @@ class TranslationChunker:
             nonlocal current_buf, current_tokens
             if current_buf:
                 text_joined = "\n\n".join(current_buf)
-                chunks.append(Chunk(
-                    index=0,  # will be set by caller
-                    text=text_joined,
-                ))
+                chunks.append(
+                    Chunk(
+                        index=0,  # will be set by caller
+                        text=text_joined,
+                    )
+                )
                 current_buf = []
                 current_tokens = 0
 

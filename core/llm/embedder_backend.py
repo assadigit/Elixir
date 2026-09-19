@@ -21,6 +21,7 @@ The backend is selected automatically based on the model name:
 
 Or explicitly via ``settings.embedding.backend = "ollama"``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,8 +84,9 @@ class SentenceTransformerBackend:
         """
         return getattr(self._model, name)
 
-    def encode(self, texts: str | Sequence[str], convert_to_numpy: bool = True,
-               **kwargs) -> np.ndarray:
+    def encode(
+        self, texts: str | Sequence[str], convert_to_numpy: bool = True, **kwargs
+    ) -> np.ndarray:
         """Encode via the underlying SentenceTransformer.
 
         V18.2.44: when this backend was marked unhealthy by ``smoke_test``,
@@ -120,15 +122,16 @@ class SentenceTransformerBackend:
         zero tensor instead of raising).
         """
         try:
-            vec = self._model.encode("health check", convert_to_numpy=True,
-                                     show_progress_bar=False)
+            vec = self._model.encode("health check", convert_to_numpy=True, show_progress_bar=False)
             arr = np.asarray(vec, dtype=np.float32).ravel()
             if arr.size == 0:
                 self.healthy = False
                 self._health_reason = "smoke-test returned an empty vector"
             elif not np.any(arr):
                 self.healthy = False
-                self._health_reason = "smoke-test returned an all-zero vector (CUDA forward-pass OOM suspected)"
+                self._health_reason = (
+                    "smoke-test returned an all-zero vector (CUDA forward-pass OOM suspected)"
+                )
             elif np.isnan(arr).any():
                 self.healthy = False
                 self._health_reason = "smoke-test returned a NaN vector"
@@ -142,9 +145,7 @@ class SentenceTransformerBackend:
                 self._health_reason = ""
         except Exception as exc:
             self.healthy = False
-            self._health_reason = (
-                f"smoke-test raised {type(exc).__name__}: {exc}"
-            )
+            self._health_reason = f"smoke-test raised {type(exc).__name__}: {exc}"
         if not self.healthy:
             logger.error(
                 "SentenceTransformer smoke-test FAILED: %s. Semantic "
@@ -181,8 +182,9 @@ class OllamaEmbedBackend:
     of ~50 — a few seconds saved per chapter.
     """
 
-    def __init__(self, model_name: str, base_url: str = "http://localhost:11434",
-                 timeout: int = 60) -> None:
+    def __init__(
+        self, model_name: str, base_url: str = "http://localhost:11434", timeout: int = 60
+    ) -> None:
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -194,7 +196,7 @@ class OllamaEmbedBackend:
         # instead of silently returning zero vectors that poison every
         # downstream similarity check (the root cause of the V18.2.20
         # "coverage=0% (0/46 claims)" + "dropped 37 then resurrected 37"
-# churn seen in a rig conversion log).
+        # churn seen in a rig conversion log).
         self.healthy: bool = True
         self._health_reason: str = ""
 
@@ -211,6 +213,7 @@ class OllamaEmbedBackend:
         """
         try:
             from core.llm.llm_provider_impl import _get_keep_alive
+
             return _get_keep_alive()
         except Exception:
             return "30m"
@@ -218,14 +221,15 @@ class OllamaEmbedBackend:
     def _embed_single(self, text: str) -> np.ndarray:
         """Call Ollama /api/embed (new) with fallback to /api/embeddings (old)."""
         from utils.network import safe_ollama_request
+
         # V18.2.19: Try the NEW /api/embed endpoint first (Ollama 0.1.34+).
         # The OLD /api/embeddings returns 404 on newer Ollama versions, causing
         # the hundreds of "Ollama embed batch item N failed: 404 Client Error"
         # warnings seen in the conversion log. /api/embed is the current
         # standard; /api/embeddings is the legacy single-text endpoint.
         for endpoint, payload_key in [
-            ("/api/embed", "input"),       # NEW: {"model":..., "input": text}
-            ("/api/embeddings", "prompt"), # OLD: {"model":..., "prompt": text}
+            ("/api/embed", "input"),  # NEW: {"model":..., "input": text}
+            ("/api/embeddings", "prompt"),  # OLD: {"model":..., "prompt": text}
         ]:
             url = f"{self.base_url}{endpoint}"
             # V18.20.2.0 (SWOT A22): keep_alive — stops the 5m-default idle
@@ -271,6 +275,7 @@ class OllamaEmbedBackend:
         batching is NOT attempted there (the per-item loop covers it).
         """
         from utils.network import safe_ollama_request
+
         url = f"{self.base_url}/api/embed"
         payload = {
             "model": self.model_name,
@@ -301,12 +306,14 @@ class OllamaEmbedBackend:
         except Exception as exc:
             logger.debug(
                 "Ollama batched /api/embed failed (%s: %s) — falling back to per-item",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
             return None
 
-    def encode(self, texts: str | Sequence[str], convert_to_numpy: bool = True,
-               **kwargs) -> np.ndarray:
+    def encode(
+        self, texts: str | Sequence[str], convert_to_numpy: bool = True, **kwargs
+    ) -> np.ndarray:
         """Encode text(s) via Ollama. Returns a numpy array.
 
         For a single string: returns a 1-D array (dim,).
@@ -393,14 +400,16 @@ class OllamaEmbedBackend:
                         "likely not installed. %s. Disabling backend; returning "
                         "zero vectors for this batch. Semantic similarity will "
                         "be degraded (cos_sim=0 for all pairs).",
-                        self.model_name, exc,
+                        self.model_name,
+                        exc,
                     )
                     # Return zero vectors for the whole batch (fail-safe).
                     dim = 384  # MiniLM/bge-small default; unknown since first call failed
                     return np.zeros((len(_texts), dim), dtype=np.float32)
                 # Mid-batch transient failure → zero vector (dim known)
-                logger.warning("Ollama embed batch item %d failed: %s: %s",
-                               i, type(exc).__name__, exc)
+                logger.warning(
+                    "Ollama embed batch item %d failed: %s: %s", i, type(exc).__name__, exc
+                )
                 results.append(np.zeros(self._dim, dtype=np.float32))
                 if consecutive_failures >= 3:
                     self.healthy = False
@@ -460,7 +469,8 @@ class OllamaEmbedBackend:
             logger.error(
                 "Embedder smoke-test FAILED for '%s': %s. Semantic similarity "
                 "will fall back to Jaccard word overlap (weaker signal). %s",
-                self.model_name, self._health_reason,
+                self.model_name,
+                self._health_reason,
                 "" if "not installed" not in self._health_reason else "",
             )
         return self.healthy

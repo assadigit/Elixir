@@ -68,6 +68,7 @@ def _strip_think_blocks(text: str) -> str:
 
 # ── Harakat generator ────────────────────────────────────────────────────
 
+
 class HarakatGenerator:
     """Adds Persian harakat (diacritics) to Farsi text via LLM.
 
@@ -151,7 +152,7 @@ class HarakatGenerator:
                     self.log(
                         f"  [Harakat] Output from '{self.model}' looks corrupted "
                         f"(diacritic ratio too high), trying fallback…",
-                        "WARNING"
+                        "WARNING",
                     )
                     # Try fallback model if configured
                     if self.fallback_model and self.fallback_model != self.model:
@@ -162,7 +163,7 @@ class HarakatGenerator:
                                 self.log(
                                     f"  [Harakat] Fallback '{self.fallback_model}' "
                                     f"produced valid output",
-                                    "INFO"
+                                    "INFO",
                                 )
                                 self._failure_count = 0
                                 self._cache[cache_key] = fb_result
@@ -171,11 +172,10 @@ class HarakatGenerator:
                                 self.log(
                                     "  [Harakat] Fallback also produced garbage — "
                                     "returning original text",
-                                    "WARNING"
+                                    "WARNING",
                                 )
             else:
-                self.log("  [Harakat] Empty LLM response, returning original",
-                         "WARNING")
+                self.log("  [Harakat] Empty LLM response, returning original", "WARNING")
         except Exception as e:
             self._failure_count += 1
             if self._failure_count >= self._max_failures:
@@ -183,13 +183,13 @@ class HarakatGenerator:
                 self.log(
                     f"  [Harakat] Disabled after {self._failure_count} "
                     f"failures (last: {e}). Using original text.",
-                    "WARNING"
+                    "WARNING",
                 )
             else:
                 self.log(
                     f"  [Harakat] Failed ({e}), returning original "
                     f"({self._failure_count}/{self._max_failures})",
-                    "WARNING"
+                    "WARNING",
                 )
 
         return text  # graceful degradation
@@ -239,14 +239,14 @@ class HarakatGenerator:
         fm_match = fm_re.match(remaining)
         if fm_match:
             segments.append((fm_match.group(0), "frontmatter"))
-            remaining = remaining[fm_match.end():]
+            remaining = remaining[fm_match.end() :]
 
         # Extract code blocks
         code_re = re.compile(r"```[\s\S]*?```")
         last_end = 0
         for m in code_re.finditer(remaining):
             if m.start() > last_end:
-                segments.append((remaining[last_end:m.start()], "text"))
+                segments.append((remaining[last_end : m.start()], "text"))
             segments.append((m.group(0), "code"))
             last_end = m.end()
         if last_end < len(remaining):
@@ -278,7 +278,6 @@ class HarakatGenerator:
 
         # Protect markdown links: [text](url) — protect the URL part
         def _protect_link(m):
-            full = m.group(0)
             url = m.group(2)
             idx = len(placeholders)
             placeholders.append(url)
@@ -295,9 +294,7 @@ class HarakatGenerator:
 
         # Restore placeholders
         for i, original in enumerate(placeholders):
-            harakat_text = harakat_text.replace(
-                f"__PLACEHOLDER_{i}__", original
-            )
+            harakat_text = harakat_text.replace(f"__PLACEHOLDER_{i}__", original)
 
         return harakat_text
 
@@ -404,9 +401,7 @@ class HarakatGenerator:
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
-_PERSIAN_RE = re.compile(
-    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
-)
+_PERSIAN_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 
 def _has_farsi(text: str) -> bool:

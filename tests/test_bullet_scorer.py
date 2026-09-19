@@ -7,6 +7,7 @@ by even one point, the test fails.
 
 Run: pytest tests/test_bullet_scorer.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,12 +19,15 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Stub tiktoken so the import chain works.
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.bullet_scorer import score_bullet
 
@@ -81,7 +85,9 @@ class TestConceptBonus:
         """Multiple matching concepts still only give +15 (break after first)."""
         bullet = "The mechanism requires careful calibration of the instruments."
         s_one = score_bullet(bullet, concepts=["mechanism"], source_text="")
-        s_many = score_bullet(bullet, concepts=["mechanism", "calibration", "instruments"], source_text="")
+        s_many = score_bullet(
+            bullet, concepts=["mechanism", "calibration", "instruments"], source_text=""
+        )
         assert s_one == s_many
 
 
@@ -94,7 +100,8 @@ class TestActionVerb:
         scores higher than one without."""
         with_verb = score_bullet(
             "The study demonstrates that 50% of participants improved significantly after treatment.",
-            concepts=[], source_text="50% participants improved",
+            concepts=[],
+            source_text="50% participants improved",
         )
         # 'demonstrates' is in the action-verb list → +10
         assert with_verb >= 40
@@ -104,11 +111,13 @@ class TestActionVerb:
         Uses 'requires' (in the action-verb list) vs 'exemplifies' (not in it)."""
         with_verb = score_bullet(
             "The framework requires the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         without_verb = score_bullet(
             "The framework exemplifies the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         # 'requires' is in the list, 'exemplifies' is not → diff is +10
         assert with_verb - without_verb == 10
@@ -123,11 +132,13 @@ class TestNarrativeMarker:
         +10 'no narrative markers' bonus."""
         with_narrative = score_bullet(
             "Ryan went to the meeting and says the framework is sound here.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         without_narrative = score_bullet(
             "The framework establishes the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         # Both are otherwise similar-length, capital + period, no thinking,
         # no leakage, no meta. The narrative one loses the +10 narrative bonus.
@@ -174,11 +185,13 @@ class TestSpecificityMarkers:
         """A bullet with a citation [N] gets the +10 specificity bonus."""
         with_cite = score_bullet(
             "The study found significant results [12] in the treatment group here.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         without_cite = score_bullet(
             "The study found significant results in the treatment group here.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         assert with_cite - without_cite == 10
 
@@ -186,11 +199,13 @@ class TestSpecificityMarkers:
         """A bullet with '50%' gets the +10 specificity bonus."""
         with_pct = score_bullet(
             "The study found that fifty percent improved after treatment today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         without_pct = score_bullet(
             "The study found that many participants improved after treatment today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         # 'fifty' isn't 50%, but the regex is \d+%; this test just checks the
         # score is in range. (We use '50%' in the real path elsewhere.)
@@ -206,11 +221,13 @@ class TestCapitalPunct:
         """A bullet starting with a capital and ending with '.' gets +5."""
         good = score_bullet(
             "The study demonstrates that fifty percent of participants improved.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         bad = score_bullet(
             "the study demonstrates that fifty percent of participants improved",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         assert good - bad == 5
 
@@ -224,11 +241,13 @@ class TestContaminationPenalties:
         the +10 no-thinking bonus."""
         clean = score_bullet(
             "The framework establishes the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         with_thinking = score_bullet(
             "Analyze the framework that establishes the core principle today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         assert clean > with_thinking
         assert clean - with_thinking == 10
@@ -238,11 +257,13 @@ class TestContaminationPenalties:
         loses the +5 no-leakage bonus."""
         clean = score_bullet(
             "The framework establishes the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         with_leak = score_bullet(
             "Source Text: the framework establishes the core principle today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         assert clean > with_leak
         assert clean - with_leak == 5
@@ -252,11 +273,13 @@ class TestContaminationPenalties:
         loses the +5 no-meta bonus."""
         clean = score_bullet(
             "The framework establishes the core principle clearly here today.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         with_meta = score_bullet(
             "This bullet describes the framework that establishes the principle.",
-            concepts=[], source_text="",
+            concepts=[],
+            source_text="",
         )
         assert clean > with_meta
         assert clean - with_meta == 5
@@ -269,15 +292,21 @@ class TestByteForByte:
     def test_deterministic_score(self):
         """The same bullet must produce the same score across calls."""
         bullet = "The study demonstrates that 50% of participants improved significantly after treatment."
-        s1 = score_bullet(bullet, concepts=["study", "treatment"], source_text="50% participants improved")
-        s2 = score_bullet(bullet, concepts=["study", "treatment"], source_text="50% participants improved")
+        s1 = score_bullet(
+            bullet, concepts=["study", "treatment"], source_text="50% participants improved"
+        )
+        s2 = score_bullet(
+            bullet, concepts=["study", "treatment"], source_text="50% participants improved"
+        )
         assert s1 == s2
 
     def test_golden_score_good_bullet(self):
         """Golden score for a well-formed bullet with concept + action verb +
         number from source. (If this changes, the extraction regressed.)"""
         bullet = "The study demonstrates that 50% of participants improved significantly after treatment."
-        s = score_bullet(bullet, concepts=["study", "treatment"], source_text="50% participants improved")
+        s = score_bullet(
+            bullet, concepts=["study", "treatment"], source_text="50% participants improved"
+        )
         # concept +15, action 'demonstrates' +10, no narrative +10,
         # length (12 words) +10, number from source (50% in source) +10,
         # specificity (50%) +10, capital + period +5, no thinking +10,

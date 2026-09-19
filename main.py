@@ -16,7 +16,10 @@ import os
 import shutil
 import sys
 from pathlib import Path as _P  # V18.2.22: module-level for Bootstrap call
-from utils.settings import user_data_dir  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
+
+from utils.settings import (
+    user_data_dir,  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
+)
 
 # V18.2.37 (CRITICAL fix): ensure new .py files are loaded, not stale .pyc.
 # On Windows, deleting __pycache__ while the process is running can crash
@@ -60,6 +63,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 # ~/.elixir/ (V18.20.3 died with zero trace). Best-effort, never raises.
 try:
     from core.system.crash_visibility import arm_crash_visibility, rotate_log_if_large
+
     arm_crash_visibility()
 except Exception as _e:
     print(f"[V18.20.3.3] crash-visibility arm failed: {type(_e).__name__}: {_e}")
@@ -77,10 +81,16 @@ except Exception as _e:
 #
 # We also log the probe result to a startup file so we can verify the
 # in-app CUDA state.
-_TORCH_CUDA_PROBE = {"checked": False, "available": False, "cuda_tag": None,
-                     "device_name": None, "error": None}
+_TORCH_CUDA_PROBE = {
+    "checked": False,
+    "available": False,
+    "cuda_tag": None,
+    "device_name": None,
+    "error": None,
+}
 try:
     import torch as _torch_early
+
     _TORCH_CUDA_PROBE["checked"] = True
     _TORCH_CUDA_PROBE["cuda_tag"] = getattr(_torch_early.version, "cuda", None)
     _TORCH_CUDA_PROBE["available"] = bool(_torch_early.cuda.is_available())
@@ -92,11 +102,14 @@ except Exception as _e:
 # Write the probe result to a startup log (best-effort).
 try:
     import datetime as _dt
-    _probe_log = user_data_dir() / "gpu_probe.log"  # earliest disk touch → runs the rebrand migration
+
+    _probe_log = (
+        user_data_dir() / "gpu_probe.log"
+    )  # earliest disk touch → runs the rebrand migration
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     rotate_log_if_large(_probe_log)  # V18.20.4.12 (W-c14): rotate before append — never raises
     with open(_probe_log, "a", encoding="utf-8") as _f:
-        _f.write(f"\n{'='*60}\n")
+        _f.write(f"\n{'=' * 60}\n")
         _f.write(f"{_dt.datetime.now().isoformat()}\n")
         _f.write(f"Python: {sys.executable}\n")
         _f.write(f"torch: {getattr(_torch_early, '__version__', 'NOT INSTALLED')}\n")
@@ -109,9 +122,11 @@ try:
 except Exception:
     pass
 
+
 def get_startup_cuda_probe() -> dict:  # Expose the probe for the UI to read.
     """Return the early torch CUDA probe result (run before PySide6)."""
     return dict(_TORCH_CUDA_PROBE)
+
 
 # V18.20.4.9 (T-b4): the old ``Qt.AA_EnableHighDpiScaling = True`` line here
 # was a dead assignment (zero readers) — Qt 6 enables high-DPI scaling
@@ -128,13 +143,13 @@ def _check_dependencies() -> list[str]:
     """Return a list of missing critical packages."""
     missing = []
     critical = {
-        "PySide6":     "PySide6>=6.6",
-        "markitdown":  "markitdown[all]>=0.1.0",
-        "pypdf":       "pypdf>=4.3.0",
-        "requests":    "requests>=2.31.0",
-        "PIL":         "Pillow>=10.4.0",
-        "tiktoken":    "tiktoken>=0.7.0",
-        "docx":        "python-docx>=1.1.0",
+        "PySide6": "PySide6>=6.6",
+        "markitdown": "markitdown[all]>=0.1.0",
+        "pypdf": "pypdf>=4.3.0",
+        "requests": "requests>=2.31.0",
+        "PIL": "Pillow>=10.4.0",
+        "tiktoken": "tiktoken>=0.7.0",
+        "docx": "python-docx>=1.1.0",
     }
     for module, pkg in critical.items():
         try:
@@ -158,7 +173,9 @@ def _show_missing_deps_error(missing: list[str]) -> None:
     print("=" * 60 + "\n")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
-        app = QApplication.instance() or QApplication(sys.argv)
+
+        if QApplication.instance() is None:
+            QApplication(sys.argv)
         QMessageBox.critical(None, "Missing dependencies", msg)
     except Exception as _e:
         logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -194,22 +211,29 @@ def _install_excepthook() -> None:
         _crash_path = None
         try:
             from core.system.crash_report import generate_crash_report
+
             # V13.29.0: Collect the last 200 lines of system.log
             _extra_lines = None
             try:
                 from pathlib import Path as _P
+
                 _log_file = _P.home() / ".elixir" / "system.log"
                 if _log_file.exists():
                     # Read last 200 lines efficiently (don't load whole file)
                     with open(_log_file, encoding="utf-8", errors="replace") as _f:
                         from collections import deque
+
                         _lines = deque(_f, maxlen=200)
                     _extra_lines = list(_lines)
             except Exception as _e:
-                logger.debug("could not read system.log for crash report: %s: %s", type(_e).__name__, _e)
+                logger.debug(
+                    "could not read system.log for crash report: %s: %s", type(_e).__name__, _e
+                )
 
             _crash_path = generate_crash_report(
-                exc_type, exc_value, exc_tb,
+                exc_type,
+                exc_value,
+                exc_tb,
                 extra_log_lines=_extra_lines,
             )
         except Exception as _e:
@@ -218,6 +242,7 @@ def _install_excepthook() -> None:
         # try to show a friendly dialog (best-effort — never crash here)
         try:
             from PySide6.QtWidgets import QApplication, QMessageBox
+
             app = QApplication.instance()
             if app is not None:
                 msg = QMessageBox()
@@ -251,9 +276,11 @@ if __name__ == "__main__":
     # run() never raises — one failing step doesn't block the others.
     try:
         from core.system.bootstrap import Bootstrap
+
         Bootstrap(user_data_dir(), app_dir=_P(__file__).resolve().parent).run()
     except Exception as _e:
         logger.debug("bootstrap skipped: %s: %s", type(_e).__name__, _e)
 
     from ui_qt.app import run
+
     run()

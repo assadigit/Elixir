@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 # Step 1: PDF Selection + Document Type
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class Step1Pdf(WizardStep):
     """PDF file selection + document type preset cards."""
@@ -95,7 +96,9 @@ class Step1Pdf(WizardStep):
         prof_row = QHBoxLayout()
         prof_row.setSpacing(6)
         self.profile_combo = QComboBox()
-        self.profile_combo.setToolTip("Saved configuration profiles (models, outputs, translation, etc.)")
+        self.profile_combo.setToolTip(
+            "Saved configuration profiles (models, outputs, translation, etc.)"
+        )
         prof_row.addWidget(self.profile_combo, 1)
         self.prof_save_btn = QPushButton("Save…")
         self.prof_save_btn.setObjectName("Compact")
@@ -153,6 +156,7 @@ class Step1Pdf(WizardStep):
                 sample_text = ""
                 try:
                     import pdfplumber
+
                     with pdfplumber.open(pdf_path) as pdf:
                         for page in pdf.pages[:10]:  # first 10 pages
                             t = page.extract_text() or ""
@@ -166,17 +170,22 @@ class Step1Pdf(WizardStep):
                     return  # can't detect — let the converter do it later
 
                 from core.llm.content_detector import detect_content_type
+
                 result = detect_content_type(sample_text)
                 self._detection_result = result
                 # Marshal to UI thread
                 from PySide6.QtCore import QMetaObject
                 from PySide6.QtCore import Qt as _Qt
+
                 QMetaObject.invokeMethod(
-                    self, "_show_detection_suggestion",
+                    self,
+                    "_show_detection_suggestion",
                     _Qt.ConnectionType.QueuedConnection,
                 )
             except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)  # detection is best-effort; don't block the user
+                logger.debug(
+                    "ignored %s: %s", type(_e).__name__, _e
+                )  # detection is best-effort; don't block the user
 
         SimpleWorker(_detect).start()
 
@@ -212,9 +221,7 @@ class Step1Pdf(WizardStep):
             )
             self._detection_label.setTextFormat(Qt.RichText)
             self._detection_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-            self._detection_label.linkActivated.connect(
-                lambda: self._apply_detection(result)
-            )
+            self._detection_label.linkActivated.connect(lambda: self._apply_detection(result))
         else:
             self._detection_label.setText(
                 f"🔍 Auto-detected: {result.label()} "
@@ -222,8 +229,7 @@ class Step1Pdf(WizardStep):
                 f"keeping default (normal_book)"
             )
             self._detection_label.setStyleSheet(
-                f"color: {p.text_muted}; background: transparent; "
-                f"font-size: 11px; padding: 4px;"
+                f"color: {p.text_muted}; background: transparent; font-size: 11px; padding: 4px;"
             )
 
     def _apply_detection(self, result) -> None:
@@ -240,8 +246,7 @@ class Step1Pdf(WizardStep):
             )
             p = theme_manager.palette
             self._detection_label.setStyleSheet(
-                f"color: {p.success}; background: transparent; "
-                f"font-size: 11px; padding: 4px;"
+                f"color: {p.success}; background: transparent; font-size: 11px; padding: 4px;"
             )
 
     # ── V7.5.0 #8: Configuration profiles ─────────────────────────────────
@@ -253,6 +258,7 @@ class Step1Pdf(WizardStep):
     def _refresh_profiles(self) -> None:
         """Repopulate the profiles dropdown."""
         from core.pipeline.profiles import list_profiles
+
         self.profile_combo.clear()
         profiles = list_profiles()
         if not profiles:
@@ -271,14 +277,15 @@ class Step1Pdf(WizardStep):
         from PySide6.QtWidgets import QInputDialog
 
         from core.pipeline.profiles import save_profile
+
         name, ok = QInputDialog.getText(self, "Save profile", "Profile name:")
         if not ok or not name.strip():
             return
         name = name.strip()
         # Serialize current wizard state, excluding per-book fields.
         from dataclasses import asdict
-        data = {k: v for k, v in asdict(self.state).items()
-                if k not in self._PROFILE_EXCLUDE}
+
+        data = {k: v for k, v in asdict(self.state).items() if k not in self._PROFILE_EXCLUDE}
         if save_profile(name, data):
             QMessageBox.information(self, "Profile saved", f"Profile '{name}' saved.")
             self._refresh_profiles()
@@ -291,6 +298,7 @@ class Step1Pdf(WizardStep):
 
     def _load_profile(self) -> None:
         from core.pipeline.profiles import load_profile
+
         name = self.profile_combo.currentText()
         if not name or name == "(no saved profiles)":
             return
@@ -328,7 +336,8 @@ class Step1Pdf(WizardStep):
             if sk in data:
                 self.controller.update_setting(setting_key, data[sk])
         QMessageBox.information(
-            self, "Profile loaded",
+            self,
+            "Profile loaded",
             f"Profile '{name}' applied ({applied} settings).\n\n"
             "The conversion will use these settings. Step widgets may still\n"
             "show the previous values until you reopen the wizard.",
@@ -336,13 +345,16 @@ class Step1Pdf(WizardStep):
 
     def _delete_profile(self) -> None:
         from core.pipeline.profiles import delete_profile
+
         name = self.profile_combo.currentText()
         if not name or name == "(no saved profiles)":
             return
         ret = QMessageBox.question(
-            self, "Delete profile",
+            self,
+            "Delete profile",
             f"Delete profile '{name}'? This cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return

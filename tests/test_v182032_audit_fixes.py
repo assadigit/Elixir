@@ -56,6 +56,7 @@ P2-d — THERMAL REPORT CUT OFF after "Session duration": ROOT CAUSE was a
    calls the minutes_above_threshold property which acquires the SAME
    non-reentrant Lock. Fix: RLock + per-line guards in log_report.
 """
+
 from __future__ import annotations
 
 import sys
@@ -125,10 +126,10 @@ BULLET_SEARLES = (
 # The 2 shipped self-talk bullets (verbatim)
 SELF_TALK_1 = "Stoller (1968) - include this! Let me add it."
 SELF_TALK_2 = (
-    "Erikson (1958) - be more specific. The source says \"Erikson (1958)\" "
+    'Erikson (1958) - be more specific. The source says "Erikson (1958)" '
     "in the context of the term being introduced. Actually, looking at the "
-    "text: \"In the 1950s Erikson (1950a, 1956, 1958, 1959) resurrected the "
-    "term.\""
+    'text: "In the 1950s Erikson (1950a, 1956, 1958, 1959) resurrected the '
+    'term."'
 )
 
 # The 2 shipped broken lead bullets (verbatim)
@@ -202,6 +203,7 @@ class TestParseTimeCoTGate:
         assert getattr(s, "_thorough_is_synthetic", False) is False
         # And the source contains the reset block (regression pin).
         import inspect
+
         src = inspect.getsource(Summarizer._summarize_inner)
         assert "_primary_thorough_cot_nuked = False" in src
         assert "_thorough_is_synthetic = False" in src
@@ -247,8 +249,7 @@ class TestSelfTalkPatterns:
         from core.summarisation.post_processing import SELF_TALK_PATTERNS
 
         ok_bullets = [
-            "Erikson (1956) defined ego identity as a persistent sameness "
-            "within oneself.",
+            "Erikson (1956) defined ego identity as a persistent sameness within oneself.",
             "The chapter distinguishes sociocultural determinants from the "
             "personal origins of identity.",
             "Kernberg formulated a three-step process: introjection, "
@@ -281,8 +282,7 @@ class TestSelfTalkPatterns:
         )
         assert "Erikson (1956) defined ego identity." in report.bullets
         assert all("Stoller" not in b for b in report.bullets)
-        assert any(i.detector == "self_talk" and i.severity == "fix"
-                   for i in report.issues)
+        assert any(i.detector == "self_talk" and i.severity == "fix" for i in report.issues)
 
 
 class TestJudgeAppealCarveOut:
@@ -317,6 +317,7 @@ class TestJudgeAppealCarveOut:
             request=types.SimpleNamespace(source_type="normal_book"),
             _current_heading="Ch1",
         )
+
         # Fake ContentJudge: both bullets "ungrounded" per the LLM judge.
         class _FakeJudgeResult:
             summary = "fake"
@@ -365,7 +366,8 @@ class TestJudgeAppealCarveOut:
         from core.summarisation.bullet_pipeline import PipelineState
 
         state = PipelineState(
-            heading="Ch1", content=SRC_KHAN,
+            heading="Ch1",
+            content=SRC_KHAN,
             bullets=[
                 SELF_TALK_1,
                 "Winnicott did not use the term identity specifically, but "
@@ -400,6 +402,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         result = detect_parenthetical_promotion(BULLET_KHAN, SRC_KHAN)
         assert result == ("Khan", "Winnicott")
 
@@ -409,6 +412,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         result = detect_parenthetical_promotion(BULLET_KLEIN, SRC_KLEIN)
         assert result == ("Klein", "Kernberg")
 
@@ -418,6 +422,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         result = detect_parenthetical_promotion(BULLET_SEARLES, SRC_SEARLES)
         assert result == ("Searles", "Lichtenstein")
 
@@ -426,6 +431,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         src = (
             "Mahler formulated the separation-individuation theory. "
             "Mahler's work provides the developmental framework for "
@@ -439,6 +445,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         b = "The chapter covers identity diffusion in borderline patients."
         assert detect_parenthetical_promotion(b, SRC_KHAN) is None
 
@@ -454,8 +461,7 @@ class TestParentheticalPromotion:
             source_text=SRC_KHAN,
         )
         assert all("Khan:" not in b for b in report.bullets)
-        promos = [i for i in report.issues
-                  if i.detector == "parenthetical_promotion"]
+        promos = [i for i in report.issues if i.detector == "parenthetical_promotion"]
         assert len(promos) == 1
         assert promos[0].severity == "fix"
         assert "Winnicott" in promos[0].detail
@@ -486,6 +492,7 @@ class TestParentheticalPromotion:
         from core.summarisation.postcheck_detectors import (
             detect_attribution_subject_swap,
         )
+
         # Same-verb colon form: bullet + source both use 'contributed'.
         src = (
             "By integrating the works of Klein (1948), Erikson (1950a,b), "
@@ -572,8 +579,7 @@ class TestCitationOnlyFragment:
             source_text=SRC_KHAN,
         )
         assert all("Federn" not in b for b in report.bullets)
-        assert any(i.detector == "citation_only" and i.severity == "fix"
-                   for i in report.issues)
+        assert any(i.detector == "citation_only" and i.severity == "fix" for i in report.issues)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -621,16 +627,16 @@ class TestScholarTruncatedVerdict:
                 return "PROMPT"
 
         from core.summarisation.scholar_reflection import scholar_reflection
+
         monkeypatch.setattr(
-            "core.summarisation.scholar_reflection.scr_scholar_reflection",
-            None, raising=False)
+            "core.summarisation.scholar_reflection.scr_scholar_reflection", None, raising=False
+        )
         result = {}
         # Call the module-level function directly with the fake deps.
         result["out"] = scholar_reflection(
             "Ch1",
             "Chapter text about identity. " * 40,
-            {"bullet_points": ["a"], "executive_summary": "b",
-             "thorough_summary": "c"},
+            {"bullet_points": ["a"], "executive_summary": "b", "thorough_summary": "c"},
             max_context_tokens=32768,
             language="en",
             temperature=0.7,
@@ -646,17 +652,13 @@ class TestScholarTruncatedVerdict:
         """A 'no significant gaps found' verdict from a response whose
         <gap_fill_bullets> section never closed must carry the VERDICT
         UNRELIABLE warning (the .3.1 failure mode)."""
-        raw = (
-            "<scholar_reflections>\nnone\n"
-            "<gap_fill_bullets>\n- a partial bullet that was cut mid"
-        )
+        raw = "<scholar_reflections>\nnone\n<gap_fill_bullets>\n- a partial bullet that was cut mid"
         logs, captured = self._run_scholar(raw, monkeypatch)
         assert captured["max_tokens"] == 6144
         verdict_logs = [m for _, m in logs if "no significant gaps" in m]
         assert verdict_logs, "the verdict log must fire"
         assert any("VERDICT UNRELIABLE" in m for m in verdict_logs)
-        assert any(level == "WARNING" for level, m in logs
-                   if "VERDICT UNRELIABLE" in m)
+        assert any(level == "WARNING" for level, m in logs if "VERDICT UNRELIABLE" in m)
 
     def test_complete_no_gaps_verdict_clean(self, monkeypatch):
         """A well-formed complete response logs the plain verdict."""
@@ -716,7 +718,7 @@ class TestAdditiveRetryOnMassDrop:
         truncated_resp = (
             "<key_distinctions>\n"
             "- A complete distinction between introjection and identification that stands.\n"
-            "- Truncated one that got cut (unmatched quote \"\n"
+            '- Truncated one that got cut (unmatched quote "\n'
             "- Another truncated line missing its contrast (unmatched\n"
             "- Third truncated line with no terminal punctuation at all here\n"
             "- Fourth truncated\n"
@@ -779,16 +781,26 @@ class TestDroppedLetterStoplist:
         "psychoanalytic literature philosophy existential"
     )
 
-    @pytest.mark.parametrize("word", [
-        "moving", "seven", "stages", "clarify", "fusing", "raising",
-        "identifies",
-    ])
+    @pytest.mark.parametrize(
+        "word",
+        [
+            "moving",
+            "seven",
+            "stages",
+            "clarify",
+            "fusing",
+            "raising",
+            "identifies",
+        ],
+    )
     def test_common_word_not_flagged(self, word):
         from core.summarisation.postcheck_detectors import (
             detect_dropped_letter_garble,
         )
+
         _, issues = detect_dropped_letter_garble(
-            f"the {word} process", "test", source_text=self._SRC)
+            f"the {word} process", "test", source_text=self._SRC
+        )
         assert not any(i.detail.startswith("likely garbled") for i in issues), (
             f"'{word}' is ordinary English — must not be flagged"
         )
@@ -801,19 +813,20 @@ class TestDroppedLetterStoplist:
         from core.summarisation.postcheck_detectors import (
             detect_dropped_letter_garble,
         )
+
         # V0.03 default: flag-only, text untouched.
         fixed, issues = detect_dropped_letter_garble(
-            "the emergs process", "test", source_text=self._SRC)
+            "the emergs process", "test", source_text=self._SRC
+        )
         assert any(i.severity == "flag" for i in issues)
         assert "emergs" in fixed
         # Explicitly enabled: the guarded repair fires.
         fixed, issues = detect_dropped_letter_garble(
-            "the emergs process", "test", source_text=self._SRC,
-            auto_repair=True)
-        assert any(
-            i.severity == "fix" and "auto-repair" in i.detail
-            for i in issues
-        ), "the 'emergs' true positive must be caught (now as a repair)"
+            "the emergs process", "test", source_text=self._SRC, auto_repair=True
+        )
+        assert any(i.severity == "fix" and "auto-repair" in i.detail for i in issues), (
+            "the 'emergs' true positive must be caught (now as a repair)"
+        )
         assert "emerges" in fixed
 
     def test_stem_lookup_ing_restores_e(self):
@@ -821,6 +834,7 @@ class TestDroppedLetterStoplist:
         from core.summarisation.postcheck_detectors import (
             _common_word_stem_in_stoplist,
         )
+
         assert _common_word_stem_in_stoplist("moving")
         assert _common_word_stem_in_stoplist("fusing")
         assert _common_word_stem_in_stoplist("raised")
@@ -847,8 +861,7 @@ class TestEgoIdealJoinGuard:
         (the source uses the split form)."""
         from core.summarisation.postcheck_detectors import detect_extra_spaces
 
-        txt = ("The long path means accepting chronological lag, forming "
-               "ego ideal, temporal order.")
+        txt = "The long path means accepting chronological lag, forming ego ideal, temporal order."
         cleaned, issues = detect_extra_spaces(txt, "test", source_text=self._SRC)
         assert "egoideal" not in cleaned
         assert not issues
@@ -964,23 +977,22 @@ class TestSettingsBanner:
         )
         paths = types.SimpleNamespace()
         ctx = {
-            "request": r, "settings": _S(), "paths": paths,
-            "output_dir": Path("."), "app_version": "test",
+            "request": r,
+            "settings": _S(),
+            "paths": paths,
+            "output_dir": Path("."),
+            "app_version": "test",
         }
 
         import core.llm.modelfile_integrity as mi
-        monkeypatch.setattr(
-            mi, "_run_ollama_show", lambda model: ollama_show_output)
-        monkeypatch.setattr(
-            settings_logger, "_run_ollama_show", mi._run_ollama_show,
-            raising=False)
+
+        monkeypatch.setattr(mi, "_run_ollama_show", lambda model: ollama_show_output)
+        monkeypatch.setattr(settings_logger, "_run_ollama_show", mi._run_ollama_show, raising=False)
 
         # Neutralize the VRAM calc + network probes (not under test).
-        monkeypatch.setattr(
-            "utils.network.is_ollama_reachable", lambda: True, raising=False)
+        monkeypatch.setattr("utils.network.is_ollama_reachable", lambda: True, raising=False)
         try:
-            settings_logger.log_conversion_settings(
-                ctx, lambda msg, level="INFO": logs.append(msg))
+            settings_logger.log_conversion_settings(ctx, lambda msg, level="INFO": logs.append(msg))
         except Exception:
             # The full banner has many optional sections; only the new
             # lines matter here — retry with a minimal ctx if extras fail.
@@ -1081,15 +1093,14 @@ class TestFullRegressionVectorBundle:
         from core.summarisation.postchecks import run_post_checks
 
         bullets = [
-            FRAGMENT_FREUD,          # N5: no-predicate fragment
-            FRAGMENT_CITATIONS,      # N5: citation dump
-            SELF_TALK_1,             # N1: self-talk
-            SELF_TALK_2,             # N1: self-talk
-            BULLET_KHAN,             # N4: misattribution
-            "Erikson (1956) defined ego identity as a persistent sameness "
-            "within oneself.",                                       # legit
+            FRAGMENT_FREUD,  # N5: no-predicate fragment
+            FRAGMENT_CITATIONS,  # N5: citation dump
+            SELF_TALK_1,  # N1: self-talk
+            SELF_TALK_2,  # N1: self-talk
+            BULLET_KHAN,  # N4: misattribution
+            "Erikson (1956) defined ego identity as a persistent sameness within oneself.",  # legit
             "Kernberg formulated a three-step process of identity formation "
-            "beginning with introjection.",                          # legit
+            "beginning with introjection.",  # legit
         ]
         report = run_post_checks(
             bullets=bullets,

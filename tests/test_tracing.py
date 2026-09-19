@@ -10,6 +10,7 @@ Covers:
 7. flush() is a no-op when disabled
 8. span yields None when disabled, non-None when enabled
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,23 +30,27 @@ class TestTracingDisabled:
 
     def test_span_yields_none_when_disabled(self):
         from core.obs.tracing import span
+
         with patch("core.obs.tracing._is_tracing_enabled", return_value=False):
             with span("test.span") as s:
                 assert s is None  # no-op
 
     def test_span_does_not_raise_when_disabled(self):
         from core.obs.tracing import span
+
         with patch("core.obs.tracing._is_tracing_enabled", return_value=False):
             with span("test.span", model="gemma", tokens=4096):
                 pass  # should not raise
 
     def test_flush_noop_when_disabled(self):
         from core.obs.tracing import flush
+
         with patch("core.obs.tracing._is_tracing_enabled", return_value=False):
             flush()  # should not raise
 
     def test_timed_span_yields_none_when_disabled(self):
         from core.obs.tracing import timed_span
+
         with patch("core.obs.tracing._is_tracing_enabled", return_value=False):
             with timed_span("test.timed") as s:
                 assert s is None
@@ -53,6 +58,7 @@ class TestTracingDisabled:
     def test_is_tracing_enabled_default_false(self):
         """When settings are unavailable, tracing defaults to False."""
         from core.obs import tracing
+
         old = tracing._tracing_enabled
         tracing._tracing_enabled = None  # force re-read
         with patch("utils.settings.Settings") as mock_settings:
@@ -66,21 +72,27 @@ class TestTracingEnabled:
 
     def test_span_yields_object_when_enabled(self):
         from core.obs.tracing import span
+
         mock_span = MagicMock()
         mock_tracer = MagicMock()
         mock_tracer.start_as_current_span.return_value.__enter__.return_value = mock_span
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with span("test.span") as s:
                 assert s is mock_span
 
     def test_attributes_set_on_span(self):
         from core.obs.tracing import span
+
         mock_span = MagicMock()
         mock_tracer = MagicMock()
         mock_tracer.start_as_current_span.return_value.__enter__.return_value = mock_span
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with span("test.span", gen_ai_model="gemma4", gen_ai_tokens=4096):
                 pass
         # Verify attributes were set
@@ -90,11 +102,14 @@ class TestTracingEnabled:
 
     def test_exception_recorded_on_span(self):
         from core.obs.tracing import span
+
         mock_span = MagicMock()
         mock_tracer = MagicMock()
         mock_tracer.start_as_current_span.return_value.__enter__.return_value = mock_span
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with pytest.raises(ValueError, match="test error"):
                 with span("test.span"):
                     raise ValueError("test error")
@@ -105,16 +120,22 @@ class TestTracingEnabled:
         import time
 
         from core.obs.tracing import timed_span
+
         mock_span = MagicMock()
         mock_tracer = MagicMock()
         mock_tracer.start_as_current_span.return_value.__enter__.return_value = mock_span
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with timed_span("test.timed"):
                 time.sleep(0.01)
         # duration_ms should have been set (call_args_list has set_attribute calls)
-        duration_calls = [c for c in mock_span.set_attribute.call_args_list
-                          if c.args and c.args[0] == "duration_ms"]
+        duration_calls = [
+            c
+            for c in mock_span.set_attribute.call_args_list
+            if c.args and c.args[0] == "duration_ms"
+        ]
         assert len(duration_calls) >= 1
         assert duration_calls[0].args[1] > 0  # positive duration
 
@@ -124,6 +145,7 @@ class TestIsTracingEnabled:
 
     def test_reads_from_settings(self):
         from core.obs import tracing
+
         old = tracing._tracing_enabled
         tracing._tracing_enabled = None
         mock_settings = MagicMock()
@@ -134,6 +156,7 @@ class TestIsTracingEnabled:
 
     def test_caches_result(self):
         from core.obs import tracing
+
         old = tracing._tracing_enabled
         tracing._tracing_enabled = True
         try:
@@ -150,6 +173,7 @@ class TestGetTracer:
 
     def test_returns_none_when_disabled(self):
         from core.obs.tracing import _get_tracer
+
         with patch("core.obs.tracing._is_tracing_enabled", return_value=False):
             assert _get_tracer() is None
 
@@ -163,6 +187,7 @@ class TestGetTracer:
         making the second disjunct False and the assertion order-dependent.
         """
         from core.obs import tracing
+
         old_enabled = tracing._tracing_enabled
         old_tracer = tracing._tracer
         sentinel = object()
@@ -182,18 +207,24 @@ class TestSpanNames:
     def test_chapter_span_name(self):
         """The chapter root span should be named chapter.summarize."""
         from core.obs.tracing import span
+
         mock_tracer = MagicMock()
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with span("chapter.summarize", chapter="Ch.1"):
                 pass
         mock_tracer.start_as_current_span.assert_called_once_with("chapter.summarize")
 
     def test_llm_call_span_name(self):
         from core.obs.tracing import span
+
         mock_tracer = MagicMock()
-        with patch("core.obs.tracing._is_tracing_enabled", return_value=True), \
-             patch("core.obs.tracing._get_tracer", return_value=mock_tracer):
+        with (
+            patch("core.obs.tracing._is_tracing_enabled", return_value=True),
+            patch("core.obs.tracing._get_tracer", return_value=mock_tracer),
+        ):
             with span("llm.exec_summary", gen_ai_model="gemma"):
                 pass
         mock_tracer.start_as_current_span.assert_called_once_with("llm.exec_summary")

@@ -27,6 +27,7 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 # Step 7: Advanced Settings
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class Step7Advanced(WizardStep):
     """Advanced: segmentation, token limit, semantic, academic rigor."""
 
@@ -165,6 +166,7 @@ class Step7Advanced(WizardStep):
         them at conversion time.
         """
         from ui_qt.settings.presets import TOKEN_BUDGET_PRESETS
+
         # Find the closest preset
         closest = min(TOKEN_BUDGET_PRESETS, key=lambda p: abs(p["position"] - value))
         self.budget_label.setText(
@@ -200,12 +202,12 @@ class Step7Advanced(WizardStep):
             if hasattr(self.state, state_attr):
                 setattr(self.state, state_attr, bool(enabled))
             # Update the Step4 checkbox widget if it exists
-            if hasattr(self, 'step4') and hasattr(self.step4, '_studio_cbs'):
+            if hasattr(self, "step4") and hasattr(self.step4, "_studio_cbs"):
                 cb = self.step4._studio_cbs.get(state_attr)
                 if cb is not None:
                     cb.setChecked(bool(enabled))
             # Also update core output checkboxes
-            if hasattr(self, 'step4') and hasattr(self.step4, '_core_cbs'):
+            if hasattr(self, "step4") and hasattr(self.step4, "_core_cbs"):
                 cb = self.step4._core_cbs.get(state_attr)
                 if cb is not None:
                     cb.setChecked(bool(enabled))

@@ -28,6 +28,7 @@ audit and/or the V18.20.3.7 real-rig run:
 All fixes keep the standing rules: honest failure over silent failure,
 never raise out of a probe, no behavior change on the happy path.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,7 +49,7 @@ if str(_project_root) not in sys.path:
 SRC_KHAN = (
     "Although Winnicott did not use the term identity specifically, his "
     "work provides the developmental basis for (1) authenticity; "
-    "(2) \"corporeality\" (Khan 1983), or a deeply assimilated and "
+    '(2) "corporeality" (Khan 1983), or a deeply assimilated and '
     "personalized bodily foundation for one's self-experience; and (3) the "
     "experience of temporal continuity in the self."
 )
@@ -56,7 +57,7 @@ SRC_KHAN = (
 KHAN_BULLET = (
     "Khan's work provides the developmental basis for authenticity, a "
     "deeply assimilated bodily foundation for self-experience termed "
-    "\"corporeality,\" and the experience of temporal continuity in the "
+    '"corporeality," and the experience of temporal continuity in the '
     "self."
 )
 
@@ -80,6 +81,7 @@ def _fake_summarizer(logs):
 
 def _make_state(**kw):
     from core.summarisation.bullet_pipeline import PipelineState
+
     defaults = {
         "heading": "Ch1",
         "content": SRC_KHAN,
@@ -99,9 +101,7 @@ class TestF4GateFailLoud:
         from core.summarisation import bullet_pipeline
 
         logs = []
-        pipeline = bullet_pipeline.BulletPipeline.__new__(
-            bullet_pipeline.BulletPipeline
-        )
+        pipeline = bullet_pipeline.BulletPipeline.__new__(bullet_pipeline.BulletPipeline)
         pipeline.s = _fake_summarizer(logs)
         state = _make_state()
         before = list(state.bullets)
@@ -109,11 +109,10 @@ class TestF4GateFailLoud:
         def _boom(*a, **k):
             raise RuntimeError("f4 exploded")
 
-        monkeypatch.setattr(
-            bullet_pipeline, "compute_source_overlap", _boom, raising=False
-        )
+        monkeypatch.setattr(bullet_pipeline, "compute_source_overlap", _boom, raising=False)
         # The stage imports lazily from text_preprocessor — patch there too.
         import core.summarisation.text_preprocessor as _tp
+
         monkeypatch.setattr(_tp, "compute_source_overlap", _boom)
 
         with caplog.at_level(logging.WARNING, logger="core.summarisation.bullet_pipeline"):
@@ -122,10 +121,7 @@ class TestF4GateFailLoud:
         assert list(state.bullets) == before  # fail-open keeps bullets
         warnings = [m for lvl, m in logs if lvl == "WARNING"]
         assert any("F4 source-overlap gate CRASHED" in m for m in warnings), logs
-        assert any(
-            "F4 source-overlap gate crashed" in r.message
-            for r in caplog.records
-        )
+        assert any("F4 source-overlap gate crashed" in r.message for r in caplog.records)
 
     def test_happy_path_unchanged(self, caplog):
         """No crash → identical behaviour to the pre-.3.8 stage (a weak
@@ -133,9 +129,7 @@ class TestF4GateFailLoud:
         from core.summarisation import bullet_pipeline
 
         logs = []
-        pipeline = bullet_pipeline.BulletPipeline.__new__(
-            bullet_pipeline.BulletPipeline
-        )
+        pipeline = bullet_pipeline.BulletPipeline.__new__(bullet_pipeline.BulletPipeline)
         pipeline.s = _fake_summarizer(logs)
         weak = " utterly unrelated filler content with zero source words "
         state = _make_state(bullets=[weak, "Winnicott described identity."])
@@ -151,20 +145,21 @@ class TestPhase22GateFailLoud:
         from core.summarisation import bullet_pipeline
 
         logs = []
-        pipeline = bullet_pipeline.BulletPipeline.__new__(
-            bullet_pipeline.BulletPipeline
-        )
+        pipeline = bullet_pipeline.BulletPipeline.__new__(bullet_pipeline.BulletPipeline)
         pipeline.s = _fake_summarizer(logs)
         state = _make_state()
         before = list(state.bullets)
 
         import core.summarisation.text_preprocessor as _tp
+
         monkeypatch.setattr(
-            _tp, "semantic_fact_check",
+            _tp,
+            "semantic_fact_check",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("p22 died")),
         )
         # embedder health check: patch to healthy so the stage proceeds
         import core.llm.model_singletons as _ms
+
         monkeypatch.setattr(_ms, "is_embedder_healthy", lambda: True)
 
         with caplog.at_level(logging.WARNING, logger="core.summarisation.bullet_pipeline"):
@@ -181,23 +176,25 @@ class TestPhase22GateFailLoud:
         from core.summarisation import bullet_pipeline  # noqa: E402
 
         logs = []
-        pipeline = bullet_pipeline.BulletPipeline.__new__(
-            bullet_pipeline.BulletPipeline
-        )
+        pipeline = bullet_pipeline.BulletPipeline.__new__(bullet_pipeline.BulletPipeline)
         pipeline.s = _fake_summarizer(logs)
 
         real_overlap = _tp.compute_source_overlap
         monkeypatch.setattr(
-            _tp, "semantic_fact_check",
+            _tp,
+            "semantic_fact_check",
             lambda bp, content, threshold=0.5: {
-                "is_grounded": False, "best_similarity": 0.4,
+                "is_grounded": False,
+                "best_similarity": 0.4,
             },
         )
         monkeypatch.setattr(
-            _tp, "compute_source_overlap",
+            _tp,
+            "compute_source_overlap",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("overlap died")),
         )
         import core.llm.model_singletons as _ms
+
         monkeypatch.setattr(_ms, "is_embedder_healthy", lambda: True)
 
         state = _make_state(bullets=[KHAN_BULLET])
@@ -207,8 +204,7 @@ class TestPhase22GateFailLoud:
         assert pipeline.s.quarantine.entries, "bullet must be quarantined"
         reason = pipeline.s.quarantine.entries[0]["reason"]
         assert "COMPUTATION FAILED" in reason, reason
-        assert any("genuine-overlap computation failed" in r.message
-                   for r in caplog.records)
+        assert any("genuine-overlap computation failed" in r.message for r in caplog.records)
         # sanity: the non-failure path does NOT carry the marker
         monkeypatch.setattr(_tp, "compute_source_overlap", real_overlap)
         pipeline.s.quarantine.entries.clear()
@@ -230,9 +226,7 @@ class TestVetoFailOpenVisible:
 
         monkeypatch.setattr(pd, "_parse_bullet_subject", _boom)
         with caplog.at_level(logging.WARNING, logger=pd.__name__):
-            result = pd.detect_parenthetical_promotion(
-                KHAN_BULLET, SRC_KHAN, ["Winnicott", "Khan"]
-            )
+            result = pd.detect_parenthetical_promotion(KHAN_BULLET, SRC_KHAN, ["Winnicott", "Khan"])
         assert result is None  # fail-open decision preserved
         assert any("veto CRASHED" in r.message for r in caplog.records), (
             "a crashed veto must log at WARNING"
@@ -244,6 +238,7 @@ class TestVetoFailOpenVisible:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         result = detect_parenthetical_promotion(KHAN_BULLET, SRC_KHAN, None)
         assert result is not None
         claimed, real = result
@@ -262,18 +257,20 @@ class TestGenerationTimeVetoParity:
         ``Summarizer._summarize_inner`` to ``gap_fill_batch.batch_gap_fill``
         (where the veto call now passes ``det_authors``) — re-pointed at the
         new module; the pinned wiring is unchanged."""
-        src = (Path(__file__).resolve().parent.parent
-               / "core" / "summarisation" / "gap_fill_batch.py").read_text(
-                   encoding="utf-8")
+        src = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "gap_fill_batch.py"
+        ).read_text(encoding="utf-8")
         # Locate the generation-time veto call inside the gap-fill section.
         gap_fill_start = src.index("Batch gap-fill round {")
         veto_call_idx = src.index("detect_parenthetical_promotion(", gap_fill_start)
-        snippet = src[veto_call_idx:veto_call_idx + 2400]
+        snippet = src[veto_call_idx : veto_call_idx + 2400]
         assert "det_authors," in snippet, (
             "generation-time veto must pass the citation-extracted author list"
         )
         # The old form (None as the third positional arg) must be gone.
-        assert "content,\n                                                        None," not in snippet
+        assert (
+            "content,\n                                                        None," not in snippet
+        )
 
 
 class TestPostchecksAuthorExtractionVisible:
@@ -295,8 +292,9 @@ class TestPostchecksAuthorExtractionVisible:
                 source_text="Erikson (1956) used the term ego identity.",
             )
         assert report is not None  # did not raise
-        assert any("source-author extraction failed" in r.message
-                   for r in caplog.records), "must log at WARNING"
+        assert any("source-author extraction failed" in r.message for r in caplog.records), (
+            "must log at WARNING"
+        )
 
 
 # ── C. W2: recall-floor integrity ─────────────────────────────────────────
@@ -313,7 +311,8 @@ class TestRecallFloorProbeVisibility:
         from core.summarisation import recall_floor
 
         monkeypatch.setattr(
-            da, "check_coverage",
+            da,
+            "check_coverage",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("cov died")),
         )
         with caplog.at_level(logging.WARNING, logger=recall_floor.__name__):
@@ -329,7 +328,8 @@ class TestRecallFloorProbeVisibility:
         from core.summarisation import recall_floor
 
         monkeypatch.setattr(
-            pp, "detect_enumerated_conclusions",
+            pp,
+            "detect_enumerated_conclusions",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("concl died")),
         )
         with caplog.at_level(logging.WARNING, logger=recall_floor.__name__):
@@ -338,15 +338,16 @@ class TestRecallFloorProbeVisibility:
             )
         assert rf["conclusion_items_probe_failed"] is True
         assert any("conclusion-items probe FAILED" in p for p in rf["log_parts"])
-        assert any("conclusion-item probe failed" in r.message
-                   for r in caplog.records)
+        assert any("conclusion-item probe failed" in r.message for r in caplog.records)
 
     def test_healthy_probe_still_reports_numbers(self):
         from core.summarisation.recall_floor import deterministic_recall_floor
+
         rf = deterministic_recall_floor(
             self.ANALYSIS,
             ["Erikson (1956) defined ego identity as persistent sameness."],
-            "", "",
+            "",
+            "",
         )
         assert rf["theorists_probe_failed"] is False
         assert rf["theorists_total"] == 2
@@ -355,29 +356,33 @@ class TestRecallFloorProbeVisibility:
 
 class TestCoverageAwareCap:
     ANALYSIS = (
-        "## Citations\n\n1. **Erikson** (12 mentions): 1956\n"
-        "2. **Winnicott** (4 mentions): 1960\n"
+        "## Citations\n\n1. **Erikson** (12 mentions): 1956\n2. **Winnicott** (4 mentions): 1960\n"
     )
 
     def _bullets(self, n, extra=()):
-        return [f"Erikson ({1956 + (i % 3)}) bullet number {i} about identity."
-                for i in range(n)] + list(extra)
+        return [
+            f"Erikson ({1956 + (i % 3)}) bullet number {i} about identity." for i in range(n)
+        ] + list(extra)
 
     def test_noop_under_limit(self):
         from core.summarisation.recall_floor import coverage_aware_cap
+
         bullets = self._bullets(5)
         logs = []
-        out = coverage_aware_cap(bullets, self.ANALYSIS, limit=80,
-                                 log_fn=lambda m, level="WARNING": logs.append(m))
+        out = coverage_aware_cap(
+            bullets, self.ANALYSIS, limit=80, log_fn=lambda m, level="WARNING": logs.append(m)
+        )
         assert out == bullets
         assert not logs
 
     def test_plain_headcap_without_analysis(self):
         from core.summarisation.recall_floor import coverage_aware_cap
+
         bullets = self._bullets(100)
         logs = []
-        out = coverage_aware_cap(bullets, "", limit=80,
-                                 log_fn=lambda m, level="WARNING": logs.append(m))
+        out = coverage_aware_cap(
+            bullets, "", limit=80, log_fn=lambda m, level="WARNING": logs.append(m)
+        )
         assert out == bullets[:80]
         assert any("no deterministic analysis" in m for m in logs), logs
 
@@ -387,18 +392,20 @@ class TestCoverageAwareCap:
         from core.preprocessing.deterministic_analyzer import check_coverage
         from core.summarisation.recall_floor import coverage_aware_cap
 
-        tail = ("Winnicott (1960) described the good-enough mother meeting "
-                "the infant's omnipotence so the true self develops.")
+        tail = (
+            "Winnicott (1960) described the good-enough mother meeting "
+            "the infant's omnipotence so the true self develops."
+        )
         bullets = self._bullets(85, extra=[tail])  # 85 Erikson + 1 Winnicott
         assert len(bullets) == 86
         logs = []
-        out = coverage_aware_cap(bullets, self.ANALYSIS, limit=80,
-                                 log_fn=lambda m, level="WARNING": logs.append(m))
+        out = coverage_aware_cap(
+            bullets, self.ANALYSIS, limit=80, log_fn=lambda m, level="WARNING": logs.append(m)
+        )
         assert len(out) == 80
         # The sole Winnicott bullet must survive…
         assert any("Winnicott" in b for b in out), (
-            "the sole cover of an author must not be cut while redundant "
-            "Erikson bullets survive"
+            "the sole cover of an author must not be cut while redundant Erikson bullets survive"
         )
         # …and the floor measured on the capped set stays complete.
         cov = check_coverage(self.ANALYSIS, " ".join(out))
@@ -410,14 +417,17 @@ class TestCoverageAwareCap:
         from core.summarisation import recall_floor
 
         monkeypatch.setattr(
-            da, "check_coverage",
+            da,
+            "check_coverage",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("cap probe died")),
         )
         bullets = self._bullets(100)
         logs = []
         with caplog.at_level(logging.WARNING, logger=recall_floor.__name__):
             out = recall_floor.coverage_aware_cap(
-                bullets, self.ANALYSIS, limit=80,
+                bullets,
+                self.ANALYSIS,
+                limit=80,
                 log_fn=lambda m, level="WARNING": logs.append(m),
             )
         assert out == bullets[:80]
@@ -425,6 +435,7 @@ class TestCoverageAwareCap:
 
     def test_never_raises_on_hostile_input(self):
         from core.summarisation.recall_floor import coverage_aware_cap
+
         assert coverage_aware_cap(None, "", limit=80) == []
         assert coverage_aware_cap([], self.ANALYSIS) == []
 
@@ -434,15 +445,13 @@ class TestCapBeforeFloorOrdering:
         """Wiring policy: in _summarize_inner the coverage_aware_cap call
         must appear BEFORE the deterministic_recall_floor call — the floor
         measures the SHIPPED (post-cap) set."""
-        src = (Path(__file__).resolve().parent.parent
-               / "core" / "summarisation" / "summarizer.py").read_text(
-                   encoding="utf-8")
-        tail = src[src.index("def _summarize_inner"):]
+        src = (
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+        ).read_text(encoding="utf-8")
+        tail = src[src.index("def _summarize_inner") :]
         cap_idx = tail.index("coverage_aware_cap(")
         floor_idx = tail.index("deterministic_recall_floor(")
-        assert cap_idx < floor_idx, (
-            "the 80-bullet cap must run BEFORE the recall-floor probe"
-        )
+        assert cap_idx < floor_idx, "the 80-bullet cap must run BEFORE the recall-floor probe"
 
 
 # ── D. W9q: quarantine visibility ─────────────────────────────────────────
@@ -450,7 +459,9 @@ class TestCapBeforeFloorOrdering:
 
 class TestQuarantineVisibility:
     def test_drops_jsonl_partial_corruption_salvages_and_warns(
-        self, tmp_path, caplog,
+        self,
+        tmp_path,
+        caplog,
     ):
         from core.summarisation.quarantine import QuarantineLog
 
@@ -458,8 +469,7 @@ class TestQuarantineVisibility:
         p.parent.mkdir(parents=True)
         good1 = json.dumps({"bullet": "b1", "stage": "F4_source_overlap"})
         good2 = json.dumps({"bullet": "b2", "stage": "F4_source_overlap"})
-        p.write_text(good1 + "\n{corrupt line\n" + good2 + "\n",
-                     encoding="utf-8")
+        p.write_text(good1 + "\n{corrupt line\n" + good2 + "\n", encoding="utf-8")
 
         with caplog.at_level(logging.WARNING, logger="core.summarisation.quarantine"):
             entries = QuarantineLog.load_from_disk(p)
@@ -472,9 +482,7 @@ class TestQuarantineVisibility:
         p = tmp_path / "logs" / "drops.jsonl"
         p.parent.mkdir(parents=True)
         # Valid lines first, then unreadable bytes → the read itself raises.
-        p.write_bytes(
-            json.dumps({"bullet": "b1"}).encode("utf-8") + b"\n" + b"\xff\xfe\x00"
-        )
+        p.write_bytes(json.dumps({"bullet": "b1"}).encode("utf-8") + b"\n" + b"\xff\xfe\x00")
         with caplog.at_level(logging.WARNING, logger="core.summarisation.quarantine"):
             entries = QuarantineLog.load_from_disk(p)
         assert isinstance(entries, list)
@@ -488,12 +496,18 @@ class TestQuarantineVisibility:
         q = QuarantineLog(tmp_path)
         q.add(
             "Winnicott described the good-enough mother and the true self.",
-            stage="F4_source_overlap", threshold=0.25, source_overlap=0.55,
-            reason="test", chapter="Ch1", actually_dropped=True,
+            stage="F4_source_overlap",
+            threshold=0.25,
+            source_overlap=0.55,
+            reason="test",
+            chapter="Ch1",
+            actually_dropped=True,
         )
         import core.summarisation.text_preprocessor as _tp
+
         monkeypatch.setattr(
-            _tp, "compute_source_overlap",
+            _tp,
+            "compute_source_overlap",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("recompute died")),
         )
         with caplog.at_level(logging.WARNING, logger="core.summarisation.quarantine"):
@@ -514,8 +528,7 @@ class TestQuarantineVisibility:
                 raise RuntimeError("quarantine exploded")
 
         bullets = ["safe bullet"]
-        with caplog.at_level(logging.WARNING,
-                             logger="core.summarisation.quarantine_recovery"):
+        with caplog.at_level(logging.WARNING, logger="core.summarisation.quarantine_recovery"):
             out = quarantine_recovery.recover_quarantined(
                 bullets=bullets,
                 source_text=SRC_KHAN,
@@ -538,8 +551,9 @@ class TestTokenCostDialogPolicy:
     (the "Proceed has no fill color" rig report)."""
 
     def test_no_bare_qwidget_selectors(self):
-        src = (Path(__file__).resolve().parent.parent / "ui_qt" / "views"
-               / "token_cost_dialog.py").read_text(encoding="utf-8")
+        src = (
+            Path(__file__).resolve().parent.parent / "ui_qt" / "views" / "token_cost_dialog.py"
+        ).read_text(encoding="utf-8")
         assert '"QWidget {' not in src, (
             "bare QWidget selectors in a container stylesheet override the "
             "theme's button CTA styling for all descendants"
@@ -548,13 +562,15 @@ class TestTokenCostDialogPolicy:
         assert "QWidget#CostDialogBtnBar" in src
 
     def test_screen_aware_height_cap_present(self):
-        src = (Path(__file__).resolve().parent.parent / "ui_qt" / "views"
-               / "token_cost_dialog.py").read_text(encoding="utf-8")
+        src = (
+            Path(__file__).resolve().parent.parent / "ui_qt" / "views" / "token_cost_dialog.py"
+        ).read_text(encoding="utf-8")
         assert "_apply_size_caps" in src
         assert "availableGeometry" in src
-        assert "setFixedSize" not in src.replace(
-            "setFixedSize(self._DLG_WIDTH, self._DLG_HEIGHT)", ""
-        ) or "self.setFixedSize" not in src
+        assert (
+            "setFixedSize" not in src.replace("setFixedSize(self._DLG_WIDTH, self._DLG_HEIGHT)", "")
+            or "self.setFixedSize" not in src
+        )
 
 
 def _qt_available() -> bool:
@@ -562,6 +578,7 @@ def _qt_available() -> bool:
         os_env = __import__("os").environ
         os_env.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -575,15 +592,16 @@ class TestTokenCostDialogBehaviour:
     @pytest.fixture(scope="class")
     def app(self):
         from PySide6.QtWidgets import QApplication
+
         inst = QApplication.instance() or QApplication([])
         yield inst
 
     def _load_dialog_class(self):
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "token_cost_dialog_under_test",
-            Path(__file__).resolve().parent.parent / "ui_qt" / "views"
-            / "token_cost_dialog.py",
+            Path(__file__).resolve().parent.parent / "ui_qt" / "views" / "token_cost_dialog.py",
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -611,8 +629,7 @@ class TestTokenCostDialogBehaviour:
         TokenCostDialog = self._load_dialog_class()
         dlg = TokenCostDialog({"total_tokens": 123456, "pdf_pages": 397})
         assert dlg.width() == TokenCostDialog._DLG_WIDTH
-        assert TokenCostDialog._DLG_MIN_HEIGHT <= dlg.height() <= \
-            TokenCostDialog._DLG_HEIGHT
+        assert TokenCostDialog._DLG_MIN_HEIGHT <= dlg.height() <= TokenCostDialog._DLG_HEIGHT
 
     def test_buttons_have_matching_heights(self, app):
         from PySide6.QtWidgets import QPushButton

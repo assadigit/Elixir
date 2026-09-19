@@ -10,6 +10,7 @@ Covers:
 7. Manual validation path (when pydantic absent) — simulated
 8. Book-agnostic: schema is structural, no book-specific fields
 """
+
 from __future__ import annotations
 
 import json
@@ -83,13 +84,15 @@ class TestExtractJson:
 
 class TestValidateSummaryJson:
     def _valid_json(self) -> str:
-        return json.dumps({
-            "executive_summary": "A 150-word overview of the chapter.",
-            "bullet_points": ["Bullet 1", "Bullet 2", "Bullet 3"],
-            "thorough_summary": "An 800-word detailed analysis.",
-            "key_distinctions": "Distinction A vs Distinction B.",
-            "theoretical_tensions": "Tension X vs Tension Y.",
-        })
+        return json.dumps(
+            {
+                "executive_summary": "A 150-word overview of the chapter.",
+                "bullet_points": ["Bullet 1", "Bullet 2", "Bullet 3"],
+                "thorough_summary": "An 800-word detailed analysis.",
+                "key_distinctions": "Distinction A vs Distinction B.",
+                "theoretical_tensions": "Tension X vs Tension Y.",
+            }
+        )
 
     def test_valid_json_returns_dict(self):
         result = validate_summary_json(self._valid_json())
@@ -139,7 +142,7 @@ class TestValidateSummaryJson:
         assert validate_summary_json("   ") is None
 
     def test_markdown_fenced_json(self):
-        raw = '```json\n' + self._valid_json() + '\n```'
+        raw = "```json\n" + self._valid_json() + "\n```"
         result = validate_summary_json(raw)
         assert result is not None
         assert result["executive_summary"].startswith("A 150-word")
@@ -160,7 +163,9 @@ class TestSupportsJsonMode:
 
     def test_ollama_iq2_xxs_excluded(self):
         # Key Decision #5: low-bit quants can't follow complex JSON
-        assert supports_json_mode("ollama", "Qwen3.8-27B-UD-IQ2_XXS_Unsloth-instruct:latest") is False
+        assert (
+            supports_json_mode("ollama", "Qwen3.8-27B-UD-IQ2_XXS_Unsloth-instruct:latest") is False
+        )
 
     def test_ollama_iq2_xs_excluded(self):
         assert supports_json_mode("ollama", "model-IQ2_XS:latest") is False
@@ -204,11 +209,13 @@ class TestManualValidate:
     """Test the no-pydantic fallback path directly."""
 
     def test_valid_dict(self):
-        data = json.dumps({
-            "executive_summary": "x",
-            "bullet_points": ["a", "b"],
-            "thorough_summary": "y",
-        })
+        data = json.dumps(
+            {
+                "executive_summary": "x",
+                "bullet_points": ["a", "b"],
+                "thorough_summary": "y",
+            }
+        )
         result = _manual_validate(data)
         assert result is not None
         assert result["executive_summary"] == "x"
@@ -219,23 +226,27 @@ class TestManualValidate:
         assert _manual_validate(data) is None
 
     def test_non_string_bullets(self):
-        data = json.dumps({
-            "executive_summary": "x",
-            "bullet_points": [1, 2, 3],
-            "thorough_summary": "y",
-        })
+        data = json.dumps(
+            {
+                "executive_summary": "x",
+                "bullet_points": [1, 2, 3],
+                "thorough_summary": "y",
+            }
+        )
         assert _manual_validate(data) is None
 
 
 class TestCompleteStructured:
     def _valid_response(self) -> str:
-        return json.dumps({
-            "executive_summary": "Overview.",
-            "bullet_points": ["Point 1", "Point 2"],
-            "thorough_summary": "Detailed analysis.",
-            "key_distinctions": None,
-            "theoretical_tensions": None,
-        })
+        return json.dumps(
+            {
+                "executive_summary": "Overview.",
+                "bullet_points": ["Point 1", "Point 2"],
+                "thorough_summary": "Detailed analysis.",
+                "key_distinctions": None,
+                "theoretical_tensions": None,
+            }
+        )
 
     def test_success_path(self):
         provider = MagicMock()
@@ -246,8 +257,10 @@ class TestCompleteStructured:
         assert len(result["bullet_points"]) == 2
         # Verify json instruction was appended
         call_args = provider.complete.call_args
-        assert "JSON" in call_args.kwargs.get("prompt", call_args.args[0]) or \
-               "JSON" in call_args.args[0]
+        assert (
+            "JSON" in call_args.kwargs.get("prompt", call_args.args[0])
+            or "JSON" in call_args.args[0]
+        )
 
     def test_markdown_fenced_response(self):
         provider = MagicMock()
@@ -308,17 +321,23 @@ class TestBookAgnostic:
         # The schema fields should be generic summary structure, not
         # psychology/biology/history-specific terms.
         from core.llm.structured_io import SummarySchema
+
         # Check the field names are generic
-        if hasattr(SummarySchema, 'model_fields'):
+        if hasattr(SummarySchema, "model_fields"):
             field_names = set(SummarySchema.model_fields.keys())
         else:
             # Fallback for the no-pydantic shim
-            field_names = {"executive_summary", "bullet_points",
-                          "thorough_summary", "key_distinctions",
-                          "theoretical_tensions"}
+            field_names = {
+                "executive_summary",
+                "bullet_points",
+                "thorough_summary",
+                "key_distinctions",
+                "theoretical_tensions",
+            }
         forbidden = {"erikson", "freud", "darwin", "chapter_1", "psychoanalysis"}
-        assert not any(f.lower() in field_names for f in forbidden), \
+        assert not any(f.lower() in field_names for f in forbidden), (
             f"Schema has book-specific fields: {field_names}"
+        )
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 def atomic_write_text(path: str | Path, content: str, encoding: str = "utf-8") -> None:
     """Write ``content`` to ``path`` atomically.
 
@@ -39,9 +40,7 @@ def atomic_write_text(path: str | Path, content: str, encoding: str = "utf-8") -
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.stem}_", suffix=".tmp"
-    )
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.stem}_", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding=encoding) as f:
             f.write(content)
@@ -65,7 +64,9 @@ def atomic_write_text(path: str | Path, content: str, encoding: str = "utf-8") -
         raise
 
 
-def atomic_write_json(path: str | Path, data: Any, indent: int = 2, ensure_ascii: bool = False) -> None:
+def atomic_write_json(
+    path: str | Path, data: Any, indent: int = 2, ensure_ascii: bool = False
+) -> None:
     """Write ``data`` as JSON to ``path`` atomically."""
     content = json.dumps(data, indent=indent, ensure_ascii=ensure_ascii)
     atomic_write_text(path, content)

@@ -27,6 +27,7 @@ A16, A20-A22 — see audit/results/SWOT_V18.20.1.3_system_wide.md):
 All tests mock the HTTP layer — no real Ollama required.
 Run: pytest tests/test_v18202_llm_fixes.py -v
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -69,6 +70,7 @@ class _FakeResponse:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             import requests
+
             raise requests.exceptions.HTTPError(f"{self.status_code} error")
 
     def json(self) -> dict:
@@ -77,6 +79,7 @@ class _FakeResponse:
 
 def _make_provider(model: str = _IQ2_S, **kwargs):
     from core.llm.ollama_provider import OllamaProvider
+
     return OllamaProvider(model=model, log_callback=lambda m, l="INFO": None, **kwargs)
 
 
@@ -84,21 +87,22 @@ def _make_provider(model: str = _IQ2_S, **kwargs):
 # A1 — external VRAM reading helper
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestExternalGpuFreeGb:
     """OllamaProvider._external_gpu_free_gb: real headroom from /api/ps."""
 
     def test_sums_size_vram_of_all_loaded_models(self, monkeypatch):
         provider = _make_provider()
-        resp = _FakeResponse({
-            "models": [
-                {"name": "main", "size_vram": int(9.0 * 1024**3)},
-                {"name": "embedder", "size_vram": int(0.5 * 1024**3)},
-            ]
-        })
-        monkeypatch.setattr(
-            "utils.network.safe_ollama_request", lambda *a, **k: resp
+        resp = _FakeResponse(
+            {
+                "models": [
+                    {"name": "main", "size_vram": int(9.0 * 1024**3)},
+                    {"name": "embedder", "size_vram": int(0.5 * 1024**3)},
+                ]
+            }
         )
+        monkeypatch.setattr("utils.network.safe_ollama_request", lambda *a, **k: resp)
         free = provider._external_gpu_free_gb(12.0)
         assert free is not None
         assert abs(free - 2.5) < 0.01, f"expected 12 − 9.5 = 2.5 GB free, got {free}"
@@ -138,6 +142,7 @@ class TestExternalGpuFreeGb:
 # A2 — streaming payload mirrors complete()
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestStreamingPayloadParity:
     """complete_streaming() must send the same payload semantics as complete()."""
@@ -150,10 +155,12 @@ class TestStreamingPayloadParity:
                 pass
 
             def iter_lines(self, decode_unicode=True):
-                return iter([
-                    _json.dumps({"response": "hello ", "done": False}),
-                    _json.dumps({"response": "world", "done": True}),
-                ])
+                return iter(
+                    [
+                        _json.dumps({"response": "hello ", "done": False}),
+                        _json.dumps({"response": "world", "done": True}),
+                    ]
+                )
 
         captured = {}
 
@@ -166,9 +173,7 @@ class TestStreamingPayloadParity:
         monkeypatch.setattr("utils.network.get_shared_session", lambda: _FakeSession())
 
         chunks = []
-        result = provider.complete_streaming(
-            "test prompt", on_chunk=lambda t: chunks.append(t)
-        )
+        result = provider.complete_streaming("test prompt", on_chunk=lambda t: chunks.append(t))
         assert result == "hello world"
         payload = captured["payload"]
         # V18.2.37e parity: the Modelfile's system prompt must be overridden.
@@ -191,9 +196,7 @@ class TestStreamingPayloadParity:
             nonstream_payload.update(json)
             return _FakeResponse({"response": "ok"})
 
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", _fake_safe
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", _fake_safe)
         assert provider.complete("same prompt", temperature=0.7, max_tokens=512) == "ok"
 
         stream_payload = {}
@@ -211,9 +214,12 @@ class TestStreamingPayloadParity:
                 return _StreamResp()
 
         monkeypatch.setattr("utils.network.get_shared_session", lambda: _FakeSession())
-        assert provider.complete_streaming(
-            "same prompt", temperature=0.7, max_tokens=512, on_chunk=lambda t: None
-        ) == "ok"
+        assert (
+            provider.complete_streaming(
+                "same prompt", temperature=0.7, max_tokens=512, on_chunk=lambda t: None
+            )
+            == "ok"
+        )
 
         # The shared semantic fields must be identical between both paths.
         for field in ("model", "prompt", "system", "keep_alive"):
@@ -234,13 +240,14 @@ class TestStreamingPayloadParity:
 # A3 — streaming-fallback nonstreaming ctx clamp
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestFallbackCtxClamp:
     """_call_ollama_nonstreaming must clamp num_ctx through ctx_clamp."""
 
-    def _capture_ctx(self, monkeypatch, model: str, context_tokens: int,
-                     total_gb=None):
+    def _capture_ctx(self, monkeypatch, model: str, context_tokens: int, total_gb=None):
         from core.summarisation import llm_dispatcher
+
         captured = {}
 
         def _fake_safe(method, url, json=None, timeout=None, **k):
@@ -249,13 +256,16 @@ class TestFallbackCtxClamp:
 
         monkeypatch.setattr(llm_dispatcher, "safe_ollama_request", _fake_safe)
         if total_gb is not None:
-            monkeypatch.setattr(
-                "core.llm.ctx_clamp.gpu_total_gb", lambda: total_gb
-            )
+            monkeypatch.setattr("core.llm.ctx_clamp.gpu_total_gb", lambda: total_gb)
         supervisor = MagicMock()
         result = llm_dispatcher._call_ollama_nonstreaming(
-            "p", model, 0.7, 8192,
-            context_tokens=context_tokens, timeout=60, retries=0,
+            "p",
+            model,
+            0.7,
+            8192,
+            context_tokens=context_tokens,
+            timeout=60,
+            retries=0,
             ollama_base_url="http://localhost:11434",
             supervisor=supervisor,
             log=lambda m, l: None,
@@ -266,15 +276,11 @@ class TestFallbackCtxClamp:
     def test_user_set_65536_iq2_s_capped_to_26758_on_12gb(self, monkeypatch):
         """A2 action-plan contract: user-set 65536 + IQ2_S → fallback ctx
         never exceeds 26758."""
-        captured = self._capture_ctx(
-            monkeypatch, _IQ2_S, context_tokens=65536, total_gb=12.0
-        )
+        captured = self._capture_ctx(monkeypatch, _IQ2_S, context_tokens=65536, total_gb=12.0)
         assert captured["options"]["num_ctx"] == 26758
 
     def test_user_set_65536_q2_k_xl_capped_to_16000_on_12gb(self, monkeypatch):
-        captured = self._capture_ctx(
-            monkeypatch, _Q2_K_XL, context_tokens=65536, total_gb=12.0
-        )
+        captured = self._capture_ctx(monkeypatch, _Q2_K_XL, context_tokens=65536, total_gb=12.0)
         assert captured["options"]["num_ctx"] == 16000
 
     def test_non_low_bit_model_uncapped(self, monkeypatch):
@@ -284,17 +290,13 @@ class TestFallbackCtxClamp:
         assert captured["options"]["num_ctx"] == 65536
 
     def test_24gb_card_uncapped(self, monkeypatch):
-        captured = self._capture_ctx(
-            monkeypatch, _IQ2_S, context_tokens=65536, total_gb=24.0
-        )
+        captured = self._capture_ctx(monkeypatch, _IQ2_S, context_tokens=65536, total_gb=24.0)
         assert captured["options"]["num_ctx"] == 65536
 
     def test_clamp_noop_when_gpu_unknown(self, monkeypatch):
         """Sandbox/no-torch: GPU size undetectable → ctx unchanged (documented
         no-op — the cap only applies when the card size is known)."""
-        captured = self._capture_ctx(
-            monkeypatch, _IQ2_S, context_tokens=65536, total_gb=None
-        )
+        captured = self._capture_ctx(monkeypatch, _IQ2_S, context_tokens=65536, total_gb=None)
         assert captured["options"]["num_ctx"] == 65536
 
     def test_dispatcher_uses_shared_clamp_not_inline_constants(self):
@@ -302,6 +304,7 @@ class TestFallbackCtxClamp:
         constants) — and the provider's adaptive path must use the same
         helper for the cap VALUE."""
         from core.summarisation import llm_dispatcher
+
         dispatcher_src = (Path(llm_dispatcher.__file__)).read_text(encoding="utf-8")
         assert "from core.llm.ctx_clamp import clamp_num_ctx" in dispatcher_src
         assert "ctx = clamp_num_ctx(model, max(context_tokens, 16000))" in dispatcher_src
@@ -315,14 +318,17 @@ class TestFallbackCtxClamp:
 # A13 — supervisor shared rate limit + restart budget + readiness poll
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestSupervisorSharedRestartState:
     def setup_method(self):
         from core.system.ollama_supervisor import OllamaSupervisor
+
         OllamaSupervisor.reset_restart_state()
 
     def teardown_method(self):
         from core.system.ollama_supervisor import OllamaSupervisor
+
         OllamaSupervisor.reset_restart_state()
 
     def test_two_instances_share_the_rate_limit(self, monkeypatch):
@@ -373,24 +379,16 @@ class TestSupervisorSharedRestartState:
         assert results[:budget] == [True] * budget, (
             f"the first {budget} restarts (outside the rate window) must succeed"
         )
-        assert results[budget:] == [False, False], (
-            "budget exhausted → no further restarts"
-        )
-        assert len(spawns) == budget, (
-            f"exactly {budget} spawns expected, got {len(spawns)}"
-        )
+        assert results[budget:] == [False, False], "budget exhausted → no further restarts"
+        assert len(spawns) == budget, f"exactly {budget} spawns expected, got {len(spawns)}"
 
     def test_budget_exhaustion_logs_critical(self, monkeypatch, caplog):
         from core.system.ollama_supervisor import OllamaSupervisor
 
         clock = {"t": 1000.0}
-        fake_time = types.SimpleNamespace(
-            time=lambda: clock["t"], sleep=lambda s: None
-        )
+        fake_time = types.SimpleNamespace(time=lambda: clock["t"], sleep=lambda s: None)
         monkeypatch.setattr("core.system.ollama_supervisor.time", fake_time)
-        monkeypatch.setattr(
-            "core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None
-        )
+        monkeypatch.setattr("core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None)
         monkeypatch.setattr(OllamaSupervisor, "is_running", lambda self: True)
         sup = OllamaSupervisor(restart_command=["ollama", "serve"])
         for _ in range(OllamaSupervisor.MAX_RESTARTS_PER_PROCESS + 1):
@@ -410,18 +408,14 @@ class TestSupervisorSharedRestartState:
         sleeps = []
         fake_time = types.SimpleNamespace(time=lambda: 1000.0, sleep=sleeps.append)
         monkeypatch.setattr("core.system.ollama_supervisor.time", fake_time)
-        monkeypatch.setattr(
-            "core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None
-        )
+        monkeypatch.setattr("core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None)
         # is_running: False, False, then True (Ollama needs 3 polls to come up).
         monkeypatch.setattr(
             OllamaSupervisor, "is_running", MagicMock(side_effect=[False, False, True])
         )
         sup = OllamaSupervisor(restart_command=["ollama", "serve"])
         assert sup.restart() is True
-        assert len(sleeps) == 2, (
-            "must poll is_running repeatedly (old code: one check after 5s)"
-        )
+        assert len(sleeps) == 2, "must poll is_running repeatedly (old code: one check after 5s)"
 
     def test_post_restart_readiness_times_out_at_30s(self, monkeypatch):
         from core.system.ollama_supervisor import OllamaSupervisor
@@ -433,17 +427,13 @@ class TestSupervisorSharedRestartState:
 
         fake_time = types.SimpleNamespace(time=lambda: clock["t"], sleep=_sleep)
         monkeypatch.setattr("core.system.ollama_supervisor.time", fake_time)
-        monkeypatch.setattr(
-            "core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None
-        )
+        monkeypatch.setattr("core.system.ollama_supervisor.subprocess.Popen", lambda cmd, **k: None)
         monkeypatch.setattr(OllamaSupervisor, "is_running", lambda self: False)
         sup = OllamaSupervisor(restart_command=["ollama", "serve"])
         start = clock["t"]
         assert sup.restart() is False
         polled_secs = clock["t"] - start
-        assert polled_secs <= 31.0, (
-            f"readiness poll must stop at ~30s, polled {polled_secs}s"
-        )
+        assert polled_secs <= 31.0, f"readiness poll must stop at ~30s, polled {polled_secs}s"
 
     def test_no_restart_command_consumes_no_budget(self, monkeypatch):
         """Platforms without ollama/systemctl: restart() fails fast without
@@ -458,7 +448,8 @@ class TestSupervisorSharedRestartState:
         # Force detection to find nothing (simulates a box without
         # systemctl AND without an ollama binary).
         monkeypatch.setattr(
-            OllamaSupervisor, "_detect_restart_command",
+            OllamaSupervisor,
+            "_detect_restart_command",
             staticmethod(lambda: []),
         )
         sup = OllamaSupervisor()
@@ -471,10 +462,12 @@ class TestSupervisorSharedRestartState:
 # A16 — structured path: correct construction, path stays OFF
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestStructuredPathInert:
     def setup_method(self):
         import core.summarisation.structured_llm as sl
+
         self._sl = sl
         self._orig_flag = sl._STRUCTURED_PATH_ENABLED
         self._orig_notice = sl._STRUCTURED_PATH_NOTICE_LOGGED
@@ -491,12 +484,9 @@ class TestStructuredPathInert:
     def test_json_mode_never_passed_in_structured_io_production_path(self):
         """Hard constraint: structured_io's production path must NOT pass
         json_mode=True (the provider JSON mode stays dead)."""
-        src = (_project_root / "core" / "llm" / "structured_io.py").read_text(
-            encoding="utf-8"
-        )
+        src = (_project_root / "core" / "llm" / "structured_io.py").read_text(encoding="utf-8")
         assert "json_mode=True" not in src, (
-            "structured_io must not activate provider JSON mode (A16 keeps "
-            "the path inert)"
+            "structured_io must not activate provider JSON mode (A16 keeps the path inert)"
         )
 
     def test_returns_none_with_one_time_info_notice(self, caplog):
@@ -504,24 +494,18 @@ class TestStructuredPathInert:
         ONE INFO notice per process instead of swallowing a TypeError."""
         self._sl._STRUCTURED_PATH_NOTICE_LOGGED = False
         with caplog.at_level(logging.INFO, logger="core.summarisation.structured_llm"):
-            result = self._sl.call_llm_structured(
-                "p", "m", 0.7, 4096, provider="ollama"
-            )
+            result = self._sl.call_llm_structured("p", "m", 0.7, 4096, provider="ollama")
         assert result is None
-        assert any(
-            "structured path unavailable" in r.message for r in caplog.records
-        ), "the one-time INFO notice must be logged"
+        assert any("structured path unavailable" in r.message for r in caplog.records), (
+            "the one-time INFO notice must be logged"
+        )
 
     def test_notice_fires_exactly_once(self, caplog):
         self._sl._STRUCTURED_PATH_NOTICE_LOGGED = False
         with caplog.at_level(logging.INFO, logger="core.summarisation.structured_llm"):
             for _ in range(3):
-                assert self._sl.call_llm_structured(
-                    "p", "m", 0.7, 4096, provider="ollama"
-                ) is None
-        notices = [
-            r for r in caplog.records if "structured path unavailable" in r.message
-        ]
+                assert self._sl.call_llm_structured("p", "m", 0.7, 4096, provider="ollama") is None
+        notices = [r for r in caplog.records if "structured path unavailable" in r.message]
         assert len(notices) == 1, (
             f"the fallback notice must fire once per process, got {len(notices)}"
         )
@@ -540,9 +524,7 @@ class TestStructuredPathInert:
             model = ""
 
         def _create_provider(provider, settings, log_callback=None, supervisor=None):
-            calls["create_provider"].append(
-                {"provider": provider, "settings": settings}
-            )
+            calls["create_provider"].append({"provider": provider, "settings": settings})
             return _Prov()
 
         fake_lp.create_provider = _create_provider
@@ -573,7 +555,9 @@ class TestStructuredPathInert:
         # The corrected construction succeeds (pre-V18.20.2.0 this raised a
         # TypeError that was silently swallowed → always None).
         assert result == {"bullet_points": ["x"]}
-        assert calls["create_provider"] == [{"provider": "ollama", "settings": calls["create_provider"][0]["settings"]}]
+        assert calls["create_provider"] == [
+            {"provider": "ollama", "settings": calls["create_provider"][0]["settings"]}
+        ]
         assert calls["complete_structured"][0]["model_attr"] == "chapter-model:latest", (
             "the per-chapter model must be set on the provider instance"
         )
@@ -583,19 +567,20 @@ class TestStructuredPathInert:
 # A20 — truncation detection
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestTruncationDetection:
     def test_done_reason_length_logs_warning_text_unchanged(self, monkeypatch, caplog):
         provider = _make_provider(model=_IQ2_S)
-        resp = _FakeResponse({
-            "response": "  truncated output text  ",
-            "done_reason": "length",
-            "prompt_eval_count": 1234,
-            "eval_count": 8192,
-        })
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp
+        resp = _FakeResponse(
+            {
+                "response": "  truncated output text  ",
+                "done_reason": "length",
+                "prompt_eval_count": 1234,
+                "eval_count": 8192,
+            }
         )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp)
         with caplog.at_level(logging.WARNING, logger="core.llm.ollama_provider"):
             result = provider.complete("test prompt")
         # Observability ONLY: the returned text is byte-for-byte what Ollama sent.
@@ -610,27 +595,21 @@ class TestTruncationDetection:
     def test_done_reason_stop_no_warning(self, monkeypatch, caplog):
         provider = _make_provider(model=_IQ2_S)
         resp = _FakeResponse({"response": "normal output", "done_reason": "stop"})
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp)
         with caplog.at_level(logging.WARNING, logger="core.llm.ollama_provider"):
             result = provider.complete("test prompt")
         assert result == "normal output"
-        assert not [
-            r for r in caplog.records if "truncation_detected" in r.message
-        ], "no truncation warning when the model finished normally"
+        assert not [r for r in caplog.records if "truncation_detected" in r.message], (
+            "no truncation warning when the model finished normally"
+        )
 
-    def test_empty_response_still_retried_even_if_done_reason_length(
-        self, monkeypatch, caplog
-    ):
+    def test_empty_response_still_retried_even_if_done_reason_length(self, monkeypatch, caplog):
         """Truncation observability must NOT change the empty-response retry
         contract: an EMPTY response still raises the retryable
         ConnectionError, regardless of done_reason."""
         provider = _make_provider(model=_IQ2_S, retries=0)
         resp = _FakeResponse({"response": "", "done_reason": "length"})
-        monkeypatch.setattr(
-            "core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp
-        )
+        monkeypatch.setattr("core.llm.ollama_provider.safe_ollama_request", lambda *a, **k: resp)
         result = provider.complete("test prompt")
         assert result is None  # empty → retry exhausted → None (old contract)
 
@@ -639,10 +618,12 @@ class TestTruncationDetection:
 # A21 — connection pooling (shared session, no env mutation)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestConnectionPooling:
     def setup_method(self):
         import utils.network as nw
+
         self._nw = nw
         self._orig_shared = nw._SHARED_SESSION
 
@@ -658,7 +639,8 @@ class TestConnectionPooling:
         nw._SHARED_SESSION = fake_session
         # If the code tried to build a new session, this would raise.
         monkeypatch.setattr(
-            nw, "create_no_proxy_session",
+            nw,
+            "create_no_proxy_session",
             lambda: pytest.fail("must reuse the shared session, not create one"),
         )
         nw.safe_ollama_request("GET", "http://localhost:11434/api/tags")
@@ -671,6 +653,7 @@ class TestConnectionPooling:
         the HTTP_PROXY env var is NOT popped/restored anymore (the old
         mutation was thread-unsafe under the worker pool)."""
         import os
+
         nw = self._nw
         monkeypatch.setenv("HTTP_PROXY", "http://evil-proxy:1234")
         monkeypatch.setenv("http_proxy", "http://evil-proxy:1234")
@@ -697,11 +680,12 @@ class TestConnectionPooling:
         fake_session.request.return_value = _FakeResponse({})
         created = [fake_session]
         monkeypatch.setattr(nw, "create_no_proxy_session", lambda: created[0])
-        monkeypatch.setattr(nw, "get_shared_session",
-                            lambda: pytest.fail("retries>0 must not use the shared session"))
-        resp = nw.safe_ollama_request(
-            "GET", "http://x/api/tags", timeout=5, retries=1
+        monkeypatch.setattr(
+            nw,
+            "get_shared_session",
+            lambda: pytest.fail("retries>0 must not use the shared session"),
         )
+        resp = nw.safe_ollama_request("GET", "http://x/api/tags", timeout=5, retries=1)
         assert resp.status_code == 200
         fake_session.close.assert_called_once()
 
@@ -720,10 +704,12 @@ class TestConnectionPooling:
 # A22 — embed batching + keep_alive
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.characterization
 class TestEmbedBatching:
     def _backend(self):
         from core.llm.embedder_backend import OllamaEmbedBackend
+
         return OllamaEmbedBackend("qwen3-embed:latest")
 
     def test_batched_call_for_n_texts(self, monkeypatch):
@@ -806,13 +792,12 @@ class TestEmbedBatching:
         assert len(calls) == 4  # 1 mismatched batch + 3 per-item
         assert backend.healthy is True  # graceful degradation, no unhealthy flip
 
-    def test_legacy_embeddings_endpoint_still_per_item_with_keep_alive(
-        self, monkeypatch
-    ):
+    def test_legacy_embeddings_endpoint_still_per_item_with_keep_alive(self, monkeypatch):
         """Old Ollama (only /api/embeddings): batch 404s → per-item loop →
         each /api/embeddings payload uses the legacy 'prompt' key AND
         carries keep_alive."""
         import requests
+
         backend = self._backend()
         calls = []
 

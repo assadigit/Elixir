@@ -56,13 +56,19 @@ def _get_ollama_models(controller) -> list:
     """V17.0.0: Fetch available Ollama models."""
     try:
         from utils.dependencies import DependencyChecker
+
         return DependencyChecker().get_ollama_models() or []
     except Exception:
         return []
 
 
-def _populate_models(combo: QComboBox, models: list[str], current: str = "",
-                     allow_empty: bool = False, prefer_ocr: bool = False) -> None:
+def _populate_models(
+    combo: QComboBox,
+    models: list[str],
+    current: str = "",
+    allow_empty: bool = False,
+    prefer_ocr: bool = False,
+) -> None:
     """Fill a combo with all models (badged), selecting ``current`` or — if
     ``prefer_ocr`` — the first model whose name contains 'ocr'."""
     combo.clear()
@@ -71,7 +77,6 @@ def _populate_models(combo: QComboBox, models: list[str], current: str = "",
     for m in models:
         combo.addItem(_badge(m) + m, m)
     # selection priority: saved current → first 'ocr' model → first item
-    target = ""
     if current:
         idx = combo.findData(current)
         if idx >= 0:
@@ -88,25 +93,31 @@ def _populate_models(combo: QComboBox, models: list[str], current: str = "",
         combo.setCurrentIndex(0)
 
 
-def _populate_models_async(combo: QComboBox, controller, current: str = "",
-                           allow_empty: bool = False,
-                           prefer_ocr: bool = False) -> None:
+def _populate_models_async(
+    combo: QComboBox,
+    controller,
+    current: str = "",
+    allow_empty: bool = False,
+    prefer_ocr: bool = False,
+) -> None:
     """V18.20.4.5 (W-b11): fetch models OFF the UI thread; populate the
     combo on the main thread when done. Opening Settings no longer freezes
     the UI for up to 5s when Ollama is down."""
     worker = SimpleWorker(_get_ollama_models, controller)
     # Keep a ref on the combo so the worker isn't GC'd mid-run.
     combo._models_worker = worker
+
     def _apply(models):
-        _populate_models(combo, models or [], current=current,
-                         allow_empty=allow_empty, prefer_ocr=prefer_ocr)
+        _populate_models(
+            combo, models or [], current=current, allow_empty=allow_empty, prefer_ocr=prefer_ocr
+        )
+
     worker.finished.connect(_apply)
     worker.failed.connect(lambda _err: None)  # fail-soft: combo keeps its items
     worker.start()
 
 
-def _refresh_models_async(section, fetch_fn, on_loaded,
-                          refresh_btn=None) -> None:
+def _refresh_models_async(section, fetch_fn, on_loaded, refresh_btn=None) -> None:
     """V18.20.4.5 (W-b11): shared async model refresh for the settings
     sections (OcrModel / AiLocalModel / Defaults).
 
@@ -151,6 +162,7 @@ def _refresh_models_async(section, fetch_fn, on_loaded,
 # OCR sections
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class OcrEngineSection(QGroupBox):
     """OCR engine toggles + timeout."""
 
@@ -183,7 +195,8 @@ class OcrEngineSection(QGroupBox):
         f.addRow(self.force_cb)
         f.addRow(self.paddle_cb)
         self.timeout_combo = labeled_combo(
-            ["30", "60", "90", "120", "180"], str(controller.get_setting("ocr.timeout", 60)),
+            ["30", "60", "90", "120", "180"],
+            str(controller.get_setting("ocr.timeout", 60)),
             tooltip="Per-page OCR timeout in seconds.",
         )
         f.addRow("OCR timeout (s)", self.timeout_combo)
@@ -222,9 +235,7 @@ class OcrModelSection(QGroupBox):
         f.addRow("Primary model", self.primary_combo)
         f.addRow("Fallback model", self.fallback_combo)
         # V10.36.0: VLM fallback model for hard-to-OCR pages
-        self.vlm_fallback_edit = QLineEdit(
-            controller.get_setting("ocr.vlm_fallback_model", "")
-        )
+        self.vlm_fallback_edit = QLineEdit(controller.get_setting("ocr.vlm_fallback_model", ""))
         self.vlm_fallback_edit.setPlaceholderText("e.g. llava:13b (leave empty to disable)")
         f.addRow("VLM fallback (local)", self.vlm_fallback_edit)
         _vlm_hint = QLabel(
@@ -240,9 +251,11 @@ class OcrModelSection(QGroupBox):
         self.refresh_btn.setIcon(icon("refresh", "#B8915A", 15))
         self.refresh_btn.clicked.connect(self._refresh_models)
         f.addRow("", self.refresh_btn)
-        hint = QLabel("All installed Ollama models are listed. Models with “ocr”, "
-                      "“vl”, or “vision” in the name are badged 🔍 and an OCR model "
-                      "is pre-selected automatically.")
+        hint = QLabel(
+            "All installed Ollama models are listed. Models with “ocr”, "
+            "“vl”, or “vision” in the name are badged 🔍 and an OCR model "
+            "is pre-selected automatically."
+        )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
         f.addRow("", hint)
@@ -260,23 +273,33 @@ class OcrModelSection(QGroupBox):
         _on_models_loaded; the fetch fn is widget-free (pure HTTP)."""
         controller = self.controller  # snapshot on the main thread
         _refresh_models_async(
-            self, lambda: _get_ollama_models(controller),
-            self._on_models_loaded, self.refresh_btn)
+            self, lambda: _get_ollama_models(controller), self._on_models_loaded, self.refresh_btn
+        )
 
     def _on_models_loaded(self, models: list) -> None:
         """W-b11: worker finished — populate both combos (MAIN thread)."""
-        _populate_models(self.primary_combo, models,
-                         current=self.controller.get_setting("ocr.primary_model", ""),
-                         prefer_ocr=True)
-        _populate_models(self.fallback_combo, models,
-                         current=self.controller.get_setting("ocr.fallback_model", ""),
-                         prefer_ocr=True)
+        _populate_models(
+            self.primary_combo,
+            models,
+            current=self.controller.get_setting("ocr.primary_model", ""),
+            prefer_ocr=True,
+        )
+        _populate_models(
+            self.fallback_combo,
+            models,
+            current=self.controller.get_setting("ocr.fallback_model", ""),
+            prefer_ocr=True,
+        )
 
     def save(self) -> None:
         self.controller.update_setting("ocr.primary_model", self.primary_combo.currentData() or "")
-        self.controller.update_setting("ocr.fallback_model", self.fallback_combo.currentData() or "")
+        self.controller.update_setting(
+            "ocr.fallback_model", self.fallback_combo.currentData() or ""
+        )
         # V10.36.0: VLM fallback model (local VLM for hard-to-OCR pages)
-        self.controller.update_setting("ocr.vlm_fallback_model", self.vlm_fallback_edit.text().strip())
+        self.controller.update_setting(
+            "ocr.vlm_fallback_model", self.vlm_fallback_edit.text().strip()
+        )
 
     def reload(self) -> None:
         self._refresh_models()
@@ -309,7 +332,9 @@ class OcrFiguresSection(QGroupBox):
         self.controller.update_setting("advanced.toc_vision_ocr", self.toc_vision_cb.isChecked())
 
     def reload(self) -> None:
-        self.figures_cb.setChecked(self.controller.get_setting("advanced.extract_figure_text", False))
+        self.figures_cb.setChecked(
+            self.controller.get_setting("advanced.extract_figure_text", False)
+        )
         self.toc_vision_cb.setChecked(self.controller.get_setting("advanced.toc_vision_ocr", False))
 
 
@@ -399,9 +424,10 @@ class AiLocalModelSection(QGroupBox):
         self.arch_combo.addItem("🏠 Dual — Local (heavy + fast)", "dual_local")
         self.arch_combo.addItem("☁️ Single — API", "single_api")
         self.arch_combo.addItem("☁️ Dual — API (fast + accurate)", "dual_api")
-        _saved_arch = controller.get_setting(
-            "summarisation.model_architecture", "single_local"
-        ) or "single_local"
+        _saved_arch = (
+            controller.get_setting("summarisation.model_architecture", "single_local")
+            or "single_local"
+        )
         if _saved_arch == "single":
             _saved_arch = "single_local"
         _arch_idx = self.arch_combo.findData(_saved_arch)
@@ -430,8 +456,11 @@ class AiLocalModelSection(QGroupBox):
         # V18.20.4.5 (W-b11): populate OFF the UI thread — this used to be a
         # BLOCKING 5s-timeout Ollama fetch in the constructor, so opening
         # Settings froze the whole UI for up to 5s when Ollama was down.
-        _populate_models_async(self.fast_model_combo, controller,
-            current=controller.get_setting("summarisation.fast_model", ""))
+        _populate_models_async(
+            self.fast_model_combo,
+            controller,
+            current=controller.get_setting("summarisation.fast_model", ""),
+        )
         fast_row_widget = QWidget()
         fast_model_row = QHBoxLayout(fast_row_widget)
         fast_model_row.setContentsMargins(0, 0, 0, 0)
@@ -442,9 +471,11 @@ class AiLocalModelSection(QGroupBox):
         # V18.20.4.5 (W-b11): the ↻ click is async too — same 5s-timeout
         # fetch, must not block the UI thread (the current selection is
         # snapshotted on the main thread at click time).
-        self.fast_refresh_btn.clicked.connect(lambda: _populate_models_async(
-            self.fast_model_combo, controller,
-            current=self.fast_model_combo.currentData()))
+        self.fast_refresh_btn.clicked.connect(
+            lambda: _populate_models_async(
+                self.fast_model_combo, controller, current=self.fast_model_combo.currentData()
+            )
+        )
         fast_model_row.addWidget(self.fast_refresh_btn)
         self.fast_row_widget = fast_row_widget
         f.addRow("Fast model (dual-local)", self.fast_row_widget)
@@ -452,7 +483,9 @@ class AiLocalModelSection(QGroupBox):
         # V17.0.0: Fast model temperature
         self.fast_temp_slider = QSlider(Qt.Orientation.Horizontal)
         self.fast_temp_slider.setRange(0, 200)
-        self.fast_temp_slider.setValue(int(controller.get_setting("summarisation.fast_model_temperature", 0.1) * 100))
+        self.fast_temp_slider.setValue(
+            int(controller.get_setting("summarisation.fast_model_temperature", 0.1) * 100)
+        )
         self.fast_temp_slider.setToolTip(
             "Sampling temperature for the fast model.\n\n"
             "LFM2.5-2.6B recommends 0.1.\n"
@@ -462,7 +495,9 @@ class AiLocalModelSection(QGroupBox):
         self.fast_temp_entry = QLineEdit(f"{self.fast_temp_slider.value() / 100:.2f}")
         self.fast_temp_entry.setMaximumWidth(56)
         self.fast_temp_entry.setAlignment(Qt.AlignCenter)
-        self.fast_temp_slider.valueChanged.connect(lambda v: self.fast_temp_entry.setText(f"{v / 100:.2f}"))
+        self.fast_temp_slider.valueChanged.connect(
+            lambda v: self.fast_temp_entry.setText(f"{v / 100:.2f}")
+        )
         fast_temp_row = QHBoxLayout()
         fast_temp_row.setSpacing(8)
         fast_temp_row.addWidget(self.fast_temp_slider, 1)
@@ -470,7 +505,9 @@ class AiLocalModelSection(QGroupBox):
         f.addRow("Fast model temperature", fast_temp_row)
 
         # V17.0.0: Fast model context size
-        self.fast_ctx_edit = QLineEdit(str(controller.get_setting("summarisation.fast_model_context", 131072)))
+        self.fast_ctx_edit = QLineEdit(
+            str(controller.get_setting("summarisation.fast_model_context", 131072))
+        )
         self.fast_ctx_edit.setToolTip(
             "Context window for the fast model. LFM2.5 supports up to 131072 (128K)."
         )
@@ -478,31 +515,23 @@ class AiLocalModelSection(QGroupBox):
 
         # V16.0.9: Fast-API fields (visible only in dual_api mode — the
         # cheap cloud workhorse).
-        self.fast_api_url_edit = QLineEdit(
-            controller.get_setting("summarisation.fast_api_url", "")
-        )
+        self.fast_api_url_edit = QLineEdit(controller.get_setting("summarisation.fast_api_url", ""))
         self.fast_api_url_edit.setPlaceholderText("https://openrouter.ai/api/v1")
         self.fast_api_url_edit.setToolTip(
             "OpenAI-compatible API URL for the fast model in Dual-API mode."
         )
         f.addRow("Fast API URL (dual-api)", self.fast_api_url_edit)
 
-        self.fast_api_key_edit = QLineEdit(
-            controller.get_setting("summarisation.fast_api_key", "")
-        )
+        self.fast_api_key_edit = QLineEdit(controller.get_setting("summarisation.fast_api_key", ""))
         self.fast_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.fast_api_key_edit.setPlaceholderText("sk-...")
-        self.fast_api_key_edit.setToolTip(
-            "API key for the fast model endpoint in Dual-API mode."
-        )
+        self.fast_api_key_edit.setToolTip("API key for the fast model endpoint in Dual-API mode.")
         f.addRow("Fast API key (dual-api)", self.fast_api_key_edit)
 
         self.fast_api_model_edit = QLineEdit(
             controller.get_setting("summarisation.fast_api_model", "")
         )
-        self.fast_api_model_edit.setPlaceholderText(
-            "google/gemini-2.5-flash-preview:free"
-        )
+        self.fast_api_model_edit.setPlaceholderText("google/gemini-2.5-flash-preview:free")
         self.fast_api_model_edit.setToolTip(
             "Cloud model name (e.g. gpt-4o-mini, gemini-flash) for Dual-API mode."
         )
@@ -516,9 +545,7 @@ class AiLocalModelSection(QGroupBox):
         self.arch_desc_label = QLabel("")
         self.arch_desc_label.setObjectName("Caption")
         self.arch_desc_label.setWordWrap(True)
-        self.arch_desc_label.setStyleSheet(
-            "color: #666; font-size: 11px; padding: 4px 0 2px 0;"
-        )
+        self.arch_desc_label.setStyleSheet("color: #666; font-size: 11px; padding: 4px 0 2px 0;")
         f.addRow("", self.arch_desc_label)
 
         # V3.5.0: Tooltip explaining sequential model loading
@@ -632,7 +659,8 @@ class AiLocalModelSection(QGroupBox):
             # V0.04: the llama.cpp endpoint lives in the llamacpp_* settings
             # block (shared with the wizard + provider — single source).
             _u = self.controller.get_setting(
-                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
+            )
             return _u[:-3] if _u.endswith("/v1") else _u
         if backend == "LM Studio":
             return "http://localhost:1234"
@@ -664,9 +692,9 @@ class AiLocalModelSection(QGroupBox):
             from core.llm.llamacpp_provider import list_llamacpp_models
 
             base = self.controller.get_setting(
-                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
-            key = self.controller.get_setting(
-                "summarisation.llamacpp_api_key", "local")
+                "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
+            )
+            key = self.controller.get_setting("summarisation.llamacpp_api_key", "local")
             models = list_llamacpp_models(base, key, timeout=5)
             if models:
                 return models
@@ -679,6 +707,7 @@ class AiLocalModelSection(QGroupBox):
         """Widget-free fetch from ``url`` (safe to run on a worker thread)."""
         try:
             import requests
+
             sess = requests.Session()
             sess.trust_env = False
             sess.proxies = {"http": None, "https": None}
@@ -710,30 +739,40 @@ class AiLocalModelSection(QGroupBox):
         """
         if self.backend_combo.currentText() == "llama.cpp server":
             fetch = self._fetch_llamacpp_models  # Settings-only, worker-safe
-            _refresh_models_async(self, fetch,
-                                  self._on_models_loaded, self.refresh_btn)
+            _refresh_models_async(self, fetch, self._on_models_loaded, self.refresh_btn)
             return
         url = self._backend_url()  # snapshot on the main thread
         fetch = self._fetch_models_from  # bound method — worker-safe body
-        _refresh_models_async(self, lambda: fetch(url),
-                              self._on_models_loaded, self.refresh_btn)
+        _refresh_models_async(self, lambda: fetch(url), self._on_models_loaded, self.refresh_btn)
 
     def _on_models_loaded(self, models: list) -> None:
         """W-b11: worker finished — populate the four combos (MAIN thread)."""
-        _populate_models(self.summary_combo, models,
-                         current=self.controller.get_setting("summarisation.model", ""))
+        _populate_models(
+            self.summary_combo,
+            models,
+            current=self.controller.get_setting("summarisation.model", ""),
+        )
         # V18.20.4.3 (P2 / W-b7): refresh the VISIBLE fast-model combo —
         # this used to populate the orphaned ``fast_combo``, so a global
         # model refresh never actually updated the fast-model picker.
-        _populate_models(self.fast_model_combo, models,
-                         current=self.controller.get_setting("summarisation.fast_model", ""))
-        _populate_models(self.heavy_combo, models,
-                         current=self.controller.get_setting("summarisation.heavy_model", ""),
-                         allow_empty=True)
+        _populate_models(
+            self.fast_model_combo,
+            models,
+            current=self.controller.get_setting("summarisation.fast_model", ""),
+        )
+        _populate_models(
+            self.heavy_combo,
+            models,
+            current=self.controller.get_setting("summarisation.heavy_model", ""),
+            allow_empty=True,
+        )
         # V3.5.0: Simplification model (allow empty = use same as summarisation)
-        _populate_models(self.simplification_combo, models,
-                         current=self.controller.get_setting("summarisation.simplification_model", ""),
-                         allow_empty=True)
+        _populate_models(
+            self.simplification_combo,
+            models,
+            current=self.controller.get_setting("summarisation.simplification_model", ""),
+            allow_empty=True,
+        )
 
     # ── save / reload ────────────────────────────────────────────────────
     def save(self) -> None:
@@ -752,12 +791,18 @@ class AiLocalModelSection(QGroupBox):
         # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
         c.update_setting("summarisation.fast_api_key", self.fast_api_key_edit.text().strip())
         c.update_setting("summarisation.fast_api_model", self.fast_api_model_edit.text().strip())
-        c.update_setting("summarisation.fast_model_temperature", self.fast_temp_slider.value() / 100)
+        c.update_setting(
+            "summarisation.fast_model_temperature", self.fast_temp_slider.value() / 100
+        )
         try:
-            c.update_setting("summarisation.fast_model_context", int(self.fast_ctx_edit.text().strip()))
+            c.update_setting(
+                "summarisation.fast_model_context", int(self.fast_ctx_edit.text().strip())
+            )
         except (ValueError, TypeError):
             pass
-        c.update_setting("summarisation.simplification_model", self.simplification_combo.currentData() or "")
+        c.update_setting(
+            "summarisation.simplification_model", self.simplification_combo.currentData() or ""
+        )
         c.update_setting("summarisation.max_workers", self.workers_slider.value())
         # when using a local backend, set the provider so the pipeline knows
         # to use local models (not a cloud API). V0.04: the llama.cpp
@@ -786,19 +831,23 @@ class AiLocalModelSection(QGroupBox):
             self.arch_combo.setCurrentIndex(_arch_idx)
         # V18.20.4.5 (W-b11): async — reload() runs on the UI thread and
         # must not block it on the 5s-timeout Ollama fetch either.
-        _populate_models_async(self.fast_model_combo, c,
-            current=c.get_setting("summarisation.fast_model", ""))
+        _populate_models_async(
+            self.fast_model_combo, c, current=c.get_setting("summarisation.fast_model", "")
+        )
         # V16.0.9: Fast-API fields reload
         self.fast_api_url_edit.setText(c.get_setting("summarisation.fast_api_url", ""))
         self.fast_api_key_edit.setText(c.get_setting("summarisation.fast_api_key", ""))
         self.fast_api_model_edit.setText(c.get_setting("summarisation.fast_api_model", ""))
-        self.fast_temp_slider.setValue(int(c.get_setting("summarisation.fast_model_temperature", 0.1) * 100))
+        self.fast_temp_slider.setValue(
+            int(c.get_setting("summarisation.fast_model_temperature", 0.1) * 100)
+        )
         self.fast_temp_entry.setText(f"{self.fast_temp_slider.value() / 100:.2f}")
         self.fast_ctx_edit.setText(str(c.get_setting("summarisation.fast_model_context", 131072)))
         self._on_arch_change()
 
 
 # ── saved custom API providers (stored in settings) ────────────────────────
+
 
 def _load_custom_providers(controller: Controller) -> list:
     """Return the list of saved custom API providers from settings."""
@@ -849,6 +898,7 @@ class AiApiSection(QGroupBox):
 
         # ── saved custom providers list (only for "Custom (named)") ─────
         from PySide6.QtWidgets import QListWidget
+
         self.providers_list = QListWidget()
         self.providers_list.setMaximumHeight(90)
         self.providers_list.currentRowChanged.connect(self._on_provider_selected)
@@ -877,10 +927,13 @@ class AiApiSection(QGroupBox):
         )
         self.api_key_edit = labeled_line(
             controller.get_setting("summarisation.api_key", ""),
-            placeholder="sk-…  /  your API key", password=True,
+            placeholder="sk-…  /  your API key",
+            password=True,
         )
         self.model_edit = labeled_line(
-            controller.get_setting("summarisation.cloud_model", "google/gemini-2.5-flash-preview:free"),
+            controller.get_setting(
+                "summarisation.cloud_model", "google/gemini-2.5-flash-preview:free"
+            ),
             placeholder="e.g. google/gemini-2.5-flash-preview:free",
         )
         f.addRow("Name", self.name_edit)
@@ -896,6 +949,7 @@ class AiApiSection(QGroupBox):
         self.providers_list.clear()
         for p in _load_custom_providers(self.controller):
             from PySide6.QtWidgets import QListWidgetItem
+
             item = QListWidgetItem(p.get("name", "(unnamed)"))
             item.setData(0x0100, p)  # store the provider dict
             self.providers_list.addItem(item)
@@ -930,12 +984,14 @@ class AiApiSection(QGroupBox):
 
     def _add_provider(self) -> None:
         providers = _load_custom_providers(self.controller)
-        providers.append({
-            "name": self.name_edit.text().strip() or f"Provider {len(providers) + 1}",
-            "base_url": self.base_url_edit.text().strip(),
-            "api_key": self.api_key_edit.text().strip(),
-            "model": self.model_edit.text().strip(),
-        })
+        providers.append(
+            {
+                "name": self.name_edit.text().strip() or f"Provider {len(providers) + 1}",
+                "base_url": self.base_url_edit.text().strip(),
+                "api_key": self.api_key_edit.text().strip(),
+                "model": self.model_edit.text().strip(),
+            }
+        )
         _save_custom_providers(self.controller, providers)
         self._populate_providers_list()
         self.providers_list.setCurrentRow(len(providers) - 1)
@@ -979,12 +1035,14 @@ class AiApiSection(QGroupBox):
             row = self.providers_list.currentRow()
             providers = _load_custom_providers(c)
             if 0 <= row < len(providers):
-                providers[row].update({
-                    "name": self.name_edit.text().strip() or f"Provider {row + 1}",
-                    "base_url": self.base_url_edit.text().strip(),
-                    "api_key": self.api_key_edit.text().strip(),
-                    "model": self.model_edit.text().strip(),
-                })
+                providers[row].update(
+                    {
+                        "name": self.name_edit.text().strip() or f"Provider {row + 1}",
+                        "base_url": self.base_url_edit.text().strip(),
+                        "api_key": self.api_key_edit.text().strip(),
+                        "model": self.model_edit.text().strip(),
+                    }
+                )
                 _save_custom_providers(c, providers)
 
     def reload(self) -> None:
@@ -1009,6 +1067,7 @@ AiProviderSection = AiApiSection
 # A1: Prompt Bank — user-editable prompt templates
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class AiPromptSection(QGroupBox):
     """Prompt Bank — select and edit summarisation prompt templates."""
 
@@ -1019,6 +1078,7 @@ class AiPromptSection(QGroupBox):
 
         # ── Prompt selector ─────────────────────────────────────────────
         from core.summarisation.prompt_manager import PromptManager
+
         self._pm = PromptManager()
         self._prompts = self._pm.list_prompts()
         saved_prompt = controller.get_setting("summarisation.prompt", "default")
@@ -1035,7 +1095,10 @@ class AiPromptSection(QGroupBox):
 
         # ── Prompt editor ───────────────────────────────────────────────
         from PySide6.QtWidgets import QHBoxLayout
-        editor_label = QLabel("Edit prompt template (variables: {{heading}}, {{text}}, {{language}})")
+
+        editor_label = QLabel(
+            "Edit prompt template (variables: {{heading}}, {{text}}, {{language}})"
+        )
         editor_label.setObjectName("Caption")
         f.addRow("", editor_label)
 
@@ -1074,7 +1137,9 @@ class AiPromptSection(QGroupBox):
         f.addRow("", btn_row)
 
         # Hint
-        hint = QLabel("Prompts are stored in ~/.elixir/prompts/. Changes apply on the next conversion.")
+        hint = QLabel(
+            "Prompts are stored in ~/.elixir/prompts/. Changes apply on the next conversion."
+        )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
         f.addRow("", hint)
@@ -1098,6 +1163,7 @@ class AiPromptSection(QGroupBox):
     def _new_prompt(self) -> None:
         """Create a new prompt template."""
         from PySide6.QtWidgets import QInputDialog
+
         name, ok = QInputDialog.getText(self, "New Prompt", "Prompt name:")
         if not ok or not name.strip():
             return
@@ -1116,9 +1182,13 @@ class AiPromptSection(QGroupBox):
         name = self.prompt_combo.currentText()
         if name in ("default", "academic", "technical", "creative"):
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Cannot delete", f"'{name}' is a built-in preset and cannot be deleted.")
+
+            QMessageBox.warning(
+                self, "Cannot delete", f"'{name}' is a built-in preset and cannot be deleted."
+            )
             return
         from PySide6.QtWidgets import QMessageBox
+
         ret = QMessageBox.question(self, "Delete prompt", f"Delete prompt '{name}'?")
         if ret == QMessageBox.Yes:
             self._pm.delete_prompt(name)
@@ -1168,17 +1238,22 @@ class AiQualitySection(QGroupBox):
         f = make_form()
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(["Fast", "Balanced", "Maximum"])
-        self.quality_combo.setCurrentText(controller.get_setting("summarisation.quality_mode", "Balanced"))
+        self.quality_combo.setCurrentText(
+            controller.get_setting("summarisation.quality_mode", "Balanced")
+        )
         self.quality_combo.currentTextChanged.connect(self._apply_preset)
         f.addRow("Preset", self.quality_combo)
 
         from PySide6.QtWidgets import QSlider
+
         temp_row = QHBoxLayout()
         temp_row.setContentsMargins(0, 0, 0, 0)
         temp_row.setSpacing(8)
         self.temp_slider = QSlider(Qt.Orientation.Horizontal)
         self.temp_slider.setRange(0, 70)
-        self.temp_slider.setValue(int(controller.get_setting("summarisation.temperature", 0.2) * 100))
+        self.temp_slider.setValue(
+            int(controller.get_setting("summarisation.temperature", 0.2) * 100)
+        )
         self.temp_slider.setToolTip(
             "Sampling temperature.\n\n"
             "• 0.0 — deterministic, but many models (Qwen, Gemma, Llama) produce\n"
@@ -1203,7 +1278,9 @@ class AiQualitySection(QGroupBox):
 
         self.coverage_spin = labeled_spin(
             int(controller.get_setting("summarisation.coverage_threshold", 50)),
-            minimum=30, maximum=90, suffix="%",
+            minimum=30,
+            maximum=90,
+            suffix="%",
         )
         f.addRow("Coverage threshold", self.coverage_spin)
         # V15.1.0: Over-delivery — keep improving coverage past minimum threshold
@@ -1213,7 +1290,9 @@ class AiQualitySection(QGroupBox):
         )
         self.overdeliver_target_spin = labeled_spin(
             int(controller.get_setting("summarisation.overdeliver_target", 100)),
-            minimum=85, maximum=100, suffix="%",
+            minimum=85,
+            maximum=100,
+            suffix="%",
         )
         self.overdeliver_target_spin.setToolTip(
             "V15.1.1: Target coverage when over-delivery is enabled. Default 100% "
@@ -1275,9 +1354,7 @@ class AiQualitySection(QGroupBox):
         # Backend selector (Ollama default / Cloud optional)
         self.grounding_backend = QComboBox()
         self.grounding_backend.addItems(["ollama", "cloud"])
-        self.grounding_backend.setCurrentText(
-            controller.get_setting("grounding.backend", "ollama")
-        )
+        self.grounding_backend.setCurrentText(controller.get_setting("grounding.backend", "ollama"))
         self.grounding_backend.setToolTip(
             "Ollama (default): local, free, no API key. Matches the\n"
             "overnight-run reliability goal. Gets verbatim grounding but\n"
@@ -1291,16 +1368,23 @@ class AiQualitySection(QGroupBox):
         # to nvidia-smi, so auto-detection fails.  This dropdown lets the
         # user force the Zotac emergency profile manually.
         self.gpu_profile_combo = QComboBox()
-        self.gpu_profile_combo.addItems([
-            "auto — detect from GPU name",
-            "zotac_3060 — Zotac RTX 3060 Twin Edge (EMERGENCY)",
-            "zotac_3060_ti — Zotac RTX 3060 Ti Twin Edge (EMERGENCY)",
-            "zotac_3070 — Zotac RTX 3070 Twin Edge (EMERGENCY)",
-            "generic — Standard NVIDIA (83°C/88°C)",
-        ])
+        self.gpu_profile_combo.addItems(
+            [
+                "auto — detect from GPU name",
+                "zotac_3060 — Zotac RTX 3060 Twin Edge (EMERGENCY)",
+                "zotac_3060_ti — Zotac RTX 3060 Ti Twin Edge (EMERGENCY)",
+                "zotac_3070 — Zotac RTX 3070 Twin Edge (EMERGENCY)",
+                "generic — Standard NVIDIA (83°C/88°C)",
+            ]
+        )
         _current_override = controller.get_setting("hardware.gpu_profile_override", "auto")
-        _override_idx = {"auto": 0, "zotac_3060": 1, "zotac_3060_ti": 2,
-                         "zotac_3070": 3, "generic": 4}.get(_current_override, 0)
+        _override_idx = {
+            "auto": 0,
+            "zotac_3060": 1,
+            "zotac_3060_ti": 2,
+            "zotac_3070": 3,
+            "generic": 4,
+        }.get(_current_override, 0)
         self.gpu_profile_combo.setCurrentIndex(_override_idx)
         self.gpu_profile_combo.setToolTip(
             "GPU thermal profile override.\n\n"
@@ -1387,7 +1471,9 @@ class AiQualitySection(QGroupBox):
         c.update_setting("summarisation.self_consistency", self.self_consist_cb.isChecked())
         c.update_setting("summarisation.academic_rigor", self.academic_cb.isChecked())
         # V0.03 (P0-1): dropped-letter repair toggle
-        c.update_setting("summarisation.dropped_letter_auto_repair", self.dropped_letter_repair_cb.isChecked())
+        c.update_setting(
+            "summarisation.dropped_letter_auto_repair", self.dropped_letter_repair_cb.isChecked()
+        )
         # V10.1.0: grounding settings
         c.update_setting("grounding.enabled", self.grounding_cb.isChecked())
         c.update_setting("grounding.backend", self.grounding_backend.currentText())
@@ -1396,7 +1482,9 @@ class AiQualitySection(QGroupBox):
         _idx = self.gpu_profile_combo.currentIndex()
         _override_val = _override_keys[_idx] if 0 <= _idx < len(_override_keys) else "auto"
         c.update_setting("hardware.gpu_profile_override", _override_val)
-        c.update_setting("summarisation.simplified_keypoints_enabled", self.simplified_cb.isChecked())
+        c.update_setting(
+            "summarisation.simplified_keypoints_enabled", self.simplified_cb.isChecked()
+        )
         c.update_setting("content_filter.enabled", self.filter_cb.isChecked())
 
     def reload(self) -> None:
@@ -1407,21 +1495,32 @@ class AiQualitySection(QGroupBox):
         self.coverage_spin.setValue(int(c.get_setting("summarisation.coverage_threshold", 50)))
         # V15.1.0: over-delivery settings
         self.overdeliver_cb.setChecked(c.get_setting("summarisation.overdeliver_enabled", True))
-        self.overdeliver_target_spin.setValue(int(c.get_setting("summarisation.overdeliver_target", 100)))
+        self.overdeliver_target_spin.setValue(
+            int(c.get_setting("summarisation.overdeliver_target", 100))
+        )
         self.b3_voting_cb.setChecked(c.get_setting("summarisation.b3_voting_enabled", False))
         self.self_consist_cb.setChecked(c.get_setting("summarisation.self_consistency", False))
         self.academic_cb.setChecked(c.get_setting("summarisation.academic_rigor", False))
         # V0.03 (P0-1): dropped-letter repair toggle
-        self.dropped_letter_repair_cb.setChecked(c.get_setting("summarisation.dropped_letter_auto_repair", False))
+        self.dropped_letter_repair_cb.setChecked(
+            c.get_setting("summarisation.dropped_letter_auto_repair", False)
+        )
         # V10.1.0: grounding settings
         self.grounding_cb.setChecked(c.get_setting("grounding.enabled", False))
         self.grounding_backend.setCurrentText(c.get_setting("grounding.backend", "ollama"))
         # V10.1.6: GPU thermal profile override
         _current_override = c.get_setting("hardware.gpu_profile_override", "auto")
-        _override_idx = {"auto": 0, "zotac_3060": 1, "zotac_3060_ti": 2,
-                         "zotac_3070": 3, "generic": 4}.get(_current_override, 0)
+        _override_idx = {
+            "auto": 0,
+            "zotac_3060": 1,
+            "zotac_3060_ti": 2,
+            "zotac_3070": 3,
+            "generic": 4,
+        }.get(_current_override, 0)
         self.gpu_profile_combo.setCurrentIndex(_override_idx)
-        self.simplified_cb.setChecked(c.get_setting("summarisation.simplified_keypoints_enabled", False))
+        self.simplified_cb.setChecked(
+            c.get_setting("summarisation.simplified_keypoints_enabled", False)
+        )
         self.filter_cb.setChecked(c.get_setting("content_filter.enabled", True))
 
 
@@ -1466,6 +1565,7 @@ class AiOutputSelectionSection(QGroupBox):
 # Output sections
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class OutputDestinationSection(QGroupBox):
     """Output-folder override + show-live-log + success-sound toggles."""
 
@@ -1479,6 +1579,7 @@ class OutputDestinationSection(QGroupBox):
             tooltip="By default the output goes into the same folder as the input document.",
         )
         from PySide6.QtWidgets import QFileDialog
+
         dest_row = QHBoxLayout()
         dest_row.setContentsMargins(0, 0, 0, 0)
         dest_row.setSpacing(6)
@@ -1602,8 +1703,11 @@ class OutputSegmentationSection(QGroupBox):
         )
 
         self.token_spin = labeled_spin(
-            int(controller.get_setting("segmentation.token_limit", 2000)),  # V13.35.0: 1200 → 2000 (matches settings.py default)
-            minimum=500, maximum=32000,
+            int(
+                controller.get_setting("segmentation.token_limit", 2000)
+            ),  # V13.35.0: 1200 → 2000 (matches settings.py default)
+            minimum=500,
+            maximum=32000,
             tooltip=(
                 "Maximum tokens per segment.\n"
                 "• Smaller values (500-1500): more LLM calls, but each segment fits comfortably in the context window.\n"
@@ -1615,7 +1719,8 @@ class OutputSegmentationSection(QGroupBox):
         f.addRow("Token limit / segment", self.token_spin)
         self.page_group_spin = labeled_spin(
             int(controller.get_setting("segmentation.page_group_size", 10)),
-            minimum=1, maximum=100,
+            minimum=1,
+            maximum=100,
         )
         f.addRow("Page-group size", self.page_group_spin)
         self.setLayout(f)
@@ -1629,7 +1734,9 @@ class OutputSegmentationSection(QGroupBox):
     def reload(self) -> None:
         c = self.controller
         self.strategy_combo.setCurrentText(c.get_setting("segmentation.strategy", "auto"))
-        self.token_spin.setValue(int(c.get_setting("segmentation.token_limit", 2000)))  # V13.35.0: 1200 → 2000
+        self.token_spin.setValue(
+            int(c.get_setting("segmentation.token_limit", 2000))
+        )  # V13.35.0: 1200 → 2000
         self.page_group_spin.setValue(int(c.get_setting("segmentation.page_group_size", 10)))
 
 
@@ -1653,11 +1760,12 @@ class OutputKeywordsSection(QGroupBox):
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__("Custom chapter keywords", parent)
         self.controller = controller
-        l = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
 
         # Resolve the keywords file path. Stored in settings so the user
         # can point to a custom file; defaults to the shipped one.
         from pathlib import Path
+
         project_root = Path(__file__).resolve().parents[3]
         default_path = project_root / self._DEFAULT_KEYWORDS_FILE
         stored = controller.get_setting("segmentation.keywords_file", "")
@@ -1687,17 +1795,16 @@ class OutputKeywordsSection(QGroupBox):
         self.reload_btn.setToolTip("Re-read the keywords file and update the preview.")
         self.reload_btn.clicked.connect(self._on_reload_file)
         path_row.addWidget(self.reload_btn)
-        l.addLayout(path_row)
+        layout.addLayout(path_row)
 
         # Read-only preview of the parsed keywords
         self.preview_label = QLabel()
         self.preview_label.setObjectName("Caption")
         self.preview_label.setWordWrap(True)
         self.preview_label.setStyleSheet(
-            "font-size: 11px; padding: 8px; background: rgba(0,0,0,0.03);"
-            "border-radius: 4px;"
+            "font-size: 11px; padding: 8px; background: rgba(0,0,0,0.03);border-radius: 4px;"
         )
-        l.addWidget(self.preview_label)
+        layout.addWidget(self.preview_label)
 
         hint = QLabel(
             "Keywords are loaded from the MD file above. Edit the file to "
@@ -1707,7 +1814,7 @@ class OutputKeywordsSection(QGroupBox):
         )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
-        l.addWidget(hint)
+        layout.addWidget(hint)
 
         self._refresh_preview()
 
@@ -1730,15 +1837,14 @@ class OutputKeywordsSection(QGroupBox):
         preview = ", ".join(kws[:20])
         if count > 20:
             preview += f" … (+{count - 20} more)"
-        self.preview_label.setText(
-            f"{count} keywords loaded: {preview}"
-        )
+        self.preview_label.setText(f"{count} keywords loaded: {preview}")
 
     def _on_edit_file(self) -> None:
         """Open the keywords file in the OS default text editor."""
         import os
         import subprocess
         import sys
+
         path = str(self._keywords_file)
         try:
             if sys.platform == "win32":
@@ -1768,12 +1874,11 @@ class OutputKeywordsSection(QGroupBox):
     def save(self) -> None:
         kws = self._parse_keywords_file()
         self.controller.update_setting("segmentation.custom_keywords", kws)
-        self.controller.update_setting(
-            "segmentation.keywords_file", str(self._keywords_file)
-        )
+        self.controller.update_setting("segmentation.keywords_file", str(self._keywords_file))
 
     def reload(self) -> None:
         from pathlib import Path
+
         stored = self.controller.get_setting("segmentation.keywords_file", "")
         if stored:
             self._keywords_file = Path(stored)
@@ -1788,16 +1893,26 @@ class OutputPostprocessSection(QGroupBox):
         super().__init__("Markdown post-processing", parent)
         self.controller = controller
         f = make_form()
-        self.clean_cb = labeled_checkbox("Clean Markdown (whitespace, headings)",
-                                         checked=controller.get_setting("postprocess.clean_markdown", True))
-        self.spaces_cb = labeled_checkbox("Fix missing spaces between words",
-                                          checked=controller.get_setting("postprocess.fix_missing_spaces", False))
-        self.pagehead_cb = labeled_checkbox("Remove page-number headings",
-                                            checked=controller.get_setting("postprocess.remove_page_number_headings", True))
-        self.separators_cb = labeled_checkbox("Convert separators to HTML comments",
-                                              checked=controller.get_setting("postprocess.convert_separators_to_comments", False))
-        self.tokensaver_cb = labeled_checkbox("Token saver (trim very long pages)",
-                                              checked=controller.get_setting("postprocess.token_saver", True))
+        self.clean_cb = labeled_checkbox(
+            "Clean Markdown (whitespace, headings)",
+            checked=controller.get_setting("postprocess.clean_markdown", True),
+        )
+        self.spaces_cb = labeled_checkbox(
+            "Fix missing spaces between words",
+            checked=controller.get_setting("postprocess.fix_missing_spaces", False),
+        )
+        self.pagehead_cb = labeled_checkbox(
+            "Remove page-number headings",
+            checked=controller.get_setting("postprocess.remove_page_number_headings", True),
+        )
+        self.separators_cb = labeled_checkbox(
+            "Convert separators to HTML comments",
+            checked=controller.get_setting("postprocess.convert_separators_to_comments", False),
+        )
+        self.tokensaver_cb = labeled_checkbox(
+            "Token saver (trim very long pages)",
+            checked=controller.get_setting("postprocess.token_saver", True),
+        )
         f.addRow(self.clean_cb)
         f.addRow(self.spaces_cb)
         f.addRow(self.pagehead_cb)
@@ -1810,7 +1925,9 @@ class OutputPostprocessSection(QGroupBox):
         c.update_setting("postprocess.clean_markdown", self.clean_cb.isChecked())
         c.update_setting("postprocess.fix_missing_spaces", self.spaces_cb.isChecked())
         c.update_setting("postprocess.remove_page_number_headings", self.pagehead_cb.isChecked())
-        c.update_setting("postprocess.convert_separators_to_comments", self.separators_cb.isChecked())
+        c.update_setting(
+            "postprocess.convert_separators_to_comments", self.separators_cb.isChecked()
+        )
         c.update_setting("postprocess.token_saver", self.tokensaver_cb.isChecked())
 
     def reload(self) -> None:
@@ -1818,7 +1935,9 @@ class OutputPostprocessSection(QGroupBox):
         self.clean_cb.setChecked(c.get_setting("postprocess.clean_markdown", True))
         self.spaces_cb.setChecked(c.get_setting("postprocess.fix_missing_spaces", False))
         self.pagehead_cb.setChecked(c.get_setting("postprocess.remove_page_number_headings", True))
-        self.separators_cb.setChecked(c.get_setting("postprocess.convert_separators_to_comments", False))
+        self.separators_cb.setChecked(
+            c.get_setting("postprocess.convert_separators_to_comments", False)
+        )
         self.tokensaver_cb.setChecked(c.get_setting("postprocess.token_saver", True))
 
 
@@ -1872,6 +1991,7 @@ class OutputStudioSection(QGroupBox):
     # V10.29.0: import from the registry so this list can never drift
     # from the wizard / dialog / controller again.
     from core.outputs.registry import get_settings_section_outputs as _get_outputs
+
     _OUTPUTS = _get_outputs()
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
@@ -1911,6 +2031,7 @@ class OutputStudioSection(QGroupBox):
 # V11.19: Default Engines section — central place to pick the default
 # model/engine/format for each standalone service dialog.
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class DefaultsSection(QGroupBox):
     """Default engines/models/formats for the standalone service dialogs.
@@ -2032,7 +2153,7 @@ class DefaultsSection(QGroupBox):
         hint = QLabel(
             "These defaults are used by the standalone service dialogs (Tools → "
             "Summarize / OCR / PDF→Markdown / TTS / Translation). Each dialog "
-            "shows a \"Default (change in Settings)\" option that, when selected, "
+            'shows a "Default (change in Settings)" option that, when selected, '
             "reads from this page."
         )
         hint.setObjectName("Caption")
@@ -2093,8 +2214,8 @@ class DefaultsSection(QGroupBox):
         fetch fn is widget-free (pure HTTP)."""
         controller = self.controller  # snapshot on the main thread
         _refresh_models_async(
-            self, lambda: _get_ollama_models(controller),
-            self._on_models_loaded, self.refresh_btn)
+            self, lambda: _get_ollama_models(controller), self._on_models_loaded, self.refresh_btn
+        )
 
     def _on_models_loaded(self, models: list) -> None:
         """W-b11: worker finished — populate the model combos (MAIN thread)."""
@@ -2133,16 +2254,38 @@ class DefaultsSection(QGroupBox):
 
     def save(self) -> None:
         c = self.controller
-        c.update_setting("quick_services.defaults.summarize_model", self.summ_model_combo.currentData() or "")
-        c.update_setting("quick_services.defaults.summarize_quality", self.summ_quality_combo.currentData() or "standard")
-        c.update_setting("quick_services.defaults.summarize_format", self.summ_format_combo.currentData() or ".md")
-        c.update_setting("quick_services.defaults.summarize_obsidian", self.summ_obsidian_cb.isChecked())
-        c.update_setting("quick_services.defaults.ocr_engine", self.ocr_engine_combo.currentData() or "auto")
-        c.update_setting("quick_services.defaults.ocr_model", self.ocr_model_combo.currentData() or "")
-        c.update_setting("quick_services.defaults.ocr_format", self.ocr_format_combo.currentData() or ".md")
-        c.update_setting("quick_services.defaults.pdf_format", self.pdf_format_combo.currentData() or ".md")
-        c.update_setting("quick_services.defaults.tts_engine", self.tts_engine_combo.currentData() or "")
-        c.update_setting("quick_services.defaults.translation_backend", self.tr_backend_combo.currentData() or "")
+        c.update_setting(
+            "quick_services.defaults.summarize_model", self.summ_model_combo.currentData() or ""
+        )
+        c.update_setting(
+            "quick_services.defaults.summarize_quality",
+            self.summ_quality_combo.currentData() or "standard",
+        )
+        c.update_setting(
+            "quick_services.defaults.summarize_format",
+            self.summ_format_combo.currentData() or ".md",
+        )
+        c.update_setting(
+            "quick_services.defaults.summarize_obsidian", self.summ_obsidian_cb.isChecked()
+        )
+        c.update_setting(
+            "quick_services.defaults.ocr_engine", self.ocr_engine_combo.currentData() or "auto"
+        )
+        c.update_setting(
+            "quick_services.defaults.ocr_model", self.ocr_model_combo.currentData() or ""
+        )
+        c.update_setting(
+            "quick_services.defaults.ocr_format", self.ocr_format_combo.currentData() or ".md"
+        )
+        c.update_setting(
+            "quick_services.defaults.pdf_format", self.pdf_format_combo.currentData() or ".md"
+        )
+        c.update_setting(
+            "quick_services.defaults.tts_engine", self.tts_engine_combo.currentData() or ""
+        )
+        c.update_setting(
+            "quick_services.defaults.translation_backend", self.tr_backend_combo.currentData() or ""
+        )
 
     def reload(self) -> None:
         self._reload_widget_values()

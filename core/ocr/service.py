@@ -71,6 +71,7 @@ def _cpu_only_cuda():
         else:
             os.environ["CUDA_VISIBLE_DEVICES"] = old
 
+
 logger = get_main_logger()
 
 
@@ -87,6 +88,7 @@ class OCRService:
         """
         try:
             from utils.settings import Settings
+
             return Settings().get_ollama_url()
         except Exception:
             return self.OLLAMA_URL
@@ -101,33 +103,35 @@ class OCRService:
         status_callback: Callable[[str], None] | None = None,  # NEW
         valid_pages: set | None = None,  # NEW: restrict processing to these pages
     ):
-        self.request          = request
-        self.analysis         = analysis
-        self.pages_to_ocr     = set(pages_to_ocr)
-        self.log              = log_callback or (lambda msg, level="INFO": None)
-        self._progress        = progress_callback or (lambda v: None)
-        self._status          = status_callback or (lambda msg: None)  # NEW
-        self.model_manager    = ModelManager()
+        self.request = request
+        self.analysis = analysis
+        self.pages_to_ocr = set(pages_to_ocr)
+        self.log = log_callback or (lambda msg, level="INFO": None)
+        self._progress = progress_callback or (lambda v: None)
+        self._status = status_callback or (lambda msg: None)  # NEW
+        self.model_manager = ModelManager()
         # valid_pages: if set, only these page numbers will be processed
         # (both OCR and digital text extraction). None = process all pages.
-        self.valid_pages      = valid_pages
-        settings              = Settings()
+        self.valid_pages = valid_pages
+        settings = Settings()
 
-        self._poppler_path   = settings.get("paths.poppler") or ""
-        self._tesseract_cmd  = settings.get(
+        self._poppler_path = settings.get("paths.poppler") or ""
+        self._tesseract_cmd = settings.get(
             "paths.tesseract",
             r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         )
-        self._image_dpi      = settings.get("ocr.image_dpi", 300)
+        self._image_dpi = settings.get("ocr.image_dpi", 300)
 
         # --- FIX: Force OCR timeout to at least 120 seconds ---
         raw_timeout = settings.get("ocr.timeout", 120)
-        self._ocr_timeout = max(120, raw_timeout)   # enforce minimum
-        self.log(f"  🔧 OCR timeout set to {self._ocr_timeout}s (requested: {raw_timeout}s)", "DEBUG")
+        self._ocr_timeout = max(120, raw_timeout)  # enforce minimum
+        self.log(
+            f"  🔧 OCR timeout set to {self._ocr_timeout}s (requested: {raw_timeout}s)", "DEBUG"
+        )
 
         # PaddleOCR toggle
-        self._use_paddleocr  = settings.get("ocr.use_paddleocr", False)
-        self._paddle_ocr = None   # lazy‑initialised
+        self._use_paddleocr = settings.get("ocr.use_paddleocr", False)
+        self._paddle_ocr = None  # lazy‑initialised
 
         # V18.2.15 (P6): OCR page-processing parallelism. The OCR model is
         # loaded ONCE (acquire_model below), scans all needed pages, then
@@ -158,6 +162,7 @@ class OCRService:
         self._md_tool = None
         try:
             from markitdown import MarkItDown
+
             self._md_tool = MarkItDown()
             self.log("  ✅ markitdown ready for digital-page extraction", "INFO")
         except Exception as e:
@@ -176,7 +181,7 @@ class OCRService:
                     try:
                         # Try with show_log=False first
                         self._paddle_ocr = PaddleOCR(
-                            lang='en',
+                            lang="en",
                             use_gpu=False,
                             show_log=False,
                         )
@@ -185,7 +190,7 @@ class OCRService:
                         # Fallback without show_log
                         try:
                             self._paddle_ocr = PaddleOCR(
-                                lang='en',
+                                lang="en",
                                 use_gpu=False,
                             )
                             self.log("  ✅ PaddleOCR initialised (CPU)", "INFO")
@@ -257,7 +262,7 @@ class OCRService:
             "  To fix: download Poppler for Windows from\n"
             "  https://github.com/oschwartz10612/poppler-windows/releases\n"
             "  Extract it, then set paths.poppler in ~/.elixir/settings.json\n"
-            "  Example:  \"paths\": { \"poppler\": \"C:\\\\poppler-24.08.0\\\\Library\\\\bin\" }",
+            '  Example:  "paths": { "poppler": "C:\\\\poppler-24.08.0\\\\Library\\\\bin" }',
             "WARNING",
         )
         return False
@@ -266,9 +271,7 @@ class OCRService:
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
 
-    def process_pdf(
-        self, pdf_path: Path, password: str | None = None
-    ) -> dict[int, OcrResult]:
+    def process_pdf(self, pdf_path: Path, password: str | None = None) -> dict[int, OcrResult]:
         self.log(f"📖 Opening PDF: {pdf_path.name}", "INFO")
         try:
             reader = PdfReader(str(pdf_path))
@@ -278,7 +281,7 @@ class OCRService:
             self.log(f"❌ Cannot open PDF: {e}", "ERROR")
             return {}
 
-        total_pages    = len(reader.pages)
+        total_pages = len(reader.pages)
         results: dict[int, OcrResult] = {}
 
         # Check Poppler availability once — used by both UnlimitedOCR and Qwen paths
@@ -289,19 +292,20 @@ class OCRService:
         unlimited_used: set = set()
         if unlimited_path and self.pages_to_ocr and poppler_ok:
             from core.ocr.unlimited_ocr import UnlimitedOCREngine
+
             u_engine = UnlimitedOCREngine(
                 model_path=unlimited_path,
                 log_callback=self.log,
             )
-            scanned_pages   = [reader.pages[p - 1] for p in sorted(self.pages_to_ocr)]
+            scanned_pages = [reader.pages[p - 1] for p in sorted(self.pages_to_ocr)]
             scanned_numbers = sorted(self.pages_to_ocr)
             self.log(
-                f"  🏃 UnlimitedOCR: batch processing {len(scanned_numbers)} "
-                f"scanned pages…",
+                f"  🏃 UnlimitedOCR: batch processing {len(scanned_numbers)} scanned pages…",
                 "INFO",
             )
             batch_results = u_engine.process_batch(
-                scanned_pages, scanned_numbers,
+                scanned_pages,
+                scanned_numbers,
                 image_max_size=self.request.image_max_size,
                 poppler_path=self._poppler_path,
             )
@@ -318,8 +322,8 @@ class OCRService:
 
         # ── Acquire Qwen model once — but only if poppler is available and
         # there are still pages that UnlimitedOCR didn't handle ──────────
-        qwen_loaded    = False
-        remaining_ocr  = self.pages_to_ocr - unlimited_used
+        qwen_loaded = False
+        remaining_ocr = self.pages_to_ocr - unlimited_used
 
         # V18.2.16: Deterministic OCR pre-scan — BEFORE loading the 6 GB OCR
         # model, do a fast text-density check on the remaining candidate pages.
@@ -331,6 +335,7 @@ class OCRService:
         if remaining_ocr and self.request.use_llm_ocr and poppler_ok:
             try:
                 from core.ocr.ocr_prescan import intersect_with_valid_pages, prescan_pages
+
                 # Restrict the candidate set to selected chapters / page range
                 # (when active) so we don't pre-scan pages the user didn't
                 # select. Falls back to the full remaining_ocr set otherwise.
@@ -374,19 +379,27 @@ class OCRService:
                 # V18.2.14 (B4): traceable — fail-open to the original
                 # remaining_ocr set so the OCR model loads as before.
                 from utils.error_trace import log_swallow
-                log_swallow("ocr_prescan", _e,
-                            detail="falling back to full pages_to_ocr set")
+
+                log_swallow("ocr_prescan", _e, detail="falling back to full pages_to_ocr set")
 
         # ── FIX: Before loading vision model, unload summarisation model if loaded ──
-        summary_model = getattr(self.request, "summarisation_model", None) or getattr(self.request, "fast_model", None)
+        summary_model = getattr(self.request, "summarisation_model", None) or getattr(
+            self.request, "fast_model", None
+        )
         if summary_model:
             loaded = self.model_manager.get_loaded_models()
             if summary_model in loaded:
-                self.log(f"  🔓 Force-unloading summarisation model '{summary_model}' to free VRAM for OCR...", "INFO")
+                self.log(
+                    f"  🔓 Force-unloading summarisation model '{summary_model}' to free VRAM for OCR...",
+                    "INFO",
+                )
                 self._status("Offloading summarisation model...")
                 self.model_manager.force_unload(summary_model)
         else:
-            self.log("  ⚠️ No summarisation model specified in request; cannot proactively unload.", "DEBUG")
+            self.log(
+                "  ⚠️ No summarisation model specified in request; cannot proactively unload.",
+                "DEBUG",
+            )
 
         if remaining_ocr and self.request.use_llm_ocr and poppler_ok:
             model = self.request.primary_ocr_model
@@ -399,6 +412,7 @@ class OCRService:
                 # critical. The trace below marks the load; the matching
                 # unload trace is in the finally block below.
                 import time as _ocr_t
+
                 _ocr_load_start = _ocr_t.time()
                 self.log(
                     "  ╔══ V18.2.15 OCR PHASE START ═══════════════════════════╗",
@@ -435,18 +449,16 @@ class OCRService:
                 else:
                     self.log(
                         f"  ⚠️ Could not load '{model}' (after {_ocr_load_elapsed:.0f}s), "
-                        f"using Tesseract only", "WARNING"
+                        f"using Tesseract only",
+                        "WARNING",
                     )
                     self._status(f"⚠️ Could not load {model}, using Tesseract.")
             else:
                 self.log(
-                    f"  ⚠️ Model '{model}' not found in Ollama. "
-                    f"Run: ollama pull {model}", "WARNING"
+                    f"  ⚠️ Model '{model}' not found in Ollama. Run: ollama pull {model}", "WARNING"
                 )
         elif self.pages_to_ocr and not poppler_ok:
-            self.log(
-                "  ⚠️ Skipping OCR model load — poppler is required first.", "WARNING"
-            )
+            self.log("  ⚠️ Skipping OCR model load — poppler is required first.", "WARNING")
             self._status("⚠️ Poppler missing – OCR disabled.")
 
         try:
@@ -455,7 +467,9 @@ class OCRService:
             # This saves massive time on large PDFs where only a few chapters
             # are selected.
             if self.valid_pages is not None:
-                pages_to_process_sorted = sorted(p for p in self.valid_pages if 1 <= p <= total_pages)
+                pages_to_process_sorted = sorted(
+                    p for p in self.valid_pages if 1 <= p <= total_pages
+                )
                 self.log(
                     f"  📄 Processing {len(pages_to_process_sorted)}/{total_pages} pages "
                     f"(chapter selection active — skipping {total_pages - len(pages_to_process_sorted)} unselected pages)",
@@ -477,8 +491,8 @@ class OCRService:
                 results[page_num] = result
 
                 # Emit fine-grained progress: OCR phase maps to 10%–70% of overall bar
-                ocr_frac = page_num / total_pages          # 0.0 → 1.0
-                overall  = 0.10 + ocr_frac * 0.60         # 0.10 → 0.70
+                ocr_frac = page_num / total_pages  # 0.0 → 1.0
+                overall = 0.10 + ocr_frac * 0.60  # 0.10 → 0.70
                 self._progress(overall)
 
                 if page_num % 20 == 0 or page_num == pages_to_process_sorted[-1]:
@@ -508,21 +522,26 @@ class OCRService:
                 # before the summarizer requests its own model. Traceable.
                 try:
                     import torch as _torch
+
                     if _torch.cuda.is_available():
                         _torch.cuda.empty_cache()
                         self.log("  🧹 VRAM cache cleared post-OCR", "DEBUG")
                 except Exception as _e:
                     from utils.error_trace import log_swallow
+
                     log_swallow("ocr_phase_vram_clear", _e)
 
-        ok_count     = sum(1 for r in results.values() if r.success)
+        ok_count = sum(1 for r in results.values() if r.success)
         failed_pages = sorted(p for p, r in results.items() if not r.success)
         if failed_pages:
-            self.log(f"  ⚠️ {len(failed_pages)} page(s) failed to extract: {failed_pages}", "WARNING")
+            self.log(
+                f"  ⚠️ {len(failed_pages)} page(s) failed to extract: {failed_pages}", "WARNING"
+            )
 
         # V3.3.0 E2: OCR quality scoring — flag low-quality pages
         try:
             from core.summarisation.text_preprocessor import score_ocr_quality
+
             low_quality = []
             for pn, r in results.items():
                 if r.success and r.text:
@@ -559,16 +578,16 @@ class OCRService:
         if self._md_tool is not None:
             text = self._markitdown_single_page(page, page_num)
             if text:
-                alnum = len(re.sub(r'\s', '', text))
+                alnum = len(re.sub(r"\s", "", text))
                 if alnum > 50:
                     return OcrResult(
-                        page_num=page_num,
-                        text=text,
-                        success=True,
-                        engine_used=OcrEngine.MARKITDOWN
+                        page_num=page_num, text=text, success=True, engine_used=OcrEngine.MARKITDOWN
                     )
                 # If text is short, mark the page for vision OCR
-                self.log(f"  ⚠️ markitdown p.{page_num} returned only {alnum} alnum chars – falling back to vision.", "DEBUG")
+                self.log(
+                    f"  ⚠️ markitdown p.{page_num} returned only {alnum} alnum chars – falling back to vision.",
+                    "DEBUG",
+                )
 
         # 2. Check if this page is marked as scanned or image-heavy
         if page_num in self.pages_to_ocr:
@@ -590,10 +609,7 @@ class OCRService:
             raw = page.extract_text() or ""
             if raw.strip():
                 return OcrResult(
-                    page_num=page_num,
-                    text=raw,
-                    success=True,
-                    engine_used=OcrEngine.MARKITDOWN
+                    page_num=page_num, text=raw, success=True, engine_used=OcrEngine.MARKITDOWN
                 )
         except Exception as e:
             self.log(f"  ⚠️ pypdf page {page_num}: {e}", "DEBUG")
@@ -621,8 +637,10 @@ class OCRService:
             return ""
         finally:
             if tmp_path:
-                try: os.unlink(tmp_path)
-                except OSError: pass
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     # ─────────────────────────────────────────────────────────────────────────
     # Vision OCR – OlmoOCR (NEW)
@@ -658,10 +676,7 @@ class OCRService:
             if text:
                 self.log(f"    ✅ OlmoOCR p.{page_num}: {len(text)} chars", "INFO")
                 return OcrResult(
-                    page_num=page_num,
-                    text=text,
-                    success=True,
-                    engine_used=OcrEngine.QWEN_VL
+                    page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL
                 )
         except Exception as e:
             self.log(f"    ⚠️ OlmoOCR attempt {attempt}: {e}", "WARNING")
@@ -670,25 +685,32 @@ class OCRService:
             text="",
             success=False,
             engine_used=OcrEngine.QWEN_VL,
-            error_msg=f"OlmoOCR attempt {attempt} failed"
+            error_msg=f"OlmoOCR attempt {attempt} failed",
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Scanned page OCR (legacy, kept for compatibility)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _ocr_scanned_page(self, page, page_num: int, qwen_loaded: bool, poppler_ok: bool) -> OcrResult:
+    def _ocr_scanned_page(
+        self, page, page_num: int, qwen_loaded: bool, poppler_ok: bool
+    ) -> OcrResult:
         if not poppler_ok:
             return OcrResult(
-                page_num=page_num, text=f"[Page {page_num}: OCR skipped — poppler not installed]",
-                success=False, engine_used=OcrEngine.NONE,
+                page_num=page_num,
+                text=f"[Page {page_num}: OCR skipped — poppler not installed]",
+                success=False,
+                engine_used=OcrEngine.NONE,
                 error_msg="Poppler not found. See log for installation instructions.",
             )
 
         image_bytes = self._page_to_image_bytes(page, page_num)
         if not image_bytes:
             return OcrResult(
-                page_num=page_num, text="", success=False, engine_used=OcrEngine.NONE,
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
                 error_msg="Page-to-image conversion failed",
             )
 
@@ -711,7 +733,10 @@ class OCRService:
             # Tesseract.  Best-of-both: local for cheap, VLM for hard.
             vlm_result = self._vlm_ocr_fallback(image_bytes, page_num)
             if vlm_result.success and len(vlm_result.text.strip()) >= 20:
-                self.log(f"    ✅ Local VLM recovered p.{page_num} (OlmOCR/Qwen returned <50 chars)", "INFO")
+                self.log(
+                    f"    ✅ Local VLM recovered p.{page_num} (OlmOCR/Qwen returned <50 chars)",
+                    "INFO",
+                )
                 return vlm_result
 
             # ── Finally, try Tesseract ─────────────────────────────────────
@@ -723,11 +748,15 @@ class OCRService:
             if not tess.success or len(tess.text.strip()) < 20:
                 self.log(
                     f"    ⚠️ p.{page_num}: all OCR methods returned < 20 chars "
-                    f"— image-only page, skipping retries.", "WARNING"
+                    f"— image-only page, skipping retries.",
+                    "WARNING",
                 )
                 return OcrResult(
-                    page_num=page_num, text="", success=False, engine_used=OcrEngine.NONE,
-                    error_msg=f"Page {page_num} appears to be image-only with no extractable text"
+                    page_num=page_num,
+                    text="",
+                    success=False,
+                    engine_used=OcrEngine.NONE,
+                    error_msg=f"Page {page_num} appears to be image-only with no extractable text",
                 )
 
             # If Tesseract gave partial results, still try one more Qwen pass
@@ -755,14 +784,15 @@ class OCRService:
 
     def _qwen_ocr_single(self, image_bytes: bytes, page_num: int, attempt: int) -> OcrResult:
         """Single Qwen OCR attempt without internal retry loop."""
-        model   = self.request.primary_ocr_model
-        b64     = base64.b64encode(image_bytes).decode("utf-8")
+        model = self.request.primary_ocr_model
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
         payload = {
-            "model": model, "prompt":
-            "Extract ALL text visible in this page image. "
+            "model": model,
+            "prompt": "Extract ALL text visible in this page image. "
             "Preserve headings, paragraphs, lists. "
             "Output ONLY the extracted text, no commentary.",
-            "images": [b64], "stream": False,
+            "images": [b64],
+            "stream": False,
             "options": {"temperature": 0.0, "num_predict": 4096},
         }
         url = f"{self._ollama_url()}/api/generate"
@@ -772,22 +802,33 @@ class OCRService:
             text = resp.json().get("response", "").strip()
             if text:
                 self.log(f"    ✅ Qwen OCR p.{page_num}: {len(text)} chars", "INFO")
-                return OcrResult(page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL)
+                return OcrResult(
+                    page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL
+                )
         except Exception as e:
             self.log(f"    ⚠️ Qwen attempt {attempt}: {e}", "WARNING")
-        return OcrResult(page_num=page_num, text="", success=False, engine_used=OcrEngine.QWEN_VL,
-                         error_msg=f"Qwen OCR attempt {attempt} failed")
+        return OcrResult(
+            page_num=page_num,
+            text="",
+            success=False,
+            engine_used=OcrEngine.QWEN_VL,
+            error_msg=f"Qwen OCR attempt {attempt} failed",
+        )
 
     def _paddle_ocr_single(self, image_bytes: bytes, page_num: int) -> OcrResult:
         """Single PaddleOCR attempt (CPU-only)."""
         if self._paddle_ocr is None:
             return OcrResult(
-                page_num=page_num, text="", success=False,
-                engine_used=OcrEngine.NONE, error_msg="PaddleOCR not initialised"
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
+                error_msg="PaddleOCR not initialised",
             )
         try:
             import numpy as np
             from PIL import Image
+
             img = Image.open(io.BytesIO(image_bytes))
             img_np = np.array(img)
             # PaddleOCR v3.x expects a list of images or a single image
@@ -798,8 +839,11 @@ class OCRService:
                 result = self._paddle_ocr.ocr(img_np, cls=True)
             if not result or not result[0]:
                 return OcrResult(
-                    page_num=page_num, text="", success=False,
-                    engine_used=OcrEngine.NONE, error_msg="PaddleOCR no text found"
+                    page_num=page_num,
+                    text="",
+                    success=False,
+                    engine_used=OcrEngine.NONE,
+                    error_msg="PaddleOCR no text found",
                 )
             # Extract text from the list of detections
             lines = []
@@ -812,25 +856,34 @@ class OCRService:
             if text:
                 self.log(f"    ✅ PaddleOCR p.{page_num}: {len(text)} chars", "INFO")
                 return OcrResult(
-                    page_num=page_num, text=text, success=True,
-                    engine_used=OcrEngine.TESSERACT  # reuse enum
+                    page_num=page_num,
+                    text=text,
+                    success=True,
+                    engine_used=OcrEngine.TESSERACT,  # reuse enum
                 )
             return OcrResult(
-                page_num=page_num, text="", success=False,
-                engine_used=OcrEngine.TESSERACT, error_msg="PaddleOCR returned empty"
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.TESSERACT,
+                error_msg="PaddleOCR returned empty",
             )
         except Exception as e:
             self.log(f"    ⚠️ PaddleOCR p.{page_num}: {e}", "WARNING")
             # More informative message for the user
             error_msg = f"PaddleOCR failed: {e}. Ensure dependencies are installed correctly (numpy<2.0, opencv-python==4.6.0.66)."
             return OcrResult(
-                page_num=page_num, text="", success=False,
-                engine_used=OcrEngine.NONE, error_msg=error_msg
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
+                error_msg=error_msg,
             )
 
     def _page_to_image_bytes(self, page, page_num: int) -> bytes | None:
         try:
             from pdf2image import convert_from_bytes
+
             writer = PdfWriter()
             writer.add_page(page)
             buf = io.BytesIO()
@@ -868,6 +921,7 @@ class OCRService:
         """
         # Check if a VLM fallback model is configured
         from utils.settings import Settings
+
         _s = Settings()
         vlm_model = _s.get("ocr.vlm_fallback_model", "")
         if not vlm_model:
@@ -878,7 +932,9 @@ class OCRService:
             # which would attempt to load a model the user may not have
             # pulled (causing 120s timeouts and noisy failures).
             return OcrResult(
-                page_num=page_num, text="", success=False,
+                page_num=page_num,
+                text="",
+                success=False,
                 engine_used=OcrEngine.NONE,
                 error_msg="VLM fallback model not configured (set ocr.vlm_fallback_model in settings.json)",
             )
@@ -921,7 +977,8 @@ class OCRService:
                 text = resp.json().get("response", "").strip()
                 # Strip thinking if present
                 import re
-                text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
                 if text and len(text) >= 20:
                     return OcrResult(
                         page_num=page_num,
@@ -948,7 +1005,9 @@ class OCRService:
             )
 
         return OcrResult(
-            page_num=page_num, text="", success=False,
+            page_num=page_num,
+            text="",
+            success=False,
             engine_used=OcrEngine.NONE,
             error_msg="VLM fallback failed",
         )
@@ -957,17 +1016,30 @@ class OCRService:
         try:
             import pytesseract
             from PIL import Image
+
             pytesseract.pytesseract.tesseract_cmd = self._tesseract_cmd
             pil_image = Image.open(io.BytesIO(image_bytes))
             text = pytesseract.image_to_string(pil_image, lang="eng+fas")
             if text.strip():
                 self.log(f"    ✅ Tesseract p.{page_num}: {len(text)} chars", "INFO")
-                return OcrResult(page_num=page_num, text=text, success=True, engine_used=OcrEngine.TESSERACT)
-            return OcrResult(page_num=page_num, text="", success=False, engine_used=OcrEngine.TESSERACT,
-                             error_msg="Tesseract returned empty string")
+                return OcrResult(
+                    page_num=page_num, text=text, success=True, engine_used=OcrEngine.TESSERACT
+                )
+            return OcrResult(
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.TESSERACT,
+                error_msg="Tesseract returned empty string",
+            )
         except Exception as e:
-            return OcrResult(page_num=page_num, text="", success=False, engine_used=OcrEngine.TESSERACT,
-                             error_msg=str(e))
+            return OcrResult(
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.TESSERACT,
+                error_msg=str(e),
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -976,6 +1048,10 @@ class OCRService:
         parts = []
         for page_num in sorted(results.keys()):
             r = results[page_num]
-            text = r.text if r.success and r.text.strip() else f"[Page {page_num}: content unavailable]"
+            text = (
+                r.text
+                if r.success and r.text.strip()
+                else f"[Page {page_num}: content unavailable]"
+            )
             parts.append(insert_page_number_comments(text, page_num))
         return "\n\n".join(parts)

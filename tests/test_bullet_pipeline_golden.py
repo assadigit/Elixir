@@ -22,6 +22,7 @@ fixture bullets.
 
 Run: ``pytest tests/test_bullet_pipeline_golden.py -v``
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -62,7 +63,11 @@ def _stub_module(name: str, **attrs):
 _stub_module("tiktoken")
 _stub_module("tiktoken_ext")
 _stub_module("tiktoken_ext.openai_public")
-_stub_module("utils.token_counter", count_tokens=lambda t: max(1, len(str(t).split())), truncate_by_tokens=lambda t, m, add_ellipsis=False: t)
+_stub_module(
+    "utils.token_counter",
+    count_tokens=lambda t: max(1, len(str(t).split())),
+    truncate_by_tokens=lambda t, m, add_ellipsis=False: t,
+)
 
 
 # ── V18.20.2.0 (SWOT test-infra): un-stub after this module's tests ─────────
@@ -80,6 +85,7 @@ def _unstub_modules_after_tests():
     for _name in _STUBBED:
         sys.modules.pop(_name, None)
     _STUBBED.clear()
+
 
 # ── Load quarantine + summarizer modules ────────────────────────────────────
 
@@ -115,6 +121,7 @@ try:
     from core.system.ollama_supervisor import OllamaSupervisor  # noqa: F401
     from utils.network import safe_ollama_request  # noqa: F401
     from utils.settings import Settings  # noqa: F401
+
     # P0 (test-infra): reuse the already-imported summarizer when present —
     # re-execing a fresh instance under the same sys.modules name created a
     # second class identity (split-brain for every other test file).
@@ -136,7 +143,7 @@ except Exception as _e:
 pytestmark = pytest.mark.skipif(
     not _SUMMARIZER_OK,
     reason=f"Summarizer import failed: "
-           f"{getattr(_SUMMARIZER_IMPORT_ERROR, '__class__.__name__', 'unknown') if not _SUMMARIZER_OK else ''}",
+    f"{getattr(_SUMMARIZER_IMPORT_ERROR, '__class__.__name__', 'unknown') if not _SUMMARIZER_OK else ''}",
 )
 
 if _SUMMARIZER_OK:
@@ -222,7 +229,7 @@ def test_golden_bullet_survival(golden_name: str, mode: str, tmp_path: Path):
     assert len(bullets) > 0, f"No bullets parsed from {golden_name}/llm_response.md"
 
     # Run the filter pipeline
-    conservative = (mode == "conservative")
+    conservative = mode == "conservative"
     s = _make_bare_summarizer(conservative=conservative, tmp_path=tmp_path)
     result = s._filter_thinking_bullets(bullets, source_text=source)
 
@@ -237,6 +244,7 @@ def test_golden_bullet_survival(golden_name: str, mode: str, tmp_path: Path):
         # Use a normalized comparison: lowercase, strip punctuation.
         def _norm(t):
             return re.sub(r"[^\w\s]", "", t.lower()).strip()
+
         expected_norm = _norm(expected_bullet)
         found = any(expected_norm in _norm(r) or _norm(r) in expected_norm for r in result)
         assert found, (

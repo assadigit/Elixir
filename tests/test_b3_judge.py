@@ -13,6 +13,7 @@ Branches covered:
 
 Run: pytest tests/test_b3_judge.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,12 +24,15 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-if 'tiktoken' not in sys.modules:
-    tk = types.ModuleType('tiktoken')
-    class _E: pass
+if "tiktoken" not in sys.modules:
+    tk = types.ModuleType("tiktoken")
+
+    class _E:
+        pass
+
     tk.Encoding = _E
     tk.get_encoding = lambda *a, **k: None
-    sys.modules['tiktoken'] = tk
+    sys.modules["tiktoken"] = tk
 
 from core.summarisation.b3_judge import b3_cloud_judge
 
@@ -44,29 +48,32 @@ class _FakePromptManager:
 
 def _make_samples(n=3):
     return [
-        {"executive_summary": f"exec {i}", "thorough_summary": f"thorough {i}"}
-        for i in range(n)
+        {"executive_summary": f"exec {i}", "thorough_summary": f"thorough {i}"} for i in range(n)
     ]
 
 
 class TestB3CloudJudge:
-
     def test_success_picks_chosen_indices(self):
         """Cloud returns '2' for exec and '3' for thorough → picks #2 and #3."""
         pm = _FakePromptManager()
         responses = iter(["2", "3"])  # exec then thorough
+
         def call_cloud(prompt, **kw):
             return next(responses)
+
         logs = []
         samples = _make_samples(3)
         best_exec, best_thorough = b3_cloud_judge(
-            samples, "source text", "Heading",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "source text",
+            "Heading",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.3,
             log=lambda m, l="INFO": logs.append((m, l)),
             compute_coverage=lambda s, c: 0.5,
         )
-        assert best_exec is samples[1]   # index 2-1 = 1
+        assert best_exec is samples[1]  # index 2-1 = 1
         assert best_thorough is samples[2]  # index 3-1 = 2
         # one DEBUG log naming both picks
         debugs = [m for m, l in logs if l == "DEBUG"]
@@ -76,12 +83,17 @@ class TestB3CloudJudge:
     def test_empty_response_defaults_to_index_zero(self):
         """Empty cloud response → best index stays 0 for both."""
         pm = _FakePromptManager()
+
         def call_cloud(prompt, **kw):
             return ""
+
         samples = _make_samples(3)
         best_exec, best_thorough = b3_cloud_judge(
-            samples, "src", "H",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "src",
+            "H",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.3,
             log=lambda m, l="INFO": None,
         )
@@ -91,12 +103,17 @@ class TestB3CloudJudge:
     def test_out_of_range_index_defaults_to_zero(self):
         """Cloud returns '9' (> len(samples)) → index stays 0."""
         pm = _FakePromptManager()
+
         def call_cloud(prompt, **kw):
             return "9"
+
         samples = _make_samples(3)
         best_exec, best_thorough = b3_cloud_judge(
-            samples, "src", "H",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "src",
+            "H",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.3,
             log=lambda m, l="INFO": None,
         )
@@ -106,23 +123,36 @@ class TestB3CloudJudge:
     def test_exception_falls_back_to_coverage(self):
         """call_cloud raises → exception path picks max-coverage sample."""
         pm = _FakePromptManager()
+
         def call_cloud(prompt, **kw):
             raise RuntimeError("cloud down")
+
         # coverage returns higher for sample index 2 (exec) and 0 (thorough)
-        cov_map = {"exec 0": 0.1, "exec 1": 0.2, "exec 2": 0.9,
-                   "thorough 0": 0.8, "thorough 1": 0.2, "thorough 2": 0.1}
+        cov_map = {
+            "exec 0": 0.1,
+            "exec 1": 0.2,
+            "exec 2": 0.9,
+            "thorough 0": 0.8,
+            "thorough 1": 0.2,
+            "thorough 2": 0.1,
+        }
+
         def compute_coverage(src, cand):
             return cov_map.get(cand, 0.0)
+
         logs = []
         samples = _make_samples(3)
         best_exec, best_thorough = b3_cloud_judge(
-            samples, "src", "H",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "src",
+            "H",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.3,
             log=lambda m, l="INFO": logs.append((m, l)),
             compute_coverage=compute_coverage,
         )
-        assert best_exec is samples[2]      # exec 2 has 0.9
+        assert best_exec is samples[2]  # exec 2 has 0.9
         assert best_thorough is samples[0]  # thorough 0 has 0.8
         warnings = [m for m, l in logs if l == "WARNING"]
         assert len(warnings) == 1
@@ -131,12 +161,17 @@ class TestB3CloudJudge:
     def test_render_template_called_with_correct_args(self):
         """prompt_manager.render_template receives heading, n_candidates, candidates_block."""
         pm = _FakePromptManager()
+
         def call_cloud(prompt, **kw):
             return "1"
+
         samples = _make_samples(3)
         b3_cloud_judge(
-            samples, "src", "MyHeading",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "src",
+            "MyHeading",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.5,
             log=lambda m, l="INFO": None,
         )
@@ -155,14 +190,19 @@ class TestB3CloudJudge:
     def test_candidate_truncation_exec_1000_thorough_1500(self):
         """exec candidates truncated to 1000 chars, thorough to 1500."""
         pm = _FakePromptManager()
+
         def call_cloud(prompt, **kw):
             return "1"
+
         long_exec = "E" * 2000
         long_thorough = "T" * 3000
         samples = [{"executive_summary": long_exec, "thorough_summary": long_thorough}]
         b3_cloud_judge(
-            samples, "src", "H",
-            prompt_manager=pm, call_cloud=call_cloud,
+            samples,
+            "src",
+            "H",
+            prompt_manager=pm,
+            call_cloud=call_cloud,
             fusion_cloud_temperature=0.3,
             log=lambda m, l="INFO": None,
         )

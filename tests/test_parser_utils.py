@@ -4,6 +4,7 @@ These are the functions that clean LLM output — they caused the most bugs
 in the V10.x debug sessions (XML tags leaking into DOCX, reasoning leaking
 into summaries, etc.).
 """
+
 from __future__ import annotations
 
 import re
@@ -19,48 +20,48 @@ if str(_project_root) not in sys.path:
 # Re-implement the regex here (can't import summarizer due to deps)
 
 _MARKUP_TAG_RE = re.compile(
-    r'</?(?:'
-    r'finding|claim|snippet|source_ref|evidence_quote|verdict|reason|index'
-    r'|executive_summary|bullet_points|point|reference|summary|response|output|result'
-    r'|thought|thinking|analysis|reasoning|key_point|key_takeaway|takeaway'
-    r'|chapter|section|paragraph|sentence|quote|quotation|citation|cite'
-    r'|metadata|meta|tag|label|json|xml|html|code|pre'
-    r'|source|source_reference|text_snippet|supporting_text|bullet'
-    r')\s*/?>',
+    r"</?(?:"
+    r"finding|claim|snippet|source_ref|evidence_quote|verdict|reason|index"
+    r"|executive_summary|bullet_points|point|reference|summary|response|output|result"
+    r"|thought|thinking|analysis|reasoning|key_point|key_takeaway|takeaway"
+    r"|chapter|section|paragraph|sentence|quote|quotation|citation|cite"
+    r"|metadata|meta|tag|label|json|xml|html|code|pre"
+    r"|source|source_reference|text_snippet|supporting_text|bullet"
+    r")\s*/?>",
     re.IGNORECASE,
 )
-_GENERIC_MARKUP_TAG_RE = re.compile(r'</?[a-z_][a-z_0-9]{0,29}\s*/?>', re.IGNORECASE)
+_GENERIC_MARKUP_TAG_RE = re.compile(r"</?[a-z_][a-z_0-9]{0,29}\s*/?>", re.IGNORECASE)
 
 
 def strip_markup_tags(text: str) -> str:
     """Strip XML/JSON markup tags from text."""
     if not text:
         return text
-    cleaned = _MARKUP_TAG_RE.sub('', text)
-    cleaned = _GENERIC_MARKUP_TAG_RE.sub('', cleaned)
-    cleaned = re.sub(r'  +', ' ', cleaned)
-    cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
+    cleaned = _MARKUP_TAG_RE.sub("", text)
+    cleaned = _GENERIC_MARKUP_TAG_RE.sub("", cleaned)
+    cleaned = re.sub(r"  +", " ", cleaned)
+    cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)
     return cleaned.strip()
 
 
 # ── Reasoning leak stripping ──────────────────────────────────────────────
 
 _REASONING_PATTERNS = [
-    r'(?:This is a|These are) (?:missed|missing) concept[s]? because[^.]*\.',
-    r'this suggests[^.]*\.',
-    r'[Tt]his (?:is also|refers to) (?:a |an )?(?:missed|missing) concept[^.]*\.',
-    r'[Tt]he existing bullets (?:probably )?(?:don\'t|do not) cover[^.]*\.',
-    r'I should focus on[^.]*\.',
-    r'[Tt]he abstract (?:also )?mentions[^.]*\.',
-    r'[Tt]he user specifically wants[^.]*\.',
-    r'I\'ll check[^.]*\.',
-    r'[Ss]ince I don\'t have[^.]*\.',
-    r'I\'ll (?:prioritize|assume|include|add|focus)[^.]*\.',
-    r'[Hh]owever, the (?:instruction|user) says[^.]*\.',
-    r'[Tt]he (?:missed|missing) concepts (?:are|is)[^.]*\.',
-    r'[Tt]his could be a missed concept[^.]*\.',
-    r'I can still include[^.]*\.',
-    r'I might (?:not )?(?:need|skip|include)[^.]*\.',
+    r"(?:This is a|These are) (?:missed|missing) concept[s]? because[^.]*\.",
+    r"this suggests[^.]*\.",
+    r"[Tt]his (?:is also|refers to) (?:a |an )?(?:missed|missing) concept[^.]*\.",
+    r"[Tt]he existing bullets (?:probably )?(?:don\'t|do not) cover[^.]*\.",
+    r"I should focus on[^.]*\.",
+    r"[Tt]he abstract (?:also )?mentions[^.]*\.",
+    r"[Tt]he user specifically wants[^.]*\.",
+    r"I\'ll check[^.]*\.",
+    r"[Ss]ince I don\'t have[^.]*\.",
+    r"I\'ll (?:prioritize|assume|include|add|focus)[^.]*\.",
+    r"[Hh]owever, the (?:instruction|user) says[^.]*\.",
+    r"[Tt]he (?:missed|missing) concepts (?:are|is)[^.]*\.",
+    r"[Tt]his could be a missed concept[^.]*\.",
+    r"I can still include[^.]*\.",
+    r"I might (?:not )?(?:need|skip|include)[^.]*\.",
 ]
 
 
@@ -69,13 +70,14 @@ def strip_reasoning_leaks(text: str) -> str:
     if not text:
         return text
     for pattern in _REASONING_PATTERNS:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-    text = re.sub(r'  +', ' ', text)
-    text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    text = re.sub(r"  +", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
     return text.strip()
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────
+
 
 def test_strip_markup_tags_removes_known_tags() -> None:
     """All known XML tags should be stripped."""
@@ -126,6 +128,7 @@ def test_strip_markup_tags_generic_fallback() -> None:
 
 
 # ── Reasoning leak tests ──────────────────────────────────────────────────
+
 
 def test_strip_reasoning_missed_concept() -> None:
     """'This is a missed concept because...' should be stripped."""

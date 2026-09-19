@@ -25,6 +25,7 @@ class TableExtractor:
     def _init_camelot(self) -> bool:
         try:
             import camelot
+
             self._camelot = camelot
             self.log("  ✅ Camelot loaded for table extraction.", "INFO")
             return True
@@ -35,6 +36,7 @@ class TableExtractor:
     def _init_tabula(self) -> bool:
         try:
             import tabula
+
             self._tabula = tabula
             self.log("  ✅ Tabula loaded for table extraction.", "INFO")
             return True
@@ -92,9 +94,16 @@ class TableExtractor:
         df = df.astype(str)
         # Build header
         headers = df.columns.tolist()
-        col_widths = [max(len(str(h)), max(len(str(row[i])) for row in df.itertuples(index=False))) for i, h in enumerate(headers)]
+        col_widths = [
+            max(len(str(h)), max(len(str(row[i])) for row in df.itertuples(index=False)))
+            for i, h in enumerate(headers)
+        ]
+
         def format_row(row, widths):
-            return "| " + " | ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row)) + " |"
+            return (
+                "| " + " | ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row)) + " |"
+            )
+
         sep = "|" + "|".join("-" * (w + 2) for w in col_widths) + "|"
         lines = []
         lines.append(format_row(headers, col_widths))
@@ -103,7 +112,9 @@ class TableExtractor:
             lines.append(format_row(row, col_widths))
         return "\n".join(lines)
 
-    def insert_tables_into_markdown(self, markdown: str, tables_by_page: dict[int, list[str]]) -> str:
+    def insert_tables_into_markdown(
+        self, markdown: str, tables_by_page: dict[int, list[str]]
+    ) -> str:
         """
         V9.2.0 M4: Insert table markdown into the main markdown at the
         corresponding page markers (inline), not just appended at the end.

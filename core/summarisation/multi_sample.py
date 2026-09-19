@@ -24,6 +24,7 @@ Characterization tests: ``tests/test_multi_sample.py`` captures the no-samples,
 single-sample, N-sample voting, and fusion-judge paths with mocked
 ``summarize_with_model`` / ``compute_coverage`` / ``b3_cloud_judge``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -97,6 +98,7 @@ def multi_sample_summarize(
     model_lower = (primary_model or "").lower()
     try:
         from utils.settings import Settings
+
         _s = Settings()
         profiles = _s.get("llm.model_profiles", {})
         if isinstance(profiles, dict):
@@ -107,25 +109,29 @@ def multi_sample_summarize(
                     break
     except Exception as _e:
         # V18.2.14 (B4): was silent ``pass`` — now traceable.
-        log_swallow("model_temp_profile_lookup", _e,
-                    detail=f"model={model_lower[:40]}")
+        log_swallow("model_temp_profile_lookup", _e, detail=f"model={model_lower[:40]}")
     temps = [optimal_temp] * n_samples
     samples = []
     for i, temp in enumerate(temps):
         # V15.1.0: VRAM recovery between B3 samples (from V15.0.1).
         # Prevents CUDA OOM / Ollama hard-crash on local GPUs at high VRAM.
         if i > 0:
-            recover_vram(context=f"B3-sample-{i+1}", delay_sec=120.0)
-        log(f"    \U0001f916 B3 sample {i+1}/{n_samples} (t={temp:.2f})\u2026", "DEBUG")
+            recover_vram(context=f"B3-sample-{i + 1}", delay_sec=120.0)
+        log(f"    \U0001f916 B3 sample {i + 1}/{n_samples} (t={temp:.2f})\u2026", "DEBUG")
         # V15.1.0: per-sample try/except so one crash doesn't kill the app.
         try:
             result = summarize_with_model(
-                heading, text, primary_model, temp, with_cot=True,
-                concepts=concepts, callouts=callouts,
+                heading,
+                text,
+                primary_model,
+                temp,
+                with_cot=True,
+                concepts=concepts,
+                callouts=callouts,
             )
         except Exception as _b3e:
             log(
-                f"    \u26a0\ufe0f B3 sample {i+1}/{n_samples} crashed "
+                f"    \u26a0\ufe0f B3 sample {i + 1}/{n_samples} crashed "
                 f"({type(_b3e).__name__}: {_b3e}) \u2014 skipping, continuing "
                 f"with remaining samples",
                 "WARNING",
@@ -147,7 +153,7 @@ def multi_sample_summarize(
     for s in samples:
         seen = set()
         for bp in s.get("bullet_points", []):
-            norm = re.sub(r'[^\w\s]', '', str(bp).lower()).strip()
+            norm = re.sub(r"[^\w\s]", "", str(bp).lower()).strip()
             if norm and norm not in seen:
                 seen.add(norm)
                 bullet_votes[norm] += 1
@@ -196,11 +202,20 @@ def multi_sample_summarize(
     # V13.36.0: When fusion is enabled, use the cloud model as the B3 judge
     # (site D). Instead of picking by keyword-overlap coverage (which can't
     # assess nuance), the cloud model reads all N samples and picks the best.
-    if fusion_enabled and fusion_use_for_b3_judge and len(samples) > 1 and b3_cloud_judge is not None:
+    if (
+        fusion_enabled
+        and fusion_use_for_b3_judge
+        and len(samples) > 1
+        and b3_cloud_judge is not None
+    ):
         best_exec, best_thorough = b3_cloud_judge(samples, source, heading)
     else:
-        best_exec = max(samples, key=lambda s: compute_coverage(source, s.get("executive_summary", "")))
-        best_thorough = max(samples, key=lambda s: compute_coverage(source, s.get("thorough_summary", "")))
+        best_exec = max(
+            samples, key=lambda s: compute_coverage(source, s.get("executive_summary", ""))
+        )
+        best_thorough = max(
+            samples, key=lambda s: compute_coverage(source, s.get("thorough_summary", ""))
+        )
 
     return {
         "executive_summary": best_exec.get("executive_summary", ""),

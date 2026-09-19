@@ -23,6 +23,7 @@ spot-checks read the PRE-SPLIT file out of the shipped V18.20.4.5 zip
 and are skipped when that reference zip is absent. No line-number
 peeking — everything is located by name via ``ast``.
 """
+
 from __future__ import annotations
 
 import ast
@@ -40,10 +41,8 @@ _CONVERT_VIEW = _project_root / "ui_qt" / "views" / "convert_view.py"
 _UI_QT = _project_root / "ui_qt"
 
 # The shipped pre-split reference (the O-b2 move happened after .4.5).
-_REF_ZIP = _project_root.parent.parent / "download" / (
-    "Elixir-V18.20.4.5.zip")
-_REF_MEMBER = (
-    "Elixir-V18.20.4.5/ui_qt/views/service_dialogs/base_dialog.py")
+_REF_ZIP = _project_root.parent.parent / "download" / ("Elixir-V18.20.4.5.zip")
+_REF_MEMBER = "Elixir-V18.20.4.5/ui_qt/views/service_dialogs/base_dialog.py"
 
 # The 11 service dialogs, each in its own module (the O-b2 split map).
 _DIALOG_TO_FILE = {
@@ -79,12 +78,16 @@ _FUNC_TO_FILE = {
     "_show_tts_gpu_error_modal": "tts_service_dialog.py",
 }
 _CLASS_TO_FILE = {**_DIALOG_TO_FILE, **_OTHER_CLASS_TO_FILE}
-_GUARD_HELPERS = ("_worker_is_running", "_detach_worker_signals",
-                  "_confirm_close_with_running_worker")
+_GUARD_HELPERS = (
+    "_worker_is_running",
+    "_detach_worker_signals",
+    "_confirm_close_with_running_worker",
+)
 _DIALOG_MODULES = sorted(set(_DIALOG_TO_FILE.values()))
 
 
 # ── helpers (headless-safe: source text + AST only, by name) ────────────────
+
 
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -98,8 +101,7 @@ def _top_level_defs(tree: ast.Module) -> dict[str, ast.AST]:
     """Top-level classes + functions, by name."""
     out: dict[str, ast.AST] = {}
     for node in tree.body:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef,
-                             ast.AsyncFunctionDef)):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             out[node.name] = node
     return out
 
@@ -109,9 +111,11 @@ def _facade_reexports() -> set[str]:
     tree = _tree(_BASE_DIALOG)
     names: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module and (
-                node.module.startswith("ui_qt.views.service_dialogs."
-                                       "dialogs.")):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and (node.module.startswith("ui_qt.views.service_dialogs.dialogs."))
+        ):
             names.update(a.name for a in node.names)
     return names
 
@@ -119,17 +123,19 @@ def _facade_reexports() -> set[str]:
 def _facade_all() -> list[str]:
     tree = _tree(_BASE_DIALOG)
     for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and (
-                isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == "__all__"):
-            return [e.value for e in node.value.elts
-                    if isinstance(e, ast.Constant)]
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and (isinstance(node.targets[0], ast.Name) and node.targets[0].id == "__all__")
+        ):
+            return [e.value for e in node.value.elts if isinstance(e, ast.Constant)]
     return []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (a) base_dialog.py is a pure facade
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPureFacade:
     def test_zero_class_definitions(self):
@@ -139,16 +145,15 @@ class TestPureFacade:
     def test_zero_module_function_definitions(self):
         # A pure re-export facade: nothing is DEFINED here, only imported.
         tree = _tree(_BASE_DIALOG)
-        assert [n for n in tree.body if isinstance(
-            n, (ast.FunctionDef, ast.AsyncFunctionDef))] == []
+        assert [
+            n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ] == []
 
     def test_facade_imports_only_from_the_dialogs_package(self):
         tree = _tree(_BASE_DIALOG)
         allowed = {"__future__"}
         allowed.add("ui_qt.views.service_dialogs.dialogs.shared")
-        allowed.update(
-            f"ui_qt.views.service_dialogs.dialogs.{m[:-3]}"
-            for m in _DIALOG_MODULES)
+        allowed.update(f"ui_qt.views.service_dialogs.dialogs.{m[:-3]}" for m in _DIALOG_MODULES)
         for node in tree.body:
             if isinstance(node, ast.ImportFrom):
                 assert node.module in allowed, node.module
@@ -165,6 +170,7 @@ class TestPureFacade:
 # (b) the facade covers every externally-imported name
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestExternalImportersCovered:
     def _external_importers(self):
         """Every (file, name) imported from ...service_dialogs.base_dialog
@@ -172,8 +178,7 @@ class TestExternalImportersCovered:
         found: set[tuple[str, str]] = set()
         for py in sorted(_project_root.rglob("*.py")):
             rel = py.relative_to(_project_root).as_posix()
-            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/",
-                               ".git")):
+            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/", ".git")):
                 continue
             try:
                 tree = ast.parse(_src(py))
@@ -181,13 +186,15 @@ class TestExternalImportersCovered:
                 continue
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module == (
-                        "ui_qt.views.service_dialogs.base_dialog"):
+                    "ui_qt.views.service_dialogs.base_dialog"
+                ):
                     for a in node.names:
                         found.add((rel, a.name))
                 elif isinstance(node, ast.Import):
                     for a in node.names:
-                        assert a.name != "ui_qt.views.service_dialogs." \
-                            "base_dialog", "plain-module import of the facade"
+                        assert a.name != "ui_qt.views.service_dialogs.base_dialog", (
+                            "plain-module import of the facade"
+                        )
         return found
 
     def test_every_external_name_is_reexported(self):
@@ -203,19 +210,22 @@ class TestExternalImportersCovered:
 
     def test_importer_sites_unchanged(self):
         # app.py still lazily imports the audit dialog from the facade.
-        app_imports = [node for node in ast.walk(_tree(_APP))
-                       if isinstance(node, ast.ImportFrom)
-                       and node.module == "ui_qt.views.service_dialogs."
-                           "base_dialog"]
-        assert [a.name for n in app_imports for a in n.names] == [
-            "HallucinationAuditDialog"]
+        app_imports = [
+            node
+            for node in ast.walk(_tree(_APP))
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "ui_qt.views.service_dialogs.base_dialog"
+        ]
+        assert [a.name for n in app_imports for a in n.names] == ["HallucinationAuditDialog"]
         # convert_view.py still opens every service dialog through the
         # facade — all 11, one lazy import each.
-        cv_imports = [a.name for node in ast.walk(_tree(_CONVERT_VIEW))
-                      if isinstance(node, ast.ImportFrom)
-                      and node.module == "ui_qt.views.service_dialogs."
-                          "base_dialog"
-                      for a in node.names]
+        cv_imports = [
+            a.name
+            for node in ast.walk(_tree(_CONVERT_VIEW))
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "ui_qt.views.service_dialogs.base_dialog"
+            for a in node.names
+        ]
         assert sorted(cv_imports) == sorted(_DIALOG_TO_FILE)
 
     def test_only_the_facade_imports_the_dialogs_package(self):
@@ -228,22 +238,25 @@ class TestExternalImportersCovered:
                 continue  # intra-package imports are fine (shared only)
             tree = ast.parse(_src(py))
             for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module and (
-                        node.module.startswith(
-                            "ui_qt.views.service_dialogs.dialogs")):
-                    raise AssertionError(
-                        f"{rel} bypasses the facade: {node.module}")
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module
+                    and (node.module.startswith("ui_qt.views.service_dialogs.dialogs"))
+                ):
+                    raise AssertionError(f"{rel} bypasses the facade: {node.module}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (c) each dialog class lives in its own module under dialogs/
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPerDialogModules:
     def test_package_file_set(self):
         assert (_DIALOGS / "__init__.py").is_file()
         assert sorted(p.name for p in _DIALOGS.glob("*.py")) == sorted(
-            ["__init__.py", "shared.py"] + _DIALOG_MODULES)
+            ["__init__.py", "shared.py"] + _DIALOG_MODULES
+        )
 
     def test_each_dialog_class_defined_in_its_own_module(self):
         for cls, fname in _DIALOG_TO_FILE.items():
@@ -257,11 +270,11 @@ class TestPerDialogModules:
             for name in _top_level_defs(_tree(py)):
                 if name in ("logger",):
                     continue
-                assert name not in seen, (
-                    f"{name} defined in both {seen[name]} and {py.name}")
+                assert name not in seen, f"{name} defined in both {seen[name]} and {py.name}"
                 seen[name] = py.name
-        assert set(seen) == set(_CLASS_TO_FILE) | set(_FUNC_TO_FILE), (
-            sorted(set(seen) ^ (set(_CLASS_TO_FILE) | set(_FUNC_TO_FILE))))
+        assert set(seen) == set(_CLASS_TO_FILE) | set(_FUNC_TO_FILE), sorted(
+            set(seen) ^ (set(_CLASS_TO_FILE) | set(_FUNC_TO_FILE))
+        )
 
     def test_worker_classes_stay_with_their_dialogs(self):
         for cls, fname in _OTHER_CLASS_TO_FILE.items():
@@ -271,31 +284,37 @@ class TestPerDialogModules:
     def test_shared_holds_the_shared_classes_and_modal(self):
         defs = _top_level_defs(_tree(_DIALOGS / "shared.py"))
         assert set(defs) == {
-            "PlainTextTextEdit", "BaseServiceDialog", "_show_success_modal",
-            *_GUARD_HELPERS}
+            "PlainTextTextEdit",
+            "BaseServiceDialog",
+            "_show_success_modal",
+            *_GUARD_HELPERS,
+        }
 
     def test_translation_and_tts_subclass_the_shared_base(self):
-        for fname in ("translation_service_dialog.py",
-                      "tts_service_dialog.py"):
+        for fname in ("translation_service_dialog.py", "tts_service_dialog.py"):
             tree = _tree(_DIALOGS / fname)
-            cls = [n for n in tree.body if isinstance(n, ast.ClassDef)
-                   and n.name in ("TranslationServiceDialog",
-                                  "TtsServiceDialog")][0]
-            assert any(isinstance(b, ast.Name) and b.id == (
-                "BaseServiceDialog") for b in cls.bases), fname
+            cls = [
+                n
+                for n in tree.body
+                if isinstance(n, ast.ClassDef)
+                and n.name in ("TranslationServiceDialog", "TtsServiceDialog")
+            ][0]
+            assert any(
+                isinstance(b, ast.Name) and b.id == ("BaseServiceDialog") for b in cls.bases
+            ), fname
 
     def test_dialogs_import_shared_not_base_dialog(self):
         # Acyclic: the package never imports the facade back.
         for py in sorted(_DIALOGS.glob("*.py")):
             for node in ast.walk(_tree(py)):
                 if isinstance(node, ast.ImportFrom):
-                    assert node.module != (
-                        "ui_qt.views.service_dialogs.base_dialog"), py.name
+                    assert node.module != ("ui_qt.views.service_dialogs.base_dialog"), py.name
                     if node.module and node.module.startswith(
-                            "ui_qt.views.service_dialogs.dialogs."):
-                        assert node.module == (
-                            "ui_qt.views.service_dialogs.dialogs.shared"
-                        ), f"{py.name} imports sibling {node.module}"
+                        "ui_qt.views.service_dialogs.dialogs."
+                    ):
+                        assert node.module == ("ui_qt.views.service_dialogs.dialogs.shared"), (
+                            f"{py.name} imports sibling {node.module}"
+                        )
 
     def test_every_module_parses_and_defines_something(self):
         for py in sorted(_DIALOGS.glob("*.py")):
@@ -307,14 +326,15 @@ class TestPerDialogModules:
         # The 10 T-b2 closeEvent guards span the family (p4a pins the
         # shapes; this pins the family union stayed intact).
         union = _src(_BASE_DIALOG) + "\n".join(
-            _src(_DIALOGS / p) for p in sorted(
-                q.name for q in _DIALOGS.glob("*.py")))
+            _src(_DIALOGS / p) for p in sorted(q.name for q in _DIALOGS.glob("*.py"))
+        )
         assert union.count("def closeEvent") == 10
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (d) the P4 guard helpers live in shared.py + are re-exported
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestSharedGuardHelpers:
     def test_guard_helpers_live_in_shared(self):
@@ -331,8 +351,7 @@ class TestSharedGuardHelpers:
 
     def test_confirm_guard_calls_the_other_two(self):
         # The shared trio's internal wiring moved together.
-        node = _top_level_defs(_tree(_DIALOGS / "shared.py"))[
-            "_confirm_close_with_running_worker"]
+        node = _top_level_defs(_tree(_DIALOGS / "shared.py"))["_confirm_close_with_running_worker"]
         seg = ast.get_source_segment(_src(_DIALOGS / "shared.py"), node)
         assert "_worker_is_running(" in seg
         assert "_detach_worker_signals(" in seg
@@ -341,6 +360,7 @@ class TestSharedGuardHelpers:
 # ═══════════════════════════════════════════════════════════════════════════
 # (e) verbatim move vs the pre-split V18.20.4.5 base_dialog.py
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _pre_split_source() -> str:
     if not _REF_ZIP.is_file():
@@ -358,31 +378,34 @@ class TestVerbatimMove:
     # so any additional drift still fails), per the P6 test_v182047
     # evolution pattern.
     _STYLER_SUBS = {
-        "_on_process": [(
-            '        except Exception as e:\n'
-            '            self.status_label.setText(f"❌ Error: {e}")\n',
-            '        except Exception as e:\n'
-            '            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the\n'
-            '            # status + user box (was str(e)-only — zero diagnostics).\n'
-            '            logger.warning("markdown styling failed", exc_info=True)\n'
-            '            self.status_label.setText(f"❌ Error: {e}")\n',
-        )],
-        "_on_save": [(
-            '            except Exception as e:\n'
-            '                QMessageBox.critical(self, "Save failed", str(e))',
-            '            except Exception as e:\n'
-            '                # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE\n'
-            '                # the user box (was str(e)-only — zero diagnostics).\n'
-            '                logger.warning("styled markdown save failed", exc_info=True)\n'
-            '                QMessageBox.critical(self, "Save failed", str(e))',
-        )],
+        "_on_process": [
+            (
+                "        except Exception as e:\n"
+                '            self.status_label.setText(f"❌ Error: {e}")\n',
+                "        except Exception as e:\n"
+                "            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the\n"
+                "            # status + user box (was str(e)-only — zero diagnostics).\n"
+                '            logger.warning("markdown styling failed", exc_info=True)\n'
+                '            self.status_label.setText(f"❌ Error: {e}")\n',
+            )
+        ],
+        "_on_save": [
+            (
+                "            except Exception as e:\n"
+                '                QMessageBox.critical(self, "Save failed", str(e))',
+                "            except Exception as e:\n"
+                "                # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE\n"
+                "                # the user box (was str(e)-only — zero diagnostics).\n"
+                '                logger.warning("styled markdown save failed", exc_info=True)\n'
+                '                QMessageBox.critical(self, "Save failed", str(e))',
+            )
+        ],
     }
 
     def test_every_class_body_byte_identical(self):
         pre = _pre_split_source()
         pre_tree = ast.parse(pre)
-        pre_defs = {n.name: n for n in pre_tree.body
-                    if isinstance(n, ast.ClassDef)}
+        pre_defs = {n.name: n for n in pre_tree.body if isinstance(n, ast.ClassDef)}
         assert set(pre_defs) == set(_CLASS_TO_FILE)
         for cls, fname in _CLASS_TO_FILE.items():
             new_src = _src(_DIALOGS / fname)
@@ -395,67 +418,80 @@ class TestVerbatimMove:
                 cls_tree = ast.parse(expected)
                 styler = cls_tree.body[0]
                 assert isinstance(styler, ast.ClassDef)
-                old_methods = {n.name: ast.get_source_segment(expected, n) or ""
-                               for n in styler.body
-                               if isinstance(n, ast.FunctionDef)}
+                old_methods = {
+                    n.name: ast.get_source_segment(expected, n) or ""
+                    for n in styler.body
+                    if isinstance(n, ast.FunctionDef)
+                }
                 new_tree = ast.parse(actual)
                 new_styler = new_tree.body[0]
-                new_methods = {n.name: ast.get_source_segment(actual, n) or ""
-                               for n in new_styler.body
-                               if isinstance(n, ast.FunctionDef)}
+                new_methods = {
+                    n.name: ast.get_source_segment(actual, n) or ""
+                    for n in new_styler.body
+                    if isinstance(n, ast.FunctionDef)
+                }
                 assert set(new_methods) == set(old_methods), (
-                    "no MarkdownStylerDialog method may be added/deleted "
-                    "beyond the W-b17 evolution")
+                    "no MarkdownStylerDialog method may be added/deleted beyond the W-b17 evolution"
+                )
                 for name, new_body in new_methods.items():
                     exp = old_methods[name]
                     for old_frag, new_frag in self._STYLER_SUBS.get(name, []):
                         assert old_frag in exp, (
                             f"guarded anchor missing in the reference "
                             f"({name}) — drift beyond the documented "
-                            "W-b17 evolution")
+                            "W-b17 evolution"
+                        )
                         exp = exp.replace(old_frag, new_frag, 1)
                     assert new_body == exp, (
                         f"MarkdownStylerDialog.{name} drifted beyond the "
                         "documented W-b17 evolution (byte-identity is still "
-                        "enforced for every other method)")
+                        "enforced for every other method)"
+                    )
                 continue
             assert expected == actual, f"{cls} body changed"
 
     def test_every_module_function_body_byte_identical(self):
         pre = _pre_split_source()
         pre_tree = ast.parse(pre)
-        pre_defs = {n.name: n for n in pre_tree.body
-                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        pre_defs = {
+            n.name: n
+            for n in pre_tree.body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
         assert set(pre_defs) == set(_FUNC_TO_FILE)
         for func, fname in _FUNC_TO_FILE.items():
             new_src = _src(_DIALOGS / fname)
             new_node = _top_level_defs(_tree(_DIALOGS / fname))[func]
-            assert ast.get_source_segment(
-                pre, pre_defs[func]) == ast.get_source_segment(
-                    new_src, new_node), f"{func} body changed"
+            assert ast.get_source_segment(pre, pre_defs[func]) == ast.get_source_segment(
+                new_src, new_node
+            ), f"{func} body changed"
 
     def test_tts_cuda_caches_still_module_level(self):
         # The session caches moved with the TTS helpers (mutated via
         # ``global`` inside the tts module — same semantics as before).
         pre = _pre_split_source()
         pre_tree = ast.parse(pre)
-        pre_caches = {t.id for n in pre_tree.body
-                      if isinstance(n, ast.AnnAssign)
-                      and isinstance(n.target, ast.Name) for t in [n.target]}
+        pre_caches = {
+            t.id
+            for n in pre_tree.body
+            if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+            for t in [n.target]
+        }
         new_tree = _tree(_DIALOGS / "tts_service_dialog.py")
-        new_caches = {n.target.id for n in new_tree.body
-                      if isinstance(n, ast.AnnAssign)}
+        new_caches = {n.target.id for n in new_tree.body if isinstance(n, ast.AnnAssign)}
         assert pre_caches <= new_caches, sorted(pre_caches - new_caches)
 
     def test_wb5_spawns_survived_verbatim(self):
         # Spot-check: the four W-b5 SimpleWorker spawn sites still spawn
         # from their _do_* methods (see p4a for the full contracts).
-        for cls, do in (("OcrServiceDialog", "_do_convert"),
-                        ("SummarizationServiceDialog", "_do_summarize"),
-                        ("QuickConvertDialog", "_do_convert"),
-                        ("PdfDocxCutterDialog", "_do_cut")):
+        for cls, do in (
+            ("OcrServiceDialog", "_do_convert"),
+            ("SummarizationServiceDialog", "_do_summarize"),
+            ("QuickConvertDialog", "_do_convert"),
+            ("PdfDocxCutterDialog", "_do_cut"),
+        ):
             src = _src(_DIALOGS / _DIALOG_TO_FILE[cls])
-            assert f"self._worker = SimpleWorker(" in src, cls
+            assert "self._worker = SimpleWorker(" in src, cls
             assert f"def {do}(" in src, f"{cls}.{do}"
 
 
@@ -476,7 +512,8 @@ class TestQtiLatentBugFix:
     def test_qti_is_assigned_qtablewidgetitem(self):
         tree = _tree(_HALLUCINATION)
         assigns = [
-            n for n in tree.body
+            n
+            for n in tree.body
             if isinstance(n, ast.Assign)
             and len(n.targets) == 1
             and isinstance(n.targets[0], ast.Name)
@@ -491,14 +528,14 @@ class TestQtiLatentBugFix:
         # The alias must resolve: QTableWidgetItem is imported from
         # PySide6.QtWidgets in this module (its existing import style).
         for node in _tree(_HALLUCINATION).body:
-            if (isinstance(node, ast.ImportFrom)
-                    and node.module == "PySide6.QtWidgets"):
+            if isinstance(node, ast.ImportFrom) and node.module == "PySide6.QtWidgets":
                 names = {a.name for a in node.names}
                 if "QTableWidgetItem" in names:
                     return
         raise AssertionError(
             "QTableWidgetItem not imported from PySide6.QtWidgets in "
-            "hallucination_audit_dialog.py — the _QTI alias would NameError")
+            "hallucination_audit_dialog.py — the _QTI alias would NameError"
+        )
 
     def test_the_five_call_sites_survived(self):
         # The fill sites moved verbatim; they now resolve via the alias.

@@ -8,6 +8,7 @@ Usage (from output_runner or converter)::
     from core.outputs.anki_export import export_anki_deck
     export_anki_deck(flashcards, book_title, output_dir, log_callback=log)
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,7 +66,7 @@ def export_anki_deck(
             {
                 "name": "Card 1",
                 "qfmt": "{{Front}}",
-                "afmt": "{{Front}}<hr id=\"answer\">{{Back}}",
+                "afmt": '{{Front}}<hr id="answer">{{Back}}',
             },
         ],
         css=".card { font-family: sans-serif; font-size: 16px; text-align: center; color: black; background: white; } .tags { font-size: 10px; color: #888; margin-top: 10px; } .extra { font-size: 12px; color: #666; margin-top: 5px; font-style: italic; }",
@@ -101,7 +102,7 @@ def _parse_tags(tags_str: str) -> list[str]:
     safe_tags = []
     for t in raw_tags:
         # Anki tags can't contain spaces
-        safe = re.sub(r'\s+', '_', t)
+        safe = re.sub(r"\s+", "_", t)
         if safe:
             safe_tags.append(safe)
     return safe_tags

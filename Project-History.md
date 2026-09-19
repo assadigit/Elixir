@@ -1460,8 +1460,8 @@ ctx = PromptContext(
     active_prompt=self.active_prompt,
     primary_model=self.primary_model,
     source_type=getattr(self.request, "source_type", "normal_book"),
-    select_prompt=self._select_prompt,      # lowbit-aware prompt selection
-    render_prompt=self.prompt_manager.render, # renders the template
+    select_prompt=self._select_prompt,  # lowbit-aware prompt selection
+    render_prompt=self.prompt_manager.render,  # renders the template
     log=self.log,
 )
 return build_primary_prompt(ctx, heading, text, with_cot, concepts, callouts)
@@ -4413,7 +4413,9 @@ interpreted `repl` as `string` and complained about the missing third arg.
 Compiled the pattern separately and used the compiled object's `.sub()`:
 
 ```python
-_YEAR_PATTERN = _re_yr.compile(r'\((\d{4})\)')
+_YEAR_PATTERN = _re_yr.compile(r"\((\d{4})\)")
+
+
 def _format_years(text):
     return _YEAR_PATTERN.sub(r'(<em style="font-size:0.9em">\1</em>)', text)
 ```

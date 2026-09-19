@@ -22,6 +22,7 @@ Programmer Should Know" incident (user log on record):
 Headless: heavy optional deps are mocked at import (house pattern from
 test_chapter_matcher_robust.py). No PySide6 import.
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,8 +38,16 @@ if str(_project_root) not in sys.path:
 # they are actually missing in this environment (when present, the REAL
 # modules must stay — real pypdf probes PIL.__version__, and core.docx
 # imports docx.enum, both of which explode on a naive MagicMock).
-for _mod in ("markitdown", "pdfplumber", "pdf2image", "pytesseract",
-             "spacy", "wordninja", "PIL", "docx"):
+for _mod in (
+    "markitdown",
+    "pdfplumber",
+    "pdf2image",
+    "pytesseract",
+    "spacy",
+    "wordninja",
+    "PIL",
+    "docx",
+):
     if _mod in sys.modules:
         continue
     try:
@@ -46,7 +55,6 @@ for _mod in ("markitdown", "pdfplumber", "pdf2image", "pytesseract",
     except Exception:
         sys.modules[_mod] = MagicMock()
 
-import pytest
 
 from core.models.models import ConversionRequest, Segment
 from core.models.toc import TOCEntry
@@ -55,14 +63,17 @@ from core.models.toc import TOCEntry
 def _collect():
     """A log callback that records (level, message) tuples."""
     logs: list[tuple[str, str]] = []
+
     def log(msg, level="INFO"):
         logs.append((level, msg))
+
     return logs, log
 
 
 def _make_segmenter(toc_entries, request=None):
     """Construct a REAL Segmenter (full wiring) with a recording logger."""
     from core.segmentation.segmenter import Segmenter
+
     logs, log = _collect()
     if request is None:
         request = ConversionRequest(input_path=Path("t.pdf"), output_dir=Path("out"))
@@ -74,15 +85,17 @@ def _make_segmenter(toc_entries, request=None):
 # P0-b1: outline level selection must not pick metadata children (authors)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestLevelSelection:
 
+class TestLevelSelection:
     def test_author_children_level_excluded_97_things_shape(self):
         """Level-1 bookmarks on the SAME pages as level-0 titles (the
         per-chapter author names in '97 Things') must NOT be chosen."""
         entries = []
         for i in range(5):
             page = 28 + i * 2
-            entries.append(TOCEntry(title=f"Essay Title Number {i} About Coding", page=page, level=0))
+            entries.append(
+                TOCEntry(title=f"Essay Title Number {i} About Coding", page=page, level=0)
+            )
             entries.append(TOCEntry(title=f"Kevlin Henney {i}", page=page, level=1))
         seg, logs = _make_segmenter(entries)
         result = seg._filter_to_chapter_level()
@@ -106,7 +119,7 @@ class TestLevelSelection:
         result = seg._filter_to_chapter_level()
         titles = [t for t, _ in result]
         assert any("Chapter 1" in t for t in titles), titles
-        assert not any("Part One" == t for t in titles), titles
+        assert not any(t == "Part One" for t in titles), titles
 
     def test_front_matter_level1_falls_back_to_level0(self):
         """Regression pin: level-1 front-matter only → level 0."""
@@ -125,6 +138,7 @@ class TestLevelSelection:
 # P0-b2: the merge cascade must be bounded
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _segs_from_spans(spans):
     """Segments from (start_page, end_page) spans, 500 chars per page."""
     out = []
@@ -142,7 +156,6 @@ def _segs_from_spans(spans):
 
 
 class TestMergeCascade:
-
     def test_all_short_segments_no_single_mega_segment(self):
         """97 two-page essays: the old code produced ONE segment spanning
         the whole book. Now: no merged segment may exceed 2x min_pages."""
@@ -199,8 +212,8 @@ class TestMergeCascade:
 # P0-b3: missing page markers must not swallow the whole text
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestMissingMarkers:
 
+class TestMissingMarkers:
     def test_missing_start_page_uses_nearest_forward(self):
         """A chapter whose start page has NO marker starts at the nearest
         FOLLOWING marker — never at position 0 (the old behavior sliced the
@@ -246,8 +259,8 @@ class TestMissingMarkers:
 # P0-b4: the monster-segment warning gate
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestMonsterGate:
 
+class TestMonsterGate:
     def test_monster_segment_logs_warning(self):
         """A chapter-level result where one segment spans >60% of the book
         must produce a visible WARNING (the V18.20.4.9 run passed silently).
@@ -268,10 +281,10 @@ class TestMonsterGate:
             TOCEntry(title="Last Chapter", page=99, level=1),
         ]
         seg, logs = _make_segmenter(entries)
-        segments = seg.segment(markdown, total_pages, markers)
-        assert any("MONSTER SEGMENT" in m and level == "WARNING" for level, m in logs), (
-            [m for _, m in logs]
-        )
+        _segments = seg.segment(markdown, total_pages, markers)
+        assert any("MONSTER SEGMENT" in m and level == "WARNING" for level, m in logs), [
+            m for _, m in logs
+        ]
 
     def test_sane_segmentation_no_monster_warning(self):
         """Regression pin: a sane multi-chapter book triggers NO warning."""
@@ -294,6 +307,7 @@ class TestMonsterGate:
 # ═══════════════════════════════════════════════════════════════════════════
 # P0-a: the token estimator
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class _FakeDest:
     def __init__(self, title, page):
@@ -329,15 +343,16 @@ class _FakeReader:
 
 
 class TestTokenEstimator:
-
     def _patch_reader(self, monkeypatch, reader):
         import pypdf
+
         monkeypatch.setattr(pypdf, "PdfReader", lambda *a, **k: reader)
 
     def test_heading_heuristic_capped_by_pages(self, monkeypatch):
         """A page full of numbered lines (footnotes/years/exercises) can no
         longer count each line as a chapter — cap = pdf_pages // 2."""
         from core.pipeline.token_estimator import estimate_conversion_tokens
+
         numbered_spam = "\n".join(f"{i} something something" for i in range(1, 400))
         pages = [numbered_spam] + ["plain text page"] * 9  # 10 pages → cap 5
         self._patch_reader(monkeypatch, _FakeReader(pages))
@@ -351,6 +366,7 @@ class TestTokenEstimator:
         """When the PDF has top-level bookmarks, they ARE the chapter count
         (99 in the real 97-Things book — not 2,623 numbered lines)."""
         from core.pipeline.token_estimator import estimate_conversion_tokens
+
         numbered_spam = "\n".join(f"{i} something something" for i in range(1, 400))
         pages = [numbered_spam] * 10
         outline = [_FakeDest(f"Essay {i}", i) for i in range(99)]
@@ -364,7 +380,10 @@ class TestTokenEstimator:
     def test_selected_title_author_double_count_collapsed(self, monkeypatch):
         """The 198-entry selection (title + author per essay) maps to 99
         distinct chapter start pages — the estimate uses 99, not 198."""
-        from core.pipeline.token_estimator import estimate_conversion_tokens, _compute_selected_source_tokens
+        from core.pipeline.token_estimator import (
+            estimate_conversion_tokens,
+        )
+
         pages = [f"page {i} text " * 40 for i in range(120)]
         outline = []
         for i in range(99):
@@ -375,8 +394,10 @@ class TestTokenEstimator:
         # fuzzy title matching — stub it to exact-prefix matching (the real
         # matcher's behaviour on identical titles is a match anyway).
         from core.pipeline import converter as _conv_mod
+
         monkeypatch.setattr(
-            _conv_mod.Converter, "_match_chapter",
+            _conv_mod.Converter,
+            "_match_chapter",
             staticmethod(lambda toc_title, selected: selected == toc_title),
             raising=True,
         )
@@ -400,6 +421,7 @@ class TestTokenEstimator:
 # P0-d: map-reduce wall-clock budget + chunk sanity
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _mr_content(target_tokens: int) -> str:
     """Synthesize ~target_tokens of paragraph text (fast, no counting)."""
     paras = []
@@ -413,6 +435,7 @@ def _mr_content(target_tokens: int) -> str:
 
 def _run_map_reduce(content, budget=0, chunk_tokens=4000, sleeper=0.0, cap_calls=None):
     from core.summarisation.map_reduce import map_reduce_summarize
+
     logs, log = _collect()
     calls = {"n": 0}
 
@@ -425,7 +448,8 @@ def _run_map_reduce(content, budget=0, chunk_tokens=4000, sleeper=0.0, cap_calls
         return f"mini summary {calls['n']}"
 
     raw, combined = map_reduce_summarize(
-        "Chapter", content,
+        "Chapter",
+        content,
         primary_model="fake-model",
         cache_dir=Path(_project_root, "tests", "_mr_cache_tmp"),
         input_path_stem="book",
@@ -443,7 +467,6 @@ def _run_map_reduce(content, budget=0, chunk_tokens=4000, sleeper=0.0, cap_calls
 
 
 class TestMapReduceBudget:
-
     def test_budget_zero_completes_old_behavior(self):
         """budget=0 (disabled) → all chunks run, reduce runs (V18.11 pin)."""
         raw, combined, logs, n_calls = _run_map_reduce(_mr_content(20_000), budget=0)
@@ -456,9 +479,7 @@ class TestMapReduceBudget:
         silent partial summary, never an unbounded grind."""
         # ~40K tokens → ~11 chunks; each call sleeps 0.35s; budget 1s →
         # aborts around chunk 3-4.
-        raw, combined, logs, n_calls = _run_map_reduce(
-            _mr_content(40_000), budget=1, sleeper=0.35
-        )
+        raw, combined, logs, n_calls = _run_map_reduce(_mr_content(40_000), budget=1, sleeper=0.35)
         assert raw is None and combined == 0
         assert any("ABORTED" in m and lvl == "WARNING" for lvl, m in logs)
         assert any("budget" in m for _, m in logs)
@@ -483,16 +504,17 @@ class TestMapReduceBudget:
 # P0-c: VRAM overbudget policy enforcement
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestVramPolicy:
 
+class TestVramPolicy:
     def _converter_with(self, monkeypatch, peak, total_vram, policy, ack=False):
         """A minimally-instantiated Converter (no __init__) with patched
         budget calculator and a dict-backed settings stub."""
-        from core.pipeline.converter_impl import Converter
         import core.vram_calculator as vc
+        from core.pipeline.converter_impl import Converter
 
         monkeypatch.setattr(
-            vc, "calculate_vram_budget",
+            vc,
+            "calculate_vram_budget",
             lambda **kwargs: ([], peak, total_vram, "rec"),
         )
         monkeypatch.setattr(vc, "get_total_vram", lambda: total_vram)
@@ -536,19 +558,24 @@ class TestVramPolicy:
     def test_overbudget_ask_without_ack_fails_fast(self, monkeypatch):
         """Non-interactive starts (queue / service dialogs) cannot ask →
         they abort (the V18.20.4.9 queue path started silently)."""
-        conv, logs = self._converter_with(monkeypatch, peak=20.2, total_vram=12.0, policy="ask", ack=False)
+        conv, logs = self._converter_with(
+            monkeypatch, peak=20.2, total_vram=12.0, policy="ask", ack=False
+        )
         err = conv._enforce_vram_budget()
         assert err is not None
 
     def test_overbudget_ask_with_ack_continues(self, monkeypatch):
         """A wizard 'Proceed anyway' acknowledgment (stamped on the request)
         is honored by the converter-side re-check."""
-        conv, logs = self._converter_with(monkeypatch, peak=20.2, total_vram=12.0, policy="ask", ack=True)
+        conv, logs = self._converter_with(
+            monkeypatch, peak=20.2, total_vram=12.0, policy="ask", ack=True
+        )
         assert conv._enforce_vram_budget() is None
         assert any("acknowledged" in m and lvl == "WARNING" for lvl, m in logs)
 
     def test_vram_error_class_exists(self):
-        from core.errors import VramOverbudgetError, ConversionError
+        from core.errors import ConversionError, VramOverbudgetError
+
         err = VramOverbudgetError("test")
         assert isinstance(err, ConversionError)
         assert err.phase == "preflight"

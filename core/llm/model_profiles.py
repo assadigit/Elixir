@@ -12,9 +12,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class ModelProfile:
     """Configuration profile for a specific LLM model."""
+
     name: str
     temperature: float = 0.6
     max_bullets: int = 30
@@ -38,7 +40,6 @@ _PROFILES: dict[str, ModelProfile] = {
         simplification_temperature=0.1,
         narrative_filter_strict=True,
     ),
-
     # Qwythos-9B — Claude-style model, good at simplification, verbose
     "qwythos": ModelProfile(
         name="Qwythos-9B-Claude-Mythos",
@@ -55,7 +56,6 @@ _PROFILES: dict[str, ModelProfile] = {
         simplification_temperature=0.1,
         narrative_filter_strict=True,
     ),
-
     # Llama 3.x — general purpose, good balance
     "llama": ModelProfile(
         name="Llama-3.x",
@@ -67,7 +67,6 @@ _PROFILES: dict[str, ModelProfile] = {
         simplification_temperature=0.15,
         narrative_filter_strict=True,
     ),
-
     # Gemma — Google model, concise
     "gemma": ModelProfile(
         name="Gemma",
@@ -79,7 +78,6 @@ _PROFILES: dict[str, ModelProfile] = {
         simplification_temperature=0.15,
         narrative_filter_strict=False,  # less strict — Gemma is more conservative
     ),
-
     # Default profile
     "default": ModelProfile(
         name="Default",

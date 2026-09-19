@@ -20,6 +20,7 @@ empty-input path, the chunking behaviour (10 bullets/chunk), the YES/NO
 verdict parsing, the cloud-vs-local routing, the empty-response skip, and
 the exception-per-chunk continue.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,6 +48,7 @@ def _noop_call(prompt, **kw):
 
 
 # ── llm_grounding_check (extracted verbatim) ───────────────────────────────
+
 
 def llm_grounding_check(
     bullets: list[str],
@@ -89,7 +91,7 @@ def llm_grounding_check(
     # V13.28.0 P2.8: Chunk bullets into groups of 10 to avoid prompt
     # length issues with 40+ bullets.
     CHUNK_SIZE = 10
-    chunks = [bullets[i:i + CHUNK_SIZE] for i in range(0, len(bullets), CHUNK_SIZE)]
+    chunks = [bullets[i : i + CHUNK_SIZE] for i in range(0, len(bullets), CHUNK_SIZE)]
 
     for chunk_idx, bullet_chunk in enumerate(chunks):
         # Build a single LLM call with this chunk of bullets
@@ -108,15 +110,16 @@ def llm_grounding_check(
             # but _call_ollama's signature is (prompt, model, temp, max_tokens)
             # — so temp=0.0 was passed as the model name (broken for cloud users).
             if fusion_enabled and fusion_use_for_grounding:
-                response = call_cloud(prompt, max_tokens=4096,
-                                      temperature=fusion_cloud_temperature)
+                response = call_cloud(prompt, max_tokens=4096, temperature=fusion_cloud_temperature)
             else:
                 # V13.37.0: Use temperature (model's optimal), not 0.2.
                 # V18.8 (Phase 5.3): Route through _call_llm_with_empty_retry
                 # instead of _call_llm directly — gets the same 2-attempt retry
                 # + Qwen3 /no_think injection as all other LLM calls.
                 response = call_llm_with_empty_retry(
-                    prompt, temperature=temperature, max_tokens=4096,
+                    prompt,
+                    temperature=temperature,
+                    max_tokens=4096,
                 )
             calls_made += 1
             if not response:
@@ -125,7 +128,7 @@ def llm_grounding_check(
             # Parse the response
             for line in response.strip().splitlines():
                 line = line.strip()
-                m = re.match(r'^(\d+)\s*:\s*(YES|NO)', line, re.IGNORECASE)
+                m = re.match(r"^(\d+)\s*:\s*(YES|NO)", line, re.IGNORECASE)
                 if m:
                     idx = int(m.group(1)) - 1  # 0-indexed
                     verdict = m.group(2).upper()

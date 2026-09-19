@@ -1,4 +1,5 @@
 """Test fixtures for ConversionRequest — avoids setting 40+ fields per test."""
+
 from __future__ import annotations
 
 from pathlib import Path

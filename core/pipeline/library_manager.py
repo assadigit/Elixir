@@ -72,17 +72,16 @@ class LibraryManager:
             "total_chapters": total_chapters,
             "concepts_extracted": concepts_extracted,
             "keypoints_count": keypoints_count,
-            "coverage": (
-                round(coverage, 3)
-                if isinstance(coverage, (int, float))
-                else None
-            ),
+            "coverage": (round(coverage, 3) if isinstance(coverage, (int, float)) else None),
             "output_dir": output_dir,
             "date_processed": datetime.now().isoformat(),
             "status": "completed" if chapters_processed > 0 else "pending",
         }
         self._save()
-        self.log(f"  📚 Library: Added '{title}' ({chapters_processed} chapters, {keypoints_count} keypoints)", "INFO")
+        self.log(
+            f"  📚 Library: Added '{title}' ({chapters_processed} chapters, {keypoints_count} keypoints)",
+            "INFO",
+        )
 
     def get_book(self, title: str) -> dict | None:
         """Get a book's metadata."""
@@ -110,8 +109,7 @@ class LibraryManager:
         total_keypoints = sum(b.get("keypoints_count", 0) for b in books.values())
         total_concepts = sum(b.get("concepts_extracted", 0) for b in books.values())
         _covs = [
-            b.get("coverage") for b in books.values()
-            if isinstance(b.get("coverage"), (int, float))
+            b.get("coverage") for b in books.values() if isinstance(b.get("coverage"), (int, float))
         ]
         avg_coverage = (sum(_covs) / len(_covs)) if _covs else 0
         return {

@@ -87,6 +87,7 @@ from ui_qt.theme import theme_manager
 # Helpers for building a sub-tab page from a list of sections
 # ════════════════════════════════════════════════════════════════════════════
 
+
 def _make_page(sections: list, two_col: bool = False) -> QWidget:
     """Build a scrollable sub-tab page hosting the given sections."""
     scroll = QScrollArea()
@@ -134,6 +135,7 @@ class _HeadGroup(QWidget):
     """
 
     from PySide6.QtCore import Signal
+
     clicked = Signal(object)  # _HeadGroup
 
     def __init__(self, icon_name: str, label: str, parent: QWidget | None = None) -> None:
@@ -193,6 +195,7 @@ class _HeadGroup(QWidget):
 # The Presets head-group page (card grid + per-preset sub-tabs)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class _PresetsPage(QWidget):
     """Card grid of presets; selecting one reveals its editable sub-tabs."""
 
@@ -207,6 +210,7 @@ class _PresetsPage(QWidget):
 
         # ── card grid (responsive: wraps) ───────────────────────────────
         from PySide6.QtWidgets import QGridLayout
+
         self._grid = QGridLayout()
         self._grid.setSpacing(8)
         self._cards: dict[str, _PresetCard] = {}
@@ -230,7 +234,12 @@ class _PresetsPage(QWidget):
         if src not in self._cards:
             # infographics/visual_catalogue both set source_type=visual_catalogue;
             # pick by force_ocr flag
-            key_for_src = "infographics_slides" if controller.get_setting("ocr.force_ocr_all_pages", False) and src == "visual_catalogue" else "normal_book"
+            key_for_src = (
+                "infographics_slides"
+                if controller.get_setting("ocr.force_ocr_all_pages", False)
+                and src == "visual_catalogue"
+                else "normal_book"
+            )
         if key_for_src not in self._cards:
             key_for_src = "normal_book"
         self._on_preset_selected(key_for_src)
@@ -243,7 +252,9 @@ class _PresetsPage(QWidget):
         preset = PRESETS.get(key, PRESETS["normal_book"])
         for sk, sv in preset["settings"].items():
             self.controller.update_setting(sk, sv)
-        self.controller.update_setting("source_type", preset["settings"].get("source_type", "normal_book"))
+        self.controller.update_setting(
+            "source_type", preset["settings"].get("source_type", "normal_book")
+        )
         # (re)build the sub-tabs for this preset's editable settings
         self.sub_tabs.clear()
         self._sections = []
@@ -251,16 +262,20 @@ class _PresetsPage(QWidget):
         engine_page = _make_page([OcrEngineSection(self.controller)])
         self.sub_tabs.addTab(engine_page, "Engine")
         # Sub-tab 2: Segmentation
-        seg_page = _make_page([
-            OutputSegmentationSection(self.controller),
-            OutputKeywordsSection(self.controller),
-        ])
+        seg_page = _make_page(
+            [
+                OutputSegmentationSection(self.controller),
+                OutputKeywordsSection(self.controller),
+            ]
+        )
         self.sub_tabs.addTab(seg_page, "Segmentation")
         # Sub-tab 3: Filter & output
-        filt_page = _make_page([
-            AiQualitySection(self.controller),
-            AiOutputSelectionSection(self.controller),
-        ])
+        filt_page = _make_page(
+            [
+                AiQualitySection(self.controller),
+                AiOutputSelectionSection(self.controller),
+            ]
+        )
         self.sub_tabs.addTab(filt_page, "Filter & output")
         # collect sections for save/reload
         self._sections = [engine_page, seg_page, filt_page]
@@ -300,10 +315,12 @@ class _PresetCard(QFrame):
     """
 
     from PySide6.QtCore import Signal
+
     selected = Signal(str)
 
-    def __init__(self, value: str, icon_name: str, title: str, subtitle: str,
-                 parent: QWidget | None = None) -> None:
+    def __init__(
+        self, value: str, icon_name: str, title: str, subtitle: str, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._value = value
         self._icon_name = icon_name
@@ -325,9 +342,7 @@ class _PresetCard(QFrame):
         # ── Title (centered) ──────────────────────────────────────────
         self.title_lbl = QLabel(title)
         self.title_lbl.setAlignment(Qt.AlignCenter)
-        self.title_lbl.setStyleSheet(
-            "font-size: 12px; font-weight: 600; background: transparent;"
-        )
+        self.title_lbl.setStyleSheet("font-size: 12px; font-weight: 600; background: transparent;")
         lay.addWidget(self.title_lbl)
 
         # ── Subtitle (centered, wraps) ────────────────────────────────
@@ -345,7 +360,9 @@ class _PresetCard(QFrame):
         p = theme_manager.palette
         color = p.accent if self._selected else p.text_primary
         # V4.7.25: PNG icon with SVG fallback (assets/icons/{value}.png)
-        pm = pixmap_with_png_fallback(self._value, color=color, size=48, svg_fallback=self._icon_name)
+        pm = pixmap_with_png_fallback(
+            self._value, color=color, size=48, svg_fallback=self._icon_name
+        )
         self.icon_lbl.setPixmap(pm)
         if self._selected:
             self.setStyleSheet(
@@ -383,55 +400,87 @@ class _PresetCard(QFrame):
 # Each sub-tab def = (title, [section classes], two_col?)
 # None for subs means "special page" (Presets / Prompts).
 _HEAD_GROUPS = [
-    ("sliders-horizontal", "Presets", None),   # built specially via _PresetsPage
-    ("list-checks", "Defaults", [               # V11.19: default engines/models
-        ("All", [DefaultsSection], False),
-    ]),
-    ("cpu", "AI", [
-        ("Local Model", [AiLocalModelSection], False),
-        ("API", [AiApiSection], False),
-        ("Prompt", [AiPromptSection], False),
-    ]),
+    ("sliders-horizontal", "Presets", None),  # built specially via _PresetsPage
+    (
+        "list-checks",
+        "Defaults",
+        [  # V11.19: default engines/models
+            ("All", [DefaultsSection], False),
+        ],
+    ),
+    (
+        "cpu",
+        "AI",
+        [
+            ("Local Model", [AiLocalModelSection], False),
+            ("API", [AiApiSection], False),
+            ("Prompt", [AiPromptSection], False),
+        ],
+    ),
     ("message-square", "Prompts", None),  # built specially via PromptsPage (V3.1.3)
-    ("scan", "OCR", [
-        ("Engine", [OcrEngineSection], False),
-        ("Models", [OcrModelSection], False),
-        ("Figures", [OcrFiguresSection], False),
-    ]),
-    ("file-output", "Output", [
-        ("Output Types", [AiOutputSelectionSection], False),
-        ("Quality", [AiQualitySection], False),
-        ("Destination", [OutputDestinationSection], False),
-        ("Generate", [OutputGenerateSection], False),
-        ("Segmentation", [OutputSegmentationSection, OutputKeywordsSection], True),
-        ("Post-process", [OutputPostprocessSection], False),
-        ("RAG", [OutputRagSection], False),
-        ("Output Studio", [OutputStudioSection], False),
-    ]),
-    ("globe", "Translation", [
-        ("Model", [TranslationModelSection], False),
-        ("Languages", [TranslationLanguagesSection], False),
-        ("Validation", [TranslationValidationSection, TranslationHarakatSection], True),
-        ("Outputs", [TranslationOutputSelectionSection, TranslationGlossarySection], False),
-        ("Preview", [TranslationPreviewSection], False),
-    ]),
-    ("mic", "TTS", [
-        ("Voices", [TtsVoicesSection], False),
-        ("Engines", [TtsEnginesSection], False),
-        ("Coqui XTTS v2", [TtsCoquiSection], False),  # V10.37.0
-        ("Speed", [TtsSpeedSection], False),
-        ("Normalization", [TtsNormalizationSection], False),
-        ("Preview", [TtsPreviewSection], False),
-    ]),
-    ("play", "Podcast", [
-        ("Format", [PodcastFormatSection], False),
-        ("Depth & Length", [PodcastDepthSection], False),
-        ("Style", [PodcastStyleSection], False),
-        ("Preview", [PodcastPreviewSection], False),
-    ]),
-    ("check", "Dependencies", [
-        ("All", [DependenciesSection], False),
-    ]),
+    (
+        "scan",
+        "OCR",
+        [
+            ("Engine", [OcrEngineSection], False),
+            ("Models", [OcrModelSection], False),
+            ("Figures", [OcrFiguresSection], False),
+        ],
+    ),
+    (
+        "file-output",
+        "Output",
+        [
+            ("Output Types", [AiOutputSelectionSection], False),
+            ("Quality", [AiQualitySection], False),
+            ("Destination", [OutputDestinationSection], False),
+            ("Generate", [OutputGenerateSection], False),
+            ("Segmentation", [OutputSegmentationSection, OutputKeywordsSection], True),
+            ("Post-process", [OutputPostprocessSection], False),
+            ("RAG", [OutputRagSection], False),
+            ("Output Studio", [OutputStudioSection], False),
+        ],
+    ),
+    (
+        "globe",
+        "Translation",
+        [
+            ("Model", [TranslationModelSection], False),
+            ("Languages", [TranslationLanguagesSection], False),
+            ("Validation", [TranslationValidationSection, TranslationHarakatSection], True),
+            ("Outputs", [TranslationOutputSelectionSection, TranslationGlossarySection], False),
+            ("Preview", [TranslationPreviewSection], False),
+        ],
+    ),
+    (
+        "mic",
+        "TTS",
+        [
+            ("Voices", [TtsVoicesSection], False),
+            ("Engines", [TtsEnginesSection], False),
+            ("Coqui XTTS v2", [TtsCoquiSection], False),  # V10.37.0
+            ("Speed", [TtsSpeedSection], False),
+            ("Normalization", [TtsNormalizationSection], False),
+            ("Preview", [TtsPreviewSection], False),
+        ],
+    ),
+    (
+        "play",
+        "Podcast",
+        [
+            ("Format", [PodcastFormatSection], False),
+            ("Depth & Length", [PodcastDepthSection], False),
+            ("Style", [PodcastStyleSection], False),
+            ("Preview", [PodcastPreviewSection], False),
+        ],
+    ),
+    (
+        "check",
+        "Dependencies",
+        [
+            ("All", [DependenciesSection], False),
+        ],
+    ),
 ]
 
 
@@ -443,7 +492,7 @@ class SettingsDialog(QDialog):
         self.controller = controller
         self.setWindowTitle("Settings")
         self.setMinimumSize(780, 540)  # V7.4.0: was 920x660 — compact
-        self.resize(860, 600)           # V7.4.0: was 1000x700
+        self.resize(860, 600)  # V7.4.0: was 1000x700
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -480,6 +529,7 @@ class SettingsDialog(QDialog):
             rail_lay.addWidget(hg)
         # V10.18.0 (E5): Settings search bar — filters head-group labels
         from PySide6.QtWidgets import QLineEdit
+
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("🔍 Search…")
         self.search_edit.setClearButtonEnabled(True)
@@ -493,7 +543,7 @@ class SettingsDialog(QDialog):
         self._pages: list[QWidget] = []
         self._sub_tabs: list[QTabWidget] = []
         self.stack = QStackedWidget()
-        for idx, (_ic, lbl, subs) in enumerate(_HEAD_GROUPS):
+        for _idx, (_ic, lbl, subs) in enumerate(_HEAD_GROUPS):
             if subs is None and lbl == "Presets":
                 # Presets head group — special page
                 page = _PresetsPage(controller)
@@ -619,9 +669,11 @@ class SettingsDialog(QDialog):
 
     def _on_reset(self) -> None:
         ret = QMessageBox.question(
-            self, "Reset settings",
+            self,
+            "Reset settings",
             "Reset all settings to their defaults? This cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return

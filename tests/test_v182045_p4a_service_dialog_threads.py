@@ -36,6 +36,7 @@ spanning the entire dialog family), and per-class / per-helper slicing
 reads the module that defines the name via the class→file map. No
 assertion, string literal, or count changed.
 """
+
 from __future__ import annotations
 
 import re
@@ -53,9 +54,7 @@ SRC = "\n".join(
 )
 
 # module → source, for name-based slicing into the defining module
-_MODULE_SRC = {
-    p.name: p.read_text(encoding="utf-8") for p in DIALOGS_DIR.glob("*.py")
-}
+_MODULE_SRC = {p.name: p.read_text(encoding="utf-8") for p in DIALOGS_DIR.glob("*.py")}
 
 # class name → the dialogs/ module that defines it (split map)
 _CLASS_TO_FILE = {
@@ -94,6 +93,7 @@ def _defining_src(name: str) -> str:
 
 # ── source slicing helpers (content + ordering, never line numbers) ─────────
 
+
 def _class_src(name: str) -> str:
     """Return the source of top-level ``class <name>`` (up to the next
     top-level class/def) — read from the dialogs/ module that defines it
@@ -101,9 +101,9 @@ def _class_src(name: str) -> str:
     file_src = _defining_src(name)
     m = re.search(rf"^class {re.escape(name)}\b.*$", file_src, re.M)
     assert m is not None, f"class not found: {name}"
-    rest = file_src[m.end():]
+    rest = file_src[m.end() :]
     nxt = re.search(r"^(?=class |def )", rest, re.M)
-    return file_src[m.start():m.end() + (nxt.start() if nxt else len(rest))]
+    return file_src[m.start() : m.end() + (nxt.start() if nxt else len(rest))]
 
 
 def _method_src(class_src: str, name: str) -> str:
@@ -111,9 +111,9 @@ def _method_src(class_src: str, name: str) -> str:
     next method definition). Nested closures (8-space indent) never match."""
     m = re.search(rf"^    def {re.escape(name)}\(", class_src, re.M)
     assert m is not None, f"method not found: {name}"
-    rest = class_src[m.end():]
+    rest = class_src[m.end() :]
     nxt = re.search(r"^    def ", rest, re.M)
-    return class_src[m.start():m.end() + (nxt.start() if nxt else len(rest))]
+    return class_src[m.start() : m.end() + (nxt.start() if nxt else len(rest))]
 
 
 def _module_func_src(name: str) -> str:
@@ -123,9 +123,9 @@ def _module_func_src(name: str) -> str:
     file_src = _defining_src(name)
     m = re.search(rf"^def {re.escape(name)}\(", file_src, re.M)
     assert m is not None, f"module function not found: {name}"
-    rest = file_src[m.end():]
+    rest = file_src[m.end() :]
     nxt = re.search(r"^(?=class |def )", rest, re.M)
-    return file_src[m.start():m.end() + (nxt.start() if nxt else len(rest))]
+    return file_src[m.start() : m.end() + (nxt.start() if nxt else len(rest))]
 
 
 def _close_event_src(class_name: str) -> str:
@@ -136,20 +136,32 @@ def _close_event_src(class_name: str) -> str:
 # progress/finished/failed handler basenames).
 W_B5_DIALOGS = [
     ("OcrServiceDialog", "_do_convert", "_ocr_work", "_on_convert"),
-    ("SummarizationServiceDialog", "_do_summarize", "_summarize_work",
-     "_on_summarize"),
+    ("SummarizationServiceDialog", "_do_summarize", "_summarize_work", "_on_summarize"),
     ("QuickConvertDialog", "_do_convert", "_convert_work", "_on_convert"),
     ("PdfDocxCutterDialog", "_do_cut", "_cut_work", "_on_cut"),
 ]
 
 # Widget attribute names that must NEVER be referenced from a worker body.
 _WIDGET_ATTRS = (
-    "self.status_label", "self.action_btn", "self.progress_bar",
-    "self.again_btn", "self.out_edit", "self.in_edit", "self.file_list",
-    "self.engine_combo", "self.fmt_combo", "self.range_edit",
-    "self.model_combo", "self.quality_combo", "self.obsidian_chk",
-    "self.text_input", "self.tabs", "self.process_btn", "self.gen_btn",
-    "self.audit_btn", "self.results_table",
+    "self.status_label",
+    "self.action_btn",
+    "self.progress_bar",
+    "self.again_btn",
+    "self.out_edit",
+    "self.in_edit",
+    "self.file_list",
+    "self.engine_combo",
+    "self.fmt_combo",
+    "self.range_edit",
+    "self.model_combo",
+    "self.quality_combo",
+    "self.obsidian_chk",
+    "self.text_input",
+    "self.tabs",
+    "self.process_btn",
+    "self.gen_btn",
+    "self.audit_btn",
+    "self.results_table",
 )
 
 # Every worker-owning dialog that needs a T-b2 closeEvent guard.
@@ -170,6 +182,7 @@ T_B2_DIALOGS = [
 # ═══════════════════════════════════════════════════════════════════════════
 # W-b5 — the four offloaded work paths
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWb5WorkerSpawns:
     """Each _do_* spawns a SimpleWorker with the shared W-b5 shape."""
@@ -209,18 +222,21 @@ class TestWb5WorkerSpawns:
         # a worker runs must be a no-op, not a second worker).
         for cls, do, _w, _h in W_B5_DIALOGS:
             do_src = _method_src(_class_src(cls), do)
-            guard = ("if self._worker is not None and "
-                     "self._worker.is_running():")
+            guard = "if self._worker is not None and self._worker.is_running():"
             assert guard in do_src, f"{cls}.{do} re-entrancy guard"
-            assert do_src.index(guard) < do_src.index(
-                "self._worker = SimpleWorker("), f"{cls}.{do} guard order"
+            assert do_src.index(guard) < do_src.index("self._worker = SimpleWorker("), (
+                f"{cls}.{do} guard order"
+            )
 
     def test_worker_initialized_in_init(self):
         # The guard would AttributeError without the __init__ init.
-        for cls in ("OcrServiceDialog", "SummarizationServiceDialog",
-                    "QuickConvertDialog", "PdfDocxCutterDialog"):
-            assert ("self._worker: SimpleWorker | None = None"
-                    in _class_src(cls)), cls
+        for cls in (
+            "OcrServiceDialog",
+            "SummarizationServiceDialog",
+            "QuickConvertDialog",
+            "PdfDocxCutterDialog",
+        ):
+            assert "self._worker: SimpleWorker | None = None" in _class_src(cls), cls
 
     def test_button_disabled_and_progress_visible_before_spawn(self):
         for cls, do, _w, _h in W_B5_DIALOGS:
@@ -244,22 +260,25 @@ class TestWb5WorkerBodies:
                 assert attr not in work_src, f"{cls}.{work} touches {attr}"
             # Docstrings may MENTION the old QApplication hack; an actual
             # import or invocation is what's forbidden in the worker body.
-            assert ("from PySide6.QtWidgets import QApplication"
-                    not in work_src), f"{cls}.{work} QApplication import"
-            assert re.search(r"^[ \t]+QApplication\.processEvents\(\)",
-                             work_src, re.M) is None, f"{cls}.{work} call"
+            assert "from PySide6.QtWidgets import QApplication" not in work_src, (
+                f"{cls}.{work} QApplication import"
+            )
+            assert re.search(r"^[ \t]+QApplication\.processEvents\(\)", work_src, re.M) is None, (
+                f"{cls}.{work} call"
+            )
             assert "_show_success_modal(" not in work_src, f"{cls}.{work} modal"
 
     def test_work_bodies_return_plain_result_dicts(self):
         shapes = {
-            "OcrServiceDialog._ocr_work":
-                ('"results"', '"total"', '"pages_desc"'),
-            "SummarizationServiceDialog._summarize_work":
-                ('"results"', '"total"', '"persist_model"', '"file_arg"'),
-            "QuickConvertDialog._convert_work":
-                ('"success"', '"status"'),
-            "PdfDocxCutterDialog._cut_work":
-                ('"error"', '"out_path"'),
+            "OcrServiceDialog._ocr_work": ('"results"', '"total"', '"pages_desc"'),
+            "SummarizationServiceDialog._summarize_work": (
+                '"results"',
+                '"total"',
+                '"persist_model"',
+                '"file_arg"',
+            ),
+            "QuickConvertDialog._convert_work": ('"success"', '"status"'),
+            "PdfDocxCutterDialog._cut_work": ('"error"', '"out_path"'),
         }
         for cls, _do, work, _h in W_B5_DIALOGS:
             work_src = _method_src(_class_src(cls), work)
@@ -330,8 +349,7 @@ class TestWb5GlobalInvariants:
     def test_zero_actual_process_events_invocations(self):
         # Every remaining mention must be inside a comment/docstring.
         # An actual call is an indented statement: ^<ws>QApplication.processEvents()
-        assert re.search(r"^[ \t]+QApplication\.processEvents\(\)", SRC,
-                         re.M) is None
+        assert re.search(r"^[ \t]+QApplication\.processEvents\(\)", SRC, re.M) is None
 
     def test_no_qapplication_import_inside_the_four_do_methods(self):
         for cls, do, _w, _h in W_B5_DIALOGS:
@@ -348,14 +366,16 @@ class TestWb5GlobalInvariants:
     def test_simpleworker_import_is_module_level(self):
         # The module imports SimpleWorker once at the top (line ~58) — the
         # four dialogs rely on it, not on function-local imports.
-        assert re.search(
-            r"^from ui_qt\.components\.simple_worker import SimpleWorker$",
-            SRC, re.M) is not None
+        assert (
+            re.search(r"^from ui_qt\.components\.simple_worker import SimpleWorker$", SRC, re.M)
+            is not None
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # W-b5 — Summarization specifics (_call_llm report + main-thread refresh)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestWb5SummarizationSpec:
     """The spec'd SummarizationServiceDialog details."""
@@ -370,53 +390,43 @@ class TestWb5SummarizationSpec:
         # touching status_label; the legacy no-report path keeps the
         # direct status-label update (main-thread callers only). The
         # docstring may mention the old hack — the invocation is gone.
-        call_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_call_llm")
+        call_src = _method_src(_class_src("SummarizationServiceDialog"), "_call_llm")
         assert "if report is not None:" in call_src
         assert "report(0, html)" in call_src
         assert "self.status_label.setText(html)" in call_src
-        assert re.search(r"^[ \t]+QApplication\.processEvents\(\)",
-                         call_src, re.M) is None
+        assert re.search(r"^[ \t]+QApplication\.processEvents\(\)", call_src, re.M) is None
 
     def test_call_llm_forwarded_by_worker_body(self):
-        work_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_summarize_work")
+        work_src = _method_src(_class_src("SummarizationServiceDialog"), "_summarize_work")
         assert "report=report" in work_src
 
     def test_preflight_reports_verifying_model(self):
-        work_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_summarize_work")
+        work_src = _method_src(_class_src("SummarizationServiceDialog"), "_summarize_work")
         assert 'report(0, "Verifying model…")' in work_src
         assert "self._fetch_installed_models(timeout=3.0)" in work_src
 
     def test_model_missing_returns_error_result(self):
-        work_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_summarize_work")
+        work_src = _method_src(_class_src("SummarizationServiceDialog"), "_summarize_work")
         assert '"model_missing": True' in work_src
         assert '"error_html"' in work_src
 
     def test_model_combo_refresh_only_on_main_thread(self):
         # _refresh_models touches the combo + status label — it must be
         # called from the FINISHED handler, never from the worker body.
-        work_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_summarize_work")
-        fin_src = _method_src(_class_src("SummarizationServiceDialog"),
-                              "_on_summarize_finished")
+        work_src = _method_src(_class_src("SummarizationServiceDialog"), "_summarize_work")
+        fin_src = _method_src(_class_src("SummarizationServiceDialog"), "_on_summarize_finished")
         assert "_refresh_models" not in work_src
         assert "self._refresh_models()" in fin_src
         # And the finished handler shows the worker-built error HTML first
         # (same setText-then-refresh order as the old inline code).
-        assert fin_src.index('"model_missing"') < fin_src.index(
-            "self._refresh_models()")
+        assert fin_src.index('"model_missing"') < fin_src.index("self._refresh_models()")
 
     def test_model_persistence_in_finished_handler(self):
         # s.set("summarisation.model", ...) + save happen on the MAIN
         # thread now, gated on the worker-computed persist flag (V11.19
         # semantics: only when a concrete model was picked).
-        work_src = _method_src(_class_src("SummarizationServiceDialog"),
-                               "_summarize_work")
-        fin_src = _method_src(_class_src("SummarizationServiceDialog"),
-                              "_on_summarize_finished")
+        work_src = _method_src(_class_src("SummarizationServiceDialog"), "_summarize_work")
+        fin_src = _method_src(_class_src("SummarizationServiceDialog"), "_on_summarize_finished")
         assert '"persist_model"' in work_src
         assert 'result.get("persist_model")' in fin_src
         assert 's.set("summarisation.model"' in fin_src
@@ -426,8 +436,7 @@ class TestWb5SummarizationSpec:
         # Everything the worker captures is a plain value (no widget reads
         # inside the thread): the spawn passes locals, and out_folder /
         # out_path are normalized to None per mode before the spawn.
-        do_src = _method_src(_class_src("SummarizationServiceDialog"),
-                             "_do_summarize")
+        do_src = _method_src(_class_src("SummarizationServiceDialog"), "_do_summarize")
         assert "if is_multi:" in do_src
         assert "out_path = None" in do_src
         assert "out_folder = None" in do_src
@@ -440,8 +449,7 @@ class TestWb5QuickConvertSpec:
         # report is (int, str); anydoc's log_callback is (str) — the worker
         # wraps: lambda msg: report(0, msg). The old _cb definition (which
         # wrote status_label + processEvents on the UI thread) is gone.
-        work_src = _method_src(_class_src("QuickConvertDialog"),
-                               "_convert_work")
+        work_src = _method_src(_class_src("QuickConvertDialog"), "_convert_work")
         assert "lambda msg: report(0, msg)" in work_src
         assert "log_callback=log_cb" in work_src
         assert "def _cb" not in work_src
@@ -453,11 +461,11 @@ class TestWb5QuickConvertSpec:
         assert "❌ AnyDoc does not support" in do_src
         assert "❌ markitdown does not support" in do_src
         assert do_src.index("❌ AnyDoc does not support") < do_src.index(
-            "self._worker = SimpleWorker(")
+            "self._worker = SimpleWorker("
+        )
 
     def test_legacy_error_strings_survive(self):
-        work_src = _method_src(_class_src("QuickConvertDialog"),
-                               "_convert_work")
+        work_src = _method_src(_class_src("QuickConvertDialog"), "_convert_work")
         assert "AnyDoc is not installed. Run: pip install anydoc" in work_src
         assert "⚠️ Very little text extracted." in work_src
         assert 'f"❌ Write failed: {type(e).__name__}: {e}"' in work_src
@@ -466,6 +474,7 @@ class TestWb5QuickConvertSpec:
 # ═══════════════════════════════════════════════════════════════════════════
 # T-b2 — closeEvent guards for running workers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTb2CloseEventGuards:
     """Every worker-owning dialog has a closeEvent guard."""
@@ -495,8 +504,7 @@ class TestTb2CloseEventGuards:
         for cls in T_B2_DIALOGS:
             ce = _close_event_src(cls)
             assert "_confirm_close_with_running_worker(self," in ce, f"{cls} guard call"
-            assert ("self._worker" in ce or "self._preview_worker" in ce), \
-                f"{cls} worker reference"
+            assert "self._worker" in ce or "self._preview_worker" in ce, f"{cls} worker reference"
             assert "event.ignore()" in ce, f"{cls} event.ignore()"
             assert "super().closeEvent(event)" in ce, f"{cls} super()"
             assert "V18.20.4.5 (T-b2)" in ce, f"{cls} tag"
@@ -504,8 +512,10 @@ class TestTb2CloseEventGuards:
     def test_each_guard_cites_the_abort_class(self):
         # Every guard comment explains the old defect class (whitespace-
         # and comment-marker-normalized — comment wrapping is free).
-        pat = re.compile(r"QThread:\s*Destroyed\s*while\s*thread\s*is\s*"
-                         r"still\s*running")
+        pat = re.compile(
+            r"QThread:\s*Destroyed\s*while\s*thread\s*is\s*"
+            r"still\s*running"
+        )
         for cls in T_B2_DIALOGS:
             flat = re.sub(r"[\s#]+", " ", _close_event_src(cls))
             assert pat.search(flat), cls
@@ -534,15 +544,16 @@ class TestTb2SharedGuardHelper:
         assert "QMessageBox.question(" in helper
         assert '"Work in progress"' in helper
         assert "The task will continue but its result will be discarded." in helper
-        assert "QMessageBox.Yes | QMessageBox.No, QMessageBox.No" in helper
+        # V0.13: format-wrapped — the two button args are on adjacent lines
+        assert "QMessageBox.Yes | QMessageBox.No," in helper
+        assert "QMessageBox.No," in helper
         # No → the caller vetoes (event.ignore); Yes → detach + proceed.
         assert "if ret != QMessageBox.Yes:" in helper
         assert "_detach_worker_signals(worker)" in helper
 
     def test_detach_disconnects_all_worker_signal_shapes(self):
         detach = _module_func_src("_detach_worker_signals")
-        for sig in ("finished", "failed", "progress", "done_signal",
-                    "log_signal"):
+        for sig in ("finished", "failed", "progress", "done_signal", "log_signal"):
             assert f'"{sig}"' in detach, sig
         assert "sig.disconnect()" in detach
 

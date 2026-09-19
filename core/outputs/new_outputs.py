@@ -18,11 +18,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from core.models import ConversionRequest, SummaryResult
+
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
+
 
 class OutputGeneratorBase:
     """Base class for output generators. Provides LLM call infrastructure."""
@@ -37,20 +39,28 @@ class OutputGeneratorBase:
 
         # Reuse the Summarizer's LLM settings
         from utils.settings import Settings
+
         settings = Settings()
         self.provider = settings.get("summarisation.provider", "ollama")
         self.primary_model = request.summarisation_model
-        self.ollama_base_url = settings.get_ollama_url()  # V18.20.4.3 (W-c9): was hardcoded localhost
+        self.ollama_base_url = (
+            settings.get_ollama_url()
+        )  # V18.20.4.3 (W-c9): was hardcoded localhost
         self.api_key = settings.get("summarisation.api_key", "")
-        self.api_base_url = settings.get("summarisation.api_base_url", "https://openrouter.ai/api/v1")
+        self.api_base_url = settings.get(
+            "summarisation.api_base_url", "https://openrouter.ai/api/v1"
+        )
         self.cloud_model = settings.get("summarisation.cloud_model", "")
         self.temperature = 0.4  # Slightly creative for briefing/podcast; 0.2 for flashcards
 
         # V16.0.4: shared PromptManager for all output generators
         from core.summarisation.prompt_manager import PromptManager
+
         self.prompt_manager = PromptManager()
 
-    def _call_llm(self, prompt: str, temperature: float | None = None, max_tokens: int = 4096) -> str | None:
+    def _call_llm(
+        self, prompt: str, temperature: float | None = None, max_tokens: int = 4096
+    ) -> str | None:
         """Call the LLM using the same provider as the Summarizer.
 
         V10.13.0 (A3): Added retry logic — retries 2x on failure (timeout,
@@ -77,7 +87,9 @@ class OutputGeneratorBase:
                 )
         return None
 
-    def _call_llm_once(self, prompt: str, temperature: float | None = None, max_tokens: int = 4096) -> str | None:
+    def _call_llm_once(
+        self, prompt: str, temperature: float | None = None, max_tokens: int = 4096
+    ) -> str | None:
         """Single LLM call (no retry). Called by _call_llm."""
         temp = temperature if temperature is not None else self.temperature
 
@@ -87,9 +99,12 @@ class OutputGeneratorBase:
             return self._call_openai_compat(prompt, temp, max_tokens)
         elif self.provider == "freellmapi":
             from utils.settings import Settings
+
             s = Settings()
             return self._call_openai_compat(
-                prompt, temp, max_tokens,
+                prompt,
+                temp,
+                max_tokens,
                 base_url=s.get("summarisation.freellmapi_url", "http://localhost:3001/v1"),
                 api_key=s.get("summarisation.freellmapi_key", ""),
                 model=s.get("summarisation.freellmapi_model", "auto"),
@@ -100,6 +115,7 @@ class OutputGeneratorBase:
         """Call local Ollama."""
         try:
             from utils.network import safe_ollama_request
+
             payload = {
                 "model": self.primary_model,
                 "prompt": prompt,
@@ -117,14 +133,16 @@ class OutputGeneratorBase:
             self.log(f"  ⚠️ Ollama call failed: {e}", "WARNING")
             return None
 
-    def _call_openai_compat(self, prompt: str, temp: float, max_tokens: int,
-                            base_url=None, api_key=None, model=None) -> str | None:
+    def _call_openai_compat(
+        self, prompt: str, temp: float, max_tokens: int, base_url=None, api_key=None, model=None
+    ) -> str | None:
         """Call OpenAI-compatible API."""
         # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse
         # (replaces bare requests.post + deep-index; a malformed provider
         # payload now returns "" → falsy → callers treat as failure, same
         # as the old KeyError → except → None path but without the noise).
         from utils.network import extract_openai_content, session_for_url
+
         base_url = base_url or self.api_base_url
         api_key = api_key or self.api_key
         model = model or self.cloud_model
@@ -138,7 +156,9 @@ class OutputGeneratorBase:
             "max_tokens": max_tokens,
         }
         try:
-            resp = session_for_url(base_url).post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
+            resp = session_for_url(base_url).post(
+                f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300
+            )
             resp.raise_for_status()
             return extract_openai_content(resp.json())
         except Exception as e:
@@ -149,10 +169,10 @@ class OutputGeneratorBase:
         """Strip <think>/<thinking> blocks from LLM output."""
         if not text:
             return text
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<think>(?!.*</think>).*$', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<thinking>(?!.*</thinking>).*$', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>(?!.*</think>).*$", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<thinking>(?!.*</thinking>).*$", "", text, flags=re.DOTALL | re.IGNORECASE)
         return text.strip()
 
 
@@ -160,10 +180,13 @@ class OutputGeneratorBase:
 # B3: Executive Briefing
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class ExecutiveBriefingGenerator(OutputGeneratorBase):
     """B3: Generate a one-page executive briefing synthesizing all chapters."""
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a single-page executive briefing from all chapter summaries.
 
         Feeds all executive summaries into one LLM call and asks for a
@@ -189,7 +212,9 @@ class ExecutiveBriefingGenerator(OutputGeneratorBase):
             self.log("  ℹ️ Briefing: No chapter summaries to synthesize.", "INFO")
             return None
 
-        self.log(f"  📄 Generating executive briefing from {len(chapter_summaries)} chapters…", "INFO")
+        self.log(
+            f"  📄 Generating executive briefing from {len(chapter_summaries)} chapters…", "INFO"
+        )
 
         # Build the prompt
         chapters_text = "\n\n".join(chapter_summaries[:20])  # cap at 20 chapters
@@ -288,10 +313,13 @@ class ExecutiveBriefingGenerator(OutputGeneratorBase):
 # B1: Podcast Script
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class PodcastScriptGenerator(OutputGeneratorBase):
     """B1: Generate a conversational podcast script from keypoints."""
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate a 10-minute podcast script with two hosts discussing key ideas."""
         # Collect all bullets
         all_bullets = []
@@ -347,6 +375,7 @@ class PodcastScriptGenerator(OutputGeneratorBase):
 # B2: Flashcards (Anki-compatible)
 # ════════════════════════════════════════════════════════════════════════════
 
+
 class FlashcardGenerator(OutputGeneratorBase):
     """B2: Generate Anki-compatible flashcards from keypoints.
 
@@ -394,25 +423,25 @@ class FlashcardGenerator(OutputGeneratorBase):
                 be = getattr(jr, "bullet_evidence", {}) or {}
                 for bp_text, snippet in be.items():
                     if snippet:
-                        norm = re.sub(r'\s+', ' ', bp_text.lower().strip())
+                        norm = re.sub(r"\s+", " ", bp_text.lower().strip())
                         evidence_lookup[norm] = snippet
 
         # Build a sanitized book title for tags
-        book_tag = re.sub(r'[^a-zA-Z0-9_]', '_', book_title).lower()
+        book_tag = re.sub(r"[^a-zA-Z0-9_]", "_", book_title).lower()
 
         # Batch the bullets for LLM processing (max 20 per call)
         batch_size = 20
         all_flashcards = []  # V10.1.0: List of (front, back, tags, evidence) tuples
 
         for i in range(0, len(all_bullets), batch_size):
-            batch = all_bullets[i:i + batch_size]
+            batch = all_bullets[i : i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(all_bullets) + batch_size - 1) // batch_size
             self.log(f"    🎴 Processing flashcard batch {batch_num}/{total_batches}…", "INFO")
 
             # Build the prompt
             bullets_list = "\n".join(
-                f"{j+1}. [{chap[:30]}] {bp}" for j, (chap, bp) in enumerate(batch)
+                f"{j + 1}. [{chap[:30]}] {bp}" for j, (chap, bp) in enumerate(batch)
             )
 
             prompt = self.prompt_manager.render_template(
@@ -444,9 +473,9 @@ class FlashcardGenerator(OutputGeneratorBase):
                 if not line:
                     continue
                 # Remove leading numbering like "1. " or "1) "
-                line = re.sub(r'^\d+[\.\)]\s*', '', line)
+                line = re.sub(r"^\d+[\.\)]\s*", "", line)
                 # Remove leading bullet markers
-                line = re.sub(r'^[-\*]\s*', '', line)
+                line = re.sub(r"^[-\*]\s*", "", line)
 
                 parts = self._parse_flashcard_line(line)
                 if parts is None:
@@ -454,13 +483,13 @@ class FlashcardGenerator(OutputGeneratorBase):
 
                 q, a = parts
                 if q and a and len(q) > 3 and len(a) > 3:
-                    chapter_tag = re.sub(r'[^a-zA-Z0-9_]', '', batch[0][0][:20]).lower()
+                    chapter_tag = re.sub(r"[^a-zA-Z0-9_]", "", batch[0][0][:20]).lower()
                     tags = f"book::{book_tag} chapter::{chapter_tag}"
                     # V10.1.0: look up evidence for the source keypoint.
                     # V10.12.8: use _card_idx (was bare 'j' which was only
                     # in the list-comprehension scope — NameError at runtime).
                     src_bp = batch[_card_idx][1] if _card_idx < len(batch) else ""
-                    src_norm = re.sub(r'\s+', ' ', src_bp.lower().strip())
+                    src_norm = re.sub(r"\s+", " ", src_bp.lower().strip())
                     evidence = evidence_lookup.get(src_norm, "")
                     all_flashcards.append((q, a, tags, evidence))
                     _card_idx += 1
@@ -477,9 +506,7 @@ class FlashcardGenerator(OutputGeneratorBase):
                 "generating deterministic fallback cards from keypoints.",
                 "INFO",
             )
-            all_flashcards = self._fallback_flashcards(
-                all_bullets, book_tag, evidence_lookup
-            )
+            all_flashcards = self._fallback_flashcards(all_bullets, book_tag, evidence_lookup)
 
         if not all_flashcards:
             self.log("  ⚠️ Flashcards: No valid cards generated.", "WARNING")
@@ -490,7 +517,7 @@ class FlashcardGenerator(OutputGeneratorBase):
         output_path.parent.mkdir(parents=True, exist_ok=True)  # V7.6.0 R5: lazy dir
         # V10.1.0: count how many cards have evidence for the log
         evidenced = sum(1 for c in all_flashcards if c[3])
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             # Anki TSV header comment
             f.write("#separator:tab\n")
             f.write("#html:false\n")
@@ -501,9 +528,9 @@ class FlashcardGenerator(OutputGeneratorBase):
             f.write("\n")
             for q, a, tags, evidence in all_flashcards:
                 # Escape any tabs/newlines in content
-                q_clean = q.replace('\t', ' ').replace('\n', ' ')
-                a_clean = a.replace('\t', ' ').replace('\n', ' ')
-                ev_clean = (evidence or "").replace('\t', ' ').replace('\n', ' ')
+                q_clean = q.replace("\t", " ").replace("\n", " ")
+                a_clean = a.replace("\t", " ").replace("\n", " ")
+                ev_clean = (evidence or "").replace("\t", " ").replace("\n", " ")
                 if evidenced > 0:
                     f.write(f"{q_clean}\t{a_clean}\t{tags}\t{ev_clean}\n")
                 else:
@@ -511,7 +538,8 @@ class FlashcardGenerator(OutputGeneratorBase):
 
         self.log(
             f"  ✅ Flashcards saved to: {output_path} ({len(all_flashcards)} cards"
-            + (f", {evidenced} with 🛡️ evidence" if evidenced else "") + ")",
+            + (f", {evidenced} with 🛡️ evidence" if evidenced else "")
+            + ")",
             "SUCCESS",
         )
 
@@ -523,7 +551,9 @@ class FlashcardGenerator(OutputGeneratorBase):
 
 """
         if evidenced > 0:
-            md_content += f"> 🛡️ {evidenced} card(s) include verbatim source evidence (Layer 8 grounding).\n"
+            md_content += (
+                f"> 🛡️ {evidenced} card(s) include verbatim source evidence (Layer 8 grounding).\n"
+            )
         md_content += "\n---\n\n"
         for i, (q, a, tags, evidence) in enumerate(all_flashcards, 1):
             md_content += f"**Card {i}**\n\n"
@@ -531,7 +561,7 @@ class FlashcardGenerator(OutputGeneratorBase):
             md_content += f"- **A:** {a}\n"
             md_content += f"- *Tags: {tags}*\n"
             if evidence:
-                md_content += f"- 🛡️ **Evidence:** \"{evidence[:300]}\"\n"
+                md_content += f'- 🛡️ **Evidence:** "{evidence[:300]}"\n'
             md_content += "\n---\n\n"
 
         # V18.20.4.12 (T-c3): atomic — disk-full can't leave a partial output file.
@@ -541,6 +571,7 @@ class FlashcardGenerator(OutputGeneratorBase):
         # V10.22.1: Also export as .apkg if genanki is available
         try:
             from core.outputs.anki_export import export_anki_deck
+
             export_anki_deck(all_flashcards, book_title, output_dir, log_callback=self.log)
         except Exception as e:
             self.log(f"  ℹ️ Anki .apkg export skipped: {e}", "DEBUG")
@@ -558,32 +589,32 @@ class FlashcardGenerator(OutputGeneratorBase):
         order until one matches.
         """
         # Strip markdown bold markers for easier matching (**Q:** → Q:)
-        stripped = re.sub(r'\*\*', '', line)
+        stripped = re.sub(r"\*\*", "", line)
 
         # 1. Tab-separated: "Q<TAB>A"
-        if '\t' in stripped:
-            parts = stripped.split('\t', 1)
-            q = parts[0].lstrip('Qq:').strip()
-            a = parts[1].lstrip('Aa:').strip()
+        if "\t" in stripped:
+            parts = stripped.split("\t", 1)
+            q = parts[0].lstrip("Qq:").strip()
+            a = parts[1].lstrip("Aa:").strip()
             return (q, a) if q and a else None
 
         # 2. "Q: ... A: ..." (label format, any case)
-        m = re.match(r'^Q\s*[:\-]\s*(.+?)\s+A\s*[:\-]\s*(.+)$', stripped, re.IGNORECASE)
+        m = re.match(r"^Q\s*[:\-]\s*(.+?)\s+A\s*[:\-]\s*(.+)$", stripped, re.IGNORECASE)
         if m:
             return (m.group(1).strip(), m.group(2).strip())
 
         # 3. "Question: ... Answer: ..."
-        m = re.match(r'^Question\s*[:\-]\s*(.+?)\s+Answer\s*[:\-]\s*(.+)$', stripped, re.IGNORECASE)
+        m = re.match(r"^Question\s*[:\-]\s*(.+?)\s+Answer\s*[:\-]\s*(.+)$", stripped, re.IGNORECASE)
         if m:
             return (m.group(1).strip(), m.group(2).strip())
 
         # 4. First sentence ending in "?" → Q, rest → A
-        m = re.match(r'^(.+?\?)\s+(.+)$', stripped)
+        m = re.match(r"^(.+?\?)\s+(.+)$", stripped)
         if m:
             q = m.group(1).strip()
             a = m.group(2).strip()
             # Sanity: the answer shouldn't be another question
-            if not a.endswith('?'):
+            if not a.endswith("?"):
                 return (q, a)
 
         return None
@@ -613,10 +644,10 @@ class FlashcardGenerator(OutputGeneratorBase):
             # Build a simple Q/A
             q = f"What does the book say about: {topic}?"
             a = bp_clean
-            chapter_tag = re.sub(r'[^a-zA-Z0-9_]', '', chap[:20]).lower()
+            chapter_tag = re.sub(r"[^a-zA-Z0-9_]", "", chap[:20]).lower()
             tags = f"book::{book_tag} chapter::{chapter_tag}"
             # V10.1.0: evidence lookup
-            norm = re.sub(r'\s+', ' ', bp.lower().strip())
+            norm = re.sub(r"\s+", " ", bp.lower().strip())
             evidence = evidence_lookup.get(norm, "")
             cards.append((q, a, tags, evidence))
         return cards
@@ -625,6 +656,7 @@ class FlashcardGenerator(OutputGeneratorBase):
 # ════════════════════════════════════════════════════════════════════════════
 # V10.17.0 (F1): Q&A Generator — open-ended question-answer pairs per chapter
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class QAGenerator(OutputGeneratorBase):
     """V10.17.0 (F1): Generate open-ended Q&A pairs from chapter summaries.
@@ -636,7 +668,9 @@ class QAGenerator(OutputGeneratorBase):
     Output format: Markdown file with Q&A pairs grouped by chapter.
     """
 
-    def generate(self, summaries: list[SummaryResult], book_title: str, output_dir: Path) -> Path | None:
+    def generate(
+        self, summaries: list[SummaryResult], book_title: str, output_dir: Path
+    ) -> Path | None:
         """Generate Q&A pairs from chapter summaries.
 
         For each chapter, the LLM is asked to generate 5-10 open-ended
@@ -717,7 +751,9 @@ class QAGenerator(OutputGeneratorBase):
         """
         pairs = []
         # Split on Q: or Question: markers
-        blocks = re.split(r'(?:^|\n)(?:\d+[\.\)]\s*)?(?:\*\*)?(?:Q|Question)(?:\*\*)?\s*[:\.]\s*', text)
+        blocks = re.split(
+            r"(?:^|\n)(?:\d+[\.\)]\s*)?(?:\*\*)?(?:Q|Question)(?:\*\*)?\s*[:\.]\s*", text
+        )
 
         for block in blocks[1:]:  # skip the first (before the first Q:)
             block = block.strip()
@@ -725,20 +761,20 @@ class QAGenerator(OutputGeneratorBase):
                 continue
             # Split on A: or Answer: marker
             a_match = re.search(
-                r'(?:\n\s*)(?:\*\*)?(?:A|Answer)(?:\*\*)?\s*[:\.]\s*',
+                r"(?:\n\s*)(?:\*\*)?(?:A|Answer)(?:\*\*)?\s*[:\.]\s*",
                 block,
                 re.IGNORECASE,
             )
             if a_match:
-                question = block[:a_match.start()].strip()
-                answer = block[a_match.end():].strip()
+                question = block[: a_match.start()].strip()
+                answer = block[a_match.end() :].strip()
                 # Clean up
-                question = re.sub(r'^\d+[\.\)]\s*', '', question)
-                question = re.sub(r'\*+', '', question).strip()
-                answer = re.sub(r'\*+', '', answer).strip()
+                question = re.sub(r"^\d+[\.\)]\s*", "", question)
+                question = re.sub(r"\*+", "", question).strip()
+                answer = re.sub(r"\*+", "", answer).strip()
                 if question and answer and len(question) > 5 and len(answer) > 5:
                     # Take only the first paragraph of the answer
-                    answer = answer.split('\n\n')[0].strip()
+                    answer = answer.split("\n\n")[0].strip()
                     pairs.append((question, answer))
 
         return pairs

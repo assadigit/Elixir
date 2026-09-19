@@ -86,6 +86,7 @@ def _cuda_available() -> bool:
     """
     try:
         import torch  # type: ignore
+
         avail = torch.cuda.is_available()
         count = torch.cuda.device_count() if avail else 0
         return bool(avail and count > 0)
@@ -108,9 +109,11 @@ def _cuda_available_with_reason() -> tuple[bool, str]:
     except Exception as e:
         return (False, f"torch.cuda.is_available() raised: {e}")
     if not avail:
-        return (False,
-                f"torch {torch.__version__}: cuda.is_available()=False "
-                f"(CPU-only build? compiled_cuda={getattr(torch.version,'cuda',None)})")
+        return (
+            False,
+            f"torch {torch.__version__}: cuda.is_available()=False "
+            f"(CPU-only build? compiled_cuda={getattr(torch.version, 'cuda', None)})",
+        )
     try:
         count = torch.cuda.device_count()
     except Exception as e:
@@ -133,8 +136,7 @@ def _cuda_summary() -> str:
         n = torch.cuda.device_count()
         name = torch.cuda.get_device_name(0)
         cap = torch.cuda.get_device_capability(0)
-        return (f"torch {torch.__version__}: {n} GPU(s); [0]={name} "
-                f"(compute {cap[0]}.{cap[1]})")
+        return f"torch {torch.__version__}: {n} GPU(s); [0]={name} (compute {cap[0]}.{cap[1]})"
     except Exception as e:
         return f"torch {torch.__version__}: CUDA available but query failed ({e})"
 
@@ -320,36 +322,35 @@ class NeuTTSEngine(TTSEngine):
         self.neutts_project_path = Path(neutts_project_path)
 
         # V11.32.3: version stamp — proves this code is running.
-        self.log(
-            f"  ═══ NeuTTSEngine {_ENGINE_VERSION} ═══", "INFO")
+        self.log(f"  ═══ NeuTTSEngine {_ENGINE_VERSION} ═══", "INFO")
 
         # V11.32.0: read device preferences from settings if available,
         # falling back to the constructor args.
-        self._backbone_pref = self._read_setting(
-            "tts.neutts_backbone_device", backbone_device)
-        self._codec_pref = self._read_setting(
-            "tts.neutts_codec_device", codec_device)
+        self._backbone_pref = self._read_setting("tts.neutts_backbone_device", backbone_device)
+        self._codec_pref = self._read_setting("tts.neutts_codec_device", codec_device)
         self.log(
             f"  📋 Settings read: backbone_pref={self._backbone_pref!r}, "
-            f"codec_pref={self._codec_pref!r}", "INFO")
+            f"codec_pref={self._codec_pref!r}",
+            "INFO",
+        )
 
         # V11.32.3: NEUTTS_FORCE_CUDA env var — belt-and-suspenders override.
         # If set to "1", forces both devices to "cuda" regardless of settings.
         force_cuda = os.environ.get("NEUTTS_FORCE_CUDA", "").strip() == "1"
         if force_cuda:
-            self.log(
-                "  🔧 NEUTTS_FORCE_CUDA=1 → forcing both devices to 'cuda'",
-                "WARNING")
+            self.log("  🔧 NEUTTS_FORCE_CUDA=1 → forcing both devices to 'cuda'", "WARNING")
             self._backbone_pref = "cuda"
             self._codec_pref = "cuda"
 
         # V11.32.3: resolve devices IMMEDIATELY (not lazily) so the log
         # appears before NeuTTS's own "Loading backbone..." line.
         self.backbone_device, self.codec_device = _resolve_devices(
-            self._backbone_pref, self._codec_pref, self.log)
+            self._backbone_pref, self._codec_pref, self.log
+        )
         self.log(
-            f"  ✅ FINAL DECISION: backbone={self.backbone_device!r}, "
-            f"codec={self.codec_device!r}", "INFO")
+            f"  ✅ FINAL DECISION: backbone={self.backbone_device!r}, codec={self.codec_device!r}",
+            "INFO",
+        )
 
         self.language = language
         self._voice_manager = None
@@ -357,14 +358,14 @@ class NeuTTSEngine(TTSEngine):
         # V11.32.0: choose the Python interpreter for subprocess mode.
         self._venv_python = self.neutts_project_path / "venv" / "Scripts" / "python.exe"
         import sys as _sys
+
         current_python = Path(_sys.executable)
         if current_python.exists():
             self._venv_python = current_python
             self.log(f"  ℹ️ Interpreter: {current_python.name}", "DEBUG")
 
         # Subprocess vs in-process selection.
-        self._use_subprocess = self._read_setting(
-            "tts.neutts_use_subprocess", False)
+        self._use_subprocess = self._read_setting("tts.neutts_use_subprocess", False)
 
         self._process: subprocess.Popen | None = None
         self._model_loaded = False
@@ -379,14 +380,16 @@ class NeuTTSEngine(TTSEngine):
         """Read a setting without crashing if Settings isn't ready."""
         try:
             from utils.settings import Settings
+
             val = Settings().get(key, default)
             return val
         except Exception as e:
             # V11.32.3: log the exception so we know why the default is used.
             import logging as _lg
+
             _lg.getLogger(__name__).debug(
-                "Settings read failed for %s: %s — using default %r",
-                key, e, default)
+                "Settings read failed for %s: %s — using default %r", key, e, default
+            )
             return default
 
     def _resolve_devices_now(self) -> tuple[str, str]:
@@ -398,6 +401,7 @@ class NeuTTSEngine(TTSEngine):
     def voice_manager(self):
         if self._voice_manager is None:
             from core.tts.voice_manager import VoiceManager
+
             self._voice_manager = VoiceManager(log_callback=self.log)
         return self._voice_manager
 
@@ -406,8 +410,7 @@ class NeuTTSEngine(TTSEngine):
         ref_wav, ref_text = self.voice_manager.get_voice(voice_name)
         if ref_wav is None or not Path(ref_wav).exists():
             raise FileNotFoundError(
-                f"Reference voice '{voice_name}' not found. "
-                "Add voices in Settings → TTS → Voices."
+                f"Reference voice '{voice_name}' not found. Add voices in Settings → TTS → Voices."
             )
         return (ref_wav, ref_text)
 
@@ -451,15 +454,19 @@ class NeuTTSEngine(TTSEngine):
                 # Flush any pending CUDA kernels before declaring success.
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         torch.cuda.synchronize()
                 except Exception:
-                    logger.debug("best-effort op failed [neutts_engine:_init_inprocess:L452]", exc_info=True)
+                    logger.debug(
+                        "best-effort op failed [neutts_engine:_init_inprocess:L452]", exc_info=True
+                    )
             except Exception as dev_err:
                 msg = str(dev_err).lower()
                 # "No CUDA GPUs are available" / "cuda" / "gpu" → retry CPU.
-                if ("cuda" in msg or "gpu" in msg or "device" in msg) \
-                        and (bb_dev == "cuda" or cd_dev == "cuda"):
+                if ("cuda" in msg or "gpu" in msg or "device" in msg) and (
+                    bb_dev == "cuda" or cd_dev == "cuda"
+                ):
                     self.log(
                         f"  ⚠️ CUDA load failed ({dev_err}); retrying on CPU. "
                         f"This will be slow (3–5 min/segment). Install the "
@@ -483,25 +490,16 @@ class NeuTTSEngine(TTSEngine):
             bb_final = self.backbone_device
             cd_final = self.codec_device
             if bb_final == "cuda" and cd_final == "cuda":
-                self.log(
-                    "  ╔══════════════════════════════════════════════╗", "INFO")
-                self.log(
-                    "  ║  🚀 NeuTTS loaded on GPU (CUDA) — FAST mode  ║", "INFO")
-                self.log(
-                    "  ╚══════════════════════════════════════════════╝", "INFO")
+                self.log("  ╔══════════════════════════════════════════════╗", "INFO")
+                self.log("  ║  🚀 NeuTTS loaded on GPU (CUDA) — FAST mode  ║", "INFO")
+                self.log("  ╚══════════════════════════════════════════════╝", "INFO")
             elif bb_final == "cpu":
-                self.log(
-                    "  ╔═══════════════════════════════════════════════════╗", "WARNING")
-                self.log(
-                    "  ║  🐌 NeuTTS on CPU — SLOW (3-5 min/segment)        ║", "WARNING")
-                self.log(
-                    "  ║  Set backbone device to GPU in Settings → TTS     ║", "WARNING")
-                self.log(
-                    "  ╚═══════════════════════════════════════════════════╝", "WARNING")
+                self.log("  ╔═══════════════════════════════════════════════════╗", "WARNING")
+                self.log("  ║  🐌 NeuTTS on CPU — SLOW (3-5 min/segment)        ║", "WARNING")
+                self.log("  ║  Set backbone device to GPU in Settings → TTS     ║", "WARNING")
+                self.log("  ╚═══════════════════════════════════════════════════╝", "WARNING")
             else:
-                self.log(
-                    f"  🔧 NeuTTS loaded: backbone={bb_final}, codec={cd_final}",
-                    "INFO")
+                self.log(f"  🔧 NeuTTS loaded: backbone={bb_final}, codec={cd_final}", "INFO")
         finally:
             os.chdir(old_cwd)
 
@@ -532,12 +530,12 @@ class NeuTTSEngine(TTSEngine):
             self.log(f"  🎙️ NeuTTS: encoding reference voice '{voice}'…", "INFO")
             self.log(f"     ref_wav: {ref_wav}", "INFO")  # V11.34.1: INFO not DEBUG
             import os
+
             old_cwd = os.getcwd()
             try:
                 os.chdir(str(self.neutts_project_path))
                 ref_wav_abs = str(Path(ref_wav).resolve())
-                self._inprocess_ref_codes[voice] = \
-                    self._inprocess_tts.encode_reference(ref_wav_abs)
+                self._inprocess_ref_codes[voice] = self._inprocess_tts.encode_reference(ref_wav_abs)
             finally:
                 os.chdir(old_cwd)
 
@@ -549,6 +547,7 @@ class NeuTTSEngine(TTSEngine):
             chunks = [text]
 
         import os
+
         if len(chunks) == 1:
             dev_tag = self.backbone_device.upper()
             self.log(f"  🎙️ NeuTTS [{dev_tag}]: generating {len(text)} chars…", "INFO")
@@ -556,14 +555,19 @@ class NeuTTSEngine(TTSEngine):
             try:
                 os.chdir(str(self.neutts_project_path))
                 audio = self._inprocess_tts.infer(
-                    text=chunks[0], ref_codes=ref_codes, ref_text=ref_text)
+                    text=chunks[0], ref_codes=ref_codes, ref_text=ref_text
+                )
                 # V11.32.0: sync CUDA before reading the tensor.
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         torch.cuda.synchronize()
                 except Exception:
-                    logger.debug("best-effort op failed [neutts_engine:_synthesize_inprocess:L561]", exc_info=True)
+                    logger.debug(
+                        "best-effort op failed [neutts_engine:_synthesize_inprocess:L561]",
+                        exc_info=True,
+                    )
             finally:
                 os.chdir(old_cwd)
             if hasattr(audio, "cpu"):
@@ -571,27 +575,32 @@ class NeuTTSEngine(TTSEngine):
             sf.write(str(out_path), audio, 24000)
         else:
             dev_tag = self.backbone_device.upper()
-            self.log(
-                f"  🎙️ NeuTTS [{dev_tag}]: {len(text)} chars in "
-                f"{len(chunks)} chunks…", "INFO")
+            self.log(f"  🎙️ NeuTTS [{dev_tag}]: {len(text)} chars in {len(chunks)} chunks…", "INFO")
             chunk_paths = []
             with tempfile.TemporaryDirectory(prefix="neutts_") as tmp:
                 for i, chunk in enumerate(chunks):
                     self.log(
-                        f"  🎙️ NeuTTS [{dev_tag}]: chunk {i+1}/{len(chunks)} "
-                        f"({len(chunk)} chars)…", "INFO")
+                        f"  🎙️ NeuTTS [{dev_tag}]: chunk {i + 1}/{len(chunks)} "
+                        f"({len(chunk)} chars)…",
+                        "INFO",
+                    )
                     cp = Path(tmp) / f"chunk_{i:02d}.wav"
                     old_cwd = os.getcwd()
                     try:
                         os.chdir(str(self.neutts_project_path))
                         audio = self._inprocess_tts.infer(
-                            text=chunk, ref_codes=ref_codes, ref_text=ref_text)
+                            text=chunk, ref_codes=ref_codes, ref_text=ref_text
+                        )
                         try:
                             import torch
+
                             if torch.cuda.is_available():
                                 torch.cuda.synchronize()
                         except Exception:
-                            logger.debug("best-effort op failed [neutts_engine:_synthesize_inprocess:L589]", exc_info=True)
+                            logger.debug(
+                                "best-effort op failed [neutts_engine:_synthesize_inprocess:L589]",
+                                exc_info=True,
+                            )
                     finally:
                         os.chdir(old_cwd)
                     if hasattr(audio, "cpu"):
@@ -605,14 +614,12 @@ class NeuTTSEngine(TTSEngine):
 
                 if len(chunk_paths) == 1:
                     import shutil
+
                     shutil.copy2(chunk_paths[0], out_path)
                 else:
-                    self.log(
-                        f"  🎙️ NeuTTS: stitching {len(chunk_paths)} chunks…",
-                        "INFO")
+                    self.log(f"  🎙️ NeuTTS: stitching {len(chunk_paths)} chunks…", "INFO")
                     audio_parts = [sf.read(str(p))[0] for p in chunk_paths]
-                    silence = np.zeros(
-                        int(24000 * 0.15), dtype=audio_parts[0].dtype)
+                    silence = np.zeros(int(24000 * 0.15), dtype=audio_parts[0].dtype)
                     stitched = [audio_parts[0]]
                     for part in audio_parts[1:]:
                         stitched.append(silence)
@@ -627,9 +634,7 @@ class NeuTTSEngine(TTSEngine):
             return
 
         if not self._venv_python.exists():
-            raise FileNotFoundError(
-                f"NeuTTS Python interpreter not found: {self._venv_python}"
-            )
+            raise FileNotFoundError(f"NeuTTS Python interpreter not found: {self._venv_python}")
 
         bb_dev, cd_dev = self._resolve_devices_now()
         self.log("  🔄 Starting NeuTTS persistent subprocess…", "INFO")
@@ -673,6 +678,7 @@ class NeuTTSEngine(TTSEngine):
             if self._process and self._process.stderr:
                 for line in self._process.stderr:
                     self.log(f"  [neutts] {line.rstrip()}", "DEBUG")
+
         threading.Thread(target=drain_stderr, daemon=True).start()
 
         self.log("  ⏳ Waiting for NeuTTS model to load (this takes ~30s)…", "INFO")
@@ -695,21 +701,14 @@ class NeuTTSEngine(TTSEngine):
             bb_f = self.backbone_device
             cd_f = self.codec_device if not self._cuda_failed else "cpu"
             if bb_f == "cuda" and cd_f == "cuda":
-                self.log(
-                    "  ╔══════════════════════════════════════════════╗", "INFO")
-                self.log(
-                    "  ║  🚀 NeuTTS loaded on GPU (CUDA) — FAST mode  ║", "INFO")
-                self.log(
-                    "  ╚══════════════════════════════════════════════╝", "INFO")
+                self.log("  ╔══════════════════════════════════════════════╗", "INFO")
+                self.log("  ║  🚀 NeuTTS loaded on GPU (CUDA) — FAST mode  ║", "INFO")
+                self.log("  ╚══════════════════════════════════════════════╝", "INFO")
             elif bb_f == "cpu":
-                self.log(
-                    "  ╔═══════════════════════════════════════════════════╗", "WARNING")
-                self.log(
-                    "  ║  🐌 NeuTTS on CPU — SLOW (3-5 min/segment)        ║", "WARNING")
-                self.log(
-                    "  ║  Set backbone device to GPU in Settings → TTS     ║", "WARNING")
-                self.log(
-                    "  ╚═══════════════════════════════════════════════════╝", "WARNING")
+                self.log("  ╔═══════════════════════════════════════════════════╗", "WARNING")
+                self.log("  ║  🐌 NeuTTS on CPU — SLOW (3-5 min/segment)        ║", "WARNING")
+                self.log("  ║  Set backbone device to GPU in Settings → TTS     ║", "WARNING")
+                self.log("  ╚═══════════════════════════════════════════════════╝", "WARNING")
             self.log("  ✅ NeuTTS model loaded — ready for generation", "INFO")
         except RuntimeError as e:
             if "No CUDA" in str(e) and not self._cuda_failed:
@@ -717,7 +716,7 @@ class NeuTTSEngine(TTSEngine):
                 self.log(
                     "  ⚠️ CUDA unavailable for subprocess — retrying with CPU codec "
                     "(slower but works)",
-                    "WARNING"
+                    "WARNING",
                 )
                 self._cleanup_process()
                 self._ensure_process()
@@ -799,15 +798,11 @@ class NeuTTSEngine(TTSEngine):
             self.log(f"  🎙️ NeuTTS [{dev_tag}]: generating {len(text)} chars…", "INFO")
             self._generate_one(chunks[0], out_path, ref_wav, ref_text)
         else:
-            self.log(
-                f"  🎙️ NeuTTS [{dev_tag}]: {len(text)} chars in "
-                f"{len(chunks)} chunks…", "INFO")
+            self.log(f"  🎙️ NeuTTS [{dev_tag}]: {len(text)} chars in {len(chunks)} chunks…", "INFO")
             chunk_paths: list[Path] = []
             with tempfile.TemporaryDirectory(prefix="neutts_") as tmp:
                 for i, chunk in enumerate(chunks):
-                    self.log(
-                        f"  🎙️ NeuTTS [{dev_tag}]: chunk {i+1}/{len(chunks)}…",
-                        "INFO")
+                    self.log(f"  🎙️ NeuTTS [{dev_tag}]: chunk {i + 1}/{len(chunks)}…", "INFO")
                     cp = Path(tmp) / f"chunk_{i:02d}.wav"
                     self._generate_one(chunk, cp, ref_wav, ref_text)
                     if cp.exists():
@@ -818,12 +813,12 @@ class NeuTTSEngine(TTSEngine):
 
             if len(chunk_paths) == 1:
                 import shutil
+
                 shutil.copy2(chunk_paths[0], out_path)
             else:
                 audio_parts = [sf.read(str(p))[0] for p in chunk_paths]
                 sample_rate = 24000
-                silence = np.zeros(
-                    int(sample_rate * 0.15), dtype=audio_parts[0].dtype)
+                silence = np.zeros(int(sample_rate * 0.15), dtype=audio_parts[0].dtype)
                 stitched = [audio_parts[0]]
                 for part in audio_parts[1:]:
                     stitched.append(silence)
@@ -840,13 +835,15 @@ class NeuTTSEngine(TTSEngine):
         """Send one generation command to the persistent subprocess."""
         self._ensure_process()
 
-        cmd = json.dumps({
-            "action": "generate",
-            "text": text,
-            "ref_wav": ref_wav,
-            "ref_text": ref_text,
-            "out_path": str(out_path),
-        })
+        cmd = json.dumps(
+            {
+                "action": "generate",
+                "text": text,
+                "ref_wav": ref_wav,
+                "ref_text": ref_text,
+                "out_path": str(out_path),
+            }
+        )
 
         self._process.stdin.write(cmd + "\n")
         self._process.stdin.flush()

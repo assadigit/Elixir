@@ -38,6 +38,7 @@ Hermetic: markitdown stubbed in sys.modules
 
 Run: ``pytest tests/test_v1820313_thorough_floor.py -v``
 """
+
 from __future__ import annotations
 
 import sys
@@ -67,9 +68,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from core.summarisation.summarizer import Summarizer  # noqa: E402
 
-_SUMMARIZER_SRC = (
-    PROJECT_ROOT / "core" / "summarisation" / "summarizer.py"
-).read_text(encoding="utf-8")
+_SUMMARIZER_SRC = (PROJECT_ROOT / "core" / "summarisation" / "summarizer.py").read_text(
+    encoding="utf-8"
+)
 
 # V18.20.4.7 (P5 / O-a2): ``_thorough_theorist_floor`` moved VERBATIM
 # (byte-identical body) from summarizer.py to
@@ -206,9 +207,7 @@ def _floor_lines(log_lines):
 def test_floor_met_logs_info_and_fires_no_call(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     s, llm_calls, analysis = _make_bare()
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH_FULL, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH_FULL, analysis)
     assert result == _THOROUGH_FULL
     assert llm_calls == [], "floor met must NOT fire any LLM call"
     fl = _floor_lines(s.log_lines)
@@ -228,9 +227,7 @@ def test_floor_met_logs_info_and_fires_no_call(monkeypatch):
 def test_floor_unmet_fires_one_targeted_call_and_appends(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     s, llm_calls, analysis = _make_bare(responses=[_CANNED])
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
     # ONE logical call (first response non-empty → no nudge retry).
     assert len(llm_calls) == 1
     call = llm_calls[0]
@@ -240,9 +237,11 @@ def test_floor_unmet_fires_one_targeted_call_and_appends(monkeypatch):
     assert "Ibarra" in call["prompt"]
     # …ONLY the missing contributor (Voss is already covered — the
     # contributor list must not ask for it)…
-    _names_line = call["prompt"].split(
-        "as described in the chapter source:\n\n", 1
-    )[1].split("\n\n### CONSTRAINTS", 1)[0]
+    _names_line = (
+        call["prompt"]
+        .split("as described in the chapter source:\n\n", 1)[1]
+        .split("\n\n### CONSTRAINTS", 1)[0]
+    )
     assert _names_line.strip() == "Ibarra"
     # …the source excerpt (clamped chapter content)…
     assert "SOURCE_MARKER_Q7" in call["prompt"]
@@ -289,9 +288,7 @@ def test_source_clamped_to_40k_chars(monkeypatch):
 def test_deadline_exceeded_no_call_honest_warning(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     s, llm_calls, analysis = _make_bare(deadline_dead=True)
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
     assert llm_calls == [], "deadline exceeded must suppress the repair call"
     assert result == _THOROUGH
     fl = _floor_lines(s.log_lines)
@@ -317,15 +314,12 @@ def test_empty_llm_response_warning_thorough_unchanged(monkeypatch):
     # Empty first response → the real empty-retry wrapper fires one nudge
     # retry (also empty) → _call_llm_with_empty_retry returns None.
     s, llm_calls, analysis = _make_bare(responses=["", ""])
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
     assert len(llm_calls) == 2, "one logical call (initial + empty-retry nudge)"
     assert result == _THOROUGH
     fl = _floor_lines(s.log_lines)
     assert any(
-        lvl == "WARNING" and "Thorough gap-fill call returned empty" in msg
-        for lvl, msg in fl
+        lvl == "WARNING" and "Thorough gap-fill call returned empty" in msg for lvl, msg in fl
     )
     assert any("floor stays 1/2" in msg for _lvl, msg in fl)
 
@@ -340,9 +334,7 @@ def test_floor_crash_fails_soft(monkeypatch):
     # A poisoned analysis (non-string) makes check_coverage raise inside
     # the floor — the house fail-soft pattern must absorb it.
     s, llm_calls, _bad_analysis = _make_bare(analysis=12345)
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH, _bad_analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, _bad_analysis)
     assert result == _THOROUGH, "crash must return the thorough unchanged"
     assert llm_calls == []
     assert any(
@@ -379,7 +371,7 @@ class TestFloorWiringSourcePins:
         # The delegate in _summarize_inner runs on the FINAL thorough and
         # reuses the SAME analysis lookup the recall floor uses.
         assert "thorough = self._thorough_theorist_floor(" in _SUMMARIZER_SRC
-        assert "_analysis_rf or \"\"" in _SUMMARIZER_SRC
+        assert '_analysis_rf or ""' in _SUMMARIZER_SRC
         # The floor runs right before the recall-floor probe (final-set
         # ordering: measure-on-final, floor-before-probe).
         floor_pos = _SUMMARIZER_SRC.index("thorough = self._thorough_theorist_floor(")
@@ -408,9 +400,7 @@ def test_trivial_thorough_skips_repair_honestly(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     s, llm_calls, analysis = _make_bare()
     stub_thorough = "Short."  # < 50 words — not safely extendable
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, stub_thorough, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, stub_thorough, analysis)
     assert result == stub_thorough
     assert llm_calls == []
     fl = _floor_lines(s.log_lines)
@@ -429,14 +419,11 @@ def test_trivial_thorough_skips_repair_honestly(monkeypatch):
 def test_cot_response_discarded(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
     s, llm_calls, analysis = _make_bare(responses=[_COT_CANNED])
-    result = s._thorough_theorist_floor(
-        "Chapter One", _SOURCE, _THOROUGH, analysis
-    )
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
     assert len(llm_calls) == 1
     assert result == _THOROUGH, "CoT output must never be appended as prose"
     assert any(
-        lvl == "WARNING" and "looks like CoT" in msg
-        for lvl, msg in _floor_lines(s.log_lines)
+        lvl == "WARNING" and "looks like CoT" in msg for lvl, msg in _floor_lines(s.log_lines)
     )
 
 

@@ -26,6 +26,7 @@ keeps working; new UI code can render a multi-segment progress bar.
 
 Book-agnostic (Key Decision #3): stage names are structural, not content.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -83,18 +84,18 @@ STAGE_BOOK_SUMMARY = "book_summary"
 
 # Chapter-level stages (chapter >= 1)
 STAGE_CHAPTER_START = "chapter_start"
-STAGE_PRIMARY_SUMMARY = "primary_summary"          # the main LLM call
-STAGE_COVERAGE_CHECK = "coverage_check"            # _compute_coverage
-STAGE_3TIER_GUARANTEE = "3tier_guarantee"          # _apply_3tier_coverage
-STAGE_BULLET_VERIFY = "bullet_verify"              # _verify_bullets
-STAGE_ADDITIVE_SECTIONS = "additive_sections"      # _ensure_additive_sections
-STAGE_THOROUGH_FOLLOWUP = "thorough_followup"      # _build_thorough_followup
-STAGE_CONTENT_JUDGE = "content_judge"              # ContentJudge.judge
-STAGE_SCHOLAR_REFLECTION = "scholar_reflection"    # _scholar_reflection
-STAGE_SEMANTIC_DEDUP = "semantic_dedup"            # _semantic_dedup_bullets
-STAGE_CONSOLIDATION = "consolidation"              # _consolidate_bullets
-STAGE_GAP_FILL = "gap_fill"                        # _gap_fill_concepts
-STAGE_POSTCHECKS = "postchecks"                    # run_postchecks
+STAGE_PRIMARY_SUMMARY = "primary_summary"  # the main LLM call
+STAGE_COVERAGE_CHECK = "coverage_check"  # _compute_coverage
+STAGE_3TIER_GUARANTEE = "3tier_guarantee"  # _apply_3tier_coverage
+STAGE_BULLET_VERIFY = "bullet_verify"  # _verify_bullets
+STAGE_ADDITIVE_SECTIONS = "additive_sections"  # _ensure_additive_sections
+STAGE_THOROUGH_FOLLOWUP = "thorough_followup"  # _build_thorough_followup
+STAGE_CONTENT_JUDGE = "content_judge"  # ContentJudge.judge
+STAGE_SCHOLAR_REFLECTION = "scholar_reflection"  # _scholar_reflection
+STAGE_SEMANTIC_DEDUP = "semantic_dedup"  # _semantic_dedup_bullets
+STAGE_CONSOLIDATION = "consolidation"  # _consolidate_bullets
+STAGE_GAP_FILL = "gap_fill"  # _gap_fill_concepts
+STAGE_POSTCHECKS = "postchecks"  # run_postchecks
 STAGE_CHAPTER_COMPLETE = "chapter_complete"
 
 # Output stages
@@ -165,7 +166,7 @@ class ProgressEmitter:
         # Compute overall_pct: completed chapters + fraction of current.
         # Within a chapter, assume 8 major stages (rough weighting).
         stage_weights = {
-            STAGE_PRIMARY_SUMMARY: 0.30,      # the main LLM call is the biggest
+            STAGE_PRIMARY_SUMMARY: 0.30,  # the main LLM call is the biggest
             STAGE_COVERAGE_CHECK: 0.05,
             STAGE_3TIER_GUARANTEE: 0.10,
             STAGE_CONTENT_JUDGE: 0.10,

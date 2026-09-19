@@ -28,6 +28,7 @@ fixes must be structural/morphological so they generalize to any book):
      swallowed by logger.debug. Extracted to recall_floor.py with a
      stable contract and visible failures.
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,6 +38,7 @@ import types
 # standalone by scripts/e2e_v182035_postchecks.py) ─────────────────────────
 if "tiktoken" not in sys.modules:
     import importlib.util as _ilu
+
     try:
         _tk_real = _ilu.find_spec("tiktoken") is not None
     except Exception:
@@ -102,13 +104,18 @@ KHAN_SOURCE_SPAN = (
 # Fix A — 'Finally' / discourse-marker author extraction
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFinallyAuthorBug:
     def test_finally_comma_jacobson_not_an_author(self):
         from core.preprocessing.deterministic_analyzer import extract_citations
-        names = {c["author"] for c in extract_citations(
-            "Finally, Jacobson (1964) pointed out another growth-promoting "
-            "feature of the aggressive drive."
-        )}
+
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "Finally, Jacobson (1964) pointed out another growth-promoting "
+                "feature of the aggressive drive."
+            )
+        }
         assert "Finally" not in names
         assert "Jacobson" in names  # Pattern 1 still captures the real name
 
@@ -117,36 +124,53 @@ class TestFinallyAuthorBug:
         # rejected STRUCTURALLY (2-name comma list, no and/&). Proves the
         # fix is a shape rule, not a lexical lookup.
         from core.preprocessing.deterministic_analyzer import extract_citations
+
         for marker in ("Zeitgeist", "Moreover", "Whimsically", "Overmuch"):
-            names = {c["author"] for c in extract_citations(
-                f"{marker}, Erikson (1956) defined the term."
-            )}
+            names = {
+                c["author"]
+                for c in extract_citations(f"{marker}, Erikson (1956) defined the term.")
+            }
             assert marker not in names, f"{marker} leaked as an author"
 
     def test_three_name_enumeration_still_works(self):
         from core.preprocessing.deterministic_analyzer import extract_citations
-        names = {c["author"] for c in extract_citations(
-            "The framework was consolidated by Hartmann, Kris, and "
-            "Loewenstein (1946) and extended later."
-        )}
+
+        names = {
+            c["author"]
+            for c in extract_citations(
+                "The framework was consolidated by Hartmann, Kris, and "
+                "Loewenstein (1946) and extended later."
+            )
+        }
         assert {"Hartmann", "Kris", "Loewenstein"} <= names
 
     def test_and_pair_still_works(self):
         from core.preprocessing.deterministic_analyzer import extract_citations
-        names = {c["author"] for c in extract_citations(
-            "Galenson and Roiphe (1971) studied gender identity."
-        )}
+
+        names = {
+            c["author"]
+            for c in extract_citations("Galenson and Roiphe (1971) studied gender identity.")
+        }
         assert "Galenson and Roiphe" in names
 
     def test_discourse_connective_class_completed(self):
         from core.preprocessing.deterministic_analyzer import (
             _ENGLISH_FALSE_POSITIVES,
         )
+
         # The closed class of English discourse connectives must contain
         # the members that were missing (general-English function words —
         # the same word class as the pre-existing However/Therefore/…).
-        for w in ("Finally", "Additionally", "Notably", "Similarly",
-                  "Consequently", "Indeed", "Ultimately", "Nonetheless"):
+        for w in (
+            "Finally",
+            "Additionally",
+            "Notably",
+            "Similarly",
+            "Consequently",
+            "Indeed",
+            "Ultimately",
+            "Nonetheless",
+        ):
             assert w in _ENGLISH_FALSE_POSITIVES
 
 
@@ -154,25 +178,28 @@ class TestFinallyAuthorBug:
 # Fix B — garble-tolerant coverage judge ('Galenson and Roippe')
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestGarbleTolerantCoverage:
     @staticmethod
     def _analysis_with(authors):
-        lines = "\n".join(
-            f"{i}. **{a}** (3 mentions): 1971" for i, a in enumerate(authors, 1)
-        )
+        lines = "\n".join(f"{i}. **{a}** (3 mentions): 1971" for i, a in enumerate(authors, 1))
         return f"## Citations\n{lines}\n"
 
     def test_garbled_pair_counts_as_covered(self):
         from core.preprocessing.deterministic_analyzer import check_coverage
+
         analysis = self._analysis_with(["Galenson and Roiphe", "Stoller"])
         # The pre-repair text the V18.14 judge actually saw (garbled name)
-        summary = ("Stoller (1968), Galenson and Roippe (1971), and Meyer "
-                   "(1980) contributed to gender identity consolidation.")
+        summary = (
+            "Stoller (1968), Galenson and Roippe (1971), and Meyer "
+            "(1980) contributed to gender identity consolidation."
+        )
         cov = check_coverage(analysis, summary)
         assert "Galenson and Roiphe" not in cov["missing"]
 
     def test_genuinely_missing_stays_missing(self):
         from core.preprocessing.deterministic_analyzer import check_coverage
+
         analysis = self._analysis_with(["Winnicott", "Galenson and Roiphe"])
         cov = check_coverage(analysis, "Erikson wrote about identity.")
         assert "Winnicott" in cov["missing"]
@@ -182,18 +209,20 @@ class TestGarbleTolerantCoverage:
         from core.preprocessing.deterministic_analyzer import (
             _edit_distance_le1,
         )
-        assert _edit_distance_le1("roiphe", "roippe")       # substitution
-        assert _edit_distance_le1("edipal", "oedipal")      # insertion
+
+        assert _edit_distance_le1("roiphe", "roippe")  # substitution
+        assert _edit_distance_le1("edipal", "oedipal")  # insertion
         assert not _edit_distance_le1("spite", "spitz") or True  # d1 but...
         # tighter: same-first-letter + len guard is enforced by the CALLER;
         # the helper itself is pure distance
-        assert not _edit_distance_le1("kris", "this")       # d2
-        assert not _edit_distance_le1("lynd", "line")       # d2
+        assert not _edit_distance_le1("kris", "this")  # d2
+        assert not _edit_distance_le1("lynd", "line")  # d2
 
     def test_short_name_tokens_require_exact(self):
         from core.preprocessing.deterministic_analyzer import (
             _author_in_summary,
         )
+
         toks = {"this", "wrote"}
         # 4-char token absent, and its d1 neighbors are not present either
         # (first-letter guard excludes this/wrote) → not covered
@@ -206,11 +235,13 @@ class TestGarbleTolerantCoverage:
 # Fix C — the Khan leak: three-form veto entry + mention-only template
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestVetoEntryForms:
     def test_possessive_form_now_caught(self):
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
+
         result = detect_parenthetical_promotion(KHAN_BULLET, KHAN_SOURCE_SPAN)
         assert result == ("Khan", "Winnicott")
 
@@ -218,28 +249,30 @@ class TestVetoEntryForms:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
-        bullet = ("Khan: Provided the developmental basis for authenticity "
-                  "and corporeality and temporal continuity in the self.")
-        assert detect_parenthetical_promotion(bullet, KHAN_SOURCE_SPAN) == (
-            "Khan", "Winnicott"
+
+        bullet = (
+            "Khan: Provided the developmental basis for authenticity "
+            "and corporeality and temporal continuity in the self."
         )
+        assert detect_parenthetical_promotion(bullet, KHAN_SOURCE_SPAN) == ("Khan", "Winnicott")
 
     def test_bare_active_form_caught(self):
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
-        bullet = ("Khan provides the developmental basis for authenticity, "
-                  "corporeality, and temporal continuity in the self.")
-        assert detect_parenthetical_promotion(bullet, KHAN_SOURCE_SPAN) == (
-            "Khan", "Winnicott"
+
+        bullet = (
+            "Khan provides the developmental basis for authenticity, "
+            "corporeality, and temporal continuity in the self."
         )
+        assert detect_parenthetical_promotion(bullet, KHAN_SOURCE_SPAN) == ("Khan", "Winnicott")
 
     def test_correct_winnicott_bullet_not_vetoed(self):
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
-        assert detect_parenthetical_promotion(
-            WINNICOTT_BULLET, KHAN_SOURCE_SPAN) is None
+
+        assert detect_parenthetical_promotion(WINNICOTT_BULLET, KHAN_SOURCE_SPAN) is None
 
     def test_object_position_mention_only_not_vetoed(self):
         # The correct Klein/Searles shapes must NEVER be vetoed — the
@@ -247,21 +280,27 @@ class TestVetoEntryForms:
         from core.summarisation.postcheck_detectors import (
             detect_parenthetical_promotion,
         )
-        src = ("By integrating the works of Klein (1948), Erikson (1950a), "
-               "Jacobson (1964), and Mahler (1968) with his own views, "
-               "Kernberg formulated a three-step process of identity "
-               "formation.")
+
+        src = (
+            "By integrating the works of Klein (1948), Erikson (1950a), "
+            "Jacobson (1964), and Mahler (1968) with his own views, "
+            "Kernberg formulated a three-step process of identity "
+            "formation."
+        )
         assert detect_parenthetical_promotion(KLEIN_BULLET, src) is None
-        lsrc = ("Juxtaposed to the driving pressure of this \u201cidentity "
-                "theme\u201d is a second force, which, according to "
-                "Lichtenstein, is the longing to abandon the human quality "
-                "of identity (see also Searles 1960 in this connection).")
+        lsrc = (
+            "Juxtaposed to the driving pressure of this \u201cidentity "
+            "theme\u201d is a second force, which, according to "
+            "Lichtenstein, is the longing to abandon the human quality "
+            "of identity (see also Searles 1960 in this connection)."
+        )
         assert detect_parenthetical_promotion(SEARLES_BULLET, lsrc) is None
 
     def test_ship_time_drop_khan_only(self):
         # The full postcheck run on the REAL pair: the Khan bullet is
         # dropped, the Winnicott bullet survives.
         from core.summarisation.postchecks import run_post_checks
+
         report = run_post_checks(
             bullets=[WINNICOTT_BULLET, KHAN_BULLET, KLEIN_BULLET],
             executive_summary="",
@@ -284,6 +323,7 @@ class TestMentionOnlyTemplate:
         import inspect
 
         from core.summarisation import gap_fill_batch as gfb
+
         src = inspect.getsource(gfb.batch_gap_fill)
         # The rewritten mention-only block must demand object position…
         assert "OWNS the claim is the grammatical" in src
@@ -297,6 +337,7 @@ class TestMentionOnlyTemplate:
         import inspect
 
         from core.summarisation import gap_fill_batch as gfb
+
         src = inspect.getsource(gfb.batch_gap_fill)
         # The "begin each bullet with the author's name" instruction must
         # be conditional now (it contradicted the mention-only block).
@@ -307,6 +348,7 @@ class TestMentionOnlyTemplate:
 # ═══════════════════════════════════════════════════════════════════════════
 # Fix D — truncation-aware scholar verdict
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTruncationAwareScholarVerdict:
     @staticmethod
@@ -320,15 +362,17 @@ class TestTruncationAwareScholarVerdict:
         class _Log:
             def __init__(self):
                 self.calls = []
+
         log = _Log()
 
         def _log_fn(msg, level="INFO"):
             log.calls.append((msg, level))
 
-        result = {"bullet_points": ["b1"], "executive_summary": "e",
-                  "thorough_summary": "t"}
+        result = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
         scholar_reflection(
-            "Ch", "src", result,
+            "Ch",
+            "src",
+            result,
             max_context_tokens=32768,
             language="en",
             temperature=0.7,
@@ -353,8 +397,7 @@ class TestTruncationAwareScholarVerdict:
 
     def test_closed_none_verdict_still_clean(self):
         # A properly closed "none" is a compliant verdict — no warning.
-        result, calls = self._run_scholar(
-            "<scholar_reflections>none</scholar_reflections>")
+        result, calls = self._run_scholar("<scholar_reflections>none</scholar_reflections>")
         infos = [m for m, l in calls if l == "INFO"]
         assert any("no significant gaps found" in i for i in infos)
         assert not any("VERDICT UNRELIABLE" in m for m, _ in calls)
@@ -384,10 +427,11 @@ class TestTruncationAwareScholarVerdict:
                 mark_call_truncated(script.pop(0) if script else False)
                 return llm_response
 
-            result = {"bullet_points": ["b1"], "executive_summary": "e",
-                      "thorough_summary": "t"}
+            result = {"bullet_points": ["b1"], "executive_summary": "e", "thorough_summary": "t"}
             scholar_reflection(
-                "Ch", "src", result,
+                "Ch",
+                "src",
+                result,
                 max_context_tokens=32768,
                 language="en",
                 temperature=0.7,
@@ -414,6 +458,7 @@ class TestTruncationAwareScholarVerdict:
 
     def test_contextvar_round_trip(self):
         from core.llm.call_meta import consume_call_truncated, mark_call_truncated
+
         mark_call_truncated(False)
         assert not consume_call_truncated()
         mark_call_truncated(True)
@@ -425,10 +470,10 @@ class TestTruncationAwareScholarVerdict:
 # Fix E — recall-floor probe module (the RC-6 tuple bug)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRecallFloorModule:
     SOURCE = (
-        "Introductory prose. " * 60 +
-        "In conclusion, a solid identity consists of the following "
+        "Introductory prose. " * 60 + "In conclusion, a solid identity consists of the following "
         "characteristics: (1) a sustained feeling of selfsameness "
         "(2) temporal continuity in the self-experience (3) genuineness "
         "and authenticity (4) a realistic body image (5) a sense of inner "
@@ -440,26 +485,31 @@ class TestRecallFloorModule:
         # THE rig bug: conclusions are (number, text) tuples. The inline
         # .3.4 probe crashed on them; the module must not.
         from core.summarisation.recall_floor import deterministic_recall_floor
+
         rf = deterministic_recall_floor(
-            "", ["selfsameness and authenticity bullet"], "thorough", self.SOURCE)
+            "", ["selfsameness and authenticity bullet"], "thorough", self.SOURCE
+        )
         assert rf["conclusion_items_total"] == 7
         assert rf["conclusion_items_covered"] >= 1
         assert isinstance(rf["log_parts"], list)
 
     def test_theorist_recall(self):
         from core.summarisation.recall_floor import deterministic_recall_floor
+
         analysis = (
             "## Citations\n1. **Erikson** (5 mentions): 1950, 1956\n"
             "2. **Mahler** (3 mentions): 1958\n3. **Kernberg** (2): 1967\n"
         )
         rf = deterministic_recall_floor(
-            analysis, ["Erikson described identity."], "", "source text")
+            analysis, ["Erikson described identity."], "", "source text"
+        )
         assert rf["theorists_total"] == 3
         assert rf["theorists_covered"] == 1
         assert rf["theorists_missing"] == ["Mahler", "Kernberg"]
 
     def test_never_raises(self):
         from core.summarisation.recall_floor import deterministic_recall_floor
+
         # Hostile inputs must not raise (the probe runs unguarded inline).
         rf = deterministic_recall_floor(None, None, None, None)
         assert rf["log_parts"] == []
@@ -469,15 +519,19 @@ class TestRecallFloorModule:
 # Fix E (diagnostic side) — quality-report keys
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDiagnosticNumbers:
     def test_summary_result_has_recall_floor_field(self):
         from core.models import SummaryResult
-        sr = SummaryResult(chapter_heading="h", executive_summary="e",
-                           thorough_summary="t")
+
+        sr = SummaryResult(chapter_heading="h", executive_summary="e", thorough_summary="t")
         assert sr.recall_floor is None
-        sr2 = SummaryResult(chapter_heading="h", executive_summary="e",
-                            thorough_summary="t",
-                            recall_floor={"theorists_total": 3})
+        sr2 = SummaryResult(
+            chapter_heading="h",
+            executive_summary="e",
+            thorough_summary="t",
+            recall_floor={"theorists_total": 3},
+        )
         assert sr2.recall_floor["theorists_total"] == 3
 
     def test_diagnostic_reads_real_keys(self):
@@ -487,8 +541,13 @@ class TestDiagnosticNumbers:
         # converter_impl needs optional heavy deps. Check the CALL SITES,
         # not comments.)
         from pathlib import Path
-        src = Path(__file__).resolve().parent.parent.joinpath(
-            "core/pipeline/converter_impl.py").read_text(encoding="utf-8")
+
+        src = (
+            Path(__file__)
+            .resolve()
+            .parent.parent.joinpath("core/pipeline/converter_impl.py")
+            .read_text(encoding="utf-8")
+        )
         assert "totals.get('coverage_percent'" not in src
         assert 'totals.get("avg_coverage")' in src
         assert "recall_floor" in src
@@ -498,32 +557,45 @@ class TestDiagnosticNumbers:
 # Policy — no chapter-derived word lists (the user's standing rule)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestNoChapterWordListsPolicy:
     def test_stoplist_has_no_domain_words(self):
         from core.summarisation.postcheck_detectors import (
             _COMMON_ENGLISH_WORDS,
         )
+
         # Words learned from THIS book's audit must not be in the lexicon.
-        for banned in ("psychoanalysis", "elated", "elate", "oedipal",
-                       "corporeality", "selfsameness", "roiphe"):
+        for banned in (
+            "psychoanalysis",
+            "elated",
+            "elate",
+            "oedipal",
+            "corporeality",
+            "selfsameness",
+            "roiphe",
+        ):
             assert banned not in _COMMON_ENGLISH_WORDS
 
     def test_english_false_positives_are_function_words_only(self):
         from core.preprocessing.deterministic_analyzer import (
             _ENGLISH_FALSE_POSITIVES,
         )
+
         # The connective class may contain discourse adverbs (function
         # words), but never content/domain vocabulary.
-        for banned in ("psychoanalysis", "oedipal", "identity", "ego",
-                       "libido", "narcissism"):
+        for banned in ("psychoanalysis", "oedipal", "identity", "ego", "libido", "narcissism"):
             assert banned not in _ENGLISH_FALSE_POSITIVES
 
     def test_mention_only_prompt_has_no_chapter_authors(self):
         import inspect
 
         from core.summarisation import summarizer as sm
+
         src = inspect.getsource(sm.Summarizer._summarize_inner)
         # The template's only worked example is the generic Klein/Kernberg
         # one inherited from .3.4 — no NEW chapter-specific examples added.
-        assert "Khan" not in src.split("MENTION-ONLY authors")[1][:2000] if \
-            "MENTION-ONLY authors" in src else True
+        assert (
+            "Khan" not in src.split("MENTION-ONLY authors")[1][:2000]
+            if "MENTION-ONLY authors" in src
+            else True
+        )

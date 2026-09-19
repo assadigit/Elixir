@@ -8,6 +8,7 @@ Tests verify:
 5. Ollama embed endpoint fallback (/api/embed → /api/embeddings)
 6. Postcheck false positives fixed (1980b, Chasseguet-Smirgel, "Made")
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,6 +16,7 @@ import types
 
 if "tiktoken" not in sys.modules:
     tk = types.ModuleType("tiktoken")
+
     # V18.12.2: use a real encoding-like stub (not MagicMock) so that
     # utils.token_counter.count_tokens works when this test file runs in the
     # same session as test_text_utils_ext.py + test_map_reduce.py (which call
@@ -28,8 +30,10 @@ if "tiktoken" not in sys.modules:
             # count_tokens fallback path; the postchecks tests below don't
             # assert exact token counts, only structural properties).
             return str(text).split() if text else []
+
         def decode(self, tokens):
-            return ' '.join(tokens) if tokens else ''
+            return " ".join(tokens) if tokens else ""
+
     tk.get_encoding = lambda *a, **k: _StubEncoding()
     tk.encoding_for_model = lambda *a, **k: _StubEncoding()
     tk.Encoding = _StubEncoding
@@ -73,10 +77,7 @@ class TestDetectExtraSpaces:
         text = "Many analytic the oreticians regard identity."
         # V18.20.2.0: source-grounded contract (V18.15.3.2) — source contains
         # 'theoreticians' as a standalone word; 'oreticians' must NOT appear.
-        source = (
-            "Many analytic theoreticians regard identity formation as "
-            "central to development."
-        )
+        source = "Many analytic theoreticians regard identity formation as central to development."
         cleaned, issues = detect_extra_spaces(text, "exec", source)
         assert "theoreticians" in cleaned
         assert "the oreticians" not in cleaned
@@ -124,10 +125,7 @@ class TestDetectExtraSpaces:
         # (see test_the_ory_joined note on the 'The the ory' consumption).
         # Biology
         bio = "Darwin formulated the ory of evolution by natural selection."
-        bio_source = (
-            "The theory of evolution by natural selection explains "
-            "adaptation."
-        )
+        bio_source = "The theory of evolution by natural selection explains adaptation."
         cleaned, _ = detect_extra_spaces(bio, "exec", bio_source)
         assert "theory" in cleaned
 
@@ -150,10 +148,7 @@ class TestDetectExtraSpaces:
         text = "libidinal ties, the reby highlighting the father's role."
         # V18.20.2.0: source-grounded contract (V18.15.3.2) — source contains
         # 'thereby' as a standalone word; 'reby' must NOT appear standalone.
-        source = (
-            "libidinal ties, thereby highlighting the father's significant "
-            "role."
-        )
+        source = "libidinal ties, thereby highlighting the father's significant role."
         cleaned, issues = detect_extra_spaces(text, "bullet[56]", source)
         assert "thereby" in cleaned
         assert "the reby" not in cleaned
@@ -172,10 +167,7 @@ class TestDetectExtraSpaces:
         lowercase: '...ties, the reby highlighting...' — which remains the
         primary case tested here."""
         text = "ties, the reby emphasizing the father's significant role in psychic structuring."
-        source = (
-            "ties, thereby emphasizing the father's significant role in "
-            "psychic structuring."
-        )
+        source = "ties, thereby emphasizing the father's significant role in psychic structuring."
         cleaned, issues = detect_extra_spaces(text, "thorough", source)
         assert "thereby" in cleaned
         assert "the reby" not in cleaned
@@ -211,10 +203,7 @@ class TestDetectWordFragmentMerge:
         # contain 'adolescence' as a standalone word (and NOT 'adolescenceo')
         # — same fix pattern the V18.15.4.2 changelog applied to
         # test_postcheck_fragment_merge_fix.py::test_adolescenceo_fill_caught.
-        source = (
-            "Erikson and Mahler both emphasized adolescence. To fill these "
-            "lacunae."
-        )
+        source = "Erikson and Mahler both emphasized adolescence. To fill these lacunae."
         _, issues = detect_word_fragment_merge(text, "exec", source)
         assert len(issues) >= 1
         assert any("adolescence" in i.detail for i in issues)
@@ -226,9 +215,7 @@ class TestDetectWordFragmentMerge:
         # of the adolescenceo type.
         fragment_issues = [i for i in issues if "fragment merge" in i.detail]
         # Should not flag normal text
-        assert len(fragment_issues) == 0 or all(
-            "remnant" in i.detail for i in fragment_issues
-        )
+        assert len(fragment_issues) == 0 or all("remnant" in i.detail for i in fragment_issues)
 
     def test_failopen_on_empty(self):
         assert detect_word_fragment_merge("", "exec")[1] == []
@@ -239,10 +226,7 @@ class TestDetectPronounMismatch:
 
     def test_greenacre_he_vs_she_caught(self):
         """Summary says 'He' but source uses 'she' for Greenacre."""
-        source = (
-            "Greenacre (1958) proposed a continuum. She stressed the "
-            "importance of body image."
-        )
+        source = "Greenacre (1958) proposed a continuum. She stressed the importance of body image."
         summary = "Greenacre (1958) proposed a continuum. He stressed the importance."
         _, issues = detect_pronoun_mismatch(summary, source, "exec")
         assert len(issues) >= 1
@@ -282,6 +266,7 @@ class TestPostcheckFalsePositiveFixes:
     def test_year_letter_not_flagged_as_vowelless(self):
         """'1980b' should NOT be flagged as a vowel-less word."""
         from core.summarisation.postchecks import detect_garbled_tokens
+
         text = "Kernberg (1980b) described middle age."
         _, issues = detect_garbled_tokens(text, "exec")
         vowelless = [i for i in issues if "vowel-less" in i.detail]
@@ -290,12 +275,14 @@ class TestPostcheckFalsePositiveFixes:
     def test_hyphenated_surname_matched(self):
         """'Chasseguet-Smirgel' should match itself in the source."""
         from core.summarisation.postchecks import _author_in_source
+
         src = {"chasseguet-smirgel": "chasseguet-smirgel"}
         assert _author_in_source("Chasseguet-Smirgel", src) is True
 
     def test_made_recognized_as_verb(self):
         """'Made' (past tense of 'make') should be recognized as a verb."""
         from core.summarisation.postchecks import _VERB_ENDINGS
+
         # "Made" ends in "ade" which is now in _VERB_ENDINGS
         assert any("made".endswith(e) for e in _VERB_ENDINGS)
 
@@ -307,6 +294,7 @@ class TestPostcheckFalsePositiveFixes:
         import inspect
 
         from core.summarisation.postchecks import verify_attribution
+
         src = inspect.getsource(verify_attribution)
         assert "0.50" in src or "0.5" in src
         assert "0.60" not in src
@@ -327,16 +315,20 @@ class TestCoverageGranularity:
     def test_keyword_count_increased(self):
         """Coverage extraction now uses 30 keywords (was 18)."""
         from pathlib import Path
+
         # V18.20.2.0: re-pointed at summary_validator.py after the V18.7
         # (Phase 5.2) extraction of _compute_coverage from summarizer.py.
         sv_path = (
             Path(__file__).resolve().parent.parent
-            / "core" / "summarisation" / "summary_validator.py"
+            / "core"
+            / "summarisation"
+            / "summary_validator.py"
         )
         content = sv_path.read_text()
         # Assert the actual call (not just the V18.2.19 comment):
         # keywords = extract_keywords(source, 30)
         import re
+
         assert re.search(r"extract_keywords\(\s*source\s*,\s*30\s*\)", content), (
             "summary_validator.compute_coverage must extract 30 keywords "
             "(V18.2.19 granularity contract)"
@@ -345,11 +337,14 @@ class TestCoverageGranularity:
     def test_concept_count_increased(self):
         """Coverage extraction now uses 25 concepts (was 15)."""
         from pathlib import Path
+
         # V18.20.2.0: re-pointed at summary_validator.py after the V18.7
         # (Phase 5.2) extraction of _compute_coverage from summarizer.py.
         sv_path = (
             Path(__file__).resolve().parent.parent
-            / "core" / "summarisation" / "summary_validator.py"
+            / "core"
+            / "summarisation"
+            / "summary_validator.py"
         )
         content = sv_path.read_text()
         assert "max_terms=25" in content

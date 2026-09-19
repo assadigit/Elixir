@@ -41,14 +41,22 @@ class DependencyChecker:
 
     def check_all(self) -> dict[str, Any]:
         deps = {
-            "markitdown": False, "tesseract": False, "ollama": False,
-            "ollama_running": False, "models": [], "vision_models": [],
-            "text_models": [], "markdowncleaner": False, "wordninja": False,
-            "python_docx": False, "pdf2image": False,
+            "markitdown": False,
+            "tesseract": False,
+            "ollama": False,
+            "ollama_running": False,
+            "models": [],
+            "vision_models": [],
+            "text_models": [],
+            "markdowncleaner": False,
+            "wordninja": False,
+            "python_docx": False,
+            "pdf2image": False,
         }
 
         try:
             import markitdown  # noqa
+
             deps["markitdown"] = True
         except ImportError:
             pass
@@ -74,9 +82,21 @@ class DependencyChecker:
                     deps["models"] = models
                     # 'ocr' (OlmOCR, DeepSeek-OCR), 'vl'/'vision' (Qwen3-VL, LLaVA),
                     # 'bakllava' — all are vision-capable OCR engines.
-                    vision_keywords = ["vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo"]
-                    deps["vision_models"] = [m for m in models if any(k in m.lower() for k in vision_keywords)]
-                    deps["text_models"]   = [m for m in models if not any(k in m.lower() for k in vision_keywords)]
+                    vision_keywords = [
+                        "vl",
+                        "vision",
+                        "deepseek-ocr",
+                        "llava",
+                        "bakllava",
+                        "ocr",
+                        "olmo",
+                    ]
+                    deps["vision_models"] = [
+                        m for m in models if any(k in m.lower() for k in vision_keywords)
+                    ]
+                    deps["text_models"] = [
+                        m for m in models if not any(k in m.lower() for k in vision_keywords)
+                    ]
             except Exception as e:
                 logger.warning(f"Could not fetch models: {e}")
 
@@ -89,12 +109,14 @@ class DependencyChecker:
 
         try:
             from docx import Document  # noqa
+
             deps["python_docx"] = True
         except ImportError:
             pass
 
         try:
             import pdf2image  # noqa
+
             deps["pdf2image"] = True
         except ImportError:
             pass

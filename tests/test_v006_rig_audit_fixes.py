@@ -39,14 +39,13 @@ that exposed it):
            ("Don't put your resume ahead of the
            requirements As engineers…").
 """
+
 from __future__ import annotations
 
 import sys
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
-
-import pytest
 
 # ── hermetic tiktoken gate (house pattern) ─────────────────────────────────
 if "tiktoken" not in sys.modules:
@@ -219,10 +218,10 @@ class TestF1RenderContract:
         assert 'if not bool(getattr(self.request, "include_thorough_summary", True)):' in s_sum
         assert 'result["thorough_summary"] = ""' in s_sum
         # construction gate
-        assert "thorough_summary=(thorough if _inc_thorough_lp else \"\")," in s_sum
+        assert 'thorough_summary=(thorough if _inc_thorough_lp else ""),' in s_sum
         # render gate (markdown)
         s_ck = _strip_comments(_src("core/pipeline/chapter_checkpoint.py"))
-        assert "if _inc_th_r and (thorough_formatted or \"\").strip():" in s_ck
+        assert 'if _inc_th_r and (thorough_formatted or "").strip():' in s_ck
         # render gate (docx)
         s_d = _strip_comments(_src("core/docx/builder.py"))
         assert "if _thorough_text.strip() and _inc_th_d:" in s_d
@@ -265,14 +264,19 @@ class TestF1BookSummaryContract:
         s, _ = self._summarizer()
         summaries = [
             SummaryResult(
-                chapter_heading="Ch A", executive_summary="E",
-                thorough_summary="", bullet_points=[
+                chapter_heading="Ch A",
+                executive_summary="E",
+                thorough_summary="",
+                bullet_points=[
                     "Shared bullet about architecture balance.",
-                    "Only chapter A mentions this takeaway."],
+                    "Only chapter A mentions this takeaway.",
+                ],
             ),
             SummaryResult(
-                chapter_heading="Ch B", executive_summary="E",
-                thorough_summary="", bullet_points=["Shared bullet about architecture balance."],
+                chapter_heading="Ch B",
+                executive_summary="E",
+                thorough_summary="",
+                bullet_points=["Shared bullet about architecture balance."],
             ),
         ]
         stats: dict = {}
@@ -310,8 +314,10 @@ class TestF2QuarantineNotShipped:
         logged (logs/drops.jsonl remains the audit trail)."""
         s = _strip_comments(_src("core/summarisation/summarizer.py"))
         assert "quarantine_appendix=_quarantine_appendix_md," not in s
-        assert "NOT rendered in the delivered files" in s or \
-            "NOT rendered in the delivered files" in _src("core/summarisation/summarizer.py")
+        assert (
+            "NOT rendered in the delivered files" in s
+            or "NOT rendered in the delivered files" in _src("core/summarisation/summarizer.py")
+        )
 
     def test_docx_builder_has_no_quarantine_block(self):
         s = _strip_comments(_src("core/docx/builder.py"))
@@ -341,10 +347,18 @@ class TestF3NoDoubleListing:
         ch1_bullets = [f"Ch1 takeaway number {i} about resume choices." for i in range(5)]
         ch2_bullets = [f"Ch2 takeaway number {i} about complexity." for i in range(5)]
         summaries = [
-            SummaryResult(chapter_heading="Ch 1", executive_summary="E1",
-                          thorough_summary="", bullet_points=ch1_bullets),
-            SummaryResult(chapter_heading="Ch 2", executive_summary="E2",
-                          thorough_summary="", bullet_points=ch2_bullets),
+            SummaryResult(
+                chapter_heading="Ch 1",
+                executive_summary="E1",
+                thorough_summary="",
+                bullet_points=ch1_bullets,
+            ),
+            SummaryResult(
+                chapter_heading="Ch 2",
+                executive_summary="E2",
+                thorough_summary="",
+                bullet_points=ch2_bullets,
+            ),
         ]
         out = s.build_book_summary(summaries, "Book")
         assert "📌 All Key Takeaways" not in out
@@ -411,8 +425,12 @@ class TestF4Tier2Cap:
         def force_insert_missing(text, still_missing, result):
             calls["force_insert"] += 1
 
-        cov = apply_3tier_coverage(
-            "H", "src", "content", result, 0.5,
+        _cov = apply_3tier_coverage(
+            "H",
+            "src",
+            "content",
+            result,
+            0.5,
             coverage_threshold=0.85,
             extract_keywords=lambda c, n=18: missing_kws,
             log=lambda m, l="INFO": logs.append(m),
@@ -428,8 +446,7 @@ class TestF4Tier2Cap:
     def test_at_cap_tier2_skipped(self):
         """The rig's ch.1 shape: 7 bullets already (cap 7) — Tier-2 must not
         fire (was: +4 gap-fill bullets on top of a full budget)."""
-        result, calls, logs = self._run([f"b{i}" for i in range(7)], 7,
-                                        ["kw1", "kw2", "kw3"])
+        result, calls, logs = self._run([f"b{i}" for i in range(7)], 7, ["kw1", "kw2", "kw3"])
         assert calls["gap_fill"] == 0
         assert len(result["bullet_points"]) == 7
         assert any("Tier-2 gap-fill SKIPPED" in m for m in logs)
@@ -437,15 +454,15 @@ class TestF4Tier2Cap:
     def test_partial_room_trims_missing_list(self):
         """6 bullets, cap 7, 4 missing concepts → only 1 concept gap-filled
         (no LLM calls whose output cannot ship)."""
-        result, calls, logs = self._run([f"b{i}" for i in range(6)], 7,
-                                        ["kw1", "kw2", "kw3", "kw4"])
+        result, calls, logs = self._run(
+            [f"b{i}" for i in range(6)], 7, ["kw1", "kw2", "kw3", "kw4"]
+        )
         assert calls["gap_fill"] == 1
         assert calls["last_missing"] == ["kw1"]
         assert any("trimmed" in m for m in logs)
 
     def test_no_cap_legacy_behaviour(self):
-        result, calls, logs = self._run([f"b{i}" for i in range(7)], None,
-                                        ["kw1", "kw2"])
+        result, calls, logs = self._run([f"b{i}" for i in range(7)], None, ["kw1", "kw2"])
         assert calls["gap_fill"] == 1  # uncapped = legacy path
 
 
@@ -473,7 +490,9 @@ class TestF4ScholarCap:
             strip_thinking=lambda t: t,
         )
 
-    def _run(self, existing, cap, source="The weather delays flights and storms divert planes every day."):
+    def _run(
+        self, existing, cap, source="The weather delays flights and storms divert planes every day."
+    ):
         from core.summarisation.scholar_reflection import scholar_reflection
 
         result = {
@@ -494,8 +513,12 @@ class TestF4ScholarCap:
         )
         logs = []
         scholar_reflection(
-            "H", source, result,
-            max_context_tokens=32768, language="en", temperature=0.7,
+            "H",
+            source,
+            result,
+            max_context_tokens=32768,
+            language="en",
+            temperature=0.7,
             log=lambda m, l="INFO": logs.append(m),
             bullet_cap=cap,
             **self._deps(gaps),
@@ -531,8 +554,11 @@ class TestF4RecoveryCap:
         logs = []
         bullets = [f"b{i}" for i in range(7)]
         out = recover_quarantined(
-            bullets, "source", quarantine=quarantine,
-            log=lambda m, l="INFO": logs.append(m), bullet_cap=7,
+            bullets,
+            "source",
+            quarantine=quarantine,
+            log=lambda m, l="INFO": logs.append(m),
+            bullet_cap=7,
         )
         assert out == bullets
         assert any("bullet budget reached" in m for m in logs)
@@ -547,8 +573,11 @@ class TestF4RecoveryCap:
         )
         bullets = [f"b{i}" for i in range(6)]
         out = recover_quarantined(
-            bullets, "source", quarantine=quarantine,
-            log=lambda m, l="INFO": None, bullet_cap=7,
+            bullets,
+            "source",
+            quarantine=quarantine,
+            log=lambda m, l="INFO": None,
+            bullet_cap=7,
         )
         assert len(out) == 7
         assert out[-1] == "A well-grounded bullet that was dropped."
@@ -566,42 +595,41 @@ _RIG_CRITIQUE_BULLETS = [
     'guided by technology that is more than 30 years old."',
     'Update difficulty of control systems omitted: "updating it has proven '
     'to be difficult if not impossible."',
-    'Puzzle solving context omitted: "Puzzle solving is fun, and developers '
-    'are problem solvers."',
+    'Puzzle solving context omitted: "Puzzle solving is fun, and developers are problem solvers."',
     'Framework origin preference missing: "Prefer frameworks derived from '
     'working code rather than ones cast down from ivory towers."',
-    'The summary should clarify that quality attributes are explicitly '
+    "The summary should clarify that quality attributes are explicitly "
     'defined in the text as "-ilities" (i.e., "quality attributes" (i.e. '
     '"-ilities") of the software being developed).',
-    'The specific business and departmental priority lists are not fully '
+    "The specific business and departmental priority lists are not fully "
     'enumerated in the summary: "meeting contractual obligations, generating '
-    'revenue, ensuring customer referenceability, containing costs, and '
+    "revenue, ensuring customer referenceability, containing costs, and "
     'creating valuable technology assets."',
-    'The distinct balancing interests of specific roles (CEO, operations '
-    'staff, and future programming staff) are omitted from the detailed '
+    "The distinct balancing interests of specific roles (CEO, operations "
+    "staff, and future programming staff) are omitted from the detailed "
     'examples: "with the cost containment interests of the business\u2018s CEO."',
 ]
 
 # Verbatim CONTENT bullets from the same run — none of these may be flagged.
 _RIG_CONTENT_BULLETS = [
-    'The chapter opens with the specific scenario that "someone\'s running a '
+    "The chapter opens with the specific scenario that \"someone's running a "
     'failing project to build a payroll system," framing the discussion in '
-    'concrete operational terms.',
+    "concrete operational terms.",
     'Borwankar explicitly states that such decisions "very rarely result in '
     'happy outcomes," a direct causal claim about the failure rate of '
-    'resume-driven technology choices.',
+    "resume-driven technology choices.",
     'Ramm lists specific technology choices such as "Ruby over Java, or '
     'Python over Smalltalk" and "Postgres rather than Oracle" to illustrate '
-    'how technical factors are often unfairly blamed for failure.',
-    'Essential complexity is illustrated by air traffic coordination, where '
+    "how technical factors are often unfairly blamed for failure.",
+    "Essential complexity is illustrated by air traffic coordination, where "
     '"Every plane\u2018s exact position (including altitude), speed, direction '
-    'and destination must be tracked in real time to prevent mid air and '
+    "and destination must be tracked in real time to prevent mid air and "
     'runway collisions."',
-    'The source suggests that instead of criticizing a developer for not '
-    'letting others speak, you should ask them to help increase other '
-    'people\'s participation in meetings.',
-    'Staying abreast of the latest trends and technologies is important but '
-    'should never come at the expense of customer needs.',
+    "The source suggests that instead of criticizing a developer for not "
+    "letting others speak, you should ask them to help increase other "
+    "people's participation in meetings.",
+    "Staying abreast of the latest trends and technologies is important but "
+    "should never come at the expense of customer needs.",
 ]
 
 
@@ -670,7 +698,9 @@ class TestF6QuoteDedupe:
             "thing for your career is a long string of happy customers."
         )
         report = run_post_checks(
-            bullets=[bullet], executive_summary="", thorough_summary="",
+            bullets=[bullet],
+            executive_summary="",
+            thorough_summary="",
             source_text=source,
         )
         assert len(report.bullets) == 1
@@ -683,8 +713,8 @@ class TestF6QuoteDedupe:
         from core.summarisation.postchecks import run_post_checks
 
         bullet = (
-            'The chapter is authored by Neal Ford, who argues that essential '
-            'complexity represents inherent difficulty while accidental '
+            "The chapter is authored by Neal Ford, who argues that essential "
+            "complexity represents inherent difficulty while accidental "
             'complexity grows from mitigation efforts. "By Neal Ford"'
         )
         source = (
@@ -693,7 +723,9 @@ class TestF6QuoteDedupe:
             "complexity. By Neal Ford"
         )
         report = run_post_checks(
-            bullets=[bullet], executive_summary="", thorough_summary="",
+            bullets=[bullet],
+            executive_summary="",
+            thorough_summary="",
             source_text=source,
         )
         out = report.bullets[0]
@@ -706,7 +738,7 @@ class TestF6QuoteDedupe:
         from core.summarisation.postchecks import run_post_checks
 
         bullet = (
-            'If the current project is not challenging enough, the engineer '
+            "If the current project is not challenging enough, the engineer "
             'should simply "find a more suitable project."'
         )
         source = (
@@ -714,7 +746,9 @@ class TestF6QuoteDedupe:
             "your current career needs then find a more suitable project."
         )
         report = run_post_checks(
-            bullets=[bullet], executive_summary="", thorough_summary="",
+            bullets=[bullet],
+            executive_summary="",
+            thorough_summary="",
             source_text=source,
         )
         assert len(report.bullets) == 1
@@ -743,10 +777,10 @@ class TestF7Excerpts:
         s, logs = self._summarizer()
         excerpt = (
             'On "angry frustrated annoyed" — verbatim from the source '
-            '(auto-inserted for coverage; not the summarizer\'s advice): '
-            '"If you\'re angry, frustrated, annoyed, or otherwise flustered '
-            'its very likely that the other person will interpret you '
-            'non-verbals as indicating that you\'re on the attack."'
+            "(auto-inserted for coverage; not the summarizer's advice): "
+            "\"If you're angry, frustrated, annoyed, or otherwise flustered "
+            "its very likely that the other person will interpret you "
+            "non-verbals as indicating that you're on the attack.\""
         )
         bullet = (
             "When a person is angry, frustrated, annoyed, or flustered, "
@@ -754,7 +788,10 @@ class TestF7Excerpts:
             "others as aggressive or as an attack."
         )
         kept = s._prune_covered_excerpts(
-            bullets=[bullet], exec_sum="", thorough="", excerpts=[excerpt],
+            bullets=[bullet],
+            exec_sum="",
+            thorough="",
+            excerpts=[excerpt],
         )
         assert kept == []
 
@@ -762,14 +799,17 @@ class TestF7Excerpts:
         s, logs = self._summarizer()
         excerpt = (
             'On "fiduciary duty" — verbatim from the source (auto-inserted '
-            'for coverage; not the summarizer\'s advice): "As an architect '
-            'you have been entrusted with the well-being of your '
-            'organization and its expected that you will avoid all '
+            "for coverage; not the summarizer's advice): \"As an architect "
+            "you have been entrusted with the well-being of your "
+            "organization and its expected that you will avoid all "
             'conflicts of interest."'
         )
         bullet = "The chapter argues engineers must prioritize customer needs over career goals."
         kept = s._prune_covered_excerpts(
-            bullets=[bullet], exec_sum="", thorough="", excerpts=[excerpt],
+            bullets=[bullet],
+            exec_sum="",
+            thorough="",
+            excerpts=[excerpt],
         )
         assert len(kept) == 1
 
@@ -788,7 +828,9 @@ class TestF7Excerpts:
         s._find_source_sentence = lambda kw, text: glued
         result = {"bullet_points": []}
         s._force_insert_missing(
-            "src", ["approaches solving problems"], result,
+            "src",
+            ["approaches solving problems"],
+            result,
             heading="1. Don't put your resume ahead of the requirements",
         )
         assert len(result["source_excerpts"]) == 1

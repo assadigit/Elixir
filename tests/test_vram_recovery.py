@@ -30,6 +30,7 @@ from core.summarisation.summarizer import Summarizer
 # _recover_vram tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRecoverVRAM:
     """V13.40.0: Verify VRAM recovery doesn't crash and logs correctly."""
 
@@ -65,6 +66,7 @@ class TestRecoverVRAM:
 # ═══════════════════════════════════════════════════════════════════════════
 # _ensure_additive_sections tests
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestEnsureAdditiveSections:
     """V13.40.0: Verify additive-section followup populates empty sections."""
@@ -158,6 +160,7 @@ class TestEnsureAdditiveSections:
 # B4 threshold test
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestB4Threshold:
     """V18.2: Verify B4 threshold is configurable (default 12000)."""
 
@@ -170,6 +173,7 @@ class TestB4Threshold:
         lower to 8000 if coverage drops on long chapters.
         """
         import inspect
+
         source = inspect.getsource(Summarizer._summarize_inner)
         # V18.2: threshold is now read from settings, not hardcoded
         assert "b4_threshold_tokens" in source
