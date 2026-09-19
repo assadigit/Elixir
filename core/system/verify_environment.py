@@ -21,8 +21,11 @@ Usage::
     issues = verify_system_dependencies()
     if issues:
         for issue in issues:
-            print(f"⚠️ {issue.title}: {issue.detail}")
-            print(f"   Fix: {issue.fix}")
+            logger.warning("⚠️ %s: %s", issue.title, issue.detail)
+            logger.info("   Fix: %s", issue.fix)
+
+    (Phase 2 / task 2.4 log hygiene: the example used ``print`` — callers
+    should go through :mod:`logging`, never bare ``print``.)
 
 The function returns a list of ``DependencyIssue`` objects (empty list = all
 OK). It is safe to call multiple times (no side effects). It never raises —

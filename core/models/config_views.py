@@ -234,7 +234,7 @@ def build_config_views(request: Any) -> dict[str, Any]:
     This enables true bidirectional access::
 
         request.ocr.primary_model = "new-model"  # writes request.primary_ocr_model
-        print(request.primary_ocr_model)          # reads "new-model"
+        assert request.primary_ocr_model == "new-model"  # reads it back
     """
     return {
         "ocr": OCRConfig(request),

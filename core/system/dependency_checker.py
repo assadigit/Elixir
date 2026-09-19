@@ -81,7 +81,10 @@ class DetailedDependencyChecker:
         checker = DetailedDependencyChecker()
         results = checker.check_all()
         for status in results:
-            print(f"{status.name}: {status.status_text}")
+            logger.info("%s: %s", status.name, status.status_text)
+
+    (Phase 2 / task 2.4 log hygiene: the example used ``print`` — callers
+    should go through :mod:`logging`, never bare ``print``.)
     """
 
     def __init__(self) -> None:

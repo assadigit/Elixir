@@ -992,6 +992,30 @@ class TestA25BulletScorerMemo:
 
 
 class TestA26GpuTempCache:
+    # Phase 2 (task 2.3): ``test_summarize_with_model_uses_cache`` below used
+    # to be xfail'd as order-fragile (since V18.20.3.8). Root cause (fixed
+    # earlier at the conftest level): test modules swapping
+    # sys.modules["utils.token_counter"] at collection time made the
+    # ``from utils.token_counter import count_tokens`` import inside
+    # ``summarize_with_model`` resolve to a DIFFERENT module object than the
+    # one this test monkeypatched — split-brain, order-dependent. With the
+    # conftest module-pin in place the test passes in isolation AND in the
+    # full-suite order. To keep it deterministic in EVERY ordering it is now
+    # fully hermetic: (a) this autouse fixture snapshots and restores the
+    # module-level cache dict around each test (no state leaks in or out);
+    # (b) the integration test pins ``time.monotonic`` (no wall-clock input).
+
+    @pytest.fixture(autouse=True)
+    def _isolate_gpu_temp_cache(self):
+        """Snapshot/restore the module-level GPU-temp cache around every
+        test in this class — module-state isolation (roadmap 2.3)."""
+        saved = dict(pr_mod._gpu_temp_cache)
+        try:
+            yield
+        finally:
+            pr_mod._gpu_temp_cache.clear()
+            pr_mod._gpu_temp_cache.update(saved)
+
     def _reset(self):
         pr_mod._gpu_temp_cache["valid"] = 0.0
         pr_mod._gpu_temp_cache["temp"] = 0.0
@@ -1047,21 +1071,18 @@ class TestA26GpuTempCache:
         assert pr_mod._read_gpu_temp_c() == 0.0  # retried (not negative-cached)
         assert pr_mod._gpu_temp_cache["valid"] == 0.0
 
-    @pytest.mark.xfail(
-        reason=(
-            "order-fragile: depends on module state (pr_mod cache / "
-            "monkeypatched-callable wiring) established by an earlier "
-            "test in the same session — passes in isolation and in some "
-            "orderings; the known documented flake since V18.20.3.8 "
-            "(V18.20.3.12 / O8 normalization, user-approved)"
-        ),
-        strict=False,
-    )
     def test_summarize_with_model_uses_cache(self, monkeypatch):
         """Integration: two summarize_with_model calls within the TTL spawn
-        nvidia-smi once (thermal decision unchanged)."""
+        nvidia-smi once (thermal decision unchanged).
+
+        Phase 2 (task 2.3): the xfail is GONE. Determinism now comes from
+        the class-level cache snapshot/restore fixture + the pinned clock
+        below + the conftest token_counter pin — no dependence on ordering.
+        """
         self._reset()
         spawns = self._install_subprocess(monkeypatch, temp="42")
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(_time_mod, "monotonic", lambda: clock["now"])
 
         import utils.token_counter as tc
 
