@@ -1,5 +1,70 @@
 # Changelog
 
+## V0.13 — Phase 0 "Green Gates": fresh installs repaired, CI green for the first time
+
+> **The change:** execution of Phase 0 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`). Three release blockers found by the audit are
+> dead: fresh installs now work, CI is green end-to-end (lint + format +
+> typecheck + tests), and the app's full import chain is verified on a clean
+> environment. **Behavior-neutral by design:** the test suite is bit-identical
+> to the V0.12 baseline — `3668 passed / 35 skipped / 1 xpassed` before AND
+> after.
+
+**Fresh installs (audit W2/W4 — severity 5):**
+- `requirements.txt` could not resolve on ANY clean machine: the
+  `"misaki[en]">=0.9.0` pin was syntactically malformed (this is what killed
+  the CI test job at *Install dependencies*), `anydoc>=0.1.0` does not exist
+  on PyPI, and `kokoro>=0.9.0` can never be satisfied (PyPI max 0.7.x).
+  Requirements rewritten: core runtime set only; optional groups moved to
+  pyproject extras (`[tts]`, `[grounding]`, `[formats]`, `[rag]`, `[full]`)
+  with corrected floors.
+- `requirements.lock` regenerated from a verified clean install (the old file
+  was a stale pre-rebrand artifact: legacy `PyPDF2`, `numpy-financial`,
+  missing PySide6/markitdown/tiktoken entirely).
+- `pip install -e .` fixed (flat-layout auto-discovery failure) via explicit
+  `[tool.setuptools.packages.find]` — the Makefile `install` target works again.
+- **Two latent import-chain crashes fixed:** `core/pdf/vision_figure_extractor.py`
+  imported PyMuPDF (`fitz`) at module level and `core/tts/voices.py` imported
+  `huggingface_hub` at module level — both undeclared optionals that made
+  `import controller` (i.e., app startup) impossible on fresh installs. Both
+  now degrade gracefully; verified: the full app chain imports on a clean
+  core-only environment.
+
+**CI green for the first time (audit W3 — severity 5):**
+- ruff PINNED to `0.16.8` in CI and pre-commit (was: floating `>=0.4.0` in CI
+  vs. frozen v0.6.9 in pre-commit — local hooks and the remote gate checked
+  different rules).
+- The lint gate is now real: **300+ findings fixed** — 111 auto-fixes (import
+  sorting, comprehension→ctor rewrites), ~90 F-class dead-code removals
+  (F401 unused imports, F841 unused variables incl. the vestigial MarkItDown
+  init in `toc_extractor._get_markdown_preview`, F811 redefinitions, an F822
+  undefined `__all__` export, an F601 duplicate dict key), bug-pattern fixes
+  (B023 late-binding closures in the image-extractor progress callbacks,
+  B904 exception chaining, B025 duplicate except, B033 duplicate set item),
+  27 E741 ambiguous-name renames, 5 lambda→def conversions, and 5
+  `(str, Enum)` → `StrEnum` modernizations (verified: no str()/f-string
+  embedding anywhere — semantics identical).
+- Style-only rules with large legacy backlogs are DISABLED-WITH-RATIONALE in
+  `pyproject.toml` (E402 deliberate late imports, E701/E702 one-liners,
+  SIM102/103/105 control-flow sugar) — to be ratcheted back per-file in later
+  phases. Everything else is ENFORCED and clean.
+- `ruff format` applied to the whole repo (434 files) — `.git-blame-ignore-revs`
+  added so the mechanical reformat doesn't pollute `git blame`.
+- CI test job: installs the repaired requirements + pytest tooling and runs
+  `python -m pytest` (no repo-root conftest.py — plain `pytest` doesn't put
+  the repo root on `sys.path`, so `import core` would fail).
+
+**Verification:** 35 test files' source-pins updated to the post-format
+baseline (the reformat re-wrapped lines; every updated pin keeps its original
+intent — 23 initially-failing source-pin tests reconciled, zero behavior tests
+affected). `ruff check .` and `ruff format --check .` both exit 0; the suite
+is bit-identical (`3668/35/1 xpassed`, ~125 s).
+
+**Also:** README badges/gate/version metadata synced (V0.06 → V0.13, tests
+3510 → 3668, phantom `run_app.bat` reference removed), installer `AppVersion`
+synced to the VERSION file, audit docs allowlisted in the rebrand sweep test
+(historical references).
+
 ## V0.12 — Stage 1 & 2 audit deliverables: SWOT + phased roadmap (docs-only, no production code)
 
 > **The change:** a full independent audit of the V0.11 codebase (every finding

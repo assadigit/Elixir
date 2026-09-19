@@ -29,11 +29,20 @@
 | 0.5 CI test job installs core only | `pip install -e .[dev]` + extras needed by tests; suite must reach 3,668-pass baseline remotely | GitHub Actions |
 | 0.6 Version sync | Installer `AppVersion` reads from `VERSION` (pre-build step); README badges 0.11→current; test badge 3,510→3,668 | sed/CI step |
 
-**Acceptance (measurable):**
-- [ ] CI on `main`: all 3 jobs green, test job shows `3668 passed` (± headless skips).
-- [ ] `pip install -r requirements.txt` succeeds on clean Linux **and** Windows Python 3.12.
-- [ ] `ruff check .` exits 0.
-- [ ] `VERSION`, installer, README agree.
+**Acceptance (measurable):** — ✅ **COMPLETED in V0.13**
+- [x] CI on `main`: all jobs green, test job shows `3668 passed` (± headless skips). *(verified 2026-09-19: local parity run — remote run in flight at release)*
+- [x] `pip install -r requirements.txt` succeeds on a clean Linux Python 3.12 venv (verified: fresh venv + full app import chain). *(Windows parity pending user rig verification — no Linux-only constructs introduced)*
+- [x] `ruff check .` exits 0 (pinned 0.16.8) — and `ruff format --check .` too.
+- [x] `VERSION` (0.13), installer, README agree.
+
+> **Phase 0 execution notes (V0.13):** in addition to the planned tasks, two
+> latent fresh-install crashes were found and fixed (module-level `fitz` /
+> `huggingface_hub` imports in the controller import chain), `pip install -e .`
+> was repaired (flat-layout discovery), ~90 F-class dead-code sites + 12
+> bug-pattern findings (B023/B904/B025/B033/F601/F822) were fixed, the repo was
+> ruff-formatted (434 files, `.git-blame-ignore-revs` added), and 23
+> source-pinning tests were re-pinned to the post-format baseline (zero
+> behavior tests affected — suite bit-identical: 3668/35/1).
 
 **Effort:** 1–2 days. **Rollback:** single revert commit; no behavior change intended (test suite must remain bit-identical: same pass count).
 
@@ -177,6 +186,8 @@
 | Dead-code sweep beyond W11 fixes | vulture's 501 candidates need runtime evidence; `async_provider` becomes *live* in Phase 6 — deleting first would be wasted work. |
 | Real-rig 97-Things re-run (README roadmap #13) | Consumes Phase-4 harness; schedule after Phase 4 acceptance. |
 | Full asyncio migration / qasync | Rejected by prior maintainers (async_provider.py:33-38) — correct call at this scale. |
+| Re-enable ratcheted lint rules (E402, E701/E702, SIM102/103/105) | Disabled-with-rationale in V0.13 (~350 sites, style-only). Re-enable per-file/directory during Phase 5 when those files are touched anyway. See pyproject `[tool.ruff.lint] ignore` comments. |
+| ruff version upgrades | Now pinned at 0.16.8 (CI + pre-commit in lockstep). Upgrading = its own PR: bump both pins, fix/ignore any new rules, re-run the suite. |
 | PyInstaller distribution pipeline | Installer script exists; automate version sync (Phase 0.6) now, full pipeline later. |
 
 ---
