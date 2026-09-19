@@ -1,18 +1,38 @@
-# Elixir — Python dependencies
+# Elixir — core Python dependencies
+# =================================
 # Install with:  pip install -r requirements.txt
 #
-# NOTE: Two system-level installs are also required on Windows:
+# V0.13 (Phase 0 / Green Gates): this file now contains ONLY the core
+# runtime dependencies. Optional feature groups moved to pyproject.toml
+# extras — install them on demand with, e.g.:
+#
+#   pip install ".[tts]"        # 🎙️ podcast audio (Kokoro/Piper TTS stack)
+#   pip install ".[grounding]"  # 🔬 langextract verbatim grounding (Layer 8)
+#   pip install ".[formats]"    # 📚 EPUB input, Anki export, docling, pikepdf
+#   pip install ".[rag]"        # 🧠 RAG queries + spaCy NER
+#   pip install ".[full]"       # everything above
+#
+# NOTE (V0.13 audit): the former `anydoc>=0.1.0` entry was REMOVED — that
+# package is not published on PyPI. The QuickConvert dialog already
+# auto-falls back to the markitdown engine when anydoc is absent
+# (behavior unchanged).
+#
+# NOTE (V0.13 audit): the former `kokoro>=0.9.0` / `"misaki[en]">=0.9.0`
+# pins were unsatisfiable on PyPI (max published: kokoro 0.7.x, misaki
+# 0.7.x), and the misaki line was additionally malformed (closing quote
+# inside the specifier), which made `pip install -r requirements.txt`
+# abort on EVERY clean machine (this was the CI test-job failure). Both
+# packages now live in the [tts] extra with corrected floors.
+#
+# System-level installs still required on Windows (unchanged):
 #   1. Tesseract-OCR:  https://github.com/UB-Mannheim/tesseract/wiki
 #      Install to C:\Program Files\Tesseract-OCR  (default)
 #      During install, tick "Persian (fas)" language data
 #   2. Poppler for Windows (needed by pdf2image):
 #      https://github.com/oschwartz10612/poppler-windows/releases
-#      Extract and note the path to its 'bin' folder, then set
-#      paths.poppler in ~/.elixir/settings.json
+#      Extract, then set paths.poppler in ~/.elixir/settings.json
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Core dependencies (required)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Core runtime (mirrors [project.dependencies] in pyproject.toml) ────────
 PySide6>=6.6.0
 pypdf>=4.3.0
 pdf2image>=1.17.0
@@ -26,144 +46,12 @@ requests>=2.31.0
 Pillow>=10.4.0
 PyYAML>=6.0.1
 rapidfuzz>=3.0.0
+numpy>=1.26.0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# V10.1.0: Source Grounding (Google langextract) — Layer 8 anti-hallucination
-# ─────────────────────────────────────────────────────────────────────────────
-# OPTIONAL but strongly recommended for academic/scientific PDFs where
-# "life or money is at stake".  When installed AND grounding.enabled=True in
-# settings, the ContentJudge gets a deterministic verbatim-grounding signal
-# (char_interval) that complements the existing semantic checks (Layers 1-7).
-#
-# License: Apache-2.0 (Google).  Supports Ollama (local, default) and
-# OpenAI-compatible cloud endpoints.
-#
-# If langextract is NOT installed, the pipeline falls back gracefully to
-# Layers 1-7 with a loud WARNING in the log (never silent).
-langextract>=1.0.0
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Optional: GPU Acceleration (PyTorch with CUDA)
-# Uncomment and install the CUDA‑enabled versions for VRAM management,
-# figure extraction, and vision OCR acceleration.
-# ─────────────────────────────────────────────────────────────────────────────
-# torch>=2.0.0
-# torchvision>=0.15.0
-# torchaudio>=2.0.0
-#
-# To install with CUDA 11.8 support (recommended for RTX 3060):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# For other CUDA versions, see https://pytorch.org/get-started/locally/
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Optional: Advanced Document Features
-# Uncomment the lines below to enable the corresponding features.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# --- Table Extraction ---
-# Choose one: camelot (recommended) or tabula
-# camelot-py[cv]   # Table extraction (lattice and stream). Requires opencv-python.
-# tabula-py        # Alternative table extraction (Java-based, simpler).
-# pandas           # Required by both camelot and tabula.
-# opencv-python    # Required by camelot for image processing.
-
-# --- Math Formula Extraction ---
-# pix2tex          # LaTeX OCR. Install with "pix2tex[api]" for API mode.
-# pix2tex
-
-# --- Layout Analysis ---
-# layoutparser     # Detect text blocks and improve reading order.
-# NOTE: layoutparser requires detectron2, which has complex installation.
-# See: https://layout-parser.readthedocs.io/en/latest/notes/installation.html
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Optional: PaddleOCR (fallback OCR on CPU)
-# Uncomment and install these to enable PaddleOCR as a fallback after vision OCR.
-# IMPORTANT: Use specific versions to avoid numpy ABI incompatibility.
-# ─────────────────────────────────────────────────────────────────────────────
-# paddlepaddle-gpu==2.6.0        # Use paddlepaddle instead if no GPU
-# paddleocr==2.7.3
-# numpy<2.0                      # PaddleOCR requires numpy<2.0
-# opencv-python==4.6.0.66        # Downgrade to match PaddleOCR expectations
-# opencv-contrib-python==4.6.0.66
-# pyclipper                      # Required by PaddleOCR
-# lmdb                           # Required by PaddleOCR
-# imgaug                         # Required by PaddleOCR
-# visualdl                       # Required by PaddleOCR
-
-# To install all PaddleOCR dependencies with correct versions, run:
-#   pip install paddlepaddle-gpu==2.6.0 paddleocr==2.7.3 "numpy<2.0" opencv-python==4.6.0.66 opencv-contrib-python==4.6.0.66
-# If you don't have a GPU, replace paddlepaddle-gpu with paddlepaddle.
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Optional: UnlimitedOCR (batch OCR for scanned pages)
-# ─────────────────────────────────────────────────────────────────────────────
-# torch              # Already included above for GPU support
-# transformers       # Required by UnlimitedOCR
-# pymupdf            # For image extraction (already installed via pdfplumber?)
-# einops             # Required by UnlimitedOCR
-# addict             # Required by UnlimitedOCR
-# easydict           # Required by UnlimitedOCR
-# matplotlib         # Required by UnlimitedOCR
-
-# ─────────────────────────────────────────────────────────────────────────────
-# V18.2.21 (Phase 1.4): Optional — Retry Consolidation (core/llm/retry.py)
-# ─────────────────────────────────────────────────────────────────────────────
-# Used by core/llm/retry.py — a single tenacity-based decorator that
-# consolidates the 8 duplicated ad-hoc retry loops (linear time.sleep with no
-# jitter) into one exponential-backoff + jitter implementation. Used at
-# runtime by LLMProvider / Summarizer once the 8 sites are migrated.
-#
-# OPTIONAL: if tenacity is NOT installed, retry.py degrades gracefully to a
-# 2-attempt LINEAR retry (with a WARNING logged once at import). Install this
-# for production-grade exponential backoff + jitter.
-tenacity>=8.2.0
-
-# ─────────────────────────────────────────────────────────────────────────────
-# V3.6.0: RAG Integration + Enhanced NER
-# Install these to enable RAG queries across book summaries and spaCy NER.
-# ─────────────────────────────────────────────────────────────────────────────
-chromadb>=0.5.0                      # Local vector database for RAG
-sentence-transformers>=2.7.0          # Embedding model (all-MiniLM-L6-v2, ~90MB)
-spacy>=3.7.0                          # Advanced NER (persons, orgs, locations)
-langchain>=0.2.0                      # LLM orchestration framework
-langchain-community>=0.2.0            # LangChain community integrations (Ollama)
-# After installing spaCy, download the English model:
-#   python -m spacy download en_core_web_sm
-
-# ─────────────────────────────────────────────────────────────────────────────
-# V4.2.0: TTS (Text-to-Speech) — Podcast Audio generation
-# English via Kokoro (Python API), Persian via Piper (binary subprocess).
-# ─────────────────────────────────────────────────────────────────────────────
-kokoro>=0.9.0                        # English TTS engine (82M model, best open-weight)
-"misaki[en]">=0.9.0                  # Kokoro's English phonemizer frontend
-soundfile>=0.12.0                    # Writes Kokoro's numpy output to .wav
-piper-tts>=1.4.0                     # Piper Python package (loads ONNX models)
-pydub>=0.25.1                        # Audio segment stitching (concat WAVs)
-numpy>=1.26.0                        # Audio array handling
-scipy>=1.11.0                        # V11.52.0: VibeVoice 24kHz→48kHz upsampling
-# NOTE: piper_phonemize has NO Windows wheels — on Windows we call the Piper
-# binary directly (piper.exe) which bundles espeak-ng + Persian voice data.
-# Download piper_windows_amd64.zip from https://github.com/rhasspy/piper/releases
-# and extract to e.g. C:\piper_windows_amd64\piper\ — then set the path in
-# Settings → TTS → Engines.
-# OPTIONAL: install ffmpeg for MP3 export (WAV works without it).
-#   Windows: https://www.gyan.dev/ffmpeg/builds/ → add bin\ to PATH
-
-# V10.4.0 Phase 6B-3: Settings schema validation (optional — app runs without it).
-pydantic>=2.0
-
-# V10.21.0: Optional — multi-format input + Anki export
-ebooklib>=0.18        # EPUB input support
-beautifulsoup4>=4.12  # HTML/EPUB parsing
-genanki>=0.13         # Direct Anki .apkg export
-docling>=2.0          # Technical PDF extraction (tables + code blocks)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# V15.1.0: Document → Markdown tool (isolated — does NOT touch main pipeline)
-# ─────────────────────────────────────────────────────────────────────────────
-# These power the "Document → Markdown" QuickConvertDialog engine dropdown.
-# They are OPTIONAL: if `anydoc` is not installed, the dialog auto-selects the
-# markitdown engine and shows "AnyDoc (not installed)" in the dropdown.
-anydoc>=0.1.0         # Fast PDF/DOCX/EPUB/PPTX/XLSX/ODT/RTF/CSV → Markdown
-pikepdf>=8.0          # PDF repair (MalformedError → repair → retry) for AnyDoc
+# ── Recommended (lightweight optionals used by the default pipeline;
+#    declared optional in pyproject [retry] / [structured] / [grounding]) ───
+tenacity>=8.2.0       # exponential-backoff retries   (core/llm/retry.py)
+pydantic>=2.5.0       # structured LLM output shapes  (core/llm/structured_io.py)
+langextract>=1.0.0    # Layer-8 verbatim grounding — strongly recommended
+                      # (pipeline falls back to Layers 1-7 with a loud
+                      #  WARNING when absent — never silent)

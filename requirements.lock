@@ -1,31 +1,123 @@
-# MarkItDown Pro — pinned dependency lockfile (V18.3 Phase 1.6)
-# Generated from a working install. Use `pip install -r requirements.lock`
-# for a reproducible environment with exact versions.
-# Source: requirements.txt (floors) + this lockfile (pins).
+# Elixir — pinned dependency lockfile (V0.13, Phase 0 / Green Gates)
+# =====================================================================
+# Regenerated from a VERIFIED clean install of `pip install -r
+# requirements.txt` (core runtime set) on Python 3.12 / Linux, then
+# confirmed by importing the full app chain (controller, core.pipeline,
+# core.summarisation, core.outputs, ui_qt) in that environment.
 #
-# NOTE: Two system-level installs are also required on Windows:
-#   1. Tesseract-OCR:  https://github.com/UB-Mannheim/tesseract/wiki
-#   2. Poppler:        https://github.com/oschwartz10612/poppler-windows/releases
-#      (set paths.poppler in ~/.markitdown_pro/settings.json)
+# Use for a reproducible CORE environment:
+#   pip install -r requirements.lock
+#
+# Optional feature groups are NOT pinned here — install them by extras:
+#   pip install ".[tts]" / ".[grounding]" / ".[formats]" / ".[rag]" / ".[full]"
+#
+# NOTE (V0.13 audit): the previous lockfile was a stale pre-rebrand
+# artifact ("MarkItDown Pro" era, 31 lines, legacy PyPDF2/numpy-financial,
+# missing PySide6/markitdown/tiktoken entirely) that looked authoritative
+# but described an environment that no longer exists. It has been
+# regenerated from scratch.
+#
+# System-level installs still required on Windows (see requirements.txt).
 # Verify at launch via: core.system.verify_environment.verify_system_dependencies()
-
-PyPDF2==3.0.1
-PyYAML==6.0.3
-RapidFuzz==3.14.3
-numpy-financial==1.0.0
-numpy==2.1.3
-openapi-pydantic==0.5.1
+absl-py==2.5.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+annotated-types==0.8.0
+anyio==4.15.1
+async-timeout==5.0.1
+attrs==26.1.0
+azure-ai-contentunderstanding==1.2.0b3
+azure-ai-documentintelligence==1.0.2
+azure-core==1.41.0
+azure-identity==1.25.3
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+click==8.5.0
+cobble==0.1.4
+cryptography==50.0.1
+defusedxml==0.7.1
+distro==1.9.0
+-e git+https://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@github.com/assadigit/elixir.git@65e9f9084a5c806395e12fcf0a7dc778490f6f92#egg=elixir
+et_xmlfile==2.0.0
+exceptiongroup==1.3.1
+flatbuffers==25.12.19
+frozenlist==1.8.0
+google-api-core==2.38.0
+google-auth==2.58.0
+google-cloud-core==2.7.0
+google-cloud-storage==3.14.1
+google-crc32c==1.8.0
+google-genai==2.24.0
+google-resumable-media==2.10.2
+googleapis-common-protos==1.75.3
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+isodate==0.7.2
+langextract==1.7.0
+lxml==6.1.3
+magika==0.6.3
+mammoth==1.11.0
+markdownify==1.2.3
+markitdown==0.1.7
+ml_collections==1.1.0
+more-itertools==11.1.0
+msal==1.39.0
+msal-extensions==1.3.1
+multidict==6.9.0
+numpy==2.5.3
+olefile==0.47
+onnxruntime==1.30.0
+openpyxl==3.1.5
+opentelemetry-api==1.44.0
+packaging==26.3
+pandas==3.0.6
 pdf2image==1.17.0
-pdfplumber==0.11.9
-pillow==11.3.0
-pydantic-settings==2.13.1
-pydantic==2.12.5
-pydantic_core==2.41.5
-pypdf==6.6.0
-pypdfium2==5.7.0
+pdfminer.six==20260107
+pdfplumber==0.11.10
+pillow==12.3.0
+propcache==0.5.4
+proto-plus==1.28.4
+protobuf==7.36.2
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
+pycparser==3.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+pydub==0.25.1
+PyJWT==2.14.0
+pypdf==6.19.0
+pypdfium2==5.13.0
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
 pytesseract==0.3.13
+python-dateutil==2.9.0.post0
 python-docx==1.2.0
-requests-cache==1.3.1
-requests==2.32.5
+python-dotenv==1.2.3
+python-pptx==1.0.2
+PyYAML==6.0.3
+RapidFuzz==3.14.6
+regex==2026.9.10
+requests==2.34.2
+shiboken6==6.11.2
+six==1.17.0
+sniffio==1.3.1
+soupsieve==2.9.2
+SpeechRecognition==3.17.0
 tenacity==9.1.4
 tiktoken==0.14.0
+tqdm==4.70.1
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0
+websockets==16.1.1
+wordninja==2.0.0
+xlrd==2.0.2
+xlsxwriter==3.2.9
+yarl==1.25.1
+youtube-transcript-api==1.0.3

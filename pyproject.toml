@@ -51,12 +51,53 @@ retry = ["tenacity>=8.2.0"]
 # core/llm/structured_io.py. If absent, validation degrades to a manual
 # shape check. Pydantic v2 is the 2026 standard.
 structured = ["pydantic>=2.5.0"]
-# Convenience extra that pulls both Phase 1 enhancements.
-full = ["elixir[retry,structured]"]
 
-# V18.3 (Phase 1.4): read version from the VERSION file (single source of truth).
+# ── V0.13 (Phase 0 / Green Gates): optional feature groups ────────────────
+# These were previously unversioned/unsatisfiable entries in requirements.txt
+# (see the V0.13 audit, docs/AUDIT_SWOT_V0.11.md W2/W4). Floors corrected:
+# kokoro/misaki max on PyPI is 0.7.x — the old >=0.9.0 pins could never resolve.
+tts = [
+    "kokoro>=0.7.0",        # English TTS engine
+    "huggingface_hub>=0.23.0",  # Piper voice downloads (core/tts/voices.py)
+    "misaki[en]>=0.7.0",    # Kokoro's English phonemizer frontend
+    "soundfile>=0.12.0",    # writes Kokoro's numpy output to .wav
+    "piper-tts>=1.4.0",     # Farsi TTS (ONNX models)
+    "pydub>=0.25.1",        # audio segment stitching
+    "scipy>=1.11.0",        # VibeVoice 24kHz→48kHz upsampling
+]
+grounding = [
+    # Layer-8 anti-hallucination: langextract verbatim grounding.
+    "langextract>=1.0.0",
+]
+formats = [
+    "ebooklib>=0.18",       # EPUB input
+    "beautifulsoup4>=4.12", # HTML/EPUB parsing
+    "genanki>=0.13",        # direct Anki .apkg export
+    "docling>=2.0",         # technical PDF extraction (tables + code blocks)
+    "pikepdf>=8.0",         # PDF repair for the AnyDoc engine
+]
+rag = [
+    "chromadb>=0.5.0",              # local vector database for RAG
+    "sentence-transformers>=2.7.0", # embedding model
+    "spacy>=3.7.0",                 # advanced NER
+    "langchain>=0.2.0",             # LLM orchestration framework
+    "langchain-community>=0.2.0",   # LangChain community integrations (Ollama)
+]
+# Convenience extra that pulls everything.
+full = ["elixir[retry,structured,tts,grounding,formats,rag]"]
+
+# V0.13 (Phase 0): read version from the VERSION file (single source of truth).
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
+
+# V0.13 (Phase 0): explicit package discovery. Flat-layout auto-discovery
+# fails with multiple top-level dirs ("Multiple top-level packages discovered
+# in a flat-layout: ['core', 'ui_qt', 'assets', 'config', 'prompts', …]"),
+# which broke `pip install -e .` and the Makefile `install` target.
+[tool.setuptools]
+py-modules = ["controller"]
+[tool.setuptools.packages.find]
+include = ["core*", "ui_qt*", "utils*"]
 
 [tool.ruff]
 # V18.20.3.12: py310 → py312 — the codebase uses 3.12-only f-string syntax and the rig runs 3.12.14 (the stale py310 target made ruff flag valid code as syntax errors)
@@ -66,11 +107,33 @@ extend-exclude = ["test_data", "assets", "__pycache__"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
-ignore = ["E501", "B008", "SIM108"]
+# V0.13 (Phase 0 lint triage): the previous gate was aspirational — CI lint
+# had never been green. As of V0.13 every rule NOT listed below is ENFORCED
+# and clean (including all F-class dead-code rules, B-class bug-pattern
+# rules, and import sorting). The rules below are deliberately disabled
+# with rationale, to be ratcheted back per-file in later phases (see the
+# parking lot in docs/ROADMAP_V0.12.md).
+ignore = [
+    "E501",   # line length — pre-existing V18.x decision
+    "B008",   # pre-existing V18.x decision
+    "SIM108", # pre-existing V18.x decision
+    "E402",   # ~200 sites: deliberate late/conditional imports (env setup before
+              # imports in main.py; lazy Qt imports in dialogs). Re-enable
+              # per-file during Phase 5 de-monolithization.
+    "E701",   # ~150 sites: legacy one-line `if x: y` statements — mechanical
+    "E702",   #   reformat pass, deferred (no behavior value, large diff)
+    "SIM105", # ~50 sites: try/except/pass → contextlib.suppress — deferred
+    "SIM103", # ~20 sites: needless-bool return rewrite — deferred
+    "SIM102", # ~20 sites: collapsible nested-if — deferred
+]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"ui_qt/**/*.py" = ["E402"]
+"__init__.py" = ["F401"]  # re-export facades (P2 hygiene commit)
+"ui_qt/**/*.py" = ["E402"]  # kept for the future E402 ratchet re-enable
+# Tests: 59k LOC of characterization tests — style-only classes are exempt
+# (their value is behavior-pinning, not style). Real defect classes (F, B)
+# stay enforced.
+"tests/**" = ["E741", "E701", "E702", "C401", "C408", "C416", "SIM117"]
 
 [tool.ruff.format]
 quote-style = "double"

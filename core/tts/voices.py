@@ -21,7 +21,10 @@ import logging
 import shutil
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download
+# V0.13 (Phase 0): huggingface_hub is an OPTIONAL TTS-stack dependency (Piper
+# voice downloads). Its former module-level import made the whole
+# core.outputs → core.tts → controller chain crash on fresh installs; it is
+# now imported lazily at the only call site that needs it.
 
 # ── Kokoro voice catalog ───────────────────────────────────────────────────
 # Voice IDs follow Kokoro's convention: <lang><gender>_<name>
@@ -79,7 +82,7 @@ def kokoro_voice_groups() -> list[tuple[str, list[tuple[str, str, str, str]]]]:
 
 def kokoro_voice_label(voice_id: str) -> str:
     """Return a human-readable label for a Kokoro voice id."""
-    for vid, lang, gender, desc in KOKORO_VOICES:
+    for vid, _lang, _gender, desc in KOKORO_VOICES:
         if vid == voice_id:
             return f"{vid} — {desc}"
     return voice_id
@@ -91,12 +94,9 @@ def kokoro_voice_label(voice_id: str) -> str:
 #   repo_id   → HuggingFace repo
 #   subpath   → path inside the repo (without extension)
 PIPER_FA_VOICES: list[tuple[str, str, str]] = [
-    ("fa_IR-amir-medium", "rhasspy/piper-voices",
-     "fa/fa_IR/amir/medium/fa_IR-amir-medium"),
-    ("fa_IR-mana-medium", "MahtaFetrat/Mana-Persian-Piper",
-     "fa_IR-mana-medium"),
-    ("fa_IR-gyro-medium", "rhasspy/piper-voices",
-     "fa/fa_IR/gyro/medium/fa_IR-gyro-medium"),
+    ("fa_IR-amir-medium", "rhasspy/piper-voices", "fa/fa_IR/amir/medium/fa_IR-amir-medium"),
+    ("fa_IR-mana-medium", "MahtaFetrat/Mana-Persian-Piper", "fa_IR-mana-medium"),
+    ("fa_IR-gyro-medium", "rhasspy/piper-voices", "fa/fa_IR/gyro/medium/fa_IR-gyro-medium"),
 ]
 
 # User-confirmed best Persian voice (V4.2.0).
@@ -150,6 +150,13 @@ def ensure_piper_voice(
         return (onnx_dst, json_dst)
 
     log(f"  ⬇️  Downloading Piper voice: {voice_id} (~60 MB)…", "INFO")
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as e:
+        raise ImportError(
+            "huggingface_hub is required to download Piper voices — "
+            "install with: pip install huggingface_hub (or the '[tts]' extra)"
+        ) from e
     onnx_src = hf_hub_download(repo_id=repo_id, filename=f"{subpath}.onnx")
     json_src = hf_hub_download(repo_id=repo_id, filename=f"{subpath}.onnx.json")
     shutil.copy2(onnx_src, onnx_dst)

@@ -16,7 +16,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-import fitz  # PyMuPDF
+# V0.13 (Phase 0): PyMuPDF is an OPTIONAL dependency (undeclared before — its
+# module-level import made the whole core.pdf → controller chain crash with
+# ImportError on fresh installs). Guarded here; call sites degrade gracefully
+# (figure extraction is an opt-in feature — see "extract_figure_text").
+try:
+    import fitz  # PyMuPDF
+except ImportError:  # pragma: no cover — optional dependency
+    fitz = None  # type: ignore[assignment]
 
 from core.llm import ModelManager, ModelType
 from utils.logging import get_main_logger
@@ -64,6 +71,14 @@ class VisionFigureExtractor:
         """
         self._page_figure_text.clear()
 
+        if fitz is None:
+            self.log(
+                "  ⚠️ PyMuPDF (fitz) not installed — figure extraction skipped. "
+                "Install with: pip install pymupdf",
+                "WARNING",
+            )
+            return {}
+
         try:
             doc = fitz.open(self.pdf_path)
         except Exception as e:
@@ -87,7 +102,10 @@ class VisionFigureExtractor:
 
         # Acquire the model (keep loaded for all pages)
         if not self.model_manager.acquire_model(self.model_name, ModelType.OCR):
-            self.log(f"  ❌ Failed to load vision model '{self.model_name}'. Skipping figure extraction.", "ERROR")
+            self.log(
+                f"  ❌ Failed to load vision model '{self.model_name}'. Skipping figure extraction.",
+                "ERROR",
+            )
             doc.close()
             return {}
 
@@ -125,11 +143,17 @@ class VisionFigureExtractor:
                             extracted_texts.append(text)
 
                     except Exception as e:
-                        self.log(f"      ⚠️ Failed to process image {img_idx} on page {page_num}: {e}", "WARNING")
+                        self.log(
+                            f"      ⚠️ Failed to process image {img_idx} on page {page_num}: {e}",
+                            "WARNING",
+                        )
 
                 if extracted_texts:
                     self._page_figure_text[page_num] = extracted_texts
-                    self.log(f"    ✅ Page {page_num}: extracted text from {len(extracted_texts)} images", "INFO")
+                    self.log(
+                        f"    ✅ Page {page_num}: extracted text from {len(extracted_texts)} images",
+                        "INFO",
+                    )
 
         except Exception as e:
             self.log(f"  ❌ Figure extraction error: {e}", "ERROR")
@@ -145,7 +169,9 @@ class VisionFigureExtractor:
     # Image → text via vision model
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _extract_text_from_image(self, image_bytes: bytes, page_num: int, img_idx: int) -> str | None:
+    def _extract_text_from_image(
+        self, image_bytes: bytes, page_num: int, img_idx: int
+    ) -> str | None:
         """
         Send a single image to the vision model and return extracted text.
         """
@@ -200,14 +226,14 @@ class VisionFigureExtractor:
 
         lines = markdown_text.splitlines()
         new_lines = []
-        current_page = None
 
         for line in lines:
             new_lines.append(line)
 
             # Check for page marker
             import re
-            m = re.search(r'<!-- original page (\d+) -->', line)
+
+            m = re.search(r"<!-- original page (\d+) -->", line)
             if m:
                 page_num = int(m.group(1))
                 if page_num in self._page_figure_text:
@@ -215,7 +241,7 @@ class VisionFigureExtractor:
                         # Clean and format the extracted text
                         clean_text = fig_text[:500]  # Truncate if too long
                         # Remove excessive newlines
-                        clean_text = re.sub(r'\n{3,}', '\n', clean_text)
+                        clean_text = re.sub(r"\n{3,}", "\n", clean_text)
                         new_lines.append("")
                         new_lines.append(f"> **Figure extracted text:** {clean_text}")
                         new_lines.append("")
@@ -230,6 +256,8 @@ class VisionFigureExtractor:
         """
         Check if a page contains any embedded images.
         """
+        if fitz is None:
+            return False
         try:
             doc = fitz.open(self.pdf_path)
             if page_num > len(doc):
@@ -247,6 +275,12 @@ class VisionFigureExtractor:
         If page_limit is set, only scan up to that many pages.
         """
         pages_with_figures = []
+        if fitz is None:
+            self.log(
+                "  ⚠️ PyMuPDF (fitz) not installed — figure scan skipped.",
+                "WARNING",
+            )
+            return pages_with_figures
         try:
             doc = fitz.open(self.pdf_path)
             total = len(doc)
