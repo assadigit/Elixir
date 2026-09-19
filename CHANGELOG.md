@@ -1,5 +1,64 @@
 # Changelog
 
+## V0.14 — Phase 1 "Baselines & Measurement": timing harness, golden freeze, honest coverage gate
+
+> **The change:** execution of Phase 1 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`). Every later "after" (Phase 5 de-monolithization,
+> Phase 6 performance) now has a committed "before" to be judged against:
+> a per-stage timing harness + baseline doc, byte-identical golden pipeline
+> fixtures + a prompt-version manifest, an honest coverage gate, and a
+> pip-audit report. **No production behavior changed** — the suite grew from
+> `3668` to `3674 passed` (6 new freeze tests), all 3,668 pre-existing tests
+> bit-identical.
+
+**Timing harness + baseline (Phase 1.2/1.3):**
+- New `scripts/bench_chapter.py`: runs the golden chapter through the REAL
+  `Summarizer` (real `__init__`, real `_summarize_inner` — all 16 stages)
+  with a deterministic latency-bucketed mock LLM (heavy 20 s / medium 8 s /
+  light 3 s × `--latency-scale`). Hermetic: `Settings._test_override`,
+  embedder/spacy on their documented absent-machine fallbacks, response
+  cache off — reproducible on any machine, no network/GPU. Modes:
+  `--parallel --workers N`, `--chapters M`, `--profile` (cProfile top-25 +
+  `.prof` dump), `--json`, `--save-golden`.
+- Baseline committed to `docs/baseline/timings_V0.13.md`. Structural findings
+  that now steer Phase 6: **5 LLM calls per chapter, strictly sequential
+  within a chapter; LLM time = 98.5% of wall-clock at full latency**;
+  chapter-level parallelism already near-linear (329% overlap @ 4 workers)
+  — the leverage is intra-chapter call overlap, not chapter parallelism.
+
+**Golden outputs freeze (Phase 1.4 — the Phase-5 pre-net):**
+- `tests/golden/{academic,nonfiction}/pipeline_output.json`: frozen
+  end-to-end pipeline outputs (exec/bullets/thorough/additive sections/
+  quarantine appendix/token counts) under the deterministic mock. Verified
+  byte-identical across runs AND across `PYTHONHASHSEED` values.
+- `tests/golden/prompt_manifest.json`: sha256 of all 52 prompt templates +
+  aggregate integrity hash (via `scripts/prompt_manifest.py [--check]`).
+  Prompts are behavior — an accidental edit now fails CI.
+- `tests/test_golden_freeze.py` (6 tests): manifest drift gate + pipeline
+  byte-identity gate + fixture sanity. Any Phase-5 refactor that changes
+  behavior by one character fails here before reaching the rig.
+
+**Honest coverage gate (Phase 1.1):**
+- CI `--cov-fail-under` 30% → **50%** — the CI-measured floor (50.68%, run
+  35458197259). The roadmap's aspirational 55% would have been red on day
+  one; the gate ratchets in Phase 2 when the per-package ≥80% push raises
+  the global number. Coverage artifacts (`coverage.xml` + `htmlcov/`)
+  attached to every CI run.
+
+**pip-audit, report-only (Phase 1.5):**
+- New CI `audit` job (pinned `pip-audit==2.10.1`): audits the exact pinned
+  core closure in `requirements.lock --no-deps`, uploads the JSON report as
+  an artifact, never fails the build (the FAIL gate activates in Phase 3).
+- **First run caught a real finding:** `requirements.lock` had leaked a
+  GitHub token via a `-e git+https://<token>@github.com/…` editable-install
+  line (a `pip freeze` artifact of the token-URL checkout). Removed — the
+  lock now describes only the dependency closure (`pip install -e .` for the
+  project itself). **The token was pushed to GitHub in history → ROTATION
+  ADVISED.** Clean audit result on the fixed lock: 100 deps, 0 known vulns.
+
+**Version metadata:** VERSION 0.13 → 0.14; roadmap Phase-1 acceptance boxes
+checked with execution notes; pip-audit added to `[dev]` extras.
+
 ## V0.13 — Phase 0 "Green Gates": fresh installs repaired, CI green for the first time
 
 > **The change:** execution of Phase 0 of the approved V0.12 roadmap
