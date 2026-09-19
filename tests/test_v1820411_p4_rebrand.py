@@ -207,7 +207,11 @@ class TestKeychainLegacyFallback:
                 store.setdefault(service, {})[path] = value
 
         monkeypatch.setattr(secrets, "_HAS_KEYRING", True)
-        monkeypatch.setattr(secrets, "_keyring", _FakeKeyring())
+        # V0.13: raising=False — the _keyring module attribute only exists when
+        # the real keyring package is installed; the CI test environment does
+        # not install it (keyring becomes a core dependency in Phase 3), and
+        # this test exercises the mocked path, not the real backend.
+        monkeypatch.setattr(secrets, "_keyring", _FakeKeyring(), raising=False)
 
         class _Settings:
             def get(self, path, default=None):
