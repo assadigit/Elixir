@@ -12,10 +12,24 @@
 #     plain `pytest` does not put the repo root on sys.path, so `import core`
 #     would fail).
 #
+# V0.14 (Phase 1 / Baselines & Measurement):
+#   - coverage gate raised 30% → 50% — the HONEST floor. CI-measured baseline
+#     is 50.68% (35,540 stmts, 17,530 missed, run 35458197259). The roadmap's
+#     aspirational 55% gate would have been red on day one — a gate above the
+#     measured value is not a gate, it's a broken build. Phase 2's per-package
+#     ≥80% push will raise the global number; the gate ratchets then.
+#   - coverage.xml + htmlcov/ uploaded as a CI artifact on every run.
+#   - NEW audit job: pip-audit (PINNED 2.10.1) over requirements.lock,
+#     REPORT-ONLY (vulns never fail the build — the gate activates in
+#     Phase 3 after waivers exist). First run of this job already caught a
+#     real finding: the lock had leaked a GitHub token via a `-e git+…`
+#     editable line (fixed in V0.14; token rotation advised).
+#
 # This workflow gates releases on:
 # - ruff lint clean (pinned version)
 # - ruff format clean
-# - pytest passing with coverage >= 30%
+# - pytest passing with coverage >= 50%
+# - pip-audit report produced (report-only)
 #
 # The golden-master audit gate (--audit) is NOT in CI because it requires
 # the z-ai-web-dev-sdk + bun runtime. Run it manually before releases:
@@ -92,13 +106,69 @@ jobs:
           python -m pytest tests/ \
             --cov=core \
             --cov=utils \
-            --cov-fail-under=30 \
+            --cov-fail-under=50 \
             --cov-report=term-missing \
             --cov-report=xml \
+            --cov-report=html \
             -p no:cacheprovider
+
+      # V0.14 (Phase 1.1): publish the coverage artifact — the per-file
+      # htmlcov tree + the XML report are attached to every CI run so a
+      # coverage drop can be diagnosed without re-running locally.
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: warn
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  # V0.14 (Phase 1.5): dependency vulnerability report — REPORT-ONLY.
+  # Audits the exact pinned closure in requirements.lock (--no-deps: no
+  # resolution drift, no build isolation, fast). Findings NEVER fail this
+  # job; the report JSON is attached as an artifact for triage. The FAIL
+  # gate activates in Phase 3 (Security & Config Hardening) once a waiver
+  # list exists — until then a red report is information, not an outage.
+  audit:
+    name: Dependency Audit (pip-audit, report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install "pip-audit==2.10.1"  # PINNED — same policy as ruff
+
+      - name: Audit pinned core closure (report-only)
+        run: |
+          set +e  # report-only: findings must NOT fail the job
+          pip-audit -r requirements.lock \
+            --no-deps \
+            --format=json \
+            -o pip-audit-report.json \
+            --progress-spinner off
+          ec=$?
+          if [ $ec -ne 0 ]; then
+            echo "pip-audit reported findings (exit $ec) — report attached; gate activates in Phase 3"
+          fi
+          exit 0
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+          if-no-files-found: warn

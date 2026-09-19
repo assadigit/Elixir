@@ -42,6 +42,9 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-asyncio>=0.24.0",
     "pre-commit>=4.0.0",
+    # V0.14 (Phase 1.5): dependency-vuln reporting (report-only in CI).
+    # Pinned in CI at 2.10.1; floor here keeps local/CI parity.
+    "pip-audit>=2.10.0",
 ]
 # V18.2.21 (Phase 1.4): Retry consolidation — optional runtime dep used by
 # core/llm/retry.py. If absent, retry.py degrades to a 2-attempt LINEAR retry
