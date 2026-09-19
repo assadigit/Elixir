@@ -1,9 +1,20 @@
 # Elixir — CI Pipeline
 # V18.10 (Phase 6.7): GitHub Actions matrix — ruff + mypy + pytest --cov-fail-under=30
+# V0.13 (Phase 0 / Green Gates): first fully-green configuration.
+#   - ruff PINNED (was a floating >=0.4.0 — every run got a different linter,
+#     and newer ruff rules broke the gate; the pinned version matches
+#     .pre-commit-config.yaml exactly).
+#   - test job installs the (now-repaired) core requirements + pytest tools.
+#     The old requirements.txt could not resolve at all (malformed misaki
+#     pin + phantom anydoc + unsatisfiable kokoro>=0.9.0) — the job died at
+#     "Install dependencies" on every run.
+#   - pytest invoked via `python -m pytest` (no repo-root conftest.py —
+#     plain `pytest` does not put the repo root on sys.path, so `import core`
+#     would fail).
 #
-# This workflow runs on every push/PR to main. It gates releases on:
-# - ruff lint clean
-# - mypy type-check clean (warn-only for now — too many existing errors)
+# This workflow gates releases on:
+# - ruff lint clean (pinned version)
+# - ruff format clean
 # - pytest passing with coverage >= 30%
 #
 # The golden-master audit gate (--audit) is NOT in CI because it requires
@@ -34,7 +45,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install ruff
-        run: pip install "ruff>=0.4.0"
+        run: pip install "ruff==0.16.8"  # V0.13: PINNED — keep in sync with .pre-commit-config.yaml
 
       - name: Run ruff check
         run: ruff check --output-format=github .
@@ -74,11 +85,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-asyncio
 
       - name: Run pytest with coverage
         run: |
-          pytest tests/ \
+          python -m pytest tests/ \
             --cov=core \
             --cov=utils \
             --cov-fail-under=30 \
