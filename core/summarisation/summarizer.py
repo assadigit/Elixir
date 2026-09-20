@@ -290,7 +290,10 @@ class Summarizer(SummarizerAdditiveMixin, SummarizerThoroughFloorMixin):
         self.llamacpp_base_url = settings.get(
             "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
         )
-        self.llamacpp_api_key = settings.get("summarisation.llamacpp_api_key", "local")
+        # V0.16 (Phase 3 / 3.2): llamacpp key now routes through the same
+        # keyring-backed ``_get`` wrapper as the cloud keys above (was a
+        # plaintext settings.get — the one key this __init__ missed).
+        self.llamacpp_api_key = _get("summarisation.llamacpp_api_key", "local")
         self.llamacpp_model = settings.get(
             "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
         )

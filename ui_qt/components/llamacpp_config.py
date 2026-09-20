@@ -57,7 +57,8 @@ class LlamaCppConfigMixin:
         key_row = QHBoxLayout()
         key_row.setSpacing(8)
         self.llamacpp_key_edit = QLineEdit(
-            self.controller.get_setting("summarisation.llamacpp_api_key", "local")
+            # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+            self.controller.get_secret("summarisation.llamacpp_api_key", "local")
         )
         self.llamacpp_key_edit.setEchoMode(QLineEdit.Password)
         self.llamacpp_key_edit.setPlaceholderText(
@@ -126,7 +127,7 @@ class LlamaCppConfigMixin:
             base = self.controller.get_setting(
                 "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL
             )
-            key = self.controller.get_setting("summarisation.llamacpp_api_key", "local")
+            key = self.controller.get_secret("summarisation.llamacpp_api_key", "local")
             models = list_llamacpp_models(base, key, timeout=10)
             if models:
                 return models
@@ -143,7 +144,8 @@ class LlamaCppConfigMixin:
         key = self.llamacpp_key_edit.text().strip() or "local"
         model = self.llamacpp_model_edit.text().strip()
         self.controller.update_setting("summarisation.llamacpp_base_url", url)
-        self.controller.update_setting("summarisation.llamacpp_api_key", key)
+        # V0.16 (Phase 3 / 3.2): keyring-backed write (was plaintext).
+        self.controller.set_secret("summarisation.llamacpp_api_key", key)
         if model:
             self.controller.update_setting("summarisation.llamacpp_model", model)
         return model

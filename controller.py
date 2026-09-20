@@ -35,6 +35,11 @@ from typing import Any
 
 from core.models import ConversionRequest, ConversionResult
 from core.pipeline import Converter
+
+# V0.16 (Phase 3 / 3.2): is_secret_path powers the keyring-aware field
+# resolution in build_request_from_ui (credential fields must never
+# resolve from the plaintext settings store).
+from core.system.secrets import is_secret_path as _secret_path
 from utils.logging import get_main_logger
 from utils.settings import Settings
 
@@ -492,6 +497,21 @@ class Controller:
     def get_setting(self, path: str, default: Any = None) -> Any:
         return self.settings.get(path, default)
 
+    # V0.16 (Phase 3 / tasks 3.2–3.4): keyring-aware accessors for API
+    # keys. Every UI page that reads/writes a credential field uses these
+    # instead of get_setting/update_setting, so keys resolve through the
+    # OS keychain (with transparent plaintext migration) instead of
+    # settings.json. Non-secret paths fall through to the plain setters.
+    def get_secret(self, path: str, default: str = "") -> str:
+        from core.system.secrets import get_secret
+
+        return get_secret(path, self.settings, default)
+
+    def set_secret(self, path: str, value: str) -> None:
+        from core.system.secrets import set_secret
+
+        set_secret(path, value, self.settings)
+
     # ─────────────────────────────────────────────────────────────────────────
     # Per‑book configuration
     # ─────────────────────────────────────────────────────────────────────────
@@ -536,7 +556,11 @@ class Controller:
             # V16.0.9: 4-mode model architecture
             "model_architecture": getattr(request, "model_architecture", "single_local"),
             "fast_api_url": getattr(request, "fast_api_url", ""),
-            "fast_api_key": getattr(request, "fast_api_key", ""),
+            # V0.16 (Phase 3 / 3.2): fast_api_key is intentionally NOT
+            # written to the per-book config — the pipeline re-resolves
+            # it from the OS keychain when the request field is empty
+            # (core/pipeline/conversion/summarization.py), so writing it
+            # here would only leak the key to disk next to the outputs.
             "fast_api_model": getattr(request, "fast_api_model", ""),
             "coverage_threshold": request.coverage_threshold,
             "manual_segments": request.manual_segments,
@@ -895,7 +919,14 @@ class Controller:
             if req_attr in kwargs:
                 continue  # already handled by the special cases above
             if setting_path is not None:
-                value = ui_data.get(ui_key, self.get_setting(setting_path, default))
+                # V0.16 (Phase 3 / 3.2): credential fields resolve through
+                # the OS keychain (with plaintext migration), not the raw
+                # settings store — a key that was migrated to the keychain
+                # must not resolve as "" in the request.
+                if _secret_path(setting_path):
+                    value = ui_data.get(ui_key) or self.get_secret(setting_path, str(default))
+                else:
+                    value = ui_data.get(ui_key, self.get_setting(setting_path, default))
             else:
                 value = ui_data.get(ui_key, default)
             if transform is not None and value is not None:

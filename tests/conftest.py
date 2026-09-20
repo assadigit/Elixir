@@ -77,3 +77,43 @@ def tmp_output_dir(tmp_path: Path) -> Path:
     d = tmp_path / "output"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+# ── V0.16 (Phase 3): hermetic keyring for EVERY test ────────────────────────
+# keyring became a core dependency (Phase 3 / task 3.1). On machines with a
+# working OS keychain (the user's Windows rig) the REAL backend would other-
+# wise be used by core.system.secrets — tests would write junk credentials
+# into the real Windows Credential Manager, and get_secret's migration would
+# CLEAR plaintext settings mid-test (order-dependent fallout).
+#
+# The raising stub below mirrors headless CI exactly: keyring importable
+# (_HAS_KEYRING True) but every backend op raises, so get_secret/set_secret
+# exercise the keyring path and deterministically fall back to plaintext.
+# Tests that WANT a working keychain (tests/test_p3_secrets_wiring.py) install
+# their own in-memory backend on top — their monkeypatch teardown restores
+# this stub, never the real keyring.
+@pytest.fixture(autouse=True)
+def _hermetic_keyring(monkeypatch):
+    import core.system.secrets as _secrets
+
+    class _RaisingKeyring:
+        """Stand-in that behaves like keyring.backends.fail.Keyring."""
+
+        class PasswordDeleteError(Exception):
+            pass
+
+        @staticmethod
+        def get_password(service, username):
+            raise RuntimeError("hermetic test keyring: no backend")
+
+        @staticmethod
+        def set_password(service, username, password):
+            raise RuntimeError("hermetic test keyring: no backend")
+
+        @staticmethod
+        def delete_password(service, username):
+            raise _RaisingKeyring.PasswordDeleteError("hermetic test keyring: no backend")
+
+    monkeypatch.setattr(_secrets, "_keyring", _RaisingKeyring, raising=False)
+    monkeypatch.setattr(_secrets, "_HAS_KEYRING", True)
+    yield

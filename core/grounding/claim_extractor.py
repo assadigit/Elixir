@@ -515,8 +515,13 @@ class ClaimExtractor:
         base = (s.get("grounding.cloud_base_url", "") if s else "") or (
             s.get("summarisation.api_base_url", "") if s else ""
         )
-        key = (s.get("grounding.cloud_api_key", "") if s else "") or (
-            s.get("summarisation.api_key", "") if s else ""
+        # V0.16 (Phase 3 / 3.2): keyring-backed reads for BOTH key paths
+        # (the plaintext s.get() reads defeated the keychain migration —
+        # a migrated key was invisible to grounding).
+        from core.system.secrets import get_secret
+
+        key = (get_secret("grounding.cloud_api_key", s, "") if s else "") or (
+            get_secret("summarisation.api_key", s, "") if s else ""
         )
         model = (s.get("grounding.cloud_model", "") if s else "") or (
             s.get("summarisation.cloud_model", "gpt-4o-mini") if s else "gpt-4o-mini"

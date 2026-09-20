@@ -35,6 +35,12 @@ from ui_qt.settings.widgets import (
     make_form,
 )
 from ui_qt.theme import theme_manager
+from utils.provider_catalog import (  # V0.16 (Phase 3 / 3.2): Qt-free home
+    load_custom_providers as _load_custom_providers,
+)
+from utils.provider_catalog import (
+    save_custom_providers as _save_custom_providers,
+)
 
 # V18.20.3.12 follow-up (W-b11): module logger for the async model-fetch
 # fail-softs — silent swallowed fetches are the W-c13 lesson.
@@ -522,11 +528,15 @@ class AiLocalModelSection(QGroupBox):
         )
         f.addRow("Fast API URL (dual-api)", self.fast_api_url_edit)
 
-        self.fast_api_key_edit = QLineEdit(controller.get_setting("summarisation.fast_api_key", ""))
+        self.fast_api_key_edit = QLineEdit(controller.get_secret("summarisation.fast_api_key", ""))
         self.fast_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.fast_api_key_edit.setPlaceholderText("sk-...")
         self.fast_api_key_edit.setToolTip("API key for the fast model endpoint in Dual-API mode.")
         f.addRow("Fast API key (dual-api)", self.fast_api_key_edit)
+        # V0.16 (Phase 3 / 3.4): keychain storage indicator
+        from core.system.secrets import storage_status_label
+
+        f.addRow("", QLabel(storage_status_label()))
 
         self.fast_api_model_edit = QLineEdit(
             controller.get_setting("summarisation.fast_api_model", "")
@@ -694,7 +704,7 @@ class AiLocalModelSection(QGroupBox):
             base = self.controller.get_setting(
                 "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
             )
-            key = self.controller.get_setting("summarisation.llamacpp_api_key", "local")
+            key = self.controller.get_secret("summarisation.llamacpp_api_key", "local")
             models = list_llamacpp_models(base, key, timeout=5)
             if models:
                 return models
@@ -788,8 +798,8 @@ class AiLocalModelSection(QGroupBox):
             self.arch_combo.currentData() or "single_local",
         )
         c.update_setting("summarisation.fast_api_url", self.fast_api_url_edit.text().strip())
-        # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-        c.update_setting("summarisation.fast_api_key", self.fast_api_key_edit.text().strip())
+        # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+        c.set_secret("summarisation.fast_api_key", self.fast_api_key_edit.text().strip())
         c.update_setting("summarisation.fast_api_model", self.fast_api_model_edit.text().strip())
         c.update_setting(
             "summarisation.fast_model_temperature", self.fast_temp_slider.value() / 100
@@ -836,7 +846,7 @@ class AiLocalModelSection(QGroupBox):
         )
         # V16.0.9: Fast-API fields reload
         self.fast_api_url_edit.setText(c.get_setting("summarisation.fast_api_url", ""))
-        self.fast_api_key_edit.setText(c.get_setting("summarisation.fast_api_key", ""))
+        self.fast_api_key_edit.setText(c.get_secret("summarisation.fast_api_key", ""))
         self.fast_api_model_edit.setText(c.get_setting("summarisation.fast_api_model", ""))
         self.fast_temp_slider.setValue(
             int(c.get_setting("summarisation.fast_model_temperature", 0.1) * 100)
@@ -846,16 +856,10 @@ class AiLocalModelSection(QGroupBox):
         self._on_arch_change()
 
 
-# ── saved custom API providers (stored in settings) ────────────────────────
-
-
-def _load_custom_providers(controller: Controller) -> list:
-    """Return the list of saved custom API providers from settings."""
-    return controller.get_setting("ai.custom_providers", []) or []
-
-
-def _save_custom_providers(controller: Controller, providers: list) -> None:
-    controller.update_setting("ai.custom_providers", providers)
+# ── saved custom API providers ─────────────────────────────────────────────
+# V0.16 (Phase 3 / 3.2): the catalog load/save helpers moved to
+# ui_qt/settings/provider_catalog.py (imported at the top) — a Qt-free
+# module so the credential logic is testable in CI without PySide6 GUI libs.
 
 
 class AiApiSection(QGroupBox):
@@ -926,7 +930,7 @@ class AiApiSection(QGroupBox):
             placeholder="https://api.example.com/v1",
         )
         self.api_key_edit = labeled_line(
-            controller.get_setting("summarisation.api_key", ""),
+            controller.get_secret("summarisation.api_key", ""),
             placeholder="sk-…  /  your API key",
             password=True,
         )
@@ -939,6 +943,10 @@ class AiApiSection(QGroupBox):
         f.addRow("Name", self.name_edit)
         f.addRow("Base URL", self.base_url_edit)
         f.addRow("API key", self.api_key_edit)
+        # V0.16 (Phase 3 / 3.4): keychain storage indicator
+        from core.system.secrets import storage_status_label
+
+        f.addRow("", QLabel(storage_status_label()))
         f.addRow("Model", self.model_edit)
 
         self.setLayout(f)
@@ -1012,8 +1020,8 @@ class AiApiSection(QGroupBox):
         api_key = self.api_key_edit.text().strip()
         c.update_setting("ai.api_type", t)
         c.update_setting("summarisation.api_base_url", self.base_url_edit.text().strip())
-        # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-        c.update_setting("summarisation.api_key", api_key)
+        # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+        c.set_secret("summarisation.api_key", api_key)
         c.update_setting("summarisation.cloud_model", self.model_edit.text().strip())
         # Only set the provider to API if the user actually configured an API key.
         # If the key is empty, the user is using Local Model (Ollama) and the
@@ -1024,8 +1032,8 @@ class AiApiSection(QGroupBox):
             if "Claude" in t:
                 c.update_setting("summarisation.provider", "claude")
                 c.update_setting("summarisation.claude_base_url", self.base_url_edit.text().strip())
-                # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-                c.update_setting("summarisation.claude_api_key", api_key)
+                # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+                c.set_secret("summarisation.claude_api_key", api_key)
                 c.update_setting("summarisation.claude_model", self.model_edit.text().strip())
             else:
                 c.update_setting("summarisation.provider", "openai_compatible")
@@ -1051,7 +1059,7 @@ class AiApiSection(QGroupBox):
         if idx >= 0:
             self.type_combo.setCurrentIndex(idx)
         self.base_url_edit.setText(c.get_setting("summarisation.api_base_url", ""))
-        self.api_key_edit.setText(c.get_setting("summarisation.api_key", ""))
+        self.api_key_edit.setText(c.get_secret("summarisation.api_key", ""))
         self.model_edit.setText(c.get_setting("summarisation.cloud_model", ""))
         self._populate_providers_list()
         self._on_type_change()

@@ -32,6 +32,9 @@ dependencies = [
     "PyYAML>=6.0.1",
     "rapidfuzz>=3.0.0",
     "numpy>=1.26.0",
+    # V0.16 (Phase 3 / 3.1): OS-keychain storage for API keys (Windows
+    # Credential Manager via the keyring library). See core/system/secrets.py.
+    "keyring>=25.0.0",
 ]
 
 [project.optional-dependencies]

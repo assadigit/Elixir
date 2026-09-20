@@ -1046,7 +1046,10 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
             try:
                 if provider == "cloud":
                     api_url = s.get("summarisation.api_base_url", "https://openrouter.ai/api/v1")
-                    api_key = s.get("summarisation.api_key", "")
+                    # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+                    from core.system.secrets import get_secret
+
+                    api_key = get_secret("summarisation.api_key", s, "")
                     cloud_model = s.get("summarisation.cloud_model", model)
                     headers = {"Content-Type": "application/json"}
                     if api_key:

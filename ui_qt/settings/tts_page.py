@@ -826,10 +826,14 @@ class TtsNormalizationSection(QGroupBox):
         f.addRow("Endpoint (OpenAI-compatible)", self.endpoint_edit)
 
         # API key (optional)
-        self.apikey_edit = QLineEdit(controller.get_setting("tts.normalize_api_key", ""))
+        self.apikey_edit = QLineEdit(controller.get_secret("tts.normalize_api_key", ""))
         self.apikey_edit.setEchoMode(QLineEdit.Password)
         self.apikey_edit.setPlaceholderText("(optional — leave blank for local Ollama)")
         f.addRow("API key", self.apikey_edit)
+        # V0.16 (Phase 3 / 3.4): keychain storage indicator
+        from core.system.secrets import storage_status_label
+
+        f.addRow("", QLabel(storage_status_label()))
 
         # Model
         default_model = controller.get_setting(
@@ -1031,8 +1035,8 @@ class TtsNormalizationSection(QGroupBox):
         c = self.controller
         c.update_setting("tts.normalize_enabled", self.enabled_cb.isChecked())
         c.update_setting("tts.normalize_endpoint", self.endpoint_edit.text().strip())
-        # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-        c.update_setting("tts.normalize_api_key", self.apikey_edit.text().strip())
+        # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+        c.set_secret("tts.normalize_api_key", self.apikey_edit.text().strip())
         c.update_setting("tts.normalize_model", self.model_edit.text().strip())
         c.update_setting(
             "tts.normalize_context_mode", self.context_combo.currentData() or "sentence"
@@ -1044,7 +1048,7 @@ class TtsNormalizationSection(QGroupBox):
         self.endpoint_edit.setText(
             c.get_setting("tts.normalize_endpoint", "http://localhost:11434/v1")
         )
-        self.apikey_edit.setText(c.get_setting("tts.normalize_api_key", ""))
+        self.apikey_edit.setText(c.get_secret("tts.normalize_api_key", ""))
         default_model = c.get_setting(
             "tts.normalize_model",
             c.get_setting("summarisation.model", "qwen2.5:3b"),

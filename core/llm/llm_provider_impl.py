@@ -42,6 +42,7 @@ from typing import Any
 # Replaces the 8 duplicated `for attempt in range(self.retries + 1)` loops
 # (5 in this module + 3 in summarizer.py) with one tenacity-based policy.
 from core.system.ollama_supervisor import OllamaSupervisor
+from core.system.secrets import get_secret as _get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +230,10 @@ def create_provider(
         return LlamaCppProvider(
             model=settings.get("summarisation.llamacpp_model", ""),
             base_url=settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"),
-            api_key=settings.get("summarisation.llamacpp_api_key", "local"),
+            # V0.16 (Phase 3 / 3.2): keyring-backed read (local llama-server
+            # deployments with an auth token get it protected too; the
+            # "local" placeholder default is preserved when nothing stored)
+            api_key=_get_secret("summarisation.llamacpp_api_key", settings, "local"),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
             context_tokens=get_registry().get_context_window(
@@ -248,7 +252,7 @@ def create_provider(
         return OpenAICompatProvider(
             model=settings.get("summarisation.cloud_model", ""),
             base_url=settings.get("summarisation.api_base_url", "https://openrouter.ai/api/v1"),
-            api_key=settings.get("summarisation.api_key", ""),
+            api_key=_get_secret("summarisation.api_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
             timeout=300,
@@ -262,7 +266,7 @@ def create_provider(
         return OpenAICompatProvider(
             model=settings.get("summarisation.freellmapi_model", "auto"),
             base_url=settings.get("summarisation.freellmapi_url", "http://localhost:3001/v1"),
-            api_key=settings.get("summarisation.freellmapi_key", ""),
+            api_key=_get_secret("summarisation.freellmapi_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
             timeout=300,
@@ -275,7 +279,7 @@ def create_provider(
 
         return ClaudeProvider(
             model=settings.get("summarisation.claude_model", "claude-3-5-sonnet-20241022"),
-            api_key=settings.get("summarisation.claude_api_key", ""),
+            api_key=_get_secret("summarisation.claude_api_key", settings, ""),
             base_url=settings.get("summarisation.claude_base_url", "https://api.anthropic.com/v1"),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),

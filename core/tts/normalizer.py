@@ -497,9 +497,13 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
             log_callback("  ⚠️ No model found for normalization — disabling", "WARNING")
         return None
 
+    # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext s.get —
+    # defeated the keychain for the TTS normalizer key).
+    from core.system.secrets import get_secret
+
     return TextNormalizer(
         endpoint=s.get("tts.normalize_endpoint", "http://localhost:11434/v1"),
-        api_key=s.get("tts.normalize_api_key", ""),
+        api_key=get_secret("tts.normalize_api_key", s, ""),
         model=model,
         custom_prompt_en=s.get("tts.normalize_prompt_en", ""),
         custom_prompt_fa=s.get("tts.normalize_prompt_fa", ""),

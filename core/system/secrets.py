@@ -53,14 +53,26 @@ except ImportError:
     )
 
 # Keys that should be stored in the keychain (not settings.json).
-# These are the 6 API-key-like settings paths.
+#
+# V0.16 (Phase 3 / task 3.2): the set is now COMPLETE — every settings
+# path that carries credential material is enumerated here (the previous
+# set listed only 6 of the 11 real paths, so e.g. ``summarisation.fast_api_key``
+# was caught only by the ``_is_secret_path`` keyword heuristic and never
+# migrated by ``migrate_all_secrets``). ``translation.api_key`` is the
+# LEGACY pre-V0.16 path (the canonical path is ``translation.cloud_api_key``
+# — see core/translation/service.py for the dual-path read).
 _SECRET_PATHS = {
     "summarisation.api_key",
     "summarisation.claude_api_key",
     "summarisation.freellmapi_key",
+    "summarisation.fusion_cloud_api_key",
+    "summarisation.fast_api_key",
+    "summarisation.llamacpp_api_key",
     "grounding.cloud_api_key",
     "translation.cloud_api_key",
+    "translation.api_key",  # legacy path — kept so old installs migrate
     "tts.cloud_api_key",
+    "tts.normalize_api_key",
 }
 
 
@@ -69,6 +81,11 @@ def _is_secret_path(path: str) -> bool:
     return path in _SECRET_PATHS or any(
         keyword in path.lower() for keyword in ("api_key", "secret", "token", "password")
     )
+
+
+# V0.16 (Phase 3 / 3.2): public alias — controller.build_request_from_ui
+# uses this to decide which request fields resolve through the keychain.
+is_secret_path = _is_secret_path
 
 
 def get_secret(path: str, settings: Any, default: str = "") -> str:
@@ -105,11 +122,19 @@ def get_secret(path: str, settings: Any, default: str = "") -> str:
             # Not in keychain — check settings.json (migration opportunity)
             plaintext = settings.get(path, "")
             if plaintext:
-                # Migrate: store in keychain, then clear from settings
+                # Migrate: store in keychain, then clear from settings.
+                # V0.16 (Phase 3 / task 3.4): WARNING (was INFO) so the
+                # user sees a traceable, one-time record that their key
+                # moved from plaintext settings.json into the OS keychain.
                 _keyring.set_password(_KEYCHAIN_SERVICE, path, plaintext)
                 try:
                     settings.set(path, "")
-                    logger.info("Migrated secret '%s' from settings.json to OS keychain.", path)
+                    logger.warning(
+                        "[security] API key '%s' migrated from plaintext "
+                        "settings.json to the OS keychain (the plaintext "
+                        "copy has been removed).",
+                        path,
+                    )
                 except Exception as _e:
                     logger.debug(
                         "ignored %s: %s", type(_e).__name__, _e
@@ -157,6 +182,37 @@ def set_secret(path: str, value: str, settings: Any) -> None:
 def is_keyring_available() -> bool:
     """Returns True if the OS keychain is available."""
     return _HAS_KEYRING
+
+
+def _keyring_backend_usable() -> bool:
+    """True if keyring is importable AND a real backend is active.
+
+    V0.16 (Phase 3 / 3.4): ``keyring`` is now a core dependency, so it is
+    importable everywhere — but on backend-less systems (headless Linux,
+    CI runners) the active backend is ``keyring.backends.fail.Keyring``,
+    which raises on every operation. This probe distinguishes "a real OS
+    keychain will store the keys" from "import works but keys fall back
+    to plaintext", so the settings-UI hint never lies.
+    """
+    if not _HAS_KEYRING:
+        return False
+    try:
+        backend = _keyring.get_keyring()
+        return type(backend).__module__ != "keyring.backends.fail"
+    except Exception:
+        return False
+
+
+def storage_status_label() -> str:
+    """Human-readable hint about where API keys are stored.
+
+    V0.16 (Phase 3 / task 3.4): shown next to every API-key field in the
+    settings UI so the user knows their key lands in the OS keychain
+    (Windows Credential Manager) rather than plaintext settings.json.
+    """
+    if _keyring_backend_usable():
+        return "🔐 Stored in the OS keychain (Windows Credential Manager)"
+    return "⚠️ No OS keychain available — keys stored in PLAINTEXT settings.json"
 
 
 # V18.1 (B5/S3): high-level singletons-less API. Callers that don't have
@@ -300,7 +356,10 @@ def migrate_all_secrets(settings: Any) -> int:
         except Exception as exc:
             logger.debug("migration failed for '%s': %s: %s", path, type(exc).__name__, exc)
     if migrated > 0:
-        logger.info("Migrated %d API key(s) from settings.json to OS keychain.", migrated)
+        logger.warning(
+            "[security] Migrated %d API key(s) from plaintext settings.json to the OS keychain.",
+            migrated,
+        )
     return migrated
 
 
@@ -311,4 +370,6 @@ __all__ = [
     "migrate_all_secrets",
     "store_secret",
     "load_secret",
+    "storage_status_label",
+    "is_secret_path",
 ]

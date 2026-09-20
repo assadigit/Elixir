@@ -245,11 +245,18 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         cloud_key_row = QHBoxLayout()
         cloud_key_row.setSpacing(8)
-        self.cloud_key_edit = QLineEdit(self.controller.get_setting("summarisation.api_key", ""))
+        # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+        self.cloud_key_edit = QLineEdit(self.controller.get_secret("summarisation.api_key", ""))
         self.cloud_key_edit.setEchoMode(QLineEdit.Password)
         cloud_key_row.addWidget(QLabel("API key:"))
         cloud_key_row.addWidget(self.cloud_key_edit, 1)
         heavy_api_lay.addLayout(cloud_key_row)
+        # V0.16 (Phase 3 / 3.4): keychain storage indicator
+        from core.system.secrets import storage_status_label
+
+        _heavy_key_hint = QLabel(storage_status_label())
+        _heavy_key_hint.setWordWrap(True)
+        heavy_api_lay.addWidget(_heavy_key_hint)
 
         cloud_model_row = QHBoxLayout()
         cloud_model_row.setSpacing(8)
@@ -320,8 +327,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         fast_key_row = QHBoxLayout()
         fast_key_row.setSpacing(8)
+        # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
         self.fast_api_key_edit = QLineEdit(
-            self.controller.get_setting("summarisation.fast_api_key", "")
+            self.controller.get_secret("summarisation.fast_api_key", "")
         )
         self.fast_api_key_edit.setEchoMode(QLineEdit.Password)
         self.fast_api_key_edit.setPlaceholderText("sk-...")
@@ -876,10 +884,8 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             self.controller.update_setting(
                 "summarisation.api_base_url", self.cloud_url_edit.text().strip()
             )
-            # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-            self.controller.update_setting(
-                "summarisation.api_key", self.cloud_key_edit.text().strip()
-            )
+            # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+            self.controller.set_secret("summarisation.api_key", self.cloud_key_edit.text().strip())
             self.controller.update_setting(
                 "summarisation.cloud_model", self.cloud_model_edit.text().strip()
             )
@@ -896,8 +902,8 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 self.controller.update_setting(
                     "summarisation.fast_api_url", self.fast_api_url_edit.text().strip()
                 )
-                # TODO V18.1: route through core.system.secrets.store_secret() for keyring support
-                self.controller.update_setting(
+                # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
+                self.controller.set_secret(
                     "summarisation.fast_api_key", self.fast_api_key_edit.text().strip()
                 )
                 self.controller.update_setting(

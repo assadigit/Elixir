@@ -46,7 +46,10 @@ class OutputGeneratorBase:
         self.ollama_base_url = (
             settings.get_ollama_url()
         )  # V18.20.4.3 (W-c9): was hardcoded localhost
-        self.api_key = settings.get("summarisation.api_key", "")
+        # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+        from core.system.secrets import get_secret
+
+        self.api_key = get_secret("summarisation.api_key", settings, "")
         self.api_base_url = settings.get(
             "summarisation.api_base_url", "https://openrouter.ai/api/v1"
         )
@@ -98,6 +101,8 @@ class OutputGeneratorBase:
         elif self.provider in ("openrouter", "openai", "openai_compatible"):
             return self._call_openai_compat(prompt, temp, max_tokens)
         elif self.provider == "freellmapi":
+            # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+            from core.system.secrets import get_secret
             from utils.settings import Settings
 
             s = Settings()
@@ -106,7 +111,7 @@ class OutputGeneratorBase:
                 temp,
                 max_tokens,
                 base_url=s.get("summarisation.freellmapi_url", "http://localhost:3001/v1"),
-                api_key=s.get("summarisation.freellmapi_key", ""),
+                api_key=get_secret("summarisation.freellmapi_key", s, ""),
                 model=s.get("summarisation.freellmapi_model", "auto"),
             )
         return None

@@ -218,7 +218,33 @@ class TranslationService:
         s = Settings()
 
         endpoint = s.get("translation.endpoint", "http://localhost:11434/v1")
-        api_key = s.get("translation.api_key", "")
+        # V0.16 (Phase 3 / task 3.3): the path-mismatch fix. This service
+        # used to read ``translation.api_key`` while ``_SECRET_PATHS``
+        # listed ``translation.cloud_api_key`` — so a key migrated to the
+        # OS keychain under the canonical path was INVISIBLE here (the
+        # read silently defeated the keychain). Now: canonical path first,
+        # legacy path as a migration fallback. Both reads go through
+        # get_secret (keychain → settings → migrate), and a legacy value
+        # found in the keychain is copied to the canonical entry once.
+        from core.system.secrets import get_secret, set_secret
+
+        api_key = get_secret("translation.cloud_api_key", s, "")
+        if not api_key:
+            legacy = get_secret("translation.api_key", s, "")
+            if legacy:
+                api_key = legacy
+                # One-time legacy → canonical migration (best-effort:
+                # failures fall back to re-reading the legacy path above,
+                # which get_secret resolves from the keychain/settings).
+                try:
+                    set_secret("translation.cloud_api_key", legacy, s)
+                    logger.warning(
+                        "[security] translation API key migrated from the "
+                        "legacy 'translation.api_key' path to "
+                        "'translation.cloud_api_key'."
+                    )
+                except Exception:  # pragma: no cover — best-effort
+                    pass
         temperature = float(s.get("translation.temperature", 0.1))
         no_think = bool(s.get("translation.no_think", True))
 

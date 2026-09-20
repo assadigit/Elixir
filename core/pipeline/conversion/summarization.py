@@ -484,8 +484,11 @@ def run_summarization(
                 _api_url = getattr(request, "fast_api_url", "") or _settings.get(
                     "summarisation.fast_api_url", ""
                 )
-                _api_key = getattr(request, "fast_api_key", "") or _settings.get(
-                    "summarisation.fast_api_key", ""
+                # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+                from core.system.secrets import get_secret
+
+                _api_key = getattr(request, "fast_api_key", "") or get_secret(
+                    "summarisation.fast_api_key", _settings, ""
                 )
                 _api_model = getattr(request, "fast_api_model", "") or _settings.get(
                     "summarisation.fast_api_model", ""

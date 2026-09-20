@@ -48,6 +48,14 @@ PyYAML>=6.0.1
 rapidfuzz>=3.0.0
 numpy>=1.26.0
 
+# ── Security (V0.16 / Phase 3 / task 3.1): OS-keychain storage for API
+#    keys. On Windows this uses the built-in Windows Credential Manager
+#    backend (no extra install). On headless Linux/CI, keyring finds no
+#    usable backend and core/system/secrets.py falls back to plaintext
+#    settings.json with a WARNING — the app works everywhere, keys are
+#    only keychain-protected where a keychain exists.
+keyring>=25.0.0
+
 # ── Recommended (lightweight optionals used by the default pipeline;
 #    declared optional in pyproject [retry] / [structured] / [grounding]) ───
 tenacity>=8.2.0       # exponential-backoff retries   (core/llm/retry.py)

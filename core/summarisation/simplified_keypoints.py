@@ -62,7 +62,10 @@ class SimplifiedKeypointsBuilder:
             self.ollama_base_url = "http://localhost:11434"
 
         # Cloud / OpenAI‑compatible settings
-        self.api_key = settings.get("summarisation.api_key", "")
+        # V0.16 (Phase 3 / 3.2): keyring-backed reads (was plaintext).
+        from core.system.secrets import get_secret
+
+        self.api_key = get_secret("summarisation.api_key", settings, "")
         self.api_base_url = settings.get(
             "summarisation.api_base_url", "https://openrouter.ai/api/v1"
         )
@@ -75,7 +78,7 @@ class SimplifiedKeypointsBuilder:
         self.freellmapi_url = settings.get(
             "summarisation.freellmapi_url", "http://localhost:3001/v1"
         )
-        self.freellmapi_key = settings.get("summarisation.freellmapi_key", "")
+        self.freellmapi_key = get_secret("summarisation.freellmapi_key", settings, "")
         self.freellmapi_model = settings.get("summarisation.freellmapi_model", "auto")
 
         # Which model to use for simplification:

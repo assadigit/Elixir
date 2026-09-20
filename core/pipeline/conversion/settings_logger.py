@@ -81,7 +81,12 @@ def log_conversion_settings(
     log(f"  Provider: {provider}", "INFO")
     if provider == "cloud":
         base = settings.get("summarisation.api_base_url", "")
-        key = settings.get("summarisation.api_key", "")
+        # V0.16 (Phase 3 / 3.2): keyring-backed read so the masked display
+        # reflects the REAL key the provider will use (migrated keys were
+        # reported as "(empty)" by the old plaintext read).
+        from core.system.secrets import get_secret
+
+        key = get_secret("summarisation.api_key", settings, "")
         masked = (key[:4] + "…" + key[-4:]) if len(key) > 10 else ("(set)" if key else "(empty)")
         log(f"  Cloud base URL: {base}", "INFO")
         log(f"  Cloud API key: {masked}", "INFO")
