@@ -1,0 +1,32 @@
+{
+  "engine": "scripts/bench_chapter.py --save-golden (mock LLM, deterministic)",
+  "chapter": "scanned_ocr",
+  "input": {
+    "heading": "Source Chapter: The Suez Canal (scanned book pages, OCR output)",
+    "content_sha256": "4e6805c130f853d9e31cc8bc2e56849097e9fa64f1b9a0caeca80d92482d656b"
+  },
+  "output": {
+    "success": true,
+    "executive_summary": "THE CANAL OF THE PHARAOHS [Page 47] The idea of joining the Mediterranean to the Red Sea is far older than the steamship. Pharaoh Necho the Second is said to have begun a canal through the Wadi Tumilat around the year 600 before Christ, and the works were completed a century later under King Darius of Persia. This ancient waterway, which later writers called the Canal of the Pharaohs, allowed boats to sail from the Nile to the Bitter Lakes and thence to the Red Sea.",
+    "bullet_points": [
+      "THE CANAL OF THE PHARAOHS [Page 47] The idea of joining the Mediterranean to the Red Sea is far older than the steamship.",
+      "[Page 48] The old canal silted up and was restored several times.",
+      "For more than a thousand years afterwards the route remained a dry ditch in the desert.",
+      "This mistake was corrected by a fresh survey between 1841 and 1847, which showed that the two seas differed by hardly anything at all.",
+      "Work began on the 25th of April, 1859, at Port Said, a new town named after the viceroy.",
+      "An estimated twenty thousand labourers died during the early years of the works.",
+      "Couvreux, were brought in after 1864, and from that time the corvee was gradually given up.",
+      "The cost of construction, about one hundred million francs, was more than double the original estimate.",
+      "In its first full year some four hundred and eighty-six ships passed through it.",
+      "The British establishment at Port Said, and later the garrison zone along the waterway, became a standing source of friction with Egyptian nationahsm, until the agreement of 1936 reduced the garrison to the neighbourhood of the canal itself."
+    ],
+    "thorough_summary": "THE CANAL OF THE PHARAOHS [Page 47] The idea of joining the Mediterranean to the Red Sea is far older than the steamship. Pharaoh Necho the Second is said to have begun a canal through the Wadi Tumilat around the year 600 before Christ, and the works were completed a century later under King Darius of Persia. This ancient waterway, which later writers called the Canal of the Pharaohs, allowed boats to sail from the Nile to the Bitter Lakes and thence to the Red Sea. [Page 48] The old canal silted up and was restored several times. The Roman emperor Trajan repaired it around the year 112, and the Arab conquest of Egypt gave it a new period of usefulness. Finally, in the year 767, the caliph al-Mansur ordered the waterway to be closed, so that supplies could not reach rebels in Medina. For more than a thousand years afterwards the route remained a dry ditch in the desert. The modern history of the isthmus begins with Napoleon. In 1798 his engineers surveyed the region and made a serious error: they judged the level of the Red Sea to be some ten metres higher than that of the Mediterranean, and therefore reported that a direct canal was impossible. This mistake was corrected by a fresh survey between 1841 and 1847, which showed that the two seas differed by hardly anything at all. THE SUEZ CANAL 49 In 1854 the French diplomat Ferdinand de Lesseps obtained from Said Pasha, the viceroy of Egypt, the first concession for a maritime canal across the isthmus. The company he founded, the Compagnie Unive rselle du Canal Maritime de Suez, received a second and firmer concession in 1856. [Page 50] The excavation was carried out chiefly by forced labour. Tens of thousands of Egyptian peasants, the fellaheen, were rounded up under the corvee laws and set to dig with picks and baskets. An estimated twenty thousand labourers died during the early years of the works. The British goverment of the day objected to the project, and Lord Palmerston called the scheme a plot to disturb the commerce of the world. Machines of an English inventor, the great dredgers of M. Couvreux, were brought in after 1864, and from that time the corvee was gradually given up.",
+    "key_distinctions": "",
+    "theoretical_tensions": "This ancient waterway, which later writers called the Canal of the Pharaohs, allowed boats to sail from the Nile to the Bitter Lakes and thence to the Red Sea. compared with [Page 48] The old canal silted up and was restored several times.",
+    "scholar_reflections": "",
+    "source_excerpts": [],
+    "quarantine_appendix": "",
+    "input_tokens": 959,
+    "output_tokens": 1212
+  }
+}

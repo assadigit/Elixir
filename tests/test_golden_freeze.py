@@ -52,7 +52,16 @@ bench = importlib.util.module_from_spec(_spec)
 sys.modules["bench_chapter"] = bench
 _spec.loader.exec_module(bench)
 
-GOLDEN_DIRS = ["academic", "nonfiction"]
+GOLDEN_DIRS = [
+    "academic",
+    "nonfiction",
+    # V0.17 (Phase 4.1) — edge-case expansion: tables/citations, OCR
+    # artifacts, naive two-column interleave, non-Latin script (fa).
+    "academic_tables",
+    "scanned_ocr",
+    "multicolumn",
+    "farsi",
+]
 FREEZE_LATENCY_SCALE = 0.0  # zero sleep: the freeze measures CONTENT, not time
 
 

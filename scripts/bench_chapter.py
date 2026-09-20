@@ -31,9 +31,15 @@ Usage:
   python scripts/bench_chapter.py --profile                # + cProfile hotspots
   python scripts/bench_chapter.py --latency-scale 1.0      # realistic full latency
   python scripts/bench_chapter.py --chapters 4             # replicate the chapter N×
-  python scripts/bench_chapter.py --chapter academic       # the other golden fixture
+  python scripts/bench_chapter.py --chapter academic       # any tests/golden/<name>/ fixture
   python scripts/bench_chapter.py --json out.json          # machine-readable timings
   python scripts/bench_chapter.py --save-golden            # freeze outputs (Phase 1.4)
+
+Golden chapters (V0.17 / Phase 4.1): academic, nonfiction (V0.14) plus
+academic_tables, scanned_ocr, multicolumn, farsi (V0.17 — the Phase-4
+edge-case expansion: tables/citations, OCR artifacts, naive two-column
+extraction interleave, non-Latin script). The farsi chapter runs the
+Summarizer with language="fa" (see GOLDEN_LANGUAGES).
 
 Exit code 0 = pipeline completed for every chapter; 1 = configuration or
 pipeline failure (details on stderr); 2 = pipeline ran but a chapter failed.
@@ -63,6 +69,17 @@ if str(PROJECT_ROOT) not in sys.path:
 # ── Latency model ───────────────────────────────────────────────────────────
 
 LATENCY_CLASSES: dict[str, float] = {"light": 3.0, "medium": 8.0, "heavy": 20.0}
+
+# Phase 4.1 (V0.17): per-chapter Summarizer language override. English is
+# the default; the farsi golden chapter exercises the language="fa" path
+# (Persian output instructions, non-Latin postcheck behavior).
+GOLDEN_LANGUAGES: dict[str, str] = {"farsi": "fa"}
+
+
+def chapter_language(name: str) -> str:
+    """Summarizer language for a golden chapter ("en" unless overridden)."""
+    return GOLDEN_LANGUAGES.get(name, "en")
+
 
 # Prompt-size heuristic: primary/chunked prompts embed the chapter text and
 # are an order of magnitude longer than aux prompts (bullet lists, judges).
@@ -409,6 +426,7 @@ def build_summarizer(
     parallel: bool,
     workers: int,
     log: Callable[[str, str], None],
+    language: str = "en",
 ) -> Any:
     """Construct a REAL Summarizer under hermetic settings (no network/GPU)."""
     from core.models import ConversionRequest
@@ -417,7 +435,7 @@ def build_summarizer(
     req = ConversionRequest(input_path=PROJECT_ROOT / "VERSION", output_dir=output_dir)
     req.generate_summaries = True
     req.max_workers = workers if parallel else 1
-    s = Summarizer(request=req, log_callback=log, language="en", claim_extractor=None)
+    s = Summarizer(request=req, log_callback=log, language=language, claim_extractor=None)
     # Force the execution mode regardless of any model-profile defaults.
     s.max_workers = workers if parallel else 1
     return s
@@ -455,7 +473,9 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
     try:
         with tempfile.TemporaryDirectory(prefix="elixir-bench-") as tmp:
             out_dir = Path(tmp)
-            s = build_summarizer(out_dir, args.parallel, args.workers, log)
+            s = build_summarizer(
+                out_dir, args.parallel, args.workers, log, language=chapter_language(args.chapter)
+            )
             install_mock_llm(s, source_response, args.latency_scale, stats, log)
 
             timer.wrap_instance(s, SUMMARIZER_STAGES)

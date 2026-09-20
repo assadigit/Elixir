@@ -1,0 +1,31 @@
+{
+  "engine": "scripts/bench_chapter.py --save-golden (mock LLM, deterministic)",
+  "chapter": "academic_tables",
+  "input": {
+    "heading": "Source Chapter: Grid-Scale Battery Storage Economics (academic, fictionalized)",
+    "content_sha256": "4a19daebf2b47a4295856819cc53420825c02fc9b18b8bb34db814361046f798"
+  },
+  "output": {
+    "success": true,
+    "executive_summary": "We assembled a dataset of 142 grid-scale battery installations commissioned between 2015 and 2023 across four regional markets [1]. Installation records were cross-validated against interconnection queue filings and operator disclosure reports (Smith et al., 2021). Each installation was characterized by rated power, energy capacity, cell chemistry, and annual degradation measurements collected over a minimum of three operating years [2].",
+    "bullet_points": [
+      "We assembled a dataset of 142 grid-scale battery installations commissioned between 2015 and 2023 across four regional markets [1].",
+      "Installation records were cross-validated against interconnection queue filings and operator disclosure reports (Smith et al., 2021).",
+      "Each installation was characterized by rated power, energy capacity, cell chemistry, and annual degradation measurements collected over a minimum of three operating years [2].",
+      "The final panel covers 31,400 megawatt-hours of cumulative installed capacity, representing 87% of global deployments in the study window.",
+      "Table 1: Annual capacity retention by cell chemistry.",
+      "Lithium titanate cells degraded slowest but carried a 2.4 times capital cost premium, consistent with earlier laboratory estimates (Chen and Okafor, 2022).",
+      "We computed levelized costs of storage using a discounted cash flow model with a 7% real discount rate and 20-year project life [4].",
+      "The model internalizes augmentation purchases that restore capacity as cells degrade, which earlier studies treated as an exogenous sensitivity [5].",
+      "Table 2: Levelized cost of storage by market, 2023 USD per megawatt-hour."
+    ],
+    "thorough_summary": "We assembled a dataset of 142 grid-scale battery installations commissioned between 2015 and 2023 across four regional markets [1]. Installation records were cross-validated against interconnection queue filings and operator disclosure reports (Smith et al., 2021). Each installation was characterized by rated power, energy capacity, cell chemistry, and annual degradation measurements collected over a minimum of three operating years [2]. The final panel covers 31,400 megawatt-hours of cumulative installed capacity, representing 87% of global deployments in the study window. Table 1: Annual capacity retention by cell chemistry. | Chemistry | Year 1 | Year 3 | Year 5 | Year 8 | |-----------|--------|--------|--------|--------| | LFP | 98.1% | 95.4% | 92.0% | 87.2% | | NMC | 97.3% | 93.1% | 88.4% | 81.5% | | LTO | 99.2% | 98.0% | 96.7% | 94.6% | Lithium iron phosphate cells retained 87.2% of nameplate capacity after eight years, outperforming nickel manganese cobalt cells by 5.7 percentage points over the same horizon [3]. Lithium titanate cells degraded slowest but carried a 2.4 times capital cost premium, consistent with earlier laboratory estimates (Chen and Okafor, 2022). We computed levelized costs of storage using a discounted cash flow model with a 7% real discount rate and 20-year project life [4]. The model internalizes augmentation purchases that restore capacity as cells degrade, which earlier studies treated as an exogenous sensitivity [5]. Table 2: Levelized cost of storage by market, 2023 USD per megawatt-hour.",
+    "key_distinctions": "We assembled a dataset of 142 grid-scale battery installations commissioned between 2015 and 2023 across four regional markets [1]. versus Installation records were cross-validated against interconnection queue filings and operator disclosure reports (Smith et al., 2021).",
+    "theoretical_tensions": "Each installation was characterized by rated power, energy capacity, cell chemistry, and annual degradation measurements collected over a minimum of three operating years [2]. compared with The final panel covers 31,400 megawatt-hours of cumulative installed capacity, representing 87% of global deployments in the study window.",
+    "scholar_reflections": "",
+    "source_excerpts": [],
+    "quarantine_appendix": "",
+    "input_tokens": 898,
+    "output_tokens": 1090
+  }
+}
