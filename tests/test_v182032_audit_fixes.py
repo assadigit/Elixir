@@ -188,6 +188,46 @@ class TestParseTimeCoTGate:
         assert not issues
         assert cleaned == text
 
+    def test_v0203_thorough_floor_cot_leak_detected(self):
+        """V0.20.3 (Quality Campaign, audit V0.20.2 ch.2): the thorough-
+        theorist-floor gap-fill call produced a ~52-line CoT thinking block
+        that leaked into the shipped thorough summary. The existing 25
+        markers matched only 1 (the threshold is 3), so detect_cot_narrative
+        did NOT fire and the raw thinking shipped. The V0.20.3 fix added 12
+        new markers for the thorough-floor gap-fill's CoT shape: 'Let me
+        identify', 'Let me re-read', 'Let me compile', 'Hmm, could', 'The
+        user wants me to', 'I will skip/treat', etc. This test proves the
+        fix catches the actual V0.20.2 ch.2 leak."""
+        from core.summarisation.postchecks import detect_cot_narrative
+
+        # Verbatim excerpt from the V0.20.2 ch.2 thorough-floor gap-fill CoT
+        # leak (audit/results/AUDIT_V0.20.2_run20260921-003234-00d02c99_ch2_summary_vs_source.md)
+        text = (
+            "The user wants me to write 1-2 paragraphs (150-300 words) that "
+            "weave in specific contributors from the chapter, each with their "
+            "specific contribution as described in the source text. Let me "
+            "identify each contributor and their specific contribution:\n"
+            "1. Chasseguet-Smirgel - mentioned multiple times\n"
+            "2. Levy - eternal dilettante\n"
+            'Wait - "Erikson in" - this is odd. Looking at the text, I see '
+            '"Eisner" is not mentioned. Let me re-read: "Erikson in" - '
+            "could this be a typo?\n"
+            'Hmm, "Erikson in" - I think this might be a formatting error. '
+            "Let me just treat it as Erikson and move on.\n"
+            'Let me also check: "Klass and Offenkrantz" - this appears at '
+            "the end of the list.\n"
+            "Let me compile each contributor's specific contribution.\n"
+            "I will skip it since Erikson is already covered."
+        )
+        cleaned, issues = detect_cot_narrative(text, "thorough")
+        assert issues, (
+            "the V0.20.2 ch.2 thorough-floor CoT leak must be detected "
+            "(V0.20.3: the new markers catch 'Let me identify', 'Let me "
+            "re-read', 'Hmm, could', 'The user wants me to', 'I will skip')"
+        )
+        assert cleaned == "", "CoT thorough must be truncated to empty"
+        assert issues[0].detector == "cot_narrative"
+
     def test_summarizer_flags_reset_per_chapter(self):
         """The new per-chapter flags must be initialized to False at the
         top of _summarize_inner — verified by source inspection of the
