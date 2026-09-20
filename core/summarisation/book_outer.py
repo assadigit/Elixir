@@ -272,6 +272,8 @@ class SummarizerBookMixin:
                             f"failed (chapter {idx}): {_cb_e!r} — continuing.",
                             "WARNING",
                         )
+            # Phase 6.4 (V0.19): end-of-run cache hit-rate summary.
+            self._log_cache_stats()
             return results
 
         # Parallel processing
@@ -382,7 +384,45 @@ class SummarizerBookMixin:
             else:
                 final_results.append(r)
 
+        # Phase 6.4 (V0.19): end-of-run cache hit-rate summary.
+        self._log_cache_stats()
         return final_results
+
+    def _log_cache_stats(self) -> None:
+        """Phase 6.4 (V0.19): end-of-run cache hit-rate summary (INFO).
+
+        One line per cache, after the last chapter: hit-rate, size vs
+        budget, and evictions — the roadmap Phase-6.4 "cache
+        instrumentation" deliverable. Budget TUNING stays data-driven:
+        the budgets are unchanged until a real rig shows evictions > 0
+        (an eviction is the only signal that the 1000-entry FIFO cap is
+        losing reusable responses)."""
+        try:
+            from core.llm.response_cache import response_cache
+
+            rs = response_cache.stats()
+            self.log(
+                f"  💾 Response cache: {rs['hits']} hits / {rs['misses']} misses "
+                f"({rs['hit_rate']:.0%} hit-rate), {rs['size']}/{rs['max']} entries, "
+                f"{rs['evictions']} evictions",
+                "INFO",
+            )
+        except Exception as _e:
+            logger.debug("response-cache stats skipped: %s: %s", type(_e).__name__, _e)
+        try:
+            from core.llm.embedding_cache import embedding_cache
+
+            es = embedding_cache.stats()
+            _total_e = int(es.get("hits", 0)) + int(es.get("misses", 0))
+            _rate_e = (es.get("hits", 0) / _total_e) if _total_e > 0 else 0.0
+            self.log(
+                f"  🧮 Embedding cache: {es.get('hits', 0)} hits / "
+                f"{es.get('misses', 0)} misses ({_rate_e:.0%} hit-rate), "
+                f"{es.get('size', 0)} entries",
+                "INFO",
+            )
+        except Exception as _e:
+            logger.debug("embedding-cache stats skipped: %s: %s", type(_e).__name__, _e)
 
     def build_book_summary(
         self, summaries: list[SummaryResult], book_title: str, stats: dict | None = None

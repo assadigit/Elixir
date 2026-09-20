@@ -58,8 +58,14 @@ class ResponseCache:
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
+        self._evictions = 0
         self._persist = persist_to_disk
         self._disk_dirty = False
+        # Phase 6.4 (V0.19): periodic hit-rate instrumentation — every
+        # ``_PERIODIC_EVERY`` lookups a one-line INFO summary lands in the
+        # log so a long conversion's cache behavior is visible MID-run,
+        # not only at the end-of-book summary (book_outer logs that one).
+        self._lookups = 0
         if self._persist:
             self._load_from_disk()
 
@@ -113,6 +119,20 @@ class ResponseCache:
         """Look up a cached response. Returns None on miss."""
         key = self._key(prompt, model, temperature, max_tokens)
         with self._lock:
+            self._lookups += 1
+            if self._lookups % _PERIODIC_EVERY == 0:
+                _total = self._hits + self._misses
+                _rate = (self._hits / _total) if _total > 0 else 0.0
+                logger.info(
+                    "Response cache (periodic): %d hits / %d misses (%.0f%% hit-rate), "
+                    "%d/%d entries, %d evictions",
+                    self._hits,
+                    self._misses,
+                    _rate * 100,
+                    len(self._cache),
+                    self._max,
+                    self._evictions,
+                )
             if key in self._cache:
                 self._hits += 1
                 self._cache.move_to_end(key)
@@ -137,6 +157,7 @@ class ResponseCache:
             self._cache.move_to_end(key)
             while len(self._cache) > self._max:
                 self._cache.popitem(last=False)
+                self._evictions += 1
             self._disk_dirty = True
         if self._persist:
             self._append_to_disk(key, response)
@@ -204,6 +225,10 @@ class ResponseCache:
                 "size": len(self._cache),
                 "max": self._max,
                 "hit_rate": (self._hits / total) if total > 0 else 0.0,
+                # Phase 6.4 (V0.19): eviction count — the budget-tuning
+                # signal (a busy rig with evictions > 0 is losing reusable
+                # responses to the 1000-entry FIFO cap).
+                "evictions": self._evictions,
             }
 
     def clear(self) -> None:
@@ -212,11 +237,18 @@ class ResponseCache:
             self._cache.clear()
             self._hits = 0
             self._misses = 0
+            self._evictions = 0
+            self._lookups = 0
         if self._persist:
             try:
                 _CACHE_FILE.unlink(missing_ok=True)
             except Exception as _e:
                 pass
+
+
+# Phase 6.4 (V0.19): periodic instrumentation interval (lookups between
+# the mid-run INFO summaries).
+_PERIODIC_EVERY = 200
 
 
 # Module-level singleton (shared across all LLM calls in one session)
