@@ -1,5 +1,110 @@
 # Changelog
 
+## V0.20.1 — Quality Campaign (first audit cycle): 3 coverage/clarity fixes from the V0.18 rig audit
+
+> **The release:** the V0.20 Quality Campaign charter (`docs/ROADMAP_V0.20.md`)
+> is "testing and debugging only" — no refactoring, no modularization, no
+> performance levers. This release is the first audit cycle of that campaign:
+> run the rig, audit with the standing four-pillar expert fact-checker
+> (`docs/EVALUATION_FRAMEWORK.md`), diagnose, fix the smallest change the
+> evidence supports, verify the suite + `make eval-check` stay green.
+> Objective: 9–10/10 on every audited book.
+>
+> **The audit:** the owner ran the V0.18 build on the standing test chapter
+> (Broken Structures, Salman Akhtar — "1 - IDENTITY AND ITS ORIGINS"). I
+> cross-checked the provenance stamp (run `20260920-084745-c0874728`,
+> `parse_provenance` matches the conversion log), then ran the full
+> four-pillar audit. Scorecard: overall **7/10 (PASS but below the 9–10 bar)**,
+> factual_consistency **9**, coverage **6**, clarity **8**, hallucinations
+> **0**. The deficit was COVERAGE + CLARITY — zero hallucinations. Full audit:
+> `audit/results/AUDIT_V0.18_run20260920-084745-c0874728.md`.
+>
+> **The fixes:** three coverage/clarity defect families, each as one
+> conventional commit with the audit finding cited. Suite **5,573 → 5,576
+> passed / 0 failed** (+3 regression-guard tests). `make eval-check` → OK —
+> all 6 golden chapters byte-identical (the mock LLM doesn't trigger the
+> rescued paths, so the fixes are inert on the golden corpus; the
+> zero-false-positive analysis was verified). **No golden fixtures changed.
+> No refactoring. No performance levers touched.**
+
+**Fix 1 — `f6fbfa3` — Defects A+B (coverage-aware V0.06 ship-time cap):**
+the source-scaled ship-time bullet budget (`core/summarisation/chapter_phases.py`,
+V0.06) used the naive head-cap `bullets[:_bp_hi_lp]`, which trims the list
+TAIL — exactly where the V18.14.1 batch gap-fill and the V18.15.9.0
+conclusion-bullet consolidation append their output. The V0.18 rig run
+trimmed 53→40 ("remediation bullets trimmed", log L687) and dropped 13 of
+the 28 remediation bullets the pipeline had just spent ~6 min producing —
+the SOLE cover of 5 named theorists (Lasch, Kovel, Federn, Glover, Spiegel)
+and 2 of the 7 conclusion items. The cap now delegates to
+`recall_floor.coverage_aware_cap` — the SAME function the V18.15.7.0
+80-bullet cap uses (V18.20.3.8): a tail bullet that is the ONLY cover of an
+analysis author is rescued into the capped set, displacing a redundant head
+bullet ("more bullets is better than lower coverage"). When no analysis is
+available it degrades to the byte-identical plain head-cap; the defensive
+head-cap survives only as the except-branch fallback. The `_analysis_rf`
+lookup moved up so both the source-scaled cap and the 80-cap share one
+idempotent file read. **Recall floor: theorists 20/37 → 25/37, conclusion
+items 5/7 → 7/7.**
+
+**Fix 2 — `b63d1ac` — Defect C (thorough-theorist floor NON-SKIPPABLE):**
+the thorough-theorist floor gap-fill (`core/summarisation/thorough_theorist_floor.py`,
+V18.20.3.13) skipped on a deadline overrun (`if self._deadline_exceeded(...):
+return thorough`). The V0.18 rig took 1551s > 1200s deadline and skipped
+(log L763, "skipping optional phase: thorough theorist floor gap-fill") —
+the thorough shipped with 13/37 theorists (35%), missing 5 named
+contributors. This is the ONLY phase that repairs thorough-theorist coverage
+(the recall floor V18.20.3.4 guarantees the BULLETS, nothing enforces the
+THOROUGH). Skipping on a deadline overrun trades a timing constraint for a
+coverage deficit — the opposite of the campaign goal ("QUALITY, not
+timing"). The deadline skip is removed; the gap-fill fires even when the
+deadline is exceeded, with a WARNING that records the override (mirrors the
+V18.20.3.4 precedent: the post-gap-fill dedup was made non-skippable because
+"it is the ONLY pass that runs after the gap-fill rounds, so skipping it
+ships every duplicate the gap-fill introduced" — identical reasoning). The
+single targeted LLM call (~60–130s) is bounded by `_call_llm_with_empty_retry`'s
+own timeout + the existing fail-soft try/except. **Thorough theorists
+13/37 → 18/37.**
+
+**Fix 3 — `076bf4b` — Defect E (colon-ending label-stub detector):** the
+`is_label_stub` detector (`core/summarisation/post_processing.py`, V18.20.3.4)
+had two escape hatches that let through label-stub bullets ending with a
+colon: (1) the `<8`-word filter let the 8-word "Two conditions for ego
+organization and drive neutralization:" through; (2) the light-verb match
+let "Oedipal child has two routes:" through (the "has" verb made it pass).
+Both introduce sub-content (a list / sub-bullets) absent from the shipped
+set — redundant labels the thorough summary and Key Distinctions section
+already cover. `is_label_stub` now returns True for ANY bullet ending with a
+bare `:` (a label introducer whose sub-content is absent), regardless of
+word count or verb presence. **Verified zero false-positives:** zero
+legitimate colon-ending bullets exist across all 6 golden fixtures (checked
+`expected_bullets.json` AND `pipeline_output.json` for academic,
+academic_tables, farsi, multicolumn, nonfiction, scanned_ocr — 0
+colon-enders in every file). The scar detail message updated to describe
+both shapes.
+
+**Versioned audit convention (new in V0.20.1):** per the campaign owner's
+instruction ("after every audit, we mention the version of it, so in next
+tests, we have something to compare to"), audit files are now versioned as
+`AUDIT_V<version>_<run_id>.md`. The V0.18 baseline is filed as
+`AUDIT_V0.18_run20260920-084745-c0874728.md`; the next audit (after a re-run
+with this V0.20.1 build) will be filed as `AUDIT_V0.20.1_<new_run_id>.md`
+and compared directly against the V0.18 scorecard embedded in it.
+
+**Verification (every commit):** `ruff check` + `format` clean; full suite
+5,573 → 5,574 → 5,575 → **5,576 passed**, 35 skipped, 0 failed; `make
+eval-check` → OK (no quality regressions; golden chapters byte-identical).
+Simulation proving the 3 fixes rescue the exact V0.18 deficit: 5 sole-cover
+theorists rescued 0/5 → 5/5; the 2 colon-ending label stubs dropped.
+
+**Projected V0.20.1 scorecard on the V0.18 rig run (if re-run with this build):**
+factual_consistency 9 (unchanged), coverage 7–8 (up from 6), clarity 8.5–9
+(up from 8), overall ~8–8.5 (up from 7) — approaching the 9–10 bar. To verify
+the projection, re-run the same chapter on the rig with this build and
+upload the new summary + log; the new audit will be filed as
+`AUDIT_V0.20.1_<run_id>.md`.
+
+---
+
 ## 🏁 Session wrap — the V0.12 roadmap is fully executed (V0.13 → V0.19)
 
 > All seven phases of the approved `docs/ROADMAP_V0.12.md` cleanup-and-
