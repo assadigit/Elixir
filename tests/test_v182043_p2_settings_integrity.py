@@ -467,9 +467,7 @@ class TestWc9OllamaUrlUnification:
     def test_summarizer_uses_canonical_url(self):
         # V0.18 (Phase 5.1, step 5): _init_runtime_basics moved VERBATIM to
         # summarizer_init.py (SummarizerInitMixin).
-        src = _strip_comments(
-            _src(_project_root / "core" / "summarisation" / "summarizer_init.py")
-        )
+        src = _strip_comments(_src(_project_root / "core" / "summarisation" / "summarizer_init.py"))
         body_start = src.find("def _init_runtime_basics")
         assert body_start != -1, "_init_runtime_basics must exist"
         body = src[body_start : src.find("\n    def ", body_start)]

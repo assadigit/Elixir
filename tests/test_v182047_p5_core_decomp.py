@@ -487,11 +487,9 @@ class TestWa3DeadTwinGone:
 
     def test_live_inline_builder_still_in_summarizer(self):
         """The LIVE inline _build_prompt builder still exists (V0.18 Phase
-5.1 step 6: moved VERBATIM to prompt_builders.py — the pin follows)."""
+        5.1 step 6: moved VERBATIM to prompt_builders.py — the pin follows)."""
 
-        methods = _methods(
-            _class(ast.parse(_src(_PB)), "SummarizerPromptMixin")
-        )
+        methods = _methods(_class(ast.parse(_src(_PB)), "SummarizerPromptMixin"))
         assert "_build_prompt" in methods
 
 

@@ -109,9 +109,7 @@ class TestDeadlineWatchdogIntegration:
         # V0.18 (Phase 5.1, step 1): the recovery phase (scholar/dedup/
         # consolidation + their deadline guards) moved VERBATIM to
         # chapter_phases.py — the ordering pins follow the move.
-        sum_path = (
-            _project_root / "core" / "summarisation" / "chapter_phases.py"
-        )
+        sum_path = _project_root / "core" / "summarisation" / "chapter_phases.py"
         content = sum_path.read_text(encoding="utf-8")
         # Find the scholar reflection block
         scholar_idx = content.find('_deadline_exceeded("scholar reflection")')
@@ -127,9 +125,7 @@ class TestDeadlineWatchdogIntegration:
 
     def test_deadline_check_before_semantic_dedup(self):
         """The semantic dedup phase must be guarded by _deadline_exceeded."""
-        sum_path = (
-            _project_root / "core" / "summarisation" / "chapter_phases.py"
-        )
+        sum_path = _project_root / "core" / "summarisation" / "chapter_phases.py"
         content = sum_path.read_text(encoding="utf-8")
         dedup_idx = content.find('_deadline_exceeded("semantic dedup")')
         assert dedup_idx > 0, "semantic dedup must be guarded by _deadline_exceeded"
@@ -140,9 +136,7 @@ class TestDeadlineWatchdogIntegration:
 
     def test_deadline_check_before_consolidation(self):
         """The consolidation phase must be guarded by _deadline_exceeded."""
-        sum_path = (
-            _project_root / "core" / "summarisation" / "chapter_phases.py"
-        )
+        sum_path = _project_root / "core" / "summarisation" / "chapter_phases.py"
         content = sum_path.read_text(encoding="utf-8")
         consol_idx = content.find('_deadline_exceeded("bullet consolidation")')
         assert consol_idx > 0, "consolidation must be guarded by _deadline_exceeded"

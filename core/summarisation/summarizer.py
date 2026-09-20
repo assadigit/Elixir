@@ -199,22 +199,15 @@ from utils.token_counter import count_tokens
 logger = get_main_logger()
 
 
-class Summarizer(    SummarizerBookMixin,
+class Summarizer(
+    SummarizerBookMixin,
     SummarizerTransportMixin,
     SummarizerPromptMixin,
     SummarizerInitMixin,
-
     SummarizerChapterPhasesMixin,
     SummarizerAdditiveMixin,
     SummarizerThoroughFloorMixin,
 ):
-
-
-
-
-
-
-
     def __init__(
         self,
         request: ConversionRequest,
@@ -392,9 +385,8 @@ class Summarizer(    SummarizerBookMixin,
     # (delivered in V18.19.1.4). See tests/test_group_b_characterization.py.
     # ─────────────────────────────────────────────────────────────────────────
 
-
-        # V18.17.0.0 (Phase 2b): Prompt bank initialization moved to
-        # _init_map_reduce_and_prompts (called above). No inline code here.
+    # V18.17.0.0 (Phase 2b): Prompt bank initialization moved to
+    # _init_map_reduce_and_prompts (called above). No inline code here.
 
     # ─────────────────────────────────────────────────────────────────────────
     # V18.2.22 (BUG-4): Mid-generation deadline watchdog
@@ -593,27 +585,22 @@ class Summarizer(    SummarizerBookMixin,
             extract_keywords=self._extract_keywords,
         )
 
-
     # V0.08 (P2 dead-code removal): the _build_thorough_followup delegate
     # (zero callers since the thorough followup call was replaced by the
     # dedicated thorough expansion) was deleted. The underlying
     # prompt_assembly.build_thorough_followup stays — it is a pinned live
     # export with its own characterization tests.
 
-
-
     # V18.20.4.7 (P5 / O-a2): _thorough_theorist_floor moved
     # VERBATIM to core/summarisation/thorough_theorist_floor.py
     # (SummarizerThoroughFloorMixin) — its call site below in
     # _summarize_inner is unchanged.
-
 
     # V0.08 (P2 dead-code removal): the _build_missing_keywords_reprompt
     # delegate was deleted — its only call site was the V18.6-era `if False`
     # academic-rigor gap-fill block removed above. The underlying
     # prompt_assembly.build_missing_keywords_reprompt stays (pinned live
     # export with characterization tests in test_prompt_assembly.py).
-
 
     def _save_checkpoint(self, heading: str, result: dict, label: str = "primary") -> None:
         """V18.20.1.2 (crash mitigation): Save a checkpoint of the current result state.
@@ -1307,16 +1294,7 @@ class Summarizer(    SummarizerBookMixin,
             log=self.log,
         )
 
-
-
-
-
-
-
-
-
     # ── Claude (Anthropic) API call ──────────────────────────────────
-
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parsing (improved for academic rigor) – with unconditional thinking stripping
@@ -1441,7 +1419,6 @@ class Summarizer(    SummarizerBookMixin,
     def _parse_response(self, raw: str) -> dict[str, Any]:
         """Delegate to response_parser.parse_response."""
         return _rp_parse_response(raw, academic_rigor=self.academic_rigor)
-
 
     def _parse_universal(self, cleaned: str) -> dict[str, Any]:
         """Delegate to response_parser._parse_universal (backward compat)."""
@@ -1915,8 +1892,6 @@ class Summarizer(    SummarizerBookMixin,
         arch = getattr(self.request, "model_architecture", "single_local") or "single_local"
         if arch == "dual_local":
             self._recover_vram(context="switch-to-heavy", delay_sec=30.0)
-
-
 
     def _consolidate_duplicate_claims(self, bullets: list[str]) -> list[str]:
         """V13.44.0 Idea #5: Dedup consolidation pass.
@@ -2399,6 +2374,3 @@ class Summarizer(    SummarizerBookMixin,
         return tue_smart_truncate(text, max_tokens, log=self.log)
 
     # ── NEW: Parallel summarisation (Sprint 3) ──────────────────────────────
-
-
-

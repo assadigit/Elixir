@@ -319,10 +319,7 @@ class TestF2QuarantineNotShipped:
         assert "quarantine_appendix=_quarantine_appendix_md," not in s
         # V0.18 (Phase 5.1, step 1): the quarantine-record comment moved
         # VERBATIM to the finalize phase (chapter_phases.py).
-        assert (
-            "NOT rendered in the delivered files"
-            in _src("core/summarisation/chapter_phases.py")
-        )
+        assert "NOT rendered in the delivered files" in _src("core/summarisation/chapter_phases.py")
 
     def test_docx_builder_has_no_quarantine_block(self):
         s = _strip_comments(_src("core/docx/builder.py"))

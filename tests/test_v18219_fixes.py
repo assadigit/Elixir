@@ -48,7 +48,10 @@ from pathlib import Path as _Path
 # as orchestrator.py (same re-export surface incl. run_post_checks).
 _pc_path = (
     _Path(__file__).resolve().parent.parent
-    / "core" / "summarisation" / "postchecks" / "orchestrator.py"
+    / "core"
+    / "summarisation"
+    / "postchecks"
+    / "orchestrator.py"
 )
 # V18.2.27 (warnings fix): use importlib.util spec + exec_module instead of
 # the deprecated SourceFileLoader.load_module() (removed in Python 3.15).

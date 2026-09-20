@@ -943,7 +943,9 @@ class TestA24SourceWordset:
     def test_run_post_checks_precomputes_once(self):
         """Source scan: run_post_checks computes the source word-set ONCE
         and threads it through the per-bullet detector calls."""
-        content = _read("core/summarisation/postchecks/orchestrator.py")  # V0.18 (Phase 5.2): moved verbatim
+        content = _read(
+            "core/summarisation/postchecks/orchestrator.py"
+        )  # V0.18 (Phase 5.2): moved verbatim
         assert "_src_words: set = set(re.findall" in content
         assert content.count("source_words=_src_words") >= 4
 
