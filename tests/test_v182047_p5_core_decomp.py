@@ -79,6 +79,14 @@ _MOVED_TO_ADDITIVE = (
     "_ensure_additive_sections",
 )
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
+# V0.18 (Phase 5.1, step 1): the post-judge phases of _summarize_inner moved
+# VERBATIM to chapter_phases (SummarizerChapterPhasesMixin).
+_MOVED_TO_CHAPTER_PHASES = (
+    "_phase_recovery_pass",
+    "_phase_deterministic_judge",
+    "_phase_postchecks_and_floors",
+    "_phase_finalize",
+)
 _NOT_MOVED_NEIGHBOURS = (
     "_recover_vram",  # generic VRAM recovery — deliberately NOT moved
     "_scholar_reflection",  # P1 scholar wiring — stays in summarizer.py
@@ -299,9 +307,13 @@ class TestVerbatimBodiesVsV182046:
 
 
 class TestSummarizerInheritance:
-    def test_class_bases_are_exactly_the_two_mixins(self):
+    def test_class_bases_are_exactly_the_mixins(self):
         cls = _class(ast.parse(_src(_SUM)), "Summarizer")
+        # V0.18 (Phase 5.1, step 1): SummarizerChapterPhasesMixin joined the
+        # bases (the post-judge phases of _summarize_inner moved VERBATIM to
+        # core.summarisation.chapter_phases).
         assert [ast.unparse(b) for b in cls.bases] == [
+            "SummarizerChapterPhasesMixin",
             "SummarizerAdditiveMixin",
             "SummarizerThoroughFloorMixin",
         ]
@@ -342,11 +354,25 @@ class TestSummarizerInheritance:
         """The re-homed ``logger`` must be the SAME object summarizer.py
         holds (fail-soft debug lines behave identically)."""
         from core.summarisation.additive_sections import logger as add_logger
+        from core.summarisation.chapter_phases import logger as phases_logger
         from core.summarisation.summarizer import logger as sum_logger
         from core.summarisation.thorough_theorist_floor import logger as floor_logger
 
         assert add_logger is sum_logger
         assert floor_logger is sum_logger
+        assert phases_logger is sum_logger  # V0.18 (Phase 5.1, step 1)
+
+    def test_chapter_phase_methods_rehomed_in_mixin(self):
+        """V0.18 (Phase 5.1, step 1): the phase methods live in the mixin,
+        not in summarizer.py's class body."""
+        from core.summarisation.chapter_phases import SummarizerChapterPhasesMixin
+        from core.summarisation.summarizer import Summarizer
+
+        methods = _methods(_class(ast.parse(_src(_SUM)), "Summarizer"))
+        for name in _MOVED_TO_CHAPTER_PHASES:
+            assert name not in methods, f"{name} must be re-homed, not copied"
+            home = next(c for c in Summarizer.__mro__ if name in vars(c))
+            assert home is SummarizerChapterPhasesMixin, name
 
     def test_external_import_surface_unchanged(self):
         """The one real runtime importer (core/pipeline/conversion/

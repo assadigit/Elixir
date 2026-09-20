@@ -504,7 +504,9 @@ class TestDedupNotSkippable:
 
         from core.summarisation import summarizer as sm
 
-        src = inspect.getsource(sm.Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, step 1): the dedup pass moved VERBATIM to the
+        # postchecks phase method (chapter_phases mixin).
+        src = inspect.getsource(sm.Summarizer._phase_postchecks_and_floors)
         assert "skipping optional phase: post-gap-fill semantic dedup" not in src
         assert src.count("Post-gap-fill semantic dedup crashed") == 1
         # the call itself remains, inside a non-gated try/except
@@ -540,7 +542,9 @@ class TestDedupNotSkippable:
             deterministic_recall_floor,
         )
 
-        src = inspect.getsource(sm.Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, step 1): the probe call moved VERBATIM to the
+        # postchecks phase method (chapter_phases mixin).
+        src = inspect.getsource(sm.Summarizer._phase_postchecks_and_floors)
         assert "Deterministic recall floor" in src
         assert "deterministic_recall_floor" in src
         # The dedicated module exists and handles the (number, text) tuples

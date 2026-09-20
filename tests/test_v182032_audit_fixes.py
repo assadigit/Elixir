@@ -218,6 +218,9 @@ class TestParseTimeCoTGate:
 
         src = inspect.getsource(Summarizer._summarize_inner)
         assert "DISCARDED AT PARSE TIME" in src
+        # V0.18 (Phase 5.1, step 1): the re-derivation/re-run block moved
+        # VERBATIM to the postchecks phase method.
+        src = inspect.getsource(Summarizer._phase_postchecks_and_floors)
         assert "Thorough re-derived from exec + FINAL" in src
         assert "Thorough-judge RE-RUN" in src
 
@@ -521,7 +524,9 @@ class TestPostGapFillDedup:
 
         from core.summarisation.summarizer import Summarizer
 
-        src = inspect.getsource(Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, step 1): the dedup pass moved VERBATIM to the
+        # postchecks phase method.
+        src = inspect.getsource(Summarizer._phase_postchecks_and_floors)
         assert "Post-gap-fill semantic dedup" in src
         assert "V18.20.3.2: Post-gap-fill semantic dedup" in src
 
