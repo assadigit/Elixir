@@ -50,6 +50,10 @@ _SK = _project_root / "core" / "summarisation" / "simplified_keypoints.py"
 _RC = _project_root / "core" / "llm" / "response_cache.py"
 _SW = _project_root / "core" / "summarisation" / "structural_stopwords.py"
 _TPI = _project_root / "core" / "summarisation" / "text_preprocessor_impl.py"
+# V0.18 (Phase 5.3): the _CONCEPT_STOPWORDS alias import moved VERBATIM to
+# text_preprocessor_concepts.py (impl still keeps its own canonical import
+# for the W-a6 facade contract) — the former-site scan covers BOTH homes.
+_TPC = _project_root / "core" / "summarisation" / "text_preprocessor_concepts.py"
 _SUM = _project_root / "core" / "summarisation" / "summarizer.py"
 # V0.18 (Phase 5.1): the _call_llm cache get/put moved VERBATIM to
 # llm_transport.py — the cache-key pins follow it there.
@@ -278,6 +282,9 @@ _CANONICAL_NAMES = (
 )
 _FORMER_SITES = {
     "text_preprocessor_impl.py": (_TPI, "_CONCEPT_STOPWORDS"),
+    # V0.18 (Phase 5.3): the alias import now ALSO lives in the concepts
+    # sibling (verbatim move) — same checks, both homes.
+    "text_preprocessor_concepts.py": (_TPC, "_CONCEPT_STOPWORDS"),
     "summarizer.py": (_SUM, "_STRUCTURAL_FUNCTION_WORDS"),
     "scholar_reflection.py": (_SR, "_stopwords"),
 }
@@ -353,7 +360,9 @@ class TestOa5CanonicalStopwordsModule:
         src = _strip_comments(_src(_SUM))
         assert "_STRUCTURAL_FUNCTION_WORDS = STRUCTURAL_FUNCTION_WORDS" in src
 
-    def test_all_three_former_sites_import_the_canonical_module(self):
+    def test_all_former_sites_import_the_canonical_module(self):
+        # (was test_all_three_… — V0.18 Phase 5.3 added the concepts sibling
+        # as a fourth former site when the alias import moved there verbatim)
         for site, (path, _var) in _FORMER_SITES.items():
             src = _src(path)
             assert "from core.summarisation.structural_stopwords import" in src, (

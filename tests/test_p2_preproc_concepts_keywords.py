@@ -33,6 +33,12 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+# V0.18 (Phase 5.3): the concept/keyword/NER family moved VERBATIM to
+# text_preprocessor_concepts.py (text_preprocessor_impl re-exports it — same
+# objects). monkeypatch targets that must intercept calls made FROM the moved
+# functions are re-pointed at the DEFINING module (patch-the-defining-module
+# discipline); the assertions below still exercise the impl facade surface.
+import core.summarisation.text_preprocessor_concepts as tpc
 import core.summarisation.text_preprocessor_impl as tpi
 
 
@@ -50,7 +56,7 @@ def _no_spacy(monkeypatch):
 @pytest.fixture()
 def no_ner(monkeypatch):
     """Make get_all_ner_entities return a controlled empty entity set."""
-    monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: set())
+    monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: set())
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -150,7 +156,7 @@ class TestExtractDefinitions:
         assert len(tpi.extract_definitions(text, max_terms=3)) <= 3
 
     def test_ner_tokens_exclude_person_concepts(self, monkeypatch):
-        monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: {"Marcus", "Vega"})
+        monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: {"Marcus", "Vega"})
         text = 'Marcus Vega discussed the idea. "Marcus Vega" is a name, not a concept.'
         assert "Marcus Vega" not in tpi.extract_definitions(text)
 
@@ -158,7 +164,7 @@ class TestExtractDefinitions:
         def boom(_):
             raise RuntimeError("ner exploded")
 
-        monkeypatch.setattr(tpi, "get_all_ner_entities", boom)
+        monkeypatch.setattr(tpc, "get_all_ner_entities", boom)
         text = 'Use the "Focus Base" idea. Use the "Focus Base" again.'
         assert tpi.extract_definitions(text) == ["Focus Base"]
 
@@ -577,7 +583,7 @@ class TestExtractConceptsRich:
         def boom(text, max_terms=15):
             raise RuntimeError("technique exploded")
 
-        monkeypatch.setattr(tpi, "_extract_proper_noun_theorists", boom)
+        monkeypatch.setattr(tpc, "_extract_proper_noun_theorists", boom)
         logs = []
         out = tpi.extract_concepts_rich(self.TEXT, log_fn=lambda m, l: logs.append(m))
         assert "Erikson" not in out
@@ -637,12 +643,12 @@ class TestExtractAllConcepts:
 
 class TestExtractImplicitConcepts:
     def test_frequent_title_phrase(self, monkeypatch):
-        monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: set())
+        monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: set())
         text = "Delta Epsilon appears here. Delta Epsilon appears again. Delta Epsilon appears once more."
         assert tpi.extract_implicit_concepts(text) == ["Delta Epsilon"]
 
     def test_under_three_occurrences_filtered(self, monkeypatch):
-        monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: set())
+        monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: set())
         text = "Zeta Eta appears here. Zeta Eta appears again only."
         assert tpi.extract_implicit_concepts(text) == []
 
@@ -651,7 +657,7 @@ class TestExtractImplicitConcepts:
         assert tpi.extract_implicit_concepts(text) == []
 
     def test_ner_phrase_skipped(self, monkeypatch):
-        monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: {"Vega"})
+        monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: {"Vega"})
         text = "Marcus Vega appears here. Marcus Vega again. Marcus Vega once more."
         assert tpi.extract_implicit_concepts(text) == []
 
@@ -659,7 +665,7 @@ class TestExtractImplicitConcepts:
         def boom(_):
             raise RuntimeError("ner down")
 
-        monkeypatch.setattr(tpi, "get_all_ner_entities", boom)
+        monkeypatch.setattr(tpc, "get_all_ner_entities", boom)
         text = "Omega Psi appears here. Omega Psi again. Omega Psi once more."
         assert tpi.extract_implicit_concepts(text) == ["Omega Psi"]
 
@@ -715,9 +721,9 @@ class TestGapClosingConcepts:
         def boom(text, max_terms=12):
             raise RuntimeError("technique exploded")
 
-        monkeypatch.setattr(tpi, "_extract_position_weighted_concepts", boom)
-        monkeypatch.setattr(tpi, "_extract_section_headings", boom)
-        monkeypatch.setattr(tpi, "_extract_conclusion_lists", boom)
+        monkeypatch.setattr(tpc, "_extract_position_weighted_concepts", boom)
+        monkeypatch.setattr(tpc, "_extract_section_headings", boom)
+        monkeypatch.setattr(tpc, "_extract_conclusion_lists", boom)
         logs = []
         out = tpi.extract_concepts_rich(
             "Erikson (1950) wrote about identity.", log_fn=lambda m, l: logs.append(m)
@@ -752,7 +758,7 @@ class TestGapClosingConcepts:
         def boom(concepts, source_text, min_overlap_chars=15):
             raise RuntimeError("filter exploded")
 
-        monkeypatch.setattr(tpi, "_filter_concepts_by_source", boom)
+        monkeypatch.setattr(tpc, "_filter_concepts_by_source", boom)
         logs = []
         out = tpi.extract_concepts_rich(
             "Erikson (1950) wrote about identity.", log_fn=lambda m, l: logs.append(m)
@@ -772,7 +778,7 @@ class TestGapClosingConcepts:
     def test_all_concepts_invalid_implicit_phrase_filtered(self, monkeypatch):
         # "Casing Casing" passes implicit extraction (no validity check there)
         # but fails _is_valid_concept in the final safety net.
-        monkeypatch.setattr(tpi, "get_all_ner_entities", lambda text: set())
+        monkeypatch.setattr(tpc, "get_all_ner_entities", lambda text: set())
         text = "Casing Casing appears. Casing Casing appears. Casing Casing appears."
         assert "Casing Casing" not in tpi.extract_all_concepts(text)
 

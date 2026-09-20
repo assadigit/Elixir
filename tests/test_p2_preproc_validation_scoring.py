@@ -40,6 +40,12 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+# V0.18 (Phase 5.3): extract_named_entities / get_all_ner_entities moved
+# VERBATIM to text_preprocessor_concepts.py (impl re-exports them). The one
+# patch seam that intercepts a call made from INSIDE get_all_ner_entities is
+# re-pointed at the DEFINING module (patch-the-defining-module discipline);
+# the tpi.* call surfaces below keep exercising the impl facade.
+import core.summarisation.text_preprocessor_concepts as tpc
 import core.summarisation.text_preprocessor_impl as tpi
 from core.summarisation._runtime_state import state as runtime_state
 
@@ -368,7 +374,7 @@ class TestLoadSpacyModel:
 class TestGetAllNerEntities:
     def test_flattens_words(self, monkeypatch):
         monkeypatch.setattr(
-            tpi,
+            tpc,
             "extract_named_entities",
             lambda text: {"persons": ["Elena Vega"], "organizations": [], "locations": ["Lisbon"]},
         )

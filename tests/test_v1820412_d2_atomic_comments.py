@@ -106,6 +106,10 @@ _COMMENT_FILES = [
     "core/summarisation/postchecks/attribution.py",
     "core/summarisation/postchecks/coherence.py",
     "core/summarisation/postchecks/orchestrator.py",
+    # V0.18 (Phase 5.3): the preprocessor split siblings (verbatim moves from
+    # text_preprocessor_impl.py) join the no-book-jargon scan.
+    "core/summarisation/text_preprocessor_concepts.py",
+    "core/summarisation/text_preprocessor_structure.py",
 ]
 _BOOK_PHRASES = (
     "focus base",
@@ -368,7 +372,10 @@ class TestCommentDeJargon:
     def test_preprocessor_comments_describe_the_pattern_generically(self):
         """The rewritten comments keep the technical content (what the
         regexes match and why) without the book's vocabulary."""
-        src = _src("core/summarisation/text_preprocessor_impl.py")
+        # V0.18 (Phase 5.3): the de-jargoned comments + the n-gram extractor
+        # moved VERBATIM to text_preprocessor_concepts.py — the pins follow
+        # the code (Phase 5.2 re-pointing discipline).
+        src = _src("core/summarisation/text_preprocessor_concepts.py")
         # the V3.2.1 version-history line survives
         assert "# V3.2.1:" in src
         # the generic pattern description is in place…
@@ -380,7 +387,7 @@ class TestCommentDeJargon:
         """ZERO runtime change: the two preprocessor regexes and the ngram
         extractor's shape are untouched (behavior pinned by the existing
         preprocessor regression files)."""
-        src = _src("core/summarisation/text_preprocessor_impl.py")
+        src = _src("core/summarisation/text_preprocessor_concepts.py")
         assert "_QUOTED_TERM_PATTERN = re.compile(" in src
         assert (
             "r'[\"\\u201c\\u2018]([a-zA-Z][a-zA-Z]+(?:\\s+[a-zA-Z]+){0,3})"
