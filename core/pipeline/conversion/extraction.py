@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.models import ConversionResult, PdfRecommendation
+from core.models import ConversionResult, PdfAnalysisResult, PdfRecommendation
 from core.ocr.service import OCRService
 from core.pdf import PdfAnalyzer, TocExtractor
 
@@ -90,6 +90,32 @@ def expand_with_overlap(valid_pages: set[int], total_pages: int) -> set[int]:
         if p < total_pages:
             overlap_pages.add(p + 1)
     return valid_pages | overlap_pages
+
+
+class ConverterExtractionMixin:
+    """V0.18 (Phase 5.3): extraction-phase helper methods of the Converter.
+
+    ``_get_user_override`` moved VERBATIM (byte-identical body) from the
+    ``Converter`` class in ``converter_impl.py`` — the wc-gate finish of the
+    phase-module extraction (this module's ``run_extraction`` is its only
+    caller; cf. the Phase 5.1 summarizer mixins for the re-homing pattern).
+    ``Converter`` inherits this mixin, so every ``self`` reference resolves
+    exactly as before and ``run_extraction`` keeps calling
+    ``converter._get_user_override(...)`` unchanged.
+    """
+
+    def _get_user_override(self, analysis: PdfAnalysisResult) -> PdfRecommendation | None:
+        scanned = len(analysis.scanned_pages)
+        total = analysis.total_pages
+        self._log(
+            f"PDF analysis: {analysis.recommendation.value} — {scanned}/{total} pages are scanned",
+            "INFO",
+        )
+        if analysis.scanned_pages:
+            preview = analysis.scanned_pages[:10]
+            suffix = "…" if len(analysis.scanned_pages) > 10 else ""
+            self._log(f"  Scanned page numbers: {preview}{suffix}", "INFO")
+        return None
 
 
 def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:

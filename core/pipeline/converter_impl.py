@@ -54,8 +54,6 @@ from core.docx.builder import DocxBuilder
 from core.models import (
     ConversionRequest,
     ConversionResult,
-    PdfAnalysisResult,
-    PdfRecommendation,
     Segment,
     SummaryResult,
 )
@@ -70,6 +68,12 @@ from core.models import (
 from core.pdf import (
     ContentFilter,
 )
+
+# V0.18 (Phase 5.3): the extraction-phase helper mixin (``_get_user_override``
+# moved VERBATIM to the extraction phase module — the wc-gate finish of the
+# phase-module extraction). Imported here so ``Converter`` can inherit it;
+# extraction.py has no core.pipeline imports, so no import cycle.
+from core.pipeline.conversion.extraction import ConverterExtractionMixin
 from core.postprocess.page_marker import (
     extract_page_markers,
 )
@@ -128,7 +132,7 @@ def compute_pages_processed(
     return total_pages
 
 
-class Converter:
+class Converter(ConverterExtractionMixin):
     def __init__(
         self,
         request: ConversionRequest,
@@ -316,19 +320,6 @@ class Converter:
             },
             log=self._log,
         )
-
-    def _get_user_override(self, analysis: PdfAnalysisResult) -> PdfRecommendation | None:
-        scanned = len(analysis.scanned_pages)
-        total = analysis.total_pages
-        self._log(
-            f"PDF analysis: {analysis.recommendation.value} — {scanned}/{total} pages are scanned",
-            "INFO",
-        )
-        if analysis.scanned_pages:
-            preview = analysis.scanned_pages[:10]
-            suffix = "…" if len(analysis.scanned_pages) > 10 else ""
-            self._log(f"  Scanned page numbers: {preview}{suffix}", "INFO")
-        return None
 
     def _archive_stale_run_artifacts(self) -> None:
         """V0.05 (rig audit F7 — P2): move previous-run summary/log
