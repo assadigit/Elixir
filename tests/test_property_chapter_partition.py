@@ -117,14 +117,26 @@ def _multi_chapter_docs(draw):
     # optional front matter (becomes the "Introduction" segment)
     for _ in range(draw(st.integers(min_value=0, max_value=3))):
         lines.append(draw(_body_line))
+    last_heading_idx = -1
     for c in range(n_chapters):
         lines.append(_heading_line(c + 1, draw(st.integers(min_value=0, max_value=5))))
+        last_heading_idx = len(lines) - 1
         for _ in range(draw(st.integers(min_value=1, max_value=4))):
             lines.append(draw(_body_line))
     # drop trailing blank lines (splitlines() would drop them and desync the
     # line indices between doc and markers)
     while lines and lines[-1] == "":
         lines.pop()
+    # V0.17 (Phase 4 flake fix): _BODY_LINES contains "" — if EVERY body
+    # line of the last chapter drew blank, the cleanup above strips them all
+    # and leaves a TRAILING heading. A heading with no following content run
+    # yields no segment, so such a doc segments to ONE segment — violating
+    # this generator's documented no-fallback guarantee (the characterization
+    # test asserts len(expected) >= 2; a random Hypothesis seed found the
+    # shape during the V0.17 integration run). Re-add one guaranteed
+    # non-blank body line so the last chapter always carries content.
+    if len(lines) - 1 == last_heading_idx:
+        lines.append(_BODY_LINES[0])
     n = len(lines)
     n_pages = draw(st.integers(min_value=1, max_value=6))
     n_pages = min(n_pages, n)
