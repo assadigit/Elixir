@@ -1,5 +1,51 @@
 # Changelog
 
+## V0.20.3 — Quality Campaign: catch the thorough-floor gap-fill CoT leak (12 new CoT markers)
+
+> **The release:** the V0.20.2 ch.2 audit
+> (`audit/results/AUDIT_V0.20.2_run20260921-003234-00d02c99_ch2_summary_vs_source.md`)
+> found a **~52-line CoT thinking block leaked into the Thorough Summary**
+> (clarity 8→5, overall 7→6). Root cause: the thorough-theorist-floor
+> gap-fill call (V0.20.1 Fix 2 made it NON-SKIPPABLE) produces a
+> CoT-inundated response when `/no_think` doesn't fully suppress the model's
+> reasoning on low-bit quants. The app's `detect_cot_narrative` guard is
+> supposed to catch this, but its 25 existing markers matched only **1 of
+> the leak's patterns** (the threshold is 3), so the guard did NOT fire and
+> the raw thinking shipped into the thorough. V0.20.3 adds **12 new
+> content-agnostic CoT markers** for the thorough-floor gap-fill's CoT
+> shape. The ch.2 leak now matches 10 markers → detected + discarded.
+
+**Fix — `5ed2e39` — 12 new CoT markers in `detect_cot_narrative`
+(`core/summarisation/postchecks/leakage.py`):**
+- `Let me identify`, `Let me re-read`, `Let me compile`, `Let me also check`,
+  `Let me just treat`, `Let me skip`
+- `Hmm, could/I think/this might`
+- `The user wants me to`
+- `I will skip/treat/move on`, `I'll skip/treat/move on`
+- `Looking at the text/list/source, I`
+- `I don't see ... in the text`
+
+Content-agnostic (the owner's reminder: *"avoid hardcoding tailored to this
+specific chapter"*) — these are generic reasoning phrases, not chapter-
+specific. With the 12 new markers, the V0.20.2 ch.2 leak matches 10 markers
+(threshold 3) → `detect_cot_narrative` fires, the CoT is truncated to empty,
+the thorough-floor gap-fill discards the response (the existing "Thorough
+gap-fill output looks like CoT — discarding" WARNING path), and the thorough
+ships without the leak.
+
+**Test:** `tests/test_v182032_audit_fixes.py::TestParseTimeCoTGate::test_v0203_thorough_floor_cot_leak_detected`
+— proves the verbatim V0.20.2 ch.2 leak excerpt is now detected (issues
+non-empty, `cleaned == ""`, `detector == "cot_narrative"`).
+
+**Verification:** `ruff check` + `format` clean; full suite **5,583 passed**
+(+1 regression test), 35 skipped, 0 failed (excluding 1 pre-existing flaky
+property test `test_optimize_idempotent` that fails on the baseline too — a
+hypothesis-generated `+\x1f` control-char edge case, unrelated to this
+change); `make eval-check` → OK (no quality regressions; golden chapters
+byte-identical).
+
+---
+
 ## V0.20.2 — Quality Campaign (second audit cycle): 3 truncation fixes from the V0.18 conversion-log audit
 
 > **The release:** the V0.18 conversion-log audit
