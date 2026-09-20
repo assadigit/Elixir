@@ -175,6 +175,33 @@ _COT_NARRATIVE_MARKERS: tuple[str, ...] = (
     r"\bcarefully\.\s*Draft\b",
     r"^\s*Draft:\s",
     r"\bsynthesize.*thorough summary\b",
+    # V0.20.3 (Quality Campaign, audit V0.20.2 ch.2, CoT-leak defect):
+    # the thorough-theorist-floor gap-fill call produced a ~52-line CoT
+    # thinking block that leaked into the shipped thorough summary. The
+    # existing 25 markers matched only 1 of the leak's patterns (the
+    # threshold is 3), so detect_cot_narrative did NOT fire and the raw
+    # thinking shipped. The V0.20.2 ch.2 audit
+    # (audit/results/AUDIT_V0.20.2_run20260921-003234-00d02c99_ch2_summary_vs_source.md)
+    # documented the leak: "The user wants me to write 1-2 paragraphs...
+    # Let me identify each contributor... Let me re-read... Hmm, could
+    # [a name] be a misread... Let me just treat it as [a name]...
+    # I will skip it since [a name] is already covered... Let me compile...
+    # Let me also check...". These are the missing thinking markers.
+    # Content-agnostic: these are generic reasoning phrases, not
+    # chapter-specific (the owner's reminder: "avoid hardcoding tailored
+    # to this specific chapter").
+    r"\bLet me identify\b",
+    r"\bLet me re-?read\b",
+    r"\bLet me compile\b",
+    r"\bLet me also check\b",
+    r"\bLet me just treat\b",
+    r"\bLet me skip\b",
+    r"\bHmm,? (?:could|I think|this might|let me)\b",
+    r"\bThe user wants me to\b",
+    r"\bI will (?:skip|treat|move on|just treat)\b",
+    r"\bI'll (?:skip|treat|move on|just treat)\b",
+    r"\bLooking at the (?:text|list|source|chapter), I\b",
+    r"\bI (?:don't|do not) see\b.{0,40}\bin the text\b",
 )
 
 _COT_NARRATIVE_RE = [re.compile(p, re.IGNORECASE) for p in _COT_NARRATIVE_MARKERS]
