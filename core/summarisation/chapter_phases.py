@@ -457,6 +457,40 @@ class SummarizerChapterPhasesMixin:
             )
             logger.debug("post-gap-fill dedup crashed: %s: %s", type(_e).__name__, _e)
 
+        # V0.20 (Quality Campaign, audit V0.18 on the standing test
+        # chapter, Defects A+B): load the deterministic analysis ONCE, up
+        # here, so BOTH the V0.06 source-scaled budget cap (below, inside
+        # the postchecks try) and the V18.15.7.0 80-bullet cap (later) and
+        # the recall-floor probe can share it. The V0.18 rig run shipped
+        # 20/37 theorists and 5/7 conclusion items precisely because the
+        # V0.06 cap deleted the 13 remediation bullets the gap-fill had
+        # just produced — the cap now delegates to
+        # recall_floor.coverage_aware_cap (sole-cover rescue), which needs
+        # this analysis text. Idempotent file read; moving it up has no
+        # side effects on the later stages that also use _analysis_rf (the
+        # 80-cap and the thorough-theorist floor).
+        _analysis_rf = ""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                find_analysis_for_heading,
+            )
+
+            _seg_path_rf, _analysis_rf = find_analysis_for_heading(
+                self.request.output_dir,
+                heading,
+                log_fn=lambda msg, level="DEBUG": self.log(msg, level),
+            )
+        except Exception as _rf_e:
+            # V18.20.3.5: a silent logger.debug here is how the .3.4 run
+            # lost the probe entirely. Deterministic probes must fail
+            # VISIBLY.
+            self.log(
+                f"    ⚠️ V18.20.3.5: Recall-floor analysis lookup failed: "
+                f"{type(_rf_e).__name__}: {_rf_e}",
+                "WARNING",
+            )
+            logger.debug("recall-floor analysis lookup failed: %s: %s", type(_rf_e).__name__, _rf_e)
+
         # V18.2.13: Deterministic post-checks — final sweep for the four
         # classes of garbled-token artifacts that low-bit quantization
         # (IQ2_XXS, 2.1 bits/param) introduces: name corruption ("Dukhaim"
@@ -502,16 +536,57 @@ class SummarizerChapterPhasesMixin:
             # remediation bullets (appended later by gap-fill engines) are
             # the ones trimmed. Coverage shortfall below the cap is logged
             # honestly rather than padded away.
+            #
+            # V0.20 (Quality Campaign, audit V0.18 on the standing test
+            # chapter, Defects A+B): the plain head-cap
+            # (bullets[:_bp_hi_lp]) trims the list TAIL — exactly where the
+            # V18.14.1 batch gap-fill and the V18.15.9.0 conclusion-bullet
+            # consolidation append their output. The V0.18 rig run shipped
+            # 20/37 theorists and 5/7 conclusion items (recall floor) precisely
+            # because this cap deleted the 13 remediation bullets the pipeline
+            # had just spent ~6 min producing (gap-fill added 27 + conclusion
+            # added 1, then 53→40 cut 13). The cap now delegates to
+            # recall_floor.coverage_aware_cap — the SAME function the
+            # V18.15.7.0 80-bullet cap (below) uses: a tail bullet that is
+            # the ONLY cover of an analysis author is rescued into the
+            # capped set, displacing a redundant head bullet. "more bullets
+            # is better than lower coverage" — the standing rule, applied
+            # to the source-scaled cap too. When no analysis is available
+            # the function degrades to the byte-identical plain head-cap.
             if _inc_kp_lp and len(bullets) > _bp_hi_lp:
-                self.log(
-                    f"    ✂️ V0.06: bullet budget enforced at ship time — "
-                    f"{len(bullets)} → {_bp_hi_lp} (target {_bp_lo_lp}-{_bp_hi_lp} "
-                    f"for a {_src_words_lp}-word chapter; primary bullets kept, "
-                    f"remediation bullets trimmed).",
-                    "INFO",
-                )
-                bullets = list(bullets[:_bp_hi_lp])
-                parsed["bullet_points"] = bullets
+                try:
+                    from core.summarisation.recall_floor import coverage_aware_cap
+
+                    _pre_cap = len(bullets)
+                    bullets = coverage_aware_cap(
+                        bullets,
+                        _analysis_rf or "",
+                        limit=_bp_hi_lp,
+                        log_fn=lambda msg, level="WARNING": self.log(msg, level),
+                    )
+                    parsed["bullet_points"] = bullets
+                    self.log(
+                        f"    ✂️ V0.06: bullet budget enforced at ship time — "
+                        f"{_pre_cap} → {len(bullets)} (target {_bp_lo_lp}-{_bp_hi_lp} "
+                        f"for a {_src_words_lp}-word chapter; V0.20: "
+                        f"coverage-aware, sole-cover rescue active).",
+                        "INFO",
+                    )
+                except Exception as _cap_e:
+                    # Never break the chapter over the cap: degrade to the
+                    # plain V0.06 head-cap, visibly.
+                    self.log(
+                        f"    ⚠️ V0.20: coverage-aware source-scaled cap failed "
+                        f"({type(_cap_e).__name__}: {_cap_e}) — plain head-cap applied",
+                        "WARNING",
+                    )
+                    logger.warning(
+                        "coverage-aware source-scaled cap failed — plain head-cap: %s: %s",
+                        type(_cap_e).__name__,
+                        _cap_e,
+                    )
+                    bullets = list(bullets[:_bp_hi_lp])
+                    parsed["bullet_points"] = bullets
 
             # ── V0.06 (rig audit F7-a — GENERAL RULE: Tier-3 excerpts are
             # re-validated against the FINAL summary at ship time) ────────
@@ -753,27 +828,11 @@ class SummarizerChapterPhasesMixin:
         # into the capped set, displacing a redundant head bullet
         # ("more bullets is better than lower coverage" — the standing
         # rule, applied to the cap).
-        _analysis_rf = ""
-        try:
-            from core.preprocessing.deterministic_analyzer import (
-                find_analysis_for_heading,
-            )
-
-            _seg_path_rf, _analysis_rf = find_analysis_for_heading(
-                self.request.output_dir,
-                heading,
-                log_fn=lambda msg, level="DEBUG": self.log(msg, level),
-            )
-        except Exception as _rf_e:
-            # V18.20.3.5: a silent logger.debug here is how the .3.4 run
-            # lost the probe entirely. Deterministic probes must fail
-            # VISIBLY.
-            self.log(
-                f"    ⚠️ V18.20.3.5: Recall-floor analysis lookup failed: "
-                f"{type(_rf_e).__name__}: {_rf_e}",
-                "WARNING",
-            )
-            logger.debug("recall-floor analysis lookup failed: %s: %s", type(_rf_e).__name__, _rf_e)
+        # V0.20 (Quality Campaign): the _analysis_rf lookup moved UP, to
+        # before the V0.06 source-scaled cap (which now also uses it via
+        # coverage_aware_cap). Both the 80-cap below and the recall-floor
+        # probe reuse the same already-loaded _analysis_rf — no second
+        # file read.
 
         # V18.15.7.0 (Fix 3): Hard-cap bullets at 80 (gold standard ≈ 46;
         # V18.15.6.0 shipped 212). Applied AFTER consolidation + gap-fill +

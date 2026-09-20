@@ -415,6 +415,46 @@ class TestCoverageAwareCap:
         assert cov["missing"] == [], cov
         assert any("cap rescue" in m for m in logs), logs
 
+    def test_sole_cover_rescued_at_source_scaled_cap_limit(self):
+        """V0.20 (Quality Campaign, audit V0.18 Broken Structures Defects
+        A+B): the V0.06 source-scaled ship-time budget cap now delegates to
+        coverage_aware_cap (it previously used the naive head-cap
+        ``bullets[:_bp_hi_lp]``). For a 6425-word chapter the source-scaled
+        ``_bp_hi_lp`` is 40 — so the V0.18 rig run trimmed 53→40 and dropped
+        the 13 tail (gap-fill + conclusion) bullets that were the SOLE cover
+        of 5 named theorists + 2 conclusion items (recall floor 20/37, 5/7).
+        This test proves the rescue works at the V0.06 cap's tighter limit
+        (40), not just the V18.15.7.0 80-bullet cap's limit (80): a tail
+        bullet that is the sole cover of an analysis author survives the
+        40-cap, displacing a redundant head bullet."""
+        from core.preprocessing.deterministic_analyzer import check_coverage
+        from core.summarisation.recall_floor import coverage_aware_cap
+
+        # 50 Erikson-heavy bullets (well past the 40 source-scaled cap) + 1
+        # tail bullet that is the ONLY bullet naming Winnicott — exactly the
+        # V0.18 rig-run shape (gap-fill tail = sole cover of a theorist).
+        tail = (
+            "Winnicott (1960) described the good-enough mother meeting "
+            "the infant's omnipotence so the true self develops."
+        )
+        bullets = self._bullets(50, extra=[tail])  # 50 Erikson + 1 Winnicott
+        assert len(bullets) == 51
+        logs = []
+        out = coverage_aware_cap(
+            bullets, self.ANALYSIS, limit=40, log_fn=lambda m, level="WARNING": logs.append(m)
+        )
+        assert len(out) == 40
+        # The sole Winnicott bullet must survive the 40-cap…
+        assert any("Winnicott" in b for b in out), (
+            "the sole cover of an author must not be cut by the source-scaled "
+            "40-cap while redundant Erikson bullets survive — the V0.18 rig "
+            "Defects A+B regression guard"
+        )
+        # …and the floor measured on the capped set stays complete.
+        cov = check_coverage(self.ANALYSIS, " ".join(out))
+        assert cov["missing"] == [], cov
+        assert any("cap rescue" in m for m in logs), logs
+
     def test_probe_failure_degrades_to_plain_headcap(self, monkeypatch, caplog):
         import core.preprocessing.deterministic_analyzer as da
         from core.summarisation import recall_floor

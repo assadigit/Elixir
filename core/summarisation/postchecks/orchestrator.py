@@ -480,7 +480,8 @@ def run_post_checks(
                         "generation cut, unverifiable claim"
                     ),
                     "label_stub": (
-                        "dropped verbless label stub (<8 words, no predicate) — "
+                        "dropped verbless label stub (no predicate, or ends "
+                        "with a bare colon introducing absent sub-content) — "
                         "names a topic but carries no claim"
                     ),
                 }.get(_scar, f"dropped process-scar bullet ({_scar})")
