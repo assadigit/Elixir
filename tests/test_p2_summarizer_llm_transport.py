@@ -65,7 +65,7 @@ class TestCallLlmDispatch:
     def test_cloud_and_llamacpp_providers_route_via_llm_provider(
         self, tmp_path, monkeypatch, provider, expected_type
     ):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -75,7 +75,7 @@ class TestCallLlmDispatch:
             seen.update(kwargs)
             return f"reply from {provider_type}"
 
-        monkeypatch.setattr(sz_mod, "ld_call_via_llm_provider", _fake_via_provider)
+        monkeypatch.setattr(lt_mod, "ld_call_via_llm_provider", _fake_via_provider)
         s = make_summarizer(tmp_path, settings_values={"summarisation.provider": provider})
         assert s.provider == provider
         out = s._call_llm("prompt text", temperature=0.3, max_tokens=512)
@@ -86,7 +86,7 @@ class TestCallLlmDispatch:
         assert seen["supervisor"] is s._ollama_supervisor
 
     def test_ollama_provider_routes_inline_with_defaults(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -94,7 +94,7 @@ class TestCallLlmDispatch:
             seen.update(prompt=prompt, model=model, temp=temp, max_tokens=max_tokens)
             return "ollama reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", _fake_ollama)
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", _fake_ollama)
         s = make_summarizer(tmp_path)  # default provider: ollama
         out = s._call_llm("hello")
         assert out == "ollama reply"
@@ -103,7 +103,7 @@ class TestCallLlmDispatch:
         assert seen["max_tokens"] == s.request.summarisation_max_output_tokens
 
     def test_academic_rigor_raises_output_budget_floor(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -111,7 +111,7 @@ class TestCallLlmDispatch:
             seen["max_tokens"] = max_tokens
             return "ok"
 
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", _fake_ollama)
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", _fake_ollama)
         s = make_summarizer(
             tmp_path,
             request_fields={
@@ -164,16 +164,16 @@ class TestCallLlmCache:
         assert_logged(logs, "Response cache HIT — LLM call skipped")
 
     def test_miss_calls_llm_then_puts(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         s, store = self._cache_summarizer(tmp_path, monkeypatch)
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", lambda *a, **k: "fresh reply")
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", lambda *a, **k: "fresh reply")
         assert s._call_llm("p2") == "fresh reply"
         assert "fresh reply" in store.values()
 
     def test_cache_get_failure_is_best_effort(self, tmp_path, monkeypatch):
         import core.llm.response_cache as rc_mod
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         s = make_summarizer(tmp_path, request_fields={"summarisation_cache_enabled": True})
 
@@ -185,12 +185,12 @@ class TestCallLlmCache:
                 raise RuntimeError("cache put exploded")
 
         monkeypatch.setattr(rc_mod, "response_cache", _BoomCache())
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", lambda *a, **k: "still works")
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", lambda *a, **k: "still works")
         assert s._call_llm("p3") == "still works"
 
     def test_cache_disabled_never_touches_cache(self, tmp_path, monkeypatch):
         import core.llm.response_cache as rc_mod
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         touches = []
 
@@ -203,7 +203,7 @@ class TestCallLlmCache:
                 touches.append("put")
 
         monkeypatch.setattr(rc_mod, "response_cache", _SpyCache())
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", lambda *a, **k: "uncached")
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", lambda *a, **k: "uncached")
         s = make_summarizer(tmp_path)  # summarisation_cache_enabled defaults False
         assert s._call_llm("p4") == "uncached"
         assert touches == []
@@ -214,12 +214,12 @@ class TestCallLlmCache:
 
 class TestCallOllamaErrorTracker:
     def _patch(self, monkeypatch, behavior):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         def _fake(prompt, model, temp, max_tokens, error_tracker=None, **kwargs):
             return behavior(error_tracker)
 
-        monkeypatch.setattr(sz_mod, "ld_call_ollama", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_ollama", _fake)
 
     def test_success_resets_error_type(self, tmp_path, monkeypatch):
         self._patch(monkeypatch, lambda tracker: "a real response")
@@ -280,7 +280,7 @@ class TestBackendDelegates:
         assert seen["kwargs"]["context_tokens"] == s.request.summarisation_max_context_tokens
 
     def test_openai_compat_delegate_passes_instance_state(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -297,7 +297,7 @@ class TestBackendDelegates:
             )
             return "compat reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_openai_compat", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_openai_compat", _fake)
         s = make_summarizer(tmp_path, settings_values={"summarisation.provider": "openrouter"})
         assert s._call_openai_compat("p", "http://x", "key", "m", "lbl", 0.3, 99) == "compat reply"
         assert seen["label"] == "lbl"
@@ -305,7 +305,7 @@ class TestBackendDelegates:
         assert seen["kwargs"]["retries"] == s.retries
 
     def test_claude_delegate_passes_instance_state(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -315,14 +315,14 @@ class TestBackendDelegates:
             )
             return "claude reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_claude", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_claude", _fake)
         s = make_summarizer(tmp_path, settings_values={"summarisation.provider": "claude"})
         assert s._call_claude("p", 777, 0.1) == "claude reply"
         assert seen["kwargs"]["claude_api_key"] == s.claude_api_key
         assert seen["kwargs"]["claude_model"] == s.claude_model
 
     def test_fast_ollama_delegate_passes_instance_state(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -330,13 +330,13 @@ class TestBackendDelegates:
             seen.update(prompt=prompt, model=model, temp=temp, max_tokens=max_tokens, kwargs=kwargs)
             return "fast reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_fast_ollama", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_fast_ollama", _fake)
         s = make_summarizer(tmp_path)
         assert s._call_fast_ollama("p", "m", 0.1, 200) == "fast reply"
         assert seen["kwargs"]["fast_model_context"] == s.request.fast_model_context
 
     def test_call_via_llm_provider_passes_callbacks(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -344,7 +344,7 @@ class TestBackendDelegates:
             seen.update(provider_type=provider_type, prompt=prompt, kwargs=kwargs)
             return "routed"
 
-        monkeypatch.setattr(sz_mod, "ld_call_via_llm_provider", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_via_llm_provider", _fake)
         s = make_summarizer(tmp_path)
         assert (
             s._call_via_llm_provider("llamacpp", "p", model="m", temp=0.2, max_tokens=64)
@@ -374,12 +374,12 @@ class TestCallCloud:
         assert s._call_cloud("q", max_tokens=128, temperature=0.4) == "local:q"
 
     def test_openai_compat_success(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         # The delegate passes all 7 leading args positionally (see
         # Summarizer._call_via_llm_provider), so the fake must accept them.
         monkeypatch.setattr(
-            sz_mod,
+            lt_mod,
             "ld_call_via_llm_provider",
             lambda provider_type, prompt, model="", base_url="", api_key="", temp=0.6, max_tokens=4096, **k: (
                 f"{provider_type}:{len(prompt)}"
@@ -389,7 +389,7 @@ class TestCallCloud:
         assert s._call_cloud("q") == "openai_compat:1"
 
     def test_claude_fusion_provider(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         seen: dict = {}
 
@@ -399,30 +399,30 @@ class TestCallCloud:
             seen["type"] = provider_type
             return "claude fusion reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_via_llm_provider", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_via_llm_provider", _fake)
         s = self._fusion_summarizer(tmp_path, {"summarisation.fusion_cloud_provider": "claude"})
         assert s._call_cloud("q") == "claude fusion reply"
         assert seen["type"] == "claude"
 
     def test_empty_cloud_reply_falls_back_to_local(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         logs: list[tuple[str, str]] = []
-        monkeypatch.setattr(sz_mod, "ld_call_via_llm_provider", lambda *a, **k: "   ")
+        monkeypatch.setattr(lt_mod, "ld_call_via_llm_provider", lambda *a, **k: "   ")
         s = self._fusion_summarizer(tmp_path, log_lines=logs)
         s._call_llm = lambda prompt, **k: "local fallback"  # type: ignore[method-assign]
         assert s._call_cloud("q") == "local fallback"
         assert_logged(logs, "Fusion cloud returned empty — falling back to local model")
 
     def test_cloud_exception_falls_back_to_local(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         logs: list[tuple[str, str]] = []
 
         def _boom(*a, **k):
             raise RuntimeError("cloud down")
 
-        monkeypatch.setattr(sz_mod, "ld_call_via_llm_provider", _boom)
+        monkeypatch.setattr(lt_mod, "ld_call_via_llm_provider", _boom)
         s = self._fusion_summarizer(tmp_path, log_lines=logs)
         s._call_llm = lambda prompt, **k: "local fallback"  # type: ignore[method-assign]
         assert s._call_cloud("q") == "local fallback"
@@ -569,7 +569,7 @@ class TestModelSwitches:
         assert seen == ["quick prompt"]
 
     def test_call_fast_llm_dual_local_uses_fast_ollama(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         s = make_summarizer(
             tmp_path,
@@ -581,13 +581,13 @@ class TestModelSwitches:
             seen.update(prompt=prompt, model=model)
             return "fast dual reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_fast_ollama", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_fast_ollama", _fake)
         out = s._call_fast_llm("quick prompt", max_tokens=100)
         assert out == "fast dual reply"
         assert seen["model"] == "fast-model-y"
 
     def test_call_fast_llm_api_mode_uses_openai_compat(self, tmp_path, monkeypatch):
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
 
         s = make_summarizer(
             tmp_path,
@@ -604,7 +604,7 @@ class TestModelSwitches:
             seen.update(prompt=prompt, base_url=base_url, model=model)
             return "fast api reply"
 
-        monkeypatch.setattr(sz_mod, "ld_call_openai_compat", _fake)
+        monkeypatch.setattr(lt_mod, "ld_call_openai_compat", _fake)
         out = s._call_fast_llm("quick prompt", max_tokens=100)
         assert out == "fast api reply"
         assert seen["base_url"] == "http://fast/v1"
