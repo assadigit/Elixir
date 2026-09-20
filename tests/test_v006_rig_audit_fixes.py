@@ -408,8 +408,21 @@ class TestF4BulletCap:
     def test_ship_time_budget_enforced_source_pin(self):
         # V0.18 (Phase 5.1, step 1): the ship-time cap moved VERBATIM to the
         # postchecks phase (chapter_phases.py).
+        # V0.20 (Quality Campaign, audit V0.18 Broken Structures Defects A+B):
+        # the naive head-cap `bullets = list(bullets[:_bp_hi_lp])` was
+        # upgraded to delegate to recall_floor.coverage_aware_cap (same
+        # function the V18.15.7.0 80-bullet cap uses), so a tail bullet
+        # that is the SOLE cover of an analysis author is rescued into the
+        # capped set instead of being trimmed — fixing the V0.18 rig run's
+        # 20/37 theorist + 5/7 conclusion-item recall floor. The kp-gated
+        # guard is unchanged; the plain head-cap survives only as the
+        # except-branch fallback (coverage_aware_cap never raises, but the
+        # chapter must never die over a cap).
         s = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" in s
+        assert "coverage_aware_cap(" in s
+        # The fallback head-cap still exists (defensive), but the primary
+        # path now uses coverage_aware_cap.
         assert "bullets = list(bullets[:_bp_hi_lp])" in s
 
 
