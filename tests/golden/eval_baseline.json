@@ -1,0 +1,337 @@
+{
+  "schema": 1,
+  "mode": "from-fixtures",
+  "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6",
+  "chapters": {
+    "academic": {
+      "summary_id": "academic",
+      "overall_score": 9,
+      "factual_consistency_score": 10,
+      "coverage_score": 8,
+      "clarity_score": 8,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 0,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.444, hallucination_rate=0.0%, coverage=76.7%, faithfulness=99.3%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.3154,
+          "recall": 0.75,
+          "fmeasure": 0.4441
+        },
+        "faithfulness": 0.9932,
+        "hallucination_rate": 0.0,
+        "claims": 26.0,
+        "coverage": 0.7667,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 236,
+          "sections": {
+            "exec": {
+              "words": 43,
+              "target": [
+                40,
+                60
+              ],
+              "compliant": true
+            },
+            "thorough": {
+              "words": 148,
+              "target": [
+                80,
+                120
+              ],
+              "compliant": false
+            },
+            "bullets": {
+              "count": 9,
+              "target": [
+                6,
+                9
+              ],
+              "compliant": true
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    },
+    "academic_tables": {
+      "summary_id": "academic_tables",
+      "overall_score": 8,
+      "factual_consistency_score": 10,
+      "coverage_score": 9,
+      "clarity_score": 6,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 1,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.224, hallucination_rate=0.0%, coverage=90.0%, faithfulness=99.7%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.1473,
+          "recall": 0.4682,
+          "fmeasure": 0.2241
+        },
+        "faithfulness": 0.997,
+        "hallucination_rate": 0.0,
+        "claims": 26.0,
+        "coverage": 0.9,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 534,
+          "sections": {
+            "exec": {
+              "words": 59,
+              "target": [
+                64,
+                107
+              ],
+              "compliant": false
+            },
+            "thorough": {
+              "words": 238,
+              "target": [
+                144,
+                240
+              ],
+              "compliant": true
+            },
+            "bullets": {
+              "count": 9,
+              "target": [
+                14,
+                21
+              ],
+              "compliant": false
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    },
+    "farsi": {
+      "summary_id": "farsi",
+      "overall_score": 9,
+      "factual_consistency_score": 10,
+      "coverage_score": 9,
+      "clarity_score": 8,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 0,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.376, hallucination_rate=0.0%, coverage=93.3%, faithfulness=99.2%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.2827,
+          "recall": 0.5598,
+          "fmeasure": 0.3756
+        },
+        "faithfulness": 0.9916,
+        "hallucination_rate": 0.0,
+        "claims": 27.0,
+        "coverage": 0.9333,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 332,
+          "sections": {
+            "exec": {
+              "words": 60,
+              "target": [
+                40,
+                66
+              ],
+              "compliant": true
+            },
+            "thorough": {
+              "words": 177,
+              "target": [
+                89,
+                149
+              ],
+              "compliant": false
+            },
+            "bullets": {
+              "count": 10,
+              "target": [
+                9,
+                13
+              ],
+              "compliant": true
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    },
+    "multicolumn": {
+      "summary_id": "multicolumn",
+      "overall_score": 8,
+      "factual_consistency_score": 10,
+      "coverage_score": 9,
+      "clarity_score": 4,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 0,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.315, hallucination_rate=0.0%, coverage=93.3%, faithfulness=99.4%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.2331,
+          "recall": 0.4846,
+          "fmeasure": 0.3147
+        },
+        "faithfulness": 0.9938,
+        "hallucination_rate": 0.0,
+        "claims": 21.0,
+        "coverage": 0.9333,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 316,
+          "sections": {
+            "exec": {
+              "words": 67,
+              "target": [
+                40,
+                63
+              ],
+              "compliant": false
+            },
+            "thorough": {
+              "words": 166,
+              "target": [
+                85,
+                142
+              ],
+              "compliant": false
+            },
+            "bullets": {
+              "count": 7,
+              "target": [
+                9,
+                13
+              ],
+              "compliant": false
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    },
+    "nonfiction": {
+      "summary_id": "nonfiction",
+      "overall_score": 8,
+      "factual_consistency_score": 10,
+      "coverage_score": 9,
+      "clarity_score": 6,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 1,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.416, hallucination_rate=0.0%, coverage=86.7%, faithfulness=99.2%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.3095,
+          "recall": 0.6341,
+          "fmeasure": 0.416
+        },
+        "faithfulness": 0.9924,
+        "hallucination_rate": 0.0,
+        "claims": 29.0,
+        "coverage": 0.8667,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 225,
+          "sections": {
+            "exec": {
+              "words": 38,
+              "target": [
+                40,
+                60
+              ],
+              "compliant": false
+            },
+            "thorough": {
+              "words": 146,
+              "target": [
+                80,
+                120
+              ],
+              "compliant": false
+            },
+            "bullets": {
+              "count": 9,
+              "target": [
+                6,
+                9
+              ],
+              "compliant": true
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    },
+    "scanned_ocr": {
+      "summary_id": "scanned_ocr",
+      "overall_score": 8,
+      "factual_consistency_score": 10,
+      "coverage_score": 9,
+      "clarity_score": 6,
+      "hallucinations_detected": 0,
+      "critical_omissions_detected": 0,
+      "verdict": "PASS",
+      "justification": "deterministic proxy — rouge_l_f1=0.231, hallucination_rate=0.0%, coverage=93.3%, faithfulness=99.5%",
+      "metrics": {
+        "rouge_l": {
+          "precision": 0.1508,
+          "recall": 0.4977,
+          "fmeasure": 0.2314
+        },
+        "faithfulness": 0.9945,
+        "hallucination_rate": 0.0,
+        "claims": 33.0,
+        "coverage": 0.9333,
+        "f4_min_overlap": 1.0,
+        "fragment_rate": 0.0,
+        "length_policy": {
+          "source_words": 681,
+          "sections": {
+            "exec": {
+              "words": 86,
+              "target": [
+                82,
+                136
+              ],
+              "compliant": true
+            },
+            "thorough": {
+              "words": 382,
+              "target": [
+                184,
+                306
+              ],
+              "compliant": false
+            },
+            "bullets": {
+              "count": 10,
+              "target": [
+                18,
+                27
+              ],
+              "compliant": false
+            }
+          },
+          "compliant": false
+        }
+      },
+      "prompt_manifest_hash": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6"
+    }
+  }
+}

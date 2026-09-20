@@ -13,6 +13,8 @@ dist/
 .coverage
 htmlcov/
 .benchmarks/
+coverage.xml
+eval_scorecards.json
 
 # 🖥️ IDE / OS
 .vscode/

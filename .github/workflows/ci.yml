@@ -36,6 +36,17 @@
 #     `coverage report --fail-under=80` on the same .coverage data.
 #     Post-Phase-2 measured: llm 96% / pdf 98% / summarisation 91%.
 #
+# V0.17 (Phase 4 / Accuracy & Reliability Harness):
+#   - NEW accuracy eval gate step in the test job (after pytest):
+#     `scripts/eval_summary.py --check` re-runs the deterministic pipeline
+#     over the 6 golden chapters and fails on quality regressions vs the
+#     committed baseline (tests/golden/eval_baseline.json) — ROUGE-L,
+#     faithfulness, hallucination-rate, coverage, length policy, verdict
+#     (per-chapter scorecards uploaded as an artifact every run).
+#   - The roadmap planned "warn on PR, fail on release tag"; since every
+#     push to main runs CI here, the gate FAILS on main pushes. The metrics
+#     are fully deterministic (mock LLM), so a trip is always a real change.
+#
 # This workflow gates releases on:
 # - ruff lint clean (pinned version)
 # - ruff format clean
@@ -141,6 +152,27 @@ jobs:
           python -m coverage report --include="core/llm/*" --fail-under=80
           python -m coverage report --include="core/pdf/*" --fail-under=80
           python -m coverage report --include="core/summarisation/*" --fail-under=80
+
+      # V0.17 (Phase 4.3): the ACCURACY GATE — deterministic quality
+      # scorecards over the golden chapters, regressed against the committed
+      # baseline. Runs AFTER pytest (the suite already proves the pipeline
+      # reproduces the frozen fixtures; this proves the QUALITY of those
+      # outputs did not regress). Mutation-validated by
+      # tests/test_p4_eval_gate.py (degraded output + prompt-bank change
+      # are both caught).
+      - name: Accuracy eval gate (Phase 4)
+        run: python scripts/eval_summary.py --check --json eval_scorecards.json
+
+      # V0.17 (Phase 4 acceptance): per-chapter hallucination-rate +
+      # faithfulness (+ ROUGE-L, coverage, length policy, verdict) attached
+      # to every CI run.
+      - name: Upload eval scorecards
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-scorecards
+          path: eval_scorecards.json
+          if-no-files-found: warn
 
       # V0.14 (Phase 1.1): publish the coverage artifact — the per-file
       # htmlcov tree + the XML report are attached to every CI run so a
