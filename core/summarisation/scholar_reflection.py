@@ -236,6 +236,49 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
     # very end after B4 + gap-fill + judge + recovery, when GPU is most exhausted.
     recover_vram(context="pre-scholar-reflection", delay_sec=15.0)
 
+    # V0.20.2 (Quality Campaign, conversion-log audit Defect L1): skip the
+    # scholar reflection's single-big-call gap-fill when its prompt would
+    # near the context cap. The scholar prompt = source text (truncated to
+    # max_src*4 chars) + the FULL summary overview (exec + all bullets +
+    # thorough) + theorists hint + template. On the V0.18 rig run
+    # (run 20260920-084745-c0874728) this was 13418 tok against a 16000
+    # context cap — the call hit the 8192 OUTPUT cap mid-gap-analysis
+    # (done_reason=length), and the gap-fill bullets were dropped anyway
+    # (no source quotes). 200s wasted. The V18.14.1 batch gap-fill (already
+    # chunked, small prompts, quote-enforced) ran immediately after and
+    # produced 27 bullets in 384s — it is the working fallback. This guard
+    # makes the fallback the DEFAULT when the scholar prompt is near the
+    # cap, the owner's "chunk outputs" suggestion (audit §7a).
+    #
+    # Content-agnostic (no chapter-specific thresholds): the scholar call
+    # is skipped when the prompt + the min useful output headroom would
+    # exceed the context cap. The min output room is a RATIO of the
+    # scholar call's max_tokens (6144) — 25%, i.e. 1536 tok. A scholar
+    # call that can only emit < 1536 tok before hitting the context cap
+    # cannot complete a <gap_fill_bullets> section.
+    try:
+        from utils.token_counter import count_tokens as _ct_v0202b
+
+        _scholar_prompt_tok = _ct_v0202b(prompt)
+        _scholar_min_output = 6144 // 4  # 1536 tok
+        _scholar_would_overflow = _scholar_prompt_tok + _scholar_min_output > max_context_tokens
+    except Exception:  # pragma: no cover — guard must never break the stage
+        _scholar_would_overflow = False
+
+    if _scholar_would_overflow:
+        log(
+            f"    \u23f8\ufe0f  V0.20.2: Scholar reflection gap-fill SKIPPED \u2014 the "
+            f"scholar prompt (~{_scholar_prompt_tok} tok) would leave < "
+            f"{_scholar_min_output} tok of output headroom under the "
+            f"{max_context_tokens}-tok context cap; the single-big-call would "
+            f"truncate mid-gap-analysis (the V0.18 rig Defect L1 shape: 200s "
+            f"wasted, 0 gap-fill bullets). The V18.14.1 batch gap-fill (chunked, "
+            f"quote-enforced, runs next) will handle the missing theorists.",
+            "WARNING",
+        )
+        result["scholar_reflections"] = ""
+        return
+
     try:
         # V18.20.3.1 (real-rig audit D7): 3000 → 4096. The V18.20.3.0 run cut
         # the scholar response at the 3000 cap (done_reason=length, 11171

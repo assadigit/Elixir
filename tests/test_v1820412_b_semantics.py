@@ -328,23 +328,24 @@ class TestV0202SkipOa4RetryNearContextCap:
     max_tokens (1536 of 6144) of output headroom under the context cap.
     Content-agnostic — no chapter-specific thresholds."""
 
-    def test_retry_skipped_when_prompt_near_context_cap(self):
-        """When the prompt + continuation overhead + min output room would
-        exceed the context cap, the retry is SKIPPED (exactly 1 call, a
-        WARNING, and the V18.14.1 batch gap-fill is the fallback).
+    def test_primary_scholar_call_skipped_when_prompt_near_context_cap(self):
+        """V0.20.2 Fix B (audit §7a, Defect L1): when the scholar prompt is
+        near the context cap, the PRIMARY scholar gap-fill call is SKIPPED
+        entirely (0 LLM calls). The V18.14.1 batch gap-fill (already
+        chunked, runs next) is the working fallback. The V0.18 rig run
+        wasted 200s on a scholar call that truncated at the output cap
+        and produced 0 gap-fill bullets (no quotes).
 
-        The real scholar prompt = the source text (truncated to
-        max_src*4 chars) + the FULL summary overview (exec + all bullets
-        + thorough) + theorists hint + template. On the V0.18 rig run
-        (run 20260920-084745-c0874728) this was 13418 tok against a 16000
-        context cap. This test reproduces that shape: a large summary
-        overview (the 40-bullet + 800-word-thorough shape that made the
-        real prompt near-cap) plus a source text, against
-        max_context_tokens=16000. The _FakePromptManager is patched to
-        include src_text + summary_overview so the guard sees a
-        realistic near-cap prompt."""
+        The real scholar prompt = source text (truncated to max_src*4
+        chars) + the FULL summary overview (exec + all bullets + thorough)
+        + theorists hint + template. On the V0.18 rig run this was 13418
+        tok against a 16000 context cap. This test reproduces that shape
+        with a large summary overview (40 bullets + 800-word thorough)
+        that pushes the prompt over the Fix B threshold (prompt + 1536 >
+        16000). The _FakePromptManager is patched to include src_text +
+        summary_overview so the guard sees a realistic near-cap prompt."""
         # Large summary overview (the V0.18 rig shape: 40 bullets +
-        # 800-word thorough ≈ 9700 tok).
+        # 800-word thorough ≈ 14472 tok — over the Fix B threshold of 14464).
         big_result = {
             "executive_summary": "The chapter synthesizes the scattered literature on identity. "
             * 60,
@@ -376,15 +377,76 @@ class TestV0202SkipOa4RetryNearContextCap:
             strip_thinking=lambda t: t,
             log=log,
         )
-        # Exactly 1 call (the primary); the retry was SKIPPED.
-        assert len(llm.calls) == 1, (
-            "the O-a4 retry must be SKIPPED when the prompt is near the context cap "
-            "(V0.20.2 Defect L2: the retry is counterproductive — it grows the prompt "
-            "and hits the context window)"
+        # ZERO calls — the primary scholar gap-fill was SKIPPED (Fix B).
+        assert len(llm.calls) == 0, (
+            "the primary scholar gap-fill call must be SKIPPED when the prompt is "
+            "near the context cap (V0.20.2 Fix B / Defect L1: the single-big-call "
+            "would truncate mid-gap-analysis; the V18.14.1 batch path handles it)"
         )
-        # The skip WARNING fired.
+        # The Fix B skip WARNING fired.
+        assert any(
+            "Scholar reflection gap-fill SKIPPED" in w and "batch gap-fill" in w
+            for w in log.warnings()
+        ), "the V0.20.2 Fix B skip WARNING must fire when the primary call would truncate"
+
+    def test_oa4_retry_skipped_when_retry_prompt_would_overflow(self):
+        """V0.20.2 Fix A (audit Defect L2): when the primary scholar call
+        has room (Fix B doesn't fire) but the RETRY prompt would overflow
+        the context cap, the retry is SKIPPED (exactly 1 call). The retry
+        prompt = original prompt + ~60-token suffix + last 2000 chars of
+        the truncated response, so it ALWAYS grows. This test uses a
+        moderate prompt (~14232 tok, under the Fix B threshold of 14464)
+        + a large truncated response (~16000 chars), so the primary call
+        fires (1 call) but the retry would overflow (14232 + 297 + 1536 >
+        16000) → the retry is skipped."""
+        # Moderate summary overview — prompt ~14232 tok (under Fix B's
+        # 14464 threshold, so the primary call fires).
+        big_result = {
+            "executive_summary": "The chapter synthesizes the scattered literature on identity. "
+            * 60,
+            "bullet_points": ["Erikson (1956) defined ego identity as persistent sameness. "] * 40,
+            "thorough_summary": "The chapter traces identity from Tausk through Blos. " * 300,
+        }
+        big_text = "Erikson described identity sameness within oneself. " * 1200
+
+        class _BigPromptManager(_FakePromptManager):
+            def render_template(self, name, **kw):
+                return (
+                    f"PROMPT name={name} heading={kw.get('heading')}\nSOURCE:\n"
+                    f"{kw.get('src_text', '')}\nSUMMARY_OVERVIEW:\n"
+                    f"{kw.get('summary_overview', '')}"
+                )
+
+        # A large truncated response (~16000 chars, ~250 tok in the last
+        # 2000 chars) — the retry prompt would grow by ~310 tok, pushing
+        # the retry over the 16000 context cap.
+        big_truncated = "<scholar_reflections>- Missing coverage of Erikson\n" + (
+            "The chapter discusses identity formation across multiple phases. " * 200
+        )
+
+        llm = _ScriptedLLM([(False, big_truncated)])
+        log = _CapturingLog()
+        scholar_reflection(
+            "Ch",
+            big_text,
+            big_result,
+            max_context_tokens=16000,
+            language="en",
+            temperature=0.7,
+            prompt_manager=_BigPromptManager(),
+            recover_vram=lambda **kw: None,
+            call_fast_llm=llm,
+            strip_thinking=lambda t: t,
+            log=log,
+        )
+        # Exactly 1 call (the primary); the retry was SKIPPED (Fix A).
+        assert len(llm.calls) == 1, (
+            "the O-a4 retry must be SKIPPED when the retry prompt would overflow "
+            "the context cap (V0.20.2 Fix A / Defect L2: the retry is counterproductive)"
+        )
+        # The Fix A skip WARNING fired.
         assert any("O-a4 retry SKIPPED" in w and "context window" in w for w in log.warnings()), (
-            "the V0.20.2 skip WARNING must fire when the retry is counterproductive"
+            "the V0.20.2 Fix A skip WARNING must fire when the retry would overflow"
         )
 
     def test_retry_still_fires_when_prompt_has_room(self):
