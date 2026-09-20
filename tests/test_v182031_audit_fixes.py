@@ -392,9 +392,11 @@ class TestPronounDetectorHonesty:
 
     def test_call_sites_pass_source_authors_gate(self):
         """Guard: all three run_post_checks call sites forward the gate."""
-        src = (PROJECT_ROOT / "core" / "summarisation" / "postchecks.py").read_text(
-            encoding="utf-8"
-        )
+        # V0.18 (Phase 5.2): postchecks.py moved verbatim into the
+        # postchecks package as orchestrator.py.
+        src = (
+            PROJECT_ROOT / "core" / "summarisation" / "postchecks" / "orchestrator.py"
+        ).read_text(encoding="utf-8")
         assert src.count("detect_pronoun_mismatch(") >= 3  # 3 call sites (bullets/exec/thorough)
         assert src.count("source_authors=source_authors") >= 3
 

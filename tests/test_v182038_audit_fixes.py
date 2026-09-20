@@ -219,13 +219,16 @@ class TestPhase22GateFailLoud:
 
 class TestVetoFailOpenVisible:
     def test_crash_returns_none_and_warns(self, monkeypatch, caplog):
+        # V0.18 (Phase 5.2): the detectors moved verbatim into the postchecks
+        # package — patch the DEFINING module, not the re-export facade.
         from core.summarisation import postcheck_detectors as pd
+        from core.summarisation.postchecks import attribution as _attr
 
         def _boom(bullet):
             raise RuntimeError("parser exploded")
 
-        monkeypatch.setattr(pd, "_parse_bullet_subject", _boom)
-        with caplog.at_level(logging.WARNING, logger=pd.__name__):
+        monkeypatch.setattr(_attr, "_parse_bullet_subject", _boom)
+        with caplog.at_level(logging.WARNING, logger="core.summarisation.postcheck_detectors"):
             result = pd.detect_parenthetical_promotion(KHAN_BULLET, SRC_KHAN, ["Winnicott", "Khan"])
         assert result is None  # fail-open decision preserved
         assert any("veto CRASHED" in r.message for r in caplog.records), (

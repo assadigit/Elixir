@@ -894,9 +894,11 @@ class TestPronounAntecedentGate:
     def test_gate_uses_closed_class_determiners_only(self):
         """Policy: the gate must not ship chapter-derived vocabulary —
         only closed-class English determiners (content-agnostic)."""
-        src = (_project_root / "core" / "summarisation" / "postcheck_detectors.py").read_text(
-            encoding="utf-8"
-        )
+        # V0.18 (Phase 5.2): the pronoun detector moved verbatim into the
+        # postchecks package (coherence.py).
+        src = (
+            _project_root / "core" / "summarisation" / "postchecks" / "coherence.py"
+        ).read_text(encoding="utf-8")
         m = re.search(r"_DETERMINERS = \{(.*?)\}", src, re.DOTALL)
         assert m, "determiner set not found"
         words = re.findall(r'"([a-z]+)"', m.group(1))

@@ -98,6 +98,14 @@ _EXPECTED_ATOMIC_CALLS = {
 _COMMENT_FILES = [
     "core/summarisation/text_preprocessor_impl.py",
     "core/summarisation/postcheck_detectors.py",
+    # V0.18 (Phase 5.2): the postchecks package files (verbatim moves from
+    # postcheck_detectors.py) join the no-book-jargon scan.
+    "core/summarisation/postchecks/shared.py",
+    "core/summarisation/postchecks/leakage.py",
+    "core/summarisation/postchecks/garble.py",
+    "core/summarisation/postchecks/attribution.py",
+    "core/summarisation/postchecks/coherence.py",
+    "core/summarisation/postchecks/orchestrator.py",
 ]
 _BOOK_PHRASES = (
     "focus base",

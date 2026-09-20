@@ -565,7 +565,25 @@ _DENY_CONCEPTS = [
     "operatives",
     "spies",
 ]
-_TOUCHED = (_SUM, _ADD, _FLOOR, _PA, _DET, _GFB, _CI)
+# V0.18 (Phase 5.2): the postchecks package files (verbatim moves from
+# postcheck_detectors.py) join the deny-list scan — same rule, new homes.
+_POSTCHECKS_PKG = _project_root / "core" / "summarisation" / "postchecks"
+_TOUCHED = (
+    _SUM,
+    _ADD,
+    _FLOOR,
+    _PA,
+    _DET,
+    _GFB,
+    _CI,
+    _POSTCHECKS_PKG / "shared.py",
+    _POSTCHECKS_PKG / "leakage.py",
+    _POSTCHECKS_PKG / "garble.py",
+    _POSTCHECKS_PKG / "attribution.py",
+    _POSTCHECKS_PKG / "coherence.py",
+    _POSTCHECKS_PKG / "orchestrator.py",
+    _POSTCHECKS_PKG / "__init__.py",
+)
 
 
 class TestDenyListTouchedFiles:

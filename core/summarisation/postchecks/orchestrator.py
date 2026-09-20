@@ -14,6 +14,11 @@ All existing imports ``from core.summarisation.postchecks import X`` continue
 to work unchanged.
 """
 
+# V0.18 (Phase 5.2): this orchestrator moved VERBATIM from
+# core/summarisation/postchecks.py into the postchecks package as
+# orchestrator.py; the package __init__ re-exports the public API and
+# lazily forwards to this module (import-cycle-safe).
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +30,62 @@ from core.summarisation.post_processing import (  # V18.20.3.4 (RC-1)
     is_citation_only_fragment,  # V18.20.3.2 (audit N5 / P1-c)
     is_truncated,
 )
+from core.summarisation.postchecks.attribution import (  # noqa: F401
+    _BARE_YEAR_RE,
+    _BOLD_NAME_RE,
+    _SUMMARY_CITATION_RE,
+    MAX_YEAR,
+    MIN_YEAR,
+    _author_in_source,
+    detect_attribution_subject_swap,
+    detect_dropped_digit_years,
+    detect_parenthetical_promotion,
+    validate_years,
+    verify_attribution,
+    verify_bold_name_attribution,
+)
+from core.summarisation.postchecks.coherence import (  # noqa: F401
+    _HEDGE_RE,
+    _HEDGE_WORDS,
+    _INTERPRETIVE_FIRST_PERSON_RE,
+    _INTERPRETIVE_LEAP_RE,
+    detect_citation_coverage_gap,
+    detect_exec_bullet_inconsistency,
+    detect_hedge_loss,
+    detect_inconsistency,
+    detect_interpretive_leaps,
+    detect_pronoun_mismatch,
+)
+from core.summarisation.postchecks.garble import (  # noqa: F401
+    _CAMELCASE_MERGE_RE,
+    _FRAGMENT_MERGE_RE,
+    _IMPOSSIBLE_BIGRAM_RE,
+    _IMPOSSIBLE_BIGRAMS,
+    _LEGIT_SUFFIXES,
+    _LONG_CONSONANT_CLUSTER_RE,
+    _MERGED_SENTENCE_RE,
+    _MISSING_SPACE_CAP_RE,
+    _MISSING_SPACE_LOWER_RE,
+    _VERB_ENDINGS,
+    _VERB_STOPWORDS,
+    _VOWEL,
+    _VOWEL_LESS_LONG_RE,
+    _is_legitimate_inflection,
+    detect_dropped_letter_garble,
+    detect_extra_spaces,
+    detect_garbled_tokens,
+    detect_grammatical_incoherence,
+    detect_missing_spaces,
+    detect_word_fragment_merge,
+)
+from core.summarisation.postchecks.leakage import (  # noqa: F401
+    _COT_NARRATIVE_MARKERS,
+    _COT_NARRATIVE_RE,
+    _PROMPT_LEAKAGE_PATTERNS,
+    _PROMPT_LEAKAGE_RE,
+    detect_cot_narrative,
+    detect_prompt_leakage,
+)
 
 # V18.18.0.0 (Phase 2c): Re-export the public detector API.
 # V0.08 (P2): explicit imports (was ``import *``) — intentional re-exports,
@@ -34,62 +95,17 @@ from core.summarisation.post_processing import (  # V18.20.3.4 (RC-1)
 # V18.20.3.12: noqa: F401 added — these are intentional re-exports consumed by
 # tests (test_citations_regex, test_postcheck_fragment_merge_fix, test_v18219);
 # the safe ruff auto-fix removed them once as "unused" which broke those imports.
-from core.summarisation.postcheck_detectors import (  # noqa: F401
-    _BARE_YEAR_RE,
-    _BOLD_NAME_RE,
-    _CAMELCASE_MERGE_RE,
-    _COT_NARRATIVE_MARKERS,
-    _COT_NARRATIVE_RE,
-    _FRAGMENT_MERGE_RE,
-    _HEDGE_RE,
-    _HEDGE_WORDS,
-    _IMPOSSIBLE_BIGRAM_RE,
-    _IMPOSSIBLE_BIGRAMS,
-    _INTERPRETIVE_FIRST_PERSON_RE,
-    _INTERPRETIVE_LEAP_RE,
-    _LEGIT_SUFFIXES,
-    _LONG_CONSONANT_CLUSTER_RE,
-    _MERGED_SENTENCE_RE,
-    _MISSING_SPACE_CAP_RE,
-    _MISSING_SPACE_LOWER_RE,
-    _PROMPT_LEAKAGE_PATTERNS,
-    _PROMPT_LEAKAGE_RE,
-    _SUMMARY_CITATION_RE,
-    _VERB_ENDINGS,
-    _VERB_STOPWORDS,
-    _VOWEL,
-    _VOWEL_LESS_LONG_RE,
-    MAX_YEAR,
-    MIN_YEAR,
+# V0.18 (Phase 5.2): detectors now live in the sibling family modules
+from core.summarisation.postchecks.shared import (  # noqa: F401
     Issue,
     PostCheckReport,
-    _author_in_source,
-    _is_legitimate_inflection,
     _is_subsequence,
     _snippet,
-    detect_attribution_subject_swap,
-    detect_citation_coverage_gap,
-    detect_cot_narrative,
-    detect_dropped_digit_years,
-    detect_dropped_letter_garble,
-    detect_exec_bullet_inconsistency,
-    detect_extra_spaces,
-    detect_garbled_tokens,
-    detect_grammatical_incoherence,
-    detect_hedge_loss,
-    detect_inconsistency,
-    detect_interpretive_leaps,
-    detect_missing_spaces,
-    detect_parenthetical_promotion,  # V18.20.3.2 (audit N4 / P1-a)
-    detect_prompt_leakage,
-    detect_pronoun_mismatch,
-    detect_word_fragment_merge,
-    validate_years,
-    verify_attribution,
-    verify_bold_name_attribution,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    "core.summarisation.postchecks"
+)  # V0.18 (Phase 5.2): literal historical channel name
 
 
 # V18.18.0.0: Issue + PostCheckReport moved to postcheck_detectors.py

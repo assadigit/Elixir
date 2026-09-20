@@ -134,12 +134,14 @@ class TestDetectCotNarrative:
     def test_fail_open_on_crash(self):
         """If the detector crashes, it fails open (returns original text + flag)."""
         # V18.18.0.0: detect_cot_narrative moved to postcheck_detectors.py
-        # Must patch _COT_NARRATIVE_RE on the defining module, not the re-export
-        import core.summarisation.postcheck_detectors as _pd
+        # V0.18 (Phase 5.2): … and postcheck_detectors.py became a facade over
+        # the postchecks package — patch the DEFINING module (leakage), not a
+        # re-export.
+        from core.summarisation.postchecks import leakage as _leak
 
         _crash_re = MagicMock()
         _crash_re.search.side_effect = RuntimeError("test crash")
-        with patch.object(_pd, "_COT_NARRATIVE_RE", [_crash_re]):
+        with patch.object(_leak, "_COT_NARRATIVE_RE", [_crash_re]):
             cleaned, issues = detect_cot_narrative("A" * 100, "thorough")
         assert cleaned == "A" * 100  # unchanged
         assert len(issues) == 1
