@@ -161,14 +161,22 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
-  # V0.14 (Phase 1.5): dependency vulnerability report — REPORT-ONLY.
+  # V0.14 (Phase 1.5): dependency vulnerability audit job.
+  # V0.16 (Phase 3 / task 3.5): FAIL GATE ACTIVE — see the comment above
+  # the audit job definition.
   # Audits the exact pinned closure in requirements.lock (--no-deps: no
-  # resolution drift, no build isolation, fast). Findings NEVER fail this
-  # job; the report JSON is attached as an artifact for triage. The FAIL
-  # gate activates in Phase 3 (Security & Config Hardening) once a waiver
-  # list exists — until then a red report is information, not an outage.
+  # resolution drift, no build isolation, fast).
+  #
+  # V0.16 (Phase 3 / task 3.5): the FAIL GATE IS LIVE. pip-audit exits
+  # non-zero on any known vulnerability in the locked core set that is
+  # not on the waiver list — a superset of the roadmap's "fail on
+  # high-severity" criterion (any high-severity finding necessarily
+  # fails). Waivers are one OSV/GHSA ID per line in
+  # requirements.audit-waivers (comments with #) — each waiver MUST
+  # carry a justification comment and an expiry review date, per the
+  # roadmap's "documented waivers" acceptance.
   audit:
-    name: Dependency Audit (pip-audit, report-only)
+    name: Dependency Audit (pip-audit, gated)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -181,19 +189,34 @@ jobs:
       - name: Install pip-audit
         run: pip install "pip-audit==2.10.1"  # PINNED — same policy as ruff
 
-      - name: Audit pinned core closure (report-only)
+      - name: Audit pinned core closure (gate + report)
         run: |
-          set +e  # report-only: findings must NOT fail the job
+          set -euo pipefail
+          # Build the --ignore-vuln args from the committed waiver list.
+          WAIVER_ARGS=()
+          while IFS= read -r line; do
+            line="${line%%#*}"                # strip trailing comments
+            line="$(echo "$line" | xargs)"    # trim whitespace
+            if [ -n "$line" ]; then
+              echo "::notice title=Audit waiver::Ignoring ${line} (see requirements.audit-waivers for justification)"
+              WAIVER_ARGS+=(--ignore-vuln "$line")
+            fi
+          done < requirements.audit-waivers
+          # GATED RUN: exit code propagates (non-zero = known vuln not waived).
+          # The JSON report is produced even when the gate trips.
+          set +e
           pip-audit -r requirements.lock \
             --no-deps \
             --format=json \
             -o pip-audit-report.json \
-            --progress-spinner off
+            --progress-spinner off \
+            "${WAIVER_ARGS[@]}"
           ec=$?
+          set -e
           if [ $ec -ne 0 ]; then
-            echo "pip-audit reported findings (exit $ec) — report attached; gate activates in Phase 3"
+            echo "::error title=Dependency audit FAILED::pip-audit exit $ec — known vulnerabilities in requirements.lock that are not waived (see the pip-audit-report artifact). Fix by upgrading the pinned package or documenting a waiver in requirements.audit-waivers."
           fi
-          exit 0
+          exit $ec
 
       - name: Upload pip-audit report
         if: always()

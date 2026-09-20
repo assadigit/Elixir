@@ -1,0 +1,19 @@
+# Elixir — pip-audit waiver list (V0.16, Phase 3 / task 3.5)
+# ============================================================
+# One vulnerability ID per line (OSV or GHSA alias, as printed by
+# pip-audit). Lines starting with # and blank lines are ignored; inline
+# trailing comments (# ...) are stripped.
+#
+# EVERY waiver must carry: (a) the affected package + pinned version,
+# (b) why the finding is not exploitable in Elixir's threat model, and
+# (c) a review date. The CI audit job prints a ::notice per active
+# waiver so waived findings stay visible in every run.
+#
+# The gate: pip-audit runs over requirements.lock --no-deps with all
+# --ignore-vuln args built from this file; any NON-waived known
+# vulnerability fails the job. This is deliberately stricter than
+# "high-severity only" — pip-audit does not expose severity ratings,
+# and a stricter gate can only be safer.
+#
+# Currently active waivers: NONE (baseline run: 0 known vulnerabilities
+# in the 105-pin core closure).
