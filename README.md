@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.16-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5426%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.17-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5531%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -317,7 +317,7 @@ Settings file: `~/.elixir/settings.json`
 # ▶️ Run the app
 python main.py
 
-# 🧪 Full test suite (5,400+ tests, ~155s headless)
+# 🧪 Full test suite (5,500+ tests, ~160s headless)
 python -m pytest tests/ --no-cov -q
 
 # ⚡ Fast iteration — skip the slow/integration tests (~68s, 2.3× faster)
@@ -326,6 +326,14 @@ python -m pytest tests/ --no-cov -q -m "not slow"
 # 🎲 Random-order determinism smoke (3 seeds, all must pass identically)
 python -m pytest tests/ --no-cov -q -p randomly --randomly-dont-reset-seed --randomly-seed=101
 
+# 📊 Summary-quality scorecards over the 6 golden chapters (ROUGE-L, faithfulness,
+#    hallucination-rate, coverage, length policy — deterministic, mock LLM)
+make eval
+
+# 🚦 Accuracy regression gate — fails on quality regressions vs the committed
+#    baseline (tests/golden/eval_baseline.json); CI runs this on every push
+make eval-check
+
 # 🧹 Lint
 ruff check .
 
@@ -333,7 +341,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.16):** `5426 passed / 0 failed / 35 skipped / 0 xpassed in ~155s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + pip-audit-gated, ruff pinned)*
+**Current gate (Elixir V0.17):** `5531 passed / 0 failed / 35 skipped / 0 xpassed in ~160s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 
@@ -344,6 +352,28 @@ pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.
 | `regression` | Version-anchored regression tests (`test_v18_*` files) | — |
 | `characterization` | Byte-for-byte stability gates for extracted modules | — |
 | `gpu` | Tests requiring a real GPU (currently none — all mocked) | — |
+
+**Accuracy & reliability harness (V0.17, Phase 4):** summary-quality
+regressions are mechanically detectable *before* any prompt or pipeline
+change ships —
+
+- **6 golden chapters** under `tests/golden/` (academic, nonfiction,
+  academic_tables, scanned_ocr, multicolumn, farsi) each carry a source,
+  a curated reference summary, and a byte-frozen pipeline output
+  (`tests/test_golden_freeze.py`, 14 tests — the Phase-5 pre-net).
+- **`scripts/eval_summary.py`** scores every chapter deterministically
+  (ROUGE-L vs the reference, char-gram faithfulness + hallucination-rate
+  vs the source, keyword coverage, REAL length-policy targets, the REAL
+  F4 overlap) into scorecards matching `docs/EVALUATION_FRAMEWORK.md`
+  Part 2 — the LLM judge stays the real-rig audit; this is the CI proxy.
+- **The gate** (`make eval-check`) fails on regressions vs the committed
+  baseline and is mutation-validated (`tests/test_p4_eval_gate.py`:
+  fabricated bullets and prompt-bank changes are both caught, improvements
+  never trip it). CI uploads per-chapter scorecards on every run.
+- **LLM-call hardening** audited end-to-end — every provider path carries
+  timeout, classified retry with backoff, non-retryable handling, response
+  validation, and the lenient-JSON repair; the evidence matrix lives in
+  `docs/LLM_HARDENING.md` (36 evidence tests).
 
 **Coverage gates (V0.15, Phase 2):** global ≥64% on `core`+`utils`, plus per-package ≥80% on `core/llm` (currently 96%), `core/pdf` (98%), and `core/summarisation` (91%) — the safety net under the Phase 5 de-monolithization of `summarizer.py`.
 

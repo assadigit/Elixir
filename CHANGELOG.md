@@ -1,5 +1,89 @@
 # Changelog
 
+## V0.17 — Phase 4 "Accuracy & Reliability Harness": quality regressions are now mechanically detectable
+
+> **The change:** execution of Phase 4 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`). Summary-quality regressions are caught by CI
+> **before** any further prompt or pipeline change ships: 6 golden chapters
+> (incl. tables/citations, OCR artifacts, two-column interleave, and Persian
+> script), deterministic per-chapter scorecards (ROUGE-L, faithfulness,
+> hallucination-rate, coverage, length policy), a mutation-validated
+> regression gate wired into CI, an end-to-end LLM-call hardening audit
+> (3 gaps fixed), and 37 extraction-side edge-case characterization tests
+> (5 real bugs found & pinned). 105 new tests (5,531 total); suite
+> deterministic under random ordering.
+
+**Golden dataset expansion (4.1):**
+- `tests/golden/` grew 2 → 6 chapters, each with source + curated
+  reference summary + byte-frozen pipeline output: `academic_tables`
+  (markdown tables, dense citations), `scanned_ocr` (page markers,
+  hyphenation, character errors, stray headers), `multicolumn` (naive
+  two-column extraction interleave — the classic reading-order hazard),
+  `farsi` (non-Latin script; the Summarizer runs with `language="fa"` —
+  `bench_chapter.py` gained per-chapter language support).
+- Determinism verified across PYTHONHASHSEED values; the freeze suite
+  grew 6 → 14 tests (`tests/test_golden_freeze.py`).
+
+**Automated metrics + regression gate (4.2/4.3/4.6):**
+- `scripts/eval_summary.py`: per-chapter scorecards matching
+  `docs/EVALUATION_FRAMEWORK.md` Part 2 schema + raw metrics — ROUGE-L
+  (self-contained LCS over Unicode tokens; works for Farsi), char-8-gram
+  faithfulness + hallucination-rate (claims < 50% source containment),
+  top-30 keyword coverage, length-policy compliance against the REAL
+  production targets, and the REAL F4 `compute_source_overlap` minimum.
+- `make eval` / `make eval-check`; the gate fails on regressions vs the
+  committed baseline (`tests/golden/eval_baseline.json`, prompt-manifest-
+  keyed) — ROUGE/faithfulness drops, hallucination/coverage regressions,
+  length compliant→off, PASS→FAIL, or a prompt-bank change without
+  re-baselining. One-directional: improvements never trip it.
+- CI: accuracy eval gate step in the test job + `eval-scorecards` artifact
+  (per-chapter hallucination + faithfulness) on every run.
+- Mutation-validated (`tests/test_p4_eval_gate.py`, 24 tests): fabricated
+  bullets and prompt-bank changes are CAUGHT; the baseline-sync test
+  forces re-baselining into the same commit as any re-freeze.
+
+**LLM-call hardening audit (4.4) — `docs/LLM_HARDENING.md`:**
+- Provider × guarantee matrix (timeout, classified retry w/ backoff,
+  non-retryable handling, response validation, lenient-JSON repair) over
+  every path from `create_provider`, with file:line + test-name evidence.
+  All 8 legacy ad-hoc retry loops confirmed migrated to `@retry_llm_call`.
+- 3 gaps fixed: llamacpp `complete_streaming` had no classified retry →
+  now wrapped like `complete()`; `structured_io.validate_summary_json`
+  lacked the V0.11 lenient-repair rung → one repair pass after strict
+  failure; llamacpp `smoke_test`'s 60s cap never reached the socket →
+  timeout now forwarded. 36 evidence tests
+  (`tests/test_p4_llm_hardening.py`), all hermetic.
+
+**Edge-case characterization (4.5) — 37 tests, 5 real bugs pinned:**
+- `tests/test_p4_edge_cases_pdf.py` (19): real in-memory fitz PDFs —
+  reading order follows content-stream insertion (right-column-first
+  pages extract wrong; the lightweight reorder is computed then
+  discarded), pypdf preserves table alignment while pdfplumber collapses
+  it, and properly-shaped Persian pages do NOT round-trip (presentation
+  forms + ToUnicode mojibake pinned exactly).
+- `tests/test_p4_edge_cases_ocr.py` (18): the OCR decision cascade end-
+  to-end — Linux poppler auto-detect disables the whole cascade, a
+  digital page wrongly flagged scanned loses its text when OCR fails,
+  and short Persian pages are misclassified as scanned. All five bugs
+  documented for the fix list (characterization first, per the roadmap).
+
+**Also fixed:**
+- Latent Phase-2 property-generator flake: `_multi_chapter_docs` could
+  generate trailing-heading docs (all-blank last chapter body stripped by
+  the cleanup) that segment to one segment, violating the generator's
+  own no-fallback guarantee — found by a fresh Hypothesis seed during
+  integration; the generator now guarantees trailing content (5 seeds
+  verified).
+- README: badges 0.16 → 0.17 / 5,426 → 5,531, eval-harness docs,
+  accuracy-gate line; installer AppVersion 0.17.
+
+**Verification:** 5,531 passed / 35 skipped / 0 failed (~160s) in default
+order AND random-order seed 101; `ruff check` + `ruff format --check`
+clean repo-wide; eval gate green (faithfulness 99.2–99.7%, hallucination
+0% on all 6 chapters — the mock LLM is grounded by construction, so the
+gate's sensitivity comes from the mutation tests); per-package coverage
+gates still ≥80% (llm 96 / pdf 98 / summarisation 91), global 64%.
+
 ## V0.16 — Phase 3 "Security & Config Hardening": OS keychain for every API key
 
 > **The change:** execution of Phase 3 of the approved V0.12 roadmap

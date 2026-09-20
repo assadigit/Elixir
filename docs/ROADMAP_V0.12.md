@@ -140,13 +140,40 @@
 | 4.4 LLM-call hardening audit | Verify every provider path has: timeout, classified retry w/ backoff (`retry.py` exists — confirm coverage on claude/freellmapi/llamacpp), response validation (`structured_io`), and the V0.11 lenient-JSON repair; add tests for the repaired paths | pytest |
 | 4.5 Edge-case fixtures | Scanned PDF (OCR cascade), multi-column, tables, non-Latin scripts — pin extraction + summarization behavior with characterization tests | pytest |
 
-**Acceptance:**
-- [ ] `make eval` → machine-parsable scorecard on ≥5 golden chapters; committed baseline.
-- [ ] Deliberately-degraded prompt (mutation test) is **caught** by the gate (validate the gate itself).
-- [ ] Hallucination-rate + faithfulness numbers reported per chapter in CI artifact.
-- [ ] 4.4 audit table committed (`docs/LLM_HARDENING.md`) with test evidence per provider.
+**Acceptance:** — ✅ **COMPLETED in V0.17**
+- [x] `make eval` → machine-parsable scorecard on ≥5 golden chapters; committed baseline.
+  **V0.17 evidence:** `make eval` / `make eval-check` → `scripts/eval_summary.py` over **6 golden chapters** (academic, nonfiction + the Phase-4 additions academic_tables, scanned_ocr, multicolumn, farsi — sources, curated reference summaries, and byte-frozen pipeline outputs under `tests/golden/`). Committed baseline: `tests/golden/eval_baseline.json` (schema-1, prompt-manifest-keyed). Scorecards match `docs/EVALUATION_FRAMEWORK.md` Part 2 (the LLM judge remains the real-rig audit; this is the deterministic CI proxy — formulas documented in the script docstring).
+- [x] Deliberately-degraded prompt (mutation test) is **caught** by the gate (validate the gate itself).
+  **V0.17 evidence:** `tests/test_p4_eval_gate.py` (24 tests) — fabricated bullets + truncation trip the hallucination-rate/ROUGE regressions, a changed prompt-bank identity (manifest hash) is flagged as "prompt bank changed without re-baselining", verdict PASS→FAIL is caught, and improvements NEVER trip the one-directional gate. (Prompt-file edits per se are caught by the Phase-1 manifest gate; the eval gate catches the quality dimension.)
+- [x] Hallucination-rate + faithfulness numbers reported per chapter in CI artifact.
+  **V0.17 evidence:** CI test job runs the accuracy eval gate after pytest and uploads `eval_scorecards.json` (per-chapter ROUGE-L, faithfulness, hallucination-rate, coverage, length policy, verdict) as the `eval-scorecards` artifact on every run. Baseline (mock LLM, grounded by construction): faithfulness 99.2–99.7%, hallucination 0% on all 6 chapters.
+- [x] 4.4 audit table committed (`docs/LLM_HARDENING.md`) with test evidence per provider.
+  **V0.17 evidence:** `docs/LLM_HARDENING.md` — provider × guarantee matrix over every path from `create_provider` (ollama, llamacpp, openai-compat incl. freellmapi, claude + adjacent surfaces), file:line + test-name evidence per cell, 3 gaps found & fixed (llamacpp streaming retry, structured_io lenient-repair rung, llamacpp smoke-test timeout forwarding), pinned by `tests/test_p4_llm_hardening.py` (36 tests).
 
-**Effort:** 3–5 days. **Rollback:** harness is additive; gate starts warn-only for 2 weeks before failing.
+> **Phase 4 execution notes (V0.17):** the golden set grew 2→6 chapters (edge
+> cases: markdown tables + citations, OCR artifacts, naive two-column
+> interleave, Persian script — the farsi chapter runs the Summarizer with
+> `language="fa"`); determinism verified across PYTHONHASHSEED values; the
+> freeze suite grew 6→14 tests. Task 4.5 (edge-case characterization) pinned
+> the EXTRACTION side: 37 new tests (`tests/test_p4_edge_cases_pdf.py` +
+> `_ocr.py`) found and pinned 5 real bugs (Linux poppler auto-detect disables
+> the OCR cascade; dead lightweight-reorder computation; prescan's
+> "markitdown" promise not honored per-page; the scanned-page word-regex is
+> blind to Arabic presentation forms; `_ocr_scanned_page` lacks a
+> digital-text fallback) — documented for the fix list, deliberately not
+> fixed in Phase 4 (characterization first). One latent Phase-2 property
+> generator flake (`_multi_chapter_docs` trailing-heading docs) was found by
+> a fresh Hypothesis seed during integration and fixed (5 seeds × 49 green).
+> Suite: 5,426 → **5,531 passed / 0 failed** (default order + random-order
+> seed 101). The roadmap's "rouge-score (new dep)" was implemented in-repo
+> instead (LCS over Unicode `\w+` tokens — no new dependency-closure growth,
+> no version drift; hand-computed unit cases pin correctness).
+
+**Effort:** 3–5 days. **Rollback:** harness is additive; the roadmap's
+"warn-only for 2 weeks" soft-start was dropped — every metric is a pure
+function of the frozen outputs (deterministic mock LLM), so a gate trip is
+always a real change, never noise; intentional changes carry the documented
+re-freeze → re-baseline procedure with the numbers shown in the commit.
 
 ---
 
@@ -210,6 +237,9 @@
 
 - [x] Phase 0 approved → executed (V0.13 — CI green, fresh installs repaired, lint gate enforced)
 - [x] Phase 1 approved → executed (V0.14 — honest coverage gate 50%, bench harness + baseline, golden freeze + prompt manifest, pip-audit report-only)
-- [ ] Phases 2–6 approved in principle / pending re-confirmation after each prior phase
+- [x] Phase 2 approved → executed (V0.15 — per-package ≥80% gates [measured 96/98/91], global 63, 124 property tests, zero xpass, 3-seed determinism)
+- [x] Phase 3 approved → executed (V0.16 — OS keychain for all 11 credential paths, translation path-mismatch fixed, gated pip-audit)
+- [x] Phase 4 approved → executed (V0.17 — 6 golden chapters + eval scorecards + mutation-validated regression gate in CI, LLM hardening audit, 37 edge-case characterization tests)
+- [ ] Phase 5 (de-monolithization) / Phase 6 (performance) pending re-confirmation after each prior phase
 
 *Per the working rules: small conventional commits, baseline before change, one concern per PR. Every phase ends with a CHANGELOG entry + VERSION bump + tagged backup zip.*
