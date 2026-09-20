@@ -426,6 +426,9 @@ class TestResponseCacheDisk:
             "size": 0,
             "max": 1000,
             "hit_rate": 0.0,
+            # Phase 6.4 (V0.19): the eviction counter (budget-tuning signal)
+            # resets with the rest of the stats.
+            "evictions": 0,
         }
         assert not cache_file.exists()
 

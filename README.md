@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.18-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5532%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.19-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5573%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -272,6 +272,35 @@ A real-world incident (a 257-page book on a 12GB GPU with a 20.2GB model) produc
 
 ---
 
+## ⚡ Performance Levers (new in V0.19, Phase 6)
+
+LLM time is **98.5% of chapter wall-clock** (Phase-1 baseline), so Phase 6
+targets the *sequencing* of the intra-chapter LLM calls. Three overlap
+levers + cloud queue concurrency, all measured on the deterministic
+mock-latency bench ([`docs/baseline/timings_V0.19.md`](docs/baseline/timings_V0.19.md)):
+
+| Lever | Path | Measured |
+|---|---|---|
+| 🗺️ **Map waves** | Map-reduce chunks run in bounded concurrent waves (independent by design; the wall-clock budget is enforced per wave) | **−57.0%** (315.8s → 135.8s, 13 chunks) |
+| 🗳️ **B3 overlap** | The 3 multi-sample voting calls run concurrently; the 2×120s inter-sample VRAM sleeps are skipped on this path | **−44.2%** (115.4s → 64.4s) |
+| 🎓 **Speculative scholar** | The scholar reflection launches while the judge tail runs, and is **merged** when the judge left the summary unchanged (the common case) or discarded + re-run sequentially when it did not — drop paths are byte-for-byte the old behavior | **−23.3%** on the golden chapter (its 5 calls form a strict chain — 23.3% is the mathematical cap for any behavior-preserving overlap; the proof is in the report) |
+| ☁️ **Cloud queue** | Up to `queue.max_parallel_books` books convert concurrently in the Queue view — **cloud providers only** (local VRAM is never contested) | bounded, opt-in |
+
+**Safety contract:** every lever is OFF by default
+(`summarisation.parallel_stages`), each independently disableable, and the
+outputs are **byte-identical with the levers ON vs OFF** on all 6 golden
+chapters (pinned by test + the Phase-4 eval gate). Local 12GB-rig behavior
+is unchanged by default — enable on the rig and soak-test before making it
+your daily configuration. Reproduce any number:
+`python scripts/bench_chapter.py --latency-scale 1.0 --parallel-stages`.
+
+Cache instrumentation (Phase 6.4) landed alongside: response-cache and
+embedding-cache hit-rate summaries at the end of every run (plus a
+mid-run periodic line and the eviction counter — the budget-tuning
+signal).
+
+---
+
 ## ⚙️ Key Settings
 
 Settings file: `~/.elixir/settings.json`
@@ -288,6 +317,12 @@ Settings file: `~/.elixir/settings.json`
 | `embedding.fallback` | `"jaccard"` | `"jaccard"` (lexical) or `"skip"` (omit Phase 2.2) |
 | `local.vram_overbudget_policy` | `"ask"` | `ask` / `abort` / `proceed` — enforced before extraction |
 | `local.map_phase_max_seconds` | `1800` | Wall-clock budget for a map-reduce map phase |
+| `summarisation.parallel_stages` | `false` | **V0.19 (Phase 6)** — master switch for the intra-chapter LLM-call overlap levers (see ⚡ Performance Levers) |
+| `summarisation.parallel_stages_map` | `true` | Map-reduce chunk overlap (when master ON) |
+| `summarisation.parallel_stages_b3` | `true` | Multi-sample voting overlap (when master ON) |
+| `summarisation.parallel_stages_judge_scholar` | `true` | Speculative scholar ∥ judge tail (when master ON) |
+| `summarisation.parallel_stages_max_workers` | `4` | Concurrency bound for every lever (clamp 1–8) |
+| `queue.max_parallel_books` | `2` | **V0.19 (Phase 6.3)** — cross-book queue workers, CLOUD providers only (clamp 1–4; local always sequential) |
 | `translation.backend` | `nllb` | `nllb` / `translategemma` |
 | `paths.*` | *(system paths)* | tesseract, poppler, piper, neutts_gguf |
 | `outputs.*` (15 keys) | varies | Output Studio toggles |
@@ -341,7 +376,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.18):** `5532 passed / 0 failed / 35 skipped / 0 xpassed in ~200s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
+**Current gate (Elixir V0.19):** `5573 passed / 0 failed / 35 skipped / 0 xpassed in ~200s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 

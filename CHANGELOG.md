@@ -1,5 +1,82 @@
 # Changelog
 
+## V0.19 — Phase 6 "Performance": intra-chapter LLM-call overlap levers, cloud queue concurrency, cache instrumentation
+
+> **The change:** execution of Phase 6 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`) — the phase that consumes the Phase-1 timing
+> harness and the Phase-4 quality gate to prove "faster *and* not worse".
+> Every lever is OFF by default (`summarisation.parallel_stages` — the
+> roadmap rollback plan: default off → on after soak; each lever
+> independently disableable), and the pipeline outputs are **byte-identical
+> with the levers ON vs OFF** on all 6 golden chapters. Full report:
+> [`docs/baseline/timings_V0.19.md`](docs/baseline/timings_V0.19.md).
+> Suite 5,532 → **5,573 passed / 0 failed** (+41 Phase-6 tests).
+
+**Phase 6.1 — profile first (the call graph):** the golden chapter makes
+exactly 5 LLM calls — primary summarize (heavy) → grounding check →
+gap-fill reprompt → scholar reflection → truncation retry — and they form
+a STRICT dependency chain (the retry continues the scholar response; the
+gap-fill prompt embeds post-grounding-check bullets; the scholar sees
+post-judge bullets). LLM time is 98.5% of wall-clock, so the only levers
+that matter reduce or overlap round-trips. This trace is what makes the
+golden chapter's −23.3% a *cap*, not a shortfall (the math is in the
+report).
+
+**Phase 6.2 — the overlap engine + three levers (commits 4d40dfa…):**
+- `core/summarisation/stage_overlap.py` — the thread-based engine (the
+  roadmap's sanctioned alternative to `async_provider.gather_calls`:
+  the async provider speaks Ollama only, while the thread engine wraps
+  the same sync callables every provider already uses, reusing the
+  transport concurrency proven by cross-chapter workers). Ordered
+  results, inline sequential fallback, lowest-index exception
+  semantics (what the sequential loop would have raised).
+- **MAP**: map-reduce chunks in bounded waves — independent by design,
+  same prompts (the prompt builder is extracted and SHARED so the
+  sequential and overlapped paths cannot drift), budget enforced per
+  wave. **−57.0%** on the 13-chunk bench chapter.
+- **B3**: the 3 multi-sample voting calls overlapped; the 2×120s
+  inter-sample VRAM sleeps exist to serialize local samples and are
+  skipped on this (opt-in, cloud-oriented) path. **−44.2%**.
+- **JUDGE-SCHOLAR**: the scholar reflection launches from a pre-judge
+  hook (after the validation prologue settles the summary state) and
+  overlaps the judge LLM tail; the result is MERGED when the 5
+  scholar-input keys survived the tail unchanged (the golden path: a
+  grounded summary the judge does not touch) or DISCARDED + re-run
+  inline when they did not (drop paths = exactly pre-V0.19). Skipped
+  on dual-model architectures (call_fast_llm switches models
+  mid-call — racy) and when the reflections-text variant is on.
+  **−23.3%** on the golden chapter — the dependency-chain cap.
+- Bench modes: `--parallel-stages` (the acceptance configuration) +
+  `--bench-mode b3|mapreduce` — two deterministic new benchmark paths
+  exercising the levers end-to-end. Two eager-call wiring bugs (results
+  passed instead of closures — the B3/map waves ran sequentially then
+  crashed) were caught by these modes before commit.
+
+**Phase 6.3 — bounded cloud queue concurrency (commit 5325860):**
+`ui_qt/queue_parallel.py` (PySide6-free, headless-testable) +
+QueueView wiring: up to `queue.max_parallel_books` (default 2, clamp 4)
+books convert concurrently when the provider is CLOUD — local providers
+always sequential (the VRAM acceptance: max_workers logic untouched for
+the local path). Per-book cancel events (stop cancels every active
+book), per-book progress signal, prefixed status/log lines, crash
+isolation, and the shared controller slots (converter / cancel_event /
+current-idx bridge) are never touched.
+
+**Phase 6.4 — cache instrumentation (commit a3e57f1):** response-cache
+eviction counter (the budget-tuning signal), mid-run periodic hit-rate
+summary every 200 lookups, end-of-run hit-rate summaries for BOTH caches
+at INFO. Budgets deliberately unchanged — no eviction data exists yet;
+the counter is the evidence-gatherer.
+
+**Acceptance evidence** (all in `docs/ROADMAP_V0.12.md` Phase 6 with the
+measured numbers): golden −23.3% (cap, math shown), B3 −44.2%,
+map-reduce −57.0%; outputs byte-identical ON vs OFF on all 6 golden
+chapters (TestGoldenEquivalence) and vs the committed fixtures; freeze
+14/14; `make eval-check` → "EVAL GATE: OK — no quality regressions vs
+baseline"; VRAM behavior unchanged by default. The real-rig ≥15% leg is
+a measured projection with soak instructions (report §6) — no rig in
+the dev sandbox.
+
 ## V0.18 — Phase 5 "De-Monolithization Round 3": no core file over 2,500 lines; _summarize_inner is a 170-line orchestrator
 
 > **The change:** execution of Phase 5 of the approved V0.12 roadmap
