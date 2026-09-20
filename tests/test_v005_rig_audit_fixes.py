@@ -338,14 +338,16 @@ class TestLengthPolicy:
         chapters (scaled thorough hi >= 800) expand below 800 words (V18's
         contract); small sources keep the source-scaled lo (the 97-Things
         anti-padding rule), never a flat 800 for everything."""
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        src = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         assert "(800 if _th_hi_lp >= 800 else _th_lo_lp)" in src, (
             "the expansion threshold must be regime-split (V18: 800 for "
             "normal chapters, source-scaled for small ones)"
         )
 
     def test_bullet_expansion_threshold_is_source_scaled(self):
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1, steps 2-4): the expansion gates moved VERBATIM to
+        # chapter_phases.py (SummarizerChapterPhasesMixin).
+        src = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         assert "len(bullets) < _bp_lo_lp" in src
         assert "len(bullets) < 30" not in src
 

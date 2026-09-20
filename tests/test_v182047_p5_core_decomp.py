@@ -319,7 +319,10 @@ class TestSummarizerInheritance:
         # V0.18 (Phase 5.1, step 1): SummarizerChapterPhasesMixin joined the
         # bases (the post-judge phases of _summarize_inner moved VERBATIM to
         # core.summarisation.chapter_phases).
+        # V0.18 (Phase 5.1, step 5): + SummarizerInitMixin (the _init_*
+        # sub-constructors moved to core.summarisation.summarizer_init).
         assert [ast.unparse(b) for b in cls.bases] == [
+            "SummarizerInitMixin",
             "SummarizerChapterPhasesMixin",
             "SummarizerAdditiveMixin",
             "SummarizerThoroughFloorMixin",
