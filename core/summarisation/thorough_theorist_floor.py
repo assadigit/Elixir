@@ -105,12 +105,36 @@ class SummarizerThoroughFloorMixin:
             )
             if not _missing:
                 return thorough
-            # ── Repair decision (O3: one targeted call, deadline-gated) ──
-            # The deadline check itself logs the honest "skipping optional
-            # phase" WARNING when exceeded, so the floor line above stays
-            # the recorded verdict and the repair simply does not fire.
+            # ── Repair decision (O3: one targeted call) ──────────────────
+            # V0.20 (Quality Campaign, audit V0.18 on the standing test
+            # chapter, Defect C): this gap-fill is NON-SKIPPABLE on deadline.
+            # The V0.18 rig run took 1551s > 1200s deadline and skipped this
+            # phase (conversion-log "skipping optional phase: thorough
+            # theorist floor gap-fill") — the thorough shipped with 13/37
+            # theorists (35%), missing 5 named contributors. This is the
+            # ONLY phase that repairs thorough-theorist coverage: the recall
+            # floor (V18.20.3.4) guarantees theorist coverage in the
+            # BULLETS, but nothing else enforces a floor on the THOROUGH.
+            # Skipping it on a deadline overrun trades a timing constraint
+            # for a coverage deficit — the opposite of the V0.20 campaign
+            # goal ("QUALITY, not timing"). The V18.20.3.4 precedent
+            # (post-gap-fill dedup made non-skippable because "it is the
+            # ONLY pass that runs after the gap-fill rounds, so skipping it
+            # ships every duplicate the gap-fill introduced") applies
+            # directly: skipping this ships every theorist the thorough
+            # missed. The single targeted call (~60-130s) is bounded by
+            # _call_llm_with_empty_retry's own timeout + the fail-soft
+            # try/except below — the worst case is one extra bounded call,
+            # not an unbounded hang.
             if self._deadline_exceeded("thorough theorist floor gap-fill"):
-                return thorough
+                self.log(
+                    f"    ⏱️⚠️ V0.20: Deadline exceeded but the thorough "
+                    f"theorist floor gap-fill is NON-SKIPPABLE (the thorough "
+                    f"is missing {_covered}/{_total} theorists — coverage "
+                    f"deficit is the V0.20 campaign target; timing is not). "
+                    f"Running the one targeted call anyway.",
+                    "WARNING",
+                )
             _tf_words = len((thorough or "").split())
             # V0.05 (rig audit F9b): BUDGET GATE — the 150-300-word append is
             # skipped when the thorough already meets its SOURCE-SCALED target

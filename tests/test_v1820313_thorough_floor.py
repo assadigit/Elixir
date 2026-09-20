@@ -289,26 +289,60 @@ def test_source_clamped_to_40k_chars(monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 3) Deadline exceeded + floor unmet → no call, honest WARNING floor line
+# 3) Deadline exceeded + floor unmet → V0.20: NON-SKIPPABLE, the call fires
+#    anyway, honest WARNING that the deadline is overridden for coverage.
+#    (V18.20.3.13 originally skipped on deadline; the V0.20 Quality Campaign
+#    audit V0.18 found the skip shipped a thorough with 13/37 theorists — the
+#    thorough floor is the ONLY phase that repairs thorough-theorist
+#    coverage, so skipping it trades timing for the campaign's target.)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_deadline_exceeded_no_call_honest_warning(monkeypatch):
+def test_deadline_exceeded_call_fires_anyway_coverage_over_timing(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
-    s, llm_calls, analysis = _make_bare(deadline_dead=True)
+    # Deadline IS exceeded, but the gap-fill MUST fire (V0.20 Defect C fix).
+    # The canned response is the same <thorough_addition> the happy-path test
+    # uses — the call fires, the addition is appended, the floor is repaired.
+    s, llm_calls, analysis = _make_bare(responses=[_CANNED], deadline_dead=True)
     result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
-    assert llm_calls == [], "deadline exceeded must suppress the repair call"
-    assert result == _THOROUGH
+    # V0.20: the call FIRES despite the deadline (non-skippable).
+    assert len(llm_calls) == 1, (
+        "deadline exceeded must NOT suppress the thorough floor repair call "
+        "(V0.20 Defect C: coverage > timing — the floor is the ONLY phase that "
+        "repairs thorough-theorist coverage)"
+    )
+    # The thorough is repaired (addition appended).
+    assert result != _THOROUGH
+    assert "Ibarra" in result, "the missing theorist is woven into the thorough"
     fl = _floor_lines(s.log_lines)
-    # The floor verdict is recorded honestly as unmet (WARNING)…
+    # The floor verdict is recorded honestly as unmet (WARNING) before the repair…
     assert any(
         lvl == "WARNING" and "Thorough theorist floor: 1/2 authors in thorough" in msg
         for lvl, msg in fl
     )
-    # …and the real _deadline_exceeded skip line fired for this phase.
+    # …the V0.20 NON-SKIPPABLE WARNING fired (the deadline is acknowledged
+    # but the call runs anyway)…
     assert any(
-        "skipping optional phase: thorough theorist floor gap-fill" in msg
-        for _lvl, msg in s.log_lines
+        "NON-SKIPPABLE" in msg and "Deadline exceeded" in msg for _lvl, msg in s.log_lines
+    ), "the V0.20 non-skippable WARNING must fire when the deadline is overridden"
+    # …and the after-line reports the measured improvement.
+    assert any("V18.20.3.13 Thorough gap-fill: floor 1/2 → 2/2" in msg for _lvl, msg in fl)
+
+
+def test_deadline_exceeded_empty_response_falls_back_honestly(monkeypatch):
+    """V0.20: even with the deadline exceeded, the call fires; if the model
+    returns empty, the fail-soft WARNING fires and the thorough is unchanged
+    (the floor stays the honest 1/2 — coverage was attempted, not silently
+    dropped)."""
+    monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
+    s, llm_calls, analysis = _make_bare(responses=["", ""], deadline_dead=True)
+    result = s._thorough_theorist_floor("Chapter One", _SOURCE, _THOROUGH, analysis)
+    # The call fired (2 = initial + empty-retry nudge), not suppressed.
+    assert len(llm_calls) == 2
+    assert result == _THOROUGH
+    fl = _floor_lines(s.log_lines)
+    assert any(
+        lvl == "WARNING" and "Thorough gap-fill call returned empty" in msg for lvl, msg in fl
     )
 
 
