@@ -583,9 +583,15 @@ class TestBuriedLogsRaised:
         """The logger.debug traces are KEPT (only the visible WARNING was
         added) — pinned so a future cleanup doesn't drop the debug detail."""
         # V0.13: format-wrapped logger.debug( calls — pin message + logger call
+        # V0.18 (Phase 5.1, steps 2-4): the CoT-gate and thorough-judge
+        # re-run handlers moved VERBATIM to chapter_phases.py — the pins
+        # follow the moved bodies.
+        _phases_src = (
+            _project_root / "core" / "summarisation" / "chapter_phases.py"
+        ).read_text(encoding="utf-8")
         assert "logger.debug(" in _SUMMARIZER_SRC
-        assert '"parse-time CoT gate crashed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
-        assert '"thorough-judge re-run failed (non-fatal): %s: %s"' in _SUMMARIZER_SRC
+        assert '"parse-time CoT gate crashed (non-fatal): %s: %s"' in _phases_src
+        assert '"thorough-judge re-run failed (non-fatal): %s: %s"' in _phases_src
 
 
 # ════════════════════════════════════════════════════════════════════════════

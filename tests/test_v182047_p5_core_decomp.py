@@ -60,6 +60,7 @@ _SUM = _project_root / "core" / "summarisation" / "summarizer.py"
 _ADD = _project_root / "core" / "summarisation" / "additive_sections.py"
 _FLOOR = _project_root / "core" / "summarisation" / "thorough_theorist_floor.py"
 _PA = _project_root / "core" / "summarisation" / "prompt_assembly.py"
+_PB = _project_root / "core" / "summarisation" / "prompt_builders.py"  # V0.18 (Phase 5.1, step 6)
 _DET = _project_root / "core" / "summarisation" / "postcheck_detectors.py"
 _GFB = _project_root / "core" / "summarisation" / "gap_fill_batch.py"
 _CI = _project_root / "core" / "pipeline" / "converter_impl.py"
@@ -97,8 +98,9 @@ _MOVED_TO_CHAPTER_PHASES = (
 _NOT_MOVED_NEIGHBOURS = (
     "_recover_vram",  # generic VRAM recovery — deliberately NOT moved
     "_scholar_reflection",  # P1 scholar wiring — stays in summarizer.py
-    "_summarize_inner",  # explicitly out of the approved P5 scope
-    "_build_prompt",  # the LIVE inline primary-prompt builder
+    "_summarize_inner",  # the orchestrator — stays in summarizer.py (V0.18: 170 lines)
+    # V0.18 (Phase 5.1, step 6): _build_prompt moved VERBATIM to
+    # prompt_builders.py (SummarizerPromptMixin) — removed from this list.
 )
 _LIVE_PA_FUNCTIONS = (
     "build_thorough_followup",
@@ -321,7 +323,10 @@ class TestSummarizerInheritance:
         # core.summarisation.chapter_phases).
         # V0.18 (Phase 5.1, step 5): + SummarizerInitMixin (the _init_*
         # sub-constructors moved to core.summarisation.summarizer_init).
+        # V0.18 (Phase 5.1, step 6): + SummarizerPromptMixin (the prompt
+        # builders moved to core.summarisation.prompt_builders).
         assert [ast.unparse(b) for b in cls.bases] == [
+            "SummarizerPromptMixin",
             "SummarizerInitMixin",
             "SummarizerChapterPhasesMixin",
             "SummarizerAdditiveMixin",
@@ -475,8 +480,12 @@ class TestWa3DeadTwinGone:
         assert not offenders, offenders
 
     def test_live_inline_builder_still_in_summarizer(self):
-        """The LIVE inline _build_prompt stays in summarizer.py."""
-        methods = _methods(_class(ast.parse(_src(_SUM)), "Summarizer"))
+        """The LIVE inline _build_prompt builder still exists (V0.18 Phase
+5.1 step 6: moved VERBATIM to prompt_builders.py — the pin follows)."""
+
+        methods = _methods(
+            _class(ast.parse(_src(_PB)), "SummarizerPromptMixin")
+        )
         assert "_build_prompt" in methods
 
 

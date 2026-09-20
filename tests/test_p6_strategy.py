@@ -149,10 +149,11 @@ class TestLegacyParity:
 
     def test_legacy_constants_match_the_live_codebase(self):
         """The local constants are the LIVE hardcoded values (drift-catch):
-        summarizer.py's MAP_* attrs and settings.py's b4 default."""
-        summarizer_src = (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
-            encoding="utf-8"
-        )
+        the MAP_* attrs (V0.18 Phase 5.1 step 5: _init_map_reduce_and_prompts
+        moved VERBATIM to summarizer_init.py) and settings.py's b4 default."""
+        summarizer_src = (
+            _project_root / "core" / "summarisation" / "summarizer_init.py"
+        ).read_text(encoding="utf-8")
         assert f"self.MAP_CHUNK_TOKENS = {4000}" in summarizer_src
         assert f"self.MAP_CHUNK_OVERLAP = {LEGACY_MAP_OVERLAP}" in summarizer_src
         assert f"self.MAP_REDUCE_THRESHOLD = {LEGACY_MAP_REDUCE_THRESHOLD}" in summarizer_src
