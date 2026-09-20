@@ -312,27 +312,79 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
         # (fail-open, WARNING). ONE retry max — no sleeps, no budget
         # changes; max_tokens stays 6144.
         if _response_truncated:
-            log(
-                "    \U0001f4dc Scholar response truncated \u2014 one additive "
-                "continuation retry (V18.20.4.12 / O-a4)",
-                "INFO",
-            )
+            # V0.20.2 (Quality Campaign, conversion-log audit Defect L2):
+            # the O-a4 retry is COUNTERPRODUCTIVE when the scholar prompt is
+            # already near the context cap. The retry prompt = the original
+            # prompt + a ~60-token continuation suffix + the last 2000 chars
+            # of the truncated response, so it is ALWAYS larger than the
+            # original prompt. When the original prompt is already near the
+            # context cap, the retry hits the CONTEXT window (not the
+            # output cap) and produces even less output. The V0.18 rig run
+            # (run 20260920-084745-c0874728) showed this exactly: call 5
+            # prompt 13418 tok + output 2710 tok (truncated at the 8192
+            # output cap); the O-a4 retry (call 6) prompt grew to 14003 tok
+            # + output 2125 tok = 16128 > 16000 num_ctx → done_reason=length
+            # AGAIN, and the output was dropped (no quotes). 133s wasted.
+            # The V18.14.1 batch gap-fill (already chunked, small prompts,
+            # quote-enforced) is the working fallback — it ran immediately
+            # after and produced 27 bullets in 384s.
+            #
+            # Content-agnostic guard (no chapter-specific thresholds): the
+            # retry is skipped when the continuation prompt would leave less
+            # than MIN_OUTPUT_ROOM_FOR_RETRY tokens of output headroom under
+            # the context cap. The threshold is a RATIO of the output budget
+            # the retry requests (max_tokens=6144) — 25%, i.e. 1536 tok. This
+            # is the minimum useful output a retry could produce; a retry
+            # that can only emit < 1536 tok before hitting the context cap
+            # cannot complete a truncated gap_fill_bullets section.
             try:
-                _cont_prompt = (
-                    prompt + "\n\nCONTINUATION REQUEST: your previous response was "
-                    "cut off at the output token cap before it completed. "
-                    "Continue EXACTLY where the previous output stopped \u2014 "
-                    "do NOT repeat any content you already produced, and "
-                    "close all open section tags (</scholar_reflections>, "
-                    "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
+                from utils.token_counter import count_tokens
+
+                _prompt_tok = count_tokens(prompt)
+                # Continuation overhead: the ~60-token suffix + the last
+                # 2000 chars of `raw` (≈500 tok). Conservative estimate.
+                _cont_overhead_tok = 60 + count_tokens(raw[-2000:])
+                _retry_max_output = 6144
+                _min_output_room = _retry_max_output // 4  # 1536 tok
+                _retry_would_overflow = (
+                    _prompt_tok + _cont_overhead_tok + _min_output_room > max_context_tokens
                 )
-                _cont = call_fast_llm(
-                    _cont_prompt,
-                    temperature=temperature,
-                    max_tokens=6144,
+            except Exception:  # pragma: no cover — guard must never break the stage
+                _retry_would_overflow = False
+
+            if _retry_would_overflow:
+                log(
+                    f"    ⏭️  V0.20.2: Scholar O-a4 retry SKIPPED \u2014 the "
+                    f"continuation prompt (~{_prompt_tok + _cont_overhead_tok} "
+                    f"tok) would leave < {_min_output_room} tok of output "
+                    f"headroom under the {max_context_tokens}-tok context cap; "
+                    f"the retry would hit the context window (the V0.18 rig "
+                    f"Defect L2 shape). The V18.14.1 batch gap-fill (chunked, "
+                    f"quote-enforced) will handle the missing theorists.",
+                    "WARNING",
                 )
-                if _cont:
-                    _cont = strip_thinking(_cont)
+            else:
+                log(
+                    "    \U0001f4dc Scholar response truncated \u2014 one additive "
+                    "continuation retry (V18.20.4.12 / O-a4)",
+                    "INFO",
+                )
+                try:
+                    _cont_prompt = (
+                        prompt + "\n\nCONTINUATION REQUEST: your previous response was "
+                        "cut off at the output token cap before it completed. "
+                        "Continue EXACTLY where the previous output stopped \u2014 "
+                        "do NOT repeat any content you already produced, and "
+                        "close all open section tags (</scholar_reflections>, "
+                        "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
+                    )
+                    _cont = call_fast_llm(
+                        _cont_prompt,
+                        temperature=temperature,
+                        max_tokens=6144,
+                    )
+                    if _cont:
+                        _cont = strip_thinking(_cont)
                     _combined = raw + "\n" + _cont
                     # Re-read the provider flag AFTER the second call (the
                     # ContextVar is consume-on-read) + re-run the tag
@@ -355,20 +407,20 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                     )
                     raw = _combined
                     _response_truncated = _still_truncated
-            except Exception as _cont_e:
-                # Fail-open: the original single-parse path (with its
-                # verdict qualification) runs on the FIRST response.
-                log(
-                    f"    \u26a0\ufe0f Scholar continuation retry failed \u2014 "
-                    f"falling back to the single-parse path (non-fatal): "
-                    f"{_cont_e}",
-                    "WARNING",
-                )
-                logger.debug(
-                    "scholar continuation retry failed: %s: %s",
-                    type(_cont_e).__name__,
-                    _cont_e,
-                )
+                except Exception as _cont_e:
+                    # Fail-open: the original single-parse path (with its
+                    # verdict qualification) runs on the FIRST response.
+                    log(
+                        f"    \u26a0\ufe0f Scholar continuation retry failed \u2014 "
+                        f"falling back to the single-parse path (non-fatal): "
+                        f"{_cont_e}",
+                        "WARNING",
+                    )
+                    logger.debug(
+                        "scholar continuation retry failed: %s: %s",
+                        type(_cont_e).__name__,
+                        _cont_e,
+                    )
 
         # Parse the <scholar_reflections> section (identification)
         srm = re.search(
