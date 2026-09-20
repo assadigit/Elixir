@@ -540,12 +540,30 @@ def is_label_stub(bullet: str) -> bool:
     quoted-epigraph label). Carries no claim: conveys that a topic
     exists but says nothing about it. Ship-time only (a legitimate short
     label in the generation stream is allowed to exist until final
-    assembly, where the audit defect class is removed)."""
+    assembly, where the audit defect class is removed).
+
+    V0.20 (Quality Campaign, audit V0.18 on the standing test chapter,
+    Defect E): the <8-word filter let through longer label stubs that
+    END WITH A COLON — bullets like "Two conditions for ego organization
+    and drive neutralization:" or "Oedipal child has two routes:" — which
+    introduce sub-content (a list, sub-bullets) that is NOT in the shipped
+    set (the sub-bullets were dropped or never generated). A shipped
+    bullet ending with a bare ':' is a label introducer with nothing to
+    introduce: zero legitimate colon-ending bullets exist across all 6
+    golden fixtures (verified), so this is a safe, zero-false-positive
+    extension. The colon-ending check fires regardless of word count or
+    verb presence — even a verb-bearing bullet ending with ':' is a
+    label ("X has two routes:") because the claim it introduces ("the
+    two routes are A and B") is absent."""
     if not bullet:
         return False
     text = bullet.strip()
     if len(text) < 10:
         return False  # sub-10-char items are handled by the <15-char drop
+    # V0.20 (Defect E): a shipped bullet ending with a bare colon is a
+    # label introducer whose sub-content is absent — drop it.
+    if text.endswith(":"):
+        return True
     if len(text.split()) >= 8:
         return False
     if _LIGHT_VERB_RE.search(text):

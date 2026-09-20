@@ -172,6 +172,32 @@ class TestClassifyScar:
             "ego identity versus existential identity and the identity principle"
         )
 
+    def test_colon_ending_label_stub_v020(self):
+        """V0.20 (Quality Campaign, audit V0.18 on the standing test
+        chapter, Defect E): the <8-word filter let through label stubs
+        that END WITH A COLON — they introduce sub-content (a list,
+        sub-bullets) absent from the shipped set. Zero legitimate
+        colon-ending bullets exist across all 6 golden fixtures (verified),
+        so a shipped bullet ending with ':' is a label stub regardless of
+        word count or verb presence."""
+        # The V0.18 rig-run shapes (verbatim from the shipped summary):
+        assert is_label_stub("Two conditions for ego organization and drive neutralization:")
+        assert is_label_stub("Oedipal child has two routes:")
+        # A verb-bearing colon-ender is still a label (the claim it
+        # introduces — "the two routes are A and B" — is absent).
+        assert is_label_stub("The author identified two main routes:")
+        # A short colon-ender (above the 10-char floor) is a label.
+        assert is_label_stub("Two routes:")
+        # A completed sentence ending with a period is NOT a stub.
+        assert not is_label_stub("The author identified two main routes clearly.")
+        # A mid-colon bullet that does NOT end with a colon is not caught
+        # by this detector (it's a different defect shape — out of scope
+        # for this fix; the mid-colon + no-verb case is handled by the
+        # <8-word + no-verb path when it's short enough).
+        assert not is_label_stub(
+            "Mahler (1968) distinguished psychological birth from biological birth."
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RC-1 layer 2 — classify_bullets drops the scar classes at generation time
