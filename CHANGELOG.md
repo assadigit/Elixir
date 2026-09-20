@@ -1,5 +1,31 @@
 # Changelog
 
+## 🏁 Session wrap — the V0.12 roadmap is fully executed (V0.13 → V0.19)
+
+> All seven phases of the approved `docs/ROADMAP_V0.12.md` cleanup-and-
+> stabilization roadmap ran end-to-end: every phase was released, pushed,
+> and CI-verified green on `main`. The suite grew **3,668 → 5,573 passed
+> (local) / 5,561 (CI)** with zero failures at every release tag, and the
+> golden-pipeline outputs stayed byte-identical through every refactor.
+>
+> | Release | Phase | Theme | Headline result |
+> |---------|-------|-------|-----------------|
+> | V0.13 | 0 | Green Gates | fresh installs repaired; CI green for the first time (3,668 passed); ruff format/check clean repo-wide |
+> | V0.14 | 1 | Baselines & Measurement | golden chapters frozen (byte-identical outputs); timing harness; honest coverage gate |
+> | V0.15 | 2 | Test-Net Deepening | 5,401 tests; ≥80% per-package coverage gates; property-based suites |
+> | V0.16 | 3 | Security & Config Hardening | every API key in the OS keychain; no secret ever in a config file or log |
+> | V0.17 | 4 | Accuracy & Reliability Harness | quality regressions mechanically detectable — deterministic scorecards + `make eval-check` gate (hallucination 0%, coverage floors) |
+> | V0.18 | 5 | De-Monolithization Round 3 | no core file over 2,500 lines; `_summarize_inner` is a 170-line orchestrator (from 1,712); verbatim moves, golden freeze byte-identical after every step |
+> | V0.19 | 6 | Performance | intra-chapter LLM-call overlap levers (default OFF, independently disableable); golden −23.3% (at its dependency-chain cap), B3 −44.2%, map-reduce −57.0%; outputs byte-identical ON vs OFF on all 6 golden chapters |
+>
+> **Next up — a new agenda (not part of V0.12):** a dedicated
+> testing-and-debugging **quality campaign**: run real books, audit the
+> summaries with the standing four-pillar expert fact-checker framework
+> ([`docs/EVALUATION_FRAMEWORK.md`](docs/EVALUATION_FRAMEWORK.md)), analyze
+> conversion logs, and fix the pipeline **evidence-first** — no
+> refactoring, no modularization. Objective: 9–10/10 per pillar on every
+> audited book. Campaign charter: [`docs/ROADMAP_V0.20.md`](docs/ROADMAP_V0.20.md).
+
 ## V0.19 — Phase 6 "Performance": intra-chapter LLM-call overlap levers, cloud queue concurrency, cache instrumentation
 
 > **The change:** execution of Phase 6 of the approved V0.12 roadmap
