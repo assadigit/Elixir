@@ -36,6 +36,7 @@ between these phases.
 
 from __future__ import annotations
 
+import re
 import time
 
 from core.models import SummaryResult
@@ -940,3 +941,943 @@ class SummarizerChapterPhasesMixin:
 
     # ─────────────────────────────────────────────────────────────────────────
     # V10.28.0 (Sprint 1.4): Quarantine recovery pass
+
+    def _phase_setup_and_gate(self, heading, content, book_context):
+        """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""
+        self._source_text = content
+        # V10.28.0 (Sprint 1): track the current chapter heading so every
+        # quarantine entry records which chapter the dropped bullet came from.
+        self._current_heading = heading
+        # V18.20.3.2 (P0-1): per-chapter CoT/synthetic flags — RESET every
+        # chapter so a CoT nuke in chapter N never leaks into chapter N+1's
+        # re-derivation decisions.
+        self._primary_thorough_cot_nuked = False
+        self._primary_exec_cot_nuked = False
+        self._thorough_is_synthetic = False
+        src_tokens = count_tokens(content)
+        text = content
+        tok_in = 0
+
+        # V17.2/V17.5: Prepend deterministic analysis to the text gemma sees.
+        # V17.5 fix: uses find_analysis_for_heading() instead of fragile
+        # heading-to-filename matching. Searches the ENTIRE output tree.
+        try:
+            from core.preprocessing.deterministic_analyzer import find_analysis_for_heading
+
+            _seg_path, _analysis = find_analysis_for_heading(
+                self.request.output_dir,
+                heading,
+                log_fn=lambda msg, level="DEBUG": self.log(msg, level),
+            )
+            if _analysis:
+                # V18.1 (audit Q2): Inject cross-chapter running context BEFORE
+                # the deterministic analysis and chapter text. This gives the LLM
+                # awareness of what previous chapters already covered, preventing
+                # repetition and improving cross-chapter synthesis.
+                _book_ctx_block = ""
+                if book_context:
+                    _book_ctx_block = (
+                        f"## PREVIOUS CHAPTERS SYNTHESIS (for continuity — "
+                        f"do NOT repeat this content, focus on THIS chapter's NEW content):\n"
+                        f"{book_context}\n\n---\n\n"
+                    )
+                text = _book_ctx_block + _analysis + "\n\n---\n\n## CHAPTER TEXT\n\n" + text
+                self.log(
+                    f"    📊 V17.2: Prepended deterministic analysis ({len(_analysis)} chars) — citation recall 78%→100%",
+                    "INFO",
+                )
+                if book_context:
+                    self.log(
+                        f"    📚 V18.1: Cross-chapter context injected ({len(book_context)} chars from previous chapters)",
+                        "INFO",
+                    )
+            else:
+                self.log(
+                    "    ⚠️ V17.5: No deterministic analysis found — running without prepend (old behavior)",
+                    "DEBUG",
+                )
+        except Exception as _e:
+            self.log(f"    ⚠️ V17.5: Deterministic analysis load failed: {_e}", "WARNING")
+
+        # Empty/near-empty input gate — if the segment
+        # has almost no content (< 80 tokens), DO NOT call the LLM.  Sending
+        # an empty prompt causes the model to fabricate an entire essay from
+        # its training data (the karsan2022 Memantine hallucination).  Mark
+        # as failed instead.
+        if src_tokens < 80:
+            msg = f"Segment too small ({src_tokens} tokens) — skipping to prevent hallucination"
+            self.log(f"    🚫 {msg}", "WARNING")
+            return SummaryResult(
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary="",
+                success=False,
+                error_msg=msg,
+                input_tokens=src_tokens,
+                output_tokens=0,
+            )
+        return src_tokens, text, tok_in
+
+    def _phase_single_pass_primary(
+        self,
+        heading,
+        content,
+        concepts,
+        callouts,
+        _p6_b4_threshold,
+        _p6_decide_strategy,
+        _p6_output,
+        _p6_window,
+    ):
+        """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner (dedented one level from the single-pass else leg)."""
+        # ── Prepare text (truncate if needed) ──────────────────────────
+        text = self._prepare_text(content)
+        tok_in = count_tokens(text)
+
+        # ── Primary model pass (V3.2.0 B1: pass concepts + callouts) ───
+        # For long chapters (>8000 tokens), try section map-reduce
+        # first — it guarantees every section gets LLM attention.
+        model = self.primary_model
+        self.log(f"    ⚡ Using primary model: {model}", "INFO")
+        if concepts:
+            self.log(
+                f"    🎯 Injecting {len(concepts)} concepts + {len(callouts or [])} callouts into prompt",
+                "DEBUG",
+            )
+
+        result = None
+        # B4: Section map-reduce for long chapters
+        # V18.2 (audit): Threshold is now configurable via
+        # settings.summarisation.b4_threshold_tokens (default 12000).
+        # Was hardcoded 8000, which triggered B4 for a 9127-token chapter
+        # = 3 LLM calls + must-have pre-flight + consolidation = 6 calls.
+        # On a 27B/12GB card (spilling to CPU), each call takes 10+ min,
+        # so 6 calls = 1 hour. Raising to 12000 lets most chapters
+        # (under ~50 pages) do single-pass = 1 call = ~10 min.
+        # The original V13.40.3 comment said B4 gave 85% coverage vs 62%
+        # single-pass at 9k tokens — but that was with Gemma 12B.
+        # For 27B models with larger context windows, single-pass at 9k
+        # tokens should be fine. Users can lower to 8000 if coverage drops.
+        # V0.10 (P6): the B4 gate ALSO routes through decide_strategy —
+        # computed on tok_in (the POST-_prepare_text token count,
+        # exactly what the legacy gate compared). At legacy windows its
+        # b4_sections decision is EXACTLY `tok_in > _b4_threshold`
+        # (byte-parity, both legs agree); at windows > 32768 B4 is
+        # DISABLED — a chapter that fits the window in one call has no
+        # truncation for B4 to recover from. The settings read moved to
+        # the P6 decision block above (same value, read once).
+        _b4_threshold = _p6_b4_threshold
+        _b4_decision = _p6_decide_strategy(
+            tok_in,
+            _p6_window,
+            _p6_output,
+            b4_threshold=_b4_threshold,
+            map_reduce_threshold=self.MAP_REDUCE_THRESHOLD,
+        )
+        if tok_in > _b4_threshold and _b4_decision.strategy == "b4_sections":
+            self.log(
+                f"    📑 Chapter is long ({tok_in:,} tokens > {_b4_threshold:,} threshold) — trying section map-reduce (B4)…",
+                "INFO",
+            )
+            result = self._section_map_reduce(heading, text, concepts, callouts)
+            if result:
+                self.log("    ✅ Section map-reduce succeeded", "INFO")
+                # V13.40.0: Recover VRAM after B4 map-reduce. The 3+ sequential
+                # LLM calls (each ~4 min) leave the GPU stressed. Without
+                # recovery, subsequent self-review + gap-fill return empty.
+                self._recover_vram(context="post-B4-map-reduce", delay_sec=10.0)
+            else:
+                self.log("    ℹ️ Section map-reduce not applicable — using single-pass", "DEBUG")
+
+        # Standard single-pass if B4 didn't apply or failed
+        if not result:
+            result = self._summarize_with_model(
+                heading,
+                text,
+                model,
+                self.temperature,
+                with_cot=True,
+                concepts=concepts,
+                callouts=callouts,
+            )
+
+        if not result:
+            msg = f"Primary model {model} returned no response"
+            self.log(f"    ❌ {msg}", "ERROR")
+            # V18.15.6.0 (Fix B): distinguish "model not installed" (404)
+            # from "model timed out during generation" (HTTP timeout). The
+            # pre-V18.15.6.0 code always said "not installed" even when the
+            # model WAS loaded (S19 pre-warm succeeded 20 min earlier) and
+            # the real cause was a per-call HTTP timeout mid-generation.
+            # The _last_llm_error_type is set by _call_ollama based on the
+            # error_tracker out-param propagated from llm_dispatcher.
+            _err_type = getattr(self, "_last_llm_error_type", None)
+            if _err_type == "timeout":
+                hint = (
+                    f"Likely cause: model '{model}' timed out after {self.timeout}s "
+                    f"during generation (the model WAS loaded — S19 pre-warm succeeded; "
+                    f"the per-call HTTP timeout fired mid-generation). "
+                    f"Fix: raise `local.http_timeout_sec` in Settings (current: {self.timeout}s), "
+                    f"or reduce input size, or switch to a faster quant."
+                )
+            elif _err_type == "oom":
+                hint = (
+                    f"Likely cause: model '{model}' ran out of VRAM (OOM). "
+                    f"Fix: reduce `summarisation_max_context_tokens` in Settings, "
+                    f"or switch to a smaller model."
+                )
+            elif _err_type == "not_found":
+                hint = (
+                    f"Likely cause: model '{model}' is not installed in Ollama. "
+                    f"Fix: `ollama pull {model}`, or change the model in Settings → Summarisation."
+                )
+            else:
+                # "empty" or unknown — keep the legacy hint (covers the
+                # short-response-after-retry case where no exception fired).
+                hint = (
+                    f"Likely cause: model '{model}' returned an empty/short response after retry. "
+                    f"If persistent: check Ollama is running (`ollama list` shows '{model}'), "
+                    f"or raise `local.http_timeout_sec` in Settings, or switch to a faster quant."
+                )
+            self.log(f"    💡 {hint}", "ERROR")
+            return SummaryResult(
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary="",
+                success=False,
+                error_msg=f"{msg}. {hint}",
+                input_tokens=tok_in,
+                output_tokens=0,
+            )
+
+        # ── Verbose: log what the model returned ───────────────────────
+        _bps_count = len([b for b in result.get("bullet_points", []) if b])
+        _exec_len = len(result.get("executive_summary", ""))
+        _thorough_len = len(result.get("thorough_summary", ""))
+        self.log(
+            f"    📝 Parsed: exec={_exec_len} chars, bullets={_bps_count}, thorough={_thorough_len} chars",
+            "DEBUG",
+        )
+
+        # V0.06 (rig audit F1-b — GENERAL RULE: the output selection is
+        # the contract, enforced at PARSE time): when the user did not
+        # request a thorough summary, ANY thorough content the model
+        # produced anyway (the parser's leftover fallback can capture
+        # unrequested additive-section output; a low-bit model may emit
+        # the tag regardless) is discarded HERE, so every downstream
+        # stage (coverage, judges, expansion gates, render) sees the
+        # contract state: no thorough. The V0.05 rig shipped "Thorough
+        # Summary" sections to a user who unchecked the output because
+        # this gate did not exist.
+        if not bool(getattr(self.request, "include_thorough_summary", True)):
+            if (result.get("thorough_summary", "") or "").strip():
+                self.log(
+                    f"    V0.06: thorough_summary not requested — discarding "
+                    f"{_thorough_len} chars of unrequested thorough content "
+                    f"(output-selection contract).",
+                    "DEBUG",
+                )
+            result["thorough_summary"] = ""
+        if not bool(getattr(self.request, "include_keypoints", True)):
+            if result.get("bullet_points", []):
+                self.log(
+                    f"    V0.06: keypoints not requested — discarding "
+                    f"{_bps_count} unrequested bullet(s) "
+                    f"(output-selection contract).",
+                    "DEBUG",
+                )
+            result["bullet_points"] = []
+        if not bool(getattr(self.request, "include_executive_summary", True)):
+            if (result.get("executive_summary", "") or "").strip():
+                self.log(
+                    f"    V0.06: executive_summary not requested — discarding "
+                    f"{_exec_len} chars of unrequested exec content "
+                    f"(output-selection contract).",
+                    "DEBUG",
+                )
+            result["executive_summary"] = ""
+
+        # ── V18.20.3.2 (audit N2+N3 / P0-1a): PARSE-TIME CoT gate ──────
+        # The V18.20.3.1 real-rig run's primary call returned exec=0 and
+        # a 34,794-char thorough that was 100% chain-of-thought. Nothing
+        # detected it until run_post_checks fired the V18.19.2.2 CoT-nuke
+        # 26 MINUTES later — by then every thorough-section gate (the
+        # V18.14 thorough-only judge, gap-fill decisions) had already
+        # validated the CoT text, and the shipped "Thorough Summary" was
+        # a verbatim copy of the 191-word exec. Nuking HERE means every
+        # downstream stage sees the REAL state: the dedicated-thorough
+        # path regenerates a real thorough, coverage is computed on real
+        # text (CoT inflates it — the model's reasoning mentions
+        # everything), and the V18.14 judges measure what ships.
+        try:
+            from core.summarisation.postchecks import detect_cot_narrative
+
+            _p_tho = result.get("thorough_summary", "") or ""
+            if _p_tho:
+                _p_tho_clean, _p_tho_cot = detect_cot_narrative(_p_tho, "thorough")
+                if _p_tho_cot:
+                    self.log(
+                        f"    🚨 V18.20.3.2: primary-call thorough is CoT "
+                        f"narrative ({len(_p_tho)} chars, {_p_tho_cot[0].detail[:60]}…) "
+                        f"— DISCARDED AT PARSE TIME. The dedicated-thorough "
+                        f"call will regenerate a real one; all downstream "
+                        f"gates will judge the REAL text.",
+                        "WARNING",
+                    )
+                    result["thorough_summary"] = ""
+                    self._primary_thorough_cot_nuked = True
+            _p_exec = result.get("executive_summary", "") or ""
+            if _p_exec:
+                _p_exec_clean, _p_exec_cot = detect_cot_narrative(_p_exec, "exec")
+                if _p_exec_cot:
+                    self.log(
+                        f"    🚨 V18.20.3.2: primary-call exec is CoT "
+                        f"narrative ({len(_p_exec)} chars) — DISCARDED AT "
+                        f"PARSE TIME (exec-from-thorough will re-derive).",
+                        "WARNING",
+                    )
+                    result["executive_summary"] = ""
+                    self._primary_exec_cot_nuked = True
+        except Exception as _cot_e:
+            logger.debug(
+                "parse-time CoT gate crashed (non-fatal): %s: %s", type(_cot_e).__name__, _cot_e
+            )
+            # V18.20.4.11 (P2 / W-a12): the CoT gate is anti-hallucination
+            # machinery — a crashed gate silently re-admits CoT narrative
+            # as "summary" text. The DEBUG-only trace made that invisible
+            # in every real-rig log. Keep the debug trace, ADD a visible
+            # WARNING (honesty-machinery failures must be LOUD).
+            self.log(
+                f"    ⚠️ V18.20.4.11: parse-time CoT gate crashed (non-fatal — "
+                f"gate skipped for this chapter): "
+                f"{type(_cot_e).__name__}: {_cot_e}",
+                "WARNING",
+            )
+
+        # ── Compute coverage ────────────────────────────────────────────
+        _bps = [
+            str(b) if not isinstance(b, str) else b for b in result.get("bullet_points", []) if b
+        ]
+        combined_summary = f"{result.get('executive_summary', '')} {' '.join(_bps)} {result.get('thorough_summary', '')}"
+        coverage = self._compute_coverage(content, combined_summary)
+        self._last_coverage = coverage  # V13.40.4: for self-review skip decision
+        self.log(
+            f"    📊 Primary coverage: {coverage:.0%} | keywords: {self._extract_keywords(content, n=8)}",
+            "INFO",
+        )
+
+        # DEBUG — log which keywords are found vs missing for
+        # diagnosing low-coverage chapters (e.g. Chapter 3 at 61%).
+        _all_kw = self._extract_keywords(content, n=18)
+        _sl = combined_summary.lower()
+        _found = [k for k in _all_kw if k in _sl]
+        _missing = [k for k in _all_kw if k not in _sl]
+        self.log(
+            f"    🔍 Coverage detail: {len(_found)}/{len(_all_kw)} keywords found | "
+            f"missing: {_missing[:8]}{'…' if len(_missing) > 8 else ''}",
+            "DEBUG",
+        )
+
+        # ── Heavy model fallback ──────────────────────────────────────────
+        # Multi-sampling + voting fallback for low coverage
+        _used_b3_voting = False
+        # V15.1.1: B3 disabled by default — damages conceptual depth.
+        # The consensus voting produces bland exec summaries (402 chars
+        # vs V13.45.5's 974 chars) and loses specific theorist details.
+        # When disabled, coverage falls through to 3-Tier + gap-fill +
+        # over-delivery, which is deterministic and targeted.
+        if (
+            round(coverage, 2) < self.coverage_threshold
+            and not self.heavy_model
+            and self.b3_voting_enabled
+        ):  # V15.1.1: gated
+            self.log(
+                f"    🔄 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – trying multi-sample voting (B3)…",
+                "INFO",
+            )
+            voted = self._multi_sample_summarize(heading, text, concepts, callouts, n_samples=3)
+            if voted:
+                _vbps = [
+                    str(b) if not isinstance(b, str) else b
+                    for b in voted.get("bullet_points", [])
+                    if b
+                ]
+                voted_combined = f"{voted.get('executive_summary', '')} {' '.join(_vbps)} {voted.get('thorough_summary', '')}"
+                voted_coverage = self._compute_coverage(content, voted_combined)
+                self.log(f"    📊 Voted coverage: {voted_coverage:.0%}", "INFO")
+                if voted_coverage > coverage:
+                    result = voted
+                    coverage = voted_coverage
+                    _used_b3_voting = True
+                    self._last_coverage = coverage  # V13.40.5: update for self-review skip
+                    self.log(
+                        f"    ✅ Multi-sample voting improved coverage to {coverage:.0%}",
+                        "INFO",
+                    )
+        elif round(coverage, 2) < self.coverage_threshold and not self.b3_voting_enabled:
+            self.log(
+                f"    ℹ️ Coverage {coverage:.0%} < {self.coverage_threshold:.0%} — B3 voting disabled, "
+                f"will rely on over-delivery + gap-fill + 3-Tier Guarantee to push toward {self._effective_target:.0%}",
+                "INFO",
+            )
+
+        if coverage < self.coverage_threshold and self.heavy_model:
+            self.log(
+                f"    🔥 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – using heavy model: {self.heavy_model}",
+                "INFO",
+            )
+            heavy_result = self._summarize_with_model(
+                heading, text, self.heavy_model, self.temperature * 0.5, with_cot=True
+            )
+            if heavy_result:
+                _hbps = [
+                    str(b) if not isinstance(b, str) else b
+                    for b in heavy_result.get("bullet_points", [])
+                    if b
+                ]
+                heavy_combined = f"{heavy_result.get('executive_summary', '')} {' '.join(_hbps)} {heavy_result.get('thorough_summary', '')}"
+                heavy_coverage = self._compute_coverage(content, heavy_combined)
+                self.log(f"    📊 Heavy coverage: {heavy_coverage:.0%}", "INFO")
+                if heavy_coverage > coverage:
+                    merged_bullets = list(heavy_result.get("bullet_points", []))
+                    for bp in result.get("bullet_points", []):
+                        if bp not in merged_bullets:
+                            merged_bullets.append(bp)
+                    result["executive_summary"] = heavy_result.get(
+                        "executive_summary", result.get("executive_summary", "")
+                    )
+                    result["thorough_summary"] = heavy_result.get(
+                        "thorough_summary", result.get("thorough_summary", "")
+                    )
+                    result["bullet_points"] = merged_bullets[: self.max_bullets_per_chapter]
+                    result["model"] = "primary+heavy"
+                    self.log("    ✅ Merged primary + heavy summaries", "INFO")
+                else:
+                    for bp in heavy_result.get("bullet_points", []):
+                        if bp not in result.get("bullet_points", []):
+                            result["bullet_points"].append(bp)
+                    result["bullet_points"] = result["bullet_points"][
+                        : self.max_bullets_per_chapter
+                    ]
+                    result["model"] = "primary+heavy_bullets"
+                    self.log("    ✅ Added unique heavy bullets to primary summary", "INFO")
+            else:
+                self.log("    ⚠️ Heavy model returned no response, keeping primary", "WARNING")
+
+        # ── V13.32.8: 3-Tier Coverage Guarantee System ──────────────────
+        # V15.1.0: Use _effective_target (over-delivery target when enabled,
+        # falls back to coverage_threshold). This is the "don't settle" logic:
+        # if user set 85% but over-delivery target is 92%, we keep gap-filling
+        # until 92% (or no more concepts to fill).
+        if coverage < self._effective_target:
+            _od_note = ""
+            if self.overdeliver_enabled and self.overdeliver_target > self.coverage_threshold:
+                _od_note = f" (over-deliver: floor {self.coverage_threshold:.0%} → target {self.overdeliver_target:.0%})"
+            self.log(
+                f"    📈 Coverage {coverage:.0%} < effective target {self._effective_target:.0%}"
+                f"{_od_note} — applying 3-Tier Guarantee",
+                "INFO",
+            )
+            coverage = self._apply_3tier_coverage(
+                heading,
+                text,
+                content,
+                result,
+                coverage,
+            )
+
+        # ── Old academic-rigor gap-fill: removed in V0.08 (P2) — it was an
+        # `if False` dead block since V18.6, superseded by the 3-Tier
+        # coverage guarantee above. ──
+
+        # ── Post-filter: remove thinking-process bullets + quality scoring ─
+        # Pass concepts + source_text for quality scoring
+        # Skip aggressive C1/C4 filtering if B3 voting was used —
+        # voted bullets are already consensus-validated across 3 samples.
+        if _used_b3_voting:
+            # Light filtering only: strip thinking + narrative, no quality scoring
+            result["bullet_points"] = self._filter_thinking_bullets(
+                result.get("bullet_points", []),
+                concepts=None,  # None = skip C1 quality scoring
+                source_text="",  # empty = skip C4 numeric verification
+            )
+            self.log(
+                f"    ℹ️ B3 voted bullets — skipping aggressive C1/C4 filtering (kept {len(result.get('bullet_points', []))})",
+                "DEBUG",
+            )
+        else:
+            result["bullet_points"] = self._filter_thinking_bullets(
+                result.get("bullet_points", []),
+                concepts=concepts,
+                source_text=content,
+            )
+        result["executive_summary"] = self._strip_thinking(result.get("executive_summary", ""))
+        result["thorough_summary"] = self._strip_thinking(result.get("thorough_summary", ""))
+
+        # V18.19.2.4 (Crash Fix) / V18.20.1.2 (refactored to _save_checkpoint):
+        # Emergency checkpoint save of the primary-call output BEFORE the
+        # additive-sections / judge / postchecks phases. See _save_checkpoint
+        # docstring for the full rationale. See audit/results/audit_V18.19.2.3_crash.md.
+        self._save_checkpoint(heading, result, label="primary")
+
+        # ── A3: Fact-Checking Pipeline (deterministic) ────────────────
+        # For each bullet, fuzzy-match against the source text. If no
+        # match > 60% similarity, mark as "⚠️ Unverified".
+        result["bullet_points"] = self._verify_bullets(result.get("bullet_points", []), content)
+
+        # V13.39.0: Anti-hallucination verification for additive sections.
+        # V13.40.0: First, ensure the sections are populated — in academic-rigor
+        # JSON mode, the model often omits key_distinctions/theoretical_tensions.
+        # This followup call populates them if empty, then verification checks them.
+        self._ensure_additive_sections(heading, content, result)
+        self._verify_additive_sections(heading, content, result)
+
+        # V18.20.1.2 (crash mitigation): SECOND checkpoint AFTER additive
+        # sections + bullet verification. The V18.19.2.4 crash (process killed
+        # during additive-sections) + the V18.20.1.1 crash (process killed
+        # during thorough-expansion, which runs AFTER additive-sections)
+        # showed that the primary-call checkpoint alone isn't enough — the
+        # additive-sections call is expensive and can crash, losing its output.
+        # This checkpoint captures the state AFTER additive sections are
+        # populated, so if the thorough-expansion call (the next expensive
+        # phase) crashes, the user still gets exec + bullets + key_distinctions
+        # + theoretical_tensions. The thorough may be empty (if the primary
+        # didn't produce it), but that's strictly better than losing everything.
+        self._save_checkpoint(heading, result, label="post-additive-sections")
+
+        # V13.6.0: Create BulletPipeline + PipelineState EARLY — needed
+        # by self-consistency/review (line 2654) and academic factual
+        # verification (line 2730), which both run BEFORE the F4/Phase2.2
+        # pipeline stages. Previously _pipeline was created at line ~2772,
+        # causing UnboundLocalError when academic_rigor triggered the
+        # self-review path.
+        from core.summarisation.bullet_pipeline import BulletPipeline, PipelineState
+
+        _pipeline = BulletPipeline(self)
+        _pstate = PipelineState(
+            heading=heading,
+            content=content,
+            bullets=result.get("bullet_points", []),
+            exec_sum=result.get("executive_summary", ""),
+            thorough=result.get("thorough_summary", ""),
+        )
+
+        # V10.36.0: Self-consistency + self-review extracted to BulletPipeline.
+        _pipeline.run_self_consistency_and_review(_pstate, result, heading, text)
+        result = _pstate.__dict__.get("_result", result)  # get updated result if modified
+        parsed = result
+        return _pipeline, _pstate, coverage, parsed, text, tok_in
+
+    def _phase_thorough_and_coverage(self, heading, content, text, parsed):
+        """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""
+        # ── Ensure thorough is long enough ──────────────────────────────────
+        exec_sum = parsed.get("executive_summary", "")
+        bullets = parsed.get("bullet_points", [])
+        thorough = parsed.get("thorough_summary", "")
+        # V18.2.34: Replaced the old "len(thorough) < len(exec_sum) * 2" check
+        # (a fragile character-length heuristic) with a strict 800-word floor.
+        # V0.05 (rig audit F9b — GENERAL RULE REPLACEMENT): the floor is no
+        # longer the absolute 800 — it SCALES to the source (length_policy:
+        # thorough_target). The V0.04 rig proved the absolute floor's failure
+        # mode end-to-end: 321-441-word chapters were force-EXPANDED to >=800
+        # words (the delivered thorough sections measured 1.55-2.76x their
+        # sources, padded with invented context — hallucination-by-
+        # instruction). A short chapter's thorough summary is ALLOWED to be
+        # short: ~90-150 words for a 340-word chapter is the correct
+        # deliverable. The dedicated expansion call now only fires when the
+        # thorough is short RELATIVE TO ITS SCALED TARGET — and never when
+        # the user did not request a thorough summary at all (F9a).
+        from core.summarisation.length_policy import (
+            bullet_target as _bp_target_lp,
+        )
+        from core.summarisation.length_policy import (
+            count_source_words as _csw_lp,
+        )
+        from core.summarisation.length_policy import (
+            thorough_target as _th_target_lp,
+        )
+
+        _src_words_lp = _csw_lp(text)
+        _th_lo_lp, _th_hi_lp = _th_target_lp(_src_words_lp)
+        _bp_lo_lp, _bp_hi_lp = _bp_target_lp(_src_words_lp)
+        _inc_thorough_lp = bool(getattr(self.request, "include_thorough_summary", True))
+        _inc_exec_lp = bool(getattr(self.request, "include_executive_summary", True))
+        _inc_kp_lp = bool(getattr(self.request, "include_keypoints", True))
+        _thorough_words = len(thorough.split()) if thorough else 0
+        # V0.07 (output-regression fix): normal chapters (scaled thorough
+        # hi >= 800 — the V18 regime) expand below 800 words, restoring
+        # MarkItDown V18's expansion contract; small sources (the 97-Things
+        # rig regime, hi < 800) keep the source-scaled lo so tiny chapters
+        # are never force-expanded to 800+ words.
+        _new_threshold = (800 if _th_hi_lp >= 800 else _th_lo_lp) if _inc_thorough_lp else 0
+        # V18.20.3.2 (P0-1b): snapshot the synthetic-fallback counter BEFORE
+        # the dedicated call — if it increments, the returned thorough is the
+        # deterministic exec+bullets synthesis built from the EARLY bullet
+        # set (pre-expansion, pre-gap-fill). The final stage re-derives it
+        # from the FINAL bullet set in that case (see the postchecks block).
+        _syn_fb_before = getattr(self, "_synthetic_thorough_fallback_count", 0)
+        if _inc_thorough_lp and (not thorough or _thorough_words < _new_threshold):
+            self.log(
+                f"    ⚠️ thorough_summary too short ({_thorough_words} words < {_new_threshold} threshold) — requesting dedicated expansion…",
+                "WARNING",
+            )
+            # V18.2.44 (Next Step #6): replaced the 2-attempt
+            # ``_call_llm_with_empty_retry`` with the new 3-attempt +
+            # synthetic-fallback helper. The V18.2.43 session noted the
+            # dedicated expansion "sometimes fails (empty responses)" — this
+            # makes the path robust: 3 attempts at varying temperature /
+            # nudges, then a deterministic exec+bullets synthesis so the
+            # thorough is NEVER empty (was silently degrading to a 1-para
+            # ``thorough = exec_sum`` stub before).
+            _dedicated_prompt = self._build_dedicated_thorough_prompt(
+                heading,
+                text,
+                exec_sum,
+                bullets,
+                # V18.20.3.11 (Phase 3.b, .3.9 rig audit §2): pass the
+                # primary's partial thorough as the continuation draft —
+                # it was cut at the primary's output cap (423-763 words
+                # across rig runs .3.7-.3.9) and previously discarded,
+                # paying the truncation twice. Empty/CoT-nuked thorough
+                # renders the block inert (draft=None path).
+                draft=(thorough or None),
+            )
+            fu_raw = self._call_dedicated_thorough_with_fallback(
+                _dedicated_prompt,
+                exec_sum=exec_sum,
+                bullets=bullets,
+                min_words=_new_threshold,
+            )
+            if fu_raw:
+                fu_raw = self._strip_thinking(fu_raw)
+                m = re.search(r"<thorough_summary>(.*?)</thorough_summary>", fu_raw, re.DOTALL)
+                if m:
+                    _new_thorough = m.group(1).strip()
+                else:
+                    _new_thorough = fu_raw.strip()
+                if _new_thorough and len(_new_thorough.split()) > _thorough_words:
+                    thorough = _new_thorough
+                    self.log(
+                        f"    ✅ thorough_summary expanded via dedicated call: {_thorough_words} → {len(thorough.split())} words",
+                        "INFO",
+                    )
+                elif _new_thorough:
+                    self.log(
+                        f"    ℹ️ Dedicated thorough call returned {len(_new_thorough.split())} words (not longer than original {_thorough_words}) — keeping original",
+                        "DEBUG",
+                    )
+        # V18.20.3.2 (P0-1b): flag when the dedicated call fell back to the
+        # deterministic synthesis (early bullets only) — the final stage
+        # rebuilds it from the final bullet set.
+        self._thorough_is_synthetic = (
+            getattr(self, "_synthetic_thorough_fallback_count", 0) > _syn_fb_before
+        )
+        # V18.15.8.0 (Fix 1): Reorder — produce thorough first, then derive
+        # exec FROM thorough. The thorough summary has a dedicated system with
+        # 100% coverage (the dedicated thorough call at line 3060 ensures
+        # thorough is NEVER empty). When exec_sum is empty, we derive it FROM
+        # the thorough summary via a followup LLM call — NOT the pre-V18.15.8.0
+        # backwards fallback (``thorough = exec_sum`` which copied an empty
+        # string when exec was also empty, causing the V18.15.7.0 cascade
+        # failure where BOTH exec + thorough were empty).
+        # V0.05 (F9a): the exec-from-thorough derivation only fires when the
+        # user actually requested an executive summary — the flags are the
+        # contract.
+        if _inc_exec_lp and not exec_sum and thorough and len(thorough.strip()) >= 50:
+            exec_sum = self._ensure_exec_from_thorough(heading, thorough)
+            if exec_sum:
+                parsed["executive_summary"] = exec_sum
+        # Last-resort fallback (rare now — only fires if BOTH the dedicated
+        # thorough call AND the exec-from-thorough call failed).
+        # V0.05 (F9a): never fabricate a thorough the user did not request.
+        if not thorough and _inc_thorough_lp:
+            thorough = exec_sum
+
+        # V18.2.34: Dedicated bullet expansion. If the primary call returned
+        # <30 bullets, fire a STANDALONE bullet-expansion LLM call (full
+        # output budget) asking for 30-50 NEW bullets. The existing bullets
+        # are kept; new bullets are de-duplicated against them before being
+        # appended. This addresses the V18.2.28 regression where the
+        # primary call was truncated by the 2048-token output cap and
+        # returned only 4-7 bullets per chapter.
+        bullets = parsed.get("bullet_points", bullets) or bullets
+        # V18.15.4.0: Skip bullet expansion for short chapters (< 10000 tokens)
+        # that already have >= 20 bullets. The expansion call adds ~7 minutes
+        # and is unnecessary for short chapters with adequate coverage. The
+        # gap-fill loop will still add any missing theorists. This prevents
+        # the deadline from being consumed by expansion on chapters that
+        # don't need it (the the rig-test chapter is 9120 tokens with 24
+        # bullets — expansion to 71 was overkill and pushed past the deadline).
+        _input_tok = count_tokens(text)
+        # V18.15.4.3: Raised threshold 9000 -> 10000 tok (the V18.15.4.0 run hit
+        # 9120 tok and the skip didn't fire, pushing past the 2400s deadline).
+        # V0.05 (rig audit F9b — GENERAL RULE): the expansion floor/ceiling now
+        # SCALE to the source (length_policy.bullet_target) instead of the
+        # absolute "<30 → ask for 30-50". The V0.04 rig shipped 29-36 bullets
+        # for 321-441-word chapters (one bullet per ~12 source words — the
+        # chapter restated as bullets) because this machinery pushed every
+        # chapter toward 30+. A 340-word chapter's target is ~5-7 bullets; the
+        # expansion call does not fire at all when the primary already met the
+        # SCALED target. Also gated on the user's keypoints selection (F9a).
+        _skip_expansion = not _inc_kp_lp or bool(bullets and len(bullets) >= _bp_lo_lp)
+        if _skip_expansion and _inc_kp_lp:
+            self.log(
+                f"    V0.05: Skipping bullet expansion — {len(bullets or [])} bullets "
+                f"already meet the source-scaled target ({_bp_lo_lp}-{_bp_hi_lp} for "
+                f"a {_src_words_lp}-word chapter; gap-fill will handle missing "
+                f"concepts).",
+                "INFO",
+            )
+        elif not _inc_kp_lp:
+            self.log(
+                "    V0.05 (F9a): Keypoints not requested — bullet expansion "
+                "disabled for this chapter.",
+                "DEBUG",
+            )
+        if (
+            _inc_kp_lp
+            and bullets
+            and len(bullets) < _bp_lo_lp
+            and not self._deadline_exceeded("dedicated bullet expansion")
+            and not _skip_expansion
+        ):
+            self.log(
+                f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
+                "INFO",
+            )
+            _bp_raw = self._call_llm_with_empty_retry(
+                self._build_dedicated_bullet_prompt(heading, text, exec_sum, bullets),
+                model=self.primary_model,
+                temperature=self.temperature,
+                max_tokens=min(self.request.summarisation_max_output_tokens, 8192),
+            )
+            if _bp_raw:
+                _bp_raw = self._strip_thinking(_bp_raw)
+                _new_bullets = self._extract_bullets_from_text(_bp_raw)
+                if _new_bullets and len(_new_bullets) > len(bullets):
+                    _existing_lower = {b.lower()[:60] for b in bullets}
+                    # V18.20.3.2 (audit N1 / P0-2): BATCH-filter the expansion
+                    # candidates in ONE call, then append the survivors. The
+                    # V18.20.3.1 path filtered per-bullet (37 separate filter
+                    # calls): the aggregate log line ("Filtered 1 thinking …
+                    # kept 0") described only the LAST call, hiding that 36
+                    # unfiltered candidates had sailed through — and two
+                    # model SELF-TALK lines ("AuthorW (1968) - include this!
+                    # Let me add it.") shipped to the final output because the
+                    # start-anchored thinking patterns missed them (they start
+                    # with an author-year token). One batch call = one honest
+                    # aggregate log + the new mid-bullet self-talk patterns
+                    # (SELF_TALK_PATTERNS) catch the planning-note class.
+                    _candidates = [
+                        nb for nb in _new_bullets if nb.lower()[:60] not in _existing_lower
+                    ]
+                    _filtered = self._filter_thinking_bullets(
+                        _candidates,
+                        concepts=None,
+                        source_text="",
+                    )
+                    _added = 0
+                    for fb in _filtered:
+                        if fb.lower()[:60] not in _existing_lower:
+                            bullets.append(fb)
+                            _existing_lower.add(fb.lower()[:60])
+                            _added += 1
+                    _dropped_exp = len(_candidates) - _added
+                    if _dropped_exp > 0:
+                        self.log(
+                            f"    🎓 V18.20.3.2: Expansion filter dropped "
+                            f"{_dropped_exp}/{len(_candidates)} candidate bullet(s) "
+                            f"(thinking/prompt-leakage/self-talk) before merge",
+                            "INFO",
+                        )
+                    if _added > 0:
+                        self.log(
+                            f"    ✅ Bullet expansion: {len(bullets) - _added} → {len(bullets)} bullets (added {_added} new via dedicated call)",
+                            "INFO",
+                        )
+                        parsed["bullet_points"] = bullets
+
+        # ── Final coverage check ─────────────────────────────────────────────
+        # Sanitize bullets — ensure all items are strings (academic-rigor JSON
+        # parsing can leave dicts in the list, which crashes str.join).
+        bullets = [str(b) if not isinstance(b, str) else b for b in bullets if b]
+        final_summary = f"{exec_sum} {' '.join(bullets)} {thorough}"
+        coverage = self._compute_coverage(content, final_summary)
+
+        # Adaptive coverage threshold — start at the
+        # configured threshold (now 70%+ by default), but after 3 retries,
+        # accept best-effort rather than looping forever.  change:
+        # the floor is raised from 50% → 60%, and when best-effort is accepted
+        # BELOW the 70% target, the warning explicitly says so (no silent
+        # acceptance of low coverage).  This honours the "70% minimum" goal
+        # while still terminating on hard books.
+        if not hasattr(self, "_coverage_retry_counts"):
+            self._coverage_retry_counts = {}
+        chapter_retry_key = heading[:50]
+        self._coverage_retry_counts[chapter_retry_key] = (
+            self._coverage_retry_counts.get(chapter_retry_key, 0) + 1
+        )
+        retry_count = self._coverage_retry_counts[chapter_retry_key]
+
+        effective_threshold = self.coverage_threshold
+        if retry_count > 3:
+            # floor at 60% (was 50%) — never silently accept below that.
+            effective_threshold = max(0.60, self.coverage_threshold - 0.10)
+            if coverage < 0.70:
+                self.log(
+                    f"    ⚠️ Coverage at {coverage:.0%} after {retry_count} retries — "
+                    f"BELOW the 70% target. Accepting best-effort to avoid "
+                    f"infinite retries, but this chapter needs manual review.",
+                    "WARNING",
+                )
+            else:
+                self.log(
+                    f"    📉 Coverage at {coverage:.0%} after {retry_count} retries — "
+                    f"accepting best effort (threshold {self.coverage_threshold:.0%})",
+                    "WARNING",
+                )
+
+        if coverage < effective_threshold:
+            self.log(
+                f"    ⚠️ Final coverage {coverage:.0%} below {effective_threshold:.0%} threshold",
+                "WARNING",
+            )
+        else:
+            self.log(f"    ✅ Final coverage {coverage:.0%}", "INFO")
+        return (
+            _bp_hi_lp,
+            _bp_lo_lp,
+            _inc_exec_lp,
+            _inc_kp_lp,
+            _inc_thorough_lp,
+            _src_words_lp,
+            _th_hi_lp,
+            bullets,
+            coverage,
+            exec_sum,
+            final_summary,
+            thorough,
+        )
+
+    def _phase_validation_and_judge(
+        self,
+        heading,
+        content,
+        concepts,
+        tok_in,
+        coverage,
+        exec_sum,
+        bullets,
+        thorough,
+        final_summary,
+        _pipeline,
+        _pstate,
+    ):
+        """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""
+        # ── Strip thinking from all final fields one more time ──────────────
+        exec_sum = self._strip_thinking(exec_sum)
+        bullets = [self._strip_thinking(bp) for bp in bullets]
+        thorough = self._strip_thinking(thorough)
+        thorough = self._strip_narrative_from_thorough(thorough)
+
+        # V10.32.0 (Sprint 4 s2): Academic factual-claim verification
+        # delegated to BulletPipeline. (extracted verbatim — see
+        # BulletPipeline.apply_academic_factual_verification)
+        _pstate.bullets = bullets
+        _pstate.content = content
+        _pipeline.apply_academic_factual_verification(_pstate)
+        bullets = _pstate.bullets
+
+        # V10.32.0 (Sprint 4 s2): Empty-output salvage delegated to BulletPipeline.
+        # (extracted verbatim — see BulletPipeline.salvage_empty_output)
+        # Returns True if the chapter should continue, False if it should fail.
+        _pstate.bullets = bullets
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        if not _pipeline.salvage_empty_output(_pstate):
+            msg = "Summary is empty after all validation checks — marking as failed"
+            self.log(f"    🚫 {msg}", "ERROR")
+            return SummaryResult(
+                chapter_heading=heading,
+                executive_summary="",
+                bullet_points=[],
+                thorough_summary=thorough,
+                success=False,
+                error_msg=msg,
+                input_tokens=tok_in,
+                output_tokens=count_tokens(final_summary),
+            )
+        bullets = _pstate.bullets
+        exec_sum = _pstate.exec_sum
+        thorough = _pstate.thorough
+
+        # V10.32.0 (Sprint 4 s2): F1 length validation delegated to BulletPipeline.
+        # (extracted verbatim — see BulletPipeline.apply_f1_length_validation)
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        _pipeline.apply_f1_length_validation(_pstate)
+        exec_sum = _pstate.exec_sum
+        thorough = _pstate.thorough
+
+        # ── V10.31.0 (Sprint 4.1): F4 + Phase 2.2 stages delegated to
+        # BulletPipeline.  The inline implementations were extracted verbatim
+        # into ``core/summarisation/bullet_pipeline.py`` (BulletPipeline
+        # .apply_f4_source_overlap + .apply_phase22_semantic_fact_check).
+        # This is the first step of the Sprint 4 architecture refactor —
+        # ``_summarize_inner`` will progressively delegate more stages until
+        # it's a ≤100-line orchestrator (session 2 completes the extraction).
+        # V13.6.0: _pipeline + _pstate already created above (before self-review).
+        # Just refresh the state with current bullets/exec_sum/thorough.
+        _pstate.bullets = bullets
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        _pipeline.apply_f4_source_overlap(_pstate)
+        _pipeline.apply_phase22_semantic_fact_check(_pstate)
+        bullets = _pstate.bullets
+
+        # ── V10.32.0 (Sprint 4 s2): F3 reading level + informational checks
+        # extracted to BulletPipeline.  These are informational-only (log
+        # but don't modify state, except F3 which may simplify thorough).
+        _pstate.bullets = bullets
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        _pipeline.apply_f3_reading_level(_pstate)
+        _pipeline.run_informational_checks(_pstate)
+        thorough = _pstate.thorough
+
+        # ── V10.32.0 (Sprint 4 s2): gap-fill extracted to BulletPipeline ─
+        _pstate.bullets = bullets
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        _pipeline.gap_fill_concepts(_pstate, concepts)
+        bullets = _pstate.bullets
+
+        # V10.32.0 (Sprint 4 s2): F3 reading level, I2/J2/J3 informational
+        # checks, and gap-fill are now delegated to BulletPipeline above.
+        # The inline implementations were extracted verbatim — see
+        # BulletPipeline.apply_f3_reading_level / .run_informational_checks
+        # / .gap_fill_concepts.
+
+        # V10.32.0 (Sprint 4 s2): Content Judge stage extracted to
+        # BulletPipeline.run_content_judge().  This was the largest inline
+        # block (~490 lines) — grounding checks, gap-fill reprompts, hard
+        # rejection.  Returns None to continue, or a SummaryResult on hard reject.
+        # V13.41.1: VRAM recovery + try/except wrapper. The content judge
+        # runs langextract which loads a second model into VRAM — after B4 +
+        # gap-fill, the GPU is exhausted and langextract can OOM-crash.
+        _pstate.bullets = bullets
+        _pstate.exec_sum = exec_sum
+        _pstate.thorough = thorough
+        self._recover_vram(context="pre-content-judge", delay_sec=15.0)
+        try:
+            _reject = _pipeline.run_content_judge(_pstate, coverage, tok_in, final_summary)
+        except Exception as _e:
+            self.log(f"    ⚠️ Content judge crashed (non-fatal): {_e}", "WARNING")
+            logger.debug("content judge crashed: %s: %s", type(_e).__name__, _e)
+            _reject = None  # skip the judge, continue with current bullets
+        if _reject is not None:
+            return _reject
+        bullets = _pstate.bullets
+        return bullets, exec_sum, thorough

@@ -204,9 +204,12 @@ class TestParseTimeCoTGate:
         # And the source contains the reset block (regression pin).
         import inspect
 
-        src = inspect.getsource(Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, steps 2-4): the per-chapter reset block moved
+        # VERBATIM to the setup phase; the CoT gate to the single-pass phase.
+        src = inspect.getsource(Summarizer._phase_setup_and_gate)
         assert "_primary_thorough_cot_nuked = False" in src
         assert "_thorough_is_synthetic = False" in src
+        src = inspect.getsource(Summarizer._phase_single_pass_primary)
         assert "PARSE-TIME CoT gate" in src
 
     def test_parse_gate_and_rederivation_source_pins(self):
@@ -217,6 +220,9 @@ class TestParseTimeCoTGate:
         from core.summarisation.summarizer import Summarizer
 
         src = inspect.getsource(Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, steps 2-4): the parse-time CoT gate moved
+        # VERBATIM to the single-pass phase method.
+        src = inspect.getsource(Summarizer._phase_single_pass_primary)
         assert "DISCARDED AT PARSE TIME" in src
         # V0.18 (Phase 5.1, step 1): the re-derivation/re-run block moved
         # VERBATIM to the postchecks phase method.
@@ -232,6 +238,9 @@ class TestParseTimeCoTGate:
         from core.summarisation.summarizer import Summarizer
 
         src = inspect.getsource(Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, steps 2-4): the expansion filter moved VERBATIM
+        # to the thorough-and-coverage phase method.
+        src = inspect.getsource(Summarizer._phase_thorough_and_coverage)
         assert "BATCH-filter the expansion" in src
         assert "Expansion filter dropped" in src
 

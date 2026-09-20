@@ -81,11 +81,18 @@ _MOVED_TO_ADDITIVE = (
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
 # V0.18 (Phase 5.1, step 1): the post-judge phases of _summarize_inner moved
 # VERBATIM to chapter_phases (SummarizerChapterPhasesMixin).
+# V0.18 (Phase 5.1, steps 2-4): + the setup gate, single-pass primary,
+# thorough/coverage, and validation/judge phases — _summarize_inner is now a
+# 170-line orchestrator (strategy dispatch + state threading only).
 _MOVED_TO_CHAPTER_PHASES = (
     "_phase_recovery_pass",
     "_phase_deterministic_judge",
     "_phase_postchecks_and_floors",
     "_phase_finalize",
+    "_phase_setup_and_gate",
+    "_phase_single_pass_primary",
+    "_phase_thorough_and_coverage",
+    "_phase_validation_and_judge",
 )
 _NOT_MOVED_NEIGHBOURS = (
     "_recover_vram",  # generic VRAM recovery — deliberately NOT moved

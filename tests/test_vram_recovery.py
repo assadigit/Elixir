@@ -177,6 +177,9 @@ class TestB4Threshold:
         source = inspect.getsource(Summarizer._summarize_inner)
         # V18.2: threshold is now read from settings, not hardcoded
         assert "b4_threshold_tokens" in source
+        # V0.18 (Phase 5.1, steps 2-4): the B4 gate moved VERBATIM to the
+        # single-pass phase method.
+        source = inspect.getsource(Summarizer._phase_single_pass_primary)
         assert "tok_in > _b4_threshold" in source
 
 

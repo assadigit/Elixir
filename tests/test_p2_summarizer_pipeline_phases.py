@@ -205,13 +205,20 @@ LEGACY_MODEL = "mystery-model-x"
 class TestStrategyDispatch:
     def test_map_reduce_route_parses_then_hits_pstate_bug(self, tmp_path):
         """The P6 map-reduce route drives the REAL map+reduce calls and the
-        post-parse ladder — then hits the ``_pstate`` UnboundLocalError at
-        line ~4606 (REPORTED P0 bug, see worklog-P2-C1): ``_pipeline`` /
-        ``_pstate`` are only assigned inside the single-pass ``else`` branch
-        (line ~4308), so every chapter routed through map-reduce crashes at
-        the first delegated stage. ``summarize_chapters`` catches this and
-        fails the chapter. This test LOCKS the current behavior (no
-        production edit allowed in Phase 2)."""
+        post-parse ladder — then hits the ``_pipeline``/``_pstate``
+        UnboundLocalError (REPORTED P0 bug, see worklog-P2-C1): ``_pipeline``
+        / ``_pstate`` are only assigned inside the single-pass branch, so
+        every chapter routed through map-reduce crashes at the first
+        delegated stage. ``summarize_chapters`` catches this and fails the
+        chapter. This test LOCKS the current behavior (no production edit
+        allowed in Phase 2).
+
+        V0.18 (Phase 5.1, steps 2-4): the crash now surfaces at the
+        ``_phase_validation_and_judge`` CALL SITE (evaluating its arguments)
+        instead of inside the validation stage — the first unbound name
+        encountered is ``_pipeline`` (argument order), but the failure mode
+        is byte-identical: same exception type, same catch, same failed
+        chapter."""
         heading = "Big Chapter"
         source = a_chapter(paragraphs=60)  # ~2700 tokens > lowered threshold
         logs: list[tuple[str, str]] = []
@@ -224,7 +231,7 @@ class TestStrategyDispatch:
         s.MAP_REDUCE_THRESHOLD = 500  # route this mid-size chapter to map-reduce
         ScriptedLLM(primary_response=_full_response(source)).install(s)
         fresh_deadline(s)
-        with pytest.raises(UnboundLocalError, match="_pstate"):
+        with pytest.raises(UnboundLocalError, match="_pipeline|_pstate"):
             s._summarize_inner(heading, source)
         assert_logged(logs, "switching to Map-Reduce")
 

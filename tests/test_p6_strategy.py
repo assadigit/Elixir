@@ -352,7 +352,9 @@ class TestWiringPins:
     def test_b4_dispatch_routes_through_decide_strategy(self):
         from core.summarisation.summarizer import Summarizer
 
-        src = inspect.getsource(Summarizer._summarize_inner)
+        # V0.18 (Phase 5.1, steps 2-4): the B4 dispatch gate moved VERBATIM
+        # to the single-pass phase method.
+        src = inspect.getsource(Summarizer._phase_single_pass_primary)
         # Legacy leg kept (byte-parity with the pre-P6 gate) AND the
         # decision leg (disables B4 above the legacy window):
         assert "tok_in > _b4_threshold" in src
