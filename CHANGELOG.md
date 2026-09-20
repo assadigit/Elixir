@@ -1,5 +1,98 @@
 # Changelog
 
+## V0.16 — Phase 3 "Security & Config Hardening": OS keychain for every API key
+
+> **The change:** execution of Phase 3 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`). **No cloud API key needs to live in
+> plaintext on any install.** `keyring` ships as a core dependency
+> (Windows Credential Manager on Windows), every one of the 11
+> credential settings paths routes through `get_secret`/`set_secret`,
+> the long-standing `translation.api_key` path-mismatch is reconciled,
+> and the CI dependency audit is now a FAIL gate with documented
+> waivers. 25 new tests (5,426 total); suite remains deterministic
+> under random ordering.
+
+**Ship keyring (3.1):**
+- `keyring>=25.0.0` + jaraco pins added to requirements / pyproject /
+  requirements.lock. Windows uses the built-in Credential Manager
+  backend (no extra install); headless Linux/CI find no backend and
+  `core/system/secrets.py` degrades to plaintext with a WARNING — the
+  app works everywhere, keys are keychain-protected where a keychain
+  exists. `storage_status_label()` probes the REAL backend (not just
+  importability) so the UI hint never lies.
+
+**Complete the wiring (3.2) — 16 production read/write sites routed:**
+- Provider factory (`llm_provider_impl`): cloud / claude / freellmapi /
+  llamacpp keys. `summarizer.__init__` llamacpp (the one key its own
+  `_get` wrapper missed). Grounding `_cloud_config` (both fallback
+  paths). TTS normalizer. `simplified_keypoints`. `new_outputs` (both
+  read sites). Output-packet generator. Dual-API fast key in the
+  conversion pipeline. `settings_logger` (masked key display now
+  reflects the key the provider will actually use).
+- Controller: new `get_secret`/`set_secret` accessors;
+  `build_request_from_ui` resolves credential fields through the
+  keychain (a keychain-only key no longer resolves as `""`); the
+  per-book `.conversion_config.json` no longer carries `fast_api_key`
+  at all (the pipeline re-resolves it from the keychain).
+- All settings UI pages (sections, tts_page, wizard step 5, llamacpp
+  component): keychain-backed reads/writes — completing the four
+  `TODO V18.1: route through core.system.secrets` markers — plus a
+  "🔐 Stored in the OS keychain" status hint next to every API-key
+  field (task 3.4).
+- Named custom-provider catalog: keys moved OUT of the
+  `ai.custom_providers` settings blob into per-provider keychain paths
+  (`ai.custom_providers.<name>.api_key`); legacy inline keys migrate on
+  first load. Helpers extracted to `utils/provider_catalog.py` (Qt-free
+  → testable in CI without PySide6 GUI libs).
+- `_SECRET_PATHS` completed: 6 → 11 paths (adds fusion_cloud, fast,
+  llamacpp, tts.normalize, legacy translation alias).
+
+**Path-mismatch fix (3.3):**
+- `core/translation/service.py` used to read `translation.api_key`
+  while `_SECRET_PATHS` listed `translation.cloud_api_key` — a key
+  migrated to the keychain was INVISIBLE to translation (the read
+  silently defeated the keychain). Now: canonical read first, legacy
+  path as migration fallback, one-time legacy → canonical keychain
+  copy, WARNING logged.
+
+**Migration UX (3.4):**
+- First-access plaintext → keychain migration (existing) now logs a
+  user-visible one-time WARNING per key (was INFO). Settings UI shows
+  the keychain/plaintext storage status at every key field.
+
+**pip-audit gate (3.5):**
+- The CI audit job is no longer report-only: any non-waived known
+  vulnerability in the locked core closure FAILS the job (a superset of
+  the roadmap's "high-severity" criterion — pip-audit exposes no
+  severity ratings). Waivers live in `requirements.audit-waivers`
+  (one OSV/GHSA ID per line, justification + review date required;
+  currently zero). Baseline: 0 known vulns in the 105-pin closure.
+
+**Test hermeticity:**
+- `tests/conftest.py` installs an autouse RAISING keyring stub for
+  every test — identical behavior on headless CI and a real Windows
+  rig, and no test ever touches a real OS keychain. The Phase 3 suite
+  installs an in-memory working backend on top for the keychain-path
+  tests.
+- New `tests/test_p3_secrets_wiring.py` (25 tests): roundtrip,
+  never-plaintext across all 11 paths, one-WARNING migration,
+  backend-failure fallbacks (no data loss), llamacpp "local" default,
+  translation dual-path + migration, consumer wiring (factory / claude
+  / llamacpp / grounding / TTS / controller / catalog), per-book config
+  key omission.
+- Two order-interference traps found and fixed while writing the suite:
+  grounding tests now install a recording `langextract.factory` stand-in
+  (other test modules swap `sys.modules["langextract"]` with a
+  MagicMock at collection time).
+
+**Numbers:** 5,426 passed / 0 failed / 35 skipped (~155 s; +25 over
+V0.15), deterministic under random ordering (seed 101 verified);
+`ruff check` + `ruff format --check` clean; pip-audit 0 findings.
+
+**Known-issue list updates:** README known-issue #11 (plaintext API
+keys) marked fixed; the "⚠️ plaintext" provider-table note replaced
+with the keychain storage description.
+
 ## V0.15 — Phase 2 "Test-Net Deepening": 5,401 tests, ≥80% per-package gates, property suites
 
 > **The change:** execution of Phase 2 of the approved V0.12 roadmap

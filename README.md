@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.15-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5401%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.16-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5426%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -204,7 +204,7 @@ output/
 | 🟣 **Claude (Anthropic)** | `"claude"` | Direct Anthropic API. Model: `claude-3-5-sonnet-20241022` |
 | 🆓 **FreeLLMAPI** | `"freellmapi"` | Local proxy at `localhost:3001` |
 
-> ⚠️ Cloud API keys are stored in `~/.elixir/settings.json` in **plaintext** — keyring migration is on the roadmap.
+> 🔐 **Cloud API keys are stored in the OS keychain** (Windows Credential Manager via the `keyring` dependency — V0.16). On first use, any legacy plaintext key in `~/.elixir/settings.json` is **migrated automatically** (the plaintext copy is removed only after the keychain write succeeds — no data loss possible), with a one-time WARNING in the log and a "🔐 Stored in the OS keychain" hint next to every API-key field in Settings. On backend-less systems (headless Linux), keys degrade to plaintext settings.json with a per-store WARNING — the app works everywhere.
 
 ## 🌐 Translation (EN ↔ FA)
 
@@ -333,7 +333,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.15):** `5401 passed / 0 failed / 35 skipped / 0 xpassed in ~155s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + pip-audit, ruff pinned)*
+**Current gate (Elixir V0.16):** `5426 passed / 0 failed / 35 skipped / 0 xpassed in ~155s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + pip-audit-gated, ruff pinned)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 
@@ -406,7 +406,7 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 8. ✅ ~~Scholar gap-fill parse-once/drop-tail~~ — **fixed in V18.20.4.12** (one additive continuation retry)
 9. ✅ ~~404 handled three ways~~ — **fixed in V18.20.4.12** (shared `model_errors` module, canonical pull hint)
 10. ✅ ~~Hygiene nine-pack~~ — **fixed in V18.20.4.12** (/no_think Qwen-gated, log rotation, Settings.batch(), progress JSON, HF offline scoped, qwythos de-magic + two 404-default bug fixes, engine_cache shutdown hook, atomic output writes, comment de-jargon)
-11. 🔐 **Migrate cloud API keys to the OS keyring** (currently plaintext; the Elixir keychain service exists — pure wiring)
+11. ✅ ~~Migrate cloud API keys to the OS keyring~~ — **fixed in V0.16 (Phase 3)**: `keyring` ships as a core dependency, every credential path (all 11, incl. dual-api fast key, llamacpp token, TTS normalizer, translation, grounding, and the named-provider catalog) routes through `get_secret`/`set_secret`, the `translation.api_key` path-mismatch is reconciled, and CI runs a gated pip-audit over the locked dependency closure
 12. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
 13. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
 14. ✅ ~~Green CI / fresh installs~~ — **fixed in V0.13 (Phase 0)**: see [`docs/AUDIT_SWOT_V0.11.md`](docs/AUDIT_SWOT_V0.11.md) and the V0.13 changelog entry

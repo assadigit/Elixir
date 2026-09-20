@@ -115,10 +115,14 @@
 | 3.5 pip-audit gate | Fail CI on high-severity findings in core deps | pip-audit |
 
 **Acceptance:**
-- [ ] `rg 'api_key' core/ ui_qt/` shows no direct settings reads outside `secrets.py` (allow-listed exceptions documented).
-- [ ] Roundtrip test: set_secret→get_secret via keyring backend (mocked in CI, real on Windows rig).
-- [ ] Fresh-install test: key never written to `settings.json`.
-- [ ] pip-audit: 0 high-severity in core deps (or documented waivers).
+- [x] `rg 'api_key' core/ ui_qt/` shows no direct settings reads outside `secrets.py` (allow-listed exceptions documented).
+  **V0.16 evidence:** the audit grep now yields ZERO settings-store reads of credential paths outside `secrets.py` — every read/write routes through `get_secret`/`set_secret` (provider factory, grounding, translation, TTS normalizer, simplified_keypoints, summarizer llamacpp, new_outputs, packets generator, dual-api pipeline, settings_logger, controller request-table, all settings UI pages incl. the wizard + llamacpp component + the custom-provider catalog). The named-provider catalog keys moved from the `ai.custom_providers` settings blob to per-provider keychain paths (`utils/provider_catalog.py`, Qt-free, CI-testable). Residual `api_key` string hits are: field names on dataclasses/param kwargs, crash-report redaction suffixes, and `p.get("api_key")` reads of the already-resolved in-memory catalog dict — none touch the settings store.
+- [x] Roundtrip test: set_secret→get_secret via keyring backend (mocked in CI, real on Windows rig).
+  **V0.16 evidence:** `tests/test_p3_secrets_wiring.py` — 25 tests incl. roundtrip, per-path never-plaintext, migration-with-one-WARNING, backend-failure fallbacks (no data loss), legacy `translation.api_key` → canonical `translation.cloud_api_key` migration, consumer wiring (factory/claude/llamacpp/grounding/TTS/controller), catalog migration + stripping. In-memory keyring fixture; `tests/conftest.py` installs an autouse RAISING keyring stub so no test ever touches a real OS keychain.
+- [x] Fresh-install test: key never written to `settings.json`.
+  **V0.16 evidence:** `TestKeychainRoundtrip::test_every_secret_path_never_persists_plaintext` iterates all 11 `_SECRET_PATHS` — plaintext store is cleared after every keychain write; the per-book `.conversion_config.json` no longer carries `fast_api_key` at all.
+- [x] pip-audit: 0 high-severity in core deps (or documented waivers).
+  **V0.16 evidence:** gate LIVE in CI (audit job): pip-audit 2.10.1 over `requirements.lock --no-deps` fails the job on any non-waived known vuln (a superset of high-severity-only — pip-audit exposes no severity ratings); waivers documented in `requirements.audit-waivers` (currently zero). Baseline run clean: 0 known vulns in the 105-pin closure incl. the new keyring/jaraco pins.
 
 **Effort:** 1–2 days. **Rollback:** feature-flag: if keyring misbehaves on a user machine, fallback path already exists (plaintext + WARNING) — no data loss possible (migration removes the plaintext copy only after keychain write succeeds).
 
