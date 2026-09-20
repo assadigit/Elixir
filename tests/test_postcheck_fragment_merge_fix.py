@@ -202,13 +202,14 @@ class TestIQ2SDedlineRaise:
     """Verify the V18.9 deadline raise for IQ2_S is in the source."""
 
     def test_deadline_raise_code_exists(self):
-        """The V18.9 deadline raise for IQ2_S must be in summarizer.py."""
-        sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
+        """The V18.9 deadline raise for IQ2_S must be in the init sub-constructors."""
+        # V0.18 (Phase 5.1): moved VERBATIM to summarizer_init.py — pin follows.
+        sum_path = _project_root / "core" / "summarisation" / "summarizer_init.py"
         content = sum_path.read_text(encoding="utf-8")
         assert "V18.9" in content or "V18.15.4.0" in content, (
-            "V18.9/V18.15.4.0 change must be documented in summarizer.py"
+            "V18.9/V18.15.4.0 change must be documented in summarizer_init.py"
         )
-        assert "2400" in content, "2400s deadline (V18.15.4.0) must be in summarizer.py"
+        assert "2400" in content, "2400s deadline (V18.15.4.0) must be in summarizer_init.py"
         assert "is_iq2_s" in content, "IQ2_S detection must be used"
 
     def test_deadline_raise_before_academic_rigor(self):
@@ -216,7 +217,8 @@ class TestIQ2SDedlineRaise:
         V18.17.0.1: both the deadline raise (in _init_thermal_and_workers) and
         the academic-rigor check are in __init__ or sub-constructors. The test
         now checks they both exist in the file."""
-        sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
+        # V0.18 (Phase 5.1): moved VERBATIM to summarizer_init.py — pin follows.
+        sum_path = _project_root / "core" / "summarisation" / "summarizer_init.py"
         content = sum_path.read_text(encoding="utf-8")
         # The IQ2_S deadline raise exists somewhere in the file
         assert "is_iq2_s" in content, "IQ2_S deadline raise must exist"

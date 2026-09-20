@@ -445,13 +445,16 @@ class TestCoverageAwareCap:
 
 class TestCapBeforeFloorOrdering:
     def test_cap_runs_before_floor_probe(self):
-        """Wiring policy: in _summarize_inner the coverage_aware_cap call
-        must appear BEFORE the deterministic_recall_floor call — the floor
+        """Wiring policy: in the chapter-phase pipeline the coverage_aware_cap
+        call must appear BEFORE the deterministic_recall_floor call — the floor
         measures the SHIPPED (post-cap) set."""
+        # V0.18 (Phase 5.1): the _summarize_inner body moved VERBATIM to
+        # chapter_phases.py (_phase_postchecks_and_floors) — the ordering pin
+        # follows; both calls moved together (assertions unchanged).
         src = (
-            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "chapter_phases.py"
         ).read_text(encoding="utf-8")
-        tail = src[src.index("def _summarize_inner") :]
+        tail = src[src.index("def _phase_postchecks_and_floors") :]
         cap_idx = tail.index("coverage_aware_cap(")
         floor_idx = tail.index("deterministic_recall_floor(")
         assert cap_idx < floor_idx, "the 80-bullet cap must run BEFORE the recall-floor probe"

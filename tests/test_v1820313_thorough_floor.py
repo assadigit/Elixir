@@ -75,13 +75,21 @@ _SUMMARIZER_SRC = (PROJECT_ROOT / "core" / "summarisation" / "summarizer.py").re
 # V18.20.4.7 (P5 / O-a2): ``_thorough_theorist_floor`` moved VERBATIM
 # (byte-identical body) from summarizer.py to
 # core/summarisation/thorough_theorist_floor.py (SummarizerThoroughFloorMixin).
-# The method-source pin below now reads the new module; the call-site +
-# ordering pins still read summarizer.py (the call site stayed in
-# _summarize_inner). Assertions unchanged — only the slicing follow moved
+# The method-source pin below now reads the new module. (V0.18 Phase 5.1:
+# the call site in _summarize_inner's body then moved on to chapter_phases.py
+# — the call-site + ordering pins follow it there via _CHAPTER_PHASES_SRC.)
+# Assertions unchanged — only the slicing follow moved
 # with the code (house precedent: V18.20.3.12 gap_fill_batch move).
 _FLOOR_MODULE_SRC = (
     PROJECT_ROOT / "core" / "summarisation" / "thorough_theorist_floor.py"
 ).read_text(encoding="utf-8")
+
+# V0.18 (Phase 5.1): the _summarize_inner body (incl. the floor call site
+# and the recall-floor probe) moved VERBATIM to chapter_phases.py — the
+# call-site + ordering pins below follow it there (assertions unchanged).
+_CHAPTER_PHASES_SRC = (PROJECT_ROOT / "core" / "summarisation" / "chapter_phases.py").read_text(
+    encoding="utf-8"
+)
 
 # ── Fixtures: synthetic analysis / source / thorough ───────────────────────
 # Synthetic surnames Voss/Ibarra (the house placeholder pair the .3.9
@@ -368,14 +376,15 @@ class TestFloorWiringSourcePins:
         assert "V18.20.3.13 Thorough gap-fill: floor " in method_src
 
     def test_call_site_passes_the_runtime_analysis(self):
-        # The delegate in _summarize_inner runs on the FINAL thorough and
-        # reuses the SAME analysis lookup the recall floor uses.
-        assert "thorough = self._thorough_theorist_floor(" in _SUMMARIZER_SRC
-        assert '_analysis_rf or ""' in _SUMMARIZER_SRC
+        # The delegate in the chapter-phase pipeline runs on the FINAL thorough
+        # and reuses the SAME analysis lookup the recall floor uses.
+        # V0.18 (Phase 5.1): moved VERBATIM to chapter_phases.py — pin follows.
+        assert "thorough = self._thorough_theorist_floor(" in _CHAPTER_PHASES_SRC
+        assert '_analysis_rf or ""' in _CHAPTER_PHASES_SRC
         # The floor runs right before the recall-floor probe (final-set
         # ordering: measure-on-final, floor-before-probe).
-        floor_pos = _SUMMARIZER_SRC.index("thorough = self._thorough_theorist_floor(")
-        probe_pos = _SUMMARIZER_SRC.index(
+        floor_pos = _CHAPTER_PHASES_SRC.index("thorough = self._thorough_theorist_floor(")
+        probe_pos = _CHAPTER_PHASES_SRC.index(
             "from core.summarisation.recall_floor import deterministic_recall_floor"
         )
         assert floor_pos < probe_pos

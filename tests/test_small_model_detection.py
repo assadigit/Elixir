@@ -43,18 +43,24 @@ if str(_project_root) not in sys.path:
 from core.llm.model_taxonomy import is_low_bit_quant, is_small_model
 
 SUMMARIZER_PATH = _project_root / "core" / "summarisation" / "summarizer.py"
+# V0.18 (Phase 5.1): the __init__ sub-constructors (incl. the V18.2.39
+# small-model / low-bit / 8192-cap logic) moved VERBATIM to summarizer_init.py.
+SUMMARIZER_INIT_PATH = _project_root / "core" / "summarisation" / "summarizer_init.py"
 
 
 class TestSmallModelDetectionSourceLevel:
-    """Verify the V18.2.39 cap logic exists in summarizer.py source."""
+    """Verify the V18.2.39 cap logic exists in summarizer_init.py source."""
 
     def _read_source(self) -> str:
-        return SUMMARIZER_PATH.read_text(encoding="utf-8")
+        # V0.18 (Phase 5.1): moved VERBATIM to summarizer_init.py — pin follows.
+        return SUMMARIZER_INIT_PATH.read_text(encoding="utf-8")
 
     def test_source_contains_small_model_check(self):
-        """summarizer.py must contain the _is_small_model detection."""
+        """summarizer_init.py must contain the _is_small_model detection."""
         src = self._read_source()
-        assert "_is_small_model" in src, "V18.2.39 small-model detection not found in summarizer.py"
+        assert "_is_small_model" in src, (
+            "V18.2.39 small-model detection not found in summarizer_init.py"
+        )
 
     def test_source_contains_13b_threshold(self):
         """The 13B threshold must be present."""

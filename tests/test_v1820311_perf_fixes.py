@@ -262,7 +262,8 @@ class TestThoroughContinuation:
         """Policy pin: the call site must pass the primary's partial
         thorough into the dedicated prompt (the truncation-paid-twice
         fix)."""
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
+        # V0.18 (Phase 5.1): moved VERBATIM to chapter_phases.py — pin follows.
+        src = (ROOT / "core" / "summarisation" / "chapter_phases.py").read_text(encoding="utf-8")
         assert "draft=(thorough or None)" in src
 
     def test_primary_prompts_close_clean_at_boundary(self):

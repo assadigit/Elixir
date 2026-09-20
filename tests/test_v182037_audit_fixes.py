@@ -462,7 +462,12 @@ class TestConsolidationCoverageWiring:
         assert "check_coverage" in src
 
     def test_call_site_passes_heading(self):
-        src = self._src()
+        # V0.18 (Phase 5.1): the pipeline call site moved VERBATIM to
+        # chapter_phases.py — pin follows (the delegate def stayed in
+        # summarizer.py and is pinned by the other tests via _src()).
+        src = (_project_root / "core" / "summarisation" / "chapter_phases.py").read_text(
+            encoding="utf-8"
+        )
         assert "self._consolidate_bullets(bullets, heading=heading)" in src
 
     def test_delegate_signature_has_heading(self):
@@ -816,12 +821,18 @@ class TestProvenanceWiring:
         assert "provenance_comment" in src
 
     def test_summarizer_stamps_every_summary(self):
-        src = (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
+        # V0.18 (Phase 5.1): the run-id initialization moved VERBATIM to
+        # summarizer_init.py; the SummaryResult stamping moved VERBATIM to
+        # chapter_phases.py — each pin follows its code.
+        init_src = (_project_root / "core" / "summarisation" / "summarizer_init.py").read_text(
             encoding="utf-8"
         )
-        assert "self._run_id = make_run_id()" in src
-        assert 'run_id=getattr(self, "_run_id", "")' in src
-        assert 'app_version=getattr(self, "_app_version", "")' in src
+        assert "self._run_id = make_run_id()" in init_src
+        phases_src = (_project_root / "core" / "summarisation" / "chapter_phases.py").read_text(
+            encoding="utf-8"
+        )
+        assert 'run_id=getattr(self, "_run_id", "")' in phases_src
+        assert 'app_version=getattr(self, "_app_version", "")' in phases_src
 
 
 # ══ Pronoun antecedent-adjacency gate ═════════════════════════════════════
@@ -896,9 +907,9 @@ class TestPronounAntecedentGate:
         only closed-class English determiners (content-agnostic)."""
         # V0.18 (Phase 5.2): the pronoun detector moved verbatim into the
         # postchecks package (coherence.py).
-        src = (
-            _project_root / "core" / "summarisation" / "postchecks" / "coherence.py"
-        ).read_text(encoding="utf-8")
+        src = (_project_root / "core" / "summarisation" / "postchecks" / "coherence.py").read_text(
+            encoding="utf-8"
+        )
         m = re.search(r"_DETERMINERS = \{(.*?)\}", src, re.DOTALL)
         assert m, "determiner set not found"
         words = re.findall(r'"([a-z]+)"', m.group(1))

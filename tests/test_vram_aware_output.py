@@ -36,6 +36,9 @@ if str(_project_root) not in sys.path:
 
 OLLAMA_PROVIDER_PATH = _project_root / "core" / "llm" / "ollama_provider.py"
 SUMMARIZER_PATH = _project_root / "core" / "summarisation" / "summarizer.py"
+# V0.18 (Phase 5.1): the low-bit max_output cap moved VERBATIM to
+# summarizer_init.py — the E2-revert pin follows it there.
+SUMMARIZER_INIT_PATH = _project_root / "core" / "summarisation" / "summarizer_init.py"
 PRIMARY_CALL_PATH = _project_root / "core" / "summarisation" / "primary_call.py"
 PROMPT_ASSEMBLY_PATH = _project_root / "core" / "summarisation" / "prompt_assembly.py"
 
@@ -227,7 +230,10 @@ class TestVRAMAwareMaxOutput:
 
     def test_max_output_stays_at_8192(self):
         """V18.3.6: max_output is capped at 8192 (NOT raised to 12000)."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        # V0.18 (Phase 5.1): the low-bit max_output cap moved VERBATIM to
+        # summarizer_init.py — pin follows (the E3 chunking pins below stayed
+        # in summarizer.py and are untouched).
+        src = SUMMARIZER_INIT_PATH.read_text(encoding="utf-8")
         assert "REVERTED E2" in src, "V18.3.6 must document the E2 revert"
         assert "_safe_max = IQ2_S_PROFILE.LOW_BIT_MAX_OUTPUT" in src, (
             "Must cap at the profile's LOW_BIT_MAX_OUTPUT"

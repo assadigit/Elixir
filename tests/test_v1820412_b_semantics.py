@@ -63,6 +63,11 @@ _P_TRANSLATOR = _project_root / "core" / "translation" / "translator.py"
 _P_HARAKAT = _project_root / "core" / "translation" / "harakat.py"
 _P_SK = _project_root / "core" / "summarisation" / "simplified_keypoints.py"
 _P_SUMMARIZER = _project_root / "core" / "summarisation" / "summarizer.py"
+# V0.18 (Phase 5.1): the pinned code moved VERBATIM out of summarizer.py —
+# the progress-emitter loop to book_outer.py (SummarizerBookMixin), the
+# _init_* sub-constructors to summarizer_init.py (SummarizerInitMixin).
+_P_BOOK_OUTER = _project_root / "core" / "summarisation" / "book_outer.py"
+_P_SUMMARIZER_INIT = _project_root / "core" / "summarisation" / "summarizer_init.py"
 _P_WIZARD = _project_root / "ui_qt" / "views" / "wizard_view.py"
 
 
@@ -541,12 +546,15 @@ class TestProgressEventsPure:
 
 class TestWb15EmitterSourcePin:
     def test_summarizer_imports_and_calls_progress_json_line(self):
-        src = _src(_P_SUMMARIZER)
+        # V0.18 (Phase 5.1): moved VERBATIM to book_outer.py — pin follows.
+        src = _src(_P_BOOK_OUTER)
         assert "from core.common.progress_events import progress_json_line" in src
         assert "progress_json_line(idx, total, _bp_count, _exec_len)" in src
 
     def test_structured_line_emitted_immediately_before_human_line(self):
-        src = _src(_P_SUMMARIZER)
+        # V0.18 (Phase 5.1): moved VERBATIM to book_outer.py — pin follows
+        # (both lines moved together).
+        src = _src(_P_BOOK_OUTER)
         structured = src.index("progress_json_line(idx, total, _bp_count, _exec_len)")
         human = src.index('f"  📊 Progress: {idx}/{total} done | "')
         assert structured < human, "the structured line must be logged BEFORE the human line"
@@ -554,7 +562,8 @@ class TestWb15EmitterSourcePin:
     def test_human_line_byte_identical(self):
         """The human '📊 Progress:' line is pinned byte-identical (logs and
         the regex fallback parse it)."""
-        src = _src(_P_SUMMARIZER)
+        # V0.18 (Phase 5.1): moved VERBATIM to book_outer.py — pin follows.
+        src = _src(_P_BOOK_OUTER)
         assert 'f"  📊 Progress: {idx}/{total} done | "' in src
         assert 'f"{_bp_count} bullets | {_exec_len:,} chars exec summary",' in src
 
@@ -620,7 +629,9 @@ class TestWb15ParserSourcePin:
 
 class TestWa10DeadUppercaseEntries:
     def test_lowercase_only_tuples_pinned(self):
-        body = _method_src(_P_SUMMARIZER, "Summarizer", "_init_max_workers")
+        # V0.18 (Phase 5.1): _init_max_workers moved VERBATIM to
+        # summarizer_init.py (SummarizerInitMixin) — pin follows.
+        body = _method_src(_P_SUMMARIZER_INIT, "SummarizerInitMixin", "_init_max_workers")
         # V18.20.4.12 (W-a10): dropped dead uppercase entries — model_lower
         # is lowercased
         assert 'for k in ("14b", "32b", "70b")' in body

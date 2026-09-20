@@ -41,11 +41,13 @@ class TestIQ2SDedlineRaise:
     """
 
     def test_deadline_2400_in_source(self):
-        """The 2400s IQ2_S deadline contract must be visible in summarizer.py."""
-        sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
+        """The 2400s IQ2_S deadline contract must be visible in summarizer_init.py."""
+        # V0.18 (Phase 5.1): the deadline wiring moved VERBATIM to
+        # summarizer_init.py — pin follows.
+        sum_path = _project_root / "core" / "summarisation" / "summarizer_init.py"
         content = sum_path.read_text(encoding="utf-8")
         # Current IQ2_S deadline: 2400s (docstring + profile constant wiring).
-        assert "2400" in content, "2400s IQ2_S deadline must be in summarizer.py"
+        assert "2400" in content, "2400s IQ2_S deadline must be in summarizer_init.py"
         assert "IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC" in content, (
             "Deadline floor must come from the centralized profile constant"
         )
@@ -81,7 +83,8 @@ class TestIQ2SDedlineRaise:
         the historical V18.14.2 comment at the gap-fill loop, not the live
         log message.)
         """
-        sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
+        # V0.18 (Phase 5.1): moved VERBATIM to summarizer_init.py — pin follows.
+        sum_path = _project_root / "core" / "summarisation" / "summarizer_init.py"
         content = sum_path.read_text(encoding="utf-8")
         assert "Chapter deadline raised → {IQ2_S_PROFILE.CHAPTER_DEADLINE_SEC}s" in content, (
             "The deadline-raise log must carry the centralized 2400s constant"

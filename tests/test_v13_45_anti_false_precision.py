@@ -395,12 +395,13 @@ class TestGapFillFix:
     """
 
     def test_summary_result_reads_back_from_parsed(self):
-        """The _summarize_inner method must read bullets back from parsed after
+        """The chapter phase pipeline must read bullets back from parsed after
         scholar reflection runs (so gap-fill bullets survive)."""
         from pathlib import Path
 
+        # V0.18 (Phase 5.1): moved VERBATIM to chapter_phases.py — pin follows.
         src_path = (
-            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "chapter_phases.py"
         )
         content = src_path.read_text(encoding="utf-8")
         # The V13.45.0 fix comment must be present
@@ -416,12 +417,14 @@ class TestGapFillFix:
         """The _anti_false_precision_check must be called in the pipeline."""
         from pathlib import Path
 
+        # V0.18 (Phase 5.1): the pipeline call site moved VERBATIM to
+        # chapter_phases.py — pin follows (the def stays in summarizer.py).
         src_path = (
-            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "chapter_phases.py"
         )
         content = src_path.read_text(encoding="utf-8")
         assert "_anti_false_precision_check" in content, (
-            "_anti_false_precision_check method not found in summarizer.py"
+            "_anti_false_precision_check method not found in chapter_phases.py"
         )
         # Must be CALLED (not just defined)
         assert "self._anti_false_precision_check(heading, content, parsed)" in content, (
@@ -494,8 +497,9 @@ class TestV13_45_4_MaxOutputTokens:
     def test_academic_rigor_floor_is_16000(self):
         from pathlib import Path
 
+        # V0.18 (Phase 5.1): moved VERBATIM to llm_transport.py — pin follows.
         src_path = (
-            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "summarizer.py"
+            Path(__file__).resolve().parent.parent / "core" / "summarisation" / "llm_transport.py"
         )
         content = src_path.read_text(encoding="utf-8")
         assert "max_tok < 16000" in content, "academic_rigor max_tokens floor is not 16000"

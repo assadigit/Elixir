@@ -153,7 +153,8 @@ class TestThinThoroughFix:
     def test_expansion_threshold_restored(self):
         """The dedicated thorough expansion must fire below 800 words for
         normal chapters (V18's contract), not below the scaled lo (270)."""
-        src = (_project_root / "core" / "summarisation" / "summarizer.py").read_text(
+        # V0.18 (Phase 5.1): moved VERBATIM to chapter_phases.py — pin follows.
+        src = (_project_root / "core" / "summarisation" / "chapter_phases.py").read_text(
             encoding="utf-8"
         )
         assert "(800 if _th_hi_lp >= 800 else _th_lo_lp)" in src, (

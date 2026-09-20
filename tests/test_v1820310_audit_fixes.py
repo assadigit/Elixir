@@ -204,7 +204,8 @@ class TestF5Visibility:
         """The .3.7 rig's invisible 1.9s empty round-1 response — the
         retry line must be WARNING-level so the anomaly is operator-
         visible."""
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
+        # V0.18 (Phase 5.1): _call_llm moved VERBATIM to llm_transport.py — pin follows.
+        src = (ROOT / "core" / "summarisation" / "llm_transport.py").read_text(encoding="utf-8")
         assert 'self.log("    ⚠️ Empty/short LLM response — retrying with nudge' in src
         # must NOT be the old DEBUG form
         assert 'retrying with nudge after 2s delay", "DEBUG")' not in src
@@ -226,7 +227,8 @@ class TestF5Visibility:
 
 class TestO7CacheVisibility:
     def test_cache_hit_logs_info(self):
-        src = (ROOT / "core" / "summarisation" / "summarizer.py").read_text(encoding="utf-8")
+        # V0.18 (Phase 5.1): _call_llm moved VERBATIM to llm_transport.py — pin follows.
+        src = (ROOT / "core" / "summarisation" / "llm_transport.py").read_text(encoding="utf-8")
         assert "Response cache HIT — LLM call skipped" in src
 
     def test_diagnostic_reports_run_cache_stats(self):

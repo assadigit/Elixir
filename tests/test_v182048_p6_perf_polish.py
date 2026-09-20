@@ -51,6 +51,9 @@ _RC = _project_root / "core" / "llm" / "response_cache.py"
 _SW = _project_root / "core" / "summarisation" / "structural_stopwords.py"
 _TPI = _project_root / "core" / "summarisation" / "text_preprocessor_impl.py"
 _SUM = _project_root / "core" / "summarisation" / "summarizer.py"
+# V0.18 (Phase 5.1): the _call_llm cache get/put moved VERBATIM to
+# llm_transport.py — the cache-key pins follow it there.
+_SUM_TRANSPORT = _project_root / "core" / "summarisation" / "llm_transport.py"
 _SR = _project_root / "core" / "summarisation" / "scholar_reflection.py"
 
 
@@ -663,7 +666,7 @@ class TestOa8CacheKey:
         rc = _strip_comments(_src(_RC))
         assert "max_tokens: int | None = None" in rc
         assert "f\"_{max_tokens if max_tokens is not None else 'default'}_\"" in rc
-        summ = _strip_comments(_src(_SUM))
+        summ = _strip_comments(_src(_SUM_TRANSPORT))
         assert 'response_cache.get(prompt, model or "", temp, max_tok)' in summ
         assert 'response_cache.put(prompt, model or "", temp, _result, max_tok)' in summ
 

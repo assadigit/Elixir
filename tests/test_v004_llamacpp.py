@@ -364,7 +364,8 @@ class TestSummarizerDispatchPins:
     abstraction (NOT the Ollama /api/generate path)."""
 
     def test_call_llm_llamacpp_branch(self):
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1): _call_llm moved VERBATIM to llm_transport.py — pin follows.
+        src = _strip_comments(_src("core/summarisation/llm_transport.py"))
         assert 'elif self.provider == "llamacpp":' in src
         # V0.13: the _call_via_llm_provider("llamacpp", prompt, …) call is
         # format-wrapped — pin the provider string + prompt arg on their lines.
@@ -376,17 +377,21 @@ class TestSummarizerDispatchPins:
         assert "model=self.llamacpp_model or model" in src
 
     def test_llamacpp_attrs_initialized(self):
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1): the _init_* sub-constructors moved VERBATIM to
+        # summarizer_init.py — pin follows.
+        src = _strip_comments(_src("core/summarisation/summarizer_init.py"))
         assert "self.llamacpp_base_url = settings.get(" in src
         assert "self.llamacpp_model = settings.get(" in src
         assert "self.llamacpp_max_output = int(" in src
 
     def test_is_local_includes_llamacpp(self):
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1): moved VERBATIM to summarizer_init.py — pin follows.
+        src = _strip_comments(_src("core/summarisation/summarizer_init.py"))
         assert '"llamacpp"' in src.split("self.is_local = ")[1].splitlines()[0]
 
     def test_reading_level_excludes_llamacpp(self):
-        src = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1): moved VERBATIM to prompt_builders.py — pin follows.
+        src = _strip_comments(_src("core/summarisation/prompt_builders.py"))
         assert 'self.provider not in ("ollama", "lmstudio", "llamacpp", "")' in src
 
     def test_concept_extraction_branch(self):
