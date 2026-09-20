@@ -79,6 +79,11 @@ from core.models import ConversionRequest, ConversionResult
 from ui_qt.components import Card, LogViewer, StepHeader
 from ui_qt.components.icons import icon
 from ui_qt.controller_bridge import QtControllerBridge
+from ui_qt.queue_parallel import (
+    MAX_PARALLEL_BOOKS_SETTING,
+    resolve_parallel_books,
+    run_books_parallel,
+)
 from ui_qt.theme import theme_manager
 
 logger = logging.getLogger(__name__)
@@ -209,6 +214,11 @@ class QueueView(QWidget):
     #    connected slots to the main thread via queued connections).
     book_started = Signal(int)  # book index
     book_finished = Signal(int, str, str)  # book index, status, error
+    # Phase 6.3 (V0.19): per-book progress for the parallel cloud queue
+    # (the sequential path routes progress through the controller bridge;
+    # parallel books each emit their own (idx, fraction) — never through
+    # the single-slot bridge, which cannot tell books apart).
+    book_progress = Signal(int, float)
     queue_started = Signal()
     queue_finished = Signal()
 
@@ -229,6 +239,10 @@ class QueueView(QWidget):
         self._worker_thread: threading.Thread | None = None
         self._current_idx: int = -1
         self._current_result: ConversionResult | None = None
+        # Phase 6.3 (V0.19): live cancel events of the books currently
+        # converting in the parallel cloud queue (idx → event). stop()
+        # sets every one of them (a stop cancels ALL active books).
+        self._parallel_cancel_events: dict[int, threading.Event] = {}
         # Saved ConvertView callbacks (restored when the queue finishes).
         self._saved_callbacks: tuple[Any | None, Any | None, Any | None, Any | None] = (
             None,
@@ -430,6 +444,7 @@ class QueueView(QWidget):
         # the main thread.
         self.book_started.connect(self._on_book_started)
         self.book_finished.connect(self._on_book_finished)
+        self.book_progress.connect(self._on_book_progress)
         self.queue_started.connect(self._on_queue_started)
         self.queue_finished.connect(self._on_queue_finished)
 
@@ -453,6 +468,10 @@ class QueueView(QWidget):
         if not self._is_running:
             return
         self._cancel.set()
+        # Phase 6.3 (V0.19): a stop cancels every ACTIVE parallel book too
+        # (the sequential path keeps its single-book cancel below).
+        for _evt in list(self._parallel_cancel_events.values()):
+            _evt.set()
         try:
             self.controller.cancel_conversion()
         except Exception as _e:
@@ -670,7 +689,16 @@ class QueueView(QWidget):
     # Worker thread
     # ══════════════════════════════════════════════════════════════════════
     def _queue_worker(self) -> None:
-        """Background thread that processes pending books sequentially."""
+        """Background thread that processes pending books sequentially.
+
+        Phase 6.3 (V0.19): when the summarisation provider is a CLOUD
+        provider and the ``queue.max_parallel_books`` setting asks for
+        more than one worker, the pending books are converted CONCURRENTLY
+        (bounded) via :meth:`_queue_worker_parallel` — VRAM is not a
+        constraint in the cloud. Local providers always take the exact
+        pre-V0.19 sequential loop below (the Phase-6 VRAM acceptance:
+        max_workers logic untouched for the local path).
+        """
         # Register this thread as the controller's active conversion thread
         # so is_converting() returns True (prevents the ConvertView from
         # starting a parallel conversion). Held for the duration of the
@@ -679,6 +707,16 @@ class QueueView(QWidget):
         # Save the ConvertView's callbacks and install the queue's.
         self._install_queue_callbacks()
         try:
+            _provider = str(self.controller.get_setting("summarisation.provider", ""))
+            _pending = [i for i, item in enumerate(self._queue) if item.status == STATUS_PENDING]
+            _workers = resolve_parallel_books(
+                _provider,
+                self.controller.get_setting(MAX_PARALLEL_BOOKS_SETTING, 2),
+                len(_pending),
+            )
+            if _workers > 1:
+                self._queue_worker_parallel(_workers)
+                return
             for i, item in enumerate(self._queue):
                 if item.status != STATUS_PENDING:
                     continue  # skip already-processed books (e.g. on re-run)
@@ -719,6 +757,116 @@ class QueueView(QWidget):
             self._restore_convert_callbacks()
             self._is_running = False
             self.queue_finished.emit()
+
+    # ── Phase 6.3 (V0.19): bounded parallel cloud queue ─────────────────────
+
+    def _queue_worker_parallel(self, workers: int) -> None:
+        """Convert the pending books concurrently (bounded, cloud only).
+
+        Runs INSIDE the queue worker thread (called from ``_queue_worker``).
+        Each book gets its OWN Converter + cancel event + per-book progress
+        (``book_progress`` signal) — the shared single-slot controller state
+        (``controller.converter`` / ``controller.cancel_event`` /
+        ``_current_idx`` bridge routing) is deliberately NOT touched: the
+        parallel books never race the sequential machinery they replace.
+        """
+        pending = [(i, item) for i, item in enumerate(self._queue) if item.status == STATUS_PENDING]
+        self.log_viewer.append(
+            f"☁️ Phase 6.3: cloud queue — {len(pending)} book(s) on up to "
+            f"{workers} concurrent workers (queue.max_parallel_books)",
+            "INFO",
+        )
+        self._parallel_cancel_events.clear()
+
+        jobs = []
+        for i, item in pending:
+            item.status = STATUS_PROCESSING
+            item.progress = 0.0
+
+            def _make_job(idx: int, it: QueueItem):
+                def _fn(cancel_event: threading.Event) -> ConversionResult:
+                    request = self._build_request_for_item(it)
+                    return self._run_one_conversion_isolated(
+                        request, cancel_event, idx, it.path.stem
+                    )
+
+                return _fn
+
+            jobs.append((i, _make_job(i, item)))
+
+        def _on_started(idx: int, cancel_event: threading.Event) -> None:
+            self._parallel_cancel_events[idx] = cancel_event
+            self.book_started.emit(idx)
+
+        def _on_finished_book(outcome) -> None:
+            item = self._queue[outcome.idx]
+            if self._cancel.is_set():
+                status, error = STATUS_CANCELLED, "Cancelled by user"
+            elif outcome.ok:
+                status, error = STATUS_DONE, ""
+            else:
+                status, error = STATUS_FAILED, outcome.error or "Unknown error"
+            item.status = status
+            item.error = error
+            if status == STATUS_DONE:
+                item.progress = 1.0
+            self.book_finished.emit(outcome.idx, status, error)
+            self._parallel_cancel_events.pop(outcome.idx, None)
+
+        run_books_parallel(
+            jobs,
+            max_workers=workers,
+            on_started=_on_started,
+            on_finished=_on_finished_book,
+        )
+        # Books that never started (stop pressed before their turn) are
+        # cancelled — mirroring the sequential loop's skip-on-cancel.
+        for i, item in enumerate(self._queue):
+            if item.status == STATUS_PENDING and self._cancel.is_set():
+                item.status = STATUS_CANCELLED
+                self.book_finished.emit(i, STATUS_CANCELLED, "Cancelled by user")
+        self._parallel_cancel_events.clear()
+
+    def _run_one_conversion_isolated(
+        self,
+        request: ConversionRequest,
+        cancel_event: threading.Event,
+        idx: int,
+        stem: str,
+    ) -> ConversionResult:
+        """One conversion on a parallel worker thread — NO shared slots.
+
+        Mirrors ``_run_one_conversion`` but: per-book cancel event (not the
+        controller's shared one — a second book starting must never clear a
+        pending stop), per-book progress via the ``book_progress`` signal
+        (not the single-book bridge), prefixed status/log lines (the shared
+        log viewer stays readable when 2-4 books interleave), and the
+        ``controller.converter`` slot is NOT written (each book keeps its
+        own local reference; nothing reads the slot while the queue runs).
+        """
+        from core.pipeline import Converter  # local import (heavier module)
+
+        try:
+            converter = Converter(
+                request=request,
+                progress_callback=lambda fraction: self.book_progress.emit(idx, fraction),
+                status_callback=lambda msg: self.bridge.emit_status(f"[{stem}] {msg}"),
+                log_callback=lambda msg, level="INFO": self.bridge.emit_log(
+                    f"[{stem}] {msg}", level
+                ),
+                cancel_event=cancel_event,
+            )
+            result = converter.convert()
+            if result.success and result.full_markdown_path:
+                try:
+                    self.controller.save_book_settings(result.full_markdown_path.parent, request)
+                except Exception as e:
+                    logger.warning("Failed to save book settings: %s", e)
+            return result
+        except Exception as e:  # noqa: BLE001 — one book's crash never kills the queue
+            logger.exception("Parallel queue conversion crashed")
+            self.bridge.emit_log(f"[{stem}] Fatal error: {e}", "ERROR")
+            return ConversionResult(success=False, error_msg=str(e))
 
     # ── Callback management ─────────────────────────────────────────────
     def _install_queue_callbacks(self) -> None:
@@ -863,6 +1011,20 @@ class QueueView(QWidget):
     def _on_bridge_progress(self, value: float) -> None:
         """Per-book progress update from the controller."""
         idx = self._current_idx
+        if 0 <= idx < len(self._rows):
+            self._rows[idx].update_progress(value)
+            self.book_progress_bar.setValue(int(value * 100))
+        self._update_overall_progress()
+
+    @Slot(int, float)
+    def _on_book_progress(self, idx: int, value: float) -> None:
+        """Phase 6.3 (V0.19): per-book progress from a PARALLEL cloud book.
+
+        Same body as the sequential bridge slot, keyed by the book's own
+        index instead of the single ``_current_idx`` (parallel books have
+        no "current"). The shared per-book bar shows the LAST book that
+        reported (best-effort indicator — the per-row bars are exact).
+        """
         if 0 <= idx < len(self._rows):
             self._rows[idx].update_progress(value)
             self.book_progress_bar.setValue(int(value * 100))
