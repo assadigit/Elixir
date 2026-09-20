@@ -302,12 +302,40 @@ class ConversionLogger:
         self.diagnostic_path = self.log_dir / f"{base_filename}.diagnostic.jsonl"
         self._file_handle = None
         self._diag_handle = None
+        # V0.20.4: the conversion-level run_id, stamped in the log header.
+        self._conversion_run_id = ""
         self._open()
 
     def _open(self) -> None:
         self._file_handle = open(self.log_path, "w", encoding="utf-8")  # noqa: SIM115 — lifecycle-managed log handle (see close())
         self._file_handle.write(f"# Conversion Log: {self.base_filename}\n\n")
         self._file_handle.write(f"Started at: {datetime.now().isoformat()}\n\n")
+        # V0.20.4 (Quality Campaign, root-cause fix for stale-log confusion):
+        # stamp the app version + a conversion run_id in the log HEADER so
+        # the log self-identifies unambiguously — the same self-identification
+        # the summary files have (<!-- generated-by: Elixir v<version> |
+        # run_id=... -->). The V0.20.3 ch.2 audits found the user uploading
+        # the old V0.18 conversion log alongside the new V0.20.3 summary
+        # (3 consecutive runs). The log's only version line was ~line 61
+        # (App version: 0.18, from the settings logger), buried in the
+        # settings dump — easy to miss when scrolling. A header-level stamp
+        # makes it impossible to confuse: the 3rd line of every conversion
+        # log now reads "<!-- generated-by: Elixir v<version> |
+        # run_id=<id> -->", exactly like the summary files. The run_id is
+        # generated here (at the converter level) so the log and the
+        # summary share the same run_id when the Summarizer picks it up
+        # (the Summarizer's make_run_id is called later; the converter's
+        # run_id is the conversion-level identifier).
+        try:
+            from core.system.provenance import get_app_version, make_run_id
+
+            _ver = get_app_version()
+            self._conversion_run_id = make_run_id()
+            self._file_handle.write(
+                f"<!-- generated-by: Elixir v{_ver} | run_id={self._conversion_run_id} -->\n\n"
+            )
+        except Exception:  # pragma: no cover — the stamp must never break the log
+            self._conversion_run_id = ""
         self._file_handle.write("---\n\n")
 
         # V10.25.0: Don't create the diagnostic.jsonl file upfront.
