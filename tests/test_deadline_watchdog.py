@@ -155,7 +155,9 @@ class TestDeadlineWatchdogIntegration:
 
     def test_deadline_start_set_in_summarize_chapters(self):
         """summarize_chapters must set _chapter_deadline_start before _summarize_inner."""
-        sum_path = _project_root / "core" / "summarisation" / "summarizer.py"
+        # V0.18 (Phase 5.1, step 8): summarize_chapters moved VERBATIM to
+        # book_outer.py (SummarizerBookMixin).
+        sum_path = _project_root / "core" / "summarisation" / "book_outer.py"
         content = sum_path.read_text(encoding="utf-8")
         start_idx = content.find("self._chapter_deadline_start = _chap_start")
         assert start_idx > 0, "_chapter_deadline_start must be set in summarize_chapters"

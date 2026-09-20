@@ -213,7 +213,10 @@ class TestF1RenderContract:
     def test_source_pins_contract_gates(self):
         """The gates exist at THREE layers: parse time, result construction,
         render time (defense in depth — a single-layer fix failed before)."""
-        s_sum = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1, steps 2-4): the parse-time gate moved to the
+        # single-pass phase; the construction gate to the finalize phase
+        # (both VERBATIM, chapter_phases.py).
+        s_sum = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         # parse-time gate
         assert 'if not bool(getattr(self.request, "include_thorough_summary", True)):' in s_sum
         assert 'result["thorough_summary"] = ""' in s_sum
@@ -314,9 +317,11 @@ class TestF2QuarantineNotShipped:
         logged (logs/drops.jsonl remains the audit trail)."""
         s = _strip_comments(_src("core/summarisation/summarizer.py"))
         assert "quarantine_appendix=_quarantine_appendix_md," not in s
+        # V0.18 (Phase 5.1, step 1): the quarantine-record comment moved
+        # VERBATIM to the finalize phase (chapter_phases.py).
         assert (
-            "NOT rendered in the delivered files" in s
-            or "NOT rendered in the delivered files" in _src("core/summarisation/summarizer.py")
+            "NOT rendered in the delivered files"
+            in _src("core/summarisation/chapter_phases.py")
         )
 
     def test_docx_builder_has_no_quarantine_block(self):
@@ -404,7 +409,9 @@ class TestF4BulletCap:
         assert bullet_cap(412) == 16
 
     def test_ship_time_budget_enforced_source_pin(self):
-        s = _strip_comments(_src("core/summarisation/summarizer.py"))
+        # V0.18 (Phase 5.1, step 1): the ship-time cap moved VERBATIM to the
+        # postchecks phase (chapter_phases.py).
+        s = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" in s
         assert "bullets = list(bullets[:_bp_hi_lp])" in s
 

@@ -325,7 +325,13 @@ class TestSummarizerInheritance:
         # sub-constructors moved to core.summarisation.summarizer_init).
         # V0.18 (Phase 5.1, step 6): + SummarizerPromptMixin (the prompt
         # builders moved to core.summarisation.prompt_builders).
+        # V0.18 (Phase 5.1, step 7): + SummarizerTransportMixin (the _call_*
+        # family moved to core.summarisation.llm_transport).
+        # V0.18 (Phase 5.1, step 8): + SummarizerBookMixin (the book outer
+        # loop moved to core.summarisation.book_outer).
         assert [ast.unparse(b) for b in cls.bases] == [
+            "SummarizerBookMixin",
+            "SummarizerTransportMixin",
             "SummarizerPromptMixin",
             "SummarizerInitMixin",
             "SummarizerChapterPhasesMixin",

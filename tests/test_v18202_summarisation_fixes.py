@@ -251,7 +251,9 @@ class TestA5QwenNoThinkHelper:
     def test_empty_retry_injection_untouched(self):
         """The V18.2.41 /no_think injection STAYS in
         _call_llm_with_empty_retry (hard constraint — not moved/removed)."""
-        content = _read("core/summarisation/summarizer.py")
+        # V0.18 (Phase 5.1, step 7): the method moved VERBATIM to
+        # llm_transport.py (SummarizerTransportMixin).
+        content = _read("core/summarisation/llm_transport.py")
         assert 'prompt = prompt + " /no_think"' in content
         # …and it still fires for qwen-family models only.
         assert '"qwen" in _model_lower or "qwythos" in _model_lower' in content
@@ -520,7 +522,9 @@ class TestA8ParallelDeadline:
         """Both paths set the deadline start: the sequential loop assigns
         the pre-recorded per-chapter timestamp, the parallel submission loop
         sets time.time() immediately before each executor.submit."""
-        content = _read("core/summarisation/summarizer.py")
+        # V0.18 (Phase 5.1, step 8): summarize_chapters moved VERBATIM to
+        # book_outer.py (SummarizerBookMixin).
+        content = _read("core/summarisation/book_outer.py")
         assert "self._chapter_deadline_start = _chap_start" in content  # sequential
         assert "self._chapter_deadline_start = time.time()" in content  # parallel
 
