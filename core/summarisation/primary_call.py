@@ -176,12 +176,53 @@ def summarize_with_model(
         and _thermal_ok
         and _window_tokens <= LEGACY_WINDOW
     )
+    # V0.20.2 (Quality Campaign, conversion-log audit Defect L4, §7b — the
+    # owner's "chunk outputs" suggestion): ALSO chunk when the model is a
+    # LOW-BIT QUANT (output-capped at 8192 by V18.2.37d, prone to CoT
+    # inundation) and the input is MODERATE (> 6000 tok). The V0.18 rig run
+    # (run 20260920-084745-c0874728) had input 8566 tok (under the 12000
+    # gate) and STILL truncated: the model produced a 17313-char CoT
+    # response that hit the 8192 output cap, the 5-section XML was inside
+    # the thinking block, and only 30 bullets survived. 286s produced
+    # almost nothing. The existing 12000-tok gate missed this because it
+    # gates on INPUT size, but the truncation was on OUTPUT.
+    #
+    # Content-agnostic (no chapter-specific thresholds): the second
+    # condition gates on a MODEL property (is_low_bit_quant — the same
+    # detector V18.2.37d uses to cap output at 8192) + a SIZE threshold
+    # (6000 tok). 6000 is chosen to capture the V0.18 rig's 8566-tok
+    # chapter while leaving a 4.6× margin below the smallest golden
+    # chapter (1262 tok) — the golden corpus never triggers this path.
+    # The low-bit + moderate-input combination is the exact risk profile
+    # the V0.18 rig exhibited: a model that fills its 8192-output budget
+    # with thinking on a chapter big enough to warrant 5 sections.
+    _v0202_chunk_logged = False
+    if not _should_chunk and _max_out < 14000 and _thermal_ok and _window_tokens <= LEGACY_WINDOW:
+        try:
+            from core.llm.model_taxonomy import is_low_bit_quant as _is_lbq_v0202
+
+            _is_low_bit_model = _is_lbq_v0202(model or "")
+        except Exception:  # pragma: no cover — taxonomy must never break the call
+            _is_low_bit_model = False
+        if _is_low_bit_model and _input_tokens_actual > 6000:
+            _should_chunk = True
+            _v0202_chunk_logged = True
+            log(
+                f"    📦 V0.20.2: chunked output (low-bit quant + moderate "
+                f"input) — model {model!r} is low-bit (output capped at "
+                f"{_max_out}), input {_input_tokens_actual} tok > 6000 "
+                f"→ splitting 5-section primary call into 2 sequential calls "
+                f"(avoids the V0.18 rig Defect L4: CoT inundation + output "
+                f"truncation on a single 8192-output call)",
+                "INFO",
+            )
     if _should_chunk:
-        log(
-            f"    📦 V18.3.5: chunked output — input {_input_tokens_actual} tok, output cap {_max_out} "
-            f"→ splitting 5-section primary call into 2 sequential calls (no truncation)",
-            "INFO",
-        )
+        if not _v0202_chunk_logged:
+            log(
+                f"    📦 V18.3.5: chunked output — input {_input_tokens_actual} tok, output cap {_max_out} "
+                f"→ splitting 5-section primary call into 2 sequential calls (no truncation)",
+                "INFO",
+            )
         _chunked_result = chunked_summarize(
             heading,
             text,

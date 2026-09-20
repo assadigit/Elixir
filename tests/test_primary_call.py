@@ -306,3 +306,111 @@ class TestSummarizeWithModel:
             parse_response=lambda x: {},
         )
         assert chunked_calls["n"] == 0
+
+    # ── V0.20.2 (Quality Campaign, conversion-log audit Defect L4, §7b) ──
+
+    def test_low_bit_quant_moderate_input_chunks_v0202(self, monkeypatch):
+        """V0.20.2: a LOW-BIT QUANT model with MODERATE input (>6000 tok,
+        under the 12000 gate) triggers chunking. The V0.18 rig run had
+        input 8566 tok (under 12000) and STILL truncated on output (CoT
+        inundation + 8192 output cap). The existing 12000-tok gate missed
+        this because it gates on INPUT size; the V0.20.2 condition gates
+        on a MODEL property (is_low_bit_quant) + a moderate-input
+        threshold. Content-agnostic — no chapter-specific branches."""
+        _set_tokens(monkeypatch, 8566)  # the V0.18 rig input size
+        _no_gpu(monkeypatch)
+        chunked_calls = {"n": 0}
+
+        def chunked(*a, **k):
+            chunked_calls["n"] += 1
+            return {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+
+        logs = []
+        result = pc_mod.summarize_with_model(
+            "h",
+            "text",
+            "Qwen3.8-27B-Q2_K_XL",  # a low-bit quant model (the V0.18 rig model)
+            0.7,
+            request=_FakeRequest(),
+            log=lambda m, l="INFO": logs.append((m, l)),
+            chunked_summarize=chunked,
+            build_prompt=lambda *a, **k: "P",
+            call_llm_structured=lambda *a, **k: None,
+            call_llm_with_empty_retry=lambda *a, **k: "",
+            strip_thinking=lambda x: x,
+            parse_response=lambda x: {},
+        )
+        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        assert chunked_calls["n"] == 1
+        infos = [m for m, l in logs if l == "INFO"]
+        # The V0.20.2 message fired (not the V18.3.5 message — no double-log).
+        assert any("V0.20.2: chunked output (low-bit quant" in m for m in infos), infos
+        assert not any("V18.3.5: chunked output" in m for m in infos), (
+            "the V18.3.5 log must NOT fire when the V0.20.2 log already fired (no double-log)"
+        )
+
+    def test_low_bit_quant_small_input_does_not_chunk_v0202(self, monkeypatch):
+        """V0.20.2: a low-bit quant model with SMALL input (<=6000 tok) does
+        NOT trigger the V0.20.2 chunking path — the 6000-tok threshold
+        leaves a 4.6× margin below the smallest golden chapter (1262 tok).
+        The golden corpus never triggers this path (byte-identical outputs
+        preserved)."""
+        _set_tokens(monkeypatch, 5000)  # under the 6000 V0.20.2 threshold
+        _no_gpu(monkeypatch)
+        chunked_calls = {"n": 0}
+
+        def chunked(*a, **k):
+            chunked_calls["n"] += 1
+            return None
+
+        pc_mod.summarize_with_model(
+            "h",
+            "text",
+            "Qwen3.8-27B-Q2_K_XL",  # low-bit, but input too small
+            0.7,
+            request=_FakeRequest(),
+            log=lambda m, l="INFO": None,
+            chunked_summarize=chunked,
+            build_prompt=lambda *a, **k: "P",
+            call_llm_structured=lambda *a, **k: {"bullet_points": ["structured"]},
+            call_llm_with_empty_retry=lambda *a, **k: "",
+            strip_thinking=lambda x: x,
+            parse_response=lambda x: {},
+        )
+        assert chunked_calls["n"] == 0, (
+            "the V0.20.2 low-bit path must NOT fire for small input (<=6000 tok) — "
+            "the golden corpus (max 1262 tok) never triggers this path"
+        )
+
+    def test_non_low_bit_model_moderate_input_does_not_chunk_v0202(self, monkeypatch):
+        """V0.20.2: a NON-low-bit model with moderate input does NOT trigger
+        the V0.20.2 chunking path — the condition requires BOTH low-bit
+        quant AND moderate input. A full-precision model with 8566 tok
+        input uses the single-pass path (it has a higher output cap and
+        isn't prone to CoT inundation)."""
+        _set_tokens(monkeypatch, 8566)  # moderate, but not low-bit
+        _no_gpu(monkeypatch)
+        chunked_calls = {"n": 0}
+
+        def chunked(*a, **k):
+            chunked_calls["n"] += 1
+            return None
+
+        pc_mod.summarize_with_model(
+            "h",
+            "text",
+            "gemma-12b-q8",  # NOT a low-bit quant
+            0.7,
+            request=_FakeRequest(),
+            log=lambda m, l="INFO": None,
+            chunked_summarize=chunked,
+            build_prompt=lambda *a, **k: "P",
+            call_llm_structured=lambda *a, **k: {"bullet_points": ["structured"]},
+            call_llm_with_empty_retry=lambda *a, **k: "",
+            strip_thinking=lambda x: x,
+            parse_response=lambda x: {},
+        )
+        assert chunked_calls["n"] == 0, (
+            "the V0.20.2 low-bit path must NOT fire for a non-low-bit model "
+            "(the condition requires BOTH low-bit quant AND moderate input)"
+        )

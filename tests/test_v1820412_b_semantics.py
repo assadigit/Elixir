@@ -151,7 +151,7 @@ class _ScriptedLLM:
         return resp
 
 
-def _run_scholar(script, *, text=_SRC_GROUNDED):
+def _run_scholar(script, *, text=_SRC_GROUNDED, max_context_tokens=32768):
     llm = _ScriptedLLM(script)
     log = _CapturingLog()
     result = {
@@ -163,7 +163,7 @@ def _run_scholar(script, *, text=_SRC_GROUNDED):
         "Ch",
         text,
         result,
-        max_context_tokens=32768,
+        max_context_tokens=max_context_tokens,
         language="en",
         temperature=0.7,
         prompt_manager=_FakePromptManager(),
@@ -307,6 +307,195 @@ class TestOa4ScholarContinuationRetry:
         # ONE retry max — the script has no third response; a third call
         # would have raised AssertionError inside the fake.
         assert len(llm.calls) == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.20.2 (Quality Campaign, conversion-log audit Defect L2) — skip the
+# O-a4 retry when the scholar prompt is near the context cap
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV0202SkipOa4RetryNearContextCap:
+    """The O-a4 continuation retry is COUNTERPRODUCTIVE when the scholar
+    prompt is already near the context cap: the retry prompt = original
+    prompt + ~60-token suffix + last 2000 chars of the truncated response,
+    so it ALWAYS grows. Near the context cap, the retry hits the CONTEXT
+    window (not the output cap) and produces even less output. The V0.18
+    rig run (run 20260920-084745-c0874728) showed this: call 6 prompt grew
+    13418→14003 tok + output 2125 = 16128 > 16000 num_ctx → done_reason=length
+    AGAIN, output dropped (no quotes), 133s wasted. The guard skips the
+    retry when the continuation prompt would leave < 25% of the retry's
+    max_tokens (1536 of 6144) of output headroom under the context cap.
+    Content-agnostic — no chapter-specific thresholds."""
+
+    def test_primary_scholar_call_skipped_when_prompt_near_context_cap(self):
+        """V0.20.2 Fix B (audit §7a, Defect L1): when the scholar prompt is
+        near the context cap, the PRIMARY scholar gap-fill call is SKIPPED
+        entirely (0 LLM calls). The V18.14.1 batch gap-fill (already
+        chunked, runs next) is the working fallback. The V0.18 rig run
+        wasted 200s on a scholar call that truncated at the output cap
+        and produced 0 gap-fill bullets (no quotes).
+
+        The real scholar prompt = source text (truncated to max_src*4
+        chars) + the FULL summary overview (exec + all bullets + thorough)
+        + theorists hint + template. On the V0.18 rig run this was 13418
+        tok against a 16000 context cap. This test reproduces that shape
+        with a large summary overview (40 bullets + 800-word thorough)
+        that pushes the prompt over the Fix B threshold (prompt + 1536 >
+        16000). The _FakePromptManager is patched to include src_text +
+        summary_overview so the guard sees a realistic near-cap prompt."""
+        # Large summary overview (the V0.18 rig shape: 40 bullets +
+        # 800-word thorough ≈ 14472 tok — over the Fix B threshold of 14464).
+        big_result = {
+            "executive_summary": "The chapter synthesizes the scattered literature on identity. "
+            * 60,
+            "bullet_points": ["Erikson (1956) defined ego identity as persistent sameness. "] * 40,
+            "thorough_summary": "The chapter traces identity from Tausk through Blos. " * 320,
+        }
+        big_text = "Erikson described identity sameness within oneself. " * 1200
+
+        class _BigPromptManager(_FakePromptManager):
+            def render_template(self, name, **kw):
+                return (
+                    f"PROMPT name={name} heading={kw.get('heading')}\nSOURCE:\n"
+                    f"{kw.get('src_text', '')}\nSUMMARY_OVERVIEW:\n"
+                    f"{kw.get('summary_overview', '')}"
+                )
+
+        llm = _ScriptedLLM([(False, "<scholar_reflections>- Missing coverage of Erikson\n")])
+        log = _CapturingLog()
+        scholar_reflection(
+            "Ch",
+            big_text,
+            big_result,
+            max_context_tokens=16000,
+            language="en",
+            temperature=0.7,
+            prompt_manager=_BigPromptManager(),
+            recover_vram=lambda **kw: None,
+            call_fast_llm=llm,
+            strip_thinking=lambda t: t,
+            log=log,
+        )
+        # ZERO calls — the primary scholar gap-fill was SKIPPED (Fix B).
+        assert len(llm.calls) == 0, (
+            "the primary scholar gap-fill call must be SKIPPED when the prompt is "
+            "near the context cap (V0.20.2 Fix B / Defect L1: the single-big-call "
+            "would truncate mid-gap-analysis; the V18.14.1 batch path handles it)"
+        )
+        # The Fix B skip WARNING fired.
+        assert any(
+            "Scholar reflection gap-fill SKIPPED" in w and "batch gap-fill" in w
+            for w in log.warnings()
+        ), "the V0.20.2 Fix B skip WARNING must fire when the primary call would truncate"
+
+    def test_oa4_retry_skipped_when_retry_prompt_would_overflow(self):
+        """V0.20.2 Fix A (audit Defect L2): when the primary scholar call
+        has room (Fix B doesn't fire) but the RETRY prompt would overflow
+        the context cap, the retry is SKIPPED (exactly 1 call). The retry
+        prompt = original prompt + ~60-token suffix + last 2000 chars of
+        the truncated response, so it ALWAYS grows. This test uses a
+        moderate prompt (~14232 tok, under the Fix B threshold of 14464)
+        + a large truncated response (~16000 chars), so the primary call
+        fires (1 call) but the retry would overflow (14232 + 297 + 1536 >
+        16000) → the retry is skipped."""
+        # Moderate summary overview — prompt ~14232 tok (under Fix B's
+        # 14464 threshold, so the primary call fires).
+        big_result = {
+            "executive_summary": "The chapter synthesizes the scattered literature on identity. "
+            * 60,
+            "bullet_points": ["Erikson (1956) defined ego identity as persistent sameness. "] * 40,
+            "thorough_summary": "The chapter traces identity from Tausk through Blos. " * 300,
+        }
+        big_text = "Erikson described identity sameness within oneself. " * 1200
+
+        class _BigPromptManager(_FakePromptManager):
+            def render_template(self, name, **kw):
+                return (
+                    f"PROMPT name={name} heading={kw.get('heading')}\nSOURCE:\n"
+                    f"{kw.get('src_text', '')}\nSUMMARY_OVERVIEW:\n"
+                    f"{kw.get('summary_overview', '')}"
+                )
+
+        # A large truncated response (~16000 chars, ~250 tok in the last
+        # 2000 chars) — the retry prompt would grow by ~310 tok, pushing
+        # the retry over the 16000 context cap.
+        big_truncated = "<scholar_reflections>- Missing coverage of Erikson\n" + (
+            "The chapter discusses identity formation across multiple phases. " * 200
+        )
+
+        llm = _ScriptedLLM([(False, big_truncated)])
+        log = _CapturingLog()
+        scholar_reflection(
+            "Ch",
+            big_text,
+            big_result,
+            max_context_tokens=16000,
+            language="en",
+            temperature=0.7,
+            prompt_manager=_BigPromptManager(),
+            recover_vram=lambda **kw: None,
+            call_fast_llm=llm,
+            strip_thinking=lambda t: t,
+            log=log,
+        )
+        # Exactly 1 call (the primary); the retry was SKIPPED (Fix A).
+        assert len(llm.calls) == 1, (
+            "the O-a4 retry must be SKIPPED when the retry prompt would overflow "
+            "the context cap (V0.20.2 Fix A / Defect L2: the retry is counterproductive)"
+        )
+        # The Fix A skip WARNING fired.
+        assert any("O-a4 retry SKIPPED" in w and "context window" in w for w in log.warnings()), (
+            "the V0.20.2 Fix A skip WARNING must fire when the retry would overflow"
+        )
+
+    def test_retry_still_fires_when_prompt_has_room(self):
+        """When the context cap is large (32768, the default), the retry
+        fires as before — the guard is inert when there is room. This is
+        the existing O-a4 behavior, preserved unchanged."""
+        first = "<scholar_reflections>- Missing coverage of Erikson\n"
+        second = (
+            "</scholar_reflections>\n"
+            "<gap_fill_bullets>\n"
+            '- Erikson described identity as "persistent sameness"\n'
+            "</gap_fill_bullets>"
+        )
+        llm, log, result = _run_scholar(
+            [(False, first), (False, second)],
+            max_context_tokens=32768,  # the default — plenty of room
+        )
+        assert len(llm.calls) == 2, "the retry must fire when the context cap has room"
+        assert any("continuation retry" in i for i in log.infos())
+        # the gap-fill bullet was recovered (the existing O-a4 happy path)
+        assert len(result["bullet_points"]) == 2
+
+    def test_guard_never_breaks_chapter_on_token_counter_crash(self):
+        """If the token counter crashes, the guard degrades to
+        _retry_would_overflow=False (the retry fires as before). The
+        chapter is never broken by the guard itself."""
+        import utils.token_counter as tc_mod
+
+        _orig = tc_mod.count_tokens
+
+        def _boom(_text):
+            raise RuntimeError("token counter exploded")
+
+        tc_mod.count_tokens = _boom
+        try:
+            first = "<scholar_reflections>- Missing coverage of Erikson\n"
+            second = "</scholar_reflections>"
+            llm, log, result = _run_scholar(
+                [(False, first), (False, second)],
+                max_context_tokens=16000,
+            )
+            # The guard crashed → _retry_would_overflow=False → the retry
+            # fires (the existing O-a4 path, fail-open).
+            assert len(llm.calls) == 2, (
+                "a token-counter crash must NOT skip the retry (fail-open: the "
+                "guard degrades to _retry_would_overflow=False)"
+            )
+        finally:
+            tc_mod.count_tokens = _orig
 
 
 # ═══════════════════════════════════════════════════════════════════════════
