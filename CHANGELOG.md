@@ -1,5 +1,84 @@
 # Changelog
 
+## V0.18 — Phase 5 "De-Monolithization Round 3": no core file over 2,500 lines; _summarize_inner is a 170-line orchestrator
+
+> **The change:** execution of Phase 5 of the approved V0.12 roadmap
+> (`docs/ROADMAP_V0.12.md`), behind the Phase-2 test net and the Phase-1/4
+> golden-freeze + eval gates. Every move is VERBATIM (byte-identical
+> bodies; state threaded via AST-computed explicit parameter/return
+> interfaces) and the golden pipeline outputs stayed byte-identical after
+> every step. Suite grew 5,531 → 5,532; per-package coverage gates hold
+> (core/summarisation 93%, core/llm+pdf 97% measured locally); ruff
+> clean repo-wide.
+
+**Task 5.2 — postchecks package (commit 2f94fc7):**
+- `postcheck_detectors.py` (4,762 LOC) regrouped by detector family into
+  `core/summarisation/postchecks/`: `shared` (Issue/PostCheckReport/
+  _snippet/_is_subsequence), `leakage` (prompt-leak/CoT), `garble`
+  (garble/spacing + the English lexicon, whose data file moved into the
+  package so the `__file__`-relative path stays verbatim), `attribution`
+  (attribution/years/bold-name/subject-swap), `coherence`
+  (interpretive-leap/hedge/pronoun/inconsistency); the orchestrator
+  (`run_post_checks`) moved from `postchecks.py` into the package with a
+  PEP 562 lazy `__getattr__` that breaks the import cycle
+  (orchestrator → post_processing → the postcheck_detectors facade).
+- `postcheck_detectors.py` remains as a compatibility facade (same object
+  identities); log-record channel names preserved verbatim.
+- Verified by a 4,212-comparison behavioral-equivalence harness (old vs
+  new across all 20 detectors on 78 texts × 3 field labels) plus a
+  static free-name resolution check — which caught a missing `import re`
+  in shared.py that the detectors' fail-open excepts would have masked.
+
+**Task 5.1 — summarizer decomposition (6 commits, 1e97feb → d7f4b73):**
+- `summarizer.py` 6,165 → 2,376 LOC; `_summarize_inner` 1,883 → 170 lines
+  (acceptance was ≤300). The class is assembled from seven
+  single-concern mixins + the orchestrator:
+  `chapter_phases.py` (the 8 extracted pipeline phases: setup/gate,
+  single-pass primary, thorough+coverage, validation+judge, recovery,
+  deterministic judge, postchecks+floors, finalize), `summarizer_init.py`
+  (the eight `_init_*` sub-constructors), `prompt_builders.py`
+  (`_build_prompt` + dedicated-prompt family), `llm_transport.py` (the
+  `_call_*` family + the llm_dispatcher aliases), `book_outer.py`
+  (`summarize_chapters`/`build_book_summary`/`_distill_book_context`),
+  plus the pre-existing additive-sections and theorist-floor mixins.
+- The strategy decision and map-reduce dispatch stay inline in
+  `_summarize_inner` (the P6 pins); the pre-existing map-reduce
+  `_pipeline`/`_pstate` UnboundLocalError is PRESERVED (now surfaces at
+  the validation-phase call site — same exception, same catch, same
+  failed chapter; the characterization pin was updated to match).
+- ~60 source pins re-pointed to the new defining modules across 25+ test
+  files (patch-the-defining-module discipline); 17 llm_dispatcher patch
+  seams re-pointed to `llm_transport`.
+
+**Task 5.3 — the wc gate (commits f4e1769, 4514188):**
+- `text_preprocessor_impl.py` 4,577 → 1,929: the concept/keyword-extraction
+  family moved to `text_preprocessor_concepts.py` (2,444) and the
+  layout/structure family to `text_preprocessor_structure.py`; the impl
+  module re-exports everything (compat facade, same object identities).
+- `converter_impl.py` 2,503 → 2,494 (`_get_user_override` moved to its
+  phase-module home).
+- **`wc -l` max across all of `core/` is now 2,494 ≤ 2,500.**
+
+**Housekeeping:**
+- Fixed a pre-existing Makefile bug from V0.17 (recipes had 8 spaces
+  instead of tabs — `make eval-check` was broken locally; CI bypassed
+  make); `make eval-check` now runs and reports "EVAL GATE: OK".
+- Roadmap deviation, documented: 5.4/5.5 (the ui_qt controller/settings
+  splits) are deferred to a Phase-5 continuation — every ui_qt file is
+  already under the 2,500 gate and the phase's measurable acceptance
+  (core/ ≤2,500, `_summarize_inner` ≤300, tests/coverage/golden
+  preserved, one-concern-per-commit) is fully met without them.
+
+**Verification (after every commit, and at phase end):**
+- Full suite: **5,532 passed / 35 skipped / 0 failed** (deterministic).
+- Golden freeze: **14/14 — pipeline outputs byte-identical** through the
+  entire decomposition; eval gate **24/24**, `make eval-check` green.
+- ruff check + format: clean repo-wide (628 files).
+- Coverage: core/summarisation 93%, core/llm 96%, core/pdf 98% — all
+  above the ≥80% per-package gates; global gate 63% unaffected.
+
+# Changelog
+
 ## V0.17 — Phase 4 "Accuracy & Reliability Harness": quality regressions are now mechanically detectable
 
 > **The change:** execution of Phase 4 of the approved V0.12 roadmap
