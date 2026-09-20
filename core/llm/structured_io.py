@@ -222,6 +222,16 @@ def validate_summary_json(raw: str) -> dict[str, Any] | None:
 
     The function NEVER raises — it returns None on any parse/validation
     failure so the caller can gracefully fall back to the XML path.
+
+    Phase 4.4 (LLM-call hardening audit): a strict validation failure now
+    gets ONE lenient repair pass (the V0.11 repairs — ``\\'`` escapes,
+    smart quotes, trailing commas) before giving up, mirroring
+    ``response_parser.parse_response``'s strict → repair → fallback ladder.
+    Previously a fenced ``\\`\\`\\`json`` block with a single trailing comma
+    returned None here even though the V0.11 repair (one module over) could
+    fix it; the caller's fallback parser then had to salvage the response.
+    The repair can only upgrade ``None → validated dict`` — valid JSON is
+    never touched (repair is attempted ONLY after strict validation fails).
     """
     if not raw or not raw.strip():
         return None
@@ -231,9 +241,53 @@ def validate_summary_json(raw: str) -> dict[str, Any] | None:
         logger.debug("structured_io: no JSON object found in response — falling back to XML")
         return None
 
+    result = _validate_clean_json(cleaned)
+    if result is not None:
+        return result
+
+    # Phase 4.4: ONE lenient repair pass (V0.11 semantics) before giving up.
+    repaired = _lenient_json_repair(cleaned)
+    if repaired != cleaned:
+        result = _validate_clean_json(repaired)
+        if result is not None:
+            logger.debug(
+                "structured_io: strict JSON validation failed but the V0.11 "
+                "lenient repair pass recovered it — validated against SummarySchema"
+            )
+            return result
+    return None
+
+
+def _lenient_json_repair(text: str) -> str:
+    """Apply the V0.11 lenient-JSON repairs to a strict-failed blob.
+
+    Delegates to ``core.summarisation.response_parser._repair_llm_json``
+    (single source of truth for the three canonical LLM-JSON malformations:
+    Python-style ``\\'`` escapes, smart-quote delimiters, trailing commas).
+    Imported lazily so ``core.llm.structured_io`` stays importable without
+    the summarisation package (tests / provider-only consumers); the import
+    direction is safe — ``response_parser`` imports nothing from ``core.llm``.
+    """
+    try:
+        from core.summarisation.response_parser import _repair_llm_json
+    except Exception:  # pragma: no cover — response_parser is part of the tree
+        return text  # no repair available — caller keeps the strict result (None)
+    try:
+        return _repair_llm_json(text)
+    except Exception:  # pragma: no cover — repair is pure string ops, never raises
+        return text
+
+
+def _validate_clean_json(json_str: str) -> dict[str, Any] | None:
+    """Validate one JSON candidate against ``SummarySchema`` (strict).
+
+    Returns the validated dict, or ``None`` on any parse/validation failure.
+    Never raises — extracted from ``validate_summary_json`` (Phase 4.4) so
+    the strict pass and the lenient-repair pass share ONE implementation.
+    """
     if _HAS_PYDANTIC:
         try:
-            schema = SummarySchema.model_validate_json(cleaned)
+            schema = SummarySchema.model_validate_json(json_str)
             return schema.model_dump()
         except ValidationError as exc:
             logger.debug(
@@ -250,7 +304,7 @@ def validate_summary_json(raw: str) -> dict[str, Any] | None:
             return None
 
     # No pydantic — manual shape check
-    return _manual_validate(cleaned)
+    return _manual_validate(json_str)
 
 
 def _extract_json(raw: str) -> str | None:

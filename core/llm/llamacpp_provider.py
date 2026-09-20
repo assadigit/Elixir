@@ -280,11 +280,17 @@ class LlamaCppProvider(LLMProvider):
         self,
         payload: dict,
         on_chunk: Callable[[str], None] | None,
+        timeout: int | None = None,
     ) -> str:
         """POST /chat/completions with stream=True and accumulate deltas.
 
         The read timeout applies PER CHUNK: as long as the server emits a
         delta every few hundred ms, a 60-minute generation never times out.
+
+        Phase 4.4: optional ``timeout`` override (used by ``smoke_test`` so
+        the preflight probe's ``min(self.timeout, 60)`` cap actually reaches
+        the socket — previously the computed cap was never forwarded and the
+        call always used the full ``self.timeout``).
         """
         url = self._chat_url()
         sess = _no_proxy_session()
@@ -293,7 +299,7 @@ class LlamaCppProvider(LLMProvider):
                 url,
                 headers=self._headers(),
                 json=payload,
-                timeout=self.timeout,
+                timeout=timeout if timeout is not None else self.timeout,
                 stream=True,
             ) as resp:
                 if resp.status_code != 200:
@@ -442,18 +448,34 @@ class LlamaCppProvider(LLMProvider):
             "stream": True,
         }
         self.log(f"    🦙 {self.label} ({_model}) t={_temp:.2f} streaming…", "INFO")
-        try:
-            return self._chat_streaming(payload, on_chunk)
-        except Exception as e:
-            self.log(
-                f"    ⚠️ {self.label} streaming failed ({e}) — non-streaming retry",
-                "WARNING",
-            )
+
+        # Phase 4.4 (LLM-call hardening audit): the streaming-with-callback
+        # path previously made ONE streaming attempt + ONE non-streaming
+        # fallback with no classified retry — complete() had @retry_llm_call
+        # but this sibling did not, so a transient ConnectionError here
+        # returned None where complete() would have backed off and retried.
+        # The combined attempt (streaming → non-streaming fallback) is now
+        # wrapped in the SAME decorator as complete(): retryable transport
+        # errors (ConnectionError / 429 / 5xx) back off with jitter and
+        # retry; non-retryable ones (404 model not served, 400 context
+        # overflow) surface immediately. With retries=0 (max_attempts=1)
+        # the behavior is identical to the previous single-shot code.
+        @retry_llm_call(max_attempts=self.retries + 1, log_callback=self.log)
+        def _do_one_call() -> str:
             try:
+                return self._chat_streaming(payload, on_chunk)
+            except Exception as e:
+                self.log(
+                    f"    ⚠️ {self.label} streaming failed ({e}) — non-streaming retry",
+                    "WARNING",
+                )
                 return self._chat_nonstreaming(payload)
-            except Exception as e2:
-                self.log(f"    ⚠️ {self.label} call failed: {e2}", "WARNING")
-                return None
+
+        try:
+            return _do_one_call()
+        except Exception as e:
+            self.log(f"    ⚠️ {self.label} call failed: {e}", "WARNING")
+            return None
 
     # ── Introspection / smoke test ───────────────────────────────────────
 
@@ -479,6 +501,11 @@ class LlamaCppProvider(LLMProvider):
                     "stream": True,
                 },
                 None,
+                # Phase 4.4: forward the capped probe timeout — the computed
+                # ``_to`` was previously never used (dead variable), so a
+                # cold model load could stall preflight for the FULL
+                # provider timeout (e.g. 600s) instead of the intended 60s.
+                timeout=_to,
             )
             self.log(
                 f"    ✅ {self.label} smoke-test OK: '{self.model}' responded ({len(text)} chars)",
