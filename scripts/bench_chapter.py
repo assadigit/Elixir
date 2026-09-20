@@ -515,7 +515,8 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
     from core.summarisation.bullet_pipeline import BulletPipeline
     from utils.settings import Settings
 
-    if args.bench_mode == "mapreduce":
+    _bench_mode = getattr(args, "bench_mode", "golden")
+    if _bench_mode == "mapreduce":
         _base_heading, base_source = load_golden_chapter(args.chapter)
         heading, source = build_mapreduce_chapter(base_source)
     else:
@@ -525,16 +526,18 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
     # Phase 6 (V0.19): the acceptance configuration — turn the
     # parallel-stages levers ON (the roadmap's "after soak" configuration,
     # measured deterministically). Default OFF = the shipped default.
-    if args.parallel_stages:
+    # (getattr: the freeze test drives run_bench with its own minimal
+    # args namespace — absent flags mean the pre-V0.19 default.)
+    if getattr(args, "parallel_stages", False):
         BenchSettings._EXTRA = {
             "summarisation.parallel_stages": True,
-            "summarisation.parallel_stages_max_workers": args.parallel_workers,
+            "summarisation.parallel_stages_max_workers": getattr(args, "parallel_workers", 4),
         }
     else:
         BenchSettings._EXTRA = {}
-    build_summarizer._b3_mode = args.bench_mode == "b3"
-    install_mock_llm._b3_mode = args.bench_mode == "b3"
-    build_summarizer._mapreduce_mode = args.bench_mode == "mapreduce"
+    build_summarizer._b3_mode = _bench_mode == "b3"
+    install_mock_llm._b3_mode = _bench_mode == "b3"
+    build_summarizer._mapreduce_mode = _bench_mode == "mapreduce"
 
     log_lines: list[tuple[str, str]] = []
 
@@ -602,8 +605,8 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
         "mode": "parallel" if args.parallel else "sequential",
         "workers": args.workers if args.parallel else 1,
         "chapter": args.chapter,
-        "bench_mode": args.bench_mode,
-        "parallel_stages": bool(args.parallel_stages),
+        "bench_mode": _bench_mode,
+        "parallel_stages": bool(getattr(args, "parallel_stages", False)),
         "chapters": len(chapters),
         "latency_scale": args.latency_scale,
         "pipeline_ok": ok,
