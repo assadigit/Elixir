@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 
 from core.models import SummaryResult
 from core.summarisation.gap_fill_batch import batch_gap_fill as gfb_batch_gap_fill
@@ -53,7 +54,16 @@ logger = get_main_logger()
 class SummarizerChapterPhasesMixin:
     """Chapter-phase methods for :class:`Summarizer` (see module docstring)."""
 
-    def _phase_recovery_pass(self, heading, content, parsed, exec_sum, bullets, thorough):
+    def _phase_recovery_pass(
+        self,
+        heading,
+        content,
+        parsed,
+        exec_sum,
+        bullets,
+        thorough,
+        scholar_runner: Callable[[dict, bool], None] | None = None,
+    ):
         # ── V10.28.0 (Sprint 1.4): Recovery pass ──────────────────────────
         # After ALL drop sites have run, re-scan the quarantine and
         # resurrect any bullet whose source_overlap exceeds the recovery
@@ -94,7 +104,17 @@ class SummarizerChapterPhasesMixin:
             # is already exceeded — it's optional and consumes an LLM call
             # (~2.5 min in the V18.2.20 conversion log).
             if not self._deadline_exceeded("scholar reflection"):
-                if _scholar_enabled:
+                if scholar_runner is not None:
+                    # Phase 6.2 (V0.19) lever judge_scholar: the scholar
+                    # reflection ran SPECULATIVELY (concurrently with the
+                    # validation+judge LLM tail — launched from the
+                    # p6_prejudge_hook). The runner MERGES the speculative
+                    # result when its input state survived the judge phase
+                    # unchanged, and re-runs the reflection INLINE
+                    # (sequential semantics, identical to pre-V0.19) when
+                    # it did not.
+                    scholar_runner(parsed, _scholar_enabled)
+                elif _scholar_enabled:
                     self._scholar_reflection(heading, content, parsed)
                 else:
                     # Still run gap-fill (adds missing content), but skip the
@@ -1774,6 +1794,7 @@ class SummarizerChapterPhasesMixin:
         final_summary,
         _pipeline,
         _pstate,
+        p6_prejudge_hook: Callable[[list, str, str], None] | None = None,
     ):
         """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""
         # ── Strip thinking from all final fields one more time ──────────────
@@ -1846,6 +1867,25 @@ class SummarizerChapterPhasesMixin:
         _pipeline.apply_f3_reading_level(_pstate)
         _pipeline.run_informational_checks(_pstate)
         thorough = _pstate.thorough
+
+        # Phase 6.2 (V0.19) lever judge_scholar: the deterministic prologue
+        # above (strip-thinking, strip-narrative, academic verification,
+        # salvage, F1/F4/semantic/F3) has SETTLED the summary state. The
+        # LLM tail below (gap-fill + content judge + grounding check) is
+        # where the wall-clock goes. The orchestrator launches the
+        # speculative scholar reflection HERE so it overlaps that tail;
+        # the merge-or-rerun happens in _phase_recovery_pass (via
+        # ``scholar_runner``). The hook only OBSERVES the settled locals —
+        # it never modifies them; a hook crash is non-fatal (the lever
+        # falls back to the plain sequential path).
+        if p6_prejudge_hook is not None:
+            try:
+                p6_prejudge_hook(bullets, exec_sum, thorough)
+            except Exception as _e:
+                self.log(
+                    f"    ⚠️ Phase 6.2 pre-judge hook crashed (non-fatal): {_e}",
+                    "WARNING",
+                )
 
         # ── V10.32.0 (Sprint 4 s2): gap-fill extracted to BulletPipeline ─
         _pstate.bullets = bullets

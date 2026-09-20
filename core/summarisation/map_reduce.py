@@ -40,6 +40,7 @@ from pathlib import Path
 # V18.2.41 injection). Import is safe — filter_thinking has no dependency
 # on this module (no import cycle).
 from core.summarisation.filter_thinking import qwen_no_think
+from core.summarisation.stage_overlap import run_independent
 from utils.atomic_io import atomic_write_text
 from utils.error_trace import log_swallow
 from utils.token_counter import count_tokens
@@ -57,6 +58,17 @@ logger = logging.getLogger(__name__)
 def _noop_log(msg: str, level: str = "INFO") -> None:
     """Default no-op log callback when none is provided."""
     pass
+
+
+def _map_chunk_prompt(heading: str, map_mini_words: int, chunk: str) -> str:
+    """The per-chunk map prompt (byte-identical to the pre-V0.19 inline
+    f-string — extracted so the sequential and the Phase-6.2 overlapped
+    map paths CANNOT drift apart)."""
+    return (
+        f'Summarize the following excerpt from chapter "{heading}" in exactly '
+        f"{map_mini_words} words. Focus on concrete facts, arguments, and "
+        f"named concepts. Output ONLY the summary text, no preamble.\n\n{chunk}"
+    )
 
 
 # ── V18.20.2.0 (SWOT A29): map-reduce cache management ─────────────────────
@@ -107,6 +119,7 @@ def map_reduce_summarize(
     call_llm: CallLlmFn,
     log: LogCallback | None = None,
     map_phase_budget_sec: int = 0,
+    parallel_max_workers: int = 1,
 ) -> tuple[str | None, int]:
     """Map-Reduce summarization for very large chapters.
 
@@ -234,37 +247,110 @@ def map_reduce_summarize(
         )
 
     mini_summaries = []
-    for idx, chunk in enumerate(chunks, 1):
-        # V18.20.4.10 (P0-d): wall-clock budget for the whole map phase.
-        # Checked BEFORE each chunk so a stuck/slow phase is bounded by
-        # budget + one HTTP timeout, never unbounded. Failing loudly beats
-        # silently producing a partial summary (honesty machinery rule).
-        if map_phase_budget_sec > 0 and (time.monotonic() - _phase_start) > map_phase_budget_sec:
-            log(
-                f"    \u26a0\ufe0f Map\u2011Reduce ABORTED: map phase exceeded its "
-                f"{map_phase_budget_sec}s budget after {len(mini_summaries)}/{len(chunks)} "
-                f"chunks \u2014 chapter '{heading[:40]}' will be marked FAILED instead "
-                f"of silently grinding (raise local.map_phase_max_seconds to "
-                f"allow longer map phases).",
-                "WARNING",
-            )
-            return None, 0
-        prompt = f'Summarize the following excerpt from chapter "{heading}" in exactly {map_mini_words} words. Focus on concrete facts, arguments, and named concepts. Output ONLY the summary text, no preamble.\n\n{chunk}'
+    if parallel_max_workers > 1 and len(chunks) > 1:
+        # ── Phase 6.2 (V0.19) lever MAP: overlapped map phase ──────────────
+        # Map chunks are independent BY DESIGN (each mini-summary is a pure
+        # function of its own chunk text; the reduce step consumes the
+        # ordered list). Running the chunk calls in bounded WAVES changes
+        # nothing about the RESULT — same calls, same responses, same
+        # ordered ``mini_summaries`` — only the wall-clock shrinks
+        # (N×latency becomes ceil(N/k)×latency). The V18.20.4.10
+        # wall-clock budget is enforced at WAVE granularity (checked before
+        # each wave — the same "before each chunk" rule, coarsened to the
+        # unit of work that can actually be interrupted without wasting an
+        # in-flight HTTP request).
+        _wave_size = max(1, int(parallel_max_workers))
         log(
-            f"    \U0001f5fa\ufe0f Map chunk {idx}/{len(chunks)} ({count_tokens(chunk):,} tok)\u2026",
+            f"    \U0001f5fa\ufe0f Phase 6.2: map phase overlapped — {len(chunks)} chunks "
+            f"on up to {_wave_size} concurrent workers "
+            f"(summarisation.parallel_stages_map)",
             "INFO",
         )
-        # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think for
-        # Qwen-family models.
-        response = call_llm(
-            qwen_no_think(prompt, primary_model),
-            model=primary_model,
-            temperature=temperature * 0.7,
-        )
-        if response:
-            mini_summaries.append(f"[Chunk {idx}/{len(chunks)}]\n{response.strip()}")
-        else:
-            log(f"    \u26a0\ufe0f Map chunk {idx} failed \u2013 skipped", "WARNING")
+        _idx0 = 0
+        while _idx0 < len(chunks):
+            if (
+                map_phase_budget_sec > 0
+                and (time.monotonic() - _phase_start) > map_phase_budget_sec
+            ):
+                log(
+                    f"    \u26a0\ufe0f Map\u2011Reduce ABORTED: map phase exceeded its "
+                    f"{map_phase_budget_sec}s budget after {len(mini_summaries)}/{len(chunks)} "
+                    f"chunks \u2014 chapter '{heading[:40]}' will be marked FAILED instead "
+                    f"of silently grinding (raise local.map_phase_max_seconds to "
+                    f"allow longer map phases).",
+                    "WARNING",
+                )
+                return None, 0
+            _wave = list(range(_idx0, min(_idx0 + _wave_size, len(chunks))))
+            for _i in _wave:
+                log(
+                    f"    \U0001f5fa\ufe0f Map chunk {_i + 1}/{len(chunks)} "
+                    f"({count_tokens(chunks[_i]):,} tok)\u2026",
+                    "INFO",
+                )
+
+            def _call_chunk(_ci: int) -> str | None:
+                # V18.20.2.0 (SWOT A5): direct call_llm site — inject
+                # /no_think for Qwen-family models (same as the sequential
+                # path; the prompt builder is shared, so the two paths
+                # cannot drift).
+                return call_llm(
+                    qwen_no_think(
+                        _map_chunk_prompt(heading, map_mini_words, chunks[_ci]),
+                        primary_model,
+                    ),
+                    model=primary_model,
+                    temperature=temperature * 0.7,
+                )
+
+            _responses = run_independent(
+                [(lambda _ci=_i: _call_chunk(_ci)) for _i in _wave],
+                max_workers=_wave_size,
+                label="map-phase",
+            )
+            for _pos, _i in enumerate(_wave):
+                if _responses[_pos]:
+                    mini_summaries.append(
+                        f"[Chunk {_i + 1}/{len(chunks)}]\n{_responses[_pos].strip()}"
+                    )
+                else:
+                    log(f"    \u26a0\ufe0f Map chunk {_i + 1} failed \u2013 skipped", "WARNING")
+            _idx0 += len(_wave)
+    else:
+        for idx, chunk in enumerate(chunks, 1):
+            # V18.20.4.10 (P0-d): wall-clock budget for the whole map phase.
+            # Checked BEFORE each chunk so a stuck/slow phase is bounded by
+            # budget + one HTTP timeout, never unbounded. Failing loudly beats
+            # silently producing a partial summary (honesty machinery rule).
+            if (
+                map_phase_budget_sec > 0
+                and (time.monotonic() - _phase_start) > map_phase_budget_sec
+            ):
+                log(
+                    f"    \u26a0\ufe0f Map\u2011Reduce ABORTED: map phase exceeded its "
+                    f"{map_phase_budget_sec}s budget after {len(mini_summaries)}/{len(chunks)} "
+                    f"chunks \u2014 chapter '{heading[:40]}' will be marked FAILED instead "
+                    f"of silently grinding (raise local.map_phase_max_seconds to "
+                    f"allow longer map phases).",
+                    "WARNING",
+                )
+                return None, 0
+            prompt = _map_chunk_prompt(heading, map_mini_words, chunk)
+            log(
+                f"    \U0001f5fa\ufe0f Map chunk {idx}/{len(chunks)} ({count_tokens(chunk):,} tok)\u2026",
+                "INFO",
+            )
+            # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think for
+            # Qwen-family models.
+            response = call_llm(
+                qwen_no_think(prompt, primary_model),
+                model=primary_model,
+                temperature=temperature * 0.7,
+            )
+            if response:
+                mini_summaries.append(f"[Chunk {idx}/{len(chunks)}]\n{response.strip()}")
+            else:
+                log(f"    \u26a0\ufe0f Map chunk {idx} failed \u2013 skipped", "WARNING")
 
     if not mini_summaries:
         return None, 0

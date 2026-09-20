@@ -199,7 +199,14 @@ class BenchSettings:
         "model_temperatures": {},
     }
 
+    # Phase 6 (V0.19): per-run overrides (the parallel-stages levers for the
+    # --parallel-stages acceptance measurement). Empty by default — the
+    # default bench run is bit-for-bit the pre-V0.19 configuration.
+    _EXTRA: dict[str, Any] = {}
+
     def get(self, key: str, default: Any = None) -> Any:
+        if key in self._EXTRA:
+            return self._EXTRA[key]
         return self._VALUES.get(key, default)
 
     def get_ollama_url(self) -> str:
@@ -264,6 +271,7 @@ def install_mock_llm(
     scale: float,
     stats: MockLlmStats,
     log: Callable[[str, str], None],
+    source_response_source: str = "",
 ) -> None:
     """Replace ``summarizer._call_llm`` with the latency-bucketed mock.
 
@@ -272,6 +280,27 @@ def install_mock_llm(
     it; the structured/JSON path is disabled in production — V18.20.2.0
     A16 — so XML is the real path).
     """
+
+    # Phase 6 b3 mode: the FIRST primary-shaped call returns a deliberately
+    # NARROW summary (first 2 body sentences only) so the coverage check
+    # fails and the pipeline enters B3 multi-sample voting; the B3 samples
+    # (also primary-shaped) get the full grounded response. Deterministic:
+    # a counter over primary-class calls.
+    narrow_first = getattr(install_mock_llm, "_b3_mode", False)
+    primary_seen = {"n": 0}
+
+    def _narrow_response(source: str) -> str:
+        sents = _sentences(re.sub(r"^#+ .*$", "", source, flags=re.MULTILINE))
+        body = [s for s in sents if len(s.split()) >= 4] or sents[:1]
+        two = " ".join(_trim_words(s, 60) for s in body[:2])
+        one = _trim_words(body[0], 40)
+        return (
+            f"<executive_summary>{two}</executive_summary>\n"
+            f"<bullet_points>\n- {one}\n</bullet_points>\n"
+            f"<thorough_summary>{two}</thorough_summary>\n"
+            f"<key_distinctions>{one} versus {one}</key_distinctions>\n"
+            f"<theoretical_tensions>{one} compared with {one}</theoretical_tensions>"
+        )
 
     def _mock_call_llm(prompt, model=None, temperature=None, max_tokens=None):
         cls = classify_call(prompt, max_tokens)
@@ -292,6 +321,10 @@ def install_mock_llm(
         log(f"[mock-llm] {cls} call: {latency:.2f}s simulated, {len(prompt)} chars", "DEBUG")
         if len(prompt) > _LONG_PROMPT_CHARS or max_tokens is None:
             # Primary/chunked shape → the grounded chapter summary.
+            if narrow_first:
+                primary_seen["n"] += 1
+                if primary_seen["n"] == 1:
+                    return _narrow_response(source_response_source)
             return source_response
         return build_aux_response(prompt, source_response)
 
@@ -412,6 +445,26 @@ PIPELINE_STAGES = [
 # ── Bench run ───────────────────────────────────────────────────────────────
 
 
+def build_mapreduce_chapter(base_source: str, target_tokens: int = 60000) -> tuple[str, str]:
+    """Phase 6 bench mode: a deterministic OVERSIZED chapter (>40k tokens)
+    that routes through the map-reduce path (the strategy decision sends
+    src_tokens > MAP_REDUCE_THRESHOLD = 40000 to chunked map+reduce at the
+    legacy 32k window). Built by cycling the golden source's sentences with
+    numbered stanza prefixes — deterministic, content varies per stanza so
+    paragraph chunking produces ~12 real chunks."""
+    sents = _sentences(re.sub(r"^#+ .*$", "", base_source, flags=re.MULTILINE))
+    body = [s for s in sents if len(s.split()) >= 4] or sents or ["The content."]
+    out: list[str] = []
+    stanza = 0
+    approx_chars = target_tokens * 4
+    while sum(len(p) for p in out) < approx_chars:
+        stanza += 1
+        para = " ".join(body[(stanza + i) % len(body)] for i in range(min(6, len(body))))
+        out.append(f"Section {stanza}. {para}")
+    text = "# Synthetic Map-Reduce Benchmark Chapter\n\n" + "\n\n".join(out)
+    return "Synthetic Map-Reduce Benchmark Chapter", text
+
+
 def load_golden_chapter(name: str) -> tuple[str, str]:
     path = PROJECT_ROOT / "tests" / "golden" / name / "source_chapter.md"
     if not path.exists():
@@ -435,6 +488,23 @@ def build_summarizer(
     req = ConversionRequest(input_path=PROJECT_ROOT / "VERSION", output_dir=output_dir)
     req.generate_summaries = True
     req.max_workers = workers if parallel else 1
+    # Phase 6 bench modes: the b3 mode drives the multi-sample path.
+    if getattr(build_summarizer, "_b3_mode", False):
+        try:
+            req.b3_voting_enabled = True
+        except Exception:
+            pass
+    # Phase 6 mapreduce mode: pin the LEGACY 32k window so the strategy
+    # decision routes the >40k-token synthetic chapter to map-reduce (the
+    # request default window is 131072 — a 46k chapter FITS single-pass
+    # there, which is the modern behavior, not the path being measured).
+    # The synthetic model name is NOT in the model registry, so the V0.09
+    # (P5) registry raise (32768 → 65536 for known models) does not apply —
+    # the legacy cascade (src > 40000 → map_reduce, 4000-token chunks) is
+    # the measured path.
+    if getattr(build_summarizer, "_mapreduce_mode", False):
+        req.summarisation_max_context_tokens = 32768
+        req.summarisation_model = "bench-synthetic-mr:12b"
     s = Summarizer(request=req, log_callback=log, language=language, claim_extractor=None)
     # Force the execution mode regardless of any model-profile defaults.
     s.max_workers = workers if parallel else 1
@@ -445,8 +515,26 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
     from core.summarisation.bullet_pipeline import BulletPipeline
     from utils.settings import Settings
 
-    heading, source = load_golden_chapter(args.chapter)
+    if args.bench_mode == "mapreduce":
+        _base_heading, base_source = load_golden_chapter(args.chapter)
+        heading, source = build_mapreduce_chapter(base_source)
+    else:
+        heading, source = load_golden_chapter(args.chapter)
     source_response = build_primary_response(source)
+
+    # Phase 6 (V0.19): the acceptance configuration — turn the
+    # parallel-stages levers ON (the roadmap's "after soak" configuration,
+    # measured deterministically). Default OFF = the shipped default.
+    if args.parallel_stages:
+        BenchSettings._EXTRA = {
+            "summarisation.parallel_stages": True,
+            "summarisation.parallel_stages_max_workers": args.parallel_workers,
+        }
+    else:
+        BenchSettings._EXTRA = {}
+    build_summarizer._b3_mode = args.bench_mode == "b3"
+    install_mock_llm._b3_mode = args.bench_mode == "b3"
+    build_summarizer._mapreduce_mode = args.bench_mode == "mapreduce"
 
     log_lines: list[tuple[str, str]] = []
 
@@ -476,7 +564,14 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
             s = build_summarizer(
                 out_dir, args.parallel, args.workers, log, language=chapter_language(args.chapter)
             )
-            install_mock_llm(s, source_response, args.latency_scale, stats, log)
+            install_mock_llm(
+                s,
+                source_response,
+                args.latency_scale,
+                stats,
+                log,
+                source_response_source=source,
+            )
 
             timer.wrap_instance(s, SUMMARIZER_STAGES)
             timer.wrap_class(BulletPipeline, PIPELINE_STAGES)
@@ -493,6 +588,10 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
         Settings._test_override = previous_override
         for obj, name, orig in undo_singletons:
             setattr(obj, name, orig)
+        BenchSettings._EXTRA = {}
+        build_summarizer._b3_mode = False
+        install_mock_llm._b3_mode = False
+        build_summarizer._mapreduce_mode = False
 
     wall = time.perf_counter() - t_total0
 
@@ -503,6 +602,8 @@ def run_bench(args: argparse.Namespace) -> dict[str, Any]:
         "mode": "parallel" if args.parallel else "sequential",
         "workers": args.workers if args.parallel else 1,
         "chapter": args.chapter,
+        "bench_mode": args.bench_mode,
+        "parallel_stages": bool(args.parallel_stages),
         "chapters": len(chapters),
         "latency_scale": args.latency_scale,
         "pipeline_ok": ok,
@@ -599,7 +700,12 @@ def print_report(report: dict[str, Any]) -> None:
     mode = report["mode"]
     n = report["chapters"]
     print("\n" + "=" * 72)
-    print(f"  BENCH CHAPTER — {mode} mode, {n} chapter(s), scale {report['latency_scale']}")
+    _extra = ""
+    if report.get("bench_mode", "golden") != "golden":
+        _extra += f", bench={report['bench_mode']}"
+    if report.get("parallel_stages"):
+        _extra += ", PARALLEL-STAGES ON"
+    print(f"  BENCH CHAPTER — {mode} mode, {n} chapter(s), scale {report['latency_scale']}{_extra}")
     print("=" * 72)
     status = "OK" if report["pipeline_ok"] else "FAILED"
     print(f"  pipeline: {status}   wall-clock: {report['wall_clock_sec']:.2f}s")
@@ -687,6 +793,26 @@ def main(argv: list[str] | None = None) -> int:
         help="freeze pipeline output to tests/golden/<chapter>/pipeline_output.json",
     )
     parser.add_argument("--verbose", action="store_true", help="stream pipeline log to stdout")
+    parser.add_argument(
+        "--parallel-stages",
+        action="store_true",
+        help="turn the Phase-6 intra-chapter overlap levers ON "
+        "(summarisation.parallel_stages — the acceptance configuration)",
+    )
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=4,
+        help="summarisation.parallel_stages_max_workers when --parallel-stages (default 4)",
+    )
+    parser.add_argument(
+        "--bench-mode",
+        choices=["golden", "b3", "mapreduce"],
+        default="golden",
+        help="golden: the frozen single-pass chapter (default). b3: first primary "
+        "deliberately narrow → B3 multi-sample voting path. mapreduce: synthetic "
+        ">40k-token chapter → chunked map-reduce path.",
+    )
     args = parser.parse_args(argv)
 
     if args.profile_out and not args.profile:

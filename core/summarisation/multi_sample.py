@@ -33,6 +33,8 @@ from collections import Counter as _Counter
 from collections.abc import Callable
 from typing import Any
 
+# Phase 6.2 (V0.19): bounded intra-chapter overlap (thread-based).
+from core.summarisation.stage_overlap import run_independent
 from utils.error_trace import log_swallow
 
 # Type aliases (duck-typed).
@@ -73,6 +75,7 @@ def multi_sample_summarize(
     fusion_enabled: bool,
     fusion_use_for_b3_judge: bool,
     log: LogCallback | None = None,
+    parallel_max_workers: int = 1,
 ) -> dict | None:
     """V3.3.0 B3: Generate N summaries and vote on the best.
 
@@ -112,34 +115,92 @@ def multi_sample_summarize(
         log_swallow("model_temp_profile_lookup", _e, detail=f"model={model_lower[:40]}")
     temps = [optimal_temp] * n_samples
     samples = []
-    for i, temp in enumerate(temps):
-        # V15.1.0: VRAM recovery between B3 samples (from V15.0.1).
-        # Prevents CUDA OOM / Ollama hard-crash on local GPUs at high VRAM.
-        if i > 0:
-            recover_vram(context=f"B3-sample-{i + 1}", delay_sec=120.0)
-        log(f"    \U0001f916 B3 sample {i + 1}/{n_samples} (t={temp:.2f})\u2026", "DEBUG")
-        # V15.1.0: per-sample try/except so one crash doesn't kill the app.
-        try:
-            result = summarize_with_model(
-                heading,
-                text,
-                primary_model,
-                temp,
-                with_cot=True,
-                concepts=concepts,
-                callouts=callouts,
-            )
-        except Exception as _b3e:
-            log(
-                f"    \u26a0\ufe0f B3 sample {i + 1}/{n_samples} crashed "
-                f"({type(_b3e).__name__}: {_b3e}) \u2014 skipping, continuing "
-                f"with remaining samples",
-                "WARNING",
-            )
-            logger.warning("B3 sample %d crashed: %s: %s", i + 1, type(_b3e).__name__, _b3e)
-            result = None
-        if result:
-            samples.append(result)
+    if parallel_max_workers > 1 and n_samples > 1:
+        # \u2500\u2500 Phase 6.2 (V0.19) lever B3: overlapped multi-sampling \u2500\u2500\u2500\u2500\u2500
+        # B3 samples are independent BY DESIGN: each is a pure
+        # ``summarize_with_model`` call over the SAME prompt at the SAME
+        # (model-optimal) temperature; the bullet voting below consumes the
+        # ordered ``samples`` list. Overlapping the calls changes nothing
+        # about the RESULT \u2014 same calls, same ordered merge \u2014 only the
+        # wall-clock shrinks (N\u00d7primary-latency becomes ~1\u00d7).
+        #
+        # The V15.1.0 inter-sample ``recover_vram(120 s)`` sleeps are
+        # SKIPPED on this path: they exist to recover VRAM BETWEEN
+        # sequential local-GPU samples; with the calls in flight
+        # concurrently there is no "between". Local-rig VRAM is the reason
+        # this lever is OFF by default (``summarisation.parallel_stages``)
+        # \u2014 cloud providers have no VRAM constraint.
+        _b3_workers = max(1, min(int(parallel_max_workers), n_samples))
+        log(
+            f"    \U0001f916 Phase 6.2: B3 multi-sample overlapped \u2014 {n_samples} samples "
+            f"on up to {_b3_workers} concurrent workers "
+            f"(summarisation.parallel_stages_b3)",
+            "INFO",
+        )
+        for i, temp in enumerate(temps):
+            log(f"    \U0001f916 B3 sample {i + 1}/{n_samples} (t={temp:.2f})\u2026", "DEBUG")
+
+        def _sample(i: int) -> dict | None:
+            # V15.1.0 semantics preserved: one crashing sample never kills
+            # the others \u2014 the per-sample try/except returns None and the
+            # sample is skipped, exactly like the sequential loop.
+            try:
+                return summarize_with_model(
+                    heading,
+                    text,
+                    primary_model,
+                    temps[i],
+                    with_cot=True,
+                    concepts=concepts,
+                    callouts=callouts,
+                )
+            except Exception as _b3e:
+                log(
+                    f"    \u26a0\ufe0f B3 sample {i + 1}/{n_samples} crashed "
+                    f"({type(_b3e).__name__}: {_b3e}) \u2014 skipping, continuing "
+                    f"with remaining samples",
+                    "WARNING",
+                )
+                logger.warning("B3 sample %d crashed: %s: %s", i + 1, type(_b3e).__name__, _b3e)
+                return None
+
+        _b3_results = run_independent(
+            [(lambda _i=i: _sample(_i)) for i in range(n_samples)],
+            max_workers=_b3_workers,
+            label="b3-samples",
+        )
+        for result in _b3_results:
+            if result:
+                samples.append(result)
+    else:
+        for i, temp in enumerate(temps):
+            # V15.1.0: VRAM recovery between B3 samples (from V15.0.1).
+            # Prevents CUDA OOM / Ollama hard-crash on local GPUs at high VRAM.
+            if i > 0:
+                recover_vram(context=f"B3-sample-{i + 1}", delay_sec=120.0)
+            log(f"    \U0001f916 B3 sample {i + 1}/{n_samples} (t={temp:.2f})\u2026", "DEBUG")
+            # V15.1.0: per-sample try/except so one crash doesn't kill the app.
+            try:
+                result = summarize_with_model(
+                    heading,
+                    text,
+                    primary_model,
+                    temp,
+                    with_cot=True,
+                    concepts=concepts,
+                    callouts=callouts,
+                )
+            except Exception as _b3e:
+                log(
+                    f"    \u26a0\ufe0f B3 sample {i + 1}/{n_samples} crashed "
+                    f"({type(_b3e).__name__}: {_b3e}) \u2014 skipping, continuing "
+                    f"with remaining samples",
+                    "WARNING",
+                )
+                logger.warning("B3 sample %d crashed: %s: %s", i + 1, type(_b3e).__name__, _b3e)
+                result = None
+            if result:
+                samples.append(result)
 
     if not samples:
         return None

@@ -1681,6 +1681,9 @@ class Summarizer(
         Byte-for-byte identical behaviour (characterization tests in
         ``tests/test_multi_sample.py``).
         """
+        from core.summarisation.stage_overlap import lever_enabled as _p6_lever_enabled
+        from core.summarisation.stage_overlap import lever_workers as _p6_lever_workers
+
         return ms_multi_sample_summarize(
             heading,
             text,
@@ -1699,6 +1702,9 @@ class Summarizer(
             fusion_enabled=self.fusion_enabled,
             fusion_use_for_b3_judge=self.fusion_use_for_b3_judge,
             log=self.log,
+            # Phase 6.2 (V0.19) lever B3: overlap the independent samples
+            # (OFF unless summarisation.parallel_stages is enabled).
+            parallel_max_workers=_p6_lever_workers() if _p6_lever_enabled("b3") else 1,
         )
 
     def _extract_must_have_items(self, heading: str, text: str) -> list[str]:
@@ -2157,6 +2163,21 @@ class Summarizer(
             thorough,
         ) = self._phase_thorough_and_coverage(heading, content, text, parsed)
 
+        # ── Phase 6.2 (V0.19) lever judge_scholar ───────────────────────────
+        # The validation+judge phase's LLM tail (gap-fill + content judge +
+        # grounding check) and the recovery pass's scholar reflection are
+        # SEQUENTIAL in the data flow (scholar sees post-judge state) — but
+        # the scholar's result only DIFFERS when the judge tail actually
+        # changed the summary state. So: launch the scholar SPECULATIVELY
+        # on the settled pre-judge state the instant the deterministic
+        # prologue finishes (the p6_prejudge_hook below), overlap it with
+        # the judge tail, then MERGE when the state survived unchanged
+        # (the golden path: a grounded summary is not modified by the
+        # judge) or DISCARD + re-run inline when it did not (drop paths).
+        # OFF by default — ``summarisation.parallel_stages`` (roadmap
+        # rollback plan: each lever independently disableable).
+        _p6_spec = self._p6_prepare_speculative_scholar(heading, content, parsed)
+
         _pr = self._phase_validation_and_judge(
             heading,
             content,
@@ -2169,8 +2190,11 @@ class Summarizer(
             final_summary,
             _pipeline,
             _pstate,
+            p6_prejudge_hook=(None if _p6_spec is None else _p6_spec["prejudge_hook"]),
         )
         if isinstance(_pr, SummaryResult):
+            if _p6_spec is not None:
+                _p6_spec["abort"]()
             return _pr
         bullets, exec_sum, thorough = _pr
 
@@ -2178,7 +2202,13 @@ class Summarizer(
         # postchecks / finalize phases moved VERBATIM to
         # core.summarisation.chapter_phases (SummarizerChapterPhasesMixin).
         bullets, exec_sum, thorough = self._phase_recovery_pass(
-            heading, content, parsed, exec_sum, bullets, thorough
+            heading,
+            content,
+            parsed,
+            exec_sum,
+            bullets,
+            thorough,
+            scholar_runner=(None if _p6_spec is None else _p6_spec["scholar_runner"]),
         )
         thorough = self._phase_deterministic_judge(heading, content, exec_sum, bullets, thorough)
         bullets, exec_sum, thorough = self._phase_postchecks_and_floors(
@@ -2209,6 +2239,156 @@ class Summarizer(
         )
 
     # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Phase 6.2 (V0.19) lever judge_scholar: speculative machinery ─────────
+
+    _P6_SCHOLAR_INPUT_KEYS = (
+        "bullet_points",
+        "executive_summary",
+        "thorough_summary",
+        "key_distinctions",
+        "theoretical_tensions",
+    )
+
+    def _p6_scholar_input_snapshot(self, parsed: dict) -> tuple:
+        """Value snapshot of every ``parsed`` key the scholar reflection
+        reads (scholar_reflection.py reads exactly these five). Lists are
+        compared BY VALUE (element-wise) — identity changes are irrelevant."""
+        out = []
+        for k in self._P6_SCHOLAR_INPUT_KEYS:
+            v = parsed.get(k)
+            out.append((k, tuple(v) if isinstance(v, list) else v))
+        return tuple(out)
+
+    def _p6_prepare_speculative_scholar(
+        self, heading: str, content: str, parsed: dict
+    ) -> dict | None:
+        """Prepare (but do not start) the speculative scholar reflection.
+
+        Returns a handle dict with ``prejudge_hook`` / ``scholar_runner`` /
+        ``abort`` callables, or None when the lever is not armed (setting
+        off, dual-model architecture — ``call_fast_llm`` SWITCHES models on
+        dual architectures and concurrent switching races —, reflections
+        text enabled — the speculation runs the gapfill-only variant —, or
+        deadline already exceeded). None = the plain sequential pipeline.
+        """
+        from core.summarisation.stage_overlap import lever_enabled
+
+        if not lever_enabled("judge_scholar"):
+            return None
+        _arch = str(getattr(self.request, "model_architecture", "single_local") or "single_local")
+        if _arch.startswith("dual"):
+            self.log(
+                "    ℹ️ Phase 6.2: judge∥scholar speculation skipped "
+                "(dual-model architecture switches models mid-call)",
+                "DEBUG",
+            )
+            return None
+        try:
+            from utils.settings import Settings as _P6Settings
+
+            if _P6Settings().get("summarisation.scholar_reflections_enabled", False):
+                # The reflections TEXT variant is a different call shape —
+                # speculate only for the default gapfill-only variant.
+                return None
+        except Exception:
+            return None
+        if self._deadline_exceeded("scholar reflection"):
+            return None
+
+        handle: dict = {"started": False, "ok": False, "snapshot": None, "copy": None}
+        base_parsed = dict(parsed)
+        if isinstance(base_parsed.get("bullet_points"), list):
+            base_parsed["bullet_points"] = list(base_parsed["bullet_points"])
+
+        def _prejudge_hook(bullets: list, exec_sum: str, thorough: str) -> None:
+            # Called by _phase_validation_and_judge AFTER its deterministic
+            # prologue settled the summary state, right before the LLM tail.
+            base_parsed["bullet_points"] = list(bullets)
+            base_parsed["executive_summary"] = exec_sum
+            base_parsed["thorough_summary"] = thorough
+            handle["snapshot"] = self._p6_scholar_input_snapshot(base_parsed)
+            handle["copy"] = dict(base_parsed)
+            handle["started"] = True
+            handle["ok"] = False
+
+            def _spec_run() -> None:
+                try:
+                    self._scholar_reflection_gapfill_only(heading, content, handle["copy"])
+                    handle["ok"] = True
+                except Exception as _e:
+                    self.log(
+                        f"    ⚠️ Phase 6.2: speculative scholar crashed "
+                        f"(non-fatal, sequential fallback): {_e}",
+                        "WARNING",
+                    )
+
+            import threading as _p6_threading
+
+            _t = _p6_threading.Thread(
+                target=_spec_run,
+                name=f"p6-speculative-scholar[{heading[:24]}]",
+                daemon=True,
+            )
+            handle["thread"] = _t
+            _t.start()
+            self.log(
+                "    🎓 Phase 6.2: speculative scholar reflection launched "
+                "(overlapping the judge tail — summarisation.parallel_stages_judge_scholar)",
+                "INFO",
+            )
+
+        def _scholar_runner(parsed_now: dict, scholar_enabled: bool) -> None:
+            # Called by _phase_recovery_pass at the point the sequential
+            # pipeline would run the scholar reflection. Merge-or-rerun.
+            _t = handle.get("thread")
+            if _t is not None and _t.is_alive():
+                _t.join()
+            if not handle.get("started") or not handle.get("ok"):
+                # Never launched (hook not reached) or crashed → sequential.
+                if scholar_enabled:
+                    self._scholar_reflection(heading, content, parsed_now)
+                else:
+                    self._scholar_reflection_gapfill_only(heading, content, parsed_now)
+                return
+            if self._p6_scholar_input_snapshot(parsed_now) != handle["snapshot"]:
+                self.log(
+                    "    ℹ️ Phase 6.2: speculative scholar DISCARDED — the judge "
+                    "tail changed the summary state; re-running sequentially "
+                    "(the output is exactly the pre-V0.19 behavior)",
+                    "INFO",
+                )
+                if scholar_enabled:
+                    self._scholar_reflection(heading, content, parsed_now)
+                else:
+                    self._scholar_reflection_gapfill_only(heading, content, parsed_now)
+                return
+            # The scholar's input state is EXACTLY the pipeline's current
+            # state → its output (the mutated copy) IS the sequential
+            # result. Merge = adopt the copy's two written keys.
+            _copy = handle["copy"]
+            parsed_now["bullet_points"] = list(
+                _copy.get("bullet_points", parsed_now.get("bullet_points", []))
+            )
+            parsed_now["scholar_reflections"] = _copy.get("scholar_reflections", "")
+            self.log(
+                "    🎓 Phase 6.2: speculative scholar reflection MERGED "
+                "(judge tail left the summary state unchanged — the concurrent "
+                "result is the sequential result)",
+                "INFO",
+            )
+
+        def _abort() -> None:
+            # Hard-reject path: the chapter failed in the judge phase — the
+            # speculative thread is daemonized and its result is simply
+            # never consumed (the chapter returns the failure SummaryResult).
+            pass
+
+        return {
+            "prejudge_hook": _prejudge_hook,
+            "scholar_runner": _scholar_runner,
+            "abort": _abort,
+        }
 
     def _recover_quarantined(self, bullets: list[str], source_text: str) -> list[str]:
         """Re-scan the quarantine and resurrect high-overlap bullets.
@@ -2316,6 +2496,10 @@ class Summarizer(
                 if _budget <= 0
                 else min(_budget, max(300, int(_remaining)))
             )
+        from core.summarisation.stage_overlap import lever_enabled as _p6_lever_enabled
+        from core.summarisation.stage_overlap import lever_workers as _p6_lever_workers
+
+        _p6_map_workers = _p6_lever_workers() if _p6_lever_enabled("map") else 1
         return mr_map_reduce_summarize(
             heading,
             content,
@@ -2335,6 +2519,7 @@ class Summarizer(
             call_llm=self._call_llm,
             log=self.log,
             map_phase_budget_sec=_budget,
+            parallel_max_workers=_p6_map_workers,
         )
 
     def _prepare_text(self, text: str) -> str:
