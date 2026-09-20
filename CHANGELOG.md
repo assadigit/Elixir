@@ -1,5 +1,53 @@
 # Changelog
 
+## V0.20.4 — Quality Campaign: stamp the conversion log header with app version + run_id (root-cause fix for stale-log confusion)
+
+> **The release:** the V0.20.3 ch.2 audits (3 consecutive runs) found the user
+> uploading the **old V0.18 conversion log** alongside the new V0.20.3 summary.
+> The log's only version line was ~line 61 (`App version: 0.18`, from the
+> settings logger), buried in the settings dump — easy to miss when scrolling.
+> The log header had **no self-identification**, unlike the summary files which
+> stamp `<!-- generated-by: Elixir v<version> | run_id=... -->` on line 3.
+>
+> **Root-cause fix (V0.20.4):** `ConversionLogger._open()` now stamps the app
+> version + a conversion run_id in the log **header** (line 5, right after
+> `Started at:`), using the same format the summary files use. The stamp reads:
+> ```
+> <!-- generated-by: Elixir v0.20.4 | run_id=20260921-012656-50e6b5a0 -->
+> ```
+> This makes it **impossible to confuse an old log with a new one** — the very
+> first comment in every conversion log identifies its version + run_id, and
+> `parse_provenance` (the same parser used on summary files) can extract it.
+
+**Fix — `953e55d` — stamp the conversion log header (`utils/logging.py`):**
+- `ConversionLogger._open()` writes the `Started at:` line, then a provenance
+  comment `<!-- generated-by: Elixir v<version> | run_id=<id> -->`, then `---`.
+- The run_id is generated at the converter level via `make_run_id()` (the same
+  function the Summarizer uses), so the log has its own conversion-level
+  identifier. The Summarizer generates a separate run_id for the summary files
+  (per-chapter); both share the app version.
+- Fail-open: a `get_app_version()` or `make_run_id()` crash skips the stamp but
+  the log is still created with a valid header.
+- The `_conversion_run_id` attribute is exposed on the logger for correlation
+  with the summary files.
+
+**Tests (`tests/test_v0204_conversion_log_provenance.py`):**
+- `test_log_header_has_provenance_stamp` — the 3rd line of the log is a provenance
+  comment with app version + run_id matching the `YYYYMMDD-HHMMSS-<8hex>` format.
+- `test_log_overwrites_on_new_run` — a new `ConversionLogger` overwrites the
+  old log (opens in `'w'` mode) and generates a NEW run_id — the stamps differ,
+  the old content is gone.
+- `test_conversion_run_id_attribute_exists` — the logger exposes
+  `_conversion_run_id` for correlation.
+- `test_stamp_never_breaks_log_on_import_failure` — a `get_app_version` crash
+  skips the stamp but the log is still created with a valid header.
+
+**Verification:** `ruff check` + `format` clean; full suite **5,587 passed**
+(+4 regression tests), 35 skipped, 0 failed; `make eval-check` → OK (no quality
+regressions; golden chapters byte-identical).
+
+---
+
 ## V0.20.3 — Quality Campaign: catch the thorough-floor gap-fill CoT leak (12 new CoT markers)
 
 > **The release:** the V0.20.2 ch.2 audit
