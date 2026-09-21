@@ -1917,3 +1917,162 @@ def _common_word_stem_in_stoplist(word: str) -> bool:
                 if (stem + "e") in _COMMON_ENGLISH_WORDS:
                     return True
     return False
+
+
+# ── V0.20.5 (Quality Campaign, brainstorm D1): surname-garble cross-check ──
+
+
+# Pattern: "Surname (year)" or "Surname (<em>year</em>)" — the author-year
+# citation form the summary uses. Strips <em> tags before matching so the
+# year is a clean 4-digit string.
+_AUTHOR_YEAR_RE = re.compile(
+    r"\b([A-Z][a-z]{2,}(?:[-\s][A-Z][a-z]+)?)\s*\(\s*(?:<em[^>]*>)?\s*(\d{4})",
+)
+
+
+def detect_and_repair_author_garbles(
+    text: str,
+    field_label: str,
+    source_authors: list[str] | None = None,
+) -> tuple[str, list[Issue]]:
+    """V0.20.5 (brainstorm D1): cross-check every "Surname (year)" pattern in
+    the summary against the source's author list. If a surname is edit-
+    distance-1 from a source author (e.g., a dropped-letter garble of a
+    cited author's surname), auto-repair it.
+
+    Content-agnostic: the source author list comes from the RUNTIME
+    deterministic analysis (extract_citations on the source text), not a
+    hardcoded list. No book-derived names are embedded in this code.
+
+    Args:
+        text: the summary field text (bullet, exec, or thorough).
+        field_label: "bullet", "exec", or "thorough".
+        source_authors: the surnames extracted from the source chapter
+            (from extract_citations). When None or empty, the detector is
+            a no-op (returns the text unchanged, no issues).
+
+    Returns:
+        ``(repaired_text, issues)``. Each issue is a ``name_garble`` fix
+        with the repaired surname.
+    """
+    issues: list[Issue] = []
+    if not text or not source_authors:
+        return text, issues
+    try:
+        # Build a casefold set of source author surnames for fast lookup.
+        source_set = {a.casefold(): a for a in source_authors if len(a) >= 4}
+        if not source_set:
+            return text, issues
+
+        # Build edit-distance-1 neighbors for each source author. If a
+        # summary surname matches a neighbor, it's a garble of that author.
+        # (e.g., a source author's surname with one dropped letter.)
+        author_neighbors: dict[str, str] = {}  # casefold garble → original source author
+        for src_auth in source_authors:
+            if len(src_auth) < 4:
+                continue
+            for neighbor in _edit_distance_one_neighbors(src_auth.casefold()):
+                # Only register a neighbor if it's NOT itself a source author
+                # (avoids "Gediman" matching itself as a garble of "Gediman").
+                if neighbor not in source_set:
+                    author_neighbors[neighbor] = src_auth
+
+        # Find all "Surname (year)" patterns and check for garbles.
+        def _repair_match(m: re.Match) -> str:
+            surname = m.group(1)
+            surname_cf = surname.casefold()
+            # If the surname is already an exact source author, no garble.
+            if surname_cf in source_set:
+                return m.group(0)
+            # If the surname is edit-distance-1 from a source author, repair.
+            if surname_cf in author_neighbors:
+                correct = author_neighbors[surname_cf]
+                issues.append(
+                    Issue(
+                        detector="name_garble",
+                        severity="fix",
+                        field=field_label,
+                        snippet=m.group(0)[:60],
+                        detail=(
+                            f"repaired author-name garble: {surname!r} → {correct!r} "
+                            f"(edit-distance-1 from source author; cross-checked "
+                            f"against the runtime analysis author list)"
+                        ),
+                    )
+                )
+                # Replace the surname in the match, keeping the year + rest.
+                return m.group(0).replace(surname, correct, 1)
+            return m.group(0)
+
+        repaired = _AUTHOR_YEAR_RE.sub(_repair_match, text)
+        return repaired, issues
+    except Exception as e:  # pragma: no cover — detector must never break the chapter
+        from core.summarisation.postchecks.shared import logger
+
+        logger.warning("name-garble detector crashed (non-fatal): %s: %s", type(e).__name__, e)
+        return text, issues
+
+
+# ── V0.20.5 (Quality Campaign, brainstorm D2): stray-quote repair ──
+
+
+def repair_stray_quotes(
+    text: str,
+    field_label: str,
+) -> tuple[str, list[Issue]]:
+    """V0.20.5 (brainstorm D2): repair stray/misplaced double-quotes.
+
+    The V0.20.4 thorough summary had ~10 instances of misplaced closing
+    quotes where the model opened a quote but misplaced the closing quote
+    (e.g., a quoted phrase followed by a comma where the closing quote
+    landed after the comma instead of after the phrase). The existing
+    quote_verification postcheck strips mismatched quotes, but it doesn't
+    catch all shapes.
+
+    This detector finds lines with an ODD number of double-quote characters
+    (a stray quote) and removes the orphan opening or closing quote. The
+    heuristic: if a line has an odd quote count, the LAST quote is the
+    orphan — remove it. This is conservative (removes one quote per odd-
+    count line) and content-agnostic (no hardcoded quote patterns).
+
+    Args:
+        text: the summary field text.
+        field_label: "bullet", "exec", or "thorough".
+
+    Returns:
+        ``(repaired_text, issues)``. Each issue is a ``stray_quote`` fix.
+    """
+    issues: list[Issue] = []
+    if not text:
+        return text, issues
+    try:
+        lines = text.split("\n")
+        repaired_lines = []
+        for line in lines:
+            quote_count = line.count('"')
+            if quote_count % 2 == 1 and quote_count >= 1:
+                # Odd quote count → stray quote. Remove the LAST quote
+                # (the most likely orphan — a misplaced closing quote).
+                last_quote_idx = line.rfind('"')
+                repaired_line = line[:last_quote_idx] + line[last_quote_idx + 1 :]
+                issues.append(
+                    Issue(
+                        detector="stray_quote",
+                        severity="fix",
+                        field=field_label,
+                        snippet=line[:60],
+                        detail=(
+                            f"removed a stray double-quote (line had {quote_count} "
+                            f"quotes — odd count; removed the last quote)"
+                        ),
+                    )
+                )
+                repaired_lines.append(repaired_line)
+            else:
+                repaired_lines.append(line)
+        return "\n".join(repaired_lines), issues
+    except Exception as e:  # pragma: no cover — detector must never break the chapter
+        from core.summarisation.postchecks.shared import logger
+
+        logger.warning("stray-quote detector crashed (non-fatal): %s: %s", type(e).__name__, e)
+        return text, issues

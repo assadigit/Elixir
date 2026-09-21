@@ -551,3 +551,114 @@ class TestPostConsolidationTruncation:
         assert len(trunc_issues) == 1
         assert trunc_issues[0].severity == "fix"
         assert report.bullets == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.20.5 (brainstorm D1+D2): name-garble repair + stray-quote repair
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV0205NameGarbleRepair:
+    """V0.20.5 (brainstorm D1): cross-check author surnames against the
+    source author list — auto-repair edit-distance-1 garbles like
+    'Akhar' → 'Akhtar', 'Gedimen' → 'Gediman'. Content-agnostic: the
+    source author list comes from the runtime analysis."""
+
+    def test_repair_edit_distance_one_garble(self):
+        from core.summarisation.postchecks.garble import detect_and_repair_author_garbles
+
+        # Source has "Akhtar"; summary has "Akhar" (dropped 't').
+        text = "Akhar (1982a) described the narcissistic personality."
+        repaired, issues = detect_and_repair_author_garbles(
+            text, "bullet", source_authors=["Akhtar", "Kernberg", "Erikson"]
+        )
+        assert "Akhtar (1982a)" in repaired
+        assert "Akhar" not in repaired
+        assert len(issues) == 1
+        assert issues[0].detector == "name_garble"
+        assert issues[0].severity == "fix"
+        assert "Akhar" in issues[0].detail and "Akhtar" in issues[0].detail
+
+    def test_no_repair_when_already_correct(self):
+        from core.summarisation.postchecks.garble import detect_and_repair_author_garbles
+
+        text = "Akhtar (1982a) described the narcissistic personality."
+        repaired, issues = detect_and_repair_author_garbles(
+            text, "bullet", source_authors=["Akhtar", "Kernberg"]
+        )
+        assert repaired == text  # unchanged
+        assert not issues
+
+    def test_no_repair_when_source_authors_empty(self):
+        from core.summarisation.postchecks.garble import detect_and_repair_author_garbles
+
+        text = "Akhar (1982a) described the narcissistic personality."
+        repaired, issues = detect_and_repair_author_garbles(text, "bullet", source_authors=None)
+        assert repaired == text  # unchanged — no source list to cross-check
+        assert not issues
+
+    def test_repair_with_em_tags(self):
+        from core.summarisation.postchecks.garble import detect_and_repair_author_garbles
+
+        # The summary uses <em> tags around years.
+        text = 'Gedimen (<em style="font-size:0.9em">1985</em>) wrote about parricide.'
+        repaired, issues = detect_and_repair_author_garbles(
+            text, "thorough", source_authors=["Gediman", "Winnicott"]
+        )
+        assert "Gediman" in repaired  # the correct spelling is now present
+        assert "Gedimen" not in repaired  # the garble is gone
+        assert len(issues) == 1
+        assert issues[0].detector == "name_garble"
+
+    def test_does_not_repair_non_author_words(self):
+        from core.summarisation.postchecks.garble import detect_and_repair_author_garbles
+
+        # "Smith" is edit-distance-1 from "Smit" — but "Smith" is not in a
+        # "Surname (year)" citation pattern, so it should NOT be touched.
+        text = "The Smith family lived nearby."
+        repaired, issues = detect_and_repair_author_garbles(
+            text, "bullet", source_authors=["Smit", "Jones"]
+        )
+        assert repaired == text  # unchanged — no citation pattern
+        assert not issues
+
+
+class TestV0205StrayQuoteRepair:
+    """V0.20.5 (brainstorm D2): repair stray/misplaced double-quotes on
+    lines with an odd quote count."""
+
+    def test_repair_odd_quote_count(self):
+        from core.summarisation.postchecks.garble import repair_stray_quotes
+
+        # 3 quotes (odd) → remove the last (the stray).
+        text = 'The "false self" described by Winnicott is "inauthentic'
+        repaired, issues = repair_stray_quotes(text, "thorough")
+        # The last quote (before "inauthentic) is removed → 2 quotes (even).
+        assert repaired.count('"') == 2
+        assert len(issues) == 1
+        assert issues[0].detector == "stray_quote"
+        assert issues[0].severity == "fix"
+
+    def test_no_repair_when_quotes_balanced(self):
+        from core.summarisation.postchecks.garble import repair_stray_quotes
+
+        text = 'The "false self" described by Winnicott is inauthentic.'
+        repaired, issues = repair_stray_quotes(text, "thorough")
+        assert repaired == text  # unchanged — 2 quotes (even)
+        assert not issues
+
+    def test_repair_multiple_lines(self):
+        from core.summarisation.postchecks.garble import repair_stray_quotes
+
+        text = 'Line one has "stray quote\nLine two is "balanced" fine'
+        repaired, issues = repair_stray_quotes(text, "thorough")
+        # Line 1 had 1 quote (odd → repaired, 0 quotes); line 2 had 2 (even → unchanged).
+        assert repaired.count('"') == 2
+        assert len(issues) == 1  # only line 1 was repaired
+
+    def test_no_repair_on_empty_text(self):
+        from core.summarisation.postchecks.garble import repair_stray_quotes
+
+        repaired, issues = repair_stray_quotes("", "bullet")
+        assert repaired == ""
+        assert not issues

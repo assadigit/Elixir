@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.14",
+  "generated_for_version": "0.20.4",
   "prompts_dir": "prompts/",
   "file_count": 52,
-  "manifest_sha256": "0a129efedb759d5bbedcf4b3702713b43d3e34b1cdefefb46ce1163c3a829fd6",
+  "manifest_sha256": "057881775ec1fc45b0c34ee423b0b4a2bc89a12aa2c593a6c9cbf9fd997e7622",
   "files": [
     {
       "path": "academic.md",
@@ -17,13 +17,13 @@
     },
     {
       "path": "default.md",
-      "sha256": "42d803dbd390f889201524cd388c60d516a7159a4b46c7fda5b572fae25e9f04",
-      "bytes": 13545
+      "sha256": "397cdbd7c32046c3b2496bbbc904f913814e13f60cb084357a1b50e105375996",
+      "bytes": 13964
     },
     {
       "path": "default_lowbit.md",
-      "sha256": "4ab8882a14c0095ed9613289493fd8711fc1303ada271a348477fe5360b1f0d8",
-      "bytes": 9069
+      "sha256": "bee85397b7aad5f999dbdca262b10737693513bd0a4a8186d7688eff0b48f4f5",
+      "bytes": 9488
     },
     {
       "path": "evaluation/expert_fact_checker.md",
