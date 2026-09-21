@@ -1978,13 +1978,27 @@ def detect_and_repair_author_garbles(
                     author_neighbors[neighbor] = src_auth
 
         # Find all "Surname (year)" patterns and check for garbles.
+        # V0.4 (Quality Campaign, audit V0.3 ch.3): add a fuzzy-matching
+        # fallback for SEVERE garbles (edit distance >>1) — a cited author's
+        # name corrupted beyond one-letter drops. The edit-distance-1 check
+        # above catches one-letter drops; the fuzzy check below catches
+        # multi-character corruption using rapidfuzz similarity ratio.
+        # Threshold: >=80% similarity to a source author (with length >= 4)
+        # that is NOT an exact match. Content-agnostic (uses the runtime list).
+        try:
+            from rapidfuzz import fuzz as _rf_fuzz
+
+            _has_fuzz = True
+        except ImportError:
+            _has_fuzz = False
+
         def _repair_match(m: re.Match) -> str:
             surname = m.group(1)
             surname_cf = surname.casefold()
             # If the surname is already an exact source author, no garble.
             if surname_cf in source_set:
                 return m.group(0)
-            # If the surname is edit-distance-1 from a source author, repair.
+            # Check 1: edit-distance-1 (fast, catches one-letter drops).
             if surname_cf in author_neighbors:
                 correct = author_neighbors[surname_cf]
                 issues.append(
@@ -2000,8 +2014,38 @@ def detect_and_repair_author_garbles(
                         ),
                     )
                 )
-                # Replace the surname in the match, keeping the year + rest.
                 return m.group(0).replace(surname, correct, 1)
+            # Check 2 (V0.4): fuzzy matching for severe garbles (>=80%
+            # similarity to a source author). Catches a severely corrupted
+            # cited author's name (the V0.3 ch.3 audit defect). Only fires
+            # when rapidfuzz is available AND the surname is >= 4 chars AND
+            # no exact/ed-1 match was found.
+            if _has_fuzz and len(surname) >= 4:
+                _best_ratio = 0.0
+                _best_match: str | None = None
+                for src_cf, src_orig in source_set.items():
+                    if abs(len(surname) - len(src_cf)) > max(len(surname), len(src_cf)) // 2:
+                        continue  # skip if length difference is too large
+                    _ratio = _rf_fuzz.ratio(surname_cf, src_cf)
+                    if _ratio > _best_ratio:
+                        _best_ratio = _ratio
+                        _best_match = src_orig
+                if _best_match and _best_ratio >= 80.0:
+                    issues.append(
+                        Issue(
+                            detector="name_garble",
+                            severity="fix",
+                            field=field_label,
+                            snippet=m.group(0)[:60],
+                            detail=(
+                                f"repaired author-name garble (fuzzy): {surname!r} → "
+                                f"{_best_match!r} ({_best_ratio:.0f}% similarity to "
+                                f"source author; cross-checked against the runtime "
+                                f"analysis author list)"
+                            ),
+                        )
+                    )
+                    return m.group(0).replace(surname, _best_match, 1)
             return m.group(0)
 
         repaired = _AUTHOR_YEAR_RE.sub(_repair_match, text)

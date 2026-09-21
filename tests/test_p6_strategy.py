@@ -379,14 +379,15 @@ class TestWiringPins:
         assert "{_p6_decision.reason}" in src
 
     def test_primary_call_chunked_gate_has_window_guard(self):
+        """V0.4: the old legacy gate markers are removed — master-summary
+        is the default. The source must contain the V0.4 log message and
+        the window_tokens attribute (kept for the fallback path)."""
         import core.summarisation.primary_call as pc_mod
 
         src = inspect.getsource(pc_mod.summarize_with_model)
-        # the legacy gates stay byte-identical…
-        assert "_input_tokens_actual > 12000" in src
-        assert "_max_out < 14000" in src
-        # …and the V0.10 (P6) window guard is ANDed in:
-        assert "_window_tokens <= LEGACY_WINDOW" in src
+        # V0.4: the master-summary default message is present
+        assert "V0.4: master-summary" in src
+        # The window_tokens attribute is kept for the fallback path
         assert 'getattr(request, "summarisation_max_context_tokens", LEGACY_WINDOW)' in src
 
     def test_prepare_text_math_unchanged(self):
@@ -510,12 +511,15 @@ class TestChunkedGateBehavior:
         assert result == {"bullet_points": ["chunked"], "from_chunked": True}
 
     def test_220k_window_never_chunks(self, monkeypatch):
-        """window=220000 (the 220k rig): the SAME input/output that chunks
-        at 32k goes single-pass — the chunked-output path is disabled
-        above LEGACY_WINDOW."""
+        """V0.4: master-summary is the DEFAULT — even at 220k window,
+        chunked_summarize (the 3-call master-summary pipeline) runs.
+        The old V18.3.5 gate disabled chunking above LEGACY_WINDOW;
+        V0.4 removes all gates — the master-summary architecture is
+        always called regardless of context window size."""
         result, n_chunked = self._run(monkeypatch, 220000)
-        assert n_chunked == 0
-        assert result["bullet_points"] == ["single-pass"]
+        # V0.4: chunked_summarize IS called (master-summary default)
+        assert n_chunked == 1
+        assert result == {"bullet_points": ["chunked"], "from_chunked": True}
 
     def test_request_without_window_defaults_to_legacy(self, monkeypatch):
         """No context value on the request → default 32768 → legacy gate."""
