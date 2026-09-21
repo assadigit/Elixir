@@ -704,6 +704,87 @@ class OllamaProvider(LLMProvider):
             self.log(f"    ⚠️ {_model} call failed: {e}", "WARNING")
             return None
 
+    # V0.4.1: vision capability for OCR — provider-agnostic, no hardcoded
+    # model names. The probe calls Ollama's /api/show to check if the model
+    # has an mmproj/adapter attached (the /api/show response includes
+    # "model_info" with projector details for vision models).
+
+    def supports_vision(self) -> bool:
+        """Probe Ollama /api/show to check if the model has vision ability.
+
+        Content-agnostic: checks the LIVE model info for an mmproj adapter,
+        not a hardcoded model name list. If /api/show fails, returns False
+        (fail-safe — don't attempt vision if we can't confirm it).
+        """
+        try:
+            import requests as _req
+
+            url = f"{self.base_url}/api/show"
+            resp = _req.post(url, json={"name": self.model}, timeout=10)
+            if resp.status_code != 200:
+                return False
+            info = resp.json()
+            # Ollama's /api/show includes "model_info" with projector/adapter
+            # details for vision models. Check for any key containing
+            # "vision" or "adapter" or "mmproj" — these indicate a vision
+            # projector is attached. Also check "projector_info" (newer
+            # Ollama versions) and "adapter_info".
+            model_info = info.get("model_info", {})
+            # Check all values in model_info for vision/projector indicators
+            for key, val in model_info.items():
+                key_lower = key.lower()
+                if (
+                    "vision" in key_lower
+                    or "projector" in key_lower
+                    or "adapter" in key_lower
+                    or "mmproj" in key_lower
+                ):
+                    return True
+                # Some Ollama versions store the projector type as a
+                # general.architecture value
+                if isinstance(val, str) and ("vision" in val.lower() or "mmproj" in val.lower()):
+                    return True
+            # Also check "projector_info" and "adapter_info" (newer keys)
+            return any(info.get(key) for key in ("projector_info", "adapter_info"))
+        except Exception:
+            return False
+
+    def complete_with_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str | None:
+        """Send a prompt + image to Ollama and return the text response.
+
+        Uses Ollama's /api/generate endpoint with the ``images`` field
+        (base64-encoded image). Content-agnostic — works with any
+        vision-capable model on Ollama.
+        """
+        import base64 as _b64
+
+        b64_image = _b64.b64encode(image_bytes).decode("utf-8")
+        _temp = temperature if temperature is not None else self.temperature
+        _max_tok = max_tokens or 4096
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "images": [b64_image],
+            "stream": False,
+            "options": {"temperature": _temp, "num_predict": _max_tok},
+        }
+        url = f"{self.base_url}/api/generate"
+        try:
+            import requests as _req
+
+            resp = _req.post(url, json=payload, timeout=self.timeout)
+            if resp.status_code == 200:
+                return resp.json().get("response", "").strip() or None
+        except Exception as e:
+            self.log(f"    ⚠️ Ollama vision call failed: {e}", "WARNING")
+        return None
+
     def complete_streaming(
         self,
         prompt: str,

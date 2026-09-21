@@ -149,6 +149,37 @@ class LLMProvider:
             on_chunk(result)
         return result
 
+    # V0.4.1 (Quality Campaign, OCR/vision fix): provider-agnostic vision
+    # capability. The OCR service uses these methods to detect whether the
+    # model can process images and to send image+prompt to the model.
+    # Content-agnostic (AGENTS.md Rule 1): no hardcoded model names — the
+    # probe is a live API call to the provider, not a name-keyed check.
+
+    def supports_vision(self) -> bool:
+        """Check if this provider/model supports image input.
+
+        Returns False by default — subclasses override with a real probe.
+        The probe is a LIVE API call (e.g., Ollama /api/show, llama-server
+        /v1/models), not a hardcoded name-keyed check. This ensures the
+        detection works for ANY model, not just ones with known names.
+        """
+        return False
+
+    def complete_with_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str | None:
+        """Send a prompt + image to the model and return the text response.
+
+        Returns None by default — subclasses override with the provider's
+        multimodal API format (Ollama: images field, llama.cpp:
+        OpenAI-compatible content array with image_url).
+        """
+        return None
+
 
 # V18.20.1.0 (D7): the 3 provider classes extracted to their own modules.
 # V18.20.1.1 (hotfix): the module-level re-export caused a circular import:

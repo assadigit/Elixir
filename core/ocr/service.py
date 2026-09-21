@@ -714,7 +714,17 @@ class OCRService:
                 error_msg="Page-to-image conversion failed",
             )
 
-        # ── Try Qwen if loaded ──────────────────────────────────────────────
+        # ── V0.4.1: Try provider-agnostic vision OCR FIRST ───────────────
+        # This checks the main model AND the OCR model for vision capability
+        # (via a live API probe) and routes to whichever provider (Ollama or
+        # llama.cpp) the vision model is on. If no vision model is found,
+        # falls through to the existing Ollama-only Qwen path → Tesseract.
+        if self.request.use_llm_ocr:
+            result = self._provider_vision_ocr(image_bytes, page_num)
+            if result.success:
+                return result
+
+        # ── Try Qwen if loaded (legacy Ollama-only path) ───────────────
         if qwen_loaded and self.request.use_llm_ocr:
             result = self._qwen_ocr_single(image_bytes, page_num, attempt=1)
             if result.success:
@@ -777,6 +787,136 @@ class OCRService:
         if not result.success:
             result.text = f"[Page {page_num}: all OCR methods failed]"
         return result
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # V0.4.1: Provider-agnostic vision OCR — the 3-step logic the owner
+    # specified:
+    #   1. Check if the MAIN model has vision → use it for OCR
+    #   2. Check if a SEPARATE OCR model has vision → use it
+    #   3. If neither has vision, use Tesseract fallback
+    # Content-agnostic (AGENTS.md Rule 1): no hardcoded model names —
+    # the vision capability is detected via a LIVE API probe, not a
+    # name-keyed check. The provider (Ollama or llama.cpp) is determined
+    # by the app's model_architecture setting, not hardcoded in the OCR
+    # code.
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _get_vision_provider(self):
+        """Return a tuple (provider, model_name) for the best vision-capable
+        model, or (None, None) if no vision model is available.
+
+        Logic (per the owner's specification):
+          1. Check the MAIN summarisation model — if it has vision, use it
+          2. Check a SEPARATE OCR model (if configured) — if it has vision, use it
+          3. Return (None, None) if neither has vision
+
+        The provider is determined by the model_architecture setting
+        (single_local=Ollama, single_api/cloud=openai_compat, llamacpp=llama.cpp).
+        """
+        from utils.settings import Settings as _S
+
+        settings = _S()
+        arch = getattr(self.request, "model_architecture", "single_local") or "single_local"
+
+        # Step 1: check the MAIN model
+        main_model = getattr(self.request, "summarisation_model", "") or ""
+        if main_model:
+            provider = self._create_vision_provider(arch, main_model, settings)
+            if provider and provider.supports_vision():
+                self.log(
+                    f"  📸 V0.4.1: Main model '{main_model}' has vision — using it for OCR",
+                    "INFO",
+                )
+                return provider, main_model
+
+        # Step 2: check a separate OCR model
+        ocr_model = getattr(self.request, "primary_ocr_model", "") or ""
+        if ocr_model and ocr_model != main_model:
+            provider = self._create_vision_provider(arch, ocr_model, settings)
+            if provider and provider.supports_vision():
+                self.log(
+                    f"  📸 V0.4.1: OCR model '{ocr_model}' has vision — using it for OCR",
+                    "INFO",
+                )
+                return provider, ocr_model
+
+        # Step 3: neither has vision
+        self.log(
+            "  📸 V0.4.1: No vision-capable model found — will use Tesseract fallback",
+            "WARNING",
+        )
+        return None, None
+
+    def _create_vision_provider(self, arch: str, model: str, settings):
+        """Create a provider for the given model (for vision capability
+        probing + image OCR calls). Returns None if the provider can't
+        be created."""
+        try:
+            from core.llm.llm_provider_impl import create_provider
+
+            # Determine the provider name from the architecture
+            if arch == "llamacpp":
+                provider_name = "llamacpp"
+            elif arch in ("single_api", "dual_api"):
+                provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
+            else:
+                provider_name = "ollama"
+
+            # Create the provider — but only if it's a local provider
+            # (Ollama or llama.cpp). Cloud providers may support vision
+            # but the OCR path requires a local model that can process
+            # page images.
+            if provider_name in ("ollama", "llamacpp"):
+                return create_provider(provider_name, settings)
+            return None
+        except Exception as e:
+            self.log(f"  ⚠️ V0.4.1: Could not create vision provider: {e}", "WARNING")
+            return None
+
+    def _provider_vision_ocr(self, image_bytes: bytes, page_num: int) -> OcrResult:
+        """OCR a page image using the provider-agnostic vision call.
+
+        This is the V0.4.1 replacement for _qwen_ocr_single and
+        _olmo_ocr_single — it routes to whichever provider (Ollama or
+        llama.cpp) the vision model is running on.
+        """
+        provider, model_name = self._get_vision_provider()
+        if not provider:
+            return OcrResult(
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
+                error_msg="No vision-capable model available",
+            )
+
+        prompt = (
+            "Extract ALL text visible in this page image. "
+            "Preserve headings, paragraphs, lists. "
+            "Output ONLY the extracted text, no commentary, no markdown."
+        )
+        try:
+            text = provider.complete_with_image(
+                prompt, image_bytes, temperature=0.0, max_tokens=4096
+            )
+            if text and text.strip():
+                self.log(f"  ✅ V0.4.1 vision OCR p.{page_num}: {len(text)} chars", "INFO")
+                return OcrResult(
+                    page_num=page_num,
+                    text=text.strip(),
+                    success=True,
+                    engine_used=OcrEngine.QWEN_VL,  # reuse enum (any vision OCR)
+                )
+        except Exception as e:
+            self.log(f"  ⚠️ V0.4.1 vision OCR p.{page_num} failed: {e}", "WARNING")
+
+        return OcrResult(
+            page_num=page_num,
+            text="",
+            success=False,
+            engine_used=OcrEngine.QWEN_VL,
+            error_msg="Vision OCR returned no text",
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # OCR engine methods (Qwen, Paddle, Tesseract)
