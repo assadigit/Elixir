@@ -213,7 +213,29 @@ class DependenciesSection(QGroupBox):
         self._recheck()
 
     def _recheck(self) -> None:
-        """Run all dependency checks and rebuild the dashboard."""
+        """V0.4.7: run all dependency checks ASYNCHRONOUSLY and rebuild the
+        dashboard when results arrive.
+
+        ROOT CAUSE OF THE SETTINGS CRASH (pre-V0.4.7):
+        ``check_all()`` does 17 ``importlib.import_module()`` calls
+        (torch, transformers, sentence-transformers, chromadb, langchain,
+        spacy, etc.) + 5 subprocess calls (ollama, piper, ffmpeg,
+        tesseract, poppler) + 2 HTTP calls to Ollama. On a typical
+        Windows rig, torch alone is 3-5s, transformers 2-3s, spacy 1-2s,
+        chromadb 2-3s — total can be 30+ seconds of UI-thread blocking.
+        Windows interprets this as "Not Responding".
+
+        THE FIX:
+        - Show an immediate "Checking..." placeholder (no UI freeze).
+        - Run ``check_all()`` on a SimpleWorker (background thread).
+        - Populate the dashboard on the main thread when the worker
+          finishes (``finished`` marshals there via Qt's queued signal).
+        - The worker ref lives on ``self._check_worker`` to keep the
+          QObject alive mid-run (same pattern as TTS Kokoro's
+          ``_check_kokoro_async``).
+        - Re-entrant guard: if a check is already in flight, ignore
+          subsequent clicks (don't stack workers).
+        """
         # Stop existing pulsing animations
         for dot in self._dots:
             dot.stop_pulse()
@@ -225,9 +247,63 @@ class DependenciesSection(QGroupBox):
             if item.widget():
                 item.widget().deleteLater()
 
-        # Run all checks
-        checker = DependencyChecker()
-        results = checker.check_all()
+        # V0.4.7: show immediate "Checking..." placeholder so the user
+        # sees the dialog is alive (was a 30s blank freeze before).
+        checking_label = QLabel("⏳  Checking dependencies…")
+        checking_label.setStyleSheet(
+            "font-size: 13px; padding: 16px; color: #888; background: transparent;"
+        )
+        self._content_layout.addWidget(checking_label)
+        self._content_layout.addStretch()
+        self.summary_label.setText("⏳  Checking dependencies…")
+        self.summary_label.setStyleSheet(
+            "font-size: 13px; font-weight: 600; padding: 8px 12px;"
+            "background: rgba(59,130,246,0.1); border-radius: 6px;"
+            "color: #2563eb;"
+        )
+
+        # Re-entrant guard: don't stack workers.
+        existing = getattr(self, "_check_worker", None)
+        try:
+            in_flight = existing is not None and existing.is_running()
+        except RuntimeError:
+            in_flight = False  # worker already deleteLater'd itself
+        if in_flight:
+            return
+
+        # Disable the Recheck button while the check runs (gives the
+        # user visual feedback that the check is in progress).
+        self.recheck_btn.setEnabled(False)
+        self.recheck_btn.setText("🔄  Checking…")
+
+        # V0.4.7: run check_all() on a background worker. The callable
+        # is widget-free (pure imports + subprocess + HTTP), so it's
+        # safe off the UI thread.
+        from ui_qt.components.simple_worker import SimpleWorker
+
+        def _do_check():
+            from core.system.dependency_checker import DependencyChecker
+
+            checker = DependencyChecker()
+            return checker.check_all()
+
+        self._check_worker = SimpleWorker(_do_check)
+        self._check_worker.finished.connect(self._on_check_finished)
+        self._check_worker.failed.connect(self._on_check_failed)
+        self._check_worker.start()
+
+    def _on_check_finished(self, results) -> None:
+        """V0.4.7: worker finished — rebuild the dashboard (MAIN thread)."""
+        # Re-enable the Recheck button
+        self.recheck_btn.setEnabled(True)
+        self.recheck_btn.setText("🔄  Recheck all")
+
+        # Clear the "Checking..." placeholder
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._dots.clear()
 
         # Group by category
         categories: dict = {
@@ -289,6 +365,32 @@ class DependenciesSection(QGroupBox):
                 "background: rgba(239,68,68,0.1); border-radius: 6px;"
                 "color: #dc2626;"
             )
+
+    def _on_check_failed(self, err: str) -> None:
+        """V0.4.7: worker raised — show the error on the dashboard."""
+        self.recheck_btn.setEnabled(True)
+        self.recheck_btn.setText("🔄  Recheck all")
+
+        # Clear the "Checking..." placeholder
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._dots.clear()
+
+        err_label = QLabel(f"❌  Dependency check failed: {err}")
+        err_label.setStyleSheet(
+            "font-size: 13px; padding: 16px; color: #dc2626; background: transparent;"
+        )
+        err_label.setWordWrap(True)
+        self._content_layout.addWidget(err_label)
+        self._content_layout.addStretch()
+        self.summary_label.setText("❌  Check failed")
+        self.summary_label.setStyleSheet(
+            "font-size: 13px; font-weight: 600; padding: 8px 12px;"
+            "background: rgba(239,68,68,0.1); border-radius: 6px;"
+            "color: #dc2626;"
+        )
 
     def save(self) -> None:
         pass  # read-only dashboard

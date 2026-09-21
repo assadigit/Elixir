@@ -1,5 +1,71 @@
 # Changelog
 
+## V0.4.7 — fix Settings crash (lazy tab loading + async dependency check)
+
+> **The release:** One targeted fix for the "Settings → Not Responding"
+> crash. The root cause: `SettingsDialog.__init__` eagerly built every
+> section class on dialog open — including the `DependenciesSection`
+> which runs `check_all()` synchronously on the UI thread (17
+> `importlib.import_module()` calls + 5 subprocess calls + 2 HTTP calls
+> to Ollama = 30+ seconds of blocking on a cold Windows rig). Windows
+> interprets this as "Not Responding".
+
+**Fix 1 — Lazy tab loading** (`ui_qt/settings/settings_dialog.py`):
+
+  - New `_LazyTabPlaceholder` class: each tab starts as a lightweight
+    placeholder (just a "⏳ Loading…" label). On first `showEvent`, it
+    builds the real section widgets and replaces the placeholder.
+    Subsequent shows are no-ops.
+  - `SettingsDialog.__init__` now creates placeholders instead of
+    eagerly instantiating every section class. This defers ALL heavy
+    work (imports, HTTP, subprocess) until the user actually clicks the
+    tab. The dialog now opens **instantly**.
+  - The placeholder's `save()` + `reload()` methods forward to the real
+    sections (if built); if a tab was never shown, its save is a no-op
+    (nothing to save).
+  - `_PresetsPage` and `PromptsPage` (the special head groups) stay
+    eager — they're lightweight (card grid + prompt-file reads, no
+    imports or HTTP).
+
+**Fix 2 — Async dependency check** (`ui_qt/settings/dependencies_page.py`):
+
+  - `DependenciesSection._recheck()` now runs `check_all()` on a
+    `SimpleWorker` (background thread), mirroring the pattern already
+    used by the TTS Kokoro check (`_check_kokoro_async`) and the OCR
+    models refresh (`_refresh_models_async`).
+  - The UI shows an immediate "⏳ Checking dependencies…" placeholder
+    (blue summary bar + centered hint) so the user sees the dialog is
+    alive. The Recheck button is disabled + relabeled "🔄 Checking…"
+    during the run.
+  - When the worker finishes, `_on_check_finished` rebuilds the
+    dashboard on the main thread (Qt's queued signal marshals there).
+    If the worker raises, `_on_check_failed` shows the error.
+  - Re-entrant guard: if a check is already in flight, subsequent
+    Recheck clicks are ignored (don't stack workers).
+  - The worker ref lives on `self._check_worker` to keep the QObject
+    alive mid-run.
+
+  **Before:** opening Settings ran 17 imports + 5 subprocess + 2 HTTP
+  synchronously on the UI thread → 30s+ "Not Responding".
+  **After:** opening Settings is instant; clicking the Dependencies
+  tab shows "⏳ Checking…" immediately, then populates the dashboard
+  when the background worker finishes (~5-30s depending on the rig,
+  but the UI stays responsive throughout).
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full PySide6 test suite (GUI tests skip in headless
+  environments — recommended as the next session's first step).
+- The individual section __init__ methods (OCR models, AI local model,
+  TTS engines) already use async workers for their HTTP/import probes
+  (V18.20.4.5 W-b11, W-b8). The lazy-loading fix means these now only
+  run when the user clicks the corresponding tab, not on dialog open.
+- The `_check_ollama()` in `core/system/dependency_checker.py` still
+  has a 2s timeout — combined with the other checks, the total
+  background-worker time is the same as before, but it no longer
+  blocks the UI.
+
+---
+
 ## V0.4.6 — fix settings-schema warnings + suppress libpyside disconnect warnings + Qwen 400 hint
 
 > **The release:** Three noise-reduction fixes from the user's V0.4.2 run

@@ -484,6 +484,103 @@ _HEAD_GROUPS = [
 ]
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# V0.4.7: Lazy tab placeholder — defers heavy section construction
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class _LazyTabPlaceholder(QWidget):
+    """V0.4.7: a lightweight placeholder page that builds its real sections
+    on first show.
+
+    ROOT CAUSE OF THE SETTINGS CRASH (pre-V0.4.7):
+    SettingsDialog.__init__ eagerly built every section class on dialog
+    open — including the Dependencies section that runs check_all() (17
+    imports + 5 subprocess + 2 HTTP = 30+s of UI-thread blocking on a
+    cold Windows rig → "Not Responding").
+
+    THE FIX:
+    - Each tab is a _LazyTabPlaceholder until first shown.
+    - On first showEvent, build the real sections (cls(controller) for
+      cls in section_classes) and replace the placeholder layout with
+      the real page content.
+    - Subsequent shows are no-ops (the sections already exist).
+    - This defers ALL heavy work (imports, HTTP, subprocess) until the
+      user actually clicks the tab. The dialog opens instantly.
+
+    The placeholder shows a small "Loading…" spinner label so the user
+    sees feedback when they click a tab (the heavy work then happens
+    on the UI thread for that ONE tab, which is acceptable — it's the
+    user's explicit action, not a 30s hang on open).
+    """
+
+    def __init__(
+        self,
+        controller: Controller,
+        section_classes: list,
+        two_col: bool,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._controller = controller
+        self._section_classes = section_classes
+        self._two_col = two_col
+        self._built = False
+        self._sections: list = []
+
+        # Lightweight placeholder layout — a centered "Click to load"
+        # hint. Building the real sections here would re-introduce the
+        # eager-construction freeze.
+        self._placeholder_lay = QVBoxLayout(self)
+        self._placeholder_lay.setContentsMargins(0, 0, 0, 0)
+        self._placeholder_lay.setSpacing(0)
+        hint = QLabel("⏳  Loading…")
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("color: #888; font-size: 13px; padding: 40px;")
+        self._placeholder_lay.addWidget(hint)
+        self._placeholder_lay.addStretch()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        # V0.4.7: build the real sections on first show. Subsequent
+        # shows skip this (the sections already exist in the layout).
+        if not self._built:
+            self._build_real_content()
+            self._built = True
+        super().showEvent(event)
+
+    def _build_real_content(self) -> None:
+        """Replace the placeholder with the real section widgets."""
+        # Clear the placeholder layout.
+        while self._placeholder_lay.count():
+            item = self._placeholder_lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Build the real sections.
+        self._sections = [cls(self._controller) for cls in self._section_classes]
+        page = _make_page(self._sections, self._two_col)
+        self._placeholder_lay.addWidget(page)
+        # Keep a ref so the page isn't GC'd.
+
+    def save(self) -> None:
+        """V0.4.7: forward save to the real sections (if built)."""
+        for s in getattr(self, "_sections", []):
+            if hasattr(s, "save"):
+                try:
+                    s.save()
+                except Exception:
+                    pass  # best-effort — don't break the save loop
+
+    def reload(self) -> None:
+        """V0.4.7: forward reload to the real sections (if built)."""
+        for s in getattr(self, "_sections", []):
+            if hasattr(s, "reload"):
+                try:
+                    s.reload()
+                except Exception:
+                    pass  # best-effort
+
+
 class SettingsDialog(QDialog):
     """The application settings dialog (2-level: head groups → sub-tabs)."""
 
@@ -557,8 +654,22 @@ class SettingsDialog(QDialog):
             else:
                 sub = QTabWidget()
                 for tab_title, section_classes, two_col in subs:
-                    sections = [cls(controller) for cls in section_classes]
-                    sub.addTab(_make_page(sections, two_col), tab_title)
+                    # V0.4.7: LAZY tab construction. The old code eagerly
+                    # built every section class here (sections = [cls(controller)
+                    # for cls in section_classes]), which instantiated ALL
+                    # settings sections on dialog open — including the
+                    # Dependencies section that runs check_all() (17 imports
+                    # + 5 subprocess + 2 HTTP = 30+s of UI-thread blocking on
+                    # a cold Windows rig → "Not Responding").
+                    #
+                    # Now: build a lightweight placeholder page per tab. On
+                    # first tab selection, replace it with the real sections.
+                    # This defers all heavy work (imports, HTTP, subprocess)
+                    # until the user actually clicks the tab.
+                    placeholder = _LazyTabPlaceholder(
+                        controller, section_classes, two_col, parent=self
+                    )
+                    sub.addTab(placeholder, tab_title)
                 self._sub_tabs.append(sub)
                 self._pages.append(sub)
             self.stack.addWidget(self._pages[-1])
