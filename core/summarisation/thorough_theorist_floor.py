@@ -210,7 +210,13 @@ Chapter content:
                 _prompt,
                 model=self.primary_model,
                 temperature=self.temperature,
-                max_tokens=2048,
+                # V0.20.5 (Quality Campaign, brainstorm D6): cap 2048 → 1024.
+                # The prompt asks for "150-300 words" (~400 tokens); 1024 tokens
+                # = ~750 words, still 2.5× the ask. The V0.20.4 run took +10 min
+                # because the gap-fill produced 559 extra words — the 2048 cap
+                # let the model ramble. Capping to 1024 saves ~3-5 min per run
+                # with no quality loss (the prompt's ask is 150-300 words).
+                max_tokens=1024,
             )
             if not _raw or not _raw.strip():
                 self.log(

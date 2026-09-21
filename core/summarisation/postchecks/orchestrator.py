@@ -71,12 +71,14 @@ from core.summarisation.postchecks.garble import (  # noqa: F401
     _VOWEL,
     _VOWEL_LESS_LONG_RE,
     _is_legitimate_inflection,
+    detect_and_repair_author_garbles,  # V0.20.5 (brainstorm D1)
     detect_dropped_letter_garble,
     detect_extra_spaces,
     detect_garbled_tokens,
     detect_grammatical_incoherence,
     detect_missing_spaces,
     detect_word_fragment_merge,
+    repair_stray_quotes,  # V0.20.5 (brainstorm D2)
 )
 from core.summarisation.postchecks.leakage import (  # noqa: F401
     _COT_NARRATIVE_MARKERS,
@@ -265,6 +267,13 @@ def run_post_checks(
             source_words=_src_words,
             auto_repair=auto_repair_garble,
         )
+        # V0.20.5 (brainstorm D1): cross-check author surnames against the
+        # source author list — auto-repair edit-distance-1 garbles (e.g., a
+        # dropped letter in a cited author's surname). Content-agnostic: the
+        # source author list comes from the runtime analysis.
+        bp_str, name_garble_issues = detect_and_repair_author_garbles(bp_str, label, source_authors)
+        # V0.20.5 (brainstorm D2): repair stray/misplaced double-quotes.
+        bp_str, stray_quote_issues = repair_stray_quotes(bp_str, label)
         _, year_issues = validate_years(bp_str, label, source_authors)
         # V18.2.17 Fix 7: attribution verification (source-aware).
         _, attrib_issues = (
@@ -363,6 +372,8 @@ def run_post_checks(
         report.issues.extend(grammar_issues or [])
         report.issues.extend(fragment_issues or [])
         report.issues.extend(dropped_issues or [])  # V18.20.2.0 (SWOT A19)
+        report.issues.extend(name_garble_issues or [])  # V0.20.5 (brainstorm D1)
+        report.issues.extend(stray_quote_issues or [])  # V0.20.5 (brainstorm D2)
         report.issues.extend(year_issues)
         report.issues.extend(attrib_issues or [])
         report.issues.extend(bold_attrib or [])
@@ -553,6 +564,10 @@ def run_post_checks(
     exec_str, exec_dropped = detect_dropped_letter_garble(
         exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble
     )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    exec_str, exec_name_garble = detect_and_repair_author_garbles(
+        exec_str, "exec", source_authors
+    )  # V0.20.5 (brainstorm D1)
+    exec_str, exec_stray_quotes = repair_stray_quotes(exec_str, "exec")  # V0.20.5 (brainstorm D2)
     _, exec_year = validate_years(exec_str, "exec", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, exec_attrib = (
@@ -616,6 +631,8 @@ def run_post_checks(
     report.issues.extend(exec_grammar or [])
     report.issues.extend(exec_fragment or [])
     report.issues.extend(exec_dropped or [])
+    report.issues.extend(exec_name_garble or [])  # V0.20.5 (brainstorm D1)
+    report.issues.extend(exec_stray_quotes or [])  # V0.20.5 (brainstorm D2)
     report.issues.extend(exec_year)
     report.issues.extend(exec_attrib or [])
     report.issues.extend(exec_bold or [])
@@ -674,6 +691,10 @@ def run_post_checks(
         source_words=_src_words,
         auto_repair=auto_repair_garble,
     )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    tho_str, tho_name_garble = detect_and_repair_author_garbles(
+        tho_str, "thorough", source_authors
+    )  # V0.20.5 (brainstorm D1)
+    tho_str, tho_stray_quotes = repair_stray_quotes(tho_str, "thorough")  # V0.20.5 (brainstorm D2)
     _, tho_year = validate_years(tho_str, "thorough", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, tho_attrib = (
@@ -737,6 +758,8 @@ def run_post_checks(
     report.issues.extend(tho_grammar or [])
     report.issues.extend(tho_fragment or [])
     report.issues.extend(tho_dropped or [])
+    report.issues.extend(tho_name_garble or [])  # V0.20.5 (brainstorm D1)
+    report.issues.extend(tho_stray_quotes or [])  # V0.20.5 (brainstorm D2)
     report.issues.extend(tho_year)
     report.issues.extend(tho_attrib or [])
     report.issues.extend(tho_bold or [])

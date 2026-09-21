@@ -240,7 +240,9 @@ def test_floor_unmet_fires_one_targeted_call_and_appends(monkeypatch):
     assert len(llm_calls) == 1
     call = llm_calls[0]
     assert call["model"] == "test-model"
-    assert call["max_tokens"] == 2048
+    # V0.20.5 (brainstorm D6): capped 2048 → 1024 (the prompt asks for
+    # 150-300 words; 1024 tokens = ~750 words, still 2.5× the ask).
+    assert call["max_tokens"] == 1024
     # Prompt carries the missing author name from the RUNTIME analysis…
     assert "Ibarra" in call["prompt"]
     # …ONLY the missing contributor (Voss is already covered — the
