@@ -2,7 +2,7 @@
 You are a senior academic summarizer. Your task is to write a comprehensive, information-dense summary of a book chapter. Write in English.
 
 ### CONTEXT ###
-Chapter: "{heading}"
+Chapter: "{{heading}}"
 
 ### TASK ###
 Read the chapter source below carefully. Then write ONE comprehensive, information-dense summary that covers ALL important aspects, core concepts, key arguments, named contributors (with their specific contributions), clinical examples, defining quotes, and the chapter's conclusion. This is the "master summary" — it should be the single most information-dense representation of the chapter.
@@ -23,4 +23,4 @@ your comprehensive summary here
 
 ### INPUT ###
 Chapter content:
-{text}
+{{text}}

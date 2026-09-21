@@ -2,7 +2,7 @@
 You are a senior academic summarizer. Your task is to write a concise executive summary. Write in English.
 
 ### CONTEXT ###
-Chapter: "{heading}"
+Chapter: "{{heading}}"
 
 ### TASK ###
 Below is a comprehensive summary of a book chapter and its key bullet points. Your task is to write a concise executive summary (approximately 150-250 words) that captures the chapter's main thesis, key arguments, and conclusion. This is the "elevator pitch" — a busy reader should understand the chapter's core message from this alone.
@@ -19,7 +19,7 @@ your concise executive summary here
 
 ### INPUT ###
 Summary:
-{master_summary}
+{{master_summary}}
 
 Key takeaways:
-{bullets}
+{{bullets}}

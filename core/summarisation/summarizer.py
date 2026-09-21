@@ -1515,7 +1515,22 @@ class Summarizer(
         master_prompt = _pm.render_template(
             "summarisation/master_summary",
             heading=heading,
-            text=text[:40000],  # clamp source (same as scholar reflection)
+            # V0.3.1: use the ACTUAL available context space, not a hardcoded
+            # 40000 chars. The available source space = (num_ctx - output_budget
+            # - margin) * ~4 chars/token. For a 16000-tok ctx with 8192 output
+            # and 700 margin: (16000 - 8192 - 700) * 4 = 28432 chars ≈ 7108 tok.
+            # For a 32768-tok ctx: (32768 - 8192 - 700) * 4 = 95504 chars.
+            text=text[
+                : max(
+                    (
+                        getattr(self.request, "summarisation_max_context_tokens", 16000)
+                        - max_tokens
+                        - 700
+                    )
+                    * 4,
+                    4000,
+                )
+            ],
         )
         raw1 = self._call_llm_with_empty_retry(
             master_prompt, model=model, temperature=temp, max_tokens=max_tokens
@@ -2200,7 +2215,104 @@ class Summarizer(
                     input_tokens=tok_in,
                     output_tokens=0,
                 )
-            parsed = self._parse_response(raw)
+            # V0.3.1: the map-reduce reduce phase now produces a
+            # <thorough_summary> (the master summary), NOT the full 5-section
+            # XML. Extract the thorough, then derive bullets + exec from it
+            # — the same V0.3 master-summary architecture, but for
+            # map-reduced chapters.
+            raw_stripped = self._strip_thinking(raw)
+            import re as _re_v031
+
+            _mr_m = _re_v031.search(
+                r"<thorough_summary>(.*?)</thorough_summary>", raw_stripped, _re_v031.DOTALL
+            )
+            if _mr_m:
+                _mr_master = _mr_m.group(1).strip()
+            else:
+                # Fallback: try the old 5-section parse (backward compat)
+                _mr_master = ""
+            if _mr_master and len(_mr_master.split()) >= 50:
+                # V0.3.1: derive bullets + exec from the master summary
+                from core.summarisation.length_policy import bullet_target as _bt_mr
+                from core.summarisation.prompt_manager import PromptManager as _PM_mr
+
+                _pm_mr = _PM_mr()
+                _mr_lo, _mr_hi = _bt_mr(len(content.split()))
+                _mr_bullet_range = f"{_mr_lo}-{_mr_hi}"
+
+                # Derive bullets FROM the master summary
+                _mr_bullets_prompt = _pm_mr.render_template(
+                    "summarisation/derive_bullets",
+                    heading=heading,
+                    master_summary=_mr_master[:20000],
+                    bullet_range=_mr_bullet_range,
+                )
+                _mr_raw_b = self._call_llm_with_empty_retry(
+                    _mr_bullets_prompt,
+                    model=self.primary_model,
+                    temperature=self.temperature,
+                    max_tokens=2048,
+                )
+                _mr_bullets: list[str] = []
+                if _mr_raw_b:
+                    _mr_raw_b = self._strip_thinking(_mr_raw_b)
+                    _mr_bm = _re_v031.search(
+                        r"<bullet_points>(.*?)</bullet_points>", _mr_raw_b, _re_v031.DOTALL
+                    )
+                    _mr_bt = _mr_bm.group(1).strip() if _mr_bm else _mr_raw_b.strip()
+                    _mr_bullets = [
+                        line.strip().lstrip("- ").strip()
+                        for line in _mr_bt.split("\n")
+                        if line.strip().startswith("-")
+                    ]
+
+                # Derive exec FROM the master summary + bullets
+                _mr_btext = (
+                    "\n".join(f"- {b}" for b in _mr_bullets) if _mr_bullets else "(no bullets)"
+                )
+                _mr_exec_prompt = _pm_mr.render_template(
+                    "summarisation/derive_exec",
+                    heading=heading,
+                    master_summary=_mr_master[:12000],
+                    bullets=_mr_btext[:4000],
+                )
+                _mr_raw_e = self._call_llm_with_empty_retry(
+                    _mr_exec_prompt,
+                    model=self.primary_model,
+                    temperature=self.temperature,
+                    max_tokens=1024,
+                )
+                _mr_exec = ""
+                if _mr_raw_e:
+                    _mr_raw_e = self._strip_thinking(_mr_raw_e)
+                    _mr_em = _re_v031.search(
+                        r"<executive_summary>(.*?)</executive_summary>",
+                        _mr_raw_e,
+                        _re_v031.DOTALL,
+                    )
+                    _mr_exec = _mr_em.group(1).strip() if _mr_em else _mr_raw_e.strip()
+                if not _mr_exec:
+                    _mr_exec = _mr_master.split("\n")[0][:2000]
+
+                parsed = {
+                    "executive_summary": _mr_exec,
+                    "bullet_points": _mr_bullets,
+                    "thorough_summary": _mr_master,
+                    "key_distinctions": "",
+                    "theoretical_tensions": "",
+                    "raw": raw,
+                    "model": self.primary_model,
+                    "temperature": self.temperature,
+                }
+                self.log(
+                    f"    ✅ V0.3.1 map-reduce: master={len(_mr_master.split())}w, "
+                    f"bullets={len(_mr_bullets)}, exec={len(_mr_exec.split())}w",
+                    "INFO",
+                )
+            else:
+                # Fallback: old 5-section parse (backward compat for models
+                # that still produce the full XML)
+                parsed = self._parse_response(raw)
         else:
             _pr = self._phase_single_pass_primary(
                 heading,
