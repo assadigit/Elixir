@@ -436,59 +436,49 @@ class LlamaCppProvider(LLMProvider):
     def supports_vision(self) -> bool:
         """Check if the llama-server model supports image input.
 
-        Content-agnostic: attempts a minimal vision call (a tiny 1x1
-        pixel image + a 1-token prompt). If the server returns a 200
-        response, the model has vision. If it returns a 400 error
-        mentioning "image" or "vision", it doesn't. This is a LIVE
-        capability probe, not a name-keyed check.
+        V0.4.1 fix: do NOT send a real image probe — it can crash the
+        llama-server if it's in a fragile VRAM state (the V0.4.1 rig run
+        showed the 1x1 PNG probe crashed the server, leaving it dead for
+        the summarization phase). Instead, use a lightweight approach:
+        1. Check if the server is alive (GET /v1/models — no model load)
+        2. Check the model name for vision-related keywords (a heuristic)
+        This is not a full capability test, but it's safe — it never sends
+        an image that could crash the server.
         """
         try:
-            import base64 as _b64
-
-            # A 1x1 transparent PNG (minimal valid image)
-            _tiny_png = (
-                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
-                b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
-                b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
-                b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-            )
-            b64 = _b64.b64encode(_tiny_png).decode("utf-8")
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Hi"},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}"},
-                            },
-                        ],
-                    }
-                ],
-                "max_tokens": 1,
-                "temperature": 0,
-                "stream": False,
-            }
-            url = self._chat_url()
+            # Step 1: check if the server is alive (lightweight GET)
             sess = _no_proxy_session()
             try:
-                resp = sess.post(url, headers=self._headers(), json=payload, timeout=15)
-                if resp.status_code == 200:
-                    return True
-                # A 400 error mentioning "image" or "vision" means the
-                # model can't process images — not a vision model.
-                err = resp.text.lower()
-                if resp.status_code == 400 and (
-                    "image" in err or "vision" in err or "multimodal" in err
-                ):
+                resp = sess.get(
+                    f"{self.base_url}/models",
+                    headers=self._headers(),
+                    timeout=5,
+                )
+                if resp.status_code != 200:
                     return False
-                # Other errors (server not running, model not loaded) →
-                # fail-safe: return False
-                return False
             finally:
                 sess.close()
+
+            # Step 2: check the model name for vision-related keywords.
+            # This is a heuristic (not a full capability test), but it's
+            # safe — it never sends an image. The keywords are generic
+            # English words that indicate vision capability, not
+            # book-specific terms.
+            _model_lower = (self.model or "").lower()
+            _vision_keywords = (
+                "vision",
+                "vl",
+                "vlm",
+                "mmproj",
+                "multimodal",
+                "llava",
+                "bakllava",
+                "qwen-vl",
+                "gemma-vl",
+                "instruct-vision",
+                "bonsai",
+            )
+            return any(kw in _model_lower for kw in _vision_keywords)
         except Exception:
             return False
 
