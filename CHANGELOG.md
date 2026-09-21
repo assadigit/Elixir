@@ -1,5 +1,35 @@
 # Changelog
 
+## V0.20.5 — Quality Campaign: D1 name-garble + D2 stray-quote + D3 paragraph breaks + D6 gap-fill cap
+
+> **The release:** 4 clarity/efficiency fixes from the V0.20.4 brainstorm
+> (`audit/results/BRAINSTORM_V0.20.4_how_to_reach_9-10.md`, defects D1-D3+D6).
+> Suite **5,596 passed** (+9 regression tests). `make eval-check` → OK
+> (re-baselined: intentional prompt change; golden outputs byte-identical).
+
+**D1 — name-garble repair (`core/summarisation/postchecks/garble.py`):**
+new `detect_and_repair_author_garbles()` cross-checks every "Surname (year)"
+pattern against the runtime analysis author list. If a surname is edit-
+distance-1 from a source author, auto-repair it. Fixes "Akhar"→"Akhtar",
+"Gedimen"→"Gediman". Content-agnostic (the source author list comes from the
+runtime analysis, no hardcoded names). Wired into bullets, exec, thorough.
+
+**D2 — stray-quote repair (`core/summarisation/postchecks/garble.py`):** new
+`repair_stray_quotes()` finds lines with an odd double-quote count and
+removes the orphan. Fixes ~10 misplaced closing quotes in the thorough.
+Conservative (one quote per odd-count line), content-agnostic.
+
+**D3 — paragraph breaks (`prompts/default.md` + `prompts/default_lowbit.md`):**
+added a MANDATORY instruction to break the thorough into multiple paragraphs
+at section transitions. The existing "2-4 paragraphs" instruction wasn't
+followed; the mandatory + structural-anchor wording strengthens it.
+
+**D6 — gap-fill cap (`core/summarisation/thorough_theorist_floor.py`):** capped
+the thorough-floor gap-fill `max_tokens` 2048→1024. The prompt asks for 150-
+300 words; 1024 tokens = ~750 words, still 2.5× the ask. Saves ~3-5 min.
+
+---
+
 ## V0.20.4 — Quality Campaign: stamp the conversion log header with app version + run_id (root-cause fix for stale-log confusion)
 
 > **The release:** the V0.20.3 ch.2 audits (3 consecutive runs) found the user
