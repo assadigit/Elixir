@@ -79,6 +79,7 @@ from core.summarisation.postchecks.garble import (  # noqa: F401
     detect_missing_spaces,
     detect_word_fragment_merge,
     repair_stray_quotes,  # V0.20.5 (brainstorm D2)
+    repair_stray_quotes_v2,  # V0.20.6 (brainstorm D2+) — even-count mismatches
 )
 from core.summarisation.postchecks.leakage import (  # noqa: F401
     _COT_NARRATIVE_MARKERS,
@@ -274,6 +275,11 @@ def run_post_checks(
         bp_str, name_garble_issues = detect_and_repair_author_garbles(bp_str, label, source_authors)
         # V0.20.5 (brainstorm D2): repair stray/misplaced double-quotes.
         bp_str, stray_quote_issues = repair_stray_quotes(bp_str, label)
+        # V0.20.6 (brainstorm D2+): extend to even-count mismatches (HTML-
+        # attribute-aware state machine + long-span pair flag). Content-
+        # agnostic; runs after v0.20.5 to catch the bug class v0.20.5 misses.
+        bp_str, stray_quote_v2_issues = repair_stray_quotes_v2(bp_str, label)
+        stray_quote_issues = (stray_quote_issues or []) + (stray_quote_v2_issues or [])
         _, year_issues = validate_years(bp_str, label, source_authors)
         # V18.2.17 Fix 7: attribution verification (source-aware).
         _, attrib_issues = (
@@ -568,6 +574,9 @@ def run_post_checks(
         exec_str, "exec", source_authors
     )  # V0.20.5 (brainstorm D1)
     exec_str, exec_stray_quotes = repair_stray_quotes(exec_str, "exec")  # V0.20.5 (brainstorm D2)
+    # V0.20.6 (brainstorm D2+): even-count mismatches + long-span flag.
+    exec_str, exec_stray_quotes_v2 = repair_stray_quotes_v2(exec_str, "exec")
+    exec_stray_quotes = (exec_stray_quotes or []) + (exec_stray_quotes_v2 or [])
     _, exec_year = validate_years(exec_str, "exec", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, exec_attrib = (
@@ -695,6 +704,13 @@ def run_post_checks(
         tho_str, "thorough", source_authors
     )  # V0.20.5 (brainstorm D1)
     tho_str, tho_stray_quotes = repair_stray_quotes(tho_str, "thorough")  # V0.20.5 (brainstorm D2)
+    # V0.20.6 (brainstorm D2+): even-count mismatches + long-span flag.
+    # The thorough is the highest-risk field for this bug class (long
+    # paragraphs with many inline citations + quoted phrases; HTML
+    # attribute quotes from <em>YEAR</em> inflate the count and mask
+    # imbalances). The V0.4.1 NPD thorough shipped with 4 such mismatches.
+    tho_str, tho_stray_quotes_v2 = repair_stray_quotes_v2(tho_str, "thorough")
+    tho_stray_quotes = (tho_stray_quotes or []) + (tho_stray_quotes_v2 or [])
     _, tho_year = validate_years(tho_str, "thorough", source_authors)
     # V18.2.17 Fix 7: attribution verification.
     _, tho_attrib = (

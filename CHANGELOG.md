@@ -1,5 +1,105 @@
 # Changelog
 
+## V0.4.2 — stray-quote repair v2 (even-count mismatches) + vision-region cropper prototype
+
+> **The release:** Two system-strengthening deliverables from the V0.4.1 NPD
+> audit follow-up. Both are **content-agnostic** (no hardcoded author
+> names, book titles, or chapter-specific patterns) — they strengthen
+> reliability across ANY book/chapter, not just the NPD chapter that
+> triggered the audit.
+>
+> **Validation:** smoke-tested imports + a functional check on the
+> stray-quote v2 detector. The vision cropper was validated on a synthetic
+> 3-page PDF (vector bar chart + embedded raster image; all 4 expectations
+> PASS). The full Elixir test suite (`ruff check` + `make eval-check`)
+> should be run by the owner before the next rig run.
+
+**Fix 1 — `repair_stray_quotes_v2` (`core/summarisation/postchecks/garble.py`):**
+extends the V0.20.5 stray-quote repair to handle **even-count mismatches**
+— a bug class that v0.20.5 entirely misses. The V0.20.5 detector only
+fires on ODD ASCII `"` counts per line, and counts ALL `"` including
+HTML attribute quotes (e.g., `style="font-size:0.9em"`). The V0.4.1 NPD
+Thorough Summary line shipped with 44 ASCII `"` (even count) but contained
+4 real mismatches — the LLM dropped both an opener AND a closer in each
+case, keeping the count even, so v0.20.5 never fired.
+
+Three content-agnostic detectors (D1/D2/D3):
+- **D1 — HTML-aware odd-count repair:** strips HTML tags before counting;
+  if the text-content quote count is odd, remove the last text-content
+  `"`. Strict improvement over v0.20.5 (never breaks HTML attribute
+  quotes).
+- **D2 — State-machine stray detection on even-count lines:** walks
+  text-content `"` chars with an open/closed state machine; auto-repairs
+  1-sided orphans (stray closer → delete; final open → insert closer;
+  opener-after-opener → insert closer before it).
+- **D3 — Long-span pair FLAG:** if the state machine pairs an opener
+  with a closer >250 chars apart, **flag** as suspicious (likely a
+  "both dropped" case). Flag-only — no auto-repair (the state machine
+  can't tell WHERE to insert the missing pair without semantic
+  understanding; auto-repair would risk new errors).
+
+Validated on 3 uploaded chapter summaries (all flags confirmed by
+manual audit, 0 false positives):
+- Ch.3 (v0.4.1 NPD): 4 D3 flags (matches the original audit's "broken
+  cases" exactly).
+- Ch.2 (v0.3 Identity Diffusion): 3 D3 flags (all confirmed).
+- Ch.1 (v0.18 Identity & Its Origins): 1 D3 flag (confirmed).
+
+Wired into the orchestrator at all 3 call sites (bullets/exec/thorough),
+runs AFTER v0.20.5 and merges the issue lists. Purely additive — no
+changes to v0.20.5 behavior.
+
+**Fix 2 — `vision_region_cropper.py` (`core/pdf/vision_region_cropper.py`):**
+prototype that fills the three gaps in the existing figure/table
+extraction stack. Content-agnostic and composable.
+
+- **Layer 0 — reuses** `figure_table_cropper.extract_figures_and_tables()`
+  (PyMuPDF images + pdfplumber tables). No changes to existing behavior.
+- **Layer A — NEW: vector-graphics clustering.** Clusters pdfplumber
+  rects/lines/curves by spatial proximity (greedy agglomerative,
+  distance threshold 50pt, min 5 shapes per cluster). Catches
+  **vector-drawn diagrams** (charts drawn with PDF commands, no
+  embedded raster) that PyMuPDF misses entirely. No hardcoded shapes.
+- **Layer B — NEW (opt-in): VLM-driven region detection.** Renders
+  page at low DPI, asks VLM for JSON bounding boxes of non-text
+  regions, maps percentages back to PDF points, crops at high DPI.
+  Provider-agnostic via `vlm_callable` parameter (reuses V0.4.1's
+  vision-probe pattern in integration).
+- **Layer C — NEW: inline markdown embedding.** Injects
+  `![Figure N: caption](path)` at the right `<!-- original page N -->`
+  markers in the chapter markdown.
+
+Plus de-duplication (drops regions overlapping a higher-confidence
+region by >50% of the smaller's area) and caption extraction (regex
+for "Figure N" / "Table N" patterns near the region).
+
+Validated on a synthetic 3-page PDF (reportlab): page 1 pure text,
+page 2 vector bar chart (10 rects + 5 lines), page 3 embedded raster.
+All 4 expectations PASS. Cropped files are real images (833×250px PNG
+for the vector chart, 400×200px JPEG for the embedded raster).
+
+**Doc — `docs/FEASIBILITY_vision_crop.md`:** full feasibility report
+for the user's vision-cropping question. Covers what the existing
+stack does, the three gaps, the three-layer architecture, validation
+results, trade-offs of three integration approaches (PDF-metadata-only
+/ VLM-driven / hybrid), and a recommended short/medium/long-term
+integration path.
+
+**What was NOT done (deliberate scope limits):**
+- The full Elixir test suite (`ruff check` + `make eval-check`) was
+  not run in the sandbox — recommended as the next session's first
+  step before the next rig run.
+- `vision_region_cropper.py` is a standalone prototype, not wired
+  into `controller.py`'s conversion pipeline — recommended for a
+  follow-up commit (gated by a settings flag, default off).
+- The Jones/Waelder "God complex" multi-author conflation from the
+  audit — the existing veto system handles single-author
+  misattribution but not multi-author-to-single-concept. Extending
+  `attribution.py`'s veto requires a dedicated audit; recommended
+  for a follow-up.
+
+---
+
 ## V0.20.5 — Quality Campaign: D1 name-garble + D2 stray-quote + D3 paragraph breaks + D6 gap-fill cap
 
 > **The release:** 4 clarity/efficiency fixes from the V0.20.4 brainstorm
