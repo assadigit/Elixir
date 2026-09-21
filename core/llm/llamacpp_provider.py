@@ -428,6 +428,115 @@ class LlamaCppProvider(LLMProvider):
             self.log(f"    ⚠️ {self.label} call failed: {e}", "WARNING")
             return None
 
+    # V0.4.1: vision capability for OCR — provider-agnostic, no hardcoded
+    # model names. The probe checks llama-server's loaded model for a
+    # vision adapter by looking at the /v1/models endpoint's model info
+    # or by sending a minimal image+prompt test. Content-agnostic.
+
+    def supports_vision(self) -> bool:
+        """Check if the llama-server model supports image input.
+
+        Content-agnostic: attempts a minimal vision call (a tiny 1x1
+        pixel image + a 1-token prompt). If the server returns a 200
+        response, the model has vision. If it returns a 400 error
+        mentioning "image" or "vision", it doesn't. This is a LIVE
+        capability probe, not a name-keyed check.
+        """
+        try:
+            import base64 as _b64
+
+            # A 1x1 transparent PNG (minimal valid image)
+            _tiny_png = (
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+                b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+                b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+                b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+            )
+            b64 = _b64.b64encode(_tiny_png).decode("utf-8")
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Hi"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{b64}"},
+                            },
+                        ],
+                    }
+                ],
+                "max_tokens": 1,
+                "temperature": 0,
+                "stream": False,
+            }
+            url = self._chat_url()
+            sess = _no_proxy_session()
+            try:
+                resp = sess.post(url, headers=self._headers(), json=payload, timeout=15)
+                if resp.status_code == 200:
+                    return True
+                # A 400 error mentioning "image" or "vision" means the
+                # model can't process images — not a vision model.
+                err = resp.text.lower()
+                if resp.status_code == 400 and (
+                    "image" in err or "vision" in err or "multimodal" in err
+                ):
+                    return False
+                # Other errors (server not running, model not loaded) →
+                # fail-safe: return False
+                return False
+            finally:
+                sess.close()
+        except Exception:
+            return False
+
+    def complete_with_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str | None:
+        """Send a prompt + image to llama-server (OpenAI-compatible
+        multimodal format) and return the text response.
+
+        Uses the /v1/chat/completions endpoint with a content array
+        containing both a text part and an image_url part (base64 data URL).
+        Content-agnostic — works with any vision-capable model on
+        llama-server.
+        """
+        import base64 as _b64
+
+        b64_image = _b64.b64encode(image_bytes).decode("utf-8")
+        _temp = temperature if temperature is not None else self.temperature
+        _max_tok = max_tokens or 4096
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": _max_tok,
+            "temperature": _temp,
+            "stream": False,
+        }
+        try:
+            # Use non-streaming for OCR (simpler, the response is short)
+            return self._chat_nonstreaming(payload)
+        except Exception as e:
+            self.log(f"    ⚠️ llama.cpp vision call failed: {e}", "WARNING")
+            return None
+
     def complete_streaming(
         self,
         prompt: str,
