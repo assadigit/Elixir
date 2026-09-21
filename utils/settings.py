@@ -466,6 +466,12 @@ class Settings:
                 # ── NEW: Sprint 3 – Vision OCR for Figures ──────────────
                 "extract_figure_text": False,
                 "vision_model_for_figures": "OlmOCR-2-7B:latest",
+                # ── V0.4.3: Vision-Region Cropper (default ON) ────────────
+                # Crops diagrams/charts/tables at high DPI and embeds inline.
+                # Layer A (vector clustering) always runs; Layer B (VLM
+                # region detection) auto-enables when a vision model is
+                # available. See docs/FEASIBILITY_vision_crop.md.
+                "extract_visual_regions": True,
             },
             # ── V4.7.25: Translation (EN ↔ FA) ───────────────────────────
             "translation": {
@@ -889,6 +895,8 @@ class Settings:
                 # ── NEW: Sprint 3 – figure extraction ──────────────────────
                 ("extract_figure_text", False),
                 ("vision_model_for_figures", "OlmOCR-2-7B:latest"),
+                # ── V0.4.3: Vision-Region Cropper (default ON) ───────────────
+                ("extract_visual_regions", True),
             ]:
                 if key not in adv:
                     adv[key] = default_val

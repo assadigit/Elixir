@@ -334,6 +334,16 @@ class ConversionRequest:
     # ── Sprint 3 – Vision OCR for Figures ────────────────────────────────
     extract_figure_text: bool = False
 
+    # ── V0.4.3 – Vision-Region Cropper (default ON) ───────────────────────
+    # When True, the pipeline runs core/pdf/vision_region_cropper.py after
+    # the existing figure_table_cropper. Layer A (vector-graphics clustering)
+    # always runs; Layer B (VLM region detection) auto-enables when a vision
+    # model is available (reuses V0.4.1's vision probe). Crops are saved to
+    # regions/ and embedded inline in the chapter markdown at the page
+    # markers. Content-agnostic — works on any PDF. See
+    # docs/FEASIBILITY_vision_crop.md for the full design.
+    extract_visual_regions: bool = True
+
     # ── V4.1.0: Output Studio — opt-in output types ─────────────────────
     # Each flag gates one optional output generator in core/outputs/.
     # Defaults are False at the model level; the settings layer

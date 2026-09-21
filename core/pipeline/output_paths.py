@@ -53,6 +53,7 @@ SUB_BRIEFING = "briefing"
 SUB_FA = "fa"
 SUB_SCREENSHOTS = "screenshots"
 SUB_GRAPHS = "graphs"
+SUB_REGIONS = "regions"  # V0.4.3: Vision-Region Cropper output (cropped diagrams/charts/tables)
 SUB_LOGS = "logs"
 SUB_OBSIDIAN = "obsidian"
 SUB_STUDYGUIDE = "study_guide"
@@ -211,6 +212,11 @@ class OutputPaths:
     @property
     def graphs_dir(self) -> Path:
         return self._dir(SUB_GRAPHS)
+
+    # V0.4.3: Vision-Region Cropper — cropped diagram/chart/table regions
+    @property
+    def regions_dir(self) -> Path:
+        return self._dir(SUB_REGIONS)
 
     # ── logs / reports ──────────────────────────────────────────────────
     @property

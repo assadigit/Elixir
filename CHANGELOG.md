@@ -1,5 +1,101 @@
 # Changelog
 
+## V0.4.3 — vision-region cropper wired in (default ON) + sentence-fusion detector + padding-bullet suppression
+
+> **The release:** Three fixes from the V0.4.2 audit follow-up. The headline
+> is that the V0.4.2 vision-region cropper prototype is now WIRED INTO the
+> conversion pipeline as a **default-ON** feature — the user's "crop the
+> diagram and screenshot that specific region" request is now live. Two
+> additional content-agnostic fixes address the V0.4.2 NPD audit's findings
+> (sentence-fusion garbles + padding bullets).
+>
+> **Validation:** 5-step smoke test passes (imports, settings defaults,
+> sentence-fusion detector catches both V0.4.2 fusions with 0 false positives,
+> padding-bullet detector catches all 3 V0.4.2 padding bullets, cropper
+> integration finds 2 regions on a synthetic 3-page PDF).
+
+**Fix 1 — `extract_visual_regions` wired into the pipeline (default ON):**
+the V0.4.2 `vision_region_cropper.py` was a standalone prototype. V0.4.3
+wires it into `core/pipeline/converter_impl.py` as a default-ON feature
+gated by the new `advanced.extract_visual_regions` setting (default
+`True`). When enabled, the pipeline:
+  1. Runs Layer A (vector-graphics clustering) — catches vector-drawn
+     diagrams that PyMuPDF misses entirely.
+  2. Auto-enables Layer B (VLM region detection) when a vision model is
+     available — reuses V0.4.1's provider-agnostic vision probe via the
+     new `build_vlm_callable_from_request` bridge.
+  3. Crops all detected regions at high DPI (200) into `regions/`.
+  4. Embeds `![Figure N: caption](path)` inline in the chapter markdown
+     at the right `<!-- original page N -->` markers (Layer C).
+
+Changes:
+  - `core/models/models.py`: added `extract_visual_regions: bool = True`
+    field to `ConversionRequest`.
+  - `utils/settings.py`: added `advanced.extract_visual_regions: True`
+    default + merge migration.
+  - `controller.py`: added the settings→request field mapping (default
+    `True`).
+  - `core/pipeline/output_paths.py`: added `SUB_REGIONS = "regions"` +
+    `regions_dir` property.
+  - `core/pipeline/converter_impl.py`: wired the cropper call after the
+    existing `table_graph_extractor` block (mirrors its page-selection
+    logic + cancel gate).
+  - `core/pipeline/conversion/settings_logger.py`: logs the new flag.
+  - `core/pdf/vision_region_cropper.py`: added
+    `build_vlm_callable_from_request` bridge + improved the clustering
+    (two-pass with bbox-distance merge; threshold 50→80pt — the V0.4.2
+    single-pass at 50pt split a 10-bar chart into 3-4 small clusters of
+    3-4 bars each, none reaching the 5-min).
+
+**Fix 2 — `detect_sentence_fusion` (audit D4):** new detector in
+`core/summarisation/postchecks/garble.py` that catches sentence-boundary
+fusion garbles the V0.4.2 NPD thorough shipped (`praiseity` = praise + ity,
+`self-developmentstic-masochistic` = development + stic + masochistic).
+
+Two patterns, both content-agnostic:
+  - **Pattern A** — source-word prefix + short non-inflectional suffix at
+    the end (catches `praiseity`). Skips legitimate English inflections
+    only when the full word IS a real English word (the vendored
+    `data/english_lexicon.txt.gz`).
+  - **Pattern B** — 2 source-word substrings separated by a 3-8 char
+    non-source gap (catches `self-developmentstic-masochistic`).
+
+Validated on 3 uploaded chapter summaries:
+  - Ch.3 (v0.4.2 NPD): 2 flags — `praiseity` + `self-developmentstic-
+    masochistic` (both confirmed by manual audit).
+  - Ch.1 (v0.18): 0 flags.
+  - Ch.2 (v0.3): 0 flags.
+  - 0 false positives.
+
+Wired into the orchestrator at all 3 call sites (bullets/exec/thorough).
+
+**Fix 3 — padding-bullet suppression (audit D5):** new
+`_is_padding_bullet` helper in `core/summarisation/postchecks/orchestrator.py`
+drops gap-fill bullets that convey no substantive claim, only co-citation.
+Content-agnostic patterns (match the SHAPE, not specific author names):
+  - "no specific contribution... is explicitly attributed to X"
+  - "X's contribution is not clearly discernible from the provided source"
+  - "X is cited in the source text alongside other ... references"
+
+Validated on the V0.4.2 NPD output: catches 3 padding bullets (Waals,
+Ayyedura-jo, Walsh). 0 false positives on Ch.1 and Ch.2.
+
+**What was NOT done (deliberate scope limits):**
+- The full Elixir test suite (`ruff check` + `make eval-check`) was not
+  run in the sandbox — recommended as the next session's first step
+  before the next rig run.
+- The Jones/Waelder "God complex" multi-author conflation in the
+  thorough summary (carried from V0.4.1) — extending
+  `attribution.py`'s veto to multi-author-to-single-concept requires a
+  dedicated audit; recommended for a follow-up.
+- The page-number citation regression in Key Distinctions and
+  Theoretical Tensions (V0.4.1 had 5 citations, V0.4.2 had 0) — this is
+  a prompt-level issue, not a code-level issue; recommended investigating
+  whether a prompt change between V0.4.1 and V0.4.2 removed the page-
+  citation instruction.
+
+---
+
 ## V0.4.2 — stray-quote repair v2 (even-count mismatches) + vision-region cropper prototype
 
 > **The release:** Two system-strengthening deliverables from the V0.4.1 NPD

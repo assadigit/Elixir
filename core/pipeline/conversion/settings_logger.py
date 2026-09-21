@@ -295,6 +295,8 @@ def log_conversion_settings(
         f"  Extract tables: {r.extract_tables}, Math: {r.extract_math}, Figures: {r.extract_figure_text}",
         "INFO",
     )
+    # V0.4.3: Visual-Region Cropper (default ON)
+    log(f"  Visual-region crops: {getattr(r, 'extract_visual_regions', True)}", "INFO")
     log(f"  Layout analysis: {r.layout_analysis}", "INFO")
 
     # ── DOCX ──────────────────────────────────────────────────────────

@@ -585,6 +585,8 @@ class Controller:
             "simplified_keypoints_enabled": request.simplified_keypoints_enabled,
             # ── NEW Sprint 3 fields ────────────────────────────────────────
             "extract_figure_text": request.extract_figure_text,
+            # V0.4.3: Vision-Region Cropper (default ON)
+            "extract_visual_regions": getattr(request, "extract_visual_regions", True),
             # V7.9.0: save output_* flags so the Output Scanner can
             # distinguish "not requested" from "missing/failed".
             "output_briefing": getattr(request, "output_briefing", False),
@@ -863,6 +865,9 @@ class Controller:
             None,
         ),
         ("extract_figure_text", "extract_figure_text", "advanced.extract_figure_text", False, None),
+        # V0.4.3: Vision-Region Cropper — default ON (crops diagrams/charts/
+        # tables at high DPI and embeds inline in the chapter markdown).
+        ("extract_visual_regions", "extract_visual_regions", "advanced.extract_visual_regions", True, None),
         ("output_briefing", "output_briefing", "outputs.briefing", True, None),
         ("output_podcast", "output_podcast", "outputs.podcast", True, None),
         ("output_flashcards", "output_flashcards", "outputs.flashcards", True, None),

@@ -77,6 +77,7 @@ from core.summarisation.postchecks.garble import (  # noqa: F401
     detect_garbled_tokens,
     detect_grammatical_incoherence,
     detect_missing_spaces,
+    detect_sentence_fusion,  # V0.4.3 (audit D4) — sentence-boundary fusion
     detect_word_fragment_merge,
     repair_stray_quotes,  # V0.20.5 (brainstorm D2)
     repair_stray_quotes_v2,  # V0.20.6 (brainstorm D2+) — even-count mismatches
@@ -105,6 +106,37 @@ from core.summarisation.postchecks.shared import (  # noqa: F401
     _is_subsequence,
     _snippet,
 )
+
+# V0.4.3 (audit D5): padding-bullet suppression patterns.
+# These are gap-fill artifacts that convey no substantive claim, only
+# co-citation. Content-agnostic — the patterns match the SHAPE of the
+# bullet, not specific author names.
+_PADDING_PATTERNS = [
+    # "no specific contribution... is explicitly attributed to X"
+    "no specific contribution",
+    # "X's contribution is not clearly discernible from the provided source"
+    "not clearly discernible",
+    "not clearly discernable",
+    # "X is cited in the source text alongside other ... references"
+    "is cited in the source text alongside",
+    "is cited alongside other authors as having",
+    "cited alongside other",
+]
+
+
+def _is_padding_bullet(bullet: str) -> bool:
+    """V0.4.3 (audit D5): return True if the bullet is a gap-fill padding
+    artifact (no substantive claim, only co-citation).
+
+    Content-agnostic: matches the SHAPE of the bullet, not specific
+    author names. The patterns cover the 3 forms observed in the V0.4.2
+    NPD output (Waals, Ayyedura-jo, Walsh bullets).
+    """
+    if not bullet:
+        return False
+    b_lower = bullet.lower()
+    return any(p in b_lower for p in _PADDING_PATTERNS)
+
 
 logger = logging.getLogger(
     "core.summarisation.postchecks"
@@ -251,6 +283,12 @@ def run_post_checks(
         _, fragment_issues = detect_word_fragment_merge(
             bp_str, label, source_text or "", source_words=_src_words
         )
+        # V0.4.3 (audit D4): sentence-fusion garble (flag-only) — catches
+        # "praiseity"-class fusions that word_fragment_merge misses.
+        _, fusion_issues = detect_sentence_fusion(
+            bp_str, label, source_text or "", source_words=_src_words
+        )
+        fragment_issues = (fragment_issues or []) + (fusion_issues or [])
         # V18.20.2.0 (SWOT A19): dropped-letter garble detector on BULLETS.
         # The V18.19.2.3 detector ran on exec (:221) and thorough (:277) only —
         # the exact "emergs"→"emerges" single-word garble class it was built
@@ -512,6 +550,28 @@ def run_post_checks(
                     )
                 )
                 continue
+        # V0.4.3 (audit D5): drop "padding bullets" — gap-fill artifacts
+        # that convey no substantive claim, only co-citation. The V0.4.2
+        # NPD output shipped 4 of these (Waals, Tyson, Byrne, Walsh,
+        # Ayyedura-jo). They satisfy the "theorist floor" coverage
+        # counter but add noise for the reader. Content-agnostic patterns:
+        #   - "no specific contribution... is explicitly attributed to X"
+        #   - "not clearly discernible from the provided source"
+        #   - "is cited in the source text alongside other ... references"
+        if _is_padding_bullet(bp_str):
+            report.issues.append(
+                Issue(
+                    detector="padding_bullet",
+                    severity="fix",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "dropped padding bullet (gap-fill artifact with no "
+                        "substantive claim, only co-citation)"
+                    ),
+                )
+            )
+            continue
         # Drop the bullet if it became empty after leakage stripping
         # (the entire bullet was a CoT leak with no content).
         if bp_str.strip():
@@ -567,6 +627,11 @@ def run_post_checks(
     _, exec_fragment = detect_word_fragment_merge(
         exec_str, "exec", source_text or "", source_words=_src_words
     )
+    # V0.4.3 (audit D4): sentence-fusion garble.
+    _, exec_fusion = detect_sentence_fusion(
+        exec_str, "exec", source_text or "", source_words=_src_words
+    )
+    exec_fragment = (exec_fragment or []) + (exec_fusion or [])
     exec_str, exec_dropped = detect_dropped_letter_garble(
         exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble
     )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
@@ -693,6 +758,13 @@ def run_post_checks(
     _, tho_fragment = detect_word_fragment_merge(
         tho_str, "thorough", source_text or "", source_words=_src_words
     )
+    # V0.4.3 (audit D4): sentence-fusion garble — the V0.4.2 NPD thorough
+    # shipped two fusions (praiseity, self-developmentstic); this catches
+    # them. Flag-only.
+    _, tho_fusion = detect_sentence_fusion(
+        tho_str, "thorough", source_text or "", source_words=_src_words
+    )
+    tho_fragment = (tho_fragment or []) + (tho_fusion or [])
     tho_str, tho_dropped = detect_dropped_letter_garble(
         tho_str,
         "thorough",

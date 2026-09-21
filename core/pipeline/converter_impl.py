@@ -2336,6 +2336,121 @@ class Converter(ConverterExtractionMixin):
             else:
                 self._log("  ⏭️ Screenshots/graphs skipped (opt-in, disabled)", "DEBUG")
 
+            # ── V0.4.3: Vision-Region Cropper (default ON) ───────────────────
+            # Crops diagrams/charts/tables at high DPI and embeds inline in
+            # the chapter markdown. Layer A (vector-graphics clustering)
+            # always runs; Layer B (VLM region detection) auto-enables when
+            # a vision model is available (reuses V0.4.1's vision probe via
+            # build_vlm_callable_from_request). Content-agnostic. See
+            # docs/FEASIBILITY_vision_crop.md for the full design.
+            extract_vr = bool(getattr(self.request, "extract_visual_regions", True))
+            if extract_vr and not self._cancel_requested("visual-region crops"):
+                try:
+                    from core.pdf.vision_region_cropper import (
+                        build_vlm_callable_from_request,
+                        build_inline_markdown,
+                        extract_visual_regions,
+                    )
+
+                    # Derive the page list using the same 3-step logic as
+                    # the screenshots block above (page range → manual
+                    # segments → selected chapters).
+                    vr_page_list = list(range(1, total_pages + 1))
+                    if self.request.page_range_start or self.request.page_range_end:
+                        _start = self.request.page_range_start or 1
+                        _end = self.request.page_range_end or total_pages
+                        vr_page_list = [p for p in vr_page_list if _start <= p <= _end]
+                    if self.request.manual_segments:
+                        seg_pages = set()
+                        for start, end in self.request.manual_segments:
+                            for p in range(max(1, start), min(total_pages + 1, end + 1)):
+                                seg_pages.add(p)
+                        vr_page_list = [p for p in vr_page_list if p in seg_pages]
+                    elif self.request.selected_chapters:
+                        toc_page_set = self._derive_page_ranges_from_toc(
+                            toc_entries, self.request.selected_chapters, total_pages
+                        )
+                        if toc_page_set:
+                            vr_page_list = [p for p in vr_page_list if p in toc_page_set]
+
+                    # Cap the page count for the VLM probe (Layer B cost
+                    # scales with page count; default to the selected
+                    # chapter pages only — same scope as the chapter
+                    # screenshots above).
+                    if len(vr_page_list) > 200:
+                        self._log(
+                            f"  📐 Visual-region cropper: {len(vr_page_list)} pages "
+                            f"is a lot — capping to first 200 to control VLM cost",
+                            "DEBUG",
+                        )
+                        vr_page_list = vr_page_list[:200]
+
+                    self._log(
+                        f"  📐 Visual-region cropper: scanning {len(vr_page_list)} page(s) "
+                        f"for diagrams/charts/tables",
+                        "INFO",
+                    )
+
+                    # Build the VLM callable (returns None if no vision
+                    # model — Layer B is gracefully disabled, Layer A still
+                    # runs). This reuses V0.4.1's provider-agnostic vision
+                    # probe via core.llm.llm_provider_impl.create_provider.
+                    vlm_callable = build_vlm_callable_from_request(
+                        self.request, log=self._log
+                    )
+
+                    # Run the cropper. Layer 0 reuses the existing
+                    # figure_table_cropper (already done above), so we
+                    # disable it here to avoid double-processing.
+                    vr_result = extract_visual_regions(
+                        pdf_path=self.request.input_path,
+                        output_dir=self.output_dir,
+                        pages=vr_page_list,
+                        vlm_callable=vlm_callable,
+                        log_callback=self._log,
+                        enable_existing_extractors=False,  # already done above
+                        enable_vector_clustering=True,
+                        enable_vlm=vlm_callable is not None,
+                    )
+
+                    # Log the result counts.
+                    n_regions = len(vr_result.regions)
+                    by_src: dict[str, int] = {}
+                    for r in vr_result.regions:
+                        by_src[r.source] = by_src.get(r.source, 0) + 1
+                    src_summary = ", ".join(f"{k}={v}" for k, v in sorted(by_src.items())) or "none"
+                    self._log(
+                        f"  📐 Visual-region cropper: {n_regions} region(s) ({src_summary}) "
+                        f"→ {self.paths.regions_dir}",
+                        "INFO",
+                    )
+
+                    # Embed the crops inline in the chapter markdown at
+                    # the right page markers (Layer C). The cropper returns
+                    # a manifest; we also inject the inline embeds into
+                    # the full markdown file so the summary LLM can see
+                    # the figures in context.
+                    if vr_result.regions and self.full_markdown_path.exists():
+                        try:
+                            md_text = self.full_markdown_path.read_text(encoding="utf-8")
+                            md_text = build_inline_markdown(md_text, vr_result.regions)
+                            self.full_markdown_path.write_text(md_text, encoding="utf-8")
+                            n_embedded = sum(1 for r in vr_result.regions if r.crop_path)
+                            self._log(
+                                f"  📐 Inline-embedded {n_embedded} region crop(s) into the markdown",
+                                "INFO",
+                            )
+                        except Exception as e:
+                            self._log(
+                                f"  ⚠️ Inline-embed of region crops failed: {type(e).__name__}: {e}",
+                                "WARNING",
+                            )
+                except Exception as e:
+                    self._record_partial_failure("Visual-region cropper", e)
+            else:
+                if not extract_vr:
+                    self._log("  ⏭️ Visual-region cropper skipped (disabled in settings)", "DEBUG")
+
             # Footnote extraction
             # V18.20.2.0 (SWOT A15): cancel gate — skip on cancel.
             if not self._cancel_requested("footnote extraction"):

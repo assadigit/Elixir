@@ -137,7 +137,7 @@ class CropResult:
 
 def _cluster_shapes(
     shapes: list[dict],
-    distance_threshold: float = 50.0,
+    distance_threshold: float = 80.0,
     min_shapes_per_cluster: int = 5,
 ) -> list[tuple[float, float, float, float]]:
     """Cluster pdfplumber shapes by spatial proximity.
@@ -146,14 +146,25 @@ def _cluster_shapes(
     bounding box of the shape). Returns a list of cluster bounding boxes
     (x0, top, x1, bottom) in PDF points.
 
-    Algorithm: simple greedy agglomerative clustering — assign each shape
-    to the nearest existing cluster (by bbox-center distance), or start a
-    new cluster if no cluster is within ``distance_threshold``. Clusters
-    with fewer than ``min_shapes_per_cluster`` shapes are dropped (avoids
-    treating stray underline-rule decorative lines as diagrams).
+    Algorithm: greedy agglomerative clustering. Two passes:
+      Pass 1 — assign each shape to the nearest existing cluster (by
+      bbox-center distance), or start a new cluster if no cluster is
+      within ``distance_threshold``.
+      Pass 2 — merge clusters whose bboxes are within ``distance_threshold``
+      of each other (catches cases where the cluster center drifted too
+      far for later shapes to join, splitting one diagram into multiple
+      small clusters).
+
+    Clusters with fewer than ``min_shapes_per_cluster`` shapes are
+    dropped (avoids treating stray underline-rule decorative lines as
+    diagrams).
 
     Content-agnostic: works on any vector content (charts, diagrams,
     flowcharts, technical drawings). No hardcoded shapes.
+
+    V0.4.3: distance_threshold raised from 50 to 80 (the V0.4.2 default
+    was too tight — a 10-bar chart spread over 300pt got split into
+    3-4 small clusters of 3-4 bars each, none reaching the 5-min).
     """
     if not shapes:
         return []
@@ -167,7 +178,14 @@ def _cluster_shapes(
     def _merge_bb(a, b):
         return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
 
-    clusters: list[tuple[float, float, float, float], list[dict]] = []  # (bbox, members)
+    def _bb_distance(a, b):
+        """Minimum distance between two bboxes (0 if they overlap)."""
+        dx = max(0, max(a[0], b[0]) - min(a[2], b[2]))
+        dy = max(0, max(a[1], b[1]) - min(a[3], b[3]))
+        return math.hypot(dx, dy)
+
+    # ── Pass 1: assign each shape to the nearest cluster, or start a new one.
+    clusters: list[tuple[tuple, list[dict]]] = []  # (bbox, members)
     for shape in shapes:
         bb = (shape["x0"], shape["top"], shape["x1"], shape["bottom"])
         c = _center(bb)
@@ -185,6 +203,26 @@ def _cluster_shapes(
             clusters[best_idx] = (_merge_bb(cluster_bb, bb), members + [shape])
         else:
             clusters.append((bb, [shape]))
+
+    # ── Pass 2: merge clusters whose bboxes are within distance_threshold.
+    # This catches cases where pass 1 split one diagram into multiple
+    # clusters because the cluster center drifted too far for later
+    # shapes to join.
+    merged = True
+    while merged:
+        merged = False
+        for i in range(len(clusters)):
+            for j in range(i + 1, len(clusters)):
+                bb_i, members_i = clusters[i]
+                bb_j, members_j = clusters[j]
+                if _bb_distance(bb_i, bb_j) < distance_threshold:
+                    # Merge cluster j into cluster i.
+                    clusters[i] = (_merge_bb(bb_i, bb_j), members_i + members_j)
+                    clusters.pop(j)
+                    merged = True
+                    break
+            if merged:
+                break
 
     # Filter clusters with too few shapes.
     result = []
@@ -609,6 +647,100 @@ def build_inline_markdown(
         out_lines.append("")
 
     return "\n".join(out_lines)
+
+
+# ─── V0.4.3: vlm_callable bridge (reuses V0.4.1 vision probe) ────────────────
+
+
+def build_vlm_callable_from_request(request, log: LogFn | None = None) -> Callable[[bytes, str], str] | None:
+    """Construct a ``vlm_callable`` from the conversion request's model config.
+
+    Reuses V0.4.1's provider-agnostic vision probe: tries the main model
+    first, then a separate OCR model, then returns None (Layer B disabled).
+
+    The returned callable wraps the provider's vision call and returns the
+    raw text response (parsed by the caller via ``_parse_vlm_json``).
+
+    This is a thin adapter — it does NOT duplicate the probe logic, it just
+    routes the existing ``core.llm`` provider infrastructure into the
+    ``vlm_callable(image_bytes, prompt) -> str`` signature that
+    ``detect_vlm_regions`` expects.
+
+    Args:
+        request: a ConversionRequest with ``model_architecture``,
+            ``summarisation_model``, and ``primary_ocr_model`` fields.
+        log: optional ``f(msg, level)`` callback.
+
+    Returns:
+        A callable, or None if no vision model is available.
+    """
+    log = log or (lambda msg, level="INFO": None)
+    try:
+        from core.llm.llm_provider_impl import create_provider
+        from utils.settings import Settings as _S
+
+        settings = _S()
+        arch = getattr(request, "model_architecture", "single_local") or "single_local"
+
+        # Determine the provider name from the architecture (mirror V0.4.1).
+        if arch == "llamacpp":
+            provider_name = "llamacpp"
+        elif arch in ("single_api", "dual_api"):
+            provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
+        else:
+            provider_name = "ollama"
+
+        # Only local providers (Ollama or llama.cpp) are supported for the
+        # vision-region probe (same constraint as V0.4.1's OCR path).
+        if provider_name not in ("ollama", "llamacpp"):
+            log(
+                f"  [vlm-bridge] provider '{provider_name}' not supported for vision-region probe — Layer B disabled",
+                "DEBUG",
+            )
+            return None
+
+        # Try the main model first, then a separate OCR model.
+        candidates = []
+        main_model = getattr(request, "summarisation_model", "") or ""
+        ocr_model = getattr(request, "primary_ocr_model", "") or ""
+        if main_model:
+            candidates.append(main_model)
+        if ocr_model and ocr_model != main_model:
+            candidates.append(ocr_model)
+
+        for model_name in candidates:
+            try:
+                provider = create_provider(provider_name, settings)
+                if provider and provider.supports_vision():
+                    log(
+                        f"  [vlm-bridge] model '{model_name}' has vision — using it for region detection",
+                        "INFO",
+                    )
+
+                    def _callable(image_bytes: bytes, prompt: str, _prov=provider) -> str:
+                        # Use the provider's complete_with_image method
+                        # (signature: prompt, image_bytes, temperature, max_tokens).
+                        # Returns the raw text response, or None on failure.
+                        result = _prov.complete_with_image(
+                            prompt=prompt,
+                            image_bytes=image_bytes,
+                            temperature=0.0,
+                            max_tokens=1024,
+                        )
+                        return result or ""
+
+                    return _callable
+            except Exception as e:
+                log(f"  [vlm-bridge] probe for '{model_name}' failed: {type(e).__name__}: {e}", "DEBUG")
+
+        log(
+            "  [vlm-bridge] no vision-capable model found — Layer B disabled (Layer A still runs)",
+            "INFO",
+        )
+        return None
+    except Exception as e:
+        log(f"  [vlm-bridge] crashed (non-fatal): {type(e).__name__}: {e}", "WARNING")
+        return None
 
 
 # ─── Public pipeline entry ──────────────────────────────────────────────────
