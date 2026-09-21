@@ -1,5 +1,73 @@
 # Changelog
 
+## V0.4.4 — fix numpy 2.x ABI mismatch (the "settings → OCR" crash)
+
+> **The release:** One targeted fix for the crash the user reported when
+> opening Settings → Independent OCR Tool. The screenshot (4545.png)
+> showed:
+>
+> ```
+> RuntimeError: module compiled against ABI version 0x1000009
+> but this version of numpy is 0x2000000
+> ```
+>
+> **Root cause:** `requirements.txt` had `numpy>=1.26.0` with no upper
+> bound, so pip resolved `numpy==2.5.3` (per `requirements.lock`). A
+> compiled C extension (torch / transformers / pandas / scipy / langextract)
+> was built against numpy 1.x ABI. When the user opened Settings → OCR
+> (which imports `torch` lazily), the import triggered the ABI mismatch
+> → RuntimeError → the global `sys.excepthook` caught it as a generic
+> "Unexpected error" dialog with no actionable fix.
+
+**Fix 1 — Pin numpy to < 2.0.0** (root-cause fix for fresh installs):
+  - `requirements.txt`: `numpy>=1.26.0` → `numpy>=1.26.0,<2.0.0`
+  - `pyproject.toml`: same pin in the dependencies array.
+
+  This ensures `pip install` resolves a numpy 1.x version that's
+  compatible with all compiled dependencies. Existing installs with
+  numpy 2.x need to run `pip install "numpy<2"` manually (see Fix 2).
+
+**Fix 2 — Startup guard + runtime detection** (for existing installs
+that already have numpy 2.x):
+  - `main.py`: new `_check_numpy_abi_compatibility()` runs after
+    `_check_dependencies()` and BEFORE the main window opens. It probes
+    `numpy`, `pypdf`, `pdfplumber`, and `PIL` for the ABI error. If
+    detected, it shows a focused dialog with the exact fix command
+    (`pip install "numpy<2"`) instead of a generic crash report.
+  - `main.py`: the global `sys.excepthook` now detects the ABI error at
+    runtime (it fires lazily when the user opens Settings → OCR which
+    imports `torch`) and shows the same focused fix dialog. This catches
+    the case where the startup probe passed but the lazy import later
+    fails (exactly the user's scenario).
+
+  Detection is content-agnostic: catches ANY `RuntimeError` containing
+  both `"ABI version"` and `"numpy"` (case-insensitive). No hardcoded
+  module names or numpy version strings — works for any future numpy
+  ABI mismatch, not just the 1.x→2.x one.
+
+  Validated by simulating the exact error from the screenshot:
+  - The simulated `RuntimeError("module compiled against ABI version
+    0x1000009 but this version of numpy is 0x2000000")` is correctly
+    detected (triggers the focused dialog).
+  - A generic `RuntimeError("some other runtime error")` is correctly
+    NOT detected (falls through to the generic "Unexpected error"
+    dialog).
+
+**Immediate fix for the user:** open a terminal and run:
+```
+pip install "numpy<2"
+```
+Then restart Elixir. V0.4.4 will prevent this issue on future fresh
+installs (the pin ensures pip resolves a compatible numpy).
+
+**What was NOT done (deliberate scope limits):**
+- Did not regenerate `requirements.lock` (the lock file still shows
+  `numpy==2.5.3` — the user should regenerate it with
+  `pip-compile requirements.txt` after this change takes effect, OR
+  just run `pip install "numpy<2"` to override the lock).
+
+---
+
 ## V0.4.3 — vision-region cropper wired in (default ON) + sentence-fusion detector + padding-bullet suppression
 
 > **The release:** Three fixes from the V0.4.2 audit follow-up. The headline
