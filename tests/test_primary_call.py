@@ -167,7 +167,12 @@ class TestSummarizeWithModel:
         assert any("Raw response" in m for m in debugs)
 
     def test_large_text_chunked_success(self, monkeypatch):
-        """> 12000 tokens + thermal ok → chunked path returns its result."""
+        """V0.4: master-summary is the DEFAULT — chunked_summarize always runs.
+
+        V0.3 audit proved this architecture scores 9/10. V0.4 removed the
+        gating (input > 12000, low-bit quant, etc.) — the master-summary
+        3-call pipeline now runs for every chapter.
+        """
         _set_tokens(monkeypatch, 15000)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
@@ -194,7 +199,7 @@ class TestSummarizeWithModel:
         assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
         assert chunked_calls["n"] == 1
         infos = [m for m, l in logs if l == "INFO"]
-        assert any("chunked output" in m for m in infos)
+        assert any("master-summary" in m for m in infos)
 
     def test_large_text_chunked_none_falls_back(self, monkeypatch):
         """chunked returns None → WARNING log + fallback to single-pass."""
@@ -219,17 +224,23 @@ class TestSummarizeWithModel:
         assert result["bullet_points"] == ["fb"]
         warnings = [m for m, l in logs if l == "WARNING"]
         assert len(warnings) == 1
-        assert "falling back to single-pass" in warnings[0]
+        assert "falling back to 5-in-1" in warnings[0]
 
     def test_large_text_hot_gpu_skips_chunking(self, monkeypatch):
-        """> 12000 tokens BUT GPU ≥78°C → _should_chunk False → single-pass."""
+        """V0.4: master-summary is ALWAYS called, even on hot GPU.
+
+        The old V18.3.5 gate skipped chunking on hot GPU (thermal throttle).
+        V0.4 removes the gate — the master-summary architecture runs for
+        ALL chapters. If chunked_summarize returns None (fails), the
+        fallback 5-in-1 path runs.
+        """
         _set_tokens(monkeypatch, 15000)
         _hot_gpu(monkeypatch, temp=80)  # ≥78
         chunked_calls = {"n": 0}
 
         def chunked(*a, **k):
             chunked_calls["n"] += 1
-            return None
+            return {"bullet_points": ["chunked-bullet"], "from_chunked": True}
 
         result = pc_mod.summarize_with_model(
             "h",
@@ -245,9 +256,9 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        # chunking skipped (hot GPU) → single-pass structured path
-        assert result["bullet_points"] == ["single"]
-        assert chunked_calls["n"] == 0  # chunked never called
+        # V0.4: chunked_summarize is ALWAYS called (master-summary default)
+        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        assert chunked_calls["n"] == 1  # chunked called once
 
     def test_max_tokens_from_request_when_none(self, monkeypatch):
         """max_tokens=None → uses request.summarisation_max_output_tokens.
@@ -281,7 +292,11 @@ class TestSummarizeWithModel:
         assert captured["max_out"] == 8192
 
     def test_high_output_cap_prevents_chunking(self, monkeypatch):
-        """_max_out >= 14000 → chunking NOT triggered even for large input."""
+        """V0.4: master-summary is ALWAYS called, even with high output cap.
+
+        The old V18.3.5 gate skipped chunking when max_tokens >= 14000.
+        V0.4 removes the gate.
+        """
         _set_tokens(monkeypatch, 15000)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
@@ -295,7 +310,7 @@ class TestSummarizeWithModel:
             "text",
             "m",
             0.7,
-            max_tokens=16000,  # >= 14000 → no chunk
+            max_tokens=16000,  # >= 14000 → old gate skipped; V0.4 always calls
             request=_FakeRequest(),
             log=lambda m, l="INFO": None,
             chunked_summarize=chunked,
@@ -305,19 +320,16 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        assert chunked_calls["n"] == 0
+        # V0.4: chunked_summarize IS called (master-summary default)
+        assert chunked_calls["n"] == 1
 
     # ── V0.20.2 (Quality Campaign, conversion-log audit Defect L4, §7b) ──
 
     def test_low_bit_quant_moderate_input_chunks_v0202(self, monkeypatch):
-        """V0.20.2: a LOW-BIT QUANT model with MODERATE input (>6000 tok,
-        under the 12000 gate) triggers chunking. The V0.18 rig run had
-        input 8566 tok (under 12000) and STILL truncated on output (CoT
-        inundation + 8192 output cap). The existing 12000-tok gate missed
-        this because it gates on INPUT size; the V0.20.2 condition gates
-        on a MODEL property (is_low_bit_quant) + a moderate-input
-        threshold. Content-agnostic — no chapter-specific branches."""
-        _set_tokens(monkeypatch, 8566)  # the V0.18 rig input size
+        """V0.4: master-summary is ALWAYS called — low-bit quant with
+        moderate input gets the 3-call pipeline like every other chapter.
+        The old V0.20.2 gate is removed; V0.4 makes it the default."""
+        _set_tokens(monkeypatch, 8566)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
 
@@ -329,7 +341,7 @@ class TestSummarizeWithModel:
         result = pc_mod.summarize_with_model(
             "h",
             "text",
-            "Qwen3.8-27B-Q2_K_XL",  # a low-bit quant model (the V0.18 rig model)
+            "Qwen3.8-27B-Q2_K_XL",  # a low-bit quant model
             0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": logs.append((m, l)),
@@ -342,31 +354,26 @@ class TestSummarizeWithModel:
         )
         assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
         assert chunked_calls["n"] == 1
+        # V0.4: the master-summary message fires (not the old V0.20.2 gate message)
         infos = [m for m, l in logs if l == "INFO"]
-        # The V0.20.2 message fired (not the V18.3.5 message — no double-log).
-        assert any("V0.20.2: chunked output (low-bit quant" in m for m in infos), infos
-        assert not any("V18.3.5: chunked output" in m for m in infos), (
-            "the V18.3.5 log must NOT fire when the V0.20.2 log already fired (no double-log)"
-        )
+        assert any("V0.4: master-summary" in m for m in infos), infos
 
     def test_low_bit_quant_small_input_does_not_chunk_v0202(self, monkeypatch):
-        """V0.20.2: a low-bit quant model with SMALL input (<=6000 tok) does
-        NOT trigger the V0.20.2 chunking path — the 6000-tok threshold
-        leaves a 4.6× margin below the smallest golden chapter (1262 tok).
-        The golden corpus never triggers this path (byte-identical outputs
-        preserved)."""
-        _set_tokens(monkeypatch, 5000)  # under the 6000 V0.20.2 threshold
+        """V0.4: master-summary is ALWAYS called, even for small input.
+        The old V0.20.2 gate skipped small input (< 6000); V0.4 removes the
+        gate — even small chapters get the 3-call pipeline."""
+        _set_tokens(monkeypatch, 5000)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
 
         def chunked(*a, **k):
             chunked_calls["n"] += 1
-            return None
+            return {"bullet_points": ["chunked-bullet"], "from_chunked": True}
 
-        pc_mod.summarize_with_model(
+        result = pc_mod.summarize_with_model(
             "h",
             "text",
-            "Qwen3.8-27B-Q2_K_XL",  # low-bit, but input too small
+            "Qwen3.8-27B-Q2_K_XL",
             0.7,
             request=_FakeRequest(),
             log=lambda m, l="INFO": None,
@@ -377,26 +384,23 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        assert chunked_calls["n"] == 0, (
-            "the V0.20.2 low-bit path must NOT fire for small input (<=6000 tok) — "
-            "the golden corpus (max 1262 tok) never triggers this path"
-        )
+        # V0.4: chunked_summarize IS called (master-summary default)
+        assert chunked_calls["n"] == 1
+        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
 
     def test_non_low_bit_model_moderate_input_does_not_chunk_v0202(self, monkeypatch):
-        """V0.20.2: a NON-low-bit model with moderate input does NOT trigger
-        the V0.20.2 chunking path — the condition requires BOTH low-bit
-        quant AND moderate input. A full-precision model with 8566 tok
-        input uses the single-pass path (it has a higher output cap and
-        isn't prone to CoT inundation)."""
-        _set_tokens(monkeypatch, 8566)  # moderate, but not low-bit
+        """V0.4: master-summary is ALWAYS called, even for non-low-bit models.
+        The old V0.20.2 gate only fired for low-bit quants; V0.4 removes the
+        gate — all models get the 3-call pipeline."""
+        _set_tokens(monkeypatch, 8566)
         _no_gpu(monkeypatch)
         chunked_calls = {"n": 0}
 
         def chunked(*a, **k):
             chunked_calls["n"] += 1
-            return None
+            return {"bullet_points": ["chunked-bullet"], "from_chunked": True}
 
-        pc_mod.summarize_with_model(
+        result = pc_mod.summarize_with_model(
             "h",
             "text",
             "gemma-12b-q8",  # NOT a low-bit quant
@@ -405,12 +409,11 @@ class TestSummarizeWithModel:
             log=lambda m, l="INFO": None,
             chunked_summarize=chunked,
             build_prompt=lambda *a, **k: "P",
-            call_llm_structured=lambda *a, **k: {"bullet_points": ["structured"]},
+            call_llm_structured=lambda *a, **k: None,
             call_llm_with_empty_retry=lambda *a, **k: "",
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        assert chunked_calls["n"] == 0, (
-            "the V0.20.2 low-bit path must NOT fire for a non-low-bit model "
-            "(the condition requires BOTH low-bit quant AND moderate input)"
-        )
+        # V0.4: chunked_summarize IS called (master-summary default)
+        assert chunked_calls["n"] == 1
+        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}

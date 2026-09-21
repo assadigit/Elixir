@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_for_version": "0.3",
+  "generated_for_version": "0.3.1",
   "prompts_dir": "prompts/",
   "file_count": 56,
   "manifest_sha256": "2a908925869add3e4ec5621c2508453ad22e6e4128b9edf8204eb6b1bbf79912",

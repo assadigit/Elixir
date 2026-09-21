@@ -268,14 +268,12 @@ class TestChunkedOutput:
         assert "_build_chunked_prompt" in src, "The _build_chunked_prompt method must exist"
 
     def test_chunking_threshold(self):
-        """V18.3.5 (F1): chunking fires when input > 12000 actual tokens AND output < 14000.
-        V0.20.2: also fires for low-bit quant + input > 6000.
-        """
+        """V0.4: master-summary is the DEFAULT — no chunking threshold needed.
+        The old V18.3.5 gate (input > 12000) is removed; chunked_summarize
+        (the master-summary 3-call pipeline) runs for ALL chapters."""
         src = PRIMARY_CALL_PATH.read_text(encoding="utf-8")
         assert "count_tokens" in src, "Must use actual token count (not char estimate)"
-        assert "_input_tokens_actual > 12000" in src, (
-            "V18.3.5 F1: threshold must be 12000 (not 10000) using actual token count"
-        )
+        assert "V0.4: master-summary" in src, "V0.4: must log the master-summary default"
 
     def test_v03_master_summary_call(self):
         """V0.3 Call 1/3: master summary (comprehensive thorough) is the first call."""
@@ -302,10 +300,7 @@ class TestChunkedOutput:
     def test_fallback_to_single_pass_on_chunk1_failure(self):
         """If the master summary call fails, fall back to single-pass."""
         src = PRIMARY_CALL_PATH.read_text(encoding="utf-8")
-        assert (
-            "falling back to single-pass" in src.lower()
-            or "fall back to single-pass" in src.lower()
-        ), "Must fall back to single-pass if chunked output fails"
+        assert "falling back" in src.lower(), "Must fall back to 5-in-1 if master-summary fails"
 
 
 # ── VRAM math verification ──────────────────────────────────────────────────
