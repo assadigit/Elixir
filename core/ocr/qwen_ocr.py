@@ -105,7 +105,24 @@ class QwenOCREngine(OCREngine):
                     return text
                 logger.warning(f"Empty Qwen response on attempt {attempt + 1}")
             except Exception as e:
-                logger.warning(f"Qwen attempt {attempt + 1} error: {e}")
+                # V0.4.6: a 400 Bad Request from /api/generate with an
+                # images payload usually means the model doesn't support
+                # vision OR the model name is wrong. Surface a helpful
+                # hint so the user knows to check their Ollama model.
+                err_str = str(e)
+                if "400" in err_str and ("Bad Request" in err_str or "Client Error" in err_str):
+                    logger.warning(
+                        f"Qwen attempt {attempt + 1} error: {e}\n"
+                        f"  💡 This usually means the model '{self.model_name}' "
+                        f"either doesn't support vision (image input) or isn't "
+                        f"installed in Ollama. Check:\n"
+                        f"    1. ollama list  (is '{self.model_name}' present?)\n"
+                        f"    2. The model must be a vision model (e.g., "
+                        f"qwen2-vl, llava, minicpm-v, OlmOCR).\n"
+                        f"    3. In Elixir Settings → OCR, pick a vision-capable model."
+                    )
+                else:
+                    logger.warning(f"Qwen attempt {attempt + 1} error: {e}")
 
             if attempt < self.retries - 1:
                 time.sleep(2 * (attempt + 1))

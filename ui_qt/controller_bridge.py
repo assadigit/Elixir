@@ -83,8 +83,32 @@ class QtControllerBridge(QObject):
     # between the signal and that slot, so pre-existing duplicates
     # self-heal on the next connect.
     def _connect_unique(self, signal, slot: Callable) -> None:
+        # V0.4.6: PySide6 6.x emits a RuntimeWarning via the warnings
+        # module when disconnect() is called on a slot that isn't
+        # connected (or was already disconnected). The old code caught
+        # TypeError/RuntimeError but didn't suppress the warning —
+        # every "Convert again" run printed 7 "Failed to disconnect"
+        # warnings. Suppress the libpyside RuntimeWarning around the
+        # disconnect call; the exception handler still catches the
+        # (rare) actual exception.
+        import warnings
+
         try:
-            signal.disconnect(slot)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*Failed to disconnect.*",
+                    category=RuntimeWarning,
+                    module=r"libpyside.*",
+                )
+                # Also catch the broader ".*libpyside.*" source — the
+                # warning can come from Shiboken or PySide6 internals.
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*Failed to disconnect.*",
+                    category=RuntimeWarning,
+                )
+                signal.disconnect(slot)
         except (TypeError, RuntimeError):
             pass  # not connected (or receiver already destroyed) — plain connect below
         signal.connect(slot)

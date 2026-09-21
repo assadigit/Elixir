@@ -1,5 +1,79 @@
 # Changelog
 
+## V0.4.6 — fix settings-schema warnings + suppress libpyside disconnect warnings + Qwen 400 hint
+
+> **The release:** Three noise-reduction fixes from the user's V0.4.2 run
+> log. The log showed:
+> - 11 "Unknown setting" warnings for missing `tts.normalize_*`,
+>   `podcast.*`, and `ai.*` keys (polluting every settings page load +
+>   podcast/TTS generation).
+> - 7 libpyside "Failed to disconnect" RuntimeWarnings on every
+>   "Convert again" run (PySide6 6.x emits a warning when disconnect()
+>   is called on a non-connected slot).
+> - 2 Qwen VL 400 Bad Request errors with no diagnostic hint.
+
+**Fix 1 — Missing settings keys added** (`utils/settings.py`):
+  - `tts.normalize_model` (default ""), `tts.normalize_api_key` (default
+    ""), `tts.normalize_context_mode` (default "sentence") — read by
+    `core/tts/normalizer.py` + `ui_qt/settings/tts_page.py`. The api_key
+    is stored in the OS keychain but falls back to `settings.get()` when
+    the keychain is unavailable, so the key must exist in the schema.
+  - `podcast.hosts` (2), `podcast.scope` ("per_chapter"),
+    `podcast.depth_mode` ("exhaustive"), `podcast.target_minutes` (30),
+    `podcast.exhaustive_cap_enabled` (True),
+    `podcast.exhaustive_cap_minutes` (120), `podcast.include_intro`
+    (True), `podcast.include_outro` (True) — read by
+    `core/outputs/podcast_generator.py` + `ui_qt/settings/podcast_page.py`.
+  - `ai.backend` ("Ollama"), `ai.custom_backend_url` ("") — legacy keys
+    read by `ui_qt/settings/sections.py`. The actual backend config now
+    lives under `summarisation` + `llm`, but the legacy keys are still
+    read for backward compatibility.
+  - All 13 keys also added to the settings merge-migration block so
+    existing `settings.json` files get them on next load.
+
+  Validated: fresh `Settings()` load now produces **0 "Unknown setting"
+  warnings** (was 11).
+
+**Fix 2 — libpyside disconnect warnings suppressed**
+(`ui_qt/controller_bridge.py`):
+  - `_connect_unique` wraps `signal.disconnect(slot)` in a
+    `warnings.catch_warnings()` context that filters out the
+    `RuntimeWarning` with message `.*Failed to disconnect.*`. PySide6 6.x
+    emits this warning via the Python `warnings` module (not just the
+    C++ side) when disconnect is called on a non-connected slot — the
+    old code caught the exception but didn't suppress the warning.
+  - 7 warnings per "Convert again" run → 0 warnings.
+
+  Validated by simulating the PySide6 disconnect behavior: the
+  suppression correctly hides the warning while the exception handler
+  still catches the (rare) actual exception.
+
+**Fix 3 — Qwen VL 400 error diagnostic hint** (`core/ocr/qwen_ocr.py`):
+  - When `_call_ollama_vision` catches a 400 Bad Request from
+    `/api/generate` with an images payload, it now logs a helpful hint:
+    ```
+    Qwen attempt N error: 400 Client Error: Bad Request for url: ...
+      💡 This usually means the model '<model_name>' either doesn't
+      support vision (image input) or isn't installed in Ollama. Check:
+        1. ollama list  (is '<model_name>' present?)
+        2. The model must be a vision model (e.g., qwen2-vl, llava,
+           minicpm-v, OlmOCR).
+        3. In Elixir Settings → OCR, pick a vision-capable model.
+    ```
+  - This directly addresses the user's Qwen VL 400 error — the most
+    likely cause is a model-name mismatch or a non-vision model
+    configured for OCR.
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full PySide6 test suite (GUI tests skip in headless
+  environments — recommended as the next session's first step).
+- Did not change the Qwen VL request format — the 400 error is a
+  model-configuration issue, not a code bug. The user needs to verify
+  their Ollama model supports vision input (the new hint makes this
+  clear).
+
+---
+
 ## V0.4.5 — OCR dialog redesign (minimize cognitive load) + auto-detect Ollama OCR models
 
 > **The release:** One targeted UI fix for the OCR Service dialog the user

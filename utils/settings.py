@@ -447,6 +447,17 @@ class Settings:
                 # V9.0.0 E2: configurable shutdown countdown (seconds)
                 "shutdown_countdown_sec": 60,
             },
+            # V0.4.6: legacy "ai" block — read by ui_qt/settings/sections.py
+            # (ai.backend, ai.custom_backend_url). These are legacy keys
+            # from the pre-V4 settings layout, kept in the schema so the
+            # settings validator doesn't log "Unknown setting" warnings
+            # when the settings page loads. The actual backend config now
+            # lives under "summarisation" + "llm", but the legacy keys
+            # are still read for backward compatibility.
+            "ai": {
+                "backend": "Ollama",
+                "custom_backend_url": "",
+            },
             "output": {
                 "last_input_dir": "",
                 "last_output_dir": "",
@@ -716,6 +727,15 @@ class Settings:
                 "vibevoice_voices_dir": r"C:\VibeVoice\demo\voices\streaming_model",
                 "vibevoice_default_voice": "en-Carter_man",
                 "normalize_enabled": True,
+                # V0.4.6: normalize_* keys read by core/tts/normalizer.py +
+                # ui_qt/settings/tts_page.py. The api_key is stored in the
+                # OS keychain (core/system/secrets.py) but falls back to
+                # settings.get() when the keychain is unavailable, so the
+                # key must exist in the schema to avoid "Unknown setting"
+                # warnings.
+                "normalize_model": "",
+                "normalize_api_key": "",
+                "normalize_context_mode": "sentence",
                 "australian_enabled": False,
                 "australian_reference_wav": "",
                 "australian_reference_text": "",
@@ -735,6 +755,18 @@ class Settings:
                 "host_a_name": "Alex",
                 "host_b_name": "Sam",
                 "target_duration_min": 15,
+                # V0.4.6: keys read by core/outputs/podcast_generator.py +
+                # ui_qt/settings/podcast_page.py. These were missing from
+                # the schema, causing "Unknown setting" warnings on every
+                # podcast generation + settings page load.
+                "hosts": 2,
+                "scope": "per_chapter",
+                "depth_mode": "exhaustive",
+                "target_minutes": 30,
+                "exhaustive_cap_enabled": True,
+                "exhaustive_cap_minutes": 120,
+                "include_intro": True,
+                "include_outro": True,
             },
             # ── V13.23.0: Packets of Knowledge mode ──────────────────────────
             # "chapter" (default, new architecture): 1+ packets per chapter,
@@ -979,9 +1011,44 @@ class Settings:
                 ("coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
                 ("coqui_speaker", "Ana"),
                 ("coqui_voice_sample", ""),
+                # V0.4.6: normalize_* keys (read by core/tts/normalizer.py +
+                # ui_qt/settings/tts_page.py). Without these the validator
+                # logs "Unknown setting" warnings on every TTS run.
+                ("normalize_model", ""),
+                ("normalize_api_key", ""),
+                ("normalize_context_mode", "sentence"),
             ]:
                 if key not in tts:
                     tts[key] = default_val
+
+            # ── V0.4.6: Ensure podcast.* keys exist ─────────────────────────
+            # Read by core/outputs/podcast_generator.py + ui_qt/settings/
+            # podcast_page.py. Without these the validator logs 8 "Unknown
+            # setting" warnings on every podcast page load + generation.
+            podcast = merged.setdefault("podcast", {})
+            for key, default_val in [
+                ("hosts", 2),
+                ("scope", "per_chapter"),
+                ("depth_mode", "exhaustive"),
+                ("target_minutes", 30),
+                ("exhaustive_cap_enabled", True),
+                ("exhaustive_cap_minutes", 120),
+                ("include_intro", True),
+                ("include_outro", True),
+            ]:
+                if key not in podcast:
+                    podcast[key] = default_val
+
+            # ── V0.4.6: Ensure ai.* legacy keys exist ────────────────────────
+            # Read by ui_qt/settings/sections.py (ai.backend,
+            # ai.custom_backend_url). Legacy from pre-V4 settings layout.
+            ai = merged.setdefault("ai", {})
+            for key, default_val in [
+                ("backend", "Ollama"),
+                ("custom_backend_url", ""),
+            ]:
+                if key not in ai:
+                    ai[key] = default_val
 
             # ── V11.32.2: NeuTTS device migration ──────────────────────────
             # If the user's settings.json has neutts_backbone_device = "cpu"
