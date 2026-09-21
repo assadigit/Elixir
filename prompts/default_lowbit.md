@@ -108,7 +108,6 @@ A comprehensive list of {{bullet_range}} distinct key takeaways (the count scale
 
 <thorough_summary>
 A {{thorough_words}} detailed analysis written as FLOWING PROSE PARAGRAPHS (not bullet points, not one-sentence-per-line). Organize into 4-6 paragraphs, each with a clear topic sentence followed by 3-5 supporting sentences. Use transitional phrases between paragraphs. Cover all key concepts, frameworks, and examples from the chapter. The target scales to this chapter's length: never pad, elaborate, or invent content to reach it — write less if the chapter states less. If you approach the output limit, close </thorough_summary> at a clean sentence boundary (a later dedicated call completes the analysis) — never leave the section cut mid-sentence.
-MANDATORY: Break the thorough into MULTIPLE paragraphs (at least 3). Start a new paragraph at each major section transition — e.g., after the chapter's origin/introduction, after each theoretical perspective, after the clinical features, after the differential diagnosis, and before the conclusion. A single wall-of-text paragraph is a formatting failure: the reader needs paragraph breaks to navigate the structure.
 </thorough_summary>
 
 <key_distinctions>

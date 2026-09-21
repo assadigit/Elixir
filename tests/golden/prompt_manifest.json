@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.20.4",
+  "generated_for_version": "0.20.5",
   "prompts_dir": "prompts/",
-  "file_count": 52,
-  "manifest_sha256": "057881775ec1fc45b0c34ee423b0b4a2bc89a12aa2c593a6c9cbf9fd997e7622",
+  "file_count": 55,
+  "manifest_sha256": "54ba4f25852d33e7c37292d9876cd13c19e48dde2f3533a4d3f12e72e9e6f18e",
   "files": [
     {
       "path": "academic.md",
@@ -17,13 +17,13 @@
     },
     {
       "path": "default.md",
-      "sha256": "397cdbd7c32046c3b2496bbbc904f913814e13f60cb084357a1b50e105375996",
-      "bytes": 13964
+      "sha256": "42d803dbd390f889201524cd388c60d516a7159a4b46c7fda5b572fae25e9f04",
+      "bytes": 13545
     },
     {
       "path": "default_lowbit.md",
-      "sha256": "bee85397b7aad5f999dbdca262b10737693513bd0a4a8186d7688eff0b48f4f5",
-      "bytes": 9488
+      "sha256": "4ab8882a14c0095ed9613289493fd8711fc1303ada271a348477fe5360b1f0d8",
+      "bytes": 9069
     },
     {
       "path": "evaluation/expert_fact_checker.md",
@@ -186,6 +186,16 @@
       "bytes": 1142
     },
     {
+      "path": "summarisation/derive_bullets.md",
+      "sha256": "e1d0dbe749a5f8a01b6e4d8209392442558fea5c2f3b4263f73b339508640a0a",
+      "bytes": 882
+    },
+    {
+      "path": "summarisation/derive_exec.md",
+      "sha256": "595056022505fffc95d06a7daa5e925b3a152f81563bd0e3c79277d8970412e5",
+      "bytes": 876
+    },
+    {
       "path": "summarisation/gap_fill_concept.md",
       "sha256": "8883c4c11c6f07366b473fd06bc470853da1cc5c8fa52eddc61112f110b84ba9",
       "bytes": 1182
@@ -199,6 +209,11 @@
       "path": "summarisation/grounding_check.md",
       "sha256": "be704b277025e6abe6c5c0dba793c229bdd79d7d96ff4dbb3003cdadbb8de864",
       "bytes": 1063
+    },
+    {
+      "path": "summarisation/master_summary.md",
+      "sha256": "276b6ddd1e7d2edd14a64ac21500d9ffc9620a586a1080091903c63b6e0e3b2e",
+      "bytes": 1353
     },
     {
       "path": "summarisation/preflight_must_have.md",

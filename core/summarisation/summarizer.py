@@ -1479,69 +1479,139 @@ class Summarizer(
         callouts: list[str] | None,
         max_tokens: int,
     ) -> dict | None:
-        """V18.3.4 (E3): Chunked output — 2 sequential calls, no truncation.
+        """V0.3 (master-summary architecture): 3-call sequential pipeline.
 
-        Call 1: executive_summary + bullet_points + thorough_summary (the bulk)
-        Call 2: key_distinctions + theoretical_tensions (the analysis)
-        Each call gets the full output budget → no section is cut off mid-sentence.
-        Returns a merged Dict with all 5 sections, or None if either call fails.
+        V18.3.4 (E3) was a 2-call split by section TYPE (exec+bullets+thorough /
+        distinctions+tensions). V0.3 restructures this to split by DEPTH:
+          Call 1 (Master Summary): produce the comprehensive thorough summary
+          Call 2 (Bullets): derive bullet points FROM the master summary
+          Call 3 (Exec): derive the executive summary FROM the master + bullets
+
+        This is the owner's study method: read → summarize (master) → distill
+        (bullets) → key takeaway (exec). Each call has a focused, smaller
+        output → less truncation risk, less CoT risk. The bullets and exec
+        are guaranteed consistent with the thorough (derived from it).
+
+        Additive sections (key_distinctions + theoretical_tensions) stay as
+        the existing followup call in _ensure_additive_sections.
+
+        Returns a dict with thorough_summary, bullet_points, executive_summary
+        (key_distinctions and theoretical_tensions are empty — filled later by
+        _ensure_additive_sections).
         """
-        # Build TWO prompts: one for sections 1-3, one for sections 4-5.
-        # We reuse _build_prompt but with a "chunk" parameter that limits the output_format.
-        # This keeps the prompt-assembly logic in one place.
-        prompt1 = self._build_chunked_prompt(
-            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts, chunk=1
-        )
-        prompt2 = self._build_chunked_prompt(
-            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts, chunk=2
-        )
+        from core.summarisation.prompt_manager import PromptManager
 
-        # Call 1: exec + bullets + thorough
-        self.log("    📦 Chunk 1/2: executive_summary + bullet_points + thorough_summary", "INFO")
+        _pm = PromptManager()
+
+        # ── Call 1: Master Summary (the comprehensive thorough) ────────
+        # This call asks for ONLY the thorough summary — the full output
+        # budget for one section → no truncation from 5-section overload.
+        self.log("    📦 V0.3 Call 1/3: Master Summary (comprehensive thorough)", "INFO")
+        from core.summarisation.length_policy import bullet_target as _bt
+
+        _src_words = len(text.split())
+        _bp_lo, _bp_hi = _bt(_src_words)
+        _bullet_range = f"{_bp_lo}-{_bp_hi}"
+        master_prompt = _pm.render_template(
+            "summarisation/master_summary",
+            heading=heading,
+            text=text[:40000],  # clamp source (same as scholar reflection)
+        )
         raw1 = self._call_llm_with_empty_retry(
-            prompt1, model=model, temperature=temp, max_tokens=max_tokens
+            master_prompt, model=model, temperature=temp, max_tokens=max_tokens
         )
         if not raw1:
+            self.log(
+                "    ⚠️ V0.3 Call 1/3 (master summary) returned empty — falling back", "WARNING"
+            )
             return None
         raw1 = self._strip_thinking(raw1)
-        parsed1 = self._parse_response(raw1)
-        self.log(
-            f"    ✅ Chunk 1/2: exec={len(parsed1.get('executive_summary', ''))} chars, "
-            f"bullets={len(parsed1.get('bullet_points', []))}, "
-            f"thorough={len(parsed1.get('thorough_summary', ''))} chars",
-            "INFO",
-        )
+        # Extract the <thorough_summary> section
+        import re as _re
 
-        # Call 2: key_distinctions + theoretical_tensions
-        self.log("    📦 Chunk 2/2: key_distinctions + theoretical_tensions", "INFO")
-        raw2 = self._call_llm_with_empty_retry(
-            prompt2, model=model, temperature=temp, max_tokens=max_tokens
-        )
-        if not raw2:
-            # Chunk 2 failed — return chunk 1 with empty sections 4-5
+        _m = _re.search(r"<thorough_summary>(.*?)</thorough_summary>", raw1, _re.DOTALL)
+        master_summary = _m.group(1).strip() if _m else raw1.strip()
+        if len(master_summary.split()) < 50:
             self.log(
-                "    ⚠️ Chunk 2/2 failed — returning chunk 1 with empty distinctions/tensions",
+                f"    ⚠️ V0.3 Call 1/3 (master summary) too short ({len(master_summary.split())} words) — falling back",
                 "WARNING",
             )
-            parsed1["raw"] = raw1
-            parsed1["model"] = model
-            parsed1["temperature"] = temp
-            return parsed1
-        raw2 = self._strip_thinking(raw2)
-        parsed2 = self._parse_response(raw2)
+            return None
         self.log(
-            f"    ✅ Chunk 2/2: distinctions={len(parsed2.get('key_distinctions', ''))} chars, "
-            f"tensions={len(parsed2.get('theoretical_tensions', ''))} chars",
+            f"    ✅ V0.3 Call 1/3: master summary = {len(master_summary.split())} words, "
+            f"{len(master_summary)} chars",
             "INFO",
         )
 
-        # Merge: take sections 1-3 from chunk 1, sections 4-5 from chunk 2
-        merged = parsed1.copy()
-        merged["key_distinctions"] = parsed2.get("key_distinctions", "")
-        merged["theoretical_tensions"] = parsed2.get("theoretical_tensions", "")
-        merged["raw"] = (raw1 or "") + "\n\n---CHUNK---\n\n" + (raw2 or "")
-        merged["model"] = model
-        merged["temperature"] = temp
+        # ── Call 2: Bullet Points derivation FROM the master summary ──
+        # The input is the master summary (much smaller than the full source)
+        # → less context, less CoT risk, faster generation.
+        self.log("    📦 V0.3 Call 2/3: Derive bullet points from master summary", "INFO")
+        bullets_prompt = _pm.render_template(
+            "summarisation/derive_bullets",
+            heading=heading,
+            master_summary=master_summary[:20000],
+            bullet_range=_bullet_range,
+        )
+        raw2 = self._call_llm_with_empty_retry(
+            bullets_prompt, model=model, temperature=temp, max_tokens=2048
+        )
+        bullets: list[str] = []
+        if raw2:
+            raw2 = self._strip_thinking(raw2)
+            _bm = _re.search(r"<bullet_points>(.*?)</bullet_points>", raw2, _re.DOTALL)
+            bullets_text = _bm.group(1).strip() if _bm else raw2.strip()
+            bullets = [
+                line.strip().lstrip("- ").strip()
+                for line in bullets_text.split("\n")
+                if line.strip().startswith("-")
+            ]
+        self.log(
+            f"    ✅ V0.3 Call 2/3: {len(bullets)} bullets derived from master summary",
+            "INFO",
+        )
+
+        # ── Call 3: Executive Summary derivation FROM master + bullets ─
+        # The input is the master summary + bullets → small, focused.
+        self.log("    📦 V0.3 Call 3/3: Derive executive summary from master + bullets", "INFO")
+        _bullets_text = "\n".join(f"- {b}" for b in bullets) if bullets else "(no bullets)"
+        exec_prompt = _pm.render_template(
+            "summarisation/derive_exec",
+            heading=heading,
+            master_summary=master_summary[:12000],
+            bullets=_bullets_text[:4000],
+        )
+        raw3 = self._call_llm_with_empty_retry(
+            exec_prompt, model=model, temperature=temp, max_tokens=1024
+        )
+        exec_summary = ""
+        if raw3:
+            raw3 = self._strip_thinking(raw3)
+            _em = _re.search(r"<executive_summary>(.*?)</executive_summary>", raw3, _re.DOTALL)
+            exec_summary = _em.group(1).strip() if _em else raw3.strip()
+        if not exec_summary:
+            # Fallback: derive exec from the first paragraph of the master summary
+            exec_summary = master_summary.split("\n")[0][:2000]
+        self.log(
+            f"    ✅ V0.3 Call 3/3: exec summary = {len(exec_summary.split())} words",
+            "INFO",
+        )
+
+        # ── Merge: return all 3 sections (additive sections filled later) ─
+        merged = {
+            "executive_summary": exec_summary,
+            "bullet_points": bullets,
+            "thorough_summary": master_summary,
+            "key_distinctions": "",  # filled by _ensure_additive_sections
+            "theoretical_tensions": "",  # filled by _ensure_additive_sections
+            "raw": (raw1 or "")
+            + "\n\n---V0.3-MASTER---\n\n"
+            + (raw2 or "")
+            + "\n\n---V0.3-BULLETS---\n\n"
+            + (raw3 or ""),
+            "model": model,
+            "temperature": temp,
+        }
         return merged
 
     def _build_chunked_prompt(
