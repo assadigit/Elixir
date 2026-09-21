@@ -805,14 +805,22 @@ class OCRService:
         """Return a tuple (provider, model_name) for the best vision-capable
         model, or (None, None) if no vision model is available.
 
+        V0.4.1 fix: CACHED — the probe runs ONCE per conversion (not per
+        page). The supports_vision() probe sends a live API request (15s
+        timeout for llama.cpp, 10s for Ollama). Running it for every
+        scanned page (31 pages × 15s = 465s) would exceed the chapter
+        deadline and cause the summarization phase to fail with "empty
+        responses."
+
         Logic (per the owner's specification):
           1. Check the MAIN summarisation model — if it has vision, use it
           2. Check a SEPARATE OCR model (if configured) — if it has vision, use it
           3. Return (None, None) if neither has vision
-
-        The provider is determined by the model_architecture setting
-        (single_local=Ollama, single_api/cloud=openai_compat, llamacpp=llama.cpp).
         """
+        # V0.4.1: cache the result — probe once, reuse for all pages
+        if hasattr(self, "_vision_provider_cache"):
+            return self._vision_provider_cache
+
         from utils.settings import Settings as _S
 
         settings = _S()
@@ -827,6 +835,7 @@ class OCRService:
                     f"  📸 V0.4.1: Main model '{main_model}' has vision — using it for OCR",
                     "INFO",
                 )
+                self._vision_provider_cache = (provider, main_model)
                 return provider, main_model
 
         # Step 2: check a separate OCR model
@@ -838,6 +847,7 @@ class OCRService:
                     f"  📸 V0.4.1: OCR model '{ocr_model}' has vision — using it for OCR",
                     "INFO",
                 )
+                self._vision_provider_cache = (provider, ocr_model)
                 return provider, ocr_model
 
         # Step 3: neither has vision
@@ -845,6 +855,7 @@ class OCRService:
             "  📸 V0.4.1: No vision-capable model found — will use Tesseract fallback",
             "WARNING",
         )
+        self._vision_provider_cache = (None, None)
         return None, None
 
     def _create_vision_provider(self, arch: str, model: str, settings):
