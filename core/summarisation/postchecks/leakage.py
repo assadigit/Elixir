@@ -202,6 +202,20 @@ _COT_NARRATIVE_MARKERS: tuple[str, ...] = (
     r"\bI'll (?:skip|treat|move on|just treat)\b",
     r"\bLooking at the (?:text|list|source|chapter), I\b",
     r"\bI (?:don't|do not) see\b.{0,40}\bin the text\b",
+    # V0.3 (Quality Campaign, audit V0.20.5 ch.2): the D3 paragraph-break
+    # instruction triggered a NEW CoT shape — the model produced a 12-point
+    # numbered outline instead of flowing prose. The existing marker "me to
+    # write" missed "me to produce" (one-word variant). These catch the
+    # outline-format CoT + the new reasoning phrases the model used.
+    r"\bme to produce\b",
+    r"\banalyze the source (?:text )?and produce\b",
+    r"\bthrough the source systematically\b",
+    r"\bproduce the (?:five|5) required sections\b",
+    r"\bcomprehensive,? faithful summary\b",
+    r"\bDon'?t add interpretation\b",
+    # The numbered-outline format: lines like "1. **Opening/Definition**:..."
+    # repeated 3+ times is a structural CoT, not a summary.
+    r"\d+\.\s+\*\*[A-Z][a-z]+",
 )
 
 _COT_NARRATIVE_RE = [re.compile(p, re.IGNORECASE) for p in _COT_NARRATIVE_MARKERS]

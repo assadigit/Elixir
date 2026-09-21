@@ -253,11 +253,12 @@ class TestVRAMAwareMaxOutput:
 
 
 class TestChunkedOutput:
-    """V18.3.4 (E3): large chapters get 2 sequential calls (no truncation).
+    """V0.3 (master-summary architecture): large chapters get 3 sequential
+    calls (master summary → derive bullets → derive exec).
 
-    V18.20.2.0: the chunking decision markers moved to primary_call.py in
-    the V18.15.3 extraction — the scans follow the code (they previously
-    scanned summarizer.py and failed).
+    V18.3.4 (E3) was a 2-call split by section TYPE. V0.3 restructured it to
+    split by DEPTH: master summary first, then derive bullets and exec from
+    it (the owner's study method). The tests check for the V0.3 architecture.
     """
 
     def test_source_contains_chunked_output(self):
@@ -265,12 +266,10 @@ class TestChunkedOutput:
         src = SUMMARIZER_PATH.read_text(encoding="utf-8")
         assert "_chunked_summarize" in src, "The _chunked_summarize method must exist"
         assert "_build_chunked_prompt" in src, "The _build_chunked_prompt method must exist"
-        assert "chunked output" in src.lower(), "The chunked-output logic must be present"
 
     def test_chunking_threshold(self):
         """V18.3.5 (F1): chunking fires when input > 12000 actual tokens AND output < 14000.
-        V18.3.4 used len(text)//4 > 10000 (overestimated, fired for 9,139-token chapters).
-        V18.3.5 uses actual token count + threshold 12000 — 9,139-token chapters DON'T chunk.
+        V0.20.2: also fires for low-bit quant + input > 6000.
         """
         src = PRIMARY_CALL_PATH.read_text(encoding="utf-8")
         assert "count_tokens" in src, "Must use actual token count (not char estimate)"
@@ -278,61 +277,35 @@ class TestChunkedOutput:
             "V18.3.5 F1: threshold must be 12000 (not 10000) using actual token count"
         )
 
-    def test_chunk1_requests_3_sections(self):
-        """Chunk 1 requests executive_summary + bullet_points + thorough_summary."""
+    def test_v03_master_summary_call(self):
+        """V0.3 Call 1/3: master summary (comprehensive thorough) is the first call."""
         src = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        # The _build_chunked_prompt for chunk=1 must mention the 3 sections
-        assert "executive_summary" in src and "bullet_points" in src and "thorough_summary" in src
-        assert "chunk 1 of 2" in src.lower() or "chunk 1" in src.lower()
+        assert "master summary" in src.lower(), "V0.3: must have a master summary call"
+        assert "Call 1/3" in src, "V0.3: must label the master summary as Call 1/3"
 
-    def test_chunk2_requests_2_sections(self):
-        """Chunk 2 requests key_distinctions + theoretical_tensions."""
+    def test_v03_bullets_derivation_call(self):
+        """V0.3 Call 2/3: bullets derived FROM the master summary."""
         src = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        assert "key_distinctions" in src and "theoretical_tensions" in src
-        assert "chunk 2 of 2" in src.lower() or "chunk 2" in src.lower()
-
-    def test_chunk2_excludes_sections_1_3(self):
-        """Chunk 2 must NOT request exec/bullets/thorough (to avoid duplication).
-
-        V18.6: the chunk-format strings moved to prompt_assembly.py, so check
-        both files (the Summarizer delegates, prompt_assembly holds the text).
-        """
-        src_summ = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        src_pa = (
-            PROMPT_ASSEMBLY_PATH.read_text(encoding="utf-8")
-            if PROMPT_ASSEMBLY_PATH.exists()
-            else ""
+        assert "Call 2/3" in src, "V0.3: must label the bullets derivation as Call 2/3"
+        assert "derive_bullets" in src or "derive bullet" in src.lower(), (
+            "V0.3: must derive bullets from the master summary"
         )
-        combined = src_summ + src_pa
-        assert (
-            "Do NOT output executive_summary" in combined
-            or "Do NOT output key_distinctions" in combined
-        ), "Each chunk must tell the model what NOT to output"
 
-    def test_merge_takes_1_3_from_chunk1_4_5_from_chunk2(self):
-        """The merge takes sections 1-3 from chunk 1, sections 4-5 from chunk 2."""
+    def test_v03_exec_derivation_call(self):
+        """V0.3 Call 3/3: exec derived FROM the master summary + bullets."""
         src = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        assert 'merged["key_distinctions"] = parsed2' in src, (
-            "Must take key_distinctions from chunk 2"
-        )
-        assert 'merged["theoretical_tensions"] = parsed2' in src, (
-            "Must take theoretical_tensions from chunk 2"
+        assert "Call 3/3" in src, "V0.3: must label the exec derivation as Call 3/3"
+        assert "derive_exec" in src or "derive executive" in src.lower(), (
+            "V0.3: must derive exec from the master summary + bullets"
         )
 
     def test_fallback_to_single_pass_on_chunk1_failure(self):
-        """If chunk 1 fails, fall back to single-pass (not silent failure)."""
+        """If the master summary call fails, fall back to single-pass."""
         src = PRIMARY_CALL_PATH.read_text(encoding="utf-8")
         assert (
             "falling back to single-pass" in src.lower()
             or "fall back to single-pass" in src.lower()
         ), "Must fall back to single-pass if chunked output fails"
-
-    def test_chunk2_failure_returns_chunk1_with_empty_4_5(self):
-        """If chunk 2 fails, return chunk 1 with empty distinctions/tensions."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
-        assert "returning chunk 1 with empty" in src.lower(), (
-            "Must return chunk 1 with empty sections 4-5 if chunk 2 fails"
-        )
 
 
 # ── VRAM math verification ──────────────────────────────────────────────────
