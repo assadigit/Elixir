@@ -1,5 +1,101 @@
 # Changelog
 
+## V0.4.5 — OCR dialog redesign (minimize cognitive load) + auto-detect Ollama OCR models
+
+> **The release:** One targeted UI fix for the OCR Service dialog the user
+> found "too confusing" (screenshot 3434.png). The VLM analysis of the
+> screenshot identified 5 cognitive-load problems:
+>
+> 1. The "Output fo" dropdown was visually broken — it displayed engine
+>    names, not output formats (label was truncated too).
+> 2. `Format` looked disabled (label said "Default (change in Settings)").
+> 3. Redundant engine selection — two dropdowns both listing engines.
+> 4. The "Auto" option forced users to understand the backend cascade
+>    ("pypdf → Ollama → VLM → Tesseract") just to pick an engine.
+> 5. Wasted vertical space (huge file-input box) vs. cramped config rows.
+>
+> **The redesign:** collapse 4 visible controls → 2 (Engine + Format),
+> move Page range + Output folder + legacy engines under an "Advanced"
+> expander, add "Auto (recommended)" as the default, auto-detect every
+> Ollama model with an OCR-related name via live `/api/tags` probe, and
+> show a one-line "why this engine" hint below the engine dropdown.
+
+**Fix 1 — `OcrServiceDialog.__init__` redesigned** (`ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py`):
+
+  Visible controls (was 4, now 2):
+  - **Engine** dropdown — "Auto (recommended)" first + default, then
+    auto-detected Ollama OCR models (see Fix 2), then "Tesseract" as a
+    guaranteed offline fallback.
+  - **Format** dropdown — 4 options, "Markdown (.md) — recommended"
+    first + default (no "Default (change in Settings)" confusion).
+
+  Hidden under the "⚙ Advanced" expander (default collapsed):
+  - **Legacy engine** — pypdf + Local VLM (for users who specifically
+    want them; most users don't need to touch this).
+  - **Page range** — "all" by default, with the hint "💡 PDFs only".
+  - **Output folder** — Browse… button.
+
+  Other UI improvements:
+  - One-line `engine_hint` label below the engine dropdown explains
+    what the selected engine does (e.g., "💡 Tries the best engine
+    automatically: digital PDFs use pypdf, scanned docs use Ollama
+    vision, with Tesseract as a fallback."). The user no longer needs
+    to understand the backend architecture.
+  - Compact file-list (60–80px height, was 80–120px).
+  - 🔄 refresh button beside the engine dropdown — re-probes Ollama
+    if the user started it after opening the dialog.
+
+**Fix 2 — Auto-detect Ollama OCR models** (new `_populate_ollama_models` method):
+
+  On dialog open (and on 🔄 click), the dialog queries `GET /api/tags`
+  via `utils.network.list_ollama_models()` and filters the returned
+  model list by OCR-related name keywords (case-insensitive):
+
+  `ocr`, `vision`, `vl`, `llava`, `minicpm`, `moondream`, `bakllava`,
+  `llama-vision`, `qwen-vl`, `internvl`, `cogvlm`, `fuyu`, `kosmos`,
+  `florence`.
+
+  The discovered models are inserted into the engine dropdown right
+  after "Auto (recommended)" and before "Tesseract", labeled
+  `Ollama: <model_name>`. Content-agnostic — the keyword list covers
+  all major OCR/vision model families; no hardcoded specific model
+  versions.
+
+  Validated against a simulated 11-model Ollama registry: correctly
+  detected 6 OCR models (OlmOCR-2-7B, qwen2-vl:7b, llava:13b,
+  minicpm-v:8b, moondream2:latest, qwen-vl:7b) and correctly excluded
+  5 non-OCR models (qwen2.5-coder, llama3.1, phi3, tesseract, nomic-
+  embed-text). 0 false positives, 0 false negatives.
+
+**Fix 3 — Engine resolution logic updated** (`_do_convert`):
+
+  The new UI structure means the main `engine_combo` can hold:
+  - "auto" (the recommended default)
+  - "tesseract" (the offline fallback)
+  - an Ollama model name (from the live `/api/tags` probe)
+
+  The legacy engines (pypdf, vlm) moved to the Advanced expander's
+  `legacy_engine_combo`. If the user picked a legacy engine there,
+  it overrides the main dropdown (explicit user choice takes
+  precedence).
+
+  When the user selects an Ollama model, the dialog saves it as
+  `ocr.primary_model` in settings, so the `_ocr_ollama()` backend
+  call picks it up automatically (no backend code changes needed).
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full PySide6 test suite (the GUI tests skip in
+  headless environments — recommended as the next session's first
+  step before the next rig run).
+- The "Format" dropdown no longer has a "Default (change in Settings)"
+  option — the V0.4.4 audit found this label was confusing (it made
+  the control look disabled). The default is now "Markdown (.md) —
+  recommended" which is the most common choice. Users who want to
+  change the default globally can edit `quick_services.ocr.format`
+  in settings.json (backward-compat resolution still works).
+
+---
+
 ## V0.4.4 — fix numpy 2.x ABI mismatch (the "settings → OCR" crash)
 
 > **The release:** One targeted fix for the crash the user reported when

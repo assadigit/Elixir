@@ -48,11 +48,13 @@ class OcrServiceDialog(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.setWindowTitle("🔍 OCR Service")
-        self.setMinimumSize(560, 320)
+        self.setMinimumSize(560, 360)
         self.setModal(True)
         self._files: list = []
         # V18.20.4.5 (W-b5/T-b2): the background OCR worker (SimpleWorker).
         self._worker: SimpleWorker | None = None
+        # V0.4.5: cache of Ollama OCR models discovered via /api/tags.
+        self._ollama_ocr_models: list[str] = []
 
         from PySide6.QtWidgets import (
             QComboBox as _QCB,
@@ -75,6 +77,8 @@ class OcrServiceDialog(QDialog):
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
+        # V0.4.5: QToolButton for the Advanced expander toggle.
+        from PySide6.QtWidgets import QToolButton as _QTB
 
         lay = _VL(self)
         lay.setContentsMargins(20, 16, 20, 16)
@@ -84,12 +88,12 @@ class OcrServiceDialog(QDialog):
         title.setObjectName("H2")
         lay.addWidget(title)
 
-        # File list + add/remove buttons
+        # ── V0.4.5: File list (compact — single row of buttons beside the list)
         file_row = _HL()
         file_row.setSpacing(8)
         self.file_list = _QLW()
-        self.file_list.setMinimumHeight(80)
-        self.file_list.setMaximumHeight(120)
+        self.file_list.setMinimumHeight(60)
+        self.file_list.setMaximumHeight(80)
         add_btn = _QPB("Add Files…")
         add_btn.clicked.connect(self._add_files)
         rm_btn = _QPB("Remove")
@@ -103,32 +107,62 @@ class OcrServiceDialog(QDialog):
         file_row.addLayout(file_btns)
         lay.addLayout(file_row)
 
-        # Engine selector — V11.19: first option is "Default (change in Settings)".
+        # ── V0.4.5: Engine selector — reorganized to minimize cognitive load.
+        # OLD: 6 options including "Default (change in Settings)" + 5 named
+        # engines + "Auto" buried at the bottom. User had to understand the
+        # backend architecture (the Auto cascade: pypdf→Ollama→VLM→Tesseract)
+        # just to pick an engine.
+        # NEW: "Auto (recommended)" is first + default. Then the auto-detected
+        # Ollama OCR models (queried live via /api/tags). Then Tesseract as
+        # a lightweight fallback. The legacy named engines (pypdf, vlm) moved
+        # under the Advanced expander for users who need them.
         engine_row = _HL()
         engine_row.setSpacing(8)
         engine_row.addWidget(_QL("Engine:"))
         self.engine_combo = _QCB()
-        self.engine_combo.addItem("Default (change in Settings)", "__default__")
-        self.engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
-        self.engine_combo.addItem("Ollama Vision — OlmOCR/Qwen (local LLM)", "ollama")
+        # "Auto" is the recommended default — it tries the best engine
+        # automatically (digital PDFs → pypdf, scanned → Ollama vision,
+        # fallback → Tesseract).
         self.engine_combo.addItem(
-            "Local VLM — llava/minicpm (local LLM, better for infographics)", "vlm"
+            "Auto (recommended) — picks the best engine per file", "auto"
         )
-        self.engine_combo.addItem("Tesseract (lightweight, fast)", "tesseract")
-        self.engine_combo.addItem("Auto (pypdf → Ollama → VLM → Tesseract)", "auto")
-        # V11.19: default to "Default" (index 0). The old quick_services.ocr.engine
-        # is still respected via the Defaults page.
+        self.engine_combo.addItem(
+            "Tesseract (lightweight, fast, offline)", "tesseract"
+        )
+        # V0.4.5: populate Ollama OCR models via live /api/tags probe.
+        # Done in _populate_ollama_models() below — runs async-ish (best-
+        # effort; if Ollama is down, the user just sees the static options).
         self.engine_combo.setCurrentIndex(0)
         engine_row.addWidget(self.engine_combo, 1)
+        # Refresh button — lets the user re-probe Ollama if they started it
+        # after opening the dialog.
+        self._refresh_ollama_btn = _QPB("🔄")
+        self._refresh_ollama_btn.setToolTip("Re-scan Ollama for OCR models")
+        self._refresh_ollama_btn.setFixedWidth(32)
+        self._refresh_ollama_btn.clicked.connect(self._populate_ollama_models)
+        engine_row.addWidget(self._refresh_ollama_btn)
         lay.addLayout(engine_row)
 
-        # Output format — V11.18: added .docx + .pdf. V11.19: "Default" option.
+        # V0.4.5: one-line hint below the engine dropdown — explains what
+        # the selected engine does, so the user doesn't have to guess.
+        self.engine_hint = _QL("")
+        self.engine_hint.setObjectName("Caption")
+        self.engine_hint.setWordWrap(True)
+        self.engine_hint.setStyleSheet("color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;")
+        lay.addWidget(self.engine_hint)
+        self.engine_combo.currentIndexChanged.connect(self._update_engine_hint)
+        # Populate on next tick (after the dialog is fully laid out) so
+        # the hint shows the right text for the default "Auto" option.
+        from PySide6.QtCore import QTimer as _QTimer
+        _QTimer.singleShot(0, self._update_engine_hint)
+        _QTimer.singleShot(100, self._populate_ollama_models)
+
+        # ── V0.4.5: Output format (kept simple — 4 options, "Auto" first)
         fmt_row = _HL()
         fmt_row.setSpacing(8)
         fmt_row.addWidget(_QL("Format:"))
         self.fmt_combo = _QCB()
-        self.fmt_combo.addItem("Default (change in Settings)", "__default__")
-        self.fmt_combo.addItem("Markdown (.md)", ".md")
+        self.fmt_combo.addItem("Markdown (.md) — recommended", ".md")
         self.fmt_combo.addItem("Plain text (.txt)", ".txt")
         self.fmt_combo.addItem("Word document (.docx)", ".docx")
         self.fmt_combo.addItem("PDF (.pdf)", ".pdf")
@@ -137,8 +171,36 @@ class OcrServiceDialog(QDialog):
         fmt_row.addStretch()
         lay.addLayout(fmt_row)
 
-        # V11.20: Page range — lets the user OCR only a subset of a PDF.
-        # Supports: "all" (or empty), "1-10", "1,3,5", "1-3,5,7-9".
+        # ── V0.4.5: Advanced expander — hidden by default. Contains the
+        # page-range + output-folder + legacy engine options that most
+        # users don't need. Collapsing these cuts the visible control
+        # count from 4 to 2 (Engine + Format), the V0.4.4 screenshot's
+        # main cognitive-load complaint.
+        self.advanced_toggle = _QTB()
+        self.advanced_toggle.setText("⚙ Advanced (page range, output folder, legacy engines)")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setArrowType(Qt.RightArrow)
+        lay.addWidget(self.advanced_toggle)
+
+        self.advanced_widget = QWidget()
+        adv_lay = _VL(self.advanced_widget)
+        adv_lay.setContentsMargins(20, 4, 0, 0)
+        adv_lay.setSpacing(8)
+
+        # Legacy engine selector (for users who want pypdf/VLM specifically)
+        legacy_engine_row = _HL()
+        legacy_engine_row.setSpacing(8)
+        legacy_engine_row.addWidget(_QL("Legacy engine:"))
+        self.legacy_engine_combo = _QCB()
+        self.legacy_engine_combo.addItem("(use the main Engine dropdown above)", "__default__")
+        self.legacy_engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
+        self.legacy_engine_combo.addItem("Local VLM — llava/minicpm (better for infographics)", "vlm")
+        self.legacy_engine_combo.setCurrentIndex(0)
+        legacy_engine_row.addWidget(self.legacy_engine_combo, 1)
+        adv_lay.addLayout(legacy_engine_row)
+
+        # Page range
         range_row = _HL()
         range_row.setSpacing(8)
         range_row.addWidget(_QL("Page range:"))
@@ -150,7 +212,7 @@ class OcrServiceDialog(QDialog):
         range_hint = _QL('💡 PDFs only — e.g. "1-10" for pages 1–10')
         range_hint.setObjectName("Caption")
         range_row.addWidget(range_hint)
-        lay.addLayout(range_row)
+        adv_lay.addLayout(range_row)
 
         # Output folder picker
         out_row = _HL()
@@ -162,9 +224,19 @@ class OcrServiceDialog(QDialog):
         out_browse.clicked.connect(self._pick_output_folder)
         out_row.addWidget(self.out_edit, 1)
         out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
+        adv_lay.addLayout(out_row)
 
-        # Status — V11.20: bigger + progress bar.
+        lay.addWidget(self.advanced_widget)
+        self.advanced_widget.setVisible(False)
+        self.advanced_toggle.toggled.connect(self.advanced_widget.setVisible)
+        # V0.4.5: toggle the arrow direction when expanded/collapsed.
+        self.advanced_toggle.toggled.connect(
+            lambda checked: self.advanced_toggle.setArrowType(
+                Qt.DownArrow if checked else Qt.RightArrow
+            )
+        )
+
+        # ── V0.4.5: Status (bigger + progress bar — same as V11.20)
         self.status_label = _QL("")
         self.status_label.setObjectName("Caption")
         self.status_label.setWordWrap(True)
@@ -172,7 +244,6 @@ class OcrServiceDialog(QDialog):
         self.status_label.setTextFormat(Qt.RichText)
         lay.addWidget(self.status_label)
 
-        # V11.20: busy progress bar during OCR processing.
         from PySide6.QtWidgets import QProgressBar as _QPB2
 
         self.progress_bar = _QPB2()
@@ -182,8 +253,7 @@ class OcrServiceDialog(QDialog):
         self.progress_bar.setVisible(False)
         lay.addWidget(self.progress_bar)
 
-        # Buttons — V11.18: added "Try Another File" so after a batch the
-        # user can clear the list and OCR a different set without reopening.
+        # ── V0.4.5: Buttons (unchanged — "Try Another File" + Convert)
         btn_row = _HL()
         btn_row.addStretch()
         self.again_btn = _QPB("🔄 Try Another File")
@@ -196,6 +266,126 @@ class OcrServiceDialog(QDialog):
         btn_row.addWidget(self.again_btn)
         btn_row.addWidget(self.action_btn)
         lay.addLayout(btn_row)
+
+    # ── V0.4.5: Ollama OCR model auto-detection ───────────────────────────
+
+    # OCR-related name keywords — a model is considered an OCR model if
+    # its name (case-insensitive) contains any of these. Content-agnostic:
+    # the list is the canonical set of OCR/vision model family names, not
+    # hardcoded specific model versions.
+    _OCR_KEYWORDS = (
+        "ocr",        # OlmOCR, ocr-vision, etc.
+        "vision",     # qwen2-vl, llama-vision, etc.
+        "vl",         # qwen2-vl, llava-vl, etc. (vision-language)
+        "llava",      # llava family
+        "minicpm",    # minicpm-v (vision)
+        "moondream",  # moondream2 (vision)
+        "bakllava",   # bakllava
+        "llama-vision",  # meta llama-vision
+        "qwen-vl",    # qwen vision-language
+        "internvl",   # internvl
+        "cogvlm",     # cogvlm
+        "fuyu",       # adept fuyu
+        "kosmos",     # microsoft kosmos
+        "florence",   # microsoft florence
+    )
+
+    def _populate_ollama_models(self) -> None:
+        """V0.4.5: query Ollama /api/tags and list every installed model
+        whose name contains an OCR-related keyword.
+
+        Reuses utils.network.list_ollama_models(). Content-agnostic —
+        matches by name keyword, not by hardcoded model strings. Runs
+        in the foreground (the dialog isn't usable until the user picks
+        an engine anyway; a 50ms /api/tags call is fine).
+
+        The discovered models are inserted into the engine_combo right
+        after "Auto (recommended)" and before "Tesseract", so the user
+        sees: Auto → [detected OCR models] → Tesseract. The static
+        "Tesseract" option stays at the bottom as a guaranteed fallback.
+        """
+        from utils.network import list_ollama_models
+        from utils.settings import Settings as _S
+
+        try:
+            s = _S()
+            base_url = s.get("summarisation.endpoint", "http://localhost:11434") or "http://localhost:11434"
+            # Strip /v1 suffix for /api/tags
+            if base_url.endswith("/v1"):
+                base_url = base_url[:-3]
+            base_url = base_url.rstrip("/")
+
+            models = list_ollama_models(base_url)
+            if not models:
+                self._ollama_ocr_models = []
+                return
+
+            # Filter by OCR-related keywords (case-insensitive).
+            ocr_models = []
+            for m in models:
+                m_lower = m.lower()
+                if any(kw in m_lower for kw in self._OCR_KEYWORDS):
+                    ocr_models.append(m)
+            ocr_models.sort(key=str.lower)
+
+            # If the list hasn't changed, no need to rebuild the combo.
+            if ocr_models == self._ollama_ocr_models:
+                return
+
+            # Remember the current selection (if any) so we can restore it.
+            prev_data = self.engine_combo.currentData()
+
+            # Remove any previously-added Ollama model items (identified
+            # by their data being a non-empty string that's not one of
+            # the static sentinels: "auto", "tesseract").
+            i = 0
+            while i < self.engine_combo.count():
+                data = self.engine_combo.itemData(i)
+                if data and data not in ("auto", "tesseract"):
+                    self.engine_combo.removeItem(i)
+                else:
+                    i += 1
+
+            # Insert the discovered OCR models right after "Auto" (index 0)
+            # and before "Tesseract" (which is now at index 1).
+            insert_at = 1  # after Auto
+            for model_name in ocr_models:
+                # Use a user-friendly label: "Ollama: <model_name>".
+                label = f"Ollama: {model_name}"
+                self.engine_combo.insertItem(insert_at, label, model_name)
+                insert_at += 1
+
+            self._ollama_ocr_models = ocr_models
+
+            # Restore the previous selection if it's still in the list.
+            if prev_data:
+                idx = self.engine_combo.findData(prev_data)
+                if idx >= 0:
+                    self.engine_combo.setCurrentIndex(idx)
+        except Exception as e:
+            logger.debug("Ollama OCR model probe failed (non-fatal): %s: %s", type(e).__name__, e)
+
+    def _update_engine_hint(self) -> None:
+        """V0.4.5: show a one-line explanation of the selected engine.
+
+        Removes the user's need to understand the backend architecture
+        (the V0.4.4 audit found the "Auto (pypdf → Ollama → VLM → Tesseract)"
+        label forced users to understand the cascade just to pick an engine).
+        """
+        data = self.engine_combo.currentData()
+        hints = {
+            "auto": "💡 Tries the best engine automatically: digital PDFs use pypdf, scanned docs use Ollama vision, with Tesseract as a fallback.",
+            "tesseract": "💡 Fast, offline, lightweight. Best for clear scans. May struggle with handwriting or complex layouts.",
+            "pypdf": "💡 Fastest for digital (text-based) PDFs. Won't work on scanned/image PDFs.",
+            "vlm": "💡 Local vision-language model (llava/minicpm). Best for infographics, charts, and diagrams with text.",
+        }
+        # For Ollama models (data is a model name, not a sentinel), show
+        # a generic "uses the Ollama vision API" hint.
+        if data and data not in ("auto", "tesseract", "pypdf", "vlm"):
+            hint = f"💡 Uses the Ollama vision model \'{data}\' for OCR. Good for scanned docs and images."
+        else:
+            hint = hints.get(data, "")
+        self.engine_hint.setText(hint)
 
     def closeEvent(self, event) -> None:
         # V18.20.4.5 (T-b2): guard against closing while the OCR batch
@@ -312,15 +502,33 @@ class OcrServiceDialog(QDialog):
             pages_desc = f"pages {pages[0]}–{pages[-1]}" if len(pages) > 1 else f"page {pages[0]}"
 
         # V11.19: resolve "__default__" sentinels from quick_services.defaults.*
+        # V0.4.5: the new UI structure — the main engine_combo has "auto",
+        # "tesseract", or an Ollama model name (from the live /api/tags probe).
+        # The legacy engines (pypdf, vlm) moved to the Advanced expander's
+        # legacy_engine_combo. If the user picked a legacy engine there, it
+        # overrides the main dropdown (which stays at "Auto").
         from utils.settings import Settings as _S
 
         _s = _S()
         engine = self.engine_combo.currentData()
-        if engine == "__default__" or not engine:
+        # V0.4.5: if the user expanded Advanced and picked a legacy engine,
+        # that takes precedence (it's an explicit user choice).
+        legacy_engine = self.legacy_engine_combo.currentData()
+        if legacy_engine and legacy_engine != "__default__":
+            engine = legacy_engine
+        elif engine == "__default__" or not engine:
             engine = _s.get("quick_services.defaults.ocr_engine", "") or _s.get(
                 "quick_services.ocr.engine", "auto"
             )
+        # V0.4.5: persist the selected Ollama model name as the OCR primary
+        # model, so the _ocr_ollama() backend call picks it up.
+        if engine and engine not in ("auto", "tesseract", "pypdf", "vlm"):
+            # engine is an Ollama model name — save it as the primary OCR model.
+            _s.set("ocr.primary_model", engine)
         suffix = self.fmt_combo.currentData()
+        # V0.4.5: the new fmt_combo has no "__default__" sentinel (the
+        # first option is "Markdown (.md) — recommended" with data=".md").
+        # Keep the legacy resolution for backward compat.
         if suffix == "__default__" or not suffix:
             suffix = _s.get("quick_services.defaults.ocr_format", "") or _s.get(
                 "quick_services.ocr.format", ".md"
@@ -409,6 +617,12 @@ class OcrServiceDialog(QDialog):
                     text = self._ocr_ollama(path, vlm=True, pages=pages)
                 elif engine == "tesseract":
                     text = self._ocr_tesseract(path, pages=pages)
+                elif engine and engine not in ("auto", "tesseract", "pypdf", "vlm"):
+                    # V0.4.5: engine is an Ollama model name (selected from
+                    # the auto-detected list via /api/tags). The
+                    # _do_convert() method already saved it as
+                    # ocr.primary_model, so _ocr_ollama() will pick it up.
+                    text = self._ocr_ollama(path, vlm=False, pages=pages)
                 else:
                     text = self._ocr_auto(path, pages=pages)
 
