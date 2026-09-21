@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.20.5",
+  "generated_for_version": "0.3",
   "prompts_dir": "prompts/",
-  "file_count": 55,
-  "manifest_sha256": "54ba4f25852d33e7c37292d9876cd13c19e48dde2f3533a4d3f12e72e9e6f18e",
+  "file_count": 56,
+  "manifest_sha256": "2a908925869add3e4ec5621c2508453ad22e6e4128b9edf8204eb6b1bbf79912",
   "files": [
     {
       "path": "academic.md",
@@ -187,13 +187,13 @@
     },
     {
       "path": "summarisation/derive_bullets.md",
-      "sha256": "e1d0dbe749a5f8a01b6e4d8209392442558fea5c2f3b4263f73b339508640a0a",
-      "bytes": 882
+      "sha256": "98885e4e1e818d8189b371c8cf9cfc8d7c771d5771aee8bb96a3e5f974f958c4",
+      "bytes": 888
     },
     {
       "path": "summarisation/derive_exec.md",
-      "sha256": "595056022505fffc95d06a7daa5e925b3a152f81563bd0e3c79277d8970412e5",
-      "bytes": 876
+      "sha256": "3dae895aa990b65eb5e94dec6c1b6c650c6f5e32f5fedbf560153e6bbf6db43b",
+      "bytes": 882
     },
     {
       "path": "summarisation/gap_fill_concept.md",
@@ -212,8 +212,13 @@
     },
     {
       "path": "summarisation/master_summary.md",
-      "sha256": "276b6ddd1e7d2edd14a64ac21500d9ffc9620a586a1080091903c63b6e0e3b2e",
-      "bytes": 1353
+      "sha256": "1c03ce71cd9b5a1b49fb0a4d1ad51272c80997507a4640b5eaf2f7442283e6d0",
+      "bytes": 1357
+    },
+    {
+      "path": "summarisation/merge_master_summaries.md",
+      "sha256": "ed20ff58c5ad4e4d4db5073070a79456f37faeac5fade39292a815315849777f",
+      "bytes": 1300
     },
     {
       "path": "summarisation/preflight_must_have.md",

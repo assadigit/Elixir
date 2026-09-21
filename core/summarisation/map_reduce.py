@@ -182,11 +182,23 @@ def map_reduce_summarize(
                     "INFO",
                 )
                 combined_tokens = count_tokens(combined)
-                reduce_prompt = build_prompt(
-                    heading,
-                    f"[Sequential summaries covering the complete chapter]\n\n{combined}",
-                    with_cot=True,
+                # V0.3.1: use the master-summary merge prompt (same as the
+                # non-cached reduce path below).
+                from core.summarisation.prompt_manager import PromptManager as _PM_cache
+
+                _pm_cache = _PM_cache()
+                reduce_prompt = _pm_cache.render_template(
+                    "summarisation/merge_master_summaries",
+                    heading=heading,
+                    n_summaries="(cached)",
+                    summaries=combined[:60000],
                 )
+                if not reduce_prompt:
+                    reduce_prompt = build_prompt(
+                        heading,
+                        f"[Sequential summaries covering the complete chapter]\n\n{combined}",
+                        with_cot=True,
+                    )
                 # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think
                 # for Qwen-family models.
                 response = call_llm(
@@ -379,11 +391,28 @@ def map_reduce_summarize(
         f"({combined_tokens:,} tokens) into the final summary\u2026",
         "INFO",
     )
-    reduce_prompt = build_prompt(
-        heading,
-        f"[Sequential summaries covering the complete chapter]\n\n{combined}",
-        with_cot=True,
+    # V0.3.1: use the master-summary merge prompt instead of the old
+    # 5-section build_prompt. The reduce phase now produces a comprehensive
+    # thorough summary (the "master summary") from the combined chunk
+    # summaries. The calling code (_summarize_inner / _chunked_summarize)
+    # then derives bullets and exec FROM this master summary — the same
+    # V0.3 architecture, but for map-reduced chapters.
+    from core.summarisation.prompt_manager import PromptManager as _PM_v031
+
+    _pm_v031 = _PM_v031()
+    reduce_prompt = _pm_v031.render_template(
+        "summarisation/merge_master_summaries",
+        heading=heading,
+        n_summaries=str(len(mini_summaries)),
+        summaries=combined[:60000],  # clamp (the merge prompt + combined must fit ctx)
     )
+    if not reduce_prompt:
+        # Fallback to the old build_prompt if the merge template is missing
+        reduce_prompt = build_prompt(
+            heading,
+            f"[Sequential summaries covering the complete chapter]\n\n{combined}",
+            with_cot=True,
+        )
     # V18.20.2.0 (SWOT A5): direct call_llm site — inject /no_think for
     # Qwen-family models.
     response = call_llm(

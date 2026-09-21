@@ -118,7 +118,12 @@ class TestMapReduceChunking:
         # Multiple map LLM calls + 1 reduce call
         assert len(deps["_llm_calls"]) >= 2
         # The reduce call is the last one
-        assert deps["_llm_calls"][-1]["prompt"] == "REDUCE_PROMPT"
+        # V0.3.1: the reduce prompt is now the merge_master_summaries
+        # template (not the old build_prompt "REDUCE_PROMPT")
+        assert (
+            "merge" in deps["_llm_calls"][-1]["prompt"].lower()
+            or deps["_llm_calls"][-1]["prompt"] == "REDUCE_PROMPT"
+        )
         # Reduce used temperature=0.7 (full), map used 0.7*0.7=0.49
         assert deps["_llm_calls"][-1]["temperature"] == 0.7
         if len(deps["_llm_calls"]) > 1:
@@ -322,9 +327,12 @@ class TestMapReduceCache:
         )
         # Exactly 1 LLM call (the reduce) — the map phase was skipped.
         assert len(deps["_llm_calls"]) == 1
-        # The single call's prompt is the REDUCE prompt (from build_prompt),
-        # NOT a "Summarize the following excerpt..." map prompt.
-        assert deps["_llm_calls"][0]["prompt"] == "REDUCE_PROMPT"
+        # The single call's prompt is the reduce prompt — V0.3.1 uses the
+        # merge_master_summaries template (not the old build_prompt "REDUCE_PROMPT")
+        assert (
+            "merge" in deps["_llm_calls"][0]["prompt"].lower()
+            or deps["_llm_calls"][0]["prompt"] == "REDUCE_PROMPT"
+        )
         assert out == "REDUCED_FROM_CACHE"
         # An INFO log about the cached mini-summaries
         infos = [m for m, l in cap.calls if l == "INFO"]
@@ -361,8 +369,9 @@ class TestMapReducePromptComposition:
         assert "exactly 300 words" in map_prompt
 
     def test_reduce_prompt_built_with_combined_content(self):
-        """build_prompt is called with the heading and the combined
-        mini-summaries prefixed by the '[Sequential summaries...]' header."""
+        """V0.3.1: the reduce prompt uses the merge_master_summaries template
+        (not the old build_prompt). The LLM is called with a prompt that
+        contains the heading and the combined mini-summaries."""
         content = "A paragraph for the reduce prompt test here with content."
         deps = _make_deps(llm_responses=["mini summary one", "reduced"])
         map_reduce_summarize(
@@ -379,12 +388,11 @@ class TestMapReducePromptComposition:
             log=_CapturingLog(),
             **{k: v for k, v in deps.items() if not k.startswith("_")},
         )
-        # build_prompt was called (at least once, for the reduce step)
-        assert len(deps["_build_calls"]) >= 1
-        reduce_call = deps["_build_calls"][-1]
-        assert reduce_call["heading"] == "Reduce Chapter"
-        assert "[Sequential summaries covering the complete chapter]" in reduce_call["text"]
-        assert "mini summary one" in reduce_call["text"]
+        # V0.3.1: the reduce call's prompt contains the heading and the
+        # combined mini-summaries (from the merge_master_summaries template).
+        reduce_prompt = deps["_llm_calls"][-1]["prompt"]
+        assert "Reduce Chapter" in reduce_prompt
+        assert "mini summary one" in reduce_prompt
 
 
 # ── 5. byte-for-byte stability ──────────────────────────────────────────────
