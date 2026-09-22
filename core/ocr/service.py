@@ -861,7 +861,15 @@ class OCRService:
     def _create_vision_provider(self, arch: str, model: str, settings):
         """Create a provider for the given model (for vision capability
         probing + image OCR calls). Returns None if the provider can't
-        be created."""
+        be created.
+
+        V0.4.12: when the architecture is llamacpp AND the OCR model is
+        different from the main model, try BOTH the llama.cpp provider
+        AND an Ollama provider. The OCR model dropdown is populated from
+        Ollama's /api/tags, so when the user picks an Ollama-hosted OCR
+        model while running their main model on llama.cpp, we need to
+        probe Ollama (not llama.cpp) for that OCR model.
+        """
         try:
             from core.llm.llm_provider_impl import create_provider
 
@@ -878,7 +886,27 @@ class OCRService:
             # but the OCR path requires a local model that can process
             # page images.
             if provider_name in ("ollama", "llamacpp"):
-                return create_provider(provider_name, settings)
+                provider = create_provider(provider_name, settings)
+                if provider and provider.supports_vision():
+                    return provider
+                # V0.4.12: if the llama.cpp provider doesn't support
+                # vision for this model, try Ollama as a fallback.
+                # The OCR model dropdown is populated from Ollama's
+                # /api/tags, so the model may be hosted on Ollama even
+                # when the main model is on llama.cpp.
+                if provider_name == "llamacpp":
+                    try:
+                        ollama_provider = create_provider("ollama", settings)
+                        if ollama_provider and ollama_provider.supports_vision():
+                            self.log(
+                                f"  📸 V0.4.12: OCR model '{model}' not found on "
+                                f"llama.cpp — using Ollama instead (cross-backend OCR)",
+                                "INFO",
+                            )
+                            return ollama_provider
+                    except Exception:
+                        pass
+                return provider
             return None
         except Exception as e:
             self.log(f"  ⚠️ V0.4.1: Could not create vision provider: {e}", "WARNING")
@@ -907,8 +935,13 @@ class OCRService:
             "Output ONLY the extracted text, no commentary, no markdown."
         )
         try:
+            # V0.4.12: pass the model name to complete_with_image so
+            # cross-backend OCR uses the correct model (the OCR model
+            # from Ollama, not the provider's default model which might
+            # be the llama.cpp main model).
             text = provider.complete_with_image(
-                prompt, image_bytes, temperature=0.0, max_tokens=4096
+                prompt, image_bytes, temperature=0.0, max_tokens=4096,
+                model=model_name,
             )
             if text and text.strip():
                 self.log(f"  ✅ V0.4.1 vision OCR p.{page_num}: {len(text)} chars", "INFO")

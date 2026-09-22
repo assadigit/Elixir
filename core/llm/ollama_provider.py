@@ -755,20 +755,26 @@ class OllamaProvider(LLMProvider):
         image_bytes: bytes,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> str | None:
         """Send a prompt + image to Ollama and return the text response.
 
         Uses Ollama's /api/generate endpoint with the ``images`` field
         (base64-encoded image). Content-agnostic — works with any
         vision-capable model on Ollama.
+
+        V0.4.12: added optional ``model`` parameter so cross-backend OCR
+        can use a different model than the provider's default (e.g., when
+        the main model is on llama.cpp but the OCR model is on Ollama).
         """
         import base64 as _b64
 
         b64_image = _b64.b64encode(image_bytes).decode("utf-8")
         _temp = temperature if temperature is not None else self.temperature
         _max_tok = max_tokens or 4096
+        _model = model or self.model  # V0.4.12: allow override
         payload = {
-            "model": self.model,
+            "model": _model,
             "prompt": prompt,
             "images": [b64_image],
             "stream": False,
