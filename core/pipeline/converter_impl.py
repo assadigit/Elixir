@@ -2347,8 +2347,8 @@ class Converter(ConverterExtractionMixin):
             if extract_vr and not self._cancel_requested("visual-region crops"):
                 try:
                     from core.pdf.vision_region_cropper import (
-                        build_vlm_callable_from_request,
                         build_inline_markdown,
+                        build_vlm_callable_from_request,
                         extract_visual_regions,
                     )
 
@@ -2395,9 +2395,7 @@ class Converter(ConverterExtractionMixin):
                     # model — Layer B is gracefully disabled, Layer A still
                     # runs). This reuses V0.4.1's provider-agnostic vision
                     # probe via core.llm.llm_provider_impl.create_provider.
-                    vlm_callable = build_vlm_callable_from_request(
-                        self.request, log=self._log
-                    )
+                    vlm_callable = build_vlm_callable_from_request(self.request, log=self._log)
 
                     # Run the cropper. V0.4.11: enable_existing_extractors
                     # is now True when extract_visual_regions is ON — the

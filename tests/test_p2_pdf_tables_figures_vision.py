@@ -240,11 +240,15 @@ class TestBuildManifest:
 
 
 class TestExtractFiguresAndTables:
-    def test_real_run_table_crop_save_fails_on_pdfplumber_011(self, figures_pdf, tmp_path):
-        """REAL-BUG pin: with pdfplumber 0.11.9 the table crop's
-        im.save(..., format="JPEG") raises OSError (palette mode) — the
-        per-table except swallows it, so tables come back EMPTY despite a
-        perfectly detected 4x3 grid. Figures (fitz part) still work."""
+    def test_real_run_jpeg_save_failure_recovers_to_png(self, figures_pdf, tmp_path):
+        """V0.4.14 pin (supersedes the old REAL-BUG pin): with pdfplumber
+        0.11.x the table crop's im.save(..., format="JPEG") raises OSError
+        (palette mode) — the V0.4.14 fallback now re-saves the crop as PNG,
+        so the table is NOT lost (the old bug returned EMPTY tables despite
+        a perfectly detected 4x3 grid). V0.4.14 also unified all crops into
+        a single images/ folder with page{N}_image{K}_{kind} naming —
+        figures and tables no longer land in separate graphs//tables/ dirs.
+        Figures (fitz part) still work unchanged."""
         logs: list[tuple[str, str]] = []
         figures, tables = extract_figures_and_tables(
             figures_pdf, tmp_path, total_pages=4, log_callback=lambda m, l: logs.append((m, l))
@@ -255,20 +259,31 @@ class TestExtractFiguresAndTables:
         assert fig["page"] == 2
         assert fig["type"] == "figure"
         assert fig["caption"] == "Figure 1 A test figure showing results."
-        saved = tmp_path / "graphs" / "page2_figure1.png"
+        saved = tmp_path / "images" / "page2_image1_figure.png"
         assert saved.exists() and saved.stat().st_size > 5000
         assert fig["path"] == str(saved)
         # tiny logo on page 3 skipped (< 5 KB)
-        assert not (tmp_path / "graphs" / "page3_figure2.png").exists()
+        assert not (tmp_path / "images" / "page3_image2_figure.png").exists()
+        # Legacy separate folders are gone (V0.4.14 unified images/)
+        assert not (tmp_path / "graphs").exists()
+        assert not (tmp_path / "tables").exists()
 
-        # Part 2 (pdfplumber) — the grid IS detected but the JPEG save fails
-        assert tables == []
-        assert any("Table extraction p.1 tbl 0" in m for m, _ in logs)
-        assert not (tmp_path / "tables").exists() or not list((tmp_path / "tables").iterdir())
+        # Part 2 (pdfplumber) — the grid IS detected; the palette-mode JPEG
+        # failure now RECOVERS via the PNG fallback (V0.4.14).
+        assert len(tables) == 1
+        tbl = tables[0]
+        assert tbl["page"] == 1
+        assert tbl["type"] == "table"
+        png = tmp_path / "images" / "page1_image2_table.png"
+        assert png.exists() and png.read_bytes()[:4] == b"\x89PNG"
+        assert tbl["path"] == str(png)
+        # the markdown twin still ships next to the crop
+        assert (tmp_path / "images" / "page1_image2_table.md").exists()
 
     def test_real_run_with_save_shim_extracts_table(self, figures_pdf, tmp_path, monkeypatch):
         """Same real PDF, with only PageImage.save shimmed (the documented
-        pdfplumber incompatibility) → the full table pipeline runs: crop jpg,
+        pdfplumber incompatibility) → the full table pipeline runs via the
+        JPEG path: crop jpg (unified images/ folder, V0.4.14 naming),
         markdown twin file, manifest entry with caption + data."""
         _shim_pdfplumber_jpeg_save(monkeypatch)
         figures, tables = extract_figures_and_tables(figures_pdf, tmp_path, total_pages=4)
@@ -278,9 +293,10 @@ class TestExtractFiguresAndTables:
         assert tbl["page"] == 1
         assert tbl["type"] == "table"
         assert tbl["caption"] == "Table 1 Experimental data for the study."
-        jpg = tmp_path / "tables" / "page1_table1.jpg"
+        jpg = tmp_path / "images" / "page1_image2_table.jpg"
         assert jpg.exists() and jpg.read_bytes()[:2] == b"\xff\xd8"
-        md = tmp_path / "tables" / "page1_table1.md"
+        assert tbl["path"] == str(jpg)
+        md = tmp_path / "images" / "page1_image2_table.md"
         md_txt = md.read_text(encoding="utf-8")
         assert md_txt.startswith("| cell00")
         assert len(tbl["data"]) == 4  # 4 rows really extracted from the grid

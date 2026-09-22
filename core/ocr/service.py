@@ -940,7 +940,10 @@ class OCRService:
             # from Ollama, not the provider's default model which might
             # be the llama.cpp main model).
             text = provider.complete_with_image(
-                prompt, image_bytes, temperature=0.0, max_tokens=4096,
+                prompt,
+                image_bytes,
+                temperature=0.0,
+                max_tokens=4096,
                 model=model_name,
             )
             if text and text.strip():
@@ -1005,7 +1008,7 @@ class OCRService:
                     page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL
                 )
             # V0.4.9: /api/generate returned empty — try /api/chat.
-            self.log(f"    🧠 Qwen OCR: trying /api/chat fallback…", "DEBUG")
+            self.log("    🧠 Qwen OCR: trying /api/chat fallback…", "DEBUG")
             text = self._try_ollama_vision_endpoint(
                 "/api/chat", chat_payload, "message.content", model, page_num, attempt
             )
@@ -1025,20 +1028,39 @@ class OCRService:
         )
 
     def _try_ollama_vision_endpoint(
-        self, endpoint: str, payload: dict, response_key: str,
-        model: str, page_num: int, attempt: int,
+        self,
+        endpoint: str,
+        payload: dict,
+        response_key: str,
+        model: str,
+        page_num: int,
+        attempt: int,
     ) -> str | None:
         """V0.4.9: try one Ollama vision endpoint and return the text.
 
         Returns None on empty. Logs the specific Ollama 400 error body
         (not just "400 Bad Request") so the user can diagnose the issue.
+
+        V0.4.19: routed through ``safe_ollama_request`` again (the V0.4.9
+        rewrite bypassed it with a raw ``get_shared_session().post`` —
+        losing the monitored transport AND letting tests hit the real
+        network when an Ollama server happens to be running). A 400 from
+        Ollama is MEANINGFUL here (e.g. "model does not support images"),
+        so the HTTPError raised by ``raise_for_status`` is unwrapped and
+        its body inspected instead of being swallowed.
         """
-        from utils.network import get_shared_session
+        import requests as _requests
 
         url = f"{self._ollama_url()}{endpoint}"
-        session = get_shared_session()
         try:
-            resp = session.post(url, json=payload, timeout=self._ocr_timeout)
+            resp = safe_ollama_request("POST", url, json=payload, timeout=self._ocr_timeout)
+        except _requests.HTTPError as e:
+            # A 400 carries a diagnosable Ollama error body — inspect it
+            # (safe_ollama_request already called raise_for_status).
+            resp = e.response
+            if resp is None or resp.status_code != 400:
+                self.log(f"    ⚠️ {endpoint} HTTP error: {e}", "DEBUG")
+                return None
         except Exception as e:
             self.log(f"    ⚠️ {endpoint} request failed: {e}", "DEBUG")
             return None
@@ -1053,12 +1075,6 @@ class OCRService:
                 f"    ⚠️ {endpoint} returned 400: {err_body}",
                 "WARNING",
             )
-            return None
-
-        try:
-            resp.raise_for_status()
-        except Exception as e:
-            self.log(f"    ⚠️ {endpoint} HTTP error: {e}", "DEBUG")
             return None
 
         data = resp.json()

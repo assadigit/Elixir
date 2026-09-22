@@ -68,7 +68,6 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -523,7 +522,9 @@ def crop_region(
         )
         return str(out_path)
     except Exception as e:
-        log(f"  [crop] page {region.page} {region.label} failed: {type(e).__name__}: {e}", "WARNING")
+        log(
+            f"  [crop] page {region.page} {region.label} failed: {type(e).__name__}: {e}", "WARNING"
+        )
         return ""
 
 
@@ -629,9 +630,7 @@ def build_inline_markdown(
                 for r in by_page[page_num]:
                     cap = f": {r.caption}" if r.caption else ""
                     out_lines.append("")
-                    out_lines.append(
-                        f"![{r.label}{cap}]({r.crop_path})"
-                    )
+                    out_lines.append(f"![{r.label}{cap}]({r.crop_path})")
                     out_lines.append("")
                 inserted_pages.add(page_num)
 
@@ -652,7 +651,9 @@ def build_inline_markdown(
 # ─── V0.4.3: vlm_callable bridge (reuses V0.4.1 vision probe) ────────────────
 
 
-def build_vlm_callable_from_request(request, log: LogFn | None = None) -> Callable[[bytes, str], str] | None:
+def build_vlm_callable_from_request(
+    request, log: LogFn | None = None
+) -> Callable[[bytes, str], str] | None:
     """Construct a ``vlm_callable`` from the conversion request's model config.
 
     Reuses V0.4.1's provider-agnostic vision probe: tries the main model
@@ -731,7 +732,10 @@ def build_vlm_callable_from_request(request, log: LogFn | None = None) -> Callab
 
                     return _callable
             except Exception as e:
-                log(f"  [vlm-bridge] probe for '{model_name}' failed: {type(e).__name__}: {e}", "DEBUG")
+                log(
+                    f"  [vlm-bridge] probe for '{model_name}' failed: {type(e).__name__}: {e}",
+                    "DEBUG",
+                )
 
         log(
             "  [vlm-bridge] no vision-capable model found — Layer B disabled (Layer A still runs)",
@@ -951,8 +955,8 @@ def _demo_with_synthetic_pdf() -> None:
     """
     print("=== Vision-Region Cropper — synthetic-PDF validation ===\n")
     try:
-        from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
     except ImportError:
         print("reportlab not installed — skipping synthetic validation.")
         print("Install with: pip install reportlab pillow")

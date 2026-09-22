@@ -77,11 +77,11 @@ class OcrServiceDialog(QDialog):
         from PySide6.QtWidgets import (
             QPushButton as _QPB,
         )
+
+        # V0.4.5: QToolButton for the Advanced expander toggle.
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
-        # V0.4.5: QToolButton for the Advanced expander toggle.
-        from PySide6.QtWidgets import QToolButton as _QTB
 
         lay = _VL(self)
         lay.setContentsMargins(20, 16, 20, 16)
@@ -126,12 +126,8 @@ class OcrServiceDialog(QDialog):
         # "Auto" is the recommended default — it tries the best engine
         # automatically (digital PDFs → pypdf, scanned → Ollama vision,
         # fallback → Tesseract).
-        self.engine_combo.addItem(
-            "Auto (recommended) — picks the best engine per file", "auto"
-        )
-        self.engine_combo.addItem(
-            "Tesseract (lightweight, fast, offline)", "tesseract"
-        )
+        self.engine_combo.addItem("Auto (recommended) — picks the best engine per file", "auto")
+        self.engine_combo.addItem("Tesseract (lightweight, fast, offline)", "tesseract")
         # V0.4.5: populate Ollama OCR models via live /api/tags probe.
         # Done in _populate_ollama_models() below — runs async-ish (best-
         # effort; if Ollama is down, the user just sees the static options).
@@ -151,12 +147,15 @@ class OcrServiceDialog(QDialog):
         self.engine_hint = _QL("")
         self.engine_hint.setObjectName("Caption")
         self.engine_hint.setWordWrap(True)
-        self.engine_hint.setStyleSheet("color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;")
+        self.engine_hint.setStyleSheet(
+            "color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;"
+        )
         lay.addWidget(self.engine_hint)
         self.engine_combo.currentIndexChanged.connect(self._update_engine_hint)
         # Populate on next tick (after the dialog is fully laid out) so
         # the hint shows the right text for the default "Auto" option.
         from PySide6.QtCore import QTimer as _QTimer
+
         _QTimer.singleShot(0, self._update_engine_hint)
         _QTimer.singleShot(100, self._populate_ollama_models)
 
@@ -184,7 +183,9 @@ class OcrServiceDialog(QDialog):
         )
         self.stylize_hint.setObjectName("Caption")
         self.stylize_hint.setWordWrap(True)
-        self.stylize_hint.setStyleSheet("color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;")
+        self.stylize_hint.setStyleSheet(
+            "color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;"
+        )
         self.stylize_hint.setVisible(False)
         lay.addWidget(self.stylize_hint)
         # Show/hide the hint based on the selected format.
@@ -217,7 +218,7 @@ class OcrServiceDialog(QDialog):
         test_lay.setSpacing(6)
 
         test_desc = _QL(
-            "Click \"Test OCR\" to verify the selected engine can read text "
+            'Click "Test OCR" to verify the selected engine can read text '
             "from a built-in sample image. This confirms your OCR setup "
             "(Ollama model / Tesseract) is working before you convert real files."
         )
@@ -271,7 +272,9 @@ class OcrServiceDialog(QDialog):
         self.legacy_engine_combo = _QCB()
         self.legacy_engine_combo.addItem("(use the main Engine dropdown above)", "__default__")
         self.legacy_engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
-        self.legacy_engine_combo.addItem("Local VLM — llava/minicpm (better for infographics)", "vlm")
+        self.legacy_engine_combo.addItem(
+            "Local VLM — llava/minicpm (better for infographics)", "vlm"
+        )
         self.legacy_engine_combo.setCurrentIndex(0)
 
         # ── V0.4.5: Status (bigger + progress bar — same as V11.20)
@@ -312,20 +315,20 @@ class OcrServiceDialog(QDialog):
     # the list is the canonical set of OCR/vision model family names, not
     # hardcoded specific model versions.
     _OCR_KEYWORDS = (
-        "ocr",        # OlmOCR, ocr-vision, etc.
-        "vision",     # qwen2-vl, llama-vision, etc.
-        "vl",         # qwen2-vl, llava-vl, etc. (vision-language)
-        "llava",      # llava family
-        "minicpm",    # minicpm-v (vision)
+        "ocr",  # OlmOCR, ocr-vision, etc.
+        "vision",  # qwen2-vl, llama-vision, etc.
+        "vl",  # qwen2-vl, llava-vl, etc. (vision-language)
+        "llava",  # llava family
+        "minicpm",  # minicpm-v (vision)
         "moondream",  # moondream2 (vision)
-        "bakllava",   # bakllava
+        "bakllava",  # bakllava
         "llama-vision",  # meta llama-vision
-        "qwen-vl",    # qwen vision-language
-        "internvl",   # internvl
-        "cogvlm",     # cogvlm
-        "fuyu",       # adept fuyu
-        "kosmos",     # microsoft kosmos
-        "florence",   # microsoft florence
+        "qwen-vl",  # qwen vision-language
+        "internvl",  # internvl
+        "cogvlm",  # cogvlm
+        "fuyu",  # adept fuyu
+        "kosmos",  # microsoft kosmos
+        "florence",  # microsoft florence
     )
 
     def _populate_ollama_models(self) -> None:
@@ -347,7 +350,10 @@ class OcrServiceDialog(QDialog):
 
         try:
             s = _S()
-            base_url = s.get("summarisation.endpoint", "http://localhost:11434") or "http://localhost:11434"
+            base_url = (
+                s.get("summarisation.endpoint", "http://localhost:11434")
+                or "http://localhost:11434"
+            )
             # Strip /v1 suffix for /api/tags
             if base_url.endswith("/v1"):
                 base_url = base_url[:-3]
@@ -420,7 +426,7 @@ class OcrServiceDialog(QDialog):
         # For Ollama models (data is a model name, not a sentinel), show
         # a generic "uses the Ollama vision API" hint.
         if data and data not in ("auto", "tesseract", "pypdf", "vlm"):
-            hint = f"💡 Uses the Ollama vision model \'{data}\' for OCR. Good for scanned docs and images."
+            hint = f"💡 Uses the Ollama vision model '{data}' for OCR. Good for scanned docs and images."
         else:
             hint = hints.get(data, "")
         self.engine_hint.setText(hint)
@@ -462,10 +468,17 @@ class OcrServiceDialog(QDialog):
         """
         from PySide6.QtWidgets import (
             QDialog as _QDialog,
+        )
+        from PySide6.QtWidgets import (
             QDialogButtonBox as _QDialogButtonBox,
+        )
+        from PySide6.QtWidgets import (
             QFormLayout as _QFormLayout,
+        )
+        from PySide6.QtWidgets import (
             QLabel as _QLabel,
-            QPushButton as _QPushButton,
+        )
+        from PySide6.QtWidgets import (
             QVBoxLayout as _QVBoxLayout,
         )
 
@@ -505,7 +518,9 @@ class OcrServiceDialog(QDialog):
 
         # Page range
         form.addRow("Page range:", self.range_edit)
-        range_hint = _QLabel('PDFs only — e.g. "1-10" for pages 1–10, "1,3,5" for specific pages, "all" for every page.')
+        range_hint = _QLabel(
+            'PDFs only — e.g. "1-10" for pages 1–10, "1,3,5" for specific pages, "all" for every page.'
+        )
         range_hint.setWordWrap(True)
         range_hint.setObjectName("Caption")
         form.addRow("", range_hint)
@@ -523,8 +538,8 @@ class OcrServiceDialog(QDialog):
         # (hidden) on close. This keeps their state on self so
         # _do_convert can read them. We use a try/finally to ensure
         # reparenting back even if the user cancels.
-        original_parent_range = self.range_edit.parentWidget()
-        original_parent_legacy = self.legacy_engine_combo.parentWidget()
+        # (V0.4.19: the captured original parents were never used — the
+        # finally reparents to `self` directly — dead locals removed.)
         try:
             dlg.exec()
         finally:
@@ -550,7 +565,9 @@ class OcrServiceDialog(QDialog):
         # The image is shipped at assets/ocr_test_sample.png relative to
         # the repo root. We try a few candidate paths to be robust.
         candidates = [
-            _P(__file__).resolve().parent.parent.parent.parent.parent / "assets" / "ocr_test_sample.png",
+            _P(__file__).resolve().parent.parent.parent.parent.parent
+            / "assets"
+            / "ocr_test_sample.png",
             _P(__file__).resolve().parent.parent.parent.parent / "assets" / "ocr_test_sample.png",
             _P.cwd() / "assets" / "ocr_test_sample.png",
         ]
@@ -585,6 +602,7 @@ class OcrServiceDialog(QDialog):
         # _do_convert does) so _ocr_ollama picks it up.
         if engine and engine not in ("auto", "tesseract", "pypdf", "vlm"):
             from utils.settings import Settings as _S
+
             _s = _S()
             _s.set("ocr.primary_model", engine)
 
@@ -636,6 +654,7 @@ class OcrServiceDialog(QDialog):
         else:
             # Escape HTML special chars + show in a monospace block.
             import html as _html
+
             escaped = _html.escape(text)
             char_count = len(text)
             self.test_result_label.setText(
@@ -649,9 +668,8 @@ class OcrServiceDialog(QDialog):
         self.test_btn.setEnabled(True)
         self.test_btn.setText("🧪 Test OCR")
         import html as _html
-        self.test_result_label.setText(
-            f"❌ <b>Test failed:</b> {_html.escape(err)}"
-        )
+
+        self.test_result_label.setText(f"❌ <b>Test failed:</b> {_html.escape(err)}")
         self.test_result_label.setVisible(True)
 
     def _pick_output_folder(self):
@@ -915,6 +933,7 @@ class OcrServiceDialog(QDialog):
                         out_path.write_text(actual_text, encoding="utf-8")
                     else:
                         from core.outputs.service_formatters import write_output
+
                         out_path = _P(out_folder) / f"{path.stem}_ocr{actual_suffix}"
                         write_output(actual_text, out_path, fmt=actual_suffix, title=path.stem)
                     results.append(f"✅ {path.name} → {out_path.name} ({len(actual_text):,} chars)")
@@ -1193,18 +1212,15 @@ RAW OCR TEXT:
         if not raw_text or len(raw_text.strip()) < 20:
             return raw_text  # too short to bother stylizing
 
-        from utils.settings import Settings as _S
         from utils.network import safe_ollama_request
+        from utils.settings import Settings as _S
 
         try:
             s = _S()
-            model = s.get("summarisation.model", "") or s.get(
-                "summarisation.primary_model", ""
-            )
+            model = s.get("summarisation.model", "") or s.get("summarisation.primary_model", "")
             if not model:
                 logger.warning(
-                    "Stylize: no summarisation model configured — "
-                    "returning raw OCR text"
+                    "Stylize: no summarisation model configured — returning raw OCR text"
                 )
                 return raw_text
 
@@ -1219,17 +1235,37 @@ RAW OCR TEXT:
             CHUNK_SIZE = 5000
             if len(raw_text) <= CHUNK_SIZE:
                 # Short text — single pass (the original V0.4.10 path).
-                return self._stylize_chunk(raw_text, source_name, model, ollama_url, safe_ollama_request, is_first=True, is_last=True)
+                return self._stylize_chunk(
+                    raw_text,
+                    source_name,
+                    model,
+                    ollama_url,
+                    safe_ollama_request,
+                    is_first=True,
+                    is_last=True,
+                )
             else:
                 # Long text — chunk + multi-pass.
-                logger.info(f"Stylize: text is {len(raw_text)} chars — chunking into ~{CHUNK_SIZE}-char blocks")
+                logger.info(
+                    f"Stylize: text is {len(raw_text)} chars — chunking into ~{CHUNK_SIZE}-char blocks"
+                )
                 chunks = self._split_text_into_chunks(raw_text, CHUNK_SIZE)
                 results = []
                 for i, chunk in enumerate(chunks):
                     is_first = i == 0
                     is_last = i == len(chunks) - 1
-                    logger.info(f"Stylize: processing chunk {i+1}/{len(chunks)} ({len(chunk)} chars)")
-                    result = self._stylize_chunk(chunk, source_name, model, ollama_url, safe_ollama_request, is_first=is_first, is_last=is_last)
+                    logger.info(
+                        f"Stylize: processing chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)"
+                    )
+                    result = self._stylize_chunk(
+                        chunk,
+                        source_name,
+                        model,
+                        ollama_url,
+                        safe_ollama_request,
+                        is_first=is_first,
+                        is_last=is_last,
+                    )
                     results.append(result)
                 # Concatenate the chunks. If any chunk failed (returned raw),
                 # it's included as-is.
@@ -1237,8 +1273,9 @@ RAW OCR TEXT:
                 return combined
 
         except Exception as e:
-            logger.warning("Stylize failed (non-fatal): %s: %s — returning raw text",
-                           type(e).__name__, e)
+            logger.warning(
+                "Stylize failed (non-fatal): %s: %s — returning raw text", type(e).__name__, e
+            )
             return raw_text
 
     def _split_text_into_chunks(self, text: str, chunk_size: int) -> list[str]:
@@ -1260,19 +1297,27 @@ RAW OCR TEXT:
             chunks.append(remaining)
         return chunks
 
-    def _stylize_chunk(self, text: str, source_name: str, model: str,
-                       ollama_url: str, safe_ollama_request, is_first: bool, is_last: bool) -> str:
+    def _stylize_chunk(
+        self,
+        text: str,
+        source_name: str,
+        model: str,
+        ollama_url: str,
+        safe_ollama_request,
+        is_first: bool,
+        is_last: bool,
+    ) -> str:
         """V0.4.11: stylize a single chunk. is_first/is_last control
         whether frontmatter/tags are included (only on first/last chunk)."""
         # For non-first chunks, use a simpler prompt (no frontmatter).
         if is_first:
-            prompt = self._STYLIZE_PROMPT + f"\n---\nSource (\"{source_name}\"):\n\n{text}\n"
+            prompt = self._STYLIZE_PROMPT + f'\n---\nSource ("{source_name}"):\n\n{text}\n'
         else:
             prompt = (
                 "Structure the following OCR text into clean Markdown with headings, "
                 "bullet points, callouts, and wikilinks. Do NOT add frontmatter (this "
                 "is a continuation chunk). Output ONLY the Markdown.\n\n"
-                f"---\nSource (\"{source_name}\", continuation):\n\n{text}\n"
+                f'---\nSource ("{source_name}", continuation):\n\n{text}\n'
             )
 
         payload = {

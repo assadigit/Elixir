@@ -147,7 +147,7 @@ def extract_figures_and_tables(
                 # (whitespace-based) table detection strategies. The V0.4.3
                 # code only used the default (lattice), which misses
                 # borderless tables like Table 3-1 in the NPD chapter
-                # (a psychoanalytic textbook with space-aligned tables).
+                # (a textbook with space-aligned tables).
                 #
                 # V0.4.18: the text-strategy fallback is now CONDITIONAL on
                 # having a VLM available. Without a VLM, the text strategy
@@ -201,9 +201,7 @@ def extract_figures_and_tables(
                                     im_check.save(buf, format="PNG")
                                 except Exception:
                                     im_check.save(buf, format="JPEG")
-                                vlm_result = _vlm_validate_region(
-                                    buf.getvalue(), vlm_callable, log
-                                )
+                                vlm_result = _vlm_validate_region(buf.getvalue(), vlm_callable, log)
                                 if vlm_result == "TABLE":
                                     _is_table = True
                                 elif vlm_result == "TEXT":
@@ -242,7 +240,10 @@ def extract_figures_and_tables(
                         if bbox and all(v is not None for v in bbox):
                             im = page.crop(bbox).to_image(resolution=200)
                             tbl_count += 1
-                            img_path = images_dir / f"page{page_num}_image{fig_count + tbl_count}_table.jpg"
+                            img_path = (
+                                images_dir
+                                / f"page{page_num}_image{fig_count + tbl_count}_table.jpg"
+                            )
                             images_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
                             # V0.4.14: fix "cannot write mode P as JPEG" —
                             # pdfplumber renders in palette mode ("P") which
@@ -255,7 +256,9 @@ def extract_figures_and_tables(
                                 im.save(str(img_path), format="PNG")
 
                             # Also save as Markdown table
-                            md_path = images_dir / f"page{page_num}_image{fig_count + tbl_count}_table.md"
+                            md_path = (
+                                images_dir / f"page{page_num}_image{fig_count + tbl_count}_table.md"
+                            )
                             md_content = _table_to_markdown(table_data)
                             md_path.write_text(md_content, encoding="utf-8")
 

@@ -24,7 +24,6 @@ from pypdf import PdfWriter
 from core.models import OcrEngine, OcrResult
 from core.ocr.base import OCREngine
 from utils.logging import get_main_logger
-from utils.network import safe_ollama_request
 
 logger = get_main_logger()
 
@@ -140,7 +139,7 @@ class QwenOCREngine(OCREngine):
 
                 # V0.4.9: if /api/generate returned empty or errored, try
                 # /api/chat (some models only work with the chat format).
-                logger.debug(f"Qwen VL: /api/generate returned empty — trying /api/chat…")
+                logger.debug("Qwen VL: /api/generate returned empty — trying /api/chat…")
                 text = self._try_endpoint("/api/chat", chat_payload, "message.content")
                 if text:
                     return text

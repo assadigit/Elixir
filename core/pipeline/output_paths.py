@@ -54,7 +54,9 @@ SUB_FA = "fa"
 SUB_SCREENSHOTS = "screenshots"
 SUB_GRAPHS = "graphs"
 SUB_REGIONS = "regions"  # V0.4.3: Vision-Region Cropper output (cropped diagrams/charts/tables)
-SUB_IMAGES = "images"    # V0.4.14: umbrella folder for all cropped images (figures + tables + vector clusters)
+SUB_IMAGES = (
+    "images"  # V0.4.14: umbrella folder for all cropped images (figures + tables + vector clusters)
+)
 SUB_LOGS = "logs"
 SUB_OBSIDIAN = "obsidian"
 SUB_STUDYGUIDE = "study_guide"

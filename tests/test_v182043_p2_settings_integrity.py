@@ -450,7 +450,16 @@ class TestWc9OllamaUrlUnification:
     def test_ocr_service_resolves_at_call_time(self):
         src = _strip_comments(_src(_OCR_SERVICE))
         assert "def _ollama_url(self)" in src
-        assert src.count('url = f"{self._ollama_url()}/api/generate"') == 2
+        # V0.4.9 refactored the second /api/generate call site to the
+        # endpoint-parameterized form ``f"{self._ollama_url()}{endpoint}"``
+        # (so /api/chat can share the same resolution path). V0.4.19 routed
+        # that helper back through the module-level ``safe_ollama_request``.
+        # The pin's INTENT is unchanged: every Ollama call site resolves the
+        # URL at call time via ``self._ollama_url()`` — no hardcoded
+        # ``http://localhost:11434/api/...`` anywhere in live call sites.
+        assert src.count('url = f"{self._ollama_url()}/api/generate"') == 1
+        assert src.count('url = f"{self._ollama_url()}{endpoint}"') == 1
+        assert "http://localhost:11434/api/" not in src
 
     def test_ocr_service_resolver_is_fail_soft(self):
         from core.ocr.service import OCRService

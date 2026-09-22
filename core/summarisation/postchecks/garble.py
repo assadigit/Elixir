@@ -2195,11 +2195,11 @@ def repair_stray_quotes(
 # V0.18 Ch.1 -> 1 D3 flag (confirmed). No false positives on cleaner lines.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_V2_OPENER_LEFT_CHARS = frozenset(' \t([{,;:-\u2014\u2013')
+_V2_OPENER_LEFT_CHARS = frozenset(" \t([{,;:-\u2014\u2013")
 _V2_OPENER_RIGHT_EXTRA = frozenset('"\u201c\u2018')
-_V2_CLOSER_LEFT_EXTRA = frozenset('.!,?\'\u201d\u2019')
-_V2_CLOSER_RIGHT_CHARS = frozenset(' \t)]},;:.!?')
-_V2_PUNCT_FOR_CLOSER = ',.;'
+_V2_CLOSER_LEFT_EXTRA = frozenset(".!,?'\u201d\u2019")
+_V2_CLOSER_RIGHT_CHARS = frozenset(" \t)]},;:.!?")
+_V2_PUNCT_FOR_CLOSER = ",.;"
 
 # Default threshold for D3 "suspicious long span" — a quote pair spanning
 # more than this many chars is flagged. Tuned from V0.4.1 NPD: the longest
@@ -2220,9 +2220,9 @@ def _v2_text_quote_positions(line: str) -> list[int]:
     positions: list[int] = []
     in_tag = False
     for i, c in enumerate(line):
-        if c == '<':
+        if c == "<":
             in_tag = True
-        elif c == '>':
+        elif c == ">":
             in_tag = False
         elif c == '"' and not in_tag:
             positions.append(i)
@@ -2231,8 +2231,8 @@ def _v2_text_quote_positions(line: str) -> list[int]:
 
 def _v2_looks_like_opener(line: str, pos: int) -> bool:
     """Does the ``"`` at ``line[pos]`` look like an opening quote?"""
-    left = line[pos - 1] if pos > 0 else ''
-    right = line[pos + 1] if pos + 1 < len(line) else ''
+    left = line[pos - 1] if pos > 0 else ""
+    right = line[pos + 1] if pos + 1 < len(line) else ""
     left_ok = pos == 0 or left in _V2_OPENER_LEFT_CHARS
     right_ok = bool(right) and (right.isalnum() or right in _V2_OPENER_RIGHT_EXTRA)
     return left_ok and right_ok
@@ -2240,8 +2240,8 @@ def _v2_looks_like_opener(line: str, pos: int) -> bool:
 
 def _v2_looks_like_closer(line: str, pos: int) -> bool:
     """Does the ``"`` at ``line[pos]`` look like a closing quote?"""
-    left = line[pos - 1] if pos > 0 else ''
-    right = line[pos + 1] if pos + 1 < len(line) else ''
+    left = line[pos - 1] if pos > 0 else ""
+    right = line[pos + 1] if pos + 1 < len(line) else ""
     left_ok = bool(left) and (left.isalnum() or left in _V2_CLOSER_LEFT_EXTRA)
     right_ok = (pos + 1 >= len(line)) or (right in _V2_CLOSER_RIGHT_CHARS)
     return left_ok and right_ok
@@ -2285,7 +2285,7 @@ def _v2_repair_line(
                 field=field_label,
                 snippet=line[max(0, last_pos - 25) : min(len(line), last_pos + 25)],
                 detail=(
-                    f"removed stray text-content \" at pos {last_pos} "
+                    f'removed stray text-content " at pos {last_pos} '
                     f"(text-content count was odd: {len(positions)})"
                 ),
             )
@@ -2393,8 +2393,7 @@ def _v2_repair_line(
                     field=field_label,
                     snippet=line[max(0, pos - 25) : min(len(line), pos + 25)],
                     detail=(
-                        f"inserted missing closing quote at pos {pos} "
-                        f"(final open never closed)"
+                        f"inserted missing closing quote at pos {pos} (final open never closed)"
                     ),
                 )
             )
@@ -2496,6 +2495,7 @@ def repair_d3_quotes_via_llm(
 
     if settings is None:
         from utils.settings import Settings as _S
+
         settings = _S()
 
     model = settings.get("summarisation.model", "") or settings.get(
@@ -2620,35 +2620,70 @@ def repair_d3_quotes_via_llm(
 
 _FUSION_MIN_PREFIX = 5  # prefix must be >= 5 chars (avoids matching short stems)
 _FUSION_MIN_SUFFIX = 3  # suffix must be >= 3 chars (2-char suffixes are
-                              # almost always legitimate inflections: -ed,
-                              # -es, -ly, -al, -er, -or)
+# almost always legitimate inflections: -ed,
+# -es, -ly, -al, -er, -or)
 _FUSION_MAX_SUFFIX = 4  # suffix must be <= 4 chars (longer = likely a real word)
 _FUSION_MIN_WORD_LEN = 9  # full word must be >= 9 chars (shorter = likely a
-                          # real inflection like 'discussion', 'whereas')
+# real inflection like 'discussion', 'whereas')
 
 # Common English suffixes that produce real words when appended to a source
 # word — these are NOT sentence-fusion remnants and must NOT be flagged.
 # Content-agnostic (English morphology, not book-specific).
-_FUSION_LEGIT_SUFFIXES = frozenset({
-    # 3-char legitimate
-    "ity", "ion", "ing", "ies", "ers", "est",
-    # 4-char legitimate
-    "ions", "ness", "ment", "tion", "sion", "able", "ible", "ance",
-    "ence", "ship", "hood", "ward", "ways", "side", "time",
-    "wide", "long", "term",
-    # hyphen-join suffixes (after hyphen normalization)
-    "ego", "off", "love", "self",
-})
+_FUSION_LEGIT_SUFFIXES = frozenset(
+    {
+        # 3-char legitimate
+        "ity",
+        "ion",
+        "ing",
+        "ies",
+        "ers",
+        "est",
+        # 4-char legitimate
+        "ions",
+        "ness",
+        "ment",
+        "tion",
+        "sion",
+        "able",
+        "ible",
+        "ance",
+        "ence",
+        "ship",
+        "hood",
+        "ward",
+        "ways",
+        "side",
+        "time",
+        "wide",
+        "long",
+        "term",
+        # hyphen-join suffixes (after hyphen normalization)
+        "ego",
+        "off",
+        "love",
+        "self",
+    }
+)
 
 # Common English compound words (hyphen-joined) that should NOT be flagged.
-_FUSION_LEGIT_COMPOUNDS = frozenset({
-    "alter-ego", "object-love", "split-off", "self-development",
-    "pre-modern", "self-help",
-    # V0.4.3 (audit D4 follow-up): common English hyphenated constructions
-    # that contain a source-word substring but are NOT fusions.
-    "generated-by", "well-consolidated", "well-integrated",
-    "well-defined", "well-established", "well-known",
-})
+_FUSION_LEGIT_COMPOUNDS = frozenset(
+    {
+        "alter-ego",
+        "object-love",
+        "split-off",
+        "self-development",
+        "pre-modern",
+        "self-help",
+        # V0.4.3 (audit D4 follow-up): common English hyphenated constructions
+        # that contain a source-word substring but are NOT fusions.
+        "generated-by",
+        "well-consolidated",
+        "well-integrated",
+        "well-defined",
+        "well-established",
+        "well-known",
+    }
+)
 
 
 def _is_legit_fusion_suffix(suffix: str) -> bool:
@@ -2732,7 +2767,7 @@ def detect_sentence_fusion(
                 continue  # exact match with source — not a fusion
             if lexicon and word in lexicon:
                 continue  # real English word — not a fusion (catches
-                         # 'furthermore', 'discussion', etc.)
+                # 'furthermore', 'discussion', etc.)
             # Normalize hyphens for the substring analysis.
             clean = word.replace("-", "")
             if len(clean) < _FUSION_MIN_WORD_LEN:
@@ -2746,7 +2781,10 @@ def detect_sentence_fusion(
                 for prefix_len in range(_FUSION_MIN_PREFIX, min(20, len(clean) - sub_start + 1)):
                     prefix = clean[sub_start : sub_start + prefix_len]
                     if prefix in source_words:
-                        if sub_start not in longest_by_start or prefix_len > longest_by_start[sub_start][0]:
+                        if (
+                            sub_start not in longest_by_start
+                            or prefix_len > longest_by_start[sub_start][0]
+                        ):
                             longest_by_start[sub_start] = (prefix_len, prefix)
             if not longest_by_start:
                 continue
@@ -2867,6 +2905,7 @@ def detect_sentence_fusion(
 # phrase to only 1 of them. If so, it flags the conflation.
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def detect_multi_author_conflation(
     text: str,
     field_label: str,
@@ -2899,7 +2938,7 @@ def detect_multi_author_conflation(
         # Find sentences with a quoted phrase + 2+ author names.
         # A "quoted phrase" is text between " or " or " (smart quotes).
         _quote_re = re.compile(r'["\u201c]([^"\u201c\u201d]{3,60})["\u201d]')
-        for sent_match in re.finditer(r'[^.!?]*[.!?]', text):
+        for sent_match in re.finditer(r"[^.!?]*[.!?]", text):
             sent = sent_match.group(0)
             sent_lower = sent.lower()
             # Find all author names mentioned in this sentence.
@@ -2925,7 +2964,7 @@ def detect_multi_author_conflation(
                     continue  # phrase not in source — skip
                 # Check which mentioned authors appear within 200 chars
                 # of the phrase in the source.
-                src_context = source_text[max(0, src_idx - 200):src_idx + 200].lower()
+                src_context = source_text[max(0, src_idx - 200) : src_idx + 200].lower()
                 source_attributed = set()
                 for author in mentioned:
                     if author.lower() in src_context:
@@ -2944,7 +2983,7 @@ def detect_multi_author_conflation(
                             snippet=text[snippet_start:snippet_end],
                             detail=(
                                 f"possible multi-author conflation: the phrase "
-                                f'\"{phrase}\" is attributed to {sorted(mentioned)} '
+                                f'"{phrase}" is attributed to {sorted(mentioned)} '
                                 f"in the summary, but the source attributes it only "
                                 f"to {sorted(source_attributed) or '[none found nearby]'}. "
                                 f"Conflated author(s): {sorted(conflated)}."
@@ -2954,8 +2993,9 @@ def detect_multi_author_conflation(
     except Exception as e:  # pragma: no cover
         from core.summarisation.postchecks.shared import logger
 
-        logger.warning("multi-author conflation detector crashed (non-fatal): %s: %s",
-                       type(e).__name__, e)
+        logger.warning(
+            "multi-author conflation detector crashed (non-fatal): %s: %s", type(e).__name__, e
+        )
     return text, issues
 
 
@@ -2963,6 +3003,7 @@ def detect_multi_author_conflation(
 # V0.4.16 (audit): page-ref injector for KD/TT — deterministic fallback
 # when the model ignores the MANDATORY page-citation prompt instruction.
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def inject_page_refs(
     text: str,
@@ -2990,8 +3031,8 @@ def inject_page_refs(
         import re as _re
 
         # Extract start_page and end_page from the source YAML frontmatter.
-        fm_match = _re.search(r'start_page:\s*(\d+)', source_text)
-        em_match = _re.search(r'end_page:\s*(\d+)', source_text)
+        fm_match = _re.search(r"start_page:\s*(\d+)", source_text)
+        em_match = _re.search(r"end_page:\s*(\d+)", source_text)
         if not fm_match or not em_match:
             return text, issues  # no page info — can't inject
         start_page = int(fm_match.group(1))
@@ -3002,7 +3043,7 @@ def inject_page_refs(
 
         # Find bullet lines that DON'T already have a page ref.
         lines = text.split("\n")
-        bullet_indices = [i for i, l in enumerate(lines) if l.startswith("- ")]
+        bullet_indices = [i for i, ln in enumerate(lines) if ln.startswith("- ")]
         if not bullet_indices:
             return text, issues
 
@@ -3010,7 +3051,7 @@ def inject_page_refs(
         for idx_pos, line_idx in enumerate(bullet_indices):
             line = lines[line_idx]
             # Check if the line already has a page ref like (p. 53).
-            if _re.search(r'\(p\.\s*\d', line):
+            if _re.search(r"\(p\.\s*\d", line):
                 continue  # already has a page ref
             # Estimate the page based on position in the bullet list.
             position_ratio = idx_pos / max(len(bullet_indices), 1)

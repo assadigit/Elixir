@@ -77,8 +77,8 @@ from core.summarisation.postchecks.garble import (  # noqa: F401
     detect_garbled_tokens,
     detect_grammatical_incoherence,
     detect_missing_spaces,
-    detect_sentence_fusion,  # V0.4.3 (audit D4) — sentence-boundary fusion
     detect_multi_author_conflation,  # V0.4.11 (audit #8) — multi-author concept conflation
+    detect_sentence_fusion,  # V0.4.3 (audit D4) — sentence-boundary fusion
     detect_word_fragment_merge,
     repair_stray_quotes,  # V0.20.5 (brainstorm D2)
     repair_stray_quotes_v2,  # V0.20.6 (brainstorm D2+) — even-count mismatches
@@ -829,9 +829,11 @@ def run_post_checks(
         else (None, [])
     )
     # V0.4.11 (audit #8): multi-author concept conflation check.
-    _, tho_conflation = detect_multi_author_conflation(
-        tho_str, "thorough", source_text or "", source_authors
-    ) if source_text and source_authors else (None, [])
+    _, tho_conflation = (
+        detect_multi_author_conflation(tho_str, "thorough", source_text or "", source_authors)
+        if source_text and source_authors
+        else (None, [])
+    )
     # V18.2.17 Fix 6: hedge-loss check.
     _, tho_hedge = (
         detect_hedge_loss(tho_str, source_text or "", "thorough") if source_text else (None, [])

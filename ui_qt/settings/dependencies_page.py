@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.system.dependency_checker import DependencyStatus
-from core.system.dependency_checker import DetailedDependencyChecker as DependencyChecker
 
 # ── Animated status dot ───────────────────────────────────────────────────
 
