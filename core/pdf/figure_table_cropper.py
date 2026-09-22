@@ -61,9 +61,9 @@ def extract_figures_and_tables(
 
     # V10.2.2: Don't create the folders upfront — only create them if
     # we actually find figures/tables.  This prevents empty folders.
-    graphs_dir = output_dir / "graphs"
-    tables_dir = output_dir / "tables"
-    # Folders are created lazily when the first figure/table is saved.
+    # V0.4.14: single umbrella folder for all cropped images.
+    images_dir = output_dir / "images"
+    # Folders are created lazily when the first image is saved.
 
     pages_to_process = sorted(valid_pages) if valid_pages else list(range(1, total_pages + 1))
 
@@ -95,8 +95,8 @@ def extract_figures_and_tables(
                             continue
                         img_ext = base_image.get("ext", "jpg")
                         fig_count += 1
-                        img_path = graphs_dir / f"page{page_num}_figure{fig_count}.{img_ext}"
-                        graphs_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
+                        img_path = images_dir / f"page{page_num}_image{fig_count}_figure.{img_ext}"
+                        images_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
                         img_path.write_bytes(img_bytes)
                         figures.append(
                             {
@@ -110,7 +110,7 @@ def extract_figures_and_tables(
                     log(f"  ⚠️ Figure extraction p.{page_num} img {img_index}: {e}", "DEBUG")
 
         doc.close()
-        log(f"  ✅ Extracted {fig_count} figure(s) → {graphs_dir}", "INFO")
+        log(f"  ✅ Extracted {fig_count} figure(s) → {images_dir}", "INFO")
 
     except ImportError:
         log("  ⚠️ PyMuPDF (fitz) not installed — figure extraction skipped", "WARNING")
@@ -162,12 +162,20 @@ def extract_figures_and_tables(
                         if bbox and all(v is not None for v in bbox):
                             im = page.crop(bbox).to_image(resolution=200)
                             tbl_count += 1
-                            img_path = tables_dir / f"page{page_num}_table{tbl_count}.jpg"
-                            tables_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
-                            im.save(str(img_path), format="JPEG")
+                            img_path = images_dir / f"page{page_num}_image{fig_count + tbl_count}_table.jpg"
+                            images_dir.mkdir(parents=True, exist_ok=True)  # V10.2.2: lazy
+                            # V0.4.14: fix "cannot write mode P as JPEG" —
+                            # pdfplumber renders in palette mode ("P") which
+                            # JPEG doesn't support. Convert to RGB first.
+                            try:
+                                im.save(str(img_path), format="JPEG")
+                            except Exception:
+                                # Fallback: save as PNG (supports all modes)
+                                img_path = img_path.with_suffix(".png")
+                                im.save(str(img_path), format="PNG")
 
                             # Also save as Markdown table
-                            md_path = tables_dir / f"page{page_num}_table{tbl_count}.md"
+                            md_path = images_dir / f"page{page_num}_image{fig_count + tbl_count}_table.md"
                             md_content = _table_to_markdown(table_data)
                             md_path.write_text(md_content, encoding="utf-8")
 
@@ -183,7 +191,7 @@ def extract_figures_and_tables(
                     except Exception as e:
                         log(f"  ⚠️ Table extraction p.{page_num} tbl {tbl_index}: {e}", "DEBUG")
 
-        log(f"  ✅ Extracted {tbl_count} table(s) → {tables_dir}", "INFO")
+        log(f"  ✅ Extracted {tbl_count} table(s) → {images_dir}", "INFO")
 
     except ImportError:
         log("  ⚠️ pdfplumber not installed — table extraction skipped", "WARNING")
