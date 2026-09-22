@@ -682,6 +682,12 @@ _TOUCHED = (
     _DET,
     _GFB,
     _CI,
+    # V0.4.19 (de-monolithization): the Converter visual-feature mixin
+    # (cover screenshots, OCR repair, vision-region cropper, footnote
+    # extraction — verbatim moves from converter_impl.py) joins the
+    # deny-list scan — same rule, new home (the scan follows the moved
+    # bodies).
+    _project_root / "core" / "pipeline" / "conversion" / "visual_features.py",
     _POSTCHECKS_PKG / "shared.py",
     _POSTCHECKS_PKG / "leakage.py",
     # V0.4.19 (de-monolithization): garble.py became the garble/ package

@@ -758,10 +758,23 @@ class TestA15CancelSkipsDownstreamPhases:
         )
 
     def test_phase_gates_wired_in_converter_impl(self):
-        """Source guard: every post-summary phase has a _cancel_requested gate."""
+        """Source guard: every post-summary phase has a _cancel_requested gate.
+
+        V0.4.19 (de-monolithization): the footnote-extraction block moved
+        VERBATIM to conversion/visual_features.py (_run_footnote_extraction)
+        — its gate pin follows the moved body, so the scan now reads BOTH
+        files (union semantics, same property asserted).
+        """
         src = (_project_root / "core" / "pipeline" / "converter_impl.py").read_text(
             encoding="utf-8"
         )
+        # V0.4.19 (de-monolithization): the visual-feature mixin module
+        # (cover screenshots, OCR repair, cropper, footnotes) moved VERBATIM
+        # out of converter_impl.py — gates that moved with the blocks are
+        # asserted against this file too.
+        src += (
+            _project_root / "core" / "pipeline" / "conversion" / "visual_features.py"
+        ).read_text(encoding="utf-8")
         gates = [
             "DOCX build",
             "keypoints build",

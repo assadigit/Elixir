@@ -155,11 +155,18 @@ class TestExtractCoversTocEntriesFix:
     whenever ``self.request.selected_chapters`` was truthy (the ``and
     toc_entries`` evaluated).  V10.12.1 fixes this by making ``toc_entries``
     a parameter + moving the call after TOC extraction.
+
+    V0.4.19 (de-monolithization): ``_extract_covers`` moved VERBATIM from
+    converter_impl.py to conversion/visual_features.py
+    (ConverterVisualMixin) — the pins follow the moved body.
     """
+
+    # V0.4.19: the new home of _extract_covers (verbatim move).
+    _COVERS = Path("core/pipeline/conversion/visual_features.py")
 
     def test_extract_covers_accepts_toc_entries_param(self):
         """_extract_covers must accept toc_entries as a parameter (not bare ref)."""
-        src = Path("core/pipeline/converter_impl.py").read_text(encoding="utf-8-sig")
+        src = self._COVERS.read_text(encoding="utf-8-sig")
         # Find the _extract_covers method definition
         tree = ast.parse(src)
         for node in ast.walk(tree):
@@ -173,7 +180,7 @@ class TestExtractCoversTocEntriesFix:
 
     def test_extract_covers_toc_entries_has_default(self):
         """toc_entries param should default to None (backward-compat)."""
-        src = Path("core/pipeline/converter_impl.py").read_text(encoding="utf-8-sig")
+        src = self._COVERS.read_text(encoding="utf-8-sig")
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "_extract_covers":
@@ -218,7 +225,7 @@ class TestExtractCoversTocEntriesFix:
         After the fix, every ``toc_entries`` in the method body resolves to
         the parameter.
         """
-        src = Path("core/pipeline/converter_impl.py").read_text(encoding="utf-8-sig")
+        src = self._COVERS.read_text(encoding="utf-8-sig")
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "_extract_covers":
@@ -331,10 +338,22 @@ class TestSegmentationImportPath:
         )
 
     def test_converter_imports_from_same_path(self):
-        """converter.py must import from the same path as segmentation.py (consistency)."""
+        """converter.py must import from the same path as segmentation.py (consistency).
+
+        V0.4.19 (de-monolithization): the converter's page-marker import
+        moved with ``_targeted_ocr_repair`` to conversion/visual_features.py
+        — the pin follows the moved body (and the wrong-path import must
+        stay absent from BOTH files).
+        """
         conv_src = Path("core/pipeline/converter_impl.py").read_text(encoding="utf-8-sig")
-        assert "from core.postprocess.page_marker import" in conv_src, (
-            "converter.py should import page-marker functions from core.postprocess.page_marker"
+        vf_src = Path("core/pipeline/conversion/visual_features.py").read_text(encoding="utf-8-sig")
+        assert "from core.postprocess.page_marker import" in vf_src, (
+            "the converter's visual-feature mixin must import page-marker "
+            "functions from core.postprocess.page_marker"
+        )
+        assert "from utils.text_utils import extract_page_markers" not in conv_src + vf_src, (
+            "neither converter_impl.py nor visual_features.py may import "
+            "extract_page_markers from utils.text_utils (wrong path)"
         )
 
 
