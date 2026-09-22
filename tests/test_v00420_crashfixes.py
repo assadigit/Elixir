@@ -363,10 +363,17 @@ class TestNumpyAbiProbeBehavior:
             monkeypatch,
             spec_names={"numpy", "torch"},
             raise_for={
+                # V0.4.22: numpy ITSELF failing is the FATAL branch
+                # (STARTUP ERROR). torch failing alone is the optional
+                # branch (STARTUP WARNING + Continue-anyway dialog).
+                "numpy": RuntimeError(
+                    "module compiled against ABI version 0x1000009 "
+                    "but this version of numpy is 0x2000000"
+                ),
                 "torch": RuntimeError(
                     "module compiled against ABI version 0x1000009 "
                     "but this version of numpy is 0x2000000"
-                )
+                ),
             },
         )
         from core.system.numpy_abi_check import check_numpy_abi_compatibility
@@ -375,8 +382,7 @@ class TestNumpyAbiProbeBehavior:
             check_numpy_abi_compatibility()
         assert ei.value.code == 1
         out = capsys.readouterr().out
-        # V0.4.21: header is version-aware ("numpy 2.x ABI mismatch" only
-        # when the installed numpy IS 2.x) — pin the invariant wording.
+        # V0.4.21/V0.4.22: header is version-aware; pin the invariant wording.
         assert "STARTUP ERROR" in out and "ABI mismatch" in out
         assert "0x1000009" in out, "the exact error text must be surfaced to the user"
         assert "torch" in out, "V0.4.21: the failing module must be named in the console report"

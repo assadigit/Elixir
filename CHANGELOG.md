@@ -1,5 +1,63 @@
 # Changelog
 
+## V0.4.22 — the ABI guard no longer locks you out (second field report, screenshot 4343.png)
+
+> **The release:** the same user hit the V0.4.21 dialog — and this time
+> the screenshot proved the message was COMPLETE and readable (cv2
+> named, installed numpy 2.5.3 shown, both fix commands visible, nothing
+> clipped)… and they still couldn't get past it. Two product defects,
+> not message defects: the fix commands said `python -m pip …` (with
+> several Pythons installed, bare `python` targets the wrong
+> interpreter — the command "succeeds" and fixes nothing), and a broken
+> OPTIONAL module (cv2 feeds only the rapidocr vision-OCR chain) was
+> hard-blocking the ENTIRE app at startup.
+
+**1. Fix commands now target the interpreter actually running Elixir:**
+
+  - Every command embeds `sys.executable` (quoted, so paths with
+    spaces survive cmd.exe): copy-paste it and it can only ever fix
+    THE Python that is running Elixir — the classic
+    "I ran pip and nothing changed" trap on multi-Python Windows
+    machines is gone.
+
+**2. Only numpy itself is fatal — optional modules offer "Continue
+  anyway":**
+
+  - cv2 (via markitdown[all] → rapidocr), torch (extras), onnxruntime,
+    scipy, and pandas are all OPTIONAL to Elixir's core PDF→Markdown
+    pipeline — none of them are imported by Elixir's own code at
+    startup. A broken optional module now produces a STARTUP WARNING
+    and a dialog with two buttons: **Continue anyway** (default — the
+    app opens, everything except the affected features works) or
+    **Exit and fix now**.
+  - The message names the affected features per failing module
+    (cv2/onnxruntime → rapidocr vision OCR; pandas → QuickConvert
+    fallback; torch → vision OCR / TTS extras; scipy → TTS extras), and
+    the same warning repeats on the console when you continue.
+  - numpy ITSELF failing to import (mixed/corrupt install) remains
+    fatal: STARTUP ERROR + SystemExit(1), single OK button.
+  - Safety of the ambiguous paths: a dialog dismissed without a choice
+    (clickedButton → None) and a dialog that cannot be built at all
+    both take the exit branch — never a silent continue.
+
+**3. Sharper diagnostics for the broken-numpy case:**
+
+  - `_installed_numpy_version` gains an importlib.metadata fallback:
+    when numpy itself cannot import, the distribution metadata still
+    reports what is ACTUALLY installed — exactly what a mixed-install
+    diagnosis needs (the V0.4.20 classic test now drives this: numpy
+    import raises, the report still says "numpy 1.26.4 installed").
+
+**4. The optional-case message is compact and fix-first** (the user's
+  window is 816×510): one diagnostic line → the copy-paste commands →
+  the affected-features line; tracebacks stay in Show Details. The
+  direction-tailored command order (numpy 2.x → numpy restore
+  recommended; numpy 1.x → module upgrade recommended) is unchanged
+  from V0.4.21.
+
+  Suite: **5,679 passed / 0 failed** (was 5,657; +22 new).
+  Gates: ruff check + format clean (588 files); `make eval-check` OK.
+
 ## V0.4.21 — numpy ABI dialog: machine-specific report (first V0.4.20 field report)
 
 > **The release:** the first V0.4.20 field report landed: the user's

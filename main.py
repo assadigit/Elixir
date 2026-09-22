@@ -291,9 +291,10 @@ if __name__ == "__main__":
         _show_missing_deps_error(missing)
 
     # V0.4.4: numpy 2.x ABI mismatch probe (torch/pandas/onnxruntime/
-    # scipy/cv2) — catches every ABI error shape early and shows a
-    # machine-specific fix dialog (V0.4.21: failing module(s) + pip
-    # names + installed numpy version + tailored fix commands).
+    # scipy/cv2) — catches every ABI error shape early. V0.4.22: fatal
+    # only when numpy itself is broken; optional-module failures offer
+    # "Continue anyway", and fix commands embed sys.executable (targets
+    # the interpreter actually running Elixir).
     from core.system.numpy_abi_check import check_numpy_abi_compatibility
 
     check_numpy_abi_compatibility()

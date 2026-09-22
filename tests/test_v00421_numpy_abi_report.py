@@ -45,6 +45,12 @@ from core.system.numpy_abi_check import (
 
 _ABI_CHECK = _project_root / "core" / "system" / "numpy_abi_check.py"
 
+# V0.4.22: fix commands embed the running interpreter (sys.executable)
+# so a copy-paste always targets THE python running Elixir. The builder
+# takes it as a parameter; tests pass a Windows-style path WITH SPACES
+# to pin the quoting at the same time.
+_EXE = "C:/Program Files/Python312/python.exe"
+
 
 def _exc(msg: str) -> ImportError:
     """A real exception carrying a real traceback (details must show it)."""
@@ -81,6 +87,7 @@ class TestReportNamesTheBrokenModules:
         report = _build_abi_error_report(
             [("cv2", _exc("numpy.core.multiarray failed to import"))],
             "2.5.3",
+            python_exe=_EXE,
         )
         assert "numpy 2.x ABI mismatch" in report.console[0]
         assert "cv2: numpy.core.multiarray failed to import" in "\n".join(report.console)
@@ -88,8 +95,8 @@ class TestReportNamesTheBrokenModules:
         assert "opencv-python" in report.message, (
             "the pip package name must appear — 'pip install cv2' is wrong"
         )
-        assert 'python -m pip install --force-reinstall "numpy==1.26.4"' in report.message
-        assert "python -m pip install --upgrade opencv-python" in report.message
+        assert f'"{_EXE}" -m pip install --force-reinstall "numpy==1.26.4"' in report.message
+        assert f'"{_EXE}" -m pip install --upgrade opencv-python' in report.message
         assert "2.5.3" in report.message, "the installed numpy version must be shown"
         assert "numpy>=1.26.0,<2.0.0" in report.message, "Elixir's own pin must be shown"
         assert "numpy ABI mismatch" in report.title
@@ -100,6 +107,7 @@ class TestReportNamesTheBrokenModules:
         report = _build_abi_error_report(
             [("cv2", _exc("numpy.core.multiarray failed to import"))],
             "2.5.3",
+            python_exe=_EXE,
         )
         # No generic four-module enumeration may appear as a claim about
         # THIS machine — only cv2 is named as failing.
@@ -117,6 +125,7 @@ class TestReportNamesTheBrokenModules:
                 ("torch", _exc("module compiled against ABI version 0x1000009")),
             ],
             "2.5.3",
+            python_exe=_EXE,
         )
         assert "cv2" in report.message and "torch" in report.message
         assert "opencv-python torch" in report.message, "sorted pip names in one command"
@@ -129,6 +138,7 @@ class TestReportNamesTheBrokenModules:
         report = _build_abi_error_report(
             [("cv2", _exc("numpy.core.multiarray failed to import"))],
             "2.5.3",
+            python_exe=_EXE,
         )
         assert "Traceback (most recent call last)" in report.details
         assert "in _exc" in report.details, "the raising frame must be visible"
@@ -143,22 +153,25 @@ class TestReportTailorsFixDirection:
         report = _build_abi_error_report(
             [("torch", _exc("module compiled against ABI version 0x1000009"))],
             "1.26.4",
+            python_exe=_EXE,
         )
         joined = "\n".join(report.console)
         assert "numpy ABI mismatch (numpy 1.26.4 installed)" in joined
         assert "numpy 2.x ABI mismatch" not in joined, (
             "must not claim 2.x when the installed numpy is 1.x"
         )
-        assert "python -m pip install --upgrade torch" in report.message
+        assert f'"{_EXE}" -m pip install --upgrade torch' in report.message
         # The numpy-restore path is still offered as the alternative.
         assert '"numpy==1.26.4"' in report.message
 
     def test_unknown_version_degrades_to_both_paths(self) -> None:
         """Unreadable numpy version → no crash, generic direction text,
         both fix commands still present."""
-        report = _build_abi_error_report([("scipy", _exc("_ARRAY_API not found"))], "unknown")
-        assert "numpy unknown" in report.message
-        assert "python -m pip install --upgrade scipy" in report.message
+        report = _build_abi_error_report(
+            [("scipy", _exc("_ARRAY_API not found"))], "unknown", python_exe=_EXE
+        )
+        assert "unknown" in report.message
+        assert f'"{_EXE}" -m pip install --upgrade scipy' in report.message
         assert '"numpy==1.26.4"' in report.message
 
     def test_lockfile_trap_warning_kept(self) -> None:
@@ -167,6 +180,7 @@ class TestReportTailorsFixDirection:
         report = _build_abi_error_report(
             [("cv2", _exc("numpy.core.multiarray failed to import"))],
             "2.5.3",
+            python_exe=_EXE,
         )
         assert "requirements.lock" in report.message
 
@@ -181,7 +195,11 @@ class TestInstalledNumpyVersion:
         monkeypatch.setitem(sys.modules, "numpy", stub)
         assert _installed_numpy_version() == "9.9.9"
 
-    def test_never_raises_on_broken_import(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_metadata_fallback_when_import_broken(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """V0.4.22: numpy itself cannot import → importlib.metadata still
+        reports what is ACTUALLY installed (the mixed-install diagnosis)."""
+        import importlib.metadata as _im
+
         monkeypatch.delitem(sys.modules, "numpy", raising=False)
         real_import = builtins.__import__
 
@@ -191,21 +209,58 @@ class TestInstalledNumpyVersion:
             return real_import(name, *a, **kw)
 
         monkeypatch.setattr(builtins, "__import__", boom, raising=True)
+        monkeypatch.setattr(_im, "version", lambda name: "2.5.3", raising=True)
+        assert _installed_numpy_version() == "2.5.3"
+
+    def test_never_raises_when_both_layers_broken(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delitem(sys.modules, "numpy", raising=False)
+        real_import = builtins.__import__
+        import importlib.metadata as _im
+
+        def boom(name: str, *a, **kw):
+            if name == "numpy":
+                raise ImportError("numpy itself is broken")
+            return real_import(name, *a, **kw)
+
+        def boom_meta(name: str):
+            raise _im.PackageNotFoundError(name)
+
+        monkeypatch.setattr(builtins, "__import__", boom, raising=True)
+        monkeypatch.setattr(_im, "version", boom_meta, raising=True)
         assert _installed_numpy_version() == "unknown"
 
 
 # ── End-to-end: the user's machine, simulated ───────────────────────────────
 
 
+class _StubBtn:
+    """A stand-in button — identity is what matters: clickedButton()
+    must return the SAME object addButton returned (Qt's contract)."""
+
+    def __init__(self, text: str, role) -> None:
+        self.text = text
+        self.role = role
+
+
 class _StubMessageBox:
-    """Records the ABI dialog's calls (no real Qt rendering, never blocks)."""
+    """Records the ABI dialog's calls (no real Qt rendering, never blocks).
+
+    V0.4.22: supports the Continue-anyway button API. ``click`` selects
+    which button ``clickedButton`` reports (default: the exit button —
+    the safe branch).
+    """
 
     Critical = "critical"
+    Warning = "warning"
     Ok = "ok"
+    RejectRole = "reject"
+    AcceptRole = "accept"
     instances: list[_StubMessageBox] = []
 
-    def __init__(self) -> None:
+    def __init__(self, click: str | None = "Exit and fix now") -> None:
         self.calls: dict[str, tuple] = {}
+        self._buttons: list[_StubBtn] = []
+        self._click = click
         _StubMessageBox.instances.append(self)
 
     def setIcon(self, icon) -> None:
@@ -222,6 +277,21 @@ class _StubMessageBox:
 
     def setStandardButtons(self, buttons) -> None:
         self.calls["buttons"] = (buttons,)
+
+    def addButton(self, text: str, role) -> _StubBtn:
+        btn = _StubBtn(text, role)
+        self._buttons.append(btn)
+        self.calls.setdefault("addButton", ())
+        return btn
+
+    def setDefaultButton(self, btn) -> None:
+        self.calls["default"] = (btn.text,)
+
+    def clickedButton(self):
+        for b in self._buttons:
+            if b.text == self._click:
+                return b
+        return None
 
     def exec(self) -> int:
         self.calls["exec"] = ()
@@ -264,6 +334,9 @@ class TestFieldReportEndToEnd:
         monkeypatch.setattr(_ilu, "find_spec", fake_find_spec, raising=True)
         monkeypatch.setattr(builtins, "__import__", fake_import, raising=True)
 
+        # V0.4.21 pinned the exit branch; V0.4.22 keeps it (stub defaults
+        # to the exit button) — the guard still ends in SystemExit when
+        # the user chooses NOT to continue.
         with pytest.raises(SystemExit) as ei:
             check_numpy_abi_compatibility()
         assert ei.value.code == 1
@@ -271,7 +344,7 @@ class TestFieldReportEndToEnd:
         out = capsys.readouterr().out
         assert "numpy 2.x ABI mismatch" in out
         assert "cv2: numpy.core.multiarray failed to import" in out
-        assert 'fix: python -m pip install --force-reinstall "numpy==1.26.4"' in out
+        assert f'fix: "{sys.executable}" -m pip install --force-reinstall "numpy==1.26.4"' in out
 
         assert _StubMessageBox.instances, "the fix dialog must have been created"
         box = _StubMessageBox.instances[0]
