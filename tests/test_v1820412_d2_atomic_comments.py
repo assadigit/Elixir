@@ -95,6 +95,9 @@ _EXPECTED_ATOMIC_CALLS = {
 
 # FIX-2 owned files (comment de-jargon) + the book phrases that must not
 # appear anywhere in them (comments and docstrings included, zero allowlist).
+# V0.4.19 (de-monolithization): garble.py became the garble/ package — the
+# no-book-jargon scan follows the moved bodies (every *.py in the package).
+_GARBLE_PKG = _project_root / "core" / "summarisation" / "postchecks" / "garble"
 _COMMENT_FILES = [
     "core/summarisation/text_preprocessor_impl.py",
     "core/summarisation/postcheck_detectors.py",
@@ -102,7 +105,7 @@ _COMMENT_FILES = [
     # postcheck_detectors.py) join the no-book-jargon scan.
     "core/summarisation/postchecks/shared.py",
     "core/summarisation/postchecks/leakage.py",
-    "core/summarisation/postchecks/garble.py",
+    *[f"core/summarisation/postchecks/garble/{p.name}" for p in sorted(_GARBLE_PKG.glob("*.py"))],
     "core/summarisation/postchecks/attribution.py",
     "core/summarisation/postchecks/coherence.py",
     "core/summarisation/postchecks/orchestrator.py",

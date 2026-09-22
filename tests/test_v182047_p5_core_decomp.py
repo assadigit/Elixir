@@ -627,7 +627,12 @@ _TOUCHED = (
     _CI,
     _POSTCHECKS_PKG / "shared.py",
     _POSTCHECKS_PKG / "leakage.py",
-    _POSTCHECKS_PKG / "garble.py",
+    # V0.4.19 (de-monolithization): garble.py became the garble/ package
+    # (lexicon / token_detectors / dropped_letter / author_garbles /
+    # quote_repair / fusion / conflation / page_refs + the facade __init__).
+    # The deny-list scan follows the moved bodies (the Phase 5.2 re-pointing
+    # discipline — every *.py in the package is scanned).
+    *sorted((_POSTCHECKS_PKG / "garble").glob("*.py")),
     _POSTCHECKS_PKG / "attribution.py",
     _POSTCHECKS_PKG / "coherence.py",
     _POSTCHECKS_PKG / "orchestrator.py",
