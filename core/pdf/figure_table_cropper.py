@@ -38,14 +38,25 @@ def extract_figures_and_tables(
     total_pages: int,
     log_callback: LogFn | None = None,
     valid_pages: set | None = None,
+    vlm_callable=None,
 ) -> tuple[list[dict], list[dict]]:
     """Extract figures and tables from a scientific PDF.
 
+    V0.4.17: added optional ``vlm_callable`` for VLM-based table/figure
+    validation. When provided, each detected region is sent to the vision
+    model with a "Is this a table, chart, diagram, or just text?" prompt.
+    Only regions the VLM confirms as table/chart/diagram are saved. This
+    replaces the V0.4.15 Python heuristic (_is_real_table) with a more
+    intelligent vision-based filter.
+
     Args:
         pdf_path: Path to the PDF file.
-        output_dir: The book's output directory (graphs/ and tables/ created inside).
+        output_dir: The book's output directory (images/ created inside).
         total_pages: Total number of pages in the PDF.
         log_callback: fn(msg, level) for logging.
+        valid_pages: If set, only process these page numbers.
+        vlm_callable: optional ``f(image_bytes, prompt) -> str`` for VLM
+            validation. When None, falls back to the V0.4.15 heuristic.
         valid_pages: If set, only process these page numbers.
 
     Returns:
@@ -159,15 +170,51 @@ def extract_figures_and_tables(
 
                         # V0.4.15: validate this is actually a table, not a
                         # text paragraph misidentified by the "text" strategy.
-                        # The V0.4.13 text-strategy fallback is aggressive —
-                        # it detects multi-column text layouts as "tables"
-                        # because text columns look like table columns. A
-                        # real table has:
-                        #   - 2+ columns (multi-column structure)
-                        #   - Short cells (averaging <80 chars — table cells
-                        #     are fragments, not full paragraphs)
-                        #   - Consistent column count across rows
-                        if not _is_real_table(table_data):
+                        # V0.4.17: use VLM validation when available, fall back
+                        # to the V0.4.15 heuristic when no VLM.
+                        _is_table = False
+                        if vlm_callable:
+                            # V0.4.17: VLM-based validation — render the crop
+                            # and ask the vision model "Is this a table?"
+                            bbox_check = table.bbox
+                            if bbox_check and all(v is not None for v in bbox_check):
+                                im_check = page.crop(bbox_check).to_image(resolution=150)
+                                import io as _io
+
+                                buf = _io.BytesIO()
+                                try:
+                                    im_check.save(buf, format="PNG")
+                                except Exception:
+                                    im_check.save(buf, format="JPEG")
+                                vlm_result = _vlm_validate_region(
+                                    buf.getvalue(), vlm_callable, log
+                                )
+                                if vlm_result == "TABLE":
+                                    _is_table = True
+                                elif vlm_result == "TEXT":
+                                    log(
+                                        f"  ⏭️ VLM rejected p.{page_num} tbl {tbl_index}: "
+                                        f"classified as TEXT, not a table",
+                                        "DEBUG",
+                                    )
+                                elif vlm_result is None:
+                                    log(
+                                        f"  ⚠️ VLM classification failed p.{page_num} tbl {tbl_index} "
+                                        f"— falling back to heuristic",
+                                        "DEBUG",
+                                    )
+                                    _is_table = _is_real_table(table_data)
+                                else:
+                                    # VLM said CHART/DIAGRAM/FIGURE — not a table
+                                    log(
+                                        f"  ⏭️ VLM classified p.{page_num} tbl {tbl_index} "
+                                        f"as {vlm_result}, not TABLE — skipping",
+                                        "DEBUG",
+                                    )
+                        else:
+                            _is_table = _is_real_table(table_data)
+
+                        if not _is_table:
                             log(
                                 f"  ⏭️ Table extraction p.{page_num} tbl {tbl_index}: "
                                 f"skipped — detected as text, not a real table",
@@ -283,6 +330,51 @@ def _is_real_table(table_data: list) -> bool:
         return False
 
     return True
+
+
+# ── V0.4.17: VLM-based table/figure validation ────────────────────────────
+
+_VLM_CLASSIFY_PROMPT = """Look at this image and classify it as one of:
+- TABLE: a structured table with rows and columns of data
+- CHART: a chart, graph, or plot (bar, line, pie, scatter, etc.)
+- DIAGRAM: a flowchart, schematic, org chart, or other diagram
+- FIGURE: an illustration, photo, or infographic
+- TEXT: just plain text paragraphs or headings (NOT a visual element)
+
+Output ONLY one word: TABLE, CHART, DIAGRAM, FIGURE, or TEXT.
+"""
+
+
+def _vlm_validate_region(
+    image_bytes: bytes,
+    vlm_callable,
+    log: LogFn,
+) -> str | None:
+    """V0.4.17: ask the VLM to classify the cropped region.
+
+    Returns one of: "TABLE", "CHART", "DIAGRAM", "FIGURE", "TEXT", or
+    None (if the VLM call fails or returns an unparseable response).
+    """
+    if not vlm_callable:
+        return None  # no VLM — fall back to heuristic
+    try:
+        raw = vlm_callable(image_bytes, _VLM_CLASSIFY_PROMPT)
+        if not raw:
+            return None
+        # Parse the response — the VLM should output one word.
+        word = raw.strip().upper().split()[0] if raw.strip() else ""
+        # Strip any punctuation.
+        word = word.rstrip(".!?,;:")
+        if word in ("TABLE", "CHART", "DIAGRAM", "FIGURE", "TEXT"):
+            return word
+        # Check if the word appears anywhere in the response.
+        for kw in ("TABLE", "CHART", "DIAGRAM", "FIGURE", "TEXT"):
+            if kw in raw.upper():
+                return kw
+        return None
+    except Exception as e:
+        log(f"  ⚠️ VLM classification failed: {type(e).__name__}: {e}", "DEBUG")
+        return None
 
 
 def _extract_caption(page, page_num: int, label: str) -> str:

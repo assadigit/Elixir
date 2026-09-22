@@ -805,6 +805,7 @@ def extract_visual_regions(
                 total_pages=max(pages) if pages else 0,
                 log_callback=log,
                 valid_pages=set(pages),
+                vlm_callable=vlm_callable,  # V0.4.17: pass VLM for validation
             )
             for fig in figures:
                 regions.append(
