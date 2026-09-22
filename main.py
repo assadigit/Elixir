@@ -290,12 +290,10 @@ if __name__ == "__main__":
     if missing:
         _show_missing_deps_error(missing)
 
-    # V0.4.4: probe for numpy 2.x ABI mismatch with compiled deps
-    # (torch/transformers/pandas/scipy). Catches the "module compiled
-    # against ABI version 0x1000009" RuntimeError early and shows a
-    # focused fix dialog instead of a generic crash report.
-    # V0.4.19: body extracted VERBATIM to core/system/numpy_abi_check.py
-    # (main.py was 404 lines — past its <320 pin; behavior unchanged).
+    # V0.4.4: numpy 2.x ABI mismatch probe (torch/pandas/onnxruntime/
+    # scipy/cv2) — catches every ABI error shape early and shows a
+    # machine-specific fix dialog (V0.4.21: failing module(s) + pip
+    # names + installed numpy version + tailored fix commands).
     from core.system.numpy_abi_check import check_numpy_abi_compatibility
 
     check_numpy_abi_compatibility()

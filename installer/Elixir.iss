@@ -23,7 +23,7 @@
 
 [Setup]
 AppName=Elixir
-AppVersion=0.4.20  ; V0.20.22: KEEP IN SYNC with the VERSION file (single source of truth)
+AppVersion=0.4.21  ; V0.20.22: KEEP IN SYNC with the VERSION file (single source of truth)
 AppPublisher=Elixir
 DefaultDirName={autopf}\Elixir
 DefaultGroupName=Elixir

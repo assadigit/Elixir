@@ -375,8 +375,15 @@ class TestNumpyAbiProbeBehavior:
             check_numpy_abi_compatibility()
         assert ei.value.code == 1
         out = capsys.readouterr().out
-        assert "STARTUP ERROR" in out and "numpy 2.x ABI mismatch" in out
+        # V0.4.21: header is version-aware ("numpy 2.x ABI mismatch" only
+        # when the installed numpy IS 2.x) — pin the invariant wording.
+        assert "STARTUP ERROR" in out and "ABI mismatch" in out
         assert "0x1000009" in out, "the exact error text must be surfaced to the user"
+        assert "torch" in out, "V0.4.21: the failing module must be named in the console report"
+        assert re.search(r"numpy \d+\.\d+\.\d+ installed", out), (
+            "V0.4.21: the installed numpy version must be surfaced in the console report"
+        )
+        assert "fix:" in out, "V0.4.21: the console report ends with the fix command"
 
     def test_numpy2_importerror_shape_fires_guard(self, monkeypatch, _no_dialog):
         """numpy 2.x's own ImportError wording must be recognised too."""

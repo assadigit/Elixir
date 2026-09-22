@@ -1,5 +1,60 @@
 # Changelog
 
+## V0.4.21 — numpy ABI dialog: machine-specific report (first V0.4.20 field report)
+
+> **The release:** the first V0.4.20 field report landed: the user's
+> startup traceback showed `ImportError: numpy.core.multiarray failed
+> to import` from cv2 (an opencv-python build compiled against the
+> numpy 1.x ABI, with numpy 2.x installed by mistake — the user
+> confirmed the wrong numpy). The V0.4.20 guard fired exactly as
+> designed (the pasted traceback was the dialog's "Show Details"
+> pane), but its fix dialog had three gaps: it enumerated four modules
+> that had NOT failed while never naming cv2 (the module that had), it
+> never showed which numpy was installed, and it offered only the
+> numpy-downgrade fix. V0.4.21 rebuilds the report so it describes the
+> machine that actually broke.
+
+**numpy ABI report now machine-specific
+  (`core/system/numpy_abi_check.py`):**
+
+  - ALL ABI failures are collected (not just the first) — the report
+    names every module broken on this machine, each with its pip
+    package name (`cv2` → `opencv-python`, so the fix commands stay
+    copy-pasteable — `pip install cv2` would install the wrong thing).
+  - The installed numpy version is shown next to Elixir's own pin
+    (`numpy>=1.26.0,<2.0.0`), and the fix advice is tailored to the
+    actual mismatch direction:
+    - numpy 2.x installed (the field report's case): [A] restore
+      `numpy==1.26.4` (recommended), [B] upgrade the failing module(s)
+      to numpy 2.x-compatible builds;
+    - numpy 1.x installed with a module built against a different
+      ABI: [A] upgrade the failing module(s), [B] restore numpy
+      1.26.4 — the V0.4.20 dialog wrongly claimed "numpy 2.x" in this
+      direction.
+  - The console report mirrors the dialog (failing modules + installed
+    numpy + the primary fix command), and the "Show Details" pane
+    keeps the full traceback per failing module.
+  - The report is built by a pure function
+    (`_build_abi_error_report`) so the dialog content is unit-testable
+    without Qt.
+  - Probe list, find_spec pre-filter, ABI marker matching, lockfile
+    warning, and the SystemExit(1) contract are all unchanged from
+    V0.4.20.
+  - New tests: `tests/test_v00421_numpy_abi_report.py` — 12 tests:
+    builder pins (the field-report case verbatim, pip-name surfacing,
+    no false module enumeration, all-failures collection, traceback
+    details, both fix directions, lockfile warning kept,
+    version-helper robustness) + an end-to-end run of the real check
+    against a simulated copy of the user's machine (stubbed numpy
+    2.5.3 + ABI-broken cv2 → console report AND dialog text verified
+    via a recording QMessageBox stub). One V0.4.20 pin updated to the
+    version-aware header wording (failing module + installed version +
+    fix command now surfaced in the console report; the
+    guard-firing property itself is unchanged).
+
+  Suite: **5,657 passed / 0 failed** (was 5,645; +12 new).
+  Gates: ruff check + format clean (587 files); `make eval-check` OK.
+
 ## V0.4.20 — user-reported fixes: type-card icon centering, wizard Step 5 scroll, numpy ABI hardening
 
 > **The release:** three fixes from a real user session (screenshots
