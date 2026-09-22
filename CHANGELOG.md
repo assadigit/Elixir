@@ -1,5 +1,81 @@
 # Changelog
 
+## V0.4.20 — user-reported fixes: type-card icon centering, wizard Step 5 scroll, numpy ABI hardening
+
+> **The release:** three fixes from a real user session (screenshots
+> 3434.png / 454545.png): document-type card icons rendered top-left
+> instead of top-center, the llama.cpp backend details in wizard Step 5
+> were cramped and unreachable, and a numpy 2.x ABI mismatch still
+> crashed the app despite the V0.4.4 guard.
+
+**1. Type-card icons now actually centered (top-center, above titles):**
+
+  - A fixed-size `QLabel` added to a `QVBoxLayout` with default
+    alignment keeps the ORIGIN-side position when it cannot fill the
+    cell — Qt rendered the 64×64 icon at the left edge of every card,
+    despite the V1.5 "centered design" docstring. The
+    `setAlignment(Qt.AlignCenter)` on the label only centers the pixmap
+    WITHIN the fixed 64×64 label, never the label within the card.
+  - Fix: `lay.addWidget(self.icon_label, 0, Qt.AlignHCenter)` —
+    geometry-verified offscreen: icon center 117–127px vs card centers
+    121.5–128.5px on all six preset cards (≤1.5px error).
+
+**2. Wizard Step 5 (llama.cpp backend): scrollable — nothing clipped
+  anymore:**
+
+  - Step5Models' content sizeHint (~733px) far exceeds the compact
+    wizard's step viewport (~400px at the V7.4.0 740×540 minimum;
+    the user's window was 816×510). Unlike Step4Outputs/Step7bFineTune,
+    Step 5 hosted its five group boxes directly in the step layout —
+    the bottom of "Local configuration" (Test connection button, server
+    hint, model combos) and everything below (both API boxes,
+    Parameters) were clipped and unreachable.
+  - Fix: the house frameless `QScrollArea` host pattern (verbatim
+    Step4Outputs shape): all five boxes moved into the scroll host;
+    behavioral tests pin the pattern + all five box titles inside the
+    host.
+  - Polish: the llama.cpp endpoint rows' spacing 5→8 (the three
+    label+field rows were visually fused) and the URL/model line edits
+    get `setMinimumWidth(260)` so the endpoint stays readable in narrow
+    windows.
+
+**3. numpy 2.x ABI crash — the guard could never fire, and the lock file
+  re-created the bug:**
+
+  - The V0.4.4 startup probe list was `numpy / pypdf / pdfplumber /
+    PIL` — none of which contain compiled numpy code, so the probe was
+    structurally incapable of catching the mismatch; the real culprits
+    (torch / pandas / onnxruntime / scipy / cv2) imported lazily in
+    OCR/TTS workers and crashed later.
+  - `requirements.lock` still pinned `numpy==2.5.3`, directly violating
+    the app's own `numpy>=1.26.0,<2.0.0` requirement — anyone installing
+    via the documented `pip install -r requirements.lock` path reproduced
+    the ABI crash.
+  - Fixes:
+    - `core/system/numpy_abi_check.py`: probe list now covers the
+      compiled numpy consumers (torch / pandas / onnxruntime / scipy /
+      cv2, find_spec-prefiltered so absent modules skip instantly);
+      torch is effectively free in the healthy case (main.py imports it
+      before PySide6) and in the broken case the retry re-raises exactly
+      what we want to catch. Marker matching broadened beyond the
+      classic `RuntimeError: module compiled against ABI version …` to
+      the other numpy 1.x/2.x shapes: "compiled using NumPy 1.x"
+      (ImportError), "_ARRAY_API not found" (ValueError),
+      "multiarray failed to import" (legacy). The fix dialog now also
+      warns about the stale-lock install path.
+    - `requirements.lock`: `numpy==2.5.3` → `numpy==1.26.4`
+      (resolver-verified compatible with the lock's pandas 3.0.6 and
+      onnxruntime 1.30.0).
+  - New tests: `tests/test_v00420_crashfixes.py` — 24 tests across both
+    house layers (source pins + offscreen behavioral), including
+    widget-geometry proofs for the card centering and the scroll host,
+    and every ABI marker shape driving the guard to its focused
+    SystemExit(1) dialog (with non-ABI errors passing through).
+
+  Suite: **5,645 passed / 0 failed** (was 5,610; +24 new, +11 Qt
+  behavioral tests now runnable in the offscreen-capable rig).
+  Gates: ruff check + format clean (585 files); `make eval-check` OK.
+
 ## V0.4.19 — SWOT campaign: heal the test gate, tidiness, safe de-monolithization
 
 > **The release:** The post-V0.4.18 cleanup campaign. The full test suite

@@ -61,10 +61,15 @@ class TypeCard(QFrame):
         lay.setSpacing(6)
 
         # ── big icon (centered, 64×64) ──────────────────────────────────
+        # V0.4.20: explicit AlignHCenter — a fixed-size QLabel added to a
+        # QVBoxLayout with default alignment lands at the LEFT edge of the
+        # cell (Qt keeps the origin-side position when the widget cannot
+        # fill the cell), which rendered the icon top-LEFT of every card
+        # (user-reported) despite the "centered" design intent since V1.5.
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setFixedSize(64, 64)
-        lay.addWidget(self.icon_label)
+        lay.addWidget(self.icon_label, 0, Qt.AlignHCenter)
 
         # ── title (centered) ────────────────────────────────────────────
         self.title_label = QLabel(title)

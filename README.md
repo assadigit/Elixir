@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.4.19-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5610%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.4.20-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5645%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -376,7 +376,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.4.19):** `5610 passed / 0 failed / 35 skipped / 0 xpassed in ~160s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
+**Current gate (Elixir V0.4.20):** `5645 passed / 0 failed / 24 skipped / 0 xpassed in ~160s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 

@@ -14,12 +14,14 @@ import logging
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -57,6 +59,23 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         title = QLabel("Model selection")
         title.setObjectName("H2")
         lay.addWidget(title)
+
+        # ── V0.4.20: scroll host ────────────────────────────────────
+        # The step's content sizeHint is ~733px tall, but the V7.4.0
+        # compact wizard (minimum 740×540, launched ~820×600) leaves only
+        # ~400px of step viewport. Without a scroll area the bottom of the
+        # Local configuration box (Test connection, server hint, model
+        # combos) and the whole Parameters box are clipped and unreachable
+        # — the "llama.cpp details cramped and not visible" report. Same
+        # pattern as Step4Outputs / Step7bFineTune (steps whose content
+        # exceeds the viewport host it in a frameless QScrollArea).
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        host = QWidget()
+        host_lay = QVBoxLayout(host)
+        host_lay.setSpacing(8)
+        host_lay.setContentsMargins(0, 0, 0, 0)
 
         # ── V16.0.9: 4-mode architecture selector ──────────────────────
         arch_box = QGroupBox("Model architecture")
@@ -110,7 +129,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "background: rgba(91,155,213,0.07); border-radius: 4px;"
         )
         arch_lay.addWidget(self.arch_desc_label)
-        lay.addWidget(arch_box)
+        host_lay.addWidget(arch_box)
 
         # ── Local configuration box (modes 1, 2) ───────────────────────
         self.local_box = QGroupBox("🏠 Local configuration")
@@ -198,7 +217,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.fast_combo = QComboBox()
         local_lay.addWidget(self.fast_combo)
 
-        lay.addWidget(self.local_box)
+        host_lay.addWidget(self.local_box)
 
         # ── Heavy API configuration box (modes 3, 4) ───────────────────
         self.heavy_api_box = QGroupBox("☁️ Heavy API configuration (accurate model)")
@@ -283,7 +302,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         test_row.addWidget(self.cloud_test_label, 1)
         heavy_api_lay.addLayout(test_row)
 
-        lay.addWidget(self.heavy_api_box)
+        host_lay.addWidget(self.heavy_api_box)
 
         # ── Fast API configuration box (mode 4 only) ────────────────────
         self.fast_api_box = QGroupBox("⚡ Fast API configuration (cheap workhorse)")
@@ -361,7 +380,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         fast_test_row.addWidget(self.fast_test_label, 1)
         fast_api_lay.addLayout(fast_test_row)
 
-        lay.addWidget(self.fast_api_box)
+        host_lay.addWidget(self.fast_api_box)
 
         # ── Parameters box (all modes) ─────────────────────────────────
         params_box = QGroupBox("Parameters")
@@ -508,8 +527,10 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         fast_row.addStretch()
         params_lay.addLayout(fast_row)
 
-        lay.addWidget(params_box)
-        lay.addStretch()
+        host_lay.addWidget(params_box)
+        host_lay.addStretch()
+        scroll.setWidget(host)
+        lay.addWidget(scroll, 1)
 
         # Initial model load + visibility
         # V18.20.4.5 (W-b11): initial load is now async (see

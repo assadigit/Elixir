@@ -42,7 +42,9 @@ class LlamaCppConfigMixin:
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(5)
+        # V0.4.20: 5 → 8 — the three label+field rows were visually fused
+        # (user-reported "cramped"); match the wizard's other row spacing.
+        lay.setSpacing(8)
 
         url_row = QHBoxLayout()
         url_row.setSpacing(8)
@@ -50,6 +52,9 @@ class LlamaCppConfigMixin:
             self.controller.get_setting("summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL)
         )
         self.llamacpp_url_edit.setPlaceholderText(LLAMACPP_DEFAULT_URL)
+        # V0.4.20: never let the URL field get crushed below a usable width
+        # in narrow windows — the endpoint must stay readable.
+        self.llamacpp_url_edit.setMinimumWidth(260)
         url_row.addWidget(QLabel("llama.cpp URL:"))
         url_row.addWidget(self.llamacpp_url_edit, 1)
         lay.addLayout(url_row)
@@ -74,6 +79,7 @@ class LlamaCppConfigMixin:
             self.controller.get_setting("summarisation.llamacpp_model", LLAMACPP_DEFAULT_MODEL)
         )
         self.llamacpp_model_edit.setPlaceholderText(LLAMACPP_DEFAULT_MODEL)
+        self.llamacpp_model_edit.setMinimumWidth(260)  # V0.4.20: keep the model name readable
         model_row.addWidget(QLabel("Model name:"))
         model_row.addWidget(self.llamacpp_model_edit, 1)
         lay.addLayout(model_row)
