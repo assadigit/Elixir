@@ -394,11 +394,20 @@ class TestPronounDetectorHonesty:
         """Guard: all three run_post_checks call sites forward the gate."""
         # V0.18 (Phase 5.2): postchecks.py moved verbatim into the
         # postchecks package as orchestrator.py.
-        src = (
-            PROJECT_ROOT / "core" / "summarisation" / "postchecks" / "orchestrator.py"
-        ).read_text(encoding="utf-8")
-        assert src.count("detect_pronoun_mismatch(") >= 3  # 3 call sites (bullets/exec/thorough)
-        assert src.count("source_authors=source_authors") >= 3
+        # V0.4.19 (de-monolithization): the bullets/exec/thorough phases
+        # moved VERBATIM to field_phases.py — the call sites are counted
+        # across both homes (the pins follow the moved bodies).
+        _pkg = PROJECT_ROOT / "core" / "summarisation" / "postchecks"
+        src = (_pkg / "orchestrator.py").read_text(encoding="utf-8")
+        phases = (_pkg / "field_phases.py").read_text(encoding="utf-8")
+        assert (
+            src.count("detect_pronoun_mismatch(") + phases.count("detect_pronoun_mismatch(") >= 3
+        )  # 3 call sites (bullets/exec/thorough)
+        assert (
+            src.count("source_authors=source_authors")
+            + phases.count("source_authors=source_authors")
+            >= 3
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

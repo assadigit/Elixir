@@ -636,6 +636,10 @@ _TOUCHED = (
     _POSTCHECKS_PKG / "attribution.py",
     _POSTCHECKS_PKG / "coherence.py",
     _POSTCHECKS_PKG / "orchestrator.py",
+    # V0.4.19 (de-monolithization): the bullets/exec/thorough phases
+    # extracted from run_post_checks (verbatim move) join the deny-list
+    # scan — same rule, new home.
+    _POSTCHECKS_PKG / "field_phases.py",
     _POSTCHECKS_PKG / "__init__.py",
 )
 

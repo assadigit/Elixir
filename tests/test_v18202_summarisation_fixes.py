@@ -946,8 +946,15 @@ class TestA24SourceWordset:
         content = _read(
             "core/summarisation/postchecks/orchestrator.py"
         )  # V0.18 (Phase 5.2): moved verbatim
+        # V0.4.19 (de-monolithization): the bullets/exec/thorough phases
+        # moved VERBATIM to field_phases.py — the precompute anchor stays
+        # in orchestrator.py; the threaded call sites live in field_phases.py
+        # (the pins follow the moved bodies).
+        phases = _read("core/summarisation/postchecks/field_phases.py")
         assert "_src_words: set = set(re.findall" in content
-        assert content.count("source_words=_src_words") >= 4
+        assert (
+            content.count("source_words=_src_words") + phases.count("source_words=_src_words") >= 4
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════

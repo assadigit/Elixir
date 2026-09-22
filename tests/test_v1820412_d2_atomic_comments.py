@@ -109,6 +109,9 @@ _COMMENT_FILES = [
     "core/summarisation/postchecks/attribution.py",
     "core/summarisation/postchecks/coherence.py",
     "core/summarisation/postchecks/orchestrator.py",
+    # V0.4.19 (de-monolithization): the per-field phases extracted from
+    # run_post_checks (verbatim move) join the no-book-jargon scan.
+    "core/summarisation/postchecks/field_phases.py",
     # V0.18 (Phase 5.3): the preprocessor split siblings (verbatim moves from
     # text_preprocessor_impl.py) join the no-book-jargon scan.
     "core/summarisation/text_preprocessor_concepts.py",
