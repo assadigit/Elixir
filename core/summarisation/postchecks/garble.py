@@ -2471,18 +2471,21 @@ def repair_d3_quotes_via_llm(
     text: str,
     field_label: str,
     source_text: str = "",
-    ollama_url: str = "http://localhost:11434",
-    model: str = "",
+    settings=None,
 ) -> tuple[str, list[Issue]]:
-    """V0.4.11: send flagged D3 text to the LLM for semantic quote repair.
+    """V0.4.11/V0.4.13: send flagged D3 text to the LLM for semantic quote repair.
 
-    Only fires when D3 (long-span pair) flags are present. Uses the
-    summarisation model (not the OCR model) via /api/generate.
+    V0.4.13: rewritten to use the provider abstraction (provider.complete())
+    instead of the Ollama-specific /api/generate. This makes it work with
+    llama.cpp backends too (the V0.4.11 version used safe_ollama_request
+    which only works with Ollama — on a llama.cpp backend the endpoint
+    /api/generate doesn't exist, so the repair silently failed).
 
-    Fail-open: if the LLM call fails, returns the original text.
+    Uses the user's configured summarisation model + endpoint from
+    settings. Fail-open: if the LLM call fails, returns the original text.
     """
     issues: list[Issue] = []
-    if not text or not model:
+    if not text:
         return text, issues
 
     # Check if there are any D3 flags to repair.
@@ -2491,55 +2494,45 @@ def repair_d3_quotes_via_llm(
     if not d3_flags:
         return text, issues  # no D3 flags — nothing to repair
 
+    if settings is None:
+        from utils.settings import Settings as _S
+        settings = _S()
+
+    model = settings.get("summarisation.model", "") or settings.get(
+        "summarisation.primary_model", ""
+    )
+    if not model:
+        return text, issues  # no model configured
+
     try:
-        from utils.network import safe_ollama_request
+        # V0.4.13: use the provider abstraction instead of raw HTTP.
+        # This makes the repair work with both Ollama AND llama.cpp.
+        from core.llm.llm_provider_impl import create_provider
+
+        arch = settings.get("summarisation.model_architecture", "single_local") or "single_local"
+        if arch == "llamacpp":
+            provider_name = "llamacpp"
+        elif arch in ("single_api", "dual_api"):
+            provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
+        else:
+            provider_name = "ollama"
+
+        if provider_name not in ("ollama", "llamacpp"):
+            return text, issues  # cloud providers not supported for repair
+
+        provider = create_provider(provider_name, settings)
+        if not provider:
+            return text, issues
 
         prompt = _D3_REPAIR_PROMPT + text
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "system": "",
-            "keep_alive": "30m",
-            "options": {"temperature": 0.0, "num_predict": 8192},
-        }
-        url = f"{ollama_url}/api/generate"
-        resp = safe_ollama_request("POST", url, json=payload, timeout=120)
-        repaired = resp.json().get("response", "").strip()
+        repaired = provider.complete(
+            prompt=prompt,
+            temperature=0.0,
+            max_tokens=8192,
+            model=model,
+        )
 
-        if repaired and len(repaired) > len(text) * 0.8:
-            # Verify the repaired text has balanced quotes.
-            _, post_issues = repair_stray_quotes_v2(repaired, field_label)
-            post_d3 = [i for i in post_issues if i.detector == "stray_quote_v2_d3"]
-            if len(post_d3) < len(d3_flags):
-                issues.append(
-                    Issue(
-                        detector="stray_quote_v2_d3_llm_repair",
-                        severity="fix",
-                        field=field_label,
-                        snippet=text[:60],
-                        detail=(
-                            f"semantic LLM repair: fixed {len(d3_flags) - len(post_d3)} "
-                            f"D3 long-span quote pair(s) via LLM (was {len(d3_flags)} flags, "
-                            f"now {len(post_d3)})."
-                        ),
-                    )
-                )
-                return repaired, issues
-            else:
-                issues.append(
-                    Issue(
-                        detector="stray_quote_v2_d3_llm_repair",
-                        severity="flag",
-                        field=field_label,
-                        snippet=text[:60],
-                        detail=(
-                            f"semantic LLM repair attempted but {len(post_d3)} D3 flags "
-                            f"remain — original text kept."
-                        ),
-                    )
-                )
-        else:
+        if not repaired or len(repaired) < len(text) * 0.8:
             issues.append(
                 Issue(
                     detector="stray_quote_v2_d3_llm_repair",
@@ -2547,6 +2540,39 @@ def repair_d3_quotes_via_llm(
                     field=field_label,
                     snippet=text[:60],
                     detail="semantic LLM repair returned empty/short text — original kept.",
+                )
+            )
+            return text, issues
+
+        # Verify the repaired text has fewer D3 flags.
+        _, post_issues = repair_stray_quotes_v2(repaired, field_label)
+        post_d3 = [i for i in post_issues if i.detector == "stray_quote_v2_d3"]
+        if len(post_d3) < len(d3_flags):
+            issues.append(
+                Issue(
+                    detector="stray_quote_v2_d3_llm_repair",
+                    severity="fix",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=(
+                        f"semantic LLM repair: fixed {len(d3_flags) - len(post_d3)} "
+                        f"D3 long-span quote pair(s) via LLM (was {len(d3_flags)} flags, "
+                        f"now {len(post_d3)})."
+                    ),
+                )
+            )
+            return repaired, issues
+        else:
+            issues.append(
+                Issue(
+                    detector="stray_quote_v2_d3_llm_repair",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=(
+                        f"semantic LLM repair attempted but {len(post_d3)} D3 flags "
+                        f"remain — original text kept."
+                    ),
                 )
             )
     except Exception as e:

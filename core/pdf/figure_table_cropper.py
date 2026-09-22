@@ -132,7 +132,23 @@ def extract_figures_and_tables(
                 if page_num > len(pdf.pages):
                     continue
                 page = pdf.pages[page_num - 1]
+                # V0.4.13: try both "lattice" (border-based) and "stream"
+                # (whitespace-based) table detection strategies. The V0.4.3
+                # code only used the default (lattice), which misses
+                # borderless tables like Table 3-1 in the NPD chapter
+                # (a psychoanalytic textbook with space-aligned tables).
                 tables_found = page.find_tables()
+                if not tables_found:
+                    # V0.4.13: fallback to stream strategy for borderless tables.
+                    try:
+                        tables_found = page.find_tables(
+                            table_settings={
+                                "vertical_strategy": "text",
+                                "horizontal_strategy": "text",
+                            }
+                        )
+                    except Exception:
+                        pass
 
                 for tbl_index, table in enumerate(tables_found):
                     try:
