@@ -36,6 +36,11 @@ if str(_project_root) not in sys.path:
 
 OLLAMA_PROVIDER_PATH = _project_root / "core" / "llm" / "ollama_provider.py"
 SUMMARIZER_PATH = _project_root / "core" / "summarisation" / "summarizer.py"
+# V0.4.19 (de-monolithization step 9/10): the E3 master-summary machinery
+# (_chunked_summarize + _build_chunked_prompt + the V0.3 3-call pipeline)
+# moved VERBATIM to summarizer_chunking.py — the E3 source pins follow the
+# code (the same re-pointing discipline as the V18.15.3 primary_call move).
+SUMMARIZER_CHUNKING_PATH = _project_root / "core" / "summarisation" / "summarizer_chunking.py"
 # V0.18 (Phase 5.1): the low-bit max_output cap moved VERBATIM to
 # summarizer_init.py — the E2-revert pin follows it there.
 SUMMARIZER_INIT_PATH = _project_root / "core" / "summarisation" / "summarizer_init.py"
@@ -262,10 +267,17 @@ class TestChunkedOutput:
     """
 
     def test_source_contains_chunked_output(self):
-        """summarizer.py contains the chunked-output logic."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        """summarizer_chunking.py contains the chunked-output logic (V0.4.19
+        de-monolithization step 9/10: moved VERBATIM from summarizer.py —
+        pin follows the code)."""
+        src = SUMMARIZER_CHUNKING_PATH.read_text(encoding="utf-8")
         assert "_chunked_summarize" in src, "The _chunked_summarize method must exist"
         assert "_build_chunked_prompt" in src, "The _build_chunked_prompt method must exist"
+        # The summarizer.py delegate wiring survived the move (MRO):
+        sum_src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        assert "chunked_summarize=self._chunked_summarize" in sum_src, (
+            "The _summarize_with_model delegate must still wire _chunked_summarize"
+        )
 
     def test_chunking_threshold(self):
         """V0.4: master-summary is the DEFAULT — no chunking threshold needed.
@@ -277,13 +289,15 @@ class TestChunkedOutput:
 
     def test_v03_master_summary_call(self):
         """V0.3 Call 1/3: master summary (comprehensive thorough) is the first call."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        # V0.4.19 (de-monolithization step 9/10): the V0.3 call labels moved
+        # with _chunked_summarize to summarizer_chunking.py — pin follows.
+        src = SUMMARIZER_CHUNKING_PATH.read_text(encoding="utf-8")
         assert "master summary" in src.lower(), "V0.3: must have a master summary call"
         assert "Call 1/3" in src, "V0.3: must label the master summary as Call 1/3"
 
     def test_v03_bullets_derivation_call(self):
         """V0.3 Call 2/3: bullets derived FROM the master summary."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        src = SUMMARIZER_CHUNKING_PATH.read_text(encoding="utf-8")
         assert "Call 2/3" in src, "V0.3: must label the bullets derivation as Call 2/3"
         assert "derive_bullets" in src or "derive bullet" in src.lower(), (
             "V0.3: must derive bullets from the master summary"
@@ -291,7 +305,7 @@ class TestChunkedOutput:
 
     def test_v03_exec_derivation_call(self):
         """V0.3 Call 3/3: exec derived FROM the master summary + bullets."""
-        src = SUMMARIZER_PATH.read_text(encoding="utf-8")
+        src = SUMMARIZER_CHUNKING_PATH.read_text(encoding="utf-8")
         assert "Call 3/3" in src, "V0.3: must label the exec derivation as Call 3/3"
         assert "derive_exec" in src or "derive executive" in src.lower(), (
             "V0.3: must derive exec from the master summary + bullets"

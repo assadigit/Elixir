@@ -408,7 +408,7 @@ class TestWiringPins:
         instance constants remain the fallback (legacy parity)."""
         import types
 
-        import core.summarisation.summarizer as sz_mod
+        import core.summarisation.summarizer_chunking as chunk_mod
         from core.summarisation.summarizer import Summarizer
 
         captured: dict = {}
@@ -418,9 +418,11 @@ class TestWiringPins:
             captured.update(kw)
             return ("raw-response", 4242)
 
-        # summarizer binds the name at module import — patch it there.
-        original = sz_mod.mr_map_reduce_summarize
-        sz_mod.mr_map_reduce_summarize = _fake_mr
+        # V0.4.19 (de-monolithization step 9/10): _map_reduce_summarize moved
+        # VERBATIM to summarizer_chunking.py (SummarizerChunkingMixin) — the
+        # moved body binds the alias at ITS module import; patch it there.
+        original = chunk_mod.mr_map_reduce_summarize
+        chunk_mod.mr_map_reduce_summarize = _fake_mr
         try:
             s = object.__new__(Summarizer)
             s.primary_model = "m"
@@ -452,7 +454,7 @@ class TestWiringPins:
             assert captured["map_chunk_tokens"] == 27500
             assert captured["map_chunk_overlap"] == 0.10
         finally:
-            sz_mod.mr_map_reduce_summarize = original
+            chunk_mod.mr_map_reduce_summarize = original
 
 
 class _FakeRequest:

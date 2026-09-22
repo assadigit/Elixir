@@ -59,6 +59,10 @@ if str(_project_root) not in sys.path:
 _SUM = _project_root / "core" / "summarisation" / "summarizer.py"
 _ADD = _project_root / "core" / "summarisation" / "additive_sections.py"
 _FLOOR = _project_root / "core" / "summarisation" / "thorough_theorist_floor.py"
+# V0.4.19 (de-monolithization step 9/10): the coverage/gap-fill wrappers +
+# the chunked/map-reduce machinery moved VERBATIM out of summarizer.py.
+_COV = _project_root / "core" / "summarisation" / "summarizer_coverage.py"
+_CHUNK = _project_root / "core" / "summarisation" / "summarizer_chunking.py"
 _PA = _project_root / "core" / "summarisation" / "prompt_assembly.py"
 _PB = _project_root / "core" / "summarisation" / "prompt_builders.py"  # V0.18 (Phase 5.1, step 6)
 _DET = _project_root / "core" / "summarisation" / "postcheck_detectors.py"
@@ -80,6 +84,28 @@ _MOVED_TO_ADDITIVE = (
     "_ensure_additive_sections",
 )
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
+# V0.4.19 (de-monolithization step 9/10): the coverage/gap-fill wrappers
+# moved VERBATIM to summarizer_coverage (SummarizerCoverageMixin) — the
+# 3-Tier/Tier-2/Tier-3 + concept-gap-fill methods, in original relative order.
+_MOVED_TO_COVERAGE = (
+    "_compute_coverage",
+    "_find_source_sentence",
+    "_targeted_gap_fill",
+    "_prune_covered_excerpts",
+    "_force_insert_missing",
+    "_apply_3tier_coverage",
+    "_extract_must_have_items",
+    "_gap_fill_concepts",
+)
+# V0.4.19 (de-monolithization step 9/10): the chunked-output + map-reduce
+# machinery moved VERBATIM to summarizer_chunking (SummarizerChunkingMixin).
+_MOVED_TO_CHUNKING = (
+    "_chunked_summarize",
+    "_build_chunked_prompt",
+    "_merge_summaries",
+    "_section_map_reduce",
+    "_map_reduce_summarize",
+)
 # V0.18 (Phase 5.1, step 1): the post-judge phases of _summarize_inner moved
 # VERBATIM to chapter_phases (SummarizerChapterPhasesMixin).
 # V0.18 (Phase 5.1, steps 2-4): + the setup gate, single-pass primary,
@@ -137,7 +163,7 @@ def _seg(src: str, node: ast.AST) -> str:
 
 class TestMixinModulesExist:
     def test_both_new_modules_exist_and_parse(self):
-        for path in (_ADD, _FLOOR):
+        for path in (_ADD, _FLOOR, _COV, _CHUNK):
             assert path.is_file(), f"{path.name} missing"
             ast.parse(_src(path))
 
@@ -146,10 +172,16 @@ class TestMixinModulesExist:
         floor_cls = _class(ast.parse(_src(_FLOOR)), "SummarizerThoroughFloorMixin")
         assert set(_methods(add_cls)) == set(_MOVED_TO_ADDITIVE), sorted(_methods(add_cls))
         assert set(_methods(floor_cls)) == set(_MOVED_TO_FLOOR)
+        # V0.4.19 (de-monolithization step 9/10): the two new mixins carry
+        # EXACTLY the moved method sets (nothing else, nothing missing).
+        cov_cls = _class(ast.parse(_src(_COV)), "SummarizerCoverageMixin")
+        chunk_cls = _class(ast.parse(_src(_CHUNK)), "SummarizerChunkingMixin")
+        assert set(_methods(cov_cls)) == set(_MOVED_TO_COVERAGE), sorted(_methods(cov_cls))
+        assert set(_methods(chunk_cls)) == set(_MOVED_TO_CHUNKING), sorted(_methods(chunk_cls))
 
     def test_mixins_do_not_import_summarizer(self):
         """Acyclic: the mixin modules never import their host module."""
-        for path in (_ADD, _FLOOR):
+        for path in (_ADD, _FLOOR, _COV, _CHUNK):
             tree = ast.parse(_src(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):
@@ -161,13 +193,17 @@ class TestMixinModulesExist:
         TEMPLATE name are not imports)."""
         offenders = []
         for p in _project_root.glob("core/**/*.py"):
-            if p in (_ADD, _FLOOR, _SUM):
+            if p in (_ADD, _FLOOR, _COV, _CHUNK, _SUM):
                 continue
             tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module in (
                     "core.summarisation.additive_sections",
                     "core.summarisation.thorough_theorist_floor",
+                    # V0.4.19 (de-monolithization step 9/10): same rule for
+                    # the coverage/chunking mixins.
+                    "core.summarisation.summarizer_coverage",
+                    "core.summarisation.summarizer_chunking",
                 ):
                     offenders.append(f"{p.relative_to(_project_root)}:{node.lineno}")
         assert not offenders, offenders
@@ -329,6 +365,10 @@ class TestSummarizerInheritance:
         # family moved to core.summarisation.llm_transport).
         # V0.18 (Phase 5.1, step 8): + SummarizerBookMixin (the book outer
         # loop moved to core.summarisation.book_outer).
+        # V0.4.19 (de-monolith 9/10): + SummarizerCoverageMixin (the coverage/
+        # gap-fill wrappers: _compute_coverage, the Tier-2/Tier-3 machinery,
+        # _gap_fill_concepts, ...) + SummarizerChunkingMixin (the chunked /
+        # map-reduce machinery) — appended at the END (disjoint methods).
         assert [ast.unparse(b) for b in cls.bases] == [
             "SummarizerBookMixin",
             "SummarizerTransportMixin",
@@ -337,16 +377,21 @@ class TestSummarizerInheritance:
             "SummarizerChapterPhasesMixin",
             "SummarizerAdditiveMixin",
             "SummarizerThoroughFloorMixin",
+            "SummarizerCoverageMixin",
+            "SummarizerChunkingMixin",
         ]
 
     def test_summarizer_imports_both_mixins(self):
         src = _src(_SUM)
         assert "from core.summarisation.additive_sections import SummarizerAdditiveMixin" in src
         assert "SummarizerThoroughFloorMixin" in src
+        # V0.4.19 (de-monolithization step 9/10): the two new mixins too.
+        assert "from core.summarisation.summarizer_coverage import SummarizerCoverageMixin" in src
+        assert "from core.summarisation.summarizer_chunking import SummarizerChunkingMixin" in src
 
     def test_moved_methods_gone_from_summarizer_file(self):
         methods = _methods(_class(ast.parse(_src(_SUM)), "Summarizer"))
-        for name in _MOVED_TO_ADDITIVE + _MOVED_TO_FLOOR:
+        for name in _MOVED_TO_ADDITIVE + _MOVED_TO_FLOOR + _MOVED_TO_COVERAGE + _MOVED_TO_CHUNKING:
             assert name not in methods, f"{name} must be re-homed, not copied"
 
     def test_not_moved_neighbours_stayed(self):
@@ -359,6 +404,8 @@ class TestSummarizerInheritance:
         must resolve through the MIXINS on the Summarizer MRO."""
         from core.summarisation.additive_sections import SummarizerAdditiveMixin
         from core.summarisation.summarizer import Summarizer
+        from core.summarisation.summarizer_chunking import SummarizerChunkingMixin
+        from core.summarisation.summarizer_coverage import SummarizerCoverageMixin
         from core.summarisation.thorough_theorist_floor import (
             SummarizerThoroughFloorMixin,
         )
@@ -370,6 +417,16 @@ class TestSummarizerInheritance:
             assert home is SummarizerAdditiveMixin, name
         home = next(c for c in Summarizer.__mro__ if "_thorough_theorist_floor" in vars(c))
         assert home is SummarizerThoroughFloorMixin
+        # V0.4.19 (de-monolithization step 9/10): the coverage + chunking
+        # methods resolve through THEIR mixins on the MRO.
+        assert issubclass(Summarizer, SummarizerCoverageMixin)
+        assert issubclass(Summarizer, SummarizerChunkingMixin)
+        for name in _MOVED_TO_COVERAGE:
+            home = next(c for c in Summarizer.__mro__ if name in vars(c))
+            assert home is SummarizerCoverageMixin, name
+        for name in _MOVED_TO_CHUNKING:
+            home = next(c for c in Summarizer.__mro__ if name in vars(c))
+            assert home is SummarizerChunkingMixin, name
 
     def test_mixin_loggers_are_the_main_app_logger(self):
         """The re-homed ``logger`` must be the SAME object summarizer.py
@@ -640,6 +697,11 @@ _TOUCHED = (
     # extracted from run_post_checks (verbatim move) join the deny-list
     # scan — same rule, new home.
     _POSTCHECKS_PKG / "field_phases.py",
+    # V0.4.19 (de-monolithization step 9/10): the coverage/chunking mixin
+    # modules (verbatim moves from summarizer.py) join the deny-list scan —
+    # same rule, new homes (the scan follows the moved bodies).
+    _COV,
+    _CHUNK,
     _POSTCHECKS_PKG / "__init__.py",
 )
 

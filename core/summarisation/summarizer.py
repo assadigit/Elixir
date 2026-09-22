@@ -19,8 +19,6 @@ Two-level summarisation with quality enhancements:
   - FIX: `_strip_thinking()` is called unconditionally on all summary strings before saving.
 """
 
-import concurrent.futures
-import logging
 import re
 import threading  # V18.20.3.12 (F821): quoted "threading.Event" annotation in summarize_chapters
 import time
@@ -62,9 +60,6 @@ from core.summarisation.bullet_scorer import score_bullet as bs_score_bullet
 # VERBATIM here (byte-identical bodies; state threaded via explicit params).
 from core.summarisation.chapter_phases import SummarizerChapterPhasesMixin
 
-# V18.15.3 (Phase 5 Stage 3, Batch 4.5): 3-Tier coverage guarantee.
-from core.summarisation.coverage_guarantee import apply_3tier_coverage as cg_apply_3tier_coverage
-
 # V0.06 (rig audit F4-b): the source-scaled bullet budget (single source of
 # truth: length_policy.bullet_target) as a hard-cap helper for the delegates.
 from core.summarisation.length_policy import (
@@ -75,6 +70,12 @@ from core.summarisation.length_policy import (
 )
 from core.summarisation.llm_transport import SummarizerTransportMixin
 from core.summarisation.prompt_builders import SummarizerPromptMixin
+
+# V0.4.19 (de-monolithization step 9/10): the coverage/gap-fill wrappers
+# and the chunked/map-reduce machinery moved VERBATIM (byte-identical
+# bodies) to core.summarisation.summarizer_coverage / summarizer_chunking.
+from core.summarisation.summarizer_chunking import SummarizerChunkingMixin
+from core.summarisation.summarizer_coverage import SummarizerCoverageMixin
 from core.summarisation.summarizer_init import SummarizerInitMixin
 
 
@@ -103,19 +104,8 @@ from core.summarisation.filter_thinking import qwen_no_think
 
 # V18.20.3.12 (Phase 4 / W6-O5): batch gap-fill loop (V18.14.1 bullets-only
 # coverage guarantee) — extracted from the _summarize_inner judge block.
-# V18.12 (Phase 5 Stage 3, Batch 2.7): concept gap-fill (targeted LLM calls for uncovered concepts).
-from core.summarisation.gap_filler import gap_fill_concepts as gf_gap_fill_concepts
-
 # V18.15.3 (Phase 5 Stage 3, Batch 4.3): LLM-as-judge grounding check.
 from core.summarisation.grounding_check import llm_grounding_check as gc_llm_grounding_check
-
-# V18.11 (Phase 5 Stage 3, Batch 2.1 + 2.5): map-reduce summarization.
-from core.summarisation.map_reduce import (
-    map_reduce_summarize as mr_map_reduce_summarize,
-)
-from core.summarisation.map_reduce import (
-    section_map_reduce as mr_section_map_reduce,
-)
 
 # V18.11 (Phase 5 Stage 3, Batch 2.2): multi-sample (B3) summarization + voting.
 from core.summarisation.multi_sample import multi_sample_summarize as ms_multi_sample_summarize
@@ -168,9 +158,6 @@ from core.summarisation.summary_validator import (
     anti_false_precision_check as sv_anti_false_precision_check,
 )
 from core.summarisation.summary_validator import (
-    compute_coverage as sv_compute_coverage,
-)
-from core.summarisation.summary_validator import (
     semantic_dedup_bullets as sv_semantic_dedup_bullets,
 )
 from core.summarisation.summary_validator import (
@@ -187,11 +174,6 @@ from core.summarisation.text_utils_ext import smart_truncate as tue_smart_trunca
 from core.summarisation.thorough_theorist_floor import (
     SummarizerThoroughFloorMixin,
 )
-
-# V18.2.14 (B4): traceable error-handling helpers — replace silent
-# ``except Exception: pass`` with ``log_swallow()`` so failures leave a
-# permanent, searchable log trace (operation name + exc type + traceback).
-from utils.error_trace import log_swallow
 from utils.logging import get_main_logger
 from utils.settings import Settings
 from utils.token_counter import count_tokens
@@ -199,6 +181,10 @@ from utils.token_counter import count_tokens
 logger = get_main_logger()
 
 
+# V0.4.19 (de-monolithization step 9/10): + SummarizerCoverageMixin (the
+# coverage/gap-fill wrappers) + SummarizerChunkingMixin (the chunked /
+# map-reduce machinery) — appended at the END of the bases list (disjoint
+# method sets, no MRO conflicts; every self.<name> resolves as before).
 class Summarizer(
     SummarizerBookMixin,
     SummarizerTransportMixin,
@@ -207,6 +193,8 @@ class Summarizer(
     SummarizerChapterPhasesMixin,
     SummarizerAdditiveMixin,
     SummarizerThoroughFloorMixin,
+    SummarizerCoverageMixin,
+    SummarizerChunkingMixin,
 ):
     def __init__(
         self,
@@ -571,19 +559,9 @@ class Summarizer(
         content_words.sort(key=lambda w: counts[w], reverse=True)
         return content_words[:n]
 
-    def _compute_coverage(self, source: str, summary: str) -> float:
-        """Return fraction of source keywords + concepts present in summary.
-
-        V18.7 (Phase 5.2): extracted verbatim to ``summary_validator.compute_coverage``.
-        This method is a thin delegate. The ``coverage_cache`` dict and
-        ``_extract_keywords`` callable are passed by reference/callback.
-        """
-        return sv_compute_coverage(
-            source=source,
-            summary=summary,
-            coverage_cache=self._coverage_cache,
-            extract_keywords=self._extract_keywords,
-        )
+    # V0.4.19 (de-monolithization step 9/10): _compute_coverage moved
+    # VERBATIM to core/summarisation/summarizer_coverage.py
+    # (SummarizerCoverageMixin) — call sites resolve through the MRO.
 
     # V0.08 (P2 dead-code removal): the _build_thorough_followup delegate
     # (zero callers since the thorough followup call was replaced by the
@@ -794,323 +772,11 @@ class Summarizer(
     # core/summarisation/additive_sections.py
     # (SummarizerAdditiveMixin).
 
-    def _find_source_sentence(self, keyword, text):
-        kl = keyword.lower()
-        # V0.05 (rig audit F4 — P1): the boundary lookahead now accepts
-        # DIGITS and typographic quotes too. The old ``(?=[A-Z"])`` never
-        # split before a numbered-list continuation ("…on the attack.\n\n 3)
-        # Use these…"), so excerpts glued two numbered items into one
-        # "sentence" — a verbatim excerpt must be exactly one sentence.
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z0-9"\u201c])', text)
-        for sent in sentences:
-            sl = sent.lower().strip()
-            if not sl or len(sl) < 20:
-                continue
-            if " " in kl:
-                parts = [p for p in kl.split() if len(p) > 2]
-                if parts and all(p in sl for p in parts):
-                    return sent.strip()
-            elif kl in sl:
-                return sent.strip()
-        return None
-
-    def _targeted_gap_fill(self, heading, text, missing_keywords):
-        if not missing_keywords:
-            return []
-        gap_pairs = []
-        for kw in missing_keywords[:12]:
-            sent = self._find_source_sentence(kw, text)
-            if sent:
-                gap_pairs.append((kw, sent))
-        if not gap_pairs:
-            return []
-        self.log(
-            f"    \U0001f50d Tier 2: targeted gap-fill for {len(gap_pairs)} missing concepts (parallel, focused calls)\u2026",
-            "INFO",
-        )
-
-        def _fill_one(pair):
-            kw, sent = pair
-            lang = "Write in Persian (Farsi)." if self.language == "fa" else "Write in English."
-            prompt = f'Write ONE bullet point (prefixed with "- ") summarizing what this source sentence says about "{kw}".\n\nSource sentence: "{sent}"\n\nRules:\n- One bullet only, prefixed with "- ".\n- Grounded in the source sentence.\n- Concise (1-2 sentences max).\n{lang}\n\nBullet point:'
-            try:
-                # V13.36.0: When fusion gap-fill is enabled (site E, opt-in),
-                # use the cloud model for higher-quality paraphrases.
-                # Default is OFF — the local 9B model is fine for paraphrasing.
-                if self.fusion_enabled and self.fusion_use_for_gap_fill:
-                    raw = self._call_cloud(
-                        prompt, max_tokens=200, temperature=self.fusion_cloud_temperature
-                    )
-                else:
-                    raw = self._call_fast_llm(prompt, max_tokens=200)
-                if not raw:
-                    return None
-                raw = self._strip_thinking(raw).strip()
-                if raw and not raw.startswith("- "):
-                    raw = "- " + raw.lstrip("*-\u2022 ")
-                if raw and len(raw) > 10 and "cannot" not in raw.lower()[:30]:
-                    return raw
-                return None
-            except Exception:
-                return None
-
-        new_bullets = []
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-                futures = {executor.submit(_fill_one, pair): pair for pair in gap_pairs}
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        bp = future.result(timeout=120)
-                        if bp:
-                            new_bullets.append(bp)
-                    except Exception as _e:
-                        # V18.2.14 (B4): was silent ``pass`` — now traceable.
-                        # WARNING level because a failed future means a lost
-                        # gap-fill bullet — worth surfacing.
-                        log_swallow("gap_fill_future_result", _e, level=logging.WARNING)
-        except Exception:
-            for pair in gap_pairs:
-                bp = _fill_one(pair)
-                if bp:
-                    new_bullets.append(bp)
-        if new_bullets:
-            self.log(
-                f"    \u2705 Tier 2: gap-filled {len(new_bullets)}/{len(gap_pairs)} concepts via focused LLM calls",
-                "INFO",
-            )
-        return new_bullets
-
-    def _prune_covered_excerpts(
-        self,
-        bullets: list[str],
-        exec_sum: str,
-        thorough: str,
-        excerpts: list[str],
-    ) -> list[str]:
-        """V0.06 (rig audit F7-a): drop excerpts the FINAL summary covers.
-
-        GENERAL RULE: a Tier-3 excerpt exists to cover a concept the summary
-        text did not cover AT INSERTION TIME. Later stages (scholar
-        gap-fill, Tier-2) can add bullets covering the same source
-        sentence; at ship time the excerpt list is re-validated so the
-        delivered "Source Excerpts" section only contains material the
-        final summary genuinely does not cover. Two honest coverage
-        signals, either suffices:
-
-          * per-bullet content-token containment >= 0.55 (a bullet
-            paraphrasing the excerpt's sentence), or
-          * >= 75% of the quote's content words present in the combined
-            summary text (exec + bullets + thorough).
-        """
-        if not excerpts:
-            return list(excerpts or [])
-
-        def _tokens(s: str) -> set[str]:
-            out = set()
-            for w in re.findall(r"[a-z0-9]+", (s or "").lower()):
-                if len(w) <= 2:
-                    continue
-                if len(w) > 3 and w.endswith("s"):
-                    out.add(w[:-1])
-                out.add(w)
-            return out
-
-        combined_words = _tokens(
-            " ".join(
-                [
-                    str(exec_sum or ""),
-                    " ".join(str(b) for b in (bullets or [])),
-                    str(thorough or ""),
-                ]
-            )
-        )
-        kept: list[str] = []
-        for ex in excerpts:
-            ex_str = str(ex)
-            m = re.search(r':\s*"(.*)"\s*$', ex_str, re.DOTALL)
-            if not m:
-                kept.append(ex_str)  # not a framed excerpt — leave untouched
-                continue
-            quote_toks = _tokens(m.group(1))
-            if not quote_toks:
-                kept.append(ex_str)
-                continue
-            covered = False
-            # (a) per-bullet paraphrase containment
-            for b in bullets or []:
-                b_toks = _tokens(str(b))
-                if not b_toks:
-                    continue
-                inter = len(quote_toks & b_toks)
-                if inter and inter / min(len(quote_toks), len(b_toks)) >= 0.55:
-                    covered = True
-                    break
-            # (b) combined-text word coverage
-            if not covered:
-                hits = sum(1 for t in quote_toks if t in combined_words)
-                if hits / len(quote_toks) >= 0.75:
-                    covered = True
-            if not covered:
-                kept.append(ex_str)
-        return kept
-
-    def _force_insert_missing(self, text, still_missing, result, heading=""):
-        """V16.0.3 Tier-3 → V0.03 (P0-2) REDESIGNED.
-
-        The old implementation appended raw source slices as KEY TAKEAWAYS
-        ("- **{kw}**: {sent}"). The V0.02 rig run showed the failure mode:
-        a mid-quote fragment of the *anti-pattern answer* ("We do," we say
-        something like, "Well, you could do without a second server…")
-        shipped as the final takeaway of the book — advice-shaped garbage.
-
-        New contract (GENERAL, not book-specific):
-          - excerpts NEVER enter ``bullet_points`` (Key Takeaways) — they
-            go to ``result["source_excerpts"]``, rendered as a separate,
-            clearly-labelled section;
-          - only COMPLETE sentences are eligible: capital-letter start,
-            terminal punctuation, ≥40 chars, balanced double quotes;
-          - each excerpt carries explicit framing so a skimming reader
-            cannot mistake it for the model's advice.
-        """
-        if not still_missing:
-            return 0
-        inserted = 0
-        # V0.05 (rig audit F3-b — P1): the dedupe key is the NORMALIZED
-        # SOURCE SENTENCE, not the framed excerpt string. The old key
-        # (excerpt.lower()[:80]) was keyword-dominated — the frame
-        # 'On "kw" — verbatim…' STARTS with the keyword, so different
-        # keywords pointing at the SAME sentence each inserted their own
-        # copy (the V0.04 rig shipped 9 excerpts for 4 unique sentences in
-        # one chapter). The key extracts the quoted sentence tail instead.
-        _norm_ws = re.compile(r"\s+")
-        existing = set()
-        for x in result.get("source_excerpts", []) or []:
-            _body = str(x)
-            _qm = re.search(r':\s*"(.*)"\s*$', _body, re.DOTALL)
-            if _qm:
-                _body = _qm.group(1)
-            existing.add(_norm_ws.sub(" ", _body.lower().strip()))
-        # V0.05 (F3-c): remediation unit = SENTENCE, not keyword. Keywords
-        # resolving to the same source sentence are consolidated into ONE
-        # excerpt (the frame lists them together) — overlapping
-        # bigram/trigram keywords from one sentence must not each spawn
-        # their own remediation.
-        _by_sentence: dict[str, list[str]] = {}
-        _sent_cache: dict[str, str] = {}
-        for kw in still_missing:
-            sent = self._find_source_sentence(kw, text)
-            if not sent:
-                continue
-            _skey = _norm_ws.sub(" ", sent.lower().strip())
-            _sent_cache[_skey] = sent
-            _by_sentence.setdefault(_skey, []).append(kw)
-        for _skey, _kws in _by_sentence.items():
-            sent = _sent_cache[_skey]
-            # V0.06 (rig audit F7-b — GENERAL RULE: an excerpt never opens
-            # with a duplicate of its own chapter heading). PDF extraction
-            # frequently glues the chapter TITLE (or its numbered echo)
-            # onto the first sentence of the body text — the V0.05 rig
-            # shipped an excerpt reading "Don't put your resume ahead of
-            # the\n\nrequirements As engineers we sometimes…" where the
-            # heading echo runs straight into the real sentence. Collapse
-            # internal whitespace and strip a leading heading-echo prefix
-            # (whitespace-insensitive, optional leading number).
-            sent = _norm_ws.sub(" ", sent).strip()
-            if heading:
-                _head = _norm_ws.sub(" ", str(heading).strip())
-                _head_nn = re.sub(r"^\d+[.)]?\s*", "", _head).strip().lower()
-                _sent_lc = sent.lower()
-                if _head_nn and len(_head_nn) >= 12 and _sent_lc.startswith(_head_nn):
-                    sent = sent[len(_head_nn) :].lstrip(" —–-:,.").strip()
-                    _skey = _norm_ws.sub(" ", sent.lower().strip())
-            kw = " / ".join(_kws[:3]) + (" …" if len(_kws) > 3 else "")
-            # V0.03 (P0-2): complete-sentence gate — reject fragments.
-            _s = sent.strip().strip('"')
-            _starts_ok = bool(_s) and (_s[0].isupper() or _s[0] in "“\"'")
-            _ends_ok = bool(_s) and (_s[-1] in ".!?…" or _s[-1] in "”\"')")
-            _len_ok = len(_s) >= 40
-            _quotes_ok = sent.count('"') % 2 == 0
-            if not (_starts_ok and _ends_ok and _len_ok and _quotes_ok):
-                self.log(
-                    f"    ⛔ Tier 3: skipped non-sentence excerpt for '{kw}' "
-                    f"(fragment/quote-imbalanced source slice)",
-                    "DEBUG",
-                )
-                continue
-            if _skey in existing:
-                continue
-            # V0.4.11: fix broken trailing "(p." — the sentence-split
-            # regex at line 804 splits after ". " before a capital/digit,
-            # so a sentence ending with "(p. 89)" gets truncated to
-            # "(p." (the digit after the space triggers the split). Strip
-            # any trailing incomplete parenthetical citation.
-            _sent_clean = sent
-            if _sent_clean.endswith("(p."):
-                _sent_clean = _sent_clean[:-3].rstrip()
-            elif _sent_clean.endswith("(p"):
-                _sent_clean = _sent_clean[:-2].rstrip()
-            excerpt = (
-                f'On "{kw}" — verbatim from the source (auto-inserted for '
-                f'coverage; not the summarizer\'s advice): "{_sent_clean}"'
-            )
-            result.setdefault("source_excerpts", []).append(excerpt)
-            existing.add(_skey)
-            inserted += 1
-        if inserted > 0:
-            self.log(
-                f"    🔖 Tier 3: recorded {inserted} complete-sentence source "
-                f"excerpt(s) into the 'Source Excerpts' section (framed, "
-                f"EXCLUDED from Key Takeaways; sentence-deduped — "
-                f"{len(_by_sentence)} unique source sentence(s) for "
-                f"{len(still_missing)} keyword(s))",
-                "INFO",
-            )
-        return inserted
-
-    def _apply_3tier_coverage(self, heading, text, content, result, coverage):
-        """V16.0.3 3-Tier coverage guarantee.
-
-        V18.15.3 (Phase 5 Stage 3, Batch 4.5): logic extracted verbatim to
-        ``coverage_guarantee.apply_3tier_coverage``. The 8 ``self`` deps
-        (``coverage_threshold``, ``_extract_keywords``, ``log``,
-        ``_targeted_gap_fill``, ``_filter_thinking_bullets``,
-        ``max_bullets_per_chapter``, ``_compute_coverage``,
-        ``_force_insert_missing``) are passed as explicit kwargs (the
-        proven-safe pattern — NOT a context object). ``result`` is mutated
-        in place exactly as the original. Byte-for-byte identical behaviour
-        (characterization tests in ``tests/test_coverage_guarantee.py``).
-        """
-        # V0.06 (rig audit F4-b): the source-scaled bullet budget (the SAME
-        # length_policy.bullet_target every prompt uses) is passed as a HARD
-        # CAP to the coverage engine — Tier-2 gap-fill stops adding bullets
-        # at the cap (the V0.05 rig: 6 primary bullets + 4 Tier-2 + 9 scholar
-        # = 19 shipped against a 5-7 target). F7-b: the chapter heading is
-        # threaded to Tier-3 so excerpts never open with a heading echo.
-        from core.summarisation.length_policy import (
-            bullet_cap as _lp_bullet_cap,
-        )
-        from core.summarisation.length_policy import (
-            count_source_words as _lp_csw,
-        )
-
-        return cg_apply_3tier_coverage(
-            heading,
-            text,
-            content,
-            result,
-            coverage,
-            coverage_threshold=self.coverage_threshold,
-            extract_keywords=self._extract_keywords,
-            log=self.log,
-            targeted_gap_fill=self._targeted_gap_fill,
-            filter_thinking_bullets=self._filter_thinking_bullets,
-            max_bullets_per_chapter=self.max_bullets_per_chapter,
-            compute_coverage=self._compute_coverage,
-            force_insert_missing=(
-                lambda t, sm, r: self._force_insert_missing(t, sm, r, heading=heading)
-            ),
-            bullet_cap=_lp_bullet_cap(_lp_csw(text)),
-        )
+    # V0.4.19 (de-monolithization step 9/10): the Tier-2/Tier-3 coverage
+    # machinery (_find_source_sentence, _targeted_gap_fill,
+    # _prune_covered_excerpts, _force_insert_missing, _apply_3tier_coverage)
+    # moved VERBATIM to core/summarisation/summarizer_coverage.py
+    # (SummarizerCoverageMixin) — call sites resolve through the MRO.
 
     def _recover_vram(self, context: str = "", delay_sec: float = 8.0) -> None:
         """V13.40.0: Recover VRAM between heavy LLM phases to prevent empty responses.
@@ -1478,260 +1144,10 @@ class Summarizer(
             parse_response=self._parse_response,
         )
 
-    def _chunked_summarize(
-        self,
-        heading: str,
-        text: str,
-        model: str,
-        temp: float,
-        with_cot: bool,
-        concepts: list[str] | None,
-        callouts: list[str] | None,
-        max_tokens: int,
-    ) -> dict | None:
-        """V0.3 (master-summary architecture): 3-call sequential pipeline.
-
-        V18.3.4 (E3) was a 2-call split by section TYPE (exec+bullets+thorough /
-        distinctions+tensions). V0.3 restructures this to split by DEPTH:
-          Call 1 (Master Summary): produce the comprehensive thorough summary
-          Call 2 (Bullets): derive bullet points FROM the master summary
-          Call 3 (Exec): derive the executive summary FROM the master + bullets
-
-        This is the owner's study method: read → summarize (master) → distill
-        (bullets) → key takeaway (exec). Each call has a focused, smaller
-        output → less truncation risk, less CoT risk. The bullets and exec
-        are guaranteed consistent with the thorough (derived from it).
-
-        Additive sections (key_distinctions + theoretical_tensions) stay as
-        the existing followup call in _ensure_additive_sections.
-
-        Returns a dict with thorough_summary, bullet_points, executive_summary
-        (key_distinctions and theoretical_tensions are empty — filled later by
-        _ensure_additive_sections).
-        """
-        from core.summarisation.prompt_manager import PromptManager
-
-        _pm = PromptManager()
-
-        # ── Call 1: Master Summary (the comprehensive thorough) ────────
-        # This call asks for ONLY the thorough summary — the full output
-        # budget for one section → no truncation from 5-section overload.
-        self.log("    📦 V0.3 Call 1/3: Master Summary (comprehensive thorough)", "INFO")
-        from core.summarisation.length_policy import bullet_target as _bt
-
-        _src_words = len(text.split())
-        _bp_lo, _bp_hi = _bt(_src_words)
-        _bullet_range = f"{_bp_lo}-{_bp_hi}"
-        master_prompt = _pm.render_template(
-            "summarisation/master_summary",
-            heading=heading,
-            # V0.3.1: use the ACTUAL available context space, not a hardcoded
-            # 40000 chars. The available source space = (num_ctx - output_budget
-            # - margin) * ~4 chars/token. For a 16000-tok ctx with 8192 output
-            # and 700 margin: (16000 - 8192 - 700) * 4 = 28432 chars ≈ 7108 tok.
-            # For a 32768-tok ctx: (32768 - 8192 - 700) * 4 = 95504 chars.
-            text=text[
-                : max(
-                    (
-                        getattr(self.request, "summarisation_max_context_tokens", 16000)
-                        - max_tokens
-                        - 700
-                    )
-                    * 4,
-                    4000,
-                )
-            ],
-        )
-        raw1 = self._call_llm_with_empty_retry(
-            master_prompt, model=model, temperature=temp, max_tokens=max_tokens
-        )
-        if not raw1:
-            self.log(
-                "    ⚠️ V0.3 Call 1/3 (master summary) returned empty — falling back", "WARNING"
-            )
-            return None
-        raw1 = self._strip_thinking(raw1)
-        # Extract the <thorough_summary> section
-        import re as _re
-
-        _m = _re.search(r"<thorough_summary>(.*?)</thorough_summary>", raw1, _re.DOTALL)
-        master_summary = _m.group(1).strip() if _m else raw1.strip()
-        if len(master_summary.split()) < 50:
-            self.log(
-                f"    ⚠️ V0.3 Call 1/3 (master summary) too short ({len(master_summary.split())} words) — falling back",
-                "WARNING",
-            )
-            return None
-        self.log(
-            f"    ✅ V0.3 Call 1/3: master summary = {len(master_summary.split())} words, "
-            f"{len(master_summary)} chars",
-            "INFO",
-        )
-
-        # ── Call 2: Bullet Points derivation FROM the master summary ──
-        # The input is the master summary (much smaller than the full source)
-        # → less context, less CoT risk, faster generation.
-        self.log("    📦 V0.3 Call 2/3: Derive bullet points from master summary", "INFO")
-        bullets_prompt = _pm.render_template(
-            "summarisation/derive_bullets",
-            heading=heading,
-            master_summary=master_summary[:20000],
-            bullet_range=_bullet_range,
-        )
-        raw2 = self._call_llm_with_empty_retry(
-            bullets_prompt, model=model, temperature=temp, max_tokens=2048
-        )
-        bullets: list[str] = []
-        if raw2:
-            raw2 = self._strip_thinking(raw2)
-            _bm = _re.search(r"<bullet_points>(.*?)</bullet_points>", raw2, _re.DOTALL)
-            bullets_text = _bm.group(1).strip() if _bm else raw2.strip()
-            bullets = [
-                line.strip().lstrip("- ").strip()
-                for line in bullets_text.split("\n")
-                if line.strip().startswith("-")
-            ]
-        self.log(
-            f"    ✅ V0.3 Call 2/3: {len(bullets)} bullets derived from master summary",
-            "INFO",
-        )
-
-        # ── Call 3: Executive Summary derivation FROM master + bullets ─
-        # The input is the master summary + bullets → small, focused.
-        self.log("    📦 V0.3 Call 3/3: Derive executive summary from master + bullets", "INFO")
-        _bullets_text = "\n".join(f"- {b}" for b in bullets) if bullets else "(no bullets)"
-        exec_prompt = _pm.render_template(
-            "summarisation/derive_exec",
-            heading=heading,
-            master_summary=master_summary[:12000],
-            bullets=_bullets_text[:4000],
-        )
-        raw3 = self._call_llm_with_empty_retry(
-            exec_prompt, model=model, temperature=temp, max_tokens=1024
-        )
-        exec_summary = ""
-        if raw3:
-            raw3 = self._strip_thinking(raw3)
-            _em = _re.search(r"<executive_summary>(.*?)</executive_summary>", raw3, _re.DOTALL)
-            exec_summary = _em.group(1).strip() if _em else raw3.strip()
-        if not exec_summary:
-            # Fallback: derive exec from the first paragraph of the master summary
-            exec_summary = master_summary.split("\n")[0][:2000]
-        self.log(
-            f"    ✅ V0.3 Call 3/3: exec summary = {len(exec_summary.split())} words",
-            "INFO",
-        )
-
-        # ── Merge: return all 3 sections (additive sections filled later) ─
-        merged = {
-            "executive_summary": exec_summary,
-            "bullet_points": bullets,
-            "thorough_summary": master_summary,
-            "key_distinctions": "",  # filled by _ensure_additive_sections
-            "theoretical_tensions": "",  # filled by _ensure_additive_sections
-            "raw": (raw1 or "")
-            + "\n\n---V0.3-MASTER---\n\n"
-            + (raw2 or "")
-            + "\n\n---V0.3-BULLETS---\n\n"
-            + (raw3 or ""),
-            "model": model,
-            "temperature": temp,
-        }
-        return merged
-
-    def _build_chunked_prompt(
-        self,
-        heading: str,
-        text: str,
-        with_cot: bool = True,
-        concepts=None,
-        callouts=None,
-        chunk: int = 1,
-    ) -> str:
-        """V18.3.4 (E3): Build a chunked prompt — only requests SOME sections.
-
-        V18.6 (Phase 4, Task 4.2): delegates to
-        ``prompt_assembly.build_chunked_prompt``. The caller builds the full
-        prompt via ``self._build_prompt(...)`` (which is NOT extracted — too
-        coupled) and passes it as ``full_prompt`` to the pure function.
-
-        chunk=1: executive_summary + bullet_points + thorough_summary
-        chunk=2: key_distinctions + theoretical_tensions
-        """
-        from core.summarisation.prompt_assembly import build_chunked_prompt as _pa_chunked
-
-        # Build the full prompt first (still in Summarizer — 9 self deps)
-        full_prompt = self._build_prompt(
-            heading, text, with_cot=with_cot, concepts=concepts, callouts=callouts
-        )
-        # V0.05 (F9a): the chunk override carries the same output-selection
-        # flags as the primary prompt — an unrequested section must not be
-        # demanded back in through the chunking layer.
-        return _pa_chunked(
-            heading,
-            text,
-            full_prompt,
-            with_cot=with_cot,
-            chunk=chunk,
-            include_executive=bool(getattr(self.request, "include_executive_summary", True)),
-            include_thorough=bool(getattr(self.request, "include_thorough_summary", True)),
-            include_keypoints=bool(getattr(self.request, "include_keypoints", True)),
-        )
-
-    def _merge_summaries(self, summaries: list[dict], source_text: str = "") -> dict:
-        """Merge multiple summaries. M21 fix: take source_text as parameter
-        instead of reading self._source_text (thread-safety)."""
-        if not source_text:
-            source_text = getattr(self, "_source_text", "")
-        if not summaries:
-            return {}
-        bullet_counts: dict[str, int] = {}
-        for s in summaries:
-            for bp in s.get("bullet_points", []):
-                norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
-                bullet_counts[norm] = bullet_counts.get(norm, 0) + 1
-        best_exec = max(
-            summaries,
-            key=lambda s: self._compute_coverage(source_text, s.get("executive_summary", "")),
-        )
-        best_thorough = max(
-            summaries,
-            key=lambda s: self._compute_coverage(source_text, s.get("thorough_summary", "")),
-        )
-        all_bullets = []
-        seen = set()
-        # Fix 5: improved dedup — use fuzzy matching (not just exact
-        # normalized match) to catch near-duplicates like the same finding
-        # reworded across samples.  Falls back to exact match if rapidfuzz
-        # is unavailable.
-        try:
-            from rapidfuzz import fuzz as rf_fuzz
-
-            _has_fuzz = True
-        except ImportError:
-            _has_fuzz = False
-        for s in summaries:
-            for bp in s.get("bullet_points", []):
-                norm = re.sub(r"[^\w\s]", "", bp.lower()).strip()
-                if not norm or len(norm) < 10:
-                    continue
-                if _has_fuzz:
-                    is_dup = any(rf_fuzz.token_set_ratio(norm, existing) >= 75 for existing in seen)
-                else:
-                    is_dup = norm in seen
-                if not is_dup:
-                    seen.add(norm)
-                    all_bullets.append(bp)
-        return {
-            "executive_summary": best_exec.get("executive_summary", ""),
-            "thorough_summary": best_thorough.get("thorough_summary", ""),
-            "bullet_points": all_bullets[: self.max_bullets_per_chapter],
-            "key_distinctions": best_exec.get("key_distinctions", ""),  # V13.38.0
-            "theoretical_tensions": best_exec.get("theoretical_tensions", ""),  # V13.38.0
-            "raw": "Merged from multiple summaries",
-            "model": "merged",
-            "temperature": "merged",
-        }
+    # V0.4.19 (de-monolithization step 9/10): the chunked-output machinery
+    # (_chunked_summarize, _build_chunked_prompt, _merge_summaries) moved
+    # VERBATIM to core/summarisation/summarizer_chunking.py
+    # (SummarizerChunkingMixin) — call sites resolve through the MRO.
 
     # ─────────────────────────────────────────────────────────────────────────
     # B3: Multi-Sampling + Voting
@@ -1802,47 +1218,9 @@ class Summarizer(
             parallel_max_workers=_p6_lever_workers() if _p6_lever_enabled("b3") else 1,
         )
 
-    def _extract_must_have_items(self, heading: str, text: str) -> list[str]:
-        """V13.44.0 Idea #1: Pre-flight extraction of must-have items.
-
-        Runs 1 quick LLM call to identify 5-7 things this summary MUST include.
-        These are injected into each B4 section's prompt as explicit requirements.
-
-        Universal: works for any book — discovers enumerated lists, key definitions,
-        critical conclusions, important quotes, specific mechanisms by reading the source.
-        """
-        self.log("    🎯 Pre-flight: extracting must-have items…", "INFO")
-        # Truncate source for the pre-flight call (don't need full text)
-        max_src = 12000  # ~3000 tokens — enough to identify key items
-        src_text = text[:max_src]
-        lang = "Write in Persian (Farsi)." if self.language == "fa" else "Write in English."
-        text_excerpt = text[:200] if len(text) > 200 else text
-        prompt = self.prompt_manager.render_template(
-            "summarisation/preflight_must_have",
-            heading=heading,
-            text_excerpt=text_excerpt,
-            src_text=src_text,
-            language=lang,
-        )
-
-        try:
-            raw = self._call_llm_with_empty_retry(prompt, temperature=0.3, max_tokens=300)
-            if not raw:
-                self.log("    ⚠️ Pre-flight: empty response, skipping", "WARNING")
-                return []
-            raw = self._strip_thinking(raw)
-            items = []
-            for line in raw.strip().split("\n"):
-                line = line.strip().lstrip("- •\t").strip()
-                if line and len(line) > 5 and len(line) < 100:
-                    items.append(line)
-            self.log(
-                f"    🎯 Pre-flight: identified {len(items)} must-have items: {items[:3]}…", "INFO"
-            )
-            return items[:7]  # cap at 7
-        except Exception as e:
-            self.log(f"    ⚠️ Pre-flight failed: {e}", "WARNING")
-            return []
+    # V0.4.19 (de-monolithization step 9/10): _extract_must_have_items moved
+    # VERBATIM to core/summarisation/summarizer_coverage.py
+    # (SummarizerCoverageMixin) — call sites resolve through the MRO.
 
     # V0.08 (P2 dead-code removal): the _extract_key_quotes method (always
     # returned [] since V16.0.2) and its zero-effect plumbing through
@@ -2042,43 +1420,9 @@ class Summarizer(
             self.log(f"    ⚠️ Thematic synthesis failed: {e}", "WARNING")
             return None
 
-    def _section_map_reduce(
-        self,
-        heading: str,
-        text: str,
-        concepts: list[str] | None = None,
-        callouts: list[str] | None = None,
-    ) -> dict | None:
-        """V3.3.0 B4: Split chapter into sections, summarize each, merge.
-
-        V18.11 (Phase 5 Stage 3, Batch 2.5): logic extracted verbatim to
-        ``map_reduce.section_map_reduce``. The ~15 self-deps are passed as
-        explicit kwargs (the proven-safe pattern — NOT a context object).
-        The 2 local imports (detect_sections, get_total_vram) stay as local
-        imports inside the extracted function (verbatim). Byte-for-byte
-        identical behaviour (characterization tests in
-        ``tests/test_map_reduce.py``).
-        """
-        return mr_section_map_reduce(
-            heading,
-            text,
-            concepts=concepts,
-            callouts=callouts,
-            primary_model=self.primary_model,
-            temperature=self.temperature,
-            is_local=self.is_local,
-            local_preflight_skip_temp=self.local_preflight_skip_temp,
-            last_gpu_temp=getattr(self, "_last_gpu_temp", 50),
-            local_b4_section_cap=self.local_b4_section_cap,
-            local_vram_recovery_delay=self.local_vram_recovery_delay,
-            max_bullets_per_chapter=self.max_bullets_per_chapter,
-            extract_must_have_items=self._extract_must_have_items,
-            recover_vram=self._recover_vram,
-            summarize_with_model=self._summarize_with_model,
-            consolidate_duplicate_claims=self._consolidate_duplicate_claims,
-            thematic_synthesis=self._thematic_synthesis,
-            log=self.log,
-        )
+    # V0.4.19 (de-monolithization step 9/10): _section_map_reduce moved
+    # VERBATIM to core/summarisation/summarizer_chunking.py
+    # (SummarizerChunkingMixin) — call sites resolve through the MRO.
 
     def _summarize_inner(
         self,
@@ -2600,119 +1944,10 @@ class Summarizer(
             bullet_cap=_lp_bullet_cap_fn(source_text),
         )
 
-    def _gap_fill_concepts(
-        self,
-        heading: str,
-        content: str,
-        bullets: list[str],
-        concepts: list[str],
-        exec_summary: str = "",
-        thorough_summary: str = "",
-    ) -> list[str]:
-        """V3.2.0 C2: Detect uncovered concepts and make a targeted LLM call.
-
-        V18.12 (Phase 5 Stage 3, Batch 2.7): logic extracted verbatim to
-        ``gap_filler.gap_fill_concepts``. The 12 self-deps are passed as
-        explicit kwargs (the proven-safe pattern — NOT a context object).
-        The mutable ``self._last_coverage`` is set via a ``set_last_coverage``
-        callback (preserves the original side-effect). Byte-for-byte identical
-        behaviour (characterization tests in ``tests/test_gap_filler.py``).
-        """
-        return gf_gap_fill_concepts(
-            heading,
-            content,
-            bullets,
-            concepts,
-            exec_summary,
-            thorough_summary,
-            output_dir=self.request.output_dir,
-            temperature=self.temperature,
-            effective_target=self._effective_target,
-            overdeliver_enabled=self.overdeliver_enabled,
-            overdeliver_target=self.overdeliver_target,
-            coverage_threshold=self.coverage_threshold,
-            prompt_manager=self.prompt_manager,
-            recover_vram=self._recover_vram,
-            call_fast_llm=self._call_fast_llm,
-            strip_thinking=self._strip_thinking,
-            switch_to_fast_model=self._switch_to_fast_model,
-            set_last_coverage=lambda pct: setattr(self, "_last_coverage", pct),
-            log=self.log,
-        )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Map‑Reduce with 4k chunks, 10% overlap, resumable from cache
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _map_reduce_summarize(
-        self,
-        heading: str,
-        content: str,
-        *,
-        map_chunk_tokens: int | None = None,
-        map_chunk_overlap: float | None = None,
-    ) -> tuple[str | None, int]:
-        """Map-Reduce summarization for very large chapters (40k+ tokens).
-
-        V18.11 (Phase 5 Stage 3, Batch 2.1): logic extracted verbatim to
-        ``map_reduce.map_reduce_summarize``. The two ``request`` reads
-        (``input_path.stem`` for cache-key uniqueness,
-        ``summarisation_cache_enabled`` for the V10.33.0 cache toggle)
-        are passed as explicit primitives. The MAP_CHUNK_* / MAP_MINI_WORDS
-        instance attrs are passed as params. Byte-for-byte identical output
-        (characterization tests in ``tests/test_map_reduce.py``).
-
-        V0.10 (P6): the chunk geometry now flows from the strategy
-        decision — at legacy windows the caller passes decide_strategy's
-        values, which are EXACTLY the instance constants (4000 / 0.10),
-        so behavior is byte-identical to pre-P6. At windows > 32768 the
-        chunk scales (clamp(window // 8, 4000, 32000)) — the 220k rig
-        maps 27,500-token chunks instead of 4k ones (7x fewer map calls).
-        The instance constants remain the fallback (and the parity pin).
-
-        V18.20.4.10 (P0-d): also passes a wall-clock budget for the map
-        phase (``local.map_phase_max_seconds``, default 1800s). Derived
-        from the per-chapter deadline when one is active, so the budget
-        and the deadline agree: ``max(300, deadline - elapsed)``. 0
-        disables the budget (old behaviour).
-        """
-        from utils.settings import Settings as _MrSettings
-
-        _budget = int(_MrSettings().get("local.map_phase_max_seconds", 1800))
-        if getattr(self, "local_chapter_deadline", 0) > 0:
-            _remaining = self.local_chapter_deadline - (
-                time.time() - getattr(self, "_chapter_deadline_start", time.time())
-            )
-            _budget = (
-                max(300, int(_remaining))
-                if _budget <= 0
-                else min(_budget, max(300, int(_remaining)))
-            )
-        from core.summarisation.stage_overlap import lever_enabled as _p6_lever_enabled
-        from core.summarisation.stage_overlap import lever_workers as _p6_lever_workers
-
-        _p6_map_workers = _p6_lever_workers() if _p6_lever_enabled("map") else 1
-        return mr_map_reduce_summarize(
-            heading,
-            content,
-            primary_model=self.primary_model,
-            cache_dir=self.cache_dir,
-            input_path_stem=self.request.input_path.stem,
-            cache_enabled=bool(getattr(self.request, "summarisation_cache_enabled", False)),
-            temperature=self.temperature,
-            map_chunk_tokens=map_chunk_tokens
-            if map_chunk_tokens is not None
-            else self.MAP_CHUNK_TOKENS,
-            map_chunk_overlap=map_chunk_overlap
-            if map_chunk_overlap is not None
-            else self.MAP_CHUNK_OVERLAP,
-            map_mini_words=self.MAP_MINI_WORDS,
-            build_prompt=self._build_prompt,
-            call_llm=self._call_llm,
-            log=self.log,
-            map_phase_budget_sec=_budget,
-            parallel_max_workers=_p6_map_workers,
-        )
+    # V0.4.19 (de-monolithization step 9/10): _gap_fill_concepts (coverage
+    # mixin) and _map_reduce_summarize (chunking mixin) moved VERBATIM to
+    # core/summarisation/summarizer_coverage.py / summarizer_chunking.py —
+    # call sites resolve through the MRO.
 
     def _prepare_text(self, text: str) -> str:
         if self.provider == "freellmapi":
