@@ -1,5 +1,85 @@
 # Changelog
 
+## V0.4.8 — OCR tool: Test OCR feature + Advanced modal + Output folder as basic
+
+> **The release:** Three UI fixes for the OCR Service tool from the
+> user's screenshot 5454.png feedback:
+>
+> 1. Add a "Test OCR" button with a bundled test image so the user can
+>    verify the OCR engine works before converting real files.
+> 2. Replace the broken Advanced expander with a proper modal dialog
+>    (the expander had a layout bug — labels overlapping with input
+>    fields).
+> 3. Move "Output folder" out of Advanced and into the main view (it's
+>    a basic required setting, not advanced).
+
+**Fix 1 — "Test OCR" feature** (`ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py`):
+
+  - New "🧪 Test OCR" button in a dedicated "Test OCR engine" group box
+    in the main dialog.
+  - Uses a **bundled test image** (`assets/ocr_test_sample.png` — a
+    400×200 PNG with clear English text: "Elixir OCR Test", "The quick
+    brown fox jumps over the lazy dog.", "1234567890"). The user
+    doesn't need to find their own file.
+  - Click "Test OCR" → runs the currently-selected engine (Auto /
+    Tesseract / Ollama model) on the test image, on a background
+    `SimpleWorker` (5-30s, UI stays responsive).
+  - Shows the extracted text inline in a monospace result panel:
+    - `✅ OCR successful (N chars):` + the extracted text, or
+    - `⚠️ No text extracted.` if the engine returned empty, or
+    - `❌ Test failed: <error>` if the worker raised.
+  - During the run, the button shows "🧪 Testing…" and is disabled.
+  - The close guard now also protects the test worker (same
+    "QThread: Destroyed while thread is still running" class as the
+    convert worker).
+
+**Fix 2 — Advanced is now a modal dialog** (not an expander):
+
+  - The V0.4.5 inline expander had a layout bug (screenshot 5454.png
+    showed labels overlapping with input fields — the QToolButton +
+    hidden QWidget pattern didn't lay out cleanly inside the dialog's
+    QVBoxLayout).
+  - Replaced with a "⚙ Advanced…" button (bottom-right of the main
+    view) that opens a **modal QDialog** with a proper QFormLayout:
+    - Legacy engine (dropdown: pypdf / Local VLM)
+    - Page range (text input: "all" / "1-10" / "1,3,5")
+  - Each control has a one-line hint below it.
+  - The state (range_edit + legacy_engine_combo) lives on `self` so
+    `_do_convert` reads it the same way as before. The modal just
+    reparents the widgets to itself while open, then back to `self`
+    on close (try/finally ensures reparenting even on cancel).
+
+**Fix 3 — Output folder is now a basic control** (was inside Advanced):
+
+  - Moved the "Output folder: [____________] [Browse…]" row out of
+    the Advanced section and into the main view, right after the
+    Format dropdown.
+  - It's a **required** setting for every conversion, so it belongs
+    in the main view (the user's explicit feedback: "Output folder
+    must be outside advanced because it's basic setting").
+  - The Advanced modal now only contains the truly-advanced controls
+    (legacy engine + page range).
+
+**New bundled asset** (`assets/ocr_test_sample.png`):
+
+  - 400×200 PNG, 13 KB, generated with Pillow.
+  - Contains: "Elixir OCR Test" (title), "The quick brown fox jumps
+    over the lazy dog." (pangram), "1234567890" (digits).
+  - Clear, high-contrast text that any OCR engine (Tesseract, Ollama
+    vision) can extract.
+  - Path resolution is robust: tries 3 candidate paths (5-parents-up
+    from the dialog file, 4-parents-up, cwd/assets) so it works
+    regardless of install layout.
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full PySide6 test suite (GUI tests skip in headless
+  environments — recommended as the next session's first step).
+- The test image is English-only. A future enhancement could add a
+  Persian/Arabic test image (the user's screenshot showed a Persian
+  filename) to verify right-to-left OCR.
+
+---
+
 ## V0.4.7 — fix Settings crash (lazy tab loading + async dependency check)
 
 > **The release:** One targeted fix for the "Settings → Not Responding"

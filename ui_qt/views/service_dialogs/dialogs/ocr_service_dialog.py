@@ -60,6 +60,9 @@ class OcrServiceDialog(QDialog):
             QComboBox as _QCB,
         )
         from PySide6.QtWidgets import (
+            QGroupBox as _QGroupBox,
+        )
+        from PySide6.QtWidgets import (
             QHBoxLayout as _HL,
         )
         from PySide6.QtWidgets import (
@@ -171,50 +174,11 @@ class OcrServiceDialog(QDialog):
         fmt_row.addStretch()
         lay.addLayout(fmt_row)
 
-        # ── V0.4.5: Advanced expander — hidden by default. Contains the
-        # page-range + output-folder + legacy engine options that most
-        # users don't need. Collapsing these cuts the visible control
-        # count from 4 to 2 (Engine + Format), the V0.4.4 screenshot's
-        # main cognitive-load complaint.
-        self.advanced_toggle = _QTB()
-        self.advanced_toggle.setText("⚙ Advanced (page range, output folder, legacy engines)")
-        self.advanced_toggle.setCheckable(True)
-        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.advanced_toggle.setArrowType(Qt.RightArrow)
-        lay.addWidget(self.advanced_toggle)
-
-        self.advanced_widget = QWidget()
-        adv_lay = _VL(self.advanced_widget)
-        adv_lay.setContentsMargins(20, 4, 0, 0)
-        adv_lay.setSpacing(8)
-
-        # Legacy engine selector (for users who want pypdf/VLM specifically)
-        legacy_engine_row = _HL()
-        legacy_engine_row.setSpacing(8)
-        legacy_engine_row.addWidget(_QL("Legacy engine:"))
-        self.legacy_engine_combo = _QCB()
-        self.legacy_engine_combo.addItem("(use the main Engine dropdown above)", "__default__")
-        self.legacy_engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
-        self.legacy_engine_combo.addItem("Local VLM — llava/minicpm (better for infographics)", "vlm")
-        self.legacy_engine_combo.setCurrentIndex(0)
-        legacy_engine_row.addWidget(self.legacy_engine_combo, 1)
-        adv_lay.addLayout(legacy_engine_row)
-
-        # Page range
-        range_row = _HL()
-        range_row.setSpacing(8)
-        range_row.addWidget(_QL("Page range:"))
-        self.range_edit = _QLE()
-        self.range_edit.setPlaceholderText("all  (or e.g. 1-10, 1,3,5, 1-3,7-9)")
-        self.range_edit.setText("all")
-        self.range_edit.setMinimumWidth(200)
-        range_row.addWidget(self.range_edit, 1)
-        range_hint = _QL('💡 PDFs only — e.g. "1-10" for pages 1–10')
-        range_hint.setObjectName("Caption")
-        range_row.addWidget(range_hint)
-        adv_lay.addLayout(range_row)
-
-        # Output folder picker
+        # ── V0.4.8: Output folder — BASIC control (not advanced).
+        # The V0.4.5 design put this under the Advanced expander, but the
+        # user's screenshot (5454.png) feedback was clear: "Output folder
+        # must be outside advanced because it's a basic setting." It's
+        # required for every conversion, so it belongs in the main view.
         out_row = _HL()
         out_row.setSpacing(8)
         out_row.addWidget(_QL("Output folder:"))
@@ -224,17 +188,74 @@ class OcrServiceDialog(QDialog):
         out_browse.clicked.connect(self._pick_output_folder)
         out_row.addWidget(self.out_edit, 1)
         out_row.addWidget(out_browse)
-        adv_lay.addLayout(out_row)
+        lay.addLayout(out_row)
 
-        lay.addWidget(self.advanced_widget)
-        self.advanced_widget.setVisible(False)
-        self.advanced_toggle.toggled.connect(self.advanced_widget.setVisible)
-        # V0.4.5: toggle the arrow direction when expanded/collapsed.
-        self.advanced_toggle.toggled.connect(
-            lambda checked: self.advanced_toggle.setArrowType(
-                Qt.DownArrow if checked else Qt.RightArrow
-            )
+        # ── V0.4.8: Test OCR section — lets the user verify the selected
+        # engine works before running a full conversion. Uses a bundled
+        # test image (assets/ocr_test_sample.png) so the user doesn't need
+        # to find their own file. Shows the extracted text inline.
+        test_box = _QGroupBox("Test OCR engine")
+        test_lay = _VL(test_box)
+        test_lay.setContentsMargins(12, 8, 12, 8)
+        test_lay.setSpacing(6)
+
+        test_desc = _QL(
+            "Click \"Test OCR\" to verify the selected engine can read text "
+            "from a built-in sample image. This confirms your OCR setup "
+            "(Ollama model / Tesseract) is working before you convert real files."
         )
+        test_desc.setWordWrap(True)
+        test_desc.setObjectName("Caption")
+        test_lay.addWidget(test_desc)
+
+        test_btn_row = _HL()
+        test_btn_row.setSpacing(8)
+        test_btn_row.addStretch()
+        self.test_btn = _QPB("🧪 Test OCR")
+        self.test_btn.setObjectName("Compact")
+        self.test_btn.clicked.connect(self._on_test_ocr)
+        test_btn_row.addWidget(self.test_btn)
+        test_lay.addLayout(test_btn_row)
+
+        # Result display — shows the extracted text after the test runs.
+        self.test_result_label = _QL("")
+        self.test_result_label.setWordWrap(True)
+        self.test_result_label.setTextFormat(Qt.RichText)
+        self.test_result_label.setStyleSheet(
+            "padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px; "
+            "font-family: monospace; font-size: 11px; max-height: 120px;"
+        )
+        self.test_result_label.setVisible(False)
+        test_lay.addWidget(self.test_result_label)
+
+        lay.addWidget(test_box)
+
+        # ── V0.4.8: Advanced — now a MODAL dialog (not an expander).
+        # The V0.4.5 expander had a layout bug (the screenshot 5454.png
+        # showed labels overlapping with input fields). A modal dialog
+        # is cleaner and matches the user's request: "clicking on advanced
+        # setting must open a new modal inside ocr tool."
+        adv_btn_row = _HL()
+        adv_btn_row.addStretch()
+        self.advanced_btn = _QPB("⚙ Advanced…")
+        self.advanced_btn.setObjectName("Compact")
+        self.advanced_btn.setToolTip(
+            "Open the Advanced settings dialog (legacy engines + page range)"
+        )
+        self.advanced_btn.clicked.connect(self._open_advanced_modal)
+        adv_btn_row.addWidget(self.advanced_btn)
+        lay.addLayout(adv_btn_row)
+
+        # V0.4.8: the page-range + legacy-engine state lives on self
+        # (set by the Advanced modal) so the main dialog can read it
+        # during _do_convert.
+        self.range_edit = _QLE()
+        self.range_edit.setText("all")
+        self.legacy_engine_combo = _QCB()
+        self.legacy_engine_combo.addItem("(use the main Engine dropdown above)", "__default__")
+        self.legacy_engine_combo.addItem("pypdf (fast, digital PDFs only)", "pypdf")
+        self.legacy_engine_combo.addItem("Local VLM — llava/minicpm (better for infographics)", "vlm")
+        self.legacy_engine_combo.setCurrentIndex(0)
 
         # ── V0.4.5: Status (bigger + progress bar — same as V11.20)
         self.status_label = _QL("")
@@ -395,7 +416,221 @@ class OcrServiceDialog(QDialog):
         if not _confirm_close_with_running_worker(self, self._worker):
             event.ignore()
             return
+        # V0.4.8: also guard the test worker (same crash class).
+        test_worker = getattr(self, "_test_worker", None)
+        if not _confirm_close_with_running_worker(self, test_worker):
+            event.ignore()
+            return
         super().closeEvent(event)
+
+    # ── V0.4.8: Advanced modal + Test OCR ─────────────────────────────────
+
+    def _open_advanced_modal(self) -> None:
+        """V0.4.8: open the Advanced settings as a modal dialog.
+
+        The V0.4.5 design used an inline expander, but the screenshot
+        5454.png showed a layout bug (labels overlapping with input
+        fields). A modal dialog is cleaner + matches the user's request:
+        "clicking on advanced setting must open a new modal inside ocr
+        tool."
+
+        The modal edits self.range_edit + self.legacy_engine_combo in
+        place (they're already created on self but hidden). The modal
+        just shows them in a clean dialog layout.
+        """
+        from PySide6.QtWidgets import (
+            QDialog as _QDialog,
+            QDialogButtonBox as _QDialogButtonBox,
+            QFormLayout as _QFormLayout,
+            QLabel as _QLabel,
+            QPushButton as _QPushButton,
+            QVBoxLayout as _QVBoxLayout,
+        )
+
+        dlg = _QDialog(self)
+        dlg.setWindowTitle("Advanced OCR settings")
+        dlg.setMinimumWidth(420)
+        dlg_lay = _QVBoxLayout(dlg)
+        dlg_lay.setContentsMargins(16, 12, 16, 12)
+        dlg_lay.setSpacing(10)
+
+        # Title + description
+        title = _QLabel("⚙ Advanced OCR settings")
+        title.setObjectName("H2")
+        dlg_lay.addWidget(title)
+        desc = _QLabel(
+            "These settings are for advanced users. Most conversions work "
+            "fine with the defaults (Auto engine + all pages)."
+        )
+        desc.setWordWrap(True)
+        desc.setObjectName("Caption")
+        dlg_lay.addWidget(desc)
+
+        # Form layout for the two controls
+        form = _QFormLayout()
+        form.setSpacing(8)
+        form.setContentsMargins(0, 8, 0, 8)
+
+        # Legacy engine
+        form.addRow("Legacy engine:", self.legacy_engine_combo)
+        legacy_hint = _QLabel(
+            "Overrides the main Engine dropdown. Use only if you "
+            "specifically need pypdf or a local VLM."
+        )
+        legacy_hint.setWordWrap(True)
+        legacy_hint.setObjectName("Caption")
+        form.addRow("", legacy_hint)
+
+        # Page range
+        form.addRow("Page range:", self.range_edit)
+        range_hint = _QLabel('PDFs only — e.g. "1-10" for pages 1–10, "1,3,5" for specific pages, "all" for every page.')
+        range_hint.setWordWrap(True)
+        range_hint.setObjectName("Caption")
+        form.addRow("", range_hint)
+
+        dlg_lay.addLayout(form)
+
+        # Buttons
+        btn_box = _QDialogButtonBox(_QDialogButtonBox.Ok | _QDialogButtonBox.Cancel)
+        btn_box.accepted.connect(dlg.accept)
+        btn_box.rejected.connect(dlg.reject)
+        dlg_lay.addWidget(btn_box)
+
+        # V0.4.8: the range_edit + legacy_engine_combo are reparented
+        # to the dialog while it's open, then reparented back to self
+        # (hidden) on close. This keeps their state on self so
+        # _do_convert can read them. We use a try/finally to ensure
+        # reparenting back even if the user cancels.
+        original_parent_range = self.range_edit.parentWidget()
+        original_parent_legacy = self.legacy_engine_combo.parentWidget()
+        try:
+            dlg.exec()
+        finally:
+            # Reparent back to self (hidden) so the state persists.
+            self.range_edit.setParent(self)
+            self.legacy_engine_combo.setParent(self)
+
+    def _on_test_ocr(self) -> None:
+        """V0.4.8: run a quick OCR test on the bundled sample image to
+        verify the selected engine works.
+
+        Uses assets/ocr_test_sample.png (a 400x200 image with clear text)
+        so the user doesn't need to find their own file. Shows the
+        extracted text inline so the user can confirm the engine is
+        reading correctly.
+
+        Runs on a background worker (the Ollama/Tesseract call can
+        take 5-30s) so the UI stays responsive.
+        """
+        from pathlib import Path as _P
+
+        # Resolve the bundled test image path.
+        # The image is shipped at assets/ocr_test_sample.png relative to
+        # the repo root. We try a few candidate paths to be robust.
+        candidates = [
+            _P(__file__).resolve().parent.parent.parent.parent.parent / "assets" / "ocr_test_sample.png",
+            _P(__file__).resolve().parent.parent.parent.parent / "assets" / "ocr_test_sample.png",
+            _P.cwd() / "assets" / "ocr_test_sample.png",
+        ]
+        test_image = None
+        for c in candidates:
+            if c.exists():
+                test_image = c
+                break
+        if test_image is None:
+            self.test_result_label.setText(
+                "❌ <b>Test image not found.</b> Expected at assets/ocr_test_sample.png"
+            )
+            self.test_result_label.setVisible(True)
+            return
+
+        # Disable the Test button + show "Running…" state.
+        self.test_btn.setEnabled(False)
+        self.test_btn.setText("🧪 Testing…")
+        self.test_result_label.setText("⏳ <i>Running OCR on the sample image…</i>")
+        self.test_result_label.setVisible(True)
+
+        # Snapshot the engine choice on the main thread (the worker
+        # reads it via the closure).
+        engine = self.engine_combo.currentData()
+        legacy_engine = self.legacy_engine_combo.currentData()
+        if legacy_engine and legacy_engine != "__default__":
+            engine = legacy_engine
+        elif not engine:
+            engine = "auto"
+
+        # V0.4.8: persist the selected Ollama model name (same as
+        # _do_convert does) so _ocr_ollama picks it up.
+        if engine and engine not in ("auto", "tesseract", "pypdf", "vlm"):
+            from utils.settings import Settings as _S
+            _s = _S()
+            _s.set("ocr.primary_model", engine)
+
+        # Build the worker callable. It reads the test image bytes,
+        # runs the same _ocr_ollama / _ocr_tesseract dispatch as
+        # _ocr_work, and returns the extracted text.
+        test_path = test_image
+
+        def _do_test():
+            path = test_path
+            try:
+                if engine == "tesseract":
+                    return self._ocr_tesseract(path, pages=None)
+                elif engine == "pypdf":
+                    return "⚠️ pypdf only works on PDFs, not images. Pick a different engine for the test."
+                elif engine == "vlm":
+                    return self._ocr_ollama(path, vlm=True, pages=None)
+                elif engine and engine not in ("auto", "tesseract", "pypdf", "vlm"):
+                    # Ollama model name
+                    return self._ocr_ollama(path, vlm=False, pages=None)
+                else:
+                    # auto — for an image, skip pypdf and go straight to Ollama/Tesseract
+                    try:
+                        text = self._ocr_ollama(path, vlm=False, pages=None)
+                        if text and len(text.strip()) > 5:
+                            return text
+                    except Exception:
+                        pass
+                    return self._ocr_tesseract(path, pages=None)
+            except Exception as e:
+                return f"❌ {type(e).__name__}: {e}"
+
+        # Reuse the SimpleWorker pattern from _do_convert.
+        self._test_worker = SimpleWorker(_do_test)
+        self._test_worker.finished.connect(self._on_test_finished)
+        self._test_worker.failed.connect(self._on_test_failed)
+        self._test_worker.start()
+
+    def _on_test_finished(self, result) -> None:
+        """V0.4.8: test worker finished — show the extracted text."""
+        self.test_btn.setEnabled(True)
+        self.test_btn.setText("🧪 Test OCR")
+        text = (result or "").strip()
+        if not text:
+            self.test_result_label.setText(
+                "⚠️ <b>No text extracted.</b> The engine returned empty output. "
+                "Try a different engine or check that the model is installed."
+            )
+        else:
+            # Escape HTML special chars + show in a monospace block.
+            import html as _html
+            escaped = _html.escape(text)
+            char_count = len(text)
+            self.test_result_label.setText(
+                f"✅ <b>OCR successful</b> ({char_count} chars):<br>"
+                f'<pre style="margin:4px 0 0 0; white-space:pre-wrap;">{escaped}</pre>'
+            )
+        self.test_result_label.setVisible(True)
+
+    def _on_test_failed(self, err: str) -> None:
+        """V0.4.8: test worker raised — show the error."""
+        self.test_btn.setEnabled(True)
+        self.test_btn.setText("🧪 Test OCR")
+        import html as _html
+        self.test_result_label.setText(
+            f"❌ <b>Test failed:</b> {_html.escape(err)}"
+        )
+        self.test_result_label.setVisible(True)
 
     def _pick_output_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
