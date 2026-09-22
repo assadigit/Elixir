@@ -148,9 +148,24 @@ def extract_figures_and_tables(
                 # code only used the default (lattice), which misses
                 # borderless tables like Table 3-1 in the NPD chapter
                 # (a psychoanalytic textbook with space-aligned tables).
+                #
+                # V0.4.18: the text-strategy fallback is now CONDITIONAL on
+                # having a VLM available. Without a VLM, the text strategy
+                # produces too many false positives (text paragraphs
+                # misidentified as tables — 24 false positives on the NPD
+                # chapter). With a VLM, the text strategy finds borderless
+                # tables AND the VLM filters out text paragraphs.
+                #
+                # Without a VLM: lattice strategy only (fewer crops, but no
+                # false positives). Borderless tables will be missed.
+                # With a VLM: lattice + text strategy + VLM validation
+                # (finds borderless tables AND filters text).
                 tables_found = page.find_tables()
-                if not tables_found:
-                    # V0.4.13: fallback to stream strategy for borderless tables.
+                if not tables_found and vlm_callable:
+                    # V0.4.18: only use the text-strategy fallback when a
+                    # VLM is available to validate the results. Without a
+                    # VLM, the text strategy's false positives (text
+                    # paragraphs misidentified as tables) ship unchecked.
                     try:
                         tables_found = page.find_tables(
                             table_settings={
