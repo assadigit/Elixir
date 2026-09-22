@@ -2399,16 +2399,25 @@ class Converter(ConverterExtractionMixin):
                         self.request, log=self._log
                     )
 
-                    # Run the cropper. Layer 0 reuses the existing
-                    # figure_table_cropper (already done above), so we
-                    # disable it here to avoid double-processing.
+                    # Run the cropper. V0.4.11: enable_existing_extractors
+                    # is now True when extract_visual_regions is ON — the
+                    # V0.4.3 code set it to False (assuming the existing
+                    # figure_table_cropper already ran above), but that
+                    # block is gated behind outputs_optin.screenshots
+                    # (default OFF), so on most runs Layer 0 never fires.
+                    # This means embedded images (photos, raster charts) in
+                    # the PDF were never detected. Now: when the visual-
+                    # region cropper is enabled (default ON), it also runs
+                    # the existing PyMuPDF image + pdfplumber table
+                    # extraction, so the user gets crops even without
+                    # enabling the screenshots opt-in.
                     vr_result = extract_visual_regions(
                         pdf_path=self.request.input_path,
                         output_dir=self.output_dir,
                         pages=vr_page_list,
                         vlm_callable=vlm_callable,
                         log_callback=self._log,
-                        enable_existing_extractors=False,  # already done above
+                        enable_existing_extractors=True,  # V0.4.11: was False
                         enable_vector_clustering=True,
                         enable_vlm=vlm_callable is not None,
                     )

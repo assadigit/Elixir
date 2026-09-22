@@ -1168,8 +1168,13 @@ RAW OCR TEXT:
 """
 
     def _stylize_text(self, raw_text: str, source_name: str = "") -> str:
-        """V0.4.10: send raw OCR text to the main summarization model for
-        structuring into Obsidian-style atomic notes.
+        """V0.4.10/V0.4.11: send raw OCR text to the main summarization model
+        for structuring into Obsidian-style atomic notes.
+
+        V0.4.11: added chunking for long documents. If the raw text exceeds
+        ~6000 chars (roughly 1500 tokens), it's split into chunks, each
+        stylized separately, and the results are concatenated. This prevents
+        the 8192-token output limit from truncating long PDFs.
 
         Uses the user's configured summarisation model (NOT the OCR model)
         via the Ollama /api/generate endpoint. Content-agnostic — the
@@ -1197,7 +1202,6 @@ RAW OCR TEXT:
                 "summarisation.primary_model", ""
             )
             if not model:
-                # No summarisation model configured — return raw text.
                 logger.warning(
                     "Stylize: no summarisation model configured — "
                     "returning raw OCR text"
@@ -1209,34 +1213,81 @@ RAW OCR TEXT:
                 ollama_url = ollama_url[:-3]
             ollama_url = ollama_url.rstrip("/")
 
-            # Build the prompt: system instruction + raw text.
-            title_hint = f' (source: "{source_name}")' if source_name else ""
-            prompt = self._STYLIZE_PROMPT + f"\n---\nSource{title_hint}:\n\n{raw_text}\n"
-
-            payload = {
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "system": "",
-                "keep_alive": "30m",
-                "options": {
-                    "temperature": 0.1,
-                    "num_predict": 8192,
-                    "top_p": 0.9,
-                },
-            }
-
-            url = f"{ollama_url}/api/generate"
-            resp = safe_ollama_request("POST", url, json=payload, timeout=300)
-            stylized = resp.json().get("response", "").strip()
-
-            if stylized and len(stylized) >= 20:
-                return stylized
+            # V0.4.11: chunk long text. Each chunk is ~5000 chars to
+            # leave room for the prompt + the 8192-token output limit.
+            # Chunks are split at paragraph boundaries when possible.
+            CHUNK_SIZE = 5000
+            if len(raw_text) <= CHUNK_SIZE:
+                # Short text — single pass (the original V0.4.10 path).
+                return self._stylize_chunk(raw_text, source_name, model, ollama_url, safe_ollama_request, is_first=True, is_last=True)
             else:
-                logger.warning("Stylize: LLM returned empty — returning raw text")
-                return raw_text
+                # Long text — chunk + multi-pass.
+                logger.info(f"Stylize: text is {len(raw_text)} chars — chunking into ~{CHUNK_SIZE}-char blocks")
+                chunks = self._split_text_into_chunks(raw_text, CHUNK_SIZE)
+                results = []
+                for i, chunk in enumerate(chunks):
+                    is_first = i == 0
+                    is_last = i == len(chunks) - 1
+                    logger.info(f"Stylize: processing chunk {i+1}/{len(chunks)} ({len(chunk)} chars)")
+                    result = self._stylize_chunk(chunk, source_name, model, ollama_url, safe_ollama_request, is_first=is_first, is_last=is_last)
+                    results.append(result)
+                # Concatenate the chunks. If any chunk failed (returned raw),
+                # it's included as-is.
+                combined = "\n\n---\n\n".join(results)
+                return combined
 
         except Exception as e:
             logger.warning("Stylize failed (non-fatal): %s: %s — returning raw text",
                            type(e).__name__, e)
             return raw_text
+
+    def _split_text_into_chunks(self, text: str, chunk_size: int) -> list[str]:
+        """V0.4.11: split text into chunks at paragraph boundaries."""
+        if len(text) <= chunk_size:
+            return [text]
+        chunks = []
+        remaining = text
+        while len(remaining) > chunk_size:
+            # Find the last paragraph break before chunk_size.
+            split_at = remaining.rfind("\n\n", 0, chunk_size)
+            if split_at < 0:
+                split_at = remaining.rfind("\n", 0, chunk_size)
+            if split_at < 0:
+                split_at = chunk_size  # hard split
+            chunks.append(remaining[:split_at].strip())
+            remaining = remaining[split_at:].strip()
+        if remaining:
+            chunks.append(remaining)
+        return chunks
+
+    def _stylize_chunk(self, text: str, source_name: str, model: str,
+                       ollama_url: str, safe_ollama_request, is_first: bool, is_last: bool) -> str:
+        """V0.4.11: stylize a single chunk. is_first/is_last control
+        whether frontmatter/tags are included (only on first/last chunk)."""
+        # For non-first chunks, use a simpler prompt (no frontmatter).
+        if is_first:
+            prompt = self._STYLIZE_PROMPT + f"\n---\nSource (\"{source_name}\"):\n\n{text}\n"
+        else:
+            prompt = (
+                "Structure the following OCR text into clean Markdown with headings, "
+                "bullet points, callouts, and wikilinks. Do NOT add frontmatter (this "
+                "is a continuation chunk). Output ONLY the Markdown.\n\n"
+                f"---\nSource (\"{source_name}\", continuation):\n\n{text}\n"
+            )
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "system": "",
+            "keep_alive": "30m",
+            "options": {"temperature": 0.1, "num_predict": 8192, "top_p": 0.9},
+        }
+        url = f"{ollama_url}/api/generate"
+        resp = safe_ollama_request("POST", url, json=payload, timeout=300)
+        stylized = resp.json().get("response", "").strip()
+        if stylized and len(stylized) >= 20:
+            return stylized
+        else:
+            logger.warning("Stylize chunk: LLM returned empty — returning raw chunk")
+            return text

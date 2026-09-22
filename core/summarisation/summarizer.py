@@ -1039,9 +1039,19 @@ class Summarizer(
                 continue
             if _skey in existing:
                 continue
+            # V0.4.11: fix broken trailing "(p." — the sentence-split
+            # regex at line 804 splits after ". " before a capital/digit,
+            # so a sentence ending with "(p. 89)" gets truncated to
+            # "(p." (the digit after the space triggers the split). Strip
+            # any trailing incomplete parenthetical citation.
+            _sent_clean = sent
+            if _sent_clean.endswith("(p."):
+                _sent_clean = _sent_clean[:-3].rstrip()
+            elif _sent_clean.endswith("(p"):
+                _sent_clean = _sent_clean[:-2].rstrip()
             excerpt = (
                 f'On "{kw}" — verbatim from the source (auto-inserted for '
-                f'coverage; not the summarizer\'s advice): "{sent}"'
+                f'coverage; not the summarizer\'s advice): "{_sent_clean}"'
             )
             result.setdefault("source_excerpts", []).append(excerpt)
             existing.add(_skey)

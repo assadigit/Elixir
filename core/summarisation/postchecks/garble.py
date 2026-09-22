@@ -1289,6 +1289,28 @@ def detect_dropped_letter_garble(
             _repair_allowed = (
                 auto_repair and len(matching_source) == 1 and len(non_inflection_matches) == 1
             )
+            # V0.4.11 (audit item #3): auto-repair proper-noun garbles even
+            # when auto_repair=False. Proper nouns (capitalized in BOTH the
+            # text and the source) are almost never edit-distance-1 from each
+            # other by accident — "Tyrson"→"Tyson", "Gedimen"→"Gediman" are
+            # clear garbles, not real-word false positives. The guard:
+            #   (1) the garbled token is capitalized in the text (proper noun)
+            #   (2) the matching source word is also capitalized in the source
+            #   (3) exactly ONE non-inflection match (no ambiguity)
+            #   (4) the paragraph-corroboration check passes
+            # This is safe because common English words (the V0.03 false-
+            # repair class) are lowercase, so this path can't fire on them.
+            if not _repair_allowed and len(non_inflection_matches) == 1:
+                _orig_tok_check = m.group(0)
+                _repair_check = next(iter(non_inflection_matches))
+                # Check if the original token is capitalized (proper noun).
+                _is_capitalized = _orig_tok_check[:1].isupper()
+                # Check if the source word appears capitalized in the source.
+                _source_capitalized = bool(
+                    re.search(r"\b" + re.escape(_repair_check.capitalize()) + r"\b", source_text)
+                )
+                if _is_capitalized and _source_capitalized:
+                    _repair_allowed = True
             if _repair_allowed and not _paragraph_corroborated(
                 next(iter(matching_source)),
                 word,
@@ -2426,6 +2448,124 @@ def repair_stray_quotes_v2(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# V0.4.11 (audit item #4): semantic LLM repair for D3 long-span quote pairs.
+#
+# The V0.4.2 stray_quote_v2_d3 detector flags long-span quote pairs but is
+# flag-only — the state machine can't tell WHERE to insert the missing
+# quote pair. This function takes the flagged text + source text and sends
+# them to the fast LLM with a "fix the quote pairing" prompt. Fail-open:
+# if the LLM call fails, the original text is returned unchanged.
+#
+# Content-agnostic: the prompt only asks for quote-pair repair, not
+# content changes. The LLM is instructed to preserve all text and only
+# add/remove/reposition double-quote characters.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_D3_REPAIR_PROMPT = """The following text has mismatched double-quote characters. Some opening quotes lack closing quotes, and some closing quotes lack opening quotes. Your task: fix ONLY the quote pairing by adding or removing double-quote characters so every opening quote has a matching closing quote and vice versa. Do NOT change any other text, do NOT add or remove words, do NOT change punctuation other than double-quote characters. Output ONLY the corrected text, no commentary.
+
+TEXT TO FIX:
+"""
+
+
+def repair_d3_quotes_via_llm(
+    text: str,
+    field_label: str,
+    source_text: str = "",
+    ollama_url: str = "http://localhost:11434",
+    model: str = "",
+) -> tuple[str, list[Issue]]:
+    """V0.4.11: send flagged D3 text to the LLM for semantic quote repair.
+
+    Only fires when D3 (long-span pair) flags are present. Uses the
+    summarisation model (not the OCR model) via /api/generate.
+
+    Fail-open: if the LLM call fails, returns the original text.
+    """
+    issues: list[Issue] = []
+    if not text or not model:
+        return text, issues
+
+    # Check if there are any D3 flags to repair.
+    _, v2_issues = repair_stray_quotes_v2(text, field_label)
+    d3_flags = [i for i in v2_issues if i.detector == "stray_quote_v2_d3"]
+    if not d3_flags:
+        return text, issues  # no D3 flags — nothing to repair
+
+    try:
+        from utils.network import safe_ollama_request
+
+        prompt = _D3_REPAIR_PROMPT + text
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "system": "",
+            "keep_alive": "30m",
+            "options": {"temperature": 0.0, "num_predict": 8192},
+        }
+        url = f"{ollama_url}/api/generate"
+        resp = safe_ollama_request("POST", url, json=payload, timeout=120)
+        repaired = resp.json().get("response", "").strip()
+
+        if repaired and len(repaired) > len(text) * 0.8:
+            # Verify the repaired text has balanced quotes.
+            _, post_issues = repair_stray_quotes_v2(repaired, field_label)
+            post_d3 = [i for i in post_issues if i.detector == "stray_quote_v2_d3"]
+            if len(post_d3) < len(d3_flags):
+                issues.append(
+                    Issue(
+                        detector="stray_quote_v2_d3_llm_repair",
+                        severity="fix",
+                        field=field_label,
+                        snippet=text[:60],
+                        detail=(
+                            f"semantic LLM repair: fixed {len(d3_flags) - len(post_d3)} "
+                            f"D3 long-span quote pair(s) via LLM (was {len(d3_flags)} flags, "
+                            f"now {len(post_d3)})."
+                        ),
+                    )
+                )
+                return repaired, issues
+            else:
+                issues.append(
+                    Issue(
+                        detector="stray_quote_v2_d3_llm_repair",
+                        severity="flag",
+                        field=field_label,
+                        snippet=text[:60],
+                        detail=(
+                            f"semantic LLM repair attempted but {len(post_d3)} D3 flags "
+                            f"remain — original text kept."
+                        ),
+                    )
+                )
+        else:
+            issues.append(
+                Issue(
+                    detector="stray_quote_v2_d3_llm_repair",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail="semantic LLM repair returned empty/short text — original kept.",
+                )
+            )
+    except Exception as e:
+        from core.summarisation.postchecks.shared import logger
+
+        logger.warning("D3 LLM repair crashed (non-fatal): %s: %s", type(e).__name__, e)
+        issues.append(
+            Issue(
+                detector="stray_quote_v2_d3_llm_repair",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"semantic LLM repair failed: {type(e).__name__}: {e} — original kept.",
+            )
+        )
+    return text, issues
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # V0.4.3 (audit D4): sentence-fusion detector.
 #
 # The V0.4.2 NPD thorough summary shipped two sentence-fusion garbles that
@@ -2684,4 +2824,110 @@ def detect_sentence_fusion(
 
         logger.warning("sentence-fusion detector crashed (non-fatal): %s: %s", type(e).__name__, e)
         return text, issues
+    return text, issues
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.4.11 (audit item #8): multi-author concept conflation detector.
+#
+# The V0.4.1 Jones/Waelder "God complex" conflation: the summary credited
+# BOTH Jones and Waelder with the "God complex" concept, but the source
+# attributes it only to Jones. The existing attribution veto catches
+# single-author misattribution but not "2+ authors credited with a single
+# named concept that the source attributes to only 1 of them."
+#
+# Content-agnostic: the detector finds quoted phrases attributed to 2+
+# authors in the same sentence, then checks if the source attributes that
+# phrase to only 1 of them. If so, it flags the conflation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def detect_multi_author_conflation(
+    text: str,
+    field_label: str,
+    source_text: str = "",
+    source_authors: set | None = None,
+) -> tuple[str, list[Issue]]:
+    """V0.4.11 (audit item #8): detect when 2+ authors are credited with
+    a single named concept that the source attributes to only 1 of them.
+
+    Pattern: a sentence in the summary contains a quoted phrase (e.g.,
+    "God complex") AND mentions 2+ author names from source_authors.
+    The source is checked: does the quoted phrase appear near ONLY ONE
+    of those authors? If so, the other author(s) are conflated.
+
+    Flag-only (no auto-repair — the correct reconstruction is ambiguous).
+
+    Args:
+        text: the summary text to scan.
+        field_label: "exec" / "thorough" / "bullet[N]".
+        source_text: the source chapter text.
+        source_authors: set of author surnames from the runtime analysis.
+
+    Returns:
+        ``(text, issues)``. Text is UNCHANGED.
+    """
+    issues: list[Issue] = []
+    if not text or not source_text or not source_authors:
+        return text, issues
+    try:
+        # Find sentences with a quoted phrase + 2+ author names.
+        # A "quoted phrase" is text between " or " or " (smart quotes).
+        _quote_re = re.compile(r'["\u201c]([^"\u201c\u201d]{3,60})["\u201d]')
+        for sent_match in re.finditer(r'[^.!?]*[.!?]', text):
+            sent = sent_match.group(0)
+            sent_lower = sent.lower()
+            # Find all author names mentioned in this sentence.
+            mentioned = set()
+            for author in source_authors:
+                if len(author) < 3:
+                    continue
+                if author.lower() in sent_lower:
+                    mentioned.add(author)
+            if len(mentioned) < 2:
+                continue  # need 2+ authors for a conflation
+            # Find quoted phrases in this sentence.
+            quotes = _quote_re.findall(sent)
+            if not quotes:
+                continue
+            # For each quoted phrase, check which author(s) the source
+            # attributes it to.
+            for phrase in quotes:
+                phrase_lower = phrase.lower()
+                # Find the phrase in the source text.
+                src_idx = source_text.lower().find(phrase_lower)
+                if src_idx < 0:
+                    continue  # phrase not in source — skip
+                # Check which mentioned authors appear within 200 chars
+                # of the phrase in the source.
+                src_context = source_text[max(0, src_idx - 200):src_idx + 200].lower()
+                source_attributed = set()
+                for author in mentioned:
+                    if author.lower() in src_context:
+                        source_attributed.add(author)
+                # If the source attributes the phrase to FEWER authors
+                # than the summary mentions, it's a conflation.
+                conflated = mentioned - source_attributed
+                if conflated:
+                    snippet_start = max(0, sent_match.start() - 25)
+                    snippet_end = min(len(text), sent_match.end() + 25)
+                    issues.append(
+                        Issue(
+                            detector="multi_author_conflation",
+                            severity="flag",
+                            field=field_label,
+                            snippet=text[snippet_start:snippet_end],
+                            detail=(
+                                f"possible multi-author conflation: the phrase "
+                                f'\"{phrase}\" is attributed to {sorted(mentioned)} '
+                                f"in the summary, but the source attributes it only "
+                                f"to {sorted(source_attributed) or '[none found nearby]'}. "
+                                f"Conflated author(s): {sorted(conflated)}."
+                            ),
+                        )
+                    )
+    except Exception as e:  # pragma: no cover
+        from core.summarisation.postchecks.shared import logger
+
+        logger.warning("multi-author conflation detector crashed (non-fatal): %s: %s",
+                       type(e).__name__, e)
     return text, issues
