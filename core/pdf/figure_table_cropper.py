@@ -157,6 +157,24 @@ def extract_figures_and_tables(
                         if not table_data or len(table_data) < 2:
                             continue  # skip single-row "tables"
 
+                        # V0.4.15: validate this is actually a table, not a
+                        # text paragraph misidentified by the "text" strategy.
+                        # The V0.4.13 text-strategy fallback is aggressive —
+                        # it detects multi-column text layouts as "tables"
+                        # because text columns look like table columns. A
+                        # real table has:
+                        #   - 2+ columns (multi-column structure)
+                        #   - Short cells (averaging <80 chars — table cells
+                        #     are fragments, not full paragraphs)
+                        #   - Consistent column count across rows
+                        if not _is_real_table(table_data):
+                            log(
+                                f"  ⏭️ Table extraction p.{page_num} tbl {tbl_index}: "
+                                f"skipped — detected as text, not a real table",
+                                "DEBUG",
+                            )
+                            continue
+
                         # Crop the table region as an image
                         bbox = table.bbox  # (x0, top, x1, bottom)
                         if bbox and all(v is not None for v in bbox):
@@ -199,6 +217,72 @@ def extract_figures_and_tables(
         log(f"  ⚠️ Table extraction failed: {e}", "WARNING")
 
     return figures, tables
+
+
+def _is_real_table(table_data: list) -> bool:
+    """V0.4.15: validate that the extracted data is actually a table, not
+    a text paragraph misidentified by pdfplumber's "text" strategy.
+
+    The V0.4.13 text-strategy fallback detects multi-column text layouts
+    as "tables" because text columns look like table columns. This
+    function distinguishes real tables from text by checking:
+
+    1. **Multi-column structure**: 2+ columns (a table needs at least 2).
+    2. **Short cells**: the average cell length should be <80 chars.
+       Table cells contain fragments (labels, numbers, short phrases),
+       not full paragraphs. If the average is >80 chars, it's prose.
+    3. **Consistent columns**: most rows have the same column count
+       (tables have aligned columns; text paragraphs don't).
+    4. **Low word-per-cell ratio**: a real table cell averages <15 words.
+       A text paragraph cell has 20+ words.
+
+    Content-agnostic: based purely on structural properties (cell length,
+    column count, word count), not on content keywords.
+    """
+    if not table_data or len(table_data) < 2:
+        return False
+
+    # Check 1: need 2+ columns.
+    col_counts = [len(row) for row in table_data if row]
+    if not col_counts:
+        return False
+    max_cols = max(col_counts)
+    if max_cols < 2:
+        return False
+
+    # Check 2: average cell length. Collect all non-empty cells.
+    all_cells = []
+    for row in table_data:
+        if row:
+            for cell in row:
+                if cell and str(cell).strip():
+                    all_cells.append(str(cell).strip())
+
+    if not all_cells:
+        return False
+
+    avg_cell_len = sum(len(c) for c in all_cells) / len(all_cells)
+    if avg_cell_len > 80:
+        # Average cell is >80 chars — this is prose, not a table.
+        return False
+
+    # Check 3: column consistency. Most rows should have the same
+    # column count (within 1 of the mode).
+    from collections import Counter
+
+    col_mode = Counter(col_counts).most_common(1)[0][0]
+    consistent = sum(1 for c in col_counts if abs(c - col_mode) <= 1)
+    consistency_ratio = consistent / len(col_counts) if col_counts else 0
+    if consistency_ratio < 0.7:
+        return False
+
+    # Check 4: word-per-cell ratio. Real table cells are short.
+    total_words = sum(len(c.split()) for c in all_cells)
+    avg_words = total_words / len(all_cells)
+    if avg_words > 15:
+        return False
+
+    return True
 
 
 def _extract_caption(page, page_num: int, label: str) -> str:
