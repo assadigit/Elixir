@@ -166,6 +166,7 @@ class OcrServiceDialog(QDialog):
         fmt_row.addWidget(_QL("Format:"))
         self.fmt_combo = _QCB()
         self.fmt_combo.addItem("Markdown (.md) — recommended", ".md")
+        self.fmt_combo.addItem("Stylized Markdown (.md) — Obsidian atomic notes", ".stylized.md")
         self.fmt_combo.addItem("Plain text (.txt)", ".txt")
         self.fmt_combo.addItem("Word document (.docx)", ".docx")
         self.fmt_combo.addItem("PDF (.pdf)", ".pdf")
@@ -173,6 +174,22 @@ class OcrServiceDialog(QDialog):
         fmt_row.addWidget(self.fmt_combo)
         fmt_row.addStretch()
         lay.addLayout(fmt_row)
+
+        # V0.4.10: hint for the Stylized Markdown option.
+        self.stylize_hint = _QL(
+            "💡 Stylized Markdown runs a second LLM pass on the OCR'd text to "
+            "structure it into Obsidian-style atomic notes with YAML frontmatter, "
+            "#tags, > [!note] callouts, and [[wikilinks]]. Uses your main "
+            "summarization model (not the OCR model)."
+        )
+        self.stylize_hint.setObjectName("Caption")
+        self.stylize_hint.setWordWrap(True)
+        self.stylize_hint.setStyleSheet("color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;")
+        self.stylize_hint.setVisible(False)
+        lay.addWidget(self.stylize_hint)
+        # Show/hide the hint based on the selected format.
+        self.fmt_combo.currentIndexChanged.connect(self._update_stylize_hint)
+        _QTimer.singleShot(0, self._update_stylize_hint)
 
         # ── V0.4.8: Output folder — BASIC control (not advanced).
         # The V0.4.5 design put this under the Advanced expander, but the
@@ -407,6 +424,11 @@ class OcrServiceDialog(QDialog):
         else:
             hint = hints.get(data, "")
         self.engine_hint.setText(hint)
+
+    def _update_stylize_hint(self) -> None:
+        """V0.4.10: show/hide the Stylized Markdown hint based on format."""
+        data = self.fmt_combo.currentData() if self.fmt_combo else ""
+        self.stylize_hint.setVisible(data == ".stylized.md")
 
     def closeEvent(self, event) -> None:
         # V18.20.4.5 (T-b2): guard against closing while the OCR batch
@@ -862,15 +884,40 @@ class OcrServiceDialog(QDialog):
                     text = self._ocr_auto(path, pages=pages)
 
                 if text and len(text.strip()) >= 10:
+                    # V0.4.10: if Stylized Markdown is selected, run a second
+                    # LLM pass to structure the raw OCR text into Obsidian-
+                    # style atomic notes. Uses the main summarisation model
+                    # (not the OCR model). Fail-open: if the LLM call fails,
+                    # the raw text is written as-is.
+                    actual_suffix = suffix
+                    actual_text = text
+                    if suffix == ".stylized.md":
+                        if report is not None:
+                            report(
+                                int(i * 100 / total) if total else 0,
+                                (
+                                    f"<div style='font-size:15px; font-weight:600;'>"
+                                    f"✨ Stylizing {i + 1}/{total}: <span style='color: var(--primary);'>{path.name}</span>"
+                                    f"</div>"
+                                    f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
+                                    f"Running second LLM pass to structure into Obsidian atomic notes…"
+                                    f"</div>"
+                                ),
+                            )
+                        stylized = self._stylize_text(text, source_name=path.stem)
+                        actual_text = stylized
+                        actual_suffix = ".md"  # the file extension
+
                     # V11.18: support .docx / .pdf output via shared formatter
-                    if suffix in (".md", ".txt"):
+                    if actual_suffix in (".md", ".txt"):
+                        out_path = _P(out_folder) / f"{path.stem}_ocr{actual_suffix}"
                         out_path.parent.mkdir(parents=True, exist_ok=True)
-                        out_path.write_text(text, encoding="utf-8")
+                        out_path.write_text(actual_text, encoding="utf-8")
                     else:
                         from core.outputs.service_formatters import write_output
-
-                        write_output(text, out_path, fmt=suffix, title=path.stem)
-                    results.append(f"✅ {path.name} → {out_path.name} ({len(text):,} chars)")
+                        out_path = _P(out_folder) / f"{path.stem}_ocr{actual_suffix}"
+                        write_output(actual_text, out_path, fmt=actual_suffix, title=path.stem)
+                    results.append(f"✅ {path.name} → {out_path.name} ({len(actual_text):,} chars)")
                 else:
                     results.append(f"⚠️ {path.name} → little/no text (try another engine)")
             except Exception as e:
@@ -1086,3 +1133,110 @@ class OcrServiceDialog(QDialog):
                 if text.strip():
                     out_pages.append(f"<!-- page {actual_page} -->\n{text}")
             return "\n\n".join(out_pages)
+
+    # ── V0.4.10: Stylized Markdown (Obsidian atomic notes) ──────────────────
+
+    _STYLIZE_PROMPT = """You are an expert at structuring raw OCR text into Obsidian-style atomic notes.
+
+Below is the raw text extracted from a document/image by OCR. Your task is to restructure it into a clean, well-organized Obsidian-compatible Markdown note following these rules:
+
+STRUCTURE:
+1. Start with YAML frontmatter (---) containing: title, source_type, ocr_date, tags
+2. Use a single H1 (#) for the document title (infer from content if not explicit)
+3. Use H2 (##) for major sections, H3 (###) for subsections
+4. Break dense paragraphs into atomic notes (1-3 sentences each)
+5. Use bullet points for lists, numbered lists for sequences
+6. Convert tables to Markdown tables (| col | col |)
+7. Use > [!note], > [!info], > [!warning], > [!tip] callouts for highlighted text
+8. Add [[wikilinks]] around key terms, names, and concepts (3-7 per page max)
+9. Add #tags at the bottom for: topic, content_type, source_format
+10. Preserve ALL information — do not summarize or omit content
+
+FORMATTING:
+- Strip OCR artifacts (garbled characters, page markers like "<!-- page N -->")
+- Fix obvious OCR errors (e.g., "rn" → "m", "0" → "O" in words)
+- Preserve original language (English, Farsi, etc.)
+- Use **bold** for key terms, *italic* for emphasis
+- Use `code` blocks for formulas, code, or technical notation
+
+OUTPUT:
+- Output ONLY the Markdown note (with frontmatter)
+- No commentary, no explanations, no "Here is the structured note:" preamble
+- If the text is too short or garbled to structure, output it as-is with a minimal frontmatter
+
+RAW OCR TEXT:
+"""
+
+    def _stylize_text(self, raw_text: str, source_name: str = "") -> str:
+        """V0.4.10: send raw OCR text to the main summarization model for
+        structuring into Obsidian-style atomic notes.
+
+        Uses the user's configured summarisation model (NOT the OCR model)
+        via the Ollama /api/generate endpoint. Content-agnostic — the
+        prompt asks for structuring, not summarization, so no content is
+        lost. If the LLM call fails, falls back to the raw text (best-
+        effort — the user still gets output, just not stylized).
+
+        Args:
+            raw_text: the raw OCR-extracted text.
+            source_name: the source filename (for the frontmatter title).
+
+        Returns:
+            The stylized Markdown text, or the raw text if the LLM call
+            fails.
+        """
+        if not raw_text or len(raw_text.strip()) < 20:
+            return raw_text  # too short to bother stylizing
+
+        from utils.settings import Settings as _S
+        from utils.network import safe_ollama_request
+
+        try:
+            s = _S()
+            model = s.get("summarisation.model", "") or s.get(
+                "summarisation.primary_model", ""
+            )
+            if not model:
+                # No summarisation model configured — return raw text.
+                logger.warning(
+                    "Stylize: no summarisation model configured — "
+                    "returning raw OCR text"
+                )
+                return raw_text
+
+            ollama_url = s.get("summarisation.endpoint", "http://localhost:11434")
+            if ollama_url.endswith("/v1"):
+                ollama_url = ollama_url[:-3]
+            ollama_url = ollama_url.rstrip("/")
+
+            # Build the prompt: system instruction + raw text.
+            title_hint = f' (source: "{source_name}")' if source_name else ""
+            prompt = self._STYLIZE_PROMPT + f"\n---\nSource{title_hint}:\n\n{raw_text}\n"
+
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "system": "",
+                "keep_alive": "30m",
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 8192,
+                    "top_p": 0.9,
+                },
+            }
+
+            url = f"{ollama_url}/api/generate"
+            resp = safe_ollama_request("POST", url, json=payload, timeout=300)
+            stylized = resp.json().get("response", "").strip()
+
+            if stylized and len(stylized) >= 20:
+                return stylized
+            else:
+                logger.warning("Stylize: LLM returned empty — returning raw text")
+                return raw_text
+
+        except Exception as e:
+            logger.warning("Stylize failed (non-fatal): %s: %s — returning raw text",
+                           type(e).__name__, e)
+            return raw_text

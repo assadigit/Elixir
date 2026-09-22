@@ -1,5 +1,78 @@
 # Changelog
 
+## V0.4.10 — OCR tool: Stylized Markdown output (Obsidian atomic notes)
+
+> **The release:** One new feature for the OCR Service tool — a new
+> output format that runs a second LLM pass on the OCR'd text to
+> structure it into Obsidian-style atomic notes with YAML frontmatter,
+> #tags, callouts, and wikilinks.
+
+**Feature — Stylized Markdown (.md) output format**
+
+  New format option in the OCR Service dialog's Format dropdown:
+  ```
+  Format: [Stylized Markdown (.md) — Obsidian atomic notes ▼]
+  ```
+
+  When selected, the OCR pipeline runs two passes:
+  1. **Pass 1 — OCR extraction** (same as now): the selected engine
+     (Ollama vision / Tesseract / pypdf) extracts raw text from the
+     image/PDF.
+  2. **Pass 2 — LLM structuring** (new): the raw text is sent to the
+     user's configured **summarisation model** (not the OCR model) with
+     a prompt that structures it into Obsidian-style atomic notes:
+     - YAML frontmatter (`---` with title, source_type, ocr_date, tags)
+     - H1/H2/H3 heading hierarchy
+     - Atomic notes (1-3 sentences each, broken from dense paragraphs)
+     - Markdown tables for tabular data
+     - `> [!note]`, `> [!info]`, `> [!warning]`, `> [!tip]` callouts
+     - `[[wikilinks]]` around key terms, names, concepts (3-7 per page)
+     - `#tags` at the bottom (topic, content_type, source_format)
+     - OCR artifact stripping (page markers, garbled characters)
+     - OCR error correction (rn→m, 0→O in words)
+
+  The output file is saved as `<filename>_ocr.md` — ready to drop into
+  an Obsidian vault.
+
+  **Use case:** you find an interesting infographic, OCR it, and
+  instead of getting a flat `.md` file, you get a structured atomic
+  note with frontmatter, tags, callouts, and wikilinks — ready for
+  your knowledge base.
+
+**Implementation details:**
+
+  - `ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py`:
+    - New format option: `.stylized.md` (internally; the file saves as
+      `.md`)
+    - New `_update_stylize_hint` method: shows/hides a one-line hint
+      below the format dropdown when Stylized Markdown is selected
+    - New `_stylize_text` method: sends the raw OCR text to the
+      summarisation model via `safe_ollama_request` with the stylize
+      prompt. Uses `summarisation.model` from settings (the same model
+      used for book summaries). Fail-open: if the LLM call fails, the
+      raw text is written as-is (the user still gets output).
+    - Updated `_ocr_work`: when suffix is `.stylized.md`, calls
+      `_stylize_text` after the OCR pass, then writes the stylized text
+      as `.md`. Shows a "✨ Stylizing…" progress message during the
+      second pass.
+    - The `_STYLIZE_PROMPT` is a class-level constant with clear
+      structuring rules (frontmatter, headings, callouts, wikilinks,
+      tags, OCR artifact stripping, error correction). Content-
+      agnostic — works on any source text.
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full PySide6 test suite (GUI tests skip in headless
+  environments).
+- The stylize prompt is fixed (not user-editable). A future
+  enhancement could add a "Stylize prompt" field in the Advanced
+  settings modal so users can customize the structuring rules.
+- The second pass uses `num_predict=8192` (enough for most OCR'd
+  pages). Very long documents (50+ pages) might hit the token limit —
+  the output will be truncated. A future enhancement could chunk the
+  text and stylize in batches.
+
+---
+
 ## V0.4.9 — OCR 400 fix: /api/chat fallback + actual Ollama error body in diagnostics
 
 > **The release:** One targeted fix for the Qwen VL 400 Bad Request
