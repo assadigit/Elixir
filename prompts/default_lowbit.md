@@ -111,11 +111,11 @@ A {{thorough_words}} detailed analysis written as FLOWING PROSE PARAGRAPHS (not 
 </thorough_summary>
 
 <key_distinctions>
-List 2-5 important DISTINCTIONS the chapter explicitly draws between related concepts. ONLY include distinctions the chapter ACTUALLY discusses — each must be traceable to a specific passage. If the chapter does not draw any explicit distinctions, output "None". Format: one distinction per line, prefixed with "- ". Include the page number in parentheses at the end of each distinction, e.g., "(p. 53)".
+List 2-5 important DISTINCTIONS the chapter explicitly draws between related concepts. ONLY include distinctions the chapter ACTUALLY discusses — each must be traceable to a specific passage. If the chapter does not draw any explicit distinctions, output "None". Format: one distinction per line, prefixed with "- ". MANDATORY: You MUST include the page number in parentheses at the end of EACH distinction. The source text has YAML frontmatter with start_page and end_page — use these to estimate the page number for each distinction (e.g., if start_page is 48 and the distinction appears in the first third of the text, use "(p. 48-52)"). NEVER omit the page number.
 </key_distinctions>
 
 <theoretical_tensions>
-Identify 2-4 theoretical TENSIONS, DEBATES, or AMBIGUITIES the author EXPLICITLY discusses. ONLY include tensions actually present in the text — each must be traceable to a specific passage. If the chapter does not discuss any tensions or debates, output "None". Name BOTH poles for each. Include the page number in parentheses at the end of each tension, e.g., "(p. 48-55)".
+Identify 2-4 theoretical TENSIONS, DEBATES, or AMBIGUITIES the author EXPLICITLY discusses. ONLY include tensions actually present in the text — each must be traceable to a specific passage. If the chapter does not discuss any tensions or debates, output "None". Name BOTH poles for each. MANDATORY: You MUST include the page number in parentheses at the end of EACH tension. The source text has YAML frontmatter with start_page and end_page — use these to estimate the page number for each tension (e.g., if start_page is 48 and the tension appears in the middle of the text, use "(p. 55-60)"). NEVER omit the page number.
 </theoretical_tensions>
 
 ### FORBIDDEN ###

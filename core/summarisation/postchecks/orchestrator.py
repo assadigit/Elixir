@@ -1000,6 +1000,18 @@ def run_post_checks(
             report.theoretical_tensions, "theoretical_tensions"
         )
 
+        # V0.4.16: inject page refs into KD/TT if the model didn't include them.
+        from core.summarisation.postchecks.garble import inject_page_refs
+
+        report.key_distinctions, kd_page_issues = inject_page_refs(
+            report.key_distinctions, "key_distinctions", source_text or ""
+        )
+        report.theoretical_tensions, tt_page_issues = inject_page_refs(
+            report.theoretical_tensions, "theoretical_tensions", source_text or ""
+        )
+        report.issues.extend(kd_page_issues or [])
+        report.issues.extend(tt_page_issues or [])
+
         # ── V0.06 (rig audit F6): trailing-quote dedupe + byline strip ────
         # GENERAL RULE: a bullet states its claim ONCE. Two rig leak shapes:
         #   (a) DUPLICATED QUOTE — the claim embeds a quote inline and the
