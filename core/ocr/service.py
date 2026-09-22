@@ -934,25 +934,50 @@ class OCRService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _qwen_ocr_single(self, image_bytes: bytes, page_num: int, attempt: int) -> OcrResult:
-        """Single Qwen OCR attempt without internal retry loop."""
+        """Single Qwen OCR attempt without internal retry loop.
+
+        V0.4.9: tries /api/chat as a fallback when /api/generate returns
+        400 or empty — some custom GGUF models (e.g., GLM-OCR-Q8_ggml-org)
+        only work with the chat endpoint.
+        """
         model = self.request.primary_ocr_model
         b64 = base64.b64encode(image_bytes).decode("utf-8")
-        payload = {
-            "model": model,
-            "prompt": "Extract ALL text visible in this page image. "
+        prompt = (
+            "Extract ALL text visible in this page image. "
             "Preserve headings, paragraphs, lists. "
-            "Output ONLY the extracted text, no commentary.",
+            "Output ONLY the extracted text, no commentary."
+        )
+        generate_payload = {
+            "model": model,
+            "prompt": prompt,
             "images": [b64],
             "stream": False,
             "options": {"temperature": 0.0, "num_predict": 4096},
         }
-        url = f"{self._ollama_url()}/api/generate"
+        chat_payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt, "images": [b64]}],
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": 4096},
+        }
         try:
             self.log(f"    🧠 Qwen OCR attempt {attempt}…", "DEBUG")
-            resp = safe_ollama_request("POST", url, json=payload, timeout=self._ocr_timeout)
-            text = resp.json().get("response", "").strip()
+            # V0.4.9: try /api/generate first, then /api/chat as fallback.
+            text = self._try_ollama_vision_endpoint(
+                "/api/generate", generate_payload, "response", model, page_num, attempt
+            )
             if text:
                 self.log(f"    ✅ Qwen OCR p.{page_num}: {len(text)} chars", "INFO")
+                return OcrResult(
+                    page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL
+                )
+            # V0.4.9: /api/generate returned empty — try /api/chat.
+            self.log(f"    🧠 Qwen OCR: trying /api/chat fallback…", "DEBUG")
+            text = self._try_ollama_vision_endpoint(
+                "/api/chat", chat_payload, "message.content", model, page_num, attempt
+            )
+            if text:
+                self.log(f"    ✅ Qwen OCR p.{page_num} (via /api/chat): {len(text)} chars", "INFO")
                 return OcrResult(
                     page_num=page_num, text=text, success=True, engine_used=OcrEngine.QWEN_VL
                 )
@@ -965,6 +990,52 @@ class OCRService:
             engine_used=OcrEngine.QWEN_VL,
             error_msg=f"Qwen OCR attempt {attempt} failed",
         )
+
+    def _try_ollama_vision_endpoint(
+        self, endpoint: str, payload: dict, response_key: str,
+        model: str, page_num: int, attempt: int,
+    ) -> str | None:
+        """V0.4.9: try one Ollama vision endpoint and return the text.
+
+        Returns None on empty. Logs the specific Ollama 400 error body
+        (not just "400 Bad Request") so the user can diagnose the issue.
+        """
+        from utils.network import get_shared_session
+
+        url = f"{self._ollama_url()}{endpoint}"
+        session = get_shared_session()
+        try:
+            resp = session.post(url, json=payload, timeout=self._ocr_timeout)
+        except Exception as e:
+            self.log(f"    ⚠️ {endpoint} request failed: {e}", "DEBUG")
+            return None
+
+        if resp.status_code == 400:
+            # V0.4.9: capture the actual Ollama error body.
+            try:
+                err_body = resp.json().get("error", resp.text[:200])
+            except Exception:
+                err_body = resp.text[:200]
+            self.log(
+                f"    ⚠️ {endpoint} returned 400: {err_body}",
+                "WARNING",
+            )
+            return None
+
+        try:
+            resp.raise_for_status()
+        except Exception as e:
+            self.log(f"    ⚠️ {endpoint} HTTP error: {e}", "DEBUG")
+            return None
+
+        data = resp.json()
+        if "." in response_key:
+            text = data
+            for key in response_key.split("."):
+                text = text.get(key, {}) if isinstance(text, dict) else ""
+        else:
+            text = data.get(response_key, "")
+        return text.strip() if text else None
 
     def _paddle_ocr_single(self, image_bytes: bytes, page_num: int) -> OcrResult:
         """Single PaddleOCR attempt (CPU-only)."""

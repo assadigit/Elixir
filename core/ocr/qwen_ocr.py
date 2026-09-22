@@ -29,6 +29,22 @@ from utils.network import safe_ollama_request
 logger = get_main_logger()
 
 
+# V0.4.9: custom exception for 400 Bad Request from Ollama vision endpoints.
+# Carries the actual Ollama error body (e.g., "model does not support images")
+# so the caller can show the specific reason to the user, not just "400".
+class _Vision400Error(Exception):
+    """Raised when Ollama returns 400 from a vision OCR endpoint.
+
+    The ``detail`` attribute carries the Ollama error body so the
+    caller can show the specific reason (e.g., "model does not support
+    images" vs "model not found").
+    """
+
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(f"400: {detail}")
+
+
 class QwenOCREngine(OCREngine):
     def __init__(
         self,
@@ -86,47 +102,111 @@ class QwenOCREngine(OCREngine):
             "paragraph breaks, and heading hierarchy. Return ONLY the text content, "
             "no commentary, no markdown formatting, no extra spaces."
         )
-        payload = {
+
+        # V0.4.9: try both /api/generate AND /api/chat endpoints.
+        # Some custom GGUF models (e.g., GLM-OCR-Q8_ggml-org) return 400
+        # from /api/generate with an images payload but work with
+        # /api/chat (which uses a messages array format). The fallback
+        # is content-agnostic — it works for any model that supports
+        # vision via either endpoint.
+        generate_payload = {
             "model": self.model_name,
             "prompt": prompt,
             "images": [b64_image],
             "stream": False,
             "options": {"temperature": 0.0, "num_predict": 4096},
         }
-        url = f"{self.ollama_base_url}/api/generate"
+        chat_payload = {
+            "model": self.model_name,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "images": [b64_image],
+                }
+            ],
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": 4096},
+        }
 
         for attempt in range(self.retries):
             try:
                 logger.debug(f"Qwen VL attempt {attempt + 1}/{self.retries}…")
-                # FIX: json=payload (was json_data=payload — wrong kwarg, sent empty body)
-                resp = safe_ollama_request("POST", url, json=payload, timeout=self.timeout)
-                text = resp.json().get("response", "").strip()
+
+                # V0.4.9: try /api/generate first (the traditional endpoint).
+                text = self._try_endpoint("/api/generate", generate_payload, "response")
                 if text:
                     return text
-                logger.warning(f"Empty Qwen response on attempt {attempt + 1}")
+
+                # V0.4.9: if /api/generate returned empty or errored, try
+                # /api/chat (some models only work with the chat format).
+                logger.debug(f"Qwen VL: /api/generate returned empty — trying /api/chat…")
+                text = self._try_endpoint("/api/chat", chat_payload, "message.content")
+                if text:
+                    return text
+
+                logger.warning(f"Empty Qwen response on attempt {attempt + 1} (both endpoints)")
+            except _Vision400Error as e:
+                # V0.4.9: both endpoints returned 400 — the model
+                # genuinely doesn't support vision. Show the specific
+                # Ollama error body so the user knows exactly why.
+                logger.warning(
+                    f"Qwen attempt {attempt + 1} error: 400 Bad Request\n"
+                    f"  💡 The model '{self.model_name}' rejected image input from BOTH\n"
+                    f"  /api/generate and /api/chat. Ollama's error was:\n"
+                    f"    {e.detail}\n"
+                    f"  This usually means one of:\n"
+                    f"    • The model was imported as a text-only GGUF without its\n"
+                    f"      vision projector (mmproj) file. Re-import with the mmproj:\n"
+                    f"      ollama create {self.model_name} -f Modelfile\n"
+                    f"      (where Modelfile includes a PROJECTOR line)\n"
+                    f"    • The model genuinely doesn't support vision. Use a model\n"
+                    f"      with a built-in vision projector (qwen2-vl, llava, minicpm-v,\n"
+                    f"      OlmOCR, etc.) — run 'ollama pull qwen2-vl:7b' for example.\n"
+                    f"    • In Elixir Settings → OCR, pick a vision-capable model."
+                )
             except Exception as e:
-                # V0.4.6: a 400 Bad Request from /api/generate with an
-                # images payload usually means the model doesn't support
-                # vision OR the model name is wrong. Surface a helpful
-                # hint so the user knows to check their Ollama model.
-                err_str = str(e)
-                if "400" in err_str and ("Bad Request" in err_str or "Client Error" in err_str):
-                    logger.warning(
-                        f"Qwen attempt {attempt + 1} error: {e}\n"
-                        f"  💡 This usually means the model '{self.model_name}' "
-                        f"either doesn't support vision (image input) or isn't "
-                        f"installed in Ollama. Check:\n"
-                        f"    1. ollama list  (is '{self.model_name}' present?)\n"
-                        f"    2. The model must be a vision model (e.g., "
-                        f"qwen2-vl, llava, minicpm-v, OlmOCR).\n"
-                        f"    3. In Elixir Settings → OCR, pick a vision-capable model."
-                    )
-                else:
-                    logger.warning(f"Qwen attempt {attempt + 1} error: {e}")
+                logger.warning(f"Qwen attempt {attempt + 1} error: {e}")
 
             if attempt < self.retries - 1:
                 time.sleep(2 * (attempt + 1))
         return None
+
+    def _try_endpoint(self, endpoint: str, payload: dict, response_key: str) -> str | None:
+        """V0.4.9: try one Ollama endpoint and return the extracted text.
+
+        Returns None on empty response. Raises _Vision400Error on 400
+        (both endpoints' 400s are caught by the caller). Other HTTP
+        errors propagate as generic exceptions.
+        """
+        from utils.network import get_shared_session
+
+        url = f"{self.ollama_base_url}{endpoint}"
+        session = get_shared_session()
+        resp = session.post(url, json=payload, timeout=self.timeout)
+
+        if resp.status_code == 400:
+            # V0.4.9: capture the actual Ollama error body — it
+            # contains the specific reason (e.g., "model does not
+            # support images", "model not found", etc.)
+            try:
+                err_body = resp.json().get("error", resp.text[:200])
+            except Exception:
+                err_body = resp.text[:200]
+            raise _Vision400Error(err_body)
+
+        resp.raise_for_status()
+        data = resp.json()
+        # /api/generate → data["response"]
+        # /api/chat → data["message"]["content"]
+        if "." in response_key:
+            # Navigate nested keys (e.g., "message.content")
+            text = data
+            for key in response_key.split("."):
+                text = text.get(key, {}) if isinstance(text, dict) else ""
+        else:
+            text = data.get(response_key, "")
+        return text.strip() if text else None
 
     def process_page(self, page, page_num: int) -> OcrResult:
         logger.info(f"Page {page_num}: Qwen VL OCR…")

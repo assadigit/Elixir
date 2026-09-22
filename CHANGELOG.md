@@ -1,5 +1,98 @@
 # Changelog
 
+## V0.4.9 — OCR 400 fix: /api/chat fallback + actual Ollama error body in diagnostics
+
+> **The release:** One targeted fix for the Qwen VL 400 Bad Request
+> error that affected custom GGUF models like
+> `GLM-OCR-Q8_ggml-org:latest`. The V0.4.6 hint said "this usually
+> means the model doesn't support vision" but didn't capture the
+> actual Ollama error body — the user couldn't tell whether the model
+> was missing, lacked a vision projector, or just needed a different
+> API endpoint.
+
+**Root cause:** the OCR code only tried `/api/generate` with the
+`images` field. Some custom GGUF models (especially those imported
+from ggml.org without their mmproj projector file) return 400 from
+`/api/generate` but accept `/api/chat` (which uses a messages-array
+format with `images` inside each message's `content` object). The old
+code had no fallback, and `safe_ollama_request`'s `raise_for_status()`
+discarded the Ollama error body (the specific reason for the 400),
+leaving only a generic "400 Client Error" message.
+
+**Fix 1 — `/api/chat` fallback** (`core/ocr/qwen_ocr.py` +
+`core/ocr/service.py`):
+
+  Both the `QwenOCREngine._call_ollama_vision` method (used by the OCR
+  Service dialog) and the `OcrService._qwen_ocr_single` method (used by
+  the main pipeline OCR prescan) now:
+  1. Try `/api/generate` first (the traditional endpoint, with
+     `prompt` + `images` at the top level).
+  2. If that returns empty or 400, try `/api/chat` (with a messages
+     array where the user message has `content` + `images`).
+  3. If both fail, log the diagnostic.
+
+  The `/api/chat` payload format:
+  ```json
+  {
+    "model": "<model_name>",
+    "messages": [
+      {"role": "user", "content": "Extract all text...", "images": ["<b64>"]}
+    ],
+    "stream": false,
+    "options": {"temperature": 0.0, "num_predict": 4096}
+  }
+  ```
+
+  The response is extracted from `message.content` (vs `response` for
+  `/api/generate`).
+
+**Fix 2 — Actual Ollama error body in diagnostics** (both files):
+
+  New `_Vision400Error` exception (in `qwen_ocr.py`) and a
+  `_try_ollama_vision_endpoint` helper (in `service.py`) that:
+  - Capture the **actual Ollama error body** from the 400 response
+    (e.g., "model does not support images", "model not found", etc.).
+  - The old code used `safe_ollama_request` which calls
+    `raise_for_status()` — this discards the response body and only
+    gives the generic HTTP status text.
+  - The new code uses `get_shared_session().post()` directly and
+    reads `resp.json()["error"]` on 400, so the user sees the SPECIFIC
+    reason.
+
+  The improved diagnostic message now shows:
+  ```
+  Qwen attempt N error: 400 Bad Request
+    💡 The model 'GLM-OCR-Q8_ggml-org:latest' rejected image input from BOTH
+    /api/generate and /api/chat. Ollama's error was:
+      <actual error body, e.g., "model does not support images">
+    This usually means one of:
+      • The model was imported as a text-only GGUF without its
+        vision projector (mmproj) file. Re-import with the mmproj:
+        ollama create <model> -f Modelfile
+        (where Modelfile includes a PROJECTOR line)
+      • The model genuinely doesn't support vision. Use a model
+        with a built-in vision projector (qwen2-vl, llava, minicpm-v,
+        OlmOCR, etc.) — run 'ollama pull qwen2-vl:7b' for example.
+      • In Elixir Settings → OCR, pick a vision-capable model.
+  ```
+
+**What was NOT done (deliberate scope limits):**
+- Did not run the full test suite (OCR tests need a running Ollama
+  server with a vision model — not available in the sandbox).
+- The `/api/chat` fallback uses `get_shared_session()` directly
+  (bypassing `safe_ollama_request`) so it can read the 400 body.
+  This is intentional — the shared session is proxy-proof
+  (`trust_env=False`, empty proxies) and thread-safe per the
+  requests library docs.
+- The V0.4.1 provider-agnostic path (`_provider_vision_ocr` in
+  `service.py`) uses `provider.complete_with_image()` which routes
+  through the LLM provider abstraction. That path is not affected by
+  this fix — it's a separate code path that uses the provider's own
+  vision call (Ollama or llama.cpp). The V0.4.9 fix targets the
+  direct `/api/generate` + `/api/chat` calls.
+
+---
+
 ## V0.4.8 — OCR tool: Test OCR feature + Advanced modal + Output folder as basic
 
 > **The release:** Three UI fixes for the OCR Service tool from the
