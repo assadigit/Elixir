@@ -1,5 +1,180 @@
 # Changelog
 
+## V0.4.19 — SWOT campaign: heal the test gate, tidiness, safe de-monolithization
+
+> **The release:** The post-V0.4.18 cleanup campaign. The full test suite
+> had not been run for 18 releases — this release runs it, fixes all 8
+> shipped regressions, completes the settings schema, makes the page-ref
+> injector actually fire, and splits all five monolith files into focused
+> packages/mixins with byte-identical (VERBATIM) moves, verified by the
+> eval gate after every step.
+
+**1. Test gate healed — 8 V0.4.x regressions fixed (the suite was never run during the 18-release campaign):**
+
+  - `eval-check` was RED at HEAD: V0.4.13/V0.4.16 edited the prompts but
+    never ran the documented intentional-change procedure
+    (`prompt_manifest.py` + `eval --save-baseline`). Re-baselined;
+    scorecards byte-identical.
+  - main.py was 404 lines (pin <320): the V0.4.4 numpy-ABI check
+    extracted VERBATIM to `core/system/numpy_abi_check.py` (319 lines).
+  - V0.4.9 `_try_ollama_vision_endpoint` bypassed `safe_ollama_request`
+    with a raw `session.post` — invisible to the test boundary AND a
+    real-network-call hazard when Ollama runs. Rerouted through the
+    monitored transport; 400 bodies still inspected.
+  - prompts/default.md book-derived examples ("Kernberg",
+    "pathological narcissism") genericized — deny-list tests green,
+    prompts now content-agnostic.
+  - PDF table tests updated to the intentional V0.4.14 unified `images/`
+    folder + `page{N}_image{K}_{kind}` naming; the old "tables come back
+    empty" REAL-BUG pin superseded (V0.4.14's PNG fallback now recovers
+    the crop).
+  - WC9 stale pin updated to the intentional `{endpoint}` form.
+
+  Suite: 8 failed / 5588 passed → **0 failed / 5610 passed**.
+
+**2. Settings schema completed:** 27 actively-read keys that were missing
+  from the defaults tree (every read logged "Unknown setting" validator
+  noise) are now declared with their exact code fallbacks — including the
+  V0.4.x offenders `summarisation.primary_model`, `summarisation.cloud_provider`,
+  `ocr.ollama_url`, the whole `observability` section, tts normalize keys,
+  and the settings-page read/write keys. Schema: 369 → 397 keys.
+
+**3. Page-ref injector FIXED (mission item: "coded but not appearing in
+  outputs"):** the V0.4.13/16 prompts tell the model "The source text has
+  YAML frontmatter with start_page and end_page", and the V0.4.16
+  injector regexes that frontmatter — but `summarize_chapters` passed the
+  RAW segment content, so the prompt's claim was false and the injector
+  could never fire. `book_outer._chapter_text_with_page_frontmatter()`
+  now materializes the frontmatter from the chapter dict's page info at
+  both `_summarize_inner` call sites. First tests ever for the injector:
+  `tests/test_page_ref_injector.py` (14 tests).
+
+**4. Safe de-monolithization (all VERBATIM, eval-gate verified after each):**
+
+  | File | Before | After |
+  |---|---|---|
+  | `postchecks/garble.py` | 3,043 | `garble/` package — 9 modules (lexicon, token_detectors, dropped_letter, author_garbles, quote_repair, fusion, conflation, page_refs + facade) |
+  | `postchecks/orchestrator.py` | 1,154 | 526 + `field_phases.py` 796 (bullet/exec/thorough phases + PhaseCtx) |
+  | `summarisation/summarizer.py` | 2,753 | 1,988 + `summarizer_coverage.py` 481 + `summarizer_chunking.py` 417 (2 new mixins; bases now 9) |
+  | `pipeline/converter_impl.py` | 2,616 | 2,175 + `conversion/visual_features.py` 510 (ConverterVisualMixin: covers, OCR repair, cropper, footnotes) |
+  | `ui_qt/settings/sections.py` | 2,303 | `sections/` package — 9 modules (17 QGroupBox classes split by domain + facade) |
+
+  Every extraction moved bodies byte-identical (AST-verified); import
+  paths preserved via facades (zero importer edits except pin tests,
+  which followed the moved bodies per the house precedent).
+
+**Also:** ruff 17→0 errors, 9 never-formatted V0.4.x files formatted,
+  QwenOCREngine routed through `safe_ollama_request` (unified OCR
+  transport), dead locals removed.
+
+Full-suite + `make eval-check` green after every step.
+
+## V0.4.18 — text-strategy fallback conditional on VLM availability
+
+The pdfplumber text-strategy table fallback (vertical_strategy='text',
+added in V0.4.13) is now CONDITIONAL on having a `vlm_callable`:
+
+  - Without a VLM: lattice strategy only — finds bordered tables, no
+    false positives, but misses borderless tables.
+  - With a VLM: lattice + text strategy + VLM validation — finds
+    borderless tables AND filters text paragraphs via the
+    "Is this TABLE or TEXT?" VLM classification.
+
+This eliminates the 24 false-positive text crops on runs without a
+vision model configured. Borderless tables may still be detected by
+PyMuPDF (Layer 0) when embedded as raster images. To get borderless
+table detection via pdfplumber, configure a vision model
+(Settings → OCR → Primary model).
+
+## V0.4.17 — VLM-based table/figure validation (intelligent crop filtering)
+
+New VLM-based validation: when a `vlm_callable` is available, each
+detected table/figure region is rendered as a low-DPI image and sent to
+the VLM with a classification prompt ("TABLE, CHART, DIAGRAM, FIGURE, or
+TEXT — output ONLY one word"). Only regions the VLM confirms are saved;
+regions classified as TEXT are rejected. Without a VLM, the V0.4.15
+heuristic (`_is_real_table`) remains the fallback. The vlm_callable is
+threaded from the converter → vision_region_cropper →
+figure_table_cropper, reusing the V0.4.1 vision-probe infrastructure.
+New: `_vlm_validate_region()`, `_VLM_CLASSIFY_PROMPT`.
+
+## V0.4.16 — page-ref injector + stronger page-citation prompts
+
+Fixes the persistent "0 page refs in KD/TT" issue across V0.4.2–V0.4.14.
+
+  - Stronger prompts (default.md + default_lowbit.md): "Include the page
+    number" → "MANDATORY: You MUST include the page number… NEVER omit";
+    "Look at the page markers" → "The source text has YAML frontmatter
+    with start_page and end_page — use these to estimate the page number"
+    + positional examples.
+  - New deterministic fallback `inject_page_refs()` (garble.py + orchestrator
+    wiring): extracts start/end page from the source frontmatter, finds
+    KD/TT bullets lacking (p. N), estimates the page from bullet position,
+    appends the ref. Fail-open; no-op without frontmatter.
+  - (V0.4.19 note: the injector could not fire in production until the
+    V0.4.19 frontmatter wiring fix — see above.)
+
+## V0.4.15 — table validator: reject text paragraphs misidentified as tables
+
+The V0.4.13 text-strategy fallback was too aggressive — multi-column
+text layouts were detected as "tables" (26 "table" crops in the V0.4.14
+run, only 2 real). New `_is_real_table()` structural validator
+(content-agnostic): 2+ columns; average cell length <80 chars; column
+count consistent across rows (≥0.7 ratio to the mode); <15 words per
+cell. Failing candidates are skipped with a DEBUG log.
+
+## V0.4.14 — unified images/ folder + fix "cannot write mode P as JPEG"
+
+  - Palette-mode fix: pdfplumber renders table crops in palette mode
+    ("P") which JPEG doesn't support — the V0.4.13 code silently failed
+    on all table crops. Now: try JPEG, fall back to PNG.
+  - Unified `images/` folder (was: separate `graphs/` + `tables/`, with
+    PyMuPDF classifying table images as "figures"): all crops land in
+    one folder with descriptive names — `page48_image1_figure.jpg`,
+    `page48_image3_table.jpg` + `.md` twin. Added `SUB_IMAGES` to
+    output_paths.py.
+
+## V0.4.13 — D3 LLM repair provider-agnostic + borderless table detection + page-citation prompts
+
+  - D3 LLM repair rewritten to the provider abstraction
+    (provider.complete()) — the V0.4.11 version used
+    safe_ollama_request (/api/generate), which doesn't exist on
+    llama.cpp; the repair silently failed on llama.cpp backends.
+  - Borderless table detection: pdfplumber "text" strategy (whitespace
+    based) fallback when the lattice strategy finds 0 tables — catches
+    space-aligned borderless tables.
+  - Page-number citations restored in KD/TT prompts (both default.md and
+    default_lowbit.md) — lost in an earlier prompt rewrite.
+
+## V0.4.12 — cross-backend OCR: use Ollama OCR model with llama.cpp main model
+
+When the main summarization model runs on llama.cpp, the OCR model can
+now be Ollama-hosted. `_create_vision_provider` falls back to an
+Ollama provider when the llama.cpp provider doesn't support vision for
+the OCR model (the OCR dropdown is populated from Ollama's /api/tags);
+`complete_with_image` gained a `model` parameter so the request goes to
+the correct OCR model, not the provider default.
+
+## V0.4.11 — 6 audit fixes: proper-noun auto-repair, D3 LLM repair, cropper Layer 0, multi-author conflation, chunked stylize, Source Excerpts p. fix
+
+  1. Proper-noun garble auto-repair (capitalized garble + capitalized
+     source match repairs even when auto_repair=False — guarded against
+     common-word false repairs).
+  2. `repair_d3_quotes_via_llm()`: semantic LLM repair for flagged D3
+     long-span quotes ("fix only the quote pairing"), fail-open, wired
+     after repair_stray_quotes_v2 in the thorough post-check.
+  3. Cropper Layer 0 fix: `enable_existing_extractors` False→True — the
+     V0.4.3 code assumed figure_table_cropper ran above, but that block
+     is gated behind the default-off screenshots opt-in, so Layer 0
+     never fired on most runs.
+  4. `detect_multi_author_conflation()`: flags 2+ authors credited with
+     a concept the source attributes to only 1 (flag-only).
+  5. Chunked Stylized Markdown: >5000-char documents stylized in
+     paragraph-boundary chunks (frontmatter only on the first chunk) —
+     prevents output-limit truncation on long PDFs.
+  6. Source Excerpts sentence-split regex no longer truncates trailing
+     page citations.
+
 ## V0.4.10 — OCR tool: Stylized Markdown output (Obsidian atomic notes)
 
 > **The release:** One new feature for the OCR Service tool — a new
