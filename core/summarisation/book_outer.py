@@ -29,6 +29,34 @@ from utils.logging import get_main_logger
 logger = get_main_logger()
 
 
+# ── V0.4.19: page-frontmatter for the summarizer input ──────────────────────
+# The V0.4.13/V0.4.16 page-citation prompts tell the model “The source text
+# has YAML frontmatter with start_page and end_page — use these to estimate
+# the page number”, and the V0.4.16 page-ref injector (postchecks/garble.py
+# inject_page_refs) regex-matches that frontmatter as its deterministic
+# fallback. But summarize_chapters passed the RAW segment content — the
+# frontmatter never existed in the input, so the prompt's claim was false
+# and the injector could NEVER fire (coded but never appearing in outputs).
+# The chapter dicts already carry start_page/end_page (threaded from the
+# Segment model in core/pipeline/conversion/summarization.py) — this helper
+# materialises the frontmatter both features were designed around.
+def _chapter_text_with_page_frontmatter(chap: dict) -> str:
+    """Prepend ``start_page``/``end_page`` YAML frontmatter to the chapter
+    content when the page info is available. Content-agnostic, idempotent
+    (skips when a frontmatter block is already present), and never raises."""
+    content = chap.get("content", "") or ""
+    if not content or content.lstrip().startswith("---"):
+        return content  # empty, or already has a frontmatter block
+    start_page = chap.get("start_page")
+    end_page = chap.get("end_page")
+    if start_page is None or end_page is None:
+        return content  # no page info — behave exactly as before
+    try:
+        return f"---\nstart_page: {int(start_page)}\nend_page: {int(end_page)}\n---\n\n{content}"
+    except (TypeError, ValueError):
+        return content
+
+
 class SummarizerBookMixin:
     """See the module docstring."""
 
@@ -161,7 +189,7 @@ class SummarizerBookMixin:
                     try:
                         _result = self._summarize_inner(
                             chap["heading"],
-                            chap["content"],
+                            _chapter_text_with_page_frontmatter(chap),
                             concepts=chap.get("concepts"),
                             callouts=chap.get("callouts"),
                             book_context=_running_book_context,
@@ -297,7 +325,7 @@ class SummarizerBookMixin:
             try:
                 result = self._summarize_inner(
                     chap["heading"],
-                    chap["content"],
+                    _chapter_text_with_page_frontmatter(chap),
                     concepts=chap.get("concepts"),
                     callouts=chap.get("callouts"),
                 )

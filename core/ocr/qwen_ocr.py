@@ -177,12 +177,23 @@ class QwenOCREngine(OCREngine):
         Returns None on empty response. Raises _Vision400Error on 400
         (both endpoints' 400s are caught by the caller). Other HTTP
         errors propagate as generic exceptions.
+
+        V0.4.19: routed through ``safe_ollama_request`` (was a raw
+        ``get_shared_session().post`` — see the matching fix in
+        core/ocr/service.py). A 400 is unwrapped from the HTTPError so
+        the specific Ollama error body still reaches the user.
         """
-        from utils.network import get_shared_session
+        import requests as _requests
+
+        from utils.network import safe_ollama_request
 
         url = f"{self.ollama_base_url}{endpoint}"
-        session = get_shared_session()
-        resp = session.post(url, json=payload, timeout=self.timeout)
+        try:
+            resp = safe_ollama_request("POST", url, json=payload, timeout=self.timeout)
+        except _requests.HTTPError as e:
+            resp = e.response
+            if resp is None or resp.status_code != 400:
+                raise
 
         if resp.status_code == 400:
             # V0.4.9: capture the actual Ollama error body — it
@@ -194,7 +205,6 @@ class QwenOCREngine(OCREngine):
                 err_body = resp.text[:200]
             raise _Vision400Error(err_body)
 
-        resp.raise_for_status()
         data = resp.json()
         # /api/generate → data["response"]
         # /api/chat → data["message"]["content"]

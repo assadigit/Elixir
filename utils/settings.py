@@ -123,6 +123,11 @@ class Settings:
                 "timeout": 120,
                 "retries": 2,
                 "use_paddleocr": False,
+                # V0.4.19: legacy URL key — read by OCRService._vlm_ocr_fallback
+                # (ocr/service.py). Canonical source is llm.ollama_url (the
+                # legacy key resolves to it in _load()); declared here so the
+                # validator doesn't log "Unknown setting" warnings.
+                "ollama_url": "http://localhost:11434",
             },
             "postprocess": {
                 "clean_markdown": True,
@@ -139,6 +144,9 @@ class Settings:
                 "token_limit": 2000,
                 "enable_semantic": True,
                 "chunk_by_page_groups": True,
+                # V0.4.19: read/written by the Keywords settings section
+                # (ui_qt/settings/sections.py) — was missing from the schema.
+                "keywords_file": "",
             },
             # ── V13.27.0 (P2.6): Canonical LLM settings ──────────────────────
             # The single source of truth for Ollama URL + provider. All modules
@@ -149,6 +157,12 @@ class Settings:
             "llm": {
                 "ollama_url": "http://localhost:11434",
                 "provider": "ollama",  # "ollama" | "cloud"
+                # V0.4.19: model-registry keys read by core/llm/registry.py —
+                # were missing from the schema (validator warnings on read).
+                # Kill switch for the per-model context-window registry and
+                # the user's per-model overrides (model → context tokens).
+                "model_registry_enabled": True,
+                "context_window_overrides": {},
                 # V18.1 (audit): How long Ollama keeps a model resident in VRAM
                 # after the last request. Default "30m" (30 minutes). The old
                 # code had no keep_alive, so Ollama used its 5-minute default —
@@ -354,6 +368,34 @@ class Settings:
                 "fusion_use_for_grounding": True,  # site B+C: bullet verification
                 "fusion_use_for_b3_judge": True,  # site D: pick best summary
                 "fusion_use_for_gap_fill": False,  # site E: local is fine (default off)
+                # ── V0.4.19: keys code reads but the schema never declared ──
+                # All read with these exact fallbacks; declared so the
+                # validator stops logging "Unknown setting" warnings on every
+                # read (same fix class as V0.4.6's ai.backend).
+                # primary_model: legacy alias of summarisation.model (read by
+                # the postcheck orchestrator + garble D3 repair).
+                "primary_model": "",
+                # cloud_provider: provider name for cloud-arch OCR/VLM calls
+                # (garble.py D3 repair, ocr/service.py, cropper).
+                "cloud_provider": "openai_compatible",
+                # endpoint / ollama_url / lmstudio_url: legacy backend URLs
+                # (packets generator, podcast/transcribe dialogs, LM-Studio
+                # wizard step). Canonical source is llm.ollama_url.
+                "endpoint": "http://localhost:11434/v1",
+                "ollama_url": "http://localhost:11434",
+                "lmstudio_url": "http://localhost:1234/v1",
+                # prompt: active prompt-bank file (summarizer_init.py,
+                # AiPromptSection) — "default" → prompts/default.md.
+                "prompt": "default",
+                # quality_mode: AiQualitySection preset (Balanced/Thorough/Fast).
+                "quality_mode": "Balanced",
+                # simplification_model / simplified_prompt: simplified-keypoints
+                # engine (AiLocalModelSection + simplified_keypoints.py).
+                "simplification_model": "",
+                "simplified_prompt": "",
+                # inject_lists_section: opt-in <lists> additive section
+                # (chapter_phases.py).
+                "inject_lists_section": False,
             },
             # ── V13.44.3: Local mode settings ──────────────────────────────
             # These only apply when using a local model (Ollama/LM Studio).
@@ -436,6 +478,15 @@ class Settings:
                 # See utils/logging.py _DEFAULT_MODULE_LEVELS for defaults.
                 "module_levels": {},
             },
+            # ── V0.4.19: observability section — read by utils/
+            #    structured_log_sink.py + core/obs/tracing.py. Was missing
+            #    from the schema entirely (every read logged "Unknown
+            #    setting"). Both features are opt-in, defaults keep the
+            #    current behaviour (plain logs, tracing off).
+            "observability": {
+                "structured": False,
+                "tracing_enabled": False,
+            },
             "ui": {
                 "theme": "dark",
                 "auto_scroll_logs": True,
@@ -446,6 +497,10 @@ class Settings:
                 "post_completion_action": "none",
                 # V9.0.0 E2: configurable shutdown countdown (seconds)
                 "shutdown_countdown_sec": 60,
+                # V0.4.19: read/written by the Output settings section +
+                # convert view — were missing from the schema.
+                "play_success_sound": True,
+                "show_live_log": False,
             },
             # V0.4.6: legacy "ai" block — read by ui_qt/settings/sections.py
             # (ai.backend, ai.custom_backend_url). These are legacy keys
@@ -457,11 +512,20 @@ class Settings:
             "ai": {
                 "backend": "Ollama",
                 "custom_backend_url": "",
+                # V0.4.19: legacy AI-tab keys read by ui_qt/settings/
+                # sections.py (AiApiSection) + utils/provider_catalog.py —
+                # were missing from the schema (same class of fix as the
+                # V0.4.6 ai.backend addition).
+                "api_type": "OpenAI-Compatible",
+                "custom_providers": [],
             },
             "output": {
                 "last_input_dir": "",
                 "last_output_dir": "",
                 "per_book_folder": True,
+                # V0.4.19: read/written by OutputDestinationSection
+                # (ui_qt/settings/sections.py) — was missing from the schema.
+                "custom_dir": "",
             },
             "paths": {
                 "poppler": "",
@@ -483,6 +547,9 @@ class Settings:
                 # region detection) auto-enables when a vision model is
                 # available. See docs/FEASIBILITY_vision_crop.md.
                 "extract_visual_regions": True,
+                # V0.4.19: adaptive TOC extraction switch (core/pdf/
+                # toc_extractor.py) — was missing from the schema.
+                "toc_adaptive": True,
             },
             # ── V4.7.25: Translation (EN ↔ FA) ───────────────────────────
             "translation": {
@@ -736,6 +803,15 @@ class Settings:
                 "normalize_model": "",
                 "normalize_api_key": "",
                 "normalize_context_mode": "sentence",
+                # V0.4.19: normalize_endpoint / normalize_prompt_{en,fa} read by
+                # core/tts/normalizer.py + written by tts_page.py; fa_host_*
+                # read by core/pipeline/conversion/output_runner.py — all
+                # were missing from the schema (validator warnings).
+                "normalize_endpoint": "http://localhost:11434/v1",
+                "normalize_prompt_en": "",
+                "normalize_prompt_fa": "",
+                "fa_host_a_voice": "fa_IR-amir-medium",
+                "fa_host_b_voice": "fa_IR-amir-medium",
                 "australian_enabled": False,
                 "australian_reference_wav": "",
                 "australian_reference_text": "",
