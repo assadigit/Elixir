@@ -80,7 +80,13 @@ from utils.settings import Settings  # noqa: E402
 _CONTROLLER = _project_root / "controller.py"
 _SETTINGS = _project_root / "utils" / "settings.py"
 _DIALOG = _project_root / "ui_qt" / "settings" / "settings_dialog.py"
-_SECTIONS = _project_root / "ui_qt" / "settings" / "sections.py"
+# V0.4.19 (de-monolithization) pin evolution: sections.py became the
+# sections/ package (17 section classes + helpers moved VERBATIM into
+# per-family modules) — the W-b7 pins follow the moved bodies and now
+# read every module of the package (same glob precedent as the garble/
+# split). Assertions unchanged.
+_SECTIONS = _project_root / "ui_qt" / "settings" / "sections"
+_SECTIONS_FILES = sorted(_SECTIONS.glob("*.py"))
 _TOC_EXTRACTOR = _project_root / "core" / "pdf" / "toc_extractor.py"
 _NEW_OUTPUTS = _project_root / "core" / "outputs" / "new_outputs.py"
 _VISION_FIG = _project_root / "core" / "pdf" / "vision_figure_extractor.py"
@@ -95,6 +101,13 @@ _SUMMARIZATION = _project_root / "core" / "pipeline" / "conversion" / "summariza
 
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _sections_src() -> str:
+    """V0.4.19: sections.py became the sections/ package — every module
+    concatenated, so the whole-module pins keep their original file-wide
+    semantics (the moved bodies are byte-identical)."""
+    return "\n".join(_src(p) for p in _SECTIONS_FILES)
 
 
 def _strip_comments(text: str) -> str:
@@ -283,18 +296,18 @@ class TestWb6SaveFailure:
 
 class TestWb7FastModelDoubleWrite:
     def test_orphaned_fast_combo_removed(self):
-        src = _strip_comments(_src(_SECTIONS))
+        src = _strip_comments(_sections_src())
         assert "self.fast_combo" not in src, (
             "the orphaned invisible fast_combo widget must be gone (W-b7)"
         )
 
     def test_exactly_one_fast_model_write(self):
-        src = _strip_comments(_src(_SECTIONS))
+        src = _strip_comments(_sections_src())
         count = src.count('update_setting("summarisation.fast_model"')
         assert count == 1, f"exactly one authoritative fast_model write expected, found {count}"
 
     def test_single_write_comes_from_visible_combo(self):
-        src = _strip_comments(_src(_SECTIONS))
+        src = _strip_comments(_sections_src())
         assert (
             'update_setting("summarisation.fast_model", self.fast_model_combo.currentData() or "")'
             in src
@@ -305,7 +318,7 @@ class TestWb7FastModelDoubleWrite:
         # into the async finished-handler _on_models_loaded (the fetch now
         # runs on a SimpleWorker). Same W-b7 policy, evolved anchor: the
         # AiLocal populate handler is the one touching simplification_combo.
-        src = _strip_comments(_src(_SECTIONS))
+        src = _strip_comments(_sections_src())
         body_start = src.find("def _on_models_loaded")
         bodies = []
         while body_start != -1:

@@ -85,9 +85,24 @@ _WIZARD = _project_root / "ui_qt" / "views" / "wizard_view.py"
 _WIZARD_STEPS = _project_root / "ui_qt" / "views" / "wizard_steps"
 _STEP5_MODELS = _WIZARD_STEPS / "step5_models.py"
 _QUEUE = _project_root / "ui_qt" / "views" / "queue_view.py"
-_SECTIONS = _project_root / "ui_qt" / "settings" / "sections.py"
+# V0.4.19 (de-monolithization) pin evolution: sections.py became the
+# sections/ package (17 section classes + helpers moved VERBATIM into
+# per-family modules) — the W-b11 pins follow the moved bodies: the
+# module-level async helpers now live in helpers.py; the three refresh
+# sections live in ocr_sections.py / ai_model_section.py /
+# defaults_section.py. Assertions unchanged.
+_SECTIONS = _project_root / "ui_qt" / "settings" / "sections"
+_HELPERS = _SECTIONS / "helpers.py"
+_OCR_SECTIONS = _SECTIONS / "ocr_sections.py"
+_AI_MODEL_SECTION = _SECTIONS / "ai_model_section.py"
+_DEFAULTS_SECTION = _SECTIONS / "defaults_section.py"
 
 _SECTION_CLASSES = ("OcrModelSection", "AiLocalModelSection", "DefaultsSection")
+_SECTION_MODULES = {
+    "OcrModelSection": _OCR_SECTIONS,
+    "AiLocalModelSection": _AI_MODEL_SECTION,
+    "DefaultsSection": _DEFAULTS_SECTION,
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -97,6 +112,13 @@ _SECTION_CLASSES = ("OcrModelSection", "AiLocalModelSection", "DefaultsSection")
 
 def _src(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _sections_all_src() -> str:
+    """V0.4.19: sections.py became the sections/ package — every module
+    concatenated, so the whole-module pins keep their original file-wide
+    semantics (the moved bodies are byte-identical)."""
+    return "\n".join(_src(p) for p in sorted(_SECTIONS.glob("*.py")))
 
 
 def _tree(path: Path) -> ast.Module:
@@ -568,14 +590,14 @@ class TestWizardAsyncModelsPins:
 
 class TestSectionsAsyncModelsPins:
     def test_imports_simple_worker(self):
-        src = _src(_SECTIONS)
+        src = _src(_HELPERS)
         assert "from ui_qt.components.simple_worker import SimpleWorker" in src
 
     def test_populate_models_async_helper_shape(self):
         """The module-level constructor-site helper: fetch on the worker,
         populate on the main thread, worker ref kept on the combo,
         fail-soft on error."""
-        body = _func_src(_SECTIONS, "_populate_models_async")
+        body = _func_src(_HELPERS, "_populate_models_async")
         assert "SimpleWorker(_get_ollama_models, controller)" in body
         assert "combo._models_worker = worker" in body, (
             "the combo must hold a Python ref to the worker (QObject GC)"
@@ -594,7 +616,7 @@ class TestSectionsAsyncModelsPins:
         call may receive the blocking fetch (``_get_ollama_models(...)``)
         as a direct argument anymore — every such site must go through
         ``_populate_models_async``."""
-        tree = _tree(_SECTIONS)
+        tree = ast.parse(_sections_all_src())
         offenders = []
         for call in _calls_named(tree, "_populate_models"):
             # skip the call inside _populate_models_async's finished
@@ -616,7 +638,7 @@ class TestSectionsAsyncModelsPins:
         """The one shared helper the three sections use: re-entrancy guard,
         button disable before spawn, re-enable in BOTH outcome handlers,
         worker ref on the section, fail-soft."""
-        body = _func_src(_SECTIONS, "_refresh_models_async")
+        body = _func_src(_HELPERS, "_refresh_models_async")
         assert "is_running()" in body
         assert "refresh_btn.setEnabled(False)" in body
         assert body.count("refresh_btn.setEnabled(True)") == 2, (
@@ -629,23 +651,23 @@ class TestSectionsAsyncModelsPins:
 
     def test_three_sections_refresh_via_shared_helper(self):
         for cls in _SECTION_CLASSES:
-            body = _func_src(_SECTIONS, "_refresh_models", cls)
+            body = _func_src(_SECTION_MODULES[cls], "_refresh_models", cls)
             assert "_refresh_models_async(" in body, (
                 f"{cls}._refresh_models must route through the shared async helper (W-b11)"
             )
             # no blocking fetch CALL inside the method (AST, so the
             # W-b11 fix comments can't false-trigger the pin)
-            node = _func_node(ast.parse(_src(_SECTIONS)), "_refresh_models", cls)
+            node = _func_node(ast.parse(_src(_SECTION_MODULES[cls])), "_refresh_models", cls)
             assert not _calls_named(node, "get_ollama_models"), (
                 f"{cls}._refresh_models must not run the blocking HTTP fetch on the UI thread"
             )
 
     def test_three_sections_have_models_loaded_handler(self):
         for cls in _SECTION_CLASSES:
-            _func_src(_SECTIONS, "_on_models_loaded", cls)  # must exist
+            _func_src(_SECTION_MODULES[cls], "_on_models_loaded", cls)  # must exist
 
     def test_ocr_section_populate_semantics_kept(self):
-        body = _func_src(_SECTIONS, "_on_models_loaded", "OcrModelSection")
+        body = _func_src(_OCR_SECTIONS, "_on_models_loaded", "OcrModelSection")
         assert "self.primary_combo" in body
         assert "self.fallback_combo" in body
         assert body.count("prefer_ocr=True") == 2
@@ -653,7 +675,7 @@ class TestSectionsAsyncModelsPins:
         assert "ocr.fallback_model" in body
 
     def test_ai_local_section_populate_semantics_kept(self):
-        body = _func_src(_SECTIONS, "_on_models_loaded", "AiLocalModelSection")
+        body = _func_src(_AI_MODEL_SECTION, "_on_models_loaded", "AiLocalModelSection")
         for combo in ("summary_combo", "fast_model_combo", "heavy_combo", "simplification_combo"):
             assert f"self.{combo}" in body
         assert body.count("allow_empty=True") == 2
@@ -663,7 +685,7 @@ class TestSectionsAsyncModelsPins:
         assert "summarisation.simplification_model" in body
 
     def test_defaults_section_populate_semantics_kept(self):
-        body = _func_src(_SECTIONS, "_on_models_loaded", "DefaultsSection")
+        body = _func_src(_DEFAULTS_SECTION, "_on_models_loaded", "DefaultsSection")
         assert "self.summ_model_combo" in body
         assert "self.ocr_model_combo" in body
         assert "setEditText(target)" in body, (
@@ -676,19 +698,19 @@ class TestSectionsAsyncModelsPins:
 
     def test_three_sections_store_refresh_btn_for_disable_enable(self):
         for cls in _SECTION_CLASSES:
-            init = _func_src(_SECTIONS, "__init__", cls)
+            init = _func_src(_SECTION_MODULES[cls], "__init__", cls)
             assert "self.refresh_btn = QPushButton" in init, (
                 f"{cls} must keep the refresh button on self so the async "
                 "refresh can disable/re-enable it"
             )
-            refresh = _func_src(_SECTIONS, "_refresh_models", cls)
+            refresh = _func_src(_SECTION_MODULES[cls], "_refresh_models", cls)
             assert "self.refresh_btn" in refresh, (
                 f"{cls} must pass its refresh button to the async helper"
             )
 
     def test_three_sections_init_models_worker_none(self):
         for cls in _SECTION_CLASSES:
-            init = _func_src(_SECTIONS, "__init__", cls)
+            init = _func_src(_SECTION_MODULES[cls], "__init__", cls)
             assert "self._models_worker = None" in init, (
                 f"{cls} must initialize the worker ref (GC hazard)"
             )
@@ -696,7 +718,7 @@ class TestSectionsAsyncModelsPins:
     def test_constructor_time_populates_are_async(self):
         """The blocking constructor-time sites (~337/347/354 + reload
         ~613/621 in the SWOT) are replaced by _populate_models_async."""
-        init = _func_src(_SECTIONS, "__init__", "AiLocalModelSection")
+        init = _func_src(_AI_MODEL_SECTION, "__init__", "AiLocalModelSection")
         # V0.13: format-wrapped — combo + controller on the following line
         assert (
             "_populate_models_async(\n            self.fast_model_combo,\n            controller,"
@@ -704,29 +726,29 @@ class TestSectionsAsyncModelsPins:
         )
         # the fast-combo ↻ refresh click routes through the async helper
         assert "lambda: _populate_models_async(" in init
-        reload_src = _func_src(_SECTIONS, "reload", "AiLocalModelSection")
+        reload_src = _func_src(_AI_MODEL_SECTION, "reload", "AiLocalModelSection")
         assert "_populate_models_async(\n            self.fast_model_combo, c," in reload_src
-        # ...and the synchronous shapes are gone everywhere in the file
-        src = _src(_SECTIONS)
+        # ...and the synchronous shapes are gone everywhere in the package
+        src = _sections_all_src()
         assert "lambda: _populate_models(" not in src
 
     def test_fetch_models_from_is_widget_free(self):
         """AiLocalModelSection's fetch must be callable on the worker
         thread: the URL is snapshotted on the main thread and the actual
         fetch takes it as a plain argument (no combo reads)."""
-        body = _func_src(_SECTIONS, "_fetch_models_from", "AiLocalModelSection")
+        body = _func_src(_AI_MODEL_SECTION, "_fetch_models_from", "AiLocalModelSection")
         assert "def _fetch_models_from(self, url: str)" in body
         assert "requests" in body
         assert "self." not in body.replace("def _fetch_models_from(self, url: str)", ""), (
             "_fetch_models_from must not touch any widget (worker-safe)"
         )
-        wrapper = _func_src(_SECTIONS, "_fetch_models", "AiLocalModelSection")
+        wrapper = _func_src(_AI_MODEL_SECTION, "_fetch_models", "AiLocalModelSection")
         assert "return self._fetch_models_from(self._backend_url())" in wrapper
 
     def test_ai_local_refresh_snapshots_url_on_main_thread(self):
         """_refresh_models must read the backend combos (widget reads) on
         the MAIN thread and hand the widget-free fn to the worker."""
-        body = _func_src(_SECTIONS, "_refresh_models", "AiLocalModelSection")
+        body = _func_src(_AI_MODEL_SECTION, "_refresh_models", "AiLocalModelSection")
         assert "self._backend_url()" in body
         assert "_fetch_models_from" in body
         assert "_refresh_models_async(" in body

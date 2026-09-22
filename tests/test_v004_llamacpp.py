@@ -615,7 +615,11 @@ class TestWizardStep5Pins:
 
 
 class TestSettingsDialogPins:
-    SECTIONS = "ui_qt/settings/sections.py"
+    # V0.4.19 (de-monolithization) pin evolution: sections.py became the
+    # sections/ package — AiLocalModelSection (the backend picker, the
+    # provider-aware save, and the llama.cpp model fetch these pins slice)
+    # moved VERBATIM to ai_model_section.py. Assertions unchanged.
+    SECTIONS = "ui_qt/settings/sections/ai_model_section.py"
 
     def test_backend_list_has_llamacpp(self):
         src = _strip_comments(_src(self.SECTIONS))
