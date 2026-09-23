@@ -3,9 +3,12 @@
 > **This file is the standing evaluation framework for Elixir summary audits.**
 > Provided by the project owner (2026-08-31 session) as the permanent, reusable
 > evaluation prompt. Do NOT ask for it again — it lives here and ships with every
-> version. The ground-truth source chapter for the standing test book
-> ("Broken Structures", Salman Akhtar — chapter "1 - IDENTITY AND ITS ORIGINS")
-> lives at `docs/ground_truth/001_1 - IDENTITY AND ITS ORIGINS.md`.
+> version. The ground-truth source chapters for the standing test book
+> ("Broken Structures", Salman Akhtar) live at
+> `docs/ground_truth/001_1 - IDENTITY AND ITS ORIGINS.md` (ch.1) and
+> `docs/ground_truth/001_4 - BORDERLINE PERSONALITY DISORDER.md` (ch.4,
+> added 2026-09-23 — the owner sends summaries only from now on; the chapter
+> stays here).
 >
 > **How to use:** for every real-run audit, run this prompt with
 > Source Text = the ground-truth chapter (or the chapter of the run under audit)
@@ -114,3 +117,10 @@ Output a valid JSON object at the very end of your response with the following e
 - Ground truth for the standing test chapter:
   `docs/ground_truth/001_1 - IDENTITY AND ITS ORIGINS.md` (6,425 words,
   9,120 tokens, PDF pages 15–32).
+- Ground truth for the second standing test chapter (added 2026-09-23):
+  `docs/ground_truth/001_4 - BORDERLINE PERSONALITY DISORDER.md` (12,073
+  words, 18,807 tokens, PDF pages 77–112). **Caveat:** TABLE 4-1 in this
+  file is OCR-mirrored garbage — audits must not treat its tokens as text
+  (it is the origin of the BIOA/Tey/JOQuUI citation artifacts). First audit
+  against it:
+  `audit/results/AUDIT_V0.4.22_run20260923-030841-d6d47f77_ch4_summary_vs_source.md`.
