@@ -331,6 +331,11 @@ def detect_enumerations(source_text: str, min_items: int | None = None) -> list[
     try:
         if not source_text or len(source_text) < 120:
             return []
+        # V0.4.24 (audit backlog #3): re-join run-in lists that a PDF
+        # paragraph break split mid-item BEFORE any detection runs (the
+        # Stern ten-criteria escape — items (9)-(10) fell below the
+        # 3-item minimum in their own 2-marker fragment).
+        source_text = _join_split_runin_paragraphs(source_text)
         lines = source_text.split("\n")
         # skip YAML frontmatter
         start = 0
@@ -439,7 +444,7 @@ def detect_enumerations(source_text: str, min_items: int | None = None) -> list[
                         if text:
                             items.append(EnumItem(marker=m.group(1), text=text, line=para_line))
                     if len(items) >= style_min:
-                        stem = _clean_item_text(para_text[: run[0].start()])[-150:]
+                        stem = _aligned_stem(_clean_item_text(para_text[: run[0].start()]))
                         results.append(
                             Enumeration(
                                 style=style,
@@ -520,11 +525,45 @@ def _match_block(line: str, style: str) -> tuple[str, str] | None:
     return None
 
 
+def _aligned_stem(raw: str, limit: int = 150) -> str:
+    """V0.4.24 (audit backlog #1): sentence- and word-aligned stem tail.
+
+    The V0.4.23 run-in/block stem extraction took a raw ``[-150:]``
+    character window — character-sliced, not sentence- or word-aligned —
+    so the consolidated bullets' labels read like corruption ("Rom
+    others. unstable identity also found" = "…f|rom the others…",
+    "Tive, structural" = "…descrip|tive…", "Ree types of" = "…th|ree…",
+    "-if," = "…as|-if…"). This helper never slices mid-token: the window
+    is aligned to a word boundary first, then to the NEAREST PRECEDING
+    SENTENCE BOUNDARY (so the stem leads with a sentence start, not a
+    fragment).
+    """
+    s = re.sub(r"\s+", " ", (raw or "")).strip()
+    if not s:
+        return ""
+    if len(s) <= limit:
+        return s
+    tail = s[-limit:]
+    # word-align: never start mid-token
+    sp = tail.find(" ")
+    if sp == -1:
+        return tail.strip()
+    tail = tail[sp + 1 :]
+    # sentence-align: prefer starting right after the LAST sentence
+    # boundary inside the window (the sentence that introduces the list)
+    last = -1
+    for m in re.finditer(r"[.!?][\"'\u201d\u2019)\]]*\s+", tail):
+        last = m.end()
+    if last > 0:
+        tail = tail[last:]
+    return tail.strip()
+
+
 def _find_block_stem(lines: list[str], idx: int) -> str:
     """The introducing text above a block list: the nearest previous
     non-blank line that is NOT itself a list-marker line (adjacent lists
     must not adopt each other's items as stems), collapsed, up to 150
-    chars."""
+    chars — word/sentence-aligned (V0.4.24)."""
     k = idx - 1
     while k >= 0:
         ln = lines[k]
@@ -535,8 +574,115 @@ def _find_block_stem(lines: list[str], idx: int) -> str:
             k -= 1  # the previous list's own item — keep looking up
             continue
         stem = re.sub(r"\s+", " ", ln.strip())
-        return stem[-150:]
+        return _aligned_stem(stem)
     return ""
+
+
+def _join_split_runin_paragraphs(source_text: str) -> str:
+    """V0.4.24 (audit backlog #3 — the Stern escape): re-join run-in lists
+    that a PDF paragraph break split mid-item.
+
+    The V0.4.23 ch.4 run: Stern's ten criteria were run-in markers
+    ``(1) … (10)`` inside prose; a PDF paragraph break fell inside item
+    (8) ("…organic insecurity or a\n\nconstitutional incapacity to
+    tolerate much stress, (9) …; (10) …"). The detector saw an 8-item
+    run in paragraph A (item 8 truncated at the break) and a 2-item
+    fragment in paragraph B — below the 3-item minimum, never detected.
+    The ship-time guarantee therefore carried a cut item, and the 4
+    uncovered items escaped the enumeration guarantee entirely.
+
+    This pre-pass joins paragraph A to B when ALL hold:
+      * A's tail after its LAST run-in marker lacks terminal punctuation
+        (the item was cut mid-phrase);
+      * A's last run-in marker belongs to a consecutive run of ≥ 2 same-
+        style markers (a real list, not a lone ``(1983)`` citation);
+      * B's FIRST run-in marker of the SAME style is exactly the next
+        sequential marker;
+      * B's pre-marker text (the item's continuation) is < 300 chars and
+        B does not open with a block marker or heading.
+
+    Purely deterministic; joins repeat until stable (a 3-way split joins
+    twice). Never raises — any failure returns the input unchanged.
+    """
+    try:
+        if not source_text:
+            return source_text
+        paragraphs = _paragraphs(source_text)
+        if len(paragraphs) < 2:
+            return source_text
+        changed = True
+        guard = 0
+        while changed and guard < 50:
+            changed = False
+            guard += 1
+            out: list[tuple[str, int]] = []
+            i = 0
+            while i < len(paragraphs):
+                cur_text, cur_line = paragraphs[i]
+                nxt_text, nxt_line = paragraphs[i + 1] if i + 1 < len(paragraphs) else ("", 0)
+                if nxt_text and _paragraphs_joinable(cur_text, nxt_text):
+                    cur_text = cur_text.rstrip() + " " + nxt_text.lstrip()
+                    # absorb B entirely; A+B becomes one paragraph
+                    out.append((cur_text, cur_line))
+                    i += 2
+                    changed = True
+                else:
+                    out.append((cur_text, cur_line))
+                    i += 1
+            paragraphs = out
+        # rebuild the text with the original leading/trailing structure
+        # preserved: paragraphs joined by one blank line, in order.
+        return "\n\n".join(t for t, _ln in paragraphs)
+    except Exception:
+        return source_text
+
+
+def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
+    """True when paragraph B continues paragraph A's open run-in list."""
+    try:
+        b_first = b_text.split("\n", 1)[0].strip()
+        if not b_first or b_first.startswith("#"):
+            return False
+        if any(pat.match(b_first) for _st, pat in _BLOCK_PATTERNS):
+            return False
+        for style, pat in _RUNIN_PATTERNS:
+            seq = ENUMERATION_TEMPLATE[style]["sequence"]
+            a_matches = list(pat.finditer(a_text))
+            if len(a_matches) < 2:
+                continue
+            # the LAST marker of A must be the end of a consecutive run of
+            # >= 2 same-style markers (a real list tail, not a lone citation)
+            a_last = a_matches[-1]
+            a_last_idx = _marker_index(seq, a_last.group(1)) if seq else None
+            run_len = 1
+            for m in reversed(a_matches[:-1]):
+                idx = _marker_index(seq, m.group(1)) if seq else None
+                if seq and idx is not None and idx == a_last_idx - run_len:
+                    run_len += 1
+                else:
+                    break
+            if run_len < 2 or a_last_idx is None:
+                continue
+            # A's item text after the last marker must be cut mid-phrase
+            tail = a_text[a_last.end() :].strip()
+            if not tail or tail[-1] in ".!?\u201d\u2019":
+                continue
+            # B must open with the NEXT sequential marker of the same style
+            b_first_m = pat.search(b_first)
+            if not b_first_m:
+                continue
+            b_idx = _marker_index(seq, b_first_m.group(1)) if seq else None
+            if b_idx is None or b_idx != a_last_idx + 1:
+                continue
+            # B's pre-marker continuation must be short (an item tail, not
+            # a new topic paragraph that happens to contain (n+1))
+            pre = b_first[: b_first_m.start()].strip()
+            if len(pre) > 300:
+                continue
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def _paragraphs(source_text: str) -> list[tuple[str, int]]:
@@ -650,9 +796,18 @@ def enumeration_item_covered(item_text: str, haystack_lower: str) -> bool:
 
 def stem_label(stem: str, count: int) -> str:
     """A human label for the consolidated bullet, derived from the list's
-    introducing stem ("The seven features of X are:" -> "Seven Features
-    Of X"); falls back to a count-generic label."""
+    introducing stem; falls back to a count-generic label.
+
+    V0.4.24 (audit backlog #1): the label now leads with the stem's
+    FINAL sentence's opening words — the sentence that actually
+    introduces the list. The V0.4.23 label led with whatever fragment
+    the raw character window started at (a mid-word slice that read
+    like corruption and shipped verbatim as a label)."""
     s = re.sub(r"\s+", " ", (stem or "")).strip().rstrip(":;.,—–-")
+    # lead with the final sentence's opening words
+    _sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", s) if x.strip()]
+    if _sentences:
+        s = _sentences[-1]
     s = re.sub(
         r"\b(?:the|a|an|these|those|following|as|are|is|was|were|be|been|"
         r"included|include|includes|listed|below|above|here|now)\b\s*",

@@ -60,6 +60,12 @@ class VisionFigureExtractor:
         # Cache for extracted text per page
         self._page_figure_text: dict[int, list[str]] = {}
 
+        # V0.4.24: the llama-server vision route (None = Ollama transport).
+        # Initialized here AND defaulted via getattr at the use sites so
+        # object.__new__-style construction (tests) never breaks.
+        self._llamacpp_provider = None
+        self._llamacpp_provider_model = ""
+
     # ─────────────────────────────────────────────────────────────────────────
     # Main extraction
     # ─────────────────────────────────────────────────────────────────────────
@@ -90,18 +96,32 @@ class VisionFigureExtractor:
 
         # Check if the vision model is available
         model_available = self.model_manager.model_exists(self.model_name)
+        # V0.4.24 (V4.23 run post-mortem): the llama-server vision path.
+        # When the Ollama model is absent AND the active provider is
+        # llama.cpp, route figure extraction through the llama.cpp
+        # provider's vision call instead of skipping the feature — the
+        # V4.23 rig log showed "❌ No vision model available. Skipping
+        # figure extraction." while llama-server was serving a
+        # vision-capable model.
+        self._llamacpp_provider = None
+        self._llamacpp_provider_model = ""
         if not model_available:
             self.log(f"  ⚠️ Vision model '{self.model_name}' not found. Trying fallback.", "WARNING")
             if self.model_manager.model_exists(self.fallback_model):
                 self.model_name = self.fallback_model
                 model_available = True
             else:
-                self.log("  ❌ No vision model available. Skipping figure extraction.", "ERROR")
-                doc.close()
-                return {}
+                self._llamacpp_provider = self._create_llamacpp_vision_provider()
+                if self._llamacpp_provider is None:
+                    self.log("  ❌ No vision model available. Skipping figure extraction.", "ERROR")
+                    doc.close()
+                    return {}
 
-        # Acquire the model (keep loaded for all pages)
-        if not self.model_manager.acquire_model(self.model_name, ModelType.OCR):
+        # Acquire the model (keep loaded for all pages) — Ollama path only;
+        # the llama.cpp server is already serving its model.
+        if self._llamacpp_provider is None and not self.model_manager.acquire_model(
+            self.model_name, ModelType.OCR
+        ):
             self.log(
                 f"  ❌ Failed to load vision model '{self.model_name}'. Skipping figure extraction.",
                 "ERROR",
@@ -109,7 +129,15 @@ class VisionFigureExtractor:
             doc.close()
             return {}
 
-        self.log(f"  🖼️ Extracting text from figures using {self.model_name}...", "INFO")
+        self.log(
+            "  🖼️ Extracting text from figures using "
+            + (
+                f"llama-server vision model ({self._llamacpp_provider_model})…"
+                if self._llamacpp_provider is not None
+                else f"{self.model_name}..."
+            ),
+            "INFO",
+        )
 
         try:
             for page_num in target_pages:
@@ -159,15 +187,49 @@ class VisionFigureExtractor:
             self.log(f"  ❌ Figure extraction error: {e}", "ERROR")
 
         finally:
-            # Release the model
-            self.model_manager.release_model(self.model_name)
+            # Release the model (Ollama path only — llama-server manages its
+            # own model lifetime)
+            if getattr(self, "_llamacpp_provider", None) is None:
+                self.model_manager.release_model(self.model_name)
             doc.close()
 
         return self._page_figure_text
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Image → text via vision model
-    # ─────────────────────────────────────────────────────────────────────────
+    # V0.4.24: the llama-server vision path (provider-aware fallback)
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _create_llamacpp_vision_provider(self):
+        """V0.4.24: a vision-capable llama.cpp provider, or None.
+
+        Only when the ACTIVE provider setting is ``llamacpp`` — probed
+        live via ``supports_vision()`` (never a name-keyed guess; AGENTS.md
+        Rule 1). The model name reported by llama-server is captured for
+        the ``complete_with_image`` calls.
+        """
+        try:
+            _prov = (
+                (self.settings.get("summarisation.provider", "ollama") or "ollama").strip().lower()
+            )
+            if _prov != "llamacpp":
+                return None
+            from core.llm.llm_provider_impl import create_provider
+
+            provider = create_provider("llamacpp", self.settings)
+            if provider is not None and provider.supports_vision():
+                self._llamacpp_provider_model = (
+                    self.settings.get("summarisation.llamacpp_model", "") or self.model_name
+                )
+                return provider
+            self.log(
+                "  ℹ️ llama-server model is not vision-capable — figure "
+                "extraction via llama.cpp unavailable.",
+                "DEBUG",
+            )
+            return None
+        except Exception as e:
+            self.log(f"  ⚠️ V0.4.24: llama.cpp vision provider probe failed: {e}", "WARNING")
+            return None
 
     def _extract_text_from_image(
         self, image_bytes: bytes, page_num: int, img_idx: int
@@ -175,7 +237,6 @@ class VisionFigureExtractor:
         """
         Send a single image to the vision model and return extracted text.
         """
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
         prompt = (
             "Extract ALL text, labels, numbers, axis titles, and legends from this image. "
             "Do NOT describe the image itself. Do NOT describe colors, shapes, or styling. "
@@ -184,6 +245,29 @@ class VisionFigureExtractor:
             "Output ONLY the extracted text, no commentary, no preamble."
         )
 
+        # V0.4.24: the llama-server vision route (OpenAI-compatible image
+        # call) — same prompt, same retries, different transport.
+        if getattr(self, "_llamacpp_provider", None) is not None:
+            for attempt in range(self.retries):
+                try:
+                    self.log(f"      🧠 Vision OCR attempt {attempt + 1}/{self.retries}…", "DEBUG")
+                    text = self._llamacpp_provider.complete_with_image(
+                        prompt,
+                        image_bytes,
+                        temperature=0.0,
+                        max_tokens=1024,
+                        model=self._llamacpp_provider_model,
+                    )
+                    if text and text.strip():
+                        return text.strip()
+                    self.log(f"      ⚠️ Empty response attempt {attempt + 1}", "WARNING")
+                except Exception as e:
+                    self.log(f"      ⚠️ Vision error attempt {attempt + 1}: {e}", "WARNING")
+                if attempt < self.retries - 1:
+                    time.sleep(2 * (attempt + 1))
+            return None
+
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
         payload = {
             "model": self.model_name,
             "prompt": prompt,

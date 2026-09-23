@@ -168,3 +168,43 @@ ENUMERATION ITEM RECALL: 113/117 (96.6%)
 4. **Name-dump paragraph**: the theorist-floor thorough gap-fill should weave names into content sentences; a paragraph whose opening sentence is a 40-name list is citation adjacency in prose form.
 5. **Filler floor verb list**: add "appears in the same citation list" (the Wolberg bullet).
 6. **Attribution-edge check on gap-fill prose**: verify a name appears near the claim's key phrase in source before shipping "X's theories were referenced regarding Y" (would have caught the Piaget-Klein weld).
+
+---
+
+## Addendum (V0.4.24): the conversion log arrived — the escape path is pinned
+
+The owner uploaded the V4.23 conversion log (run `20260923-052332-b3e7f026`,
+the same run as the audited summary). It confirms every hypothesis and adds
+a defect class the output-side audit could not see:
+
+- **Backlog #3 pinned.** 05:40:41 — the enumeration guarantee added 10
+  consolidated bullets (log lines "added 1 consolidated bullet for a
+  N-item runin_arabic list"); 05:40:46 — the postcheck chain DROPPED
+  `bullet[68]` ("dropped truncated bullet … **O, classical <topic>. His
+  list of** — 8 items from"): a guaranteed bullet killed by the truncation
+  guard because its garbled stem + the paragraph-break-cut final item
+  ("…organic insecurity or a") tripped the dangling-tail heuristic. The
+  final floor then measured 113/117 and only LOGGED the 4 missing items.
+  Exactly the leading hypothesis, now confirmed end-to-end.
+- **Backlog #1's label example confirmed verbatim** — the dropped bullet's
+  label IS the mid-word-sliced stem ("t|o, classical …" — the 150-char
+  window started inside the word "to").
+- **NEW defect class — provider-blind model probes.** With
+  `provider = llamacpp`: "Model '…' not found in Ollama" → simplified
+  keypoints **failed 74/74** ("0 simplified, 74 failed"), vision OCR fell
+  back to Tesseract, figure extraction was skipped entirely — all while
+  llama-server served the model. The summarization phase itself worked
+  (llm_transport routes llamacpp correctly); the auxiliary features all
+  probed Ollama.
+- **NEW — page 107.** A scanned page returned nothing on the Tesseract
+  pass with no retry ("1 page(s) failed to extract: [107]"), silently
+  dropping a page from the chapter text.
+- Also visible: the 480s chapter deadline was exceeded (707s) and skipped
+  the optional bullet-consolidation phase — the very phase that would have
+  cleaned the garbled stems. The V0.4.24 stem alignment makes the cleanup
+  deterministic instead.
+
+All six backlog items plus the conversion-log findings shipped in V0.4.24
+(see CHANGELOG). Backlog #3's demanded regression test lives in
+`tests/test_v00424_audit_fixes.py::TestSternParagraphJoin` — built on the
+EXACT ground-truth passage, including the paragraph break inside item (8).

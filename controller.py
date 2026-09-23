@@ -867,7 +867,13 @@ class Controller:
         ("extract_figure_text", "extract_figure_text", "advanced.extract_figure_text", False, None),
         # V0.4.3: Vision-Region Cropper — default ON (crops diagrams/charts/
         # tables at high DPI and embeds inline in the chapter markdown).
-        ("extract_visual_regions", "extract_visual_regions", "advanced.extract_visual_regions", True, None),
+        (
+            "extract_visual_regions",
+            "extract_visual_regions",
+            "advanced.extract_visual_regions",
+            True,
+            None,
+        ),
         ("output_briefing", "output_briefing", "outputs.briefing", True, None),
         ("output_podcast", "output_podcast", "outputs.podcast", True, None),
         ("output_flashcards", "output_flashcards", "outputs.flashcards", True, None),

@@ -403,7 +403,32 @@ class OCRService:
 
         if remaining_ocr and self.request.use_llm_ocr and poppler_ok:
             model = self.request.primary_ocr_model
-            if self.model_manager.model_exists(model):
+            # V0.4.24 (V4.23 run post-mortem): provider-aware load gate.
+            # The V4.23 rig (provider=llamacpp) logged the misleading
+            # "Model '…' not found in Ollama. Run: ollama pull …" — the
+            # model lives on llama-server; the Ollama-only legacy path
+            # (qwen_loaded) is irrelevant there and the provider-agnostic
+            # vision OCR path (_provider_vision_ocr) does the routing.
+            try:
+                from utils.settings import Settings as _GateSettings
+
+                _gate_provider = (
+                    (_GateSettings().get("summarisation.provider", "ollama") or "ollama")
+                    .strip()
+                    .lower()
+                )
+            except Exception:
+                _gate_provider = "ollama"
+            _gate_arch = (
+                getattr(self.request, "model_architecture", "single_local") or "single_local"
+            ).lower()
+            if _gate_provider == "llamacpp" or _gate_arch == "llamacpp":
+                self.log(
+                    "  ℹ️ Provider is llama.cpp — page OCR routes via the "
+                    "llama-server vision provider (no Ollama model load).",
+                    "DEBUG",
+                )
+            elif self.model_manager.model_exists(model):
                 # V18.2.15 (P6): Phase-boundary trace — OCR phase START.
                 # This is a dedicated phase: the OCR model is loaded ONCE,
                 # all pages are scanned, then the model is unloaded BEFORE
@@ -869,12 +894,24 @@ class OCRService:
         Ollama's /api/tags, so when the user picks an Ollama-hosted OCR
         model while running their main model on llama.cpp, we need to
         probe Ollama (not llama.cpp) for that OCR model.
+
+        V0.4.24 (V4.23 run post-mortem): the ACTIVE provider setting
+        (``summarisation.provider``) is authoritative too. The V4.23 rig
+        ran provider=llamacpp while ``model_architecture`` stayed
+        "single_local", so this method created an OLLAMA provider,
+        probed Ollama for the vision model, found nothing, and the OCR
+        silently degraded 3 scanned pages to Tesseract while
+        llama-server was serving the vision model.
         """
         try:
             from core.llm.llm_provider_impl import create_provider
 
-            # Determine the provider name from the architecture
-            if arch == "llamacpp":
+            # Determine the provider name from the architecture AND the
+            # active provider setting (V0.4.24).
+            _provider_setting = (
+                (settings.get("summarisation.provider", "ollama") or "ollama").strip().lower()
+            )
+            if arch == "llamacpp" or _provider_setting == "llamacpp":
                 provider_name = "llamacpp"
             elif arch in ("single_api", "dual_api"):
                 provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
@@ -1290,9 +1327,37 @@ class OCRService:
 
             pytesseract.pytesseract.tesseract_cmd = self._tesseract_cmd
             pil_image = Image.open(io.BytesIO(image_bytes))
+            # V0.4.24 (V4.23 run post-mortem — p.107): the default pass is
+            # byte-identical to V0.4.23; when it returns NOTHING, retry
+            # with alternate page-segmentation modes before giving up (the
+            # "OCR retries" setting only guarded the Qwen path — a scanned
+            # page silently vanished from the chapter text). PSM 6 (assume
+            # a uniform block of text) and PSM 4 (single column of variable
+            # sizes) recover the common failure shapes. An exception on the
+            # first pass still propagates to the outer handler with the
+            # original message (the V0.4.23 error contract).
             text = pytesseract.image_to_string(pil_image, lang="eng+fas")
-            if text.strip():
-                self.log(f"    ✅ Tesseract p.{page_num}: {len(text)} chars", "INFO")
+            _recovered_with = ""
+            if not (text and text.strip()):
+                for _psm_cfg in ("--psm 6", "--psm 4"):
+                    try:
+                        text = pytesseract.image_to_string(
+                            pil_image, lang="eng+fas", config=_psm_cfg
+                        )
+                    except Exception:
+                        continue
+                    if text and text.strip():
+                        _recovered_with = _psm_cfg
+                        break
+            if text and text.strip():
+                if _recovered_with:
+                    self.log(
+                        f"    ✅ Tesseract p.{page_num}: {len(text)} chars "
+                        f"(recovered with '{_recovered_with}')",
+                        "INFO",
+                    )
+                else:
+                    self.log(f"    ✅ Tesseract p.{page_num}: {len(text)} chars", "INFO")
                 return OcrResult(
                     page_num=page_num, text=text, success=True, engine_used=OcrEngine.TESSERACT
                 )
@@ -1301,7 +1366,7 @@ class OCRService:
                 text="",
                 success=False,
                 engine_used=OcrEngine.TESSERACT,
-                error_msg="Tesseract returned empty string",
+                error_msg="Tesseract returned empty string (3 page-segmentation modes tried)",
             )
         except Exception as e:
             return OcrResult(

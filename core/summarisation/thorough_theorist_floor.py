@@ -9,20 +9,109 @@ call site (``thorough = self._thorough_theorist_floor(...)``) stays in
 ``_summarize_inner`` — that orchestrator is explicitly NOT moved (out of
 the approved P5 scope).
 
-VERBATIM CONTRACT: the method body is byte-identical to the V18.20.4.6
-zip's ``summarizer.py`` (``ast.get_source_segment`` comparison in
-``tests/test_v182047_p5_core_decomp.py``). Only this module's imports +
-docstring are new.
+VERBATIM CONTRACT: the method body was byte-identical to the V18.20.4.6
+zip's ``summarizer.py`` through V0.4.23. V0.4.24 (audit backlog #2+#4+#6,
+the V4.23 run post-mortem) deliberately changed it: the single 47-name
+gap-fill call became ≤3 chunked calls (≤12 names each) with anti-roster
+prompt constraints, the unclosed ``<thorough_addition>`` fallback now runs
+the V18.20.3.2 KD/TT truncation guard, and the shipped addition is
+filtered by the module-level attribution-edge co-occurrence check
+(``_grounded_addition_sentences``).
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from utils.logging import get_main_logger
 
 # The SAME logger object summarizer.py's module-level ``logger`` holds.
 logger = get_main_logger()
+
+# V0.4.24 (audit backlog #6): co-occurrence window — a name's claim is
+# "near" the name when its key phrase appears within this many characters
+# of any occurrence of the name in the source.
+_NAME_WINDOW = 600
+
+
+def _grounded_addition_sentences(
+    addition: str, source: str, names: list[str]
+) -> tuple[str, list[str]]:
+    """V0.4.24 (audit backlog #6): attribution-edge check on gap-fill prose.
+
+    The V0.4.23 thorough gap-fill shipped a sentence welding a theorist to
+    a criticism he never appears near in the source ("N's theories were
+    referenced regarding <M's criticism>" — N occurs nowhere near that key
+    phrase; the audited instance: a developmental theorist welded to a
+    play-technique criticism that belongs to a different author). This
+    filter drops a sentence when NONE of the names it carries co-occur
+    (±600 chars) with ANY of the sentence's distinctive content words —
+    the welding signature.
+
+    High-precision by construction:
+      * only sentences that carry one of the chunk's missing names are
+        checked — prose without a gap-fill name passes untouched;
+      * keywords are ≥6 chars, de-duplicated, capped at 8, and exclude
+        words so frequent in the source (>40 occurrences) that they
+        cannot anchor a co-occurrence;
+      * a name absent from the source entirely is kept (it arrived from
+        the deterministic analysis, not the model);
+      * a sentence is dropped only when EVERY name in it fails the
+        co-occurrence probe.
+
+    Returns ``(filtered_addition, dropped_sentences)`` — paragraph
+    structure preserved; a paragraph whose every sentence was dropped
+    vanishes. Never raises.
+    """
+    try:
+        if not addition or not source or not names:
+            return addition, []
+        src_lower = source.lower()
+        freq = Counter(re.findall(r"[a-z]{6,}", src_lower))
+        generic = {w for w, c in freq.items() if c > 40}
+        out_paras: list[str] = []
+        dropped: list[str] = []
+        for para in re.split(r"\n{2,}", addition):
+            para = para.strip()
+            if not para:
+                continue
+            kept_s: list[str] = []
+            for sent in (s.strip() for s in re.split(r"(?<=[.!?])\s+", para)):
+                if not sent:
+                    continue
+                sent_names = [n for n in names if re.search(rf"\b{re.escape(n)}\b", sent)]
+                if not sent_names:
+                    kept_s.append(sent)
+                    continue
+                kws = [
+                    w
+                    for w in re.findall(r"[a-z]{6,}", sent.lower())
+                    if w not in generic and not any(w in n.lower() for n in sent_names)
+                ]
+                kws = list(dict.fromkeys(kws))[:8]
+                grounded = False
+                for n in sent_names:
+                    n_low = n.lower()
+                    if n_low not in src_lower:
+                        grounded = True  # unverifiable — keep (came from the analysis)
+                        break
+                    windows = " \u0000 ".join(
+                        src_lower[max(0, m.start() - _NAME_WINDOW) : m.end() + _NAME_WINDOW]
+                        for m in re.finditer(re.escape(n_low), src_lower)
+                    )
+                    if any(re.search(rf"\b{re.escape(kw)}\b", windows) for kw in kws):
+                        grounded = True
+                        break
+                if grounded:
+                    kept_s.append(sent)
+                else:
+                    dropped.append(sent)
+            if kept_s:
+                out_paras.append(" ".join(kept_s))
+        return ("\n\n".join(out_paras), dropped)
+    except Exception:
+        return addition, []
 
 
 class SummarizerThoroughFloorMixin:
@@ -37,7 +126,7 @@ class SummarizerThoroughFloorMixin:
         analysis: str,
         scaled_target_hi: int | None = None,
     ) -> str:
-        """V18.20.3.13 (Phase 5 / W7+O3): thorough-theorist floor + ONE targeted gap-fill.
+        """V18.20.3.13 (Phase 5 / W7+O3): thorough-theorist floor + targeted gap-fill.
 
         Why this exists (the .3.7 SWOT W7 gap, approved as O3 for this
         phase): the recall floor (V18.20.3.4) guarantees theorist coverage
@@ -48,12 +137,24 @@ class SummarizerThoroughFloorMixin:
         ``check_coverage(analysis, text)`` machinery the thorough-only
         judge uses, (b) logs it in the recall-floor house style (INFO when
         met / WARNING when not), and (c) when authors are missing, the
-        deadline allows it, and the thorough is non-trivial, fires exactly
-        ONE targeted LLM call (``_call_llm_with_empty_retry`` — one logical
-        call per the O3 design) asking for 1-2 flowing paragraphs that
-        weave in ONLY the missing contributors, source-grounded, appended
-        to the thorough. After the append it re-runs the coverage check and
-        logs the honest before/after line.
+        deadline allows it, and the thorough is non-trivial, fires targeted
+        LLM calls (``_call_llm_with_empty_retry``) asking for 1-2 flowing
+        paragraphs that weave in ONLY the missing contributors,
+        source-grounded, appended to the thorough. After the append it
+        re-runs the coverage check and logs the honest before/after line.
+
+        V0.4.24 (audit backlog #2+#4, the V4.23 run post-mortem): the
+        single call is now CHUNKED — ≤12 names per call, at most 3 calls.
+        The V4.23 run asked one 1024-token call to weave 47 names; the
+        model's only way to comply was a 40-name roster paragraph (the
+        name-dump defect) and the response was cut mid-sentence — shipping
+        a visible unclosed ``<thorough_addition>`` tag (the fallback path
+        had none of the truncation guards the KD/TT additive path got in
+        V18.20.3.2). Each chunked call now gets the anti-roster prompt
+        constraints, the unclosed-tag-safe regex, and the
+        ``strip_truncated_section_tail`` guard; the shipped addition is
+        additionally filtered by the attribution-edge co-occurrence check
+        (``_grounded_addition_sentences`` — the welded-attribution class).
 
         Book-agnostic (.3.9 standing rule): the missing-author list comes
         from the RUNTIME deterministic analysis passed in as ``analysis``
@@ -75,7 +176,7 @@ class SummarizerThoroughFloorMixin:
 
         Returns:
             The thorough text — with the gap-fill paragraphs appended when
-            the one targeted call succeeded, otherwise the original.
+            the targeted calls succeeded, otherwise the original.
         """
         try:
             if not analysis or not (thorough or "").strip():
@@ -130,9 +231,9 @@ class SummarizerThoroughFloorMixin:
                 self.log(
                     f"    ⏱️⚠️ V0.20: Deadline exceeded but the thorough "
                     f"theorist floor gap-fill is NON-SKIPPABLE (the thorough "
-                    f"is missing {_covered}/{_total} theorists — coverage "
+                    f"is missing {len(_missing)} of {_total} theorists — coverage "
                     f"deficit is the V0.20 campaign target; timing is not). "
-                    f"Running the one targeted call anyway.",
+                    f"Running the targeted calls anyway.",
                     "WARNING",
                 )
             _tf_words = len((thorough or "").split())
@@ -162,20 +263,32 @@ class SummarizerThoroughFloorMixin:
                     "INFO",
                 )
                 return thorough
-            # ── ONE targeted gap-fill call (the O3 design — no loops) ──
+            # ── V0.4.24 (audit backlog #4): CHUNKED targeted gap-fill ─────
             # Source clamp mirrors the dedicated-thorough prompt
             # (prompt_assembly: ~40k chars); the thorough TAIL (~4k chars,
             # the exec-from-thorough prompt's thorough cap) gives the model
             # the prose style to match without re-sending the whole field.
+            _NAMES_PER_CALL = 12
+            _MAX_FLOOR_CALLS = 3
+            _chunks = [
+                _missing[i : i + _NAMES_PER_CALL] for i in range(0, len(_missing), _NAMES_PER_CALL)
+            ][:_MAX_FLOOR_CALLS]
             _source = (content or "")[:40000]
             _tail = (thorough or "")[-4000:]
-            _names = ", ".join(_missing)
             _lang = "Write in Persian (Farsi)." if self.language == "fa" else "Write in English."
-            # V18.20.3.13: inline f-string prompt (the same ROLE/CONTEXT/
-            # TASK/CONSTRAINTS/INPUT shape the prompt_assembly helpers
-            # use) — no new prompt FILE; every name in it arrives at
-            # runtime from the deterministic analysis.
-            _prompt = f"""### ROLE ###
+            _additions: list[str] = []
+            _chunk_calls = 0
+            for _chunk in _chunks:
+                _names = ", ".join(_chunk)
+                # V18.20.3.13: inline f-string prompt (the same ROLE/CONTEXT/
+                # TASK/CONSTRAINTS/INPUT shape the prompt_assembly helpers
+                # use) — no new prompt FILE; every name in it arrives at
+                # runtime from the deterministic analysis.
+                # V0.4.24 (audit backlog #4): the anti-roster constraints —
+                # the V4.23 single 47-name call produced a paragraph whose
+                # opening sentence WAS the name list (citation adjacency in
+                # prose form).
+                _prompt = f"""### ROLE ###
 You are a senior academic summarizer. Your task is to write a short prose addition to an existing thorough summary. {_lang}
 
 ### CONTEXT ###
@@ -187,7 +300,7 @@ The final paragraphs of the existing thorough summary (for style matching only):
 </thorough_tail>
 
 ### TASK ###
-The thorough summary above does not yet mention every named contributor from the chapter. Write ONE to TWO flowing paragraphs (roughly 150-300 words) that weave in ONLY the contributors listed below, each with their SPECIFIC contribution as described in the chapter source:
+The thorough summary above does not yet mention every named contributor from the chapter. Write ONE to TWO flowing paragraphs (roughly 150-300 words) that weave in ONLY the {len(_chunk)} contributors listed below, each with their SPECIFIC contribution as described in the chapter source:
 
 {_names}
 
@@ -195,6 +308,7 @@ The thorough summary above does not yet mention every named contributor from the
 - Flowing academic prose that matches the style of the thorough summary above — no bullet points, no headings, no lists
 - ONLY the listed contributors — do not repeat contributors the thorough summary already covers
 - Ground every attribution in the chapter source below; do NOT invent facts, dates, works, or attributions
+- NEVER open a paragraph with a roster of names, and never write a sentence that names several contributors without stating each one's specific contribution — a name list in prose form is citation adjacency, not content
 - The paragraphs will be APPENDED to the thorough summary — write them as a natural continuation with no preamble
 - Do NOT include thinking/reasoning — only the final prose
 - Wrap the output exactly like this:
@@ -206,61 +320,122 @@ your one-to-two paragraphs here
 ### INPUT ###
 Chapter content:
 {_source}"""
-            _raw = self._call_llm_with_empty_retry(
-                _prompt,
-                model=self.primary_model,
-                temperature=self.temperature,
-                # V0.20.5 (Quality Campaign, brainstorm D6): cap 2048 → 1024.
-                # The prompt asks for "150-300 words" (~400 tokens); 1024 tokens
-                # = ~750 words, still 2.5× the ask. The V0.20.4 run took +10 min
-                # because the gap-fill produced 559 extra words — the 2048 cap
-                # let the model ramble. Capping to 1024 saves ~3-5 min per run
-                # with no quality loss (the prompt's ask is 150-300 words).
-                max_tokens=1024,
-            )
-            if not _raw or not _raw.strip():
-                self.log(
-                    f"    ⚠️ V18.20.3.13: Thorough gap-fill call returned empty — "
-                    f"thorough unchanged, floor stays {_covered}/{_total}",
-                    "WARNING",
+                _raw = self._call_llm_with_empty_retry(
+                    _prompt,
+                    model=self.primary_model,
+                    temperature=self.temperature,
+                    # V0.4.24 (audit backlog #2): 1024 → 1536. With ≤12
+                    # names per chunk the honest ask (~300 words ≈ 400
+                    # tokens) fits comfortably; 1536 is 3.8× the ask and
+                    # the truncation guard below makes even a cut ship
+                    # cleanly. The V4.23 47-name call blew the 1024 cap
+                    # mid-sentence and shipped an unclosed tag.
+                    max_tokens=1536,
                 )
-                return thorough
-            _raw = self._strip_thinking(_raw)
-            # V18.16.0.1-class CoT guard (same as _ensure_exec_from_thorough):
-            # a thinking-mode response must never be appended as prose.
-            from core.summarisation.postchecks import detect_cot_narrative
+                _chunk_calls += 1
+                if not _raw or not _raw.strip():
+                    self.log(
+                        f"    ⚠️ V18.20.3.13: Thorough gap-fill call returned "
+                        f"empty for a {len(_chunk)}-name chunk — chunk skipped",
+                        "WARNING",
+                    )
+                    continue
+                _raw = self._strip_thinking(_raw)
+                # V18.16.0.1-class CoT guard (same as _ensure_exec_from_thorough):
+                # a thinking-mode response must never be appended as prose.
+                from core.summarisation.postchecks import detect_cot_narrative
 
-            _raw_cleaned, _cot_issues = detect_cot_narrative(_raw, "thorough")
-            if _cot_issues:
+                _raw_cleaned, _cot_issues = detect_cot_narrative(_raw, "thorough")
+                if _cot_issues:
+                    self.log(
+                        f"    ⚠️ V18.20.3.13: Thorough gap-fill output looks like "
+                        f"CoT ({_cot_issues[0].detail[:60]}) — chunk discarded",
+                        "WARNING",
+                    )
+                    continue
+                # V0.4.24 (audit backlog #2 — the truncation guard): the
+                # unclosed-tag-safe regex (the V4.23 regex required BOTH
+                # tags, so a max_tokens cut that ate </thorough_addition>
+                # fell back to shipping the RAW response — visible opening
+                # tag and mid-sentence tail). The opening tag is always
+                # consumed; the cut tail is dropped by the SAME
+                # strip_truncated_section_tail the KD/TT additive path uses
+                # (V18.20.3.2).
+                _closed = "</thorough_addition>" in _raw_cleaned
+                _m = re.search(
+                    r"<thorough_addition>(.*?)(?:</thorough_addition>|$)",
+                    _raw_cleaned,
+                    re.DOTALL,
+                )
+                _addition = _m.group(1).strip() if _m else _raw_cleaned.strip()
+                if not _closed:
+                    from core.summarisation.response_parser import (
+                        strip_truncated_section_tail,
+                    )
+
+                    _sanitized = strip_truncated_section_tail(_addition, closing_tag_present=False)
+                    if _sanitized != _addition:
+                        self.log(
+                            "    ✂️ V0.4.24: thorough_addition was cut at the "
+                            "output cap — dropped the incomplete trailing line "
+                            "(the V18.20.3.2 KD/TT guard, now applied to this "
+                            "path too)",
+                            "WARNING",
+                        )
+                        _addition = _sanitized
+                if len(_addition.split()) < 20:
+                    self.log(
+                        f"    ⚠️ V18.20.3.13: Thorough gap-fill addition too short "
+                        f"({len(_addition.split())} words) — chunk discarded",
+                        "WARNING",
+                    )
+                    continue
+                # V0.4.24 (audit backlog #6): attribution-edge filter — a
+                # sentence welding a chunk name to key phrases that never
+                # co-occur with that name in the source is dropped (the
+                # welded-attribution class).
+                _addition, _dropped_sents = _grounded_addition_sentences(
+                    _addition, content or "", _chunk
+                )
+                for _ds in _dropped_sents:
+                    self.log(
+                        f"    🧹 V0.4.24: gap-fill sentence dropped "
+                        f'(attribution-edge): "{_ds[:70]}…" — its name(s) never '
+                        f"co-occur with the claim's key phrases in the source",
+                        "WARNING",
+                    )
+                if len(_addition.split()) < 20:
+                    self.log(
+                        "    ⚠️ V0.4.24: Thorough gap-fill chunk fully dropped by "
+                        "the attribution-edge filter",
+                        "WARNING",
+                    )
+                    continue
+                _additions.append(_addition)
+            if not _additions:
                 self.log(
-                    f"    ⚠️ V18.20.3.13: Thorough gap-fill output looks like CoT "
-                    f"({_cot_issues[0].detail[:60]}) — discarding, floor stays "
-                    f"{_covered}/{_total}",
+                    f"    ⚠️ V18.20.3.13: Thorough gap-fill produced no usable "
+                    f"addition ({_chunk_calls} call(s)) — thorough unchanged, "
+                    f"floor stays {_covered}/{_total}",
                     "WARNING",
                 )
                 return thorough
-            _m = re.search(
-                r"<thorough_addition>(.*?)</thorough_addition>",
-                _raw_cleaned,
-                re.DOTALL,
-            )
-            _addition = _m.group(1).strip() if _m else _raw_cleaned.strip()
-            if len(_addition.split()) < 20:
-                self.log(
-                    f"    ⚠️ V18.20.3.13: Thorough gap-fill addition too short "
-                    f"({len(_addition.split())} words) — discarding, floor stays "
-                    f"{_covered}/{_total}",
-                    "WARNING",
-                )
-                return thorough
-            thorough = (thorough or "").rstrip() + "\n\n" + _addition
+            thorough = (thorough or "").rstrip() + "\n\n" + "\n\n".join(_additions)
             # Re-run the SAME coverage check on the appended thorough so the
             # after-line is a measurement, not a promise.
             _cov_after = check_coverage(analysis, thorough)
+            _skipped_names = max(0, len(_missing) - _MAX_FLOOR_CALLS * _NAMES_PER_CALL)
             self.log(
                 f"    ✅ V18.20.3.13 Thorough gap-fill: floor {_covered}/{_total} → "
                 f"{len(_cov_after.get('covered', []) or [])}/{_cov_after.get('total') or 0} "
-                f"(added paragraphs for {len(_missing)} authors)",
+                f"({_chunk_calls} chunked call(s), ≤{_NAMES_PER_CALL} names each"
+                + (
+                    f"; {_skipped_names} name(s) beyond the 3-call bound remain "
+                    f"thorough-uncovered — carried by the bullets/recall floor"
+                    if _skipped_names
+                    else ""
+                )
+                + ")",
                 "INFO",
             )
             return thorough

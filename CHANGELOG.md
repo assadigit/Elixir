@@ -1,5 +1,123 @@
 # Changelog
 
+## V0.4.24 — the audit-backlog release: clean labels, the sealed guarantee, provider-aware routing
+
+> **The release:** the V0.4.23 ch.4 audit scored 8/10 and left a 6-item
+> deterministic-polish backlog ("every one of these is a mechanically
+> fixable code bug — none is model whimsy"). The owner then uploaded the
+> V4.23 **conversion log**, which pinned the backlog #3 escape path
+> exactly (the ship-time truncation drop killed a guaranteed
+> enumeration bullet) **and** revealed a second defect class the audit
+> could not see: with `provider = llamacpp`, every model-availability
+> probe queried Ollama — simplified keypoints failed 74/74, page OCR
+> silently degraded to Tesseract, and figure extraction was skipped
+> entirely while llama-server was serving the model. This release fixes
+> all of it.
+
+**1. Word/sentence-aligned stems (backlog #1 — the garbled labels):**
+  the run-in/block stem extraction took a raw `[-150:]` character
+  window, so 8 of 10 consolidated enumeration bullets shipped
+  mid-word-sliced labels ("Rom others. unstable identity also found",
+  "Tive, structural", "Ree types of", "-if,"). New
+  `_aligned_stem()` aligns the window to a word boundary and then to
+  the nearest preceding sentence boundary, and `stem_label()` now
+  leads with the stem's FINAL sentence's opening words — the sentence
+  that actually introduces the list. On the real ch.4 ground truth the
+  Stern list's label is now "Stern's criteria" (was "O, classical
+  <topic>. His list of").
+
+**2. The thorough_addition truncation guard (backlog #2 — the unclosed
+  tag):** the gap-fill call's tag regex required BOTH tags, so a
+  max_tokens cut that ate `</thorough_addition>` fell back to shipping
+  the RAW response — a visible opening tag and a mid-sentence tail.
+  The regex is now unclosed-tag-safe and the cut tail is dropped by
+  the SAME `strip_truncated_section_tail` the KD/TT additive path has
+  used since V18.20.3.2. The 1024-token cap became 1536 (the honest
+  ask is ~400 tokens; see #4 for why it blew up in V4.23).
+
+**3. The sealed enumeration guarantee (backlog #3 — the Stern escape,
+  three layers):** the conversion log pinned the exact chain — the
+  detector saw Stern's ten criteria as an 8-item run (a PDF paragraph
+  break fell inside item (8); items (9)-(10) dropped below the 3-item
+  minimum), the guarantee's consolidated bullet therefore ended
+  "…organic insecurity or a" (a dangling function-word tail), the
+  ship-time truncation drop killed it as "an unverifiable cut claim",
+  and the recall floor only LOGGED the 4 missing items. Fixed in
+  depth:
+  - **the detector joins split run-in lists** (`_join_split_runin_
+    paragraphs`): a paragraph ending mid-item followed by a paragraph
+    opening with the next sequential marker is re-joined before
+    detection. On the real ground truth this recovers three lists the
+    V4.23 run mis-saw: Stern's 10 criteria, an 8-criteria list split
+    inside item (2), and a 4-position list split inside item (2) that
+    was previously missed ENTIRELY — the machine-measured universe
+    grew from 21 lists / 117 items to 22 / 125.
+  - **guarantee bullets are exempt from the truncation drop** — their
+    items are verbatim source text, verifiable against the source, so
+    the "unverifiable cut claim" rationale does not apply; the
+    exemption is logged as a flag Issue (never silent). The exact
+    bullet texts are stashed by the guarantee and threaded through
+    `run_post_checks`.
+  - **the recall floor now REPAIRS, not just reports** — a
+    last-chance `_final_enumeration_repair` re-runs the guarantee
+    against the FINAL set (after every drop/dedup/cap stage) and the
+    floor is re-measured so the logged number stays honest.
+
+**4. The name-dump fix (backlog #4):** the thorough gap-fill asked ONE
+  1024-token call to weave 47 missing names into "150-300 words" —
+  the model's only way to comply was a 40-name roster paragraph, and
+  the response was cut mid-sentence (defect #2). The call is now
+  CHUNKED: ≤12 names per call, at most 3 calls, each with explicit
+  anti-roster prompt constraints ("a name list in prose form is
+  citation adjacency, not content"). Names beyond the 3-call bound are
+  reported honestly (they remain covered by the bullets/recall floor).
+
+**5. The filler floor verb list (backlog #5):** "appears in the same
+  citation list" / "shared reference list" — the residual co-citation
+  filler shape — joins the rejection patterns.
+
+**6. The attribution-edge filter (backlog #6 — the welded
+  attribution):** gap-fill prose sentences are now verified against the
+  source before shipping: a sentence whose names NEVER co-occur
+  (±600 chars) with any of its distinctive content words is dropped
+  with a visible log line — the class that welded a theorist to a
+  criticism he never appears near.
+
+**7. Provider-aware model routing (the conversion-log findings —
+  NEW, beyond the audit):** every llamacpp user lost three features to
+  Ollama-only probes:
+  - **simplified keypoints** — `_call_llm`/`_call_llm_single` routed
+    every non-cloud provider into `_call_ollama`, whose
+    `model_exists()` probe queried Ollama → "Model not found.
+    Skipping simplified keypoints." 74/74 times. The llama.cpp server
+    (OpenAI-compatible endpoint) is now a first-class route.
+  - **vision OCR** — `_create_vision_provider` keyed off
+    `request.model_architecture` only; with provider=llamacpp and a
+    stale architecture value it probed Ollama, found nothing, and the
+    scanned pages silently degraded to Tesseract. The ACTIVE provider
+    setting (`summarisation.provider`) is now authoritative, and the
+    misleading "not found in Ollama" load-gate warning no longer fires
+    on the llamacpp path.
+  - **figure extraction** — `VisionFigureExtractor` acquired the same
+    provider-aware fallback: when the Ollama model is absent and the
+    provider is llama.cpp, images route through llama-server's vision
+    endpoint instead of the feature being skipped.
+
+**8. Tesseract PSM retries (the p.107 finding — NEW):** a scanned page
+  that returned nothing on the default pass had NO retry (the "OCR
+  retries" setting only guarded the Qwen path) and silently vanished
+  from the chapter text. `_tesseract_ocr` now retries with alternate
+  page-segmentation modes (`--psm 6`, `--psm 4`) before giving up; a
+  recovery is logged; the failure message honestly reports "3
+  page-segmentation modes tried".
+
+**Gates:** ruff check + format clean; pytest **5,801 passed / 0 failed
+/ 43 skipped** (36 new regression tests in
+`tests/test_v00424_audit_fixes.py`, including the audit-demanded
+Stern-passage reproduction on the exact ground-truth text);
+`make eval-check` OK — all 6 golden chapters PASS (fact 10 / cov 8-9),
+no quality regressions vs baseline.
+
 ## V0.4.23 — the no-limit coverage release: every list item captured, no bullet caps, the 6-item audit backlog fixed
 
 > **The release:** the V0.4.22 ch.4 audit (7/10 — the first sub-9 score

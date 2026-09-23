@@ -85,6 +85,10 @@ _MOVED_TO_ADDITIVE = (
     # V0.4.23: the universal enumeration guarantee (user directive —
     # "never miss any listed items") joined the additive-sections mixin.
     "_ensure_enumeration_bullets",
+    # V0.4.24 (audit backlog #3, layer 4): the last-chance enumeration
+    # repair — re-runs the guarantee on the FINAL set after every
+    # ship-time filter.
+    "_final_enumeration_repair",
 )
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
 # V0.4.19 (de-monolithization step 9/10): the coverage/gap-fill wrappers

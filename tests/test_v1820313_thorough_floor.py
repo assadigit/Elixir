@@ -1,4 +1,4 @@
-"""V18.20.3.13 (Phase 5 / W7+O3) — thorough-theorist floor + ONE targeted
+"""V18.20.3.13 (Phase 5 / W7+O3) — thorough-theorist floor + targeted
 gap-fill: characterization tests.
 
 The .3.7 SWOT W7 gap: the recall floor (37/37) guarantees theorist coverage
@@ -10,12 +10,15 @@ recall-floor probe):
 
   1. floor MET (thorough mentions all analysis authors) → the floor line
      logs INFO, NO LLM call fires.
-  2. floor UNMET → ONE targeted call (``_call_llm_with_empty_retry``) with
+  2. floor UNMET → targeted call(s) (``_call_llm_with_empty_retry``) with
      a prompt containing the missing author name(s) + the source excerpt +
      the thorough tail; the canned response is appended; the after-line
-     logs the measured improvement.
-  3. deadline exceeded + floor unmet → no call, honest WARNING floor line
-     (+ the ``_deadline_exceeded`` skip WARNING).
+     logs the measured improvement. V0.4.24: the names go in CHUNKS of
+     ≤12 per call, ≤3 calls (the anti-name-dump fix — the single 47-name
+     call of the V4.23 run produced a roster paragraph and a truncated,
+     unclosed <thorough_addition>).
+  3. deadline exceeded + floor unmet → no skip, honest WARNING floor line
+     (+ the ``_deadline_exceeded`` override WARNING); the call fires anyway.
   4. the LLM call returns empty → WARNING, thorough unchanged, no crash.
   5. the floor machinery crashes (poisoned analysis) → WARNING, chapter
      continues (fail-soft).
@@ -240,9 +243,10 @@ def test_floor_unmet_fires_one_targeted_call_and_appends(monkeypatch):
     assert len(llm_calls) == 1
     call = llm_calls[0]
     assert call["model"] == "test-model"
-    # V0.20.5 (brainstorm D6): capped 2048 → 1024 (the prompt asks for
-    # 150-300 words; 1024 tokens = ~750 words, still 2.5× the ask).
-    assert call["max_tokens"] == 1024
+    # V0.4.24 (audit backlog #2): capped 1024 → 1536 (≤12 names per chunk;
+    # the truncation guard makes even a cut ship cleanly — the V4.23 47-name
+    # call blew the 1024 cap mid-sentence and shipped an unclosed tag).
+    assert call["max_tokens"] == 1536
     # Prompt carries the missing author name from the RUNTIME analysis…
     assert "Ibarra" in call["prompt"]
     # …ONLY the missing contributor (Voss is already covered — the
@@ -273,7 +277,8 @@ def test_floor_unmet_fires_one_targeted_call_and_appends(monkeypatch):
     )
     assert any(
         lvl == "INFO"
-        and "V18.20.3.13 Thorough gap-fill: floor 1/2 → 2/2 (added paragraphs for 1 authors)" in msg
+        and "V18.20.3.13 Thorough gap-fill: floor 1/2 → 2/2" in msg
+        and "chunked call" in msg
         for lvl, msg in fl
     )
 
@@ -402,11 +407,18 @@ class TestFloorWiringSourcePins:
         # analysis via check_coverage — never a hardcoded name list.
         assert "from core.preprocessing.deterministic_analyzer import check_coverage" in method_src
         assert "_cov = check_coverage(analysis, thorough)" in method_src
-        assert '", ".join(_missing)' in method_src
-        # ONE logical LLM call, deadline-gated, CoT-guarded.
+        # V0.4.24 (audit backlog #4): the names go to the prompt per CHUNK
+        # (≤12 per call) — never the whole missing list in one call.
+        assert '", ".join(_chunk)' in method_src
+        # Targeted LLM calls, deadline-gated, CoT-guarded.
         assert "self._call_llm_with_empty_retry(" in method_src
         assert 'self._deadline_exceeded("thorough theorist floor gap-fill")' in method_src
         assert "detect_cot_narrative" in method_src
+        # V0.4.24 (audit backlog #2): the unclosed-tag-safe regex + the
+        # KD/TT truncation guard + the attribution-edge filter.
+        assert "(?:</thorough_addition>|$)" in method_src
+        assert "strip_truncated_section_tail" in method_src
+        assert "_grounded_addition_sentences" in method_src
         # The exact floor/after log-line formats.
         assert "V18.20.3.13 Thorough theorist floor: " in method_src
         assert "V18.20.3.13 Thorough gap-fill: floor " in method_src

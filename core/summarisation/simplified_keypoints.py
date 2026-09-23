@@ -81,6 +81,19 @@ class SimplifiedKeypointsBuilder:
         self.freellmapi_key = get_secret("summarisation.freellmapi_key", settings, "")
         self.freellmapi_model = settings.get("summarisation.freellmapi_model", "auto")
 
+        # V0.4.24 (V4.23 run post-mortem): llama.cpp server settings. The
+        # provider was UNREACHABLE from this builder — _call_llm routed
+        # every non-cloud provider into _call_ollama, whose
+        # model_exists() probe queried Ollama; the V4.23 rig log (provider
+        # = llamacpp) then shipped "Model '…' not found. Skipping simplified
+        # keypoints." for 74/74 keypoints — the entire requested output
+        # silently failed while llama-server was serving the model.
+        self.llamacpp_base_url = settings.get(
+            "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
+        )
+        self.llamacpp_api_key = get_secret("summarisation.llamacpp_api_key", settings, "local")
+        self.llamacpp_model = settings.get("summarisation.llamacpp_model", "")
+
         # Which model to use for simplification:
         # V3.5.0: If simplification_model is set, use it (sequential model loading).
         # Otherwise fall back to fast_model or summarisation_model.
@@ -149,6 +162,16 @@ class SimplifiedKeypointsBuilder:
                 model=self.cloud_model,
                 label=self.provider.capitalize(),
             )
+        # V0.4.24: llama-server exposes the OpenAI-compatible API at the
+        # configured base URL — the same transport the cloud path uses.
+        if self.provider == "llamacpp":
+            return self._call_openai_compat(
+                prompt,
+                base_url=self.llamacpp_base_url,
+                api_key=self.llamacpp_api_key,
+                model=self.llamacpp_model or self.model,
+                label="llama.cpp",
+            )
         return self._call_ollama(prompt)
 
     def _call_llm_single(self, prompt: str) -> str | None:
@@ -175,6 +198,17 @@ class SimplifiedKeypointsBuilder:
                 api_key=self.api_key,
                 model=self.cloud_model,
                 label=self.provider.capitalize(),
+            )
+        # V0.4.24: single-bullet simplification via llama-server (the
+        # OpenAI-compatible endpoint) — previously fell through to
+        # _call_ollama and failed on the Ollama model_exists probe.
+        if self.provider == "llamacpp":
+            return self._call_openai_compat(
+                prompt,
+                base_url=self.llamacpp_base_url,
+                api_key=self.llamacpp_api_key,
+                model=self.llamacpp_model or self.model,
+                label="llama.cpp",
             )
         # Ollama: let model think (no /no_think), 512 max_predict, 120s timeout
         return self._call_ollama(prompt, no_think=False, max_predict=512)

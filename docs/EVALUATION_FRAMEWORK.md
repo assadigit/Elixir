@@ -126,4 +126,7 @@ Output a valid JSON object at the very end of your response with the following e
   6-item audit-backlog source), `AUDIT_V0.4.23_run20260923-053014-491d1bf4`
   (8/10 — the no-limits/enumeration-capture release; machine-measured
   enumeration recall 113/117; V0.4.24 backlog: stem slicing, thorough_
-  addition truncation guard, Stern-list guarantee escape).
+  addition truncation guard, Stern-list guarantee escape — all fixed in
+  V0.4.24, which also re-measures the universe at 22 lists / 125 items
+  after the paragraph-break join; the conversion-log addendum in that
+  audit file pins the guarantee-escape path exactly).

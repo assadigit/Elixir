@@ -757,6 +757,14 @@ _FILLER_PATTERNS = [
         r"to\s+the\s+field\b",
         re.IGNORECASE,
     ),
+    # V0.4.24 (audit backlog #5): "appears in the same citation list" — the
+    # residual Wolberg filler the V4.23 run shipped (1/74 bullets). The
+    # V0.4.23 pattern set matched "appears in a/the/numerous… list" but not
+    # "the SAME list" — the co-citation assertion with no content.
+    re.compile(
+        r"\b(?:same|shared)\s+(?:citation|reference|source|bibliography|bibliographic)\s+list\b",
+        re.IGNORECASE,
+    ),
 ]
 
 

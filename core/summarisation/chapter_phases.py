@@ -530,10 +530,18 @@ class SummarizerChapterPhasesMixin:
                 auto_repair_garble=bool(
                     _PcSettings().get("summarisation.dropped_letter_auto_repair", False)
                 ),
+                # V0.4.24 (audit backlog #3 — the Stern escape): the
+                # enumeration-guarantee bullets are exempt from the ship-
+                # time truncation drop (verbatim source items are
+                # verifiable; the V4.23 run's postcheck dropped the
+                # guaranteed Stern bullet and silently lost 4 items).
+                enum_guarantee_texts=parsed.get("_enum_guarantee_texts") or None,
             )
             bullets = _pc.bullets
             exec_sum = _pc.executive_summary
             thorough = _pc.thorough_summary
+            # V0.4.24: internal bookkeeping key — never leaks downstream.
+            parsed.pop("_enum_guarantee_texts", None)
 
             # ── V0.4.23 (user directive): the source-scaled bullet budget
             # cap is REMOVED — NO ship-time truncation of bullets. ────────
@@ -865,6 +873,29 @@ class SummarizerChapterPhasesMixin:
                 thorough,
                 content,
             )
+            # V0.4.24 (audit backlog #3, layer-4 enforcement): the floor
+            # REPAIRS, not just reports. The V4.23 run measured "113/117
+            # enumerated items … (missing: [runin_arabic] tendency to
+            # respond negatively…" and shipped exactly that — the 4 missing
+            # items died with the postcheck-dropped guarantee bullet and
+            # nothing acted on the floor's own measurement. This repair
+            # re-runs the ship-time guarantee against the FINAL set (after
+            # every drop/dedup/cap stage) so the missing items are carried
+            # on the text that actually ships — then re-measures so the
+            # logged floor stays honest.
+            if _rf.get("enumerations_missing"):
+                _added_repair = self._final_enumeration_repair(
+                    heading, content, parsed, bullets, thorough
+                )
+                if _added_repair:
+                    bullets = [b for b in (parsed.get("bullet_points") or bullets or []) if b]
+                    parsed["bullet_points"] = bullets
+                    _rf = deterministic_recall_floor(
+                        _analysis_rf or "",
+                        bullets,
+                        thorough,
+                        content,
+                    )
             if _rf.get("log_parts"):
                 self.log(
                     f"    📏 V18.20.3.4: Deterministic recall floor (final set): "

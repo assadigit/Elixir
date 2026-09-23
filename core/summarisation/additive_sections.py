@@ -193,6 +193,17 @@ class SummarizerAdditiveMixin:
             thorough = str(result.get("thorough_summary", "") or "")
             haystack = (" ".join(bullets) + " " + thorough).lower()
             added = 0
+            # V0.4.24 (audit backlog #3): the exact bullet texts are stashed
+            # on the result so the SHIP-TIME POSTCHECKS can exempt them from
+            # the truncation drop. The V4.23 run's Stern escape: the
+            # guarantee's consolidated bullet (garbled stem + a source item
+            # cut at a paragraph break, "…organic insecurity or a") tripped
+            # is_truncated() and postcheck_bullets DROPPED it — 4 enumerated
+            # items silently lost AFTER the guarantee had "covered" them.
+            # Guarantee bullets carry verbatim source items — verifiable
+            # against the source — so the "unverifiable cut claim" rationale
+            # for the drop does not apply to them.
+            guarantee_stash = result.setdefault("_enum_guarantee_texts", [])
             for enum in enums:
                 if enum.count < 3:
                     continue
@@ -212,6 +223,7 @@ class SummarizerAdditiveMixin:
                 # formatter adds the marker — the V18.15.9.1 double-dash
                 # lesson).
                 result.setdefault("bullet_points", []).append(consolidated)
+                guarantee_stash.append(consolidated)
                 added += 1
                 # refresh the haystack so later lists see this bullet too
                 haystack += " " + consolidated.lower()
@@ -235,6 +247,49 @@ class SummarizerAdditiveMixin:
                 f"    ⚠️ V0.4.23: enumeration-guarantee check failed (non-fatal): {_enum_e}",
                 "WARNING",
             )
+
+    def _final_enumeration_repair(
+        self, heading: str, text: str, parsed: dict, bullets: list[str], thorough: str
+    ) -> int:
+        """V0.4.24 (audit backlog #3, layer-4 enforcement): LAST-CHANCE
+        enumeration repair — re-run the ship-time guarantee against the
+        FINAL bullet set, AFTER every ship-time filter.
+
+        The V0.4.23 floor only REPORTED the missing items ("113/117 …
+        missing: [runin_arabic] tendency to respond negatively…") — it
+        never repaired them. Whatever path lost the items (the truncation
+        drop that killed the Stern bullet, a dedup merge, a scar drop),
+        this repair re-measures coverage on the text that actually ships
+        and re-adds consolidated bullets for any list with an uncovered
+        item. Deterministic — no LLM call; runs after postchecks, so the
+        re-added bullets are verbatim source content by construction.
+
+        Returns the number of bullets added (0 when nothing was missing).
+        Never raises.
+        """
+        try:
+            # sync BOTH haystack inputs to the FINAL text (the local
+            # bullets/thorough are post-everything; parsed may be stale)
+            parsed["bullet_points"] = [b for b in (bullets or []) if b]
+            parsed["thorough_summary"] = thorough or ""
+            _n_before = len(parsed["bullet_points"])
+            self._ensure_enumeration_bullets(heading, text, parsed)
+            _added = len(parsed.get("bullet_points", []) or []) - _n_before
+            if _added:
+                self.log(
+                    f"    🩹 V0.4.24: last-chance enumeration repair — "
+                    f"{_added} consolidated bullet(s) re-added after all "
+                    f"ship-time filters (the floor's missing items are "
+                    f"guaranteed on the set that actually ships).",
+                    "INFO",
+                )
+            return _added
+        except Exception as _rep_e:
+            self.log(
+                f"    ⚠️ V0.4.24: final enumeration repair failed (non-fatal): {_rep_e}",
+                "WARNING",
+            )
+            return 0
 
     # ─────────────────────────────────────────────────────────────────────────
     # V13.39.0: Anti-hallucination verification for additive sections

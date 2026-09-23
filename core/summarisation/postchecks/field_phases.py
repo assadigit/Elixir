@@ -110,12 +110,26 @@ class PhaseCtx:
     auto_repair_garble: bool
 
 
-def postcheck_bullets(bullets: list[str], ctx: PhaseCtx, report: PostCheckReport) -> list[str]:
+def postcheck_bullets(
+    bullets: list[str],
+    ctx: PhaseCtx,
+    report: PostCheckReport,
+    enum_guarantee_texts: list[str] | None = None,
+) -> list[str]:
     """V0.4.19 — the former "── Bullets ──" section of run_post_checks,
     moved VERBATIM (see the module docstring). Runs the per-bullet detector
     chain, appends every fix/flag Issue to ``report.issues`` in the exact
     historical order and returns the cleaned bullet list (the caller
     assigns ``report.bullets``).
+
+    V0.4.24 (audit backlog #3 — the Stern escape): ``enum_guarantee_texts``
+    carries the exact texts of the enumeration-guarantee bullets (stashed
+    by ``SummarizerAdditiveMixin._ensure_enumeration_bullets``). Those
+    bullets are EXEMPT from the truncation drop — their items are verbatim
+    source text, verifiable against the source, so the "unverifiable cut
+    claim" rationale does not apply. The exemption is logged as a
+    severity="flag" Issue (never a silent pass); every other drop path is
+    unchanged.
     """
     # V0.4.19: re-bind the shared precomputed values from the ctx (the
     # SWOT A24 precompute stays in run_post_checks); the original local
@@ -128,8 +142,14 @@ def postcheck_bullets(bullets: list[str], ctx: PhaseCtx, report: PostCheckReport
     auto_repair_garble = ctx.auto_repair_garble
     # ── Bullets ──────────────────────────────────────────────────────────
     cleaned_bullets: list[str] = []
+    # V0.4.24 (audit backlog #3): the exact texts of the enumeration-
+    # guarantee bullets (stashed by _ensure_enumeration_bullets). Matched
+    # against the ORIGINAL bullet text (before any detector repairs it) so
+    # a space/quote repair never breaks the exemption match.
+    _guarantee_set = {str(t).strip() for t in (enum_guarantee_texts or []) if t}
     for i, bp in enumerate(bullets or []):
         bp_str = str(bp) if bp else ""
+        _enum_guarantee = bp_str.strip() in _guarantee_set
         label = f"bullet[{i}]"
         bp_str, leak1 = detect_prompt_leakage(bp_str, label)
         bp_str, space1 = detect_missing_spaces(
@@ -275,19 +295,45 @@ def postcheck_bullets(bullets: list[str], ctx: PhaseCtx, report: PostCheckReport
         # punctuate your way out of a cut sentence.
         trunc_issues: list = []
         if bp_str.strip() and is_truncated(bp_str):
-            trunc_issues = [
-                Issue(
-                    detector="truncated",
-                    severity="fix",
-                    field=label,
-                    snippet=bp_str[:60],
-                    detail=(
-                        "dropped truncated bullet (unmatched quote/paren, no "
-                        "terminal punctuation, or dangling function-word tail) — "
-                        "an unverifiable cut claim"
-                    ),
-                )
-            ]
+            if _enum_guarantee:
+                # V0.4.24 (audit backlog #3 — the Stern escape): the
+                # guarantee bullet LOOKS truncated (a source item cut at a
+                # paragraph break, an odd quote inside a verbatim item) —
+                # but its items are verbatim source text, verifiable
+                # against the source. EXEMPT from the drop; flag visibly.
+                # The V4.23 run dropped exactly this class (a guarantee
+                # bullet whose mid-word-sliced label and cut final item
+                # tripped every truncation heuristic at once) and silently
+                # lost 4 enumerated items.
+                trunc_issues = [
+                    Issue(
+                        detector="truncated",
+                        severity="flag",
+                        field=label,
+                        snippet=bp_str[:60],
+                        detail=(
+                            "enumeration-guarantee bullet LOOKS truncated — "
+                            "EXEMPT from the truncation drop (V0.4.24): its "
+                            "items are verbatim source text, verifiable "
+                            "against the source; no postcheck may silently "
+                            "drop a guaranteed bullet"
+                        ),
+                    )
+                ]
+            else:
+                trunc_issues = [
+                    Issue(
+                        detector="truncated",
+                        severity="fix",
+                        field=label,
+                        snippet=bp_str[:60],
+                        detail=(
+                            "dropped truncated bullet (unmatched quote/paren, no "
+                            "terminal punctuation, or dangling function-word tail) — "
+                            "an unverifiable cut claim"
+                        ),
+                    )
+                ]
         # Collect ALL issues so the report fully accounts for every fix/flag.
         report.issues.extend(leak1)
         report.issues.extend(space1)
@@ -380,7 +426,9 @@ def postcheck_bullets(bullets: list[str], ctx: PhaseCtx, report: PostCheckReport
         # cannot be verified against the source, so it must not ship. This
         # is the ship-time mirror of the generation-time conservative-gated
         # drop (classify_bullets "thinking_filter.truncated").
-        if trunc_issues:
+        # V0.4.24: enumeration-guarantee bullets are exempt (severity=flag
+        # above) — verbatim source items are verifiable by construction.
+        if trunc_issues and trunc_issues[0].severity == "fix":
             continue
         # V18.20.3.4 (RC-1 layer 1, audit v182033): ship-time STRUCTURAL
         # QUARANTINE — the final-assembly regex stage from

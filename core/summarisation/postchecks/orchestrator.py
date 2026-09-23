@@ -147,6 +147,7 @@ def run_post_checks(
     key_distinctions: str = "",
     theoretical_tensions: str = "",
     auto_repair_garble: bool = False,
+    enum_guarantee_texts: list[str] | None = None,
 ) -> PostCheckReport:
     """Run all deterministic post-checks on the final summary.
 
@@ -181,6 +182,11 @@ def run_post_checks(
             words). When True, repairs additionally require the English-
             lexicon guard, paragraph corroboration, and strict single-
             candidate uniqueness (see detect_dropped_letter_garble).
+        enum_guarantee_texts: V0.4.24 (audit backlog #3) — the exact texts
+            of the enumeration-guarantee bullets (stashed on the parsed
+            result by ``_ensure_enumeration_bullets``). These bullets are
+            exempt from the ship-time truncation drop (their items are
+            verbatim source text); the exemption is logged as a flag Issue.
 
     Returns:
         :class:`PostCheckReport` with cleaned outputs + issues.
@@ -248,7 +254,11 @@ def run_post_checks(
         auto_repair_garble=auto_repair_garble,
     )
     # ── Bullets ──────────────────────────────────────────────────────────
-    report.bullets = postcheck_bullets(bullets, ctx, report)
+    # V0.4.24 (audit backlog #3): guarantee texts threaded through so the
+    # truncation drop can exempt them (flag, never silently drop).
+    report.bullets = postcheck_bullets(
+        bullets, ctx, report, enum_guarantee_texts=enum_guarantee_texts
+    )
     # ── Executive summary ────────────────────────────────────────────────
     report.executive_summary = postcheck_exec(executive_summary, ctx, report)
     # ── Thorough summary ─────────────────────────────────────────────────
