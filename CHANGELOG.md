@@ -1,5 +1,84 @@
 # Changelog
 
+## V0.4.25 — the run-stamped outputs release: unique filenames per conversion (the 20× stale-upload killer)
+
+> **The release:** the operator reported sending 20+ genuine re-runs that
+> arrived as byte-identical stale files. Byte-level verification confirmed
+> it: identical md5s, frozen timestamps, and the new version's stamp absent
+> from every received file — while uniquely-named binaries transferred
+> fine every time. Root cause: the chat/file-transfer layer caches
+> attachments **by filename**, and Elixir's output artifacts have stable
+> names (`{book}.conversion.log.md`, `{NNN}_{heading}_summary.md`,
+> `{book}.summary.md`) — every re-run of the same book collided with the
+> first upload's cache entry. The fix is the operator's own proposal: a
+> version+run-id hash in every output filename, so each run's artifacts
+> are unique and the filename alone proves which version + run produced
+> it before the file is even opened.
+
+**1. Run-stamped output filenames (`core/system/provenance.py` —
+  `run_stamp_suffix()`):** every run-stamped artifact now carries
+  `_v{version}_{run_id}` in its filename, e.g.
+  `Broken Structures_v0.4.25_20260923-052332-b3e7f026.conversion.log.md`,
+  `001_4_-_BORDERLINE_PERSONALITY_DISORDER_v0.4.25_20260923-052332-b3e7f026_summary.md`,
+  `Broken Structures_v0.4.25_20260923-052332-b3e7f026.summary.md`. The
+  run_id is unique per conversion (`YYYYMMDD-HHMMSS-<8hex>`) — a filename
+  cache hit is impossible. Unstamped (legacy) results fall back to the
+  exact legacy filename, so pre-V0.4.25 files, write-once checks, and
+  resume globs stay byte-compatible.
+
+**2. The conversion log (`utils/logging.py`):** `ConversionLogger` now
+  generates its run_id BEFORE path construction and stamps the log AND
+  diagnostic.jsonl filenames. Each conversion's log is its own file —
+  runs coexist instead of overwriting, giving every conversion a
+  preserved audit trail on disk. Every consumer that matters globs
+  `*.conversion.log.md` (output scanner; the controller's crash-append
+  takes the NEWEST by mtime), so coexistence is safe.
+
+**3. Chapter summaries (`chapter_checkpoint.py` +
+  `conversion/summarization.py`):** the incremental checkpoint saver and
+  the end-of-run writer both name chapter summaries with the summary's
+  OWN provenance stamp — an adopted (resume-reused) chapter keeps its
+  ORIGINAL run's stamp, so the filename always tells the truth about
+  which run produced the content. Files still end with `_summary.md`,
+  so every resume/scanner glob matches.
+
+**4. The book summary (dual-write):** the canonical `{stem}.summary.md`
+  stays stable for every consumer (output scanner, validator,
+  translation lookup, multi-PDF merge); a run-stamped sibling copy is
+  written alongside it — the unique, attach-without-cache-collision
+  artifact for audits. The conversion log names it: "💎 Run-stamped copy
+  → …".
+
+**5. ONE run id per conversion:** the Summarizer previously generated
+  its own second run_id — one conversion ended up with a log stamped run
+  X and chapter summaries stamped run Y (b3e7f026 vs 491d1bf4 in the
+  V4.23 audit). The conversion-level id now overwrites it, so the log,
+  every chapter summary, the book summary, and every output FILENAME
+  stamp share one identifier — an audit correlates all artifacts by a
+  single id.
+
+**6. Deterministic newest-wins resume (`chapter_resume.py`):** with
+  run-stamped files, multiple runs' chapter summaries coexist in one
+  folder; `_find_summary_files()` now returns them NEWEST-FIRST and
+  `detect_processed_chapters()` keeps the first valid hit per heading —
+  the newest run's content wins deterministically (glob order was
+  arbitrary). A crashed run's sentinel-less partial file still falls
+  back to the older COMPLETE file — crash-safety holds.
+
+**7. Version-mismatch resume escalation:** adopting an OLDER app
+  version's chapter summaries into a newer-version conversion is still
+  allowed (the V7.7.0 chapter-skip feature), but it now logs a WARNING
+  with the actionable fix ("delete summaries/chapters/ or convert into
+  a fresh output folder") — silent stale adoption is exactly how a
+  "genuinely new" run ships old content.
+
+**8. 24 new regression tests** (`tests/test_v00425_run_stamped_outputs.py`)
+  covering the suffix format/fallback/sanitization, unique log names +
+  glob compatibility + header↔filename id parity, stamped chapter names
+  (stamped/unstamped/coexistence/manifest), deterministic newest-wins
+  resume, legacy-file adoption, and the version-mismatch WARNING; the
+  V0.20.4 overwrite test updated to the coexistence contract.
+
 ## V0.4.24 — the audit-backlog release: clean labels, the sealed guarantee, provider-aware routing
 
 > **The release:** the V0.4.23 ch.4 audit scored 8/10 and left a 6-item

@@ -361,7 +361,24 @@ class ChapterCheckpointSaver:
         heading = (chapter or {}).get("heading") or summary.chapter_heading or f"Chapter {idx}"
         pos = self._positions.get(heading, idx)
         safe = self._sanitize(summary.chapter_heading or heading) or "chapter"
-        sf_name = f"{pos:03d}_{safe}_summary.md"
+        # V0.4.25: run-stamped filename — unique per conversion so the
+        # operator's file-transfer layer (caches attachments by filename)
+        # can never deliver a stale run's bytes, and re-runs into the same
+        # output dir coexist instead of colliding with old files. The stamp
+        # comes from the summary's OWN provenance (adopted/resumed chapters
+        # keep their ORIGINAL run's stamp — the filename always tells the
+        # truth about which run produced the content). Unstamped (legacy)
+        # results keep the exact legacy filename for write-once compat.
+        _stamp = ""
+        try:
+            from core.system.provenance import run_stamp_suffix
+
+            _stamp = run_stamp_suffix(
+                getattr(summary, "app_version", ""), getattr(summary, "run_id", "")
+            )
+        except Exception:  # pragma: no cover — stamping must never break the save
+            _stamp = ""
+        sf_name = f"{pos:03d}_{safe}{_stamp}_summary.md"
 
         # 1) canonical summary file (resume-compatible) — write-once
         sf = self._summaries_dir / sf_name

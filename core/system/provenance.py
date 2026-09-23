@@ -105,6 +105,39 @@ def run_started_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def run_stamp_suffix(app_version: str, run_id: str) -> str:
+    """V0.4.25: the unique filename suffix for a run's output artifacts.
+
+    Returns ``"_v0.4.24_20260923-052332-b3e7f026"`` — app version + run id,
+    both already filesystem-safe (version digits+dots, run id
+    YYYYMMDD-HHMMSS-<8hex>).  Empty string when either input is empty
+    (legacy/unstamped SummaryResults): callers must then keep the legacy
+    stable filename so the V7.7.0 resume globs and write-once checks are
+    byte-compatible with files written by every older app version.
+
+    Root cause this kills: the operator's chat/file-transfer layer caches
+    attachments BY FILENAME, so every re-run of the same book (identical
+    output filenames: ``{book}.conversion.log.md``, ``{NNN}_{heading}_summary.md``,
+    ``{book}.summary.md``) delivered the FIRST upload's bytes on every later
+    attach — 20+ "genuinely new" runs arrived as byte-identical stale files.
+    A version+run-id suffix makes each run's filename unique, so a cache hit
+    is impossible and the filename alone proves which version+run produced
+    it before the file is even opened.
+    """
+    v = (app_version or "").strip()
+    r = (run_id or "").strip()
+    if not v or not r:
+        return ""
+    # Defensive sanitization: strip anything a filesystem would reject
+    # (the inputs are trusted formats today, but this must never produce
+    # an invalid path even if a future caller passes odd values).
+    v = re.sub(r"[^0-9A-Za-z.]", "", v)
+    r = re.sub(r"[^0-9A-Za-z-]", "", r)
+    if not v or not r:
+        return ""
+    return f"_v{v}_{r}"
+
+
 def provenance_comment(
     app_version: str,
     run_id: str,
@@ -291,6 +324,7 @@ __all__ = [
     "get_app_version",
     "make_run_id",
     "run_started_iso",
+    "run_stamp_suffix",
     "provenance_comment",
     "visible_footer",
     "complete_sentinel",

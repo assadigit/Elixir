@@ -58,6 +58,14 @@ def _find_summary_files(output_dir: Path) -> list[Path]:
 
     Checks both the V7.5.0+ layout (``summaries/chapters/``) and the
     legacy layout (``markdown/chapters/summaries/``) for backward compat.
+
+    V0.4.25: returns the files NEWEST-FIRST (mtime descending). With
+    run-stamped filenames, files from MULTIPLE runs of the same book
+    coexist in one folder; ``detect_processed_chapters`` keys by heading,
+    so iterating newest-first and keeping the first hit per heading makes
+    the NEWEST run's content win deterministically (glob order is
+    arbitrary — without this, a re-run could adopt an arbitrary older
+    file when a newer one exists).
     """
     candidates = []
     # V7.5.0+ layout: summaries/chapters/*_summary.md
@@ -72,6 +80,10 @@ def _find_summary_files(output_dir: Path) -> list[Path]:
     flat_dir = output_dir / "summaries"
     if flat_dir.exists():
         candidates.extend(flat_dir.glob("*_summary.md"))
+    try:
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:  # pragma: no cover — a deleted-mid-scan file must not crash resume
+        pass
     return candidates
 
 
@@ -185,13 +197,20 @@ def detect_processed_chapters(output_dir: Path) -> dict[str, SummaryResult]:
     Returns a dict ``{sanitized_heading: SummaryResult}`` for all chapters
     that have valid (complete) summary files on disk.  Incomplete/corrupted
     files are skipped (those chapters will be reprocessed).
+
+    V0.4.25: when run-stamped files from multiple runs coexist, the NEWEST
+    file per heading wins (``_find_summary_files`` returns newest-first;
+    the first valid hit per heading is kept and later — older — hits are
+    ignored). For the single-file-per-chapter case this is byte-identical
+    to the previous behavior.
     """
     processed: dict[str, SummaryResult] = {}
     for sf in _find_summary_files(output_dir):
         result = parse_summary_file(sf)
         if result and result.success:
             key = _sanitize_heading(result.chapter_heading).lower()
-            processed[key] = result
+            if key not in processed:  # newest-first → first hit = newest run
+                processed[key] = result
     return processed
 
 
@@ -245,6 +264,28 @@ def split_chapters_for_resume(
             log(
                 f"  ⏭️  Resume: '{heading[:50]}' already processed — skipping LLM{_prov_tag}", "INFO"
             )
+            # V0.4.25: version-mismatch escalation. Adopting an OLDER app
+            # version's summaries is still allowed (the V7.7.0 chapter-skip
+            # feature — incremental processing), but when the operator
+            # re-runs the SAME book to get the NEW version's output, this
+            # silent adoption is exactly how a "genuinely new" run ships
+            # old content. Escalate to WARNING with the actionable fix so
+            # it can never pass unnoticed in the conversion log again.
+            try:
+                from core.system.provenance import get_app_version
+
+                _adopted_ver = getattr(_src, "app_version", "")
+                _cur_ver = get_app_version()
+                if _adopted_ver and _adopted_ver != _cur_ver:
+                    log(
+                        f"  ⚠️  Resume adopted a chapter summary from app v{_adopted_ver} "
+                        f"but this conversion runs v{_cur_ver} — its content is the OLD "
+                        f"version's output. To re-summarize with v{_cur_ver}: delete "
+                        f"summaries/chapters/ (or convert into a fresh output folder).",
+                        "WARNING",
+                    )
+            except Exception:  # pragma: no cover — visibility must never break resume
+                pass
         else:
             todo.append(cd)
 

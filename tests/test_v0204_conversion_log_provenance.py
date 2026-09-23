@@ -60,10 +60,12 @@ class TestConversionLogProvenanceStamp:
         )
 
     def test_log_overwrites_on_new_run(self, tmp_path: Path):
-        """V0.20.4 root cause: the log opens in 'w' mode, so a new run
-        OVERWRITES the old log. The provenance stamp confirms which run
-        the log belongs to — a stale upload would have the OLD version +
-        OLD run_id in the stamp."""
+        """V0.20.4 root cause + V0.4.25 upgrade: the log used to open the SAME
+        stable path in 'w' mode, so a new run overwrote the old log (and the
+        operator's file-transfer cache kept serving the first upload's bytes
+        for 20+ "genuinely new" runs). Since V0.4.25 each run writes its OWN
+        run-stamped file — both logs coexist, each stamped with its own
+        version + run_id in the filename AND the header."""
         # First run
         logger1 = ConversionLogger(tmp_path, "TestBook")
         logger1.log("first run", "INFO")
@@ -73,7 +75,7 @@ class TestConversionLogProvenanceStamp:
             l for l in first_text.splitlines() if l.startswith("<!-- generated-by: Elixir")
         ][0]
 
-        # Second run (overwrites the same file)
+        # Second run — its own uniquely-named log (no collision, no truncation)
         logger2 = ConversionLogger(tmp_path, "TestBook")
         logger2.log("second run", "INFO")
         logger2.close()
@@ -86,10 +88,11 @@ class TestConversionLogProvenanceStamp:
         assert first_stamp != second_stamp, (
             "each new ConversionLogger generates a new run_id; the stamps must differ"
         )
-        # The second log does NOT contain the first run's content.
-        assert "first run" not in second_text, (
-            "the log opens in 'w' mode — a new run overwrites the old log entirely"
-        )
+        # V0.4.25: each run's log is its own file — both survive.
+        assert logger1.log_path != logger2.log_path
+        assert logger1.log_path.exists() and logger2.log_path.exists()
+        # Each log carries ONLY its own run's content.
+        assert "first run" in first_text and "first run" not in second_text
         assert "second run" in second_text
 
     def test_conversion_run_id_attribute_exists(self, tmp_path: Path):

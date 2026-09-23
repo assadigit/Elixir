@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.4.23-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5784%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.4.25-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5784%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 

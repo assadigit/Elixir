@@ -298,12 +298,34 @@ class ConversionLogger:
         else:
             self.log_dir = new_log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.log_path = self.log_dir / f"{base_filename}.conversion.log.md"
-        self.diagnostic_path = self.log_dir / f"{base_filename}.diagnostic.jsonl"
-        self._file_handle = None
-        self._diag_handle = None
         # V0.20.4: the conversion-level run_id, stamped in the log header.
         self._conversion_run_id = ""
+        self._app_version = ""
+        # V0.4.25 (root-cause fix for the 20× stale-upload loop): generate
+        # the run_id + app version HERE (before path construction) so the
+        # log FILENAME carries the same unique version+run stamp the header
+        # does. The operator's chat/file-transfer layer caches attachments
+        # by filename; a stable ``{book}.conversion.log.md`` meant every
+        # re-run's log arrived as the FIRST upload's bytes. Stamped names
+        # are unique per conversion — a cache hit is impossible, and every
+        # consumer that matters globs ``*.conversion.log.md`` (controller
+        # crash-appending takes the NEWEST by mtime; output_scanner globs
+        # the pattern), so coexisting per-run logs are safe and give every
+        # conversion a preserved audit trail on disk.
+        _name_stamp = ""
+        try:
+            from core.system.provenance import get_app_version, make_run_id, run_stamp_suffix
+
+            self._conversion_run_id = make_run_id()
+            self._app_version = get_app_version()
+            _name_stamp = run_stamp_suffix(self._app_version, self._conversion_run_id)
+        except Exception:  # pragma: no cover — the stamp must never break the log
+            self._conversion_run_id = ""
+            self._app_version = ""
+        self.log_path = self.log_dir / f"{base_filename}{_name_stamp}.conversion.log.md"
+        self.diagnostic_path = self.log_dir / f"{base_filename}{_name_stamp}.diagnostic.jsonl"
+        self._file_handle = None
+        self._diag_handle = None
         self._open()
 
     def _open(self) -> None:
@@ -329,8 +351,11 @@ class ConversionLogger:
         try:
             from core.system.provenance import get_app_version, make_run_id
 
-            _ver = get_app_version()
-            self._conversion_run_id = make_run_id()
+            _ver = self._app_version or get_app_version()
+            if not self._conversion_run_id:
+                # constructed by an older caller path — generate now so the
+                # header stamp is never empty
+                self._conversion_run_id = make_run_id()
             self._file_handle.write(
                 f"<!-- generated-by: Elixir v{_ver} | run_id={self._conversion_run_id} -->\n\n"
             )

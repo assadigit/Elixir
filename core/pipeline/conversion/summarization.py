@@ -439,6 +439,19 @@ def run_summarization(
         language=summary_lang,
         claim_extractor=_claim_extractor,
     )
+    # V0.4.25: ONE run id per conversion — the Summarizer generates its own
+    # run_id in __init__ (a second id), which is how one conversion ended
+    # up with a log stamped run X and chapter summaries stamped run Y
+    # (b3e7f026 vs 491d1bf4 in the V4.23 audit). Overwrite it with the
+    # converter-level id so the conversion log, every chapter summary, the
+    # book summary, AND every output FILENAME stamp share one identifier —
+    # an audit can correlate all artifacts by a single id.
+    try:
+        _conv_rid = getattr(getattr(converter, "conv_logger", None), "_conversion_run_id", "")
+        if _conv_rid:
+            summarizer._run_id = _conv_rid
+    except Exception:  # pragma: no cover — unification must never break the phase
+        pass
 
     # V15.2.0: Enhanced concept extraction (6 techniques) — the foundation fix.
     # Replaces the old extract_all_concepts() with extract_concepts_rich() which
@@ -943,10 +956,25 @@ def run_summarization(
             )
             continue
         safe_heading = converter._sanitize_filename(summ.chapter_heading)
+        # V0.4.25: run-stamped filename — each conversion's chapter summary
+        # gets a unique name (``{NNN}_{heading}_v{ver}_{run_id}_summary.md``)
+        # so the operator's file-transfer layer (which caches by filename)
+        # can never deliver a stale run's bytes. The stamp comes from the
+        # summary's OWN provenance: an adopted (resume-reused) chapter keeps
+        # its ORIGINAL run's stamp — the filename always tells the truth
+        # about which run produced the content. Unstamped (legacy) results
+        # fall back to the exact legacy filename for write-once compat.
+        _stamp = ""
+        try:
+            from core.system.provenance import run_stamp_suffix
+
+            _stamp = run_stamp_suffix(getattr(summ, "app_version", ""), getattr(summ, "run_id", ""))
+        except Exception:  # pragma: no cover — stamping must never break the save
+            _stamp = ""
         if safe_heading:
-            sf_name = f"{i:03d}_{safe_heading}_summary.md"
+            sf_name = f"{i:03d}_{safe_heading}{_stamp}_summary.md"
         else:
-            sf_name = f"{i:03d}_summary.md"
+            sf_name = f"{i:03d}{_stamp}_summary.md"
         sf = summary_folder / sf_name
         # V18.20.3.0: write-once — the incremental checkpoint saver already
         # persisted this chapter the moment it completed; a completed
@@ -1043,6 +1071,23 @@ def run_summarization(
         # parent dir (replaces the ``_ensure`` call) and keeps utf-8.
         atomic_write_text(converter.summary_md_path, book_summary)
         log(f"📋 Book summary → {converter.summary_md_path}")
+        # V0.4.25: run-stamped COPY of the book summary — the canonical
+        # ``{stem}.summary.md`` stays stable for every consumer (output
+        # scanner, validator, translation lookup, multi-PDF merge), while
+        # the stamped sibling is the unique, attach-without-cache-collision
+        # artifact for the operator's audits. Same content, both written.
+        try:
+            from core.system.provenance import run_stamp_suffix
+
+            _bk_stamp = run_stamp_suffix(_bk_ver, _bk_rid)
+            if _bk_stamp:
+                _stamped_summary_path = converter.summary_md_path.with_name(
+                    converter.summary_md_path.stem + _bk_stamp + ".summary.md"
+                )
+                atomic_write_text(_stamped_summary_path, book_summary)
+                log(f"💎 Run-stamped copy → {_stamped_summary_path.name}")
+        except Exception:  # pragma: no cover — the stamped copy must never break the save
+            pass
 
     update_progress(0.80)  # Summaries done
     # V18.20.2.0 (SWOT A15): a cancelled run must NOT mark the
