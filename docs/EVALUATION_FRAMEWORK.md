@@ -121,6 +121,9 @@ Output a valid JSON object at the very end of your response with the following e
   `docs/ground_truth/001_4 - BORDERLINE PERSONALITY DISORDER.md` (12,073
   words, 18,807 tokens, PDF pages 77–112). **Caveat:** TABLE 4-1 in this
   file is OCR-mirrored garbage — audits must not treat its tokens as text
-  (it is the origin of the BIOA/Tey/JOQuUI citation artifacts). First audit
-  against it:
-  `audit/results/AUDIT_V0.4.22_run20260923-030841-d6d47f77_ch4_summary_vs_source.md`.
+  (it is the origin of the BIOA/Tey/JOQuUI citation artifacts). Audits
+  against it: `AUDIT_V0.4.22_run20260923-030841-d6d47f77` (7/10 — the
+  6-item audit-backlog source), `AUDIT_V0.4.23_run20260923-053014-491d1bf4`
+  (8/10 — the no-limits/enumeration-capture release; machine-measured
+  enumeration recall 113/117; V0.4.24 backlog: stem slicing, thorough_
+  addition truncation guard, Stern-list guarantee escape).
