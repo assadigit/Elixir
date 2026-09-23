@@ -283,6 +283,13 @@ def extract_all_caps_sections(md_text: str) -> list[dict]:
     return sections
 
 
+# V0.4.23 (audit V0.4.22, backlog #1): module-level garbage ledger —
+# populated by the most recent extract_citations call so the analysis
+# report (run_deterministic_analysis) can print the honest filtered line
+# without changing the extractor's return contract.
+_LAST_GARBAGE_DROPPED: list[tuple[str, str]] = []
+
+
 def extract_citations(md_text: str) -> list[dict]:
     """Extract author-year citations. V17.8: Much more robust regex.
 
@@ -302,6 +309,11 @@ def extract_citations(md_text: str) -> list[dict]:
     """
     citations = []
     seen = set()
+    # V0.4.23 (audit V0.4.22, backlog #1): the garbage ledger — every
+    # candidate dropped by the shape filter is recorded here (deduped in
+    # the return path) so the analysis report can print the honest
+    # "garbage-filtered" line for the conversion log.
+    _garbage_dropped: list[tuple[str, str]] = []
     # V18.15.5.1 (DEBT-08): shared Unicode-aware apostrophe + dash classes.
     # Used by _add (possessive strip) + all 4 citation patterns below.
     from core.preprocessing.citations_regex import APOS as _APOS
@@ -320,7 +332,27 @@ def extract_citations(md_text: str) -> list[dict]:
         )  # trailing apostrophe/punct
         # Remove "et al." suffix for dedup (keep the primary author)
         author = re.sub(r"\s+et\s+al\.?", "", author).strip()
+        # V0.4.23: collapse internal whitespace — multi-author captures
+        # can span a source line break ("Perry and\nKlerman (1978)");
+        # the analysis report and every author-list consumer should see
+        # one clean line ("Perry and Klerman").
+        author = re.sub(r"\s+", " ", author)
         if not author or len(author) < 2:
+            return
+        # V0.4.23 (audit V0.4.22, backlog #1): SHAPE FILTER at the root —
+        # month names ("May 1975"), mirrored-table OCR strings
+        # ("BIOA 0\u06f2\u06f2\u06f6", "Tey \u06f8\u06f68\u06f5", "JOQuUI 8225"),
+        # embedded digits ("JeuoNes0A"), ALL-CAPS acronyms ("DSM"),
+        # non-Latin scripts and implausible years are NOT authors.
+        # Filtered HERE so every consumer (counts, judge, gap-fill
+        # hunting, recall floor, check_coverage) sees a clean list —
+        # the V0.4.22 run wasted 2 of 5 gap-fill rounds hunting
+        # BIOA/Tey/JOQuUI and shipped a fabricated "May" bullet.
+        from core.preprocessing.author_garbage import garbage_author_reason
+
+        _reason = garbage_author_reason(author, years)
+        if _reason:
+            _garbage_dropped.append((author, _reason))
             return
         # V17.9 FIX: Check if the FIRST word is a stopword (catches 'In the', 'By the', etc.)
         _first_word = author.split()[0] if author.split() else author
@@ -344,7 +376,7 @@ def extract_citations(md_text: str) -> list[dict]:
         r"(?:" + _APOS + r"[sS]?)?"
         r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)?"
         r"(?:\s+et\s+al\.?)?)"
-        r"\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)",
+        r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical")
@@ -353,7 +385,7 @@ def extract_citations(md_text: str) -> list[dict]:
     for match in re.finditer(
         r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?)"
-        r"\s+(\d{4}[a-z]?)\b",
+        r"\s+([0-9]{4}[a-z]?)\b",
         md_text,
     ):
         _add(match.group(1), match.group(2), "inline")
@@ -362,7 +394,7 @@ def extract_citations(md_text: str) -> list[dict]:
     # e.g., "(AuthorZ, 1923a)", "(AuthorL, 1964; AuthorD, 1967)"
     for match in re.finditer(
         r"\(([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+)?"
-        r"(?:\s+et\s+al\.?)?),?\s*(\d{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*\d{4}[a-z]?)*)\)",
+        r"(?:\s+et\s+al\.?)?),?\s*([0-9]{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*[0-9]{4}[a-z]?)*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical_full")
@@ -370,7 +402,7 @@ def extract_citations(md_text: str) -> list[dict]:
     # Pattern 4: Author, Year (comma-separated, no parens)
     # e.g., "AuthorI, 1956" or "as noted by AuthorL, 1964,"
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*(\d{4}[a-z]?)\b", md_text
+        r"([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*([0-9]{4}[a-z]?)\b", md_text
     ):
         _add(match.group(1), match.group(2), "comma_separated")
 
@@ -406,7 +438,7 @@ def extract_citations(md_text: str) -> list[dict]:
         + r")"
     )
     for match in re.finditer(
-        r"(" + _MULTI_NAME_BLOCK + r")\s*\((\d{4}[a-z]?(?:,\s*\d{4}[a-z]?)*)\)", md_text
+        r"(" + _MULTI_NAME_BLOCK + r")\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*)\)", md_text
     ):
         _names_block, _years = match.group(1), match.group(2)
         # Split the captured block into individual surnames. Split on
@@ -437,6 +469,13 @@ def extract_citations(md_text: str) -> list[dict]:
         for _nm in _name_list:
             _add(_nm, _years, "multi_author")
 
+    # V0.4.23: expose the garbage ledger (module-level, deduped,
+    # order-preserving) for the analysis report's honest line.
+    global _LAST_GARBAGE_DROPPED
+    _seen_g: set = set()
+    _LAST_GARBAGE_DROPPED = [
+        (a, r) for a, r in _garbage_dropped if not (a in _seen_g or _seen_g.add(a))
+    ]
     return citations
 
 
@@ -448,12 +487,18 @@ def count_author_mentions(citations: list[dict], md_text: str) -> list[tuple[str
     for cite in citations:
         author = cite["author"]
         author_mentions[author] += 1
-        for year in re.findall(r"\d{4}[a-z]?", cite["years"]):
+        for year in re.findall(r"[0-9]{4}[a-z]?", cite["years"]):
             author_years[author].add(year)
 
     # Count raw text mentions (case-insensitive)
     for author in list(author_mentions.keys()):
         if author in _ENGLISH_FALSE_POSITIVES:
+            continue
+        # V0.4.23: belt-and-braces — a garbage shape that slipped one of
+        # the extraction patterns is dropped here too.
+        from core.preprocessing.author_garbage import garbage_author_reason
+
+        if garbage_author_reason(author):
             continue
         count = len(re.findall(r"\b" + re.escape(author) + r"\b", md_text, re.IGNORECASE))
         author_mentions[author] = max(author_mentions[author], count)
@@ -1141,6 +1186,19 @@ def run_deterministic_analysis(md_text: str) -> str:
     if author_counts:
         lines.append("## Citations (sorted by mention count)")
         lines.append(f"**Total unique authors: {len(author_counts)}**")
+        # V0.4.23 (audit V0.4.22, backlog #1): the honest garbage line —
+        # every extraction candidate dropped by the shape filter, with
+        # its reason. Keeps the conversion-log audit trail (the V0.4.22
+        # ch.4 run hunted BIOA/Tey/JOQuUI "theorists" with no trace of
+        # where they came from).
+        _dropped = list(_LAST_GARBAGE_DROPPED)
+        if _dropped:
+            lines.append("")
+            lines.append(
+                f"Garbage-filtered author candidates: {len(_dropped)} "
+                + "; ".join(f"{a} ({r})" for a, r in _dropped[:12])
+                + (" …" if len(_dropped) > 12 else "")
+            )
         lines.append("")
         for i, (author, count, years) in enumerate(author_counts, 1):
             lines.append(f"{i}. **{author}** ({count} mentions): {years}")

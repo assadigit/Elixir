@@ -178,6 +178,50 @@ def deterministic_recall_floor(
         )
         out["conclusion_items_probe_failed"] = True
 
+    # (c) V0.4.23 (user directive — "never miss any listed items"): the
+    # UNIVERSAL enumeration-item recall probe. The legacy probe (b) covers
+    # only the (N)/N. run-in style in the last 30% of the chapter; this
+    # probe measures EVERY detected list (bullets, a-d, 1-4, I-VI, ordinals,
+    # labeled, run-in — the full ENUMERATION_TEMPLATE) across the WHOLE
+    # chapter. Same ≥50%-word-hit heuristic, same zero-LLM cost.
+    try:
+        from core.summarisation.enumeration import (
+            detect_enumerations,
+            enumeration_item_covered,
+        )
+
+        _enums = detect_enumerations(source_text or "")
+        if _enums:
+            _haystack_c = (bullets_text + " " + (thorough or "")).lower()
+            _covered_e = 0
+            _total_e = 0
+            _missing_e: list[str] = []
+            for _enum in _enums:
+                for _it in _enum.items:
+                    _total_e += 1
+                    if enumeration_item_covered(_it.text, _haystack_c):
+                        _covered_e += 1
+                    else:
+                        _missing_e.append(f"[{_enum.style}] {str(_it.text)[:50]}")
+            out["enumerations_total"] = _total_e
+            out["enumerations_covered"] = _covered_e
+            out["enumerations_missing"] = _missing_e
+            out["enumerations_list_count"] = len(_enums)
+            out["log_parts"].append(
+                f"enumerated items (all lists, whole chapter) {_covered_e}/{_total_e}"
+                + (f" (missing: {_missing_e[:3]})" if _missing_e else "")
+            )
+    except Exception as _probe_e:  # pragma: no cover — probe must never raise
+        logger.warning(
+            "recall-floor enumeration probe failed: %s: %s",
+            type(_probe_e).__name__,
+            _probe_e,
+        )
+        out["log_parts"].append(
+            f"enumeration-items probe FAILED — number unavailable "
+            f"({type(_probe_e).__name__}); treat the floor as unmeasured"
+        )
+
     return out
 
 

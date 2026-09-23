@@ -3,6 +3,18 @@
 ``inject_page_refs`` moved VERBATIM from ``garble.py`` during the V0.4.19
 de-monolithization (deterministic fallback when the model ignores the
 page-citation prompt instruction).
+
+V0.4.23 (audit V0.4.22, H4 / backlog #2): ESTIMATE HONESTY. The injected
+page is a position-based ESTIMATE (bullet's position in the list mapped
+onto the chapter's start_page..end_page range — the conversion log
+itself admits "pages estimated from start_page=…, end_page=…"). Shipping
+it as a plain citation ``(p. 77)`` fabricates a source locator the book
+never verified: the V0.4.22 ch.4 audit found 8 bullets whose every "(p. X)"
+was machine-estimated, presented to the reader as real citations. The
+injection now ships the ESTIMATE MARK ``(p. ~X)`` — the tilde visibly
+distinguishes estimated locators from page refs the MODEL derived from
+the source text, and the injector is idempotent against its own output
+(``(p. ~77)`` is recognized as already-cited).
 """
 
 from __future__ import annotations
@@ -30,6 +42,9 @@ def inject_page_refs(
     - First 1/3 of bullets -> first 1/3 of pages
     - Middle 1/3 -> middle 1/3 of pages
     - Last 1/3 -> last 1/3 of pages
+
+    V0.4.23: the injected ref carries the estimate mark ``(p. ~X)`` —
+    never a bare ``(p. X)`` (which reads as a verified citation).
 
     Content-agnostic: works on any chapter with YAML frontmatter.
     """
@@ -60,15 +75,19 @@ def inject_page_refs(
         injected = 0
         for idx_pos, line_idx in enumerate(bullet_indices):
             line = lines[line_idx]
-            # Check if the line already has a page ref like (p. 53).
-            if _re.search(r"\(p\.\s*\d", line):
+            # Check if the line already has a page ref like (p. 53) — or a
+            # V0.4.23 estimated one like (p. ~53): BOTH count as cited (the
+            # old pattern missed the tilde form, so a re-run would append a
+            # SECOND estimated ref to an already-injected bullet).
+            if _re.search(r"\(p\.\s*~?\s*\d", line):
                 continue  # already has a page ref
             # Estimate the page based on position in the bullet list.
             position_ratio = idx_pos / max(len(bullet_indices), 1)
             estimated_page = start_page + int(page_range * position_ratio)
-            # Add the page ref at the end of the line (before any trailing whitespace).
+            # V0.4.23 (audit V0.4.22, H4): ship the estimate AS an estimate —
+            # (p. ~X), never a bare (p. X) citation the book never verified.
             line_stripped = line.rstrip()
-            lines[line_idx] = f"{line_stripped} (p. {estimated_page})"
+            lines[line_idx] = f"{line_stripped} (p. ~{estimated_page})"
             injected += 1
 
         if injected > 0:
@@ -80,10 +99,11 @@ def inject_page_refs(
                     field=field_label,
                     snippet=text[:60],
                     detail=(
-                        f"injecting page refs: added (p. X) to {injected} "
+                        f"injecting page refs: added (p. ~X) to {injected} "
                         f"bullet(s) that lacked page citations (model ignored "
                         f"the MANDATORY prompt instruction; pages estimated "
-                        f"from start_page={start_page}, end_page={end_page})"
+                        f"from start_page={start_page}, end_page={end_page}; "
+                        f"~ marks an ESTIMATED locator, not a verified one)"
                     ),
                 )
             )

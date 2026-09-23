@@ -60,9 +60,9 @@ class TestInjectPageRefs:
         # pages estimated across the 48–58 range: with 3 bullets the
         # position ratios are 0/3, 1/3, 2/3 → 48, 51, 54 (the injector's
         # (idx/total) math never reaches the end page for the last bullet)
-        assert "(p. 48)" in out
-        assert "(p. 51)" in out
-        assert "(p. 54)" in out
+        assert "(p. ~48)" in out  # V0.4.23: estimates carry the ~ mark
+        assert "(p. ~51)" in out
+        assert "(p. ~54)" in out
         # one issue recorded (severity=fix, detector=page_ref_injector)
         assert len(issues) == 1
         assert issues[0].detector == "page_ref_injector"

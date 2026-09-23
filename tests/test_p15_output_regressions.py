@@ -82,23 +82,29 @@ class TestBulletCollapseFix:
         lo, hi = bullet_target(150)
         assert lo >= 4 and hi <= 6, f"150-word fragment: got {lo}-{hi}"
 
-    def test_ship_cap_restored_for_normal_chapters(self):
+    def test_ship_cap_removed_for_all_chapters(self):
+        """V0.4.23 (user directive — bullets "can be as long as necessary
+        for full coverage"): there is NO bullet cap. The historical V0.06
+        source-scaled cap displaced coverage-critical bullets in the
+        V0.4.22 ch.4 run; dedup/consolidation/filler-floor are the only
+        reducers now."""
         from core.summarisation.length_policy import bullet_cap
 
-        assert bullet_cap(1000) == 40, "the ship cap must allow V18's 30-40"
-        assert bullet_cap(441) == 18, "rig chapters stay bounded (18, not 36)"
+        assert bullet_cap(1000) == 0, "no cap for normal chapters"
+        assert bullet_cap(441) == 0, "no cap for rig-sized chapters"
+        assert bullet_cap(20000) == 0, "no cap for huge chapters"
 
-    def test_length_budget_block_uses_the_constant(self):
-        """The prompt block must quote the ACTUAL density constant (it used
-        to hardcode '~50' while the constant was 25)."""
+    def test_length_budget_block_states_no_maximum(self):
+        """V0.4.23: the prompt block states the coverage FLOOR with NO
+        MAXIMUM and the no-fragment/no-pad rule."""
         import re
 
         from core.summarisation import length_policy as lp
 
         block = lp.length_budget_block(1000, include_executive=False, include_thorough=False)
-        m = re.search(r"one distinct takeaway per ~(\d+) source words", block)
-        assert m, f"density phrase missing from block:\n{block}"
-        assert int(m.group(1)) == lp.BULLET_WORDS_PER_TAKEAWAY
+        assert "NO MAXIMUM" in block, f"no-maximum phrase missing:\n{block}"
+        assert re.search(r"at least \d+ bullets", block), block
+        assert "Never fragment or" in block
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -109,15 +115,17 @@ class TestBulletCollapseFix:
 class TestThinThoroughFix:
     def test_normal_chapters_get_v18_contract(self):
         """W >= 800: the thorough target must be at least 800 words (V18
-        demanded "800-1200"; V0.05 told a 1000-word chapter "270-450")."""
+        demanded "800-1200"; V0.05 told a 1000-word chapter "270-450").
+        V0.4.23: the 1200 ceiling is REMOVED — the target scales with the
+        source (0.45x, floored at 800)."""
         from core.summarisation.length_policy import thorough_target
 
         cases = {
             800: (480, 800),
             1000: (480, 800),
             1780: (481, 801),
-            3000: (720, 1200),
-            10000: (720, 1200),
+            3000: (810, 1350),
+            10000: (2700, 4500),
         }
         for w, (lo_exp, hi_exp) in cases.items():
             lo, hi = thorough_target(w)
@@ -135,18 +143,19 @@ class TestThinThoroughFix:
             assert hi <= 220, f"W={w}: rig regime must stay <= 220, got {hi}"
             assert hi <= w, f"W={w}: never above the source"
 
-    def test_f1_caps_restore_v18_for_normal_chapters(self):
-        """F1 must not truncate a normal chapter's well-written thorough.
-
-        V0.05 cut a 1000-word chapter's thorough at 563 words and its exec
-        at 313 (1.25x the scaled target). The V18 pass-lines (1500/400)
-        apply whenever the scaled target is in the V18 regime.
-        """
+    def test_f1_thorough_cap_scales_uncapped(self):
+        """V0.4.23 (user directive): F1's thorough truncation backstop
+        scales with the source (1.25x the scaled target) — the absolute
+        1500-word pass-line is REMOVED (a thorough summary may be as long
+        as full coverage requires). The exec keeps its 400 pass-line (the
+        executive is a compression artifact by design)."""
         src = (_project_root / "core" / "summarisation" / "bullet_pipeline.py").read_text(
             encoding="utf-8"
         )
-        assert "if _thi >= 800:" in src, "F1 thorough cap must be regime-split"
-        assert "_thorough_cap = 1500" in src, "V18 thorough pass-line restored"
+        assert "_thorough_cap = int(_thi * 1.25) + 1" in src, (
+            "F1 thorough cap must scale with the target (no absolute 1500)"
+        )
+        assert "_thorough_cap = 1500" not in src, "the 1500 pass-line is removed"
         assert "if _ehi >= 200:" in src, "F1 exec cap must be regime-split"
         assert "_exec_cap = 400" in src, "V18 exec pass-line restored"
 

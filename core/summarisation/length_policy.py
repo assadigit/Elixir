@@ -25,13 +25,17 @@ summary / 3 bullets" regressions):
 
   * thorough summary: for sources < 800 words, at most ~45% of the source
     (the 97-Things anti-padding fix); for sources >= 800 words, at least
-    V18's 800-word contract (growing with 0.45x the source, never above the
-    historical 1200-word ceiling);
+    V18's 800-word contract, growing with 0.45x the source — V0.4.23:
+    NO absolute ceiling (the historical 1200-word cap is REMOVED by user
+    directive: a thorough summary may be "as long as necessary for full
+    coverage"; the never-exceed-the-source and never-pad rules remain);
   * executive summary: at most ~20% of the source (floored at ~60 words,
     ceiling stays 250);
-  * bullet points: one distinct takeaway per ~25 source words (4-40, the
-    historical range) — ~25 restores V18's 27-40 target for 1000+-word
-    chapters while tiny sources still scale down.
+  * bullet points: one distinct takeaway per ~25 source words as the
+    COVERAGE FLOOR GUIDANCE (4-40) — V0.4.23: there is NO maximum and NO
+    ship-time cap (user directive: bullets "can be as long as necessary
+    for full coverage"). The count reducers are the semantic dedup,
+    consolidation, and the filler floor — never a numeric cap.
 
 Scaling is a PURE function of the source word count — same rule for a
 1-page essay and a 40-page chapter. Nothing here knows about any book.
@@ -59,9 +63,15 @@ import re
 # A summary section may target at most this fraction of its source's words.
 THOROUGH_SOURCE_FRACTION = 0.45
 EXEC_SOURCE_FRACTION = 0.20
-# Absolute ceilings — the historical prompt maxima, kept as hard caps so a
-# 40-page chapter's thorough summary stays the documented 1200-word deliverable.
-THOROUGH_ABS_MAX = 1200
+# V0.4.23 (user directive — "no limit for bullet point quantity or thorough
+# summary; they can be as long as necessary for full coverage"):
+#   * THOROUGH_ABS_MAX (the historical 1200-word ceiling) is REMOVED — the
+#     thorough target grows with the source (0.45x), bounded only by the
+#     never-exceed-the-source and never-pad rules;
+#   * BULLET_ABS_MAX is now a GUIDANCE clamp for the floor phrase only —
+#     bullet_cap() returns 0 ("no cap") and NO ship-time/insertion cap
+#     exists anywhere; dedup + consolidation + the filler floor are the
+#     only reducers.
 EXEC_ABS_MAX = 250
 # V0.07 (output-regression fix): V18's thorough contract — a chapter of at
 # least this many words is asked for at least 800 words of thorough summary
@@ -108,9 +118,9 @@ def thorough_target(source_words: int) -> tuple[int, int]:
     V0.07 (output-regression fix) — two regimes:
 
     * W >= THOROUGH_V18_FLOOR (800): V18's contract — at least 800 words,
-      growing with 0.45 x W, capped at 1200. (V18 demanded "800-1200"
-      unconditionally; a normal chapter must not be told to write 270-450
-      words.) Never exceeds W: the floor only applies once W >= 800.
+      growing with 0.45 x W. V0.4.23: NO absolute ceiling (the 1200-word
+      cap is removed — full coverage outranks brevity; the compression
+      contract still forbids padding and exceeding the source).
     * W < 800: the V0.05 anti-padding regime — at most ~45% of the source
       (the 97-Things rig fix: a 321-441-word chapter must not be told to
       write 800-1200 words = 2.7x its source), at least ~120 for anything
@@ -120,7 +130,7 @@ def thorough_target(source_words: int) -> tuple[int, int]:
     """
     w = max(0, int(source_words))
     if w >= THOROUGH_V18_FLOOR:
-        hi = min(THOROUGH_ABS_MAX, max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR))
+        hi = max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR)
     else:
         hi = min(w, max(round(THOROUGH_SOURCE_FRACTION * w), min(THOROUGH_SMALL_SOURCE, w)))
     lo = max(80, round(hi * THOROUGH_LO_FRACTION))
@@ -155,16 +165,21 @@ def bullet_target(source_words: int) -> tuple[int, int]:
 
 
 def bullet_cap(source_words: int) -> int:
-    """V0.06 (rig audit F4): the HARD cap on bullets for a chapter this size.
+    """V0.4.23 (user directive): there is NO bullet cap — returns 0.
 
-    The same ``hi`` every prompt target uses (``bullet_target``), exposed as
-    the single source of truth for the insertion-site + ship-time caps: the
-    V0.05 length policy gated only the dedicated expansion call, while
-    Tier-2 gap-fill, scholar gap-fill, and quarantine recovery kept appending
-    freely (the rig shipped 19/18/15/14/12 bullets against 5-7/5-7/6-9/6-9/5-8
-    targets). Consumers treat a result ``<= 0`` as "no cap" (fail-open).
+    Historically (V0.06 rig audit F4) this returned the source-scaled
+    ``bullet_target`` hi as a HARD cap at every insertion site and at
+    ship time. The V0.4.22 ch.4 audit proved the cap's failure mode:
+    it DISPLACED coverage-critical bullets (the consolidated
+    characteristics bullet — the sole cover of the chapter's conclusion
+    items — and a name-corrupted bullet were both silently
+    dropped by the 40-cap). The user directive is explicit: bullets "can
+    be as long as necessary for full coverage". Consumers treat a result
+    ``<= 0`` as "no cap" (fail-open) — every insertion site and ship-time
+    truncation now no-ops; the count reducers are the non-skippable
+    semantic dedup, consolidation, and the V0.4.23 filler floor.
     """
-    return bullet_target(source_words)[1]
+    return 0
 
 
 # ── Prompt-facing strings (one phrasing, every consumer) ────────────────────
@@ -181,8 +196,13 @@ def exec_words_phrase(source_words: int) -> str:
 
 
 def bullet_range_phrase(source_words: int) -> str:
-    lo, hi = bullet_target(source_words)
-    return f"{lo}-{hi}"
+    """V0.4.23: the prompt phrase for the bullet count — a coverage FLOOR
+    with NO maximum ("at least N"), per the user's no-limit directive.
+    Legacy callers that interpolated a range now read "at least N",
+    which is the intended contract: as many bullets as full coverage
+    requires, never fewer than the scaled floor, never padded."""
+    lo, _hi = bullet_target(source_words)
+    return f"at least {lo}"
 
 
 def length_budget_block(
@@ -209,22 +229,29 @@ def length_budget_block(
         elo, ehi = executive_target(source_words)
         lines.append(f"- executive_summary: {elo}-{ehi} words.")
     if include_keypoints:
-        blo, bhi = bullet_target(source_words)
+        blo, _bhi = bullet_target(source_words)
         lines.append(
-            f"- bullet_points: {blo}-{bhi} bullets (one distinct takeaway per"
-            f" ~{BULLET_WORDS_PER_TAKEAWAY} source words — do NOT fragment or"
-            " pad to inflate the count)."
+            f"- bullet_points: at least {blo} bullets — there is NO MAXIMUM:"
+            " add as many distinct takeaways as the chapter's content"
+            " requires for FULL coverage (every enumerated list item, every"
+            " named contributor, every distinct finding). Never fragment or"
+            " pad to inflate the count; a bullet must carry content."
         )
     if include_thorough:
         tlo, thi = thorough_target(source_words)
-        lines.append(f"- thorough_summary: {tlo}-{thi} words.")
+        lines.append(
+            f"- thorough_summary: {tlo}-{thi} words (the target scales with"
+            " the chapter; no absolute ceiling — write as much as full"
+            " coverage requires)."
+        )
     lines.append(
         "COMPRESSION CONTRACT: this is a SUMMARY — every section must be"
         " SHORTER than the chapter itself. If you cannot fill a section's"
         " target with content the source actually states, write less; NEVER"
         " pad, elaborate, generalize, or invent examples to reach a length."
         " A shorter, faithful summary is correct; a longer, padded one is a"
-        " defect."
+        " defect. Coverage is bounded by the SOURCE's content, never by a"
+        " numeric cap."
     )
     return "\n".join(lines)
 

@@ -378,7 +378,7 @@ def batch_gap_fill(
                     temperature=temperature,
                 )
                 _tl_dur = time.monotonic() - _tl_t0
-                _tl = {"dup": 0, "think": 0, "veto": 0, "added": 0}
+                _tl = {"dup": 0, "think": 0, "veto": 0, "filler": 0, "added": 0}
                 if not _raw:
                     log(
                         f"    ⚠️ V18.20.3.7: Batch gap-fill round "
@@ -411,6 +411,33 @@ def batch_gap_fill(
                                 source_text="",
                             )
                             if _filtered:
+                                # V0.4.23 (audit V0.4.22, backlog #4): the
+                                # FILLER FLOOR — reject gap-fill bullets
+                                # whose main assertion is citation
+                                # adjacency ("is cited/listed/recognized…",
+                                # "The text notes…"), not content. The
+                                # V0.4.22 run shipped 7 such bullets of 40
+                                # (gap-fill writing checklist-satisfiers
+                                # after deadline-skipped consolidation).
+                                # The author stays "missing from bullets"
+                                # and is reported honestly by the loop's
+                                # re-check + final WARNING — exactly like a
+                                # vetoed author: a filler bullet carries no
+                                # information, so shipping it is worse than
+                                # the honest gap.
+                                from core.summarisation.post_processing import (
+                                    is_citation_filler_bullet,
+                                )
+
+                                if is_citation_filler_bullet(_filtered[0]):
+                                    _tl["filler"] += 1
+                                    log(
+                                        f"    🧽 V0.4.23: gap-fill filler floor — "
+                                        f"dropped citation-adjacency bullet: "
+                                        f"{_filtered[0][:70]}…",
+                                        "INFO",
+                                    )
+                                    continue
                                 # V18.20.3.2 (audit N4 / P1-a):
                                 # GENERATION-TIME active-subject
                                 # veto. The V18.20.3.1 run shipped
@@ -525,7 +552,8 @@ def batch_gap_fill(
                         f"({_tl_dur:.1f}s): response="
                         f"{len(_gap_bullets) if _gap_bullets else 0} bullet lines, "
                         f"dup={_tl['dup']}, think-filtered={_tl['think']}, "
-                        f"vetoed={_tl['veto']}, added={_tl['added']}",
+                        f"vetoed={_tl['veto']}, filler={_tl['filler']}, "
+                        f"added={_tl['added']}",
                         "DEBUG",
                     )
                 elif not _raw:
@@ -536,7 +564,7 @@ def batch_gap_fill(
                     log(
                         f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
                         f"({_tl_dur:.1f}s): response=EMPTY, "
-                        f"dup=0, think-filtered=0, vetoed=0, added=0",
+                        f"dup=0, think-filtered=0, vetoed=0, filler=0, added=0",
                         "DEBUG",
                     )
             except Exception as _be:

@@ -412,6 +412,19 @@ class SummarizerChapterPhasesMixin:
             bullets = parsed.get("bullet_points", bullets) or bullets
         except Exception as _e:
             self.log(f"    ⚠️ V18.15.9.0: Conclusion-bullets check failed: {_e}", "WARNING")
+        # V0.4.23 (user directive — "never miss any listed items; if they
+        # are seven, seven must be captured"): the UNIVERSAL enumeration
+        # guarantee. Same placement contract as the conclusion bullets:
+        # AFTER the deterministic judge + gap-fill (the model had every
+        # chance to cover the lists naturally — and the primary prompt now
+        # carries the ENUMERATED-LIST COVERAGE block), BEFORE postchecks
+        # (the added consolidated bullets get post-checked too). With the
+        # V0.4.23 no-cap policy nothing displaces them at ship time.
+        try:
+            self._ensure_enumeration_bullets(heading, content, parsed)
+            bullets = parsed.get("bullet_points", bullets) or bullets
+        except Exception as _e:
+            self.log(f"    ⚠️ V0.4.23: Enumeration-bullets check failed: {_e}", "WARNING")
 
         # V18.20.3.2 (audit N6 / P1-b): SECOND semantic-dedup pass AFTER all
         # bullet-generation stages. The first pass runs BEFORE the V17.6
@@ -522,71 +535,28 @@ class SummarizerChapterPhasesMixin:
             exec_sum = _pc.executive_summary
             thorough = _pc.thorough_summary
 
-            # ── V0.06 (rig audit F4-c — GENERAL RULE: the source-scaled
-            # bullet budget is a HARD CAP, enforced at ship time) ─────────
-            # The V0.05 length policy gated only the dedicated expansion
-            # call; every other bullet-INSERTION engine (Tier-2 gap-fill,
-            # Tier-3-adjacent scholar gap-fill, quarantine recovery) kept
-            # appending freely — the rig shipped 19/18/15/14/12 bullets
-            # against source-scaled targets of 5-7/5-7/6-9/6-9/5-8, with
-            # the surplus being near-duplicate restatements of the same
-            # claims. The cap is bullet_target(source).hi — the SAME single
-            # source of truth every prompt uses. Primary-synthesis bullets
-            # come first (they are the model's deliberate selection);
-            # remediation bullets (appended later by gap-fill engines) are
-            # the ones trimmed. Coverage shortfall below the cap is logged
-            # honestly rather than padded away.
-            #
-            # V0.20 (Quality Campaign, audit V0.18 on the standing test
-            # chapter, Defects A+B): the plain head-cap
-            # (bullets[:_bp_hi_lp]) trims the list TAIL — exactly where the
-            # V18.14.1 batch gap-fill and the V18.15.9.0 conclusion-bullet
-            # consolidation append their output. The V0.18 rig run shipped
-            # 20/37 theorists and 5/7 conclusion items (recall floor) precisely
-            # because this cap deleted the 13 remediation bullets the pipeline
-            # had just spent ~6 min producing (gap-fill added 27 + conclusion
-            # added 1, then 53→40 cut 13). The cap now delegates to
-            # recall_floor.coverage_aware_cap — the SAME function the
-            # V18.15.7.0 80-bullet cap (below) uses: a tail bullet that is
-            # the ONLY cover of an analysis author is rescued into the
-            # capped set, displacing a redundant head bullet. "more bullets
-            # is better than lower coverage" — the standing rule, applied
-            # to the source-scaled cap too. When no analysis is available
-            # the function degrades to the byte-identical plain head-cap.
+            # ── V0.4.23 (user directive): the source-scaled bullet budget
+            # cap is REMOVED — NO ship-time truncation of bullets. ────────
+            # The V0.4.22 ch.4 audit proved the cap's failure mode: it
+            # silently displaced coverage-critical tail bullets (the
+            # consolidated characteristics bullet — sole cover of the
+            # section-conclusion items — and a
+            # name-corrupted bullet that was contained only "by luck").
+            # User directive: bullets can be as long as necessary for full
+            # coverage. The count reducers are the non-skippable semantic
+            # dedup + consolidation + the V0.4.23 filler floor — never a
+            # numeric cap. This block now only reports honestly when the
+            # count exceeds the historical guidance range.
             if _inc_kp_lp and len(bullets) > _bp_hi_lp:
-                try:
-                    from core.summarisation.recall_floor import coverage_aware_cap
-
-                    _pre_cap = len(bullets)
-                    bullets = coverage_aware_cap(
-                        bullets,
-                        _analysis_rf or "",
-                        limit=_bp_hi_lp,
-                        log_fn=lambda msg, level="WARNING": self.log(msg, level),
-                    )
-                    parsed["bullet_points"] = bullets
-                    self.log(
-                        f"    ✂️ V0.06: bullet budget enforced at ship time — "
-                        f"{_pre_cap} → {len(bullets)} (target {_bp_lo_lp}-{_bp_hi_lp} "
-                        f"for a {_src_words_lp}-word chapter; V0.20: "
-                        f"coverage-aware, sole-cover rescue active).",
-                        "INFO",
-                    )
-                except Exception as _cap_e:
-                    # Never break the chapter over the cap: degrade to the
-                    # plain V0.06 head-cap, visibly.
-                    self.log(
-                        f"    ⚠️ V0.20: coverage-aware source-scaled cap failed "
-                        f"({type(_cap_e).__name__}: {_cap_e}) — plain head-cap applied",
-                        "WARNING",
-                    )
-                    logger.warning(
-                        "coverage-aware source-scaled cap failed — plain head-cap: %s: %s",
-                        type(_cap_e).__name__,
-                        _cap_e,
-                    )
-                    bullets = list(bullets[:_bp_hi_lp])
-                    parsed["bullet_points"] = bullets
+                self.log(
+                    f"    ℹ️ V0.4.23: {len(bullets)} bullets ship (guidance "
+                    f"floor was {_bp_lo_lp}-{_bp_hi_lp} for a "
+                    f"{_src_words_lp}-word chapter) — NO CAP (user "
+                    f"directive: full coverage; dedup/consolidation are the "
+                    f"reducers, not truncation).",
+                    "INFO",
+                )
+                parsed["bullet_points"] = bullets
 
             # ── V0.06 (rig audit F7-a — GENERAL RULE: Tier-3 excerpts are
             # re-validated against the FINAL summary at ship time) ────────
@@ -834,46 +804,28 @@ class SummarizerChapterPhasesMixin:
         # probe reuse the same already-loaded _analysis_rf — no second
         # file read.
 
-        # V18.15.7.0 (Fix 3): Hard-cap bullets at 80 (gold standard ≈ 46;
-        # V18.15.6.0 shipped 212). Applied AFTER consolidation + gap-fill +
-        # postchecks so consolidation can merge duplicates first, then the
-        # cap catches overflow. The pre-V18.15.7.0 cap was 99999 (effectively
-        # unlimited since V13.45.5) — this was a misinterpretation of the
-        # "more bullets > lower coverage" rule (which was meant to prevent
-        # MINIMUM caps, not MAXIMUM caps). A cap of 80 = 1.7× the gold
-        # standard, allowing generous coverage while preventing the 212-bullet
-        # explosion. The "more bullets > lower coverage" principle is preserved
-        # — we never drop below the gold standard's 46; we only cap overflow.
-        # V18.20.3.8: the cap delegates to coverage_aware_cap (same limit,
-        # same head-cap behaviour when no analysis exists — plus the
-        # sole-cover rescue).
+        # V18.15.7.0 (Fix 3) — V0.4.23 (user directive): the 80-bullet hard
+        # cap is REMOVED. Historically bullets were capped at 80 (gold
+        # standard ≈ 46; V18.15.6.0 shipped 212) to prevent degeneration
+        # explosions. The V0.4.22 ch.4 audit then showed numeric caps
+        # silently displacing coverage-critical tail bullets (the
+        # consolidated characteristics bullet among them), and the user
+        # directive is explicit: bullets can be as long as necessary for
+        # full coverage. The anti-explosion defenses that REMAIN: the
+        # non-skippable post-gap-fill semantic dedup (V18.20.3.4), the
+        # consolidation pass (merges near-duplicates, "preserves all
+        # unique bullets"), and the V0.4.23 citation-filler floor (drops
+        # content-free bullets). This block now reports honestly when the
+        # count exceeds the historical 80 guard — never truncates.
         if bullets and len(bullets) > 80:
-            try:
-                from core.summarisation.recall_floor import coverage_aware_cap
-
-                bullets = coverage_aware_cap(
-                    bullets,
-                    _analysis_rf or "",
-                    limit=80,
-                    log_fn=lambda msg, level="WARNING": self.log(msg, level),
-                )
-                parsed["bullet_points"] = bullets
-            except Exception as _cap_e:
-                # Never break the chapter over the cap: degrade to the
-                # plain V18.15.7.0 head-cap, visibly.
-                self.log(
-                    f"    ⚠️ V18.20.3.8: coverage-aware cap failed "
-                    f"({type(_cap_e).__name__}: {_cap_e}) — plain head-cap "
-                    f"applied",
-                    "WARNING",
-                )
-                logger.warning(
-                    "coverage-aware cap failed — plain head-cap: %s: %s",
-                    type(_cap_e).__name__,
-                    _cap_e,
-                )
-                bullets = bullets[:80]
-                parsed["bullet_points"] = bullets
+            self.log(
+                f"    ℹ️ V0.4.23: {len(bullets)} bullets ship (>80 — the "
+                f"historical hard cap is REMOVED per the user's no-limit "
+                f"directive; dedup/consolidation/filler-floor are the "
+                f"reducers, never truncation).",
+                "INFO",
+            )
+            parsed["bullet_points"] = bullets
 
         # V18.20.3.13 (Phase 5 / W7+O3, .3.7 SWOT W7): thorough-theorist
         # FLOOR + one targeted gap-fill. Placement rationale: this is the

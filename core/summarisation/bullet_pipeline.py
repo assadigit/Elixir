@@ -383,18 +383,17 @@ class BulletPipeline:
             # Truncation backstop. V0.07 (output-regression fix): two
             # regimes, matching length_policy.thorough_target:
             #   * normal chapters (scaled target in the V18 regime — thorough
-            #     hi >= 800 / exec hi >= 200): keep the HISTORICAL V18 F1
-            #     pass-lines (1500 thorough / 400 exec). V0.05's 1.25x-scaled
-            #     caps cut a well-written 800-word thorough to 563 and a
-            #     350-word exec to 313 on a 1000-word chapter — part of the
-            #     user-reported "thin summary" regression.
+            #     hi >= 800 / exec hi >= 200): the thorough cap now SCALES
+            #     with the source (V0.4.23 user directive: no absolute
+            #     1500-word ceiling — a thorough summary may be as long as
+            #     necessary for full coverage; 1.25x its scaled target, the
+            #     SAME multiple the small-source regime always used).
+            #     The exec keeps the historical 400-word F1 pass-line (the
+            #     executive is a compression artifact by design).
             #   * small sources (the 97-Things rig regime): stay strictly
             #     source-scaled (1.25x the scaled target) so a 441-word
             #     chapter can never ship a 940-word thorough again.
-            if _thi >= 800:
-                _thorough_cap = 1500
-            else:
-                _thorough_cap = min(1500, int(_thi * 1.25) + 1)
+            _thorough_cap = int(_thi * 1.25) + 1
             if _ehi >= 200:
                 _exec_cap = 400
             else:

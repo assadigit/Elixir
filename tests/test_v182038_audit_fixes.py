@@ -484,20 +484,25 @@ class TestCoverageAwareCap:
 
 
 class TestCapBeforeFloorOrdering:
-    def test_cap_runs_before_floor_probe(self):
-        """Wiring policy: in the chapter-phase pipeline the coverage_aware_cap
-        call must appear BEFORE the deterministic_recall_floor call — the floor
-        measures the SHIPPED (post-cap) set."""
+    def test_no_cap_policy_and_floor_probe(self):
+        """V0.4.23 (user directive): the bullet caps are REMOVED — the
+        recall-floor probe now measures the FULL shipped set directly (no
+        post-cap truncation step exists). The wiring pin: no capping call
+        in the postchecks-and-floors phase; the probe runs on the final
+        bullets."""
         # V0.18 (Phase 5.1): the _summarize_inner body moved VERBATIM to
-        # chapter_phases.py (_phase_postchecks_and_floors) — the ordering pin
-        # follows; both calls moved together (assertions unchanged).
+        # chapter_phases.py (_phase_postchecks_and_floors).
+        # V0.4.23: coverage_aware_cap no longer appears in the phase — the
+        # honest no-cap log + the enumeration guarantee + the floor probe
+        # are the phase's final-set integrity machinery.
         src = (
             Path(__file__).resolve().parent.parent / "core" / "summarisation" / "chapter_phases.py"
         ).read_text(encoding="utf-8")
         tail = src[src.index("def _phase_postchecks_and_floors") :]
-        cap_idx = tail.index("coverage_aware_cap(")
+        assert "coverage_aware_cap(" not in tail, "no capping call in the ship phase (V0.4.23)"
         floor_idx = tail.index("deterministic_recall_floor(")
-        assert cap_idx < floor_idx, "the 80-bullet cap must run BEFORE the recall-floor probe"
+        nocap_idx = tail.index("NO CAP (user")
+        assert nocap_idx < floor_idx, "the honest no-cap report precedes the floor probe"
 
 
 # ── D. W9q: quarantine visibility ─────────────────────────────────────────

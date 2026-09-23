@@ -198,7 +198,13 @@ class TestLengthPolicy:
             lo, hi = thorough_target(w)
             assert lo <= hi
             assert hi <= max(w, 120), f"thorough target {hi} exceeds its {w}-word source"
-            assert hi <= 1200, "the historical 1200 ceiling is a hard cap"
+        # V0.4.23 (user directive — "no limit for … thorough summary"): the
+        # historical 1200-word ceiling is REMOVED; the thorough target grows
+        # with the source (0.45x) and is bounded only by never-pad /
+        # never-exceed-the-source for small sources.
+        for w in (1500, 3000, 10000):
+            _lo, hi = thorough_target(w)
+            assert hi == max(round(0.45 * w), 800), f"W={w}: no-ceiling scaling broken, got hi={hi}"
 
     def test_rig_chapters_get_tiny_targets(self):
         """The measured rig chapters (321-441 words) must be targeted at a
@@ -209,12 +215,14 @@ class TestLengthPolicy:
             _lo, hi = thorough_target(w)
             assert hi <= 220, f"a {w}-word chapter must not be told to write {hi} words"
 
-    def test_big_chapters_keep_the_documented_ceiling(self):
+    def test_big_chapters_scale_uncapped(self):
+        """V0.4.23 (user directive): the 1200-word ceiling is REMOVED — a
+        big chapter's thorough target grows with 0.45x its words."""
         from core.summarisation.length_policy import thorough_target
 
         lo, hi = thorough_target(3000)
-        assert hi == 1200
-        assert lo == 720
+        assert hi == 1350, "W=3000 scales to 0.45x (was capped at 1200)"
+        assert lo == 810
 
     def test_bullet_target_scales(self):
         """V0.07 (output-regression fix): one takeaway per ~25 words.
@@ -305,7 +313,9 @@ class TestLengthPolicy:
         import re as _re
 
         assert _re.search(r"\b\d+-\d+ word detailed analysis", rendered)
-        assert _re.search(r"\b\d+-\d+ distinct key takeaways", rendered)
+        # V0.4.23: the bullet count is a coverage FLOOR with no maximum
+        # ("at least N distinct key takeaways"), not a fixed range.
+        assert _re.search(r"at least \d+ distinct key takeaways", rendered)
 
     def test_f1_validation_caps_scale_to_source(self):
         """The F1 truncation caps scale (340-word source → ~150-190-word

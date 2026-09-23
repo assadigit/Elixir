@@ -438,7 +438,11 @@ class TestModuleBulletCapFn:
         monkeypatch.setattr(sz_mod, "_lp_count_source_words_mod", _boom)
         assert sz_mod._lp_bullet_cap_fn("some source text") is None
 
-    def test_probe_success_returns_cap(self):
+    def test_probe_success_returns_no_cap(self):
+        """V0.4.23 (user directive): there is NO bullet cap — the probe
+        helper returns 0 (= "no cap" for every consumer; ``None`` remains
+        the crash-mode fail-open value)."""
         import core.summarisation.summarizer as sz_mod
 
-        assert sz_mod._lp_bullet_cap_fn(a_chapter(paragraphs=10)) >= 4
+        cap = sz_mod._lp_bullet_cap_fn(a_chapter(paragraphs=10))
+        assert cap == 0, f"expected 0 (no cap, V0.4.23), got {cap}"

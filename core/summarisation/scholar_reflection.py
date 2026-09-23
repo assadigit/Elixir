@@ -649,6 +649,35 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                                     f"unfiltered): {_fe}",
                                     "WARNING",
                                 )
+                        # V0.4.23 (audit V0.4.22, backlog #4): the FILLER
+                        # FLOOR — same rule as the batch gap-fill path:
+                        # citation-adjacency bullets ("is cited/listed…",
+                        # "The text notes…") carry no content and must not
+                        # merge into Key Takeaways (7 of the 40 V0.4.22
+                        # bullets were exactly this shape).
+                        try:
+                            from core.summarisation.post_processing import (
+                                is_citation_filler_bullet,
+                            )
+
+                            _pre_fill = len(new_bullets)
+                            new_bullets = [
+                                nb for nb in new_bullets if not is_citation_filler_bullet(nb)
+                            ]
+                            if len(new_bullets) != _pre_fill:
+                                log(
+                                    f"    \U0001f9fd V0.4.23: Filler floor dropped "
+                                    f"{_pre_fill - len(new_bullets)} citation-"
+                                    f"adjacency bullet(s) from scholar gap-fill "
+                                    f"before merge",
+                                    "INFO",
+                                )
+                        except Exception as _ffe:
+                            log(
+                                f"    \u26a0\ufe0f V0.4.23: Scholar gap-fill filler "
+                                f"floor crashed (non-fatal): {_ffe}",
+                                "WARNING",
+                            )
                         # V0.06 (rig audit F4-b — GENERAL RULE: the source-
                         # scaled bullet budget is a HARD CAP at every
                         # insertion site): the scholar gap-fill merges at

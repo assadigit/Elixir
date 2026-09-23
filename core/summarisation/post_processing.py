@@ -695,6 +695,93 @@ def is_citation_only_fragment(bullet: str) -> bool:
     return has_citation or has_parenthetical
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.4.23 (audit V0.4.22, backlog #4): the citation-adjacency FILLER floor.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The 7 content-free filler bullets the V0.4.22 ch.4 run shipped (7 of 40!)
+# all assert the FACT OF BEING CITED/LISTED instead of any content:
+#   "One theorist: He is recognized for his important contributions to
+#    the field, with specific citations provided for his works in 1976,
+#    1980b, 1981, and 1987" / "A second theorist is cited in a list of
+#    sources alongside other investigators" / "A third is listed among
+#    specific authors…" / "A fourth: Cited as one of the primary sources…"
+#    / "The text notes …".
+# Gap-fill wrote them to satisfy a polluted author list after the deadline
+# had already skipped consolidation (which would have merged them away).
+# Patterns are deliberately HIGH-PRECISION (each matches ≥1 shipped filler;
+# a content bullet with a real predicate about the source's ideas does not
+# match any of them).
+_FILLER_PATTERNS = [
+    # passive citation-adjacency verbs: "is cited/listed/… in a list of sources"
+    re.compile(
+        r"\b(?:is|are|was|were)\s+(?:cited|listed|mentioned|named|noted|"
+        r"included|acknowledged|recognized|referenced)\b",
+        re.IGNORECASE,
+    ),
+    # "Cited as one of the primary sources" / "listed as a …"
+    re.compile(
+        r"\b(?:cited|listed|mentioned|referenced)\s+as\s+(?:one|a|an|the)\b",
+        re.IGNORECASE,
+    ),
+    # "appears in a list of sources" / "among specific authors"
+    re.compile(
+        r"\b(?:appears?|appearing)\s+(?:in|among)\s+(?:a|an|the|numerous|"
+        r"various|several|other)\s+(?:list|lists|source|sources|reference|"
+        r"references|citation|citations|author|authors|investigator|"
+        r"investigators|contributor|contributors)\b",
+        re.IGNORECASE,
+    ),
+    # "is listed among specific authors" / "among the chapter's references"
+    re.compile(
+        r"\b(?:among|amongst)\s+(?:the\s+|specific\s+|other\s+)?"
+        r"(?:authors?|sources?|references?|investigators?|contributors?)\b",
+        re.IGNORECASE,
+    ),
+    # "alongside other investigators" / "alongside a list of …"
+    re.compile(
+        r"\balongside\s+(?:other|numerous|various|several|a\s+list\s+of)\b",
+        re.IGNORECASE,
+    ),
+    # the label-voice meta filler: "The text notes …"
+    re.compile(r"\bthe\s+text\s+notes\b", re.IGNORECASE),
+    # "specific citations provided for his works"
+    re.compile(
+        r"\b(?:specific\s+)?citations?\s+(?:are\s+)?provided\b",
+        re.IGNORECASE,
+    ),
+    # "recognized for his important contributions to the field" (no content)
+    re.compile(
+        r"\b(?:recognized|known|noted|remembered)\s+for\s+(?:his|her|their)\s+"
+        r"(?:important|significant|notable|valuable|many)\s+contributions?\s+"
+        r"to\s+the\s+field\b",
+        re.IGNORECASE,
+    ),
+]
+
+
+def is_citation_filler_bullet(bullet: str) -> bool:
+    """V0.4.23: True when the bullet's main assertion is CITATION ADJACENCY
+    ("X is cited/listed/recognized…"), not content.
+
+    The gap-fill filler floor: such bullets satisfy an author-coverage
+    CHECKLIST while carrying zero information about what the author
+    actually said — the V0.20.5 "author coverage at the cost of substance"
+    failure mode returning through gap-fill (7 of the 40 V0.4.22 bullets).
+
+    Pure function, high precision: every pattern below matches at least
+    one shipped filler from the audited run; content bullets with real
+    predicates (e.g. "a theorist distinguished the target syndrome from
+    two neighboring diagnostic groups") match none.
+    """
+    if not bullet:
+        return False
+    text = str(bullet)
+    if len(text) < 15:
+        return False
+    return any(p.search(text) for p in _FILLER_PATTERNS)
+
+
 _NARRATIVE_PATTERNS = [
     # V18.20.3.9 (Phase 2 / W3 / residuals sweep): structural replacement for
     # the book-keyed given-name alternation (17 first names harvested

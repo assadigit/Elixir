@@ -82,6 +82,9 @@ _MOVED_TO_ADDITIVE = (
     "_verify_additive_section_item",
     "_verify_additive_sections",
     "_ensure_additive_sections",
+    # V0.4.23: the universal enumeration guarantee (user directive —
+    # "never miss any listed items") joined the additive-sections mixin.
+    "_ensure_enumeration_bullets",
 )
 _MOVED_TO_FLOOR = ("_thorough_theorist_floor",)
 # V0.4.19 (de-monolithization step 9/10): the coverage/gap-fill wrappers

@@ -476,6 +476,49 @@ _MISSING_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# V0.4.23 (audit V0.4.22, backlog #5): the source's OWN omission markers —
+# a sentence carrying one of these AND the concept's words asserts the
+# omission IN THE SOURCE (the 'noteworthy omission' (Cited 1989) of
+# psychotic-like episodes…"). A summary faithfully reporting that claim
+# is not making a false "missing" claim.
+_SRC_OMISSION_CONTEXT_RE = re.compile(
+    r"\b(?:"
+    r"omissions?|omitted|omits?|omitting|"
+    r"absent|absence|lacks?|lacking|"
+    r"excluded|excludes|overlooked|overlooks|ignored|ignores|"
+    r"fails?\s+to\s+(?:mention|discuss|address|consider|include|note|cover)|"
+    r"not\s+(?:mentioned|discussed|addressed|covered|included|presented)|"
+    r"no\s+(?:mention|discussion|reference|treatment|account|consideration)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _source_asserts_omission(source_text: str, concept_words: list) -> bool:
+    """V0.4.23: True when the SOURCE ITSELF asserts the omission of the
+    concept (an omission-marker sentence containing ≥50% of the concept's
+    content words).
+
+    The V0.4.22 post-check flagged "omitted psychotic-like episodes" as a
+    false "missing" claim because the concept words DO appear in the
+    source — but they appear inside the source's own "noteworthy omission"
+    statement (Cited 1989, p. 239), which the summary faithfully
+    reports. Statements-about-omissions are not summary errors.
+    """
+    if not source_text or not concept_words:
+        return False
+    try:
+        for sent in re.split(r"(?<=[.!?])\s+|\n", source_text[:200000]):
+            if not sent or not _SRC_OMISSION_CONTEXT_RE.search(sent):
+                continue
+            s_low = sent.lower()
+            hits = sum(1 for w in concept_words if str(w).lower() in s_low)
+            if hits / len(concept_words) >= 0.50:
+                return True
+        return False
+    except Exception:
+        return False
+
 
 def detect_inconsistency(
     text: str,
@@ -560,6 +603,15 @@ def detect_inconsistency(
             found = sum(1 for w in concept_words if w.lower() in src_lower)
             ratio = found / len(concept_words) if concept_words else 0
             if ratio >= 0.50:
+                # V0.4.23 (audit V0.4.22, backlog #5): STATEMENTS-ABOUT-
+                # OMISSIONS EXCEPTION — when the source ITSELF asserts the
+                # omission of these concept words ("the 'noteworthy
+                # omission' … of psychotic-like episodes"), the summary is
+                # faithfully REPORTING the source's omission claim, not
+                # making a false "missing" claim. Both V0.4.22 flags of
+                # this shape were false positives.
+                if _source_asserts_omission(source_text, concept_words):
+                    continue
                 issues.append(
                     Issue(
                         detector="consistency",

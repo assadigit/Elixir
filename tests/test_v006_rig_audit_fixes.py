@@ -389,41 +389,38 @@ class TestF3NoDoubleListing:
 
 
 class TestF4BulletCap:
-    def test_bullet_cap_matches_rig_chapter_targets(self):
-        """The rig's five chapters (344/358/439/445/412 words).
-
-        V0.07 (output-regression fix): the takeaway density moved 50 -> 25
-        words/bullet (restoring V18's 30-40 bullets for normal chapters),
-        so the rig chapters' caps are now 14/14/18/18/16 — still far below
-        the 29-36 the rig actually shipped (one bullet per ~12 words).
+    def test_bullet_cap_removed_for_all_chapters(self):
+        """V0.4.23 (user directive — bullets "can be as long as necessary
+        for full coverage"): there is NO bullet cap, for ANY chapter size.
+        The historical V0.06 caps (14/14/18/18/16 for the rig chapters,
+        40 for normal chapters) are REMOVED — the V0.4.22 ch.4 audit
+        proved the cap displaced coverage-critical bullets; dedup +
+        consolidation + the V0.4.23 filler floor are the only reducers.
         """
         from core.summarisation.length_policy import bullet_cap
 
-        assert bullet_cap(344) == 14
-        assert bullet_cap(358) == 14
-        assert bullet_cap(439) == 18
-        assert bullet_cap(445) == 18
-        assert bullet_cap(412) == 16
+        for w in (344, 358, 439, 445, 412, 1000, 20000):
+            assert bullet_cap(w) == 0, f"W={w}: expected no cap (0)"
 
-    def test_ship_time_budget_enforced_source_pin(self):
+    def test_ship_time_budget_no_truncation_source_pin(self):
         # V0.18 (Phase 5.1, step 1): the ship-time cap moved VERBATIM to the
         # postchecks phase (chapter_phases.py).
-        # V0.20 (Quality Campaign, audit V0.18 Broken Structures Defects A+B):
-        # the naive head-cap `bullets = list(bullets[:_bp_hi_lp])` was
-        # upgraded to delegate to recall_floor.coverage_aware_cap (same
-        # function the V18.15.7.0 80-bullet cap uses), so a tail bullet
-        # that is the SOLE cover of an analysis author is rescued into the
-        # capped set instead of being trimmed — fixing the V0.18 rig run's
-        # 20/37 theorist + 5/7 conclusion-item recall floor. The kp-gated
-        # guard is unchanged; the plain head-cap survives only as the
-        # except-branch fallback (coverage_aware_cap never raises, but the
-        # chapter must never die over a cap).
+        # V0.20 (Quality Campaign): the naive head-cap was upgraded to
+        # coverage_aware_cap (sole-cover rescue).
+        # V0.4.23 (user directive): the ship-time budget cap is REMOVED
+        # entirely — the block now reports honestly and never truncates;
+        # the same applies to the historical 80-bullet cap.
         s = _strip_comments(_src("core/summarisation/chapter_phases.py"))
         assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" in s
-        assert "coverage_aware_cap(" in s
-        # The fallback head-cap still exists (defensive), but the primary
-        # path now uses coverage_aware_cap.
-        assert "bullets = list(bullets[:_bp_hi_lp])" in s
+        # the no-cap policy: honest reporting, never truncation
+        assert "NO CAP (user" in s
+        assert "bullets = list(bullets[:_bp_hi_lp])" not in s, (
+            "the ship-time head-cap fallback must be GONE (V0.4.23)"
+        )
+        assert "bullets = bullets[:80]" not in s, "the 80-cap fallback must be GONE"
+        # the ship-time path no longer delegates to the capping helper
+        # (comments are stripped — only live calls would remain)
+        assert "coverage_aware_cap(" not in s, "no ship-time capping calls (V0.4.23)"
 
 
 class TestF4Tier2Cap:

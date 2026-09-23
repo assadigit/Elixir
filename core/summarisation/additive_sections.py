@@ -151,6 +151,91 @@ class SummarizerAdditiveMixin:
             "INFO",
         )
 
+    def _ensure_enumeration_bullets(self, heading: str, text: str, result: dict) -> None:
+        """V0.4.23 (user directive): guarantee EVERY enumerated list's items
+        appear in the summary — "if they are seven, seven must be captured".
+
+        Generalizes V18.15.9.1 (the consolidated conclusion bullet) from the
+        single (N)-style last-30% list to EVERY list the universal
+        enumeration detector finds (bullets, a-d, 1-4, I-VI, ordinals,
+        labeled, run-in — the full ``ENUMERATION_TEMPLATE``), across the
+        WHOLE chapter:
+
+        - For each detected list, measure per-item coverage against the
+          current bullets + thorough (the same ≥50%-word-hit heuristic the
+          recall floor uses).
+        - A list with ANY uncovered item gets ONE consolidated bullet
+          carrying ALL of its items verbatim (consolidated, not scattered —
+          the V18.15.9.1 design). A list already fully covered adds nothing
+          (this also makes it a no-op when the V18.15.9.1 conclusion bullet
+          already carries the items verbatim).
+        - Lists with < 3 items are skipped (not a list — the detector's
+          own minimum).
+
+        Deterministic — no LLM call. Runs AFTER the deterministic judge +
+        gap-fill + conclusion bullets (so the model and gap-fill have every
+          chance to cover the items naturally first), BEFORE postchecks.
+        With the V0.4.23 no-cap policy, the added bullets ship — nothing
+        displaces them.
+        """
+        from core.summarisation.enumeration import (
+            clean_enum_text,
+            detect_enumerations,
+            enumeration_item_covered,
+            stem_label,
+        )
+
+        try:
+            enums = detect_enumerations(text)
+            if not enums:
+                return
+            bullets = [str(b) for b in result.get("bullet_points", []) or []]
+            thorough = str(result.get("thorough_summary", "") or "")
+            haystack = (" ".join(bullets) + " " + thorough).lower()
+            added = 0
+            for enum in enums:
+                if enum.count < 3:
+                    continue
+                missing = [
+                    it for it in enum.items if not enumeration_item_covered(it.text, haystack)
+                ]
+                if not missing:
+                    continue  # fully covered — nothing to guarantee
+                # Build ONE consolidated bullet with ALL items (verbatim,
+                # comma-joined) — the label derives from the list's stem.
+                label = stem_label(enum.stem, enum.count)
+                items_text = "; ".join(
+                    f"({k}) {clean_enum_text(it.text)}" for k, it in enumerate(enum.items, 1)
+                )
+                consolidated = f"**{label}** — {enum.count} items from the source: {items_text}."
+                # The bullet text does NOT start with "- " (the markdown
+                # formatter adds the marker — the V18.15.9.1 double-dash
+                # lesson).
+                result.setdefault("bullet_points", []).append(consolidated)
+                added += 1
+                # refresh the haystack so later lists see this bullet too
+                haystack += " " + consolidated.lower()
+                self.log(
+                    f"    ✅ V0.4.23: enumeration guarantee — added 1 "
+                    f"consolidated bullet for a {enum.count}-item "
+                    f"{enum.style} list ({len(missing)} item(s) were "
+                    f"uncovered; all {enum.count} now carried verbatim)",
+                    "INFO",
+                )
+            if added == 0 and enums:
+                self.log(
+                    f"    ✅ V0.4.23: enumeration guarantee — all "
+                    f"{sum(e.count for e in enums)} item(s) across "
+                    f"{len(enums)} detected list(s) already covered "
+                    f"(no bullets added)",
+                    "DEBUG",
+                )
+        except Exception as _enum_e:
+            self.log(
+                f"    ⚠️ V0.4.23: enumeration-guarantee check failed (non-fatal): {_enum_e}",
+                "WARNING",
+            )
+
     # ─────────────────────────────────────────────────────────────────────────
     # V13.39.0: Anti-hallucination verification for additive sections
     # (key_distinctions + theoretical_tensions)

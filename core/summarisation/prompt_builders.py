@@ -311,6 +311,22 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                     include_thorough=_inc_thorough,
                     include_keypoints=_inc_keypoints,
                 )
+                # V0.4.23 (user directive — "never miss any listed items"): the
+                # ENUMERATED-LIST COVERAGE block. Deterministic pre-scan of
+                # the chapter's EVERY enumerated list (all template styles,
+                # whole chapter); the model is told each list's items and
+                # the full-coverage contract. Appended on BOTH prompt paths
+                # (template + inline) beside the length budget.
+                try:
+                    from core.summarisation.enumeration import (
+                        enumeration_coverage_block,
+                    )
+
+                    _enum_blk = enumeration_coverage_block(text)
+                    if _enum_blk:
+                        rendered += "\n\n" + _enum_blk
+                except Exception:
+                    pass
                 return rendered
 
         # V0.05 (F9a/F9b): the inline fallback formats build ONLY the
@@ -399,6 +415,16 @@ Do NOT describe the JSON structure. Only output the JSON object.
             include_thorough=_inc_thorough,
             include_keypoints=_inc_keypoints,
         )
+        # V0.4.23 (user directive): the ENUMERATED-LIST COVERAGE block rides
+        # both inline paths too (see the template path above).
+        try:
+            from core.summarisation.enumeration import enumeration_coverage_block
+
+            _enum_blk_inline = enumeration_coverage_block(text)
+            if _enum_blk_inline:
+                output_format += "\n\n" + _enum_blk_inline
+        except Exception:
+            pass
 
         number_instruction = """
 IMPORTANT: Focus on descriptive findings, mechanisms, relationships, and qualitative conclusions.

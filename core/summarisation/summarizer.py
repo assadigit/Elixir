@@ -80,11 +80,13 @@ from core.summarisation.summarizer_init import SummarizerInitMixin
 
 
 def _lp_bullet_cap_fn(source_text: str) -> int | None:
-    """Hard bullet cap for a chapter of this size (length_policy.bullet_cap).
+    """V0.4.23 (user directive): there is NO bullet cap — returns 0.
 
-    ``None`` (never a number) on any failure — every consumer treats
-    ``None``/``<= 0`` as "no cap" so a probe crash can never zero out a
-    chapter's bullets (fail-open, same contract as the other budget probes).
+    Historically returned ``length_policy.bullet_cap`` (the source-scaled
+    hard cap). Every consumer treats ``None``/``<= 0`` as "no cap"
+    (fail-open) — the 0 now means exactly that, deliberately: bullets can
+    be as long as necessary for full coverage (dedup/consolidation/filler
+    floor are the reducers, never a numeric cap).
     """
     try:
         return _lp_bullet_cap_mod(_lp_count_source_words_mod(source_text or ""))

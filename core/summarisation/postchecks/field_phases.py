@@ -198,7 +198,9 @@ def postcheck_bullets(bullets: list[str], ctx: PhaseCtx, report: PostCheckReport
         # agnostic; runs after v0.20.5 to catch the bug class v0.20.5 misses.
         bp_str, stray_quote_v2_issues = repair_stray_quotes_v2(bp_str, label)
         stray_quote_issues = (stray_quote_issues or []) + (stray_quote_v2_issues or [])
-        _, year_issues = validate_years(bp_str, label, source_authors)
+        # V0.4.23: source_text threaded for the raw-source verbatim exemption
+        # (text-quoted-name class — see validate_years docstring).
+        _, year_issues = validate_years(bp_str, label, source_authors, source_text or "")
         # V18.2.17 Fix 7: attribution verification (source-aware).
         _, attrib_issues = (
             verify_attribution(
@@ -538,7 +540,8 @@ def postcheck_exec(executive_summary: str, ctx: PhaseCtx, report: PostCheckRepor
     # V0.20.6 (brainstorm D2+): even-count mismatches + long-span flag.
     exec_str, exec_stray_quotes_v2 = repair_stray_quotes_v2(exec_str, "exec")
     exec_stray_quotes = (exec_stray_quotes or []) + (exec_stray_quotes_v2 or [])
-    _, exec_year = validate_years(exec_str, "exec", source_authors)
+    # V0.4.23: raw-source verbatim exemption (see validate_years docstring).
+    _, exec_year = validate_years(exec_str, "exec", source_authors, source_text or "")
     # V18.2.17 Fix 7: attribution verification.
     _, exec_attrib = (
         verify_attribution(
@@ -714,7 +717,8 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
                 tho_str, "thorough", source_text or "", _s
             )
             tho_stray_quotes = (tho_stray_quotes or []) + (d3_issues or [])
-    _, tho_year = validate_years(tho_str, "thorough", source_authors)
+    # V0.4.23: raw-source verbatim exemption (see validate_years docstring).
+    _, tho_year = validate_years(tho_str, "thorough", source_authors, source_text or "")
     # V18.2.17 Fix 7: attribution verification.
     _, tho_attrib = (
         verify_attribution(

@@ -1,5 +1,111 @@
 # Changelog
 
+## V0.4.23 — the no-limit coverage release: every list item captured, no bullet caps, the 6-item audit backlog fixed
+
+> **The release:** the V0.4.22 ch.4 audit (7/10 — the first sub-9 score
+> since V0.3) produced a 6-item code-fix backlog, and the user added two
+> directives of their own: **"make no limit for bullet point quantity or
+> thorough summary — they can be as long as necessary for full
+> coverage"**, and **"catch every listed text in any chapter — bullet
+> points, a b c d, 1 2 3 4, II IV V VI — create a template for all
+> possible ways authors and scientists might use; never miss any listed
+> items; if they are seven, seven must be captured."** This release
+> delivers all of it: the six audit fixes, the no-limit policy, and the
+> universal enumeration-capture system.
+
+**1. The author garbage filter (audit backlog #1 — kills H1 at the root):**
+
+  - New `core/preprocessing/author_garbage.py`: month names ("May
+    1975" matched the Author-Year citation patterns and shipped a
+    fabricated theorist), ALL-CAPS tokens (BIOA, DSM), mixed-case
+    mirrored-table strings (JOQuUI, aTQNJ), embedded digits
+    (JeuoNes0A), non-Latin scripts, and (opt-in, summary side)
+    implausible years ("8225") are filtered at the extraction root —
+    every consumer (judge, gap-fill hunting, recall floor,
+    check_coverage) sees a clean list.
+  - Citation years are now ASCII-only (`[0-9]`, not `\d`): Python's
+    `\d` matches Arabic-Indic digits, which let the mirrored TABLE 4-1
+    fragments "BIOA 0۲۲۶" and "Tey ۸۶8۵" pass as citations.
+  - The analysis report prints an honest "Garbage-filtered author
+    candidates: N (name (reason); …)" line for the conversion log.
+  - `validate_years` (summary side) gained the same stop-lists plus a
+    raw-source verbatim exemption: a name quoted in the chapter prose
+    (Prichard via a 1975 secondary source) is no longer flagged as
+    "name corruption"; the real Dukhaim-class corruption still is.
+
+**2. Page-ref estimate honesty (backlog #2 — H4):** the deterministic
+  KD/TT page injector now ships `(p. ~77)` — the tilde visibly marks an
+  ESTIMATED locator (position-based, from start_page/end_page), never a
+  bare `(p. 77)` that reads as a verified citation. Idempotent on
+  re-runs; model-derived refs are untouched.
+
+**3. Active-subject veto precision (backlog #3 — both V0.4.22
+  misfires):** the veto gained (a) a possessive-attribution escape —
+  "AuthorB's (1969, 1973) attachment theory" attributes the theory
+  possessively with no verb, so TRUE bullets are no longer killed
+  because a NEARBY sentence attributes something else to another
+  theorist; (b) the confirmation overlap is now measured against the
+  holder's OWN SENTENCE (not the whole 2-sentence span); (c) "AuthorG
+  et al.:" subjects parse the real surname. The real parenthetical-
+  promotion vectors (Klein, Searles classes) still veto.
+
+**4. The citation-filler floor (backlog #4 — 7 of 40 shipped bullets):**
+  gap-fill bullets whose main assertion is citation adjacency ("is
+  recognized for his important contributions…", "is cited in a list of
+  sources…", "The text notes…") are rejected at acceptance time —
+  wired into the batch gap-fill (with a `filler=` telemetry counter)
+  and the scholar gap-fill merge.
+
+**5. Statements-about-omissions (backlog #5):** the false-"missing"
+  heuristic exempts omissions the SOURCE ITSELF asserts — "the
+  'noteworthy omission' … of psychotic-like episodes" reported by the
+  summary is faithful reporting, not a false missing claim. Genuine
+  false-missing claims still flag.
+
+**6. NO LIMITS (user directive — supersedes backlog #6):** every bullet
+  cap is REMOVED — `bullet_cap()` returns 0, the V0.06 source-scaled
+  ship-time cap and the V18.15.7.0 80-bullet cap are gone (replaced by
+  honest reporting lines), and every insertion-site budget no-ops. The
+  count reducers are the non-skippable semantic dedup, consolidation,
+  and the filler floor — never a numeric cap. The prompt now states a
+  coverage FLOOR ("at least N bullets — there is NO MAXIMUM"), the
+  thorough summary lost its 1200-word ceiling (0.45x the source,
+  floored at 800, uncapped) and F1's 1500-word truncation backstop
+  scales with the target. The consolidated characteristics bullet that
+  the 40-cap silently displaced in V0.4.22 now ships — nothing
+  displaces it.
+
+**7. The universal enumeration-capture system (user directive):** new
+  `core/summarisation/enumeration.py` — the documented template of
+  EVERY enumeration convention (bullets, Arabic 1./1)/(1), letters
+  a./a)/(a), A./A), Roman I-IV / i-iv / (i), Greek α-γ, labeled "Step
+  1:"/“Criterion A”, outline 1.1, run-in "(1) … ; (2) …" lists, and
+  First/Second/Finally ordinal discourse) with a whole-chapter detector
+  (sequential-marker validation, wrapped-item continuation, loose
+  markdown lists, mirrored-table garbage guard) and a four-layer
+  guarantee:
+
+  - **Prompt injection:** an ENUMERATED-LIST COVERAGE block on every
+    primary prompt — each detected list's items, with the contract "if
+    a list has seven items, all seven must be captured, never six."
+  - **Ship-time guarantee:** `_ensure_enumeration_bullets` — any list
+    with an uncovered item gets ONE consolidated bullet carrying ALL
+    its items verbatim (the V18.15.9.1 "consolidated, not scattered"
+    design, generalized to every style and the whole chapter).
+  - **Recall floor:** a new probe measures per-item recall across all
+    detected lists (bullets + thorough) — the honest number in the
+    conversion log ("enumerated items (all lists, whole chapter)
+    X/Y").
+  - On the real ch.4 ground truth the detector finds 21 lists,
+    including the six-criteria, seven-feature, and DSM (i)(ii)(iii)(iv)
+    lists, with zero false positives from the OCR-mirrored table.
+
+  Suite: **5,784 passed / 0 failed** (was 5,679; +105 new — 5,679 + 105 = 5,784).
+  Gates: ruff check + format clean; `make eval-check` OK (golden
+  outputs + eval baseline re-frozen per the documented
+  intentional-change procedure — the academic golden chapter now ships
+  one previously-capped bullet).
+
 ## V0.4.22 — the ABI guard no longer locks you out (second field report, screenshot 4343.png)
 
 > **The release:** the same user hit the V0.4.21 dialog — and this time

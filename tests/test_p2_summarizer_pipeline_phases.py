@@ -1581,19 +1581,34 @@ class TestShipTimeBulletCap:
             monkeypatch.setattr(rf_mod, "coverage_aware_cap", _cap_boom)
         return s._summarize_inner(heading, source), logs
 
-    def test_over_80_bullets_capped_via_coverage_aware_cap(self, tmp_path):
+    def test_over_80_bullets_ship_uncapped(self, tmp_path):
+        """V0.4.23 (user directive — bullets "can be as long as necessary
+        for full coverage"): the historical 80-bullet hard cap is REMOVED.
+        The B3 merged flood (3 × 45 distinct grounded bullets = 135) ships
+        IN FULL, with the honest no-cap policy log."""
         result, logs = self._run(tmp_path)
         assert result.success is True
         assert_logged(logs, "trying multi-sample voting (B3)")
         # F9a: keypoints not requested → the expansion gate stands down.
         assert_logged(logs, "Keypoints not requested — bullet expansion disabled")
-        # The B3 merged flood (3 × 45 distinct grounded bullets) is hard-capped
-        # at 80 at ship time (V18.15.7.0 via the V18.20.3.8 coverage-aware cap).
-        assert len(result.bullet_points) == 80
+        # V0.4.23: NO numeric truncation — the full flood minus only the
+        # QUALITY drops ships: 135 generated - 25 scar/label-stub postcheck
+        # drops = 110 (the reducers are dedup/consolidation/quality floors,
+        # never a numeric cap).
+        assert len(result.bullet_points) == 110, (
+            f"the flood must ship uncapped (135 - 25 quality drops), "
+            f"got {len(result.bullet_points)}"
+        )
+        assert_logged(logs, "bullets ship (>80")
 
-    def test_coverage_aware_cap_failure_degrades_to_plain_head_cap(self, tmp_path, monkeypatch):
+    def test_no_cap_policy_is_truncation_free(self, tmp_path, monkeypatch):
+        """V0.4.23: the ship-time blocks never truncate — the honest policy
+        log fires and the full set survives even when the historical cap
+        helper would have exploded (it is no longer in the ship path at
+        all; the monkeypatch proves the independence)."""
         result, logs = self._run(tmp_path, monkeypatch=monkeypatch)
         assert result.success is True
-        assert_logged(logs, "coverage-aware cap failed")
-        assert_logged(logs, "plain head-cap applied")
-        assert len(result.bullet_points) == 80
+        assert_logged(logs, "bullets ship (>80")
+        assert len(result.bullet_points) == 110, (
+            f"expected 110 shipped (135 - 25 quality drops), got {len(result.bullet_points)}"
+        )

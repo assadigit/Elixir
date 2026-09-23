@@ -39,6 +39,7 @@ def validate_years(
     text: str,
     field_label: str,
     source_authors: list[str] | None = None,
+    source_text: str = "",
 ) -> tuple[str, list[Issue]]:
     """Validate 4-digit years and ``(Author Year)`` citations.
 
@@ -60,6 +61,15 @@ def validate_years(
        The fuzzy match uses casefold equality first, then a simple normalized
        Levenshtein-ish check (rapidfuzz if available, else a startswith
        fallback). Authors shorter than 3 chars are skipped (too noisy).
+
+       V0.4.23 (audit V0.4.22, log-audit false positives): two exemptions
+       before flagging —
+       (a) month names / ALL-CAPS acronyms / garbage shapes ("May (1980)",
+           "DSM-III (1980)") are not author names at all;
+       (b) a name that appears VERBATIM in the raw source text (a
+           19th-century alienist is quoted in prose via a 1975 secondary
+           source — present in the chapter, absent from the citation list
+           because the citation regex misses text-quoted names).
 
     Args:
         text: the summary text to scan.
@@ -117,6 +127,13 @@ def validate_years(
                 author_clean = author_clean.strip(".,;:")
                 if len(author_clean) < 3:
                     continue
+                # V0.4.23 (audit V0.4.22): exemption (a) — months, ALL-CAPS
+                # acronyms ("DSM" from "DSM-III (1980)"), mirrored-table
+                # shapes: not author names, not name corruption.
+                from core.preprocessing.author_garbage import garbage_author_reason
+
+                if garbage_author_reason(author_clean, year, check_year=True):
+                    continue
                 # Skip obvious non-names (the regex can catch "In (1950)" etc.)
                 if author_clean.split()[0].lower() in {
                     "in",
@@ -144,6 +161,19 @@ def validate_years(
                 }:
                     continue
                 if _author_in_source(author_clean, src_lower):
+                    continue
+                # V0.4.23 (audit V0.4.22): exemption (b) — the name appears
+                # VERBATIM in the raw source text. The citation extractor
+                # misses text-quoted names (a quoted passage relayed via a
+                # secondary source); presence in the chapter itself is
+                # grounding enough — only names absent from BOTH the
+                # citation list AND the chapter text are corruption
+                # suspects (the real Dukhaim case).
+                if source_text and re.search(
+                    r"\b" + re.escape(author_clean) + r"\b",
+                    source_text,
+                    re.IGNORECASE,
+                ):
                     continue
                 key = author_clean.casefold()
                 if key in seen_flags:
@@ -1089,6 +1119,65 @@ def _content_overlap(bullet: str, span: str, exclude: set) -> float:
     return hits / len(words)
 
 
+# V0.4.23 (audit V0.4.22, backlog #3): possessive-attribution matcher —
+# "AuthorB's (1969, 1973) attachment theory" attributes the noun phrase
+# to the named author even though the name holds no attribution VERB. The
+# active-subject veto used to miss this entirely and killed TRUE bullets
+# (the V0.4.22 run dropped "AuthorB provided the attachment theory … that
+# AuthorS …" because a NEARBY sentence attributed something to AuthorM —
+# the name-matched span, not the attribution, drove the veto).
+_POSS_YEAR_PAT = r"(?:\((?:[^)\d]*[0-9]{4}[^)]*)\))?"
+
+
+def _possessive_attribution_matches(surname: str, span: str, claim_text: str) -> bool:
+    """True when ``span`` attributes claim-adjacent content to ``surname``
+    via a POSSESSIVE construction ("Name's [(Year…)] <noun phrase>").
+
+    Direction of the overlap check is DELIBERATELY reversed relative to the
+    veto's confirmation check: the attributed NOUN PHRASE's content words
+    must appear in the bullet's claim (≥50%) — "the attachment theory" ⊂
+    "AuthorB provided the attachment theory (1969, 1973) that AuthorS…".
+    A bare parenthetical citation ("(see also AuthorF 1960)") is NOT an
+    attribution and never matches (no possessive).
+
+    DELIBERATELY no "of Name" form: "the works of AuthorK (1948)" is a
+    CITATION LIST (the classic promotion vector — the claim holder
+    "integrated the works of"), not an attribution; only the possessive
+    form ("AuthorB's (1969) attachment theory") asserts ownership.
+    """
+    try:
+        if not surname or not span:
+            return False
+        _excl = {surname.lower()}
+        claim_lower = (claim_text or "").lower()
+        # "Name's [(Year…)] <noun phrase, up to 5 words>" — the attributed
+        # phrase must share at least TWO content words with the claim (a
+        # lone common noun like "theory" matches any claim mentioning
+        # "theory" and is NOT attribution evidence).
+        for m in re.finditer(
+            r"\b"
+            + re.escape(surname)
+            + r"['\u2019]s?\s*"
+            + _POSS_YEAR_PAT
+            + r"\s*"
+            + r"((?:[A-Za-z'\u2019\-]{2,}\s+){0,4}[A-Za-z'\u2019\-]{2,})",
+            span,
+        ):
+            phrase_words = [
+                w.strip("'\u2018\u2019,.;:()\"").lower()
+                for w in re.findall(r"\b\w{4,}\b", m.group(1))
+            ]
+            phrase_words = [w for w in phrase_words if w and w not in _excl]
+            if not phrase_words:
+                continue
+            hits = sum(1 for w in phrase_words if w in claim_lower)
+            if hits >= 2 and hits / len(phrase_words) >= 0.50:
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def _resolve_pronoun_antecedent(
     span: str,
     claimed_surname: str,
@@ -1442,6 +1531,22 @@ def detect_parenthetical_promotion(
       the '<concept>'…`` — source: "…according to AuthorG, is the
       longing to abandon… (see also AuthorF 1960 in this connection)"
 
+    V0.4.23 (audit V0.4.22, backlog #3) — TWO precision upgrades so the
+    veto stops killing TRUE bullets (both V0.4.22 misfires are pinned in
+    tests/test_v00423_veto_precision.py):
+
+    1. **Possessive-attribution escape** — "AuthorB's (1969, 1973)
+       attachment theory" attributes the theory to AuthorB with no verb;
+       the veto previously required a VERB and killed the TRUE
+       "AuthorB provided the attachment theory…" bullet because a NEARBY
+       sentence attributed something else to AuthorM.
+    2. **Local holder-clause overlap** — confirmation (c) now measures
+       overlap against the HOLDER'S OWN CLAUSE (the 250 chars from the
+       holder's match), not the whole 2-sentence span: an AuthorM
+       attribution somewhere in the span no longer confirms an
+       AuthorB-content bullet whose overlap words came from a different
+       clause.
+
     Args:
         bullet: the gap-fill bullet (``"Name: claim"`` or with leading dash).
         source_text: the full chapter source text.
@@ -1467,7 +1572,19 @@ def detect_parenthetical_promotion(
         claimed, claim_text = parsed
         if len(claim_text) < 20:
             return None  # too thin to confirm content overlap
-        claimed_surname = claimed.split()[-1]
+        # V0.4.23: "AuthorG et al." — the surname is the token BEFORE
+        # "et al." (the old last-token parse yielded "al.", which matched
+        # no source sentence and made the whole veto a no-op for et-al
+        # subjects — or worse, matched arbitrary "al." fragments).
+        _claimed_toks = claimed.split()
+        if (
+            len(_claimed_toks) >= 2
+            and _claimed_toks[-1].lower().rstrip(".") == "al"
+            and _claimed_toks[-2].lower() == "et"
+        ):
+            claimed_surname = _claimed_toks[-3] if len(_claimed_toks) >= 3 else _claimed_toks[0]
+        else:
+            claimed_surname = _claimed_toks[-1]
 
         src_sentences = re.split(r"(?<=[.!?])\s+", source_text)
         confirmed: tuple[str, str] | None = None
@@ -1485,16 +1602,28 @@ def detect_parenthetical_promotion(
                 has_genuine_subject = True
                 continue
 
+            # (a2) V0.4.23: possessive attribution escape —
+            # "AuthorB's (1969, 1973) attachment theory" attributes the
+            # content to the claimed author WITHOUT any verb. If the span
+            # attributes claim-adjacent content to the claimed surname in
+            # possessive form, the bullet is correctly attributed → no
+            # veto (the V0.4.22 attachment-theory misfire).
+            if _possessive_attribution_matches(claimed_surname, span, claim_text):
+                has_genuine_subject = True
+                continue
+
             if confirmed is not None:
                 continue  # already confirmed; keep scanning for the veto
 
             # (b) Who REALLY holds an attribution verb / "according to" here?
             holder: str | None = None
+            holder_start: int | None = None
             for sm in _SRC_ACTIVE_SUBJECT_RE.finditer(span):
                 cand = sm.group(1)
                 if cand in _NON_NAME_CAPS or cand == claimed_surname:
                     continue
                 holder = cand
+                holder_start = sm.start()
                 break
             if holder is None:
                 pos_subj = _SRC_POSSESSIVE_SUBJECT_RE.search(span)
@@ -1504,6 +1633,7 @@ def detect_parenthetical_promotion(
                     and pos_subj.group(1) not in _NON_NAME_CAPS
                 ):
                     holder = pos_subj.group(1)
+                    holder_start = pos_subj.start()
             if holder is None:
                 pron_subj = _SRC_PRONOUN_SUBJECT_RE.search(span)
                 if pron_subj:
@@ -1516,13 +1646,26 @@ def detect_parenthetical_promotion(
                 acc = _SRC_ACCORDING_TO_RE.search(span)
                 if acc and acc.group(1) != claimed_surname and acc.group(1) not in _NON_NAME_CAPS:
                     holder = acc.group(1)
+                    holder_start = acc.start()
             if not holder or holder == claimed_surname:
                 continue
 
-            # (c) Same content? (≥30% content-word overlap, claim minus the
-            # claimed name.)
+            # (c) Same content? V0.4.23: the overlap is measured against
+            # the HOLDER'S OWN SENTENCE (from the holder's match to the
+            # next sentence boundary, capped at 250 chars), not the whole
+            # 2-sentence span — the competing attribution must actually be
+            # attributed THE CLAIM'S content in its own clause. The old
+            # whole-span overlap is what confirmed the attachment-theory
+            # misfire (the other theorist's attribution in one clause +
+            # the overlap words scattered across the other).
             _excl = {claimed_surname.lower()}
-            if _content_overlap(claim_text, span, _excl) < 0.30:
+            if holder_start is not None:
+                _window = span[holder_start : holder_start + 250]
+                _send = re.search(r"[.!?]\s+(?=[A-Z(])", _window)
+                _holder_clause = _window[: _send.start() + 1] if _send else _window
+            else:
+                _holder_clause = span
+            if _content_overlap(claim_text, _holder_clause, _excl) < 0.30:
                 continue
 
             confirmed = (claimed_surname, holder)
