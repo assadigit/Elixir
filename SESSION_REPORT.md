@@ -189,4 +189,94 @@ Analysis artifacts: `/home/z/audit-tools/findings_table.md` (46 rows, sections A
 
 ---
 
-*(Phases 2–6 sections appended below as work completes.)*
+## Phase 5 — System Design Review
+
+Head @ `8caa8f7`, suite 5,834 P / 0 F / 55 S. Every number below re-verified against the tree (Grep tool + targeted reads), not copied from earlier phases; deltas vs the Phase-0 baseline are called out.
+
+### 1. Architecture (layering, SoC, coupling/cohesion, dependency direction)
+
+**Layering.** `main.py` (318 ln: env hardening, torch-before-Qt CUDA probe, crash hooks, `Bootstrap`, `ui_qt.app.run`) → `controller.py` (1,155 ln, the threading bridge: callbacks in, `ConversionRequest` out) → `core.pipeline.Converter` (orchestration only, post-Phase-3) → the domain packages (`summarisation` 8-layer anti-hallucination, `llm`, `pdf`, `ocr`, `outputs`, `translation`, `tts`, `segmentation`, `grounding`, `system`) → `utils` as the leaf. **Import direction verified clean:** zero runtime `core → ui_qt` imports (the 3 Grep hits are docstrings: `token_estimator.py`, `bootstrap.py`, `utils/provider_catalog.py`); `controller.py` imports only `core` + `utils` (controller.py:30-44); `ui_qt` is the sole upward layer (33 files import controller); `main.py` is the only module both sides touch. One sanctioned exception: two *lazy* `utils → core.system.provenance` imports inside `utils/logging.py:317,352` (log stamping) — cycle-safe by construction.
+
+**Coupling.** High fan-in hubs (Phase-0 AST dep graph): `core.models` 85, `utils.settings` 83, `controller` 38, `utils.network` 36, `utils.logging` 34, `utils.atomic_io` 31. `core.models` as the shared vocabulary and the `utils` leaf are healthy shapes; **W9 stands** — `utils/settings.py` is a 1,608-LOC hub every module touches (schema is split out into `settings_schema.py`, 373 ln of validation + env-var resolution, but the store/defaults/migration mass remains).
+
+**Monolith status (post-Phase-3/4).** `converter_impl.py` 2,175 → **1,577** (`convert()` 1,054 → **601**, −43%); `summarizer.py` still 1,990 (hot spot `_summarize_inner` 349 ln — deferred by design, next round); `segmenter` 2,084 (0 churn, cohesive), `text_preprocessor_concepts` 2,444 (frozen, 99 %, pure functions). Verdict: one of the two pain-ranked monoliths decomposed; the second is a single-method problem, not a scattered one.
+
+**Registry patterns (the good part).** `core/outputs/registry.py` — `OUTPUT_REGISTRY` = **21 `OutputSpec`s (4 core + 17 studio; 5 deprecated → 16 active)**, one frozen-data module that replaced four hand-maintained lists that used to silently disagree (its own docstring); wizard Step 4, the settings Output-Studio section and `controller._REGENERATE_MAP` all derive from it. `core/llm/registry.py` (622 ln) — the *model-capability* registry: context window resolved per (model, backend) through a 6-rung data ladder (user override → `/api/show` probe → Modelfile harvest → static table → name-pattern hints → backend default) with a thread-safe LRU discovery cache; stdlib-only at module level by rule. Provider *construction* is a name-keyed factory (`create_provider`, `llm_provider_impl.py:196`) with lazy per-branch imports (the documented cycle-break, :213-216).
+
+**Converter composition (post-Phase-3).** `class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReportingMixin)` (`converter_impl.py:146`) + 12 `conversion/*` modules — 7 stage runners (`extraction`, `segmentation`, `summarization`, `postprocess`, `visual_features`, `output_runner`, `output_save`) + the 3 Phase-3 extractions (`reporting`, `summary_outputs`, `finalization`) + `settings_logger`, with `conversion/__init__.py` as the registry and `ConversionContext` (runtime-checkable Protocol) pinning the delegate-facing surface. SoC at the pipeline layer is now genuinely good.
+
+**Known duality (documented).** Two chapter matchers coexist: `Converter._match_chapter` (4-rung rapidfuzz ladder, 22 characterization pins) vs `core/segmentation/chapter_matcher.ChapterMatcher` (473 ln, 5 rungs incl. page-based fallback). `chapter_matcher.py:4-7` documents exactly this split (it unified the *stage-1/stage-2* duplication; the converter's own matcher is a separate rung), but `max(3, len//2)` and the 95 % fuzzy threshold are duplicated in both (Phase-4 E7).
+
+**Cohesion verdicts.** `core/llm` cohesive + hardened (95 % cov); `core/summarisation` large but mixin/runner-decomposed along the S4 pattern; `core/pdf` cohesive; `core/outputs` registry-driven (weak spot: `service_formatters.py` 8 % cov); `core/pipeline` now thin orchestration; `core/system` a grab-bag of *process* services (bootstrap/preflight/secrets/thermal/hardware/crash) — acceptable process-level cohesion.
+
+### 2. Error handling & resilience
+
+**Exception strategy.** Baseline census: 140 hard swallows (`except …: pass`), 84 of them `except Exception` + pass; broad except upper bound 266. **Post-Phase-4 measured: 130** (core 75, utils 11, ui_qt 40, controller 1, main 3) — the deletions removed ~10. The house remedy exists but is sparsely used: `log_swallow()` / `swallow()` (`utils/error_trace.py:76,134` — operation-named, caller file:line captured, traceback always attached) has only **~13 runtime call sites** (all in `core/summarisation` + `core/ocr`) vs the 130 hard swallows — <10 % adoption.
+
+**Top-3 swallows (Phase-4 E1, all re-verified):**
+1. `core/pipeline/conversion/summarization.py:1066-1067` — `except Exception: pass` around book-summary **provenance stamping** ("stamping must never break the write"): a failure ships an unstamped artifact *silently* — a Rule-4 violation with no log at all.
+2. `core/pipeline/chapter_checkpoint.py:454-455` — `except OSError: pass  # unreadable → rewrite` falls through to `atomic_write_text` (:456): a transient AV/indexer lock on a *completed* chapter file can clobber the "completed chapters are never touched" guarantee (:444-453).
+3. `controller.py:944-947` — transform failures silently keep the raw, unvalidated value in the request.
+
+**LLM boundary — strong.** `core/llm/retry.py` (580 ln): tenacity-backed `@retry_llm_call` (exponential + jitter, 2 s → 30 s ± 2 s) with retryable/non-retryable classification, and a degraded 2-attempt **linear** fallback (WARNING at import) when tenacity is absent. `docs/LLM_HARDENING.md` is the standing evidence matrix: every provider path (ollama, llamacpp, openai-compat serving openrouter/openai/openai_compatible, freellmapi ×2 paths, claude, plus the dispatcher leaf functions) has explicit timeout + classified retry + backoff, pinned by 36 tests asserting at the mocked HTTP boundary. Zero remaining ad-hoc `time.sleep(N*(attempt+1))` retry loops.
+
+**Fail-fast policies.** VRAM overbudget: `local.vram_overbudget_policy` = ask (default; interactive "Proceed anyway" stamps the request, queue/service starts cannot ask → abort) / abort / proceed (`converter_impl.py:410-488`) — checked *before any LLM call*. Map-phase wall-clock budget: `local.map_phase_max_seconds` default **1800 s**, enforced at wave granularity with a loud `⚠️ Map‑Reduce ABORTED` (`summarizer_chunking.py:383`, `map_reduce.py:284-289`), derived to agree with any active chapter deadline.
+
+**Graceful degradation.** keyring absent → plaintext settings.json + one-time WARNING (`secrets.py:51`); tenacity absent → linear retry (WARNING); pydantic absent → manual dict-shape validation (`structured_io._manual_validate`); langextract absent → grounding layers 1-7 + guidance HTML (`evidence_map.py:125`); fitz absent → guarded lazy imports, feature-level skip.
+
+**Verdict:** strong at the LLM boundary and the policy gates; weak in the long tail of ~130 best-effort blocks, of which exactly three are load-bearing enough to fix now (below).
+
+### 3. Config & secrets; logging & observability
+
+**Settings.** `~/.elixir/settings.json` + `Settings` singleton with `batch()` atomic multi-key writes (`utils/settings.py:1516`); defaults (1,608-LOC hub), validation + env-var resolution + Levenshtein typo hints (`settings_schema.py`), and legacy migrations (e.g. NLLB→ollama) all in the W9 hub. **Secrets:** 11 credential paths (`_SECRET_PATHS`, `core/system/secrets.py:64-76`) routed through `get_secret`/`set_secret` — OS keychain when keyring is present, plaintext fallback with WARNING + auto-migration of legacy plaintext values into the keychain. Zero secrets in code (census). **Prompts:** 56 versioned `.md` templates in `prompts/` + `core/summarisation/prompt_manager.py`; `scripts/prompt_manifest.py` writes a SHA-256 manifest and `tests/test_golden_freeze.py:126` fails on drift; the eval baseline additionally pins `prompt_manifest_hash`.
+
+**Observability.** Structured logging (`utils/logging.py`, incl. `StructuredJsonFormatter`); per-run `{book}.conversion.log.md` (`ConversionLogger`); `drops.jsonl` quarantine trail (every drop: text, stage, threshold, measured overlap — README:233); provenance stamps on every artifact (Rule 4) + visible footers; crash-report zips; response/embedding-cache hit-rate summaries + eviction counters per run; thermal/VRAM telemetry.
+
+**Weaknesses.** (a) **Timeout scatter:** 77 `timeout=N` literals / 12 distinct values (grew from 65/11 at census) — proposed fix: a policy table in a new leaf `core/system/timeouts.py` + settings override namespace. (b) **G:\ duplication:** the same machine-specific defaults live in `utils/settings.py:781-783` *and* `core/outputs/podcast_audio.py:169-183` (`C:\piper…`, `G:\Program Files\neutts-air…`) — drift risk, one source of truth missing. (c) Minor doc drift found while verifying: `step4_outputs.py:29` still says "15 Output Studio types + 4 core = 19 total" — the registry now holds 17 + 4 = 21.
+
+### 4. Extensibility
+
+**(a) New OUTPUT type** — walk: one `OutputSpec` in `core/outputs/registry.py` (drives the wizard checkbox, the settings toggle and the controller regenerate map — no separate UI edits, the V10.29.0 design); a generator module in `core/outputs/`; one `OUTPUT_PLAN` tuple in `core/pipeline/conversion/output_runner.py:31` (attr, status, log message, generator class name, subfolder attr); `ConversionRequest.output_<key>` + `OutputPaths` in `core/models`; a default in `utils/settings.py`; a `prompts/outputs/*.md` template (+ manifest regen) if LLM-driven. **≈ 6 files of wiring** (registry, generator, output_runner, models, settings, prompt), plus tests — `test_conversion_modules.py:612` pins `OUTPUT_PLAN` length, so the plan entry and its pin move together.
+
+**(b) New LLM PROVIDER** — a provider module subclassing `LLMProvider` (`llm_provider_impl.py`) + one `elif` branch in `create_provider` (:196) with settings/keyring keys; add the name to `PROVIDER_TO_BACKEND` (`core/llm/registry.py:110-120`) for window resolution; UI dropdown + settings section. The openai-compat class already serves three labels + freellmapi by configuration alone (`:280-307`).
+
+**(c) New TTS engine** — subclass `TTSEngine` (`core/tts/engine.py:87`; Kokoro/Piper/Coqui in-module, NeuTTS/Qwen/VibeVoice as subprocess engines alongside) + a routing entry in `TTSRouter` (`engine.py:469`) + settings keys.
+
+**Verdict:** a genuine plug-in architecture at the three extension seams — the cost of extending sits in the test suite (characterization culture: registry pins, `OUTPUT_PLAN` length pins, manifest hashes), not in the wiring. That is the right trade.
+
+### 5. Scalability
+
+**Model:** synchronous QThread workers (`ui_qt/components/base_worker.py`, `simple_worker.py`) — correct for a single-user desktop app; the asyncio lever (`core/llm/async_provider.py`, 445 ln, fully hardened per LLM_HARDENING §3) is **deliberately unwired** (ROADMAP_V0.12 §6.2; full asyncio migration explicitly rejected, `async_provider.py:33-38`). **Parallel-stage levers (V0.19):** map waves **−57.0 %** (315.8 s → 135.8 s, 13 chunks), B3 overlap **−44.2 %**, speculative scholar **−23.3 %** (the mathematical cap for behavior-preserving overlap) — outputs **byte-identical ON vs OFF on all 6 golden chapters**, every lever OFF by default (`summarisation.parallel_stages`, max_workers clamp 1-8; README:282-295). **Cross-book:** `queue.max_parallel_books` (default 2, clamp 1-4) — cloud providers only, local VRAM never contested. **VRAM guardian** before any call (§2). **Memory:** LRU caches with explicit bounds + telemetry — `embedding_cache` (551 ln, max 5,000 entries, `popitem(last=False)`) and `response_cache` (258 ln, hit-rate + eviction counters — the budget-tuning signal); `.checkpoint.json` phase resume written atomically (`checkpoint.py:209-212`), chapter-level `chapter_checkpoint` with the untouched-guarantee.
+
+**Bottlenecks:** LLM time is **98.5 % of chapter wall-clock** (README Phase-1 baseline) — so the levers above are the only lever that matters; blocking sleeps are documented hazards: `openai_compat_provider.py:264-265` (Batch API 60 × 10 s poll — live provider) and `vision_figure_extractor.py:267,295` (2 s × (n+1) retries) — fine on sync QThreads, a hazard only if async_provider is ever wired (E6).
+
+### 6. Testing gaps
+
+5,834 passing post-Phase-4; quality side: 6 golden chapters + the eval gate (`make eval-check`, mutation-validated, `eval_baseline.json` incl. `prompt_manifest_hash`); **124 Hypothesis property tests** (collected count verified; 119 `@given` across 4 files); characterization-first discipline proven in Phase 3 (131-test net, byte-identical-move tripwires).
+
+**Gaps:**
+- **UI layer:** 55 headless skips (T1) — Qt GUI regressions invisible in CI; zero UI edits this session by policy.
+- **`conversion/*` runners:** coverage did not follow the earlier extractions — postprocess **22 %**, visual_features **25 %**, output_runner **38 %**, segmentation **46 %**, extraction **49 %**, summarization **49 %** (baseline cov report; the three Phase-3 modules are the exception — they shipped with their net). This is the "extracted ≠ tested" lesson.
+- **Coverage deserts:** `core/extract` 0 % (anydoc 380 + image_extractor 835 ln), `core/ocr/unlimited_ocr.py` 0 % (342 ln — *not* deleted in Phase 4: it is a live import-guarded engine, `ocr/service.py:294`), `outputs/service_formatters.py` 8 %, `models/config_views` 0 %.
+- **Golden-master audit path** needs `bun` + `z-ai-web-dev-sdk` (`tests/plugins/golden_master_audit.py:181`) — not in CI; the committed `tests/test_ground/*.ts` are never executed (evidence culture, Phase-4 D).
+
+### 7. Prioritized weaknesses (the deliverable core)
+
+| Pri | Weakness | Fix | Trade-off | When |
+|---|---|---|---|---|
+| **P1** | Top-3 exception swallows: `summarization.py:1066` (provenance stamp, Rule-4), `chapter_checkpoint.py:454-456` (OSError clobbers untouched-guarantee), `controller.py:944-947` (raw value kept) | `log_swallow()`-style WARNING at each site; smallest change, no control-flow change | none — log-only; checkpoint site keeps rewrite-on-true-corruption semantics | **fix-now** (queued for owner approval) |
+| **P1** | `conversion/*` runner coverage didn't follow extraction (22-49 %, §6) | Phase-3-style characterization nets, one per runner (postprocess → visual_features → output_runner first) | test-writing cost only; no runtime risk | **fix-now** (queued) |
+| **P2** | Timeout scatter — 77 literals / 12 values, no policy | `core/system/timeouts.py` named-policy table + settings override; values preserved verbatim | ~30-file churn, review burden; behavior-neutral if values copied | later |
+| **P2** | `utils/settings.py` hub (1,608 ln, fan-in 83, W9) | split store / defaults / migrations; keep `settings_schema.py` as-is | wide import churn; must keep the `_defaults()`/migration contracts byte-stable | later |
+| **P2** | Two chapter matchers (`_match_chapter` vs `ChapterMatcher`) + duplicated `max(3, len//2)` / 95-threshold | consolidate onto `ChapterMatcher` (or pin the two-rung contract in both docstrings + share the constants) | behavior-drift risk; the 22 characterization pins + eval gate make it testable | later |
+| **P3** | `async_provider.py` (445 ln) unwired + E6 blocking sleeps | wire per ROADMAP_V0.12 §6.2 or delete — decide **with** the E6 sleep sites | architectural call (30-40 % latency lever vs sync-model simplicity) | later (owner) |
+| **P3** | G:\ default duplication (`settings.py:781-783` vs `podcast_audio.py:169-183`) | single shared default constant | tiny; behavior-identical | later |
+| **P3** | `ui_qt/components/dialogs.py` dead module (66 ln, zero importers) + B5/B16/B17/B18 flagged symbol groups | a follow-up module/symbol sweep with the Phase-4 discipline | small deletions, each needs the zero-ref re-verification | later (owner review) |
+| **P3** | `markitdown[all]` wide transitive closure (T3) | slim to used extras + lock regen | needs an extras-usage analysis; install surface shrinks | later |
+| **P4** | mypy warn-only in CI; ruff ratchets deferred (E701/E702 ≈150, SIM105 ≈50) | gradual per-file gating during future extractions | mechanical churn, no behavior value | later |
+
+**Fix-now vs later.** This session already fixed the one latent *bug* it found (the `DependencyChecker` ImportError, `0ce66c7` — a 2-line repair, the only code fix of Phase 4/5). The two remaining fix-now candidates are the P1 rows — three WARNING logs at named swallow sites, and per-runner characterization nets — both evidence-backed, both net-green-compatible, and both **queued for owner approval per the ground rules** (Rule 2: no speculative changes; the session brief authorized research + writing for Phase 5, not these fixes). Everything else is deliberately later: the P2s are churn-heavy refactors with no correctness payoff this session, the P3s are owner calls (async wiring, dead-module sweep, dependency surface), and the P4s are ratchets to tighten opportunistically.
+
+---
+
+*(Phase 6 section appended below as work completes; Phase 2's compaction record lives in the worklog + commits 8be121d/40d4e03/de27a95/e6b5ab1.)*
