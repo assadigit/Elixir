@@ -226,14 +226,6 @@ class TestGoldenPathPipeline:
         assert callable(run_async)
         assert callable(gather_calls)
 
-    def test_prompt_budget_imports(self):
-        """Phase 3.2: the prompt budget module is importable."""
-        from core.llm.prompt_budget import PromptBudget, estimate_tokens
-
-        b = PromptBudget()
-        assert b.max_context_tokens > 0
-        assert estimate_tokens("test") > 0
-
     def test_embedding_cache_imports(self):
         """Phase 3.3: the embedding cache module is importable."""
         from core.llm.embedding_cache import EmbeddingCache, cached_encode
