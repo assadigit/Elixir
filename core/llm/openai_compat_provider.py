@@ -262,6 +262,12 @@ class OpenAICompatProvider(LLMProvider):
             import time as _time
 
             for _poll in range(60):  # 60 × 10s = 10 min max
+                # V0.4.28 (E6 sync-only guard): this blocks the QThread worker
+                # for 10s per poll (up to 10 min on a live Batch-API). Fine for
+                # the sync model. If async_provider is ever wired (see
+                # docs/ASYNC_PROVIDER_DECISION.md), replace with asyncio.sleep
+                # — under run_async this would block the event loop for the
+                # full 10-min poll (the highest-severity E6 hazard).
                 _time.sleep(10)
                 poll_resp = _requests.get(
                     f"{batch_url}/{batch_id}",
