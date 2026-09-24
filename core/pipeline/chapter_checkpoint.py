@@ -102,15 +102,25 @@ _MANIFEST_VERSION = "18.20.3.0"
 
 
 def _style_years_in_parens(match: re.Match) -> str:
-    """Style every 4-digit year inside one parenthetical group."""
+    """Style every 4-digit year inside one parenthetical group.
+
+    V0.4.26 (audit backlog #5): emit markdown italic emphasis (``*YYYY*``)
+    instead of raw HTML ``<em style="font-size:0.9em">YYYY</em>``. The HTML
+    leaked raw into the markdown output (the V0.4.25 ch.1 audit's HTML-
+    leakage finding) — the DOCX builder does not consume ``format_years``
+    (it has its own run-styling path), so the ``<em>`` was pure markdown-side
+    leakage with no consumer. ``*YYYY*`` is the correct markdown emphasis
+    and renders italic in any compliant markdown viewer (incl. the DOCX
+    builder's markdown-to-runs converter if it parses ``*``).
+    """
     inner = match.group(1)
     if not _BARE_YEAR_RE.search(inner):
         return match.group(0)  # no years — leave untouched
-    return "(" + _BARE_YEAR_RE.sub(r'<em style="font-size:0.9em">\1</em>', inner) + ")"
+    return "(" + _BARE_YEAR_RE.sub(r'*\1*', inner) + ")"
 
 
 def format_years(text: str) -> str:
-    """Wrap 4-digit years in parentheses with italic+smaller styling.
+    """Wrap 4-digit years in parentheses with markdown italic emphasis.
 
     Extracted verbatim from the (formerly inline) end-of-loop writer in
     ``conversion/summarization.py`` so the incremental checkpoint writer
@@ -120,6 +130,10 @@ def format_years(text: str) -> str:
     ("(1956)"), multi-year citations ("(1961, 1963)"), and year+letter
     citations ("(1950a, 1956)") — closing the styled/plain inconsistency
     the V18.20.3.1 audit flagged in the shipped Key Takeaways.
+
+    V0.4.26 (audit backlog #5): the styling is now markdown italic
+    (``*YYYY*``) instead of raw HTML ``<em>`` (see
+    ``_style_years_in_parens`` for the rationale + the audit finding).
     """
     if not text:
         return text

@@ -938,7 +938,7 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Erikson (1956) wrote")
-        assert '<em style="font-size:0.9em">1956</em>' in out
+        assert "*1956*" in out  # V0.4.26: markdown italic, not <em>
 
     def test_multi_year_citation_styled(self):
         """The .3.1 inconsistency: '(1961, 1963)' shipped plain next to
@@ -946,8 +946,8 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Lichtenstein (1961, 1963) identifies")
-        assert '<em style="font-size:0.9em">1961</em>' in out
-        assert '<em style="font-size:0.9em">1963</em>' in out
+        assert "*1961*" in out  # V0.4.26: markdown italic
+        assert "*1963*" in out
 
     def test_year_letter_suffix_styled(self):
         """'(1950a, 1956)' — the 1950a letter-suffix form the old \\b regex
@@ -955,8 +955,8 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Erikson (1950a, 1956, 1958, 1959) resurrected")
-        assert '<em style="font-size:0.9em">1950</em>a' in out
-        assert '<em style="font-size:0.9em">1959</em>' in out
+        assert "*1950*a" in out  # V0.4.26: markdown italic; letter suffix stays adjacent
+        assert "*1959*" in out
 
     def test_non_year_parens_untouched(self):
         from core.pipeline.chapter_checkpoint import format_years

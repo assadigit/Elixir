@@ -787,6 +787,6 @@ class TestCheckpointFeatureUnchanged:
         summary.scholar_reflections = ""
         md = render_summary_markdown(summary)
         assert md.startswith("# Summary: 1 - TEST")
-        assert '<em style="font-size:0.9em">1919</em>' in md
+        assert "*1919*" in md  # V0.4.26: markdown italic, not <em>
         assert md.rstrip().endswith("<!-- COMPLETE -->")
         assert "## Key Distinctions" in md

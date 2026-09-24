@@ -138,8 +138,10 @@ class TestRenderSummaryMarkdown:
         from core.pipeline.chapter_checkpoint import render_summary_markdown
 
         md = render_summary_markdown(_mk_summary("Ch", 1))
-        assert '<em style="font-size:0.9em">1975</em>' in md
-        assert '<em style="font-size:0.9em">1980</em>' in md
+        # V0.4.26 (audit backlog #5): format_years now emits markdown italic
+        # (*YYYY*) instead of raw HTML <em> (which leaked into the markdown).
+        assert "*1975*" in md
+        assert "*1980*" in md
 
     def test_additive_sections_rendered_only_when_non_empty(self):
         from core.pipeline.chapter_checkpoint import render_summary_markdown

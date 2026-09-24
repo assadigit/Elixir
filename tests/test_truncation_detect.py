@@ -217,10 +217,11 @@ class TestClassifyBulletsTruncation:
         A bullet with HTML markup tags that contain quotes should NOT false-
         positive on the unmatched-quote check — the markup is stripped first.
         """
-        # A complete bullet with an <em> tag containing a quote in style attr
-        # (this is what the markdown formatter produces). After strip_markup_tags,
-        # the <em style="font-size:0.9em"> is removed, leaving a clean bullet.
-        # We test with a simpler case: a bullet that's complete after stripping.
+        # A bullet with a year in parentheses (this is what the markdown
+        # formatter produces post-V0.4.26: markdown italic *YYYY*, no HTML
+        # tag). The unmatched-quote check must not false-positive on the
+        # asterisks. We test with a simpler case: a bullet that's complete
+        # after stripping.
         bullets = [
             "Tausk (1919) introduced the term identity into psychoanalytic literature.",
         ]
