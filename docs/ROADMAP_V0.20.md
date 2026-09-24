@@ -1,5 +1,9 @@
 # ROADMAP V0.20 — The Quality Campaign: 9–10/10 summaries on real books
 
+> **STATUS (V0.4.25 audit):** COMPLETED charter (V0.20.1–V0.20.5 shipped). The
+> §6 campaign protocols remain normative for audit sessions (AGENTS.md Rules 2–4
+> cite them).
+
 > **Status:** charter approved by the project owner at the wrap of the V0.12
 > campaign (session of the V0.19 release). Supersedes nothing — the V0.12
 > roadmap (`ROADMAP_V0.12.md`) is fully executed and closed.

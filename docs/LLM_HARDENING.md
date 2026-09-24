@@ -1,5 +1,8 @@
 # LLM-Call Hardening Audit — Phase 4.4 (V0.12 roadmap)
 
+> **STATUS (V0.4.25 audit):** Evidence matrix for the V0.12-era hardening; still
+> the reference for provider-path timeout/retry coverage (36 evidence tests).
+
 **Scope.** Every provider path reachable from `create_provider` (`core/llm/llm_provider_impl.py:165`):
 `ollama`, `llamacpp`, `openrouter` / `openai` / `openai_compatible` (one class), `freellmapi`
 (factory class **and** the inline dispatcher path), `claude` — plus the adjacent LLM-call
