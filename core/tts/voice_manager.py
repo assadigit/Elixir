@@ -38,9 +38,6 @@ logger = logging.getLogger(__name__)
 
 _VOICES_DIR = Path(__file__).resolve().parents[3] / "config" / "tts_voices"
 
-# Default reference voice name (used when no voice is specified).
-DEFAULT_VOICE = "dave"
-
 
 # Preset voices shipped with the app. Each entry is (name, description).
 # The actual wav+txt files must exist in _VOICES_DIR; if they don't, we

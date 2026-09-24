@@ -169,22 +169,6 @@ class ElixirWindow(QMainWindow):
         self.about_btn.setIcon(icon("info", p.text_primary, 16))
         self.settings_btn.setIcon(icon("settings", p.text_primary, 16))
 
-    def _auto_detect_system_theme(self) -> str:
-        """V10.18.0 (E6): Detect the system's dark/light theme preference."""
-        try:
-            from PySide6.QtGui import QGuiApplication
-
-            app = QGuiApplication.instance()
-            if app:
-                scheme = app.styleHints().colorScheme()
-                if scheme.name == "Dark":
-                    return "dark"
-                elif scheme.name == "Light":
-                    return "light"
-        except Exception:
-            logger.debug("theme detect failed", exc_info=True)
-        return "dark"  # default
-
     def _toggle_theme(self) -> None:
         theme_manager.toggle()
         self._refresh_top_bar_icons()

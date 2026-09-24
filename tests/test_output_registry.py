@@ -122,14 +122,6 @@ class TestAccessors:
         ]:
             assert k in m, f"{k} missing from regenerate map"
 
-    def test_get_dialog_outputs_returns_21_tuples(self):
-        """The dialog accessor returns (setting_key, label, subtitle, icon, default).
-        V10.35.0: 21 entries (4 core + 17 studio)."""
-        tuples = _mod.get_dialog_outputs()
-        assert len(tuples) == 21
-        for t in tuples:
-            assert len(t) == 5
-
     def test_get_settings_section_outputs_returns_17_tuples(self):
         """The settings accessor returns (setting_key, label, default).
         V10.35.0: 17 studio outputs."""

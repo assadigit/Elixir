@@ -123,11 +123,6 @@ except Exception:
     pass
 
 
-def get_startup_cuda_probe() -> dict:  # Expose the probe for the UI to read.
-    """Return the early torch CUDA probe result (run before PySide6)."""
-    return dict(_TORCH_CUDA_PROBE)
-
-
 # V18.20.4.9 (T-b4): the old ``Qt.AA_EnableHighDpiScaling = True`` line here
 # was a dead assignment (zero readers) — Qt 6 enables high-DPI scaling
 # automatically, so nothing needs to be set before QApplication.

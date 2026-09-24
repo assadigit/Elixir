@@ -1,4 +1,4 @@
-"""Small styled modal dialogs — password prompt, etc.
+"""Small styled modal dialogs — the themed password prompt.
 
 Kept here so the rest of the app imports a consistent, theme-aware dialog
 instead of the default ``QInputDialog`` (which ignores the app QSS on some
@@ -6,8 +6,6 @@ platforms).
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -66,10 +64,3 @@ class PasswordDialog(QDialog):
 
     def password(self) -> str | None:
         return self._password
-
-
-def ask_password(file_path: Path, parent: QWidget | None = None) -> str | None:
-    """Convenience: open a :class:`PasswordDialog` and return the password."""
-    dlg = PasswordDialog(file_path.name, parent)
-    dlg.exec()
-    return dlg.password()

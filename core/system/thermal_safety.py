@@ -96,10 +96,6 @@ THERMAL_BUDGET_REACHED_COOLDOWN_MIN = 30  # 30-min cool-down when budget hit
 OUTPUT_COUNT_WARN_THRESHOLD = 5  # warn if >5 outputs enabled
 OUTPUT_COUNT_EMERGENCY_CAP = 4  # hard cap for emergency-mode cards
 
-# VRAM safe limits (GDDR6)
-VRAM_SAFE_TEMP_C = 95  # above this = bit errors start
-VRAM_CRITICAL_TEMP_C = 100  # above this = immediate pause
-
 
 # ── Thermal budget tracker ────────────────────────────────────────────────
 

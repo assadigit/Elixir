@@ -82,10 +82,6 @@ NON_CONTENT_CATEGORIES = {
 
 # Patterns that strongly indicate a page is part of a TOC (many lines ending with numbers)
 TOC_LINE_PATTERN = re.compile(r"^\s*(?:\.{2,}|\s{3,})\s*\d{1,4}\s*$")
-NUMBERED_LINE_PATTERN = re.compile(r"^\s*\d{1,4}\s*$")
-CHAPTER_LIKE_TOC = re.compile(
-    r"^(?:chapter|part|section|appendix|فصل|بخش|قسمت|مبحث)\s+", re.IGNORECASE
-)
 
 # Academic‑specific patterns
 TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")

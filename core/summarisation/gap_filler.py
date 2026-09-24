@@ -44,10 +44,7 @@ RecoverVramFn = Callable[..., None]
 StripThinkingFn = Callable[[str], str]
 SwitchToFastModelFn = Callable[[], None]
 SetLastCoverageFn = Callable[[float], None]
-AnalysisExistsFn = Callable[[Any, LogCallback], bool]
-FindAnalysisFn = Callable[..., tuple]
 CheckCoverageFn = Callable[[Any, str], dict]
-ExtractAuthorsFn = Callable[[Any], list[str]]
 
 logger = logging.getLogger(__name__)
 

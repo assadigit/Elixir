@@ -479,16 +479,6 @@ def get_regenerate_map() -> dict:
     return out
 
 
-def get_dialog_outputs() -> list:
-    """Return the (setting_key, label, subtitle, icon_name, default) tuples
-    that ``output_types_dialog._OUTPUTS`` previously hardcoded.
-
-    Kept as a tuple-list so the dialog's existing sort-by-cost code keeps
-    working unchanged.
-    """
-    return [(o.setting_key, o.label, o.subtitle, o.icon_name, o.default) for o in OUTPUT_REGISTRY]
-
-
 def get_settings_section_outputs() -> list:
     """Return the (setting_key, label, default) tuples that
     ``settings/sections.py OutputStudioSection._OUTPUTS`` previously
@@ -508,6 +498,5 @@ __all__ = [
     "get_output_by_setting",
     "get_output_by_regenerate_key",
     "get_regenerate_map",
-    "get_dialog_outputs",
     "get_settings_section_outputs",
 ]

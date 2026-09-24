@@ -362,13 +362,18 @@ class ModelManager:
     ) -> int:
         """Unload models that aren't needed for the translation phase.
 
-        - NLLB backend: translation runs on GPU via HuggingFace, so ALL Ollama
-          models (summarizer, judge, harakat, OCR) should be unloaded.
-        - Ollama backend: keep the translation model + judge/harakat if they're
-          the same; unload the summarizer + OCR.
+        Keeps the translation model (and judge/harakat if they're the same);
+        unloads the summarizer + OCR.
+
+        The legacy ``backend == "nllb"`` branch (unload EVERYTHING for the
+        retired HuggingFace NLLB backend) was unreachable since V18.20.4.6+
+        — core.system.bootstrap migrates ``translation.backend='nllb'`` to
+        'ollama' before any read (bootstrap.py:249) — and was removed in the
+        V0.4.25 Phase-4 dead-code audit.  The ``translation_backend``
+        parameter is kept for call-site API compatibility (controller.py
+        passes it; vram_calculator.py keeps its own NLLB-era sizing branch,
+        which is similarly legacy-only).
         """
-        if translation_backend == "nllb":
-            return self.unload_all_ollama(log_callback=log_callback)
         # Ollama translation backend — keep the translator model
         return self.unload_all_ollama(
             keep_models=[translation_model] if translation_model else None,

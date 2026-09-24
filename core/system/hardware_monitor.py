@@ -326,13 +326,12 @@ def detect_gpu_profile_from_system() -> tuple:
 
 
 # ── Backward-compatible module-level constants ────────────────────────────
-# These are used by older code that references GPU_TEMP_WARNING / CRITICAL
-# directly.  They default to the _PROFILE_DEFAULT values.  The
-# HardwareMonitor class uses the per-instance profile (which may differ).
+# GPU_TEMP_WARNING is a legacy module-level default; the HardwareMonitor
+# class uses the per-instance profile (which may differ).  The dead
+# GPU_TEMP_CRITICAL / CPU_SUSTAINED_HIGH_SEC constants (zero refs) were
+# removed in the V0.4.25 Phase-4 dead-code audit.
 GPU_TEMP_WARNING = _PROFILE_DEFAULT.warning_c
-GPU_TEMP_CRITICAL = _PROFILE_DEFAULT.critical_c
 RAM_PCT_WARNING = 90  # % — log a warning (swap/OOM risk)
-CPU_SUSTAINED_HIGH_SEC = 300  # 5 min of >95% CPU before logging info
 
 
 @dataclass
