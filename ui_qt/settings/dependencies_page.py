@@ -281,9 +281,9 @@ class DependenciesSection(QGroupBox):
         from ui_qt.components.simple_worker import SimpleWorker
 
         def _do_check():
-            from core.system.dependency_checker import DependencyChecker
+            from core.system.dependency_checker import DetailedDependencyChecker
 
-            checker = DependencyChecker()
+            checker = DetailedDependencyChecker()
             return checker.check_all()
 
         self._check_worker = SimpleWorker(_do_check)
