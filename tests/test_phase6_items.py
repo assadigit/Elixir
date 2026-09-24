@@ -2,7 +2,6 @@
 
 Tests:
 - 6.1: Structured-log sink (gated by settings.observability.structured)
-- 6.2: Per-chapter conversion manifest (JSON output)
 - 6.3: GGUF checksum verification (SHA-256 first/last 1MB)
 - 6.5: Modelfile integrity check (presence_penalty=1.5 for Qwen3)
 - 6.6: Pytest golden-master audit plugin (stub mode)
@@ -13,7 +12,6 @@ Run: pytest tests/test_phase6_items.py -v
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -86,125 +84,6 @@ class TestStructuredLogSink:
             for h in logger.handlers
         )
         assert has_json, "JSONL handler should be attached when structured=True"
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# 6.2 — Per-chapter conversion manifest
-# ════════════════════════════════════════════════════════════════════════════
-
-
-class TestConversionManifest:
-    """Tests for the per-chapter conversion manifest (Phase 6.2)."""
-
-    def test_module_imports(self):
-        from core.obs.conversion_manifest import (
-            ChapterManifest,
-            write_chapter_manifest,
-        )
-
-        assert callable(write_chapter_manifest)
-        assert ChapterManifest is not None
-
-    def test_manifest_to_dict(self):
-        """ChapterManifest.to_dict should produce the expected fields."""
-        from core.obs.conversion_manifest import ChapterManifest
-
-        m = ChapterManifest(
-            chapter_index=1,
-            chapter_total=1,
-            chapter_heading="Test Chapter",
-            model="qwen3:32b",
-            num_ctx=26758,
-            coverage=0.89,
-            phases_ran=["primary", "gap_fill", "post_checks"],
-            leak_guard_fires=0,
-            post_check_fixes=6,
-            post_check_flags=1,
-            duration_seconds=1398.0,
-            bullet_count=36,
-            exec_summary_chars=1295,
-            hallucinations=0,
-        )
-        d = m.to_dict()
-        assert d["chapter_index"] == 1
-        assert d["model"] == "qwen3:32b"
-        assert d["num_ctx"] == 26758
-        assert d["coverage"] == 0.89
-        assert d["phases_ran"] == ["primary", "gap_fill", "post_checks"]
-        assert d["leak_guard_fires"] == 0
-        assert d["duration_seconds"] == 1398.0
-        assert d["duration_minutes"] == 23.3
-        assert d["bullet_count"] == 36
-        assert d["hallucinations"] == 0
-
-    def test_manifest_to_json(self):
-        """ChapterManifest.to_json should produce valid JSON."""
-        from core.obs.conversion_manifest import ChapterManifest
-
-        m = ChapterManifest(
-            chapter_index=1,
-            chapter_total=1,
-            chapter_heading="Test",
-            model="qwen3",
-            num_ctx=32768,
-            coverage=0.85,
-            phases_ran=["primary"],
-            leak_guard_fires=0,
-            post_check_fixes=0,
-            post_check_flags=0,
-            duration_seconds=600.0,
-        )
-        j = m.to_json()
-        parsed = json.loads(j)
-        assert parsed["model"] == "qwen3"
-        assert parsed["coverage"] == 0.85
-
-    def test_write_chapter_manifest_creates_file(self, tmp_path):
-        """write_chapter_manifest should create the JSON file."""
-        from core.obs.conversion_manifest import write_chapter_manifest
-
-        path = write_chapter_manifest(
-            output_dir=tmp_path,
-            chapter_index=1,
-            chapter_total=1,
-            chapter_heading="Test Chapter",
-            model="qwen3:32b",
-            num_ctx=26758,
-            coverage=0.89,
-            phases_ran=["primary", "post_checks"],
-            leak_guard_fires=0,
-            post_check_fixes=6,
-            post_check_flags=1,
-            duration_seconds=1398.0,
-            bullet_count=36,
-        )
-        assert path.exists()
-        assert path.name == "chapter_1_manifest.json"
-        assert "logs" in str(path)
-        data = json.loads(path.read_text())
-        assert data["model"] == "qwen3:32b"
-        assert data["coverage"] == 0.89
-
-    def test_write_chapter_manifest_creates_logs_dir(self, tmp_path):
-        """Should create the logs/ subdirectory if it doesn't exist."""
-        from core.obs.conversion_manifest import write_chapter_manifest
-
-        path = write_chapter_manifest(
-            output_dir=tmp_path,
-            chapter_index=2,
-            chapter_total=5,
-            chapter_heading="Ch 2",
-            model="qwen3",
-            num_ctx=16000,
-            coverage=0.90,
-            phases_ran=["primary"],
-            leak_guard_fires=0,
-            post_check_fixes=0,
-            post_check_flags=0,
-            duration_seconds=500.0,
-        )
-        assert path.exists()
-        assert (tmp_path / "logs").is_dir()
 
 
 # ════════════════════════════════════════════════════════════════════════════

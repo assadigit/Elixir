@@ -930,33 +930,6 @@ class TestA30AtomicWrites:
         assert data["fast_model"] == request.fast_model
         assert _tmp_artifacts(tmp_path) == [], "no .tmp leftovers"
 
-    def test_chapter_manifest_atomic_identical_payload(self, tmp_path):
-        from core.obs.conversion_manifest import write_chapter_manifest
-
-        p = write_chapter_manifest(
-            output_dir=tmp_path,
-            chapter_index=1,
-            chapter_total=2,
-            chapter_heading="1 - TEST",
-            model="test:latest",
-            num_ctx=26758,
-            coverage=0.89,
-            phases_ran=["primary"],
-            leak_guard_fires=0,
-            post_check_fixes=1,
-            post_check_flags=0,
-            duration_seconds=123.4,
-            bullet_count=7,
-            exec_summary_chars=500,
-            hallucinations=0,
-        )
-        assert p.exists()
-        data = json.loads(p.read_text(encoding="utf-8"))
-        assert data["model"] == "test:latest"
-        assert data["num_ctx"] == 26758
-        assert data["duration_minutes"] == 2.06
-        assert _tmp_artifacts(tmp_path) == []
-
     def test_quality_report_atomic(self, tmp_path):
         from core.models import Segment, SummaryResult
         from core.pipeline.converter_impl import Converter
