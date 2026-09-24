@@ -178,7 +178,7 @@ class TestExternalImportersCovered:
         found: set[tuple[str, str]] = set()
         for py in sorted(_project_root.rglob("*.py")):
             rel = py.relative_to(_project_root).as_posix()
-            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/", ".git")):
+            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/", ".git", ".venv")):
                 continue
             try:
                 tree = ast.parse(_src(py))
