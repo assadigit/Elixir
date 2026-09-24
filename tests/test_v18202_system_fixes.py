@@ -645,7 +645,10 @@ class TestA15CancelSkipsDownstreamPhases:
             patch(
                 "core.pipeline.conversion.summarization.run_summarization", return_value=summ_ns
             ) as spies["summarization"],
-            patch("core.pipeline.converter_impl.DocxBuilder") as spies["docx"],
+            # V0.4.26 (Phase 3 commit 2): the DOCX build block moved VERBATIM
+            # to conversion/summary_outputs.py — the patch target follows
+            # the moved body (same repoint discipline as the delegate spies).
+            patch("core.pipeline.conversion.summary_outputs.DocxBuilder") as spies["docx"],
             patch("core.summarisation.KeypointsBuilder") as spies["keypoints"],
             patch("core.summarisation.SimplifiedKeypointsBuilder") as spies["simplified"],
             patch(
@@ -764,6 +767,10 @@ class TestA15CancelSkipsDownstreamPhases:
         VERBATIM to conversion/visual_features.py (_run_footnote_extraction)
         — its gate pin follows the moved body, so the scan now reads BOTH
         files (union semantics, same property asserted).
+        V0.4.26 (Phase 3 commit 2): the DOCX/keypoints/simplified-digest/
+        citation-graph blocks moved VERBATIM to
+        conversion/summary_outputs.py — their four gate pins follow the
+        moved bodies (union grows by that module, same semantics).
         """
         src = (_project_root / "core" / "pipeline" / "converter_impl.py").read_text(
             encoding="utf-8"
@@ -774,6 +781,10 @@ class TestA15CancelSkipsDownstreamPhases:
         # asserted against this file too.
         src += (
             _project_root / "core" / "pipeline" / "conversion" / "visual_features.py"
+        ).read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 2): ditto for the summary-outputs runner.
+        src += (
+            _project_root / "core" / "pipeline" / "conversion" / "summary_outputs.py"
         ).read_text(encoding="utf-8")
         gates = [
             "DOCX build",

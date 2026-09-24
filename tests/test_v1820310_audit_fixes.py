@@ -188,8 +188,17 @@ class TestW11KeypointCount:
 
     def test_converter_library_uses_builder_count(self):
         """Policy pin: the library call must prefer the builder's deduped
-        count over the raw bullet sum."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        count over the raw bullet sum.
+
+        V0.4.26 (Phase 3 commit 2): the builder-count capture
+        (``getattr(kp, "final_keypoint_count", None)``) moved VERBATIM to
+        conversion/summary_outputs.py (run_summary_outputs); the
+        library-tracking call + the ``_kp_final_count`` unpack stay in
+        convert() — union semantics keep the policy pin over both homes.
+        """
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8") + (
+            ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py"
+        ).read_text(encoding="utf-8")
         assert "final_keypoint_count" in src
         assert "_kp_final_count" in src
 

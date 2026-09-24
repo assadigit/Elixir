@@ -72,6 +72,10 @@ _CONV_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "converter_impl.py"
 # V0.4.26 (Phase 3 commit 1): the quality-report method + the end-of-run
 # diagnostic block moved VERBATIM here from converter_impl.py.
 _REPORTING_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "reporting.py"
+# V0.4.26 (Phase 3 commit 2): the four summary-output blocks (DOCX build,
+# keypoints, simplified digest, citation graph) moved VERBATIM here from
+# converter_impl.py's convert().
+_SUMMARY_OUTPUTS_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py"
 
 
 def conv_src() -> str:
@@ -84,6 +88,13 @@ def reporting_src() -> str:
     quality-report method + diagnostic block — the pins follow the moved
     bodies)."""
     return _REPORTING_SRC_PATH.read_text(encoding="utf-8")
+
+
+def summary_outputs_src() -> str:
+    """The conversion/summary_outputs.py source (the Phase-3 commit-2 home
+    of the moved DOCX/keypoints/simplified-digest/citation-graph blocks —
+    the pins follow the moved bodies)."""
+    return _SUMMARY_OUTPUTS_SRC_PATH.read_text(encoding="utf-8")
 
 
 def _skeletons_of(source: str) -> set[str]:
@@ -99,7 +110,7 @@ def _skeletons_of(source: str) -> set[str]:
 
 def literal_skeletons() -> set[str]:
     """Every string literal in converter_impl.py + conversion/reporting.py
-    with f-string holes removed.
+    + conversion/summary_outputs.py with f-string holes removed.
 
     Adjacent implicit concatenation (``f"a {x} "`` ``f"b"`` on separate
     lines) parses to a single JoinedStr, so this reassembles physically
@@ -110,8 +121,15 @@ def literal_skeletons() -> set[str]:
     literals moved to conversion/reporting.py — the skeleton set is the
     UNION over both modules (house precedent: the union semantics of
     test_v18202_system_fixes.py::test_phase_gates_wired_in_converter_impl).
+    V0.4.26 (Phase 3 commit 2): the DOCX/keypoints/simplified-digest/
+    citation-graph literals moved to conversion/summary_outputs.py — the
+    union grows by that module (same semantics).
     """
-    return _skeletons_of(conv_src()) | _skeletons_of(reporting_src())
+    return (
+        _skeletons_of(conv_src())
+        | _skeletons_of(reporting_src())
+        | _skeletons_of(summary_outputs_src())
+    )
 
 
 class _RecordingSelf:
@@ -1076,28 +1094,36 @@ class TestDerivePageRangesFromToc:
 
 
 class TestSimplifiedKeypointsMessages:
-    """The digest block runs inside convert() behind the summarization
-    state — the emitted strings are source-pinned."""
+    """The digest block's emitted strings, source-pinned.
+
+    V0.4.26 (Phase 3 commit 2): the block moved VERBATIM to
+    core/pipeline/conversion/summary_outputs.py (``run_summary_outputs``)
+    with the mechanical ``self.`` -> ``converter.`` substitution — the
+    pins follow the moved bodies (the same discipline the diagnostic pins
+    followed into reporting.py in commit 1).  The literal skeletons (via
+    ``literal_skeletons()``) span all three modules.
+    """
 
     def test_entry_status_and_log_line(self):
-        src = conv_src()
-        assert 'self._update_status("Generating Simplified Keypoints Digest…")' in src
+        src = summary_outputs_src()
+        assert 'converter._update_status("Generating Simplified Keypoints Digest…")' in src
         # NOTE: "jargon‑free" uses a U+2011 non-breaking hyphen — pinned
         # verbatim so a refactor can't silently change the character.
         assert (
-            'self._log("  📌 Generating simplified keypoints (jargon‑free digest)…", "INFO")' in src
+            'converter._log("  📌 Generating simplified keypoints (jargon‑free digest)…", "INFO")'
+            in src
         )
 
     def test_gate_requires_flag_summaries_and_no_cancel(self):
-        src = conv_src()
-        assert "self.request.simplified_keypoints_enabled" in src
-        assert 'self._cancel_requested("simplified keypoints")' in src
+        src = summary_outputs_src()
+        assert "converter.request.simplified_keypoints_enabled" in src
+        assert 'converter._cancel_requested("simplified keypoints")' in src
 
     def test_success_line(self):
         assert "  ✅ Simplified keypoints saved to: " in literal_skeletons()
 
     def test_model_unavailable_branch_messages(self):
-        src = conv_src()
+        src = summary_outputs_src()
         skeletons = literal_skeletons()
         # OSError/ConnectionError/TimeoutError branch:
         assert "  ⚠️ Simplification skipped (model unavailable): " in skeletons
@@ -1108,7 +1134,7 @@ class TestSimplifiedKeypointsMessages:
         assert src.count("without simplification") == 2
 
     def test_infrastructure_keyword_branch_messages(self):
-        src = conv_src()
+        src = summary_outputs_src()
         assert "  ⚠️ Simplification skipped (infrastructure error): " in literal_skeletons()
         # The keyword triage tuple (checked against str(e).lower()):
         anchor = src.find("for kw in (")
@@ -1118,9 +1144,11 @@ class TestSimplifiedKeypointsMessages:
             assert f'"{kw}"' in window, f"keyword {kw!r} missing from the triage tuple"
 
     def test_other_failure_line_logged_at_warning_not_error(self):
-        src = conv_src()
+        src = summary_outputs_src()
         # Quirk pinned deliberately: the ❌ failure line is WARNING-level.
-        assert 'self._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")' in src
+        assert (
+            'converter._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")' in src
+        )
 
     def test_infrastructure_keyword_semantics(self):
         # Mirrors: any(kw in str(e).lower() for kw in KEYWORDS)
@@ -1393,6 +1421,300 @@ class TestReportingExtraction:
         offenders = [
             (i, term)
             for i, line in enumerate(reporting_src().splitlines(), 1)
+            for term in deny
+            if term.lower() in line.lower()
+        ]
+        assert not offenders, offenders
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 11. Phase 3 commit 2 — the summary-outputs extraction (decomposition pins)
+# ════════════════════════════════════════════════════════════════════════════
+
+# The pre-move blob for THIS commit: the reporting-extraction commit (whose
+# tree is the byte-exact source the four blocks were cut from).  Skipped
+# when git/the ref is unavailable (same skip-if-absent precedent as above).
+_PRE_MOVE_REF_SUMMARY = "e3e7e7f"
+
+
+def _pre_move_summary_src() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "show", f"{_PRE_MOVE_REF_SUMMARY}:core/pipeline/converter_impl.py"],
+            capture_output=True,
+            timeout=30,
+            cwd=PROJECT_ROOT,
+        )
+    except Exception as e:  # pragma: no cover — environment-dependent
+        pytest.skip(f"pre-move reference unavailable: {e}")
+    if out.returncode != 0:  # pragma: no cover — shallow clone / missing ref
+        pytest.skip(f"git show {_PRE_MOVE_REF_SUMMARY} failed: {out.stderr.decode()[:120]}")
+    return out.stdout.decode("utf-8")
+
+
+def _ref_summary_blocks(ref_src: str) -> str:
+    """The four pre-move blocks (DOCX L1279-1291, keypoints L1293-1333,
+    simplified digest L1335-1392, citation graph L1436-1452 of the e3e7e7f
+    blob), located by anchors, not line numbers, and joined in their
+    original internal order with single blank lines."""
+    lines = ref_src.splitlines(keepends=True)
+
+    def span(start_pred, end_pred):
+        start = next(i for i, ln in enumerate(lines) if start_pred(ln))
+        end = next(i for i in range(start, len(lines)) if end_pred(lines[i]))
+        return lines[start : end + 1]
+
+    regions = [
+        span(
+            lambda ln: ln.startswith("            # ── Step 10: DOCX"),
+            lambda ln: ln.rstrip("\n") == "                    docx_path = self.docx_path",
+        ),
+        span(
+            lambda ln: ln.startswith("            # ── Keypoints (always when summaries exist)"),
+            lambda ln: ln.rstrip("\n").endswith(
+                'self._log(f"📌 Keypoints DOCX → {keypoints_docx_path}", "SUCCESS")'
+            ),
+        ),
+        span(
+            lambda ln: ln.startswith(
+                "            # ── NEW: Sprint 2 – Simplified Keypoints Digest"
+            ),
+            lambda ln: ln.rstrip("\n").endswith(
+                'self._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")'
+            ),
+        ),
+        span(
+            lambda ln: (
+                ln.rstrip("\n")
+                == "            # V10.21.0: Citation graph — extract [N] citations and build graph"
+            ),
+            lambda ln: ln.rstrip("\n").endswith(
+                'self._record_partial_failure("Citation graph", e)'
+            ),
+        ),
+    ]
+    out = []
+    for seg in regions:
+        for ln in seg:
+            out.append(ln[8:] if ln.strip() else ln)
+        out.append("\n")  # single blank line between blocks
+    return "".join(out)  # RAW pre-move text (dedented only) — the test
+    # applies + documents the mechanical self→converter substitutions
+
+
+class TestSummaryOutputsExtraction:
+    """Phase 3 / commit 2: the summary-outputs responsibility (the four
+    gated-output blocks — DOCX report, keypoints files, simplified
+    keypoints digest, citation graph) moved from convert() in
+    converter_impl.py to run_summary_outputs() in
+    core/pipeline/conversion/summary_outputs.py.  These pins hold the MOVE
+    itself: module shape, result dataclass, byte-identity vs the pre-move
+    blob (commit e3e7e7f), and Rule-1 deny-list cleanliness."""
+
+    def test_module_parses_and_carries_exactly_the_moved_surface(self):
+        tree = ast.parse(summary_outputs_src())
+        classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+        assert [c.name for c in classes] == ["SummaryOutputsResult"]
+        top_fns = [n.name for n in tree.body if isinstance(n, ast.FunctionDef)]
+        assert top_fns == ["run_summary_outputs"]
+
+    def test_result_dataclass_fields_and_defaults(self):
+        import dataclasses
+
+        from core.pipeline.conversion.summary_outputs import SummaryOutputsResult
+
+        names = [f.name for f in dataclasses.fields(SummaryOutputsResult)]
+        assert names == [
+            "docx_path",
+            "keypoints_md_path",
+            "keypoints_docx_path",
+            "kp_final_count",
+        ]
+        # every field defaults to None (gates off / blocks not run)
+        assert SummaryOutputsResult() == SummaryOutputsResult(
+            docx_path=None,
+            keypoints_md_path=None,
+            keypoints_docx_path=None,
+            kp_final_count=None,
+        )
+
+    def test_runner_blocks_byte_identical_to_pre_move_blob(self):
+        expected = _ref_summary_blocks(_pre_move_summary_src())
+        # Guard the reference forms first, so any extra drift still fails:
+        # the U+2011 hyphen, the bare-self forms, the elapsed closure call.
+        assert "jargon‑free" in expected
+        assert 'getattr(self, "_judge_results", None)' in expected
+        assert 'hasattr(self, "temp_markdown_path")' in expected
+        assert "[{_elapsed()}]" in expected
+        # The documented mechanical transform: dedent one try-level (12→4
+        # spaces), self.→converter., the two bare self→converter forms
+        # (getattr in the keypoints build, hasattr in the citation-graph
+        # guard), plus the single ruff-format reflow of the
+        # infrastructure-error log call at the shallower indent
+        # (AST-identical — the same documented-reflow class as
+        # reporting.py's stamp_diagnostic call).
+        expected = expected.replace("self.", "converter.")
+        expected = expected.replace("getattr(self,", "getattr(converter,")
+        expected = expected.replace("hasattr(self,", "hasattr(converter,")
+        old_call = (
+            "                converter._log(\n"
+            '                    f"  ⚠️ Simplification skipped (infrastructure error): {e}", "WARNING"\n'
+            "                )\n"
+        )
+        new_call = (
+            '                converter._log(f"  ⚠️ Simplification skipped (infrastructure error): '
+            '{e}", "WARNING")\n'
+        )
+        assert old_call in expected
+        expected = expected.replace(old_call, new_call)
+        so_tree = ast.parse(summary_outputs_src())
+        fn = next(
+            n
+            for n in so_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "run_summary_outputs"
+        )
+        assert isinstance(fn.body[0], ast.Expr)  # the docstring
+        so_lines = summary_outputs_src().splitlines(keepends=True)
+        actual = "".join(so_lines[fn.body[0].end_lineno : fn.end_lineno])
+        # The NEW trailing return statement (the dataclass hand-off) is the
+        # only addition; the four moved blocks precede it byte-identically.
+        ret_start = actual.find("    return SummaryOutputsResult(")
+        assert ret_start > 0, "the runner must end with the result hand-off"
+        assert actual[:ret_start] == expected.rstrip("\n") + "\n\n", (
+            "run_summary_outputs body drifted from the pre-move blocks"
+        )
+
+    def test_run_summary_outputs_signature_threads_the_exact_locals(self):
+        import inspect
+
+        from core.pipeline.conversion.summary_outputs import run_summary_outputs
+
+        params = list(inspect.signature(run_summary_outputs).parameters)
+        assert params == [
+            "converter",
+            "segments",
+            "summaries",
+            "book_title",
+            "_elapsed",
+        ]
+        kwonly = [
+            p.name
+            for p in inspect.signature(run_summary_outputs).parameters.values()
+            if p.kind == inspect.Parameter.KEYWORD_ONLY
+        ]
+        assert kwonly == params[1:]  # everything but `converter` is keyword-only
+
+    def test_elapsed_closure_threaded_byte_identically(self):
+        # The ``_elapsed`` parameter is named EXACTLY like the convert()
+        # closure, so the moved DOCX log line keeps its original text.
+        src = summary_outputs_src()
+        assert "_elapsed: Callable[[], str]," in src
+        assert 'converter._log(f"  ⏱️ DOCX phase starting | [{_elapsed()}]", "INFO")' in src
+
+    def test_convert_delegates_with_the_exact_locals(self):
+        src = conv_src()
+        assert "from core.pipeline.conversion.summary_outputs import" in src, (
+            "convert() must lazy-import the runner (the house delegate pattern)"
+        )
+        assert "_run_summary_outputs(" in src
+        for arg in (
+            "converter=self",
+            "segments=segments",
+            "summaries=summaries",
+            "book_title=book_title",
+            "_elapsed=_elapsed",
+        ):
+            assert arg in src, f"the delegate call must thread {arg}"
+        # the unpack: exactly the two locals later convert() code reads
+        assert "docx_path = _summary_outputs.docx_path" in src
+        assert "_kp_final_count = _summary_outputs.kp_final_count" in src
+
+    def test_unpack_keeps_later_convert_code_untouched(self):
+        src = conv_src()
+        # ConversionResult construction still consumes the local verbatim…
+        assert "docx_path=docx_path," in src
+        # …and the library-tracking call still consumes _kp_final_count
+        # verbatim (the W11 policy block is byte-identical).
+        assert "keypoints_count=(" in src
+        assert "_kp_final_count\n" in src
+        assert "if _kp_final_count is not None" in src
+        # the interleaved non-moved steps stay in convert() at their posts
+        assert "self._update_progress(0.96)  # Simplified keypoints + DOCX done" in src
+        assert "run_output_studio(" in src
+
+    def test_moved_code_gone_from_converter_impl(self):
+        src = conv_src()
+        assert "Building DOCX report" not in src  # the moved status line
+        assert "jargon‑free" not in src  # moved (U+2011 pinned above instead)
+        assert "Building Keypoints files" not in src
+        assert "for kw in (" not in src  # the moved triage tuple
+        assert "final_keypoint_count" not in src  # moved with the W11 capture
+        assert "generate_citation_graph" not in src  # moved with the block
+        assert "from core.docx.builder import" not in src  # the import moved
+        assert "DocxBuilder(" not in src  # the construction site moved too
+        assert "_kp_final_count" in src  # …but the unpack local stays
+
+    def test_converter_bases_unchanged_this_commit(self):
+        # No mixin this time — the runner is a plain function; the
+        # reporting mixin stays the LAST base (commit 1's wiring intact).
+        assert [c.__name__ for c in Converter.__bases__] == [
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",
+        ]
+        assert [c.__name__ for c in Converter.__mro__] == [
+            "Converter",
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",
+            "object",
+        ]
+
+    def test_internal_block_order_preserved_inside_the_runner(self):
+        src = summary_outputs_src()
+        docx = src.find("Step 10: DOCX")
+        kp = src.find("Keypoints (always when summaries exist)")
+        simplified = src.find("Simplified Keypoints Digest")
+        citation = src.find("Citation graph — extract")
+        assert 0 < docx < kp < simplified < citation, (
+            "the four blocks must keep their original internal order"
+        )
+
+    def test_summary_outputs_is_an_acyclic_leaf_module(self):
+        for node in ast.walk(ast.parse(summary_outputs_src())):
+            if isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").startswith("core.pipeline"), (
+                    "summary_outputs.py must not import core.pipeline (acyclic leaf)"
+                )
+
+    def test_summary_outputs_logger_is_the_main_elixir_logger(self):
+        # The moved bodies' logger.debug traces keep their exact pre-move
+        # routing — the "Elixir" main logger, not logging.getLogger(__name__).
+        import core.pipeline.conversion.summary_outputs as so
+
+        assert so.logger is conv_impl.logger
+
+    def test_summary_outputs_no_book_vocabulary(self):
+        # Rule 1 deny-list (compact copy of the test_v182039 vocabulary —
+        # the permanent tree-wide guard lives there).
+        deny = (
+            "Erikson",
+            "Kernberg",
+            "Winnicott",
+            "Mahler",
+            "Akhtar",
+            "Oedipus",
+            "false self",
+            "identity diffusion",
+            "ego identity",
+            "Broken Structures",
+            "psychoanalysis",
+        )
+        offenders = [
+            (i, term)
+            for i, line in enumerate(summary_outputs_src().splitlines(), 1)
             for term in deny
             if term.lower() in line.lower()
         ]

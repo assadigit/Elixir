@@ -50,7 +50,9 @@ from typing import Any
 # LAZY into convert() to break the controller→pipeline→converter→
 # core.summarisation→summarizer→postchecks circular import. Summarizer was a
 # dead import here (summarization delegates to conversion.summarization).
-from core.docx.builder import DocxBuilder
+# V0.4.26 (Phase 3 commit 2): the eager DocxBuilder import moved with the
+# DOCX build block to core/pipeline/conversion/summary_outputs.py (its new
+# module home; core.docx.builder is a leaf — no cycle).
 from core.models import (
     ConversionRequest,
     ConversionResult,
@@ -1276,120 +1278,35 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
             if len(summaries) > 1:
                 summaries = self._cross_chapter_dedup(summaries)
 
-            # ── Step 10: DOCX ────────────────────────────────────────────────
-            docx_path = None
-            if self.request.generate_docx and not self._cancel_requested("DOCX build"):
-                self._update_status("Building DOCX report…")
-                self._log(f"  ⏱️ DOCX phase starting | [{_elapsed()}]", "INFO")
-                builder = DocxBuilder(self.request, log_callback=self._log)
-                if builder.build_report(
-                    summaries,
-                    [{"heading": s.heading, "content": s.content} for s in segments],
-                    self.request.input_path,
-                    self.docx_path,
-                ):
-                    docx_path = self.docx_path
+            # ── Step 10: Summary outputs (V0.4.26 Phase 3, commit 2) ─────
+            # The four gated-output blocks (DOCX report build, keypoints
+            # files, simplified keypoints digest, citation graph — 128
+            # inline lines) moved VERBATIM to ``run_summary_outputs`` in
+            # core.pipeline.conversion.summary_outputs.  The runner returns
+            # a SummaryOutputsResult; convert() unpacks the two locals
+            # later code reads (``docx_path`` → ConversionResult,
+            # ``_kp_final_count`` → library tracking); the keypoints paths
+            # stay on the result object (convert() never read them after
+            # the build logs).  ``_elapsed`` is threaded as a parameter
+            # named exactly like the convert() closure (the reporting.py
+            # discipline), so the moved DOCX log line ``[{_elapsed()}]``
+            # is byte-identical.  ORDER NOTE: the citation-graph block
+            # previously ran AFTER the output-studio block below; inside
+            # the runner it follows the simplified digest directly (no
+            # data dependency either way — documented in summary_outputs.py).
+            from core.pipeline.conversion.summary_outputs import (
+                run_summary_outputs as _run_summary_outputs,
+            )
 
-            # ── Keypoints (always when summaries exist) ───────────────────────
-            keypoints_md_path = None
-            keypoints_docx_path = None
-            # V18.20.3.10 (W11): the DEDUPED keypoint count from the builder —
-            # the library must record the number that actually shipped in
-            # the keypoints file (36), not the raw bullet count (41).
-            _kp_final_count = None
-            if summaries and not self._cancel_requested("keypoints build"):
-                self._update_status("Building Keypoints files…")
-                # V18.19.2.0 (Debt D4): lazy import breaks the converter→core.summarisation
-                # eager import cycle. KeypointsBuilder is only needed when summaries exist.
-                from core.summarisation import KeypointsBuilder
-
-                kp = KeypointsBuilder(log_callback=self._log)
-                # Pass segments + concepts for J1 ordering, K1 confidence,
-                # K2 source excerpts, H2 page traceability
-                all_concepts = []
-                try:
-                    from core.summarisation.text_preprocessor import DeterministicPreprocessor
-
-                    pp = DeterministicPreprocessor()
-                    for seg in segments:
-                        all_concepts.extend(pp.extract_concepts(seg.content))
-                except Exception as _e:
-                    logger.debug("ignored %s: %s", type(_e).__name__, _e)
-                keypoints_md_path, keypoints_docx_path = kp.build(
-                    summaries,
-                    book_title=self.request.input_path.stem,
-                    output_dir=self.paths.keypoints_dir,
-                    segments=segments,
-                    concepts=all_concepts,
-                    judge_results=getattr(self, "_judge_results", None),
-                )
-                # V18.20.3.10 (W11): capture the deduped count for the
-                # library record (falls back to the raw sum below when the
-                # builder didn't run or predates the attribute).
-                _kp_final_count = getattr(kp, "final_keypoint_count", None)
-                if keypoints_md_path:
-                    self._log(f"📌 Keypoints MD  → {keypoints_md_path}", "SUCCESS")
-                if keypoints_docx_path:
-                    self._log(f"📌 Keypoints DOCX → {keypoints_docx_path}", "SUCCESS")
-
-            # ── NEW: Sprint 2 – Simplified Keypoints Digest ──────────────────
-            # Robust error handling — if simplification model fails to
-            # load or any error occurs, gracefully skip simplification instead
-            # of crashing the entire pipeline. The keypoints (already generated)
-            # are preserved. The user gets a clear warning instead of a crash.
-            if (
-                self.request.simplified_keypoints_enabled
-                and summaries
-                and not self._cancel_requested("simplified keypoints")
-            ):
-                self._update_status("Generating Simplified Keypoints Digest…")
-                self._log("  📌 Generating simplified keypoints (jargon‑free digest)…", "INFO")
-                try:
-                    # V18.19.2.0 (Debt D4): lazy import breaks the eager import cycle.
-                    from core.summarisation import SimplifiedKeypointsBuilder
-
-                    builder = SimplifiedKeypointsBuilder(
-                        request=self.request,
-                        log_callback=self._log,
-                    )
-                    output_path = builder.build(
-                        summaries=summaries,
-                        book_title=book_title,
-                        output_dir=self.paths.keypoints_dir,
-                    )
-                    if output_path:
-                        self._log(f"  ✅ Simplified keypoints saved to: {output_path}", "SUCCESS")
-                except (OSError, ConnectionError, TimeoutError) as e:
-                    # Model load failure, Ollama connection error, timeout
-                    self._log(f"  ⚠️ Simplification skipped (model unavailable): {e}", "WARNING")
-                    self._log(
-                        "  ℹ️ Keypoints and summaries are still available without simplification.",
-                        "INFO",
-                    )
-                except Exception as e:
-                    # Any other error — don't crash the pipeline
-                    error_msg = str(e).lower()
-                    if any(
-                        kw in error_msg
-                        for kw in (
-                            "model",
-                            "load",
-                            "ollama",
-                            "connection",
-                            "timeout",
-                            "memory",
-                            "vram",
-                        )
-                    ):
-                        self._log(
-                            f"  ⚠️ Simplification skipped (infrastructure error): {e}", "WARNING"
-                        )
-                        self._log(
-                            "  ℹ️ Keypoints and summaries are still available without simplification.",
-                            "INFO",
-                        )
-                    else:
-                        self._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")
+            _summary_outputs = _run_summary_outputs(
+                converter=self,
+                segments=segments,
+                summaries=summaries,
+                book_title=book_title,
+                _elapsed=_elapsed,
+            )
+            docx_path = _summary_outputs.docx_path
+            _kp_final_count = _summary_outputs.kp_final_count
 
             # ── A4: Glossary Extraction ──────────────────────────────────
             # REMOVED in Glossary feature removed — dictionary-based
@@ -1432,24 +1349,6 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
                         checkpoint=getattr(self, "checkpoint", None),  # V13.25.0 P1.1
                     )
                 )
-
-            # V10.21.0: Citation graph — extract [N] citations and build graph
-            if not self._cancel_requested("citation graph"):
-                try:
-                    from core.outputs.citation_graph import generate_citation_graph
-
-                    if hasattr(self, "temp_markdown_path") and self.temp_markdown_path.exists():
-                        _raw_md = self.temp_markdown_path.read_text(encoding="utf-8")
-                        generate_citation_graph(
-                            summaries=summaries,
-                            segments=segments,
-                            raw_markdown=_raw_md,
-                            book_title=book_title,
-                            output_dir=self.paths.logs_dir.parent,
-                            log_callback=self._log,
-                        )
-                except Exception as e:
-                    self._record_partial_failure("Citation graph", e)
 
             # ── Validation ───────────────────────────────────────────────────
             warnings = []

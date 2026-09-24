@@ -60,4 +60,9 @@ per the Task 3-plan extraction series):
   diagnostic summary (V0.4.26 Phase 3 commit 1: ConverterReportingMixin
   + ``run_diagnostic_summary``, VERBATIM moves from converter_impl.py;
   wired via the mixin base + the convert() delegate call).
+- ``summary_outputs`` — the four gated summary outputs (V0.4.26 Phase 3
+  commit 2: ``run_summary_outputs`` + ``SummaryOutputsResult``, VERBATIM
+  moves of the DOCX-report / keypoints / simplified-digest /
+  citation-graph blocks from convert(); wired via the convert() delegate
+  call).
 """
