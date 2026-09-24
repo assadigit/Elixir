@@ -79,6 +79,7 @@ from pathlib import Path
 from typing import Any
 
 from core.models import SummaryResult
+from utils.error_trace import log_swallow
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ def _style_years_in_parens(match: re.Match) -> str:
     inner = match.group(1)
     if not _BARE_YEAR_RE.search(inner):
         return match.group(0)  # no years — leave untouched
-    return "(" + _BARE_YEAR_RE.sub(r'*\1*', inner) + ")"
+    return "(" + _BARE_YEAR_RE.sub(r"*\1*", inner) + ")"
 
 
 def format_years(text: str) -> str:
@@ -465,8 +466,22 @@ class ChapterCheckpointSaver:
                             "DEBUG",
                         )
                     return False
-            except OSError:
-                pass  # unreadable → rewrite
+            except OSError as _e:
+                # V0.4.27 (Phase-5 P1 / W3-E1, audit backlog, site 2 of 3):
+                # a transient read error (AV/indexer lock on a COMPLETED
+                # chapter) can't check the sentinel → falls through to
+                # rewrite → can clobber the 'completed chapters are never
+                # touched' guarantee. Control-flow UNCHANGED per Phase-5
+                # P1 (rewrite-on-true-corruption semantics kept — a
+                # genuinely corrupt file must still be rewritten); the
+                # WARNING surfaces the transient-error case for diagnosis.
+                log_swallow(
+                    "checkpoint_read_existing",
+                    _e,
+                    level=logging.WARNING,
+                    detail=f"path={path}",
+                )
+                # unreadable → rewrite (control-flow unchanged)
         atomic_write_text(path, content)
         return True
 
