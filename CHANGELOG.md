@@ -24,6 +24,75 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.27 — the Track-A release: 3 swallow-log fixes + 3 characterization nets + dead-module sweep + the async_provider ADR + changelog hygiene
+
+> **The release:** executes Track A of the Phase-7 SWOT top-5 actions —
+> the sandbox-doable, rig-independent subset. Track B (V0.4.26 backlog
+> items 1-4 + the async_provider wiring + the `_summarize_inner`
+> de-monolith + the T1 rig-test checklist) stays queued for the owner's
+> Windows rig.
+
+**1. The 3 P1 swallow-log fixes (Phase-5 P1 / W3-E1, SWOT top-5 #1):** the
+  three load-bearing `except …: pass` sites now surface WARNINGs via the
+  existing `log_swallow()` helper (`utils/error_trace.py:76`). Log-only,
+  zero control-flow change (Phase-5 P1: "smallest change, no control-flow
+  change"). Closes a silent Rule-4 violation.
+  - `core/pipeline/conversion/summarization.py:1066` — the book-summary
+    provenance-stamping block shipped an UNSTAMPED artifact silently on
+    failure (Rule-4 violation, no log). Commit `684ed77`.
+  - `core/pipeline/chapter_checkpoint.py:454-456` — the OSError → rewrite
+    path could clobber a COMPLETED chapter on a transient AV/indexer lock
+    (rewrite-on-true-corruption semantics kept; the WARNING surfaces it).
+    Commit `b3c5a5d`.
+  - `controller.py:944-947` — the transform-failure path kept the raw
+    unvalidated value silently (value NOT logged — may be a secret).
+    Commit `29f56c2`.
+
+**2. The 3 conversion/\* characterization nets (Phase-5 P1 / W8, SWOT
+  top-5 #3 — the "extracted ≠ tested" debt):** +149 hermetic tests
+  (postprocess 52 + visual_features 48 + output_runner 49) following the
+  Phase-3 131-test pattern (fake `ConversionContext`, no real pipeline).
+  Coverage: postprocess 22 % → 69 % (+47 pp), visual_features 25 % → 70 %
+  (+45 pp), output_runner 38 % → 91 % (+53 pp). Commits `b8788cb`,
+  `9a65f9e`, `4731bc5`. First tranche (the exhaustive Phase-3-pattern net
+  is a follow-up phase).
+
+**3. Dead-module sweep (Phase-5 P3 / W12, F2):** removed
+  `ui_qt/components/dialogs.py` (66 ln, zero importers, zero external
+  `PasswordDialog` refs — the F2 correction to the "module used" claim).
+  Commit `8c4b928`.
+
+**4. The `async_provider.py` + E6 ADR (Phase-5 P3 / SWOT W13):**
+  `docs/ASYNC_PROVIDER_DECISION.md` — an evidence-first decision document
+  for the 445-ln runtime-dead async provider + the E6 blocking-sleep pair.
+  Lays out the 30-40 % chapter-latency lever (case for wiring), the E6
+  sleep hazard (case for not wiring blind), the case for deleting (7
+  versions runtime-dead, single-GPU VRAM may negate the lever), + the
+  decision DATA the owner must provide from the rig. Closes the two-SWOT
+  re-discovery loop (V0.11 W8 → Phase-7 W13). Commit `3ac5979`.
+
+**5. Changelog/tag hygiene (SWOT T8):** a header note documenting the two
+  cosmetic gaps (4 oldest tags unheaded → archive; `V0.4.20`-`V0.4.25`
+  headings ↔ `V0.20.1`-`V0.20.5` tags, a versioning-reset naming split).
+  Commit `d7cdf83`.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (690 files formatted);
+eval gate OK (`prompt_manifest_hash ee5a61d0` flat, zero metric drift);
+full suite **6,002 P / 0 F / 36 S / 3 warnings exit 0** (no-cov 161 s) —
+the +149 tests are the 3 characterization nets; the 3 swallow-log fixes +
+deletion are behavior-preserving (log-only / dead-code). Coverage TOTAL
+66 % (the conversion/\* runners' gains are in-package, under the
+core+utils total gate).
+
+**What's NOT in V0.4.27 (Track B, the rig-required queue):** V0.4.26
+backlog items 1-4 (theoretical-tensions retry, stem self-containment,
+quote-pair balancer, sociocultural floor), the `async_provider` wiring
+(decision pending the owner's rig data per the ADR), the
+`summarizer._summarize_inner` de-monolith round (after the
+characterization net — the next de-monolith target), + the T1 rig-test
+checklist. See `docs/ASYNC_PROVIDER_DECISION.md` + the Phase-7 top-5
+actions.
+
 ## V0.4.26 — the post-SWOT release: markdown year formatting + the third SWOT + the V0.4.26 backlog triage
 
 > **The release:** the third SWOT of the codebase (`docs/AUDIT_SWOT_V0.11.md`

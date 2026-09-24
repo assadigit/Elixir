@@ -688,3 +688,42 @@ summarisation 91).
 (see the Phase 7 top-5 actions) — the deterministic-polish lever that
 the V0.4.24 dropped-digit repair proved ships safely is now spent; the
 remaining clarity fixes need the real LLM + the embedder to validate.
+
+---
+
+## Phase 9 — V0.4.27 release (the Track-A release)
+
+> **Branch:** `refactor/audit-session` @ `d7cdf83` (after A1-A5) → release
+> commit (VERSION `0.4.27` + this note + CHANGELOG). Tagged `V0.4.27`.
+
+This release executes **Track A** of the Phase-7 SWOT top-5 — the
+sandbox-doable, rig-independent subset:
+
+- **A1 (3 P1 swallow-log fixes, SWOT #1):** `summarization.py:1066`
+  (silent Rule-4 provenance violation), `chapter_checkpoint.py:454-456`
+  (OSError clobbers completed-chapter guarantee), `controller.py:944-947`
+  (transform keeps raw value). Log-only via `log_swallow()`; zero
+  control-flow change. Commits `684ed77`/`b3c5a5d`/`29f56c2`.
+- **A2 (3 conversion/\* characterization nets, SWOT #3):** +149 hermetic
+  tests (postprocess 52 + visual_features 48 + output_runner 49).
+  Coverage: postprocess 22→69 %, visual_features 25→70 %, output_runner
+  38→91 %. Commits `b8788cb`/`9a65f9e`/`4731bc5`.
+- **A3 (`dialogs.py` dead-module sweep, W12):** 66 ln, zero importers.
+  Commit `8c4b928`.
+- **A4 (`async_provider.py` + E6 ADR, W13):** `docs/ASYNC_PROVIDER_DECISION.md`
+  — wire-vs-delete decision doc + the decision DATA the owner must
+  provide from the rig. Commit `3ac5979`.
+- **A5 (changelog/tag hygiene, T8):** header note documenting the 4
+  unheaded tags + the `V0.20.x`/`V0.4.20`-`25` naming split. Commit
+  `d7cdf83`.
+
+8 commits since V0.4.26.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (690 files); eval
+gate OK (`prompt_manifest_hash ee5a61d0` flat); full suite **6,002 P /
+0 F / 36 S exit 0** (161 s, +149 vs V0.4.26's 5,853); coverage TOTAL 66 %
+flat (the conversion/\* gains are in-package).
+
+**Track B (the rig-required queue) stays open:** V0.4.26 backlog items
+1-4, the `async_provider` wiring (pending the ADR's decision data), the
+`_summarize_inner` de-monolith round, + the T1 rig-test checklist.
