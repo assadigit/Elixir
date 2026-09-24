@@ -473,3 +473,191 @@ Consolidated from Phases 3–5. **Fix-now = evidence-backed, net-green-compatibl
 - **Remaining test-pinned dead symbols** (B5 dead params, B11 Tk bridge, B16 orphan setters, B17 re-export-only, B18 ~60 symbols ≈900 LOC) — owner call: declared API vs delete-with-tests.
 - **Book-derived-files copyright review** (docs/ground_truth + audit/results, SWOT T6) — owner/legal.
 - **Rig-test checklist (T1):** the 55 headless-skipped Qt tests + a GUI smoke run on Windows 10/11 (`python main.py`).
+
+---
+
+## Phase 7 — Post-Session SWOT (refactor/audit-session @ f628a43, the third SWOT)
+
+> **Lineage:** this is the project's third SWOT — `docs/AUDIT_SWOT_V0.11.md`
+> (V0.11 @ `71bbfc2`, historical, point-in-time) → Phase 1 baseline SWOT above
+> (V0.4.25 @ `e6032ee`, pre-refactor) → **this one** (post-refactor @ `f628a43`).
+> Every item is tagged vs Phase 1: **NEW / RESOLVED / IMPROVED / UNCHANGED**.
+> Later-phase catalogues (Phase 5 design review P1–P4, the Phase 6 V0.4.26
+> benchmark backlog, the S6 correction, the `async_provider.py` W8/E6 pair,
+> changelog-scan leftovers, T6 copyright) are folded in here so nothing is
+> double-counted as a fresh discovery.
+
+### State verification (Step 0 of the method)
+
+- **Re-verified, no branch movement:** `refactor/audit-session` tip = `f628a43`,
+  `main` tip = `e6032ee` — confirmed locally (`git rev-parse`) and via the
+  GitHub API (HTTP 200 on both commits). The owner has not merged or moved
+  branches; this SWOT is taken against the documented tip.
+- **Census re-run on BOTH trees** (current `f628a43` + baseline `e6032ee`
+  materialized via `git worktree`) with a fresh AST+grep instrument
+  (`/home/z/audit-tools/census.py`). Validated against the documented
+  Phase-1/Phase-5 numbers — exact matches on every methodology-aligned metric:
+  runtime LOC 142,059 → 139,598 (Δ −2,461, exact); `converter_impl.py`
+  2,175 → 1,577 (Δ −598, exact); `convert()` 1,055 → 601 (Δ −454, exact);
+  summarizer fan-out 38 (flat, exact); converter fan-out 31 → 25 (exact);
+  12 distinct timeout values (exact set match). Where the Phase-1 census used
+  a narrower definition (broad-except "266", settings fan-in "83"), my
+  broader AST count differs and is flagged honestly below.
+- **Instruments re-run in a fresh project venv** (`/home/z/elixir/.venv`,
+  Python 3.12.14, full deps incl. PySide6 6.11.2 + markitdown 0.1.8 +
+  langextract 1.7.0):
+  - `ruff check .` → **"All checks passed!" exit 0**; `ruff format --check .`
+    → 687 files formatted, exit 0 (pinned ruff **0.16.8**, matches S3).
+  - `python scripts/eval_summary.py --check` → **"EVAL GATE: OK — no quality
+    regressions vs baseline"**, exit 0, `prompt_manifest_hash ee5a61d0ebb3…`
+    (unchanged vs committed baseline; all 6 golden chapters PASS,
+    hallucination 0.0 %).
+  - `QT_QPA_PLATFORM=offscreen pytest` → **5,889 collected; 5,853 P / 0 F /
+    36 S / 3 warnings exit 0** (no-cov 167.23 s, cov 214.02 s).
+  - Coverage: **TOTAL 66 %** (37,549 stmts / 12,911 missed) with the three
+    gates **flat and green** — `core/llm` 95 %, `core/pdf` 81 %,
+    `core/summarisation` 91 % (all exact vs the documented final state).
+- **Honest deviations from the documented final-state numbers** (the
+  evidence-first rule demands these be stated, not hidden):
+  1. **PASS/SKIP split drift, same total.** Documented 5,834 P + 55 S = 5,889;
+     measured 5,853 P + 36 S = 5,889 (identical total). 19 tests that were
+     SKIPs in the baseline run now PASS because this venv has more optional
+     deps present (langextract, markitdown, real rapidfuzz). An improvement,
+     not a regression. The remaining 36 skips: 12 camelot/tabula (not
+     installed), 1 rapidfuzz-stubbed (test-runner design), 14 missing
+     reference zips at `/home/download/Elixir-V18.20.4.{5,6}.zip`, 9
+     "Salman Akhtar source not found" (`tests/test_v18_15_9_conclusions.py`
+     — fixture not in this checkout).
+  2. **3 warnings instead of 0.** Likely PySide6 6.11.2 deprecations or
+     pytest-asyncio 1.4 changes vs the baseline's older versions;
+     uncharacterized in this run. Do not affect the exit-0 verdict or
+     coverage. Worth a `-W default::DeprecationWarning --tb=short`
+     follow-up.
+  3. **Sandbox libEGL workaround (not a code defect).** PySide6 6.11.2 needs
+     Debian `libegl1`; resolved without root via `apt-get download libegl1` +
+     `dpkg-deb -x` + `LD_LIBRARY_PATH`. Every Qt-touching run set both
+     `QT_QPA_PLATFORM=offscreen` and that `LD_LIBRARY_PATH`. The rig has
+     libegl1 already.
+
+### Strengths
+
+| # | Item | Sev | Evidence (file/line or tool output) | Tag vs Phase 1 |
+|---|---|---|---|---|
+| S1 | Test safety net held and grew: 5,812 → 5,834 documented (+22 net: +131 Phase-3 characterization net −109 dead-code pins); 5,889 collected here; 65 % → 66 % coverage with the three ≥80 % gates flat (llm 95 / pdf 81 / summarisation 91) | 5 | `pytest` run above; `pyproject addopts`; the +22 is dead-code arithmetic + the 131-test Phase-3 net | IMPROVED |
+| S2 | Deterministic accuracy harness, mutation-validated, now benchmark-proven on a fresh chapter: eval gate PASS with zero metric drift (`prompt_manifest_hash ee5a61d0…`), AND the first real end-to-end run scored 8/8/6/7 PASS with the deterministic cross-check agreeing (7/9/6/7) | 5 | `scripts/eval_summary.py --check` (this run); `audit/results/bench_v0425_ch1/deterministic_scorecard.json`; `tests/test_p4_eval_gate.py` | IMPROVED |
+| S3 | Engineering hygiene held: pinned ruff 0.16.8 clean (exit 0, 687 files formatted), 0 secrets / 0 bare-excepts / 0 mutable-default-args, keychain-routed (11 paths), fresh lockfile | 4 | `ruff check .` + `ruff format --check .` (this run); census items 2/4; `core/system/secrets.py` | UNCHANGED |
+| S4 | De-monolithization pattern proven again, one more monolith decomposed: `converter_impl.py` 2,175 → 1,577 (−27 %), `convert()` 1,054 → 601 (−43 %), via 3 byte-verbatim mixin extractions (`reporting` 447 / `summary_outputs` 254 / `finalization` 383) behind a 131-test characterization net — the "extracted ≠ tested" lesson now applied | 4 | `core/pipeline/converter_impl.py:977` (convert 601 ln); `core/pipeline/conversion/{reporting,summary_outputs,finalization}.py`; `tests/test_converter_phase3_characterization.py` | IMPROVED |
+| S5 | Content-agnostic enforcement (anti-benchmax): Rule-1 deny-list tests green at every commit; runtime code scanned for book-derived names/concepts | 3 | `AGENTS.md` Rule 1; `tests/test_v182039_audit_fixes.py::TestResidualsDenyList` | UNCHANGED |
+| S6 | **Corrected.** The Phase-1 "strong observability incl. conversion manifest" over-stated: the manifest module (`core/obs/conversion_manifest.py`, 161 ln) was DEAD and removed in `eeeeb46` — it never ran at runtime. The LIVE observability is genuine and held: provenance stamps on every artifact (Rule 4), `drops.jsonl` quarantine trail, per-run `{book}.conversion.log.md`, crash-report zips, response/embedding cache hit-rate + eviction counters, thermal/VRAM telemetry | 3 | `eeeeb46` (deletion); `core/system/provenance.py`; `core/system/crash_report.py`; `utils/logging.py` | RESOLVED (false claim corrected; live observability held) |
+| S7 | **NEW — first real benchmark PASS, model-backend-portable.** The V0.4.25 pipeline ran end-to-end headlessly against a different LLM (z-ai cloud via a llama.cpp-contract proxy) and scored 8/8/6/7 PASS — proving the deterministic machinery (author-garble repair, quote-guard gap-fill drops, near-dup drops, last-chance enumeration repair, dropped-digit year auto-repair) is model-independent, not tuned to one rig | 4 | `audit/results/bench_v0425_ch1/` (summary + 154-line conversion log + scorecard + manifest); `bb92479` | NEW |
+| S8 | **NEW — token-efficiency delivered, zero information loss.** AI-context doc set 276.8 K → 60.8 K tokens/session (−78 %, −216 K tok/session); heading conservation mechanically verified (CHANGELOG 130 `##` = 25 kept + 105 archived, zero lost/dup; Project-History 132 = archive Part 2 132); full suite green at every compact commit | 4 | `SESSION_REPORT.md` Phase 2 token table; `CHANGELOG.md`/`CHANGELOG_ARCHIVE.md` | NEW |
+
+### Weaknesses
+
+| # | Item | Sev | Evidence (file/line or tool output) | Tag vs Phase 1 |
+|---|---|---|---|---|
+| W1 | ~~Massive AI-context doc load (174 K tokens/session)~~ **RESOLVED** — Phase 2 compacted to 60.8 K (−78 %) with zero information loss | — | `SESSION_REPORT.md` Phase 2; S8 above | RESOLVED |
+| W2 | Remaining monoliths: converter_impl decomposed (2,175 → 1,577); the rest UNCHANGED — `text_preprocessor_concepts` 2,444 (frozen, 99 %, pure-fn), `segmenter` 2,084 (0 churn, cohesive), `summarizer` 1,990 (hot spot `_summarize_inner` 349 ln, deferred by design — next round), `chapter_phases` 1,965, `text_preprocessor_impl` 1,929, `packets/generator` 1,829 (52 % cov — needs characterization first) | 3 | census largest-files table; `core/summarisation/summarizer.py` (1,990 flat); Phase-3 "not this round" list | IMPROVED (one of two pain-ranked monoliths done) |
+| W3 | Hard exception swallows persist in substance: my AST re-measure 149 (baseline 153; documented pass-only arc 140 → 130, Phase-4 deletions removed ~10). **Top-3 load-bearing sites UNFIXED** (E1, queued for owner approval): `core/pipeline/conversion/summarization.py:1066-1067` (silent Rule-4 provenance-stamp swallow), `core/pipeline/chapter_checkpoint.py:454-456` (OSError → rewrite clobbers the completed-chapter untouched-guarantee), `controller.py:944-947` (transform failures keep raw value). `log_swallow()`/`swallow()` adoption still ~13 call sites vs ~130–149 swallows = <10 % | 4 | census §1; `utils/error_trace.py:76,134`; Phase-5 §2 top-3 | IMPROVED (modest, dead-code arithmetic — not fixes) |
+| W4 | ~~Stale/contradictory README docs~~ **RESOLVED** — `40d4e03` corrected: Project Status V0.13 → V0.4.25; summarizer ≈5,600 → 1,990; translation-default inversion fixed (`utils/settings.py:565-568` defaults `translation.backend="ollama"`, NLLB retired) | — | `40d4e03`; `docs/USER_OLLAMA_MODELS.md` | RESOLVED |
+| W5 | 55 → 53 Windows path literals (Phase-4 dead-code removed 2); the `G:\` machine-specific duplication STANDS — same `C:\piper…` + `G:\Program Files\neutts-air…` defaults in `utils/settings.py:782-784` AND `core/outputs/podcast_audio.py:169,181,185` (drift risk; one source of truth missing) | 3 | census §2; `utils/settings.py:782-794`; `core/outputs/podcast_audio.py:169-185` | UNCHANGED |
+| W6 | Timeout scatter persists: 75 sites / 12 distinct values {2,3,5,10,20,30,60,120,180,300,420,600} (baseline 77/12 — Phase-4 dead-code removed 2 sites); no central policy table; the `core/system/timeouts.py` named-policy leaf is still unwritten | 3 | census §3; Phase-5 §3a | UNCHANGED |
+| W7 | ~~`.venv/` missing from .gitignore; AST sweeps parse the venv (12 warnings)~~ **RESOLVED** — `e6b5ab1` added `.venv/`; `80d049f` skipped .venv in the two AST sweeps (12 warnings → 0; coverage wall-clock 343 → 220 s, −36 %) | — | `e6b5ab1`, `80d049f`; `tests/test_v182046_p5_dialog_split.py:180`, `tests/test_v182047_p5_services_decomp.py:443` | RESOLVED |
+| W8 | Coverage deserts persist despite TOTAL rising to 66 %: `core/extract` 0 % (anydoc 380 + image_extractor 835 ln), `core/ocr/unlimited_ocr.py` 0 % (342 ln, live import-guarded), `outputs/service_formatters.py` 8 %, `models/config_views` 0 %; **the "extracted ≠ tested" debt** — the EARLIER `conversion/*` runners didn't get coverage with their moves (postprocess 22 %, visual_features 25 %, output_runner 38 %, segmentation 46 %, extraction 49 %, summarization 49 %). Only the three Phase-3 modules shipped covered (reporting 82 / summary_outputs 81 / finalization 64) | 2 | baseline coverage table; Phase-5 §6; `core/ocr/service.py:294` (unlimited_ocr live) | UNCHANGED |
+| W9 | `utils/settings.py` 1,608-LOC hub, still the #1 fan-in target (my direct-import count 57, was 60; documented transitive 83 — methodology diff); schema split into `settings_schema.py` (373 ln) but the store/defaults/migrations mass remains; largest functions `_defaults` 797 ln (`:110`), `_load` 467 ln (`:911`) | 2 | census §5/§6/§7; `utils/settings.py`; `utils/settings_schema.py` | UNCHANGED |
+| W10 | Book-derived ground-truth/audit content committed in-repo (≈132 KB) — copyright exposure + token weight; deliberate evidence per AGENTS.md (T6) | 2 | `docs/ground_truth/`, `audit/results/` | UNCHANGED |
+| W11 | **NEW — clarity is now the binding quality constraint** (was coverage). The V0.4.25 ch.1 benchmark: Theoretical-Tensions section LOST to the truncation guard (additive lines arrived malformed, guards killed the whole 5-section → 4-section output); 3 garbled enumeration stems ("His work…", "This he sees…", "Can divided…"); ~9 unbalanced quote marks; HTML `<em>` leakage into markdown (`format_years`). All five are the V0.4.26 backlog (mechanically fixable, evidence-backed) | 3 | `audit/results/AUDIT_V0.4.25_run20260924-151700-2bd82b60_ch1_summary_vs_source.md` §"Clarity & Cohesion" + "Backlog for V0.4.26" | NEW |
+| W12 | **NEW — dead-module + config-field residue.** `ui_qt/components/dialogs.py` (66 ln, zero importers — the Phase-5 F2 correction to the "module used" claim); ~270 vulture findings that are dataclass/settings/config fields (generically serialized — need a settings-migration analysis before any deletion); `core.errors.ValidationError` zero-ref but kept per findings keep-list | 2 | `ui_qt/components/dialogs.py` (66 ln, `rg importers` → 0); Phase-4 vulture summary (489 @≥60 % → 108 real + ~270 config-field) | NEW |
+| W13 | **NEW (the W8/E6 pair, decide together).** `core/llm/async_provider.py` (445 ln, runtime-dead — only docstring/comment refs in `core/summarisation/stage_overlap.py:12-25` + `core/llm/retry.py:123`; its own docstring declares "opt-in, non-breaking", deliberately unwired per ROADMAP_V0.12 §6.2) is a documented 30–40 % chapter-latency lever; wiring it would ALSO activate the E6 blocking-sleep hazard (`core/llm/openai_compat_provider.py:265` Batch-API 60×10 s poll; `core/pdf/vision_figure_extractor.py:267,295` 2 s×(n+1) retries — fine on sync QThreads, a hazard only if async is wired) | 2 | `core/llm/async_provider.py` (445 ln, docstring L1-45); `core/llm/openai_compat_provider.py:265`; `core/pdf/vision_figure_extractor.py:267,295`; `docs/LLM_HARDENING.md` §3 | NEW (carried from V0.11 W8 + Phase-5 P3 — joint decision still open) |
+
+### Opportunities
+
+| # | Item | Sev | Evidence | Tag vs Phase 1 |
+|---|---|---|---|---|
+| O1 | ~~Token-cost reduction ≥150 K/session~~ **RESOLVED** — Phase 2 delivered −216 K/session (−78 %) | — | S8; Phase 2 token table | RESOLVED |
+| O2 | De-monolithization round 3 — converter_impl done; the next target is `summarizer._summarize_inner` (349 ln single method, the V0.11 W1 god-class residue); segmenter/text_preprocessor_concepts stay frozen (0 churn, 99 %, pure-fn) | 4 | `core/summarisation/summarizer.py` (1,990 ln, `_summarize_inner` L1429-1777); Phase-3 "not this round" | PARTIAL |
+| O3 | ~~Dead-code sweep~~ **RESOLVED** — Phase 4 executed: 12 dead modules + 108 real zero-ref symbols deleted (3,001 gross / −2,961 net runtime LOC + 1,209 test LOC; 109 dead test pins removed; 1 latent bug fixed — `0ce66c7` DependencyChecker ImportError); `prompt_assembly.py` (458 ln, `core/summarisation/`) whitelisted (T5) | — | Phase-4 deletion table; `8caa8f7` findings | RESOLVED |
+| O4 | Test-suite speedup — .venv skip done (warnings 12→0, cov wall-clock −36 %); the 7 `tests/test_ground/*.ts` legacy files (never executed by any Python — the golden-master plugin makes its own temp .ts) decision still open (evidence culture vs repo weight; owner call) | 3 | `80d049f`; `tests/test_ground/*.ts` (7 files); `tests/plugins/golden_master_audit.py:181` | PARTIAL |
+| O5 | Lint ratchets — E701/E702 ≈150 sites, SIM105 ≈50, still deferred (mechanical churn, no behavior value; ruff itself clean) | 2 | `pyproject` ignore list; `ruff check .` exit 0 | UNCHANGED |
+| O6 | mypy warn-only in CI — still warn-only; gradual tightening possible | 2 | `.github/workflows/ci.yml` typecheck job | UNCHANGED |
+| O7 | `requirements.txt` duplicates `pyproject [project.dependencies]` — still duplicates (install docs reference it; single-sourcing deferred) | 2 | `requirements.txt` vs `pyproject.toml` | UNCHANGED |
+| O8 | **NEW — the V0.4.26 clarity backlog (5 items, all evidence-backed + net-green-compatible):** (1) theoretical-tensions per-section retry in `core/summarisation/additive_sections.py`; (2) enumeration-stem self-containment in `core/summarisation/enumeration.py`; (3) quote-pair balancer in `core/summarisation/post_processing.py`; (4) sociocultural name floor in `core/summarisation/thorough_theorist_floor.py`; (5) markdown-target year formatting in `core/pipeline/chapter_checkpoint.py::format_years` (emit `*1983*` for `.md`, keep `<em>` for DOCX) | 3 | `audit/results/AUDIT_V0.4.25_run20260924-151700-2bd82b60_ch1_summary_vs_source.md` "Backlog for V0.4.26" | NEW |
+| O9 | **NEW — three proven plug-in seams** (OUTPUT type ≈6 files of wiring; LLM provider one `elif` + config; TTS engine subclass + routing) — the cost of extending sits in the test suite (registry pins, `OUTPUT_PLAN` length pins, manifest hashes), not in the wiring | 3 | `core/outputs/registry.py` (21 OutputSpecs); `core/llm/registry.py:110-120,196,213-216`; `core/tts/engine.py:87,469` | NEW |
+| O10 | **NEW — `summarizer._summarize_inner` round** (349 ln single method — the next de-monolithization target; the V0.11 W1 residue; NEW_SESSION_PROMPT lists it as "too risky to extract — V18.6.3 crash mitigation"; the 5,853-test net + eval gate make it testable now) | 3 | `core/summarisation/summarizer.py:1429-1777` | NEW |
+
+### Threats
+
+| # | Item | Sev | Evidence | Tag vs Phase 1 |
+|---|---|---|---|---|
+| T1 | Headless test environment: 55 → 36 skips (the drop is more deps present, NOT UI coverage gained); Qt GUI regressions still invisible in CI/sandbox; app targets Windows 10/11. No UI edits this session by policy. Rig-test checklist still queued | 4 | `pytest` skip breakdown (12 camelot/tabula + 14 missing ref zips + 9 missing fixture + 1 rapidfuzz-stubbed); `80d049f`/`eeeeb46` etc. (no `ui_qt/` runtime edits) | UNCHANGED |
+| T2 | Single-maintainer, AI-driven cadence (147 commits, 4 authors over the V0.4.x week) — bus factor + drift risk; mitigated by this SESSION_REPORT + the sandbox worklog | 3 | `git log` 2026-09-17→09-24 | UNCHANGED |
+| T3 | `markitdown[all]` wide transitive closure (azure SDK, youtube-transcript-api, …) — attack surface + install weight; slimming deferred | 3 | `requirements.lock`; the subagent's `pip install markitdown[all]` pulled the wide tree in ~30 s | UNCHANGED |
+| T4 | Windows-first literals (`G:\`, `C:\`) break portability — 53 still present (was 55) | 2 | census §2 | UNCHANGED |
+| T5 | Frozen-by-design dead code (`prompt_assembly.py` 458 ln at `core/summarisation/`, incl. `PromptContext`/`build_primary_prompt`) risks accidental deletion by future dead-code passes — the Phase-4 vulture whitelist holds | 2 | `core/summarisation/prompt_assembly.py` (458 ln); README Known Issues #4; Phase-4 whitelist | UNCHANGED |
+| T6 | Book-derived ground-truth files in-repo — copyright gray zone; owner/legal | 2 | `docs/ground_truth/`, `audit/results/` | UNCHANGED |
+| T7 | **NEW — embedder-dependent quality phases skip silently on any env without `sentence-transformers`.** The first benchmark's honest-divergence ledger: the semantic fact-check, semantic dedup, and LLM-judge gap-fill all detected the unhealthy embedder and skipped themselves with degenerate-signal guards. These three are quality-RAISING phases, so CI/sandbox runs UNDER-represent rig quality (the 8/8/6/7 is a conservative floor) | 3 | `audit/results/bench_v0425_ch1/` honest-divergence ledger (log lines 54/60/87); `core/summarisation/evidence_map.py:125` | NEW |
+| T8 | **NEW (carried, changelog-scan leftovers).** Tag/release hygiene: tags `V0.3`/`V0.3.1`/`V0.4`/`V0.4.1` have NO CHANGELOG heading (archive-only); CHANGELOG headings `V0.4.20`–`V0.4.25` have NO matching tag (the tags are `V0.20.1`–`V0.20.5` — a versioning-reset naming split). Cosmetic but a provenance-stamp audit hazard | 1 | `git tag --list` (27 tags) vs `grep '^## V' CHANGELOG.md` (24 headings); the 4 oldest tags archive-only; the 6 newest headings untagged | NEW |
+
+### Phase 1 → now — delta table (item by item)
+
+| Phase 1 item | Sev then | Phase 7 status | Sev now | Δ (measured) |
+|---|---|---|---|---|
+| S1 test safety net | 5 | IMPROVED | 5 | 5,812 → 5,834 P (+22 net); 65 % → 66 %; gates flat |
+| S2 accuracy harness | 5 | IMPROVED (benchmark-proven) | 5 | eval gate PASS, hash `ee5a61d0` flat; + first 8/8/6/7 PASS |
+| S3 engineering hygiene | 4 | UNCHANGED | 4 | ruff 0.16.8 clean exit 0; 0 secrets/0 bare-excepts |
+| S4 de-monolith pattern | 4 | IMPROVED | 4 | converter_impl 2,175 → 1,577; convert() 1,054 → 601 |
+| S5 content-agnostic | 3 | UNCHANGED | 3 | Rule-1 deny-list green at every commit |
+| S6 observability | 3 | RESOLVED (corrected) | 3 | false "conversion manifest" strength removed (dead); live obs held |
+| S7 first benchmark (NEW) | — | NEW | 4 | 8/8/6/7 PASS, model-backend-portable |
+| S8 token efficiency (NEW) | — | NEW | 4 | 276.8 K → 60.8 K tok (−78 %) |
+| W1 doc token load | 5 | RESOLVED | — | 174 K → 60.8 K (−78 %) |
+| W2 monoliths | 4 | IMPROVED | 3 | converter_impl done; summarizer deferred (next: `_summarize_inner`) |
+| W3 exception swallows | 4 | IMPROVED (modest) | 4 | 153 → 149 (AST); top-3 UNFIXED; log_swallow <10 % adoption |
+| W4 stale docs | 3 | RESOLVED | — | README corrected in `40d4e03` |
+| W5 Windows paths | 3 | UNCHANGED | 3 | 55 → 53; `G:\` dup in settings.py + podcast_audio.py |
+| W6 timeout scatter | 3 | UNCHANGED | 3 | 77 → 75 sites; 12 distinct values; no policy table |
+| W7 .venv hygiene | 2 | RESOLVED | — | .gitignore + AST-sweep skip; warnings 12 → 0 |
+| W8 coverage deserts | 2 | UNCHANGED | 2 | TOTAL 66 %; core/extract 0 %, unlimited_ocr 0 % stand |
+| W9 settings.py hub | 2 | UNCHANGED | 2 | 1,608 LOC flat; fan-in 57 (direct) / 83 (transitive) |
+| W10 book-derived content | 2 | UNCHANGED | 2 | deliberate evidence (T6) |
+| W11 clarity binding constraint (NEW) | — | NEW | 3 | tensions section lost; 3 stem garbles; ~9 quote imbalances |
+| W12 dialogs.py + config residue (NEW) | — | NEW | 2 | dialogs.py 66 ln zero-importers; ~270 config-field vulture |
+| W13 async_provider W8/E6 pair (NEW) | — | NEW | 2 | 445 ln runtime-dead + E6 sleeps; decide together |
+| O1 token reduction | 5 | RESOLVED | — | Phase 2 delivered |
+| O2 de-monolith round 3 | 4 | PARTIAL | 4 | converter_impl done; summarizer next |
+| O3 dead-code sweep | 3 | RESOLVED | — | Phase 4: 12 modules + 108 symbols, −2,961 net LOC |
+| O4 test speedup | 3 | PARTIAL | 3 | .venv skip done; 7 .ts files decision open |
+| O5 lint ratchets | 2 | UNCHANGED | 2 | deferred (ruff clean) |
+| O6 mypy tightening | 2 | UNCHANGED | 2 | warn-only in CI |
+| O7 requirements.txt dup | 2 | UNCHANGED | 2 | deferred |
+| O8 V0.4.26 clarity backlog (NEW) | — | NEW | 3 | 5 evidence-backed fixes |
+| O9 plug-in seams (NEW) | — | NEW | 3 | OUTPUT/LLM/TTS extension proven |
+| O10 `_summarize_inner` round (NEW) | — | NEW | 3 | 349 ln, next de-monolith target |
+| T1 headless UI blindness | 4 | UNCHANGED | 4 | 55 → 36 skips (deps, not coverage); rig-test checklist queued |
+| T2 bus factor | 3 | UNCHANGED | 3 | SESSION_REPORT + worklog mitigate |
+| T3 markitdown[all] closure | 3 | UNCHANGED | 3 | slimming deferred |
+| T4 Windows literals | 2 | UNCHANGED | 2 | 55 → 53 |
+| T5 frozen dead code | 2 | UNCHANGED | 2 | prompt_assembly 458 ln whitelisted |
+| T6 copyright | 2 | UNCHANGED | 2 | owner/legal |
+| T7 embedder-skip quality floor (NEW) | — | NEW | 3 | 3 quality phases skip on embedder-less envs |
+| T8 changelog/tag hygiene (NEW) | — | NEW | 1 | 4 oldest tags unheaded; 6 newest headings untagged |
+
+### Top 5 actions (priority order, all evidence-backed + net-green-compatible)
+
+1. **The three P1 swallow-log fixes** (Phase 4 E1 / Phase 5 P1; log-only, no control-flow change) — `core/pipeline/conversion/summarization.py:1066` (Rule-4 provenance stamp), `core/pipeline/chapter_checkpoint.py:454-456` (OSError clobbers the untouched-guarantee), `controller.py:944-947` (raw value kept). Smallest change the evidence supports; the `log_swallow()` helper already exists (`utils/error_trace.py:76`).
+2. **The five V0.4.26 clarity fixes** (O8/W11) — all in `core/summarisation/` + `core/pipeline/chapter_checkpoint.py::format_years`; each mechanically closes a defect the ch.1 benchmark measured live (tensions-section loss, stem garbles, quote imbalance, sociocultural floor, markdown year format). Lifts the binding constraint (clarity, now that coverage is solved).
+3. **`conversion/*` characterization nets** (Phase 5 P1, W8) — postprocess 22 % → visual_features 25 % → output_runner 38 % first; the Phase-3 131-test net is the exact pattern. Closes the "extracted ≠ tested" debt at the pipeline layer.
+4. **`summarizer._summarize_inner` de-monolithization round** (O2/O10, W2) — the 349-ln single method is the V0.11 W1 god-class residue and the last pain-ranked monolith; the 5,853-test net + eval gate now make it safely testable (it wasn't at the V18.6.3 crash). Characterization FIRST.
+5. **The `async_provider.py` + E6 joint decision** (W13, Phase 5 P3) — wire per ROADMAP_V0.12 §6.2 (the documented 30–40 % chapter-latency lever) OR delete the 445-ln runtime-dead module; decide TOGETHER with the E6 blocking-sleep sites (`openai_compat_provider.py:265`, `vision_figure_extractor.py:267,295`) because wiring async activates the sleep hazard. An owner architectural call, not a code fix.
+
+> **Net assessment:** the session moved four Phase-1 items to RESOLVED
+> (W1 doc load, W4 stale docs, W7 .venv hygiene, O1/O3) and IMPROVED four
+> more (S1, S2, S4, W2) while introducing no regression (eval gate flat,
+> coverage gates flat, ruff clean). The binding quality constraint
+> **inverted** — coverage was the ch.1 bottleneck at V0.18 (6 → 8 this
+> session); clarity is now the bottleneck (8 → 6). The five V0.4.26 fixes
+> are the highest-leverage next move. The structural debts that survived
+> (W3 swallows, W5/W6 path/timeout scatter, W8 coverage deserts, W9
+> settings hub, the async_provider/E6 pair) are all catalogued and
+> evidence-anchored — none regressed, none was mass-fixed (Rule 2:
+> smallest change the evidence supports).
