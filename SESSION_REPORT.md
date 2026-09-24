@@ -135,4 +135,58 @@ The conversion/* modules extracted in *earlier* campaigns are thin-covered — p
 
 ---
 
+## Phase 4 — Dead Code, Dead Connectors & Questionable Decisions
+
+Analysis artifacts: `/home/z/audit-tools/findings_table.md` (46 rows, sections A–E), `vulture_60.txt` / `vulture_90.txt`, `vulture_verify.py` (git-grep word-ref checker that catches string refs, getattr-by-name and test pins). Every deletion below was re-verified zero-reference repo-wide with the Grep tool immediately before removal; only test pins OF deleted symbols were removed — no live assertion was touched.
+
+### Deletion summary — 7 commits
+
+| Commit | Scope | Runtime LOC | Test LOC | Suite arithmetic |
+|---|---|---|---|---|
+| `80d049f` test: skip .venv in the two project-root AST sweeps | E8 fix (test-only): 2 one-line tuple additions (`test_v182046:180`, `test_v182047:443`) — both sweeps stopped ast-parsing 6,489 .venv files; the 12 pydub SyntaxWarnings disappeared | 0 | 2 chg | 5943 P / 0 F / 55 S (count unchanged) |
+| `eeeeb46` refactor: remove dead core/obs modules | progress 230 + error_remediation 235 + parallel_stages 167 + conversion_manifest 161 (the whole obs package except the live `tracing.span`); tests: test_phase5_ui.py 237 ln wholesale + test_parallel_stages.py + 6 scattered pins | −793 | −555 | 5943 − 43 = **5900 P** / 0 F / 55 S |
+| `a310f0d` refactor: remove dead core/llm modules | embed_cache 207 (superseded by embedding_cache.py), gguf_checksum 130, prompt_budget 221; 56 test pins | −558 | −541 | 5900 − 56 = **5844 P** / 0 F / 55 S |
+| `439203d` refactor: remove dead modules | system/verify_environment 213 (superseded by dependency_checker.py), tts/vram_manager 202 (live one = vram_calculator.py), utils/structured_log_sink 111; 8 test pins | −526 | −100 | 5844 − 8 = **5836 P** / 0 F / 55 S |
+| `f31304e` refactor: remove dead UI files | ui_qt/components/chapter_panel 303 (replaced by chapter_selector_dialog), ui_qt/views/output_types_dialog 350 (V18.20.4 minefield leftover); no dedicated tests | −653 | 0 | 5836 P / 0 F / 55 S (unchanged) |
+| `0ce66c7` fix: repair broken DependencyChecker import | **Latent bug fix** (not dead code): dependencies_page.py:284 imported the non-existent `DependencyChecker` (renamed `DetailedDependencyChecker` in V13.29.0) inside the SimpleWorker callable — both the initial check and "Recheck all" raised ImportError in the worker. Found while verifying commit D's supersession. | 2 chg | 0 | 5836 P / 0 F / 55 S (unchanged) |
+| `348010a` refactor: remove dead symbols | 10 groups: 13 never-adopted V7.0.0 exception classes; podcast audio effects (3 fns + 2 consts, initial-commit feature); page_marker 2 fns; settings widgets 3 helpers; 4 dead thermal/hw constants; Qwen speaker tables; 2 content_filter regexes; 3 gap_filler aliases; voice_manager DEFAULT_VOICE; translation-cache stats/clear; 4 singletons (get_startup_cuda_probe, ask_password, icon_with_png_fallback, _auto_detect_system_theme); the unreachable NLLB-era `unload_for_translation` branch; registry.get_dialog_outputs (orphaned by `f31304e`) | −471 / +34 (net −437) | −13 | 5836 − 2 = **5834 P** / 0 F / 55 S |
+
+**Phase totals:** 3,001 runtime LOC deleted gross (net −2,961 after 40 ln of docstring-provenance insertions) + 1,209 test LOC; 109 test pins of dead code removed (5943 → 5834 P), 0 failed / 55 skipped at every commit; ruff check + format clean on every touched file. Live replacements verified kept at each step: `embedding_cache.py`, `response_cache.py`, `dependency_checker.py`, `vram_calculator.py`, `chapter_selector_dialog.py`, `utils/logging.py StructuredJsonFormatter`, `core/tts/engine_cache.clear_cache`, `pixmap_with_png_fallback`, `_crossfade_overlap`, `QWEN_TTS_KNOWN_SPEAKERS`, `TOC_LINE_PATTERN`.
+
+### Findings (condensed from /home/z/audit-tools/findings_table.md)
+
+**A. Dead modules — 12 of 13 deleted** (2,530 ln): obs ×4, verify_environment, tts/vram_manager, llm/{embed_cache, gguf_checksum, prompt_budget}, structured_log_sink, ui chapter_panel + output_types_dialog. SWOT **S6 corrected**: the "conversion manifest" strength never ran at runtime.
+
+**B. Dead symbols — high-confidence batch executed in `348010a`** (B1–B4, B6–B10, B12–B15, + the D3 model_manager branch + get_dialog_outputs). **Not executed (owner decision):**
+- **B5 dead params** (API-surface change): `search_window_chars`, `min_files`, `active_context`, and `fuzzy_threshold` (segmenter.py:1410 — callers at :1590/:1653 pass 0.85 but the body ignores it: misleading API).
+- **B11 Tk-bridge vestiges**: `controller.set_tk_root`/`set_scheduler` (`_tk_call` is live ×9).
+- **B16 ~40 orphan ui_qt setters/getters** (set_content/set_expanded/…) — zero-ref, no .ui files exist, batch deferred.
+- **B17 re-export-only symbols**: `build_segments`, `is_front_matter`/`is_chapter_like` (also flagged by the V0.11 audit W11).
+- **B18 ~60 test-pinned runtime-dead symbols ≈ 900 ln** (get_capability ×33 test refs, llm_judge_grounding ×16, _translate_batch ×13, rects_intersect ×12, …) — alive only via their own tests; delete-with-tests or keep as declared API is an owner call.
+
+**C. Unused dependencies (owner decision — lock-regen policy):** PyYAML (zero imports repo-wide — the only "yaml" in runtime is obsidian_kb's hand-rolled `_yaml_str`/`_yaml_list`); `[rag]` extra chromadb/langchain/langchain-community (zero imports; RAG indexing removed); `[tts]` scipy (commented-out block only), misaki (redundant kokoro transitive), piper-tts Python package (Piper runs as external binary). keyring/tenacity/pydantic/langextract confirmed guarded-optional with documented degradation.
+
+**D. Dead connectors:** anydoc = dormant-by-design (import-guarded, markitdown fallback); FreeLLMAPI = LIVE provider wired end-to-end; assets/ocr_test_sample.png load-bearing; docs/ground_truth + audit/results = deliberate evidence (T6 stands). **NLLB leftovers**: 2 of 5 fixed in `348010a` (model_manager dead branch, errors.py docstring); remaining 3 are cosmetic: preflight_check.py:197 label, cache.py docstring model string, settings_logger.py:262-272 deprecated-branch logging (keep — reads legacy settings).
+
+**E. Questionable decisions (all flagged, none auto-fixed):**
+1. **E1 — exception swallows, top-3 (fix candidates):** `summarization.py:1066` `except-pass` around book-summary **provenance stamping** (silent Rule-4 violation — ships an unstamped artifact; top pick: log WARNING, write continues); `chapter_checkpoint.py:454-456` OSError→rewrite weakens the untouched guarantee (transient AV/lock error can clobber the sentinel); `controller.py:944-947` transform failures silently keep the raw unvalidated value.
+2. **E4 — timeout scatter:** 77 `timeout=N` literals / 12 distinct values {2,3,5,10,20,30,60,120,180,300,420,600} (was 65/11 at the Phase-1 census) — proposed central table in a new leaf `core/system/timeouts.py` (named policies: LLM_CALL_S=300, HEALTH_POLL_S=5, GPU_POLL_S=2, BATCH_POLL_S=10…) + settings override namespace.
+3. **E5 — G:\ duplication:** the same `G:\Program Files\neutts-air…`/`C:\` defaults in utils/settings.py:781-783 AND podcast_audio.py:169-183 (drift risk) + a `G:\Docs\…` docstring example (checkpoint.py:11).
+4. **E6 — blocking sleeps:** openai_compat_provider.py:265 Batch-API poll 60×10 s (live provider, up to 10 min blocking); vision_figure_extractor.py:267,295 2 s×(n+1) retries — fine on today's sync QThreads, a hazard only if async_provider is ever wired.
+5. **E7 — magic numbers:** 1024 output-cap at 6+ sites (iq2_s_profile.py:43 already names an UNUSED MAX_OUTPUT_TOKENS); `max(3, len//2)` duplicated in both chapter matchers; fuzzy thresholds 95/95/85 inconsistent.
+
+### Kept on purpose (FLAG — owner decisions carried forward)
+
+- **`core/llm/async_provider.py` (445 ln, runtime-dead)** — documented unwired 30-40 % chapter-latency lever (docs/LLM_HARDENING.md:190, SWOT W8, ROADMAP_V0.12 §6.2); wiring it would also activate the E6 blocking-sleep hazard, so decide both together.
+- **`core/llm/prompt_assembly.py`** — frozen by design (README Known Issues #4, T5 vulture whitelist).
+- **`tests/test_ground/*.ts` (6 committed files, never executed by any Python)** — the golden-master plugin makes its own temp .ts; kept as evidence culture.
+- **`core.errors.ValidationError`** is itself zero-ref (callers catch pydantic's) but kept per the findings keep-list; same for `GPU_TEMP_WARNING`, `gap_filler.CheckCoverageFn`, and — newly discovered in F2 — the **entire `ui_qt/components/dialogs.py` module now has zero importers** (the 4-analysis "module used" claim was wrong; candidate for a later module sweep).
+- **B5/B11/B16/B17/B18 symbol groups + C-section deps** (above) — API-surface / lock-regen policy calls.
+
+### Vulture summary
+
+489 findings @≥60 % (14 @≥90 %) → **108 real** zero-runtime-ref symbols (80 also zero-test-ref) + 13 dead modules via AST import tracing; ~110 clear false positives (83 python-docx setter writes — the write IS the API call, ~10 lambda-protocol params, 3 Qt virtual overrides, 1 `__dir__` dunder, 1 guarded `_tenacity` import, ~8 Qt keep-alive attrs); remaining ~270 = dataclass/settings/config fields (generically serialized — need a settings-migration analysis before any deletion).
+
+---
+
 *(Phases 2–6 sections appended below as work completes.)*
