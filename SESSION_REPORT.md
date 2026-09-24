@@ -1,8 +1,8 @@
 # Elixir — Audit, Refactor & Benchmark Session Report
 
 - **Repo:** https://github.com/assadigit/elixir @ main e6032ee (V0.4.25)
-- **Branch:** `refactor/audit-session`
-- **Baseline captured BEFORE any change** (Phase 0) — see §6 Metrics.
+- **Branch:** `refactor/audit-session` — **FINAL STATE: 19 commits ahead of main** (Phases 2–5 complete + this report; Phase 6 blocked on user input — see its section)
+- **Baseline captured BEFORE any change** (Phase 0) — final vs baseline: 5,834 P / 0 F / 55 S / 0 warnings (was 5,812/12 warn); coverage 65%→66% with llm 95 / pdf 81 / summarisation 91 flat; runtime LOC −2,461; AI-context doc tokens −78% (~276.8K→~60.8K); **eval gate PASS with zero metric drift**. Full table in "Session Metrics — Baseline vs Final".
 - **Method:** AGENTS.md standing rules honored (content-agnostic fixes, evidence-first, net-green at every commit, no history rewrite, one logical change per commit).
 
 ---
@@ -71,6 +71,37 @@ Severity: 1 (minor) – 5 (critical). All counts verified on the baseline commit
 - **Guard T1** — no UI-layer edits this session; rig-test checklist in the backlog.
 - **Guard T5** — the frozen V18.6.3 pattern is whitelisted in the Phase 4 dead-code report.
 - **T2/T6** — surfaced to the owner in the final report; not actionable in-repo beyond documentation.
+
+---
+
+## Phase 2 — Token-Efficient Docs (docs-only, zero behavior change)
+
+**Scope:** compact the AI-context doc load (SWOT W1/O1, severity 5) with zero information loss and the full suite green at every commit. 4 commits.
+
+### What changed
+
+| Commit | Subject | What it did |
+|---|---|---|
+| `8be121d` | docs: compact changelog to the V0.4.x era; archive legacy history verbatim | CHANGELOG.md 7,911 → 1,428 lines (all 24 V0.4.x entries kept + the "Key design decisions" section lifted to the tail); old L1416–7902 + the entire old Project-History.md moved **verbatim** into a new `CHANGELOG_ARCHIVE.md` (13,865 lines, curated header incl. 3 preserved-quirk notes); Project-History.md rewritten as a 46-line era summary (14-row mechanically generated era table; 132/132 versioned headings accounted for); rebrand-test `_ALLOWED` allowlist extended for the archive. |
+| `40d4e03` | docs: correct stale README claims; point history links at the archive | README.md only, 11 insertions / 12 deletions: Project Status V0.13→V0.4.25; test badge 5,784→5,812; gate line refreshed; Known-Issues summarizer size ≈5,600→1,990 (measured); **translation-default inversion fixed** — README claimed "NLLB-200-600M (default) / TranslateGemma (backup)" but the code says the opposite: `utils/settings.py:565-568` defaults `translation.backend = "ollama"` with `translategemma-12b-it…` (NLLB retired V18.20.4.6+; legacy values auto-migrated at `utils/settings.py:1042-1047`); `docs/USER_OLLAMA_MODELS.md` was already correct and untouched; roadmap item 12 counts AST-re-measured (convert 1,055; `_summarize_inner` 349). |
+| `de27a95` | docs: mark completed campaign docs as historical | Point-in-time banners on 5 campaign docs (+18/−1, no content removed): ROADMAP_V0.12 → status EXECUTED (all checklists `[x]`); ROADMAP_V0.20 → COMPLETED charter (§6 protocols remain normative); AUDIT_SWOT_V0.11 → point-in-time; FEASIBILITY_vision_crop → shipped in V0.4.3; STATUS → V0.4.25 audit. LLM_HARDENING left as the still-load-bearing evidence matrix. |
+| `e6b5ab1` | chore: ignore local .venv/ | `.gitignore` += `.venv/` (SWOT W7; comment on its own line — gitignore has no inline-comment syntax). |
+
+### Token table (chars; tokens = chars/4)
+
+| File | Before Phase 2 | After `8be121d` | After 2b (`40d4e03`–`e6b5ab1`) | Final (post-Phase-3 README edits) |
+|---|---|---|---|---|
+| README.md | 30,107 | 30,107 | 29,224 | 29,428 |
+| CHANGELOG.md | 531,544 | 76,388 | 76,388 | 76,388 |
+| Project-History.md | 412,218 | 3,266 | 3,266 | 3,266 |
+| docs/ excl ground_truth | 133,178 | 133,178 | 134,012 | 134,012 |
+| **AI-context set** | **1,107,047 ≈ 276.8K tok** | **242,939 ≈ 60.7K** | **242,890 ≈ 60.7K** | **243,094 ≈ 60.8K (−78.0%)** |
+
+### Proofs
+
+- **Heading conservation (mechanically verified):** old CHANGELOG 130 `##` headings = new CHANGELOG 25 (24 V0.4.x + 1 Key-design-decisions, lifted not copied) + Archive Part 1 105 = 130, zero lost/duplicated; old Project-History 132 = Archive Part 2 132 exactly; new Project-History 0. Line conservation: 1,415 kept + 7 KDD + 6,487 archived + 2 trimmed separator lines = 7,911.
+- **Zero behavior change:** docs/chore-only commits; scanning tests (rebrand + Rule-1) re-run at every commit, **full suite 5,812 P / 0 F / 55 S after 2a and after 2b** (238s, identical to baseline).
+- Assembly + verification scripted (`/home/z/audit-tools/phase2a/`, originals backed up `*.orig`); 3 documented deviations from the runbook (archive cut at L7902 not L7904 to avoid a doubled `---`; measured ~61K tokens vs the ~62K estimate; one pointer note for archived "Project-History.md line NNNN" citations).
 
 ---
 
@@ -279,4 +310,152 @@ Head @ `8caa8f7`, suite 5,834 P / 0 F / 55 S. Every number below re-verified aga
 
 ---
 
-*(Phase 6 section appended below as work completes; Phase 2's compaction record lives in the worklog + commits 8be121d/40d4e03/de27a95/e6b5ab1.)*
+## Phase 6 — QA & Benchmarking with a Book Chapter
+
+**STATUS: BLOCKED ON INPUT — the mission contract requires the user-supplied book chapter (path or URL); per the ground rules the agent must ASK and must not invent one.**
+
+**What is needed from the user:** the chapter (file path or URL) for the end-to-end conversion benchmark, and — for the full app-pipeline run (`python main.py`) — a GUI/Windows rig (this sandbox is headless; 55 Qt tests skip here, SWOT T1).
+
+**What is READY now:**
+
+1. **The deterministic output-quality gate already ran on the session HEAD** (final wrap-up): `scripts/eval_summary.py --check --json /home/z/audit-tools/eval_scorecards_final.json` → **`EVAL GATE: OK — no quality regressions vs baseline`** (exit 0). The scorecards are **bit-identical** to the committed baseline `tests/golden/eval_baseline.json` on all 6 golden chapters — ROUGE-L precision/recall/F1, faithfulness, hallucination-rate, coverage, f4-min-overlap, fragment-rate, claims, verdicts and the `prompt_manifest_hash` (ee5a61d0…) all match with **zero diffs**. This is the before/after output-quality benchmark: it proves the session's verbatim moves + dead-code deletions + docs changed no output quality.
+2. The full app pipeline (`python main.py`) needs only the user's chapter (or a rig) for the end-to-end run.
+3. The repo's own 6 golden chapters (`tests/golden/*/source_chapter.md`) are **AVAILABLE** as benchmark inputs pending user confirmation to use them — they are the same fixtures the eval gate exercises (academic / academic_tables / farsi / multicolumn / nonfiction / scanned_OCR shapes).
+
+### Final eval-gate scorecards (= baseline, zero drift)
+
+| Chapter | ROUGE-L F1 | Faithfulness | Hallucination | Coverage | Verdict |
+|---|---|---|---|---|---|
+| academic | 0.442 | 99.4% | 0.0% | 76.7% | PASS |
+| academic_tables | 0.224 | 99.7% | 0.0% | 90.0% | PASS |
+| farsi | 0.376 | 99.2% | 0.0% | 93.3% | PASS |
+| multicolumn | 0.315 | 99.4% | 0.0% | 93.3% | PASS |
+| nonfiction | 0.416 | 99.2% | 0.0% | 86.7% | PASS |
+| scanned_ocr | 0.231 | 99.5% | 0.0% | 93.3% | PASS |
+
+*(A user-supplied chapter would extend the benchmark to a fresh, out-of-sample book; the in-repo golden set already covers the six layout/language shapes above.)*
+
+---
+
+## Session Metrics — Baseline vs Final
+
+Baseline = Phase 0 (main `e6032ee`, before any change). Final = session HEAD. Every number re-measured on the final tree (wc / AST / pytest / eval), not copied forward.
+
+### Code size (wc -l, `*.py`)
+
+| Scope | Baseline | Final | Δ |
+|---|---|---|---|
+| core/ | 106,415 (255 files) | 104,802 (249 files) | −1,613 (−1.5%) |
+| utils/ | 3,753 | 3,642 | −111 |
+| ui_qt/ | 30,419 | 29,687 | −732 |
+| controller.py | 1,154 | 1,154 | 0 (no UI-layer edits by policy) |
+| main.py | 318 | 313 | −5 |
+| **Total runtime** | **142,059** | **139,598** | **−2,461 (−1.7%)** |
+
+Phase 4 deleted 3,001 gross / −2,961 net runtime LOC; Phase 3's three extraction modules added back ~+500 lines of scaffolding (module headers, result dataclasses, registry entries, delegate comments) around the verbatim-moved bodies.
+
+### Monolith table
+
+| Module | Baseline | Final | Δ |
+|---|---|---|---|
+| `core/pipeline/converter_impl.py` | 2,175 | 1,577 | −598 (−27%) |
+| — its `convert()` | 1,054 (L1121–2175) | 601 (L977–1577) | −453 (−43%) |
+| `core/summarisation/summarizer.py` | 1,990 | 1,990 | 0 (deferred by design; `_summarize_inner` 349 ln = next round) |
+| `core/pipeline/conversion/reporting.py` | — | 447 | new (Phase 3) |
+| `core/pipeline/conversion/summary_outputs.py` | — | 254 | new (Phase 3) |
+| `core/pipeline/conversion/finalization.py` | — | 383 | new (Phase 3) |
+
+### Tests & coverage
+
+| Metric | Baseline | Final | Δ |
+|---|---|---|---|
+| Suite | 5,812 P / 0 F / 55 S / 12 warnings | 5,834 P / 0 F / 55 S / **0 warnings** | +22 net (+131 Phase-3 characterization net, −109 dead-code pins); warnings fixed by `80d049f` |
+| Coverage TOTAL (core+utils) | 65% (38,270 stmts / 13,271 miss) | 66% (37,549 stmts / 12,953 miss) | +1pp; −721 stmts / −318 misses (dead-code arithmetic) |
+| core/llm | 95% | 95% | 0 (gate ≥80 ✓) |
+| core/pdf | 81% | 81% | 0 (gate ≥80 ✓) |
+| core/summarisation | 91% | 91% | 0 (gate ≥80 ✓) |
+| Coverage-run wall-clock | 343.18s | 219.84s | −36% |
+
+Biggest per-package coverage moves (honest accounting — the denominators changed): **core/obs 89%→67% (−21pp)** — the four dead obs modules (covered by their own, now-deleted, tests) are gone; only the live `tracing.py` (82 stmts) remains, so no live code lost coverage. **core/errors.py 75%→94% (+19pp)** and **core/postprocess 76%→84% (+8pp)** — dead symbols removed from partially-covered files. **core/pipeline 54.0%→56.4% (+2.4pp)** — the three Phase-3 modules ship covered (reporting 82% / summary_outputs 81% / finalization 64%), applying the "extracted ≠ tested" lesson. **utils 73.1%→72.4% (−0.6pp)** — `structured_log_sink` (dead, covered, deleted). core/podcast 874→813 stmts at 0% both (dead audio-effects block removed). Net: TOTAL **rose**; the three gated packages are flat; nothing live regressed.
+
+### Docs (AI-context load; chars, tokens = chars/4)
+
+| File | Baseline | Final |
+|---|---|---|
+| README.md | 30,107 | 29,428 |
+| CHANGELOG.md | 531,544 | 76,388 |
+| Project-History.md | 412,218 | 3,266 |
+| docs/ excl ground_truth | 133,178 | 134,012 |
+| **Set total** | **1,107,047 ≈ 276.8K tok** | **243,094 ≈ 60.8K tok (−78.0%, −216K tok/session)** |
+
+### Dead code & quality
+
+| Metric | Value |
+|---|---|
+| Dead runtime LOC removed (Phase 4) | 3,001 gross / **−2,961 net** + 1,209 test LOC |
+| Dead modules deleted | 12 (obs ×4, llm ×3, verify_environment, tts/vram_manager, structured_log_sink, ui_qt ×2) |
+| Dead test pins removed | 109 (5,943 → 5,834 P) |
+| Latent bugs fixed | 1 (`0ce66c7` — DependencyChecker ImportError in the dependencies settings page) |
+| **Quality gate (eval)** | **PASS — zero metric drift vs baseline on all 6 golden chapters** (Phase 6 table above) |
+
+---
+
+## Commit Changelog (grouped by phase)
+
+19 commits on `refactor/audit-session` (`git log e6032ee..HEAD --oneline` = 18 + this final commit).
+
+**Phase 2 — Token-efficient docs (4)**
+- `8be121d` docs: compact changelog to the V0.4.x era; archive legacy history verbatim
+- `40d4e03` docs: correct stale README claims; point history links at the archive
+- `de27a95` docs: mark completed campaign docs as historical
+- `e6b5ab1` chore: ignore local .venv/
+
+**Phase 3 — De-monolithization (5)**
+- `29b6c58` test: pin converter behavior before Phase 3 extractions
+- `e3e7e7f` refactor: extract reporting (quality report + run diagnostic summary) from converter_impl
+- `50d9a63` refactor: extract summary outputs (DOCX, keypoints, simplified digest, citation graph) from convert
+- `7a8e451` refactor: extract finalization (completion assessment, screenshots, library tracking) from convert
+- `08bf919` docs: close Phase 3 — converter decomposition done (2,175→1,577 LOC)
+
+**Phase 4 — Dead code (8)**
+- `80d049f` test: skip .venv in the two project-root AST sweeps
+- `eeeeb46` refactor: remove dead core/obs modules (progress, error_remediation, parallel_stages, conversion_manifest)
+- `a310f0d` refactor: remove dead core/llm modules (embed_cache, gguf_checksum, prompt_budget)
+- `439203d` refactor: remove dead modules (verify_environment, tts/vram_manager, structured_log_sink)
+- `f31304e` refactor: remove dead UI files (chapter_panel, output_types_dialog)
+- `0ce66c7` fix: repair broken DependencyChecker import in the dependencies settings page
+- `348010a` refactor: remove dead symbols (unused exceptions, podcast effects, orphan widgets/constants, NLLB-era branch)
+- `8caa8f7` docs: SESSION_REPORT — Phase 4 findings and deletions
+
+**Phase 5 — Design review (1)**
+- `e8270cd` docs: SESSION_REPORT — Phase 5 system design review
+
+**Final wrap-up (1)**
+- this commit — docs: SESSION_REPORT — final metrics, phase 2/6 sections, session backlog
+
+---
+
+## Backlog — Fix Now vs Later
+
+Consolidated from Phases 3–5. **Fix-now = evidence-backed, net-green-compatible, queued for owner approval** per the ground rules (Rule 2: no speculative changes; the session brief authorized research + writing, not these fixes).
+
+### FIX NOW (owner-approval queue)
+
+1. **3 WARNING-log swallow fixes** (Phase 4 E1 / Phase 5 P1; log-only, no control-flow change): `core/pipeline/conversion/summarization.py:1066` — `except Exception: pass` around book-summary **provenance stamping** (silent Rule-4 violation; top pick: log WARNING, write continues); `core/pipeline/chapter_checkpoint.py:454-456` — OSError→rewrite weakens the completed-chapter untouched-guarantee (transient AV/indexer lock can clobber the sentinel); `controller.py:944-947` — transform failures silently keep the raw unvalidated value.
+2. **Characterization nets for the thin-covered `conversion/*` runners** (the "extracted ≠ tested" debt): postprocess 22% → visual_features 25% → output_runner 38% first (Phase 3's 131-test net is the pattern).
+3. **`ui_qt/components/dialogs.py` dead-module sweep** (66 ln, zero importers — found in F2) + **PyYAML / `[rag]` / `[tts]` dependency pruning** (zero-import deps; needs lock regen).
+4. **`tests/test_ground/*.ts` legacy files decision** (6 committed files, never executed by any Python — evidence culture vs repo weight; owner call).
+
+### LATER (deliberate)
+
+- **Timeout policy table** (`core/system/timeouts.py`): 77 `timeout=N` literals / 12 distinct values — named policies + settings override; ~30-file churn, behavior-neutral if values copied verbatim.
+- **`utils/settings.py` hub split** (1,608 ln, fan-in 83): store / defaults / migrations; `_defaults()` + migration contracts must stay byte-stable.
+- **Chapter-matcher consolidation** (`Converter._match_chapter` vs `core/segmentation/chapter_matcher.ChapterMatcher`) + shared `max(3, len//2)` / 95-threshold constants.
+- **`async_provider` wiring decision** (445 ln, runtime-dead, documented 30–40% chapter-latency lever) — decide together with the E6 blocking-sleep sites (`openai_compat_provider.py:265`, `vision_figure_extractor.py:267,295`).
+- **G:\ default dedup** (`utils/settings.py:781-783` vs `core/outputs/podcast_audio.py:169-183`).
+- **`markitdown[all]` slimming** (wide transitive closure; needs an extras-usage analysis + lock regen).
+- **mypy tightening** (warn-only in CI) + **ruff ratchets** (E701/E702 ≈150 sites, SIM105 ≈50) — opportunistically per-file during future extractions.
+- **`summarizer._summarize_inner` round** (349 ln single method — the next de-monolithization target).
+- **Remaining test-pinned dead symbols** (B5 dead params, B11 Tk bridge, B16 orphan setters, B17 re-export-only, B18 ~60 symbols ≈900 LOC) — owner call: declared API vs delete-with-tests.
+- **Book-derived-files copyright review** (docs/ground_truth + audit/results, SWOT T6) — owner/legal.
+- **Rig-test checklist (T1):** the 55 headless-skipped Qt tests + a GUI smoke run on Windows 10/11 (`python main.py`).
