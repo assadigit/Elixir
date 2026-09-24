@@ -661,3 +661,30 @@ Consolidated from Phases 3–5. **Fix-now = evidence-backed, net-green-compatibl
 > settings hub, the async_provider/E6 pair) are all catalogued and
 > evidence-anchored — none regressed, none was mass-fixed (Rule 2:
 > smallest change the evidence supports).
+
+---
+
+## Phase 8 — V0.4.26 release (the post-SWOT release)
+
+> **Branch:** `refactor/audit-session` @ `d164092` (item-5 fix) → release
+> commit (VERSION `0.4.26` + this note + CHANGELOG). Tagged `V0.4.26`.
+
+This release ships the third SWOT (Phase 7, commit `812d14b`) + the one
+clean, rig-independent V0.4.26 backlog fix (item 5: `format_years` markdown
+italic — `core/pipeline/chapter_checkpoint.py`, commit `d164092`). Items
+1-4 are queued for the rig benchmark with reasoning in the CHANGELOG
+V0.4.26 entry — they touch the LLM call path / stem-builder / quote-pair
+logic / quote-guard, where a blind fix risks shipping fabricated quotes
+(Rule 2: evidence-first). The sandbox cannot generate validating evidence
+for those four (no local LLM, no sentence-transformers); the rig must.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (exit 0); eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat, zero metric drift); full suite
+5,853 P / 0 F / 36 S / 3 warnings exit 0 (no-cov 161 s, cov 214 s);
+coverage TOTAL 66 % with the three gates flat (core/llm 95 / pdf 81 /
+summarisation 91).
+
+**The next session's highest-leverage move** is items 1-4 ON THE RIG
+(see the Phase 7 top-5 actions) — the deterministic-polish lever that
+the V0.4.24 dropped-digit repair proved ships safely is now spent; the
+remaining clarity fixes need the real LLM + the embedder to validate.

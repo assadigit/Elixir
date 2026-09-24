@@ -6,6 +6,97 @@
 > deleted. The versioning-reset mapping (V0.01 = legacy V18.20.4.12) is in the
 > archive's V0.01 entry.
 
+## V0.4.26 — the post-SWOT release: markdown year formatting + the third SWOT + the V0.4.26 backlog triage
+
+> **The release:** the third SWOT of the codebase (`docs/AUDIT_SWOT_V0.11.md`
+> → Phase 1 baseline → Phase 7 post-session) shipped on `refactor/audit-session`
+> in commit `812d14b`, delta-compared vs the Phase 1 baseline (@ `e6032ee`).
+> Four Phase-1 items RESOLVED, four IMPROVED, zero regressions; the binding
+> quality constraint **inverted** (coverage was the V0.18 ch.1 bottleneck;
+> clarity is now). The V0.4.26 backlog (5 clarity fixes from the V0.4.25 ch.1
+> benchmark) is triaged here: item 5 ships this release; items 1-4 are queued
+> for the rig benchmark (they touch the LLM call path or the quote-guard,
+> where a blind fix risks shipping fabricated quotes — the evidence-first
+> rule forbids shipping without rig validation).
+
+**1. Markdown year formatting (V0.4.26 backlog item 5 — `core/pipeline/
+  chapter_checkpoint.py::format_years` + `_style_years_in_parens`):** emit
+  `*YYYY*` (markdown italic emphasis) instead of
+  `<em style="font-size:0.9em">YYYY</em>`. The V0.4.25 ch.1 audit flagged the
+  HTML leakage (valid for the DOCX pipeline, but it shipped raw into the
+  markdown output). Verified the DOCX builder does NOT consume `format_years`
+  (zero `<em>`/`year`/`format_years` refs in `core/docx/builder.py`) — so the
+  `<em>` was pure markdown-side leakage with no consumer. `*YYYY*` is the
+  correct markdown form and renders italic in any compliant viewer. 8
+  year-styling test assertions updated in-commit (Rule 3 — the audited quality
+  fix); `strip_markup_tags` still handles legacy `<em>` input for robustness.
+  Eval gate unchanged (uses stored fixtures; `prompt_manifest_hash ee5a61d0`
+  flat). Commit `d164092`.
+
+**2. The third SWOT (`SESSION_REPORT.md` §Phase 7 — commit `812d14b`):** a
+  fresh, evidence-first SWOT of the post-refactor tree (@ `f628a43`),
+  delta-compared vs the Phase 1 baseline. Census re-run on BOTH trees
+  (current `f628a43` + baseline `e6032ee` via git worktree) with a fresh
+  AST+grep instrument (`/home/z/audit-tools/census.py`); instruments re-run
+  in a fresh venv. Validated against documented numbers (LOC
+  142,059→139,598 exact, converter 2,175→1,577 exact, fan-out 38/31 exact,
+  12 distinct timeout values exact). Net assessment: 4 RESOLVED (W1 doc load,
+  W4 stale docs, W7 .venv hygiene, O1/O3 dead-code sweep), 4 IMPROVED (S1,
+  S2, S4, W2), 0 regressions. Binding quality constraint inverted: coverage
+  (6→8) → clarity (8→6). 5 NEW items folded from the Phase 5/6 catalog
+  (S7-S8, W11-W13, O8-O10, T7-T8). See `SESSION_REPORT.md` §Phase 7 for the
+  four SWOT tables + the Phase-1→now delta table + the top-5 actions.
+
+**3. The V0.4.26 backlog triage (items 1-4 queued for the rig):** the five
+  ch.1-clarity fixes from the V0.4.25 benchmark backlog:
+  - **Item 5 (year format):** SHIPPED above.
+  - **Item 1 (theoretical-tensions additive robustness):** the whole-call
+    retry-on-mass-drop already exists (`additive_sections.py:373-390`,
+    V18.20.3.2); the backlog wants a PER-SECTION retry for the tensions
+    section with a structural prompt ("X vs. Y — one line, balanced quotes").
+    Needs the rig benchmark to validate the structural prompt actually
+    produces balanced tension lines (the sandbox can't run the real LLM).
+    QUEUED.
+  - **Item 2 (enumeration-stem self-containment):** V0.4.24 did the
+    sentence/word alignment (`enumeration.py:528 _aligned_stem`); the
+    self-containment part (the label must name its author, never "His work…"
+    / "This he sees…") needs the author name threaded into the stem-builder
+    — and that name must come from the RUNTIME analysis (Rule 1 forbids
+    hardcoding book-derived names). Needs Rule-1-careful design + rig
+    validation. QUEUED.
+  - **Item 3 (quote-pair balancer):** `repair_stray_quotes_v2` (V0.20.6,
+    three D1/D2/D3 detectors) + `repair_d3_quotes_via_llm` (V0.4.11/V0.4.13,
+    content-agnostic LLM repair) ALREADY run on bullets/exec/thorough. The
+    V0.4.25 ch.1 benchmark still had ~9 unbalanced quotes despite v2 → v2
+    doesn't fully catch that defect class. A deterministic close-then-open
+    swap detector risks shipping wrong fixes (v2's D3 is flag-only for this
+    reason). Needs the rig to see the actual quote patterns + validate a new
+    detector. QUEUED.
+  - **Item 4 (sociocultural name floor):** the deterministic analyzer's
+    `extract_citations` is category-agnostic (extracts ALL author-year
+    citations via regex), and the theorist floor checks
+    `check_coverage(analysis, thorough)` against whatever the analyzer found
+    — so the floor ALREADY covers sociocultural authors IF they're cited
+    with year parentheticals. The gap is the quote-guard (the audit noted
+    Spitz/Loewenstein gap-fill drops for lacking a verbatim quote). Loosening
+    the quote-guard risks shipping fabricated quotes — Rule 1 + the
+    anti-hallucination design forbid that without rig validation. QUEUED.
+
+> **Honest disclosure:** V0.4.26 ships one runtime fix (item 5 —
+> self-evident, deterministic, no benchmark needed) + the third SWOT + the
+> V0.4.26 backlog triage. Items 1-4 are queued for the rig benchmark (they
+> touch the LLM call path, the stem-builder's author context, the quote-pair
+> logic, or the quote-guard — all places where a blind fix risks shipping
+> fabricated quotes or breaking the anti-hallucination guarantee). Per
+> AGENTS.md Rule 2 (evidence-first; the fix is the smallest change the
+> evidence supports), the sandbox cannot generate validating evidence for
+> those four (no local LLM, no sentence-transformers); the rig must.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (exit 0); eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat, zero metric drift); full suite
+5,853 P / 0 F / 36 S / 3 warnings exit 0 (no-cov 161 s, cov 214 s);
+coverage TOTAL 66 % (core/llm 95 / pdf 81 / summarisation 91, all flat).
+
 ## V0.4.25 — the run-stamped outputs release: unique filenames per conversion (the 20× stale-upload killer)
 
 > **The release:** the operator reported sending 20+ genuine re-runs that
