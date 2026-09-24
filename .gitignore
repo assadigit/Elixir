@@ -6,6 +6,9 @@ __pycache__/
 build/
 dist/
 
+# local audit venv
+.venv/
+
 # 🧪 Test / tooling caches
 .pytest_cache/
 .ruff_cache/
