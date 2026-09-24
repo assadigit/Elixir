@@ -46,6 +46,7 @@ from core.summarisation.filter_thinking import qwen_no_think
 # previously imported this INSIDE the loop body, which left the name
 # unbound for the Book.summary.md write below when ``summaries`` was empty.
 from utils.atomic_io import atomic_write_text
+from utils.error_trace import log_swallow
 
 logger = logging.getLogger(__name__)
 
@@ -1063,8 +1064,18 @@ def run_summarization(
             # in rendered markdown, which is how stale artifacts from old
             # app-version folders pass a casual glance.
             book_summary = f"{book_summary.rstrip()}\n{visible_footer(_bk_ver, _bk_rid, _bk_started, _bk_bullet_count)}"  # V0.03: real bullet count
-        except Exception:
-            pass  # stamping must never break the book summary write
+        except Exception as _e:
+            # V0.4.27 (Phase-5 P1 / W3-E1, audit backlog): surface the
+            # silent Rule-4 violation — a failure here ships an UNSTAMPED
+            # book summary with no log at all. The write still proceeds
+            # (stamping must never break it), but the WARNING makes the
+            # defect visible + traceable via the structured-log handler.
+            log_swallow(
+                "stamp_book_summary_provenance",
+                _e,
+                level=logging.WARNING,
+                detail=f"book={getattr(converter, 'summary_md_path', '?')}",
+            )
         # V18.20.2.0 (SWOT A30): atomic write (same-dir temp + fsync +
         # os.replace) — a crash mid-write previously left a truncated
         # Book.summary.md on disk.  ``atomic_write_text`` creates the
