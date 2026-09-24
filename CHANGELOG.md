@@ -5,6 +5,24 @@
 > [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) — moved verbatim, nothing
 > deleted. The versioning-reset mapping (V0.01 = legacy V18.20.4.12) is in the
 > archive's V0.01 entry.
+>
+> 🏷️ **Tag/release hygiene (V0.4.27 / SWOT T8):** two known gaps, both
+> cosmetic, both documented here so a provenance-stamp audit isn't confused:
+> 1. **Tags without a CHANGELOG heading:** `V0.3`, `V0.3.1`, `V0.4`, `V0.4.1`
+>    exist as git tags but have no `## V…` heading in this file (their
+>    entries are pre-V0.4.2 → archive-only, or were never separately
+>    entered — V0.4.2 is the first heading kept here). Find them via
+>    `git tag -l` + `git log <tag>`; the archive's Part 1 has the legacy
+>    entries.
+> 2. **Headings without a matching tag:** the `## V0.4.20`–`## V0.4.25`
+>    headings below correspond to the `V0.20.1`–`V0.20.5` **tags** (a
+>    versioning-reset naming split — the tags use the reset-era `V0.20.x`
+>    form; the changelog uses the `V0.4.20`–`V0.4.25` form). The
+>    `prompt_manifest_hash` + provenance stamps are the authoritative
+>    version anchors regardless of the tag-naming form. A future
+>    tag-normalization pass could retag, but that rewrites history →
+>    deferred (Rule 2: smallest change the evidence supports).
+
 
 ## V0.4.26 — the post-SWOT release: markdown year formatting + the third SWOT + the V0.4.26 backlog triage
 
