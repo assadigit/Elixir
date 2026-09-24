@@ -91,7 +91,6 @@ _TOC_EXTRACTOR = _project_root / "core" / "pdf" / "toc_extractor.py"
 _NEW_OUTPUTS = _project_root / "core" / "outputs" / "new_outputs.py"
 _VISION_FIG = _project_root / "core" / "pdf" / "vision_figure_extractor.py"
 _SEMANTIC_SEG = _project_root / "core" / "segmentation" / "semantic_segmenter.py"
-_VRAM_MANAGER = _project_root / "core" / "tts" / "vram_manager.py"
 _NORMALIZER = _project_root / "core" / "tts" / "normalizer.py"
 _OCR_SERVICE = _project_root / "core" / "ocr" / "service.py"
 _SUMMARIZER = _project_root / "core" / "summarisation" / "summarizer.py"
@@ -408,35 +407,6 @@ class TestWc18OutputDirPath:
 
 
 class TestWc9OllamaUrlUnification:
-    def test_vram_manager_resolves_url_from_settings(self, monkeypatch):
-        from core.tts import vram_manager
-
-        _FakeSettings.store = {}
-        monkeypatch.setattr("utils.settings.Settings", _FakeSettings)
-        assert vram_manager._ollama_base_url() == "http://ollama-rig:11500"
-
-    def test_vram_manager_falls_back_fail_soft(self, monkeypatch):
-        from core.tts import vram_manager
-
-        class _Broken:
-            def __init__(self):
-                raise RuntimeError("no settings")
-
-        monkeypatch.setattr("utils.settings.Settings", _Broken)
-        assert vram_manager._ollama_base_url() == "http://localhost:11434"
-
-    def test_vram_manager_request_lines_use_resolver(self):
-        src = _strip_comments(_src(_VRAM_MANAGER))
-        # V18.20.4.11 (P3 / O-c5): transport went pooled (session_for_url);
-        # the canonical-resolver INTENT of this pin is unchanged — every
-        # request line still resolves through _ollama_base_url().
-        assert 'f"{_ollama_base_url()}/api/ps"' in src
-        assert "session_for_url(_ps_url).get(_ps_url" in src
-        assert 'f"{_ollama_base_url()}/api/generate"' in src
-        # the two raw hardcodes are gone from the request lines
-        assert 'requests.get("http://localhost:11434' not in src
-        assert 'requests.post(\n                    "http://localhost:11434' not in src
-
     def test_toc_extractor_uses_canonical_url(self):
         src = _strip_comments(_src(_TOC_EXTRACTOR))
         assert "self._settings.get_ollama_url()" in src

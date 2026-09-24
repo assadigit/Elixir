@@ -18,7 +18,7 @@
 # regenerated from scratch.
 #
 # System-level installs still required on Windows (see requirements.txt).
-# Verify at launch via: core.system.verify_environment.verify_system_dependencies()
+# Verify at launch via: core.system.dependency_checker.DetailedDependencyChecker().check_all()
 absl-py==2.5.0
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3

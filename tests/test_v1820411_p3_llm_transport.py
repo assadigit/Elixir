@@ -35,8 +35,8 @@ _UNIFIED_MODULES = [
     "core/outputs/packets/generator.py",
     "core/outputs/new_outputs.py",
     "core/tts/normalizer.py",
-    "core/tts/vram_manager.py",
     # (V0.08 / P2: "core/pdf/adaptive_toc.py" removed with the dead module.)
+    # (P4 dead-code sweep: "core/tts/vram_manager.py" removed with the dead module.)
     "core/pdf/toc_extractor.py",
     "core/translation/translation_engine.py",
     "core/translation/translator.py",

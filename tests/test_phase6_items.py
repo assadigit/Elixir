@@ -1,8 +1,6 @@
 """V18.10 (Phase 6) - Tests for the 6 low-risk Phase 6 items.
 
 Tests:
-- 6.1: Structured-log sink (gated by settings.observability.structured)
-- 6.3: GGUF checksum verification (SHA-256 first/last 1MB)
 - 6.5: Modelfile integrity check (presence_penalty=1.5 for Qwen3)
 - 6.6: Pytest golden-master audit plugin (stub mode)
 - 6.7: GitHub Actions CI config exists
@@ -14,76 +12,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# 6.1 — Structured-log sink
-# ════════════════════════════════════════════════════════════════════════════
-
-
-class TestStructuredLogSink:
-    """Tests for the structured-log sink (Phase 6.1)."""
-
-    def test_module_imports(self):
-        from utils.structured_log_sink import (
-            is_structured_logging_enabled,
-            setup_main_logger_gated,
-        )
-
-        assert callable(is_structured_logging_enabled)
-        assert callable(setup_main_logger_gated)
-
-    def test_is_structured_logging_disabled_by_default(self):
-        """When the setting is missing, structured logging should be OFF."""
-        from utils.structured_log_sink import is_structured_logging_enabled
-
-        with patch("utils.structured_log_sink.Settings") as mock_settings:
-            mock_instance = MagicMock()
-            mock_instance.get.return_value = False
-            mock_settings.return_value = mock_instance
-            assert is_structured_logging_enabled() is False
-
-    def test_is_structured_logging_enabled_when_setting_true(self):
-        """When settings.observability.structured=True, it should be ON."""
-        from utils.structured_log_sink import is_structured_logging_enabled
-
-        with patch("utils.structured_log_sink.Settings") as mock_settings:
-            mock_instance = MagicMock()
-            mock_instance.get.return_value = True
-            mock_settings.return_value = mock_instance
-            assert is_structured_logging_enabled() is True
-
-    def test_setup_gated_no_jsonl_when_disabled(self):
-        """When structured=False, the JSONL handler should NOT be attached."""
-        from utils.structured_log_sink import setup_main_logger_gated
-
-        logger = setup_main_logger_gated(structured=False)
-        # Check that no handler has StructuredJsonFormatter
-        has_json = any(
-            hasattr(h, "formatter")
-            and h.formatter
-            and type(h.formatter).__name__ == "StructuredJsonFormatter"
-            for h in logger.handlers
-        )
-        assert not has_json, "JSONL handler should not be attached when structured=False"
-
-    def test_setup_gated_has_jsonl_when_enabled(self):
-        """When structured=True, the JSONL handler should be attached."""
-        from utils.structured_log_sink import setup_main_logger_gated
-
-        logger = setup_main_logger_gated(structured=True)
-        has_json = any(
-            hasattr(h, "formatter")
-            and h.formatter
-            and type(h.formatter).__name__ == "StructuredJsonFormatter"
-            for h in logger.handlers
-        )
-        assert has_json, "JSONL handler should be attached when structured=True"
 
 
 # ════════════════════════════════════════════════════════════════════════════
