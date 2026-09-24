@@ -28,6 +28,7 @@ FIXES in this version:
 """
 
 import json
+import logging
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -40,6 +41,7 @@ from core.pipeline import Converter
 # resolution in build_request_from_ui (credential fields must never
 # resolve from the plaintext settings store).
 from core.system.secrets import is_secret_path as _secret_path
+from utils.error_trace import log_swallow
 from utils.logging import get_main_logger
 from utils.settings import Settings
 
@@ -943,8 +945,21 @@ class Controller:
             if transform is not None and value is not None:
                 try:
                     value = transform(value)
-                except Exception:
-                    pass  # keep raw value if transform fails
+                except Exception as _e:
+                    # V0.4.27 (Phase-5 P1 / W3-E1, audit backlog, site 3 of 3):
+                    # a transform failure (type coercion, e.g. int/float/bool)
+                    # silently kept the raw, unvalidated value in the request.
+                    # Control-flow UNCHANGED (the raw value still flows through
+                    # — rejecting it would break conversion over a coercion
+                    # quirk); the WARNING surfaces the bad input for diagnosis.
+                    # NOTE: the value is NOT logged (it may be a secret —
+                    # _secret_path fields route through here).
+                    log_swallow(
+                        "apply_setting_transform",
+                        _e,
+                        level=logging.WARNING,
+                        detail=f"setting={setting_path} transform={getattr(transform, '__name__', type(transform).__name__)}",
+                    )
             kwargs[req_attr] = value
 
         return ConversionRequest(**kwargs)
