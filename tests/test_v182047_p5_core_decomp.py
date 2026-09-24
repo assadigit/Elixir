@@ -68,6 +68,9 @@ _PB = _project_root / "core" / "summarisation" / "prompt_builders.py"  # V0.18 (
 _DET = _project_root / "core" / "summarisation" / "postcheck_detectors.py"
 _GFB = _project_root / "core" / "summarisation" / "gap_fill_batch.py"
 _CI = _project_root / "core" / "pipeline" / "converter_impl.py"
+# V0.4.26 (Phase 3 commit 1): the live quality-report machinery moved
+# VERBATIM from converter_impl.py to core/pipeline/conversion/reporting.py.
+_REP = _project_root / "core" / "pipeline" / "conversion" / "reporting.py"
 _PKG_INIT = _project_root / "core" / "summarisation" / "__init__.py"
 _EXT_IMPORTER = _project_root / "core" / "pipeline" / "conversion" / "summarization.py"
 
@@ -586,8 +589,15 @@ class TestWa13DeadMethodGone:
 
     def test_quality_report_path_still_live(self):
         """The deletion took only the dead method: the LIVE quality-report
-        machinery in converter_impl.py is untouched."""
-        src = _src(_CI)
+        machinery is untouched.
+
+        V0.4.26 (Phase 3 commit 1): the machinery (the
+        ``_generate_quality_report`` method + its ``atomic_write_json``
+        save) moved VERBATIM to core/pipeline/conversion/reporting.py —
+        the anchor follows the moved bodies (the Phase-3 repoint, same
+        discipline as the rebrand-allowlist update in commit 8be121d).
+        Intent unchanged: BOTH must live in the SAME module."""
+        src = _src(_REP)
         assert "_generate_quality_report" in src
         assert "atomic_write_json" in src
 
@@ -695,6 +705,11 @@ _TOUCHED = (
     # deny-list scan — same rule, new home (the scan follows the moved
     # bodies).
     _project_root / "core" / "pipeline" / "conversion" / "visual_features.py",
+    # V0.4.26 (Phase 3 commit 1): the reporting module (quality report +
+    # end-of-run diagnostic summary — verbatim moves from converter_impl.py)
+    # joins the deny-list scan — same rule, new home (the scan follows the
+    # moved bodies).
+    _REP,
     _POSTCHECKS_PKG / "shared.py",
     _POSTCHECKS_PKG / "leakage.py",
     # V0.4.19 (de-monolithization): garble.py became the garble/ package

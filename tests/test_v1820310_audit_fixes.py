@@ -129,8 +129,14 @@ class TestF6StampDiagnostic:
 
     def test_converter_uses_parser_not_line_peek(self):
         """Policy pin: the diagnostic block must delegate to the canonical
-        parser — no fixed-line peeking may return."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        parser — no fixed-line peeking may return.
+
+        V0.4.26 (Phase 3 commit 1): the stamp scan moved VERBATIM to
+        conversion/reporting.py (run_diagnostic_summary) — the pin follows
+        the moved body."""
+        src = (ROOT / "core" / "pipeline" / "conversion" / "reporting.py").read_text(
+            encoding="utf-8"
+        )
         # V18.20.4.3 (P2 / G-1 + G-2): the scan now passes the file's full
         # path and the running app version (stale-artifact escalation) —
         # still delegating to the canonical parser, never line-peeking.
@@ -213,8 +219,14 @@ class TestF5Visibility:
     def test_models_at_exit_is_info_not_warning(self):
         """Models resident in the Ollama server at exit are a known
         cosmetic class — a WARNING on every clean run masks nothing and
-        makes runs look failed."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        makes runs look failed.
+
+        V0.4.26 (Phase 3 commit 1): the models-at-exit lines moved VERBATIM
+        to conversion/reporting.py (run_diagnostic_summary) — the pin
+        follows the moved body."""
+        src = (ROOT / "core" / "pipeline" / "conversion" / "reporting.py").read_text(
+            encoding="utf-8"
+        )
         assert "Models still in Ollama server memory at exit" in src
         assert "server-managed" in src
         assert "Models still loaded at exit" not in src
@@ -232,7 +244,13 @@ class TestO7CacheVisibility:
         assert "Response cache HIT — LLM call skipped" in src
 
     def test_diagnostic_reports_run_cache_stats(self):
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 1): the cache-stats snapshot stays in
+        # convert() (converter_impl.py); the delta line moved VERBATIM into
+        # run_diagnostic_summary (conversion/reporting.py) — union
+        # semantics keep the pin over both homes.
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8") + (
+            ROOT / "core" / "pipeline" / "conversion" / "reporting.py"
+        ).read_text(encoding="utf-8")
         assert "_cache_stats_start" in src
         assert "Response cache:" in src
         assert "opt-in" in src

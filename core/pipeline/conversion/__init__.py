@@ -52,5 +52,12 @@ postprocess (delegated) → segment (delegated) → output_save (delegated)
 → summarise (delegated) → outputs (delegated) → validate.  converter.py
 dropped from 2939 (V10.5.0) to ~1463 lines (~50% smaller).
 
-No future modules — the decomposition is complete.
+Current modules (V0.4.26 — Phase 3 de-monolithization of converter_impl.py,
+per the Task 3-plan extraction series):
+- ``visual_features`` — cover screenshots, OCR repair, vision-region
+  cropper, footnotes (V0.4.19; ConverterVisualMixin, VERBATIM moves).
+- ``reporting`` — quality_report.json generation + the end-of-run
+  diagnostic summary (V0.4.26 Phase 3 commit 1: ConverterReportingMixin
+  + ``run_diagnostic_summary``, VERBATIM moves from converter_impl.py;
+  wired via the mixin base + the convert() delegate call).
 """

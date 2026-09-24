@@ -69,6 +69,9 @@ from core.pipeline.converter_impl import Converter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CONV_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "converter_impl.py"
+# V0.4.26 (Phase 3 commit 1): the quality-report method + the end-of-run
+# diagnostic block moved VERBATIM here from converter_impl.py.
+_REPORTING_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "reporting.py"
 
 
 def conv_src() -> str:
@@ -76,15 +79,15 @@ def conv_src() -> str:
     return _CONV_SRC_PATH.read_text(encoding="utf-8")
 
 
-def literal_skeletons() -> set[str]:
-    """Every string literal in converter_impl.py with f-string holes removed.
+def reporting_src() -> str:
+    """The conversion/reporting.py source (the Phase-3 home of the moved
+    quality-report method + diagnostic block — the pins follow the moved
+    bodies)."""
+    return _REPORTING_SRC_PATH.read_text(encoding="utf-8")
 
-    Adjacent implicit concatenation (``f"a {x} "`` ``f"b"`` on separate
-    lines) parses to a single JoinedStr, so this reassembles physically
-    wrapped messages into one contiguous skeleton — the pin then survives
-    any future line re-wrapping while still pinning the exact text.
-    """
-    tree = ast.parse(conv_src())
+
+def _skeletons_of(source: str) -> set[str]:
+    tree = ast.parse(source)
     out: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.JoinedStr):
@@ -92,6 +95,23 @@ def literal_skeletons() -> set[str]:
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             out.add(node.value)
     return out
+
+
+def literal_skeletons() -> set[str]:
+    """Every string literal in converter_impl.py + conversion/reporting.py
+    with f-string holes removed.
+
+    Adjacent implicit concatenation (``f"a {x} "`` ``f"b"`` on separate
+    lines) parses to a single JoinedStr, so this reassembles physically
+    wrapped messages into one contiguous skeleton — the pin then survives
+    any future line re-wrapping while still pinning the exact text.
+
+    V0.4.26 (Phase 3 commit 1): the diagnostic-block + quality-report
+    literals moved to conversion/reporting.py — the skeleton set is the
+    UNION over both modules (house precedent: the union semantics of
+    test_v18202_system_fixes.py::test_phase_gates_wired_in_converter_impl).
+    """
+    return _skeletons_of(conv_src()) | _skeletons_of(reporting_src())
 
 
 class _RecordingSelf:
@@ -431,22 +451,35 @@ class TestCompletionSemantics:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 3. Diagnostic-summary line formats (convert() inline block — source pins)
+# 3. Diagnostic-summary line formats (conversion/reporting.py since the
+#    Phase 3 commit-1 move — source pins)
 # ════════════════════════════════════════════════════════════════════════════
 
 
 class TestDiagnosticLineFormats:
+    """Source pins for the end-of-run diagnostic block.
+
+    V0.4.26 (Phase 3 commit 1): the block moved VERBATIM to
+    core/pipeline/conversion/reporting.py (``run_diagnostic_summary``)
+    with the mechanical ``self.`` -> ``converter.`` substitution — the
+    pins follow the moved bodies (house precedent: the CoT-gate pins
+    followed chapter_phases.py in test_v1820411_p2_tls_logs_literals.py).
+    The literal skeletons (via ``literal_skeletons()``) span both modules.
+    """
+
     def test_header_line_format(self):
-        src = conv_src()
-        assert 'f"━━━ Elixir v{self._get_app_version()} Conversion Diagnostic Summary ━━━"' in src
+        src = reporting_src()
+        assert (
+            'f"━━━ Elixir v{converter._get_app_version()} Conversion Diagnostic Summary ━━━"' in src
+        )
 
     def test_book_and_total_pages_lines(self):
-        src = conv_src()
-        assert 'self._log(f"  Book: {book_title}", "INFO")' in src
-        assert 'self._log(f"  Total pages: {total_pages}", "INFO")' in src
+        src = reporting_src()
+        assert 'converter._log(f"  Book: {book_title}", "INFO")' in src
+        assert 'converter._log(f"  Total pages: {total_pages}", "INFO")' in src
 
     def test_pages_processed_variant_only_when_selection_active(self):
-        src = conv_src()
+        src = reporting_src()
         # The line is emitted only when the processed count differs from the
         # whole-book total (the guard IS the "without selection" variant).
         assert "if _pages_processed != total_pages:" in src
@@ -458,20 +491,20 @@ class TestDiagnosticLineFormats:
         assert "  Segments:  (chapters: , chunks: )" in literal_skeletons()
 
     def test_summaries_generated_and_success_lines(self):
-        src = conv_src()
+        src = reporting_src()
         assert (
-            'self._log(f"  Summaries generated: {len(summaries) if summaries else 0}", "INFO")'
+            'converter._log(f"  Summaries generated: {len(summaries) if summaries else 0}", "INFO")'
             in src
         )
         assert 'f"    Success: {ok}, Failed: {failed}, Total bullets: {total_bullets}"' in src
 
     def test_coverage_line_format(self):
-        src = conv_src()
-        assert 'self._log(f"    Coverage: {_cov_str}", "INFO")' in src
+        src = reporting_src()
+        assert 'converter._log(f"    Coverage: {_cov_str}", "INFO")' in src
         assert 'f"{_cov_val:.0%}" if isinstance(_cov_val, (int, float)) else "?"' in src
 
     def test_recall_floor_line_format(self):
-        src = conv_src()
+        src = reporting_src()
         skeletons = literal_skeletons()
         assert "    Recall floor (deterministic, final set): theorists /" in skeletons
         assert ", conclusion items /" in skeletons
@@ -480,20 +513,23 @@ class TestDiagnosticLineFormats:
         assert "f\" ({_rf['conclusion_items_pct']:.0%})\"" in src
 
     def test_warnings_and_output_paths_lines(self):
-        src = conv_src()
-        assert 'self._log(f"  Warnings: {len(warnings)}", "INFO")' in src
-        assert 'self._log(f"    ⚠️ {w}", "WARNING")' in src
-        assert 'self._log(f"  Output dir: {self.output_dir}", "INFO")' in src
-        assert 'self._log(f"  Log file: {self.conv_logger.log_path}", "INFO")' in src
-        assert 'self._log(f"  Diagnostic JSONL: {self.conv_logger.diagnostic_path}", "INFO")' in src
+        src = reporting_src()
+        assert 'converter._log(f"  Warnings: {len(warnings)}", "INFO")' in src
+        assert 'converter._log(f"    ⚠️ {w}", "WARNING")' in src
+        assert 'converter._log(f"  Output dir: {converter.output_dir}", "INFO")' in src
+        assert 'converter._log(f"  Log file: {converter.conv_logger.log_path}", "INFO")' in src
+        assert (
+            'converter._log(f"  Diagnostic JSONL: {converter.conv_logger.diagnostic_path}", "INFO")'
+            in src
+        )
 
     def test_provenance_stamps_header_line(self):
         assert "  Summary files ():" in literal_skeletons()
         # Each stamp line is the stamp_diagnostic() message, logged with the
         # level the helper returns — pinned in TestDiagnosticComputations.
-        src = conv_src()
+        src = reporting_src()
         assert "stamp_diagnostic(" in src
-        assert 'self._log(f"    {_msg}", _level)' in src
+        assert 'converter._log(f"    {_msg}", _level)' in src
 
 
 class TestDiagnosticComputations:
@@ -1126,3 +1162,238 @@ class TestCallbackPlumbing:
         event.set()
         assert Converter._cancel_requested(fake, "quality report") is True
         assert fake.messages("WARNING") == ["  ⏹️ Cancelled — skipping quality report"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 10. Phase 3 commit 1 — the reporting extraction itself (decomposition pins)
+# ════════════════════════════════════════════════════════════════════════════
+
+# The pre-move blob: the characterization commit (Phase 3 commit 0, whose
+# 91 tests are the behavior spec).  Skipped when git/the ref is unavailable
+# (the house skip-if-absent precedent: test_v182047's reference-zip checks).
+_PRE_MOVE_REF = "29b6c58"
+
+
+def _pre_move_src() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "show", f"{_PRE_MOVE_REF}:core/pipeline/converter_impl.py"],
+            capture_output=True,
+            timeout=30,
+            cwd=PROJECT_ROOT,
+        )
+    except Exception as e:  # pragma: no cover — environment-dependent
+        pytest.skip(f"pre-move reference unavailable: {e}")
+    if out.returncode != 0:  # pragma: no cover — shallow clone / missing ref
+        pytest.skip(f"git show {_PRE_MOVE_REF} failed: {out.stderr.decode()[:120]}")
+    return out.stdout.decode("utf-8")
+
+
+def _ref_diag_block(ref_src: str) -> str:
+    """The pre-move end-of-run diagnostics block (L1771-1978 of the ref),
+    located by anchors, not line numbers."""
+    lines = ref_src.splitlines(keepends=True)
+    start = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.startswith("            # End-of-conversion diagnostic summary")
+    )
+    # The block ends on the long ━-rule closing log line (the only one past
+    # the start that is >60 chars — the Output-Summary rules are shorter).
+    end = next(
+        i
+        for i in range(start, len(lines))
+        if lines[i].strip().startswith('self._log("━') and len(lines[i].strip()) > 60
+    )
+    return "".join(lines[start : end + 1])
+
+
+class TestReportingExtraction:
+    """Phase 3 / commit 1: the reporting responsibility (the
+    ``_generate_quality_report`` method + the 208-line end-of-run
+    diagnostic block) moved from converter_impl.py to
+    core/pipeline/conversion/reporting.py.  These pins hold the MOVE
+    itself: module shape, class wiring, byte-identity vs the pre-move blob
+    (commit 29b6c58), and Rule-1 deny-list cleanliness."""
+
+    def test_module_parses_and_carries_exactly_the_moved_surface(self):
+        tree = ast.parse(reporting_src())
+        classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+        assert [c.name for c in classes] == ["ConverterReportingMixin"]
+        methods = {n.name for n in classes[0].body if isinstance(n, ast.FunctionDef)}
+        assert methods == {"_generate_quality_report"}
+        top_fns = [n.name for n in tree.body if isinstance(n, ast.FunctionDef)]
+        assert top_fns == ["run_diagnostic_summary"]
+
+    def test_mixin_method_byte_identical_to_pre_move_blob(self):
+        ref_src = _pre_move_src()
+        ref_tree = ast.parse(ref_src)
+        ref_cls = next(
+            n for n in ref_tree.body if isinstance(n, ast.ClassDef) and n.name == "Converter"
+        )
+        ref_fn = next(
+            n
+            for n in ref_cls.body
+            if isinstance(n, ast.FunctionDef) and n.name == "_generate_quality_report"
+        )
+        rep_tree = ast.parse(reporting_src())
+        rep_cls = next(
+            n
+            for n in rep_tree.body
+            if isinstance(n, ast.ClassDef) and n.name == "ConverterReportingMixin"
+        )
+        rep_fn = next(
+            n
+            for n in rep_cls.body
+            if isinstance(n, ast.FunctionDef) and n.name == "_generate_quality_report"
+        )
+        # get_source_segment drops the def line's indent + final newline on
+        # BOTH sides — the comparison is otherwise byte-exact.
+        assert ast.get_source_segment(ref_src, ref_fn) == ast.get_source_segment(
+            reporting_src(), rep_fn
+        ), "_generate_quality_report drifted in the Phase-3 move (must be byte-identical)"
+
+    def test_diagnostic_block_byte_identical_to_pre_move_blob(self):
+        expected = _ref_diag_block(_pre_move_src())
+        # Guard the reference forms first (the guarded-substitution
+        # precedent from test_v182047), so any extra drift still fails.
+        assert 'getattr(self, "_cache_stats_start", None)' in expected
+        assert "_level, _msg = stamp_diagnostic(\n" in expected
+        # The documented mechanical transform: dedent one try-level (12→4
+        # spaces), self.→converter., the ONE bare self→converter, plus the
+        # single ruff-format reflow of the stamp_diagnostic call at the
+        # shallower indent (AST-identical).
+        moved = "".join(
+            (ln[8:] if ln.strip() else ln) for ln in expected.splitlines(keepends=True)
+        ).replace("self.", "converter.")
+        moved = moved.replace("getattr(self,", "getattr(converter,")
+        old_call = (
+            "                    _level, _msg = stamp_diagnostic(\n"
+            "                        str(_sf), _text, current_version=_app_ver\n"
+            "                    )\n"
+        )
+        new_call = (
+            "                    _level, _msg = stamp_diagnostic("
+            "str(_sf), _text, current_version=_app_ver)\n"
+        )
+        assert old_call in moved
+        moved = moved.replace(old_call, new_call)
+        rep_tree = ast.parse(reporting_src())
+        fn = next(
+            n
+            for n in rep_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "run_diagnostic_summary"
+        )
+        assert isinstance(fn.body[0], ast.Expr)  # the docstring
+        rep_lines = reporting_src().splitlines(keepends=True)
+        actual = "".join(rep_lines[fn.body[0].end_lineno : fn.end_lineno])
+        assert actual == moved, "run_diagnostic_summary body drifted from the pre-move block"
+
+    def test_run_diagnostic_summary_signature_threads_the_exact_locals(self):
+        import inspect
+
+        from core.pipeline.conversion.reporting import run_diagnostic_summary
+
+        params = list(inspect.signature(run_diagnostic_summary).parameters)
+        assert params == [
+            "converter",
+            "book_title",
+            "total_pages",
+            "_pages_processed",
+            "segments",
+            "summaries",
+            "warnings",
+            "_t_start",
+        ]
+        kwonly = [
+            p.name
+            for p in inspect.signature(run_diagnostic_summary).parameters.values()
+            if p.kind == inspect.Parameter.KEYWORD_ONLY
+        ]
+        assert kwonly == params[1:]  # everything but `converter` is keyword-only
+
+    def test_converter_bases_and_mro_sane(self):
+        assert [c.__name__ for c in Converter.__bases__] == [
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",  # appended last (the house pattern)
+        ]
+        assert [c.__name__ for c in Converter.__mro__] == [
+            "Converter",
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",
+            "object",
+        ]
+
+    def test_generate_quality_report_resolves_via_the_mixin(self):
+        from core.pipeline.conversion.reporting import ConverterReportingMixin
+
+        assert (
+            Converter._generate_quality_report is ConverterReportingMixin._generate_quality_report
+        )
+        assert "def _generate_quality_report" not in conv_src()  # gone from the host
+        # ...but the convert() call site is byte-identical (also pinned by
+        # test_v1820411_p2_tls_logs_literals.py:576):
+        assert "self._generate_quality_report(segments, summaries)" in conv_src()
+
+    def test_convert_delegates_with_the_exact_locals(self):
+        src = conv_src()
+        assert "from core.pipeline.conversion.reporting import run_diagnostic_summary" in src
+        assert "run_diagnostic_summary(\n                self," in src
+        for arg in (
+            "book_title=book_title",
+            "total_pages=total_pages",
+            "_pages_processed=_pages_processed",
+            "segments=segments",
+            "summaries=summaries",
+            "warnings=warnings",
+            "_t_start=_t_start",
+        ):
+            assert arg in src, f"the delegate call must thread {arg}"
+
+    def test_moved_code_gone_from_converter_impl(self):
+        src = conv_src()
+        assert "Conversion Diagnostic Summary" not in src  # the moved header
+        assert "atomic_write_json" not in src  # moved with the quality report
+        assert "call_telemetry_summary" not in src  # moved with the block
+
+    def test_reporting_is_an_acyclic_leaf_module(self):
+        for node in ast.walk(ast.parse(reporting_src())):
+            if isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").startswith("core.pipeline"), (
+                    "reporting.py must not import core.pipeline (acyclic leaf)"
+                )
+
+    def test_reporting_logger_is_the_main_elixir_logger(self):
+        # The moved bodies' logger.debug traces keep their exact pre-move
+        # routing — the "Elixir" main logger, not logging.getLogger(__name__).
+        import core.pipeline.conversion.reporting as rep
+
+        assert rep.logger is conv_impl.logger
+
+    def test_reporting_no_book_vocabulary(self):
+        # Rule 1 deny-list (compact copy of the test_v182039 vocabulary —
+        # the permanent tree-wide guard lives there).
+        deny = (
+            "Erikson",
+            "Kernberg",
+            "Winnicott",
+            "Mahler",
+            "Akhtar",
+            "Oedipus",
+            "false self",
+            "identity diffusion",
+            "ego identity",
+            "Broken Structures",
+            "psychoanalysis",
+        )
+        offenders = [
+            (i, term)
+            for i, line in enumerate(reporting_src().splitlines(), 1)
+            for term in deny
+            if term.lower() in line.lower()
+        ]
+        assert not offenders, offenders

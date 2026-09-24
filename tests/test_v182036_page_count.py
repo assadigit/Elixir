@@ -305,6 +305,11 @@ def test_extraction_result_carries_pre_overlap_selection():
 
 _SRC_CONVERTER = "core/pipeline/converter_impl.py"
 _SRC_EXTRACTION = "core/pipeline/conversion/extraction.py"
+# V0.4.26 (Phase 3 commit 1): the end-of-run diagnostic block moved
+# VERBATIM to conversion/reporting.py — the diagnostic-line pin follows the
+# moved body (union semantics, like the phase-gate pins in
+# test_v18202_system_fixes.py).
+_SRC_REPORTING = "core/pipeline/conversion/reporting.py"
 
 
 def _read_src(rel: str) -> str:
@@ -325,8 +330,12 @@ def test_converter_wires_computed_pages_processed():
 
 def test_converter_diagnostic_reports_selection_when_active():
     """The closing diagnostic summary shows the honest number next to the
-    book total when a selection limited the run."""
-    src = _read_src(_SRC_CONVERTER)
+    book total when a selection limited the run.
+
+    V0.4.26 (Phase 3 commit 1): the diagnostic block lives in
+    conversion/reporting.py now (run_diagnostic_summary) — read both
+    modules so the pin keeps its union semantics over the moved body."""
+    src = _read_src(_SRC_CONVERTER) + _read_src(_SRC_REPORTING)
     assert "Pages processed: {_pages_processed}" in src
 
 

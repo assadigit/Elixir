@@ -565,7 +565,12 @@ class TestG1StampVersionMismatch:
 
 class TestG2ConverterScan:
     def test_scan_passes_current_version_and_full_path(self):
-        src = _strip_comments(_src(_CONVERTER_IMPL))
+        # V0.4.26 (Phase 3 commit 1): the provenance-stamp scan moved
+        # VERBATIM into run_diagnostic_summary (conversion/reporting.py) —
+        # the pin follows the moved body.
+        src = _strip_comments(_src(_CONVERTER_IMPL)) + _strip_comments(
+            _src(_project_root / "core" / "pipeline" / "conversion" / "reporting.py")
+        )
         assert "current_version=_app_ver" in src
         assert "str(_sf)" in src
 

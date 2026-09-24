@@ -540,14 +540,16 @@ class TestDiagnosticNumbers:
         # and the aggregated 'recall_floor'. (Read the FILE text — importing
         # converter_impl needs optional heavy deps. Check the CALL SITES,
         # not comments.)
+        # V0.4.26 (Phase 3 commit 1): the coverage/recall-floor reads moved
+        # VERBATIM to conversion/reporting.py (run_diagnostic_summary +
+        # ConverterReportingMixin) — the pin follows the moved bodies
+        # (union semantics, negative asserted over both files).
         from pathlib import Path
 
-        src = (
-            Path(__file__)
-            .resolve()
-            .parent.parent.joinpath("core/pipeline/converter_impl.py")
-            .read_text(encoding="utf-8")
-        )
+        root = Path(__file__).resolve().parent.parent
+        src = (root / "core/pipeline/converter_impl.py").read_text(encoding="utf-8") + (
+            root / "core/pipeline/conversion/reporting.py"
+        ).read_text(encoding="utf-8")
         assert "totals.get('coverage_percent'" not in src
         assert 'totals.get("avg_coverage")' in src
         assert "recall_floor" in src
