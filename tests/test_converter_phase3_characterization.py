@@ -4,7 +4,9 @@ Locked BEFORE the planned VERBATIM extractions (Task 3-plan, commits 1-3:
 conversion/reporting.py, conversion/summary_outputs.py,
 conversion/finalization.py).  Whatever the current code does — including the
 weird formatting — IS the spec; these tests exist so the extractions can be
-verified behavior-identical.
+verified behavior-identical.  (V0.4.26 Phase 3: all three extraction commits
+landed — reporting (commit 1, e3e7e7f), summary_outputs (commit 2,
+50d9a63), finalization (commit 3); the pins follow the moved bodies.)
 
 What is pinned here (all hermetic: no ~/.elixir, no network, no Qt, no real
 conversion — fake ``self`` objects per the test_v18202_system_fixes.py:974
@@ -76,6 +78,10 @@ _REPORTING_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "repor
 # keypoints, simplified digest, citation graph) moved VERBATIM here from
 # converter_impl.py's convert().
 _SUMMARY_OUTPUTS_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py"
+# V0.4.26 (Phase 3 commit 3): the completion-assessment decision logic
+# (the false-success guards) + the screenshots/graphs + library-tracking
+# blocks moved VERBATIM here from converter_impl.py's convert().
+_FINALIZATION_SRC_PATH = PROJECT_ROOT / "core" / "pipeline" / "conversion" / "finalization.py"
 
 
 def conv_src() -> str:
@@ -97,6 +103,13 @@ def summary_outputs_src() -> str:
     return _SUMMARY_OUTPUTS_SRC_PATH.read_text(encoding="utf-8")
 
 
+def finalization_src() -> str:
+    """The conversion/finalization.py source (the Phase-3 commit-3 home
+    of the moved completion-assessment / screenshots / library-tracking
+    blocks — the pins follow the moved bodies)."""
+    return _FINALIZATION_SRC_PATH.read_text(encoding="utf-8")
+
+
 def _skeletons_of(source: str) -> set[str]:
     tree = ast.parse(source)
     out: set[str] = set()
@@ -110,7 +123,8 @@ def _skeletons_of(source: str) -> set[str]:
 
 def literal_skeletons() -> set[str]:
     """Every string literal in converter_impl.py + conversion/reporting.py
-    + conversion/summary_outputs.py with f-string holes removed.
+    + conversion/summary_outputs.py + conversion/finalization.py with
+    f-string holes removed.
 
     Adjacent implicit concatenation (``f"a {x} "`` ``f"b"`` on separate
     lines) parses to a single JoinedStr, so this reassembles physically
@@ -124,11 +138,15 @@ def literal_skeletons() -> set[str]:
     V0.4.26 (Phase 3 commit 2): the DOCX/keypoints/simplified-digest/
     citation-graph literals moved to conversion/summary_outputs.py — the
     union grows by that module (same semantics).
+    V0.4.26 (Phase 3 commit 3): the completion-assessment + screenshots +
+    library-tracking literals moved to conversion/finalization.py — the
+    union grows by that module (same semantics).
     """
     return (
         _skeletons_of(conv_src())
         | _skeletons_of(reporting_src())
         | _skeletons_of(summary_outputs_src())
+        | _skeletons_of(finalization_src())
     )
 
 
@@ -308,18 +326,26 @@ class TestMatchChapterFuzzyLastResort:
 
 
 class TestTerminalStatusStrings:
-    """The four completion branches only execute inside convert()'s 1,054-line
-    body (needs extraction/segmentation/summarization state) — per the house
-    source-pin precedent (test_v002_false_success.py:385-426,
-    test_v1820411_p2_tls_logs_literals.py:566-580) the exact emitted strings
-    are pinned on the source literals."""
+    """The four completion branches only execute inside the conversion
+    pipeline (they need extraction/segmentation/summarization state) — per
+    the house source-pin precedent (test_v002_false_success.py:385-426,
+    test_v1820411_p2_tls_logs_literals.py:566-580) the exact emitted
+    strings are pinned on the source literals.
+
+    V0.4.26 (Phase 3 commit 3): the completion-assessment block moved
+    VERBATIM to assess_completion() in conversion/finalization.py — the
+    decision RETURNS the status + ordered log lines (convert() replays
+    them), so the pins follow the moved bodies with the returned-value
+    forms (status_message = …, log_lines.append((LEVEL, …))) — the same
+    discipline the diagnostic pins followed into reporting.py (commit 1)
+    and the digest pins into summary_outputs.py (commit 2)."""
 
     def test_all_chapters_failed_error_lines(self):
-        src = conv_src()
-        assert 'self._update_status("Conversion FAILED — all chapters returned empty")' in src
+        src = finalization_src()
+        assert 'status_message = "Conversion FAILED — all chapters returned empty"' in src
         assert (
-            'self._log("❌ Conversion FAILED: all chapters returned empty responses.", "ERROR")'
-            in src
+            'log_lines.append(("ERROR", "❌ Conversion FAILED: all chapters returned '
+            'empty responses."))' in src
         )
 
     def test_all_chapters_failed_hint_mentions_ollama_pull(self):
@@ -330,15 +356,16 @@ class TestTerminalStatusStrings:
             "complexity. Try: ollama pull <model>, or switch to a less aggressive quant "
             "(IQ2_M instead of IQ2_XXS), or raise temperature to 1.0." in skeletons
         )
-        # ...and it is logged at ERROR:
-        src = conv_src()
+        # ...and it is logged at ERROR (the level now precedes the message
+        # inside the (LEVEL, MESSAGE) tuple):
+        src = finalization_src()
         anchor = src.find("❌ Conversion FAILED: all chapters returned empty responses.")
         assert anchor > 0
-        assert '"ERROR"' in src[anchor : anchor + 900]
+        assert '"ERROR"' in src[anchor - 200 : anchor + 900]
 
     def test_zero_summaries_with_selection_hard_fail_lines(self):
-        src = conv_src()
-        assert 'self._update_status("Conversion FAILED — no selected chapters summarized")' in src
+        src = finalization_src()
+        assert 'status_message = "Conversion FAILED — no selected chapters summarized"' in src
         skeletons = literal_skeletons()
         assert (
             "❌ Conversion FAILED: none of the  selected chapter(s) produced a summary — "
@@ -352,11 +379,11 @@ class TestTerminalStatusStrings:
         )
 
     def test_zero_summaries_warning_path_lines(self):
-        src = conv_src()
+        src = finalization_src()
         # Both the zero-summaries-warning path and the clean-success path emit
         # the same completion strings (2 occurrences each).
-        assert src.count('self._update_status("Conversion completed!")') == 2
-        assert src.count('self._log("✅ Conversion complete.", "SUCCESS")') == 2
+        assert src.count('status_message = "Conversion completed!"') == 2
+        assert src.count('log_lines.append(("SUCCESS", "✅ Conversion complete."))') == 2
         skeletons = literal_skeletons()
         assert (
             "   ⚠️ Zero sections were summarized — every segment was skipped as "
@@ -366,8 +393,8 @@ class TestTerminalStatusStrings:
         )
 
     def test_cancelled_by_user_lines(self):
-        src = conv_src()
-        assert 'self._update_status("Conversion cancelled")' in src
+        src = finalization_src()
+        assert 'status_message = "Conversion cancelled"' in src
         assert (
             "⏹️ Conversion cancelled — partial summaries saved; downstream phases "
             "skipped." in literal_skeletons()
@@ -992,17 +1019,29 @@ class TestVramBudgetPolicies:
 
 
 class TestScreenshotsPageFilterPrecedence:
+    """V0.4.26 (Phase 3 commit 3): the opt-in screenshots/graphs block
+    moved VERBATIM to ``run_screenshots_and_graphs`` in
+    conversion/finalization.py (self→converter) — the pins follow the
+    moved body (commit-1/2 repoint discipline)."""
+
     def test_opt_in_gate_and_skip_line(self):
-        src = conv_src()
-        assert 'self.settings.get("outputs_optin.screenshots", False)' in src
-        assert 'self._log("  ⏭️ Screenshots/graphs skipped (opt-in, disabled)", "DEBUG")' in src
+        import re as _re
+
+        src = finalization_src()
+        # the gate line is ruff-format-wrapped (the documented reflow pinned
+        # by TestFinalizationExtraction) — whitespace-flexible pin (the
+        # test_v18202 gate-precedent)
+        assert _re.search(
+            r'converter\.settings\.get\(\s*"outputs_optin\.screenshots",\s*False\s*\)', src
+        )
+        assert 'converter._log("  ⏭️ Screenshots/graphs skipped (opt-in, disabled)", "DEBUG")' in src
 
     def test_filter_order_range_then_manual_segments_else_selected_chapters(self):
-        src = conv_src()
+        src = finalization_src()
         assert "page_list = list(range(1, total_pages + 1))" in src
-        range_if = "if self.request.page_range_start or self.request.page_range_end:"
-        manual_if = "if self.request.manual_segments:"
-        chapters_elif = "elif self.request.selected_chapters:"
+        range_if = "if converter.request.page_range_start or converter.request.page_range_end:"
+        manual_if = "if converter.request.manual_segments:"
+        chapters_elif = "elif converter.request.selected_chapters:"
         assert range_if in src
         assert manual_if in src
         assert chapters_elif in src
@@ -1635,11 +1674,14 @@ class TestSummaryOutputsExtraction:
         src = conv_src()
         # ConversionResult construction still consumes the local verbatim…
         assert "docx_path=docx_path," in src
-        # …and the library-tracking call still consumes _kp_final_count
-        # verbatim (the W11 policy block is byte-identical).
-        assert "keypoints_count=(" in src
-        assert "_kp_final_count\n" in src
-        assert "if _kp_final_count is not None" in src
+        # V0.4.26 (Phase 3 commit 3): the library-tracking block moved to
+        # conversion/finalization.py (run_library_tracking) — convert()
+        # now threads the unpacked local as the runner's ``kp_final_count``
+        # parameter; the W11 prefer-the-builder-count policy inside the
+        # runner is pinned by TestFinalizationExtraction +
+        # test_v1820310's union pin.
+        assert "kp_final_count=_kp_final_count," in src
+        assert "_kp_final_count = _summary_outputs.kp_final_count" in src
         # the interleaved non-moved steps stay in convert() at their posts
         assert "self._update_progress(0.96)  # Simplified keypoints + DOCX done" in src
         assert "run_output_studio(" in src
@@ -1715,6 +1757,579 @@ class TestSummaryOutputsExtraction:
         offenders = [
             (i, term)
             for i, line in enumerate(summary_outputs_src().splitlines(), 1)
+            for term in deny
+            if term.lower() in line.lower()
+        ]
+        assert not offenders, offenders
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 12. Phase 3 commit 3 — the finalization extraction (decomposition pins)
+# ════════════════════════════════════════════════════════════════════════════
+
+# The pre-move blob for THIS commit: the summary-outputs commit (whose tree
+# is the byte-exact source the three blocks were cut from).  Skipped when
+# git/the ref is unavailable (same skip-if-absent precedent as above).
+_PRE_MOVE_REF_FINALIZATION = "50d9a63"
+
+
+def _pre_move_finalization_src() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "show", f"{_PRE_MOVE_REF_FINALIZATION}:core/pipeline/converter_impl.py"],
+            capture_output=True,
+            timeout=30,
+            cwd=PROJECT_ROOT,
+        )
+    except Exception as e:  # pragma: no cover — environment-dependent
+        pytest.skip(f"pre-move reference unavailable: {e}")
+    if out.returncode != 0:  # pragma: no cover — shallow clone / missing ref
+        pytest.skip(f"git show {_PRE_MOVE_REF_FINALIZATION} failed: {out.stderr.decode()[:120]}")
+    return out.stdout.decode("utf-8")
+
+
+def _ref_assessment_block(ref_src: str) -> str:
+    """The pre-move completion-assessment block (L1378-1465 of the 50d9a63
+    blob), located by anchors, not line numbers."""
+    lines = ref_src.splitlines(keepends=True)
+    start = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.startswith("            # V18.2.4: Check if summarization")
+    )
+    end = next(
+        i
+        for i in range(start, len(lines))
+        if lines[i].startswith("            # Output generation summary")
+    )
+    block = lines[start:end]
+    assert block[-1].strip() == ""  # the single blank separator line
+    return "".join(block[:-1])
+
+
+def _xform_assessment(block: str) -> str:
+    """The documented mechanical transform of the pre-move assessment block
+    into assess_completion's body: dedent one try-level (12 -> 4), the
+    parameter threading (self.cancel_event -> cancel_event,
+    self.request.generate_summaries -> generate_summaries,
+    self.request.selected_chapters -> selected_chapters), the EMISSION
+    CONVERSION (self._update_status(MSG) -> status_message = MSG;
+    self._log(MSG, LEVEL) -> log_lines.append((LEVEL, MSG)) — the message
+    source text is untouched), and the ONE ruff-format artifact at the
+    shallower indent (the _zero_summaries parenthesized wrap collapses onto
+    one line — AST-identical)."""
+    import re
+
+    # 1) dedent 12 -> 4
+    dedented = "".join((ln[8:] if ln.strip() else ln) for ln in block.splitlines(keepends=True))
+    # 2) parameter threading (before the emission pass — the message
+    #    expressions carry the {len(selected_chapters)} hole)
+    dedented = dedented.replace("self.cancel_event.is_set()", "cancel_event.is_set()")
+    dedented = dedented.replace("self.request.generate_summaries", "generate_summaries")
+    dedented = dedented.replace("self.request.selected_chapters", "selected_chapters")
+    # 3) the emission conversion (state machine over the call shapes)
+    out: list[str] = []
+    src = dedented.splitlines(keepends=True)
+    i = 0
+    while i < len(src):
+        ln = src[i]
+        m = re.match(r"^(\s*)self\._update_status\((.*)\)\n$", ln)
+        if m:  # single-line status emission -> the returned status_message
+            out.append(f"{m.group(1)}status_message = {m.group(2)}\n")
+            i += 1
+            continue
+        m = re.match(r'^(\s*)self\._log\((.*), ("(?:ERROR|SUCCESS|WARNING|INFO|DEBUG)")\)\n$', ln)
+        if m:  # single-line log emission -> one (LEVEL, MESSAGE) tuple
+            line = f"{m.group(1)}log_lines.append(({m.group(3)}, {m.group(2)}))\n"
+            assert len(line.rstrip("\n")) <= 100, f"would not fit: {line!r}"
+            out.append(line)
+            i += 1
+            continue
+        m = re.match(r"^(\s*)self\._log\(\n$", ln)
+        if m:  # multi-line log emission -> the exploded (LEVEL, MESSAGE) tuple
+            indent = m.group(1)
+            j = i + 1
+            args: list[str] = []
+            while src[j] != f"{indent})\n":
+                args.append(src[j])
+                j += 1
+                assert j < len(src), "unterminated _log call"
+            level = args[-1].strip()  # e.g. '"ERROR",'
+            msg_lines = [
+                a.replace(" " * (len(indent) + 4), " " * (len(indent) + 8), 1) if a.strip() else a
+                for a in args[:-1]
+            ]
+            out.append(f"{indent}log_lines.append(\n")
+            out.append(f"{indent}    (\n")
+            out.append(f"{indent}        {level}\n")
+            out.extend(msg_lines)
+            out.append(f"{indent}    )\n")
+            out.append(f"{indent})\n")
+            i = j + 1
+            continue
+        out.append(ln)
+        i += 1
+    text = "".join(out)
+    # 4) the ONE ruff-format artifact: the _zero_summaries wrap collapses
+    old_zero = (
+        "    _zero_summaries = (\n"
+        "        not summaries and bool(generate_summaries) and not _cancelled\n"
+        "    )\n"
+    )
+    new_zero = (
+        "    _zero_summaries = not summaries and bool(generate_summaries) and not _cancelled\n"
+    )
+    assert old_zero in text
+    text = text.replace(old_zero, new_zero)
+    assert not re.search(r"\bself\b", text), "bare self survived the transform"
+    return text
+
+
+class TestFinalizationExtraction:
+    """Phase 3 / commit 3: the finalization responsibility (the PURE
+    completion-assessment decision function — the false-success guards
+    V18.2.4 / SWOT A15 / V0.02 — plus the screenshots/graphs and
+    library-tracking runners) moved from convert() in converter_impl.py to
+    core/pipeline/conversion/finalization.py.  These pins hold the MOVE
+    itself: module shape, the CompletionAssessment contract, purity,
+    byte-identity vs the pre-move blob (commit 50d9a63), the replay
+    order, and Rule-1 deny-list cleanliness."""
+
+    def test_module_parses_and_carries_exactly_the_moved_surface(self):
+        tree = ast.parse(finalization_src())
+        classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+        assert [c.name for c in classes] == ["CompletionAssessment"]
+        top_fns = [n.name for n in tree.body if isinstance(n, ast.FunctionDef)]
+        assert top_fns == [
+            "assess_completion",
+            "run_screenshots_and_graphs",
+            "run_library_tracking",
+        ]
+
+    def test_completion_assessment_fields_and_defaults(self):
+        import dataclasses
+
+        from core.pipeline.conversion.finalization import CompletionAssessment
+
+        names = [f.name for f in dataclasses.fields(CompletionAssessment)]
+        assert names == ["success", "error_msg", "status_message", "log_lines"]
+        # success is the essential input; the other three default (a
+        # decision with no logs / no status constructs cleanly)
+        assert dataclasses.fields(CompletionAssessment)[0].default is dataclasses.MISSING
+        assert CompletionAssessment(success=True) == CompletionAssessment(
+            success=True, error_msg=None, status_message=None, log_lines=[]
+        )
+
+    def test_assess_completion_is_pure_no_converter_or_self(self):
+        import inspect
+
+        from core.pipeline.conversion.finalization import assess_completion
+
+        params = list(inspect.signature(assess_completion).parameters)
+        assert params == ["summaries", "generate_summaries", "selected_chapters", "cancel_event"]
+        kwonly = [
+            p.name
+            for p in inspect.signature(assess_completion).parameters.values()
+            if p.kind == inspect.Parameter.KEYWORD_ONLY
+        ]
+        assert kwonly == params[1:]  # everything but `summaries` is keyword-only
+        assert "converter" not in params  # PURE: no converter parameter
+        assert "self" not in params  # PURE: no self parameter
+        # …and the body references neither name, and emits NOTHING (the
+        # decision returns; convert() does the emitting):
+        tree = ast.parse(finalization_src())
+        fn = next(
+            n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "assess_completion"
+        )
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name):
+                assert node.id not in ("self", "converter"), ast.dump(node)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                assert node.func.attr not in (
+                    "_update_status",
+                    "_log",
+                    "_cancel_requested",
+                    "_update_progress",
+                ), f"assess_completion must not emit: {node.func.attr}"
+
+    def test_decision_logic_byte_identical_to_pre_move_blob(self):
+        expected_block = _xform_assessment(_ref_assessment_block(_pre_move_finalization_src()))
+        # Guard the reference forms first (the guarded-substitution
+        # precedent from test_v182047), so any extra drift still fails.
+        assert "_valid_summaries = [" in expected_block
+        assert "elif _zero_summaries and _selection_active:" in expected_block
+        assert "elif _cancelled:" in expected_block
+        fin_tree = ast.parse(finalization_src())
+        fn = next(
+            n
+            for n in fin_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "assess_completion"
+        )
+        assert isinstance(fn.body[0], ast.Expr)  # the docstring
+        fin_lines = finalization_src().splitlines(keepends=True)
+        ret_idx = next(
+            i
+            for i in range(fn.body[0].end_lineno, fn.end_lineno)
+            if fin_lines[i].rstrip("\n") == "    return CompletionAssessment("
+        )
+        actual = "".join(fin_lines[fn.body[0].end_lineno : ret_idx])
+        # The two NEW accumulator initializations are the only addition;
+        # the moved decision logic follows them byte-identically.
+        expected = (
+            "    status_message: str | None = None\n"
+            "    log_lines: list[tuple[str, str]] = []\n"
+            "\n" + expected_block + "\n"
+        )
+        assert actual == expected, (
+            "assess_completion decision logic drifted from the pre-move block"
+        )
+
+    def test_result_expressions_byte_identical_to_pre_move_blob(self):
+        import re
+
+        ref_src = _pre_move_finalization_src()
+        lines = ref_src.splitlines(keepends=True)
+        start = next(
+            i
+            for i, ln in enumerate(lines)
+            if ln.rstrip("\n") == "            return ConversionResult("
+        )
+        end = next(
+            i
+            for i in range(start, len(lines))
+            if lines[i].rstrip("\n")
+            == "                full_markdown_path=self.full_markdown_path,"
+        )
+        seg = lines[start + 1 : end]  # the comments + success= + error_msg=
+        assert seg[-1].rstrip("\n") == "                ),"  # error_msg's closing paren
+        moved = "".join((ln[8:] if ln.strip() else ln) for ln in seg)  # dedent 16 -> 8
+        moved = moved.replace("self.request.selected_chapters", "selected_chapters")
+        assert not re.search(r"\bself\b", moved), "bare self survived the transform"
+        expected = (
+            "    return CompletionAssessment(\n"
+            + moved
+            + "        status_message=status_message,\n"
+            "        log_lines=log_lines,\n"
+            "    )\n"
+        )
+        fin_tree = ast.parse(finalization_src())
+        fn = next(
+            n
+            for n in fin_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "assess_completion"
+        )
+        ret = fn.body[-1]
+        assert isinstance(ret, ast.Return)
+        fin_lines = finalization_src().splitlines(keepends=True)
+        actual = "".join(fin_lines[ret.lineno - 1 : ret.end_lineno])
+        assert actual == expected, "the success/error_msg expressions drifted in the move"
+
+    def test_log_lines_replay_order_and_content(self):
+        """The replay contract, end-to-end through a fake converter: status
+        first, then the log lines in order — byte-identical emission vs the
+        inline block (this replays EXACTLY the way convert() does)."""
+        import threading
+        import types
+
+        from core.pipeline.conversion.finalization import assess_completion
+
+        def mk(success=True, content=True):
+            return types.SimpleNamespace(
+                success=success,
+                executive_summary="e" if content else "",
+                bullet_points=["b"] if content else [],
+                thorough_summary="t" if content else "",
+            )
+
+        class _Replay:
+            def __init__(self):
+                self.statuses: list[str] = []
+                self.logs: list[tuple[str, str]] = []
+
+            def _update_status(self, msg):
+                self.statuses.append(msg)
+
+            def _log(self, message, level="INFO"):
+                self.logs.append((level, message))
+
+        def replay(assessment, sink):
+            if assessment.status_message is not None:
+                sink._update_status(assessment.status_message)
+            for level, message in assessment.log_lines:
+                sink._log(message, level)
+
+        ev = threading.Event()
+        # V0.02 hard-fail branch: one status, then the 2 ERROR lines in order
+        sink = _Replay()
+        a = assess_completion(
+            [], generate_summaries=True, selected_chapters=["One", "Two"], cancel_event=ev
+        )
+        replay(a, sink)
+        assert sink.statuses == ["Conversion FAILED — no selected chapters summarized"]
+        assert [lvl for lvl, _ in sink.logs] == ["ERROR", "ERROR"]
+        assert sink.logs[0][1].startswith("❌ Conversion FAILED: none of the 2 selected chapter(s)")
+        assert sink.logs[1][1].startswith("   Try: re-open the chapter selector")
+        assert a.success is False
+        assert a.error_msg is not None and a.error_msg.startswith(
+            "None of the 2 selected chapter(s)"
+        )
+        # SWOT A15 cancelled branch: one status + 1 WARNING line + plumbing
+        ev.set()
+        sink = _Replay()
+        a = assess_completion(
+            [mk()], generate_summaries=True, selected_chapters=None, cancel_event=ev
+        )
+        replay(a, sink)
+        assert sink.statuses == ["Conversion cancelled"]
+        assert sink.logs == [
+            (
+                "WARNING",
+                "⏹️ Conversion cancelled — partial summaries saved; downstream phases skipped.",
+            )
+        ]
+        assert a.success is False and a.error_msg == "Cancelled by user"
+        # clean success with a partial failure: success line, then the count
+        ev.clear()
+        sink = _Replay()
+        a = assess_completion(
+            [mk(), mk(success=False, content=False)],
+            generate_summaries=True,
+            selected_chapters=None,
+            cancel_event=ev,
+        )
+        replay(a, sink)
+        assert sink.statuses == ["Conversion completed!"]
+        assert sink.logs == [
+            ("SUCCESS", "✅ Conversion complete."),
+            ("WARNING", "   ⚠️ 1 chapter(s) failed (empty response) — 1 succeeded."),
+        ]
+        assert a.success is True and a.error_msg is None
+
+    def test_convert_delegates_with_the_exact_locals(self):
+        src = conv_src()
+        # the assessment: positional summaries + the three explicit params
+        assert "from core.pipeline.conversion.finalization import assess_completion" in src
+        assert "_assessment = assess_completion(" in src
+        for arg in (
+            "generate_summaries=self.request.generate_summaries",
+            "selected_chapters=self.request.selected_chapters",
+            "cancel_event=self.cancel_event",
+        ):
+            assert arg in src, f"the assess call must thread {arg}"
+        # the replay: status first, then the log lines in order
+        assert "if _assessment.status_message is not None:" in src
+        assert "self._update_status(_assessment.status_message)" in src
+        assert "for _level, _message in _assessment.log_lines:" in src
+        assert "self._log(_message, _level)" in src
+        # the tail consumes the assessment verbatim
+        assert "success=_assessment.success," in src
+        assert "error_msg=_assessment.error_msg," in src
+        # the screenshots runner, threaded with the exact convert() locals
+        assert "run_screenshots_and_graphs as _run_screenshots," in src
+        for arg in ("book_title=book_title", "total_pages=total_pages", "toc_entries=toc_entries"):
+            assert arg in src, f"the screenshots call must thread {arg}"
+        # the library runner, ditto (kp_final_count is the unpacked local)
+        assert "run_library_tracking as _run_library_tracking," in src
+        for arg in ("kp_final_count=_kp_final_count", "segments=segments"):
+            assert arg in src, f"the library call must thread {arg}"
+
+    def test_screenshots_runner_byte_identical_to_pre_move_blob(self):
+        ref_src = _pre_move_finalization_src()
+        lines = ref_src.splitlines(keepends=True)
+        start = next(
+            i
+            for i, ln in enumerate(lines)
+            if ln.rstrip("\n") == "            # Screenshots + graphs — now opt-in (default OFF)"
+        )
+        end = next(
+            i
+            for i in range(start, len(lines))
+            if lines[i]
+            .rstrip("\n")
+            .endswith('self._log("  ⏭️ Screenshots/graphs skipped (opt-in, disabled)", "DEBUG")')
+        )
+        moved = "".join((ln[8:] if ln.strip() else ln) for ln in lines[start : end + 1]).replace(
+            "self.", "converter."
+        )
+        # The ONE ruff-format reflow at the shallower indent: the opt-in
+        # gate line ruff-splits the settings.get arguments (AST-identical —
+        # the same documented-reflow class as commits 1-2).
+        old_gate = (
+            '    if converter.settings.get("outputs_optin.screenshots", False) and not converter._cancel_requested(\n'
+            '        "screenshots/graphs"\n'
+            "    ):\n"
+        )
+        new_gate = (
+            "    if converter.settings.get(\n"
+            '        "outputs_optin.screenshots", False\n'
+            '    ) and not converter._cancel_requested("screenshots/graphs"):\n'
+        )
+        assert old_gate in moved
+        moved = moved.replace(old_gate, new_gate)
+        fin_tree = ast.parse(finalization_src())
+        fn = next(
+            n
+            for n in fin_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "run_screenshots_and_graphs"
+        )
+        assert isinstance(fn.body[0], ast.Expr)  # the docstring
+        fin_lines = finalization_src().splitlines(keepends=True)
+        actual = "".join(fin_lines[fn.body[0].end_lineno : fn.end_lineno])
+        assert actual == moved, "run_screenshots_and_graphs drifted from the pre-move block"
+
+    def test_library_runner_byte_identical_to_pre_move_blob(self):
+        import re
+
+        ref_src = _pre_move_finalization_src()
+        lines = ref_src.splitlines(keepends=True)
+        start = next(
+            i
+            for i, ln in enumerate(lines)
+            if ln.rstrip("\n") == "            # Library tracking — add book to library"
+        )
+        end = next(
+            i
+            for i in range(start, len(lines))
+            if lines[i].rstrip("\n").endswith('self._record_partial_failure("Library tracking", e)')
+        )
+        moved = (
+            "".join((ln[8:] if ln.strip() else ln) for ln in lines[start : end + 1])
+            .replace("self.", "converter.")
+            .replace("_kp_final_count", "kp_final_count")
+        )
+        assert not re.search(r"\bself\b", moved), "bare self survived the transform"
+        # The ONE ruff-format reflow at the shallower indent: the
+        # concepts_extracted conditional now fits on one line
+        # (AST-identical — the documented-reflow class).
+        old_ce = (
+            "                concepts_extracted=sum(len(s.bullet_points) for s in summaries)\n"
+            "                if summaries\n"
+            "                else 0,\n"
+        )
+        new_ce = "                concepts_extracted=sum(len(s.bullet_points) for s in summaries) if summaries else 0,\n"
+        assert old_ce in moved
+        moved = moved.replace(old_ce, new_ce)
+        fin_tree = ast.parse(finalization_src())
+        fn = next(
+            n
+            for n in fin_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "run_library_tracking"
+        )
+        assert isinstance(fn.body[0], ast.Expr)  # the docstring
+        fin_lines = finalization_src().splitlines(keepends=True)
+        actual = "".join(fin_lines[fn.body[0].end_lineno : fn.end_lineno])
+        assert actual == moved, "run_library_tracking drifted from the pre-move block"
+
+    def test_runner_signatures_thread_the_exact_locals(self):
+        import inspect
+
+        from core.pipeline.conversion.finalization import (
+            run_library_tracking,
+            run_screenshots_and_graphs,
+        )
+
+        assert list(inspect.signature(run_screenshots_and_graphs).parameters) == [
+            "converter",
+            "book_title",
+            "total_pages",
+            "toc_entries",
+        ]
+        assert list(inspect.signature(run_library_tracking).parameters) == [
+            "converter",
+            "book_title",
+            "summaries",
+            "segments",
+            "kp_final_count",
+        ]
+        for fn in (run_screenshots_and_graphs, run_library_tracking):
+            kwonly = [
+                p.name
+                for p in inspect.signature(fn).parameters.values()
+                if p.kind == inspect.Parameter.KEYWORD_ONLY
+            ]
+            assert kwonly == list(inspect.signature(fn).parameters)[1:]  # after `converter`
+
+    def test_moved_code_gone_from_converter_impl(self):
+        src = conv_src()
+        assert "_zero_summaries" not in src  # the whole guard moved
+        assert "_valid_summaries" not in src  # the tally moved with it
+        assert "if _cancelled" not in src  # the error_msg conditional moved
+        assert "all chapters returned empty responses" not in src  # the moved ERROR line
+        assert "Zero sections were summarized" not in src  # the moved WARNING
+        assert "outputs_optin" not in src  # the moved screenshots gate
+        assert "TableGraphExtractor" not in src  # moved with the block
+        assert "LibraryManager" not in src  # moved with the block
+        assert "keypoints_count=(" not in src  # the W11 policy moved
+        assert "_derive_page_ranges_from_toc" in src  # …but the helper STAYS
+        assert "_assessment" in src  # …and the replay + result locals stay
+
+    def test_converter_bases_unchanged_this_commit(self):
+        # No mixin this time — three plain functions; the reporting mixin
+        # stays the LAST base (commit 1's wiring intact).
+        assert [c.__name__ for c in Converter.__bases__] == [
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",
+        ]
+        assert [c.__name__ for c in Converter.__mro__] == [
+            "Converter",
+            "ConverterExtractionMixin",
+            "ConverterVisualMixin",
+            "ConverterReportingMixin",
+            "object",
+        ]
+
+    def test_finalization_is_an_acyclic_leaf_module(self):
+        # MODULE-LEVEL imports only: the library runner's lazy
+        # ``from core.pipeline.library_manager import LibraryManager`` is
+        # the V18.19.2.0 (Debt D4) lazy-import discipline — imported at
+        # call time, never eagerly, exactly as it sat inside convert().
+        tree = ast.parse(finalization_src())
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                mod = getattr(node, "module", "") or ""
+                assert not mod.startswith("core.pipeline"), (
+                    "finalization.py must not import core.pipeline at module level (acyclic leaf)"
+                )
+
+    def test_package_docstring_lists_the_new_module(self):
+        # The conversion package convention: the __init__.py docstring is
+        # the module registry (commit 1/2 entries; no re-exports).
+        init_src = (PROJECT_ROOT / "core" / "pipeline" / "conversion" / "__init__.py").read_text(
+            encoding="utf-8"
+        )
+        assert "``finalization``" in init_src
+        assert "``assess_completion``" in init_src
+        assert "``CompletionAssessment``" in init_src
+
+    def test_finalization_logger_is_the_main_elixir_logger(self):
+        # The moved bodies' logger.debug traces keep their exact pre-move
+        # routing — the "Elixir" main logger, not logging.getLogger(__name__).
+        import core.pipeline.conversion.finalization as fin
+
+        assert fin.logger is conv_impl.logger
+
+    def test_finalization_no_book_vocabulary(self):
+        # Rule 1 deny-list (compact copy of the test_v182039 vocabulary —
+        # the permanent tree-wide guard lives there).
+        deny = (
+            "Erikson",
+            "Kernberg",
+            "Winnicott",
+            "Mahler",
+            "Akhtar",
+            "Oedipus",
+            "false self",
+            "identity diffusion",
+            "ego identity",
+            "Broken Structures",
+            "psychoanalysis",
+        )
+        offenders = [
+            (i, term)
+            for i, line in enumerate(finalization_src().splitlines(), 1)
             for term in deny
             if term.lower() in line.lower()
         ]

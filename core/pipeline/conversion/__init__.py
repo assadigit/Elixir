@@ -65,4 +65,12 @@ per the Task 3-plan extraction series):
   moves of the DOCX-report / keypoints / simplified-digest /
   citation-graph blocks from convert(); wired via the convert() delegate
   call).
+- ``finalization`` — the finalization responsibility (V0.4.26 Phase 3
+  commit 3: the PURE ``assess_completion`` + ``CompletionAssessment``
+  holding the false-success guards (V18.2.4 / SWOT A15 / V0.02) moved
+  VERBATIM from convert()'s completion block + terminal result
+  expressions — convert() replays the returned status/log lines for
+  byte-identical emission — plus the VERBATIM ``run_screenshots_and_graphs``
+  and ``run_library_tracking`` runners; wired via the convert() delegate
+  calls).
 """

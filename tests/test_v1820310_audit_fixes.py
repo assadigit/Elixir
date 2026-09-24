@@ -193,14 +193,26 @@ class TestW11KeypointCount:
         V0.4.26 (Phase 3 commit 2): the builder-count capture
         (``getattr(kp, "final_keypoint_count", None)``) moved VERBATIM to
         conversion/summary_outputs.py (run_summary_outputs); the
-        library-tracking call + the ``_kp_final_count`` unpack stay in
-        convert() — union semantics keep the policy pin over both homes.
+        ``_kp_final_count`` unpack stays in convert() — union semantics
+        keep the policy pin over both homes.
+        V0.4.26 (Phase 3 commit 3): the library-tracking call itself
+        moved VERBATIM to conversion/finalization.py
+        (run_library_tracking, where the count arrives as the
+        ``kp_final_count`` parameter) — the union grows by that module,
+        same policy asserted.
         """
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8") + (
-            ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py"
-        ).read_text(encoding="utf-8")
+        src = (
+            (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+            + (ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py").read_text(
+                encoding="utf-8"
+            )
+            + (ROOT / "core" / "pipeline" / "conversion" / "finalization.py").read_text(
+                encoding="utf-8"
+            )
+        )
         assert "final_keypoint_count" in src
         assert "_kp_final_count" in src
+        assert "kp_final_count" in src
 
     def test_builder_exposes_count_attribute(self):
         from core.summarisation import KeypointsBuilder

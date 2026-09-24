@@ -771,6 +771,9 @@ class TestA15CancelSkipsDownstreamPhases:
         citation-graph blocks moved VERBATIM to
         conversion/summary_outputs.py — their four gate pins follow the
         moved bodies (union grows by that module, same semantics).
+        V0.4.26 (Phase 3 commit 3): ditto for the finalization module —
+        the screenshots/graphs + library-tracking blocks (and the
+        "Cancelled by user" result plumbing) moved there.
         """
         src = (_project_root / "core" / "pipeline" / "converter_impl.py").read_text(
             encoding="utf-8"
@@ -786,6 +789,12 @@ class TestA15CancelSkipsDownstreamPhases:
         src += (
             _project_root / "core" / "pipeline" / "conversion" / "summary_outputs.py"
         ).read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 3): ditto for the finalization module
+        # (the screenshots/graphs + library-tracking runners + the
+        # "Cancelled by user" result plumbing live there now).
+        src += (_project_root / "core" / "pipeline" / "conversion" / "finalization.py").read_text(
+            encoding="utf-8"
+        )
         gates = [
             "DOCX build",
             "keypoints build",

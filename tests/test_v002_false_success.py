@@ -384,20 +384,32 @@ class TestFrontMatterSkipSelectionAware:
 
 class TestZeroSummariesLoudFailure:
     _CONV = Path("core/pipeline/converter_impl.py")
+    # V0.4.26 (Phase 3 commit 3): the completion-assessment block (these
+    # guards) moved VERBATIM to assess_completion() in
+    # core/pipeline/conversion/finalization.py — the source pins read the
+    # UNION of both files (the same repoint discipline as the V0.4.19/
+    # V0.4.26 pins in test_v18202 / test_v182047), with the two documented
+    # parameter-threading substitutions (self.request.generate_summaries
+    # -> generate_summaries, self.request.selected_chapters ->
+    # selected_chapters).
+    _FINAL = Path("core/pipeline/conversion/finalization.py")
 
     def _src(self):
-        return self._CONV.read_text(encoding="utf-8")
+        return self._CONV.read_text(encoding="utf-8") + self._FINAL.read_text(encoding="utf-8")
 
     def test_zero_summaries_flag_defined(self):
         src = self._src()
-        assert "_zero_summaries = (" in src
-        assert "not summaries and bool(self.request.generate_summaries)" in src
+        # definition-form pin (the pre-move ``_zero_summaries = (`` form
+        # ruff-collapsed onto one line after the parameter threading —
+        # the flag must stay a DEFINITION, not a bare mention).
+        assert "_zero_summaries = " in src
+        assert "not summaries and bool(generate_summaries) and not _cancelled" in src
 
     def test_selection_zero_summaries_is_hard_failure_branch(self):
         src = self._src()
         assert "elif _zero_summaries and _selection_active:" in src
         assert "no selected chapters summarized" in src
-        assert "None of the {len(self.request.selected_chapters)} selected chapter(s)" in src
+        assert "None of the {len(selected_chapters)} selected chapter(s)" in src
 
     def test_success_expression_no_longer_treats_empty_as_success(self):
         src = self._src()
