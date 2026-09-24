@@ -1,0 +1,27 @@
+{
+  "benchmark": "Phase 6 first real benchmark \u2014 ch.1 IDENTITY AND ITS ORIGINS",
+  "repo_commit": "fd32ee3",
+  "repo_dirty": false,
+  "app_version": "0.4.25",
+  "run_id": "20260924-151700-2bd82b60",
+  "ground_truth": "/home/z/elixir/docs/ground_truth/001_1 - IDENTITY AND ITS ORIGINS.md",
+  "source_words": 6335,
+  "summary_file": "/home/z/audit-tools/bench_v0425_ch1/run20260924-151700/summaries/001_1_-_IDENTITY_AND_ITS_ORIGINS_v0.4.25_20260924-151700-2bd82b60_summary.md",
+  "conversion_log": "/home/z/audit-tools/bench_v0425_ch1/run20260924-151700/run20260924-151700.conversion.log.md",
+  "llm_backend": {
+    "provider": "llamacpp (wire contract)",
+    "proxy": "mini-services/llm-proxy @ 127.0.0.1:4540 \u2192 z-ai SDK",
+    "model": "zai-benchmark-1",
+    "temperature": 0.7
+  },
+  "wall_clock_sec": 69.2,
+  "summary_stats": {
+    "bullets": 45,
+    "exec_summary_chars": 1619,
+    "thorough_chars": 4046,
+    "key_distinctions": true,
+    "theoretical_tensions": false,
+    "source_excerpts": 0
+  },
+  "log_lines": 154
+}

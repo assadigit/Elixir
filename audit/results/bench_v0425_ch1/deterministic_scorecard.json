@@ -1,0 +1,62 @@
+{
+  "summary_id": "broken_structures_ch1_identity_and_its_origins_V0.4.25_run20260924-151700-2bd82b60",
+  "overall_score": 7,
+  "factual_consistency_score": 7,
+  "coverage_score": 9,
+  "clarity_score": 6,
+  "hallucinations_detected": 20,
+  "critical_omissions_detected": 0,
+  "verdict": "PASS",
+  "justification": "deterministic proxy \u2014 rouge_l_f1=0.140, hallucination_rate=25.6%, coverage=90.0%, faithfulness=58.5%",
+  "metrics": {
+    "rouge_l": {
+      "precision": 0.3425,
+      "recall": 0.088,
+      "fmeasure": 0.14
+    },
+    "faithfulness": 0.5851,
+    "hallucination_rate": 0.2564,
+    "claims": 78.0,
+    "coverage": 0.9,
+    "f4_min_overlap": 0.625,
+    "fragment_rate": 0.0127,
+    "length_policy": {
+      "source_words": 6335,
+      "sections": {
+        "exec": {
+          "words": 184,
+          "target": [
+            150,
+            250
+          ],
+          "compliant": true
+        },
+        "thorough": {
+          "words": 512,
+          "target": [
+            1711,
+            2851
+          ],
+          "compliant": false
+        },
+        "bullets": {
+          "count": 45,
+          "target": [
+            27,
+            40
+          ],
+          "compliant": false
+        }
+      },
+      "compliant": false
+    }
+  },
+  "prompt_manifest_hash": "ee5a61d0ebb3843be7a005f0cf9eccb3f48ac0b0af8ab4c37aae91bdd47c42d9",
+  "benchmark_context": {
+    "app_version": "0.4.25",
+    "run_id": "20260924-151700-2bd82b60",
+    "repo_commit": "fd32ee3",
+    "llm_backend": "llamacpp wire \u2192 mini-services/llm-proxy (z-ai SDK), t=0.7",
+    "note_rouge_l": "reference = source (no curated ch.1 reference in repo) \u2014 ROUGE-L is N/A here"
+  }
+}
