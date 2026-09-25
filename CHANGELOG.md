@@ -24,6 +24,47 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.31 — the B1 per-conversion llama.cpp endpoint dropdown release
+
+> **The release:** the owner chose B1 (per-conversion dropdown) from the 3
+> multi-endpoint UX options proposed in V0.4.30. The wizard's Step-5
+> llama.cpp config box now has an "Endpoint:" dropdown — quick-select
+> among the configured endpoints (Primary + a new `llamacpp_endpoints`
+> setting). Picking one populates the URL/key fields; `create_provider`
+> then detects the served model (V0.4.30).
+
+**1. The endpoint dropdown (`ui_qt/components/llamacpp_config.py`):**
+  `build_llamacpp_box` now starts with an "Endpoint:" `QComboBox`. It lists
+  [Primary (the current `llamacpp_base_url`/`llamacpp_api_key`)] + each
+  entry from the new `llamacpp_endpoints` setting, displayed as
+  `label (base_url)`. Defaults to the active endpoint (matching
+  `llamacpp_base_url`). Picking one calls `_on_llamacpp_endpoint_selected`
+  which populates the URL + API key fields — so `save_llamacpp_settings`
+  writes the selected endpoint + `create_provider` detects its served model
+  (V0.4.30). The owner can now quick-switch between 8080 (Ternary Bonsai)
+  + 8081 (Qwen) per conversion without retyping the URL.
+
+**2. The `llamacpp_endpoints` setting (`utils/settings.py`):** a list of
+  `{base_url, api_key, label}` (default `[]` — just Primary). The owner
+  adds endpoints (e.g. the 8081/Qwen) to `~/.elixir/settings.json` under
+  `summarisation.llamacpp_endpoints`. A full endpoint-editor UI (add/edit
+  via the dialog) is a follow-up.
+
+**3. The pure helper + tests:** `build_llamacpp_endpoint_options(primary_url,
+  primary_key, endpoints)` → `[{label, base_url, api_key}, …]` (Primary +
+  each valid endpoint; skips empty/malformed; label defaults to the url,
+  api_key to "local"). Pure (no Qt, no settings I/O) — fully tested by
+  `TestLlamaCppEndpointDropdown` (3 tests: primary-only, primary+configured,
+  skip-empty/malformed).
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite 6,070 P / 0 F / 36 S
+exit 0 (163 s, +3 vs V0.4.30's 6,067); deny-list passes.
+
+**Testability note:** the pure helper is fully tested (3 tests, no Qt
+needed). The dropdown widget itself (Qt GUI rendering + interaction) is
+headless-skipped in the sandbox (T1) — the owner tests it on the rig.
+
 ## V0.4.30 — the multi-backend llama.cpp model-detection release
 
 > **The release:** the owner reported that a second llama.cpp instance

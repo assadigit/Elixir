@@ -827,3 +827,31 @@ configure BOTH 8080 + 8081 + switch without re-editing `llamacpp_base_url`.
 Needs the owner's UX preference (per-conversion dropdown vs global setting
 vs auto-fallback). With Part A shipped, the owner can already switch
 `llamacpp_base_url` between ports + the model name auto-detects.
+
+---
+
+## Phase 13 — V0.4.31 release (the B1 per-conversion endpoint dropdown)
+
+> **Branch:** `refactor/audit-session` @ `5880b0d` → release commit
+> (VERSION `0.4.31` + this note + CHANGELOG). Tagged `V0.4.31`.
+
+The owner chose B1 (per-conversion dropdown) from the V0.4.30 proposal.
+The wizard's Step-5 llama.cpp config box now has an "Endpoint:" dropdown
+(`ui_qt/components/llamacpp_config.py`): quick-select among the configured
+endpoints (Primary + the new `llamacpp_endpoints` setting, default `[]`).
+Picking one populates the URL/key fields; `save_llamacpp_settings` writes
+the selected endpoint; `create_provider` detects the served model (V0.4.30).
+Commit `5880b0d`.
+
+- **Settings** (`utils/settings.py`): `llamacpp_endpoints` (list of
+  `{base_url, api_key, label}`).
+- **Pure helper** `build_llamacpp_endpoint_options` — fully tested
+  (`TestLlamaCppEndpointDropdown`, 3 tests).
+- The dropdown widget itself (Qt GUI) is headless-skipped in the sandbox
+  (T1) — owner tests on the rig.
+
+1 commit since V0.4.30.
+
+**Net-green:** ruff clean; eval gate OK (`prompt_manifest_hash ee5a61d0`
+flat); full suite **6,070 P / 0 F / 36 S exit 0** (+3 vs V0.4.30);
+deny-list passes.
