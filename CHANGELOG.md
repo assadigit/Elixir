@@ -24,6 +24,76 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.28 — the Track-B prep release: the `_summarize_inner` characterization net + the rig punch-list + the rig-test runbook + the E6 sync-only guards
+
+> **The release:** completes the sandbox-doable portion of Track B (the
+> Phase-7 SWOT top-5's rig-required track). The validation-dependent items
+> (B1 items 1-4 implementation, B3 wire/delete decision, B4 extraction, B2
+> execution) stay queued for the owner's Windows rig — this release ships
+> the PREP that makes the rig work trivial.
+
+**1. B4 — `summarizer._summarize_inner` characterization net (Phase-7
+  O2/O10 / SWOT W2, the de-monolith prep):** +64 hermetic tests
+  (`tests/test_summarize_inner_characterization.py`, +1,398 lines) pinning
+  the 349-ln method's orchestration behavior: the stage sequence, the
+  control-flow branches (empty-input gate, happy path, 4 primary-failure
+  hints, map-reduce route, deadline-exceeded), the status strings + log
+  skeletons, the return-value shape, the speculative-scholar machinery, +
+  the coverage/theorist-floor invocations. The SWOT's recommended FIRST
+  step before any extraction — the V18.6.3 crash froze `_build_prompt`
+  extraction; this net is what makes `_summarize_inner` safely extractable
+  next (ON THE RIG — output-equivalence validation needs the real LLM).
+  First tranche (the exhaustive Phase-3-pattern net is a follow-up).
+  Commit `1910d1e`.
+
+**2. B2 — T1 rig-test checklist runbook (`docs/RIG_TEST_CHECKLIST.md`):**
+  the runbook the owner executes on the Windows 10/11 rig: (a) the 36
+  headless-skipped tests categorized (12 camelot/tabula + 14 missing ref
+  zips + 9 missing source fixture + 1 rapidfuzz stub) + the
+  install/fixture fixes; (b) the Qt GUI smoke procedure (wizard
+  walk-through, real conversion, settings, output scanner, crash-report);
+  (c) the Windows-specific fragility (torch-before-Qt import order,
+  stale-`.pyc` purge, locked-file tolerance — untested headless); (d) the 6
+  golden eval-gate chapters + the real-pipeline ch.1 benchmark target
+  (≥8/8/7/7 vs the sandbox-rig's 8/8/6/7 conservative floor); (e) the
+  sign-off checklist. Commit `3de9dfb`.
+
+**3. B3 — E6 sync-only guard comments (the ADR's deferred follow-up):**
+  comment-only guard comments at the 3 E6 blocking-sleep sites
+  (`openai_compat_provider.py:265` Batch-API 60×10s poll — the highest-
+  severity E6 hazard; `vision_figure_extractor.py:267,295` — the 2s×(n+1)
+  retries) so a future async-wiring attempt doesn't miss them. The
+  wire/delete decision itself stays the owner's (pending the 3 rig-data
+  items in `docs/ASYNC_PROVIDER_DECISION.md`). Comment-only — zero
+  behavior change. Commit `e163a3d`.
+
+**4. B1 — Track-B rig punch-list (`docs/TRACK_B_RIG_PUNCHLIST.md`):** the
+  consolidated executable plan for the V0.4.26 backlog items 1-4: for
+  each, the defect, the fix spec, WHY rig-blocked (B1.1 = prompt change →
+  eval re-baseline; B1.2 = heuristic pronoun replacement → needs rig;
+  B1.3 = quote-pattern risk → flag-only first; B1.4 = anti-hallucination
+  threat → DO NOT loosen the quote-guard blind), the rig data needed, +
+  an implementation sketch. B1.4 has a critical Rule-1 compliance note
+  (the sociocultural author list MUST come from `extract_citations`, never
+  hardcoded). Commit `5ac7dcc`.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (693 files formatted);
+eval gate OK (`prompt_manifest_hash ee5a61d0` flat, zero metric drift);
+full suite **6,066 P / 0 F / 36 S / 3 warnings exit 0** (no-cov 164 s) —
+the +64 tests are the B4 characterization net; the B3 guards are
+comment-only; B1/B2/B4-prep are docs/test-only. Coverage TOTAL 66 % (the
+`_summarize_inner` net's gains are in-package, under the core+utils total
+gate).
+
+**What's NOT in V0.4.28 (the genuinely rig-blocked items):** the B1
+implementation (V0.4.26 backlog items 1-4 — see the punch-list), the B3
+wire/delete decision (pending the ADR's rig data), the B4 EXTRACTION
+(`_summarize_inner` → extracted modules — the characterization net is the
+prep; the extraction needs the real LLM for output-equivalence
+validation), + the B2 EXECUTION (the 36 rig tests + GUI smoke — the
+runbook is the prep). See `docs/TRACK_B_RIG_PUNCHLIST.md` +
+`docs/RIG_TEST_CHECKLIST.md` + `docs/ASYNC_PROVIDER_DECISION.md`.
+
 ## V0.4.27 — the Track-A release: 3 swallow-log fixes + 3 characterization nets + dead-module sweep + the async_provider ADR + changelog hygiene
 
 > **The release:** executes Track A of the Phase-7 SWOT top-5 actions —

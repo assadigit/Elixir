@@ -727,3 +727,39 @@ flat (the conversion/\* gains are in-package).
 **Track B (the rig-required queue) stays open:** V0.4.26 backlog items
 1-4, the `async_provider` wiring (pending the ADR's decision data), the
 `_summarize_inner` de-monolith round, + the T1 rig-test checklist.
+
+---
+
+## Phase 10 — V0.4.28 release (the Track-B prep release)
+
+> **Branch:** `refactor/audit-session` @ `1910d1e` (after B4) → release
+> commit (VERSION `0.4.28` + this note + CHANGELOG). Tagged `V0.4.28`.
+
+This release completes the **sandbox-doable portion of Track B** (the
+Phase-7 SWOT top-5's rig-required track):
+
+- **B4 (`_summarize_inner` characterization net, SWOT O2/O10):** +64
+  hermetic tests (`tests/test_summarize_inner_characterization.py`,
+  +1,398 lines) pinning the 349-ln method's orchestration — the SWOT's
+  recommended FIRST step before any extraction. Commit `1910d1e`.
+- **B2 (T1 rig-test runbook):** `docs/RIG_TEST_CHECKLIST.md` — the 36
+  skips categorized + the GUI smoke procedure + the Windows-fragility
+  checks + the ch.1 benchmark target (≥8/8/7/7). Commit `3de9dfb`.
+- **B3 (E6 sync-only guards):** comment-only guards at the 3 sleep sites
+  (the ADR's deferred follow-up). Commit `e163a3d`.
+- **B1 (Track-B rig punch-list):** `docs/TRACK_B_RIG_PUNCHLIST.md` — the
+  design + validation plan + rig-data-needed for V0.4.26 backlog items
+  1-4. Commit `5ac7dcc`.
+
+4 commits since V0.4.27.
+
+**Net-green at the release tip:** ruff 0.16.8 clean (693 files); eval
+gate OK (`prompt_manifest_hash ee5a61d0` flat); full suite **6,066 P /
+0 F / 36 S exit 0** (164 s, +64 vs V0.4.27's 6,002); coverage TOTAL 66 %
+flat (the `_summarize_inner` net's gains are in-package).
+
+**The genuinely rig-blocked items stay queued:** B1 implementation (items
+1-4), B3 wire/delete decision, B4 EXTRACTION, B2 EXECUTION. The owner
+runs the rig per `docs/RIG_TEST_CHECKLIST.md` +
+`docs/TRACK_B_RIG_PUNCHLIST.md` + `docs/ASYNC_PROVIDER_DECISION.md`. After
+Track B's rig execution, the Phase-7 SWOT top-5 is fully closed.
