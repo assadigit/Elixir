@@ -939,6 +939,25 @@ gap-fill runs.
 
 **Net-green:** ruff clean; eval gate OK; 6,081 P exit 0; deny-list passes.
 
-**Items F2-F4 + V0.4.35 backlog queued for V0.4.36.**
+**Items F2-F4 + V0.4.35 backlog queued for V0.4.36.
+
+---
+
+## Phase 18 — V0.4.36 release (the F1+F3+F5 release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.36`).
+> Tagged `V0.4.36`.
+
+The V0.4.35 audit (PASS 9/5/7/7, 0 hallucinations, probe FIRED) found 3
+fixable items: F1 (positive-demonstration test), F3 (single-paragraph
+thorough — 6th consecutive flagging), F5 (fusion false positive). This
+release fixes all 3. Commits `2ccfcdc` (F1 test) + `e3ebbee` (F3 paragraph
+breaking) + `6044378` (F5 suffix fix).
+
+**Net-green:** ruff clean; eval gate OK; **6,086 P / 0 F / 36 S exit 0**
+(+5 — the F1 positive-demonstration tests); deny-list passes.
+
+**Items F2 + F4 queued for V0.4.37.**
+**
 **
 

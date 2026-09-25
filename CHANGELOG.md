@@ -24,6 +24,42 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.36 — the F1+F3+F5 release (positive-demonstration test + thorough paragraph-breaking + fusion false-positive fix)
+
+> **The release:** the V0.4.35 audit (PASS 9/5/7/7, 0 hallucinations, probe
+> FIRED but 0 drops) found 3 fixable items: F1 (no positive demonstration
+> the probe catches fabricated years), F3 (single-paragraph thorough — 6th
+> consecutive audit flagging), F5 (fusion detector false positive on
+> 'ego-syntonically'). This release fixes all 3. F2 (veto+filler cull rate)
+> + F4 (multi-author attribution) are queued for V0.4.37.
+
+**1. F1: Positive-demonstration test (commit `2ccfcdc`):** 5 tests in
+  `TestV0435YearAttributionProbe` — injects 'Stanton (1980)' (the V0.4.34
+  H3 hallucination) into a fixture + verifies the probe DROPS it while
+  keeping 'Hamilton (1974)'. **This is the DETERMINISTIC-ELIMINATION PROOF**
+  the campaign has been missing since V0.4.32's non-deterministic 'F1-F5 gone'
+  verdict. The probe catches fabricated years DETERMINISTICALLY.
+
+**2. F3: Break thorough into MULTIPLE paragraphs (commit `e3ebbee`):**
+  `_break_thorough_into_paragraphs` in `chapter_checkpoint.py` — a
+  deterministic post-processing pass that splits the thorough at sentence
+  boundaries where a new Author (Year) citation signals a section transition.
+  Called from `render_summary_markdown` before `format_years`. Threshold:
+  thorough ≥ 500 chars (short thorough returned as-is). Content-agnostic
+  (the split pattern is a generic English discourse marker). Rule 1 compliant.
+
+**3. F5: Fusion detector false-positive fix (commit `6044378`):** adds
+  'ally' to `_FUSION_LEGIT_SUFFIXES` in `garble/fusion.py` — fixes the
+  'ego-syntonically' false positive (the word IS in the source verbatim).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite 6,086 P /
+0 F / 36 S exit 0 (+5 from V0.4.35 — the F1 positive-demonstration tests);
+deny-list passes.
+
+**Items F2 + F4 queued for V0.4.37:** F2 (tune the veto+filler cull rate —
+48% is too high; bullets recall 70%→55%), F4 (retain multi-author
+attributions in the gap-fill prompt).
+
 ## V0.4.35 — the F1 year-attribution-probe-wiring release (wire the probe to the dedicated expansion output)
 
 > **The release:** the V0.4.34 ch.6 audit found H3 (Stanton 1980 fabricated
