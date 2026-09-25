@@ -472,7 +472,43 @@ class ElixirWindow(QMainWindow):
         connected (fail-soft log) and the ref is kept on self — an
         unconnected ``failed`` meant a raising check died invisibly with
         the QObject GC'd mid-run.
+
+        V0.4.29 (startup-fix): only fire when Ollama is actually needed by
+        the configured backends. A llama.cpp / openrouter / openai user
+        (whose LLM does NOT use Ollama) previously got a spurious 'Ollama not
+        running — summarisation will not work' warning at every startup.
+        Now: skip unless ``summarisation.provider == 'ollama'`` (the LLM
+        needs it) OR OCR is on the Ollama path (``ocr.use_llm`` True AND no
+        alternative OCR configured — unlimited_ocr / deepseek_ocr2 /
+        paddleocr). The warning message is also made accurate (only names
+        what actually needs Ollama).
         """
+        try:
+            _provider = self.controller.get_setting("summarisation.provider", "llamacpp")
+            _ocr_use_llm = self.controller.get_setting("ocr.use_llm", True)
+            _ocr_alt = bool(
+                self.controller.get_setting("ocr.unlimited_ocr_path", "")
+                or self.controller.get_setting("ocr.deepseek_ocr2_path", "")
+                or self.controller.get_setting("ocr.use_paddleocr", False)
+            )
+            _llm_needs_ollama = _provider == "ollama"
+            _ocr_needs_ollama = _ocr_use_llm and not _ocr_alt
+            if not (_llm_needs_ollama or _ocr_needs_ollama):
+                return  # neither backend needs Ollama — no warning
+            # Stash what needs Ollama so the warning message is accurate
+            # (read by _show_ollama_warning on the main thread via QueuedConnection).
+            self._ollama_needed_for = (
+                "LLM OCR and summarisation"
+                if (_llm_needs_ollama and _ocr_needs_ollama)
+                else "OCR"
+                if _ocr_needs_ollama
+                else "summarisation"
+            )
+        except Exception:
+            logger.debug(
+                "ollama-need check failed; falling through to the reachability probe", exc_info=True
+            )
+            self._ollama_needed_for = "LLM OCR and summarisation"
 
         def _check():
             try:
@@ -502,12 +538,15 @@ class ElixirWindow(QMainWindow):
     def _show_ollama_warning(self) -> None:
         from PySide6.QtWidgets import QMessageBox
 
+        # V0.4.29: accurate message — only name what actually needs Ollama
+        # (set by _warn_ollama before invoking this slot).
+        _what = getattr(self, "_ollama_needed_for", "LLM OCR and summarisation")
         QMessageBox.warning(
             self,
             "Ollama not running",
-            "Ollama does not appear to be running on localhost:11434.\n\n"
-            "LLM OCR and summarisation will not work until Ollama is started.\n"
-            "Start Ollama, then try your conversion.",
+            f"Ollama does not appear to be running on localhost:11434.\n\n"
+            f"{_what} will not work until Ollama is started.\n"
+            f"Start Ollama, then try your conversion.",
         )
 
     # ══════════════════════════════════════════════════════════════════════
