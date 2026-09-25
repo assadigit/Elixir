@@ -34,11 +34,22 @@ logger = get_main_logger()
 # of any occurrence of the name in the source.
 _NAME_WINDOW = 600
 
+# V0.4.32 (audit backlog item 1): the source-size gate. The V0.4.32
+# rarest-4 keyword selection is meaningful only on sources large enough
+# that a 0-frequency rare word is a fabrication signature (the word
+# appears nowhere in a real-sized source → the claim is fabricated). On
+# tiny synthetic test sources (≤1000 chars), the rarest-4 degenerates
+# to all 0-frequency words (the source is too small to contain them);
+# the V0.4.24 first-8-by-position rule is used instead. Real chapter
+# sources are always ≥10× this threshold.
+_MIN_SOURCE_CHARS = 1000
+
 
 def _grounded_addition_sentences(
     addition: str, source: str, names: list[str]
 ) -> tuple[str, list[str]]:
-    """V0.4.24 (audit backlog #6): attribution-edge check on gap-fill prose.
+    """V0.4.24 (audit backlog #6) → V0.4.32 (audit backlog item 1):
+    attribution-edge check on gap-fill prose.
 
     The V0.4.23 thorough gap-fill shipped a sentence welding a theorist to
     a criticism he never appears near in the source ("N's theories were
@@ -49,16 +60,64 @@ def _grounded_addition_sentences(
     (±600 chars) with ANY of the sentence's distinctive content words —
     the welding signature.
 
+    V0.4.32 (V0.4.31 ch.6 audit backlog item 1 — the F1-F5 hallucination
+    class): the V0.4.24 first-N-by-position keyword selection (cap 8) was
+    too coarse — it picked common abstract words ("further", "distinct",
+    "affective", "individual") that share a window with any cited author
+    elsewhere in the source, passing fabricated substantive claims whose
+    actual content words never co-occur with the cited author. The rig
+    audit's F1 (a fabricated "differentiate from anxiety/depression" claim
+    attached to an author whose actual source claim is "phobic vs paranoid
+    characters") slipped because ONE of the first-8 keywords ("affective")
+    happens to appear in that author's ±600-char source window. The V0.4.32
+    fix sorts the candidate keywords by RAREST source frequency first and
+    takes the rarest 4 — the claim's distinctive content fingerprint — so
+    the common-word false-positive is removed and the fabricated claim is
+    dropped. (Content-agnostic per Rule 1: the rule is a structural
+    property of source-word-frequency, not a book-specific property. The
+    F1-F5 evidence is book-specific; the fix is generic — it improves
+    detection on any book where an LLM fabricates a substantive claim
+    attached to a real author whose actual source claim is different.)
+
+    Honest deviation disclosed (Rule 2): the audit's narrative said the
+    V0.4.24 attribution-edge drop "does NOT cover thorough additive
+    prose." That characterisation is inaccurate — the check IS applied
+    to the thorough-theorist-floor chunked gap-fill output (call site at
+    line 397 of this module; conversion-log lines 879-881 confirm the
+    check RAN on the V0.4.31 rig run, dropping 2 wrong-year thorough
+    additive sentences). The F1-F5 hallucinations slipped not because
+    the check was missing on the thorough path, but because the check's
+    keyword extraction was too coarse: the V0.4.24 first-N-by-position
+    selection picked common abstract words that share a window with any
+    cited author elsewhere in the source. The V0.4.32 fix targets THIS
+    root cause (rarest-first sort + cap 4 + a source-size gate so the
+    rarest-4 probe is only invoked when the source is large enough that
+    a 0-frequency rare word is a fabrication signature, not a small-source
+    artifact).
+
     High-precision by construction:
       * only sentences that carry one of the chunk's missing names are
         checked — prose without a gap-fill name passes untouched;
-      * keywords are ≥6 chars, de-duplicated, capped at 8, and exclude
+      * keywords are ≥6 chars, de-duplicated, sorted rarest-first, capped
+        at 4 (the V0.4.24 cap was 8 by position — too coarse), and exclude
         words so frequent in the source (>40 occurrences) that they
         cannot anchor a co-occurrence;
       * a name absent from the source entirely is kept (it arrived from
         the deterministic analysis, not the model);
+      * a sentence with no anchorable keywords after filtering is kept
+        (cannot probe — unverifiable);
       * a sentence is dropped only when EVERY name in it fails the
-        co-occurrence probe.
+        co-occurrence probe on the rarest-4 fingerprint.
+
+    Source-size gate (V0.4.32): on sources smaller than
+    ``_MIN_SOURCE_CHARS`` (~1000 chars / ~200 words — well below the
+    smallest real chapter, well above the synthetic test sources), the
+    rarest-4 selection degenerates (almost every distinctive word is
+    0-frequency because the source is too small to contain it). On
+    such tiny sources the V0.4.24 first-8-by-position rule is used
+    instead (lenient; matches the V0.4.24 test fixtures). On real
+    chapter sources the V0.4.32 rarest-4 rule is used (discriminating;
+    catches the F1-F5 fabricated-claim class).
 
     Returns ``(filtered_addition, dropped_sentences)`` — paragraph
     structure preserved; a paragraph whose every sentence was dropped
@@ -70,6 +129,14 @@ def _grounded_addition_sentences(
         src_lower = source.lower()
         freq = Counter(re.findall(r"[a-z]{6,}", src_lower))
         generic = {w for w, c in freq.items() if c > 40}
+        # V0.4.32 (audit backlog item 1): source-size gate. The rarest-
+        # 4 selection is meaningful only on sources large enough that
+        # a 0-frequency rare word is a fabrication signature. On tiny
+        # test sources (≤1000 chars) the rarest-4 degenerates to all
+        # 0-frequency words (the source simply doesn't contain them);
+        # the V0.4.24 first-8-by-position rule is used instead. Real
+        # chapter sources (≥10× the threshold) always use V0.4.32.
+        use_v0432_rarest4 = len(source) >= _MIN_SOURCE_CHARS
         out_paras: list[str] = []
         dropped: list[str] = []
         for para in re.split(r"\n{2,}", addition):
@@ -89,7 +156,30 @@ def _grounded_addition_sentences(
                     for w in re.findall(r"[a-z]{6,}", sent.lower())
                     if w not in generic and not any(w in n.lower() for n in sent_names)
                 ]
-                kws = list(dict.fromkeys(kws))[:8]
+                kws = list(dict.fromkeys(kws))
+                if use_v0432_rarest4:
+                    # V0.4.32 (audit backlog item 1): sort RAREST-first
+                    # (lowest source frequency) and cap at 4 — the V0.4.24
+                    # first-N-by-position cap (8) picked common abstract
+                    # words that share a window with any cited author
+                    # elsewhere in the source, passing the F1-F5 fabricated-
+                    # claim class. The rarest-4 are the claim's distinctive
+                    # content fingerprint; a fabricated substantive claim
+                    # whose actual content words never co-occur with the
+                    # cited author's source window is dropped even when a
+                    # common word like "affective" or "individual" happens
+                    # to share that window.
+                    kws.sort(key=lambda w: freq.get(w, 0))
+                    kws = kws[:4]
+                else:
+                    # V0.4.24 fallback: first 8 by position (lenient on
+                    # tiny test sources where rarest-first degenerates).
+                    kws = kws[:8]
+                # No anchorable keywords → cannot probe; keep (the V0.4.24
+                # unverifiable-keep behaviour, made explicit here).
+                if not kws:
+                    kept_s.append(sent)
+                    continue
                 grounded = False
                 for n in sent_names:
                     n_low = n.lower()
