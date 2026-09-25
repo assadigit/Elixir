@@ -24,6 +24,42 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.33 — the dead-code-wiring release (V0.4.33 item 1: wire the semantic fact-check into the production pipeline)
+
+> **The release:** the V0.4.32 ch.6 audit found that item 2 (commit `c37376e`)
+> defined the `_semantic_ground_addition_sentences` helper but **NEVER CALLED
+> it** from any production code path — only the tests exercised it. The
+> CHANGELOG claim that item 2 "closed the F1-F5 enabler" was NOT supported by
+> the conversion log. This release **wires the helper** into the
+> thorough-theorist-floor merge path — each chunked gap-fill addition now
+> passes through BOTH the attribution-edge check (item 1, the rarest-4
+> fingerprint) AND the semantic fact-check (item 2, the embedding-similarity
+> ≥0.50 check) before merging into the thorough.
+
+**1. Wire `_semantic_ground_addition_sentences` into the production pipeline
+  (V0.4.33 item 1, commit `d19dac9`):** the helper is now called at
+  `core/summarisation/thorough_theorist_floor.py:625`, AFTER the attribution-
+  edge check (`_grounded_addition_sentences` at line 601) + BEFORE the
+  `_additions.append` at line 642. Each chunked gap-fill addition is filtered
+  by BOTH checks before merging. The degenerate-signal guard fires in the
+  sandbox (no sentence-transformers → returns unchanged); the actual semantic
+  check runs on the rig (nomic-embed-text via Ollama). **This also closes
+  V0.4.33 item 3** (the gap-fill hallucination-guard) — the guard was ALREADY
+  in place (the V0.4.24 attribution-edge check filtered each chunk before
+  merging); the missing piece was item 2's call, now added.
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite **6,081 P / 0 F / 36 S
+exit 0** (165s); deny-list passes.
+
+**Items queued for V0.4.34:** (2) synonym-class probe to reduce the
+attribution-edge false-positive rate (the V0.4.32 audit's COVERAGE regression:
+theorists 85%→62%); (4) enumeration-stem self-containment (4 garbled stems);
+(5) quote-pair balancer; (6) thinking-filter tightening; (7) deadline-exceeded
+diagnostics; (8) meta-filler transition paragraph detector; (9) co-authored/
+possessive-citation coverage gap (gap-fill prompt instruction — rig-blocked if
+it shifts the prompt_manifest_hash).
+
 ## V0.4.32 — the ch.6-audit-fix release (items 1, 2, 8 of the V0.4.32 backlog)
 
 > **The release:** the first response to the V0.4.31 ch.6 paranoid benchmark

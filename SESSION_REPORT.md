@@ -879,6 +879,26 @@ verdict — 5 hallucinations in thorough additive para 5). Ships 3 of the
 / 0 F / 36 S exit 0** (+11 vs V0.4.31 — the V0.4.32 audit-fix tests);
 deny-list passes.
 
-**Items 3-7 queued for V0.4.33:** (3) the gap-fill hallucination-guard;
-(4) enumeration-stem self-containment; (5) quote-pair balancer; (6)
-thinking-filter tightening; (7) deadline-exceeded diagnostics.
+---
+
+## Phase 15 — V0.4.33 release (the dead-code-wiring release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.33` +
+> this note + CHANGELOG). Tagged `V0.4.33`.
+
+The V0.4.32 ch.6 audit (PASS 9/7/7/8) found that item 2 (`c37376e`) defined
+the `_semantic_ground_addition_sentences` helper but **NEVER CALLED it**
+from the production pipeline — the CHANGELOG claim that it "closed the F1-F5
+enabler" was NOT supported by the conversion log. This release wires the
+helper into the thorough-theorist-floor merge path (commit `d19dac9`):
+each chunked gap-fill addition now passes through BOTH the attribution-edge
+check + the semantic fact-check before merging into the thorough. This also
+closes item 3 (the gap-fill guard was already in place; the missing piece
+was item 2's call).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite **6,081 P
+/ 0 F / 36 S exit 0**; deny-list passes.
+
+**Items queued for V0.4.34:** (2) synonym-class probe; (4) stem self-
+containment; (5) quote-pair balancer; (6) thinking-filter; (7) deadline
+diagnostics; (8) meta-filler detector; (9) co-authored-citation prompt.
