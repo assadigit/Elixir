@@ -798,3 +798,32 @@ exit 0** (166 s); `main.py` 313 < 320 (both line-count pins pass).
 on the rig to confirm markitdown was the 4-min hang (the `find_spec` fix
 removes it regardless). If startup is still slow, the importtime log
 shows the next culprit.
+
+---
+
+## Phase 12 — V0.4.30 release (the multi-backend llama.cpp model-detection release)
+
+> **Branch:** `refactor/audit-session` @ `e50311e` → release commit
+> (VERSION `0.4.30` + this note + CHANGELOG). Tagged `V0.4.30`.
+
+The owner reported a second llama.cpp instance (port 8081, Qwen3.8)
+mis-identified as "Ternary Bonsai." Fix: `create_provider`
+(`llm_provider_impl.py`) now queries `GET /v1/models` + uses the ACTUAL
+served model (not the hardcoded `llamacpp_model` setting). The detection
+logs when the detected differs from the configured; falls back when the
+server is unreachable or `/v1/models` is empty. The registry's
+`get_context_window` uses the detected model too. Commit `e50311e`.
+
+**Design:** detection at `create_provider` (one query per conversion), not in
+the provider's per-call path — the provider + its 113 unit tests are
+unaffected.
+
+**Net-green:** ruff clean; eval gate OK (`prompt_manifest_hash ee5a61d0`
+flat); full suite **6,067 P / 0 F / 36 S exit 0** (+1 vs V0.4.29); deny-list
+passes.
+
+**Part B (multi-endpoint) proposed, NOT shipped** — the convenience to
+configure BOTH 8080 + 8081 + switch without re-editing `llamacpp_base_url`.
+Needs the owner's UX preference (per-conversion dropdown vs global setting
+vs auto-fallback). With Part A shipped, the owner can already switch
+`llamacpp_base_url` between ports + the model name auto-detects.

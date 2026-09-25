@@ -24,6 +24,46 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.30 — the multi-backend llama.cpp model-detection release
+
+> **The release:** the owner reported that a second llama.cpp instance
+> (port 8081, serving Qwen3.8) was mis-identified as "Ternary Bonsai" (the
+> hardcoded `llamacpp_model` setting). This release adds dynamic model
+> detection — `create_provider` queries `GET /v1/models` + uses the ACTUAL
+> served model, so a llama-server on any port is identified + addressed
+> correctly.
+
+**1. `create_provider` detects the served model (`core/llm/llm_provider_impl.py`):**
+  `create_provider` now queries `GET /v1/models` on the configured
+  `llamacpp_base_url` at construction + passes the ACTUAL served model to
+  `LlamaCppProvider` (instead of the hardcoded `llamacpp_model` setting). The
+  detection logs an INFO line when the detected model differs from the
+  configured ("detected model X on URL (configured: Y) — using the detected").
+  Falls back to the configured model if the server is unreachable or
+  `/v1/models` is empty. The registry's `get_context_window` now uses the
+  detected model too (so the context window matches the actual served model).
+  Commit `e50311e`.
+
+  **Design:** detection at `create_provider` (one `/v1/models` query per
+  conversion), NOT in the provider's per-call path — so the provider itself +
+  its 113 existing unit tests are unaffected (they construct the provider
+  directly with a specific model).
+
+**2. Test (Rule 3):** `test_create_provider_llamacpp_detects_served_model`
+  — verifies the detection uses the served model when it differs from the
+  configured + falls back when `/v1/models` is empty.
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite 6,067 P / 0 F / 36 S
+exit 0 (169 s, +1 vs V0.4.29's 6,066); deny-list passes (model names are
+generic technical names, not book-derived).
+
+**Part B (multi-endpoint) — proposed, NOT shipped:** the convenience feature
+to configure BOTH 8080 + 8081 + switch between them without re-editing
+`llamacpp_base_url`. Needs the owner's UX preference (per-conversion dropdown
+vs global setting vs auto-fallback). With Part A shipped, the owner can
+already switch `llamacpp_base_url` between ports + the model name auto-detects.
+
 ## V0.4.29 — the startup-fix release: the `_warn_ollama` backend-guard + the `find_spec` dep-check fix
 
 > **The release:** two startup-path fixes the owner surfaced by running
