@@ -922,5 +922,23 @@ Commit `73660a0`. Gated on the source-size gate (≥1000 chars).
 **Net-green:** ruff clean; eval gate OK (hash flat); full suite **6,081 P /
 0 F / 36 S exit 0**; deny-list passes.
 
-**Items 2-8 queued for V0.4.35.**
+**Items 2-8 queued for V0.4.35.
+
+---
+
+## Phase 17 — V0.4.35 release (the F1 year-attribution-probe-wiring release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.35`).
+> Tagged `V0.4.35`.
+
+The V0.4.34 ch.6 audit found H3 (Stanton 1980 fabricated year) slipped through
+the dedicated expansion call. The V0.4.35 fix: a standalone
+`_year_attribution_probe` function called at the coverage-check point (BEFORE
+the gap-fill phase) — catches fabricated-year claims regardless of whether the
+gap-fill runs.
+
+**Net-green:** ruff clean; eval gate OK; 6,081 P exit 0; deny-list passes.
+
+**Items F2-F4 + V0.4.35 backlog queued for V0.4.36.**
+**
 

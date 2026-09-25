@@ -24,6 +24,35 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.35 — the F1 year-attribution-probe-wiring release (wire the probe to the dedicated expansion output)
+
+> **The release:** the V0.4.34 ch.6 audit found H3 (Stanton 1980 fabricated
+> year) slipped through the dedicated expansion call which the V0.4.34
+> year-attribution probe didn't inspect (the probe lived in the gap-fill path
+> which was skipped by the V0.05 word-count gate). The V0.4.35 fix: extract
+> the year-attribution logic into a standalone `_year_attribution_probe` function
+> + call it at the coverage-check point in `_thorough_theorist_floor` (BEFORE
+> the gap-fill phase). This catches fabricated-year claims regardless of whether
+> the gap-fill runs.
+
+**1. F1: `_year_attribution_probe` standalone function + wired to the dedicated
+  expansion output (commit `[TBD]`):** extracted the year-co-occurrence logic
+  from `_grounded_addition_sentences` into a standalone function that ONLY checks
+  if the YEAR cited in a sentence co-occurs with the AUTHOR in the source (NOT
+  the keyword probe — too aggressive for full thorough prose). Called at the
+  coverage-check point in `_thorough_theorist_floor` (BEFORE the gap-fill phase)
+  so it catches H3-class fabricated-year hallucinations regardless of whether
+  the gap-fill runs. Content-agnostic (Rule 1 ✓).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite 6,081 P exit 0;
+deny-list passes.
+
+**Items F2-F4 + the V0.4.35 backlog queued for V0.4.36:** F2 (tighten the
+V0.05 word-count gate), F3 (break thorough into paragraphs), F4 (promote
+compound-name theorists), + the V0.4.35 carry-over (synonym-class probe, stem
+self-containment, quote-pair balancer, thinking-filter, deadline diagnostics,
+meta-filler detector, co-authored-citation prompt).
+
 ## V0.4.34 — the year-attribution-probe release (V0.4.34 item 1: the H1/H2 hallucination fix)
 
 > **The release:** the V0.4.33 ch.6 audit found 2 NEW F1-class hallucinations
