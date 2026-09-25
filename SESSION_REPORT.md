@@ -855,3 +855,30 @@ Commit `5880b0d`.
 **Net-green:** ruff clean; eval gate OK (`prompt_manifest_hash ee5a61d0`
 flat); full suite **6,070 P / 0 F / 36 S exit 0** (+3 vs V0.4.30);
 deny-list passes.
+
+---
+
+## Phase 14 — V0.4.32 release (the ch.6-audit-fix release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.32` +
+> this note + CHANGELOG). Tagged `V0.4.32`.
+
+The first response to the V0.4.31 ch.6 paranoid benchmark (the first FAIL
+verdict — 5 hallucinations in thorough additive para 5). Ships 3 of the
+8-item V0.4.32 backlog (the highest priority):
+
+- **Item 1** (`c0e1c0f`): attribution-edge check strengthened — rarest-4
+  keyword fingerprint (not first-8-by-position) so fabricated claims whose
+  content words don't co-occur with the cited author are DROPPED.
+- **Item 2** (`c37376e`): Phase 2.2 semantic fact-check extended to thorough
+  additive prose (was bullets-only) — the F1-F5 enabler.
+- **Item 8** (`58a2ac7`): `complete_with_image` accepts `model=` kwarg —
+  fixes the OCR vision-provider break (p.152/153/154).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite **6,081 P
+/ 0 F / 36 S exit 0** (+11 vs V0.4.31 — the V0.4.32 audit-fix tests);
+deny-list passes.
+
+**Items 3-7 queued for V0.4.33:** (3) the gap-fill hallucination-guard;
+(4) enumeration-stem self-containment; (5) quote-pair balancer; (6)
+thinking-filter tightening; (7) deadline-exceeded diagnostics.

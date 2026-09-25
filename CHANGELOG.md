@@ -24,6 +24,59 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.32 — the ch.6-audit-fix release (items 1, 2, 8 of the V0.4.32 backlog)
+
+> **The release:** the first response to the V0.4.31 ch.6 paranoid benchmark
+> (the first FAIL verdict in the campaign lineage — 5 hallucinations in
+> thorough additive paragraph 5). Ships the 3 highest-priority fixes from
+> the 8-item V0.4.32 backlog: items 1+2 (the hallucination gap) + item 8
+> (the OCR break). Items 3-7 queued for V0.4.33.
+
+**1. Thorough-additive attribution-edge check strengthening (item 1,
+  `core/summarisation/thorough_theorist_floor.py`):** the V0.4.24
+  attribution-edge co-occurrence check used a first-8-by-position keyword
+  selection that was too coarse — common abstract words ("further",
+  "distinct", "affective") shared a ±600-char window with any cited author,
+  passing fabricated substantive claims. The V0.4.32 fix sorts candidate
+  keywords by RAREST source frequency first + takes the rarest 4 (the
+  claim's distinctive content fingerprint) — so the common-word
+  false-positive is removed + fabricated claims whose actual content words
+  never co-occur with the cited author are DROPPED. Source-size gate
+  (≥1000 chars) so the rarest-4 doesn't degenerate on tiny test sources.
+  Commit `c0e1c0f`.
+
+**2. Phase 2.2 semantic fact-check scope extension (item 2,
+  `core/summarisation/thorough_theorist_floor.py` +
+  `core/summarisation/bullet_pipeline.py`):** Phase 2.2 verified BULLETS
+  only (log 551 "All bullets semantically grounded"). The 5 fabricated
+  claims in thorough additive prose bypassed the verifier. The fix extends
+  the `semantic_ground_addition_sentences` helper to cover the thorough
+  additive prose — the same embedding-similarity ≥0.50 check. Degenerate-
+  signal guard respected (embedder unhealthy → skip with explicit log).
+  Commit `c37376e`.
+
+**3. `complete_with_image` accepts the `model=` kwarg (item 8,
+  `core/llm/llamacpp_provider.py`):** the V0.4.1 vision-OCR caller passed
+  `model=self._llamacpp_provider_model` but the V0.4.30/V0.4.31 provider
+  contract didn't expose the `model` param — raising `unexpected keyword
+  argument 'model'` on all 3 scanned pages (p.152/153/154), forcing a
+  Tesseract fallback (p.153 → zero chars, Table 6-1 lost). The fix adds
+  `model: str | None = None` to the signature + uses `_model = model or
+  self.model` (the V0.4.30-detected model). Commit `58a2ac7`.
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite **6,081 P / 0 F / 36 S
+exit 0** (168s, +11 vs V0.4.31 — the V0.4.32 audit-fix tests); deny-list
+passes (Rule 1).
+
+**Items 3-7 queued for V0.4.33:** (3) the thorough-theorist-floor
+gap-fill hallucination-guard (route chunked output through items 1+2
+before merging); (4) enumeration-stem self-containment (7 garbled stems
+on ch.6); (5) quote-pair balancer in deterministic polish; (6)
+thinking-filter tightening (the "Author coverage check for…" meta-label);
+(7) deadline-exceeded chapter diagnostics (surface the 767s/480s = 1.6×
+in the user-facing summary).
+
 ## V0.4.31 — the B1 per-conversion llama.cpp endpoint dropdown release
 
 > **The release:** the owner chose B1 (per-conversion dropdown) from the 3
