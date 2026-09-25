@@ -326,6 +326,49 @@ class TestFactoryWiring:
             assert p.output_cap == 12288
             assert p.api_key == "local"
 
+    def test_create_provider_llamacpp_detects_served_model(self, tmp_path):
+        """V0.4.30 (multi-backend): create_provider queries /v1/models + uses
+        the ACTUAL served model, not the hardcoded ``llamacpp_model`` setting
+        — so a llama-server on a different port serving a different model
+        (e.g. 8080=Ternary-Bonsai, 8081=Qwen3.8) is identified + addressed
+        correctly. Falls back to the configured model if /v1/models is empty.
+        """
+        from tests.mock_llamacpp_server import MockLlamaCppServer
+
+        # Server serves Qwen, but settings are configured for Ternary-Bonsai.
+        srv = MockLlamaCppServer(models=["Qwen3.8-27B-Instruct"]).start()
+        try:
+            with _hermetic_settings(tmp_path):
+                from utils.settings import Settings
+
+                s = Settings()
+                s.set("summarisation.llamacpp_base_url", srv.base_url)
+                s.set(
+                    "summarisation.llamacpp_model",
+                    "Ternary-Bonsai-2-27B-Instruct-Vision",  # configured ≠ served
+                )
+                s.set("summarisation.llamacpp_context_tokens", 65536)
+                s.set("summarisation.llamacpp_max_output_tokens", 12288)
+
+                from core.llm.llm_provider import create_provider
+
+                p = create_provider("llamacpp", s)
+                # The DETECTED model wins over the configured.
+                assert p.model == "Qwen3.8-27B-Instruct"
+
+                # Fallback: a server serving NOTHING → use the configured model.
+                srv_empty = MockLlamaCppServer(models=[]).start()
+                try:
+                    s.set("summarisation.llamacpp_base_url", srv_empty.base_url)
+                    p2 = create_provider("llamacpp", s)
+                    assert (
+                        p2.model == "Ternary-Bonsai-2-27B-Instruct-Vision"
+                    )  # the configured fallback
+                finally:
+                    srv_empty.stop()
+        finally:
+            srv.stop()
+
     def test_reexport_surface(self):
         from core.llm import llm_provider
         from core.llm.llamacpp_provider import LlamaCppProvider as _Direct
