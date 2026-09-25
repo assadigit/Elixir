@@ -615,6 +615,30 @@ Chapter content:
                         "WARNING",
                     )
                     continue
+                # V0.4.33 (audit item 1): wire the semantic fact-check
+                # (V0.4.32 item 2's helper — was dead code, never called)
+                # into the production pipeline. Runs AFTER the attribution-
+                # edge check; if the embedder is unhealthy (sandbox), the
+                # degenerate-signal guard fires + the original is returned
+                # unchanged. On the rig, catches fabricated claims with
+                # low embedding similarity to the source.
+                _addition, _sem_dropped = _semantic_ground_addition_sentences(
+                    _addition, content or ""
+                )
+                for _ds in _sem_dropped:
+                    self.log(
+                        f"    🧹 V0.4.33: thorough gap-fill sentence dropped "
+                        f'(semantic fact-check): "{_ds[:70]}…" — embedding '
+                        f"similarity < 0.50 to the source",
+                        "WARNING",
+                    )
+                if len(_addition.split()) < 20:
+                    self.log(
+                        "    ⚠️ V0.4.33: Thorough gap-fill chunk fully dropped "
+                        "by the semantic fact-check filter",
+                        "WARNING",
+                    )
+                    continue
                 _additions.append(_addition)
             if not _additions:
                 self.log(
