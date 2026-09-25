@@ -190,6 +190,26 @@ def _grounded_addition_sentences(
                         src_lower[max(0, m.start() - _NAME_WINDOW) : m.end() + _NAME_WINDOW]
                         for m in re.finditer(re.escape(n_low), src_lower)
                     )
+                    # V0.4.34 (audit item 1): year-attribution probe —
+                    # verify the YEAR cited in the sentence co-occurs with
+                    # the author in the source. A fabricated year (e.g.,
+                    # "Mackinnon (1972)" when the source has only
+                    # "Mackinnon and Michels (1971)") is the H1/H2
+                    # hallucination signature from the V0.4.33 audit.
+                    # Content-agnostic: the year-attribution check is a
+                    # structural property of source-citation-co-occurrence,
+                    # not a book-specific property (Rule 1 ✓).
+                    _sent_years = re.findall(r"(?<!\d)(1[89]\d{2})(?!\d)", sent)
+                    if _sent_years and use_v0432_rarest4:
+                        _yr_found = any(
+                            re.search(rf"(?<!\d){re.escape(_yr)}(?!\d)", windows)
+                            for _yr in _sent_years
+                        )
+                        if not _yr_found:
+                            # The year(s) don't co-occur with this author
+                            # → fabricated year → skip to next name; if NO
+                            # name grounds, the sentence is dropped below.
+                            continue
                     if any(re.search(rf"\b{re.escape(kw)}\b", windows) for kw in kws):
                         grounded = True
                         break
