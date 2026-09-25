@@ -488,6 +488,7 @@ class LlamaCppProvider(LLMProvider):
         image_bytes: bytes,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> str | None:
         """Send a prompt + image to llama-server (OpenAI-compatible
         multimodal format) and return the text response.
@@ -502,8 +503,14 @@ class LlamaCppProvider(LLMProvider):
         b64_image = _b64.b64encode(image_bytes).decode("utf-8")
         _temp = temperature if temperature is not None else self.temperature
         _max_tok = max_tokens or 4096
+        # V0.4.32 (audit item 8): accept the model= kwarg the vision-OCR
+        # caller passes (was raising 'unexpected keyword argument model';
+        # the V0.4.30/V0.4.31 provider contract didn't expose it). Falls
+        # back to self.model (the V0.4.30-detected served model) when the
+        # caller passes None/empty — matching complete()'s pattern.
+        _model = model or self.model
         payload = {
-            "model": self.model,
+            "model": _model,
             "messages": [
                 {
                     "role": "user",
