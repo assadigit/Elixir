@@ -135,7 +135,9 @@ if PROJECT_ROOT not in sys.path:
 
 
 def _check_dependencies() -> list[str]:
-    """Return a list of missing critical packages."""
+    """Return missing critical packages. V0.4.29: find_spec (presence-check, no import) replaces __import__ — the eager markitdown import was a multi-min startup hang."""
+    import importlib.util
+
     missing = []
     critical = {
         "PySide6": "PySide6>=6.6",
@@ -147,9 +149,7 @@ def _check_dependencies() -> list[str]:
         "docx": "python-docx>=1.1.0",
     }
     for module, pkg in critical.items():
-        try:
-            __import__(module)
-        except ImportError:
+        if importlib.util.find_spec(module) is None:
             missing.append(pkg)
     return missing
 
