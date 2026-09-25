@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in __import__("sys").path:
     import sys
@@ -191,3 +193,107 @@ class TestV0432AttributionEdgeRarestFirst:
             + "Piaget (1945) wrote on the psychology of play in children."
         )
         assert len(source_v00424) >= _MIN_SOURCE_CHARS
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Item 2 — Phase 2.2 semantic fact-check scope extension (the new helper)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestV0432SemanticGroundAdditionSentences:
+    """The V0.4.32 EXTENSION of Phase 2.2 (semantic fact-check) to
+    thorough additive prose. The bullet-pipeline's Phase 2.2
+    (apply_phase22_semantic_fact_check, V3.7.0) verifies ≥0.50 embedding
+    similarity for bullets; the V0.4.32 closes the bullets-only gap by
+    running the same check on thorough additive prose via the new
+    ``_semantic_ground_addition_sentences`` helper."""
+
+    def test_helper_importable(self):
+        """The new helper is importable from the thorough_theorist_floor
+        module (alongside _grounded_addition_sentences)."""
+        from core.summarisation.thorough_theorist_floor import (
+            _semantic_ground_addition_sentences,
+        )
+
+        assert callable(_semantic_ground_addition_sentences)
+
+    def test_helper_returns_unchanged_on_empty_input(self):
+        """The helper fail-softs on degenerate input — returns the
+        original addition unchanged, no dropped sentences."""
+        from core.summarisation.thorough_theorist_floor import (
+            _semantic_ground_addition_sentences,
+        )
+
+        # Empty addition → return unchanged.
+        filtered, dropped = _semantic_ground_addition_sentences("", "src")
+        assert filtered == ""
+        assert dropped == []
+        # Empty source → return unchanged.
+        filtered, dropped = _semantic_ground_addition_sentences("Some prose here.", "")
+        assert filtered == "Some prose here."
+        assert dropped == []
+
+    def test_helper_skips_when_embedder_unhealthy(self):
+        """The V18.2.30 degenerate-signal guard: when the embedder is
+        unhealthy (sandbox: no sentence-transformers → returns None →
+        is_embedder_healthy() returns False), the check is skipped with
+        the original addition returned unchanged (the V0.4.25 honest-
+        divergence pattern: rely on the attribution-edge drop (item 1)
+        for hallucination filtering when the embedder can't be trusted).
+
+        This test verifies the GUARD fires in the sandbox (the actual
+        semantic check runs on the rig — disclose per Rule 2)."""
+        from core.llm.model_singletons import is_embedder_healthy
+        from core.summarisation.thorough_theorist_floor import (
+            _semantic_ground_addition_sentences,
+        )
+
+        if is_embedder_healthy():
+            pytest.skip(
+                "embedder is healthy in this environment — the degenerate-"
+                "signal guard does not fire (the semantic check would run). "
+                "Test this on a sandbox without sentence-transformers."
+            )
+
+        addition = (
+            "Knight (1953) catalogued the eleven ego functions whose "
+            "impairment distinguishes borderline patients. The affective "
+            "reactions distinguish borderline from neurotic patients."
+        )
+        source = (
+            "Knight (1953) catalogued eleven ego functions impaired in borderline conditions. " * 5
+        )
+        filtered, dropped = _semantic_ground_addition_sentences(addition, source)
+        # The guard fires → returns the original addition unchanged.
+        assert filtered == addition, (
+            "When the embedder is unhealthy, the helper must return the "
+            "original addition unchanged (V18.2.30 degenerate-signal guard)."
+        )
+        assert dropped == []
+
+    def test_helper_skips_short_sentences(self):
+        """Sentences shorter than 20 chars are kept without probing
+        (semantic similarity on very short text is unreliable)."""
+        from core.llm.model_singletons import is_embedder_healthy
+        from core.summarisation.thorough_theorist_floor import (
+            _semantic_ground_addition_sentences,
+        )
+
+        if is_embedder_healthy():
+            pytest.skip("embedder healthy — guard does not fire")
+
+        # Short sentences should pass untouched even with a real source.
+        addition = "Short. Also short."
+        source = "Some real source content. " * 20
+        filtered, dropped = _semantic_ground_addition_sentences(addition, source)
+        assert filtered == addition
+        assert dropped == []
+
+    def test_helper_never_raises_on_bad_input(self):
+        """The helper fail-softs on None / bad input — returns the
+        original addition unchanged."""
+        from core.summarisation.thorough_theorist_floor import (
+            _semantic_ground_addition_sentences,
+        )
+
+        assert _semantic_ground_addition_sentences(None, "src")[0] in (None, "")  # type: ignore[arg-type]

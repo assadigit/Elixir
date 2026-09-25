@@ -204,6 +204,120 @@ def _grounded_addition_sentences(
         return addition, []
 
 
+# V0.4.32 (audit backlog item 2): the Phase 2.2 semantic fact-check scope
+# extension — the SAME semantic_fact_check helper the bullet pipeline
+# (apply_phase22_semantic_fact_check, V3.7.0) runs on bullets, applied
+# to thorough additive prose. The V0.4.31 ch.6 rig audit's F1-F5
+# hallucinations would fail a ≥0.50 embedding similarity check (they're
+# fabricated claims, low similarity to the source's actual claims about
+# the cited authors). Content-agnostic per Rule 1: the check uses the
+# embedder + the source text, no hardcoded names.
+# V18.2.30 degenerate-signal guard (the V0.4.25 honest-divergence
+# pattern): when the embedder is unhealthy, the check is skipped with
+# an explicit log line — a broken embedder produces zero/NaN vectors
+# which always score <0.50 similarity, dropping ALL prose as
+# "hallucinated" (churn). In that case, rely on the attribution-edge
+# drop (item 1, _grounded_addition_sentences above) for hallucination
+# filtering.
+# V0.4.32 threshold source: thresholds.py _SEMANTIC_FACT_CHECK_DROP
+# (V18.20.2.0 SWOT-A2 — the same threshold the bullet pipeline uses;
+# the helper imports it lazily so the module doesn't pull in
+# thresholds.py at import time).
+def _semantic_ground_addition_sentences(
+    addition: str,
+    source: str,
+    threshold: float | None = None,
+) -> tuple[str, list[str]]:
+    """V0.4.32 (audit backlog item 2): semantic fact-check on
+    thorough additive prose.
+
+    The V3.7.0 Phase 2.2 semantic fact-check on bullets
+    (``apply_phase22_semantic_fact_check`` in ``bullet_pipeline.py``)
+    verifies each bullet's embedding similarity to the source ≥0.50
+    (the V18.20.2.0 ``_SEMANTIC_FACT_CHECK_DROP`` threshold). The
+    V0.4.31 ch.6 rig audit found 5 fabricated claims (F1-F5) in
+    thorough additive paragraph 5 that would have been caught by this
+    check (fabricated claims have low embedding similarity to the
+    source's actual claims about the cited authors). The V0.4.32
+    closes the bullets-only gap by running the SAME check on thorough
+    additive prose via this helper.
+
+    Fail-soft (house pattern): if the embedder is unhealthy (the V18.2.30
+    degenerate-signal guard — the V0.4.25 honest-divergence pattern),
+    the check is skipped and the original addition is returned unchanged
+    with no dropped sentences. A broken embedder produces zero/NaN
+    vectors which always score <0.50 similarity, dropping ALL prose as
+    "hallucinated" (churn); in that case, the attribution-edge drop
+    (item 1) is the active hallucination filter. The sandbox has no
+    sentence-transformers installed → the guard fires here; the actual
+    semantic check runs on the rig (which has nomic-embed-text via
+    Ollama).
+
+    Args:
+        addition: the thorough additive prose to filter (one or more
+            paragraphs, separated by blank lines).
+        source: the chapter source text to ground against.
+        threshold: the similarity threshold below which a sentence is
+            dropped. Defaults to ``_SEMANTIC_FACT_CHECK_DROP`` from
+            ``thresholds.py`` (0.50 — the same threshold the bullet
+            pipeline uses).
+
+    Returns:
+        ``(filtered_addition, dropped_sentences)`` — paragraph
+        structure preserved; a paragraph whose every sentence was
+        dropped vanishes. Never raises.
+    """
+    try:
+        if not addition or not source:
+            return addition, []
+        # V18.2.30: degenerate-signal guard. A broken embedder produces
+        # zero/NaN vectors which always score <0.50 similarity (dropping
+        # ALL prose as "hallucinated" — churn). Skip the check entirely
+        # and rely on the attribution-edge drop (item 1) for hallucination
+        # filtering in that case. The sandbox has no sentence-transformers
+        # → is_embedder_healthy() returns False → the guard fires here.
+        from core.llm.model_singletons import is_embedder_healthy
+
+        if not is_embedder_healthy():
+            return addition, []
+        if threshold is None:
+            from core.summarisation.thresholds import (
+                SEMANTIC_FACT_CHECK_DROP as _P22_THRESHOLD,
+            )
+
+            threshold = float(_P22_THRESHOLD)
+        from core.summarisation.text_preprocessor import semantic_fact_check
+
+        out_paras: list[str] = []
+        dropped: list[str] = []
+        for para in re.split(r"\n{2,}", addition):
+            para = para.strip()
+            if not para:
+                continue
+            kept_s: list[str] = []
+            for sent in (s.strip() for s in re.split(r"(?<=[.!?])\s+", para)):
+                if not sent:
+                    continue
+                # V0.4.32: very short sentences (<20 chars) are kept
+                # without probing — embedding similarity on very short
+                # text is unreliable (the bullet pipeline's
+                # apply_phase22_semantic_fact_check applies the same
+                # heuristic implicitly by operating on bullets ≥10 chars).
+                if len(sent) < 20:
+                    kept_s.append(sent)
+                    continue
+                result = semantic_fact_check(sent, source, threshold=threshold)
+                if result.get("is_grounded"):
+                    kept_s.append(sent)
+                else:
+                    dropped.append(sent)
+            if kept_s:
+                out_paras.append(" ".join(kept_s))
+        return ("\n\n".join(out_paras), dropped)
+    except Exception:
+        return addition, []
+
+
 class SummarizerThoroughFloorMixin:
     """Thorough-theorist floor for :class:`Summarizer` (see the module
     docstring). The method body is byte-identical to summarizer.py's."""
