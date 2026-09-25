@@ -84,6 +84,11 @@ _FUSION_LEGIT_SUFFIXES = frozenset(
         "off",
         "love",
         "self",
+        # V0.4.36 (F5): adverbial suffixes that produce real words —
+        # "egosyntonic" + "ally" = "egosyntonically" (a valid English
+        # adverb; the V0.4.34/V0.4.35 audit flagged this as a false
+        # positive). Content-agnostic (English morphology).
+        "ally",
     }
 )
 
