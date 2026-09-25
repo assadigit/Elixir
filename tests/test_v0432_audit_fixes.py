@@ -297,3 +297,112 @@ class TestV0432SemanticGroundAdditionSentences:
         )
 
         assert _semantic_ground_addition_sentences(None, "src")[0] in (None, "")  # type: ignore[arg-type]
+
+
+class TestV0435YearAttributionProbe:
+    """V0.4.36 (F1): positive-demonstration test — proves the
+    _year_attribution_probe CATCHES a fabricated year DETERMINISTICALLY
+    (not just that the LLM happened not to produce one)."""
+
+    def test_drops_fabricated_year_for_real_author(self):
+        """The V0.4.34 audit's H3: 'Stanton (1980)' when the source has
+        only Stanton at 1978. The probe MUST drop this sentence."""
+        from core.summarisation.thorough_theorist_floor import _year_attribution_probe
+
+        source = (
+            "Stanton (1978) pointed out the paranoid individual's overt "
+            "stubbornness and hidden self-doubt. This was elaborated by "
+            "Hamilton (1974, 1984) who distinguished two kinds: the "
+            "sensitive type characterized by subdued resentment and cynicism "
+            "and the querulous type characterized by open defiance and "
+            "litigiousness. Stanton (1978) also contributed to the DSM-III "
+            "criteria discussion, noting that the criteria failed to include "
+            "grandiosity, sexual difficulties, hidden feelings of inferiority, "
+            "idiosyncratically moral attitudes, and gullibility. The field "
+            "has long recognized that Stanton (1978) provided a thorough "
+            "profile of paranoid personality disorder, encompassing both "
+            "descriptive and psychoanalytic perspectives. The disorder is "
+            "listed in DSM-III-R and was included in all previous versions "
+            "of DSM. Millon (1981) divided the features into four categories: "
+            "behavioral characteristics of vigilance, abrasive irritability, "
+            "and counterattack; complaints indicating oversensitivity, social "
+            "isolation, and mistrust; the dynamics of denying personal "
+            "insecurities, attributing these to others, and self-inflation "
+            "through grandiose fantasies; and a coping style of detesting "
+            "dependence and hostile distancing. These contributions span "
+            "the descriptive and psychoanalytic traditions, providing a "
+            "multifaceted understanding of the paranoid personality. "
+            "Additional context about paranoid personality disorder "
+            "includes its relationship to other personality disorders, "
+            "its developmental origins, and its treatment implications."
+        )
+        # The fabricated-year sentence (the H3 hallucination signature)
+        fabricated = (
+            "Stanton (1980) highlighted overt stubbornness with hidden "
+            "self-doubt, and observed that while such individuals are "
+            "contemptuous of others' naivete, they themselves have a "
+            "remarkable, though latent, gullibility."
+        )
+        # A correctly-attributed sentence (should be KEPT)
+        correct = (
+            "Hamilton (1974) distinguished two kinds of paranoid "
+            "personality: sensitive and querulous."
+        )
+        text = fabricated + " " + correct
+        names = ["Stanton", "Hamilton"]
+        filtered, dropped = _year_attribution_probe(text, source, names)
+        # The fabricated-year sentence MUST be dropped
+        assert len(dropped) == 1, (
+            f"Expected 1 drop (fabricated Stanton 1980), got {len(dropped)}: {dropped}"
+        )
+        assert "1980" in dropped[0], f"Dropped sentence should contain '1980': {dropped[0]}"
+        # The correct sentence MUST be kept
+        assert "Hamilton (1974)" in filtered, f"Correct sentence should be kept: {filtered}"
+        # The fabricated year must NOT appear in the filtered output
+        assert "1980" not in filtered, (
+            f"Fabricated year 1980 should not be in filtered output: {filtered}"
+        )
+
+    def test_keeps_correct_year_for_real_author(self):
+        """A correctly-attributed year (Stanton 1978, which IS in the
+        source) should NOT be dropped."""
+        from core.summarisation.thorough_theorist_floor import _year_attribution_probe
+
+        source = (
+            "Stanton (1978) pointed out the paranoid individual's overt "
+            "stubbornness and hidden self-doubt."
+        )
+        text = "Stanton (1978) contributed to the DSM-III criteria discussion."
+        names = ["Stanton"]
+        filtered, dropped = _year_attribution_probe(text, source, names)
+        assert len(dropped) == 0, f"Correct year should not be dropped: {dropped}"
+        assert "Stanton (1978)" in filtered
+
+    def test_skips_sentence_without_year(self):
+        """A sentence with an author but no year should pass untouched."""
+        from core.summarisation.thorough_theorist_floor import _year_attribution_probe
+
+        source = "Stanton (1978) pointed out stubbornness."
+        text = "Stanton contributed to the paranoid profile."
+        names = ["Stanton"]
+        filtered, dropped = _year_attribution_probe(text, source, names)
+        assert len(dropped) == 0
+        assert "Stanton contributed" in filtered
+
+    def test_skips_sentence_without_known_author(self):
+        """A sentence with no known author name should pass untouched."""
+        from core.summarisation.thorough_theorist_floor import _year_attribution_probe
+
+        source = "Some source text about paranoid personality disorder."
+        text = "The disorder is well-established in the literature."
+        names = ["Stanton", "Hamilton"]
+        filtered, dropped = _year_attribution_probe(text, source, names)
+        assert len(dropped) == 0
+        assert text in filtered
+
+    def test_never_raises_on_bad_input(self):
+        from core.summarisation.thorough_theorist_floor import _year_attribution_probe
+
+        assert _year_attribution_probe("", "source", ["name"]) == ("", [])
+        assert _year_attribution_probe("text", "", ["name"]) == ("text", [])
+        assert _year_attribution_probe("text", "source", []) == ("text", [])
