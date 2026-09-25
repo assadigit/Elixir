@@ -101,6 +101,13 @@ _BARE_YEAR_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 
 _MANIFEST_VERSION = "18.20.3.0"
 
+# V0.4.36 (F3): pattern for detecting section transitions in the thorough —
+# a sentence starting with "Author (Year)" or "Author (*Year*) signals a
+# new topic. Content-agnostic (the pattern is a generic citation format).
+_SECTION_TRANSITION_RE = re.compile(
+    r"(?<=[.!?]\s)(?=[A-Z][a-z]+ (?:\(\*?1[89]\d{2}\*?\)|\(\d{4}\)))"
+)
+
 
 def _style_years_in_parens(match: re.Match) -> str:
     """Style every 4-digit year inside one parenthetical group.
@@ -118,6 +125,28 @@ def _style_years_in_parens(match: re.Match) -> str:
     if not _BARE_YEAR_RE.search(inner):
         return match.group(0)  # no years — leave untouched
     return "(" + _BARE_YEAR_RE.sub(r"*\1*", inner) + ")"
+
+
+def _break_thorough_into_paragraphs(thorough: str) -> str:
+    """V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at
+    section transitions.
+
+    The thorough ships as a single ~4000-word paragraph (6 consecutive
+    audits flagged this). The fix: a deterministic post-processing pass
+    that splits the thorough at sentence boundaries where a new
+    Author (Year) citation signals a section transition. Content-agnostic
+    (the split pattern is a generic English discourse marker: a sentence
+    starting with an Author (Year) citation signals a new section).
+    Rule 1 compliant (no book-specific names or content).
+    """
+    if not thorough or len(thorough) < 500:
+        return thorough  # short thorough — no need to split
+    # Split at sentence boundaries where the next sentence starts with
+    # "AuthorName (Year)" or "AuthorName (*Year*) — the citation pattern.
+    parts = _SECTION_TRANSITION_RE.split(thorough)
+    if len(parts) <= 1:
+        return thorough  # no transitions found — return as-is
+    return "\n\n".join(parts)
 
 
 def format_years(text: str) -> str:
@@ -162,7 +191,16 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
 
     exec_formatted = format_years(summ.executive_summary or "")
-    thorough_formatted = format_years(summ.thorough_summary or "")
+    # V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at section
+    # transitions. The V0.4.26 backlog item 3 — flagged for 6 consecutive
+    # audits. The thorough ships as a single ~4000-word paragraph, burying
+    # hallucinations in dense prose. The fix: a deterministic post-processing
+    # pass that splits the thorough at sentence boundaries where a new
+    # author/topic is introduced (the "Stanton (1978)..." → new paragraph
+    # pattern). Content-agnostic (the split pattern is a generic English
+    # discourse marker: a sentence starting with an Author (Year) citation
+    # signals a new section transition).
+    thorough_formatted = format_years(_break_thorough_into_paragraphs(summ.thorough_summary or ""))
 
     kd_md = ""
     if getattr(summ, "key_distinctions", None) and str(summ.key_distinctions).strip():
