@@ -224,6 +224,91 @@ def _grounded_addition_sentences(
         return addition, []
 
 
+def _year_attribution_probe(text: str, source: str, names: list[str]) -> tuple[str, list[str]]:
+    """V0.4.35 (F1): year-attribution probe on ANY thorough output.
+
+    Extracted from the inline year-attribution logic in
+    ``_grounded_addition_sentences`` (V0.4.34 commit ``73660a0``). This
+    standalone version ONLY checks if the YEAR cited in a sentence
+    co-occurs with the AUTHOR in the source — it does NOT run the keyword
+    probe (rarest-4 fingerprint), which is too aggressive for full thorough
+    prose (would drop true-but-rephrased claims). The V0.4.34 audit found
+    H3 (Stanton 1980 fabricated year) slipped through the dedicated
+    expansion call which the inline probe didn't inspect (it lived in the
+    gap-fill path which was skipped by the V0.05 word-count gate). This
+    function is called at the coverage-check point (BEFORE the gap-fill
+    phase) so it catches fabricated-year claims regardless of whether the
+    gap-fill runs. Content-agnostic (Rule 1 ✓ — the year-attribution
+    check is a structural property of source-citation-co-occurrence, not
+    a book-specific property).
+
+    Args:
+        text: the thorough text to check (from the dedicated expansion call
+            or the gap-fill — any thorough output).
+        source: the chapter source text to ground against.
+        names: the list of known author names (from the analysis) to look
+            for in the text.
+
+    Returns:
+        ``(filtered_text, dropped_sentences)`` — paragraph structure
+        preserved; a paragraph whose every sentence was dropped vanishes.
+        Never raises.
+    """
+    try:
+        if not text or not source or not names:
+            return text, []
+        src_lower = source.lower()
+        # Same source-size gate as _grounded_addition_sentences: the year
+        # probe is only meaningful on real-sized sources (≥1000 chars).
+        if len(source) < _MIN_SOURCE_CHARS:
+            return text, []
+        out_paras: list[str] = []
+        dropped: list[str] = []
+        for para in re.split(r"\n{2,}", text):
+            para = para.strip()
+            if not para:
+                continue
+            kept_s: list[str] = []
+            for sent in (s.strip() for s in re.split(r"(?<=[.!?])\s+", para)):
+                if not sent:
+                    continue
+                sent_names = [
+                    n for n in names if re.search(rf"\b{re.escape(n)}\b", sent, re.IGNORECASE)
+                ]
+                if not sent_names:
+                    kept_s.append(sent)
+                    continue
+                _sent_years = re.findall(r"(?<!\d)(1[89]\d{2})(?!\d)", sent)
+                if not _sent_years:
+                    kept_s.append(sent)
+                    continue
+                grounded = False
+                for n in sent_names:
+                    n_low = n.lower()
+                    if n_low not in src_lower:
+                        grounded = True  # unverifiable — keep
+                        break
+                    windows = " \u0000 ".join(
+                        src_lower[max(0, m.start() - _NAME_WINDOW) : m.end() + _NAME_WINDOW]
+                        for m in re.finditer(re.escape(n_low), src_lower)
+                    )
+                    _yr_found = any(
+                        re.search(rf"(?<!\d){re.escape(_yr)}(?!\d)", windows) for _yr in _sent_years
+                    )
+                    if _yr_found:
+                        grounded = True
+                        break
+                if grounded:
+                    kept_s.append(sent)
+                else:
+                    dropped.append(sent)
+            if kept_s:
+                out_paras.append(" ".join(kept_s))
+        return "\n\n".join(out_paras), dropped
+    except Exception:
+        return text, []
+
+
 # V0.4.32 (audit backlog item 2): the Phase 2.2 semantic fact-check scope
 # extension — the SAME semantic_fact_check helper the bullet pipeline
 # (apply_phase22_semantic_fact_check, V3.7.0) runs on bullets, applied
@@ -416,6 +501,25 @@ class SummarizerThoroughFloorMixin:
                 return thorough
             _covered = len(_cov.get("covered", []) or [])
             _missing = list(_cov.get("missing", []) or [])
+            # V0.4.35 (F1): year-attribution probe on the thorough text AS
+            # RECEIVED from the dedicated expansion call — BEFORE the gap-
+            # fill phase. The V0.4.34 audit found H3 (Stanton 1980 fabricated
+            # year) slipped through the dedicated expansion call which the
+            # year-attribution probe in _grounded_addition_sentences didn't
+            # inspect (the probe lived in the gap-fill path which was skipped
+            # by the V0.05 word-count gate). Running here catches fabricated-
+            # year claims regardless of whether the gap-fill runs. ONLY runs
+            # the year-co-occurrence check (not the keyword probe — too
+            # aggressive for full thorough prose). Content-agnostic (Rule 1 ✓).
+            _all_authors = list(_cov.get("covered", [])) + _missing
+            thorough, _yr_dropped = _year_attribution_probe(thorough, content or "", _all_authors)
+            for _ds in _yr_dropped:
+                self.log(
+                    f"    🧹 V0.4.35: thorough sentence dropped "
+                    f'(year-attribution/dedicated-expansion): "{_ds[:70]}…" '
+                    f"— its cited year doesn't co-occur with the author in the source",
+                    "WARNING",
+                )
             # V18.20.3.13 floor line — recall-floor house style (INFO when
             # met / WARNING when not; missing names listed like the V18.14
             # judge lists them so the operator can act without re-running).
