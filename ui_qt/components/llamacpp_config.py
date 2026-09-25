@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -32,6 +33,35 @@ LLAMACPP_DEFAULT_URL = "http://127.0.0.1:8080/v1"
 LLAMACPP_DEFAULT_MODEL = "Ternary-Bonsai-2-27B-Instruct-Vision"
 
 
+def build_llamacpp_endpoint_options(
+    primary_url: str, primary_key: str, endpoints: list | None
+) -> list[dict]:
+    """Build the endpoint-dropdown options (Primary + the configured list).
+
+    V0.4.31 (B1 per-conversion dropdown): the dropdown lists the Primary
+    endpoint (the current ``llamacpp_base_url``/``llamacpp_api_key``) + each
+    entry from the ``llamacpp_endpoints`` setting (a list of
+    ``{base_url, api_key, label}``). Picking one populates the URL/key
+    fields so ``save_llamacpp_settings`` writes the selected endpoint;
+    ``create_provider`` then detects the served model (V0.4.30).
+
+    Pure (no Qt, no settings I/O) — testable without a QApplication.
+    """
+    opts: list[dict] = [{"label": "Primary", "base_url": primary_url, "api_key": primary_key}]
+    for ep in endpoints or []:
+        _url = (ep.get("base_url") or "").strip() if isinstance(ep, dict) else ""
+        if not _url:
+            continue  # skip empty/malformed endpoints
+        opts.append(
+            {
+                "label": ep.get("label") or _url,
+                "base_url": _url,
+                "api_key": ep.get("api_key") or "local",
+            }
+        )
+    return opts
+
+
 class LlamaCppConfigMixin:
     """Builds + owns the llama.cpp endpoint box; Step5Models mixes it in."""
 
@@ -45,6 +75,35 @@ class LlamaCppConfigMixin:
         # V0.4.20: 5 → 8 — the three label+field rows were visually fused
         # (user-reported "cramped"); match the wizard's other row spacing.
         lay.setSpacing(8)
+
+        # V0.4.31 (B1 per-conversion dropdown): quick-select among the
+        # configured llama.cpp endpoints (Primary + llamacpp_endpoints).
+        # Picking one populates the URL/key fields below; create_provider
+        # then detects the served model (V0.4.30).
+        ep_row = QHBoxLayout()
+        ep_row.setSpacing(8)
+        ep_row.addWidget(QLabel("Endpoint:"))
+        self.llamacpp_endpoint_combo = QComboBox()
+        self.llamacpp_endpoint_combo.setMinimumWidth(260)
+        _primary_url = self.controller.get_setting(
+            "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL
+        )
+        _primary_key = self.controller.get_secret("summarisation.llamacpp_api_key", "local")
+        _endpoints = self.controller.get_setting("summarisation.llamacpp_endpoints", [])
+        self._llamacpp_endpoint_opts = build_llamacpp_endpoint_options(
+            _primary_url, _primary_key, _endpoints
+        )
+        _active_idx = 0
+        for _i, _opt in enumerate(self._llamacpp_endpoint_opts):
+            self.llamacpp_endpoint_combo.addItem(f"{_opt['label']}  ({_opt['base_url']})", _i)
+            if _opt["base_url"] == _primary_url:
+                _active_idx = _i
+        self.llamacpp_endpoint_combo.setCurrentIndex(_active_idx)
+        self.llamacpp_endpoint_combo.currentIndexChanged.connect(
+            self._on_llamacpp_endpoint_selected
+        )
+        ep_row.addWidget(self.llamacpp_endpoint_combo, 1)
+        lay.addLayout(ep_row)
 
         url_row = QHBoxLayout()
         url_row.setSpacing(8)
@@ -113,6 +172,15 @@ class LlamaCppConfigMixin:
         return w
 
     # ── visibility (called from Step5Models._on_arch_change) ─────────────
+
+    def _on_llamacpp_endpoint_selected(self, idx: int) -> None:
+        """Populate the URL/key fields from the selected endpoint (B1)."""
+        opts = getattr(self, "_llamacpp_endpoint_opts", None)
+        if not opts or idx < 0 or idx >= len(opts):
+            return
+        _opt = opts[idx]
+        self.llamacpp_url_edit.setText(_opt["base_url"])
+        self.llamacpp_key_edit.setText(_opt["api_key"])
 
     def llamacpp_set_visible(self, is_local: bool, backend: str) -> None:
         self.llamacpp_widget.setVisible(is_local and backend == "llamacpp")

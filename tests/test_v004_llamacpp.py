@@ -745,3 +745,64 @@ class TestTernaryVramClass:
 
         name, _ = _parse_quantization("model-27b-tn23")
         assert name == "tn23"
+
+
+class TestLlamaCppEndpointDropdown:
+    """V0.4.31 (B1): the build_llamacpp_endpoint_options helper that builds
+    the wizard's endpoint-dropdown options (Primary + llamacpp_endpoints)."""
+
+    def test_primary_only_when_no_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options("http://127.0.0.1:8080/v1", "local", [])
+        assert len(opts) == 1
+        assert opts[0] == {
+            "label": "Primary",
+            "base_url": "http://127.0.0.1:8080/v1",
+            "api_key": "local",
+        }
+
+    def test_primary_plus_configured_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options(
+            "http://127.0.0.1:8080/v1",
+            "local",
+            [
+                {
+                    "base_url": "http://127.0.0.1:8081/v1",
+                    "api_key": "local",
+                    "label": "Qwen 8081",
+                },
+                {
+                    "base_url": "http://127.0.0.1:8082/v1",
+                    "api_key": "secret",
+                    "label": "Third",
+                },
+            ],
+        )
+        assert len(opts) == 3
+        assert opts[0]["label"] == "Primary"
+        assert opts[1] == {
+            "label": "Qwen 8081",
+            "base_url": "http://127.0.0.1:8081/v1",
+            "api_key": "local",
+        }
+        assert opts[2]["api_key"] == "secret"
+
+    def test_skips_empty_and_malformed_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options(
+            "http://127.0.0.1:8080/v1",
+            "local",
+            [
+                {"base_url": "", "label": "empty"},  # skipped (empty url)
+                "not-a-dict",  # skipped (not a dict)
+                {"base_url": "   ", "label": "whitespace"},  # skipped (whitespace)
+                {"base_url": "http://127.0.0.1:8081/v1"},  # kept (label defaults to url)
+            ],
+        )
+        assert len(opts) == 2  # Primary + the one valid endpoint
+        assert opts[1]["label"] == "http://127.0.0.1:8081/v1"  # label defaults to url
+        assert opts[1]["api_key"] == "local"  # api_key defaults to "local"

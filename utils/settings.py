@@ -264,6 +264,15 @@ class Settings:
                 # _load). After the first run the flag stays True so a user
                 # who later switches BACK to Ollama is never re-flipped.
                 "llamacpp_activation_done": False,
+                # V0.4.31 (B1 per-conversion dropdown): additional llama.cpp
+                # endpoints (a list of {base_url, api_key, label}). The
+                # wizard's Step-5 endpoint dropdown lists [Primary (the
+                # llamacpp_base_url/llamacpp_api_key above)] + each entry
+                # here, so the user can quick-select between e.g. 8080
+                # (Ternary Bonsai) + 8081 (Qwen) per-conversion. Picking one
+                # populates the URL/key fields; create_provider then detects
+                # the served model (V0.4.30). Default: [] (just Primary).
+                "llamacpp_endpoints": [],
                 # ── Quality controls ──────────────────────────────────────
                 # V10.1.7: default temperature raised 0.2 → 0.6 per user request.
                 # 0.6 works better with Qwythos/Qwen models (0.2 produced empty output).
