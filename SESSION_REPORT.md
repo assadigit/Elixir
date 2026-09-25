@@ -902,3 +902,25 @@ was item 2's call).
 **Items queued for V0.4.34:** (2) synonym-class probe; (4) stem self-
 containment; (5) quote-pair balancer; (6) thinking-filter; (7) deadline
 diagnostics; (8) meta-filler detector; (9) co-authored-citation prompt.
+
+---
+
+## Phase 16 — V0.4.34 release (the year-attribution-probe release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.34` +
+> this note + CHANGELOG). Tagged `V0.4.34`.
+
+The V0.4.33 ch.6 audit (PASS borderline 6/7/6/8) found 2 NEW F1-class
+hallucinations (H1 Mackinnon 1972 + H2 Michels 1983) that the attribution-edge
+rarest-4 fingerprint + the V0.4.33-wired semantic fact-check BOTH failed to
+catch. The V0.4.34 fix: a **year-attribution probe** in
+`_grounded_addition_sentences` — before the keyword probe, verify the YEAR
+cited in the sentence co-occurs with the AUTHOR in the source's ±600-char
+window; if not → fabricated year → drop regardless of embedding similarity.
+Commit `73660a0`. Gated on the source-size gate (≥1000 chars).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite **6,081 P /
+0 F / 36 S exit 0**; deny-list passes.
+
+**Items 2-8 queued for V0.4.35.**
+

@@ -24,6 +24,33 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.34 — the year-attribution-probe release (V0.4.34 item 1: the H1/H2 hallucination fix)
+
+> **The release:** the V0.4.33 ch.6 audit found 2 NEW F1-class hallucinations
+> (H1 Mackinnon 1972 + H2 Michels 1983) that the attribution-edge rarest-4
+> fingerprint + the V0.4.33-wired semantic fact-check BOTH failed to catch —
+> because both author names co-occur with the claim keywords in the source
+> window, AND the ≥0.50 embedding similarity passed. The V0.4.34 fix adds a
+> **year-attribution probe** that catches fabricated years DIRECTLY.
+
+**1. Year-attribution probe (V0.4.34 item 1, commit `73660a0`):** in
+  `_grounded_addition_sentences` (`core/summarisation/thorough_theorist_floor.py`),
+  BEFORE the keyword probe, extract the 4-digit year(s) cited in the sentence
+  + verify the YEAR co-occurs with the AUTHOR in the source's ±600-char window.
+  If the year doesn't match (e.g., "Mackinnon (1972)" when the source has only
+  "Mackinnon and Michels (1971)") → fabricated year → skip to the next name;
+  if NO name grounds, the sentence is DROPPED regardless of embedding similarity.
+  Gated on the source-size gate (≥1000 chars — only runs on real-sized sources,
+  not tiny test sources). Content-agnostic (Rule 1 ✓ — the year-attribution check
+  is a structural property of source-citation-co-occurrence).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); full suite 6,081 P / 0 F /
+36 S exit 0; deny-list passes.
+
+**Items 2-8 queued for V0.4.35:** (2) synonym-class probe; (3) stem
+self-containment; (4) quote-pair balancer; (5) meta-filler detector; (6)
+thinking-filter; (7) deadline diagnostics; (8) co-authored-citation prompt.
+
 ## V0.4.33 — the dead-code-wiring release (V0.4.33 item 1: wire the semantic fact-check into the production pipeline)
 
 > **The release:** the V0.4.32 ch.6 audit found that item 2 (commit `c37376e`)
