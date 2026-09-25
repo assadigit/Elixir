@@ -24,6 +24,47 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.29 — the startup-fix release: the `_warn_ollama` backend-guard + the `find_spec` dep-check fix
+
+> **The release:** two startup-path fixes the owner surfaced by running
+> V0.4.28 on the rig (per the `RIG_TEST_CHECKLIST`). Both are pre-existing
+> bugs (NOT V0.4.28 regressions — verified: V0.4.28 touched the startup
+> path 0 lines), now fixed.
+
+**1. The `_warn_ollama` backend-guard (`ui_qt/app.py:468`):** the startup
+  Ollama reachability check fired UNCONDITIONALLY at every launch, warning
+  "Ollama not running — LLM OCR and summarisation will not work" for users
+  whose configured backends don't use Ollama at all (llama.cpp / openrouter
+  / openai / claude / freellmapi). Now: skip unless `summarisation.provider
+  == 'ollama'` (the LLM needs it) OR OCR is on the Ollama path
+  (`ocr.use_llm` True AND no alternative OCR configured: unlimited_ocr /
+  deepseek_ocr2 / paddleocr). The warning message is also made accurate
+  (only names what actually needs Ollama). Pre-existing since the initial
+  commit (`76d438c`). Commit `5602b6b`.
+
+**2. The `_check_dependencies` `find_spec` fix (`main.py:137`):**
+  `_check_dependencies` did `__import__('markitdown')` on every startup,
+  importing the ENTIRE `markitdown[all]` transitive tree
+  (azure-ai-documentintelligence, youtube-transcript-api, python-pptx,
+  openpyxl, onnxruntime, mammoth, magika, …). Compounded by the V18.2.37
+  `PYTHONDONTWRITEBYTECODE=1` + `__pycache__`-deletion strategy forcing
+  full re-import from source every launch, this was a multi-minute startup
+  hang on a Windows rig with a cold `.pyc` cache. Now:
+  `importlib.util.find_spec` (presence-check WITHOUT importing) — instant
+  + behavior-identical for missing-dep detection. `main.py` stays under
+  the 320-line pin (313 lines). Pre-existing. Commit `416dad7`.
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite 6,066 P / 0 F / 36 S
+exit 0 (no-cov 166 s); `main.py` 313 < 320 (both line-count pins pass).
+
+**Diagnosis note:** the owner should still run `python -X importtime
+main.py 2>importtime.log` on the rig to confirm the markitdown import was
+the 4-min hang (the `find_spec` fix removes the eager import regardless, so
+the fix is correct even if markitdown wasn't the sole culprit). If startup
+is still slow after V0.4.29, the importtime log will show the next slowest
+import.
+
 ## V0.4.28 — the Track-B prep release: the `_summarize_inner` characterization net + the rig punch-list + the rig-test runbook + the E6 sync-only guards
 
 > **The release:** completes the sandbox-doable portion of Track B (the

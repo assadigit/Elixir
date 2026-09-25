@@ -763,3 +763,38 @@ flat (the `_summarize_inner` net's gains are in-package).
 runs the rig per `docs/RIG_TEST_CHECKLIST.md` +
 `docs/TRACK_B_RIG_PUNCHLIST.md` + `docs/ASYNC_PROVIDER_DECISION.md`. After
 Track B's rig execution, the Phase-7 SWOT top-5 is fully closed.
+
+---
+
+## Phase 11 — V0.4.29 release (the startup-fix release)
+
+> **Branch:** `refactor/audit-session` @ `416dad7` (after the 2 fixes) →
+> release commit (VERSION `0.4.29` + this note + CHANGELOG). Tagged `V0.4.29`.
+
+Two startup-path fixes the owner surfaced by running V0.4.28 on the rig
+(per the `RIG_TEST_CHECKLIST`). Both are pre-existing bugs (NOT V0.4.28
+regressions — verified: V0.4.28 touched the startup path 0 lines):
+
+- **Fix 1 (`_warn_ollama` backend-guard, `ui_qt/app.py:468`):** the
+  startup Ollama check fired unconditionally, warning non-Ollama users
+  (llama.cpp / openrouter / openai) that "Ollama not running —
+  summarisation won't work." Now: skip unless Ollama is actually needed
+  (`provider == 'ollama'` OR OCR on the Ollama path) + accurate message.
+  Commit `5602b6b`.
+- **Fix 2 (`_check_dependencies` `find_spec`, `main.py:137`):** the eager
+  `__import__('markitdown')` imported the full `markitdown[all]` tree
+  every startup (a multi-minute hang on a cold rig, compounded by the
+  V18.2.37 no-bytecode + `__pycache__`-deletion strategy). Now:
+  `importlib.util.find_spec` (presence-check, no import) — instant.
+  Commit `416dad7`.
+
+2 commits since V0.4.28.
+
+**Net-green at the release tip:** ruff 0.16.8 clean; eval gate OK
+(`prompt_manifest_hash ee5a61d0` flat); full suite **6,066 P / 0 F / 36 S
+exit 0** (166 s); `main.py` 313 < 320 (both line-count pins pass).
+
+**Owner follow-up:** run `python -X importtime main.py 2>importtime.log`
+on the rig to confirm markitdown was the 4-min hang (the `find_spec` fix
+removes it regardless). If startup is still slow, the importtime log
+shows the next culprit.
