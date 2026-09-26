@@ -23,6 +23,7 @@ from core.summarisation.postchecks.garble.lexicon import (
     _VERB_STOPWORDS,
     _VOWEL_LESS_LONG_RE,
     _is_legitimate_inflection,
+    _load_english_lexicon,
 )
 from core.summarisation.postchecks.shared import Issue, _snippet
 
@@ -299,12 +300,35 @@ def detect_grammatical_incoherence(
             if len(words) < 5:
                 continue
             first_40 = words[:40]
-            # Check for any finite verb (word >3 chars ending in a verb suffix,
-            # not a stopword).
+            # Check for any finite verb (word >3 chars ending in a verb
+            # suffix, not a stopword). V0.4.37 (F7): also recognize
+            # 3rd-person-singular "-s" verbs (e.g. "masks", "links",
+            # "notes", "posits") — the suffix list above catches
+            # "es"/"ed"/"ing"/... but misses the bare "-s" 3rd-singular
+            # inflection, which false-positived clean academic bullets
+            # where a singular subject takes a "-s" verb (e.g. "the
+            # facade masks the defect"). Content-agnostic (Rule 1): the
+            # lexicon is a generic English wordlist (126k words, no
+            # domain terms); we only treat a "-s" word as a verb when
+            # its singular form is a known English word and not a
+            # function-word stopword. Base-form verbs (e.g. "mask" with
+            # a plural subject) still escape — full recognition needs
+            # POS tagging, deferred (observability-only per the V0.4.36
+            # audit F7).
+            _lex = _load_english_lexicon()
             has_verb = any(
-                len(w) > 3
-                and w.lower() not in _VERB_STOPWORDS
-                and any(w.lower().endswith(e) for e in _VERB_ENDINGS)
+                (
+                    len(w) > 3
+                    and w.lower() not in _VERB_STOPWORDS
+                    and any(w.lower().endswith(e) for e in _VERB_ENDINGS)
+                )
+                or (
+                    len(w) > 4
+                    and w.lower().endswith("s")
+                    and not w.lower().endswith("ss")
+                    and w.lower()[:-1] in _lex
+                    and w.lower()[:-1] not in _VERB_STOPWORDS
+                )
                 for w in first_40
             )
             if not has_verb:

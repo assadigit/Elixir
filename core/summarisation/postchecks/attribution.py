@@ -356,7 +356,17 @@ def verify_attribution(
                         best_sim = sim
                         best_src_claim = sent
 
-            if best_src_claim and best_sim < 0.50:
+            # V0.4.37 (F7): the thorough is long-prose paraphrase
+            # territory — a tight paraphrase legitimately scores 40-49%
+            # on token-set overlap while still tracking the source
+            # sentence. Flag only the truly-distant claims (< 40%) on
+            # the thorough; keep 50% for exec/bullets (terse, less
+            # paraphrase latitude). Field-type-based, not content-based
+            # (Rule 1 ✓). The 40-50% rescue band below stays active for
+            # exec/bullets (their threshold is still 0.50); for the
+            # thorough it is unreachable (we only enter when < 0.40).
+            _flag_threshold = 0.40 if field_label == "thorough" else 0.50
+            if best_src_claim and best_sim < _flag_threshold:
                 # V18.20.3.4 (RC-5c, audit v182033): borderline-band
                 # verification. The V18.20.3.3 run produced attribution
                 # flags at 43-49% similarity on CORRECT paraphrases — a
