@@ -999,3 +999,27 @@ does NOT touch citation extraction. Clearing the local `.hypothesis` DB
 A future release should reconcile the property test's `_surname` strategy
 with the regex's min-length contract (out of V0.4.37 scope per Rule 2).
 
+---
+
+## Phase 20 — V0.4.38 release (the F1-F5 backlog release — fusion Pattern C + 4th dedicated-thorough attempt + fragment-merge lexicon + bold-name structural-label exemption + self-compound hyphen normalization)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.38`).
+> Tagged `V0.4.38`.
+
+The V0.4.37 ch.6 audit's V0.4.38 backlog had 5 items (F1 HIGH, F2 HIGH,
+F3-F5 LOW). This release ships content-agnostic, net-green fixes for all
+5: F1 (fusion-garble Pattern C — the dropped-prefix fusion
+"persecutionensate" detection), F2 (4th dedicated-thorough attempt with
+a quantified length directive — recovers persistent-short outputs),
+F3 (fragment_merge lexicon check — "theme" false-positive fixed), F4
+(bold-name structural-label exemption — "Conclusions" false-positive
+fixed), F5 (render-boundary self-compound hyphen normalization —
+"selfinflation" → "self-inflation").
+
+Commits: `415f589` (F1) + `ff7ab00` (F2) + `57f13f3` (F3) + `605bafd`
+(F4) + `f2877d7` (F5).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,117 P / 0 F /
+36 S exit 0** (+14 — the 12 V0.4.38 characterization tests + 2 seed
+drift); deny-list passes.
+

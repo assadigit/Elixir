@@ -24,6 +24,83 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.38 — the F1-F5 backlog release (fusion Pattern C + 4th dedicated-thorough attempt + fragment-merge lexicon + bold-name structural-label exemption + self-compound hyphen normalization)
+
+> **The release:** the V0.4.37 ch.6 audit's V0.4.38 backlog had 5 items
+> (F1 HIGH, F2 HIGH, F3-F5 LOW). This release ships content-agnostic,
+> net-green fixes for all 5, evidence-anchored to the V0.4.37 ch.6 audit.
+
+**1. F1 fusion-garble Pattern C (commit `415f589`, HIGH):** the V0.4.37
+  thorough shipped "persecutionensate" (line 85) = source-word
+  "persecution" + "ensate" (a 6-char suffix of the source word
+  "compensate", whose "comp" prefix was dropped in the fusion).
+  `detect_sentence_fusion` flagged 0 — Pattern A caps suffixes at 4
+  chars (6 escapes); Pattern B needs ≥2 source-word substrings but the
+  2nd source word's prefix was dropped so it isn't a substring. The fix
+  adds **Pattern C**: a source-word prefix + a 5-6 char suffix that is
+  itself a suffix of some OTHER source word (the dropped-prefix fusion
+  signature). O(1) lookup in a precomputed `_source_word_suffix_set`;
+  self-suffix guard (`prefix.endswith(suffix)`) prevents inflection
+  false-positives. Content-agnostic (Rule 1 ✓ — a structural
+  suffix-to-source-word-suffix match).
+
+**2. F2 4th dedicated-thorough attempt (commit `ff7ab00`, HIGH):** the
+  V0.4.37 dedicated-expansion call returned <800 words on ALL 3 attempts
+  (best=793) → a 31/74 = 42% coverage-deficient thorough (vs V0.4.36's
+  65%). The helper returned the short best-effort + only logged a
+  WARNING; the synthetic (exec+bullets) fallback fires ONLY on total
+  failure (best=None). The fix adds **Attempt 4** — a re-prompt with a
+  QUANTIFIED length directive ("Your previous response was only N words
+  — below the M-word minimum. Write the FULL thorough summary of AT
+  LEAST M words now..."), a stronger nudge than Attempt 2's generic one.
+  Fires when best is non-empty but < min_words AND the deadline allows.
+  Genre-agnostic (about LENGTH, not content — Rule 1 ✓). The synthetic
+  fallback stays last-resort (preserves the model's prose unless it
+  totally fails).
+
+**3. F3 fragment_merge lexicon check (commit `57f13f3`, LOW):** the
+  fragment_merge detector flagged "theme" (bullet 4 + thorough) because
+  "them" is in the source but "theme" is not — it checked source_words
+  ONLY, not the English lexicon. "theme" IS a real English word (in the
+  vendored 126k-word lexicon). The fix: `detect_word_fragment_merge` now
+  loads the lexicon + skips a candidate when the full word (word+stray,
+  or the right-side stripped word) IS in the lexicon. Mirrors
+  `detect_sentence_fusion`'s existing lexicon check. Content-agnostic
+  (Rule 1 ✓).
+
+**4. F4 bold-name structural-label exemption (commit `605bafd`, LOW):**
+  the bold-name detector flagged `**Conclusions**:` (bullet 59) as
+  "author 'Conclusions' not found in source" — it's a structural section
+  label, not an author attribution. Multi-word labels don't match
+  `_BOLD_NAME_RE` (it requires a single capitalized word or a
+  NAME_SEP-joined pair), so only single-word labels like "Conclusions"
+  were caught. The fix adds the `_BOLD_NAME_STRUCTURAL_LABELS` frozenset
+  (conclusions, summary, overview, introduction, discussion, references,
+  bibliography, appendix, notes, preface, foreword, acknowledgments/
+  acknowledgements, index, postscript, addendum, glossary, abstract,
+  background, methods, methodology, results, findings, limitations,
+  highlights) + skips a bold-name candidate whose casefolded form is in
+  the set. Genre-agnostic (Rule 1 ✓ — generic English publishing/
+  discourse labels; applies to any discipline).
+
+**5. F5 self-compound hyphen normalization (commit `f2877d7`, LOW):**
+  the summary shipped "selfinflation" (bullet line 76) and
+  "selfrighteousness" (bullet line 63) — the model fused "self" + a
+  noun/adjective without the hyphen. The fix adds the
+  `_normalize_self_compounds` render-boundary pass (mirrors the V0.4.37
+  F6 render-sweep pattern) — applied to bullets + exec + thorough in
+  `render_summary_markdown`. Finds `self[a-z]{4,}` words; hyphenates
+  ONLY when the fused word is NOT a real English word AND the trailing
+  part IS — so "selfless"/"selfish" (real words) and already-hyphenated
+  forms ("self-esteem") are left alone. Strict-improvement (only adds
+  hyphens; no-op on clean text). Content-agnostic (Rule 1 ✓ — the
+  lexicon is a generic English wordlist; the "self-" prefix is generic
+  English morphology).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,117 P / 0 F /
+36 S exit 0** (+14 — the 12 V0.4.38 characterization tests + 2 seed
+drift); deny-list passes.
+
 ## V0.4.37 — the F7+F6+F4+F3+F2(c) low-priority-backlog release (detector false-positive tuning + render stray-quote sweep + gap-fill multi-author prompt + coverage-driven thorough gap-fill + dedup guard tightened)
 
 > **The release:** the V0.4.36 ch.6 audit's V0.4.37 backlog had 5 items,
