@@ -48,6 +48,19 @@ _FUSION_MAX_SUFFIX = 4  # suffix must be <= 4 chars (longer = likely a real word
 _FUSION_MIN_WORD_LEN = 9  # full word must be >= 9 chars (shorter = likely a
 # real inflection like 'discussion', 'whereas')
 
+# V0.4.38 (F1): Pattern C — the "dropped-prefix" fusion. Catches words
+# like "persecutionensate" = source-word "persecution" + "ensate" where
+# "ensate" (6 chars) is itself a SUFFIX of another source word
+# "compensate" (the model fused the two but dropped "comp" from
+# "compensate"). Pattern A caps suffixes at 4 chars (so a 5-6 char
+# remnant escapes); Pattern B needs >=2 source-word substrings but the
+# 2nd source word's prefix was dropped so it isn't a substring. Pattern
+# C closes this gap: a source-word prefix + a 5-6 char suffix that is a
+# suffix of some OTHER source word (not the prefix itself).
+_FUSION_C_MIN_SUFFIX = 5  # the remnant is 5-6 chars (4-char remnants are
+# already caught by Pattern A's <=4 range; 7+ = likely a real compound)
+_FUSION_C_MAX_SUFFIX = 6
+
 # Common English suffixes that produce real words when appended to a source
 # word — these are NOT sentence-fusion remnants and must NOT be flagged.
 # Content-agnostic (English morphology, not book-specific).
@@ -180,6 +193,16 @@ def detect_sentence_fusion(
     except Exception:
         lexicon = set()
 
+    # V0.4.38 (F1): Pattern C precompute — the set of 5-6 char suffixes
+    # of all source words (the dropped-prefix fusion signature). O(1)
+    # lookup per candidate. Content-agnostic: built from the runtime
+    # source word-set, no hardcoded words.
+    _source_word_suffix_set: set[str] = set()
+    for _sw in source_words:
+        _sw_len = len(_sw)
+        for _sl in range(_FUSION_C_MIN_SUFFIX, min(_FUSION_C_MAX_SUFFIX, _sw_len - 1) + 1):
+            _source_word_suffix_set.add(_sw[-_sl:])
+
     try:
         # Find all words in the summary (lowercase, alphabetic, with hyphens).
         # Hyphens are normalized to '' for the substring analysis (catches
@@ -310,6 +333,69 @@ def detect_sentence_fusion(
                         )
                         found_fusion = True
                         break
+
+            # ── Pattern C (V0.4.38 F1): source-word prefix + a 5-6 char
+            # suffix that is itself a SUFFIX of some other source word
+            # (the "dropped-prefix" fusion). Catches "persecutionensate"
+            # = "persecution" (source prefix) + "ensate" (a 6-char
+            # suffix of the source word "compensate", whose "comp"
+            # prefix was dropped in the fusion). Pattern A caps at 4
+            # chars so the 5-6 char remnant escapes; Pattern B needs 2
+            # source-word substrings but the 2nd source word's prefix
+            # was dropped so it isn't a substring. Pattern C closes
+            # the gap. Content-agnostic: the suffix-to-source-word-
+            # suffix match is structural, no hardcoded words.
+            if not found_fusion:
+                for s in starts:
+                    if found_fusion:
+                        break
+                    prefix_len, prefix = longest_by_start[s]
+                    suffix_start = s + prefix_len
+                    if suffix_start >= len(clean):
+                        continue  # no suffix after the source word
+                    suffix = clean[suffix_start:]
+                    # The suffix must be 5-6 chars (the dropped-prefix
+                    # remnant range — 3-4 is Pattern A's territory).
+                    if not (_FUSION_C_MIN_SUFFIX <= len(suffix) <= _FUSION_C_MAX_SUFFIX):
+                        continue
+                    # The suffix itself must not be a source word
+                    # (else Pattern A / a legit compound handles it).
+                    if suffix in source_words:
+                        continue
+                    # Self-suffix guard: if the prefix (the source
+                    # word) itself ends with this suffix, it's an
+                    # inflection of the prefix, not a dropped-prefix
+                    # fusion of a DIFFERENT source word.
+                    if prefix.endswith(suffix):
+                        continue
+                    # The KEY Pattern-C check: the suffix is a suffix
+                    # of some OTHER source word (the dropped-prefix
+                    # fusion signature). O(1) lookup in the precomputed
+                    # set.
+                    if suffix not in _source_word_suffix_set:
+                        continue
+                    # No other source word starts after this suffix
+                    # (otherwise Pattern B would have handled it).
+                    later_starts = [st for st in starts if st >= suffix_start]
+                    if later_starts:
+                        continue
+                    issues.append(
+                        Issue(
+                            detector="sentence_fusion",
+                            severity="flag",
+                            field=field_label,
+                            snippet=text[snippet_start:snippet_end],
+                            detail=(
+                                f"likely sentence-fusion garble: '{word}' is not in the source "
+                                f"or English lexicon; it starts with source-word '{prefix}' + "
+                                f"a {len(suffix)}-char suffix '{suffix}' that is itself a "
+                                f"suffix of another source word (a dropped-prefix fusion — "
+                                f"the model fused '{prefix}' with a source word ending in "
+                                f"'{suffix}' but dropped that word's prefix)."
+                            ),
+                        ),
+                    )
+                    found_fusion = True
     except Exception as e:  # pragma: no cover — detector must never break the chapter
         from core.summarisation.postchecks.shared import logger
 
