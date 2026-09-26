@@ -24,6 +24,46 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.2 — the verification LAYER fix + temperature fix + bullet-count target REMOVAL + Pattern C lexicon check + pronoun stopword
+
+> **The release:** 4 bugs + 2 tunings per the V0.5.1 audit + the user's
+> directives. The verification LAYER didn't fire (heading→source match
+> failed); the temperature was 0.0 (must be fixed); the bullet-count
+> target prevented coverage-driven expansion; the 38% thorough coverage
+> was SYSTEMIC (not LLM variance).
+
+**1. BUG — verification LAYER heading→source match fix:** the
+  `_source_by_heading` was built from `segments_for_summary` (which may
+  have been filtered); now built from `segments` (ALL segments) + a
+  FALLBACK (largest segment) ensures the LAYER fires even when the
+  heading match fails.
+
+**2. BUG — 38% coverage is SYSTEMIC:** the V0.05 bullet-count target
+  gate PREVENTED bullet expansion when the primary produced ≥ the
+  source-scaled target (e.g. 27 for a 7405-word chapter) — even when
+  9+ authors were missing. The gate is REMOVED. Bullet expansion now
+  fires whenever bullets exist + keypoints requested + deadline allows.
+
+**3. BUG — temperature=0.0 fix:** Attempt 3 used `temperature=0.0`
+  (greedy). The user's directive: "models MUST only run with a fixed
+  Temperature, nothing else is allowed." Attempt 3 now uses
+  `temperature * 0.5` (same as Attempts 1+2).
+
+**4. BUG — bullet-count target REMOVED:** the user's directive: "NEVER
+  EVER SET A MAXIMUM-MINIMUM-Appropriate or any standard for the number
+  of bullets." The V0.05 skip-expansion gate + the "guidance floor was
+  X-Y for a Z-word chapter" log line are REMOVED.
+
+**5. TUNING — Pattern C lexicon check:** "underrepresentation" (a real
+  compound word not in the lexicon) was flagged as a dropped-prefix
+  fusion. Pattern C now checks if the full word is in the lexicon BEFORE
+  flagging (like Patterns A/B).
+
+**6. TUNING — pronoun stopword:** "His" (and her/their/its/he/she/they)
+  were parsed as author names. Added to the stopword list.
+
+**Tests:** 4 source-pin tests updated. **6,177 P / 0 F / 36 S exit 0.**
+
 ## V0.5.1 — the wiring bug fix + date-extractor page-ref FP fix + verification LAYER coverage-targeting (10/10 objective)
 
 > **The release:** 3 fixes per the V0.5.0 audit's V0.5.1 backlog + the

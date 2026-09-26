@@ -1116,6 +1116,22 @@ post-verification more robust, with the objective of 10/10 coverage."
 **Net-green:** ruff clean; eval gate OK; **6,177 P / 0 F / 36 S exit 0**
 (+5); deny-list passes.
 
+---
+
+## Phase 25 — V0.5.2 release (verification LAYER fix + temperature fix + bullet-count target REMOVAL + Pattern C lexicon + pronoun stopword)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.5.2`).
+> Tagged `V0.5.2`.
+
+4 bugs + 2 tunings per the V0.5.1 audit + the user's directives. The
+38% coverage was SYSTEMIC (the bullet-count target prevented expansion),
+NOT LLM variance. The temperature was 0.0 (must be fixed). The
+verification LAYER didn't fire (heading→source match failed).
+
+**Net-green:** ruff clean; eval gate OK; **6,177 P / 0 F / 36 S exit 0**;
+deny-list passes.
+
+
 
 
 
