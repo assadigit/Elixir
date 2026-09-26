@@ -440,3 +440,62 @@ class TestV0437F3IntegrationEngagesDespiteWordcount:
         assert any(
             "V0.4.37 F3" in msg and "coverage-driven engagement" in msg for _lvl, msg in s.log_lines
         ), "F3 engage reason must be logged"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F2(c): dedup symmetric-difference guard tightened (<=6 -> <=4)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.bullet_consolidation import consolidate_duplicate_claims
+
+
+class TestV0437F2cDedupGuardTightened:
+    """F2(c): the dedup symmetric-difference guard is tightened from
+    <=6 to <=4 so a pair of high-similarity bullets that differ in 5-6
+    words (more likely rewording of a DISTINCT claim than a subject
+    swap) is preserved, not merged.
+
+    The V0.4.36 ch.6 audit (F2c) found the dedup round culled 20/99 =
+    20% and asked whether the threshold could be tightened to let more
+    distinct gap-fill candidates ship. Raising the SIM threshold (0.92
+    -> 0.95) was rejected: the canonical subject-swap case sits at
+    sim ~0.928, so 0.95 would stop merging legitimate subject-swaps
+    (under-merge). Instead the symmetric-difference guard is tightened
+    (<=6 -> <=4): a 1-name swap = 2 diff words; an N-name swap still
+    merges via pairwise 2-word diffs; a 5-6-word-diff pair at sim>=0.92
+    is preserved. Content-agnostic (Rule 1): a numeric diff-count guard.
+
+    F2(a) the active-subject veto and F2(b) the V0.4.23 filler floor
+    are NOT loosened here -- both gates were deliberately calibrated to
+    block specific misattribution/filler defects (veto: bullets where
+    the author isn't the grammatical subject of an attribution verb;
+    filler floor: high-precision patterns each matching a shipped
+    filler). Loosening either risks re-introducing the exact defects
+    they were built to block; the audit's evidence is book-specific and
+    the fix needs a live-LLM rig run to validate no regression. They
+    remain as-is for a future rig-validated tuning pass.
+    """
+
+    def test_canonical_subject_swap_still_merges(self):
+        """A 1-name subject swap (2 diff words, sim ~0.93) still merges --
+        the V0.4.37 <=4 guard preserves the canonical case."""
+        b = [
+            "Jacobson views identity consolidation as sine qua non of pathology.",
+            "Kernberg views identity consolidation as sine qua non of pathology.",
+        ]
+        out = consolidate_duplicate_claims(b)
+        assert len(out) == 1, "canonical 1-name subject-swap must still merge"
+
+    def test_5_word_diff_high_sim_pair_preserved(self):
+        """A sim>=0.92 pair differing in 5 words (rewording of a distinct
+        claim, not a subject swap) is PRESERVED at the V0.4.37 <=4 guard
+        (it would have merged at the old <=6)."""
+        b = [
+            "AuthorA described the identity consolidation process as the sine qua non there.",
+            "AuthorB described the identity consolidation process as the sine qua non here now.",
+        ]
+        out = consolidate_duplicate_claims(b)
+        assert len(out) == 2, (
+            "a 5-word-diff pair at sim>=0.92 must be preserved (not a subject "
+            "swap -- the V0.4.37 F2c <=4 guard)"
+        )

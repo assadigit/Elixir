@@ -118,7 +118,8 @@ class TestConsolidateDuplicateClaimsFuzzy:
 
     def test_low_similarity_bullets_not_merged(self):
         """Bullets that are topically related but structurally different do NOT
-        merge (the 0.92 threshold + ≤6 diff-words guard prevents false merges)."""
+        merge (the 0.92 threshold + the V0.4.37 <=4 diff-words guard prevents
+        false merges)."""
         b = [
             "The chapter traces identity from early origins to middle age.",
             "Three clinical frameworks are compared in detail throughout.",

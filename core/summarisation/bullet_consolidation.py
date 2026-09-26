@@ -141,8 +141,20 @@ def consolidate_duplicate_claims(
                 words1 = set(bp1.lower().split())
                 words2 = set(bp2.lower().split())
                 diff_words = words1.symmetric_difference(words2)
-                # If the difference is small (1-3 words), it's likely a subject merge
-                if 0 < len(diff_words) <= 6:
+                # V17.4: Raised threshold from 0.85 -> 0.92 to be less aggressive.
+                # The V17.1.3 conversion merged 30 of 61 bullets (49%!) -- too
+                # many unique bullets were lost. With 0.92, only near-exact
+                # duplicates merge, preserving more unique information.
+                # V0.4.37 (F2c): tightened the symmetric-difference guard
+                # from <=6 to <=4. A canonical subject-swap (one name A vs
+                # one name B) yields 2 diff words; an N-name swap still
+                # merges via pairwise 2-word diffs. A pair differing in 5-6
+                # words at sim>=0.92 is more likely rewording of a distinct
+                # claim than a subject swap -- preserving it lets more
+                # distinct gap-fill candidates ship (the V0.4.36 ch.6 audit
+                # F2c: the dedup round culled 20/99 = 20%). Content-agnostic
+                # (Rule 1): a numeric diff-count guard, not content.
+                if 0 < len(diff_words) <= 4:
                     merge_group.append(bp2)
                     used.add(j)
                     log(
