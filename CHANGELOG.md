@@ -24,6 +24,71 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.40 — the post-conversion verification + polish LAYER (Dates/Names/Omissions/Hallucinations)
+
+> **The release:** a new architectural LAYER (per the user's design) — a
+> post-output LLM pass that runs AFTER `render_summary_markdown` assembles
+> the final per-chapter output. The generation LLM did a ~7/10 job; this
+> LLM layer (in a VERIFICATION role, not generation — division of labor)
+> fills holes + fixes mistakes to make it 9/10-10/10. Runs every conversion
+> (non-skippable — catches LLM-variance-driven defects each run).
+
+**Rationale (the user's 3 points):** (1) the LLM is NOT expected to
+  generate a huge output — it already did; it only fills holes/gaps
+  (targeted corrections, not regeneration); (2) it prevents LLM-variation
+  by deterministically verifying every time; (3) since the focus is not
+  pure generation, the LLM spends its full context + attention on fixing
+  mistakes instead. **Architectural point:** adding more in-pipeline
+  deterministic MODULES is fragile (every book is different); this LAYER
+  catches the RESIDUE (whatever mistakes passed the in-pipeline mistake-
+  proofing) by operating on the FINAL assembled output with a semantic LLM
+  check the deterministic checks can't do.
+
+**Focus (the 4 concerns that slip past the deterministic postchecks):**
+  Dates (every `(Author Year)` matches the source), Names (every cited
+  author is a real source author, correctly attributed), Critical
+  omissions (key source claims/contributors the summary missed — the
+  binding-constraint class), Hallucinations (fabricated claims not in the
+  source).
+
+**Design (mirrors the proven D3/garble LLM-repair pattern):**
+  `core/summarisation/verification_phase.py` —
+  `verify_and_polish_summary(rendered_md, source_text, settings, log)`:
+  sends the rendered per-chapter summary + a clamped (≤50k-char) source
+  excerpt to the LLM with a genre-agnostic verification prompt. The LLM
+  returns TARGETED corrections (a JSON array of `{original, corrected,
+  reason}`); the system applies each as a verbatim string replacement
+  (the "original" MUST be an exact substring — the LLM can't rewrite the
+  whole summary, avoiding the V0.02 `auto_repair` full-rewrite corruption
+  failure mode). D3-style guard: reject (keep the original) if the
+  polished output has MORE deterministic flags OR is >15% different in
+  length. Fail-open. Content-agnostic (Rule 1 ✓ — checks against the
+  runtime source for any book; no hardcoded names/dates/concepts).
+  Wiring (`core/pipeline/conversion/summarization.py`): the layer sits at
+  the per-chapter write point (after `render_summary_markdown`, before
+  `atomic_write_text`). A heading→source map (best-effort match from
+  `segments_for_summary`) provides the chapter source; no match → the
+  verification skips that chapter (fail-open). Wrapped in a try/except so
+  it NEVER breaks the write. Every applied correction is logged as a
+  `verification` Issue (severity="fix") in the conversion log.
+
+**Tests:** `tests/test_v0438_audit_fixes.py::TestV0440VerificationLayer`
+  — 7 tests (targeted correction applied; correction skipped when
+  "original" isn't an exact substring; guard rejects too-long polish;
+  no-op when empty corrections; no-op when no model; fail-open on
+  provider exception; `_extract_corrections` handles fenced JSON). All
+  use a mock provider via `monkeypatch` on `create_provider`.
+
+**Net-green:** ruff clean; eval gate OK (hash flat — the mock LLM doesn't
+exercise the layer); write-path sweep 196 P; **6,135 P / 0 F / 36 S exit
+0** (+7: the 7 V0.4.40 verification tests); deny-list passes.
+
+**Note:** the quality IMPACT (the verification layer fixing Dates/Names/
+Omissions/Hallucinations on the rig) requires a live-LLM run to validate
+— the deterministic mock can't. The change is safe (content-agnostic,
+fail-open, D3-style guard, targeted corrections only) + the layer logic
+is unit-tested with a mock provider.
+
 ## V0.4.39 — the Option A+B general-improvements release (D3 LLM-repair pattern generalized to garbles + general detector edge-case characterization)
 
 > **The release:** per the user's direction ("We shouldn't overoptimize for

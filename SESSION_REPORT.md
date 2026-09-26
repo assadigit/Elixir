@@ -1059,4 +1059,32 @@ garble LLM-repair from thorough-only to bullets + exec, all three fields).
 36 S exit 0** (+11: the 9 V0.4.39 tests + 2 finalization wiring tests);
 deny-list passes.
 
+---
+
+## Phase 22 — V0.4.40 release (the post-conversion verification + polish LAYER — Dates/Names/Omissions/Hallucinations)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.40`).
+> Tagged `V0.4.40`.
+
+Per the user's architectural direction: a new post-output LLM LAYER
+(runs AFTER render_summary_markdown) that verifies + polishes the final
+per-chapter output. The generation LLM did a ~7/10 job; this LLM layer
+(in a VERIFICATION role, not generation — division of labor) fills holes
++ fixes mistakes to make it 9/10-10/10. Non-skippable (catches LLM-
+variance-driven defects every conversion).
+
+Focus: Dates, Names, Critical omissions, Hallucinations (the 4 concerns
+that slip past the deterministic in-pipeline postchecks).
+
+Design: mirrors the proven D3/garble LLM-repair pattern — targeted
+corrections (verbatim string replacements, NOT a full rewrite), D3-style
+guard (reject if more deterministic flags OR >15% length diff), fail-open.
+Content-agnostic (Rule 1).
+
+Commit: `93b1aae` (the layer + wiring + 7 tests).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,135 P / 0 F /
+36 S exit 0** (+7: the 7 V0.4.40 verification tests); deny-list passes.
+
+
 
