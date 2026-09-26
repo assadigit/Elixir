@@ -147,6 +147,10 @@ def postcheck_bullets(
     # against the ORIGINAL bullet text (before any detector repairs it) so
     # a space/quote repair never breaks the exemption match.
     _guarantee_set = {str(t).strip() for t in (enum_guarantee_texts or []) if t}
+    # V0.4.39 (Option A): lazy Settings for the per-bullet garble LLM-repair
+    # (constructed only if a garble is flagged on a bullet — bounded no-op
+    # otherwise). Mirrors the thorough wiring.
+    _garble_settings = None
     for i, bp in enumerate(bullets or []):
         bp_str = str(bp) if bp else ""
         _enum_guarantee = bp_str.strip() in _guarantee_set
@@ -206,6 +210,27 @@ def postcheck_bullets(
             source_words=_src_words,
             auto_repair=auto_repair_garble,
         )
+        # V0.4.39 (Option A): LLM semantic repair for flagged garbles
+        # (per-bullet). Mirrors the thorough wiring. Fires only when a
+        # garble is flagged on THIS bullet (bounded — no-op on clean
+        # bullets). Content-agnostic (Rule 1 — the prompt is about token
+        # repair; works on any chapter). Fail-open; D3-style guard.
+        _bp_garble_flags = (fragment_issues or []) + (dropped_issues or [])
+        if _bp_garble_flags:
+            if _garble_settings is None:
+                from utils.settings import Settings as _BSettings
+
+                _garble_settings = _BSettings()
+            _bg_model = _garble_settings.get("summarisation.model", "") or _garble_settings.get(
+                "summarisation.primary_model", ""
+            )
+            if _bg_model:
+                from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+                bp_str, _bp_garble_repair = repair_garbles_via_llm(
+                    bp_str, label, source_text or "", _src_words, _garble_settings
+                )
+                report.issues.extend(_bp_garble_repair or [])
         # V0.20.5 (brainstorm D1): cross-check author surnames against the
         # source author list — auto-repair edit-distance-1 garbles (e.g., a
         # dropped letter in a cited author's surname). Content-agnostic: the
@@ -581,6 +606,24 @@ def postcheck_exec(executive_summary: str, ctx: PhaseCtx, report: PostCheckRepor
     exec_str, exec_dropped = detect_dropped_letter_garble(
         exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble
     )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    # V0.4.39 (Option A): LLM semantic repair for flagged garbles (exec).
+    # Mirrors the thorough wiring. Fires only when a garble is flagged on
+    # the exec (bounded — no-op on clean exec). Content-agnostic (Rule 1).
+    _exec_garble_flags = (exec_fragment or []) + (exec_dropped or [])
+    if _exec_garble_flags:
+        from utils.settings import Settings as _ESettings
+
+        _egs = _ESettings()
+        _eg_model = _egs.get("summarisation.model", "") or _egs.get(
+            "summarisation.primary_model", ""
+        )
+        if _eg_model:
+            from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+            exec_str, _exec_garble_repair = repair_garbles_via_llm(
+                exec_str, "exec", source_text or "", _src_words, _egs
+            )
+            report.issues.extend(_exec_garble_repair or [])
     exec_str, exec_name_garble = detect_and_repair_author_garbles(
         exec_str, "exec", source_authors
     )  # V0.20.5 (brainstorm D1)
@@ -777,9 +820,7 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
         from utils.settings import Settings as _GSettings
 
         _gs = _GSettings()
-        _g_model = _gs.get("summarisation.model", "") or _gs.get(
-            "summarisation.primary_model", ""
-        )
+        _g_model = _gs.get("summarisation.model", "") or _gs.get("summarisation.primary_model", "")
         if _g_model:
             from core.summarisation.postchecks.garble import repair_garbles_via_llm
 

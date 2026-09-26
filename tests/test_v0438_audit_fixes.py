@@ -416,3 +416,39 @@ class TestV0439OptionBGeneralDetectorEdgeCases:
         clean = "the water was apparently clean and the thesis was a defense."
         _, issues = detect_sentence_fusion(clean, "exec", src)
         assert [i for i in issues if i.detector == "sentence_fusion"] == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.4.39 finalization: garble LLM-repair wired into ALL three fields
+# (thorough + bullets + exec) — general coverage (any chapter, any field)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV0439FinalizationAllFieldsGarbleRepairWiring:
+    """V0.4.39 finalization: the garble LLM-repair is wired into all three
+    postcheck fields (thorough + bullets + exec), not just thorough. This
+    confirms the wiring is present (source-pin) + that the repair is a
+    bounded no-op when no model is configured (the common test path)."""
+
+    def test_garble_repair_wired_into_all_three_fields(self):
+        """Source-pin: the field_phases module references repair_garbles_via_llm
+        in postcheck_bullets + postcheck_exec + postcheck_thorough (3 sites)."""
+        from pathlib import Path
+
+        src = Path("core/summarisation/postchecks/field_phases.py").read_text(encoding="utf-8")
+        # The repair is invoked in 3 places (bullets loop, exec, thorough).
+        assert src.count("repair_garbles_via_llm") >= 3, (
+            "the garble LLM-repair must be wired into bullets + exec + thorough"
+        )
+
+    def test_garble_repair_is_noop_when_no_model_configured(self, monkeypatch):
+        """When no model is configured, the repair is a no-op (the wiring's
+        `_model` guard) — confirms the bounded-no-op behaviour on the
+        common test path (no model in tests)."""
+        source = "the pride of paranoids cloak a shell."
+        text = "the pride of paranoias cloak a shell."
+        out, issues = repair_garbles_via_llm(
+            text, "bullet[0]", source, settings=_MockSettings(model="")
+        )
+        assert out == text  # original kept (no model → no-op)
+        assert issues == []
