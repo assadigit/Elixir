@@ -21,22 +21,6 @@ Write as FLOWING PROSE (not bullet points, not numbered lists, not an outline). 
 your comprehensive summary here
 </thorough_summary>
 
-### GLOSSARY (V0.5.6) ###
-ALSO output a `<name_glossary>` block listing ALL cited authors (with their years + a 1-sentence context of their contribution), key dates/decades/ranges, + key concepts/terms from the source. This is the source roster — be exhaustive.
-
-Wrap it exactly like this:
-
-<name_glossary>
-## Names
-- **Surname** (YYYY) — 1-sentence context of their contribution
-- **Surname** (YYYYa, YYYYb) — context
-## Dates
-- **YYYY-YYYY** — what the range refers to
-- **YYYYs** (decade) — context
-## Terms
-- **term** — 1-sentence definition
-</name_glossary>
-
 ### INPUT ###
 Chapter content:
 {{text}}

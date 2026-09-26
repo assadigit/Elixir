@@ -112,6 +112,92 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
     pass
 
 
+# ── V0.5.7: separate glossary extraction helper ─────────────────────────────
+#
+# The V0.5.6 fused approach (the master-summary LLM call also asked for the
+# ``<name_glossary>`` block) overwhelmed the model — 3 empty master-summary
+# returns + a fallback to the 5-in-1 single-pass path, which had no glossary
+# wired. The loosened quote-guard + the V0.5.6 final-check round 4 + the 📖
+# .glossary.md persistence all stayed DORMANT.
+#
+# V0.5.7 separates the glossary extraction into a DEDICATED LLM call (via
+# ``extract_glossary_via_llm`` in ``glossary_parser.py``). This helper wraps
+# the call + the ``set_chapter_glossary`` side-channel population so the 3
+# call sites in ``summarize_with_model`` (master-summary-success path +
+# structured 5-in-1 fallback + raw 5-in-1 fallback) are one-liners each.
+#
+# Fail-open: NEVER raises — any crash in the glossary extraction wiring is
+# logged + the empty glossary is returned (the verification LAYER falls back
+# to the regex ``extract_citations`` backstop — the V0.5.5 behavior).
+#
+# Content-agnostic (Rule 1 ✓): the source text + the model name + the
+# output_dir are pulled from the runtime ``request``/``call_llm``/``heading``
+# args — NO hardcoded book/author/chapter names.
+
+
+def _extract_glossary_for_call(
+    heading: str,
+    text: str,
+    model: str,
+    call_llm: CallLlmRetryFn | None,
+    request: RequestLike,
+    log: LogCallback | None = None,
+) -> dict:
+    """V0.5.7: extract the source glossary via a SEPARATE LLM call + stash
+    it into the verification LAYER's module-level side-channel cache.
+
+    Called from the 3 return paths of ``summarize_with_model`` (the
+    master-summary-success path, the structured 5-in-1 fallback, + the raw
+    5-in-1 fallback) so the glossary is extracted in BOTH paths (the V0.5.6
+    audit's "0 glossary mentions" gap — the 5-in-1 fallback had no glossary
+    wired + the master-summary's empty returns meant the glossary never
+    fired).
+
+    Returns the parsed glossary dict (3 keys: ``names`` / ``dates`` /
+    ``terms``). Empty 3-key dict on any failure — NEVER raises.
+    """
+    if log is None:
+        log = _noop_log
+    try:
+        from pathlib import Path as _Path
+
+        from core.summarisation.glossary_parser import extract_glossary_via_llm
+        from core.summarisation.verification_phase import set_chapter_glossary
+
+        glossary = extract_glossary_via_llm(
+            source_text=text,
+            call_llm=call_llm,
+            primary_model=model,
+            temperature=0.3,
+            max_output_tokens=4096,
+            log=log,
+            chapter_heading=heading,
+            output_dir=str(getattr(request, "output_dir", _Path("."))),
+            run_id=str(getattr(request, "_run_id", "")),
+        )
+        # Stash the glossary into the verification LAYER's module-level
+        # side-channel cache so callers WITHOUT a SummaryResult in scope
+        # (the ChapterCheckpointSaver path) can still pick it up via
+        # ``get_chapter_glossary(chapter_heading)``. None/empty → the
+        # entry is removed (fail-open to the V0.5.5 regex behavior).
+        set_chapter_glossary(heading, glossary if glossary else None)
+        return glossary
+    except Exception as _e:  # noqa: BLE001 — fail-open (NEVER crash the summary)
+        logger.warning(
+            "V0.5.7: glossary extraction wiring failed (non-fatal — "
+            "the verification LAYER will fall back to the regex "
+            "extract_citations): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        log(
+            f"    ⚠️ V0.5.7: glossary extraction wiring failed (non-fatal — "
+            f"falling back to regex) ({type(_e).__name__})",
+            "WARNING",
+        )
+        return {}
+
+
 # ── summarize_with_model (extracted verbatim) ──────────────────────────────
 
 
@@ -209,6 +295,21 @@ def summarize_with_model(
         _max_out,
     )
     if _chunked_result is not None:
+        # V0.5.7: extract the source glossary via a SEPARATE LLM call (the
+        # V0.5.6 fused approach overwhelmed the model — the master-summary
+        # prompt no longer carries the <name_glossary> block). Stash it onto
+        # the result dict + the verification LAYER's side-channel cache so
+        # the LAYER can use it as the coverage ground truth (richer than the
+        # regex extract_citations backstop). Fail-open: an empty glossary is
+        # stashed as None (the LAYER falls back to the regex behavior).
+        _chunked_result["source_glossary"] = _extract_glossary_for_call(
+            heading=heading,
+            text=text,
+            model=model,
+            call_llm=call_llm_with_empty_retry,
+            request=request,
+            log=log,
+        )
         return _chunked_result
     # Fall through to the old 5-in-1 single-pass if master-summary failed
     log(
@@ -227,6 +328,17 @@ def summarize_with_model(
         _structured["raw"] = ""  # no raw XML (was JSON)
         _structured["model"] = model
         _structured["temperature"] = temp
+        # V0.5.7: the 5-in-1 fallback path ALSO extracts the glossary via the
+        # separate call (the V0.5.6 audit's gap — the 5-in-1 path had no
+        # glossary wired). Same wiring as the master-summary-success path.
+        _structured["source_glossary"] = _extract_glossary_for_call(
+            heading=heading,
+            text=text,
+            model=model,
+            call_llm=call_llm_with_empty_retry,
+            request=request,
+            log=log,
+        )
         return _structured
     # V13.35.0: Use retry wrapper to recover from transient empty responses
     # (VRAM eviction on RTX 3060 12GB with Gemma 4 12B ~10.9 GB VRAM).
@@ -242,4 +354,16 @@ def summarize_with_model(
     parsed["raw"] = raw
     parsed["model"] = model
     parsed["temperature"] = temp
+    # V0.5.7: the 5-in-1 raw fallback path ALSO extracts the glossary via
+    # the separate call (the V0.5.6 audit's gap — the 5-in-1 path had no
+    # glossary wired). Same wiring as the master-summary-success path +
+    # the structured 5-in-1 path.
+    parsed["source_glossary"] = _extract_glossary_for_call(
+        heading=heading,
+        text=text,
+        model=model,
+        call_llm=call_llm_with_empty_retry,
+        request=request,
+        log=log,
+    )
     return parsed

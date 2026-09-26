@@ -29,13 +29,17 @@ Additional invariants:
   collapsed; ``_is_subsequence`` is reflexive and rejects over-long shorts;
   ``PostCheckReport`` counts fix/flag issues exactly.
 
-KNOWN BUG (documented, NOT fixed here — characterization test pins the
-current behavior): ``deterministic_analyzer.extract_citations`` truncates
+KNOWN BUG (closed by V0.5.7 — see the test
+``test_extract_citations_em_dash_compound_truncates`` for the V0.5.7 fix
++ the V0.5.7 audit-V0.5.6 worklog entry): the V18.15.5.1 (DEBT-08)
+characterization test documented that ``extract_citations`` truncated
 compound surnames whose separator is em-dash U+2014 / U+2010 / U+2011
-("Smith—Jones (1983)" → author "Jones") because its own compound classes are
-still ASCII ``[-\\u2013]`` — the DEBT-08 sharing of NAME_SEP was applied to
-the postcheck-side regexes only.  See the module report in
-worklog-P2-D.md.
+("Smith\u2014Jones (1983)" \u2192 author "Jones") because its own compound
+classes were ASCII ``[-\\u2013]`` — the DEBT-08 sharing of NAME_SEP was
+applied to the postcheck-side regexes only. The V0.5.7 fix unified the
+source-side extractor with ``NAME_SEP`` — the bug is now closed. See the
+module report in worklog-P2-D.md + the V0.5.7 worklog entry
+(V057-REGEX-FIX).
 """
 
 from __future__ import annotations
@@ -111,8 +115,62 @@ def _year_token(draw, min_value=1000, max_value=2999):
 
 @st.composite
 def _context(draw):
-    """Lowercase prose context — can never start a citation match itself."""
-    return draw(st.text(alphabet=_LOWER + " ,.", min_size=0, max_size=24))
+    """Lowercase prose context — can never start a citation match itself.
+
+    V0.5.7 (audit V0.5.6, "Maj sey" garble fix): the source-side
+    ``extract_citations`` regex now accepts a particle PREFIX before the
+    capitalized surname token (van / von / de / der / etc. — the closed
+    ``_CIT_PARTICLES`` class in ``deterministic_analyzer.py``). For real
+    citation text this captures ``van der Waerden (1927)`` as one token
+    (was: only ``Waerden`` — the particle prefix was lost). For the
+    property test it means a lead context ending in a particle word
+    (``"Run da"`` + ``"Aaa (1000)"``) would have its trailing particle
+    merged into the captured surname → ``"da Aaa"``. That is the
+    *correct* behaviour for real text (``"da Vinci"`` IS one author) but
+    breaks the property test's round-trip assertion. The strategy now
+    filters out particle-shaped trailing words so the property test
+    exercises the no-particle case (the round-trip assertion expects the
+    bare surname).
+    """
+    text = draw(st.text(alphabet=_LOWER + " ,.", min_size=0, max_size=24))
+    # Strip a trailing particle-word so the lead does not accidentally
+    # form a particle-prefix surname when concatenated with the test's
+    # capitalized surname. The particle list mirrors the closed
+    # ``_CIT_PARTICLES`` class in ``deterministic_analyzer.py`` (Rule 1:
+    # closed class of generic Romance/Germanic/Arabic surname particles).
+    _PARTICLES = (
+        "van",
+        "von",
+        "de",
+        "del",
+        "di",
+        "da",
+        "du",
+        "la",
+        "le",
+        "les",
+        "den",
+        "der",
+        "ter",
+        "ten",
+        "ben",
+        "abu",
+        "ibn",
+        "al",
+        "el",
+        "st",
+        "lo",
+    )
+    # If the trailing word is a particle, append a non-particle suffix
+    # ("z") to break the particle-prefix shape (cheaper than re-drawing
+    # for a strategy that satisfies a complex filter).
+    tokens = text.split()
+    if tokens and tokens[-1].lower().strip(",.") in _PARTICLES:
+        # Append a non-particle short word so the particle is no longer
+        # the trailing word (separated by a space — no longer adjacent
+        # to the test surname).
+        text = text.rstrip() + " zz"
+    return text
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -340,16 +398,20 @@ def test_extract_citations_compound_roundtrip(a, b, sep, year):
 @S_FAST
 @given(sep=st.sampled_from(["\u2014", "\u2010", "\u2011"]))
 def test_extract_citations_em_dash_compound_truncates(sep):
-    """KNOWN BUG (characterization, report-only): em-dash / typographic-hyphen
-    compounds are NOT supported by deterministic_analyzer's own compound
-    classes (still ASCII ``[-\\u2013]``) — the FIRST surname is silently
-    dropped and only the second is extracted, while the postcheck-side
-    _SUMMARY_CITATION_RE (shared NAME_SEP) extracts the full compound.
-    DEBT-08 shared APOS/NAME_SEP with the postcheck regexes but not with
-    these patterns."""
+    """V0.5.7 (audit V0.5.6, "Maj sey" garble fix) FIXED this known bug:
+    the V18.15.5.1 (DEBT-08) characterization test documented that
+    extract_citations' own compound-surname classes used ASCII
+    ``[-\\u2013]`` ONLY (em-dash / typographic-hyphen / non-breaking-hyphen
+    compounds had their FIRST surname silently dropped — only the second
+    was extracted, while the postcheck-side ``_SUMMARY_CITATION_RE``
+    already shared the full ``NAME_SEP`` class so it extracted the full
+    compound). The V0.5.7 fix unified the source-side extractor with
+    ``NAME_SEP`` (the brief's cross-reference to the V0.5.4 E1 fix in
+    ``attribution.py`` — DEBT-08 is now closed). Now ``Smith\u2014Jones
+    (1983)`` is captured as the full compound (was: only "Jones")."""
     cits = extract_citations(f"Smith{sep}Jones (1983)")
-    assert cits == [{"author": "Jones", "years": "1983", "type": "parenthetical"}]
-    # the postcheck-side regex DOES see the full compound
+    assert cits == [{"author": f"Smith{sep}Jones", "years": "1983", "type": "parenthetical"}]
+    # the postcheck-side regex ALSO sees the full compound (unchanged)
     assert _SUMMARY_CITATION_RE.findall(f"Smith{sep}Jones (1983)") == [(f"Smith{sep}Jones", "1983")]
 
 

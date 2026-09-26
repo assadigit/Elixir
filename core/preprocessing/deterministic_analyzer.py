@@ -584,9 +584,33 @@ def map_authors_to_all_caps_sections(md_text: str) -> list[dict]:
 # without changing the extractor's return contract.
 _LAST_GARBAGE_DROPPED: list[tuple[str, str]] = []
 
+# V0.5.7 (audit V0.5.6, the "Maj sey" garble fix): the closed class of
+# space-separated surname particles that can appear BEFORE the capitalized
+# token of a multi-word surname (van der Waerden / de la Cruz / von Braun).
+# V0.5.6's regex had a buggy ``\s+[a-z]{1,4}`` AFTER the capitalized token
+# which matched ANY 1-4 letter lowercase word (so OCR-garble "Maj sey 1302"
+# was extracted as a 14th-century theorist). The V0.5.7 fix REMOVES the
+# after-token group + adds this BEFORE-token restricted-particle prefix
+# instead. Content-agnostic (Rule 1 ✓): the list is the closed class of
+# generic Romance/Germanic/Arabic surname particles — no book content.
+# Source: ``_ALLOWED_SOLID_PREFIXES`` in ``author_garbage.py`` (the
+# solid-prefix mirror of the same closed class).
+_CIT_PARTICLES = (
+    r"(?:van|von|de|del|di|da|du|la|le|les|den|der|ter|ten|"
+    r"ben|abu|ibn|al|el|st|lo)\s+"
+)
+
+# V0.5.7: the negative-lookbehind-anchored particle prefix group —
+# ``(?<!\w)`` ensures the particle starts at a word boundary (so a
+# capitalized token like "Maj" is NOT consumed as a particle fragment of
+# "aj Sey" — the V0.5.6 bug surfaced when the regex backtracked into the
+# interior of a capitalized token). Quantifier ``*`` accepts 0 particles
+# (single-token surname) up to 2+ (van der Waerden has 2 particles).
+_CIT_PARTICLE_PREFIX = r"(?<!\w)(?:" + _CIT_PARTICLES + r")*"
+
 
 def extract_citations(md_text: str) -> list[dict]:
-    """Extract author-year citations. V17.8: Much more robust regex.
+    r"""Extract author-year citations. V17.8: Much more robust regex.
 
     Handles ALL common academic citation styles:
     1. Author (Year) — standard APA/Chicago
@@ -600,6 +624,35 @@ def extract_citations(md_text: str) -> list[dict]:
     9. Author's concept of X (Year) — mid-sentence possessive
     10. Multi-word surnames (AuthorA, van der Waerden)
 
+    V0.5.7 (audit V0.5.6, the "Maj sey" name-extraction garble fix):
+    the V0.5.6 regex captured OCR-garble lines like ``Maj sey 1302`` as
+    a 14th-century theorist because of a buggy ``\s+[a-z]{1,4}`` group
+    AFTER the capitalized surname token — the group matched ANY 1-4
+    letter lowercase word, so the V0.5.6 conv log wasted 4 gap-fill
+    rounds trying to attribute a bullet to "Maj sey" before the
+    V18.20.3.4 attribution veto gave up. The fix:
+    - REMOVES the ``\s+[a-z]{1,4}`` after-token group (the garble's
+      root cause — the particle handling is now done by the BEFORE-token
+      ``_CIT_PARTICLE_PREFIX`` group).
+    - ADDS ``_CIT_PARTICLE_PREFIX`` BEFORE the capitalized surname token,
+      restricted to the closed class of Romance/Germanic/Arabic surname
+      particles (van / von / de / del / di / da / du / la / le / les /
+      den / der / ter / ten / ben / abu / ibn / al / el / st / lo) — so
+      multi-word particle-prefix surnames (``van der Waerden (1927)``)
+      are now captured as ONE token (was: only "Waerden" — the particle
+      prefix was lost).
+    - EXTENDS the hyphenated-surname group from ``[-\u2013][A-Z]`` (which
+      required the second part to be Capitalized, so ``Maj-sey`` with a
+      lowercase second part was silently skipped) to the shared
+      ``NAME_SEP[a-zA-Z]+`` class — so hyphenated surnames with a
+      lowercase second part are captured as ONE token (the V0.5.4
+      ``_SUMMARY_CITATION_RE`` in attribution.py already required
+      Capitalized second part via NAME_SEP; the V0.5.7 source-side
+      extractor is now consistent with that summary-side mirror's
+      NAME_SEP usage, but additionally allows lowercase second parts
+      because real-world hyphenated surnames use lowercase second parts
+      in Latin script).
+
     Content-agnostic: no chapter-specific terms.
     """
     citations = []
@@ -611,7 +664,12 @@ def extract_citations(md_text: str) -> list[dict]:
     _garbage_dropped: list[tuple[str, str]] = []
     # V18.15.5.1 (DEBT-08): shared Unicode-aware apostrophe + dash classes.
     # Used by _add (possessive strip) + all 4 citation patterns below.
+    # V0.5.7 (audit V0.5.6): NAME_SEP also imported — the V0.5.7 fix
+    # unifies the source-side extractor's hyphenated-surname handling with
+    # the summary-side ``_SUMMARY_CITATION_RE`` in attribution.py (which
+    # already used NAME_SEP via the V18.15.5.1 DEBT-08 fix).
     from core.preprocessing.citations_regex import APOS as _APOS
+    from core.preprocessing.citations_regex import NAME_SEP as _NAME_SEP
 
     def _add(author, years, cite_type):
         """Deduplicate and add a citation."""
@@ -660,16 +718,26 @@ def extract_citations(md_text: str) -> list[dict]:
 
     # Pattern 1: Author['s] (Year) or (Year, Year, ...)
     # Handles: "AuthorI (1956)", "AuthorAC's (1952)", "AuthorL's (1964)"
-    # Also handles: "AuthorA (1984)", "van der Berg (2020)"
+    # Also handles: "AuthorA (1984)", "van der Waerden (1927)" (V0.5.7)
     # V18.15.3.5: Handle curly apostrophes (U+2019) in addition to straight '.
     # PDF extraction often produces curly apostrophes: "Federn's (1952)" —
     # the old regex only matched straight ', missing these citations.
     # V18.15.5.1 (DEBT-08): _APOS imported at function top (shared class
     # adds U+2018 left single quote for completeness).
+    # V0.5.7 (audit V0.5.6, "Maj sey" garble fix): the old regex had a buggy
+    # ``(?:\s+[a-z]{1,4})?`` group AFTER ``[A-Z][a-zA-Z]+`` that matched ANY
+    # 1-4 letter lowercase word — so OCR-garble "Maj sey 1302" was extracted
+    # as a 14th-century theorist. Removed; the BEFORE-token
+    # ``_CIT_PARTICLE_PREFIX`` (restricted to the closed particle class —
+    # van/von/de/der/etc.) now handles multi-word surnames correctly. Also
+    # extended the hyphenated-surname group from ``[-\u2013][A-Z]`` (which
+    # required Capitalized second part — so "Maj-sey" with lowercase second
+    # part was silently skipped) to ``NAME_SEP[a-zA-Z]+`` (allows lowercase
+    # second part — unified with the V18.15.5.1 NAME_SEP class).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
+        r"(" + _CIT_PARTICLE_PREFIX + r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?"
-        r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)?"
+        r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?)?"
         r"(?:\s+et\s+al\.?)?)"
         r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*)\)",
         md_text,
@@ -677,8 +745,11 @@ def extract_citations(md_text: str) -> list[dict]:
         _add(match.group(1), match.group(2), "parenthetical")
 
     # Pattern 2: Author['s] Year (without parens) — e.g., "AuthorZ 1926a", "AuthorAA's 1950"
+    # V0.5.7: same fix as Pattern 1 (drop buggy ``\s+[a-z]{1,4}`` AFTER group,
+    # add ``_CIT_PARTICLE_PREFIX`` BEFORE group, extend hyphenated group to
+    # ``NAME_SEP[a-zA-Z]+`` for lowercase-second-part surnames).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
+        r"(" + _CIT_PARTICLE_PREFIX + r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?)"
         r"\s+([0-9]{4}[a-z]?)\b",
         md_text,
@@ -687,17 +758,31 @@ def extract_citations(md_text: str) -> list[dict]:
 
     # Pattern 3: (Author, Year) — parenthetical full citation
     # e.g., "(AuthorZ, 1923a)", "(AuthorL, 1964; AuthorD, 1967)"
+    # V0.5.7: extend hyphenated-surname group to ``NAME_SEP[a-zA-Z]+`` (was
+    # ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note). No particle-prefix needed inside parens —
+    # the open-paren already provides the word boundary that the
+    # ``(?<!\w)`` lookbehind would enforce.
     for match in re.finditer(
-        r"\(([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+)?"
-        r"(?:\s+et\s+al\.?)?),?\s*([0-9]{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*[0-9]{4}[a-z]?)*)\)",
+        r"\(([A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?)?"
+        r"(?:\s+et\s+al\.?)?),?\s*([0-9]{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?,?\s*[0-9]{4}[a-z]?)*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical_full")
 
     # Pattern 4: Author, Year (comma-separated, no parens)
     # e.g., "AuthorI, 1956" or "as noted by AuthorL, 1964,"
+    # V0.5.7: extend hyphenated-surname group to ``NAME_SEP[a-zA-Z]+`` (was
+    # ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*([0-9]{4}[a-z]?)\b", md_text
+        r"([A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?),\s*([0-9]{4}[a-z]?)\b", md_text
     ):
         _add(match.group(1), match.group(2), "comma_separated")
 
@@ -713,7 +798,12 @@ def extract_citations(md_text: str) -> list[dict]:
     # EVERY name in the enumeration with the shared year. Additive only:
     # existing matches are unaffected (the `seen` dedup keys on
     # author|years, and each split surname is a new key).
-    _NAME = r"[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?"
+    # V0.5.7: extend the multi-author per-name pattern to ``NAME_SEP[a-zA-Z]+``
+    # (was ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note). This makes ``"Maj-sey, Tobak (1984)"`` correctly
+    # yield 2 surnames ("Maj-sey" + "Tobak") instead of pre-V0.5.7's 0-match
+    # (the lowercase second part "sey" failed the old ``[A-Z]`` requirement).
+    _NAME = r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
     # Two shapes, either of which must be followed by "(Year)":
     #   (a) comma list, optional trailing "and C":  "A, B, C" / "A, B, and C"
     #   (b) plain "and"/"&" pair (no comma):        "A and B" / "A & B"

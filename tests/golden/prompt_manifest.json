@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.5.5",
+  "generated_for_version": "0.5.6",
   "prompts_dir": "prompts/",
-  "file_count": 56,
-  "manifest_sha256": "7d505e8c7d9ccbcf9a8b87acee16aecb76903a13c25951e5c216badfe670c5ae",
+  "file_count": 57,
+  "manifest_sha256": "6bbef36cdf1895cf3b3f1edf0c37c3aa43bb27ea8d5da212379bc81380952c3e",
   "files": [
     {
       "path": "academic.md",
@@ -17,13 +17,13 @@
     },
     {
       "path": "default.md",
-      "sha256": "925895a372f1cc4dada6e523625c188dfa2d962f8cffb7c566a804547373d0ff",
-      "bytes": 16257
+      "sha256": "b860841a928ea4d5778cc46a0eadc1e57d5a8e69501b269e67f6dcc74b38a782",
+      "bytes": 15657
     },
     {
       "path": "default_lowbit.md",
-      "sha256": "dce4a9a9063d917b30ae00a82b95afb74e00d541bd062c510e4793ad84153e6e",
-      "bytes": 11078
+      "sha256": "e48a0b15d771a14b1bc8293422693310088a0bc9b8f97021b508d0ab5f9fbc02",
+      "bytes": 10430
     },
     {
       "path": "evaluation/expert_fact_checker.md",
@@ -206,14 +206,19 @@
       "bytes": 1419
     },
     {
+      "path": "summarisation/glossary_extraction.md",
+      "sha256": "940764e063810dd0fdce0e128e17d14dc46fa5d8eb2eaeeb20682bf9023d1d23",
+      "bytes": 1615
+    },
+    {
       "path": "summarisation/grounding_check.md",
       "sha256": "be704b277025e6abe6c5c0dba793c229bdd79d7d96ff4dbb3003cdadbb8de864",
       "bytes": 1063
     },
     {
       "path": "summarisation/master_summary.md",
-      "sha256": "1337807ef7abc99e17a0dd8b3df29ed1216fc968189ca999a4d5a2cd766f3a9c",
-      "bytes": 1933
+      "sha256": "1c03ce71cd9b5a1b49fb0a4d1ad51272c80997507a4640b5eaf2f7442283e6d0",
+      "bytes": 1357
     },
     {
       "path": "summarisation/merge_master_summaries.md",

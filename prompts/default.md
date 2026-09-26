@@ -110,7 +110,7 @@ Chapter content:
 
 ### OUTPUT FORMAT ###
 
-Output ONLY the six XML sections below (five summary sections + the `<name_glossary>` roster). No preamble, no commentary, no thinking process, no markdown code fences.
+Output ONLY the five XML sections below. No preamble, no commentary, no thinking process, no markdown code fences.
 
 <executive_summary>
 A {{exec_words}} overview of the chapter's main concepts and conclusions. (The target scales to this chapter's length — never pad to reach it.)
@@ -131,19 +131,6 @@ List 2-5 important DISTINCTIONS the chapter explicitly draws between related con
 <theoretical_tensions>
 Identify 2-4 theoretical TENSIONS, DEBATES, or AMBIGUITIES the author EXPLICITLY discusses. ONLY include tensions actually present in the text — each must be traceable to a specific passage. If the chapter does not discuss any tensions or debates, output "None". Name BOTH poles for each. MANDATORY: You MUST include the page number in parentheses at the end of EACH tension. The source text has YAML frontmatter with start_page and end_page — use these to estimate the page number for each tension (e.g., if start_page is 48 and the tension appears in the middle of the text, use "(p. 55-60)"). Example format: "- The tension between one theorist's emphasis on X and another's emphasis on Y... (p. 48-55)". NEVER omit the page number — it is required for every tension.
 </theoretical_tensions>
-
-<name_glossary>
-ALSO output a `<name_glossary>` block listing ALL cited authors (with their years + a 1-sentence context of their contribution), key dates/decades/ranges, + key concepts/terms from the source. This is the source roster — be exhaustive. Wrap exactly like this:
-
-## Names
-- **Surname** (YYYY) — 1-sentence context of their contribution
-- **Surname** (YYYYa, YYYYb) — context
-## Dates
-- **YYYY-YYYY** — what the range refers to
-- **YYYYs** (decade) — context
-## Terms
-- **term** — 1-sentence definition
-</name_glossary>
 
 ### PROCESS ###
 1. Read the entire chapter content carefully before writing anything

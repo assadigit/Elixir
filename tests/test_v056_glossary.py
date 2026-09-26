@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import sys
 import types
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -436,96 +435,15 @@ class TestCrossReferenceGlossary:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6) The master-summary prompt carries the <name_glossary> instruction
+# 6) The master-summary prompt CARRIED the <name_glossary> instruction at
+#    V0.5.6 (fused into the master-summary call). V0.5.7 REVERTS this — the
+#    <name_glossary> block is now extracted via a SEPARATE LLM call (the
+#    fused approach overwhelmed the model + caused 3 empty returns).
+#    The V057-SEPARATE-CALL subagent's test_v057_separate_call.py covers
+#    the new contract (the 3 master-summary prompts do NOT contain
+#    <name_glossary>; the new prompts/summarisation/glossary_extraction.md
+#    prompt carries it instead).
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-class TestMasterSummaryPromptIncludesGlossaryInstruction:
-    """The master-summary prompt contains the ``<name_glossary>`` instruction.
-
-    The instruction is GENERIC (Rule 1 — content-agnostic): it tells the
-    LLM to list "ALL cited authors", pull dates/terms from the source —
-    NO hardcoded book/author/chapter names.
-    """
-
-    @pytest.mark.parametrize(
-        "relpath",
-        [
-            "prompts/default.md",
-            "prompts/default_lowbit.md",
-            "prompts/summarisation/master_summary.md",
-        ],
-    )
-    def test_master_summary_prompt_includes_glossary_instruction(self, relpath):
-        prompt_path = Path(relpath)
-        assert prompt_path.exists(), f"missing prompt file: {relpath}"
-        text = prompt_path.read_text(encoding="utf-8")
-        # The block instruction is present.
-        assert "<name_glossary>" in text, (
-            f"{relpath}: must contain the <name_glossary> output instruction "
-            "(V0.5.6 Phase 0.5 — the source-roster block fused into the "
-            "master-summary call)"
-        )
-        assert "</name_glossary>" in text, (
-            f"{relpath}: the <name_glossary> instruction must show the closing "
-            "</name_glossary> tag (the LLM needs the full block shape)"
-        )
-        # The instruction is GENERIC (Rule 1) — it tells the LLM to list
-        # "ALL cited authors" (not specific names).
-        low = text.lower()
-        assert "all cited authors" in low, (
-            f"{relpath}: the instruction must use the generic 'ALL cited "
-            "authors' phrasing (content-agnostic — lets the LLM pull the "
-            "roster from the runtime source, NOT hardcoded names)"
-        )
-        # The 3 subsection headers are shown.
-        assert "## Names" in text, f"{relpath}: must show the '## Names' subsection"
-        assert "## Dates" in text, f"{relpath}: must show the '## Dates' subsection"
-        assert "## Terms" in text, f"{relpath}: must show the '## Terms' subsection"
-
-    def test_glossary_instruction_is_content_agnostic(self):
-        """Rule 1 guard: the glossary instruction must NOT hardcode any
-        book-specific author names, dates, or terms — the LLM pulls the
-        roster from the runtime source."""
-        # Forbidden: the 5 author names the V0.5.5 audit found missing
-        # from the test chapter (they're book content, NOT generic).
-        forbidden_names = ["jack", "morey", "ndtei", "rettersol", "bak"]
-        # Forbidden: book-specific terms from the paranoid chapter
-        # (the V0.5.3 ground-truth audit's source has these — they're
-        # the chapter's specific content, NOT generic instruction).
-        forbidden_terms = [
-            "paranoid-schizoid position",
-            "broken structures",
-            "false self",
-            "ego-syntonic",
-        ]
-        for relpath in (
-            "prompts/default.md",
-            "prompts/default_lowbit.md",
-            "prompts/summarisation/master_summary.md",
-        ):
-            text = Path(relpath).read_text(encoding="utf-8").lower()
-            # Names: ONLY check the glossary-instruction block (not the
-            # surrounding prompt — the existing prompt has plenty of
-            # book-agnostic examples). The glossary block is the section
-            # between ``<name_glossary>`` and ``</name_glossary>``.
-            start = text.find("<name_glossary>")
-            end = text.find("</name_glossary>")
-            assert start != -1 and end != -1, (
-                f"{relpath}: glossary block not found (start={start}, end={end})"
-            )
-            block = text[start:end]
-            for name in forbidden_names:
-                assert name not in block, (
-                    f"{relpath}: glossary instruction hardcodes book author "
-                    f"'{name}' — Rule 1 violation (must be generic 'ALL "
-                    "cited authors')"
-                )
-            for term in forbidden_terms:
-                assert term not in block, (
-                    f"{relpath}: glossary instruction hardcodes book term "
-                    f"'{term}' — Rule 1 violation (must be generic)"
-                )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

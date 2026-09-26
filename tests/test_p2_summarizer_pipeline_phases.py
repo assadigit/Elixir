@@ -41,6 +41,28 @@ from pathlib import Path
 
 import pytest
 
+# V0.5.7 (SEPARATE-CALL): primary_call.summarize_with_model now fires a
+# SEPARATE glossary-extraction LLM call after the master-summary succeeds
+# (the V0.5.6 fused approach overwhelmed the model). In these
+# characterization tests the ScriptedLLM responder is stateful (the
+# ``state["n"]`` counter advances on EVERY call) — the V0.5.7 glossary
+# call would consume a state slot + break the B3 multi-sample voting
+# sequence's expected response order. The autouse fixture no-ops the
+# glossary extraction so the state machine stays deterministic. The V0.5.7
+# wiring is exercised by the dedicated test_v057_separate_call.py.
+import core.summarisation.primary_call as _pc_mod_v057  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _noop_v057_glossary_extraction(monkeypatch):
+    """V0.5.7: no-op the glossary extraction in the p2_summarizer_pipeline
+    characterization tests (the V0.5.7 wiring is tested separately in
+    test_v057_separate_call.py — the responder state machine here would
+    otherwise consume a slot for the glossary call)."""
+    monkeypatch.setattr(_pc_mod_v057, "_extract_glossary_for_call", lambda **kwargs: {})
+    yield
+
+
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))

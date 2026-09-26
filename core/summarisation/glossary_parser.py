@@ -513,9 +513,251 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
     pass
 
 
+# ── V0.5.7: separate LLM call for glossary extraction ───────────────────────
+#
+# The V0.5.6 fused approach (the master-summary LLM call also asked for the
+# ``<name_glossary>`` block) overwhelmed the Ternary-Bonsai-2-27B model — the
+# dual-output instruction caused 3 empty master-summary returns + a fall-back
+# to the 5-in-1 single-pass path, which had no glossary wired. Result: 0
+# glossary mentions in the conversion log + the loosened quote-guard + the
+# V0.5.6 final-check round 4 + the 📖 .glossary.md persistence all stayed
+# DORMANT.
+#
+# V0.5.7 separates the glossary extraction into a DEDICATED LLM call. The
+# master-summary prompt is back to just the 5 summary sections (V0.5.5
+# state); the new ``glossary_extraction.md`` prompt is a focused, single-
+# purpose instruction that asks ONLY for the ``<name_glossary>`` block.
+# Fail-open: if the call fails or returns no block, the verification LAYER
+# falls back to the regex ``extract_citations`` (the V0.5.5 behavior).
+
+# Path to the V0.5.7 separate glossary-extraction prompt (relative to the
+# project root — resolved lazily via Path(__file__) so the parser stays
+# importable from tests that run with different CWDs).
+_GLOSSARY_EXTRACTION_PROMPT_REL = Path("prompts/summarisation/glossary_extraction.md")
+
+# The placeholder the prompt uses for the source text. Kept as a constant so
+# the build helper + the test can reference the same string (defensive — if
+# the prompt's placeholder ever changes, the test breaks loudly).
+_SOURCE_TEXT_PLACEHOLDER = "{source_text}"
+
+
+def _build_glossary_extraction_prompt(source_text: str) -> str:
+    """Load the V0.5.7 ``glossary_extraction.md`` prompt + substitute the
+    runtime source text into the ``{source_text}`` placeholder.
+
+    Fail-open: returns ``""`` if the prompt file is missing OR unreadable
+    (the caller treats empty as "skip the call" — never raises).
+    """
+    try:
+        # Resolve the prompt path relative to the project root (the parent
+        # of the ``core/`` package — two levels up from this module file).
+        _project_root = Path(__file__).resolve().parent.parent.parent
+        prompt_path = _project_root / _GLOSSARY_EXTRACTION_PROMPT_REL
+        template = prompt_path.read_text(encoding="utf-8")
+    except Exception as _e:  # noqa: BLE001 — fail-open
+        logger.warning(
+            "V0.5.7: could not load glossary_extraction.md prompt "
+            "(non-fatal — skipping the separate glossary call): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        return ""
+    if _SOURCE_TEXT_PLACEHOLDER not in template:
+        logger.warning(
+            "V0.5.7: glossary_extraction.md prompt is missing the "
+            "%s placeholder (non-fatal — skipping the separate glossary "
+            "call). Prompt path: %s",
+            _SOURCE_TEXT_PLACEHOLDER,
+            _GLOSSARY_EXTRACTION_PROMPT_REL,
+        )
+        return ""
+    return template.replace(_SOURCE_TEXT_PLACEHOLDER, source_text)
+
+
+def extract_glossary_via_llm(
+    source_text: str,
+    call_llm: Callable,
+    primary_model: str,
+    temperature: float = 0.3,
+    max_output_tokens: int = 4096,
+    log: Callable | None = None,
+    chapter_heading: str = "",
+    output_dir: str = "",
+    run_id: str = "",
+) -> dict:
+    """V0.5.7: separate LLM call for glossary extraction (not fused with master-summary).
+
+    Makes a DEDICATED LLM call that reads the source text + outputs the
+    ``<name_glossary>`` block. This is SEPARATE from the master-summary call
+    so the master-summary doesn't get overwhelmed (the V0.5.6 fused approach
+    caused 3 empty returns + a fallback).
+
+    Returns the parsed glossary dict (same shape as ``parse_name_glossary`` —
+    ``{"names": [...], "dates": [...], "terms": [...]}``).
+    Fail-open: if the call fails or returns no ``<name_glossary>`` block,
+    returns the empty 3-key dict (the verification falls back to the regex
+    ``extract_citations`` backstop — the V0.5.5 behavior).
+
+    Args:
+        source_text: the chapter's source text (the same text the
+            master-summary call read). Used as the LLM input.
+        call_llm: the LLM call function (same signature as the
+            master-summary uses — ``call_llm(prompt, model=...,
+            temperature=..., max_tokens=...) -> str | None``).
+        primary_model: the model name to use for the glossary call (the
+            same model the master-summary used — single-model pipelines
+            keep things simple; the glossary call is small + focused).
+        temperature: lower than the summary temperature (extraction is
+            deterministic — the LLM is pulling a roster, not generating
+            prose). Defaults to ``0.3``.
+        max_output_tokens: smaller than the master-summary budget (the
+            glossary is a structured list, much smaller than the
+            thorough_summary). Defaults to ``4096``.
+        log: optional ``(msg, level)`` callback (the same callback the
+            master-summary wiring uses).
+        chapter_heading: the chapter heading — used to compute the
+            ``<slug>.glossary.md`` filename (consistent with the V0.5.6
+            persist path so a re-run overwrites the same file).
+        output_dir: the output directory (the ``summaries/.glossaries/``
+            subfolder is created underneath). Pass ``""`` to skip
+            persistence (the call still parses + returns the glossary).
+        run_id: the run ID — written into the ``<!-- generated-by -->``
+            provenance comment in the persisted ``.md`` file.
+
+    Returns:
+        The parsed glossary dict (3 keys: ``names`` / ``dates`` / ``terms``,
+        each a list of dicts). Empty dict (the 3-key empty shape) on any
+        failure — NEVER raises.
+    """
+    if log is None:
+        log = _noop_log
+    if not source_text or not source_text.strip():
+        log(
+            "    ℹ️ V0.5.7: no source text for glossary extraction (skipping the separate call)",
+            "DEBUG",
+        )
+        return _copy_empty()
+    if call_llm is None:
+        log(
+            "    ℹ️ V0.5.7: no call_llm provided for glossary extraction "
+            "(skipping the separate call)",
+            "DEBUG",
+        )
+        return _copy_empty()
+
+    # Step 1: build the prompt (fail-open — empty string = skip).
+    try:
+        prompt = _build_glossary_extraction_prompt(source_text)
+    except Exception as _e:  # noqa: BLE001 — fail-open (defensive; the helper already fails open)
+        logger.warning(
+            "⚠️ V0.5.7 glossary prompt build crashed (non-fatal — falling back to regex): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        log(
+            f"    ⚠️ V0.5.7 glossary prompt build crashed (non-fatal — "
+            f"falling back to regex) ({type(_e).__name__})",
+            "WARNING",
+        )
+        return _copy_empty()
+    if not prompt:
+        return _copy_empty()
+
+    # Step 2: make the DEDICATED LLM call (separate from the master-summary).
+    try:
+        raw = call_llm(
+            prompt,
+            model=primary_model,
+            temperature=temperature,
+            max_tokens=max_output_tokens,
+        )
+    except Exception as _e:  # noqa: BLE001 — fail-open
+        logger.warning(
+            "⚠️ V0.5.7 glossary extraction failed (non-fatal) — falling back to regex: %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        log(
+            f"    ⚠️ V0.5.7 glossary extraction failed (non-fatal — "
+            f"falling back to regex) ({type(_e).__name__})",
+            "WARNING",
+        )
+        return _copy_empty()
+
+    # Step 3: parse the <name_glossary> block (fail-open — empty dict on
+    # missing OR malformed block).
+    try:
+        glossary = parse_name_glossary(raw)
+    except Exception as _e:  # noqa: BLE001 — fail-open (parse_name_glossary already fails open, but be defensive)
+        logger.warning(
+            "⚠️ V0.5.7 glossary parse crashed (non-fatal — returning empty): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        log(
+            f"    ⚠️ V0.5.7 glossary parse crashed (non-fatal — returning "
+            f"empty) ({type(_e).__name__})",
+            "WARNING",
+        )
+        return _copy_empty()
+
+    # Step 4: persist (fail-open — only if non-empty + output_dir provided).
+    _is_empty = not (glossary.get("names") or glossary.get("dates") or glossary.get("terms"))
+    if _is_empty:
+        log(
+            "    ℹ️ V0.5.7: no <name_glossary> block parsed from the "
+            "separate call (skipping persistence — the verification LAYER "
+            "will fall back to the regex extract_citations)",
+            "DEBUG",
+        )
+        return glossary
+    if not output_dir:
+        # The caller asked to skip persistence (e.g. a unit test that just
+        # wants the parsed dict). Still return the glossary.
+        log(
+            "    📖 V0.5.7 source glossary (separate call) — parsed but not "
+            "persisted (no output_dir provided)",
+            "INFO",
+        )
+        return glossary
+    try:
+        from core.common.heading_utils import segment_filename_slug
+
+        slug = segment_filename_slug(chapter_heading) or "chapter"
+    except Exception:  # noqa: BLE001 — fail-open
+        slug = "chapter"
+    out_path = Path(output_dir) / "summaries" / ".glossaries" / f"{slug}.glossary.md"
+    try:
+        persist_glossary(
+            glossary,
+            out_path,
+            chapter_title=chapter_heading,
+            run_id=run_id,
+            app_version="0.5.7",
+        )
+        log(
+            f"    📖 V0.5.7 source glossary (separate call) → {out_path}",
+            "INFO",
+        )
+    except Exception as _e:  # noqa: BLE001 — fail-open
+        logger.warning(
+            "⚠️ V0.5.7 glossary persist crashed (non-fatal — the parsed "
+            "glossary is still returned): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+        log(
+            f"    ⚠️ V0.5.7 glossary persist crashed (non-fatal — the parsed "
+            f"glossary is still returned) ({type(_e).__name__})",
+            "WARNING",
+        )
+    return glossary
+
+
 __all__ = [
     "parse_name_glossary",
     "cross_reference_glossary",
     "persist_glossary",
     "extract_persist_and_cross_reference_glossary",
+    "extract_glossary_via_llm",
 ]

@@ -24,6 +24,96 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.7 — the separate glossary LLM call + the Maj-sey regex garble fix (V0.5.6 audit remediation)
+
+> **The release:** the V0.5.6 audit found the glossary architecture
+> DIDN'T FIRE because the `<name_glossary>` instruction was FUSED into
+> the master-summary prompt, which overwhelmed the Ternary-Bonsai-2-27B
+> model (3 empty returns + a fallback to the 5-in-1 path, which doesn't
+> have the glossary wired). Result: 0 glossary mentions in the conv log,
+> the loosened quote-guard + final-check dormant. V0.5.7 fixes this with
+> the user's directive: **separate the LLM calls** for master summary +
+> glossary. Plus the "Maj sey" OCR-garble regex fix.
+
+> **Part 1 — Reverted the fused `<name_glossary>` from the 3
+> master-summary prompts:**
+> - `prompts/default.md` + `prompts/default_lowbit.md` + `prompts/summarisation/master_summary.md`:
+>   reverted "Output ONLY the six XML sections" → "five XML sections"
+>   + removed the `<name_glossary>` block + the "ALSO output a
+>   `<name_glossary>` block" instruction. The master-summary is BACK
+>   to just the 5 summary sections (the V0.5.5 state) — simpler → fewer
+>   empty returns.
+
+> **Part 2 — New separate glossary-extraction prompt:**
+> - NEW `prompts/summarisation/glossary_extraction.md` — a dedicated
+>   prompt that asks the LLM to read the source text + output ONLY a
+>   `<name_glossary>` block with the 3 subsections (Names/Dates/Terms).
+>   Generic instruction (Rule 1 ✓ — "ALL cited authors", no hardcoded names).
+
+> **Part 3 — The `extract_glossary_via_llm` function:**
+> - NEW `extract_glossary_via_llm(source_text, call_llm, ...)` in
+>   `glossary_parser.py:577-760` — makes a DEDICATED LLM call that
+>   reads the source + outputs the `<name_glossary>` block. Parses via
+>   `parse_name_glossary`, persists via `persist_glossary` to
+>   `summaries/.glossaries/<slug>.glossary.md`, logs "📖 V0.5.7 source
+>   glossary (separate call) → <path>". Fail-open NEVER raises — returns
+>   the empty 3-key dict on any failure (the verification falls back to
+>   the regex `extract_citations`).
+> - SEQUENTIAL execution (not parallel) — matches the user's "separate
+>   calls" directive. The glossary call adds ~1 LLM call per chapter
+>   (~3-5 min at the RTX 3060 throughput).
+
+> **Part 4 — Wired into `primary_call.py` (BOTH paths):**
+> - NEW `_extract_glossary_for_call(...)` helper (`primary_call.py:138-198`)
+>   wraps `extract_glossary_via_llm` + the `set_chapter_glossary`
+>   side-channel population.
+> - Wired into all 3 return paths: master-summary-success (`:297-313`),
+>   structured 5-in-1 fallback (`:327-342`), raw 5-in-1 fallback
+>   (`:353-369`). The glossary is extracted in BOTH paths (the V0.5.6
+>   audit's gap closure — the 5-in-1 path had no glossary wired + the
+>   master-summary's empty returns meant the glossary never fired).
+
+> **Part 5 — The "Maj sey" OCR-garble regex fix:**
+> - ROOT CAUSE: the V0.5.6 `extract_citations` regex (Pattern 1 +
+>   Pattern 2) had a buggy `(?:\s+[a-z]{1,4})?` AFTER-token group
+>   that matched ANY 1-4 letter lowercase word. OCR-garbled source line
+>   419 ("Maj sey 1302") was extracted as author="Maj sey" year="1302"
+>   — a fake 14th-century theorist. The gap-fill wasted 4 rounds hunting
+>   a bullet for this non-existent author.
+> - FIX (`deterministic_analyzer.py:670+681`): removed the buggy
+>   `(?:\s+[a-z]{1,4})?` group; added `_CIT_PARTICLES` (closed
+>   class of Romance/Germanic/Arabic surname particles — van/von/de/di/
+>   da/du/la/le/les/den/der/ter/ten/ben/abu/ibn/al/el/st/lo) as a
+>   BEFORE-token prefix; extended the hyphenated group to
+>   `NAME_SEP[a-zA-Z]+`. Rule 1 ✓ (closed class, no book content).
+> - BONUS: closes the V18.15.5.1 DEBT-08 bug — em-dash/typographic-hyphen/
+>   non-breaking-hyphen compounds ("van der Waerden", "de la Cruz")
+>   now captured as the full compound (were truncated).
+> - The source now produces 74 unique authors (was 75 in V0.5.6 — the +1
+>   OCR-artifact "Maj sey" is gone; back to V0.5.5's 74-author floor).
+
+> **Combined changeset:** 16 files (13 modified + 3 new). Net-green:
+> ruff clean, eval gate OK (re-baselined — 6 golden chapters PASS,
+> hallucination 0.0%), 953 P / 0 F / 7 S on the V0.5.7+regression set
+> (144 V0.5.7-specific tests: 6 separate-call + 14 regex-garble +
+> existing V0.5.6 verification tests).
+
+> **Rule verdicts:** Rule 1 ✓ (content-agnostic — the glossary-extraction
+> prompt is generic; the regex fix uses a closed-class particle list; the
+> deny-list sweep passes). Rule 2 ✓ (file:line-anchored). Rule 3 ✓
+> (net-green — ruff + eval gate + 953 tests). Rule 4 ✓ (provenance — the
+> glossary `.md` is persisted with a `<!-- generated-by: Elixir 0.5.7 | run_id=... | chapter=... -->` comment).
+
+> **Honest limitations:** (1) the glossary call adds ~1 LLM call per
+> chapter (~3-5 min) — SEQUENTIAL execution (a parallelisation with a
+> background thread + join is a future enhancement). (2) The 5-in-1
+> fallback path now makes 2 LLM calls (the 5-in-1 raw XML + the separate
+> glossary). (3) The eval gate re-baselined from STORED fixtures (no LLM
+> in the sandbox) — a rig-side re-baseline with the live LLM is
+> recommended. (4) The full 6,177-test suite can't be re-run in the
+> sandbox (PySide6 GUI deps missing); the 39 touched+new+regression test
+> files (953 tests) + eval gate pass cleanly.
+
 ## V0.5.6 — the source-glossary architecture (LLM-generated name/date/term glossary fused into the master-summary call + glossary-grounded coverage + loosened quote-guard + final-check round 4)
 
 > **The release:** the V0.5.5 audit found 5 source authors still missing
