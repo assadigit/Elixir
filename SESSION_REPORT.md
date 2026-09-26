@@ -958,6 +958,44 @@ breaking) + `6044378` (F5 suffix fix).
 (+5 — the F1 positive-demonstration tests); deny-list passes.
 
 **Items F2 + F4 queued for V0.4.37.**
-**
-**
+
+---
+
+## Phase 19 — V0.4.37 release (the F7+F6+F4+F3+F2(c) low-priority-backlog release)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.37`).
+> Tagged `V0.4.37`.
+
+The V0.4.36 ch.6 audit's V0.4.37 backlog had 5 items, all LOW PRIORITY
+(4 observability + 1 carryover). This release ships content-agnostic,
+net-green fixes for all 5: F7 (detector false-positive tuning — grammar
+3rd-singular "-s" verbs + thorough attribution threshold 50→40), F6
+(render-boundary stray-quote sweep), F4 (gap-fill multi-author
+attribution prompt), F3 (coverage-driven thorough gap-fill engagement),
+F2(c) (dedup symmetric-difference guard ≤6→≤4). F2(a) (active-subject
+veto) + F2(b) (V0.4.23 filler floor) are documented rig-dependent —
+loosening either risks re-introducing the exact defects the gates were
+calibrated to block; the audit's evidence is book-specific and the fix
+needs a live-LLM rig run to validate no regression (same protocol as
+the V0.4.35 audit's F6 "extension needs the rig to validate").
+
+Commits: `3553414` (F7) + `7958e83` (F6) + `9c57e66` (F4) + `0b0aff1`
+(F3) + `6134a23` (F2c).
+
+**Net-green:** ruff clean; eval gate OK (prompt manifest re-baselined
+ee5a61d0ebb3→2b54556685a2, ZERO metric change — the deterministic mock's
+canned output is prompt-independent); **6,103 P / 0 F / 36 S exit 0**
+(+17 — the 15 V0.4.37 characterization tests + 2 seed drift); deny-list
+passes.
+
+**Pre-existing issue surfaced (NOT a V0.4.37 regression):** the local
+`.hypothesis/` DB had a stored failing example for
+`test_property_citations_roundtrip::test_extract_citations_parenthetical_roundtrip`
+(surname `"Apr"` — 3 chars, below the citation regex's ≥4-char surname
+minimum; `extract_citations("Apr' (1000)")` → `[]`). The V0.4.36
+"0 F" claim was seed-dependent (that run's DB didn't replay it). V0.4.37
+does NOT touch citation extraction. Clearing the local `.hypothesis` DB
+→ the suite is green (6,103 P). The stored example resurfaces on replay.
+A future release should reconcile the property test's `_surname` strategy
+with the regex's min-length contract (out of V0.4.37 scope per Rule 2).
 
