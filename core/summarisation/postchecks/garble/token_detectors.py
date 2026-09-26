@@ -569,6 +569,15 @@ def detect_word_fragment_merge(
         source_words = set(re.findall(r"\b[a-z]+\b", source_text.lower())) if source_text else set()
     if not text:
         return text, issues
+    # V0.4.38 (F3): consult the English lexicon so real English words
+    # (e.g. "theme" = "them" + "e", where "them" is in the source but
+    # "theme" is not) are not flagged as fragment-merges. Mirrors
+    # detect_sentence_fusion's lexicon check. Content-agnostic (the
+    # lexicon is the vendored generic English wordlist, no domain terms).
+    try:
+        _lex = _load_english_lexicon()
+    except Exception:
+        _lex = set()
     try:
         for m in list(_FRAGMENT_MERGE_RE.finditer(text)):
             # V18.2.19: Check BOTH the left side (group1+group2) AND the
@@ -586,6 +595,12 @@ def detect_word_fragment_merge(
             # "contributions", etc. were flagged. These are valid inflections, NOT
             # dropped sentence boundaries.
             if word in source_words and full not in source_words and len(stray) <= 2:
+                # V0.4.38 (F3): skip if the full word is a real English word
+                # (e.g. "theme" = "them" + "e"). The lexicon check closes the
+                # gap where a source word + a trailing char forms a DIFFERENT
+                # real English word that's just not in THIS source.
+                if _lex and full in _lex:
+                    continue
                 if _is_legitimate_inflection(word, stray):
                     continue  # valid plural/past-tense/adjective — not a fragment merge
                 issues.append(
@@ -612,6 +627,10 @@ def detect_word_fragment_merge(
                     base = right[:-strip_len]
                     stray_right = right[-strip_len:]
                     if base in source_words and right not in source_words:
+                        # V0.4.38 (F3): skip if the full right word is a real
+                        # English word (e.g. "theme" stripped to "them" + "e").
+                        if _lex and right in _lex:
+                            continue
                         # V18.9 (Option B fix): Skip if the stripped suffix is a
                         # legitimate English inflection (plural, past tense, etc.)
                         if _is_legitimate_inflection(base, stray_right):

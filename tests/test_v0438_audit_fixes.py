@@ -106,3 +106,48 @@ class TestV0438F1DroppedPrefixFusion:
         _, issues = detect_sentence_fusion(text, "thorough", src)
         fusion = [i for i in issues if i.detector == "sentence_fusion"]
         assert len(fusion) >= 1, "Pattern B (2 source words + gap) must still work"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F3: "theme" fragment_merge false-positive (lexicon gap)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.postchecks.garble.token_detectors import (
+    detect_word_fragment_merge,
+)
+
+
+class TestV0438F3FragmentMergeLexiconCheck:
+    """F3: detect_word_fragment_merge now consults the English lexicon so a
+    source word + a trailing char that forms a DIFFERENT real English word
+    (not in THIS source) is not flagged.
+
+    The V0.4.37 thorough/bullet-4 flagged 'theme' = source-word 'them' +
+    'e' (the source has 'them' but not 'theme'). 'theme' IS a real English
+    word (in the vendored 126k-word lexicon). The V0.4.38 fix adds the
+    lexicon check (mirrors detect_sentence_fusion). Content-agnostic
+    (Rule 1): the lexicon is a generic English wordlist.
+    """
+
+    def test_theme_not_flagged(self):
+        """'theme' (a real English word, in the lexicon but not in the
+        source) is NOT flagged — the V0.4.37 false-positive."""
+        src = "A recurring them in the literature. The chapter highlights them."
+        text = "A recurring theme in the literature."
+        _, issues = detect_word_fragment_merge(text, "bullet[4]", src)
+        flags = [i for i in issues if i.detector == "fragment_merge"]
+        assert flags == [], (
+            "F3: 'theme' is a real English word (in the lexicon) and must not "
+            f"be flagged; got: {[i.detail for i in flags]}"
+        )
+
+    def test_real_fragment_merge_still_flagged(self):
+        """Regression guard: a genuine fragment-merge ('adolescenceo' =
+        'adolescence' + 'o', where 'adolescenceo' is NOT a real word) is
+        still flagged."""
+        src = "adolescence. To fill the gap."
+        text = "adolescenceo fill the gap."
+        _, issues = detect_word_fragment_merge(text, "bullet[0]", src)
+        flags = [i for i in issues if i.detector == "fragment_merge"]
+        assert len(flags) >= 1, "a genuine fragment-merge must still be flagged"
+        assert "adolescenceo" in flags[0].detail
