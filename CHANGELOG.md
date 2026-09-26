@@ -24,6 +24,31 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.5 — the V0.5.4 hotfix (Summarizer.settings AttributeError crash)
+
+> **The crash:** V0.5.4's F2 temperature-multiplier change referenced
+> `self.settings` on the Summarizer, but the Summarizer class doesn't
+> have a `settings` attribute (it uses the module-level `Settings()`
+> singleton pattern). The `getattr(self.settings, ...)` raised
+> `AttributeError: 'Summarizer' object has no attribute 'settings'`
+> BEFORE the default could apply — crashing the dedicated-thorough
+> expansion path. The V0.5.4 rig run failed at 23:04:44 with
+> "❌ Chapter 1 failed: 'Summarizer' object has no attribute 'settings'"
+> + 0 keypoints generated.
+
+> **The fix (1 line):** replaced
+> `getattr(self.settings, "thorough_temperature_multiplier", 0.5)`
+> with `Settings().get("thorough.temperature_multiplier", 0.5)` —
+> the codebase's standard settings-access pattern (cf. summarizer.py:1530).
+> Added `from utils.settings import Settings` to prompt_builders.py.
+> The multiplier is now properly configurable via
+> `Settings().get("thorough.temperature_multiplier")` (default 0.5).
+
+> **Verification:** `Settings().get("thorough.temperature_multiplier", 0.5)`
+> returns 0.5 (no crash). 65 tests pass (thorough_fallback + verification_layer
+> + incremental_checkpoint). ruff clean. The V0.5.4 crash path
+> (`_call_dedicated_thorough_with_fallback`) is now safe.
+
 ## V0.5.4 — the full-backlog V0.5.3 ground-truth-audit remediation (date-check FP elimination + coverage gap closure + Pattern C flag+rewrite + structured content + LAYER auto-apply + FN audits)
 
 > **The release:** the V0.5.3 ground-truth audit (against the uploaded
