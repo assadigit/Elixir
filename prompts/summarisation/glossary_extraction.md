@@ -4,6 +4,9 @@ You are a meticulous academic indexer. Your task is to extract a source glossary
 ### TASK ###
 Read the source text below. Output a `<name_glossary>` block listing ALL cited authors (with their years + a 1-sentence context of their contribution), key dates/decades/ranges, + key concepts/terms. Be exhaustive. Output ONLY the `<name_glossary>` block — no other text, no preamble, no thinking, no commentary.
 
+### CRITICAL — START IMMEDIATELY WITH `<name_glossary>` ###
+Do NOT output any thinking, reasoning, or preamble. Do NOT use `<think>` tags. Do NOT explain your approach. The VERY FIRST character of your response MUST be `<` (the start of `<name_glossary>`). If you output thinking first, you will run out of tokens before finishing the glossary.
+
 ### CONSTRAINTS ###
 - Pull every name, date, and term from the SOURCE TEXT below — do NOT invent, infer, or import from outside knowledge
 - For each cited author, include the year(s) the source cites them in (e.g. `(1946)` or `(1946a, 1952b)`)

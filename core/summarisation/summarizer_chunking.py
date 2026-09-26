@@ -40,7 +40,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from pathlib import Path
 
 # V18.11 (Phase 5 Stage 3, Batch 2.1 + 2.5): map-reduce summarization.
 from core.summarisation.map_reduce import (
@@ -147,59 +146,14 @@ class SummarizerChunkingMixin:
             "INFO",
         )
 
-        # V0.5.6 Phase 0.5: source glossary extraction (fused into Call 1/3).
-        # The same LLM response now carries BOTH <thorough_summary> AND a
-        # <name_glossary> block (the source roster — names/dates/terms).
-        # The glossary is parsed (fail-open), persisted to
-        # ``summaries/.glossaries/<slug>.glossary.md``, and cross-referenced
-        # against the regex ``extract_citations`` backstop. Pinned onto the
-        # parsed dict so it flows through to SummaryResult + the verification
-        # LAYER (the coverage ground truth — richer than the regex).
-        # Content-agnostic (Rule 1 ✓): the parser uses generic regex; the
-        # cross-reference compares two runtime-extracted name sets.
+        # V0.5.8: the V0.5.6 fused-path glossary extraction was REMOVED.
+        # The master-summary prompt no longer asks for <name_glossary> (the
+        # V0.5.7 revert), so parsing raw1 for it always returned empty + logged
+        # the noisy "no <name_glossary> block parsed from master summary".
+        # The V0.5.7 separate call (extract_glossary_via_llm in primary_call.py)
+        # now handles glossary extraction via a DEDICATED LLM call + the
+        # set_chapter_glossary side-channel. This fused path is dead code.
         source_glossary: dict[str, list] = {"names": [], "dates": [], "terms": []}
-        try:
-            from core.summarisation.glossary_parser import (
-                extract_persist_and_cross_reference_glossary as _epg,
-            )
-
-            # The regex backstop: extract_citations on this chapter's source
-            # text (the runtime-extracted author set — no hardcoded names).
-            _regex_authors: set[str] = set()
-            try:
-                from core.preprocessing.deterministic_analyzer import (
-                    extract_citations as _extract_citations,
-                )
-
-                _src_for_xref = getattr(self, "_source_text", "") or text
-                _regex_authors = {
-                    c.get("author", "")
-                    for c in _extract_citations(_src_for_xref)
-                    if c.get("author")
-                }
-            except Exception as _e_rx:  # noqa: BLE001 — fail-open
-                logger.debug(
-                    "V0.5.6: extract_citations for glossary xref failed "
-                    "(non-fatal — xref skipped): %s: %s",
-                    type(_e_rx).__name__,
-                    _e_rx,
-                )
-            source_glossary = _epg(
-                raw1,
-                heading=heading,
-                output_dir=getattr(self.request, "output_dir", Path(".")),
-                run_id=getattr(self, "_run_id", ""),
-                app_version=getattr(self, "_app_version", ""),
-                regex_authors=_regex_authors,
-                log=self.log,
-            )
-        except Exception as _e_g:  # noqa: BLE001 — fail-open (NEVER crash the master-summary)
-            logger.warning(
-                "V0.5.6 glossary extraction crashed (non-fatal — empty "
-                "glossary, master summary unaffected): %s: %s",
-                type(_e_g).__name__,
-                _e_g,
-            )
 
         # ── Call 2: Bullet Points derivation FROM the master summary ──
         # The input is the master summary (much smaller than the full source)

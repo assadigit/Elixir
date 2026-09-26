@@ -24,6 +24,20 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.8 — the glossary-call fix (max_tokens 4096→8192 + strip_thinking + explicit no-thinking prompt + remove the V0.5.6 leftover fused-path parser)
+
+> **The release:** the V0.5.7 audit found the separate glossary call FIRED but produced NO `<name_glossary>` block (the LLM was called with max=4096 but didn't output the block — the thinking consumed the token budget before the glossary was emitted). V0.5.8 fixes this with 3 changes + removes the V0.5.6 leftover fused-path parser. Per the user's directive, the master-summary prompt was NOT simplified further (the V0.5.7 revert was clean — only removed the `<name_glossary>` block; the short master-summary in V0.5.7 was LLM variance, not a prompt issue).
+
+> **Fix 1 — max_output_tokens 4096→8192:** the glossary for a 74-author chapter needs >4096 tokens. V0.5.8 raised the default to 8192 (`glossary_parser.py:582`).
+
+> **Fix 2 — strip_thinking before parsing:** the Ternary-Bonsai-2-27B model often outputs thinking/reasoning tags before the `<name_glossary>` block. If the thinking consumed the max_tokens budget, the block was never emitted. V0.5.8 adds `strip_thinking(raw)` (`glossary_parser.py:688-700`) between the LLM call + the parse. Fail-open.
+
+> **Fix 3 — explicit no-thinking prompt:** added a "CRITICAL — START IMMEDIATELY WITH `<name_glossary>`" section to `prompts/summarisation/glossary_extraction.md`: "Do NOT output any thinking. The VERY FIRST character of your response MUST be `<`. If you output thinking first, you will run out of tokens before finishing the glossary."
+
+> **Fix 4 — remove the V0.5.6 leftover fused-path parser:** the V0.5.7 conv log showed the noisy "V0.5.6: no `<name_glossary>` block parsed from master summary" line — the OLD V0.5.6 code in `summarizer_chunking.py:150-198` that tried to parse the `<name_glossary>` from the master-summary response. Since the V0.5.7 revert removed the instruction, this code ALWAYS returned empty. V0.5.8 REMOVED it.
+
+> **Net-green:** ruff clean, eval gate OK (re-baselined — 6 golden chapters PASS, hallucination 0.0%), 66 P / 0 F on the V0.5.8 test set.
+
 ## V0.5.7 — the separate glossary LLM call + the Maj-sey regex garble fix (V0.5.6 audit remediation)
 
 > **The release:** the V0.5.6 audit found the glossary architecture

@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.5.6",
+  "generated_for_version": "0.5.7",
   "prompts_dir": "prompts/",
   "file_count": 57,
-  "manifest_sha256": "6bbef36cdf1895cf3b3f1edf0c37c3aa43bb27ea8d5da212379bc81380952c3e",
+  "manifest_sha256": "d28da280668944e15bdf944d24a94daf9da675749904a0f42354572f7cdabd4e",
   "files": [
     {
       "path": "academic.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "summarisation/glossary_extraction.md",
-      "sha256": "940764e063810dd0fdce0e128e17d14dc46fa5d8eb2eaeeb20682bf9023d1d23",
-      "bytes": 1615
+      "sha256": "fe3ccc21b96fcbf943fe9ba135243e7d8ac0d48d646eb97fc058eeab2801a8f7",
+      "bytes": 1963
     },
     {
       "path": "summarisation/grounding_check.md",

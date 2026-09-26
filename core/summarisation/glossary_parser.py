@@ -579,7 +579,7 @@ def extract_glossary_via_llm(
     call_llm: Callable,
     primary_model: str,
     temperature: float = 0.3,
-    max_output_tokens: int = 4096,
+    max_output_tokens: int = 8192,
     log: Callable | None = None,
     chapter_heading: str = "",
     output_dir: str = "",
@@ -610,9 +610,10 @@ def extract_glossary_via_llm(
         temperature: lower than the summary temperature (extraction is
             deterministic — the LLM is pulling a roster, not generating
             prose). Defaults to ``0.3``.
-        max_output_tokens: smaller than the master-summary budget (the
-            glossary is a structured list, much smaller than the
-            thorough_summary). Defaults to ``4096``.
+        max_output_tokens: the glossary for a 74-author chapter needs
+            >4096 tokens (the V0.5.7 default of 4096 was too small — the
+            LLM hit the limit before finishing the ``<name_glossary>``
+            block). V0.5.8 raised the default to ``8192``.
         log: optional ``(msg, level)`` callback (the same callback the
             master-summary wiring uses).
         chapter_heading: the chapter heading — used to compute the
@@ -683,6 +684,20 @@ def extract_glossary_via_llm(
             "WARNING",
         )
         return _copy_empty()
+
+    # V0.5.8: strip thinking/reasoning tags ( intermediate) from the
+    # raw response BEFORE parsing. The Ternary-Bonsai-2-27B model often
+    # outputs thinking before the <name_glossary> block — if the thinking
+    # consumed the max_tokens budget, the block was never emitted (the
+    # V0.5.7 "no <name_glossary> block parsed" failure). strip_thinking
+    # removes the thinking so the parser sees only the glossary block.
+    # Also applies qwen_no_think-style suppression for future calls.
+    try:
+        from core.summarisation.response_parser import strip_thinking
+
+        raw = strip_thinking(raw or "")
+    except Exception:  # noqa: BLE001 — fail-open (strip_thinking is best-effort)
+        pass  # parse_name_glossary will handle the raw response as-is
 
     # Step 3: parse the <name_glossary> block (fail-open — empty dict on
     # missing OR malformed block).
