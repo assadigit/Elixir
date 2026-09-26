@@ -1103,6 +1103,20 @@ Commit: `2a145ef` (the module + wiring + 37 tests).
 **Net-green:** ruff clean; eval gate OK (hash flat); **6,172 P / 0 F /
 36 S exit 0** (+37); deny-list passes.
 
+---
+
+## Phase 24 — V0.5.1 release (wiring bug fix + date-extractor page-ref FP fix + verification LAYER coverage-targeting — 10/10 objective)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.5.1`).
+> Tagged `V0.5.1`.
+
+3 fixes per the V0.5.0 audit's V0.5.1 backlog + the user's "make the
+post-verification more robust, with the objective of 10/10 coverage."
+
+**Net-green:** ruff clean; eval gate OK; **6,177 P / 0 F / 36 S exit 0**
+(+5); deny-list passes.
+
+
 
 
 

@@ -24,6 +24,33 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.1 — the wiring bug fix + date-extractor page-ref FP fix + verification LAYER coverage-targeting (10/10 objective)
+
+> **The release:** 3 fixes per the V0.5.0 audit's V0.5.1 backlog + the
+> user's "make the post-verification more robust, with the objective of
+> 10/10 coverage."
+
+**1. BUG — wiring fix (commit below):** the `_v_issues` from
+  `verify_and_polish_summary` are now LOGGED to the conversion log (was
+  silently dropped). Each issue logged at DEBUG (fix) or WARNING (flag).
+
+**2. TUNING — date-extractor page-ref FP fix:** the `~NNN` page-reference
+  false positive (`inject_page_refs` uses `~` before page numbers; the
+  extractor matched `~137` as circa 137) is fixed. A `_PAGE_REF_PREFIX`
+  regex masks page-reference patterns before the date patterns run.
+
+**3. ROBUSTNESS — verification LAYER coverage-targeting:** the LAYER now
+  extracts source authors (via `extract_citations`), checks which are NOT
+  in the summary, and ADDS them to the LLM prompt so the verification
+  LLM can ADD missing bullets (the "10/10 coverage" objective). A
+  `verification_coverage` Issue records the missing count + list.
+
+**Tests:** 5 new tests (3 page-ref FP + 2 coverage-targeting). 42 total
+  in `test_v0500_date_extractor.py`.
+
+**Net-green:** ruff clean; eval gate OK; **6,177 P / 0 F / 36 S exit 0**
+(+5); deny-list passes.
+
 ## V0.5.0 — the deterministic date-extraction module + verification LAYER integration (new architecture)
 
 > **The release:** per the user's direction ("for verification phase we
