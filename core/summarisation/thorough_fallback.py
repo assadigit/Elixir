@@ -67,8 +67,14 @@ def call_dedicated_thorough_with_fallback(
     synthetic_fallback_count: int,
     log: LogCallback | None = None,
 ) -> tuple[str | None, int]:
-    """V18.2.44 (Next Step #6): Dedicated thorough call with 3 attempts + a
+    """V18.2.44 (Next Step #6): Dedicated thorough call with 4 attempts + a
     deterministic non-empty fallback.
+
+    V0.4.38 (F2): added a 4th attempt — a quantified length-directive
+    re-prompt that fires when the model is persistently short (best
+    non-empty but < min_words) after attempts 1-3. See the V0.4.37 ch.6
+    audit's F2 item (the model returned <800 words on all 3 prior
+    attempts → a 31/74 = 42% coverage-deficient thorough).
 
     Extracted verbatim from ``Summarizer._call_dedicated_thorough_with_fallback``.
     Returns ``(thorough_text, new_synthetic_fallback_count)`` — the caller
@@ -89,12 +95,12 @@ def call_dedicated_thorough_with_fallback(
       - Attempt 3 (if #2 empty/short): retry at temperature 0.0 (greedy
         decoding — maximally deterministic, least likely to wander into an
         empty generation).
-      - If ALL 3 fail OR the winner is still < ``min_words``: synthesize a
-        deterministic thorough from ``exec_sum`` + the bullets (joined as
-        flowing prose). This is material the model ALREADY produced and
-        the user already saw — it is guaranteed non-empty and guaranteed
-        on-topic, so it is strictly better than the V18.2.43 silent
-        ``thorough = exec_sum`` fallback (which dropped ALL bullets).
+      - Attempt 4 (V0.4.38 F2, if #1-#3 all non-empty but < min_words):
+        retry with a quantified length directive ("previous was N words,
+        need >= M") — a stronger nudge than attempt 2's generic one.
+      - If ALL 4 fail OR the winner is still < ``min_words``: return the
+        best-effort winner (non-empty); synthesize the exec+bullets
+        fallback ONLY on total failure (best=None).
 
     Returns the best thorough text found (stripped of thinking), or the
     synthetic fallback. NEVER returns None when ``exec_sum`` or ``bullets``
@@ -223,11 +229,69 @@ def call_dedicated_thorough_with_fallback(
                 best, best_words = t3, _w3
                 log(f"    \U0001f4d6 Attempt 3/3: dedicated thorough = {_w3} words", "INFO")
 
+    # ── Attempt 4 (V0.4.38 F2): a stronger, QUANTIFIED length directive. ──
+    # The V0.4.37 ch.6 audit found the model can produce a short (non-empty
+    # but < min_words) thorough on ALL 3 prior attempts (best=793 < 800) —
+    # the helper returned the short best-effort + only logged a WARNING,
+    # leaving a coverage-deficient thorough (31/74 = 42%). The 4th attempt
+    # re-prompts with the ACTUAL shortfall (the model's best word count +
+    # the minimum), a stronger quantified length directive than the
+    # generic attempt-2 nudge. Genre-agnostic (about LENGTH, not content —
+    # Rule 1). Only fires when the model is persistently short (best non-
+    # empty but < min_words) and the deadline allows.
+    if (
+        best
+        and 0 < best_words < min_words
+        and not deadline_exceeded("dedicated thorough (attempt 4 length-directive)")
+    ):
+        _length_nudge = (
+            "\n\nYour previous response was only "
+            f"{best_words} words — below the {min_words}-word minimum for this "
+            "thorough summary. Write the FULL thorough summary of AT LEAST "
+            f"{min_words} words now. Cover every named contributor, framework, "
+            "and example in the source. Do not stop early. /no_think"
+        )
+        log(
+            f"    \U0001f4cf V0.4.38 F2: attempt 4 — re-prompting with a "
+            f"quantified length directive (best was {best_words} < {min_words} "
+            f"min words)",
+            "DEBUG",
+        )
+        try:
+            raw4 = call_llm(
+                prompt + _length_nudge,
+                model=primary_model,
+                temperature=temperature * 0.5,
+                max_tokens=_max_tok,
+            )
+        except Exception as _e4:
+            log(
+                f"    \u26a0\ufe0f Attempt 4/4 dedicated thorough crashed "
+                f"({type(_e4).__name__}: {_e4}) \u2014 keeping best-effort",
+                "WARNING",
+            )
+            logger.warning(
+                "dedicated thorough attempt 4 crashed: %s: %s",
+                type(_e4).__name__,
+                _e4,
+            )
+        else:
+            t4 = _parse_thorough(raw4)
+            if t4:
+                _w4 = len(t4.split())
+                if _w4 > best_words:
+                    best, best_words = t4, _w4
+                    log(
+                        f"    \U0001f4d6 Attempt 4/4: dedicated thorough = {_w4} "
+                        f"words (length-directive recovered)",
+                        "INFO",
+                    )
+
     # ── If we got ANYTHING usable (even < min_words), return it. ──
     if best and best_words > 0:
         if best_words < min_words:
             log(
-                f"    \u2139\ufe0f All 3 thorough attempts returned < {min_words} words "
+                f"    \u2139\ufe0f All 4 thorough attempts returned < {min_words} words "
                 f"(best={best_words}) — keeping best-effort result",
                 "WARNING",
             )

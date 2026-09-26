@@ -180,10 +180,11 @@ class TestAttemptEscalation:
         assert deps["_llm_calls"][2]["temp"] == 0.0
 
     def test_best_effort_kept_when_under_min_words(self):
-        """If all 3 attempts return something but all < min_words, the best
-        (longest) is kept and a WARNING is logged (best-effort)."""
+        """If all 4 attempts (V0.4.38 F2 added the 4th length-directive
+        attempt) return something but all < min_words, the best (longest)
+        is kept and a WARNING is logged (best-effort)."""
         best = " ".join([f"w{i}" for i in range(100)]) + "."  # 100 words < 800
-        deps = _make_deps(llm_responses=["short.", "medium response.", best])
+        deps = _make_deps(llm_responses=["short.", "medium response.", best, best])
         cap = _CapturingLog()
         kw = _common_kwargs(deps)
         kw["log"] = cap
@@ -194,7 +195,7 @@ class TestAttemptEscalation:
             min_words=800,
             **{k: v for k, v in kw.items()},
         )
-        # best = the 100-word one (longest of the 3)
+        # best = the 100-word one (longest of the 4)
         assert out == best
         assert count == 0  # no synthetic fallback
         warnings = [m for m, l in cap.calls if l == "WARNING"]
@@ -515,3 +516,68 @@ class TestCallLlmRaisesFallthrough:
         assert any("_FakeHTTPError" in w for w in crash_warnings), (
             f"exception type name should appear in warning; got: {crash_warnings}"
         )
+
+
+# ── V0.4.38 (F2): the 4th length-directive attempt ────────────────────────
+
+
+class TestV0438F2Attempt4LengthDirective:
+    """V0.4.38 (F2): a 4th attempt with a quantified length directive fires
+    when attempts 1-3 all return non-empty but < min_words (the V0.4.37
+    ch.6 case: best=793 < 800 on all 3 prior attempts → a 31/74 = 42%
+    coverage-deficient thorough). The 4th re-prompts with the ACTUAL
+    shortfall (the model's best word count + the minimum). Genre-agnostic
+    (about LENGTH, not content — Rule 1)."""
+
+    def test_attempt4_recovers_length_when_1_3_persistently_short(self):
+        """Attempts 1-3 short (<min_words); attempt 4 (length directive)
+        returns >= min_words → the long result is returned."""
+        short = " ".join([f"w{i}" for i in range(100)]) + "."  # 100 words < 800
+        long_t = " ".join([f"w{i}" for i in range(900)]) + "."  # 900 >= 800
+        deps = _make_deps(llm_responses=[short, short, short, long_t])
+        cap = _CapturingLog()
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
+        out, count = call_dedicated_thorough_with_fallback(
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
+        )
+        # 4 LLM calls; the 4th returned the long result.
+        assert len(deps["_llm_calls"]) == 4
+        assert out == long_t
+        assert count == 0  # no synthetic fallback
+        # The 4th prompt carried the quantified length directive.
+        assert "Your previous response was only" in deps["_llm_calls"][3]["prompt"]
+        assert "100 words" in deps["_llm_calls"][3]["prompt"]
+        assert "800" in deps["_llm_calls"][3]["prompt"]
+        # The recovery was logged.
+        assert any("length-directive recovered" in m for m, _l in cap.calls)
+
+    def test_attempt4_skipped_when_deadline_exceeded(self):
+        """When deadline_exceeded returns True, attempt 4 is skipped (the
+        best-effort from attempts 1-3 is kept)."""
+        short = " ".join([f"w{i}" for i in range(100)]) + "."
+        long_t = " ".join([f"w{i}" for i in range(900)]) + "."
+        # deadline_exceeded returns True → attempts 2,3,4 all skipped.
+        # Only attempt 1 runs (returns short) → best-effort kept.
+        deps = _make_deps(
+            llm_responses=[short, long_t, long_t, long_t],
+            deadline_exceeded_returns=True,
+        )
+        cap = _CapturingLog()
+        kw = _common_kwargs(deps)
+        kw["log"] = cap
+        out, count = call_dedicated_thorough_with_fallback(
+            "prompt",
+            "exec",
+            ["b1"],
+            min_words=800,
+            **{k: v for k, v in kw.items()},
+        )
+        # Only attempt 1 ran (deadline skips 2,3,4); best-effort kept.
+        assert len(deps["_llm_calls"]) == 1
+        assert out == short
+        assert count == 0
