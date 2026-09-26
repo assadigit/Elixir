@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.4.36",
+  "generated_for_version": "0.5.3",
   "prompts_dir": "prompts/",
   "file_count": 56,
-  "manifest_sha256": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829",
+  "manifest_sha256": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f",
   "files": [
     {
       "path": "academic.md",
@@ -17,13 +17,13 @@
     },
     {
       "path": "default.md",
-      "sha256": "18d3ba9e06b19f70d5a1d78f6aaecdb5fff0f554b3be677376bbffcaa0b2d45d",
-      "bytes": 14513
+      "sha256": "b860841a928ea4d5778cc46a0eadc1e57d5a8e69501b269e67f6dcc74b38a782",
+      "bytes": 15657
     },
     {
       "path": "default_lowbit.md",
-      "sha256": "27fe13de7f6412dad54f67b3e559d319f8a3b17161a7c05a3fa437671d6c3afb",
-      "bytes": 9760
+      "sha256": "e48a0b15d771a14b1bc8293422693310088a0bc9b8f97021b508d0ab5f9fbc02",
+      "bytes": 10430
     },
     {
       "path": "evaluation/expert_fact_checker.md",

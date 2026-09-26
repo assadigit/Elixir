@@ -24,7 +24,30 @@ MAX_YEAR = date.today().year + 1
 
 _SUMMARY_CITATION_RE = re.compile(
     r"([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?"
-    r"(?:" + _CIT_APOS + r"[sS]?)?)"
+    r"(?:" + _CIT_APOS + r"[sS]?)?"
+    # V0.5.4 (E1): capture multi-author citation forms so the
+    # author-grounding check can verify each surname against the source.
+    # Pre-V0.5.4 the regex required the year IMMEDIATELY after the surname
+    # — so "X et al. (Year)" was SILENTLY SKIPPED (no match) and "X and Y
+    # (Year)" was matched with ONLY the second surname ("Y") captured (the
+    # first surname "X" was invisible to the grounding check). The
+    # AUDIT-V0.5.3-ground-truth found the source cites authors in both
+    # multi-author forms; making the summary-side regex symmetric with
+    # extract_citations' Pattern 1 (which already strips " et al." +
+    # captures "X and Y" via Pattern 5) keeps the two extractors in sync.
+    # Additive: the new groups are OPTIONAL — every prior single-surname
+    # + compound-surname + possessive match is byte-for-byte preserved
+    # (regression-guarded by tests/test_citations_regex.py). The captured
+    # group(1) may now include " et al." / " and Y"; the downstream
+    # `author_clean.split()[0]` stopword filter + `_author_in_source`
+    # casefold lookup handle the multi-word form (rapidfuzz fallback
+    # normalises "X and Y" → "xy" for matching against source "x and y"
+    # or individual "x"/"y" entries). Content-agnostic (Rule 1 ✓): no
+    # book-specific names; "and"/"et al." are generic English citation
+    # connectors.
+    r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)?"
+    r"(?:\s+et\s+al\.?)?"
+    r")"
     r"\s*\(?(\d{4}[a-z]?)\)?"
 )
 

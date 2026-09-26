@@ -283,6 +283,301 @@ def extract_all_caps_sections(md_text: str) -> list[dict]:
     return sections
 
 
+# V0.5.4 (Track B3): generic structured-table marker + content extractor.
+# Academic / clinical textbooks mark tables with "TABLE N-N." (digits + dash)
+# followed by a title line and the markdown-table body (lines starting with
+# ``|``). Conservative scope (per task V054-TRACK-B3): ONLY reproduce tables
+# explicitly marked ``TABLE N-N.`` — implicit prose tables are not detected.
+# Content-agnostic (Rule 1 ✓): the regex matches ANY digit-dash-digit marker,
+# no book-specific table numbers are hardcoded.
+_TABLE_MARKER_RE = re.compile(
+    r"^[ \t]*(TABLE\s+\d+[-\u2013]\d+\.?)\s*(.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_MD_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def extract_structured_tables(md_text: str) -> list[dict]:
+    """V0.5.4 (Track B3): extract tables explicitly marked ``TABLE N-N.``.
+
+    Conservative scope (per the V054-TRACK-B3 brief): only tables whose marker
+    matches the generic ``TABLE <digits>-<digits>`` shape are reproduced.
+    Implicit tables (prose formatted as columns) are NOT detected — the
+    explicit-marker contract keeps the reproduction honest (a wrong-shape
+    extraction would inject noise).
+
+    Each table is returned as::
+
+        {
+            "marker": "TABLE 6-1.",            # the bare marker as it appears
+            "title": "<marker's trailing title>",  # marker's trailing title (or "")
+            "content_lines": ["| ... |", ...], # the markdown-table rows
+            "start_line": int,                 # 1-based marker line
+            "end_line": int,                   # 1-based line of last row
+        }
+
+    Returns an empty list when no explicit markers are found (the legacy
+    behaviour — the renderer falls back to no-table output).
+    """
+    if not md_text:
+        return []
+    lines = md_text.split("\n")
+    tables: list[dict] = []
+    for m in _TABLE_MARKER_RE.finditer(md_text):
+        # locate the marker's 1-based line number
+        start_line = md_text.count("\n", 0, m.start()) + 1
+        # group 1 = the bare "TABLE N-N." marker; group 2 = the trailing
+        # title text (everything after the marker on the same line).
+        marker = (m.group(1) or "").strip()
+        title = (m.group(2) or "").strip()
+        # collect contiguous markdown-table rows that follow the marker line.
+        content_lines: list[str] = []
+        cursor = start_line  # 1-based
+        while cursor < len(lines):
+            raw = lines[cursor]
+            if _MD_TABLE_ROW_RE.match(raw):
+                content_lines.append(raw.rstrip())
+                cursor += 1
+                continue
+            # tolerate a single blank line directly under the marker before
+            # the first row (PDF extraction sometimes inserts a blank)
+            if not content_lines and not raw.strip():
+                cursor += 1
+                continue
+            break
+        # require at least one header + one separator + one data row, otherwise
+        # this is a marker without a real table body — skip it.
+        if len(content_lines) < 2:
+            continue
+        end_line = start_line + (len(content_lines) - 1)
+        tables.append(
+            {
+                "marker": marker,
+                "title": title,
+                "content_lines": content_lines,
+                "start_line": start_line,
+                "end_line": end_line,
+            }
+        )
+    return tables
+
+
+# V0.5.4 (Track B4): generic structured-diagnostic-criteria extractor.
+# Clinical / regulatory documents number criteria with ``a. b. c. d.`` (lower
+# Latin letters) and sub-items with ``(i) (ii) (iii)`` (lower Roman numerals
+# in parens). Conservative scope: only reproduce lettered lists WITH Roman
+# sub-items — prose-only criteria are not reproduced.
+# Content-agnostic (Rule 1 ✓): the regex matches the generic shape, no
+# book-specific criteria content is hardcoded.
+_CRITERION_LETTER_RE = re.compile(
+    r"^\s*([a-z])\.\s+(.+)$",
+)
+_CRITERION_ROMAN_SUBITEM_RE = re.compile(
+    r"^\s*\(([ivx]+)\)\s+(.+)$",
+)
+
+
+def extract_structured_criteria(md_text: str) -> list[dict]:
+    """V0.5.4 (Track B4): extract ``a. b. c. d.`` + ``(i) (ii)`` criteria.
+
+    Conservative scope (per the V054-TRACK-B4 brief): only reproduce lists whose
+    items are lettered ``a.`` ``b.`` ``c.`` ``d.`` AND have parenthesized Roman
+    sub-items ``(i) (ii) (iii)``. The combination (lettered parent + Roman
+    sub-items) is the standard DSM-style diagnostic-criteria shape; bare prose
+    or numbered-only lists are not reproduced.
+
+    Returns a list of criteria clusters. Each cluster is the contiguous run of
+    lettered items + their Roman sub-items found before a sustained prose break
+    (a prose line that does NOT immediately follow a letter or sub-item — the
+    signal that the document has moved on to discussion prose). One cluster per
+    DSM-style block. Each cluster is::
+
+        {
+            "items": [
+                {
+                    "letter": "a",
+                    "text": "Pervasive, unwarranted ...",
+                    "sub_items": [("i", "expectation of trickery ..."), ...],
+                },
+                ...
+            ],
+            "start_line": int,
+        }
+
+    Returns an empty list when no lettered+Roman pattern is found.
+
+    Boundary heuristic: a single blank line between ``a.`` and ``(i)`` is NOT a
+    cluster boundary (PDF→MD extraction often wraps the letter on its own line
+    with a blank line before the sub-items). The cluster terminates only when a
+    non-letter, non-Roman, non-blank prose line appears AND the previous
+    non-blank line was itself prose (a sustained prose passage, not a one-line
+    continuation of the previous letter's text).
+    """
+    if not md_text:
+        return []
+    lines = md_text.split("\n")
+    clusters: list[dict] = []
+    current_items: list[dict] = []
+    current_letter: str | None = None
+    current_text: str = ""
+    current_subs: list[tuple[str, str]] = []
+    cluster_start: int | None = None
+    # True when the previous non-blank line was a letter marker or a Roman
+    # sub-item — i.e., the cluster is still "active" and a following prose
+    # line is a continuation, not a cluster-terminating prose break.
+    last_was_marker = False
+
+    def _flush_letter():
+        nonlocal current_letter, current_text, current_subs
+        if current_letter is not None:
+            current_items.append(
+                {
+                    "letter": current_letter,
+                    "text": current_text.strip(),
+                    "sub_items": list(current_subs),
+                }
+            )
+        current_letter = None
+        current_text = ""
+        current_subs = []
+
+    def _flush_cluster():
+        nonlocal current_items, cluster_start
+        _flush_letter()
+        if current_items and cluster_start is not None:
+            clusters.append(
+                {
+                    "items": current_items,
+                    "start_line": cluster_start,
+                }
+            )
+        current_items = []
+        cluster_start = None
+
+    for i, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+        m_let = _CRITERION_LETTER_RE.match(raw)
+        m_rom = _CRITERION_ROMAN_SUBITEM_RE.match(raw)
+        if m_let:
+            if cluster_start is None:
+                cluster_start = i
+            _flush_letter()
+            current_letter = m_let.group(1)
+            current_text = m_let.group(2).strip()
+            current_subs = []
+            last_was_marker = True
+        elif m_rom:
+            # require an active letter (sub-items under a parent) —
+            # otherwise this is a stray Roman list, not a criterion cluster.
+            if current_letter is None:
+                continue
+            current_subs.append((m_rom.group(1), m_rom.group(2).strip()))
+            last_was_marker = True
+        elif stripped == "":
+            # blank line: do NOT terminate the cluster (PDF→MD extraction
+            # often wraps letters and sub-items on separate lines with a
+            # blank in between). Just skip — the next letter/sub-item or
+            # prose will decide the cluster's fate.
+            continue
+        else:
+            # prose line
+            if current_letter is not None and last_was_marker:
+                # one-line continuation of the current letter's text
+                # (e.g., "a. Pervasive...\n\nby at least three of the following:")
+                current_text = (current_text + " " + stripped).strip()
+                last_was_marker = False
+            elif cluster_start is not None:
+                # prose break inside a cluster boundary — close the cluster.
+                # This is the signal that the document moved on to discussion
+                # prose (the cluster is complete).
+                _flush_cluster()
+                last_was_marker = False
+            # else: prose outside any cluster — ignore.
+    if cluster_start is not None:
+        _flush_cluster()
+    # Final conservative gate: a cluster must have at least one lettered
+    # item WITH at least one Roman sub-item (the DSM-style shape contract).
+    return [
+        {
+            "items": [
+                it
+                for it in c["items"]
+                if it.get("sub_items")  # only items that have Roman sub-items
+            ],
+            "start_line": c["start_line"],
+        }
+        for c in clusters
+        if any(it.get("sub_items") for it in c["items"])
+    ]
+
+
+# V0.5.4 (Track C1): generic author→ALL-CAPS-section mapping.
+# Used by the renderer to group key-takeaway bullets under the source's
+# ALL-CAPS section headings. Each section's text range is the line interval
+# from the section's ALL-CAPS title line to the next ALL-CAPS title line (or
+# EOF). Within each interval the existing citation regex extracts authors;
+# the union of those authors is the section's author set.
+# Content-agnostic (Rule 1 ✓): section boundaries come from the runtime
+# extract_all_caps_sections call (generic ALL-CAPS shape); authors come from
+# the runtime extract_citations call (generic citation shape). No book-
+# specific section names or author names are hardcoded.
+def map_authors_to_all_caps_sections(md_text: str) -> list[dict]:
+    """V0.5.4 (Track C1): map cited authors to their ALL-CAPS section.
+
+    For each ALL-CAPS section detected by :func:`extract_all_caps_sections`,
+    extract the author-year citations in that section's line interval and
+    return the section title + the unique authors (in first-appearance order).
+
+    Returns::
+
+        [
+            {
+                "section_title": "DESCRIPTIVE STUDIES",
+                "start_line": int,
+                "end_line": int,            # exclusive (next section's line)
+                "authors": ["<cited-author-1>", "<cited-author-2>", ...],
+            },
+            ...
+        ]
+
+    Sections with no citations get an empty ``authors`` list (the renderer
+    leaves their bullets ungrouped — strict improvement, never a regression).
+    """
+    if not md_text:
+        return []
+    sections = extract_all_caps_sections(md_text)
+    if not sections:
+        return []
+    lines = md_text.split("\n")
+    section_line_starts = [s["line"] for s in sections]
+    out: list[dict] = []
+    for idx, sec in enumerate(sections):
+        start = sec["line"]
+        end = section_line_starts[idx + 1] if idx + 1 < len(section_line_starts) else len(lines) + 1
+        # the title line itself is part of the section but rarely carries a
+        # citation; slice [start-1 : end-1] (0-based) covers (start .. end-1)
+        chunk = "\n".join(lines[start - 1 : end - 1])
+        # extract_citations returns deduped authors; preserve first-appearance
+        # order for deterministic output across runs.
+        cites = extract_citations(chunk)
+        seen: set[str] = set()
+        authors: list[str] = []
+        for c in cites:
+            a = c.get("author", "")
+            if a and a not in seen:
+                seen.add(a)
+                authors.append(a)
+        out.append(
+            {
+                "section_title": sec["title"],
+                "start_line": start,
+                "end_line": end,
+                "authors": authors,
+            }
+        )
+    return out
+
+
 # V0.4.23 (audit V0.4.22, backlog #1): module-level garbage ledger —
 # populated by the most recent extract_citations call so the analysis
 # report (run_deterministic_analysis) can print the honest filtered line

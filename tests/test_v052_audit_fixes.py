@@ -247,6 +247,250 @@ class TestV052PronounStopword:
         )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.5.4 (Track C2) — Pattern A/C adverb-as-adjective auto-rewrite
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV054TrackC2PatternCRewrite:
+    """V0.5.4 (Track C2): the sentence-fusion detector
+    (``detect_sentence_fusion`` in ``core/summarisation/postchecks/garble/
+    fusion.py``) is upgraded from **flag-only** to **flag+auto-rewrite**
+    for clear grammatical garbles where the correction is unambiguous.
+
+    The V0.5.3 ground-truth audit (commit ``cfec6a9``, file
+    ``audit/results/AUDIT_V0.5.3_run20260926-211039-8b53ed76_ch6_summary_
+    vs_source.md``) found that bullet 15 of the V0.5.3 summary shipped a
+    grammatical garble — ``ego-syntonically personalities`` (the adverb
+    ``ego-syntonically`` misused as an adjective; should be
+    ``ego-syntonic personalities``). The sentence-fusion detector
+    correctly flagged the word (Pattern A specifically, since ``ally``
+    is a 4-char suffix; the V0.5.3 release notes' "Pattern C" wording
+    was loose shorthand for the whole sentence-fusion subsystem), but
+    the summary shipped it uncorrected because the detector was
+    flag-only.
+
+    Track C2 fixes this with a rule-based + deterministic (NOT LLM)
+    rewrite for the adverb-as-adjective pattern. The rule fires only
+    when ALL hold:
+
+      1. The flagged word ends in ``-ically`` (the adverb suffix formed
+         from an adjective ending in ``-ic`` + ``ally``; e.g.,
+         ``ego-syntonic`` + ``ally`` → ``ego-syntonically``). The
+         candidate rewrite is ``word[:-len("ically")] + "ic"`` (e.g.,
+         ``ego-syntonically`` → ``ego-syntonic``).
+      2. The candidate adjective is recognised as a real English word:
+         EITHER directly in the lexicon, OR (for domain-specific
+         hyphenated adjectives like ``ego-syntonic``) a hyphenated
+         compound whose LAST hyphen-component is in the lexicon (covers
+         the case where the lexicon has the stem ``syntonic`` but not
+         the hyphenated compound form ``ego-syntonic`` — the head of an
+         English hyphenated compound is its last component, so this is
+         morphologically principled).
+      3. The next word after the flagged word is a noun: in the lexicon
+         AND does NOT end in a common English past-tense / participle
+         ending (``ed``/``ing``/``en``). This distinguishes the garble
+         ``ego-syntonically personalities`` (rewrite — ``personalities``
+         is a noun) from the source's CORRECT usage
+         ``ego-syntonically embedded`` (no rewrite — ``embedded`` is a
+         verb past participle, the source's line 257).
+
+    If all checks pass → the returned ``text`` has the rewrite applied
+    (preserving all other character offsets) AND the flagged issue's
+    ``detail`` notes the rewrite. If ANY check fails → fall back to
+    flag-only (the V0.5.3 behavior). The rewrite is OPTIONAL + fail-open
+    (an empty lexicon ⇒ no rewrite).
+
+    Conservative scope (per the task spec): the rewrite is ONLY for the
+    ``-ically → -ic`` adverb→adjective pattern. It does NOT apply to
+    other garble types (dropped-prefix fusions like ``persecutionensate``
+    — those need LLM repair, not a deterministic rewrite).
+
+    Content-agnostic (Rule 1): the rule uses English morphology + lexicon
+    membership ONLY; no hardcoded words. The example ``ego-syntonically``
+    appears in TESTS only, never in the production code.
+    """
+
+    def test_ego_syntonically_rewrite_applied(self):
+        """e2e: ``ego-syntonically personalities`` is rewritten to
+        ``ego-syntonic personalities`` + the flagged issue's ``detail``
+        notes the rewrite.
+
+        The source has ``egosyntonic`` (the unhyphenated adjective form)
+        + ``syntonically`` (so ``ally`` is in the source-word suffix
+        set), which causes Pattern A to flag ``ego-syntonically`` (the
+        adverb form, not in lexicon) as a ``egosyntonic`` + ``ally``
+        fusion. The rewrite rule then fires:
+
+        - word ends in ``-ically`` ✓
+        - candidate ``ego-syntonic`` → last hyphen-component
+          ``syntonic`` IS in the lexicon ✓
+        - next word ``personalities`` IS in the lexicon AND does NOT
+          end in a verb past-tense ending ✓
+
+        → rewrite to ``ego-syntonic``.
+        """
+        src = "The patient showed egosyntonic traits. The behaviour was syntonically appropriate."
+        text = "ego-syntonically personalities are noted."
+        out, issues = detect_sentence_fusion(text, "exec", source_text=src)
+        fusion = [i for i in issues if i.detector == "sentence_fusion"]
+        assert len(fusion) >= 1, (
+            "Track C2: Pattern A must flag 'ego-syntonically' as a "
+            "sentence-fusion garble (the adverb form is not in lexicon)"
+        )
+        # The text was rewritten:
+        assert "ego-syntonic personalities" in out, (
+            "Track C2: 'ego-syntonically personalities' must be rewritten "
+            f"to 'ego-syntonic personalities'; got: {out!r}"
+        )
+        assert "ego-syntonically personalities" not in out, (
+            "Track C2: the original garble 'ego-syntonically "
+            f"personalities' must NOT appear in the rewritten text; got: {out!r}"
+        )
+        # The issue detail must note the rewrite:
+        assert any("Auto-rewrite" in i.detail and "ego-syntonic" in i.detail for i in fusion), (
+            "Track C2: the issue detail must note the auto-rewrite "
+            "(Auto-rewrite applied: 'ego-syntonically' → 'ego-syntonic'); "
+            f"got: {[i.detail for i in fusion]}"
+        )
+
+    def test_real_fusion_not_rewritten(self):
+        """e2e: ``persecutionensate`` (a real dropped-prefix fusion)
+        is STILL flagged, NOT rewritten. The ``-ically`` rule doesn't
+        apply (the word doesn't end in ``-ically``). This guards the
+        conservative scope: the rewrite is ONLY for the adverb-as-
+        adjective pattern, NOT for other garble types (dropped-prefix
+        fusions need LLM repair, not a deterministic rewrite, because
+        the correct reconstruction is ambiguous).
+        """
+        src = "persecution is wrong. compensate for the losses incurred."
+        text = "A persecutionensate problem here."
+        out, issues = detect_sentence_fusion(text, "exec", source_text=src)
+        fusion = [i for i in issues if i.detector == "sentence_fusion"]
+        assert len(fusion) >= 1, (
+            "Track C2: 'persecutionensate' is a genuine dropped-prefix "
+            "fusion (persecution + ensate, where 'ensate' is NOT a "
+            "lexicon word) and MUST still be flagged"
+        )
+        # The text was NOT rewritten (the -ically rule doesn't apply):
+        assert "persecutionensate" in out, (
+            "Track C2: 'persecutionensate' must NOT be rewritten (the "
+            "-ically rule doesn't apply — only adverb-as-adjective "
+            f"rewrites); got: {out!r}"
+        )
+        # The issue detail must NOT mention an auto-rewrite:
+        assert all("Auto-rewrite" not in i.detail for i in fusion), (
+            "Track C2: the 'persecutionensate' issue must NOT include an "
+            "auto-rewrite note (the rule didn't fire — the word doesn't "
+            f"end in -ically); got: {[i.detail for i in fusion]}"
+        )
+
+    def test_adverb_before_verb_not_rewritten(self):
+        """e2e: ``ego-syntonically embedded`` (the source's CORRECT
+        adverb-modifying-verb usage on line 257 of the V0.5.3 source
+        chapter) is NOT rewritten — the next word ``embedded`` ends in
+        ``ed`` (verb past participle), so the rewrite rule returns None.
+
+        Setup: the source has ``egosyntonic`` + ``syntonically`` so
+        Pattern A fires on ``ego-syntonically`` (the adverb form is not
+        in lexicon, fails the early-exit). The rewrite rule then runs
+        but the next word ``embedded`` triggers the verb-ending
+        exclusion → return None → flag-only (the V0.5.3 behavior).
+        """
+        src = "The egosyntonic traits were noted. The patient was syntonically appropriate."
+        text = "The patient was ego-syntonically embedded here."
+        out, issues = detect_sentence_fusion(text, "exec", source_text=src)
+        fusion = [i for i in issues if i.detector == "sentence_fusion"]
+        # Pattern A should flag the word (since 'ally' is 4 chars and the
+        # full word 'ego-syntonically' is not in lexicon/source):
+        assert len(fusion) >= 1, (
+            "Track C2 (e2e): Pattern A should flag 'ego-syntonically' as "
+            "a sentence-fusion garble (the word is not in lexicon/source)"
+        )
+        # The text was NOT rewritten (the next word 'embedded' is a verb):
+        assert "ego-syntonically embedded" in out, (
+            "Track C2 (e2e): 'ego-syntonically embedded' (correct adverb-"
+            "modifying-verb usage) must NOT be rewritten; got: "
+            f"{out!r}"
+        )
+        # The issue detail must NOT mention an auto-rewrite:
+        assert all("Auto-rewrite" not in i.detail for i in fusion), (
+            "Track C2 (e2e): 'ego-syntonically embedded' issue must NOT "
+            "include an auto-rewrite note (the rule didn't fire — next "
+            "word 'embedded' is a verb past participle); got: "
+            f"{[i.detail for i in fusion]}"
+        )
+
+    # ── Direct unit tests of the rewrite rule (no Pattern A/B/C needed) ──
+
+    def test_rewrite_rule_ego_syntonically_personalities(self):
+        """Direct unit test: ``_rewrite_grammatical_garble(
+        'ego-syntonically', 'personalities', lexicon)`` returns
+        ``'ego-syntonic'`` — the candidate is recognised as a real
+        English adjective via the hyphenated-compound fallback (last
+        hyphen-component ``syntonic`` IS in the lexicon).
+        """
+        from core.summarisation.postchecks.garble.fusion import _rewrite_grammatical_garble
+        from core.summarisation.postchecks.garble.lexicon import _load_english_lexicon
+
+        lex = _load_english_lexicon()
+        out = _rewrite_grammatical_garble("ego-syntonically", "personalities", lex)
+        assert out == "ego-syntonic", (
+            "Track C2: rewrite rule must return 'ego-syntonic' for "
+            f"'ego-syntonically' before noun 'personalities'; got: {out!r}"
+        )
+
+    def test_rewrite_rule_adverb_before_verb_returns_none(self):
+        """Direct unit test: ``_rewrite_grammatical_garble(
+        'ego-syntonically', 'embedded', lexicon)`` returns ``None`` —
+        ``embedded`` ends in ``ed`` (verb past participle), so the
+        rewrite is suppressed (the adverb is correctly modifying the
+        verb — the source's line 257 usage).
+        """
+        from core.summarisation.postchecks.garble.fusion import _rewrite_grammatical_garble
+        from core.summarisation.postchecks.garble.lexicon import _load_english_lexicon
+
+        lex = _load_english_lexicon()
+        out = _rewrite_grammatical_garble("ego-syntonically", "embedded", lex)
+        assert out is None, (
+            "Track C2: rewrite rule must return None for "
+            "'ego-syntonically' before verb 'embedded' (correct usage — "
+            f"adverb-modifying-verb); got: {out!r}"
+        )
+
+    def test_rewrite_rule_persecutionensate_returns_none(self):
+        """Direct unit test: ``_rewrite_grammatical_garble(
+        'persecutionensate', 'problem', lexicon)`` returns ``None`` —
+        the word doesn't end in ``-ically``, so the rule doesn't apply
+        (the dropped-prefix fusion needs LLM repair, not a deterministic
+        rewrite).
+        """
+        from core.summarisation.postchecks.garble.fusion import _rewrite_grammatical_garble
+        from core.summarisation.postchecks.garble.lexicon import _load_english_lexicon
+
+        lex = _load_english_lexicon()
+        out = _rewrite_grammatical_garble("persecutionensate", "problem", lex)
+        assert out is None, (
+            "Track C2: rewrite rule must return None for "
+            "'persecutionensate' (doesn't end in -ically — only "
+            f"adverb→adjective rewrites apply); got: {out!r}"
+        )
+
+    def test_rewrite_rule_failopen_on_empty_lexicon(self):
+        """Direct unit test: an empty lexicon ⇒ no rewrite (fail-open).
+        Guards the optional/fail-open contract: a missing or load-
+        failure lexicon degrades gracefully to flag-only (the V0.5.3
+        behavior). No exception is raised.
+        """
+        from core.summarisation.postchecks.garble.fusion import _rewrite_grammatical_garble
+
+        out = _rewrite_grammatical_garble("ego-syntonically", "personalities", set())
+        assert out is None, (
+            "Track C2: an empty lexicon must short-circuit to None "
+            f"(fail-open — no rewrite attempted); got: {out!r}"
+        )
+
+
 if __name__ == "__main__":
     import pytest
 

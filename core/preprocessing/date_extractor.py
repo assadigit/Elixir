@@ -113,6 +113,18 @@ _ERA_YEAR_PREFIX = re.compile(
 # (to avoid matching parts of words like "abc1891") or followed by more digits.
 _PLAIN_YEAR = re.compile(r"(?<!\w)(1\d{3}|2\d{3})(?!\d)")
 
+# Part 2b: Letter-suffixed academic years (e.g. "1921a", "1908b", "1973a").
+# V0.5.4 (Track E2): academic-citation convention disambiguates multiple
+# publications by the same author in the same year with a single lowercase
+# letter suffix. Without this pattern, extract_dates silently collapsed
+# "1921a"/"1921b" → "1921" (a FN for the letter-suffix format — distinct
+# papers became indistinguishable in the audit log). The new pattern
+# captures the full "1921a" text in DateMatch.text while normalising to
+# the bare year (ce:1921) so summary-vs-source matching still treats a
+# bare "1921" as a match for a suffixed "1921a" (Rule 1: no hardcoded
+# years/authors — generic \d{4}[a-z] structure).
+_LETTER_SUFFIX_YEAR = re.compile(r"(?<!\w)(1\d{3}|2\d{3})([a-z])\b")
+
 # Part 3: Approximate dates.
 # V0.5.1 (TUNING): exclude ~NNN when preceded by "p." or in a "(p. ~NNN)"
 # context — inject_page_refs uses ~ before page numbers, which the
@@ -128,6 +140,13 @@ _APPROX_PREFIX = re.compile(
 _APPROX_SUFFIX = re.compile(r"\b(\d{1,4})(\?)")
 
 # Part 4: Date ranges.
+# V0.5.4 (Track A — A3 fix): the character class accepts en-dash (U+2013),
+# em-dash (U+2014), AND ASCII hyphen (U+002D) for defense-in-depth — but the
+# real normalization happens at the top of extract_dates() (see
+# _DASH_TRANSLATE), which additionally covers the minus-sign (U+2212, used
+# by some NLP processors + academic typesetting) and guarantees the
+# downstream regexes see a single canonical dash regardless of input
+# typographic conventions.
 _YEAR_RANGE_DASH = re.compile(r"\b(\d{3,4})\s*[–—-]\s*(\d{2,4})\b")
 _YEAR_RANGE_SLASH = re.compile(r"\b(\d{4})/(\d{2,4})\b")
 _YEAR_RANGE_FROMTO = re.compile(r"\bfrom\s+(\d{3,4})\s+to\s+(\d{3,4})\b", re.IGNORECASE)
@@ -269,6 +288,28 @@ def _parse_plain_year(m: re.Match) -> DateMatch | None:
         format_type="plain_year",
         year=int(m.group(0)),
         era="ce",  # default to CE (common era)
+    )
+
+
+def _parse_letter_suffix_year(m: re.Match) -> DateMatch | None:
+    """V0.5.4 (Track E2): capture academic-citation year + letter suffix.
+
+    E.g. "1921a", "1908b" — disambiguates multiple publications by the
+    same author in the same year. The full text (with letter) is preserved
+    in DateMatch.text for the audit log; the normalised form is the bare
+    year (ce:1921) so a summary that cites just "1921" still matches a
+    source that cites "1921a"/"1921b" (avoids introducing false-positive
+    "hallucination" flags when the summary is less precise than the source).
+    """
+    year = int(m.group(1))
+    return DateMatch(
+        text=m.group(0),  # full "1921a"
+        start=m.start(),
+        end=m.end(),
+        format_type="letter_suffix",
+        year=year,
+        era="ce",
+        normalized=f"ce:{year}",  # bare-year normalisation preserves matching
     )
 
 
@@ -552,9 +593,33 @@ _PATTERNS: list[tuple[str, re.Pattern, callable]] = [
     ("range_fromto", _YEAR_RANGE_FROMTO, _parse_range_fromto),
     ("approx_prefix", _APPROX_PREFIX, _parse_approx_prefix),
     ("approx_suffix", _APPROX_SUFFIX, _parse_approx_suffix),
+    # V0.5.4 (Track E2): letter-suffixed academic years MUST come before
+    # plain_year so the letter isn't dropped (the bare-year lookbehind
+    # (?<!\w) on _PLAIN_YEAR would otherwise claim only "1921" from
+    # "1921a", losing the disambiguating suffix).
+    ("letter_suffix", _LETTER_SUFFIX_YEAR, _parse_letter_suffix_year),
     # Plain year LAST (least specific — matches bare 4-digit numbers).
     ("plain_year", _PLAIN_YEAR, _parse_plain_year),
 ]
+
+
+# V0.5.4 (Track A — A3 fix): normalize en-dash (U+2013), em-dash (U+2014),
+# and minus-sign (U+2212) to ASCII hyphen (U+002D) BEFORE the regex pass.
+# Each source character is a single Unicode codepoint that maps 1:1 to a
+# single ASCII hyphen — codepoint offsets are preserved (the regex engine
+# works on codepoint positions, not bytes), so DateMatch.start/end remain
+# valid against the ORIGINAL text. Without this, "1887–1902" (en-dash,
+# common in publisher copy-edit pipelines) and "1887−1902" (minus-sign,
+# used by some academic typesetting + NLP postprocessors) would slip past
+# the _YEAR_RANGE_DASH regex and produce false "omitted" date flags.
+# Generic typographic normalization (Rule 1 ✓ — no book/author content).
+_DASH_TRANSLATE = str.maketrans(
+    {
+        "\u2013": "-",  # en-dash
+        "\u2014": "-",  # em-dash
+        "\u2212": "-",  # minus-sign
+    }
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -574,6 +639,13 @@ def extract_dates(text: str) -> list[DateMatch]:
     pattern (e.g. "500 BC" is claimed by the era_suffix pattern, not
     plain_year).
 
+    V0.5.4 (Track A — A3 fix): en-dash / em-dash / minus-sign are
+    normalized to ASCII hyphen before the regex pass, so range patterns
+    match regardless of the source's typographic dash convention. Offset
+    preservation: each non-ASCII dash is a single codepoint that maps 1:1
+    to a single ASCII hyphen, so DateMatch.start/end remain valid against
+    the original (un-normalized) text.
+
     Args:
         text: the text to scan.
 
@@ -583,12 +655,18 @@ def extract_dates(text: str) -> list[DateMatch]:
     if not text:
         return []
 
+    # V0.5.4 (Track A — A3 fix): normalize en-dash / em-dash / minus-sign
+    # to ASCII hyphen in a working copy of the text BEFORE the regex pass.
+    # 1:1 codepoint substitution → offsets preserved (DateMatch.start/end
+    # remain valid against the original text).
+    _normalized_text = text.translate(_DASH_TRANSLATE)
+
     # V0.5.1 (TUNING): mask page-reference patterns ("p. ~137", "(p. ~141)")
     # before running the date patterns — inject_page_refs uses ~ before page
     # numbers, which the ~-prefix approx regex would falsely match as circa
     # years. Masking replaces the page-ref text with spaces (preserving
     # positions) so the date patterns don't see them.
-    _masked_text = _PAGE_REF_PREFIX.sub(lambda m: " " * len(m.group(0)), text)
+    _masked_text = _PAGE_REF_PREFIX.sub(lambda m: " " * len(m.group(0)), _normalized_text)
 
     all_matches: list[DateMatch] = []
     claimed: list[tuple[int, int]] = []  # (start, end) ranges already claimed
@@ -607,6 +685,26 @@ def extract_dates(text: str) -> list[DateMatch]:
     return all_matches
 
 
+def _year_covered_by_range(year: int, ranges: list[tuple[int, int]]) -> bool:
+    """Return True if ``year`` falls within any (start, end) range (inclusive).
+
+    V0.5.4 (Track A — A2 fix): used by :func:`compare_dates` to suppress
+    the range-component false-positive class — e.g. a summary that
+    references the range endpoints "1887" + "1902" as plain years must
+    NOT be flagged as hallucinated when the source has the contiguous
+    range "1887-1902" (and vice versa for omissions).
+
+    Args:
+        year: the candidate year (e.g. 1887).
+        ranges: a list of (start, end) inclusive integer tuples.
+
+    Returns:
+        True if ``start <= year <= end`` for any range; False otherwise
+        (including when ``ranges`` is empty).
+    """
+    return any(start <= year <= end for start, end in ranges)
+
+
 def compare_dates(
     summary_dates: list[DateMatch],
     source_dates: list[DateMatch],
@@ -621,16 +719,54 @@ def compare_dates(
     Comparison is by normalized form (e.g. "ce:1891", "bce:500", "century:19").
     Approximate dates (e.g. "c. 1891") match the corresponding exact date
     (e.g. "1891") — the "~" suffix is stripped for the comparison.
-    """
-    source_set = {d.normalized.replace("~", "").replace("?", "") for d in source_dates}
-    summary_set = {d.normalized.replace("~", "").replace("?", "") for d in summary_dates}
 
-    hallucinated = [
-        d for d in summary_dates if d.normalized.replace("~", "").replace("?", "") not in source_set
+    V0.5.4 (Track A — A2 fix): a summary year that is NOT in the source's
+    normalized set is still NOT flagged as a hallucination if it falls
+    within a source range (e.g. summary "1887" + "1902" vs source range
+    "1887-1902" — both endpoints are covered, so neither is hallucinated).
+    The symmetric check applies to omissions (source years covered by a
+    summary range are NOT flagged as omitted).
+    """
+
+    # Strip the approximate / uncertain suffixes for set comparison.
+    def _strip_norm(d: DateMatch) -> str:
+        return d.normalized.replace("~", "").replace("?", "")
+
+    source_set = {_strip_norm(d) for d in source_dates}
+    summary_set = {_strip_norm(d) for d in summary_dates}
+
+    # V0.5.4 (Track A — A2 fix): collect (start, end) inclusive ranges
+    # from both sides so a plain year that falls within a range on the
+    # other side is not flagged as a hallucination/omission.
+    source_ranges = [
+        (d.year, d.year_end) for d in source_dates if d.year is not None and d.year_end is not None
     ]
-    omitted = [
-        d for d in source_dates if d.normalized.replace("~", "").replace("?", "") not in summary_set
+    summary_ranges = [
+        (d.year, d.year_end) for d in summary_dates if d.year is not None and d.year_end is not None
     ]
+
+    hallucinated: list[DateMatch] = []
+    for d in summary_dates:
+        if _strip_norm(d) in source_set:
+            continue
+        # V0.5.4 (Track A — A2 fix): a summary year covered by a source
+        # range is NOT a hallucination (the source has the contiguous
+        # range; the summary merely references a sub-component).
+        if d.year is not None and _year_covered_by_range(d.year, source_ranges):
+            continue
+        hallucinated.append(d)
+
+    omitted: list[DateMatch] = []
+    for d in source_dates:
+        if _strip_norm(d) in summary_set:
+            continue
+        # V0.5.4 (Track A — A2 fix): a source year covered by a summary
+        # range is NOT an omission (the summary has the contiguous range;
+        # the source merely references a sub-component).
+        if d.year is not None and _year_covered_by_range(d.year, summary_ranges):
+            continue
+        omitted.append(d)
+
     matched = source_set & summary_set
 
     return {

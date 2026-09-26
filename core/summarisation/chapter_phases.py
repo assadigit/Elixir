@@ -989,10 +989,85 @@ class SummarizerChapterPhasesMixin:
             include_executive_summary=_inc_exec_lp,
             include_thorough_summary=_inc_thorough_lp,
             include_keypoints=_inc_kp_lp,
+            # V0.5.4 (Track B3+B4+C1): the runtime-extracted structured
+            # content from the chapter source — reproduced tables,
+            # reproduced diagnostic criteria, and the author→ALL-CAPS-
+            # section map used by the renderer to group bullets under
+            # the source's section headings. ALL populated from the
+            # deterministic analyzer (no LLM, no hardcoded names —
+            # Rule 1 compliant). The renderer is the consumer; here we
+            # only stamp the result. Empty list (the deterministic
+            # extractor returns [] when no marker is found) = the
+            # renderer emits no extra section (byte-identical to legacy).
+            source_section_map=self._extract_source_section_map(),
+            reproduced_tables=self._extract_reproduced_tables(),
+            reproduced_criteria=self._extract_reproduced_criteria(),
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     # V10.28.0 (Sprint 1.4): Quarantine recovery pass
+
+    # V0.5.4 (Track B3+B4+C1): thin delegate helpers that extract structured
+    # content from the chapter source via the deterministic analyzer. The
+    # extracted payloads are stamped onto the SummaryResult and consumed by
+    # ``render_summary_markdown``. They NEVER raise: any analyzer exception
+    # is logged at WARNING and the field stays empty (legacy behavior —
+    # the renderer falls back to the byte-identical legacy output). The
+    # delegates live on the Summarizer so the source text is read once per
+    # chapter (the existing ``self._source_text`` populated by
+    # ``_phase_setup_and_gate``) and so test fixtures that bypass the
+    # Summarizer can populate the fields directly without invoking the
+    # analyzer.
+    def _extract_source_section_map(self) -> list:
+        """V0.5.4 (Track C1): author→ALL-CAPS-section map for the renderer."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                map_authors_to_all_caps_sections,
+            )
+
+            return map_authors_to_all_caps_sections(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 C1: source_section_map extraction crashed (non-fatal, "
+                "renderer will fall back to flat list): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
+
+    def _extract_reproduced_tables(self) -> list:
+        """V0.5.4 (Track B3): explicit ``TABLE N-N.`` tables for the renderer."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                extract_structured_tables,
+            )
+
+            return extract_structured_tables(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 B3: reproduced_tables extraction crashed (non-fatal, "
+                "renderer will emit no tables section): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
+
+    def _extract_reproduced_criteria(self) -> list:
+        """V0.5.4 (Track B4): ``a. b. c. d.`` + ``(i) (ii)`` criteria clusters."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                extract_structured_criteria,
+            )
+
+            return extract_structured_criteria(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 B4: reproduced_criteria extraction crashed (non-fatal, "
+                "renderer will emit no criteria section): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
 
     def _phase_setup_and_gate(self, heading, content, book_context):
         """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""

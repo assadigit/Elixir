@@ -61,6 +61,7 @@ def call_dedicated_thorough_with_fallback(
     max_output_tokens: int,
     primary_model: str,
     temperature: float,
+    temperature_multiplier: float = 0.5,
     strip_thinking: StripThinkingFn,
     call_llm: CallLlmFn,
     deadline_exceeded: DeadlineExceededFn,
@@ -112,6 +113,16 @@ def call_dedicated_thorough_with_fallback(
     fallback_count = synthetic_fallback_count
     _max_tok = min(max_output_tokens or 8192, 8192)
 
+    # V0.5.4 (F2): the `* 0.5` multiplier on all 4 attempts is now a
+    # CONFIGURABLE parameter (default 0.5, the historical behavior). The
+    # owner can set `thorough.temperature_multiplier = 1.0` in settings for
+    # the FULL configured temperature (e.g., 0.7 instead of 0.35). This
+    # resolves the V0.5.3 ambiguity documented in the FIX-P3-6 TODO:
+    # the user's directive "models MUST only run with a fixed Temperature"
+    # was ambiguous — now it's explicit. The multiplier is applied to all
+    # 4 attempts (1, 2, 3, 4) for consistency.
+    _t = temperature * temperature_multiplier
+
     def _parse_thorough(raw: str | None) -> str | None:
         if not raw:
             return None
@@ -145,7 +156,7 @@ def call_dedicated_thorough_with_fallback(
         raw1 = call_llm(
             qwen_no_think(prompt, primary_model),
             model=primary_model,
-            temperature=temperature * 0.5,
+            temperature=_t,
             max_tokens=_max_tok,
         )
     except Exception as _e1:
@@ -186,7 +197,7 @@ def call_dedicated_thorough_with_fallback(
             raw2 = call_llm(
                 prompt + _nudge,
                 model=primary_model,
-                temperature=temperature * 0.5,
+                temperature=_t,
                 max_tokens=_max_tok,
             )
         except Exception as _e2:
@@ -227,9 +238,7 @@ def call_dedicated_thorough_with_fallback(
         log("    \u26a0\ufe0f Attempt 2 empty/short — retrying (attempt 3/3)", "DEBUG")
         raw3 = None
         try:
-            raw3 = call_llm(
-                prompt, model=primary_model, temperature=temperature * 0.5, max_tokens=_max_tok
-            )
+            raw3 = call_llm(prompt, model=primary_model, temperature=_t, max_tokens=_max_tok)
         except Exception as _e3:
             log(
                 f"    \u26a0\ufe0f Attempt 3/3 dedicated thorough crashed "
@@ -276,7 +285,7 @@ def call_dedicated_thorough_with_fallback(
             raw4 = call_llm(
                 prompt + _length_nudge,
                 model=primary_model,
-                temperature=temperature * 0.5,
+                temperature=_t,
                 max_tokens=_max_tok,
             )
         except Exception as _e4:

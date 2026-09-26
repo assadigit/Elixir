@@ -172,6 +172,34 @@ class SummaryResult:
     include_executive_summary: bool = True
     include_thorough_summary: bool = True
     include_keypoints: bool = True
+    # V0.5.4 (Track C1 — section breaks mirroring the source): the
+    # runtime-extracted author→ALL-CAPS-section map for THIS chapter's
+    # source text. Populated by the Summarizer from
+    # ``deterministic_analyzer.map_authors_to_all_caps_sections``. When
+    # non-empty AND bullet_points is non-empty, the markdown renderer
+    # groups the key-takeaway bullets under ``## {Section Title}``
+    # headings (one per source section whose authors appear in any
+    # bullet). Empty = legacy flat list under ``## Key Takeaways``
+    # (backward-compatible: every existing test fixture and legacy
+    # SummaryResult renders byte-identical to before).
+    source_section_map: list = field(default_factory=list)
+    # V0.5.4 (Track B3 — Table N-N reproduction): the runtime-extracted
+    # explicit ``TABLE N-N.`` tables from the chapter source. Populated
+    # by the Summarizer from
+    # ``deterministic_analyzer.extract_structured_tables``. The markdown
+    # renderer reproduces each table's ``content_lines`` verbatim under a
+    # clearly-labelled ``## Reproduced Tables (from source)`` section.
+    # Empty list = no reproduced-tables section (legacy behavior).
+    reproduced_tables: list = field(default_factory=list)
+    # V0.5.4 (Track B4 — DSM-style criteria reproduction): the runtime-
+    # extracted ``a. b. c. d.`` + ``(i) (ii) (iii)`` criteria clusters
+    # from the chapter source. Populated by the Summarizer from
+    # ``deterministic_analyzer.extract_structured_criteria``. The
+    # markdown renderer reproduces each cluster as a nested bullet list
+    # under a clearly-labelled ``## Reproduced Diagnostic Criteria (from
+    # source)`` section. Empty list = no criteria section (legacy
+    # behavior).
+    reproduced_criteria: list = field(default_factory=list)
 
 
 # ── Conversion Request / Result ───────────────────────────────────────────────

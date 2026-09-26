@@ -547,6 +547,9 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             or 8192,
             primary_model=self.primary_model,
             temperature=self.temperature,
+            temperature_multiplier=float(
+                getattr(self.settings, "thorough_temperature_multiplier", 0.5)
+            ),
             strip_thinking=self._strip_thinking,
             call_llm=self._call_llm,
             deadline_exceeded=self._deadline_exceeded,

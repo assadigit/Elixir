@@ -109,6 +109,193 @@ _SECTION_TRANSITION_RE = re.compile(
 )
 
 
+def _render_bullets_grouped_by_section(
+    bullets: list[str],
+    section_map: list[dict],
+) -> str:
+    """V0.5.4 (Track C1): group key-takeaway bullets under the source's
+    ALL-CAPS section headings.
+
+    Each bullet is assigned to the FIRST source section whose author set
+    contains a name that appears (case-insensitive, word-boundary substring)
+    in the bullet text. The mapping is fully runtime-derived (no hardcoded
+    names): the section titles come from the deterministic
+    ``extract_all_caps_sections`` pass on the chapter source, and the
+    author-per-section list comes from the deterministic
+    ``map_authors_to_all_caps_sections`` pass. Both are populated by the
+    Summarizer and stamped onto the SummaryResult's ``source_section_map``
+    field.
+
+    Bullets that do NOT mention any author from any source section are listed
+    at the end under the legacy ``## Key Takeaways`` heading (so the contract
+    a chapter without a section_map delivers — a flat list — is preserved).
+
+    The section order matches the source's ALL-CAPS section order (NOT the
+    bullets' order) so the rendered summary MIRRORS the source's structure —
+    the explicit goal of Track C1.
+
+    Content-agnostic (Rule 1): zero hardcoded section names, zero hardcoded
+    author names — every name and every section title is runtime-derived.
+    """
+    if not section_map or not bullets:
+        return "\n".join(f"- {b}" for b in bullets)
+
+    # Build author→section-title index (first section wins on duplicates).
+    author_to_section: dict[str, str] = {}
+    for sec in section_map:
+        title = sec.get("section_title", "")
+        if not title:
+            continue
+        for author in sec.get("authors", []) or []:
+            if author and author not in author_to_section:
+                author_to_section[author] = title
+
+    # If NO section has any authors, the map is non-informative — fall back
+    # to the legacy flat list (strict improvement: never regresses).
+    if not author_to_section:
+        return "\n".join(f"- {b}" for b in bullets)
+
+    # Assign each bullet to its section (first-author-match wins; bullets
+    # with no matching author go to the ungrouped bucket, in source order).
+    section_bullets: dict[str, list[str]] = {s.get("section_title", ""): [] for s in section_map}
+    ungrouped: list[str] = []
+    # Pre-build case-insensitive regex patterns (one per author) — re.search
+    # is case-sensitive by default, and the bullet text is lowercased while
+    # the author names retain their original (capitalized) case in the map.
+    author_patterns = [
+        (author, re.compile(r"\b" + re.escape(author.lower()) + r"\b"))
+        for author in author_to_section
+    ]
+    for bullet in bullets:
+        bullet_lower = bullet.lower()
+        assigned: str | None = None
+        for author, pat in author_patterns:
+            # word-boundary substring match (case-insensitive) — the
+            # \b anchors prevent short-surname false positives (a 4-letter
+            # name must not match a substring of a longer word) and also
+            # keep a name from matching its derived adjective form (the
+            # "-ian" suffix case).
+            if pat.search(bullet_lower):
+                assigned = author_to_section[author]
+                break
+        if assigned is None:
+            ungrouped.append(bullet)
+        else:
+            section_bullets.setdefault(assigned, []).append(bullet)
+
+    # Render: one ## {section title} group per section WITH bullets (sections
+    # without assigned bullets are omitted — strict-improvement, no empty
+    # headings, per the V0.05 rig F9a rule).
+    out_parts: list[str] = []
+    for sec in section_map:
+        title = sec.get("section_title", "")
+        if not title:
+            continue
+        sec_bs = section_bullets.get(title, [])
+        if not sec_bs:
+            continue
+        out_parts.append(f"## {title}\n\n")
+        for b in sec_bs:
+            out_parts.append(f"- {b}\n")
+        out_parts.append("\n")
+    if ungrouped:
+        # legacy fallback: bullets not assigned to any source section are
+        # rendered under the canonical "## Key Takeaways" heading so a
+        # reader still sees them and so the existing section parser still
+        # finds the section.
+        out_parts.append("## Key Takeaways\n\n")
+        for b in ungrouped:
+            out_parts.append(f"- {b}\n")
+    rendered = "".join(out_parts).rstrip() + "\n"
+    return rendered
+
+
+def _render_reproduced_tables(tables: list[dict]) -> str:
+    """V0.5.4 (Track B3): render the runtime-extracted ``TABLE N-N.``
+    tables verbatim as markdown under a clearly-labelled section.
+
+    Conservative scope (per the V054-TRACK-B3 brief): the table content is
+    reproduced AS-IS from the deterministic extractor's ``content_lines``
+    (the markdown-table rows that follow the ``TABLE N-N.`` marker in the
+    source). No paraphrasing, no LLM rewriting — the goal is faithful
+    reproduction.
+
+    The section heading is labelled "Reproduced Tables (from source)" so a
+    reader / downstream consumer can distinguish reproduced-source tables
+    from summarizer-authored additive-section tables. Each table is
+    preceded by its marker (e.g., ``TABLE 6-1.``) and title (if any) as a
+    bolded label.
+
+    Content-agnostic (Rule 1): the marker + content are runtime-derived
+    from the chapter source; the renderer does not look for any specific
+    table number.
+    """
+    if not tables:
+        return ""
+    parts = ["\n## Reproduced Tables (from source)\n\n"]
+    parts.append(
+        "The following tables are reproduced verbatim from the chapter "
+        "source. They were detected by the deterministic ``TABLE N-N.`` "
+        "marker (no LLM rewriting — the table content is the source's own "
+        "markdown-table rows).\n\n"
+    )
+    for t in tables:
+        marker = t.get("marker", "") or ""
+        title = t.get("title", "") or ""
+        content_lines = t.get("content_lines", []) or []
+        if marker:
+            parts.append(f"**{marker}**")
+            if title:
+                parts.append(f" {title}")
+            parts.append("\n\n")
+        elif title:
+            parts.append(f"**{title}**\n\n")
+        if content_lines:
+            parts.append("\n".join(content_lines).rstrip() + "\n\n")
+    return "".join(parts)
+
+
+def _render_reproduced_criteria(criteria_clusters: list[dict]) -> str:
+    """V0.5.4 (Track B4): render the runtime-extracted ``a. b. c. d.`` +
+    ``(i) (ii) (iii)`` diagnostic-criteria clusters as nested bullet lists.
+
+    Conservative scope (per the V054-TRACK-B4 brief): the criteria are
+    reproduced AS-IS from the deterministic extractor — no paraphrasing, no
+    condensing. Each lettered criterion becomes a top-level bullet
+    (``- **a.** text``), and each Roman sub-item becomes an indented bullet
+    (``  - (i) sub-text``).
+
+    The section heading is labelled "Reproduced Diagnostic Criteria (from
+    source)" so a reader can distinguish reproduced-source criteria from
+    summarizer-authored additive-section content.
+
+    Content-agnostic (Rule 1): the criteria text comes from the chapter
+    source (runtime-detected); the renderer does not look for any specific
+    criteria wording.
+    """
+    if not criteria_clusters:
+        return ""
+    parts = ["\n## Reproduced Diagnostic Criteria (from source)\n\n"]
+    parts.append(
+        "The following diagnostic criteria are reproduced verbatim from the "
+        "chapter source. They were detected by the deterministic "
+        "``a. b. c. d.`` + ``(i) (ii) (iii)`` pattern (no LLM condensing — "
+        "the criteria are the source's own structured list).\n\n"
+    )
+    for cluster in criteria_clusters:
+        items = cluster.get("items", []) or []
+        if not items:
+            continue
+        for it in items:
+            letter = it.get("letter", "")
+            text = it.get("text", "")
+            parts.append(f"- **{letter}.** {text}\n")
+            for marker, sub_text in it.get("sub_items", []) or []:
+                parts.append(f"  - ({marker}) {sub_text}\n")
+        parts.append("\n")
+    return "".join(parts).rstrip() + "\n\n"
+
+
 def _style_years_in_parens(match: re.Match) -> str:
     """Style every 4-digit year inside one parenthetical group.
 
@@ -301,7 +488,18 @@ def render_summary_markdown(summ: SummaryResult) -> str:
         _normalize_self_compounds(format_years(str(bp)), f"bullet[{i}]")
         for i, bp in enumerate(summ.bullet_points)
     ]
-    bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
+    # V0.5.4 (Track C1 — section breaks mirroring the source): when the
+    # SummaryResult carries a runtime-derived ``source_section_map`` (the
+    # author→ALL-CAPS-section map the Summarizer stamps onto the result),
+    # the bullets are grouped under the source's ALL-CAPS section
+    # headings INSTEAD of the legacy flat ``## Key Takeaways`` list. Empty
+    # section_map (the default for every legacy result + every test fixture
+    # that does not opt in) → legacy flat list → byte-identical to before.
+    _section_map = getattr(summ, "source_section_map", None) or []
+    if _section_map and formatted_bullets:
+        bullets_md = _render_bullets_grouped_by_section(formatted_bullets, _section_map)
+    else:
+        bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
 
     exec_formatted = _normalize_self_compounds(format_years(summ.executive_summary or ""), "exec")
     # V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at section
@@ -418,14 +616,39 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     if _inc_exec_r and (exec_formatted or "").strip():
         _core_chunks.append(f"## Executive Summary\n\n{exec_formatted}\n\n")
     if _inc_kp_r and (bullets_md or "").strip():
-        _core_chunks.append(f"## Key Takeaways\n\n{bullets_md}\n\n")
+        # V0.5.4 (Track C1): when the bullets were grouped under the
+        # source's ALL-CAPS section headings by ``_render_bullets_grouped_by_
+        # section``, the rendered string already opens with a ``## {Section}``
+        # heading — wrapping it under the legacy ``## Key Takeaways``
+        # heading would produce a doubly-nested heading tree (an ugly
+        # "## Key Takeaways" followed by sibling ``## {Section}`` children).
+        # The grouped bullets are emitted as a peer of Executive Summary
+        # and Thorough Summary (no Key Takeaways wrapper); the legacy
+        # flat-list case keeps the ``## Key Takeaways`` wrapper for byte-
+        # identical backward compatibility.
+        if _section_map and formatted_bullets and bullets_md.startswith("## "):
+            _core_chunks.append(f"{bullets_md}\n")
+        else:
+            _core_chunks.append(f"## Key Takeaways\n\n{bullets_md}\n\n")
     if _inc_th_r and (thorough_formatted or "").strip():
         _core_chunks.append(f"## Thorough Summary\n\n{thorough_formatted}\n")
+    # V0.5.4 (Track B3+B4): render the runtime-extracted reproduced tables
+    # and reproduced diagnostic criteria as clearly-labelled appendices,
+    # AFTER the additive sections (key_distinctions / theoretical_tensions /
+    # scholar_reflections / source_excerpts) and BEFORE the provenance
+    # footer. Each is rendered only when the Summarizer stamped a non-empty
+    # list onto the SummaryResult — legacy/empty results render byte-
+    # identical to before.
+    _repro_tables = getattr(summ, "reproduced_tables", None) or []
+    rt_md = _render_reproduced_tables(_repro_tables) if _repro_tables else ""
+    _repro_criteria = getattr(summ, "reproduced_criteria", None) or []
+    rc_md = _render_reproduced_criteria(_repro_criteria) if _repro_criteria else ""
     return (
         f"# Summary: {summ.chapter_heading}\n\n"
         f"{prov_md}"
         f"{''.join(_core_chunks)}"
         f"{kd_md}{tt_md}{sr_md}{se_md}"
+        f"{rt_md}{rc_md}"
         f"{footer_md}"
         f"{complete_sentinel(_run_id)}\n"
     )

@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "mode": "pipeline-rerun",
-  "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829",
+  "mode": "from-fixtures",
+  "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f",
   "chapters": {
     "academic": {
       "summary_id": "academic",
@@ -56,7 +56,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     },
     "academic_tables": {
       "summary_id": "academic_tables",
@@ -111,7 +111,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     },
     "farsi": {
       "summary_id": "farsi",
@@ -166,7 +166,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     },
     "multicolumn": {
       "summary_id": "multicolumn",
@@ -221,7 +221,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     },
     "nonfiction": {
       "summary_id": "nonfiction",
@@ -276,7 +276,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     },
     "scanned_ocr": {
       "summary_id": "scanned_ocr",
@@ -331,7 +331,7 @@
           "compliant": false
         }
       },
-      "prompt_manifest_hash": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829"
+      "prompt_manifest_hash": "9e09a5694869b2ac81f7bccf1b1f4c899bb9592eef7178a2b85258ebe950769f"
     }
   }
 }

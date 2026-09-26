@@ -102,6 +102,12 @@ Chapter content:
 - Do: Preserve the source's exact hedging strength. If the source says "may have contributed", write "may have contributed" — not "may explain" (which is stronger).
 - Don't: Strengthen hedged claims. "Perhaps contributed" ≠ "explains". "Suggests" ≠ "demonstrates". "May" ≠ "does".
 
+**Affected Populations (V0.5.4 B5):**
+- Do: When the source describes a disorder, condition, or phenomenon as affecting specific populations (e.g., "acute/reactive paranoid disorders" affecting particular demographic or situational groups), include the SPECIFIC populations the source lists — do not generalise to "vulnerable groups" or omit the list entirely. The populations named in the source are diagnostically relevant (they tell the reader WHO is at risk and in WHAT context).
+- Don't: Replace the source's specific population list with a generic phrase like "various populations" or "certain groups" — this loses the diagnostic specificity the source provides.
+- Don't: Invent populations not in the source — pull the list verbatim from the source text.
+- Rationale (V0.5.4 audit): the V0.5.3 ch.6 summary omitted the source's specific population list for acute/reactive paranoid disorders, reducing diagnostic specificity. This rule applies generically to ANY source-listed populations for ANY condition (Rule 1: no hardcoded populations — the instruction is content-agnostic; the LLM pulls the list from the runtime source).
+
 ### OUTPUT FORMAT ###
 
 Output ONLY the five XML sections below. No preamble, no commentary, no thinking process, no markdown code fences.
