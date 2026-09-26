@@ -1086,5 +1086,23 @@ Commit: `93b1aae` (the layer + wiring + 7 tests).
 **Net-green:** ruff clean; eval gate OK (hash flat); **6,135 P / 0 F /
 36 S exit 0** (+7: the 7 V0.4.40 verification tests); deny-list passes.
 
+---
+
+## Phase 23 — V0.5.0 release (the deterministic date-extraction module + verification LAYER integration — new architecture)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.5.0`).
+> Tagged `V0.5.0`.
+
+Per the user's direction: a robust deterministic date-extraction script
+for the verification phase, covering the user's exhaustive date-format
+list (Parts 1-10). Minor-version bump (V0.4.x → V0.5.x) reflecting the
+new architectural module.
+
+Commit: `2a145ef` (the module + wiring + 37 tests).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,172 P / 0 F /
+36 S exit 0** (+37); deny-list passes.
+
+
 
 

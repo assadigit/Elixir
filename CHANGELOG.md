@@ -24,6 +24,51 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.0 — the deterministic date-extraction module + verification LAYER integration (new architecture)
+
+> **The release:** per the user's direction ("for verification phase we
+> need a robust date-extraction deterministic script" + the exhaustive
+> date-format list, Parts 1-10), a new deterministic date-extraction
+> module covering BC/AD/BCE/CE, plain years, approximate dates, ranges,
+> centuries/decades/millennia, full calendar dates, scientific notation
+> (BP/ka/Ma/Mya), and historical calendar eras (AH/AM/AUC/SH/BE/Saka/VS).
+> Wired into the V0.4.40 verification LAYER as a deterministic date-check
+> that runs alongside the LLM verification. Minor-version bump (V0.4.x →
+> V0.5.x) reflecting the new architectural module.
+
+**1. Date-extraction module (commit `2a145ef`):**
+  `core/preprocessing/date_extractor.py` —
+  `extract_dates(text) -> list[DateMatch]` finds ALL date-like
+  expressions in text. Each DateMatch carries: the matched text, position,
+  format_type (plain_year/era_suffix/era_prefix/circa/range_dash/
+  range_slash/century/century_word/decade/millennium/full_date_dmy/
+  full_date_mdy/iso_date/numeric_date/calendar_era/scientific_bp/
+  scientific_ma), the extracted year + era (ad/bc/bce/ce/bp/ah/am/auc/
+  sh/be/saka/vs), is_approximate, is_uncertain, and a normalized
+  canonical form for comparison (e.g. "bce:500", "ce:1891~",
+  "century:19", "range:1891-1895", "bp:5000"). Overlap resolution
+  (most-specific pattern wins — "500 BC" is claimed by the era_suffix
+  pattern, not plain_year). `compare_dates(summary_dates, source_dates)
+  -> {hallucinated, omitted, matched}` — summary dates NOT in the source
+  (potential fabrications) + source dates NOT in the summary (potential
+  omissions). Approximate dates (c. 1891) match exact dates (1891).
+  Content-agnostic (Rule 1 ✓ — generic date-structure regexes, no
+  hardcoded dates; works on any book in any discipline).
+
+**2. Verification LAYER integration (commit `2a145ef`):** the
+  deterministic date-check runs BEFORE the LLM call in
+  `verify_and_polish_summary` — extracts dates from the summary +
+  source, compares, flags mismatches as `verification_date_check` Issues
+  (severity="flag", advisory). The LLM corrections (severity="fix") handle
+  the actual fixing. The date-check runs regardless of model
+  configuration (it's deterministic — doesn't need an LLM).
+
+**Tests:** `tests/test_v0500_date_extractor.py` — 37 tests across 8
+  format classes + the compare_dates function.
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,172 P / 0 F /
+36 S exit 0** (+37: the 37 date-extractor tests); deny-list passes.
+
 ## V0.4.40 — the post-conversion verification + polish LAYER (Dates/Names/Omissions/Hallucinations)
 
 > **The release:** a new architectural LAYER (per the user's design) — a
