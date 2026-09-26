@@ -139,6 +139,13 @@ _ERA_YEAR_PREFIX = re.compile(
 _PLAIN_YEAR = re.compile(r"(?<!\w)(1\d{3}|2\d{3})(?!\d)")
 
 # Part 3: Approximate dates.
+# V0.5.1 (TUNING): exclude ~NNN when preceded by "p." or in a "(p. ~NNN)"
+# context — inject_page_refs uses ~ before page numbers, which the
+# extractor falsely matched as circa years (e.g. "(p. ~137)" → circa 137).
+# The negative lookbehind (?<!p\.\s) and (?<!p\.\s\() block the page-ref
+# context. The word-based prefixes (c./ca./circa/about/around) are
+# unaffected.
+_PAGE_REF_PREFIX = re.compile(r"p\.\s*~?\d", re.IGNORECASE)
 _APPROX_PREFIX = re.compile(
     r"(?<!\w)(c\.|ca\.|circa|about|around|approx\.|approximately|~)\s*(\d{1,4})\b",
     re.IGNORECASE,
@@ -597,11 +604,18 @@ def extract_dates(text: str) -> list[DateMatch]:
     if not text:
         return []
 
+    # V0.5.1 (TUNING): mask page-reference patterns ("p. ~137", "(p. ~141)")
+    # before running the date patterns — inject_page_refs uses ~ before page
+    # numbers, which the ~-prefix approx regex would falsely match as circa
+    # years. Masking replaces the page-ref text with spaces (preserving
+    # positions) so the date patterns don't see them.
+    _masked_text = _PAGE_REF_PREFIX.sub(lambda m: " " * len(m.group(0)), text)
+
     all_matches: list[DateMatch] = []
     claimed: list[tuple[int, int]] = []  # (start, end) ranges already claimed
 
     for _name, regex, parser in _PATTERNS:
-        for m in regex.finditer(text):
+        for m in regex.finditer(_masked_text):
             # Skip if this match overlaps with an already-claimed range.
             if any(m.start() < c_end and m.end() > c_start for c_start, c_end in claimed):
                 continue

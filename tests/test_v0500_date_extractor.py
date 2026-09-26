@@ -1,13 +1,42 @@
-"""V0.5.0: characterization tests for the deterministic date extractor.
+"""V0.5.0/V0.5.1: characterization tests for the deterministic date extractor
++ the verification LAYER's coverage-targeting.
 
 Covers the major date-format classes from the user's exhaustive list
 (Parts 1-8): BC/AD/BCE/CE, plain years, approximate, ranges, centuries,
 decades, millennia, full dates, scientific notation, calendar eras.
++ V0.5.1: page-reference false-positive fix + coverage-targeting.
 """
 
 from __future__ import annotations
 
 from core.preprocessing.date_extractor import compare_dates, extract_dates
+
+
+class _MockVerifyProvider:
+    """A mock LLM provider that returns a caller-supplied raw response."""
+
+    def __init__(self, raw_response):
+        self._raw = raw_response
+        self.calls = []
+
+    def complete(self, *, prompt, temperature, max_tokens, model):
+        self.calls.append({"prompt": prompt, "temperature": temperature})
+        return self._raw
+
+
+class _MockSettings:
+    """Minimal Settings stub returning a configured model + ollama arch."""
+
+    def __init__(self, *, model="mock-model", arch="single_local"):
+        self._model = model
+        self._arch = arch
+
+    def get(self, key, default=None):
+        if key == "summarisation.model":
+            return self._model
+        if key == "summarisation.model_architecture":
+            return self._arch
+        return default
 
 
 class TestDateExtractorPart1BCADBCECE:
@@ -218,3 +247,84 @@ class TestCompareDates:
         source = extract_dates("in 1891")
         result = compare_dates(summary, source)
         assert result["hallucinated_count"] == 0  # c.1891 matches 1891
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.5.1: page-reference false-positive fix + coverage-targeting
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV051PageRefFalsePositiveFix:
+    """V0.5.1: the ~NNN page-reference false positive is fixed."""
+
+    def test_page_ref_not_matched(self):
+        """~137 in a (p. ~137) page-ref context is NOT matched as circa."""
+        dms = extract_dates("The chapter discusses PPD (p. ~137) in detail.")
+        approx = [d for d in dms if d.is_approximate]
+        assert approx == [], "page-ref ~137 should NOT be matched as circa"
+
+    def test_multiple_page_refs_not_matched(self):
+        """Multiple (p. ~NNN) references are all excluded."""
+        text = (
+            "- PPD vs. phobic (p. ~137)\n"
+            "- PPD vs. compulsive (p. ~141)\n"
+            "- PPD vs. narcissistic (p. ~146)\n"
+            "- PPD vs. antisocial (p. ~150)\n"
+            "- PPD vs. schizophrenia (p. ~155)"
+        )
+        dms = extract_dates(text)
+        approx = [d for d in dms if d.is_approximate]
+        assert approx == [], "no page-ref ~NNN should be matched as circa"
+
+    def test_real_circa_still_matched(self):
+        """~1891 in a non-page-ref context IS still matched (the fix
+        doesn't break real circa-date detection)."""
+        dms = extract_dates("The manuscript dates to ~1891.")
+        approx = [d for d in dms if d.is_approximate]
+        assert len(approx) == 1
+        assert approx[0].year == 1891
+
+
+class TestV051CoverageTargeting:
+    """V0.5.1: the verification LAYER extracts source authors, checks
+    which are missing, adds them to the LLM prompt (the 10/10 coverage
+    objective)."""
+
+    def test_coverage_check_finds_missing_authors(self, monkeypatch):
+        """When source has authors NOT in the summary, a verification_coverage
+        flag is produced + the missing authors are added to the prompt."""
+        from core.summarisation.verification_phase import verify_and_polish_summary
+
+        source = (
+            "Smith (1971) described the mechanism. "
+            "Jones (1980) extended the framework. "
+            "Brown (1985) provided the synthesis."
+        )
+        summary = "Smith (1971) described the mechanism."  # Jones + Brown missing
+
+        provider = _MockVerifyProvider("[]")  # LLM returns no corrections
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        # The coverage check should flag Jones + Brown as missing.
+        cov = [i for i in issues if i.detector == "verification_coverage"]
+        assert len(cov) >= 1, "missing source authors should be flagged"
+        assert "Jones" in cov[0].detail or "Brown" in cov[0].detail
+        # The prompt should contain the coverage note.
+        assert "ADDITIONAL COVERAGE CHECK" in provider.calls[0]["prompt"]
+        assert "Jones" in provider.calls[0]["prompt"]
+
+    def test_coverage_check_no_missing_authors(self, monkeypatch):
+        """When all source authors ARE in the summary, no coverage flag."""
+        from core.summarisation.verification_phase import verify_and_polish_summary
+
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1971) described the mechanism."
+        provider = _MockVerifyProvider("[]")
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        cov = [i for i in issues if i.detector == "verification_coverage"]
+        assert cov == [], "no coverage flag when all authors are covered"

@@ -261,6 +261,56 @@ def verify_and_polish_summary(
         if not provider:
             return rendered_md, issues
 
+        # V0.5.1: coverage-targeting — extract source authors, check
+        # which are NOT covered in the summary, add them to the LLM
+        # prompt so the verification LLM can ADD missing bullets (the
+        # "10/10 coverage" objective). Content-agnostic (Rule 1 — uses
+        # the runtime extract_citations on the source, no hardcoded
+        # names).
+        _coverage_note = ""
+        try:
+            from core.preprocessing.deterministic_analyzer import extract_citations
+
+            _src_cits = extract_citations(source_text)
+            _src_authors = list(
+                {c["author"] for c in _src_cits if c.get("author") and len(c["author"]) >= 3}
+            )
+            _rendered_lower = rendered_md.lower()
+            _missing = [
+                a
+                for a in _src_authors
+                if a.lower() not in _rendered_lower
+                and a.lower().rstrip("s") not in _rendered_lower  # plural
+            ]
+            if _missing:
+                _missing_list = ", ".join(sorted(_missing)[:25])
+                _coverage_note = (
+                    f"\n\nADDITIONAL COVERAGE CHECK: The following source "
+                    f"authors/contributors are NOT covered in the summary: "
+                    f"{_missing_list}. For each, add a concise grounded bullet "
+                    f"(anchored at the END of the Key Takeaways bullet list, "
+                    f"before the **Conclusions** bullet). Each bullet must be "
+                    f"grounded in the SOURCE text. Use the targeted-correction "
+                    f'format: the "original" is the anchor text (e.g. the '
+                    f'**Conclusions** bullet) and the "corrected" is the '
+                    f"anchor + the new bullet(s) inserted before it."
+                )
+                issues.append(
+                    Issue(
+                        detector="verification_coverage",
+                        severity="flag",
+                        field="summary",
+                        snippet=f"missing {len(_missing)} author(s)",
+                        detail=(
+                            f"coverage-targeting: {len(_missing)} source author(s) "
+                            f"NOT found in the summary ({_missing_list[:100]}). "
+                            f"Added to the LLM verification prompt."
+                        ),
+                    )
+                )
+        except Exception:
+            logger.warning("coverage-targeting extract crashed (non-fatal)")
+
         # The verification needs the full source (to check omissions +
         # hallucinations), not just a 20k excerpt like the garble repair.
         # Clamp to 50k chars (~10k tokens) for very long chapters.
@@ -268,7 +318,9 @@ def verify_and_polish_summary(
         # JSON-brace examples {"original": ...} that .format would try to
         # interpret as format fields (KeyError).
         source_excerpt = (source_text or "")[:50000]
-        prompt = _VERIFICATION_PROMPT.replace("{source}", source_excerpt) + rendered_md
+        prompt = (
+            _VERIFICATION_PROMPT.replace("{source}", source_excerpt) + rendered_md + _coverage_note
+        )
         raw = provider.complete(
             prompt=prompt,
             temperature=0.0,

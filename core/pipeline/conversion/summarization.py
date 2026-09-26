@@ -1054,6 +1054,15 @@ def run_summarization(
                     _rendered, _v_issues = verify_and_polish_summary(
                         _rendered, _v_source, converter.settings, log
                     )
+                    # V0.5.1 (BUG fix): LOG the verification issues to the
+                    # conversion log (was silently dropped — the audit
+                    # couldn't see the date-check + LLM verification output).
+                    for _vi in _v_issues or []:
+                        log(
+                            f"    ✨ V0.5.1 verification: [{_vi.detector}/{_vi.severity}] "
+                            f"{_vi.detail[:120]}",
+                            "DEBUG" if _vi.severity == "fix" else "WARNING",
+                        )
                 except Exception as _ve:  # pragma: no cover — the layer must never break the write
                     log(
                         f"    ⚠️  V0.4.40 verification crashed (non-fatal): "
