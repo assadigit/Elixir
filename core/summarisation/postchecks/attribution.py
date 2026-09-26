@@ -32,6 +32,46 @@ _BOLD_NAME_RE = re.compile(
     r"\*\*([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)\*\*\s*:\s*(.{10,})"
 )
 
+# V0.4.38 (F4): common English discourse / publishing section labels that
+# are NOT author names. The bold-name detector flagged "**Conclusions**:"
+# (V0.4.37 conv-log line 743) as "author 'Conclusions' not found in
+# source" — it's a structural section label, not an author attribution.
+# These single-word labels match _BOLD_NAME_RE (multi-word labels like
+# "**Further, it characterizes...**" don't, because the regex requires a
+# single capitalized word or a NAME_SEP-joined pair). Genre-agnostic
+# (Rule 1): these are generic English publishing/discourse section
+# labels, not book-specific terms — the same list applies to a physics
+# textbook, a novel, or a cooking manual.
+_BOLD_NAME_STRUCTURAL_LABELS = frozenset(
+    {
+        "conclusions",
+        "summary",
+        "overview",
+        "introduction",
+        "discussion",
+        "references",
+        "bibliography",
+        "appendix",
+        "notes",
+        "preface",
+        "foreword",
+        "acknowledgments",
+        "acknowledgements",
+        "index",
+        "postscript",
+        "addendum",
+        "glossary",
+        "abstract",
+        "background",
+        "methods",
+        "methodology",
+        "results",
+        "findings",
+        "limitations",
+        "highlights",
+    }
+)
+
 _BARE_YEAR_RE = re.compile(r"\b(1\d{3}|20\d{2}|21\d{2})\b")
 
 
@@ -569,6 +609,12 @@ def verify_bold_name_attribution(
             author = m.group(1).strip()
             claim = m.group(2).strip()
             if len(author) < 3:
+                continue
+            # V0.4.38 (F4): skip common English discourse/publishing
+            # section labels (e.g. "**Conclusions**:") — they're
+            # structural labels, not author attributions. See
+            # _BOLD_NAME_STRUCTURAL_LABELS.
+            if author.casefold() in _BOLD_NAME_STRUCTURAL_LABELS:
                 continue
             key = author.casefold()
             if key in seen:

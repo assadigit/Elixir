@@ -151,3 +151,57 @@ class TestV0438F3FragmentMergeLexiconCheck:
         flags = [i for i in issues if i.detector == "fragment_merge"]
         assert len(flags) >= 1, "a genuine fragment-merge must still be flagged"
         assert "adolescenceo" in flags[0].detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F4: "Conclusions" bold-name false-positive (structural-label exemption)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.postchecks.attribution import verify_bold_name_attribution
+
+
+class TestV0438F4BoldNameStructuralLabelExemption:
+    """F4: verify_bold_name_attribution no longer flags common English
+    discourse/publishing section labels (e.g. '**Conclusions**:') as
+    unknown authors.
+
+    The V0.4.37 bullet[59] flagged '**Conclusions**: (1) includes...'
+    (conv-log line 743) as "bold-name author 'Conclusions' not found in
+    source" — it's a structural section label, not an author attribution.
+    The V0.4.38 fix adds a genre-agnostic allowlist
+    (_BOLD_NAME_STRUCTURAL_LABELS) of common English section labels.
+    Rule 1: the list is generic English publishing/discourse labels,
+    not book-specific.
+    """
+
+    def test_conclusions_label_not_flagged(self):
+        """'**Conclusions**:' is a structural label, not an author — not
+        flagged (the V0.4.37 false-positive)."""
+        src = "Cameron (1963) outlined four aspects of paranoid personality."
+        text = "- **Conclusions**: (1) includes both phenomenological observations thoroughly."
+        _, issues = verify_bold_name_attribution(text, src, "bullet[59]")
+        flags = [i for i in issues if i.detector == "attribution"]
+        assert flags == [], (
+            "F4: '**Conclusions**:' is a structural label, not an author; "
+            f"got: {[i.detail for i in flags]}"
+        )
+
+    def test_summary_overview_introduction_labels_not_flagged(self):
+        """Other common section labels (Summary, Overview, Introduction)
+        are also exempt."""
+        src = "Some source text about a topic."
+        for label in ("Summary", "Overview", "Introduction", "Discussion", "References"):
+            text = f"- **{label}**: this section recaps the key points made earlier."
+            _, issues = verify_bold_name_attribution(text, src, "bullet[0]")
+            flags = [i for i in issues if i.detector == "attribution"]
+            assert flags == [], f"section label '{label}' must not be flagged"
+
+    def test_real_bold_name_author_still_flagged(self):
+        """Regression guard: a real '**AuthorName**:' bold whose author is
+        NOT in the source is still flagged."""
+        src = "Cameron (1963) outlined four aspects of paranoid personality."
+        text = "- **Voss**: described the layered model of structure formation here."
+        _, issues = verify_bold_name_attribution(text, src, "bullet[1]")
+        flags = [i for i in issues if i.detector == "attribution"]
+        assert len(flags) >= 1, "a real bold-name author not in source must still flag"
+        assert "Voss" in flags[0].detail
