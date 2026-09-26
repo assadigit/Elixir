@@ -265,6 +265,13 @@ def detect_sentence_fusion(
                 # is still suspicious (e.g., 'praiseity' = 'praise' +
                 # 'ity'; 'ity' is a real suffix but 'praiseity' is not
                 # a real word).
+                # V0.5.2 (TUNING): also check the full word against the
+                # lexicon for Pattern C (the suffix-is-a-suffix-of-source-word
+                # check). Words like "underrepresentation" (under+representation)
+                # are real English compounds not in the lexicon but are NOT
+                # fusions. The full-word lexicon check suppresses this class.
+                if word in lexicon:
+                    continue  # real English word — not a fusion
                 if _is_legit_fusion_suffix(suffix):
                     full_word_is_real = (lexicon and word in lexicon) or (word in source_words)
                     if full_word_is_real:

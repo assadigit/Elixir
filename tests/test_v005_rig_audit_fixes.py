@@ -357,8 +357,12 @@ class TestLengthPolicy:
     def test_bullet_expansion_threshold_is_source_scaled(self):
         # V0.18 (Phase 5.1, steps 2-4): the expansion gates moved VERBATIM to
         # chapter_phases.py (SummarizerChapterPhasesMixin).
+        # V0.5.2: the bullet-count target gate is REMOVED (user directive:
+        # never set min/max/appropriate for bullet count). The expansion
+        # now fires whenever the primary produced bullets + keypoints
+        # requested + deadline allows — regardless of count.
         src = _strip_comments(_src("core/summarisation/chapter_phases.py"))
-        assert "len(bullets) < _bp_lo_lp" in src
+        assert "len(bullets) < _bp_lo_lp" not in src  # V0.5.2: removed
         assert "len(bullets) < 30" not in src
 
     def test_theorist_floor_budget_gate(self):

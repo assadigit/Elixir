@@ -2,7 +2,7 @@
 
 Extracted verbatim from ``Summarizer._call_dedicated_thorough_with_fallback``
 (god-class decomposition Stage 3). Hardens the dedicated thorough summary path
-with 3 LLM attempts (normal → directive nudge → greedy temperature 0.0) and a
+with 3 LLM attempts (normal → directive nudge → retry) and a
 deterministic synthetic fallback built from the exec summary + bullets.
 
 **Extraction map**:
@@ -92,7 +92,7 @@ def call_dedicated_thorough_with_fallback(
       - Attempt 1: the normal dedicated prompt (via call_llm).
       - Attempt 2 (if #1 empty/short): retry with a terse directive nudge +
         a 3s VRAM-reload delay (the model may have been evicted).
-      - Attempt 3 (if #2 empty/short): retry at temperature 0.0 (greedy
+      - Attempt 3 (if #2 empty/short): retry at the user's temperature
         decoding — maximally deterministic, least likely to wander into an
         empty generation).
       - Attempt 4 (V0.4.38 F2, if #1-#3 all non-empty but < min_words):
@@ -205,16 +205,20 @@ def call_dedicated_thorough_with_fallback(
             if best_words >= min_words:
                 return best, fallback_count
 
-    # ── Attempt 3: greedy decoding (temperature 0.0) — most deterministic. ──
+    # ── Attempt 3 (V0.5.2 fix): retry at the user's configured temperature
+    # (was temperature 0.0 — greedy; the user's directive: "models MUST
+    # only run with a fixed Temperature, nothing else is allowed" — so
+    # Attempt 3 now uses the same temperature as Attempts 1+2 instead
+    # of 0.0 greedy decoding). ──
     if deadline_exceeded("dedicated thorough (attempt 3)"):
         log("    \u23f1\ufe0f Skipping thorough attempt 3 (chapter deadline exceeded)", "DEBUG")
     else:
-        log(
-            "    \u26a0\ufe0f Attempt 2 empty/short — retrying at temperature 0.0 (greedy)", "DEBUG"
-        )
+        log("    \u26a0\ufe0f Attempt 2 empty/short — retrying (attempt 3/3)", "DEBUG")
         raw3 = None
         try:
-            raw3 = call_llm(prompt, model=primary_model, temperature=0.0, max_tokens=_max_tok)
+            raw3 = call_llm(
+                prompt, model=primary_model, temperature=temperature * 0.5, max_tokens=_max_tok
+            )
         except Exception as _e3:
             log(
                 f"    \u26a0\ufe0f Attempt 3/3 dedicated thorough crashed "

@@ -411,9 +411,10 @@ class TestF4BulletCap:
         # entirely — the block now reports honestly and never truncates;
         # the same applies to the historical 80-bullet cap.
         s = _strip_comments(_src("core/summarisation/chapter_phases.py"))
-        assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" in s
-        # the no-cap policy: honest reporting, never truncation
-        assert "NO CAP (user" in s
+        # V0.5.2 (user directive): the bullet-count guidance log is
+        # REMOVED — never set any standard for bullet count.
+        assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" not in s
+        assert "NO CAP (user" not in s  # V0.5.2: removed
         assert "bullets = list(bullets[:_bp_hi_lp])" not in s, (
             "the ship-time head-cap fallback must be GONE (V0.4.23)"
         )

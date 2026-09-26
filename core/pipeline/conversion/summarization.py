@@ -948,22 +948,52 @@ def run_summarization(
     # Hallucinations. Best-effort heading match (exact, then
     # case-insensitive, then contains) — fail-open (no match → the
     # verification skips that chapter, the original output ships).
+    # V0.5.2 (BUG fix): build from `segments` (ALL segments, not just
+    # `segments_for_summary` which may have been filtered) + add a
+    # fallback (largest segment = the main chapter content) + log the
+    # match result so the audit can see whether the LAYER fired.
     _source_by_heading: dict[str, str] = {}
-    for _seg in segments_for_summary:
+    for _seg in segments:
         if getattr(_seg, "heading", None) and getattr(_seg, "content", None):
             _source_by_heading[_seg.heading] = _seg.content
 
     def _source_for_summary(_summ_heading: str) -> str:
-        """Best-effort match the summary's heading to a segment's source."""
+        """Best-effort match the summary's heading to a segment's source.
+
+        V0.5.2: if no heading match, fall back to the LARGEST segment
+        (the main chapter content is usually the largest). This ensures
+        the verification LAYER fires even when the heading match fails.
+        """
         if not _summ_heading:
-            return ""
+            # Fallback: return the largest segment's content.
+            _largest = max(
+                _source_by_heading.values(),
+                key=len,
+                default="",
+            )
+            if _largest:
+                log(
+                    f"    ℹ️  V0.5.2 verification: no heading match — "
+                    f"using largest segment ({len(_largest)} chars) as source.",
+                    "DEBUG",
+                )
+            return _largest
         if _summ_heading in _source_by_heading:
             return _source_by_heading[_summ_heading]
         _hl = _summ_heading.lower()
         for _h, _c in _source_by_heading.items():
             if _h.lower() == _hl or _hl in _h.lower() or _h.lower() in _hl:
                 return _c
-        return ""
+        # Fallback: return the largest segment's content.
+        _largest = max(_source_by_heading.values(), key=len, default="")
+        if _largest:
+            log(
+                f"    ℹ️  V0.5.2 verification: heading "
+                f"'{_summ_heading[:50]}' not matched — using largest "
+                f"segment ({len(_largest)} chars) as source.",
+                "DEBUG",
+            )
+        return _largest
 
     for i, summ in enumerate(summaries, 1):
         # V18.2.4: Don't save failed/empty summaries. Previously the pipeline

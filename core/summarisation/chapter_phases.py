@@ -553,18 +553,10 @@ class SummarizerChapterPhasesMixin:
             # User directive: bullets can be as long as necessary for full
             # coverage. The count reducers are the non-skippable semantic
             # dedup + consolidation + the V0.4.23 filler floor — never a
-            # numeric cap. This block now only reports honestly when the
-            # count exceeds the historical guidance range.
-            if _inc_kp_lp and len(bullets) > _bp_hi_lp:
-                self.log(
-                    f"    ℹ️ V0.4.23: {len(bullets)} bullets ship (guidance "
-                    f"floor was {_bp_lo_lp}-{_bp_hi_lp} for a "
-                    f"{_src_words_lp}-word chapter) — NO CAP (user "
-                    f"directive: full coverage; dedup/consolidation are the "
-                    f"reducers, not truncation).",
-                    "INFO",
-                )
-                parsed["bullet_points"] = bullets
+            # numeric cap. V0.5.2 (user directive): the guidance-floor log
+            # line is REMOVED — never set any standard for bullet count.
+            # parsed["bullet_points"] = bullets
+            parsed["bullet_points"] = bullets
 
             # ── V0.06 (rig audit F7-a — GENERAL RULE: Tier-3 excerpts are
             # re-validated against the FINAL summary at ship time) ────────
@@ -1676,23 +1668,19 @@ class SummarizerChapterPhasesMixin:
         # V18.15.4.3: Raised threshold 9000 -> 10000 tok (the V18.15.4.0 run hit
         # 9120 tok and the skip didn't fire, pushing past the 2400s deadline).
         # V0.05 (rig audit F9b — GENERAL RULE): the expansion floor/ceiling now
-        # SCALE to the source (length_policy.bullet_target) instead of the
-        # absolute "<30 → ask for 30-50". The V0.04 rig shipped 29-36 bullets
-        # for 321-441-word chapters (one bullet per ~12 source words — the
-        # chapter restated as bullets) because this machinery pushed every
-        # chapter toward 30+. A 340-word chapter's target is ~5-7 bullets; the
-        # expansion call does not fire at all when the primary already met the
-        # SCALED target. Also gated on the user's keypoints selection (F9a).
-        _skip_expansion = not _inc_kp_lp or bool(bullets and len(bullets) >= _bp_lo_lp)
-        if _skip_expansion and _inc_kp_lp:
-            self.log(
-                f"    V0.05: Skipping bullet expansion — {len(bullets or [])} bullets "
-                f"already meet the source-scaled target ({_bp_lo_lp}-{_bp_hi_lp} for "
-                f"a {_src_words_lp}-word chapter; gap-fill will handle missing "
-                f"concepts).",
-                "INFO",
-            )
-        elif not _inc_kp_lp:
+        # V0.5.2 (user directive): NEVER set a max/min/appropriate
+        # standard for the number of bullets. Bullets should be as many
+        # as needed — context-driven, not word-count-driven. A 7405-word
+        # chapter might have 5 or 50 bullets depending on the content.
+        # The V0.05 skip-expansion gate (which skipped bullet expansion
+        # when the count met a source-scaled target) is REMOVED. Bullet
+        # expansion now fires whenever the primary produced bullets +
+        # the user requested keypoints + the deadline allows —
+        # regardless of the count. The count reducers (dedup,
+        # consolidation, filler floor) stay; the count TARGET is gone.
+        # Also gated on the user's keypoints selection (F9a).
+        _skip_expansion = not _inc_kp_lp
+        if _skip_expansion:
             self.log(
                 "    V0.05 (F9a): Keypoints not requested — bullet expansion "
                 "disabled for this chapter.",
@@ -1701,12 +1689,11 @@ class SummarizerChapterPhasesMixin:
         if (
             _inc_kp_lp
             and bullets
-            and len(bullets) < _bp_lo_lp
             and not self._deadline_exceeded("dedicated bullet expansion")
             and not _skip_expansion
         ):
             self.log(
-                f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
+                f"    ⚠️ {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
                 "INFO",
             )
             _bp_raw = self._call_llm_with_empty_retry(

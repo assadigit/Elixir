@@ -162,8 +162,9 @@ class TestAttemptEscalation:
         assert len(deps["_llm_calls"]) == 2
 
     def test_attempt3_greedy_temp_used_when_2_fail(self):
-        """If attempts 1 + 2 both fail/short, attempt 3 runs at temp 0.0
-        (greedy) and is returned if it succeeds."""
+        """If attempts 1 + 2 both fail/short, attempt 3 runs (V0.5.2:
+        at the user's temperature, NOT 0.0 greedy) and is returned if
+        it succeeds."""
         long_t = " ".join([f"w{i}" for i in range(900)]) + "."
         deps = _make_deps(llm_responses=[None, None, long_t])
         out, count = call_dedicated_thorough_with_fallback(
@@ -175,9 +176,9 @@ class TestAttemptEscalation:
         )
         assert out == long_t
         assert count == 0
-        # 3 LLM calls; attempt 3 used temp 0.0
+        # 3 LLM calls; attempt 3 used the user's temperature (V0.5.2: was 0.0)
         assert len(deps["_llm_calls"]) == 3
-        assert deps["_llm_calls"][2]["temp"] == 0.0
+        assert deps["_llm_calls"][2]["temp"] == 0.35  # V0.5.2: temperature * 0.5 (was 0.0)
 
     def test_best_effort_kept_when_under_min_words(self):
         """If all 4 attempts (V0.4.38 F2 added the 4th length-directive

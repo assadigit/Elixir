@@ -198,6 +198,17 @@ def validate_years(
                     "later",
                     "then",
                     "early",
+                    # V0.5.2 (TUNING): pronouns falsely matched as author
+                    # names by the citation regex (e.g. "His (1986)" in
+                    # "Volkan: His 1986 insights...").
+                    "his",
+                    "her",
+                    "their",
+                    "its",
+                    "he",
+                    "she",
+                    "they",
+                    "his,",
                 }:
                     continue
                 if _author_in_source(author_clean, src_lower):
