@@ -552,17 +552,64 @@ class ChapterCheckpointSaver:
             _stamp = ""
         sf_name = f"{pos:03d}_{safe}{_stamp}_summary.md"
 
-        # 1) canonical summary file (resume-compatible) — write-once
+        # V0.5.2 (FIX-P0-2): the V0.4.40 verification + polish LAYER now
+        # runs BEFORE the checkpoint save (was dead code in the end-of-loop
+        # writer at conversion/summarization.py:1065-1102 because the
+        # file-existence short-circuit at summarization.py:1038-1060
+        # fires `continue` BEFORE the try-block where the LAYER lived —
+        # the V18.20.3.0 checkpoint writes the file mid-run, so the
+        # end-of-loop always sees a COMPLETE-sentinel file and skips).
+        # Re-wiring into the SAME path that writes the checkpoint means
+        # the LAYER runs on every chapter (including checkpointed ones)
+        # and the checkpoint writes the VERIFIED summary.md + DOCX (not
+        # the pre-verification draft). Source = the chapter's own
+        # ``content`` (the chapter dict carries the source directly —
+        # simpler than the end-of-loop ``_source_for_summary`` heading-
+        # match + largest-segment fallback, which is preserved for the
+        # non-checkpointed path (``incremental_chapter_save=False``)).
+        # Fail-open: a crash logs a WARNING and the draft ships (the
+        # layer must never break the write). Content-agnostic (Rule 1).
+        _rendered = render_summary_markdown(summary)
+        _v_source = (chapter or {}).get("content") or ""
+        if _v_source:
+            try:
+                from core.summarisation.verification_phase import (
+                    verify_and_polish_summary,
+                )
+
+                _rendered, _v_issues = verify_and_polish_summary(
+                    _rendered, _v_source, self._converter.settings, self._log
+                )
+                # V0.5.1 (BUG fix): LOG the verification issues to the
+                # conversion log (was silently dropped — the audit
+                # couldn't see the date-check + LLM verification output).
+                for _vi in _v_issues or []:
+                    self._log(
+                        f"    ✨ V0.5.1 verification: "
+                        f"[{_vi.detector}/{_vi.severity}] "
+                        f"{_vi.detail[:120]}",
+                        "DEBUG" if _vi.severity == "fix" else "WARNING",
+                    )
+            except Exception as _ve:  # pragma: no cover — layer must never break write
+                self._log(
+                    f"    ⚠️  V0.4.40 verification crashed (non-fatal): {type(_ve).__name__}: {_ve}",
+                    "WARNING",
+                )
+
+        # 1) canonical summary file (resume-compatible) — write-once.
+        #    Writes the VERIFIED markdown (post-V0.5.2 FIX-P0-2 re-wire).
         sf = self._summaries_dir / sf_name
-        wrote_canonical = self._atomic_write_once(sf, render_summary_markdown(summary))
+        wrote_canonical = self._atomic_write_once(sf, _rendered)
         if not wrote_canonical:
             self.skipped_existing += 1
 
-        # 2) dedicated checkpoint folder: md copy + per-chapter DOCX
+        # 2) dedicated checkpoint folder: md copy + per-chapter DOCX.
+        #    The md copy is the VERIFIED markdown (matches the canonical
+        #    file byte-for-byte — both come from the same ``_rendered``).
         chapter_folder = self._chapters_root / f"{pos:03d}_{safe}"
         chapter_folder.mkdir(parents=True, exist_ok=True)
         cp_md = chapter_folder / sf_name
-        self._atomic_write_once(cp_md, render_summary_markdown(summary), quiet=True)
+        self._atomic_write_once(cp_md, _rendered, quiet=True)
 
         docx_path: Path | None = None
         if self._build_docx:

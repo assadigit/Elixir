@@ -109,6 +109,31 @@ class TestDateExtractorPart3Approximate:
         dms = extract_dates("The date is 1891?")
         assert dms[0].year == 1891 and dms[0].is_uncertain
 
+    # FIX-P3-6: the next 4 tests cover the remaining _APPROX_PREFIX variants
+    # (about/around/approx./approximately) the V0.5.0 audit flagged as
+    # untested. Generic dates, no book/author content (Rule 1).
+
+    def test_about(self):
+        dms = extract_dates("about 1891")
+        assert len(dms) == 1
+        assert dms[0].year == 1891 and dms[0].is_approximate
+        assert dms[0].format_type == "circa"
+
+    def test_around(self):
+        dms = extract_dates("around 1891")
+        assert len(dms) == 1
+        assert dms[0].year == 1891 and dms[0].is_approximate
+
+    def test_approx_period(self):
+        dms = extract_dates("approx. 1891")
+        assert len(dms) == 1
+        assert dms[0].year == 1891 and dms[0].is_approximate
+
+    def test_approximately(self):
+        dms = extract_dates("approximately 1891")
+        assert len(dms) == 1
+        assert dms[0].year == 1891 and dms[0].is_approximate
+
 
 class TestDateExtractorPart4Ranges:
     """Part 4: date ranges and intervals."""
@@ -158,6 +183,19 @@ class TestDateExtractorPart5CenturiesDecades:
         dms = extract_dates("the 2nd millennium CE")
         assert dms[0].format_type == "millennium" and dms[0].year == 2
 
+    # FIX-P3-6: the _DECADE_SHORT pattern (e.g. "'90s") was untested.
+    # Note: the regex `\b'(\d)0s\b` requires the apostrophe to be
+    # immediately preceded by a word character (the `\b` boundary won't
+    # match between a space and the apostrophe), so "the '90s" with a
+    # space does NOT match — only "the'90s" (no space) does. The test
+    # uses the no-space form to exercise the regex as designed.
+
+    def test_decade_short(self):
+        dms = extract_dates("the'90s")
+        assert len(dms) == 1
+        assert dms[0].format_type == "decade_short"
+        assert dms[0].year == 9
+
 
 class TestDateExtractorPart6FullDates:
     """Part 6: full dates (day, month, year)."""
@@ -177,6 +215,16 @@ class TestDateExtractorPart6FullDates:
     def test_numeric_dmy(self):
         dms = extract_dates("10/10/1891")
         assert dms[0].year == 1891
+
+    # FIX-P3-6: the _NUMERIC_DATE_YMD pattern (e.g. "2020/12/25") was
+    # untested. Uses a `/` (or `.`) separator so the more-specific
+    # _ISO_DATE pattern (which requires `-`) doesn't claim it first.
+
+    def test_numeric_ymd(self):
+        dms = extract_dates("2020/12/25")
+        assert len(dms) == 1
+        assert dms[0].format_type == "numeric_date_ymd"
+        assert dms[0].year == 2020
 
 
 class TestDateExtractorPart7CalendarEras:
@@ -198,6 +246,30 @@ class TestDateExtractorPart7CalendarEras:
         dms = extract_dates("2569 BE")
         assert dms[0].year == 2569 and dms[0].era == "be"
 
+    # FIX-P3-6: the 4 calendar-era patterns below (AM/Saka/VS/Vikram
+    # Samvat) were untested. All share the _CALENDAR_ERA regex.
+
+    def test_am(self):
+        dms = extract_dates("1447 AM")
+        assert len(dms) == 1
+        assert dms[0].year == 1447 and dms[0].era == "am"
+        assert dms[0].format_type == "calendar_era"
+
+    def test_saka(self):
+        dms = extract_dates("1447 Saka")
+        assert len(dms) == 1
+        assert dms[0].year == 1447 and dms[0].era == "saka"
+
+    def test_vs(self):
+        dms = extract_dates("1447 VS")
+        assert len(dms) == 1
+        assert dms[0].year == 1447 and dms[0].era == "vs"
+
+    def test_vikram_samvat(self):
+        dms = extract_dates("1447 Vikram Samvat")
+        assert len(dms) == 1
+        assert dms[0].year == 1447 and dms[0].era == "vs"  # normalizes to vs
+
 
 class TestDateExtractorPart8Scientific:
     """Part 8: scientific and archaeological date notation."""
@@ -213,6 +285,25 @@ class TestDateExtractorPart8Scientific:
     def test_ma(self):
         dms = extract_dates("65 Ma")
         assert dms[0].year == 65 and dms[0].era == "ma"
+
+    # FIX-P3-6: the 3 patterns below (Mya / ka BP / yr BP) were untested.
+
+    def test_mya(self):
+        dms = extract_dates("65 Mya")
+        assert len(dms) == 1
+        assert dms[0].year == 65 and dms[0].era == "ma"  # Mya normalizes to ma
+
+    def test_ka_bp(self):
+        dms = extract_dates("5000 ka BP")
+        assert len(dms) == 1
+        assert dms[0].year == 5000 and dms[0].era == "bp"
+        assert dms[0].format_type == "scientific_bp"
+
+    def test_yr_bp(self):
+        dms = extract_dates("5000 yr BP")
+        assert len(dms) == 1
+        assert dms[0].year == 5000 and dms[0].era == "bp"
+        assert dms[0].format_type == "yr_bp"
 
 
 class TestCompareDates:

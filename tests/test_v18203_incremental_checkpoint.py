@@ -342,6 +342,99 @@ class TestChapterCheckpointSaver:
         # atomic save leaves no temp files behind
         assert not list((root / "checkpoints").rglob("*.tmp"))
 
+    def test_verification_layer_runs_when_file_already_exists(self, stub_env, monkeypatch):
+        """FIX-P0-2: the V0.4.40 verification LAYER runs even when the
+        chapter summary file ALREADY EXISTS (post-checkpoint state).
+
+        Before FIX-P0-2 the LAYER was dead code on the normal conversion
+        path: the file-existence short-circuit at
+        ``conversion/summarization.py:1038-1060`` fired ``continue`` BEFORE
+        the try-block where ``verify_and_polish_summary`` lived, so any
+        chapter the V18.20.3.0 incremental checkpoint had already saved
+        (the normal path) NEVER got verified. FIX-P0-2 re-wires the LAYER
+        into the SAME path that writes the checkpoint (the
+        ``ChapterCheckpointSaver._on_chapter_done_impl`` body), BEFORE the
+        write-once check — so the LAYER fires on every ``on_chapter_done``
+        call (including the post-checkpoint re-call where write-once
+        skips the WRITE but the LAYER still runs).
+
+        This test mocks ``verify_and_polish_summary`` to return 2 known
+        Issue objects, calls ``on_chapter_done`` once (writes the file),
+        then calls it again (file already exists — the post-checkpoint
+        state) and asserts the ``✨ V0.5.1 verification:`` log line fires
+        on the second call (proves the LAYER ran despite the file
+        existing — the dead-code bug is fixed).
+        """
+        import core.summarisation.verification_phase as _vp
+        from core.pipeline.chapter_checkpoint import ChapterCheckpointSaver
+        from core.summarisation.postchecks.shared import Issue
+
+        # Mock verify_and_polish_summary to return 2 known Issue objects
+        # (content-agnostic: generic date-mismatch detail strings; no
+        # hardcoded book/author/chapter names — Rule 1 compliant).
+        _issues = [
+            Issue(
+                detector="verification_date_check",
+                severity="flag",
+                field="summary",
+                snippet="1984",
+                detail=(
+                    "deterministic date-check: summary date '1984' "
+                    "NOT found in source — possible fabrication."
+                ),
+            ),
+            Issue(
+                detector="verification_date_check",
+                severity="flag",
+                field="summary",
+                snippet="1999",
+                detail=(
+                    "deterministic date-check: source date '1999' "
+                    "NOT found in summary — possible omission."
+                ),
+            ),
+        ]
+
+        def _fake_verify(rendered_md, source_text, settings=None, log=None):
+            # Return the rendered markdown UNCHANGED (no corrections
+            # applied) + the 2 known Issue objects. The point of this
+            # test is to prove the LAYER WAS CALLED — not to prove the
+            # corrections are persisted (that's a separate concern).
+            return rendered_md, list(_issues)
+
+        monkeypatch.setattr(_vp, "verify_and_polish_summary", _fake_verify)
+
+        root, conv, chapters, positions = stub_env
+        saver = ChapterCheckpointSaver(conv, positions, 3, build_docx=False, book_title="MyBook")
+
+        # First call: writes the file (LAYER runs, 2 log lines).
+        saver.on_chapter_done(1, _mk_summary("Chapter One", 5), chapters["Chapter One"])
+        f = root / "summaries" / "001_Chapter_One_summary.md"
+        assert f.exists(), "checkpoint should have written the file on the first call"
+
+        # Second call: file already exists (post-checkpoint state).
+        # Write-once skips the WRITE, but the LAYER must STILL run.
+        conv.log_lines.clear()
+        saver.on_chapter_done(1, _mk_summary("Chapter One", 5), chapters["Chapter One"])
+
+        # Assert the LAYER ran (V0.5.1 verification log line fired) on
+        # the post-checkpoint re-call — proves the re-wire fixed the
+        # dead-code bug (the LAYER is no longer gated by file-existence).
+        v_logs = [msg for level, msg in conv.log_lines if "✨ V0.5.1 verification:" in msg]
+        assert len(v_logs) == 2, (
+            f"expected 2 V0.5.1 verification log lines (one per Issue) "
+            f"on the post-checkpoint re-call; got {len(v_logs)}: {v_logs}"
+        )
+        # The 2 log lines should carry the 2 Issue details (verbatim).
+        joined = "\n".join(v_logs)
+        assert "summary date '1984'" in joined
+        assert "source date '1999'" in joined
+        # Write-once must STILL hold: the file is byte-identical to the
+        # first call's output (the LAYER ran but the WRITE was skipped).
+        # (The mock returns the rendered markdown unchanged, so the file
+        # content is the same as the first call.)
+        assert saver.skipped_existing == 1
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3) Checkpoint.mark_progress (phase-level state)

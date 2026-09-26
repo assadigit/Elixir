@@ -24,6 +24,137 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.3 — the six-fix audit remediation (Pattern C re-impl + verification LAYER re-wire + transformers gate + pronoun stopword test + dead-code removal + date_extractor cleanups)
+
+> **The release:** post-V0.5.2 four-pillar fact-check audit found 1 false
+> claim (V0.5.2 Fix 5 was broken), 4 misleading/partial claims, and 3
+> critical omissions (the verification LAYER was dead code on the normal
+> conversion path). This release implements all 6 remediation items
+> (P0/P1/P2/P3) from the audit's recommended next actions. Net-green:
+> ruff clean, eval gate OK, 374 P / 0 F / 3 S on the touched+regression
+> test set; eval gate 6 golden chapters PASS, hallucination 0.0%.
+
+> **P0-1 — Pattern C lexicon check RE-IMPLEMENTED (was broken).** The
+> V0.5.2 "Fix 5" placed a 7-line lexicon check in Pattern A's code block
+> (`fusion.py:268-274`), NOT Pattern C — and it was redundant with the
+> existing early lexicon check at L218 (provably dead code) AND the
+> documented FP word "underrepresentation" wasn't in the 126k lexicon
+> anyway. Re-implemented as a compound-word guard INSIDE Pattern C's
+> block (`fusion.py:380-393`): before Pattern C flags a candidate,
+> checks (i) the full un-hyphenated word is in the lexicon (covers
+> hyphenated compounds like "under-representation") AND (ii) any split
+> position ≥5 chars where BOTH halves are in the lexicon (covers
+> "under"+"representation"). If either holds → skip (legitimate English
+> compound, not a dropped-prefix fusion). 5 regression tests in
+> `tests/test_v052_audit_fixes.py`. Content-agnostic (Rule 1 ✓ — uses
+> lexicon membership only, no hardcoded words).
+
+> **P0-2 — verification LAYER re-wired to run on checkpointed chapters
+> (was dead code on the normal path).** The file-existence short-circuit
+> at `summarization.py:1038-1060` bypassed `verify_and_polish_summary`
+> whenever a chapter was checkpointed (the V18.20.3.0 incremental
+> checkpoint writes the summary file BEFORE the save loop's verification
+> call). The V0.4.40 headline feature + V0.5.1 wiring + V0.5.1
+> coverage-targeting were all inert in practice. Fixed via Option B:
+> added a 45-line block at `chapter_checkpoint.py:555-598` inside
+> `_on_chapter_done_impl` that runs `verify_and_polish_summary` BEFORE
+> the checkpoint save — the checkpoint now writes VERIFIED markdown
+> (both the canonical `summary.md` at L603 + the checkpoint copy at
+> L613). The end-of-loop verification at `summarization.py:1065-1102`
+> is UNCHANGED (preserved for the non-default path; the short-circuit
+> correctly skips re-verification for already-verified checkpointed
+> chapters — no double-work). Regression test
+> `test_verification_layer_runs_when_file_already_exists` in
+> `test_v18203_incremental_checkpoint.py` (red-without-fix /
+> green-with-fix verified). Honest limitation: DOCX builder still builds
+> from SummaryResult (existing behavior, out of scope); resumed chapters
+> from previous runs still NOT verified (out of scope).
+
+> **P1-3a — transformers eager-import gate (the 4-minute init fix).**
+> `preflight_check.py`'s `_OPTIONAL_DEPS` (torch, transformers,
+> langextract) were checked via `_is_importable` which does a FULL
+> `importlib.import_module` — for `transformers` that took 15.8s
+> (V0.5.0) → 20.5s (V0.5.1) → 36s (V0.5.2 run) per conversion, even
+> though elixir doesn't directly use transformers (only the optional
+> NLLB-translation feature does). Added a new `_is_installed` function
+> (`preflight_check.py:392-440`) that uses `importlib.util.find_spec` —
+> INSTANT (returns ModuleSpec if findable, None otherwise, WITHOUT
+> executing the module's import-time code). The `_OPTIONAL_DEPS` loop
+> (L238-252) + `get_dependency_status` (L443-459) now use
+> `_is_installed` for optional deps. Trade-off documented in the
+> docstring: find_spec doesn't catch "installed but broken" (e.g. torch
+> without CUDA), but for OPTIONAL deps (log warning, don't block) the
+> trade-off is correct — instant check, deferred errors. Required deps
+> keep `_is_importable` (catches import-time errors early). Expected
+> savings: 15-36s per conversion on the rig.
+
+> **P1-3b — model-quant recommendation (rig-side, documented).** The
+> VRAM overbudget (12.9 GB model vs 12.0 GB RTX 3060) is NOT a code
+> change — the user must download a smaller GGUF quantization (Q3_K_S
+> ≈ 11 GB fits; Q2_K ≈ 10 GB fits comfortably) or a 13B-class model,
+> and update the llama.cpp model path. The 12.9 GB quant is
+> borderline-by-design for a 12 GB card and causes cold-start Windows
+> thrashing (the bulk of the "4 minutes").
+
+> **P1-4 — missing regression tests added.** (a) Pattern C FP test
+> (5 tests in `test_v052_audit_fixes.py` — by P0-1); (b) pronoun
+> stopword test (`TestV052PronounStopword` class, 3 tests in
+> `test_v052_audit_fixes.py` — "His (1986)" / "Her (1975)" → not
+> flagged; "Dukhaim (1951)" → still flagged as positive guard); (c)
+> wiring-fix log call test
+> (`test_verification_layer_runs_when_file_already_exists` in
+> `test_v18203_incremental_checkpoint.py` — by P0-2). All 3 missing
+> tests now exist.
+
+> **P2-5 — dead code removed + test-discipline regression fixed.**
+> Deleted the dead `_bp_lo_lp`/`_bp_hi_lp` plumbing (still computed
+> after V0.5.2's bullet-count removal but never read):
+> `chapter_phases.py:1546-1548` (import alias) + L1558 (computation) +
+> L399-400 (receive) + L1799-1800 (return tuple); `summarizer.py:1690-1691`
+> (receive) + L1763-1764 (call pass-through). Net -12 lines. Fixed
+> `test_v182038_audit_fixes.py:507-508`: the 2 commented-out lines
+> (should have been `assert "NO CAP (user" not in tail` per the other 3
+> touched tests) are now properly inverted; also fixed a collateral
+> F841 (orphaned `floor_idx` → explicit assertion).
+
+> **P3-6 — date_extractor cleanups + temp-multiplier documentation.**
+> Deleted the dead `_COMPACT_DATE` regex (`date_extractor.py:187` —
+> severe FP risk if wired, matches phone/ZIP/ISBN; use case covered by
+> `_ISO_DATE` + `_NUMERIC_DATE_YMD`). Deleted the dead `_MONTHS` /
+> `_MONTH_ABBR` / `_ALL_MONTHS` helpers (`date_extractor.py:57-85`,
+> 29 LOC — only `_MONTH_PATTERN` regex is used). Added 13 new pattern
+> tests to `test_v0500_date_extractor.py` (+91 LOC, 42→55 tests):
+> "about"/"around"/"approx."/"approximately" (Part 3), `_DECADE_SHORT`
+> (Part 5), `_NUMERIC_DATE_YMD` (Part 6), AM/Saka/VS/Vikram Samvat
+> (Part 7), Mya/ka BP/yr BP (Part 8). Added an 11-line TODO comment at
+> `thorough_fallback.py:213-223` documenting the `* 0.5` temperature
+> multiplier ambiguity (all 4 attempts use `temperature * 0.5` →
+> effective temp is HALF the configured value; pre-existing, not a
+> V0.5.2 regression; pending owner confirmation on whether "configured
+> temperature" means the full 0.7 or the halved 0.35).
+
+> **Combined changeset:** 11 files modified + 1 new test file. Net
+> +415 insertions / -59 deletions. Rule 1 ✓ (content-agnostic — no
+> hardcoded book/author/chapter/domain strings; the compound-word guard
+> uses lexicon membership only; pronouns are general English; the
+> transformers gate uses the existing dep list; date_extractor tests
+> use generic date primitives). Rule 2 ✓ (evidence-first — every claim
+> cites file:line). Rule 3 ✓ (net-green — ruff clean, eval gate OK,
+> 374 P / 0 F / 3 S on touched+regression set). Rule 4 ✓ (provenance —
+> this entry + the FIX-P0-1 CHANGELOG correction note + the `* 0.5`
+> TODO comment document every change traceably).
+
+> **Honest limitations:** (1) couldn't re-run the full 6,177-test
+> suite (sandbox venv lacks PySide6 GUI deps); the 11 touched+regression
+> test files + eval gate pass cleanly. (2) The model-quant switch
+> (P1-3b) is rig-side — user must apply on the RTX 3060. (3) The
+> `* 0.5` temperature multiplier is documented but NOT changed — needs
+> owner confirmation. (4) Resumed chapters (loaded from previous runs)
+> still NOT verified by P0-2 — only NEW chapters going through the
+> checkpoint in the current run are. (5) DOCX builder still builds from
+> SummaryResult (not verified markdown) — existing behavior, out of
+> scope.
+
 ## V0.5.2 — the verification LAYER fix + temperature fix + bullet-count target REMOVAL + Pattern C lexicon check + pronoun stopword
 
 > **The release:** 4 bugs + 2 tunings per the V0.5.1 audit + the user's
@@ -63,6 +194,52 @@
   were parsed as author names. Added to the stopword list.
 
 **Tests:** 4 source-pin tests updated. **6,177 P / 0 F / 36 S exit 0.**
+
+---
+
+> **CORRECTION (FIX-P0-1, post-V0.5.2 audit):** item **5. TUNING —
+> Pattern C lexicon check** above is FALSE as shipped. The
+> AUDIT-V0.5.2 subagent found the V0.5.2 commit (`1cf0dcb`) added the
+> `if word in lexicon: continue` block at
+> `core/summarisation/postchecks/garble/fusion.py:268-274` INSIDE
+> Pattern A's per-start loop — NOT in Pattern C (the dropped-prefix
+> detector at L344+). It was REDUNDANT with the early lexicon check at
+> L218 (`if lexicon and word in lexicon: continue`) which already
+> short-circuits any word that is in the lexicon, so by the time
+> execution reached L273 `word in lexicon` was GUARANTEED False — the
+> check was provably dead code. Even if correctly placed in Pattern
+> C, the documented FP word `underrepresentation` is NOT in the
+> 126,761-word lexicon (`zgrep -c '^underrepresentation$'` → 0), so
+> the full-word lexicon check could not suppress the FP. Empirically
+> verified: running `detect_sentence_fusion` on the documented FP
+> scenario with vs. without the L268-274 block yields IDENTICAL output
+> (1 issue). The CHANGELOG claim "Pattern C now checks if the full
+> word is in the lexicon BEFORE flagging" was FALSE on two counts
+> (wrong code block + word not in lexicon). No regression test was
+> added for this fix, which is why the broken fix shipped undetected.
+>
+> **Re-implementation (FIX-P0-1):** the broken L268-274 block was
+> DELETED (a NOTE comment is left in Pattern A explaining why the
+> original fix was broken — pointing future maintainers to the
+> correct location). A new compound-word guard was added INSIDE
+> Pattern C's block (L380+, just before the per-start loop). The
+> principled fix (per the AUDIT-V0.5.2 recommendation): a real
+> compound word is EITHER (i) itself in the lexicon (already covered
+> by the early lexicon check at L218, but re-checked against the
+> un-hyphenated `clean` form for hyphenated compounds), OR (ii)
+> composed of two lexicon words (a prefix + suffix where BOTH halves
+> are real English lexicon words). If either holds, the candidate is
+> a legitimate English compound, not a dropped-prefix fusion —
+> Pattern C is skipped. Content-agnostic (Rule 1): the guard uses
+> lexicon membership ONLY; no hardcoded words. Regression tests
+> added in `tests/test_v052_audit_fixes.py` (5 tests): the FP
+> suppression (the documented compound word → 0 issues), a
+> hyphenated-compound variant, the positive case
+> (`persecutionensate` → still flagged), and Pattern A + Pattern B
+> regression guards. All 35 tests in the touched scope pass
+> (`test_v052_audit_fixes.py` + `test_v0438_audit_fixes.py`); ruff
+> clean. See `/home/z/my-project/worklog.md` task `FIX-P0-1` for
+> the full work log.
 
 ## V0.5.1 — the wiring bug fix + date-extractor page-ref FP fix + verification LAYER coverage-targeting (10/10 objective)
 

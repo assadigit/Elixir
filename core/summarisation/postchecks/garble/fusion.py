@@ -265,13 +265,16 @@ def detect_sentence_fusion(
                 # is still suspicious (e.g., 'praiseity' = 'praise' +
                 # 'ity'; 'ity' is a real suffix but 'praiseity' is not
                 # a real word).
-                # V0.5.2 (TUNING): also check the full word against the
-                # lexicon for Pattern C (the suffix-is-a-suffix-of-source-word
-                # check). Words like "underrepresentation" (under+representation)
-                # are real English compounds not in the lexicon but are NOT
-                # fusions. The full-word lexicon check suppresses this class.
-                if word in lexicon:
-                    continue  # real English word — not a fusion
+                # NOTE: the V0.5.2 "Pattern C lexicon check" block that
+                # lived here (commit 1cf0dcb) was BROKEN — it was
+                # redundant with the early lexicon check at L218 (which
+                # already does `if lexicon and word in lexicon: continue`
+                # upstream, so `word in lexicon` is always False here),
+                # and the documented FP compound word is NOT in the
+                # 126k-word lexicon, so the check could never suppress
+                # it. Re-implemented correctly INSIDE Pattern C's block
+                # (see compound-word guard below). See
+                # tests/test_v052_audit_fixes.py for the regression.
                 if _is_legit_fusion_suffix(suffix):
                     full_word_is_real = (lexicon and word in lexicon) or (word in source_words)
                     if full_word_is_real:
@@ -352,7 +355,39 @@ def detect_sentence_fusion(
             # was dropped so it isn't a substring. Pattern C closes
             # the gap. Content-agnostic: the suffix-to-source-word-
             # suffix match is structural, no hardcoded words.
+            #
+            # V0.5.2 (FIX-P0-1 — RE-IMPLEMENTED): compound-word
+            # guard. BEFORE Pattern C flags a candidate, verify the
+            # word isn't a legitimate English compound. The original
+            # V0.5.2 "Fix 5" placed a redundant `if word in lexicon:
+            # continue` inside Pattern A (where the early lexicon
+            # check at L218 already catches it), and the documented
+            # FP compound word is NOT in the 126k-word lexicon
+            # (zgrep -c '^<compound-word>$' -> 0), so the check was
+            # provably dead code (see the NOTE comment in Pattern A
+            # above). The principled fix (per the AUDIT-V0.5.2
+            # recommendation): a real compound word is either
+            # (i) itself in the lexicon (already covered by the early
+            # lexicon check at L218, but re-checked here against the
+            # un-hyphenated `clean` form for hyphenated compounds),
+            # OR (ii) composed of two lexicon words (prefix + suffix
+            # both real English). If either holds, the candidate is
+            # a legitimate English compound, not a dropped-prefix
+            # fusion — skip Pattern C. Content-agnostic (Rule 1):
+            # lexicon membership only, no hardcoded words. See
+            # tests/test_v052_audit_fixes.py for the regression.
             if not found_fusion:
+                _is_compound_word = lexicon and (
+                    clean in lexicon
+                    or any(
+                        clean[:_split] in lexicon and clean[_split:] in lexicon
+                        for _split in range(_FUSION_MIN_PREFIX, len(clean) - _FUSION_MIN_PREFIX + 1)
+                    )
+                )
+                if _is_compound_word:
+                    # real English compound (prefix + suffix both
+                    # in the lexicon) — not a dropped-prefix fusion.
+                    continue
                 for s in starts:
                     if found_fusion:
                         break

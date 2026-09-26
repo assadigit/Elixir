@@ -54,35 +54,10 @@ class DateMatch:
 # Month names (for full-date patterns)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_MONTHS = {
-    "january": 1,
-    "february": 2,
-    "march": 3,
-    "april": 4,
-    "may": 5,
-    "june": 6,
-    "july": 7,
-    "august": 8,
-    "september": 9,
-    "october": 10,
-    "november": 11,
-    "december": 12,
-}
-_MONTH_ABBR = {
-    "jan": 1,
-    "feb": 2,
-    "mar": 3,
-    "apr": 4,
-    "may": 5,
-    "jun": 6,
-    "jul": 7,
-    "aug": 8,
-    "sep": 9,
-    "oct": 10,
-    "nov": 11,
-    "dec": 12,
-}
-_ALL_MONTHS = {**_MONTHS, **_MONTH_ABBR}
+# V0.5.0 had _MONTHS/_MONTH_ABBR/_ALL_MONTHS dict helpers here (FIX-P3-6):
+# DELETED — they were defined but never referenced outside their own
+# construction (only the _MONTH_PATTERN regex below is used, with month
+# strings inlined). The dict forms were dead.
 _MONTH_PATTERN = (
     r"(?:January|February|March|April|May|June|July|August|September|October|November|December"
     r"|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?"
@@ -184,7 +159,11 @@ _FULL_DATE_MDY = re.compile(
 _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _NUMERIC_DATE = re.compile(r"\b(\d{1,2})[/.](\d{1,2})[/.](\d{4})\b")
 _NUMERIC_DATE_YMD = re.compile(r"\b(\d{4})[/.](\d{1,2})[/.](\d{1,2})\b")
-_COMPACT_DATE = re.compile(r"\b(\d{8})\b")
+# V0.5.0 had _COMPACT_DATE = re.compile(r"\b(\d{8})\b") here (FIX-P3-6):
+# DELETED — it was never wired into _PATTERNS and would have been a severe
+# false-positive risk (matches phone numbers, ZIP+4, ISBNs, credit-card
+# prefixes). The compact 8-digit date use case (e.g. 19951012) is already
+# covered by _ISO_DATE + _NUMERIC_DATE_YMD when the user uses separators.
 
 # Part 7: Historical calendar eras.
 _CALENDAR_ERA = re.compile(

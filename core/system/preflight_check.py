@@ -235,9 +235,20 @@ def run_preflight_check(
         if not _is_importable(import_name, log=log):
             missing_required.append(f"  • {display_name} — {pip_install}")
 
-    # Check optional deps (log warning, don't block)
+    # Check optional deps (log warning, don't block).
+    # V0.5.3 (FIX-P1-3a, post-AUDIT-V0.5.2): use the INSTANT ``_is_installed``
+    # (find_spec) for optional deps instead of the eager ``_is_importable``
+    # (import_module). The eager import was the root cause of the 4-minute
+    # init reported on the RTX 3060 rig: ``transformers`` alone took 15.8s
+    # (V0.5.0) → 20.5s (V0.5.1) → 36s (V0.5.2 run) per conversion, even
+    # though elixir does NOT directly ``import transformers`` (only the
+    # optional NLLB-translation feature uses it). find_spec checks that the
+    # module is INSTALLED (findable on sys.path) without executing its
+    # import-time code — instant. Optional deps only log a warning (don't
+    # block), so we don't need to catch import-time errors here (any error
+    # will surface at use time when the feature is actually invoked).
     for import_name, display_name, pip_install in _OPTIONAL_DEPS:
-        if not _is_importable(import_name, log=log):
+        if not _is_installed(import_name, log=log):
             missing_optional.append(f"  • {display_name} — {pip_install}")
 
     # Log optional missing deps
@@ -378,15 +389,71 @@ def _is_importable(
         return False
 
 
+def _is_installed(
+    module_name: str,
+    log: Callable[[str, str], None] | None = None,
+) -> bool:
+    """Check if a module is INSTALLED (findable on ``sys.path``).
+
+    V0.5.3 (FIX-P1-3a, post-AUDIT-V0.5.2): an instant alternative to
+    ``_is_importable`` for OPTIONAL deps. Uses
+    ``importlib.util.find_spec`` which returns a ``ModuleSpec`` if the
+    module is findable, ``None`` otherwise — WITHOUT executing the
+    module's import-time code.
+
+    Why this matters: ``_is_importable`` does a full
+    ``importlib.import_module`` which executes the module's top-level
+    code. For ``transformers`` that top-level code pulls in the entire
+    HF ecosystem (tokenizers, torch interplay, etc.) and took 15.8s
+    (V0.5.0) → 20.5s (V0.5.1) → 36s (V0.5.2 run) per conversion on the
+    RTX 3060 rig — even though elixir does NOT directly use
+    ``transformers`` (only the optional NLLB-translation feature does).
+    For OPTIONAL deps (which only log a warning, never block the
+    conversion), we don't need to verify the module can be IMPORTED
+    without error — we just need to know it's installed. Any import-time
+    error will surface at use time when the feature is actually invoked.
+
+    Trade-off: ``find_spec`` does NOT catch the case where a module is
+    installed but broken (e.g. ``torch`` without CUDA raises at import).
+    For REQUIRED deps we keep ``_is_importable`` (catches import-time
+    errors early, before a 90-minute conversion). For OPTIONAL deps the
+    trade-off is correct: instant check, deferred errors.
+
+    Returns ``True`` if the module is findable, ``False`` otherwise.
+    """
+    _log = log or (lambda msg, level="DEBUG": None)
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec(module_name)
+        if spec is None:
+            _log(f"  ❌ '{module_name}' not installed", "DEBUG")
+            return False
+        _log(f"  ✅ '{module_name}' installed", "DEBUG")
+        return True
+    except Exception as _e:
+        # find_spec can raise ModuleNotFoundError for parent packages of
+        # a submodule (e.g. find_spec('foo.bar') when 'foo' is absent).
+        # Treat any exception as "not installed" — consistent with the
+        # _is_importable ImportError branch.
+        _log(f"  ❌ '{module_name}' not installed ({type(_e).__name__})", "DEBUG")
+        return False
+
+
 def get_dependency_status() -> dict[str, bool]:
     """Get the status of all known dependencies.
 
     Returns a dict of {module_name: is_available} for all registered deps.
     Useful for the Dependencies Dashboard UI.
+
+    V0.5.3 (FIX-P1-3a): optional deps now use the instant ``_is_installed``
+    (find_spec) — the Dashboard UI shouldn't pay the 15-36s ``transformers``
+    import cost just to display a status row. Required deps still use
+    ``_is_importable`` (catches import-time errors).
     """
     status = {}
     for import_name, _, _, _ in _REQUIRED_DEPS:
         status[import_name] = _is_importable(import_name)
     for import_name, _, _ in _OPTIONAL_DEPS:
-        status[import_name] = _is_importable(import_name)
+        status[import_name] = _is_installed(import_name)
     return status

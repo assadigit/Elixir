@@ -396,8 +396,6 @@ class SummarizerChapterPhasesMixin:
         _inc_kp_lp,
         _src_words_lp,
         _th_hi_lp,
-        _bp_lo_lp,
-        _bp_hi_lp,
     ):
         # V18.15.9.0: Ensure the source's enumerated conclusions (e.g., the 7
         # characteristics of solid identity) appear as a DISTINCT bullet group.
@@ -1544,9 +1542,6 @@ class SummarizerChapterPhasesMixin:
         # thorough is short RELATIVE TO ITS SCALED TARGET — and never when
         # the user did not request a thorough summary at all (F9a).
         from core.summarisation.length_policy import (
-            bullet_target as _bp_target_lp,
-        )
-        from core.summarisation.length_policy import (
             count_source_words as _csw_lp,
         )
         from core.summarisation.length_policy import (
@@ -1555,7 +1550,6 @@ class SummarizerChapterPhasesMixin:
 
         _src_words_lp = _csw_lp(text)
         _th_lo_lp, _th_hi_lp = _th_target_lp(_src_words_lp)
-        _bp_lo_lp, _bp_hi_lp = _bp_target_lp(_src_words_lp)
         _inc_thorough_lp = bool(getattr(self.request, "include_thorough_summary", True))
         _inc_exec_lp = bool(getattr(self.request, "include_executive_summary", True))
         _inc_kp_lp = bool(getattr(self.request, "include_keypoints", True))
@@ -1796,8 +1790,6 @@ class SummarizerChapterPhasesMixin:
         else:
             self.log(f"    ✅ Final coverage {coverage:.0%}", "INFO")
         return (
-            _bp_hi_lp,
-            _bp_lo_lp,
             _inc_exec_lp,
             _inc_kp_lp,
             _inc_thorough_lp,

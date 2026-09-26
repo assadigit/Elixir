@@ -210,6 +210,17 @@ def call_dedicated_thorough_with_fallback(
     # only run with a fixed Temperature, nothing else is allowed" — so
     # Attempt 3 now uses the same temperature as Attempts 1+2 instead
     # of 0.0 greedy decoding). ──
+    # TODO (owner-confirmation, FIX-P3-6 / AUDIT-V0.5.2): the
+    # `temperature * 0.5` multiplier on ALL 4 attempts (here at L220,
+    # also L148 / L189 / L268) means the EFFECTIVE temperature is HALF
+    # the configured value (0.35 if the configured value is 0.7). This
+    # is pre-existing (not a V0.5.2 regression) and consistent across
+    # all attempts. The user's directive "models MUST only run with a
+    # fixed Temperature" is ambiguous: it could mean (a) the FULL
+    # configured value (0.7 — in which case the `* 0.5` should be
+    # REMOVED on all 4 attempts), or (b) just "not 0.0 / not random"
+    # (in which case the current `* 0.5` is fine). Pending owner
+    # confirmation — DO NOT change the code until confirmed.
     if deadline_exceeded("dedicated thorough (attempt 3)"):
         log("    \u23f1\ufe0f Skipping thorough attempt 3 (chapter deadline exceeded)", "DEBUG")
     else:

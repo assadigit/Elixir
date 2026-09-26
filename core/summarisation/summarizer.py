@@ -1687,8 +1687,6 @@ class Summarizer(
             _pipeline, _pstate, coverage, parsed, text, tok_in = _pr
 
         (
-            _bp_hi_lp,
-            _bp_lo_lp,
             _inc_exec_lp,
             _inc_kp_lp,
             _inc_thorough_lp,
@@ -1760,8 +1758,6 @@ class Summarizer(
             _inc_kp_lp,
             _src_words_lp,
             _th_hi_lp,
-            _bp_lo_lp,
-            _bp_hi_lp,
         )
         return self._phase_finalize(
             heading,
