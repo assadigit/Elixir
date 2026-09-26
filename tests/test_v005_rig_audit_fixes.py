@@ -363,10 +363,23 @@ class TestLengthPolicy:
 
     def test_theorist_floor_budget_gate(self):
         """The 150-300-word append skips when the thorough already meets its
-        scaled ceiling (source pin + behaviour)."""
+        scaled ceiling (source pin + behaviour).
+
+        V0.4.37 (F3): the gate is now coverage-driven -- the word-count
+        comparison + scaled_target_hi live in the _v05_gapfill_should_skip
+        helper, which overrides the word-count skip when coverage is below
+        the engage fraction (_V05_COVERAGE_ENGAGE_FRACTION)."""
         src = _strip_comments(_src("core/summarisation/thorough_theorist_floor.py"))
         assert "scaled_target_hi" in src
-        assert "_tf_words >= int(scaled_target_hi)" in src
+        # V0.4.37 (F3): the word-count comparison moved into the
+        # _v05_gapfill_should_skip helper (parameter tf_words, not the
+        # method-local _tf_words). The method now DELEGATES to it.
+        assert "_v05_gapfill_should_skip" in src
+        assert "tf_words >= int(scaled_target_hi)" in src
+        # The coverage-driven override (F3): engage fraction constant +
+        # the helper call from the method body.
+        assert "_V05_COVERAGE_ENGAGE_FRACTION" in src
+        assert "_v05_gapfill_should_skip(" in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════

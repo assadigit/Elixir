@@ -350,3 +350,93 @@ class TestV0437F4MultiAuthorAttribution:
         tpl = Path("prompts/summarisation/gap_fill_reprompt.md").read_text(encoding="utf-8")
         assert "multi-author attribution" in tpl
         assert "AuthorA and AuthorB" in tpl
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F3: coverage-driven thorough gap-fill engagement (not word-count-only)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.thorough_theorist_floor import _v05_gapfill_should_skip
+
+
+class TestV0437F3CoverageDrivenGate:
+    """F3: the V0.05 thorough gap-fill engages on COVERAGE, not word-count
+    alone.
+
+    The V0.4.36 ch.6 audit (F3, LOW PRIORITY -- observability) noted the
+    thorough gap-fill's V0.05 word-count gate could ship a coverage
+    deficit: a thorough meeting its source-scaled word target while still
+    well below the coverage fraction. The V0.4.37 fix: the gate skips
+    ONLY when word-count is met AND coverage is at/above the engage
+    fraction (0.70); below that, the gap-fill runs to close the coverage
+    gap regardless of word-count. Content-agnostic (Rule 1): the
+    threshold is a coverage FRACTION, not a chapter-specific theorist count.
+    """
+
+    def test_wordcount_met_low_coverage_engages(self):
+        """Word-count met BUT coverage 50% < 70% -> engage (no skip)."""
+        skip, reason = _v05_gapfill_should_skip(50, 40, 1, 2)
+        assert skip is False
+        assert "V0.4.37 F3" in reason
+        assert "coverage-driven engagement" in reason
+
+    def test_wordcount_met_high_coverage_skips(self):
+        """Word-count met AND coverage 80% >= 70% -> skip (few missing
+        left to the bullets/recall floor)."""
+        skip, reason = _v05_gapfill_should_skip(50, 40, 8, 10)
+        assert skip is True
+        assert "V0.05" in reason
+        assert ">= the engage fraction" in reason
+
+    def test_wordcount_unmet_engages_no_reason(self):
+        """Word-count below target -> engage (no skip, no F3 reason --
+        the existing 'below target' path, unchanged)."""
+        skip, reason = _v05_gapfill_should_skip(30, 40, 1, 2)
+        assert skip is False
+        assert reason == ""
+
+    def test_no_target_never_skips(self):
+        """scaled_target_hi None -> the gate is inactive (never skips)."""
+        skip, reason = _v05_gapfill_should_skip(500, None, 0, 10)
+        assert skip is False
+        assert reason == ""
+
+
+class TestV0437F3IntegrationEngagesDespiteWordcount:
+    """F3 integration: a thorough that meets its word target but has low
+    coverage still fires the gap-fill (coverage-driven engagement)."""
+
+    def test_low_coverage_engages_despite_wordcount_met(self):
+        # Reuse the hermetic Voss/Ibarra fixtures from the thorough-floor
+        # suite (synthetic placeholder names -- deny-list safe).
+        import time
+
+        from test_v1820313_thorough_floor import (
+            _ANALYSIS,
+            _CANNED,
+            _SOURCE,
+            _THOROUGH,
+            _make_bare,
+        )
+
+        # _THOROUGH is ~58 words and covers 1/2 (Voss only -> 50% coverage).
+        # scaled_target_hi=40 -> word-count met (58 >= 40) BUT coverage
+        # 50% < 70% -> F3 overrides the word-count skip -> gap-fill runs.
+        s, llm_calls, _ = _make_bare(responses=[_CANNED])
+        # _make_bare arms the real deadline machinery; ensure it's NOT
+        # exceeded so the non-skippable-deadline WARNING path is inert.
+        s._chapter_deadline_start = time.time()
+        result = s._thorough_theorist_floor(
+            "Chapter One", _SOURCE, _THOROUGH, _ANALYSIS, scaled_target_hi=40
+        )
+        # The gap-fill engaged despite word-count being met (F3).
+        assert len(llm_calls) == 1, (
+            "F3: gap-fill must engage despite word-count met when coverage "
+            "is below the engage fraction"
+        )
+        # The canned addition was appended.
+        assert result != _THOROUGH
+        # The F3 coverage-driven engagement reason was logged.
+        assert any(
+            "V0.4.37 F3" in msg and "coverage-driven engagement" in msg for _lvl, msg in s.log_lines
+        ), "F3 engage reason must be logged"

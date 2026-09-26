@@ -423,6 +423,59 @@ def _semantic_ground_addition_sentences(
         return addition, []
 
 
+# V0.4.37 (F3): coverage-driven engagement fraction. The V0.05 word-
+# count gate skips the thorough gap-fill when the thorough meets its
+# source-scaled word target. The V0.4.36 ch.6 audit (F3, LOW PRIORITY
+# -- observability) found this can ship a coverage deficit: a thorough
+# can meet its word target while still well below the coverage fraction
+# (the audit's example: a thorough at ~50/74 = 68% of theorists). The
+# gate now skips ONLY when word-count is met AND coverage is at/above
+# this fraction; below it, the gap-fill runs to close the coverage gap
+# regardless of word-count. Content-agnostic (Rule 1): the threshold
+# is a coverage FRACTION (0.70 -- close to the audit's 50/74 = 68%
+# example, rounded), not a chapter-specific theorist count.
+_V05_COVERAGE_ENGAGE_FRACTION = 0.70
+
+
+def _v05_gapfill_should_skip(
+    tf_words: int,
+    scaled_target_hi: int | None,
+    covered: int,
+    total: int,
+) -> tuple[bool, str]:
+    """Decide whether the V0.05 thorough gap-fill should be skipped.
+
+    Returns ``(skip, reason)``. The gap-fill is skipped on the word-
+    count gate ONLY when the thorough already meets its source-scaled
+    word target AND coverage is at/above the engage fraction -- the
+    few remaining missing contributors are then covered by the bullets/
+    recall floor. When coverage is below the engage fraction, the
+    word-count skip is OVERRIDDEN (coverage-driven engagement) so the
+    gap-fill closes the coverage gap regardless of word-count. When the
+    word target is None, the gate is inactive (no skip).
+    """
+    if scaled_target_hi is None:
+        return False, ""
+    if tf_words >= int(scaled_target_hi):
+        _frac = (covered / total) if total else 1.0
+        if _frac >= _V05_COVERAGE_ENGAGE_FRACTION:
+            return True, (
+                f"V0.05: thorough ({tf_words} words) meets its source-scaled "
+                f"target ({scaled_target_hi} words) AND coverage "
+                f"{covered}/{total} = {_frac:.0%} >= the engage fraction "
+                f"({_V05_COVERAGE_ENGAGE_FRACTION:.0%}); the missing "
+                f"contributor(s) are covered by the bullets/recall floor"
+            )
+        return False, (
+            f"V0.4.37 F3: thorough ({tf_words} words) meets its source-scaled "
+            f"target ({scaled_target_hi} words) BUT coverage "
+            f"{covered}/{total} = {_frac:.0%} < the engage fraction "
+            f"({_V05_COVERAGE_ENGAGE_FRACTION:.0%}) -- gap-fill runs "
+            f"(coverage-driven engagement, not word-count-driven)"
+        )
+    return False, ""
+
+
 class SummarizerThoroughFloorMixin:
     """Thorough-theorist floor for :class:`Summarizer` (see the module
     docstring). The method body is byte-identical to summarizer.py's."""
@@ -565,21 +618,30 @@ class SummarizerThoroughFloorMixin:
                     "WARNING",
                 )
             _tf_words = len((thorough or "").split())
-            # V0.05 (rig audit F9b): BUDGET GATE — the 150-300-word append is
+            # V0.05 (rig audit F9b): BUDGET GATE -- the 150-300-word append is
             # skipped when the thorough already meets its SOURCE-SCALED target
             # (``scaled_target_hi`` from length_policy.thorough_target). The
             # V0.04 rig's short chapters were padded past their sources by
             # exactly this append; a summary section never grows beyond its
             # scaled ceiling to chase a name that the bullets already carry.
-            if scaled_target_hi is not None and _tf_words >= int(scaled_target_hi):
-                self.log(
-                    f"    ⏭️  V0.05: Thorough gap-fill skipped — thorough "
-                    f"({_tf_words} words) already meets its source-scaled "
-                    f"target ({scaled_target_hi} words); the missing "
-                    f"contributor(s) are covered by the bullets/recall floor",
-                    "INFO",
-                )
+            # V0.4.37 (F3): coverage-driven engagement. The word-count gate
+            # alone could ship a coverage deficit (a thorough meeting its
+            # word target while still well below the coverage fraction). The
+            # gate now skips ONLY when word-count is met AND coverage is
+            # at/above the engage fraction; below that, the gap-fill runs to
+            # close the coverage gap regardless of word-count. Content-
+            # agnostic (Rule 1): the threshold is a coverage FRACTION, not a
+            # chapter-specific theorist count.
+            _skip, _skip_reason = _v05_gapfill_should_skip(
+                _tf_words, scaled_target_hi, _covered, _total
+            )
+            if _skip:
+                self.log(f"    \u23ed\ufe0f  {_skip_reason}", "INFO")
                 return thorough
+            if _skip_reason:
+                # F3 engage reason (word-count met but coverage below the
+                # engage fraction) -- log the coverage-driven engagement.
+                self.log(f"    \U0001f3af {_skip_reason}", "INFO")
             if _tf_words < 50:
                 # A stub thorough (empty/exec-copy/degenerate) cannot be
                 # safely extended with "continuation" prose — report and
