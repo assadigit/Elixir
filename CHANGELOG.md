@@ -24,6 +24,58 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.4.39 — the Option A+B general-improvements release (D3 LLM-repair pattern generalized to garbles + general detector edge-case characterization)
+
+> **The release:** per the user's direction ("We shouldn't overoptimize for
+> this specific chapter, do only general improvements"), the V0.4.38 audit's
+> proposed backlog's F1 (source-grounded deterministic auto-repair for the
+> specific ch.6 garbles "betrayale"/"paranoias") was DROPPED — it was
+> chapter-specific + re-introduced the V0.02 corruption risk. This release
+> ships TWO general improvements instead: generalize the proven D3
+> LLM-repair pattern to garbles (Option A) + general detector edge-case
+> characterization on non-ch.6 fixtures (Option B).
+
+**1. Option A — generalize the D3 LLM-repair pattern to garbles (commit `324928b`):**
+  new `repair_garbles_via_llm` in
+  `core/summarisation/postchecks/garble/garble_repair.py` — mirrors
+  `repair_d3_quotes_via_llm` (V0.4.11/V0.4.13). When `fragment_merge` /
+  `dropped_letter` flags are present, sends the text + a clamped (≤20k-char)
+  source excerpt to the LLM with a "fix ONLY the garbled tokens, preserve
+  all other text" prompt. Fail-open; D3-style guard (keep the original if
+  the repair returns empty/short text OR doesn't reduce the garble flag
+  count via `_count_garble_flags`). Wired into `postcheck_thorough`
+  (field_phases.py) after the D3 repair block (mirroring the D3 wiring).
+  Fires only when the postcheck flagged a garble (bounded — no-op on clean
+  text). Content-agnostic (Rule 1 ✓ — the prompt is about token repair,
+  not content; works on any chapter; catches ANY garble, not the specific
+  ch.6 words). The pre-repair garble flags stay as the honest "what was
+  found" record; the repair issues (fix/flag) document the LLM repair on
+  top. The LLM considers source context (no blind edit-distance-1 rewrite —
+  avoids the V0.02 `auto_repair` corruption failure mode that made it
+  default-OFF since V0.03 P0-1).
+
+**2. Option B — general codebase hygiene (commit `324928b`):** 4
+  characterization tests in
+  `tests/test_v0438_audit_fixes.py::TestV0439OptionBGeneralDetectorEdgeCases`
+  confirming the V0.4.38 fixes (F3 fragment_merge lexicon, F4 bold-name
+  structural-label, F5 self-compound hyphen, F1 fusion Pattern C) work on
+  GENERIC fixtures (English/biology/history text, not ch.6) — confirming
+  the detectors are book-agnostic (Rule 1).
+
+**Tests:** `tests/test_v0438_audit_fixes.py::TestV0439OptionAGarbleLLMRepair`
+  — 5 tests (mock-LLM repair fixes a garble; D3-style guard keeps the
+  original when the LLM doesn't reduce flags; no-op when no garble flags;
+  fail-open when no model configured; fail-open on provider exception).
+
+**Net-green:** ruff clean; eval gate OK (hash flat — the mock LLM doesn't
+exercise the repair); **6,126 P / 0 F / 36 S exit 0** (+9: the 9 V0.4.39
+tests — 5 Option A + 4 Option B); deny-list passes.
+
+**Note:** the quality IMPACT (the LLM repair fixing garbles on the rig)
+requires a live-LLM run to validate — the deterministic mock can't. The
+change is safe (content-agnostic, fail-open, D3-style guard) and the
+repair logic is unit-tested with a mock provider.
+
 ## V0.4.38 — the F1-F5 backlog release (fusion Pattern C + 4th dedicated-thorough attempt + fragment-merge lexicon + bold-name structural-label exemption + self-compound hyphen normalization)
 
 > **The release:** the V0.4.37 ch.6 audit's V0.4.38 backlog had 5 items

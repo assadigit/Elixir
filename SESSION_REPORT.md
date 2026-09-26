@@ -1023,3 +1023,38 @@ Commits: `415f589` (F1) + `ff7ab00` (F2) + `57f13f3` (F3) + `605bafd`
 36 S exit 0** (+14 — the 12 V0.4.38 characterization tests + 2 seed
 drift); deny-list passes.
 
+---
+
+## Phase 21 — V0.4.39 release (the Option A+B general-improvements release — D3 LLM-replay pattern generalized to garbles + general detector edge-case characterization)
+
+> **Branch:** `refactor/audit-session` → release commit (VERSION `0.4.39`).
+> Tagged `V0.4.39`.
+
+Per the user's direction ("We shouldn't overoptimize for this specific
+chapter, do only general improvements"): the V0.4.38 audit's proposed
+V0.4.40 backlog's F1 (source-grounded deterministic auto-repair for
+"betrayale"/"paranoias") was DROPPED — it was ch.6-specific + re-introduced
+the V0.02 corruption risk. This release ships TWO general improvements.
+
+**1. Option A — generalize the D3 LLM-repair pattern to garbles (commit `324928b`):**
+  new `repair_garbles_via_llm` in
+  `core/summarisation/postchecks/garble/garble_repair.py` — mirrors
+  `repair_d3_quotes_via_llm` (V0.4.11/V0.4.13). When fragment_merge /
+  dropped_letter flags are present, sends the text + a clamped source
+  excerpt to the LLM with a "fix ONLY the garbled tokens, preserve all
+  other text" prompt. Fail-open; D3-style guard (keep the original if
+  the repair doesn't reduce the garble flag count). Wired into
+  `postcheck_thorough` (field_phases.py) after the D3 repair block.
+  Content-agnostic (Rule 1 — works on any chapter, catches any garble).
+
+**2. Option B — general codebase hygiene (commit `324928b`):** 4
+  characterization tests confirming the V0.4.38 fixes (F3/F4/F5/F1)
+  work on GENERIC fixtures (English/biology/history text, not ch.6) —
+  confirming the detectors are book-agnostic.
+
+Commits: `324928b` (Option A + B together).
+
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,126 P / 0 F /
+36 S exit 0** (+9: the 9 V0.4.39 tests — 5 Option A + 4 Option B); deny-list passes.
+
+
