@@ -550,12 +550,16 @@ class TestV0440VerificationLayer:
         assert issues == []
 
     def test_no_op_when_no_model_configured(self):
-        """No model configured → no-op (fail-open, like the D3 repair)."""
-        source = "Smith (1971) described the mechanism."
+        """No model configured → no LLM correction (the LLM part is a no-op,
+        like the D3 repair). The deterministic date-check still runs."""
+        source = "Smith (1979) described the mechanism."  # matching dates
         summary = "Smith (1979) described the mechanism."
         out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings(model=""))
         assert out == summary
-        assert issues == []
+        # No date-check issues (matching dates) + no LLM fix issues.
+        assert all(
+            i.detector != "verification" or i.severity != "fix" for i in issues
+        ), "no LLM fix issues when no model configured"
 
     def test_fail_open_on_provider_exception(self, monkeypatch):
         """Provider creation raises → fail-open (original kept)."""

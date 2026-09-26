@@ -188,6 +188,49 @@ def verify_and_polish_summary(
     if not rendered_md or not source_text:
         return rendered_md, issues
 
+    # V0.5.0: deterministic date-check (runs BEFORE the LLM call —
+    # flags date mismatches the LLM might miss). Extract all dates from
+    # the summary + source, compare (hallucinated/omitted). Advisory
+    # flags (severity="flag") — the LLM corrections (severity="fix")
+    # handle the actual fixing. Content-agnostic (Rule 1 — generic date
+    # structure patterns, no hardcoded dates).
+    try:
+        from core.preprocessing.date_extractor import compare_dates, extract_dates
+
+        _summ_dates = extract_dates(rendered_md)
+        _src_dates = extract_dates(source_text)
+        _date_cmp = compare_dates(_summ_dates, _src_dates)
+        if _date_cmp["hallucinated_count"] > 0:
+            for _hd in _date_cmp["hallucinated"][:10]:
+                issues.append(
+                    Issue(
+                        detector="verification_date_check",
+                        severity="flag",
+                        field="summary",
+                        snippet=_hd.text[:60],
+                        detail=(
+                            f"deterministic date-check: summary date {_hd.text!r} "
+                            f"({_hd.normalized}) NOT found in source — possible fabrication."
+                        ),
+                    )
+                )
+        if _date_cmp["omitted_count"] > 0:
+            for _od in _date_cmp["omitted"][:10]:
+                issues.append(
+                    Issue(
+                        detector="verification_date_check",
+                        severity="flag",
+                        field="summary",
+                        snippet=_od.text[:60],
+                        detail=(
+                            f"deterministic date-check: source date {_od.text!r} "
+                            f"({_od.normalized}) NOT found in summary — possible omission."
+                        ),
+                    )
+                )
+    except Exception:
+        logger.warning("deterministic date-check crashed (non-fatal)")
+
     if settings is None:
         from utils.settings import Settings as _S
 
