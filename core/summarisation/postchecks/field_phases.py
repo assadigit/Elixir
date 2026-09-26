@@ -765,6 +765,31 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
                 tho_str, "thorough", source_text or "", _s
             )
             tho_stray_quotes = (tho_stray_quotes or []) + (d3_issues or [])
+    # V0.4.39 (Option A): LLM semantic repair for flagged garbles
+    # (fragment_merge + dropped_letter). Mirrors the V0.4.11/V0.4.13 D3
+    # stray-quote LLM-repair pattern above. General — catches any garble
+    # on any chapter; content-agnostic (Rule 1 — the prompt is about token
+    # repair, not content). Fail-open; D3-style guard (keep the original
+    # if the repair doesn't reduce the garble flag count). Fires only when
+    # the postcheck flagged a garble, so it's bounded (no-op on clean text).
+    _garble_flags = (tho_fragment or []) + (tho_dropped or [])
+    if _garble_flags:
+        from utils.settings import Settings as _GSettings
+
+        _gs = _GSettings()
+        _g_model = _gs.get("summarisation.model", "") or _gs.get(
+            "summarisation.primary_model", ""
+        )
+        if _g_model:
+            from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+            tho_str, _garble_repair_issues = repair_garbles_via_llm(
+                tho_str, "thorough", source_text or "", _src_words, _gs
+            )
+            # The pre-repair garble flags (tho_fragment + tho_dropped) stay
+            # as the honest "what was found" record; the repair issues
+            # (fix/flag) document the LLM repair on top. Mirror the D3 path.
+            report.issues.extend(_garble_repair_issues or [])
     # V0.4.23: raw-source verbatim exemption (see validate_years docstring).
     _, tho_year = validate_years(tho_str, "thorough", source_authors, source_text or "")
     # V18.2.17 Fix 7: attribution verification.

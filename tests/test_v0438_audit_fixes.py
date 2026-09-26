@@ -248,3 +248,171 @@ class TestV0438F5SelfCompoundHyphenNormalization:
         """Text without 'self' is unchanged (fast-path)."""
         t = "A plain sentence about the chapter."
         assert _normalize_self_compounds(t, "thorough") == t
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.4.39 (Option A): LLM semantic repair for flagged garbles
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.postchecks.garble.garble_repair import repair_garbles_via_llm
+
+
+class _MockSettings:
+    """Minimal Settings stub returning a configured model + ollama arch."""
+
+    def __init__(self, *, model="mock-model", arch="single_local"):
+        self._model = model
+        self._arch = arch
+
+    def get(self, key, default=None):
+        if key == "summarisation.model":
+            return self._model
+        if key == "summarisation.model_architecture":
+            return self._arch
+        return default
+
+
+class _MockProvider:
+    """A mock LLM provider that applies a caller-supplied repair function."""
+
+    def __init__(self, repair_fn):
+        self._repair_fn = repair_fn
+        self.calls = []
+
+    def complete(self, *, prompt, temperature, max_tokens, model):
+        self.calls.append({"prompt": prompt, "temperature": temperature})
+        # The prompt ends with the text to fix (after "TEXT TO FIX:\n").
+        text = prompt.split("TEXT TO FIX:\n", 1)[1] if "TEXT TO FIX:\n" in prompt else prompt
+        return self._repair_fn(text)
+
+
+class TestV0439OptionAGarbleLLMRepair:
+    """V0.4.39 (Option A): extend the D3 LLM-repair pattern to garbles.
+
+    A general, content-agnostic LLM semantic repair for fragment_merge +
+    dropped_letter garbles. Mirrors repair_d3_quotes_via_llm (V0.4.11/V0.4.13):
+    fail-open; D3-style guard (keep the original if the repair doesn't reduce
+    the garble flag count). Works on any chapter (Rule 1).
+    """
+
+    def test_garble_repaired_when_llm_fixes_the_token(self, monkeypatch):
+        """When the LLM returns the fixed text (fewer garble flags), it's
+        kept + a 'fix' issue is recorded."""
+        source = "the confidence and pride of paranoids cloak but a hollow shell."
+        text = "the confidence and pride of paranoias cloak a hollow shell."
+        # mock provider that fixes 'paranoias' -> 'paranoids'
+        provider = _MockProvider(lambda t: t.replace("paranoias", "paranoids"))
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = repair_garbles_via_llm(text, "bullet[0]", source, settings=_MockSettings())
+        assert "paranoids" in out and "paranoias" not in out
+        assert any(i.detector == "garble_llm_repair" and i.severity == "fix" for i in issues)
+
+    def test_original_kept_when_llm_doesnt_reduce_flags(self, monkeypatch):
+        """D3-style guard: if the LLM's output doesn't reduce the garble
+        flag count, the original is kept + a 'flag' issue is recorded."""
+        source = "the confidence and pride of paranoids cloak but a hollow shell."
+        text = "the confidence and pride of paranoias cloak a hollow shell."
+        # mock provider that returns the SAME garbled text (no fix)
+        provider = _MockProvider(lambda t: t)
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = repair_garbles_via_llm(text, "bullet[0]", source, settings=_MockSettings())
+        assert out == text  # original kept
+        assert any(i.detector == "garble_llm_repair" and i.severity == "flag" for i in issues)
+
+    def test_no_op_when_no_garble_flags(self):
+        """When the text has no garble flags, no LLM call is made (bounded)."""
+        source = "a clean sentence about the topic."
+        text = "a clean sentence about the topic."
+        out, issues = repair_garbles_via_llm(text, "exec", source, settings=_MockSettings())
+        assert out == text
+        assert issues == []
+
+    def test_fail_open_when_no_model_configured(self):
+        """No model configured → no-op (fail-open, like the D3 repair)."""
+        source = "the pride of paranoids cloak a shell."
+        text = "the pride of paranoias cloak a shell."
+        out, issues = repair_garbles_via_llm(
+            text, "thorough", source, settings=_MockSettings(model="")
+        )
+        assert out == text  # original kept
+        assert issues == []
+
+    def test_fail_open_on_provider_exception(self, monkeypatch):
+        """Provider creation raises → fail-open (original kept)."""
+        source = "the pride of paranoids cloak a shell."
+        text = "the pride of paranoias cloak a shell."
+
+        def _raise(name, settings):
+            raise RuntimeError("provider boom")
+
+        monkeypatch.setattr("core.llm.llm_provider_impl.create_provider", _raise)
+        out, issues = repair_garbles_via_llm(text, "thorough", source, settings=_MockSettings())
+        assert out == text  # original kept
+        assert any("failed" in i.detail for i in issues)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.4.39 (Option B): general detector edge-case characterization (non-ch.6)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV0439OptionBGeneralDetectorEdgeCases:
+    """V0.4.39 (Option B): general codebase hygiene — characterization tests
+    for existing detectors on NON-ch.6 fixtures (generic English / biology /
+    history). Confirms the detectors are book-agnostic (Rule 1)."""
+
+    def test_fragment_merge_lexicon_check_on_generic_english(self):
+        """The F3 lexicon check suppresses the 'word+trailing-char = a real
+        English word' false-positive on any text (not just ch.6)."""
+        # 'careful' + 'ly' = 'carefully' (real word, in lexicon) — must not flag
+        src = "he was careful in his approach."
+        text = "he was carefully in his approach."
+        from core.summarisation.postchecks.garble.token_detectors import (
+            detect_word_fragment_merge,
+        )
+
+        _, issues = detect_word_fragment_merge(text, "exec", src)
+        flags = [i for i in issues if i.detector == "fragment_merge" and "carefully" in i.detail]
+        assert flags == [], "'carefully' (real word) must not be flagged"
+
+    def test_bold_name_structural_label_exemption_on_generic_text(self):
+        """The F4 structural-label exemption works on any text — e.g. a
+        biology chapter's '**Methods**:' / '**Results**:' labels."""
+        from core.summarisation.postchecks.attribution import (
+            verify_bold_name_attribution,
+        )
+
+        src = "The experiment measured photosynthesis rates under varying light."
+        for label in ("Methods", "Results", "Discussion", "Abstract", "Background"):
+            text = f"- **{label}**: the experiment used a controlled light source throughout."
+            _, issues = verify_bold_name_attribution(text, src, "bullet[0]")
+            flags = [i for i in issues if i.detector == "attribution"]
+            assert flags == [], f"section label '{label}' must not be flagged"
+
+    def test_self_compound_hyphen_normalization_on_generic_text(self):
+        """The F5 self-compound hyphen normalization works on any text —
+        e.g. a generic 'selfaware' → 'self-aware' (when 'aware' is in the
+        lexicon but 'selfaware' is not)."""
+        from core.pipeline.chapter_checkpoint import _normalize_self_compounds
+
+        text = "the candidate was selfaware of the limitations."
+        out = _normalize_self_compounds(text, "exec")
+        assert "self-aware" in out
+        assert "selfaware" not in out
+
+    def test_fusion_pattern_c_no_false_positive_on_generic_clean_text(self):
+        """The F1 fusion Pattern C does NOT false-positive on clean text
+        using source words correctly (any chapter, not just ch.6). The
+        Pattern C check is structural + targeted (a source-word prefix +
+        a 5-6 char suffix that is itself a suffix of another source word)
+        — clean text never matches."""
+        from core.summarisation.postchecks.garble.fusion import detect_sentence_fusion
+
+        src = "the water was apparently clean. the thesis was a defense."
+        clean = "the water was apparently clean and the thesis was a defense."
+        _, issues = detect_sentence_fusion(clean, "exec", src)
+        assert [i for i in issues if i.detector == "sentence_fusion"] == []
