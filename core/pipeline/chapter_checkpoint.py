@@ -170,6 +170,57 @@ def format_years(text: str) -> str:
     return _YEAR_IN_PARENS_RE.sub(_style_years_in_parens, text)
 
 
+def _final_stray_quote_sweep(text: str, field_label: str) -> str:
+    """V0.4.37 (F6): defense-in-depth final stray-quote sweep at the
+    render boundary (thorough only).
+
+    The postcheck's ``repair_stray_quotes_v2`` (postchecks/garble/
+    quote_repair.py) runs on the thorough while it is still a single
+    very long line; its state-machine D2 can mis-pair ambiguous quotes
+    on a long line and leave an orphan undetected (no ``stray_quote``
+    fix is logged). The V0.4.36 (F3) paragraph-breaking that runs
+    HERE shortens the thorough into ~16 paragraph-lines, making
+    per-line quote-pairing far more reliable. Re-running the sweep
+    AFTER paragraph-breaking + format_years therefore catches orphans
+    the pre-paragraph-break single-line pass missed (the V0.4.36 ch.6
+    audit F6 evidence: a stray ``"`` before a trailing participle
+    survived into the rendered thorough despite the postcheck logging
+    no stray-quote fix on it).
+
+    Strictly content-agnostic (Rule 1 ✓): the detector counts
+    double-quotes per line and removes the orphan on odd-count lines
+    — no hardcoded patterns, names, or content. Strict-improvement:
+    it only removes orphan quotes, never adds or repositions them; on
+    already-clean text it is a no-op (the postcheck's primary fixes
+    still own the structured conversion-log report; this render-time
+    sweep is defense-in-depth and logs its catches at WARNING).
+    """
+    if not text or '"' not in text:
+        return text
+    try:
+        from core.summarisation.postchecks.garble.quote_repair import (
+            repair_stray_quotes_v2,
+        )
+
+        cleaned, issues = repair_stray_quotes_v2(text, field_label)
+        if issues:
+            logger.warning(
+                "V0.4.37 F6 render-sweep: %d stray-quote fix(es) on '%s' "
+                "after paragraph-breaking/format_years (orphans the "
+                "postcheck's single-line pass missed).",
+                len(issues),
+                field_label,
+            )
+        return cleaned
+    except Exception as e:  # pragma: no cover — render must never break
+        logger.warning(
+            "render stray-quote sweep crashed (non-fatal): %s: %s",
+            type(e).__name__,
+            e,
+        )
+        return text
+
+
 def render_summary_markdown(summ: SummaryResult) -> str:
     """Render a SummaryResult to the canonical chapter-summary markdown.
 
@@ -200,7 +251,10 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     # pattern). Content-agnostic (the split pattern is a generic English
     # discourse marker: a sentence starting with an Author (Year) citation
     # signals a new section transition).
-    thorough_formatted = format_years(_break_thorough_into_paragraphs(summ.thorough_summary or ""))
+    thorough_formatted = _final_stray_quote_sweep(
+        format_years(_break_thorough_into_paragraphs(summ.thorough_summary or "")),
+        "thorough",
+    )
 
     kd_md = ""
     if getattr(summ, "key_distinctions", None) and str(summ.key_distinctions).strip():

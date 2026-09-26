@@ -20,6 +20,10 @@ fix is field-type-based (thorough vs exec/bullets), not content-based.
 
 from __future__ import annotations
 
+import pytest
+
+from core.models import SummaryResult
+from core.pipeline.chapter_checkpoint import render_summary_markdown
 from core.summarisation.postchecks.attribution import verify_attribution
 from core.summarisation.postchecks.garble.token_detectors import (
     detect_grammatical_incoherence,
@@ -48,8 +52,7 @@ class TestV0437F7GrammarThirdSingular:
         _, issues = detect_grammatical_incoherence(text, "bullet[0]")
         verb_issues = [i for i in issues if "no main verb" in i.detail]
         assert verb_issues == [], (
-            "3rd-singular verb 'masks' should be recognized; got: "
-            f"{[i.detail for i in issues]}"
+            f"3rd-singular verb 'masks' should be recognized; got: {[i.detail for i in issues]}"
         )
 
     def test_inflected_verb_still_recognized(self):
@@ -159,4 +162,90 @@ class TestV0437F7AttributionThoroughThreshold:
         _, exc = verify_attribution(summary, source, "exec", ["Author"])
         assert [i for i in exc if i.detector == "attribution"], (
             "exec keeps the 50% threshold (F7 thorough-only relaxation)"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F6: render-boundary stray-quote sweep (defense-in-depth)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestV0437F6RenderStrayQuoteSweep:
+    """F6: a final stray-quote sweep at the render boundary catches
+    orphans the postcheck's single-line pass missed.
+
+    The V0.4.36 ch.6 audit (F6, LOW PRIORITY — observability) found a
+    stray ``"`` before a trailing participle survived into the rendered
+    thorough despite the postcheck logging no ``stray_quote`` fix. The
+    root cause: the postcheck's ``repair_stray_quotes_v2`` runs on the
+    thorough while it is still a single long line; its state-machine
+    can mis-pair ambiguous quotes on a long line and leave an orphan.
+    The V0.4.36 (F3) paragraph-breaking that runs in render shortens
+    the thorough into paragraph-lines, making per-line pairing far more
+    reliable — so re-running the sweep AFTER paragraph-breaking catches
+    orphans the earlier single-line pass missed.
+    """
+
+    _STRAY_THOROUGH = (
+        "An initial paragraph introduces the topic at length with substantial "
+        "exposition describing the background and the historical context in "
+        "considerable detail for the reader and establishes the conceptual "
+        "foundation upon which the subsequent analytical discussion will rest. "
+        "Alpha (1900) described the mechanism in terms of systemic regulation "
+        "and the feedback architecture of the apparatus across the field "
+        "comprehensively and with considerable analytical nuance for the era. "
+        "Beta (1910) extended the framework with new theoretical contributions "
+        "and elaborated the structural model considerably for subsequent "
+        "researchers working in the same tradition and intellectual lineage. "
+        "Gamma (1920) synthesized these contributions into a coherent fighting "
+        'stance" providing integrity against despair across the entire domain '
+        "for future scholars to build upon systematically and without reservation."
+    )
+
+    def test_render_sweep_removes_stray_quote(self):
+        """The stray ``"`` before 'providing' is removed by the render
+        sweep (the V0.4.36 F6 evidence, reproduced)."""
+        summ = SummaryResult(
+            chapter_heading="6 Profile",
+            executive_summary="A clean exec summary with no stray quotes.",
+            bullet_points=["A clean bullet.", "Another clean bullet."],
+            thorough_summary=self._STRAY_THOROUGH,
+            success=True,
+            model_used="mock",
+            input_tokens=100,
+            output_tokens=200,
+        )
+        rendered = render_summary_markdown(summ)
+        # The stray quote before 'providing' is gone.
+        assert 'stance" providing' not in rendered, (
+            "F6 render sweep should remove the stray quote before 'providing'"
+        )
+        # And the rendered thorough has no odd-count quote line.
+        thorough_section = rendered.split("## Thorough Summary", 1)[1]
+        for line in thorough_section.split("\n"):
+            if line.count('"') % 2 == 1:
+                pytest.fail(f"rendered thorough has an odd-count quote line: {line[:60]!r}")
+
+    def test_render_sweep_idempotent_on_clean_thorough(self):
+        """A clean thorough (no stray) is unchanged — the sweep must not
+        false-positive (remove a legit balanced quote pair or add quotes)."""
+        clean_thorough = (
+            "An initial paragraph introduces the topic at length with "
+            "substantial exposition for the reader. Alpha (1900) described "
+            'the "mechanism of regulation" in terms of systemic feedback.'
+        )
+        summ = SummaryResult(
+            chapter_heading="6 Profile",
+            executive_summary="A clean exec summary.",
+            bullet_points=["A clean bullet."],
+            thorough_summary=clean_thorough,
+            success=True,
+            model_used="mock",
+            input_tokens=100,
+            output_tokens=200,
+        )
+        rendered = render_summary_markdown(summ)
+        # The legit balanced quote pair survives (sweep only removes orphans).
+        assert '"mechanism of regulation"' in rendered, (
+            "the render sweep must not strip a balanced legit quote pair"
         )
