@@ -205,3 +205,46 @@ class TestV0438F4BoldNameStructuralLabelExemption:
         flags = [i for i in issues if i.detector == "attribution"]
         assert len(flags) >= 1, "a real bold-name author not in source must still flag"
         assert "Voss" in flags[0].detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F5: missing-hyphen normalization (selfinflation → self-inflation)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.pipeline.chapter_checkpoint import _normalize_self_compounds
+
+
+class TestV0438F5SelfCompoundHyphenNormalization:
+    """F5: a render-boundary pass inserts missing hyphens in 'self' + word
+    fusions.
+
+    The V0.4.37 summary shipped 'selfinflation' (bullet line 76) and
+    'selfrighteousness' (bullet line 63). The V0.4.38 fix: a
+    lexicon-based pass that hyphenates 'self' + a trailing word ONLY
+    when the fused word is NOT a real English word but the trailing
+    part IS (so 'selfless'/'selfish' — real words — are left alone).
+    Content-agnostic (Rule 1): the lexicon is a generic English
+    wordlist; the 'self-' prefix is generic English morphology.
+    """
+
+    def test_selfinflation_selfrighteousness_hyphenated(self):
+        """The V0.4.37 defects are fixed: selfinflation → self-inflation,
+        selfrighteousness → self-righteousness."""
+        t = "The profile shows selfinflation and selfrighteousness."
+        out = _normalize_self_compounds(t, "bullet[0]")
+        assert "self-inflation" in out
+        assert "self-righteousness" in out
+        assert "selfinflation" not in out
+        assert "selfrighteousness" not in out
+
+    def test_real_self_words_left_alone(self):
+        """Real English self- words (selfless, selfish) and already-
+        hyphenated forms (self-esteem) are NOT touched."""
+        t = "He was selfless and selfish and had high self-esteem."
+        out = _normalize_self_compounds(t, "exec")
+        assert out == t, f"real self- words must be left alone; got: {out!r}"
+
+    def test_noop_when_no_self(self):
+        """Text without 'self' is unchanged (fast-path)."""
+        t = "A plain sentence about the chapter."
+        assert _normalize_self_compounds(t, "thorough") == t

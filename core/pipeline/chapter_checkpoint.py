@@ -221,6 +221,65 @@ def _final_stray_quote_sweep(text: str, field_label: str) -> str:
         return text
 
 
+def _normalize_self_compounds(text: str, field_label: str) -> str:
+    """V0.4.38 (F5): insert missing hyphens in 'self' + word fusions.
+
+    The V0.4.37 summary shipped 'selfinflation' (bullet line 76) and
+    'selfrighteousness' (bullet line 63) — the model fused 'self' + a
+    noun/adjective without the hyphen. This pass finds words starting
+    with 'self' (>= 4 trailing lowercase chars, no hyphen) where the
+    FULL word is NOT a real English word but the trailing part IS →
+    inserts the hyphen ('selfinflation' → 'self-inflation';
+    'selfrighteousness' → 'self-righteousness'). Real words like
+    'selfless'/'selfish' are in the lexicon → left alone.
+    Content-agnostic (Rule 1): the lexicon is the vendored generic
+    English wordlist; the 'self-' prefix is generic English morphology.
+    Strict-improvement (only adds hyphens; no-op on already-hyphenated
+    or correct text). Logs catches at WARNING (defense-in-depth, like
+    the F6 render-sweep).
+    """
+    if not text or "self" not in text.lower():
+        return text
+    try:
+        import re as _re
+
+        from core.summarisation.postchecks.garble.lexicon import (
+            _load_english_lexicon,
+        )
+
+        _lex = _load_english_lexicon()
+        if not _lex:
+            return text
+        _pattern = _re.compile(r"\bself[a-z]{4,}\b")
+        fixes: list[str] = []
+
+        def _fix(m: _re.Match[str]) -> str:
+            w = m.group(0)
+            tail = w[4:]  # after "self"
+            # only hyphenate if the fused word is NOT real AND the tail IS
+            if w in _lex or tail not in _lex:
+                return w
+            fixes.append(w)
+            return "self-" + tail
+
+        cleaned = _pattern.sub(_fix, text)
+        if fixes:
+            logger.warning(
+                "V0.4.38 F5 render-sweep: %d self-compound hyphen fix(es) on '%s' (%s).",
+                len(fixes),
+                field_label,
+                fixes[:5],
+            )
+        return cleaned
+    except Exception as e:  # pragma: no cover — render must never break
+        logger.warning(
+            "self-compound hyphen normalization crashed (non-fatal): %s: %s",
+            type(e).__name__,
+            e,
+        )
+        return text
+
+
 def render_summary_markdown(summ: SummaryResult) -> str:
     """Render a SummaryResult to the canonical chapter-summary markdown.
 
@@ -238,10 +297,13 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     COMPLETE sentinel is stamped with the run id. Unstamped (legacy)
     summaries render exactly as before — byte-for-byte.
     """
-    formatted_bullets = [format_years(str(bp)) for bp in summ.bullet_points]
+    formatted_bullets = [
+        _normalize_self_compounds(format_years(str(bp)), f"bullet[{i}]")
+        for i, bp in enumerate(summ.bullet_points)
+    ]
     bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
 
-    exec_formatted = format_years(summ.executive_summary or "")
+    exec_formatted = _normalize_self_compounds(format_years(summ.executive_summary or ""), "exec")
     # V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at section
     # transitions. The V0.4.26 backlog item 3 — flagged for 6 consecutive
     # audits. The thorough ships as a single ~4000-word paragraph, burying
@@ -251,8 +313,11 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     # pattern). Content-agnostic (the split pattern is a generic English
     # discourse marker: a sentence starting with an Author (Year) citation
     # signals a new section transition).
-    thorough_formatted = _final_stray_quote_sweep(
-        format_years(_break_thorough_into_paragraphs(summ.thorough_summary or "")),
+    thorough_formatted = _normalize_self_compounds(
+        _final_stray_quote_sweep(
+            format_years(_break_thorough_into_paragraphs(summ.thorough_summary or "")),
+            "thorough",
+        ),
         "thorough",
     )
 
