@@ -800,8 +800,23 @@ class ChapterCheckpointSaver:
                     verify_and_polish_summary,
                 )
 
+                # V0.5.6: pass the SummaryResult's ``source_glossary``
+                # field through to the verification LAYER (the LLM-
+                # generated ``<name_glossary>`` block from the master-
+                # summary call — the LAYER uses it as the coverage
+                # ground truth + the loosened quote-guard membership
+                # test). Fail-open via ``getattr`` when the field
+                # isn't populated yet (the V056-PROMPT-PARSER subagent
+                # adds the field; until then the LAYER falls back to
+                # the V0.5.5 regex behavior).
+                _v_glossary = getattr(summary, "source_glossary", None)
                 _rendered, _v_issues = verify_and_polish_summary(
-                    _rendered, _v_source, self._converter.settings, self._log
+                    _rendered,
+                    _v_source,
+                    self._converter.settings,
+                    self._log,
+                    source_glossary=_v_glossary,
+                    chapter_heading=summary.chapter_heading or heading,
                 )
                 # V0.5.1 (BUG fix): LOG the verification issues to the
                 # conversion log (was silently dropped — the audit

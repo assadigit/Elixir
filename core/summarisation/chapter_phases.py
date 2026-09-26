@@ -1002,6 +1002,22 @@ class SummarizerChapterPhasesMixin:
             source_section_map=self._extract_source_section_map(),
             reproduced_tables=self._extract_reproduced_tables(),
             reproduced_criteria=self._extract_reproduced_criteria(),
+            # V0.5.6 (Phase 0.5 — source glossary): the runtime-extracted
+            # source roster parsed from the master-summary LLM call's
+            # ``<name_glossary>`` block. Populated by the master-summary
+            # call sites (``_chunked_summarize`` + the map-reduce master-
+            # summary derivation in ``_summarize_inner``) via
+            # ``glossary_parser.extract_persist_and_cross_reference_glossary``
+            # — the parser runs INSIDE the master-summary call (fail-open),
+            # persists to ``summaries/.glossaries/<slug>.glossary.md``, and
+            # cross-references against ``extract_citations``. Empty dict =
+            # fail-open (the LLM didn't emit a ``<name_glossary>`` block;
+            # the verification LAYER falls back to the regex). The
+            # verification LAYER (V056-VERIFICATION-LAYER subagent) reads
+            # this field as the coverage ground truth — richer than the
+            # regex (catches multi-word surnames + provides a 1-sentence
+            # context per name).
+            source_glossary=dict(parsed.get("source_glossary") or {}),
         )
 
     # ─────────────────────────────────────────────────────────────────────────

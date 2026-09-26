@@ -59,6 +59,31 @@ happy path (bullet added for a missing author), the empty-response path,
 the veto-twice → mention-only → give-up escalation, the no-op guard, and
 the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
 ``filter_thinking_bullets`` / ``log``.
+
+**V0.5.6 (glossary-driven coverage + loosened quote-guard + final-check)**:
+  - The V0.5.5 audit found the verification LAYER correctly flagged 8
+    missing source authors, but the gap-fill only closed 3 of 8. The
+    gap-fill's V18.20.3.2 parenthetical-promotion veto (the
+    "quote-guard") DROPPED bullets for the 5 missing authors because
+    the LLM couldn't find a verbatim source quote (they were "see also"
+    citations, not active subjects in the source).
+  - The V0.5.6 fix: when the LLM-generated source glossary is available
+    (the ``source_glossary`` keyword arg — the LLM-extracted source
+    roster with per-author context), LOOSEN the quote-guard for
+    glossary-sourced authors. The glossary IS the grounding (it was
+    extracted from the source by the LLM) — the bullet can write "Bak
+    (1946) introduced the concept of a 'higher level' character
+    organization" grounded in the glossary context, without needing a
+    verbatim source quote.
+  - **Final-check round 4**: after the standard 5-round cap terminates,
+    if glossary-sourced authors are still missing, fire a TARGETED
+    round 4 using the glossary context as the grounding + the loosened
+    quote-guard. The round 4 prompt names each still-missing author +
+    their glossary context, and explicitly instructs the LLM not to
+    drop them for lack of a verbatim quote.
+  - When no glossary is provided (the default), the V0.5.6 behavior is
+    a no-op — the existing V18.20.3.2 veto + 5-round cap fire exactly
+    as before (the existing characterization tests stay GREEN).
 """
 
 from __future__ import annotations
@@ -83,6 +108,97 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
     pass
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.5.6: glossary helpers (mirrors the LAYER-side helpers in
+# verification_phase.py — imported lazily to avoid a circular import).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _v056_extract_glossary_names(glossary: dict | list | None) -> list[str]:
+    """V0.5.6: defensive extractor for the glossary's ``names`` section.
+
+    Mirrors ``verification_phase._extract_glossary_names`` — supports
+    the documented shape (``{"names": [{"name": "Bak", ...}, ...]}``),
+    the plain-list shape (``{"names": ["Bak", ...]}``), and the
+    bare-list shape (``[{"name": "Bak", ...}, ...]`` or ``["Bak", ...]``).
+    Returns a de-duplicated list of names (length >= 3, no empties).
+    """
+    if not glossary:
+        return []
+    if isinstance(glossary, dict):
+        names_raw = glossary.get("names") or glossary.get("authors") or []
+    else:
+        names_raw = glossary
+    if not isinstance(names_raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in names_raw:
+        name = ""
+        if isinstance(entry, str):
+            name = entry
+        elif isinstance(entry, dict):
+            name = str(entry.get("name") or entry.get("author") or entry.get("surname") or "")
+        name = name.strip()
+        if len(name) < 3 or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        out.append(name)
+    return out
+
+
+def _v056_extract_glossary_path(glossary: dict | None) -> str:
+    """V0.5.6: defensive extractor for the glossary's persisted file
+    path (for the final-check round 4 log line)."""
+    if isinstance(glossary, dict):
+        p = glossary.get("path") or glossary.get("file") or glossary.get("glossary_path")
+        if p:
+            return str(p)
+    return "(none)"
+
+
+def _v056_glossary_context_for(glossary: dict | list | None, name: str) -> str:
+    """V0.5.6: defensive extractor for a single author's glossary context
+    line (e.g. "Bak (1946) — coined the 'higher level' character
+    organization concept"). Returns "" when no context is available."""
+    if not glossary or not name:
+        return ""
+    if isinstance(glossary, dict):
+        names_section = glossary.get("names") or glossary.get("authors") or []
+        entries = names_section if isinstance(names_section, list) else []
+    elif isinstance(glossary, list):
+        entries = glossary
+    else:
+        return ""
+    name_lower = name.lower()
+    for entry in entries:
+        if isinstance(entry, str):
+            if entry.lower() == name_lower:
+                return name
+            continue
+        if isinstance(entry, dict):
+            entry_name = str(entry.get("name") or entry.get("author") or entry.get("surname") or "")
+            if entry_name.lower() == name_lower:
+                year = entry.get("year") or entry.get("years") or ""
+                context = entry.get("context") or entry.get("description") or ""
+                if year and context:
+                    return f"{entry_name} ({year}) — {context}"
+                if year:
+                    return f"{entry_name} ({year})"
+                if context:
+                    return f"{entry_name} — {context}"
+                return entry_name
+    return ""
+
+
+def _v056_author_in_glossary(glossary: dict | list | None, name: str) -> bool:
+    """V0.5.6: True when the name appears in the glossary's ``names``
+    section (the loosened quote-guard membership test)."""
+    if not name:
+        return False
+    return name.lower() in {n.lower() for n in _v056_extract_glossary_names(glossary)}
+
+
 class GapFillOutcome(NamedTuple):
     """Outcome of the batch gap-fill loop (logging parity).
 
@@ -90,12 +206,21 @@ class GapFillOutcome(NamedTuple):
     original inline block's locals were never read after the block — but
     the characterization tests use it, and a future caller may want the
     counts without re-parsing the log.
+
+    V0.5.6: ``final_check_added`` + ``final_check_rounds`` fields added
+    for the glossary-grounded final-check round 4 telemetry (default 0
+    when no glossary is provided → the existing characterization tests
+    stay byte-for-byte stable).
     """
 
     total_added: int
     rounds: int
     still_missing: list
     given_up: set
+    # V0.5.6: final-check round 4 telemetry (zero when no glossary /
+    # no still-missing authors after the standard rounds).
+    final_check_added: int = 0
+    final_check_rounds: int = 0
 
 
 # ── batch_gap_fill (extracted verbatim) ────────────────────────────────────
@@ -115,6 +240,7 @@ def batch_gap_fill(
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn,
     log: LogCallback | None = None,
+    source_glossary: dict | list | None = None,
 ) -> GapFillOutcome:
     """V18.14.1: Batch gap-fill loop — the bullets-only coverage guarantee.
 
@@ -500,13 +626,6 @@ def batch_gap_fill(
                                 )
                                 if _promo:
                                     _pv_claimed, _pv_real = _promo
-                                    log(
-                                        f"    🚫 V18.20.3.2: gap-fill active-subject "
-                                        f"veto — dropped '{_filtered[0][:60]}…' "
-                                        f"(source attributes this claim to "
-                                        f"'{_pv_real}', not '{_pv_claimed}')",
-                                        "WARNING",
-                                    )
                                     # V18.20.3.4 (RC-4):
                                     # count the veto
                                     # against the missing
@@ -536,10 +655,65 @@ def batch_gap_fill(
                                             if _va.lower() in _fl:
                                                 _veto_key = _va
                                                 break
-                                    if _veto_key is not None:
-                                        _veto_counts[_veto_key] = _veto_counts.get(_veto_key, 0) + 1
-                                    _tl["veto"] += 1
-                                    continue
+                                    # V0.5.6: glossary-grounded
+                                    # override. For glossary-sourced
+                                    # authors, the glossary IS the
+                                    # grounding (it was extracted
+                                    # from the source by the LLM,
+                                    # the same call that produced
+                                    # the summary). The bullet can
+                                    # write "Bak (1946) introduced
+                                    # the 'higher level' character
+                                    # organization" grounded in the
+                                    # glossary context, without
+                                    # needing a verbatim source
+                                    # quote. The V0.5.5 audit found
+                                    # the strict V18.20.3.2 veto
+                                    # DROPPED bullets for 5 of 8
+                                    # missing authors (the "see
+                                    # also"-only authors) — the
+                                    # loosened override accepts
+                                    # them.
+                                    # Content-agnostic (Rule 1 ✓):
+                                    # the membership test uses the
+                                    # runtime LLM-generated
+                                    # glossary, no hardcoded names.
+                                    _v056_glossary_backed = (
+                                        source_glossary is not None
+                                        and _veto_key is not None
+                                        and _v056_author_in_glossary(source_glossary, _veto_key)
+                                    )
+                                    if _v056_glossary_backed:
+                                        log(
+                                            f"    ✨ V0.5.6 gap-fill: accepted "
+                                            f"bullet for '{_veto_key}' "
+                                            f"(grounded in glossary context, "
+                                            f"not verbatim quote)",
+                                            "INFO",
+                                        )
+                                        # Do NOT count the veto
+                                        # against the author (the
+                                        # loosened quote-guard
+                                        # accepted the bullet — the
+                                        # mention-only / give-up
+                                        # escalation should NOT fire
+                                        # from a glossary-backed
+                                        # override). Fall through to
+                                        # bullets.append below.
+                                    else:
+                                        log(
+                                            f"    🚫 V18.20.3.2: gap-fill active-subject "
+                                            f"veto — dropped '{_filtered[0][:60]}…' "
+                                            f"(source attributes this claim to "
+                                            f"'{_pv_real}', not '{_pv_claimed}')",
+                                            "WARNING",
+                                        )
+                                        if _veto_key is not None:
+                                            _veto_counts[_veto_key] = (
+                                                _veto_counts.get(_veto_key, 0) + 1
+                                            )
+                                        _tl["veto"] += 1
+                                        continue
                                 bullets.append(_filtered[0])
                                 _added += 1
                                 _total_added += 1
@@ -645,6 +819,206 @@ def batch_gap_fill(
             f"added {_total_added} bullets across {_gap_fill_round} round(s)",
             "INFO",
         )
+
+    # ───────────────────────────────────────────────────────────────────────
+    # V0.5.6: final-check round 4 (targeted, glossary-grounded).
+    #
+    # After the standard 5-round gap-fill loop terminates, if a source
+    # glossary is available AND there are still-missing authors, fire a
+    # TARGETED round 4 using the glossary context as the grounding + the
+    # loosened quote-guard. The round 4 prompt names each still-missing
+    # author + their glossary context (year + description), and
+    # explicitly instructs the LLM not to drop them for lack of a
+    # verbatim source quote — the glossary IS the grounding.
+    #
+    # This is the V0.5.6 closing-round for the V0.5.5 audit's 5-author
+    # coverage gap (Jack+Morey+Ndtei+Rettersol+Bak — all "see also"-
+    # only authors the strict V18.20.3.2 veto dropped). The final-check
+    # score is logged for the audit trail.
+    #
+    # Content-agnostic (Rule 1 ✓): the round 4 prompt uses
+    # ``{missing_authors_with_context}`` placeholders built from the
+    # runtime LLM-generated glossary — no hardcoded names.
+    # ───────────────────────────────────────────────────────────────────────
+    _final_check_added = 0
+    _final_check_rounds = 0
+    _glossary_names_v056 = _v056_extract_glossary_names(source_glossary)
+    _glossary_path_v056 = _v056_extract_glossary_path(
+        source_glossary if isinstance(source_glossary, dict) else None
+    )
+    if source_glossary is not None and _glossary_names_v056 and _still_missing:
+        # Re-diff against the glossary names (the ground truth for the
+        # final-check — catches glossary-only authors the regex-based
+        # ``check_coverage`` would mark covered via a substring match).
+        _bullets_after = " ".join(bullets) if bullets else ""
+        _still_missing_v056 = [
+            a
+            for a in _glossary_names_v056
+            if a not in _still_missing and a.lower() not in _bullets_after.lower()
+        ]
+        # The final-check pool = the union of (a) the standard loop's
+        # still_missing + (b) the glossary-only still-missing (LLM-
+        # extracted authors the regex check_coverage missed).
+        _final_check_pool = list({*map(str, _still_missing), *_still_missing_v056})
+        # Filter to glossary-backed authors only (the loosened
+        # quote-guard requires the glossary to be the grounding).
+        _final_check_pool = [
+            a for a in _final_check_pool if _v056_author_in_glossary(source_glossary, a)
+        ]
+        if _final_check_pool:
+            _final_check_rounds = 1
+            # Build the per-author glossary-context line for each
+            # still-missing author (the grounding).
+            _missing_with_context = "; ".join(
+                _v056_glossary_context_for(source_glossary, a) or a
+                for a in sorted(_final_check_pool)[:25]
+            )
+            _missing_list_v056 = ", ".join(sorted(_final_check_pool)[:25])
+            _final_check_prompt = (
+                f"The following source authors (from the glossary) are "
+                f"STILL missing after {_gap_fill_round} gap-fill round(s): "
+                f"[{_missing_with_context}]. Add a grounded bullet for "
+                f"EACH, using the glossary context as the grounding. Do "
+                f"NOT drop them for lack of a verbatim quote — the "
+                f"glossary is the grounding (it was extracted from the "
+                f"source by the LLM).\n\n"
+                f"Chapter: {heading}\n\n"
+                f"For EACH author above, write ONE bullet (starting with "
+                f"'- ') that names the author + their year + their "
+                f"contribution (from the glossary context). Output "
+                f"{len(_final_check_pool)} bullets total, one per line, "
+                f"each starting with '- '. Begin each bullet with the "
+                f"author's name. No preamble."
+            )
+            log(
+                f"    ✨ V0.5.6 final-check: firing TARGETED round 4 for "
+                f"{len(_final_check_pool)} glossary-grounded author(s) "
+                f"still missing after round {_gap_fill_round}: "
+                f"{_missing_list_v056[:80]}",
+                "INFO",
+            )
+            try:
+                _fc_raw = call_fast_llm(
+                    _final_check_prompt,
+                    max_tokens=2000,
+                    temperature=temperature,
+                )
+                if _fc_raw:
+                    _fc_raw = strip_thinking(_fc_raw).strip()
+                    _fc_bullets = [
+                        line.strip() for line in _fc_raw.split("\n") if line.strip().startswith("-")
+                    ]
+                    _fc_added = 0
+                    _fc_max = len(_final_check_pool) * 2
+                    import re as _re3
+
+                    for _fc_b in _fc_bullets[:_fc_max]:
+                        _fc_b = _fc_b.strip()
+                        _fc_norm = _re3.sub(r"[^\w\s]", "", _fc_b.lower()).strip()[:60]
+                        _fc_is_dup = any(
+                            _fc_norm in _re3.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
+                            for b in bullets
+                        )
+                        if _fc_is_dup:
+                            continue
+                        if _fc_b and len(_fc_b) > 10:
+                            _fc_filtered = filter_thinking_bullets(
+                                [_fc_b],
+                                concepts=None,
+                                source_text="",
+                            )
+                            if _fc_filtered:
+                                from core.summarisation.post_processing import (
+                                    is_citation_filler_bullet,
+                                )
+
+                                if is_citation_filler_bullet(_fc_filtered[0]):
+                                    log(
+                                        f"    🧽 V0.4.23: gap-fill filler floor — "
+                                        f"dropped citation-adjacency bullet: "
+                                        f"{_fc_filtered[0][:70]}…",
+                                        "INFO",
+                                    )
+                                    continue
+                                # The loosened quote-guard: glossary-
+                                # sourced authors are accepted WITHOUT a
+                                # verbatim source quote (the glossary IS
+                                # the grounding). Detect the cited author
+                                # + log the V0.5.6 acceptance.
+                                bullets.append(_fc_filtered[0])
+                                _fc_added += 1
+                                _final_check_added += 1
+                                # Identify the glossary author cited in
+                                # this bullet for the audit log.
+                                _fc_b_lower = _fc_filtered[0].lower()
+                                for _fc_a in _final_check_pool:
+                                    if _fc_a.lower() in _fc_b_lower:
+                                        log(
+                                            f"    ✨ V0.5.6 gap-fill: accepted "
+                                            f"bullet for '{_fc_a}' "
+                                            f"(grounded in glossary context, "
+                                            f"not verbatim quote)",
+                                            "INFO",
+                                        )
+                                        break
+                    if _fc_added > 0:
+                        log(
+                            f"    ✨ V0.5.6 final-check: round 4 added "
+                            f"{_fc_added}/{len(_final_check_pool)} "
+                            f"glossary-grounded bullet(s)",
+                            "INFO",
+                        )
+                    else:
+                        log(
+                            f"    ⚠️ V0.5.6 final-check: round 4 added 0 "
+                            f"bullets (LLM returned no usable bullets "
+                            f"for the {len(_final_check_pool)} still-missing "
+                            f"glossary-grounded author(s))",
+                            "WARNING",
+                        )
+            except Exception as _fc_be:
+                log(
+                    f"    ⚠️ V0.5.6 final-check: round 4 failed: {_fc_be}",
+                    "WARNING",
+                )
+
+            # Re-compute the still-missing set after the final-check
+            # round 4 (the glossary-grounded coverage score).
+            _bullets_after_fc = " ".join(bullets) if bullets else ""
+            _still_missing_after_fc = [
+                a for a in _glossary_names_v056 if a.lower() not in _bullets_after_fc.lower()
+            ]
+            _total_glossary = len(_glossary_names_v056)
+            _covered_glossary = _total_glossary - len(_still_missing_after_fc)
+            _coverage_pct = (
+                (_covered_glossary / _total_glossary * 100.0) if _total_glossary else 0.0
+            )
+            # Log the final coverage score (the V0.5.6 audit-trail line).
+            # Either "X/Y authors (Z%) — full coverage achieved" (Z=100)
+            # or "X/Y authors (Z%) — N still missing: [names]" (Z<100).
+            if not _still_missing_after_fc:
+                log(
+                    f"    ✨ V0.5.6 final-check: "
+                    f"{_covered_glossary}/{_total_glossary} authors "
+                    f"({_coverage_pct:.0f}%) — full coverage achieved. "
+                    f"Glossary: {_glossary_path_v056}",
+                    "INFO",
+                )
+            else:
+                log(
+                    f"    ✨ V0.5.6 final-check: "
+                    f"{_covered_glossary}/{_total_glossary} authors "
+                    f"({_coverage_pct:.0f}%) — "
+                    f"{len(_still_missing_after_fc)} still missing: "
+                    f"{_still_missing_after_fc[:8]}. "
+                    f"Glossary: {_glossary_path_v056}",
+                    "WARNING",
+                )
+            # Update _still_missing to reflect the post-final-check
+            # state (the returned GapFillOutcome reports the final
+            # still-missing set, which the caller can use).
+            _still_missing = _still_missing_after_fc
+
     if _still_missing:
         # V18.20.3.4 (RC-4): split the report — authors
         # we actively gave up on (persistent veto) vs
@@ -677,6 +1051,8 @@ def batch_gap_fill(
         rounds=_gap_fill_round,
         still_missing=_still_missing,
         given_up=_given_up,
+        final_check_added=_final_check_added,
+        final_check_rounds=_final_check_rounds,
     )
 
 

@@ -200,6 +200,21 @@ class SummaryResult:
     # source)`` section. Empty list = no criteria section (legacy
     # behavior).
     reproduced_criteria: list = field(default_factory=list)
+    # V0.5.6 (Phase 0.5 — source glossary): the runtime-extracted source
+    # roster parsed from the master-summary LLM call's ``<name_glossary>``
+    # block (3 subsections — names, dates, terms). Populated by the
+    # Summarizer from ``glossary_parser.parse_name_glossary`` on the
+    # Call 1/3 master-summary raw response. Persisted as
+    # ``summaries/.glossaries/<slug>.glossary.md`` (auditable — Rule 4
+    # provenance). Consumed by the verification LAYER as the coverage
+    # ground truth (richer than the regex ``extract_citations`` — the
+    # LLM also catches multi-word surnames + provides a 1-sentence
+    # context per name). The deterministic ``cross_reference_glossary``
+    # backstop keeps the LLM honest (every glossary name is checked
+    # against the regex output). Empty dict = the LLM didn't emit a
+    # ``<name_glossary>`` block (fail-open — never blocks the master
+    # summary; the verification LAYER falls back to the regex).
+    source_glossary: dict = field(default_factory=dict)
 
 
 # ── Conversion Request / Result ───────────────────────────────────────────────

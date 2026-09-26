@@ -395,11 +395,16 @@ class TestChapterCheckpointSaver:
             ),
         ]
 
-        def _fake_verify(rendered_md, source_text, settings=None, log=None):
+        def _fake_verify(rendered_md, source_text, settings=None, log=None, **_v056_kwargs):
             # Return the rendered markdown UNCHANGED (no corrections
             # applied) + the 2 known Issue objects. The point of this
             # test is to prove the LAYER WAS CALLED — not to prove the
             # corrections are persisted (that's a separate concern).
+            # V0.5.6: the chapter_checkpoint caller now also passes
+            # ``source_glossary`` + ``chapter_heading`` keyword args;
+            # accept-and-ignore them via ``**_v056_kwargs`` so the
+            # signature stays compatible (the test's point — LAYER
+            # was called — is unchanged).
             return rendered_md, list(_issues)
 
         monkeypatch.setattr(_vp, "verify_and_polish_summary", _fake_verify)

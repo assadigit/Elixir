@@ -1650,12 +1650,73 @@ class Summarizer(
                 if not _mr_exec:
                     _mr_exec = _mr_master.split("\n")[0][:2000]
 
+                # V0.5.6 Phase 0.5: source glossary extraction (fused into the
+                # map-reduce master-summary call). The same raw response now
+                # carries BOTH <thorough_summary> AND a <name_glossary> block.
+                # The glossary is parsed (fail-open), persisted to
+                # ``summaries/.glossaries/<slug>.glossary.md``, and cross-
+                # referenced against the regex ``extract_citations`` backstop.
+                # Content-agnostic (Rule 1 ✓): the parser uses generic regex;
+                # the cross-reference compares two runtime-extracted name sets.
+                _mr_source_glossary: dict[str, list] = {
+                    "names": [],
+                    "dates": [],
+                    "terms": [],
+                }
+                try:
+                    from pathlib import Path as _mr_Path
+
+                    from core.summarisation.glossary_parser import (
+                        extract_persist_and_cross_reference_glossary as _mr_epg,
+                    )
+
+                    _mr_regex_authors: set[str] = set()
+                    try:
+                        from core.preprocessing.deterministic_analyzer import (
+                            extract_citations as _mr_extract_citations,
+                        )
+
+                        _mr_src_for_xref = getattr(self, "_source_text", "") or content
+                        _mr_regex_authors = {
+                            c.get("author", "")
+                            for c in _mr_extract_citations(_mr_src_for_xref)
+                            if c.get("author")
+                        }
+                    except Exception as _mr_e_rx:  # noqa: BLE001 — fail-open
+                        logger.debug(
+                            "V0.5.6: extract_citations for map-reduce glossary "
+                            "xref failed (non-fatal — xref skipped): %s: %s",
+                            type(_mr_e_rx).__name__,
+                            _mr_e_rx,
+                        )
+                    _mr_source_glossary = _mr_epg(
+                        raw_stripped,
+                        heading=heading,
+                        output_dir=getattr(self.request, "output_dir", _mr_Path(".")),
+                        run_id=getattr(self, "_run_id", ""),
+                        app_version=getattr(self, "_app_version", ""),
+                        regex_authors=_mr_regex_authors,
+                        log=self.log,
+                    )
+                except Exception as _mr_e_g:  # noqa: BLE001 — fail-open
+                    logger.warning(
+                        "V0.5.6 map-reduce glossary extraction crashed (non-fatal — "
+                        "empty glossary, master summary unaffected): %s: %s",
+                        type(_mr_e_g).__name__,
+                        _mr_e_g,
+                    )
+
                 parsed = {
                     "executive_summary": _mr_exec,
                     "bullet_points": _mr_bullets,
                     "thorough_summary": _mr_master,
                     "key_distinctions": "",
                     "theoretical_tensions": "",
+                    # V0.5.6 Phase 0.5: the source glossary parsed from the
+                    # <name_glossary> block. Flows through to SummaryResult
+                    # for the verification LAYER (coverage ground truth —
+                    # richer than the regex). Empty dict = fail-open.
+                    "source_glossary": _mr_source_glossary,
                     "raw": raw,
                     "model": self.primary_model,
                     "temperature": self.temperature,
