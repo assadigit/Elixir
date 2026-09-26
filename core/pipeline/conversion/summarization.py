@@ -941,6 +941,30 @@ def run_summarization(
     summary_folder.mkdir(exist_ok=True)
     from core.pipeline.chapter_checkpoint import render_summary_markdown
 
+    # V0.4.40: build a heading->source map for the post-conversion
+    # verification + polish LAYER (verify_and_polish_summary). The
+    # verification runs AFTER render on the assembled per-chapter output;
+    # it needs the chapter source to check Dates/Names/Omissions/
+    # Hallucinations. Best-effort heading match (exact, then
+    # case-insensitive, then contains) — fail-open (no match → the
+    # verification skips that chapter, the original output ships).
+    _source_by_heading: dict[str, str] = {}
+    for _seg in segments_for_summary:
+        if getattr(_seg, "heading", None) and getattr(_seg, "content", None):
+            _source_by_heading[_seg.heading] = _seg.content
+
+    def _source_for_summary(_summ_heading: str) -> str:
+        """Best-effort match the summary's heading to a segment's source."""
+        if not _summ_heading:
+            return ""
+        if _summ_heading in _source_by_heading:
+            return _source_by_heading[_summ_heading]
+        _hl = _summ_heading.lower()
+        for _h, _c in _source_by_heading.items():
+            if _h.lower() == _hl or _hl in _h.lower() or _h.lower() in _hl:
+                return _c
+        return ""
+
     for i, summ in enumerate(summaries, 1):
         # V18.2.4: Don't save failed/empty summaries. Previously the pipeline
         # saved EVERY summary (including failed ones with empty exec_summary),
@@ -1009,7 +1033,34 @@ def run_summarization(
         # V18.20.2.0 (SWOT A30): atomic_write_text is imported at module
         # level (see top of file) — same-dir temp + fsync + os.replace.
         try:
-            atomic_write_text(sf, render_summary_markdown(summ))
+            # V0.4.40: the post-conversion verification + polish LAYER.
+            # Runs AFTER render on the assembled per-chapter output. The
+            # generation LLM did a ~7/10 job; this LLM layer (in a
+            # VERIFICATION role, not generation) fills holes + fixes
+            # mistakes (Dates/Names/Omissions/Hallucinations) to make it
+            # 9/10-10/10. Targeted corrections (verbatim string
+            # replacements, NOT a full rewrite) + D3-style guard +
+            # fail-open. Non-skippable (catches LLM-variance-driven defects
+            # every conversion). Content-agnostic (Rule 1). No-op when no
+            # model configured (the common test path) OR no source match.
+            _rendered = render_summary_markdown(summ)
+            _v_source = _source_for_summary(summ.chapter_heading)
+            if _v_source:
+                try:
+                    from core.summarisation.verification_phase import (
+                        verify_and_polish_summary,
+                    )
+
+                    _rendered, _v_issues = verify_and_polish_summary(
+                        _rendered, _v_source, converter.settings, log
+                    )
+                except Exception as _ve:  # pragma: no cover — the layer must never break the write
+                    log(
+                        f"    ⚠️  V0.4.40 verification crashed (non-fatal): "
+                        f"{type(_ve).__name__}: {_ve}",
+                        "WARNING",
+                    )
+            atomic_write_text(sf, _rendered)
         except OSError as _owe:
             if _owe.errno == 28 or "No space left" in str(_owe):
                 raise OSError(

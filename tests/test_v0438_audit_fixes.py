@@ -452,3 +452,133 @@ class TestV0439FinalizationAllFieldsGarbleRepairWiring:
         )
         assert out == text  # original kept (no model → no-op)
         assert issues == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.4.40: the post-conversion verification + polish LAYER
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.verification_phase import (
+    verify_and_polish_summary,
+)
+
+
+class _MockVerifyProvider:
+    """A mock LLM provider that returns a caller-supplied raw response."""
+
+    def __init__(self, raw_response):
+        self._raw = raw_response
+        self.calls = []
+
+    def complete(self, *, prompt, temperature, max_tokens, model):
+        self.calls.append({"prompt": prompt, "temperature": temperature})
+        return self._raw
+
+
+class TestV0440VerificationLayer:
+    """V0.4.40: the post-conversion verification + polish LAYER.
+
+    A post-output LLM layer (runs after render_summary_markdown) that fills
+    holes + fixes mistakes (Dates/Names/Omissions/Hallucinations) to make
+    a 7/10 output 9/10-10/10. The LLM is in a VERIFICATION role (not
+    generation). Targeted corrections (verbatim string replacements, NOT a
+    full rewrite) + D3-style guard (reject if more deterministic flags OR
+    >15% length diff) + fail-open. Non-skippable (catches LLM-variance
+    defects every conversion). Content-agnostic (Rule 1 — checks against
+    the runtime source for any book).
+    """
+
+    def test_targeted_correction_applied(self, monkeypatch):
+        """A date correction (original is an exact substring) is applied."""
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1979) described the mechanism."
+        raw = '[{"original": "Smith (1979)", "corrected": "Smith (1971)", "reason": "date"}]'
+        provider = _MockVerifyProvider(raw)
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        assert "Smith (1971)" in out and "Smith (1979)" not in out
+        assert any(
+            i.detector == "verification" and i.severity == "fix" and "date" in i.detail
+            for i in issues
+        )
+
+    def test_correction_skipped_when_original_not_a_substring(self, monkeypatch):
+        """If the LLM's 'original' isn't an exact substring, it's skipped +
+        the original is kept (fail-safe — the LLM can't locate a fix)."""
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1971) described the mechanism."
+        # "original" is a paraphrase, not an exact substring
+        raw = '[{"original": "Smith (1979) described", "corrected": "Smith (1971) described", "reason": "date"}]'
+        provider = _MockVerifyProvider(raw)
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        assert out == summary  # unchanged
+        assert any(
+            i.detector == "verification" and i.severity == "flag" and "none matched" in i.detail
+            for i in issues
+        )
+
+    def test_guard_rejects_too_long_polish(self, monkeypatch):
+        """If the polished output is >15% longer than the original, the guard
+        rejects it + the original is kept (no major rewrite)."""
+        source = "A short source."
+        summary = "A short summary."
+        # correction that doubles the length (>15%)
+        raw = '[{"original": "A short summary.", "corrected": "A short summary that is now very much longer than the original for no good reason and should be rejected by the guard.", "reason": "omission"}]'
+        provider = _MockVerifyProvider(raw)
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        assert out == summary  # rejected (too long)
+        assert any(i.detector == "verification" and "outside 85-115%" in i.detail for i in issues)
+
+    def test_no_op_when_no_corrections(self, monkeypatch):
+        """Empty corrections array → no-op."""
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1971) described the mechanism."
+        provider = _MockVerifyProvider("[]")
+        monkeypatch.setattr(
+            "core.llm.llm_provider_impl.create_provider", lambda name, settings: provider
+        )
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        assert out == summary
+        assert issues == []
+
+    def test_no_op_when_no_model_configured(self):
+        """No model configured → no-op (fail-open, like the D3 repair)."""
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1979) described the mechanism."
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings(model=""))
+        assert out == summary
+        assert issues == []
+
+    def test_fail_open_on_provider_exception(self, monkeypatch):
+        """Provider creation raises → fail-open (original kept)."""
+        source = "Smith (1971) described the mechanism."
+        summary = "Smith (1979) described the mechanism."
+
+        def _raise(name, settings):
+            raise RuntimeError("provider boom")
+
+        monkeypatch.setattr("core.llm.llm_provider_impl.create_provider", _raise)
+        out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings())
+        assert out == summary
+        assert any("failed" in i.detail for i in issues)
+
+    def test_json_extraction_handles_fenced_block(self):
+        """The _extract_corrections helper handles ```json fences."""
+        from core.summarisation.verification_phase import _extract_corrections
+
+        raw = '```json\n[{"original": "x", "corrected": "y", "reason": "name"}]\n```'
+        out = _extract_corrections(raw)
+        assert len(out) == 1
+        assert out[0]["reason"] == "name"
+        # empty array
+        assert _extract_corrections("[]") == []
+        # no JSON
+        assert _extract_corrections("no json here") == []
