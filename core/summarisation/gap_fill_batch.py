@@ -332,7 +332,19 @@ def batch_gap_fill(
                 f"parallel or merely cites, say so — do not state that the "
                 f"author used the concept to explain something.\n"
                 f"- Keep citation years EXACTLY as they appear in the source "
-                f"excerpt — never substitute a different year for an author.\n\n"
+                f"excerpt — never substitute a different year for an author.\n"
+                # V0.4.37 (F4): retain multi-author attribution form. The
+                # V0.4.36 ch.6 audit (F4, LOW PRIORITY) found gap-fill
+                # bullets that dropped a co-author (e.g. the source's
+                # "AuthorA and AuthorB (Year)" shipped as just
+                # "AuthorB"). The single-name form is accurate but loses
+                # citation granularity. Genre-agnostic (Rule 1 ✓): the
+                # instruction is about citation FORM, not content; the
+                # placeholders are generic.
+                f"- When the source excerpt cites an author JOINTLY with a "
+                f"co-author (e.g., 'AuthorA and AuthorB (Year)'), retain the "
+                f"multi-author attribution form in the bullet — do not reduce "
+                f"it to a single name.\n\n"
                 f"{_tail_instruction} No preamble."
             )
             # V18.20.3.7 (RC-B.2, audit v182036): never

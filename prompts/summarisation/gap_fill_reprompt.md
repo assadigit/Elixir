@@ -24,6 +24,9 @@ Your existing bullets:
 - Do: make each bullet a complete, self-contained sentence.
 - Do: make each new bullet DIFFERENT from the existing bullets.
 - Do: write 3-7 bullets (no more, no less).
+- Do: when the source cites multiple authors jointly (e.g.,
+  "AuthorA and AuthorB (Year)"), retain the multi-author attribution
+  form — do not reduce it to a single name.
 - Don't: repeat or paraphrase what the existing bullets already cover.
 - Don't: include thinking process, preamble, or commentary.
 

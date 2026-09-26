@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.4.23",
+  "generated_for_version": "0.4.36",
   "prompts_dir": "prompts/",
   "file_count": 56,
-  "manifest_sha256": "ee5a61d0ebb3843be7a005f0cf9eccb3f48ac0b0af8ab4c37aae91bdd47c42d9",
+  "manifest_sha256": "2b54556685a2070e500361ff021b404d4df325bb9b6b7c96aa14ae3b2d3e0829",
   "files": [
     {
       "path": "academic.md",
@@ -197,13 +197,13 @@
     },
     {
       "path": "summarisation/gap_fill_concept.md",
-      "sha256": "8883c4c11c6f07366b473fd06bc470853da1cc5c8fa52eddc61112f110b84ba9",
-      "bytes": 1182
+      "sha256": "2e4bec9ef5a5bcb1f50d4bfd66da598d3a08ff3e7ecd6550ba15302cc3c2e238",
+      "bytes": 1368
     },
     {
       "path": "summarisation/gap_fill_reprompt.md",
-      "sha256": "c0e883c43d0c2ac0bcfc57d2501ada0898df4e16ba7388e254177497a6a32225",
-      "bytes": 1244
+      "sha256": "2b033092950b8d5528decf3c95c4430c874b5175d2f3d02e4188ec3c171674ca",
+      "bytes": 1419
     },
     {
       "path": "summarisation/grounding_check.md",

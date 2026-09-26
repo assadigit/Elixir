@@ -249,3 +249,104 @@ class TestV0437F6RenderStrayQuoteSweep:
         assert '"mechanism of regulation"' in rendered, (
             "the render sweep must not strip a balanced legit quote pair"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# F4: gap-fill prompt retains multi-author attribution form
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.summarisation.gap_fill_batch import batch_gap_fill
+
+
+def _v0437_f4_capturing_deps():
+    """Minimal hermetic deps for batch_gap_fill that capture the prompt."""
+    llm_calls = []
+
+    def check_coverage(analysis, text):
+        text = text or ""
+        covered = [a for a in analysis["authors"] if a in text]
+        missing = [a for a in analysis["authors"] if a not in text]
+        total = len(analysis["authors"])
+        pct = (len(covered) / total) if total else 0.0
+        return {"covered": covered, "missing": missing, "total": total, "coverage_pct": pct}
+
+    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+        llm_calls.append(prompt)
+        # Return a bullet naming the missing author so coverage clears →
+        # the loop exits after round 1 (one prompt captured).
+        return "- AuthorA established the framework."
+
+    def strip_thinking(text):
+        return text
+
+    def filter_thinking_bullets(bullets, concepts=None, source_text=""):
+        return list(bullets)
+
+    def log(msg, level="INFO"):
+        pass
+
+    return {
+        "check_coverage": check_coverage,
+        "call_fast_llm": call_fast_llm,
+        "strip_thinking": strip_thinking,
+        "filter_thinking_bullets": filter_thinking_bullets,
+        "log": log,
+        "llm_calls": llm_calls,
+    }
+
+
+class TestV0437F4MultiAuthorAttribution:
+    """F4: the gap-fill prompt instructs the LLM to retain multi-author
+    attribution form (e.g. 'AuthorA and AuthorB (Year)') rather than
+    reduce it to a single name.
+
+    The V0.4.36 ch.6 audit (F4, LOW PRIORITY) found gap-fill bullets
+    that dropped a co-author (the source's 'AuthorA and AuthorB (Year)'
+    shipped as just 'AuthorB'). The single-name form is accurate but
+    loses citation granularity. The fix: a genre-agnostic attribution
+    rule (Rule 1 ✓ — about citation FORM, not content; placeholders
+    are generic) added to the per-author batch gap-fill prompt + the
+    two concept/reprompt gap-fill templates.
+    """
+
+    def test_batch_gap_fill_prompt_carries_multi_author_rule(self):
+        deps = _v0437_f4_capturing_deps()
+        src = "AuthorA and AuthorB (1990) described the framework."
+        analysis = {"authors": ["AuthorA", "AuthorB"]}
+        batch_gap_fill(
+            "Chapter 6 — Profile",
+            src,
+            ["An existing bullet."],
+            ["AuthorA"],
+            analysis,
+            ["AuthorA", "AuthorB"],
+            check_coverage=deps["check_coverage"],
+            call_fast_llm=deps["call_fast_llm"],
+            temperature=0.2,
+            strip_thinking=deps["strip_thinking"],
+            filter_thinking_bullets=deps["filter_thinking_bullets"],
+            log=deps["log"],
+        )
+        assert deps["llm_calls"], "the gap-fill loop should have issued a prompt"
+        prompt = deps["llm_calls"][0]
+        assert "multi-author attribution form" in prompt, (
+            "F4: the per-author batch gap-fill prompt must instruct the LLM "
+            "to retain the multi-author attribution form"
+        )
+        assert "AuthorA and AuthorB" in prompt, (
+            "F4: the rule must illustrate the form with generic placeholders"
+        )
+
+    def test_gap_fill_concept_template_carries_multi_author_rule(self):
+        from pathlib import Path
+
+        tpl = Path("prompts/summarisation/gap_fill_concept.md").read_text(encoding="utf-8")
+        assert "multi-author attribution" in tpl
+        assert "AuthorA and AuthorB" in tpl
+
+    def test_gap_fill_reprompt_template_carries_multi_author_rule(self):
+        from pathlib import Path
+
+        tpl = Path("prompts/summarisation/gap_fill_reprompt.md").read_text(encoding="utf-8")
+        assert "multi-author attribution" in tpl
+        assert "AuthorA and AuthorB" in tpl
