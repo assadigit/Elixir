@@ -1052,9 +1052,11 @@ the V0.02 corruption risk. This release ships TWO general improvements.
   work on GENERIC fixtures (English/biology/history text, not ch.6) —
   confirming the detectors are book-agnostic.
 
-Commits: `324928b` (Option A + B together).
+Commits: `324928b` (Option A + B) + `31c3997` (finalization — extend the
+garble LLM-repair from thorough-only to bullets + exec, all three fields).
 
-**Net-green:** ruff clean; eval gate OK (hash flat); **6,126 P / 0 F /
-36 S exit 0** (+9: the 9 V0.4.39 tests — 5 Option A + 4 Option B); deny-list passes.
+**Net-green:** ruff clean; eval gate OK (hash flat); **6,128 P / 0 F /
+36 S exit 0** (+11: the 9 V0.4.39 tests + 2 finalization wiring tests);
+deny-list passes.
 
 

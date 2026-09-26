@@ -43,11 +43,13 @@
   source excerpt to the LLM with a "fix ONLY the garbled tokens, preserve
   all other text" prompt. Fail-open; D3-style guard (keep the original if
   the repair returns empty/short text OR doesn't reduce the garble flag
-  count via `_count_garble_flags`). Wired into `postcheck_thorough`
-  (field_phases.py) after the D3 repair block (mirroring the D3 wiring).
-  Fires only when the postcheck flagged a garble (bounded — no-op on clean
-  text). Content-agnostic (Rule 1 ✓ — the prompt is about token repair,
-  not content; works on any chapter; catches ANY garble, not the specific
+  count via `_count_garble_flags`). **Wired into all three postcheck fields
+  — `postcheck_thorough` + `postcheck_bullets` + `postcheck_exec`** (the
+  finalization commit `31c3997` extended it from thorough-only to bullets +
+  exec so it catches garbles in any field on any chapter). Fires only when
+  the postcheck flagged a garble (bounded — no-op on clean text + in tests).
+  Content-agnostic (Rule 1 ✓ — the prompt is about token repair, not
+  content; works on any chapter; catches ANY garble, not the specific
   ch.6 words). The pre-repair garble flags stay as the honest "what was
   found" record; the repair issues (fix/flag) document the LLM repair on
   top. The LLM considers source context (no blind edit-distance-1 rewrite —
