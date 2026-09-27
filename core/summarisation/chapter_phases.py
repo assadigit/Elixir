@@ -51,6 +51,28 @@ from utils.token_counter import count_tokens
 logger = get_main_logger()
 
 
+def _v0512_get_glossary(heading: str) -> dict | None:
+    """V0.5.12: retrieve the source glossary from the verification LAYER's
+    module-level side-channel cache (populated by ``_extract_glossary_for_call``
+    in ``primary_call.py`` via ``set_chapter_glossary``).
+
+    The V0.5.11 audit found the glossary was extracted + persisted + cross-
+    referenced by the LAYER, but NOT passed to the gap-fill → the V0.5.6
+    final-check round 4 didn't fire → 9 authors stayed missing. This helper
+    bridges the gap: it reads the glossary from the side-channel so the
+    gap-fill can use it.
+
+    Fail-open: returns None if the side-channel is empty (the gap-fill falls
+    back to the V0.5.10 regex ``extract_citations`` fallback).
+    """
+    try:
+        from core.summarisation.verification_phase import get_chapter_glossary
+
+        return get_chapter_glossary(heading)
+    except Exception:  # noqa: BLE001 — fail-open
+        return None
+
+
 class SummarizerChapterPhasesMixin:
     """Chapter-phase methods for :class:`Summarizer` (see module docstring)."""
 
@@ -331,6 +353,18 @@ class SummarizerChapterPhasesMixin:
                             strip_thinking=self._strip_thinking,
                             filter_thinking_bullets=self._filter_thinking_bullets,
                             log=self.log,
+                            # V0.5.12: pass the glossary from the side-channel
+                            # (populated by _extract_glossary_for_call in
+                            # primary_call.py via set_chapter_glossary). This
+                            # enables the V0.5.6 final-check round 4 (the
+                            # glossary-grounded targeted gap-fill) + the V0.5.6
+                            # loosened quote-guard for glossary-sourced authors.
+                            # The V0.5.11 audit found this wiring was MISSING —
+                            # the glossary was extracted + persisted + cross-
+                            # referenced by the LAYER, but NOT passed to the
+                            # gap-fill → the V0.5.6 final-check didn't fire →
+                            # 9 authors stayed missing.
+                            source_glossary=_v0512_get_glossary(heading),
                             # V0.5.10: pass the analysis-extracted author
                             # list (the runtime regex extract_citations
                             # output) as the regex_confirmed_authors for
@@ -1033,7 +1067,9 @@ class SummarizerChapterPhasesMixin:
             # this field as the coverage ground truth — richer than the
             # regex (catches multi-word surnames + provides a 1-sentence
             # context per name).
-            source_glossary=dict(parsed.get("source_glossary") or {}),
+            source_glossary=dict(
+                parsed.get("source_glossary") or _v0512_get_glossary(heading) or {}
+            ),
         )
 
     # ─────────────────────────────────────────────────────────────────────────
