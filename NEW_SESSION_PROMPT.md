@@ -1,124 +1,82 @@
-# New Session Prompt — Elixir V18.15.2.1 (God-Class Extraction Continuation)
+# New Session Prompt — Elixir V0.5.15+ (the repeatability session)
 
-> **⚠️ ARCHIVED SESSION PROMPT (V18.15.2.1 era) — kept for historical context only.**
-> The version references and paths below predate both the rebrand-era work and the
-> **versioning reset**. Current state: the app is **Elixir**, and since **V0.01** it
-> versions on its own two-part line — **V0.01 = legacy V18.20.4.12 content repackaged**
-> (the legacy `V18.x` line ended there; mapping table in `CHANGELOG.md`'s V0.01 entry).
-> Do **not** treat "V18.15.2.1", the god-class-extraction agenda, or the paths below as
-> current. For the current state, read `CHANGELOG.md` top-down and `README.md`.
+## Context
 
-I'm continuing development of **Elixir**, an LLM-based book summarization
-desktop app (PySide6 + Ollama) running on Windows 10 with an RTX 3060 12GB GPU.
-The current version is **V18.15.2.1** — this is the **gold standard** base version
-for this session. The god-class extraction is the primary agenda.
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/Elixir` on branch `refactor/audit-session` @ commit `68946df` (tag `V0.5.15`).
 
-## This session's focus: CONTINUE GOD-CLASS EXTRACTION
+**STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). The Next.js sandbox at /home/z/my-project is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
-`core/summarisation/summarizer.py` is currently **4442 lines** (down from 5803 in
-V18.10.1). **12 of 15 extraction targets** are done. The target is ~3000 lines.
+## AGENTS.md rules (NON-NEGOTIABLE)
 
-## Environment
-- **OS**: Windows 10 (10.0.19045)
-- **GPU**: NVIDIA RTX 3060 12GB (Zotac Twin Edge OC — EMERGENCY thermal profile)
-- **Python**: 3.12.9, PyTorch 2.13.0+cu126
-- **Ollama**: 0.30.6
-- **Model**: `Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest`
-  (9.3 GB, VRAM ~10.5/12.0 GB, ctx cap 26758, deadline 1800s/30min)
-- **Embedder**: `nomic-embed-text` via Ollama (WORKING since V18.15.2 — no sentence_transformers needed)
-- **Test chapter**: "Broken Structures" Salman Akhtar, Ch.1 "IDENTITY AND ITS ORIGINS"
-  (~6,425 words, 9,139 tokens) — trust-ground at `audit/trust-ground/001_1_..._source.md`
-- **App source**: `/home/z/my-project/upload/extracted/Elixir-V18.3.6/`
-  (folder name is V18.3.6 but `VERSION` file says `18.15.2.1` — known quirk)
+1. **Rule 1 (content-agnostic)**: NO hardcoded book/author/chapter/domain strings. The system must find authors itself via the runtime `extract_citations` (the deterministic regex) + the runtime glossary (the LLM-extracted source roster). Never hardcode or cheat by adding missing author names to the LLM or prompt.
+2. **Rule 2 (evidence-first)**: every claim cites file:line.
+3. **Rule 3 (net-green)**: ruff clean + eval gate OK + pytest suite passing.
+4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
+5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Current gold-standard metrics (V18.15.2.1)
-- **Score**: 9/10 (0 hallucinations, 4 consecutive runs at 100% bullets-only coverage)
-- **Bullets-only**: 100% (31/31 theorists) — gap-fill loop bypasses deadline
-- **Thorough-only**: 94% (29/31)
-- **Coverage**: 89-100% (model variance)
-- **0 prompt-leakage** (all 4 bullet-gen paths filtered)
-- **0 "the reby"** defects
-- **7 characteristics** explicitly listed
-- **Embedder**: WORKING (nomic-embed-text via Ollama — semantic dedup + Phase 2.2 fact-check run)
-- **Layout reorder**: sampling-based (saves ~24s for 95% of books)
-- **496 sandbox tests**, all passing
+## The V0.5.x campaign summary (V0.5.0 → V0.5.15)
 
-## Completed work (ALL DONE — DO NOT RE-EXTRACT)
+The V0.5.x campaign introduced the **source-glossary architecture** — the user's idea: an LLM-generated glossary (names + dates + terms) fused into a separate LLM call, persisted as a `.md` file, used as the coverage ground truth for the gap-fill + final-check + loosened quote-guard.
 
-### 12 extracted modules (V18.11.0 — V18.15.0):
-1. `text_utils_ext.py` — `smart_truncate`
-2. `bullet_scorer.py` — `score_bullet`
-3. `bullet_consolidation.py` — `consolidate_duplicate_claims` + `consolidate_bullets`
-4. `map_reduce.py` — `map_reduce_summarize` + `section_map_reduce`
-5. `multi_sample.py` — `multi_sample_summarize`
-6. `thorough_fallback.py` — `call_dedicated_thorough_with_fallback`
-7. `self_review.py` — `self_review_batched`
-8. `scholar_reflection.py` — `scholar_reflection` + `scholar_reflection_gapfill_only`
-9. `gap_filler.py` — `gap_fill_concepts`
-10. `quarantine_recovery.py` — `recover_quarantined`
-11. `post_processing.py` — `normalize_bullets` + `classify_bullets` (V18.6)
-12. `summary_validator.py` + `llm_dispatcher.py` + `prompt_assembly.py` (V18.7-V18.8)
+**The architecture (now working end-to-end):**
+```
+source text → extract_glossary_via_llm (separate call, 8192 tokens, markdown headers)
+           → parse_name_glossary (3-tier: XML compat, markdown headers, lenient bare-bullets)
+           → persist_glossary (.glossary.md)
+           → set_chapter_glossary (side-channel)
+           → batch_gap_fill (source_glossary passed → V0.5.12 wiring)
+              ↳ V0.5.6 glossary-grounded loosened quote-guard ✓
+              ↳ V0.5.10 regex fallback ✓
+           → V0.5.6 final-check round 4 (glossary-grounded targeted gap-fill) ✓
+           → post-checks (V0.5.15 safety net: parenthetical_promotion + attribution-edge keep regex-grounded bullets) ✓
+           → verification LAYER (glossary-grounded coverage check + cross-reference) ✓
+```
 
-### Key fixes (V18.12.1 — V18.15.2):
-- V18.12.1: dedicated thorough try/except (Ollama 500 crash prevention)
-- V18.12.2-3: prompt-leakage filter across ALL 3 gap-fill paths + 15 regex patterns
-- V18.13.0: layout reorder sampling (1-2 pages, skip if single-column)
-- V18.14.0: independent-unit coverage (bullets-only + thorough-only checked separately)
-- V18.14.1-2: looped gap-fill (bypasses deadline, 5-round cap)
-- V18.14.3: bullet expansion filter (4th path) + pre-consolidation cap (later removed)
-- V18.15.0: no min/max on bullets (user rule: more bullets > lower coverage)
-- V18.15.2: embedder switched to nomic-embed-text via Ollama
+**V0.5.15 results (the best in the lineage):**
+- 70/74 = 95% author coverage (UP from V0.5.5's 93%)
+- 82 keypoints, 39 bullets grounded (0 hallucinations)
+- ALL 5 V0.5.5 missing authors covered (Jack, Morey, Ndtei, Rettersol, Bak)
+- ALL 5 V0.5.14 missing authors closed (Kernberg, Socarides, Siever+Kendler, Varghesi, Pao)
+- The glossary + final-check + loosened quote-guard + post-check safety net all fire correctly
 
-## What STAYS in Summarizer (too risky to extract — per V18.6.3 crash mitigation)
-- `_summarize_inner` (1013 lines, 20+ self-deps) — the orchestrator. DO NOT extract whole.
-- `__init__` (623 lines) — the constructor
-- `_build_prompt` (248 lines, 9 self-deps) — V18.6.3 crash undiagnosed
-- `summarize_chapters` (197 lines) — entry point
-- `_call_llm` / `_call_llm_with_empty_retry` / `_call_cloud` — the dispatch chain (10+ self-deps)
+**Key files:**
+- `core/summarisation/glossary_parser.py` — the glossary extraction + parser + persistence
+- `core/summarisation/primary_call.py` — the `_extract_glossary_for_call` wiring (3 return paths)
+- `core/summarisation/verification_phase.py` — the glossary-grounded coverage check + side-channel
+- `core/summarisation/gap_fill_batch.py` — the loosened quote-guard + final-check round 4
+- `core/summarisation/postchecks/field_phases.py` — the V0.5.15 post-check safety net
+- `core/summarisation/thorough_theorist_floor.py` — the V0.5.15 attribution-edge recovery
+- `core/pipeline/converter_impl.py` — the V0.5.14 non-blocking VRAM overbudget check
+- `prompts/summarisation/glossary_extraction.md` — the markdown-header glossary prompt
 
-## The remaining extraction targets (this session's work)
+## The next session goal: REPEATABILITY
 
-| # | Method | Lines | Self-deps | Risk | Extract to |
-|---|--------|-------|-----------|------|------------|
-| 1 | `_b3_cloud_judge` | 65 | 5 | MED | `b3_judge.py` |
-| 2 | `_apply_3tier_coverage` | 64 | 6 | MED | `coverage_guarantee.py` |
-| 3 | `_llm_grounding_check` | 96 | 7 | MED | `grounding_check.py` |
-| 4 | `_summarize_with_model` | 83 | 8 | MED | `primary_call.py` |
-| 5 | `_filter_thinking_bullets` | 116 | 6 | LOW-MED | already delegates to `post_processing.classify_bullets` — thin wrapper |
-| 6 | `_call_fast_llm` | 72 | 5 | MED | `fast_llm.py` |
-| 7 | `_call_llm_structured` | 66 | 5 | MED | `structured_llm.py` |
+**The V0.5.15 results (95% coverage, 0 hallucinations) were achieved on chapter 6 of "Broken Structures Salman Akhtar". The goal now is to verify these results are REPEATABLE on:**
 
-**Estimated total extraction: ~562 lines** → summarizer.py drops from 4442 → ~3880 lines.
+1. **Another chapter of the same book** (e.g., chapter 1, 2, 3... — does the glossary + final-check + loosened quote-guard deliver the same 95%+ coverage on a different chapter?)
+2. **A different book entirely** (does the content-agnostic architecture work on a physics textbook, a novel, a cooking manual? — Rule 1 compliance test)
+3. **The SAME chapter re-run** (is the 70/74 coverage stable, or does it vary run-to-run due to LLM variance? The V0.5.14 had Jack but missed Kernberg; V0.5.15 had Kernberg but missed Jack — this LLM variance needs to be characterized + potentially mitigated)
 
-## Hard constraints (DO NOT VIOLATE)
-- `presence_penalty=1.5`, `temperature=0.7`, `num_ctx` ceiling 32768 (app caps to 26758 for IQ2_S), `keep_alive=30m`
-- IQ2_S excluded from 300s timeout; deadline 1800s (30 min)
-- `max_output=8192` (do NOT raise)
-- **Quality > speed** — prefer more coverage
-- **Qwen3 `/no_think` injection** must stay in `_call_llm_with_empty_retry`
-- **More bullets > lower coverage** — no min/max on bullet count. No deterministic consolidation.
-- **Bullets are an independent unit** — checked separately from thorough. 100% bullets-only coverage required.
-- **Gap-fill loop bypasses deadline** — it's a binding coverage guarantee.
-- **All 4 bullet-generation paths** must filter through `_filter_thinking_bullets`.
-- **Embedder**: nomic-embed-text via Ollama. Do NOT switch back to sentence_transformers.
-- **Layout reorder**: sampling-based (1-2 pages). Do NOT revert to per-page.
-- **Explicit parameters, NOT context objects** — the V18.6.3 crash mitigation.
+**Specific tasks for the next session:**
+- Run V0.5.15 on a DIFFERENT chapter of "Broken Structures Salman Akhtar" (or a different book) + audit the results
+- If the coverage is <90% on a new chapter, investigate why (the glossary might not extract as well, or the gap-fill might not target the right authors)
+- Characterize the LLM variance (run the same chapter 3× + measure the coverage variance — is it ±2pp or ±10pp?)
+- If the variance is high, consider: (a) increasing the final-check rounds (from 1 to 2-3), (b) lowering the temperature further, (c) adding a 2nd glossary extraction pass
+- The VRAM overbudget check is now non-blocking (V0.5.14) — verify it doesn't cause issues on a different rig/config
+- The `model_vram_override_gb` setting is available — document it in the README for users with special-quant models
 
-## How to work (established pattern)
-1. **Read the worklog first** — `/home/z/my-project/worklog.md` has the full history
-2. **Do the lowest-risk extraction first** — test, then proceed
-3. **Use `write_file` for new modules** — extract verbatim (`self.X` → parameter)
-4. **Characterization tests** — write byte-for-byte stability tests for every extraction
-5. **Package as a zip** for the user to golden-master test on their hardware
-6. **Audit the result** — the trust-ground source + 4-pillar framework is at `/home/z/my-project/audit/`
+## Token + repo
 
-## How to audit
-When I provide a new summary + conversion log:
-1. Load the source from `audit/trust-ground/001_1_IDENTITY_AND_ITS_ORIGINS_source.md`
-2. Apply `audit/framework/AUDIT_PROMPT.md` verbatim (4 pillars, 1-10 scoring)
-3. Write the report to `audit/results/` + append to `AUDIT_HISTORY.md`
+- GitHub token: `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` (one-off URL, scrub after use per Rule 4)
+- Repo: `https://github.com/assadigit/Elixir` (branch `refactor/audit-session`)
+- Zip: `/home/z/my-project/download/Elixir-V0.5.15.zip`
 
-## Known issues (context, not blockers)
-1. **Deadline exceeded** (1800s) — consolidation + `_summarize_inner` semantic dedup often skipped. The post-processing semantic dedup (keypoints phase) runs and catches duplicates. The deadline is a performance issue, not a code defect.
-2. **Thorough-only coverage 94%** — Loewenstein + Searles sometimes missing from thorough (but both in bullets via gap-fill). Not a blocker since bullets are 100%.
-3. **V18.6.3 crash undiagnosed** — `PromptContext` + `build_primary_prompt` code is in `prompt_assembly.py` (unused). DO NOT use context objects for extraction.
+## Session workflow
+
+1. Clone the repo (if not already): `git clone https://ghp_...@github.com/assadigit/Elixir.git elixir`
+2. Checkout `refactor/audit-session` (the V0.5.x lineage)
+3. Read this file + CHANGELOG.md (the V0.5.x entries at the top)
+4. The user will upload a new conversion output (from a different chapter/book)
+5. Audit it (move files to `audit/results/bench_v0XXX/` + create the audit md)
+6. If coverage <90% on a new chapter, investigate + fix (content-agnostic — Rule 1)
+7. Commit + push + zip per release (Rule 5)
