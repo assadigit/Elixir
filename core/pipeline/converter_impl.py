@@ -453,6 +453,51 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
             )
             if peak <= _total_vram:
                 return None  # fits — nothing to enforce
+            # V0.5.13: query the ACTUAL free VRAM. The param-count estimate
+            # (e.g., 27B ternary → 12.9 GB) is often WRONG for special-quant
+            # models (the user's 7.6 GB special-quant is estimated at 12.9 GB
+            # → false "OVERBUDGET" → the conversion BLOCKS). If the model is
+            # already loaded (the free VRAM is low, meaning the model IS in
+            # VRAM), the estimate is wrong + the model fits — skip the warning.
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    _free_bytes, _total_bytes = torch.cuda.mem_get_info()
+                    _free_gb = _free_bytes / (1024**3)
+                    # If the model is already loaded (free VRAM < 3 GB) but
+                    # the conversion hasn't started, the model IS in VRAM —
+                    # it fits (the estimate was wrong). Skip the overbudget.
+                    if _free_gb < 3.0 and _free_gb > 0.1:
+                        self._log(
+                            f"  ℹ️ V0.5.13: VRAM budget estimate (peak {peak:.1f} GB) "
+                            f"> total ({_total_vram:.1f} GB), BUT the model appears "
+                            f"already loaded (free VRAM = {_free_gb:.2f} GB — the "
+                            f"model IS in VRAM, the param-count estimate was wrong "
+                            f"for this special-quant). Skipping the overbudget "
+                            f"warning — the model fits.",
+                            "INFO",
+                        )
+                        return None  # the model is loaded — it fits
+            except Exception:
+                pass  # fail-open — fall through to the normal overbudget logic
+            # V0.5.13: also check for a manual override setting
+            _override = self.settings.get("summarisation.model_vram_override_gb", None)
+            if _override:
+                try:
+                    _override_f = float(_override)
+                    if _override_f <= _total_vram:
+                        self._log(
+                            f"  ℹ️ V0.5.13: VRAM override (summarisation."
+                            f"model_vram_override_gb={_override_f:.1f}) ≤ total "
+                            f"({_total_vram:.1f} GB) — the model fits (the "
+                            f"param-count estimate was wrong). Skipping the "
+                            f"overbudget warning.",
+                            "INFO",
+                        )
+                        return None
+                except (ValueError, TypeError):
+                    pass
             policy = str(self.settings.get("local.vram_overbudget_policy", "ask")).strip().lower()
             if policy == "proceed":
                 self._log(
