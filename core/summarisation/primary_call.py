@@ -169,7 +169,7 @@ def _extract_glossary_for_call(
             call_llm=call_llm,
             primary_model=model,
             temperature=0.3,
-            max_output_tokens=4096,
+            max_output_tokens=8192,  # V0.5.9: was 4096 (overrode the V0.5.8 default) — the glossary for 74 authors needs >4096
             log=log,
             chapter_heading=heading,
             output_dir=str(getattr(request, "output_dir", _Path("."))),
