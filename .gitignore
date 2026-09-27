@@ -36,3 +36,4 @@ crash_reports/
 .env
 *.local.json
 secrets.json
+runs/

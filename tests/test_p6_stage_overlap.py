@@ -484,6 +484,17 @@ class TestSpeculativeScholar:
         parsed3 = dict(parsed, bullet_points=["a", "c"])
         assert s._p6_scholar_input_snapshot(parsed3) != snap
 
+    # V0.5.16 note: the merge-path test now EXPLICITLY scripts the judge's
+    # gap-fill reprompt to return no bullets (the ScriptedLLM judge_gapfill
+    # default). Before V0.5.16 the gap-fill bullets returned by the default
+    # primary-shaped response were all rejected at "Phase 2.2 sim 0.00"
+    # (the embedder-less test env makes semantic_fact_check fail closed —
+    # the bug V0.5.16 fixed with the degenerate-signal guard), so the judge
+    # tail left the state unchanged BY THAT BUG. With the fix, F4-grounded
+    # gap-fill bullets legitimately survive and change the state → the
+    # discard path (covered by test_discard_path_when_judge_changes_state
+    # below). The MERGE path needs a judge tail that genuinely changes
+    # nothing — hence the scripted no-bullets gap response.
     def test_merge_path_scholar_runs_once_concurrently(self, tmp_path):
         """Golden-shaped run: judge leaves the state unchanged → the
         speculative result is MERGED; the scholar runs exactly ONCE."""
@@ -491,7 +502,7 @@ class TestSpeculativeScholar:
         log_lines: list[tuple[str, str]] = []
         s = self._armed(tmp_path, log_lines)
         llm = ScriptedLLM(primary_response=build_primary_response(source))
-        llm.install(s)
+        llm.install(s)  # judge_gapfill defaults to the no-bullets reply
 
         scholar_calls = []
         orig_gapfill = s._scholar_reflection_gapfill_only

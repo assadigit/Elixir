@@ -1,124 +1,101 @@
-# New Session Prompt — Elixir V18.15.2.1 (God-Class Extraction Continuation)
+# New Session Prompt — Elixir V0.5.17+ (the post-repeatability session)
 
-> **⚠️ ARCHIVED SESSION PROMPT (V18.15.2.1 era) — kept for historical context only.**
-> The version references and paths below predate both the rebrand-era work and the
-> **versioning reset**. Current state: the app is **Elixir**, and since **V0.01** it
-> versions on its own two-part line — **V0.01 = legacy V18.20.4.12 content repackaged**
-> (the legacy `V18.x` line ended there; mapping table in `CHANGELOG.md`'s V0.01 entry).
-> Do **not** treat "V18.15.2.1", the god-class-extraction agenda, or the paths below as
-> current. For the current state, read `CHANGELOG.md` top-down and `README.md`.
+## Context
 
-I'm continuing development of **Elixir**, an LLM-based book summarization
-desktop app (PySide6 + Ollama) running on Windows 10 with an RTX 3060 12GB GPU.
-The current version is **V18.15.2.1** — this is the **gold standard** base version
-for this session. The god-class extraction is the primary agenda.
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.5.17`).
 
-## This session's focus: CONTINUE GOD-CLASS EXTRACTION
+**STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
-`core/summarisation/summarizer.py` is currently **4442 lines** (down from 5803 in
-V18.10.1). **12 of 15 extraction targets** are done. The target is ~3000 lines.
+## AGENTS.md rules (NON-NEGOTIABLE)
 
-## Environment
-- **OS**: Windows 10 (10.0.19045)
-- **GPU**: NVIDIA RTX 3060 12GB (Zotac Twin Edge OC — EMERGENCY thermal profile)
-- **Python**: 3.12.9, PyTorch 2.13.0+cu126
-- **Ollama**: 0.30.6
-- **Model**: `Qwen3.8-27B-UD-IQ2_S-Instruct-Vision-No-think-DynamicV3-Unsloth:latest`
-  (9.3 GB, VRAM ~10.5/12.0 GB, ctx cap 26758, deadline 1800s/30min)
-- **Embedder**: `nomic-embed-text` via Ollama (WORKING since V18.15.2 — no sentence_transformers needed)
-- **Test chapter**: "Broken Structures" Salman Akhtar, Ch.1 "IDENTITY AND ITS ORIGINS"
-  (~6,425 words, 9,139 tokens) — trust-ground at `audit/trust-ground/001_1_..._source.md`
-- **App source**: `/home/z/my-project/upload/extracted/Elixir-V18.3.6/`
-  (folder name is V18.3.6 but `VERSION` file says `18.15.2.1` — known quirk)
+1. **Rule 1 (content-agnostic)**: NO hardcoded book/author/chapter/domain strings. The system must find authors itself via the runtime `extract_citations` (the deterministic regex) + the runtime glossary (the LLM-extracted source roster). Never hardcode or cheat by adding missing author names to the LLM or prompt.
+2. **Rule 2 (evidence-first)**: every claim cites file:line.
+3. **Rule 3 (net-green)**: ruff clean + eval gate OK + pytest suite passing.
+4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
+5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Current gold-standard metrics (V18.15.2.1)
-- **Score**: 9/10 (0 hallucinations, 4 consecutive runs at 100% bullets-only coverage)
-- **Bullets-only**: 100% (31/31 theorists) — gap-fill loop bypasses deadline
-- **Thorough-only**: 94% (29/31)
-- **Coverage**: 89-100% (model variance)
-- **0 prompt-leakage** (all 4 bullet-gen paths filtered)
-- **0 "the reby"** defects
-- **7 characteristics** explicitly listed
-- **Embedder**: WORKING (nomic-embed-text via Ollama — semantic dedup + Phase 2.2 fact-check run)
-- **Layout reorder**: sampling-based (saves ~24s for 95% of books)
-- **496 sandbox tests**, all passing
+## The V0.5.x campaign summary (V0.5.0 → V0.5.17)
 
-## Completed work (ALL DONE — DO NOT RE-EXTRACT)
+The V0.5.x lineage built the **source-glossary architecture** (an LLM-generated
+glossary fused into a separate LLM call, persisted as `.glossary.md`, used as
+the coverage ground truth for gap-fill + final-check + loosened quote-guard)
+and then — in the repeatability session — PROVED it repeatable:
 
-### 12 extracted modules (V18.11.0 — V18.15.0):
-1. `text_utils_ext.py` — `smart_truncate`
-2. `bullet_scorer.py` — `score_bullet`
-3. `bullet_consolidation.py` — `consolidate_duplicate_claims` + `consolidate_bullets`
-4. `map_reduce.py` — `map_reduce_summarize` + `section_map_reduce`
-5. `multi_sample.py` — `multi_sample_summarize`
-6. `thorough_fallback.py` — `call_dedicated_thorough_with_fallback`
-7. `self_review.py` — `self_review_batched`
-8. `scholar_reflection.py` — `scholar_reflection` + `scholar_reflection_gapfill_only`
-9. `gap_filler.py` — `gap_fill_concepts`
-10. `quarantine_recovery.py` — `recover_quarantined`
-11. `post_processing.py` — `normalize_bullets` + `classify_bullets` (V18.6)
-12. `summary_validator.py` + `llm_dispatcher.py` + `prompt_assembly.py` (V18.7-V18.8)
+- **V0.5.15 (rig, ch.6):** 70/74 = 95% author coverage, 0 hallucinations.
+- **V0.5.16 (sandbox, ch.1):** found + fixed the gap-fill Phase 2.2
+  degenerate-signal guard — an embedder-less rig rejected EVERY gap-fill
+  bullet at "sim 0.00" (`semantic_fact_check` fails closed when the embed
+  model is absent; the gap-fill validation call site lacked the V18.2.30
+  health guard the main Phase 2.2 stage has). ch.1 coverage 56.8% → 89.2%.
+- **V0.5.17 (sandbox, ch.1):** found + fixed the near-duplicate
+  author-coverage veto — the ship-time near-dup removal dropped a gap-fill
+  bullet that uniquely named a regex-confirmed author (Eissler). ch.1
+  coverage → **37/37 = 100%, 0 hallucinations**, and a same-chapter re-run
+  reproduced it EXACTLY (37/37 again, ±0pp variance — the V0.5.14-era
+  "Jack vs Kernberg" run-to-run variance is structurally resolved by the
+  deterministic floors).
 
-### Key fixes (V18.12.1 — V18.15.2):
-- V18.12.1: dedicated thorough try/except (Ollama 500 crash prevention)
-- V18.12.2-3: prompt-leakage filter across ALL 3 gap-fill paths + 15 regex patterns
-- V18.13.0: layout reorder sampling (1-2 pages, skip if single-column)
-- V18.14.0: independent-unit coverage (bullets-only + thorough-only checked separately)
-- V18.14.1-2: looped gap-fill (bypasses deadline, 5-round cap)
-- V18.14.3: bullet expansion filter (4th path) + pre-consolidation cap (later removed)
-- V18.15.0: no min/max on bullets (user rule: more bullets > lower coverage)
-- V18.15.2: embedder switched to nomic-embed-text via Ollama
+**The repeatability verdict (audit/results/AUDIT_V0.5.17_..._ch1_summary_vs_source.md):**
+the 95%+ coverage is repeatable on a different chapter of the same book, on a
+different model (glm-4-plus cloud vs Ternary-Bonsai-2-27B local), on a
+different machine — via the headless harness (`scripts/repeatability_run.py` +
+`scripts/repeatability_audit.py`, one command each).
 
-## What STAYS in Summarizer (too risky to extract — per V18.6.3 crash mitigation)
-- `_summarize_inner` (1013 lines, 20+ self-deps) — the orchestrator. DO NOT extract whole.
-- `__init__` (623 lines) — the constructor
-- `_build_prompt` (248 lines, 9 self-deps) — V18.6.3 crash undiagnosed
-- `summarize_chapters` (197 lines) — entry point
-- `_call_llm` / `_call_llm_with_empty_retry` / `_call_cloud` — the dispatch chain (10+ self-deps)
+## Key files (current)
 
-## The remaining extraction targets (this session's work)
+- `scripts/repeatability_run.py` — the headless end-to-end chapter run
+  (rig-parity settings, real LlamaCppProvider streaming path, the
+  conversion-level pre-steps: segments + deterministic analysis + concepts,
+  the save path: render + verification LAYER + provenance + run-stamped name)
+- `scripts/repeatability_audit.py` — the deterministic author-coverage audit
+- `core/summarisation/bullet_pipeline.py` — `_validate_gap_fill_bullets`
+  (the V0.5.16 degenerate-signal guard)
+- `core/summarisation/postchecks/orchestrator.py` — the V0.5.17 near-dup
+  author-coverage veto
+- `core/summarisation/glossary_parser.py` — glossary extraction + parser + persistence
+- `core/summarisation/primary_call.py` — the `_extract_glossary_for_call` wiring
+- `core/summarisation/verification_phase.py` — the glossary-grounded coverage check + side-channel
+- `core/summarisation/gap_fill_batch.py` — the loosened quote-guard + final-check round 4
+- `core/pipeline/converter_impl.py` — the non-blocking VRAM check (V0.5.14)
+- `prompts/summarisation/glossary_extraction.md` — the markdown-header glossary prompt
 
-| # | Method | Lines | Self-deps | Risk | Extract to |
-|---|--------|-------|-----------|------|------------|
-| 1 | `_b3_cloud_judge` | 65 | 5 | MED | `b3_judge.py` |
-| 2 | `_apply_3tier_coverage` | 64 | 6 | MED | `coverage_guarantee.py` |
-| 3 | `_llm_grounding_check` | 96 | 7 | MED | `grounding_check.py` |
-| 4 | `_summarize_with_model` | 83 | 8 | MED | `primary_call.py` |
-| 5 | `_filter_thinking_bullets` | 116 | 6 | LOW-MED | already delegates to `post_processing.classify_bullets` — thin wrapper |
-| 6 | `_call_fast_llm` | 72 | 5 | MED | `fast_llm.py` |
-| 7 | `_call_llm_structured` | 66 | 5 | MED | `structured_llm.py` |
+## The next session goals
 
-**Estimated total extraction: ~562 lines** → summarizer.py drops from 4442 → ~3880 lines.
+1. **A different BOOK entirely** (the remaining Rule 1 compliance test): the
+   repeatability proof covered a different chapter of the SAME book. Run the
+   harness on a physics textbook / novel / cooking manual — the content-agnostic
+   claim needs one non-psychoanalysis domain verified end-to-end.
+2. **The rig re-verification**: re-run ch.1 or ch.6 ON THE RIG with V0.5.17 to
+   confirm the two new guards behave identically with a REAL embedder present
+   (the guards are no-ops when the embedder is healthy — but verify).
+3. **The V0.5.18 backlog (small, evidenced)**:
+   - cross-field year-consistency check (the ch.1 thorough shipped "Eissler
+     (*1955*)" + "Kris (*1956*)" while the bullets had the correct 1958/1946 —
+     a per-field validator that flags when bullet + thorough disagree on an
+     author's year for the same event)
+   - the verification LAYER's additions are brittle (exact-substring
+     corrections; 5 of 6 proposed corrections were skipped in the ch.1 run) —
+     consider an append-mode correction type
+   - the scholar-reflection quote guard (scholar_reflection.py:594 "Dropped
+     gap-fill without quote") could take the V0.5.6 loosened quote-guard for
+     glossary-backed authors (same pattern as V0.5.15/V0.5.17)
+4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
+   discussed the longing to abandon the human quality of identity" on a
+   see-also-only citation — verify whether the glossary context should bound
+   the bullet's claim more tightly (the audit flagged slight content inflation).
 
-## Hard constraints (DO NOT VIOLATE)
-- `presence_penalty=1.5`, `temperature=0.7`, `num_ctx` ceiling 32768 (app caps to 26758 for IQ2_S), `keep_alive=30m`
-- IQ2_S excluded from 300s timeout; deadline 1800s (30 min)
-- `max_output=8192` (do NOT raise)
-- **Quality > speed** — prefer more coverage
-- **Qwen3 `/no_think` injection** must stay in `_call_llm_with_empty_retry`
-- **More bullets > lower coverage** — no min/max on bullet count. No deterministic consolidation.
-- **Bullets are an independent unit** — checked separately from thorough. 100% bullets-only coverage required.
-- **Gap-fill loop bypasses deadline** — it's a binding coverage guarantee.
-- **All 4 bullet-generation paths** must filter through `_filter_thinking_bullets`.
-- **Embedder**: nomic-embed-text via Ollama. Do NOT switch back to sentence_transformers.
-- **Layout reorder**: sampling-based (1-2 pages). Do NOT revert to per-page.
-- **Explicit parameters, NOT context objects** — the V18.6.3 crash mitigation.
+## Token + repo
 
-## How to work (established pattern)
-1. **Read the worklog first** — `/home/z/my-project/worklog.md` has the full history
-2. **Do the lowest-risk extraction first** — test, then proceed
-3. **Use `write_file` for new modules** — extract verbatim (`self.X` → parameter)
-4. **Characterization tests** — write byte-for-byte stability tests for every extraction
-5. **Package as a zip** for the user to golden-master test on their hardware
-6. **Audit the result** — the trust-ground source + 4-pillar framework is at `/home/z/my-project/audit/`
+- GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
+- Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
+- Zips: `/home/z/my-project/download/Elixir-V0.5.16.zip` + `Elixir-V0.5.17.zip`
 
-## How to audit
-When I provide a new summary + conversion log:
-1. Load the source from `audit/trust-ground/001_1_IDENTITY_AND_ITS_ORIGINS_source.md`
-2. Apply `audit/framework/AUDIT_PROMPT.md` verbatim (4 pillars, 1-10 scoring)
-3. Write the report to `audit/results/` + append to `AUDIT_HISTORY.md`
+## Session workflow
 
-## Known issues (context, not blockers)
-1. **Deadline exceeded** (1800s) — consolidation + `_summarize_inner` semantic dedup often skipped. The post-processing semantic dedup (keypoints phase) runs and catches duplicates. The deadline is a performance issue, not a code defect.
-2. **Thorough-only coverage 94%** — Loewenstein + Searles sometimes missing from thorough (but both in bullets via gap-fill). Not a blocker since bullets are 100%.
-3. **V18.6.3 crash undiagnosed** — `PromptContext` + `build_primary_prompt` code is in `prompt_assembly.py` (unused). DO NOT use context objects for extraction.
+1. Clone the repo (if not already): `git clone https://ghp_...@github.com/assadigit/elixir.git elixir`
+2. Checkout `refactor/audit-session` (the V0.5.x lineage)
+3. Read this file + CHANGELOG.md (the V0.5.x entries at the top)
+4. For headless runs: `python scripts/repeatability_run.py --chapter <path> --out runs/<name> --llamacpp-url <endpoint> --llamacpp-model <model>` then `python scripts/repeatability_audit.py --run runs/<name>` (see the scripts' docstrings for the llama.cpp-emulator shim setup)
+5. Audit any rig upload (move files to `audit/results/bench_v0XXX/` + create the audit md)
+6. If coverage <90% on a new chapter/book, investigate + fix (content-agnostic — Rule 1)
+7. Commit + push + zip per release (Rule 5)

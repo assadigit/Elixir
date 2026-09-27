@@ -477,6 +477,10 @@ def run_post_checks(
 
     _seen_token_sets: list[tuple[frozenset, int]] = []
     _deduped_bullets: list[str] = []
+    # V0.5.17: near-dup candidates are DEFERRED (not dropped on sight) so
+    # the author-coverage veto below can rescue a candidate that carries a
+    # uniquely-named source author.
+    _near_dup_deferred: list[tuple[int, str]] = []
     for _i, _b in enumerate(report.bullets):
         _toks = _content_tokens(_b)
         _dup_of = None
@@ -487,21 +491,88 @@ def run_post_checks(
                     _dup_of = _pi
                     break
         if _dup_of is not None:
-            report.issues.append(
-                Issue(
-                    detector="near_duplicate",
-                    severity="fix",
-                    field=f"bullet[{_i}]",
-                    snippet=_b[:60],
-                    detail=(
-                        f"near-duplicate of bullet[{_dup_of}] (token-set "
-                        f"containment >= 0.8) — kept the first, dropped this one"
-                    ),
-                )
-            )
+            _near_dup_deferred.append((_i, _b))
             continue
         _seen_token_sets.append((_toks, _i))
         _deduped_bullets.append(_b)
+
+    # V0.5.17: the near-duplicate AUTHOR-COVERAGE veto (the V0.5.15 pattern
+    # — parenthetical_promotion / attribution-edge — applied to the ship-time
+    # near-dup removal). WHY: in the V0.5.16 repeatability run the gap-fill
+    # added a bullet that uniquely named a regex-confirmed source author
+    # alongside a second already-covered author; the near-dup check dropped
+    # it as a 0.8-token twin of the kept bullet — silently deleting the
+    # uniquely-named author from the summary. RULE: a deferred dup bullet is
+    # still DROPPED unless it names a source author (the runtime
+    # ``extract_citations`` roster) that appears NOWHERE ELSE in the final
+    # text (kept bullets + exec + thorough) — one extra near-dup bullet is
+    # a smaller defect than losing an author entirely. Content-agnostic
+    # (Rule 1): the author set is extracted at runtime from the source.
+    if _near_dup_deferred:
+        _kept_text = "\n".join(
+            _deduped_bullets + [executive_summary or "", thorough_summary or ""]
+        ).lower()
+        for _i, _b in _near_dup_deferred:
+            _rescue_authors: list[str] = []
+            if source_authors:
+                _b_lower = _b.lower()
+                for _a in source_authors:
+                    if re.search(rf"\b{re.escape(_a.lower())}\b", _b_lower) and not re.search(
+                        rf"\b{re.escape(_a.lower())}\b", _kept_text
+                    ):
+                        _rescue_authors.append(_a)
+            # V0.5.17 (refinement): a CONFIRMED parenthetical promotion is
+            # NOT rescuable — the near-dup twin of a misattributed bullet
+            # has negative value (it duplicates the kept bullet's content
+            # under the wrong author's name: the rescue would preserve a
+            # misattribution to save an author mention). The
+            # detect_parenthetical_promotion check is the SAME deterministic
+            # detector the parenthetical veto uses (verified on the V0.5.17
+            # repeatability run's rescued bullets: correctly-attributed
+            # author-uniquely-named twins return None; the misattributed
+            # twin returns (claimed, real) and stays dropped).
+            _is_promotion = False
+            if _rescue_authors and source_text:
+                try:
+                    from core.summarisation.postcheck_detectors import (
+                        detect_parenthetical_promotion,
+                    )
+
+                    _is_promotion = detect_parenthetical_promotion(
+                        _b, source_text, source_authors
+                    ) is not None
+                except Exception:
+                    _is_promotion = False  # fail-open — the detector must never widen the drop
+            if _rescue_authors and not _is_promotion:
+                report.issues.append(
+                    Issue(
+                        detector="near_duplicate",
+                        severity="flag",
+                        field=f"bullet[{_i}]",
+                        snippet=_b[:60],
+                        detail=(
+                            f"near-duplicate KEPT — uniquely covers source "
+                            f"author(s) {', '.join(_rescue_authors[:3])} absent "
+                            f"from the rest of the summary (the V0.5.17 "
+                            f"author-coverage veto)"
+                        ),
+                    )
+                )
+                _deduped_bullets.append(_b)
+                _kept_text += "\n" + _b.lower()
+            else:
+                report.issues.append(
+                    Issue(
+                        detector="near_duplicate",
+                        severity="fix",
+                        field=f"bullet[{_i}]",
+                        snippet=_b[:60],
+                        detail=(
+                            "near-duplicate of a kept bullet (token-set "
+                            "containment >= 0.8) — kept the first, dropped this one"
+                        ),
+                    )
+                )
     if len(_deduped_bullets) != len(report.bullets):
         report.bullets = _deduped_bullets
 
