@@ -453,51 +453,51 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
             )
             if peak <= _total_vram:
                 return None  # fits — nothing to enforce
-            # V0.5.13: query the ACTUAL free VRAM. The param-count estimate
-            # (e.g., 27B ternary → 12.9 GB) is often WRONG for special-quant
-            # models (the user's 7.6 GB special-quant is estimated at 12.9 GB
-            # → false "OVERBUDGET" → the conversion BLOCKS). If the model is
-            # already loaded (the free VRAM is low, meaning the model IS in
-            # VRAM), the estimate is wrong + the model fits — skip the warning.
+            # V0.5.14: the VRAM overbudget check is now NON-BLOCKING. The
+            # param-count estimate (e.g., 27B ternary → 12.9 GB) is WRONG for
+            # special-quant models (the user's 7.6 GB special-quant is
+            # estimated at 12.9 GB → false "OVERBUDGET" → the conversion
+            # BLOCKED). torch.cuda.mem_get_info() doesn't help on Windows
+            # (it returns per-process VRAM, not GPU-wide — the llama-server
+            # process's VRAM usage isn't visible). The V0.5.13 nvidia-smi
+            # + torch.cuda approaches both failed. The most robust fix:
+            # DON'T BLOCK — log the estimate as a WARNING + proceed. If
+            # the model truly doesn't fit, llama.cpp will error at load
+            # time (a clearer error than the elixir-side estimate).
+            # Also try nvidia-smi for the actual GPU-wide free VRAM:
+            _actual_free = None
             try:
-                import torch
+                import subprocess
 
-                if torch.cuda.is_available():
-                    _free_bytes, _total_bytes = torch.cuda.mem_get_info()
-                    _free_gb = _free_bytes / (1024**3)
-                    # If the model is already loaded (free VRAM < 3 GB) but
-                    # the conversion hasn't started, the model IS in VRAM —
-                    # it fits (the estimate was wrong). Skip the overbudget.
-                    if _free_gb < 3.0 and _free_gb > 0.1:
-                        self._log(
-                            f"  ℹ️ V0.5.13: VRAM budget estimate (peak {peak:.1f} GB) "
-                            f"> total ({_total_vram:.1f} GB), BUT the model appears "
-                            f"already loaded (free VRAM = {_free_gb:.2f} GB — the "
-                            f"model IS in VRAM, the param-count estimate was wrong "
-                            f"for this special-quant). Skipping the overbudget "
-                            f"warning — the model fits.",
-                            "INFO",
-                        )
-                        return None  # the model is loaded — it fits
+                _r = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if _r.returncode == 0 and _r.stdout.strip():
+                    _actual_free = float(_r.stdout.strip().splitlines()[0]) / 1024  # MiB → GB
             except Exception:
-                pass  # fail-open — fall through to the normal overbudget logic
-            # V0.5.13: also check for a manual override setting
-            _override = self.settings.get("summarisation.model_vram_override_gb", None)
-            if _override:
-                try:
-                    _override_f = float(_override)
-                    if _override_f <= _total_vram:
-                        self._log(
-                            f"  ℹ️ V0.5.13: VRAM override (summarisation."
-                            f"model_vram_override_gb={_override_f:.1f}) ≤ total "
-                            f"({_total_vram:.1f} GB) — the model fits (the "
-                            f"param-count estimate was wrong). Skipping the "
-                            f"overbudget warning.",
-                            "INFO",
-                        )
-                        return None
-                except (ValueError, TypeError):
-                    pass
+                pass  # nvidia-smi not available — skip
+            if _actual_free is not None:
+                self._log(
+                    f"  ℹ️ V0.5.14: VRAM budget estimate (peak {peak:.1f} GB) > "
+                    f"total ({_total_vram:.1f} GB), BUT nvidia-smi reports "
+                    f"{_actual_free:.2f} GB free (GPU-wide, across all processes). "
+                    f"The param-count estimate may be wrong for this model. "
+                    f"Proceeding — llama.cpp will error at load time if the model "
+                    f"truly doesn't fit.",
+                    "INFO",
+                )
+            else:
+                self._log(
+                    f"  ⚠️ V0.5.14: VRAM budget estimate (peak {peak:.1f} GB) > "
+                    f"total ({_total_vram:.1f} GB). The param-count estimate may be "
+                    f"wrong for special-quant models. Proceeding anyway — llama.cpp "
+                    f"will error at load time if the model truly doesn't fit. "
+                    f"(To silence this warning, set summarisation."
+                    f"model_vram_override_gb to your model's actual GB.)",
+                    "WARNING",
+                )
+            return None  # V0.5.14: NON-BLOCKING — always proceed
             policy = str(self.settings.get("local.vram_overbudget_policy", "ask")).strip().lower()
             if policy == "proceed":
                 self._log(
