@@ -1,0 +1,165 @@
+# Summary: 6 - PARANOID PERSONALITY DISORDER
+
+<!-- generated-by: Elixir v0.5.11 | run_id=20260927-133331-627dc7f8 | started=2026-09-27T13:36:32 | bullets=69 -->
+
+## Executive Summary
+
+This chapter addresses the significant paucity of literature devoted to the phenomenology of Paranoid Personality Disorder (PPD), a well-established nosological entity in the DSM-III-R. The author’s primary objective is to synthesize historically disparate descriptive and psychoanalytic perspectives to construct a multifaceted phenomenological profile that provides developmental and psychostructural underpinnings for meaningful differential diagnosis. By tracing the condition’s origins from Magnan and Kraepelin through contemporary theorists, the text highlights six core contradictions inherent in PPD, such as the paradoxical coexistence of mistrust and gullibility, and arrogance and inferiority.
+
+The psychoanalytic synthesis moves beyond Freudian libidinal projections to incorporate aggression and relational dynamics, drawing on contributions from Klein, Winnicott, Erikson, and Blum. This approach identifies early maternal failures and the "paranoid-schizoid position" as developmental substrates for the condition’s anxiety and defensive mechanisms. Critiquing the DSM-III-R for omitting features like superego unevenness and hidden inferiority, the author presents a composite profile organized into six psychosocial domains. This framework distinguishes between "overt characteristics (e.g., hypervigilance) and covert" ones (e.g., timidity), emphasizing the centrality of splitting and projective mechanisms. Finally, the chapter provides a rigorous differential diagnosis, distinguishing PPD from paranoid schizophrenia, delusional disorder, narcissistic personality disorder, and other conditions, while noting that the condition can span the entire lifespan.
+
+## DESCRIPTIVE STUDIES
+
+- The condition's origins trace back to Magnan (*1893*), who identified "delusional states of the degenerates" as stemming from a "fragile personality."
+- Kraepelin refined the concept into the "paranoid personality," noting traits like distrust, litigiousness, and a paradoxical combination of stubbornness with credulous gullibility.
+- Bleuler (*1908*) identified a triad of suspiciousness, grandiosity, and persecution as core features of the condition.
+- Kretschmer (*1927*) emphasized the contradiction between feelings of inadequacy and entitlement in PPD.
+- Jaspers (*1949*) described "self-insecure personalities" masked by compulsive formality.
+- Schneider (*1950*) differentiated "fanatic psychopaths" into combative and eccentric types.
+- Polatin (*1975*) and Hamilton (*1974*, *1984*) distinguished between sensitive and querulous subtypes of PPD.
+- Akhtar: Conducted a computer search of personality disorder literature from 1985 to 1988 which yielded over 1,200 citations, none specifically devoted to the phenomenology of paranoid personality disorder.
+- Stanton: In his 1978 work, pointed out that the paranoid individual exhibits overt stubbornness and hidden self-doubt.
+- Thomson: Co-authored a 1982 phenomenological profile of narcissistic personality with Akhtar, noting it does not display the pervasive mistrust, litigiousness, and self-righteous indignation characteristic of the paranoid personality.
+- Frances: Co-authored a 1985 re view (Widiger and Frances) that paid scant attention to the paranoid type, attributing this omission to a relative lack of controversy about the disorder.
+- Salzman (*1974*) observed that paranoid individuals experience the coexistence of feelings of superiority and inferiority.
+- Millon (*1981*) divided the features of paranoid personality into four categories, noting that their confidence masks a hollow shell.
+- Kendler et al. (*1984*) and Kendler and Grunberger (*1982*) focused their work on the potential relationship between paranoid personality disorder and paranoid schizophrenia or other paranoid disorders rather than its phenomenological details.
+- Leonhard (*1959*) emphasized that paranoid individuals overvalue their abilities and readily attribute failure to the ill will of others, suggesting a largely quantitative difference from paranoia.
+- Shepherd (*1961*) provided a thorough profile of paranoid personality disorder in the context of a study on morbid jealousy.
+- Winokur (*1985*) provided descriptions of paranoid disorders that contributed to the subsequent textbook literature on the condition.
+- Slater and Roth (*1977*) highlighted the paradoxical "contradictory pride and lack of self-confidence" observed in individuals with a paranoid personality.
+- Tobak (*1989*) identified the frequent coexistence of expedient mendacity and moralistic self-righteousness as a characteristic contradiction in the paranoid character.
+- **And “exaggeration of difficulties”) less specific** — 3 items from the source: (1) there remained a considerable overlap between the criteria of paranoid personality disorder and those for other Axis II diagnoses; (2) studies (Mellsop and Varghesi *1982*, Spitzer et al. *1979*) employing these criteria suggested a low reliability for the diagnosis of paranoid personality disorder; (3) the DSM-III criteria failed to include grandiosity (Heimann *1952*, Jacobson *1971*, Kraepelin *1921*, Kretschmer *1927*, Meissner *1978*b, Stanton *1978*), sexual difficulties (Bleuler *1908*, Cameron *1963*, Hamilton *1984*, Heimann *1952*, Kretschmer *1927*, Rycroft *1960*, Stanton *1978*), hidden feelings of inferiority (Bleuler *1908*, Heimann *1952*, Kretschmer *1927*, Rycroft *1960*, Stanton *1978*), idiosyncratically moral attitudes (Jacobson *1971*, Kernberg *1970*, Shepherd *1961*, Tobak *1989*), and gullibility and naivete (Kraepelin *1905*, Salzman *1974*) that paradoxically coexist with pervasive mistrust in paranoid personality disorder.
+
+## PSYCHOANALYTIC VIEWS
+
+- Freud (*1911*) linked paranoia to the projection of latent homosexuality, a view later criticized for overemphasizing libidinal factors while ignoring aggression.
+- Blum (*1980*) highlighted earlier Freudian hints connecting sadomasochism and paranoid pathology, noting that unconscious beating fantasies may underlie paranoid litigiousness.
+- Klein (*1946*) posited the "paranoid-schizoid position" as the developmental substrate of severe character pathology, characterized by splitting, denial, and primitive idealization.
+- Winnicott (*1952*) emphasized the role of maternal failures in disrupting the infant's "going-on-being," leading to anxiety and paranoid traits.
+- Erikson (*1950*a) linked PPD to a lack of basic trust resulting from early infantile frustrations.
+- Heimann (*1952*) likened PPD to chronic hypomania as a defense against unworthiness.
+- Cameron (*1963*) outlined four aspects of PPD including hypersensitivity to unconscious attitudes and sexual inferiority.
+- Shapiro (*1965*) detailed paranoid cognition as "interpretively autistic" but factually accurate, characterized by rigid mental sets and hyperactive scanning attention.
+- Bursten (*1973*a) viewed PPD as a subtype of narcissistic personality.
+- Kernberg (*1975*a, *1985*) associated PPD with borderline character organization and minimal superego integration.
+- Meissner (*1978*b) identified the identification with a weak mother as central to the anxiety in PPD.
+- Blum (*1980*, *1981*) synthesized psychoanalytic views, proposing that hostility is primary rather than secondary to homosexuality and introducing the concept of the "inconstant object."
+- Rycroft: Reported on the psychoanalytic treatment of an individual with paranoid personality in 1960, identifying the origin of such pathology as severe infantile traumata, often involving early parental loss and betrayal of anaclitic needs.
+- Jacobson (*1971*) noted that paranoid individuals frequently grew up in families characterized by overt cruelty and parental bickering.
+- Volkan (*1986*) provided insights regarding man’s need for enemies and allies.
+- Mahler (*1975*) developed a theory of separation-individuation which Blum used to explain how the lack of internalization of the mother leads to ego integration deficits and fragile self-esteem.
+- Bak (*1946*) posited that paranoid fantasies of persecution often serve to gratify original masochistic desires, a view agreed upon by Freud (*1919*).
+- Anthony (*1981*) delineated the specific characteristics of the paranoid adolescent within the broader literature on paranoid personality.
+- Kohut (*1972*) described the phenomenon of narcissistic rage as part of the clinical descriptions associated with paranoid pathology.
+- Green (*1986*) wrote an essay on moral narcissism in the context of related concepts in paranoid personality disorder.
+- Pao (*1969*) conducted work on morbid jealousy as part of the broader discussion of related concepts in paranoid personality disorder.
+- Socarides (*1966*) offered a view on the affect of vengeance within the framework of related concepts in paranoid personality disorder.
+- **Cameron outlined four aspects of paranoid** — 4 items from the source: (1) hypersensitivity to the unconscious attitudes of others; (2) insensitivity to one’s own motivations; (3) secret feeling of sexual inferiority; (4) lack of self-esteem and a powerful undercurrent of unconscious guilt.
+
+## AN ATTEMPT AT SYNTHESIS
+
+- Fenichel (*1946*) coined the term "phobic character" to describe individuals whose reactive behavior is limited to avoiding originally desired situations, while his 1945 work noted that the compulsive's rebellion against moral authority is subtle and unconscious.
+- Bergman (*1978*) observed that the fighting stance of paranoid personalities keeps them intact, with failure never being their own fault.
+- Allodi (*1982*) noted that reactive or acute development of paranoid delusions should be differentiated from paranoid personality disorder proper.
+- Ndtei (*1986*) highlighted that their condition is distinct from paranoid personality disorder, which is a nondelusional, stable state lacking a clear onset.
+- Mackinnon and Michels (*1971*) recognized fearful avoidance as a characterological defense, noting that individuals using it are constantly imagining themselves in dangerous situations while pursuing the safest course.
+- Stone (*1980*) described a "phobic-anxious" personality characterized by extremes of fearfulness and avoidance directed even at harmless objects and situations.
+- Wurmser (*1981*) highlighted three distinct differences between phobic and paranoid characters.
+- Conlon (*1984*) provided a mnemonic description of the "paranoid psychopath" as malicious, manipulative, mendacious, mendicant, meretricious, malignant, moralistic, mindless, and murderous.
+- Reid (*1985*) emphasized that the person with paranoid personality characteristically lacks the chronicity of antisocial behavior and the child-to-adult continuum found in the psychopath.
+- Lowenthal (*1968*), along with Bergman (*1971*, *1978*), suggested that paranoid individuals often make better adjustments to aging than their psychopathology would suggest.
+
+## Key Takeaways
+
+- Paranoid Personality Disorder (PPD) is a well-established nosological entity in DSM-III-R, yet it suffers from a significant paucity of literature specifically devoted to its phenomenology.
+- The author's primary aim is to synthesize descriptive and psychoanalytic views to develop a multifaceted phenomenological profile with developmental and psychostructural underpinnings for differential diagnosis.
+- The descriptive literature identifies six core contradictions in PPD: mistrust with gullibility, arrogance with inferiority, emotional coldness with sensitivity, asexuality with erotomanic vulnerability, moralism with corruption, and vigilance with an inability to see the whole picture.
+- DSM-III (*1980*) and DSM-III-R (*1987*) diagnostic criteria omitted key features such as superego unevenness, sexual difficulties, hidden inferiority, and the paradoxical coexistence of gullibility and mistrust.
+- The author presents a synthesized composite profile covering six areas of psychosocial functioning: self-concept, interpersonal relations, social adaptation, love and sexuality, ethics/standards/ideals, and cognitive style.
+- This profile distinguishes between "overt characteristics (e.g., arrogance, hypervigilance) and covert" characteristics (e.g., timidity, gullibility), underscoring the centrality of splitting and projective mechanisms.
+- PPD is differentiated from reactive/acute paranoid disorders, which are context-dependent and resolve quickly.
+- PPD is differentiated from the phobic character, who avoids situations without personalizing menace.
+- PPD is differentiated from compulsive personality disorder, which has a higher-level organization with repression over splitting and internalized moral authority.
+- Paranoid tendencies may emerge in childhood and persist into old age, where the "fighting stance" may aid adjustment.
+- The chapter suggests two subtypes of PPD: a passive/secretive type with kinship to schizoid personality and an active/litigious type with kinship to narcissistic personality.
+- **Conclusions**: (1) includes both phenomenological and psychoanalytic observations; (2) values depth and complexity over descriptive oversimplification; (3) establishes a connection between the behavioral and psychostructural, hence developmental, aspects of the paranoid character pathology.
+- **Enumerated list (4 items)** — 4 items from the source: (1) behavioral characteristics of vigilance, abrasive irritability, and counterattack; (2) complaints indicating oversensitivity, social isolation, and mistrust; (3) the dynamics of denying personal insecurities, attributing these to others, and self-inflation through grandiose fantasies; (4) a coping style of detesting dependence and hostile distancing of oneself from others.
+- **Summary Psychoanalytic literature characterizes paranoid personality** — 9 items from the source: (1) evidence of severe, sustained, and actual preoedipal trauma; (2) lack of basic trust; (3) an aborted separation-individuation process and therefore a lack of self and object constancy; (4) predominance of object-relations and dyadic conflicts over internalized, structural conflicts; (5) persistence of severe splitting of self-and object representations, along with the related mechanisms of denial and projective identification; (6) masochistic, negative, or perverse outcome of the Oedipus complex with intense unconscious beating fantasies, sadomasochistic perversions, or marked asexuality; (7) the syndrome of identity diffusion; (8) an uneven superego; (9) a peculiar corruption of autonomous ego functions that results in a narrow, biased, rigid, and hypervigilant cognitive style.
+- **For signs of threat, or taking** — 4 items from the source: (1) guardedness or secretiveness; (2) avoidance of accepting blame when warranted; (3) questioning the loyalty of others; (4) intense, narrowly focused searching for confirmation of bias, with.
+- **Loss of appreciation of total context** — 4 items from the source: (1) appearance of being “cold” and unemotional; (2) pride taken in always being objective, rational, and unemotional; (3) lack of a true sense of humor; (4) absence of passive, soft, tender, and sentimental feelings.
+
+## Thorough Summary
+
+The chapter "Paranoid Personality Disorder" opens with a poetic quote by Rabindranath Tagore and establishes that while paranoid personality disorder (PPD) is a well-established nosological entity listed in DSM-III-R and previous versions, it suffers from a paucity of literature specifically devoted to its phenomenology. The author’s aim is to synthesize descriptive and psychoanalytic views—previously existing independently—to develop a multifaceted phenomenological profile that offers developmental and psychostructural underpinnings for meaningful differential diagnosis. The descriptive literature section traces the condition's origins to Magnan (*1893*), who identified "delusional states of the degenerates" as stemming from a "fragile personality." Kraepelin (*1905*, *1921*a) refined this into the "paranoid personality," noting traits like distrust, litigiousness, and a paradoxical combination of stubbornness with credulous gullibility. Subsequent contributors included Bleuler (*1908*), who identified a triad of suspiciousness, grandiosity, and persecution; Kretschmer (*1927*), who emphasized the contradiction between feelings of inadequacy and entitlement; and Jaspers (*1949*), who described "self-insecure personalities" masked by compulsive formality. 
+
+Schneider (*1950*) differentiated fanatic psychopaths into combative and eccentric types, while later contributors like Polatin (*1975*) and Hamilton (*1974*, *1984*) distinguished between sensitive and querulous subtypes. The section concludes that the literature identifies six core contradictions in PPD: mistrust with gullibility, arrogance with inferiority, emotional coldness with sensitivity, asexuality with erotomanic vulnerability, moralism with corruption, and vigilance with an inability to see the whole picture. The psychoanalytic views begin with Freud (*1911*), who linked paranoia to the projection of latent homosexuality, a view later criticized for overemphasizing libidinal factors while ignoring aggression. However, Blum (*1980*) highlighted earlier Freudian hints connecting sadomasochism and paranoid pathology, noting that unconscious beating fantasies may underlie paranoid litigiousness. 
+
+Klein (*1946*) posited the paranoid-schizoid position as the developmental substrate of severe character pathology, characterized by splitting, denial, and primitive idealization. 
+
+Winnicott (*1952*) emphasized the role of maternal failures in disrupting the infant's going-on-being, leading to anxiety and paranoid traits, while Erikson (*1950*a) linked PPD to a lack of basic trust resulting from early infantile frustrations. 
+
+Heimann (*1952*) likened PPD to chronic hypomania as a defense against unworthiness, and Cameron (*1963*) outlined four aspects including hypersensitivity to unconscious attitudes and sexual inferiority. 
+
+Shapiro (*1965*) detailed the paranoid cognition as interpretively autistic but factually accurate, characterized by rigid mental sets and hyperactive scanning attention. Contemporary contributors include Bursten (*1973*a), who viewed PPD as a subtype of narcissistic personality; Kernberg (*1975*a, *1985*), who associated it with borderline character organization and minimal superego integration; and Meissner (*1978*b), who identified the identification with a weak mother as central to the anxiety. Blum (*1980*, *1981*) synthesized these views, proposing that hostility is primary rather than secondary to homosexuality and introducing the concept of the inconstant object to describe the desperate effort to preserve an illusory constant object while fearing betrayal. The chapter then critiques DSM-III (*1980*) and DSM-III-R (*1987*) diagnostic criteria, noting that while DSM-III-R improved upon DSM-III by reducing items from sixteen to seven and adding bears grudges, both versions omitted key features such as superego unevenness, sexual difficulties, hidden inferiority, and the paradoxical coexistence of gullibility and mistrust. To address this, the author presents a synthesized composite profile (Table 6-1) covering six areas of psychosocial functioning: self-concept, interpersonal relations, social adaptation, love and sexuality, ethics/standards/ideals, and cognitive style. This profile distinguishes between overt characteristics (e.g., arrogance, hypervigilance, industrial success in solitary professions) and covert characteristics (e.g., timidity, gullibility, vulnerability to erotomania, inability to grasp context). The author argues this dualistic organization is a nosologically forward step that underscores the centrality of splitting and projective mechanisms, though it carries risks regarding clinical utilization by dynamically unsophisticated psychiatrists. In the differential diagnosis section, PPD is distinguished from paranoid schizophrenia (which involves breaks with reality and bizarre delusions), reactive/acute paranoid disorders (which are context-dependent and resolve quickly), and paranoia/delusional disorder (which involves actual delusions rather than diffuse suspicions). The chapter further differentiates PPD from the phobic character (who avoids situations without personalizing menace), compulsive personality disorder (which has a higher-level organization with repression over splitting and internalized moral authority), narcissistic personality disorder (which lacks pervasive mistrust but displays charming social veneer and exploitativeness), and antisocial personality disorder (which involves chronicity and a child-to-adult continuum of behavior). The chapter concludes by noting that paranoid tendencies may emerge in childhood and persist into old age, where the fighting stance may aid adjustment. It also discusses subclassification, suggesting two subtypes—a passive/secretive type with kinship to schizoid personality and an active/litigious type with kinship to narcissistic personality—though these differences may reflect varying levels of social functioning or gender-related variations rather than distinct subtypes.
+
+The chapter further examines the psychoanalytic and descriptive literature through contributions from several other key figures. 
+
+Jacobson (*1971*) observed that paranoid individuals frequently grew up in families marked by overt cruelty and bickering between parents, where a sadomasochistic atmosphere, often centered on marital infidelity, set the stage for the child’s own sadism and weakened self-esteem. 
+
+Salzman (*1974*) contributed to the descriptive literature by noting the coexistence of feelings of superiority and inferiority in these patients, while Stanton (*1978*) pointed out the paranoid individual’s overt stubbornness and hidden self-doubt, as well as their latent gullibility despite a contempt for others’ naivete. In the context of differential diagnosis and broader character pathology, Volkan (*1986*) provided insights regarding man’s need for enemies and allies, while Akhtar and Byrne (*1983*) described the behavioral correlates of splitting and Akhtar (*1984*) detailed identity diffusion. Additionally, the chapter notes that similar phenomenological profiles of narcissistic, schizoid, and hypomanic personalities were drawn by Akhtar and Thomson (*1982*), Akhtar (*1987*), and Akhtar (*1988*), respectively, prompting Frances et al. (*1988*) to question the utilizability of such detailed profiles by dynamically unsophisticated psychiatrists.
+
+This descriptive focus on self-inflation is complemented by the contributions of Widiger and Frances (*1986*), whose prototypal model for classification is suggested as a method to salvage categorical diagnosis in light of the complexity of the composite profile presented. Additionally, the chapter notes Anthony’s (*1981*) delineation of the paranoid adolescent and Kohut’s (*1972*) description of narcissistic rage as indirect but significant contributions bearing on the phenomenology of the disorder.
+
+Finally, the summary touches upon Winokur (*1985*) in the context of the 1980s literature, which focused on the relationship between paranoid personality disorder and paranoid disorders or schizophrenia rather than its specific phenomenological details, reflecting a period where the condition remained understudied due to a perceived lack of controversy.
+
+The descriptive and psychoanalytic landscape of paranoid personality disorder is further enriched by a series of contributors who have addressed specific phenomenological, developmental, and diagnostic nuances. These contributions collectively underscore the complex interplay between moral self-righteousness and covert vulnerability that characterizes the disorder.
+
+Their assessment highlighted the considerable overlap with other Axis II diagnoses and noted studies suggesting low reliability in the diagnostic process using these criteria. Furthermore, they emphasized the failure of DSM-III to include key features such as grandiosity, sexual difficulties, hidden inferiority, and the paradoxical coexistence of gullibility and mistrust. These critiques were instrumental in shaping subsequent revisions, where the reduction of items in DSM-III-R was recognized as an improvement, yet the omission of superego unevenness, self-esteem defects, and romantic or sexual difficulties remained a significant limitation. The contributions of these scholars have been pivotal in refining the nosological boundaries and clinical understanding of paranoid personality disorder.
+
+## Key Distinctions
+
+- Paranoid personality disorder vs. paranoid schizophrenia: The chapter distinguishes the former as a nondelusional, stable state lacking a clear onset from the latter, which involves a serious break with reality, bizarre delusions, and auditory hallucinations. (p. ~137)
+- Paranoid personality disorder vs. paranoia (delusional disorder): A distinction is drawn based on the presence of encapsulated delusions in paranoia versus the diffuse, more plausible, and less encapsulated paranoid attitudes of the personality disorder. (p. ~141)
+- Phobic character vs. paranoid personality: The chapter contrasts their different reactions to perceived danger; the phobic character avoids situations due to anxiety without personalization, while the paranoid individual attacks or provokes attack based on specific beliefs about others' intentions. (p. ~146)
+- Paranoid personality disorder vs. compulsive personality disorder: A key distinction is identified in the origin of internal pressure (external vs. internal moral authority) and cognitive style (narrowly focused/biased attention vs. overinclusive), as well as ego structure (splitting vs. repression). (p. ~150)
+- Paranoid personality disorder vs. narcissistic personality disorder: The chapter notes differences in social presentation (angry negativism/aloofness vs. charming seductiveness) and specific features such as the paranoid's pervasive mistrust versus the narcissist's inordinate exploitativeness. (p. ~155)
+
+
+## Theoretical Tensions
+
+- Descriptive psychiatry vs. psychoanalytic literature: The chapter highlights that these two views of paranoid personality disorder have historically existed independently, with the author attempting to synthesize them into a multifaceted phenomenological profile. (p. ~137)
+- Libidinal/desire-based explanations vs. aggression/trauma-based explanations: A tension exists between Freud's original formulation (paranoia as projection of latent homosexuality) and criticisms/blum's view that hostility is a primary problem rooted in actual preoedipal trauma, innate aggressive disposition, and threats to survival. (p. ~142)
+- Overt features vs. covert features: The synthesis presents a theoretical framework where the disorder is defined by "mirror complementarity" or contradictory stances (e.g., arrogance vs. hidden inferiority), challenging simpler descriptive checklists that fail to capture this dichotomous self. (p. ~148)
+- Subtypes vs. levels of social functioning: There is an ambiguity in how to classify variations within paranoid personality; some theorists propose distinct subtypes (passive/secretive vs. active/litigious) based on nosological linkages, while the author suggests these differences may instead reflect varying levels of ego strength and compensation rather than distinct diagnostic entities. (p. ~154)
+
+
+## Reproduced Diagnostic Criteria (from source)
+
+The following diagnostic criteria are reproduced verbatim from the chapter source. They were detected by the deterministic ``a. b. c. d.`` + ``(i) (ii) (iii)`` pattern (no LLM condensing — the criteria are the source's own structured list).
+
+- **a.** Pervasive, unwarranted suspiciousness and mistrust of people as indicated by at least three of the following: for signs of threat, or taking unneeded precautions loss of appreciation of total context
+  - (i) expectation of trickery or harm
+  - (ii) hypervigilance, manifested by continual scanning of the environment
+  - (iii) guardedness or secretiveness
+  - (iv) avoidance of accepting blame when warranted
+  - (v) questioning the loyalty of others
+  - (vi) intense, narrowly focused searching for confirmation of bias, with
+  - (vii) overconcern with hidden motives and special meanings
+  - (viii) pathological jealousy
+- **b.** Hypersensitivity as indicated by at least two of the following: molehills” (iii) readiness to counterattack when any threat is perceived
+  - (i) tendency to be easily slighted and quick to take offense
+  - (ii) exaggeration of difficulties, e.g., “making mountains out of
+  - (iv) inability to relax
+- **c.** Restricted affectivity as indicated by at least two of the following:
+  - (i) appearance of being “cold” and unemotional,
+  - (ii) pride taken in always being objective, rational, and unemotional
+  - (iii) lack of a true sense of humor
+  - (iv) absence of passive, soft, tender, and sentimental feelings
+
+
+---
+
+*Generated by Elixir v0.5.11 · run 20260927-133331-627dc7f8 · 2026-09-27T13:36:32 · 69 bullets*
+
+<!-- COMPLETE run_id=20260927-133331-627dc7f8 -->
