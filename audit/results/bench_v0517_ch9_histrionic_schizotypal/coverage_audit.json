@@ -1,0 +1,32 @@
+{
+  "audit": "V0.5.17_run20260928-022401-45d5434e_ch9",
+  "method": "extract_citations roster on source -> word-boundary (B1) search over the shipped summary; cross-checked against the run's own deterministic recall floor (conversion log 02:40:04)",
+  "roster_size": 69,
+  "pipeline_recall_floor_bullets": {
+    "covered": 66,
+    "total": 69,
+    "pct": 95.65,
+    "missing": ["Cooper", "Kallman", "Erikson"]
+  },
+  "independent_full_text": {
+    "covered": 68,
+    "total": 69,
+    "pct": 98.6,
+    "missing": ["Erikson"]
+  },
+  "independent_bullets_only_strict": {
+    "covered": 65,
+    "total": 69,
+    "pct": 94.2,
+    "missing": ["Blacker and Tupin", "Cooper", "Kallman", "Erikson"],
+    "note": "compound-name strict match; the pipeline floor counts Blacker and Tupin covered (both names appear in bullet 21)"
+  },
+  "conclusion_items": {"covered": 5, "total": 5},
+  "enumerated_items_floor": {"covered": 71, "total": 71, "note": "detector universe; the Kernberg 1967 six-ground list is carried 5/6 (item 5 truncated, item 6 absent) - see audit report"},
+  "hallucination_candidates": [],
+  "glossary_side_names_missing_everywhere": ["Wender et al.", "Widiger et al."],
+  "verification_layer_false_positives": ["Kety et al.", "Lilienfeld et al.", "Robins et al.", "Rosenthal et al.", "Snyder et al.", "Spitzer et al."],
+  "verification_false_positive_root_cause": "word-boundary pattern r'\\b' + name + r'\\b' never matches names ending in 'et al.' (terminal \\b after the period requires a following word char); verification_phase.py ~L790",
+  "bullets": 87,
+  "verdict": "PASS"
+}
