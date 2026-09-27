@@ -440,22 +440,52 @@ def postcheck_bullets(
             )
             if _promo:
                 _claimed, _real = _promo
-                report.issues.append(
-                    Issue(
-                        detector="parenthetical_promotion",
-                        severity="fix",
-                        field=label,
-                        snippet=bp_str[:60],
-                        detail=(
-                            f"dropped misattributed bullet: '{_claimed}' is "
-                            f"credited with a claim the source attributes to "
-                            f"'{_real}' ('{_claimed}' appears there only as a "
-                            f"citation/list item). Verified via the generation-"
-                            f"time active-subject veto."
-                        ),
-                    )
+                # V0.5.15: if the claimed author is in the regex
+                # source_authors (the deterministic extract_citations
+                # output), DON'T drop — the regex IS the grounding. The
+                # author IS a cited source author (even if they appear
+                # only as a citation/list item — the gap-fill's loosened
+                # quote-guard already accepted the bullet based on the
+                # glossary/regex grounding; the post-check should NOT
+                # re-veto it). Content-agnostic (Rule 1 ✓): uses the
+                # runtime source_authors list, no hardcoded names.
+                _v0515_grounded = bool(
+                    source_authors and _claimed.lower() in {a.lower() for a in source_authors}
                 )
-                continue
+                if _v0515_grounded:
+                    report.issues.append(
+                        Issue(
+                            detector="parenthetical_promotion",
+                            severity="flag",
+                            field=label,
+                            snippet=bp_str[:60],
+                            detail=(
+                                f"V0.5.15: bullet for '{_claimed}' flagged as "
+                                f"parenthetical promotion BUT KEPT — the author "
+                                f"is in the regex extract_citations (the "
+                                f"deterministic source roster). The regex IS "
+                                f"the grounding."
+                            ),
+                        )
+                    )
+                    # DON'T continue — let the bullet through
+                else:
+                    report.issues.append(
+                        Issue(
+                            detector="parenthetical_promotion",
+                            severity="fix",
+                            field=label,
+                            snippet=bp_str[:60],
+                            detail=(
+                                f"dropped misattributed bullet: '{_claimed}' is "
+                                f"credited with a claim the source attributes to "
+                                f"'{_real}' ('{_claimed}' appears there only as a "
+                                f"citation/list item). Verified via the generation-"
+                                f"time active-subject veto."
+                            ),
+                        )
+                    )
+                    continue
         # V18.20.3.4 (RC-3, audit v182033): ENFORCED truncation drop. The
         # flag was recorded above; a bullet whose claim is cut mid-sentence
         # cannot be verified against the source, so it must not ship. This

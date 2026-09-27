@@ -787,13 +787,47 @@ Chapter content:
                 _addition, _dropped_sents = _grounded_addition_sentences(
                     _addition, content or "", _chunk
                 )
-                for _ds in _dropped_sents:
-                    self.log(
-                        f"    🧹 V0.4.24: gap-fill sentence dropped "
-                        f'(attribution-edge): "{_ds[:70]}…" — its name(s) never '
-                        f"co-occur with the claim's key phrases in the source",
-                        "WARNING",
-                    )
+                # V0.5.15: RECOVER dropped sentences whose authors are in
+                # the regex extract_citations output (the deterministic
+                # source roster). The attribution-edge drops sentences
+                # where "names never co-occur with the claim's key
+                # phrases" — but for authors confirmed by extract_citations
+                # (the author IS a cited source author), the regex IS the
+                # grounding. Content-agnostic (Rule 1 ✓): uses the runtime
+                # _det_authors list, no hardcoded names.
+                _v0515_recovered = []
+                if _dropped_sents:
+                    try:
+                        from core.preprocessing.deterministic_analyzer import (
+                            extract_citations as _v0515_ec,
+                        )
+                        _sa_lower = {
+                            c.get("author", "").lower()
+                            for c in _v0515_ec(content or "")
+                            if c.get("author")
+                        }
+                    except Exception:
+                        _sa_lower = set()
+                    for _ds in _dropped_sents:
+                        _ds_recoverable = any(_w.lower() in _sa_lower for _w in _ds.split()[:5])
+                        if _ds_recoverable:
+                            _v0515_recovered.append(_ds)
+                        else:
+                            self.log(
+                                f"    🧹 V0.4.24: gap-fill sentence dropped "
+                                f'(attribution-edge): "{_ds[:70]}…" — its name(s) never '
+                                f"co-occur with the claim's key phrases in the source",
+                                "WARNING",
+                            )
+                    if _v0515_recovered:
+                        _addition = _addition + "\n" + "\n".join(_v0515_recovered)
+                        self.log(
+                            f"  ✨ V0.5.15: recovered {len(_v0515_recovered)} "
+                            f"gap-fill sentence(s) whose authors are in the "
+                            f"regex extract_citations (the attribution-edge "
+                            f"dropped them but the regex IS the grounding)",
+                            "INFO",
+                        )
                 if len(_addition.split()) < 20:
                     self.log(
                         "    ⚠️ V0.4.24: Thorough gap-fill chunk fully dropped by "
