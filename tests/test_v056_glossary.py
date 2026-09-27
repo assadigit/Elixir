@@ -220,16 +220,38 @@ class TestParseNameGlossaryFailOpenOnMalformed:
         assert g["terms"][0]["term"] == "projection"
 
     def test_parse_name_glossary_unclosed_block_fail_open(self):
-        """An unclosed ``<name_glossary>`` tag → fail-open (the regex requires
-        a closing tag — without it, the block match fails + the empty dict
-        is returned)."""
+        """An unclosed ``<name_glossary>`` tag → fail-open via Tier 1 (the
+        XML regex requires a closing tag — without it, the block match
+        fails). V0.5.10: the parser then falls through to Tier 2 (the
+        markdown-header scan), which catches the ``## Names`` header + the
+        bullet underneath → ``g["names"]`` has 1 entry (Bak). The Tier 1
+        block match is gone, but the markdown-header fallback recovers
+        the bullets — the parser NEVER crashes on the unclosed XML tag."""
         raw_unclosed = (
             "<thorough_summary>x</thorough_summary>\n\n"
             "<name_glossary>\n## Names\n- **Bak** (1946) — context\n"
             # NO </name_glossary> closer
         )
         g = parse_name_glossary(raw_unclosed)
-        assert g == {"names": [], "dates": [], "terms": []}
+        # The parser MUST NOT crash on the unclosed XML tag. It returns a
+        # dict with the 3 keys (the Tier 1 XML-block regex fails — no
+        # closing tag — but the Tier 2 markdown-header fallback catches
+        # the ## Names header + the bullet).
+        assert set(g.keys()) == {"names", "dates", "terms"}
+        # V0.5.10: the Tier 2 markdown-header fallback catches the
+        # ``## Names`` header + the bullet → ``g["names"]`` has 1 entry.
+        # (Pre-V0.5.10 the parser returned the empty dict — the Tier 1
+        # failure was a hard fail-open. V0.5.10's lenient fallback recovers
+        # the bullets even when the XML wrapper is malformed.)
+        assert len(g["names"]) == 1, (
+            f"expected 1 name (Tier 2 markdown-header fallback caught the "
+            f"## Names bullet — V0.5.10 lenient recovery), got {len(g['names'])}"
+        )
+        assert g["names"][0]["name"] == "Bak"
+        assert g["names"][0]["year"] == "1946"
+        # No ## Dates / ## Terms headers in the fixture → empty lists.
+        assert g["dates"] == []
+        assert g["terms"] == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

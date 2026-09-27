@@ -24,6 +24,35 @@
 >    deferred (Rule 2: smallest change the evidence supports).
 
 
+## V0.5.10 — the glossary format change (XML→markdown headers) + the field_phases Pattern C caller fix + the gap-fill quote-guard regex fallback + the markitdown background-thread import
+
+> **The release:** the V0.5.9 audit found the glossary call STILL failed even with max=8192 — the Ternary-Bonsai-2-27B model can't follow the `<name_glossary>` XML format. V0.5.10 changes the format to markdown headers (which the model handles naturally) + adds 3 remaining fixes from the audits/brainstorms: the field_phases Pattern C caller fix (the "ego-syntonically" rewrite was dormant since V0.5.4), the gap-fill quote-guard regex fallback (in case the glossary STILL doesn't work), + the F3 markitdown background-thread import (~7s init saving).
+
+> **Fix 1 — Glossary format: XML tags → markdown headers:**
+> - `prompts/summarisation/glossary_extraction.md`: removed the `<name_glossary>...</name_glossary>` XML wrapper; replaced with `## Source Glossary — Names/Dates/Terms` markdown headers + a generic few-shot example (Smith/Jones).
+> - `core/summarisation/glossary_parser.py`: `parse_name_glossary` now cascades 3 fail-open tiers — Tier 1: XML block (backward compat), Tier 2: markdown headers (`## Source Glossary — Names` OR bare `## Names`), Tier 3: lenient bare-bullet scan (any `- **Surname** (YYYY) —` line). The model's actual output format is now caught regardless.
+
+> **Fix 2 — field_phases Pattern C caller fix (the C2 rewrite was dormant since V0.5.4):**
+> - The V0.5.4 C2 fix added the "ego-syntonically personalities" → "ego-syntonic personalities" rewrite to `detect_sentence_fusion`'s return. BUT the 3 callers in `field_phases.py:202/620/796` discarded the returned text (`_, fusion_issues = ...`). The rewrite never reached the summary.
+> - V0.5.10: changed all 3 callers to `bp_str, fusion_issues = ...` (capture the rewritten text). The rewrite now propagates to subsequent detectors + the shipped field text. Closes the V0.5.3 ground-truth audit's "ego-syntonically" garble end-to-end.
+
+> **Fix 3 — Gap-fill quote-guard regex fallback (in case the glossary STILL doesn't work):**
+> - The V0.5.6 D4 loosened the quote-guard for GLOSSARY-sourced authors. But V0.5.6→V0.5.9 showed the glossary STILL doesn't extract — the loosened quote-guard never fires. The 4 missing authors (Jack, Ndtei, Rettersol, Lowenthal) stay missing.
+> - V0.5.10: added a FALLBACK — if the author is in the REGEX `extract_citations` output (the deterministic backstop), ALSO loosen the quote-guard. Logic: `if author_in_glossary OR author_in_regex → accept the bullet`. The regex fallback catches the missing authors REGARDLESS of the glossary. Logs `✨ V0.5.10 gap-fill: accepted bullet for 'X' (grounded in regex extract_citations, not verbatim quote)`.
+
+> **Fix 4 — F3 markitdown background-thread import (~7s init saving):**
+> - The V0.5.4 brainstorm F3 documented markitdown's ~7.9s eager import as a future optimization. V0.5.10 implements it: a `_MarkitdownBgImport` daemon thread starts at the beginning of `run_preflight_check` + runs in parallel with the other required-dep checks. The markitdown check joins the thread (if still running) OR uses the result. Fail-open: if the thread crashes, falls back to the eager import. Only markitdown (the slowest dep); the other deps stay eager.
+
+> **Combined changeset:** 13 files (10 modified + 3 new). Net-green: ruff clean, eval gate OK (re-baselined — 6 golden chapters PASS, hallucination 0.0%), 115 P / 0 F on the V0.5.10+regression set.
+
+> **Rule verdicts:** Rule 1 ✓ (content-agnostic — generic prompt + few-shot test-fixture names + runtime regex output + the existing dep list). Rule 2 ✓ (file:line-anchored). Rule 3 ✓ (net-green — ruff + eval gate + 115 tests). Rule 4 ✓ (provenance — the glossary `.md` is persisted). Rule 5 ✓ (zip-per-release).
+
+> **Expected V0.5.10 outcome:** (1) the glossary will finally extract (the markdown-header format + the 3-tier parser catches the model's actual output) → the 📖 glossary log line fires → the loosened quote-guard + final-check fire. (2) EVEN IF the glossary STILL fails, the regex fallback catches the 4 missing authors → they're added with "grounded in regex" grounding. (3) The "ego-syntonically" garble is auto-rewritten in the actual summary (the field_phases callers now use the returned text). (4) The preflight is ~7s faster (markitdown background import). Expected: 74/74 (100%) author coverage → ~9.25.
+
+## V0.5.9 — the glossary-call max_output_tokens override fix (primary_call.py passed 4096, overriding the V0.5.8 default of 8192)
+
+> **The release:** the V0.5.8 audit found the glossary call STILL failed — the conv log showed `max=4096` (not 8192). The V0.5.8 fix raised the DEFAULT in `extract_glossary_via_llm` to 8192, BUT the caller in `primary_call.py:172` passed `max_output_tokens=4096` explicitly, OVERRIDING the default. V0.5.9 fixed the 1-line override: `max_output_tokens=4096` → `max_output_tokens=8192`. The V0.5.9 rig run confirmed the call now uses `max=8192` (the fix worked), but the glossary STILL didn't extract — the model can't follow the `<name_glossary>` XML format even with 8192 tokens. Coverage recovered to 53/74 (72%, up from V0.5.8's 42/74=57%). The V0.5.10 format change (XML → markdown headers) is the follow-up.
+
 ## V0.5.8 — the glossary-call fix (max_tokens 4096→8192 + strip_thinking + explicit no-thinking prompt + remove the V0.5.6 leftover fused-path parser)
 
 > **The release:** the V0.5.7 audit found the separate glossary call FIRED but produced NO `<name_glossary>` block (the LLM was called with max=4096 but didn't output the block — the thinking consumed the token budget before the glossary was emitted). V0.5.8 fixes this with 3 changes + removes the V0.5.6 leftover fused-path parser. Per the user's directive, the master-summary prompt was NOT simplified further (the V0.5.7 revert was clean — only removed the `<name_glossary>` block; the short master-summary in V0.5.7 was LLM variance, not a prompt issue).

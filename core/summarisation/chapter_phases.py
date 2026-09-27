@@ -331,6 +331,22 @@ class SummarizerChapterPhasesMixin:
                             strip_thinking=self._strip_thinking,
                             filter_thinking_bullets=self._filter_thinking_bullets,
                             log=self.log,
+                            # V0.5.10: pass the analysis-extracted author
+                            # list (the runtime regex extract_citations
+                            # output) as the regex_confirmed_authors for
+                            # the loosened quote-guard FALLBACK. When the
+                            # LLM glossary is unavailable (the V0.5.6→V0.5.9
+                            # audit reality — the glossary call STILL fails
+                            # because the master-summary returns EMPTY), the
+                            # loosened V0.5.6 override never fires. The
+                            # V0.5.10 fallback loosens the veto for REGEX-
+                            # confirmed authors too (the deterministic
+                            # source-roster the LAYER already trusts as the
+                            # V0.5.5 fallback when no glossary is available).
+                            # Content-agnostic (Rule 1 ✓): _det_authors is
+                            # the runtime extract_citations output, no
+                            # hardcoded names.
+                            regex_confirmed_authors=_det_authors,
                         )
 
                     # V17.7: Inject ALL lists from the source as a dedicated

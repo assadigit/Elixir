@@ -84,6 +84,30 @@ the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
   - When no glossary is provided (the default), the V0.5.6 behavior is
     a no-op — the existing V18.20.3.2 veto + 5-round cap fire exactly
     as before (the existing characterization tests stay GREEN).
+
+**V0.5.10 (regex-confirmed author fallback for the loosened quote-guard)**:
+  - The V0.5.6→V0.5.9 audits showed the LLM glossary call STILL failed
+    (the master-summary returned EMPTY → no ``<name_glossary>`` block
+    parsed → the loosened override never fired → the 4 still-missing
+    authors stayed missing because the strict V18.20.3.2 veto dropped
+    their bullets). The V0.5.10 fallback: when the glossary is NOT
+    available OR the author is NOT in the glossary, check if the
+    author is in the REGEX ``extract_citations`` output (the
+    deterministic source-roster the LAYER already trusts as the V0.5.5
+    fallback when no glossary is available). If yes → ALSO loosen the
+    veto (accept the bullet with a "grounded-in-regex-extraction"
+    grounding level). The regex IS the grounding — the author IS in
+    the source, just not as an active subject.
+  - The ``regex_confirmed_authors`` keyword arg (default ``None``) is
+    the runtime regex ``extract_citations`` output, passed by the
+    caller ``chapter_phases.py`` (where it is the analysis-extracted
+    author list ``_det_authors``). Default ``None`` → the V0.5.5
+    strict-veto behavior (no loosened override — the existing
+    characterization tests stay GREEN).
+  - Logic: ``if author_in_glossary OR author_in_regex_extract_citations
+    → loosen the veto; else → keep the strict quote-guard``.
+  - Content-agnostic (Rule 1 ✓): the membership test uses the RUNTIME
+    regex ``extract_citations`` output, no hardcoded names.
 """
 
 from __future__ import annotations
@@ -199,6 +223,50 @@ def _v056_author_in_glossary(glossary: dict | list | None, name: str) -> bool:
     return name.lower() in {n.lower() for n in _v056_extract_glossary_names(glossary)}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.5.10: regex-confirmed author fallback (gap-fill quote-guard).
+#
+# The V0.5.6 loosened quote-guard fired only for GLOSSARY-sourced authors.
+# But the V0.5.6→V0.5.9 audits showed the LLM glossary call STILL failed
+# (the master-summary returned EMPTY 3 times → no ``<name_glossary>``
+# block parsed → the loosened override never fired → the 4 still-missing
+# authors [a name]/[a name]/[a name]/[a name] stayed missing because the
+# strict V18.20.3.2 veto dropped their bullets). The V0.5.10 fallback:
+# if the glossary is NOT available (empty) OR the author is NOT in the
+# glossary, check if the author is in the REGEX ``extract_citations``
+# output (the deterministic source-roster the LAYER already trusts as
+# the V0.5.5 fallback when no glossary is available). If yes → ALSO
+# loosen the veto (accept the bullet with a "grounded-in-regex-
+# extraction" grounding level — the regex is content-agnostic, run on
+# the source text by ``core.preprocessing.deterministic_analyzer.extract_
+# citations``; the same regex the LAYER's coverage check uses to flag
+# the author as missing in the first place).
+#
+# Logic: ``if author_in_glossary OR author_in_regex_extract_citations →
+# loosen the veto; else → keep the strict quote-guard``.
+#
+# Content-agnostic (Rule 1 ✓): the membership test uses the RUNTIME
+# regex ``extract_citations`` output (the caller — ``chapter_phases.py``
+# — passes the analysis-extracted author list as ``regex_confirmed_
+# authors``). No hardcoded names.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _v0510_author_in_regex(regex_authors: list[str] | None, name: str) -> bool:
+    """V0.5.10: True when the name appears in the regex
+    ``extract_citations`` output (the V0.5.6 glossary-unavailable
+    fallback for the loosened quote-guard).
+
+    The membership test is case-insensitive (mirrors
+    ``_v056_author_in_glossary``). Returns ``False`` when
+    ``regex_authors`` is ``None`` or empty (the V0.5.5 strict-veto
+    behavior — no loosened override fires).
+    """
+    if not name or not regex_authors:
+        return False
+    return name.lower() in {a.lower() for a in regex_authors if a}
+
+
 class GapFillOutcome(NamedTuple):
     """Outcome of the batch gap-fill loop (logging parity).
 
@@ -241,6 +309,7 @@ def batch_gap_fill(
     filter_thinking_bullets: FilterThinkingFn,
     log: LogCallback | None = None,
     source_glossary: dict | list | None = None,
+    regex_confirmed_authors: list[str] | None = None,
 ) -> GapFillOutcome:
     """V18.14.1: Batch gap-fill loop — the bullets-only coverage guarantee.
 
@@ -249,6 +318,16 @@ def batch_gap_fill(
     the module docstring for the extraction map and the free-variable
     inventory. Mutates ``bullets`` in-place (appends the accepted
     gap-fill bullets); returns a ``GapFillOutcome`` for logging parity.
+
+    V0.5.10: ``regex_confirmed_authors`` — the runtime regex
+    ``extract_citations`` output (passed by the caller,
+    ``chapter_phases.py``, where it is the analysis-extracted author
+    list ``_det_authors``). Used as the V0.5.6 glossary-unavailable
+    FALLBACK for the loosened quote-guard: when no glossary is provided
+    OR the claimed author is NOT in the glossary, the regex-confirmed
+    membership test fires as a fallback grounding (accept the bullet
+    with a "grounded-in-regex-extraction" grounding level). Default
+    ``None`` → the V0.5.5 strict-veto behavior (no loosened override).
     """
     log = log or _noop_log
     # No-op guard — the original block was wrapped in ``if _missing:``.
@@ -683,6 +762,45 @@ def batch_gap_fill(
                                         and _veto_key is not None
                                         and _v056_author_in_glossary(source_glossary, _veto_key)
                                     )
+                                    # V0.5.10: regex-confirmed
+                                    # author FALLBACK. The V0.5.6
+                                    # loosened override fired only
+                                    # for glossary-sourced authors.
+                                    # But the V0.5.6→V0.5.9 audits
+                                    # showed the LLM glossary call
+                                    # STILL failed (the master-
+                                    # summary returned EMPTY → no
+                                    # ``<name_glossary>`` block →
+                                    # the loosened override never
+                                    # fired → the 4 still-missing
+                                    # authors stayed missing because
+                                    # the strict V18.20.3.2 veto
+                                    # dropped their bullets). The
+                                    # V0.5.10 fallback: if the
+                                    # glossary is NOT available OR
+                                    # the author is NOT in the
+                                    # glossary, check if the author
+                                    # is in the REGEX
+                                    # ``extract_citations`` output
+                                    # (the deterministic source-
+                                    # roster the LAYER already
+                                    # trusts as the V0.5.5 fallback
+                                    # when no glossary is available).
+                                    # If yes → ALSO loosen the veto
+                                    # (the regex IS the grounding —
+                                    # the author IS in the source,
+                                    # just not as an active subject).
+                                    # Content-agnostic (Rule 1 ✓):
+                                    # the membership test uses the
+                                    # runtime regex extract_citations
+                                    # output, no hardcoded names.
+                                    _v0510_regex_backed = (
+                                        not _v056_glossary_backed
+                                        and _veto_key is not None
+                                        and _v0510_author_in_regex(
+                                            regex_confirmed_authors, _veto_key
+                                        )
+                                    )
                                     if _v056_glossary_backed:
                                         log(
                                             f"    ✨ V0.5.6 gap-fill: accepted "
@@ -698,6 +816,23 @@ def batch_gap_fill(
                                         # mention-only / give-up
                                         # escalation should NOT fire
                                         # from a glossary-backed
+                                        # override). Fall through to
+                                        # bullets.append below.
+                                    elif _v0510_regex_backed:
+                                        log(
+                                            f"    ✨ V0.5.10 gap-fill: accepted "
+                                            f"bullet for '{_veto_key}' "
+                                            f"(grounded in regex extract_citations, "
+                                            f"not verbatim quote)",
+                                            "INFO",
+                                        )
+                                        # Same don't-count-the-veto
+                                        # rule as the V0.5.6 glossary
+                                        # path (the loosened
+                                        # quote-guard accepted the
+                                        # bullet — the mention-only /
+                                        # give-up escalation should
+                                        # NOT fire from a regex-backed
                                         # override). Fall through to
                                         # bullets.append below.
                                     else:

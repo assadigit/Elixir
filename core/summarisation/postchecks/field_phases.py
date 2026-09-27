@@ -187,9 +187,19 @@ def postcheck_bullets(
         _, fragment_issues = detect_word_fragment_merge(
             bp_str, label, source_text or "", source_words=_src_words
         )
-        # V0.4.3 (audit D4): sentence-fusion garble (flag-only) — catches
+        # V0.4.3 (audit D4): sentence-fusion garble — catches
         # "praiseity"-class fusions that word_fragment_merge misses.
-        _, fusion_issues = detect_sentence_fusion(
+        # V0.5.4 (Track C2): detect_sentence_fusion now returns
+        # (possibly-rewritten) text + issues. V0.5.10 (Track C4):
+        # CAPTURE the returned text (was `_, fusion_issues = ...` —
+        # the V0.4.3 flag-only discard) so the V0.5.4 rewrite (the
+        # "ego-syntonically personalities" → "ego-syntonic
+        # personalities" grammatical garble) actually propagates to
+        # the shipped bullet AND to subsequent detectors (the dropped-
+        # letter detector + the LLM repair + the author-garble + the
+        # stray-quote repair) so they see the corrected text, not the
+        # garbled original. Issue list is still collected the same way.
+        bp_str, fusion_issues = detect_sentence_fusion(
             bp_str, label, source_text or "", source_words=_src_words
         )
         fragment_issues = (fragment_issues or []) + (fusion_issues or [])
@@ -599,7 +609,15 @@ def postcheck_exec(executive_summary: str, ctx: PhaseCtx, report: PostCheckRepor
         exec_str, "exec", source_text or "", source_words=_src_words
     )
     # V0.4.3 (audit D4): sentence-fusion garble.
-    _, exec_fusion = detect_sentence_fusion(
+    # V0.5.10 (Track C4): CAPTURE the returned text (was
+    # `_, exec_fusion = ...` — the V0.4.3 flag-only discard) so the
+    # V0.5.4 (Track C2) rewrite (the "ego-syntonically personalities"
+    # → "ego-syntonic personalities" grammatical garble) actually
+    # propagates to the shipped exec AND to subsequent detectors (the
+    # dropped-letter detector + the LLM repair + the author-garble +
+    # the stray-quote repair) so they see the corrected text, not the
+    # garbled original. Issue list is still collected the same way.
+    exec_str, exec_fusion = detect_sentence_fusion(
         exec_str, "exec", source_text or "", source_words=_src_words
     )
     exec_fragment = (exec_fragment or []) + (exec_fusion or [])
@@ -767,7 +785,15 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
     # V0.4.3 (audit D4): sentence-fusion garble — the V0.4.2 NPD thorough
     # shipped two fusions (praiseity, self-developmentstic); this catches
     # them. Flag-only.
-    _, tho_fusion = detect_sentence_fusion(
+    # V0.5.10 (Track C4): CAPTURE the returned text (was `_, tho_fusion
+    # = ...` — the V0.4.3 flag-only discard) so the V0.5.4 (Track C2)
+    # rewrite (the "ego-syntonically personalities" → "ego-syntonic
+    # personalities" grammatical garble) actually propagates to the
+    # shipped thorough AND to subsequent detectors (the dropped-letter
+    # detector + the author-garble + the stray-quote repair + the D3
+    # LLM repair) so they see the corrected text, not the garbled
+    # original. Issue list is still collected the same way.
+    tho_str, tho_fusion = detect_sentence_fusion(
         tho_str, "thorough", source_text or "", source_words=_src_words
     )
     tho_fragment = (tho_fragment or []) + (tho_fusion or [])

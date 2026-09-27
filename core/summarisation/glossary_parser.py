@@ -1,4 +1,4 @@
-"""V0.5.6 Phase 0.5 — source glossary extraction (parser + persistence + cross-ref).
+"""V0.5.6 Phase 0.5 → V0.5.10 — source glossary extraction (parser + persistence + cross-ref).
 
 The V0.5.5 audit found 5 source authors still missing from the chapter 6
 summary (the LAYER's ``extract_citations`` caught them but the gap-fill's
@@ -9,22 +9,38 @@ into the master-summary LLM call (Call 1/3 in ``_chunked_summarize`` /
 as a ``.glossary.md`` file under ``summaries/.glossaries/``, and uses it
 as the coverage ground truth (richer than the regex).
 
-The glossary has 3 markdown subsections (per the user's directive
-"glossary (dates, names, specific terms)"):
+V0.5.7 separates the glossary extraction into a DEDICATED LLM call (the
+fused approach overwhelmed the Ternary-Bonsai-2-27B model). V0.5.8 raised
+the default ``max_output_tokens`` to ``8192`` + added ``strip_thinking``.
+V0.5.9 fixed the caller override (``primary_call.py:172`` was passing
+``max_output_tokens=4096``).
 
-    <name_glossary>
-    ## Names
+V0.5.10 changes the OUTPUT FORMAT. The V0.5.9 audit found the model
+CAN'T reliably follow the ``<name_glossary>`` XML-tag instruction (even
+with ``max=8192`` + ``strip_thinking`` + the explicit "start with
+``<``" prompt). The model emits the glossary in a slightly different
+format (plain markdown without the XML wrapper) that the V0.5.9 parser
+rejects. V0.5.10 swaps the XML wrapper for plain markdown headers:
+
+    ## Source Glossary — Names
     - **Surname** (YYYY) — 1-sentence context of their contribution
     - **Surname** (YYYYa, YYYYb) — context
-    ## Dates
+    ## Source Glossary — Dates
     - **YYYY-YYYY** — what the range refers to
     - **YYYYs** (decade) — context
-    ## Terms
+    ## Source Glossary — Terms
     - **term** — 1-sentence definition
-    </name_glossary>
 
-``parse_name_glossary`` extracts the block + parses the 3 subsections into
-the dict::
+The parser cascades 3 tiers (all fail-open — never raises):
+  1. The OLD XML format (``<name_glossary>...</name_glossary>``) — kept
+     for backward compatibility (some runs may still produce it).
+  2. The NEW markdown-header format (``## Source Glossary — Names``) —
+     the unified regex ALSO accepts the bare ``## Names`` form (lenient
+     fallback when the LLM omits the "Source Glossary —" prefix).
+  3. The LENIENT bare-bullet fallback — scan for ANY line matching the
+     ``- **Surname** (YYYY) — context`` shape (no headers needed).
+
+``parse_name_glossary`` parses the block into the dict::
 
     {
         "names": [{"name": "Bak", "year": "1946", "context": "..."}],
@@ -49,9 +65,9 @@ Rule 4 provenance).
 
 Content-agnostic (Rule 1 ✓): the prompt instruction is generic ("ALL
 cited authors"); the parser uses generic regex (``<name_glossary>``,
-``## Names``, ``## Dates``, ``## Terms``); the cross-reference compares
-two sets of runtime-extracted names. NO hardcoded book/author/chapter
-names.
+``## Source Glossary — Names``, ``## Names`` — no book/author content);
+the cross-reference compares two sets of runtime-extracted names. NO
+hardcoded book/author/chapter names.
 """
 
 from __future__ import annotations
@@ -77,15 +93,36 @@ _EMPTY_GLOSSARY: dict[str, list] = {"names": [], "dates": [], "terms": []}
 # Rule 1 ✓). The block regex is non-greedy + DOTALL so a single block is
 # captured even when the response spans multiple ``<...>`` tags. The
 # section-header regexes are case-insensitive + MULTILINE so the LLM's
-# markdown subsection headers (``## Names`` / ``## Dates`` / ``## Terms``)
+# markdown subsection headers (``## Source Glossary — Names`` / ``## Names``)
 # are matched regardless of case/whitespace variation.
+#
+# V0.5.10: the section-header regex accepts BOTH the new V0.5.10 format
+# (``## Source Glossary — Names``) AND the bare V0.5.6-V0.5.9 format
+# (``## Names``) — the ``Source Glossary —`` prefix is OPTIONAL. The
+# separator after "Glossary" accepts the em-dash (—), en-dash (–), OR the
+# ASCII hyphen (-) (the LLM may emit any of the three).
 
 _GLOSSARY_BLOCK_RE = re.compile(r"<name_glossary>(.*?)</name_glossary>", re.DOTALL | re.IGNORECASE)
 
+# The optional "Source Glossary — " prefix (V0.5.10 format). Matches the
+# em-dash, en-dash, OR the ASCII hyphen — the LLM may emit any of the
+# three (the prompt uses the em-dash —, but some quant fallbacks emit
+# ASCII hyphens).
+_SOURCE_GLOSSARY_PREFIX = r"(?:Source\s*Glossary\s*[\u2014\u2013-]\s*)?"
+
 _SECTION_HEADERS: dict[str, re.Pattern[str]] = {
-    "names": re.compile(r"^##\s*Names\s*$", re.IGNORECASE | re.MULTILINE),
-    "dates": re.compile(r"^##\s*Dates\s*$", re.IGNORECASE | re.MULTILINE),
-    "terms": re.compile(r"^##\s*Terms\s*$", re.IGNORECASE | re.MULTILINE),
+    "names": re.compile(
+        r"^##\s*" + _SOURCE_GLOSSARY_PREFIX + r"Names\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    "dates": re.compile(
+        r"^##\s*" + _SOURCE_GLOSSARY_PREFIX + r"Dates\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    "terms": re.compile(
+        r"^##\s*" + _SOURCE_GLOSSARY_PREFIX + r"Terms\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    ),
 }
 
 
@@ -124,12 +161,25 @@ _TERM_BULLET_RE = re.compile(_BULLET_PREFIX_RE + r"(?:[\u2014\-\u2013:]\s*)?" + 
 
 
 def parse_name_glossary(raw_response: str | None) -> dict[str, list[dict[str, str]]]:
-    """Parse a ``<name_glossary>`` block from an LLM response.
+    """Parse a glossary block from an LLM response.
+
+    V0.5.10 cascades 3 tiers (all fail-open — NEVER raises):
+      1. The OLD V0.5.6-V0.5.9 XML format (``<name_glossary>...</name_glossary>``)
+         — kept for backward compatibility (some runs may still produce it).
+      2. The NEW V0.5.10 markdown-header format (``## Source Glossary — Names``)
+         — the unified section-header regex ALSO accepts the bare ``## Names``
+         form (lenient fallback when the LLM omits the "Source Glossary — "
+         prefix).
+      3. The LENIENT bare-bullet fallback — scan for ANY line matching the
+         ``- **Surname** (YYYY) — context`` shape (no headers needed; all
+         matches go into ``names`` because we can't distinguish dates/terms
+         without a header).
 
     Args:
-        raw_response: the FULL raw master-summary LLM response (the same
-            string the master-summary parser sees — the ``<name_glossary>``
-            block lives alongside ``<thorough_summary>``, NOT inside it).
+        raw_response: the FULL raw glossary LLM response (V0.5.7+ uses a
+            DEDICATED glossary call so this string is JUST the glossary —
+            V0.5.6 used the master-summary response where the
+            ``<name_glossary>`` block lived alongside ``<thorough_summary>``).
             Accepts ``None`` / empty (fail-open).
 
     Returns:
@@ -142,26 +192,95 @@ def parse_name_glossary(raw_response: str | None) -> dict[str, list[dict[str, st
                 "terms": [{"term": "paranoid-schizoid position", "context": "..."}],
             }
 
-        Fail-open: if the ``<name_glossary>`` block is absent OR malformed,
-        returns ``{"names": [], "dates": [], "terms": []}`` (NEVER raises —
-        the master-summary has already succeeded; the glossary is a
-        best-effort add-on).
+        Fail-open: if no tier produces any entries, returns
+        ``{"names": [], "dates": [], "terms": []}`` (NEVER raises — the
+        master-summary has already succeeded; the glossary is a best-effort
+        add-on).
     """
     if not raw_response or not raw_response.strip():
         return _copy_empty()
+
+    # Tier 1: XML block (V0.5.6-V0.5.9 backward compat). Some runs may still
+    # produce the ``<name_glossary>...</name_glossary>`` wrapper even though
+    # the V0.5.10 prompt no longer asks for it (the model's habit, or a
+    # cached response from an earlier run).
     block_match = _GLOSSARY_BLOCK_RE.search(raw_response)
-    if not block_match:
-        return _copy_empty()
-    block = block_match.group(1)
+    if block_match:
+        try:
+            result = _parse_sections(block_match.group(1))
+            if _has_any_entries(result):
+                return result
+            # Tier 1 matched but parsed nothing — fall through to Tier 2
+            # (the XML wrapper may have been empty OR malformed inside).
+        except Exception as _e:  # noqa: BLE001 — fail-open
+            logger.debug(
+                "V0.5.10 glossary Tier 1 (XML block) parse crashed "
+                "(non-fatal — falling through to Tier 2): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+
+    # Tier 2: NEW V0.5.10 markdown-header format. The unified section-header
+    # regex accepts BOTH ``## Source Glossary — Names`` (the new V0.5.10
+    # format) AND the bare ``## Names`` (the lenient fallback when the LLM
+    # omits the "Source Glossary — " prefix — e.g. a quant that returns the
+    # V0.5.6-era header shape without the XML wrapper).
     try:
-        return _parse_sections(block)
+        result = _parse_sections(raw_response)
+        if _has_any_entries(result):
+            return result
     except Exception as _e:  # noqa: BLE001 — fail-open
         logger.debug(
-            "V0.5.6 glossary parse crashed (non-fatal — returning empty): %s: %s",
+            "V0.5.10 glossary Tier 2 (markdown headers) parse crashed "
+            "(non-fatal — falling through to Tier 3): %s: %s",
             type(_e).__name__,
             _e,
         )
-        return _copy_empty()
+
+    # Tier 3: LENIENT bare-bullet fallback. No headers needed — scan the
+    # raw response for ANY line matching the ``- **Surname** (YYYY) — context``
+    # name-bullet shape. All matches go into ``names`` (we can't distinguish
+    # dates/terms without a header — better to catch them as names than to
+    # lose them entirely). This catches the case where the LLM emits the
+    # glossary as a plain bullet list with no headers at all.
+    try:
+        result = _parse_lenient_bullets(raw_response)
+        if _has_any_entries(result):
+            return result
+    except Exception as _e:  # noqa: BLE001 — fail-open
+        logger.debug(
+            "V0.5.10 glossary Tier 3 (lenient bare-bullets) parse crashed "
+            "(non-fatal — returning empty): %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+
+    # All 3 tiers produced no entries — fail-open with the empty 3-key dict.
+    return _copy_empty()
+
+
+def _has_any_entries(glossary: dict[str, list] | None) -> bool:
+    """True if any of the 3 sections has at least one parsed entry.
+
+    Used by ``parse_name_glossary``'s tier cascade to decide whether to
+    short-circuit (return the result) OR fall through to the next tier.
+    """
+    if not glossary:
+        return False
+    return bool(glossary.get("names") or glossary.get("dates") or glossary.get("terms"))
+
+
+def _parse_lenient_bullets(text: str) -> dict[str, list[dict[str, str]]]:
+    """Tier 3 LENIENT bare-bullet fallback.
+
+    Scan the raw response for ANY line matching the
+    ``- **Surname** (YYYY) — context`` name-bullet shape (the V0.5.10
+    prompt's name-bullet format). All matches go into ``names`` —
+    without a section header we can't distinguish dates/terms from
+    names, so the catch-all bucket is ``names`` (the most common case +
+    the bucket the verification LAYER's coverage check reads first).
+    """
+    return {"names": _parse_name_bullets(text), "dates": [], "terms": []}
 
 
 def _copy_empty() -> dict[str, list]:

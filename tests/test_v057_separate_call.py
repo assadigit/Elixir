@@ -180,10 +180,14 @@ class TestMasterSummaryPromptRevertedNoNameGlossary:
 
 
 class TestGlossaryExtractionPrompt:
-    """V0.5.7: the new ``prompts/summarisation/glossary_extraction.md``
-    prompt file exists + carries the ``<name_glossary>`` block
-    instruction + the ``{source_text}`` placeholder + is GENERIC
-    (content-agnostic — Rule 1)."""
+    """V0.5.7 created the ``prompts/summarisation/glossary_extraction.md``
+    prompt file as a DEDICATED glossary-extraction prompt (separate from
+    the master-summary call). V0.5.10 changed the prompt's OUTPUT FORMAT
+    from the ``<name_glossary>`` XML wrapper to plain markdown headers
+    (``## Source Glossary — Names``). This test asserts the V0.5.10
+    contract: the prompt carries the markdown-header instruction + the
+    ``{source_text}`` placeholder + is GENERIC (content-agnostic —
+    Rule 1)."""
 
     REL = "prompts/summarisation/glossary_extraction.md"
 
@@ -195,14 +199,31 @@ class TestGlossaryExtractionPrompt:
             "(the master-summary prompt no longer carries the instruction)"
         )
         text = prompt_path.read_text(encoding="utf-8")
-        # The block instruction is present (with the open + close tags).
-        assert "<name_glossary>" in text, (
-            f"{self.REL}: must contain the <name_glossary> output "
-            "instruction (V0.5.7's dedicated glossary-extraction prompt)"
+        # V0.5.10: the prompt uses the NEW markdown-header format (NOT the
+        # <name_glossary> XML wrapper that V0.5.6-V0.5.9 used — the model
+        # couldn't reliably follow the XML-tag instruction). The 3 section
+        # headers are present (the LLM is told to output these exact
+        # headers).
+        assert "## Source Glossary — Names" in text, (
+            f"{self.REL}: V0.5.10 must use the NEW markdown-header format "
+            "(## Source Glossary — Names) — NOT the <name_glossary> XML "
+            "wrapper (the model can't follow the XML format)"
         )
-        assert "</name_glossary>" in text, (
-            f"{self.REL}: must show the closing </name_glossary> tag "
-            "(the LLM needs the full block shape)"
+        assert "## Source Glossary — Dates" in text, (
+            f"{self.REL}: V0.5.10 must use the '## Source Glossary — Dates' header"
+        )
+        assert "## Source Glossary — Terms" in text, (
+            f"{self.REL}: V0.5.10 must use the '## Source Glossary — Terms' header"
+        )
+        # V0.5.10: the </name_glossary> closer is GONE (the XML wrapper is
+        # removed). The prompt MAY mention `<name_glossary>` in a "Do NOT
+        # use" instruction, but the `</name_glossary>` closer must NOT
+        # appear (it would only appear if the prompt instructed the LLM
+        # to OUTPUT the XML wrapper, which V0.5.10 doesn't).
+        assert "</name_glossary>" not in text, (
+            f"{self.REL}: V0.5.10 must NOT instruct the LLM to OUTPUT the "
+            "</name_glossary> closer (the XML wrapper is removed — the "
+            "V0.5.10 format uses plain markdown headers)"
         )
         # The instruction is GENERIC (Rule 1) — it tells the LLM to list
         # "ALL cited authors" (not specific names).
@@ -212,10 +233,6 @@ class TestGlossaryExtractionPrompt:
             "authors' phrasing (content-agnostic — lets the LLM pull the "
             "roster from the runtime source, NOT hardcoded names)"
         )
-        # The 3 subsection headers are shown.
-        assert "## Names" in text, f"{self.REL}: must show the '## Names' subsection"
-        assert "## Dates" in text, f"{self.REL}: must show the '## Dates' subsection"
-        assert "## Terms" in text, f"{self.REL}: must show the '## Terms' subsection"
         # The {source_text} placeholder is present (the pipeline substitutes
         # the runtime source).
         assert "{source_text}" in text, (
@@ -337,8 +354,13 @@ class TestExtractGlossaryViaLlmReturnsParsedDict:
             "the prompt must contain the source text (substituted into the "
             "{source_text} placeholder)"
         )
-        assert "<name_glossary>" in captured["prompt"], (
-            "the prompt must contain the <name_glossary> output instruction"
+        # V0.5.10: the prompt uses the NEW markdown-header format (NOT the
+        # <name_glossary> XML wrapper that V0.5.6-V0.5.9 used). The 3
+        # section headers are present in the prompt.
+        assert "## Source Glossary — Names" in captured["prompt"], (
+            "the prompt must contain the V0.5.10 '## Source Glossary — "
+            "Names' markdown-header instruction (NOT the <name_glossary> "
+            "XML wrapper — the model can't follow the XML format)"
         )
         assert captured["model"] == "test-model"
         assert captured["temperature"] == 0.3
