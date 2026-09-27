@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import importlib
 import logging
-import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -216,19 +215,12 @@ def run_preflight_check(
     """
     log = log_callback or (lambda msg, level="INFO": None)
 
-    # V0.5.10: start the markitdown import in a BACKGROUND thread
-    # (parallel with the rest of the preflight check). markitdown is the
-    # slowest required dep (~7.9s on the RTX 3060 rig — pulls
-    # onnxruntime + azure-ai-documentintelligence + magika via the
-    # ``markitdown[all]`` extras); the other required deps (pypdf,
-    # pdf2image, tiktoken, rapidfuzz) take <1s each, so the markitdown
-    # import runs in parallel with them, saving ~7s off the preflight
-    # wall-clock. The thread is joined before the markitdown check
-    # below; if it crashed, fall back to the eager ``_is_importable``
-    # (fail-open). Conservative scope: ONLY markitdown (the slowest
-    # required dep). The other required deps stay eager (<1s each).
-    _md_thread = _start_markitdown_bg_import(log)
-
+    # V0.5.11: the V0.5.10 markitdown background-thread import was REVERTED
+    # — it caused a 30-min hang (Python's global import lock deadlocks when
+    # a background thread imports while the main thread is also importing
+    # the other required deps). markitdown goes back to the eager
+    # _is_importable path (the V0.5.9 behavior — ~7.9s but no hang risk).
+    # The ~7s saving wasn't worth a 30-min hang.
     missing_required: list[str] = []
     missing_optional: list[str] = []
 
@@ -246,14 +238,6 @@ def run_preflight_check(
             else:
                 log(f"  ⏭️ '{import_name}' not needed for this conversion", "DEBUG")
             continue  # not needed for this conversion
-        # V0.5.10: markitdown is imported in the BACKGROUND thread —
-        # join the thread + use its result (or fall back to eager on
-        # crash). Special-cased to avoid the eager ~7.9s import running
-        # in the main loop (which would defeat the parallelism).
-        if import_name == "markitdown":
-            if not _check_markitdown_via_thread(_md_thread, log=log):
-                missing_required.append(f"  • {display_name} — {pip_install}")
-            continue
         if not _is_importable(import_name, log=log):
             missing_required.append(f"  • {display_name} — {pip_install}")
 
@@ -500,102 +484,8 @@ def get_dependency_status() -> dict[str, bool]:
 # proper error handling for ImportError / Exception / BaseException —
 # matching the V18.20.3.3 crash-fix #3 contract).
 # ────────────────────────────────────────────────────────────────────────────
-
-
-class _MarkitdownBgImport(threading.Thread):
-    """V0.5.10: daemon thread that imports markitdown in parallel with the
-    rest of the preflight check.
-
-    The thread runs ``importlib.import_module("markitdown")`` (the eager
-    import) + stores the result/exception. The preflight's main thread
-    starts this thread BEFORE the required-deps loop + joins it BEFORE the
-    markitdown check (so the import runs in parallel with the other deps'
-    eager imports — saving ~7s when the other deps take <1s each).
-
-    Catches ``BaseException`` (not just ``Exception``) — mirrors the
-    ``_is_importable`` ``BaseException`` handler (a ``SystemExit`` raised
-    by the dependency's import code is treated as "not installable" + a
-    LOUD error, NOT a silent thread death — the V18.20.3.3 crash-fix #3
-    contract). The stored exception is re-checked by the eager fallback
-    ``_is_importable`` call (so the user sees the same ImportError/
-    Exception/BaseException classification they'd see on the eager path).
-    """
-
-    def __init__(self) -> None:
-        super().__init__(daemon=True, name="markitdown-bg-import-v0510")
-        self.exc: BaseException | None = None
-        self.success: bool = False
-
-    def run(self) -> None:
-        try:
-            importlib.import_module("markitdown")
-            self.success = True
-        except BaseException as e:  # noqa: BLE001 — see class docstring
-            self.exc = e
-
-
-def _start_markitdown_bg_import(
-    log: Callable[[str, str], None] | None,
-) -> _MarkitdownBgImport | None:
-    """V0.5.10: start the markitdown import in a background daemon thread
-    (parallel with the rest of the preflight check).
-
-    Returns the thread object, or ``None`` if the thread start itself
-    failed (in which case the caller falls back to the eager
-    ``_is_importable`` — fail-open).
-    """
-    _log = log or (lambda msg, level="INFO": None)
-    try:
-        t = _MarkitdownBgImport()
-        t.start()
-        _log(
-            "⏱️ V0.5.10: markitdown import started in background (parallel with preflight)",
-            "INFO",
-        )
-        return t
-    except Exception as e:
-        _log(
-            f"⚠️ V0.5.10: markitdown background-thread start failed "
-            f"({type(e).__name__}: {e}) — falling back to eager import",
-            "WARNING",
-        )
-        return None
-
-
-def _check_markitdown_via_thread(
-    thread: _MarkitdownBgImport | None,
-    log: Callable[[str, str], None] | None,
-) -> bool:
-    """V0.5.10: join the markitdown background thread + check its result.
-
-    Returns ``True`` if markitdown imported successfully via the thread,
-    or via the eager fallback if the thread crashed (fail-open).
-
-    Fail-open: if the thread crashed (any BaseException), fall back to
-    the eager ``_is_importable`` (which has the proper error handling
-    for ``ImportError`` → ``False`` / ``Exception`` → ``True`` with
-    warning / ``BaseException`` → ``False`` — matching the existing
-    V18.20.3.3 contract).
-    """
-    _log = log or (lambda msg, level="DEBUG": None)
-    if thread is None:
-        # Thread start failed — fall back to eager (the existing path).
-        return _is_importable("markitdown", log=log)
-    # Join (no timeout — markitdown is a required dep, we can't proceed
-    # without it; the worst case is ~7.9s if the other deps finished
-    # instantly + the markitdown import is the bottleneck).
-    thread.join()
-    if thread.success:
-        _log("  ✅ 'markitdown' ok (background import completed)", "DEBUG")
-        return True
-    # Thread raised — fall back to eager (which has the proper error
-    # handling: ImportError → False, Exception → True with warning,
-    # BaseException → False — the V18.20.3.3 crash-fix #3 contract).
-    if thread.exc is not None:
-        _log(
-            f"  ⚠️ V0.5.10: markitdown background import crashed "
-            f"({type(thread.exc).__name__}: {thread.exc}) — "
-            f"falling back to eager import",
-            "WARNING",
-        )
-    return _is_importable("markitdown", log=log)
+# V0.5.11: the V0.5.10 _MarkitdownBgImport class + _start_markitdown_bg_import
+# + _check_markitdown_via_thread were REMOVED (they caused a 30-min hang —
+# Python's global import lock deadlocks when a background thread imports
+# while the main thread is also importing). markitdown is back to the eager
+# _is_importable path (the V0.5.9 behavior).
