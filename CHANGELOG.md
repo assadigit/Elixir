@@ -22,6 +22,67 @@
 >    version anchors regardless of the tag-naming form. A future
 >    tag-normalization pass could retag, but that rewrites history →
 >    deferred (Rule 2: smallest change the evidence supports).
+> 3. **V0.5.11–V0.5.15 headings added retroactively (V0.5.16):** those five
+>    releases shipped as tags + detailed commit messages but their `## V…`
+>    headings were never entered in this file (a Rule 4 provenance gap
+>    caught by the repeatability session's pre-flight audit). The entries
+>    below were reconstructed VERBATIM from the release commit messages
+>    (`72d4a59`, `a264af0`, `d5d7c86`, `a0b711c`, `68946df`) — no
+>    information invented; the commits remain the authoritative record.
+
+
+## V0.5.15 — extend the loosened quote-guard to the post-checks (the parenthetical_promotion veto + the V0.4.24 attribution-edge now keep bullets for regex-confirmed authors)
+
+> **The release:** the V0.5.14 audit found the V0.5.6 final-check round 4 FIRED + added 19/20 glossary-grounded authors (including Jack, Bak, Lowenthal, Morey, etc.). ALL 5 V0.5.5 missing authors NOW COVERED. BUT 5 authors were STILL missing from the deterministic floor:
+> - **Kernberg + Socarides:** accepted by the loosened quote-guard in the gap-fill ✓ but DROPPED by the `parenthetical_promotion` post-check ("appears only as citation/list item").
+> - **Pao + Siever and Kendler:** added by the final-check ✓ but DROPPED by the V0.4.24 attribution-edge ("names never co-occur with claim key phrases").
+>
+> **Root cause:** the loosened quote-guard only applies DURING the gap-fill (`gap_fill_batch.py`), NOT during the POST-CHECKS (`field_phases.py` + `thorough_theorist_floor.py`) that run AFTER.
+>
+> **The fix (2 changes, both content-agnostic — Rule 1 ✓):**
+> 1. `core/summarisation/postchecks/field_phases.py:435-489` — the `parenthetical_promotion` veto now checks if the claimed author is in `source_authors` (the runtime regex `extract_citations` output). If yes → KEEP the bullet (the regex IS the grounding). If no → keep the strict drop. Log: `V0.5.15: bullet for X flagged as parenthetical promotion BUT KEPT — the author is in the regex extract_citations`.
+> 2. `core/summarisation/thorough_theorist_floor.py:790-826` — the V0.4.24 attribution-edge now RECOVERS dropped sentences whose authors are in the `extract_citations` output (called at runtime on the chapter content). If a dropped sentence's first 5 words contain an author from the set → RECOVER it. Log: `V0.5.15: recovered N gap-fill sentence(s) whose authors are in the regex`.
+>
+> **Net-green:** 73 P / 0 F (postchecks + audit-fixes + field_phases tests); ruff clean.
+>
+> **Result (rig, ch.6):** 70/74 = 95% author coverage, 82 keypoints, 39 bullets grounded, 0 hallucinations — the best in the V0.5.x lineage.
+
+## V0.5.14 — make the VRAM overbudget check NON-BLOCKING (the param-count estimate is wrong for special-quants; llama.cpp errors at load time if the model truly doesn't fit)
+
+> **The hotfix:** V0.5.13 didn't work — `torch.cuda.mem_get_info()` returns per-process VRAM on Windows (doesn't see the llama-server process's VRAM). V0.5.14 makes the overbudget check NON-BLOCKING — logs a WARNING + proceeds. Also tries `nvidia-smi` for the actual GPU-wide free VRAM (informational). If the model truly doesn't fit, llama.cpp errors at load time (a clearer error than the elixir-side estimate).
+
+## V0.5.13 — fix the VRAM overbudget false-positive (query actual free VRAM via torch.cuda.mem_get_info + add the model_vram_override_gb setting)
+
+> **The hotfix:** the V0.5.12 audit found the conversion HUNG at the VRAM overbudget check (log stopped at 21:07:33 — no model loading, no extraction, no LLM calls). Root cause: the VRAM budget used a HARDCODED param-count estimate (27B ternary → 12.9 GB), WRONG for the user's 7.6 GB special-quant model → false "OVERBUDGET" (12.9 > 12.0) → the overbudget dialog BLOCKED the conversion. The user's directive: "it must see how much vram is used" — query the ACTUAL VRAM.
+>
+> **The fix (2 paths, both fail-open):**
+> 1. Query `torch.cuda.mem_get_info()` — if the model is already loaded (free VRAM < 3 GB but > 0.1 GB), the model IS in VRAM → the estimate was wrong → skip the overbudget warning.
+> 2. Add the `summarisation.model_vram_override_gb` setting — if set (e.g. 7.6), use it instead of the param-count estimate. Belt + suspenders for rigs where `mem_get_info()` isn't available OR the model isn't loaded yet.
+>
+> Also carries the V0.5.12 glossary-to-gap-fill wiring (pass `source_glossary` to `batch_gap_fill` via the side-channel → enables the V0.5.6 final-check round 4).
+
+## V0.5.12 — wire the glossary into the gap-fill (pass source_glossary to batch_gap_fill via the side-channel → enables the V0.5.6 final-check round 4 + the glossary-grounded loosened quote-guard)
+
+> **The release:** the V0.5.11 audit found the glossary FINALLY extracted (📖 line fired) + the verification LAYER was glossary-grounded (cross-ref ran: confirmed=64, llm_only=2, regex_only=10) + the loosened quote-guard fired for Byrne (the V0.5.10 regex fallback). BUT the V0.5.6 final-check round 4 (the glossary-grounded targeted gap-fill) DIDN'T fire → 9 authors stayed missing (Bach, Croewe, Gorton, Jack, Morey, Munro, Ovessey, Rettersol, Walters — the V0.5.5 audit's list).
+>
+> **Root cause:** the `gfb_batch_gap_fill(...)` call at `chapter_phases.py:321` passed `regex_confirmed_authors` (the V0.5.10 fallback) but NOT `source_glossary` → the V0.5.6 final-check (which needs `source_glossary`) + the V0.5.6 glossary-grounded loosened quote-guard couldn't fire.
+>
+> **The fix:**
+> 1. Added the `_v0512_get_glossary(heading)` helper — reads the glossary from the verification LAYER's side-channel (populated by `_extract_glossary_for_call` in `primary_call.py` via `set_chapter_glossary`).
+> 2. Pass `source_glossary=_v0512_get_glossary(heading)` to `gfb_batch_gap_fill`.
+> 3. Updated the SummaryResult stamping to use the side-channel glossary as a fallback (`parsed.get("source_glossary") or _v0512_get_glossary(heading) or {}`).
+>
+> **Net-green:** 56 P / 0 F (gap_fill + verification + glossary + separate-call tests).
+
+## V0.5.11 — revert the V0.5.10 markitdown background-thread import (a 30-min hang — Python's global import lock deadlocks when a background thread imports while the main thread is also importing)
+
+> **The hotfix:** the V0.5.10 audit found the app didn't initialize even after 30 min. Root cause: the `_MarkitdownBgImport` daemon thread (V0.5.10 Fix 4) called `importlib.import_module` in a background thread while the main thread was ALSO importing the other required deps (pypdf, pdf2image, tiktoken, rapidfuzz). Python's global import lock deadlocks when two threads try to import simultaneously — the `thread.join()` (no timeout) blocked forever.
+>
+> **The fix:** REMOVED the `_MarkitdownBgImport` class + `_start_markitdown_bg_import` + `_check_markitdown_via_thread` + the import threading + the special-case wiring in `run_preflight_check`. markitdown is back to the eager `_is_importable` path (the V0.5.9 behavior — ~7.9s but no hang risk). The ~7s saving wasn't worth a 30-min hang.
+>
+> **The other 3 V0.5.10 fixes are KEPT** (they're safe): Fix 1 (glossary format XML→markdown headers + 3-tier parser), Fix 2 (field_phases Pattern C caller fix — the "ego-syntonically" rewrite reaches the summary), Fix 3 (gap-fill quote-guard regex fallback).
+>
+> **Net-green:** ruff clean, 52 P / 0 F on the V0.5.11 test set.
 
 
 ## V0.5.10 — the glossary format change (XML→markdown headers) + the field_phases Pattern C caller fix + the gap-fill quote-guard regex fallback + the markitdown background-thread import
