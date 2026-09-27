@@ -41,6 +41,19 @@ different model (glm-4-plus cloud vs Ternary-Bonsai-2-27B local), on a
 different machine — via the headless harness (`scripts/repeatability_run.py` +
 `scripts/repeatability_audit.py`, one command each).
 
+**V0.5.17 (operator rig, ch.9 — 2026-09-28, the THIRD confirmation):** the
+operator ran the released V0.5.17 zip on ch.9 ("HISTRIONIC AND SCHIZOTYPAL
+PERSONALITY DISORDERS", 7,089 words, 69-author roster) on their own rig
+(Ternary-Bonsai-2-27B, RTX 3060, REAL embedder via OllamaEmbedBackend):
+**66/69 = 95.65% deterministic recall floor, 0 fabricated claims, 87 bullets**
+(68/69 = 98.6% full-text; only Erikson absent everywhere). The V0.5.17
+near-dup veto fired unprompted in the wild (Kretschmer + Nanarello rescued),
+final-check round 4 added 19/19 glossary-grounded, the thorough-floor
+deadline override worked as designed. Three confirmations now — ch.6 rig
+94.6%, ch.1 sandbox 100%, ch.9 operator 95.65% — the ~95% band is a property
+of the ARCHITECTURE. Audit: `audit/results/AUDIT_V0.5.17_run20260928-022401-45d5434e_ch9_summary_vs_source.md`
+(on main) + `audit/results/bench_v0517_ch9_histrionic_schizotypal/`.
+
 ## Key files (current)
 
 - `scripts/repeatability_run.py` — the headless end-to-end chapter run
@@ -65,14 +78,41 @@ different machine — via the headless harness (`scripts/repeatability_run.py` +
    repeatability proof covered a different chapter of the SAME book. Run the
    harness on a physics textbook / novel / cooking manual — the content-agnostic
    claim needs one non-psychoanalysis domain verified end-to-end.
-2. **The rig re-verification**: re-run ch.1 or ch.6 ON THE RIG with V0.5.17 to
-   confirm the two new guards behave identically with a REAL embedder present
-   (the guards are no-ops when the embedder is healthy — but verify).
+2. **The rig re-verification** — LARGELY ANSWERED by the ch.9 operator run
+   (2026-09-28): V0.5.17 on the operator's own rig with a REAL embedder
+   (OllamaEmbedBackend): the V0.5.16 guard no-op'd as designed (Phase 2.2 all
+   bullets ≥0.50), the V0.5.17 veto fired correctly, 95.65% floor. A
+   controlled ch.1/ch.6 re-run remains optional for exact-parity comparison.
 3. **The V0.5.18 backlog (small, evidenced)**:
+   - **NEW (ch.9 operator audit, HIGH): the verification LAYER's "et al."
+     false positive** — the coverage check's word-boundary pattern
+     (`verification_phase.py` ~L790: `r"\b" + re.escape(name) + r"\b"`) can
+     NEVER match a glossary name ending in "et al." (the terminal `\b` after
+     the escaped period requires a following word character; prose always has
+     "et al. " + space/paren). The ch.9 run flagged 8 missing authors — 6 were
+     present (Kety et al., Lilienfeld et al., Robins et al., Rosenthal et al.,
+     Snyder et al., Spitzer et al.). Fix: strip the "et al." suffix for the
+     presence check or relax the terminal `\b` for names ending in a non-word
+     char. BENIGN now (flag-only) but HARMFUL once append-mode corrections
+     land (duplicate-bullet injection).
+   - **NEW (ch.9 operator audit, HIGH): the semantic-dedup path lacks the
+     V0.5.17 author-coverage veto** — the post-gap-fill semantic dedup
+     (V18.20.3.2, 95→87 bullets) dropped the round-4 bullets that uniquely
+     named Wender et al. + Widiger et al. (the Eissler pattern, one removal
+     layer over — the veto exists in the near-dup path only). Extend the veto
+     to the semantic-dedup removal path.
+   - **NEW (ch.9 operator audit, MEDIUM): `extract_citations` citation-run
+     gap** — "Kety et al. 1968, 1975, Rosenthal et al. 1968, 1971, Wender et
+     al. 1974" captures only Kety; possessive/line-broken citations
+     ("Abraham's (1921,\n1924a,b)") are missed too. The glossary compensates
+     (llm_only bucket) but the deterministic floor undercounts the universe.
    - cross-field year-consistency check (the ch.1 thorough shipped "Eissler
      (*1955*)" + "Kris (*1956*)" while the bullets had the correct 1958/1946 —
      a per-field validator that flags when bullet + thorough disagree on an
-     author's year for the same event)
+     author's year for the same event. The ch.9 run adds a 2nd instance: the
+     women-citation bullet shipped "Akhtar et al., (*1984*)" where the source
+     says "Akhtar et al. 1986" — the 1984 belongs to the ADJACENT men-citation
+     "Robins et al. 1984")
    - the verification LAYER's additions are brittle (exact-substring
      corrections; 5 of 6 proposed corrections were skipped in the ch.1 run) —
      consider an append-mode correction type
@@ -82,7 +122,10 @@ different machine — via the headless harness (`scripts/repeatability_run.py` +
 4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
    discussed the longing to abandon the human quality of identity" on a
    see-also-only citation — verify whether the glossary context should bound
-   the bullet's claim more tightly (the audit flagged slight content inflation).
+   the bullet's claim more tightly (the audit flagged slight content
+   inflation). The ch.9 run adds a 2nd instance: the Simic bullet shipped
+   "Simic (*1980*)" — the epigraph attribution is true but the YEAR appears
+   nowhere in the source (glossary-borne external knowledge).
 
 ## Token + repo
 
