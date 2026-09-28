@@ -969,6 +969,7 @@ class TestPacketsGeneratorPatchedLLM:
 # ── Layer 2: service-level LIVE LLM through the :3031 shim ─────────────────
 
 
+@pytest.mark.live_llm
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 @pytest.mark.skipif(not _shim_available(), reason="zai-llamacpp shim :3031 unavailable")
 class TestPacketsGeneratorLiveShim:

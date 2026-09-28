@@ -191,6 +191,53 @@ def _install_settings(values: dict | None = None) -> _TestSettings:
     return ts
 
 
+# V0.6.0 (full-suite segfault containment): every dialog created by
+# _make_dialog registers here. Two autouse fixtures below guarantee (a) any
+# still-running SimpleWorker is JOINED before its dialog can be collected —
+# a QThread destroyed while running frees the C++ thread under the running
+# Python thread, and the interpreter then segfaults in whatever pure-Python
+# frame that thread executes next (observed twice in full-suite runs: the
+# worker crashed in urllib3-clear / pathlib-__str__ while the main thread
+# was garbage-collecting the ended test's dialog cycle) — and (b) the
+# Settings._test_override never leaks past this file's tests.
+_DIALOGS: list = []
+
+
+@pytest.fixture(autouse=True)
+def _join_workers_and_clear_settings():
+    yield
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    for dlg in _DIALOGS:
+        worker = getattr(dlg, "_worker", None)
+        if worker is not None and hasattr(worker, "wait"):
+            try:
+                worker.wait(15000)
+            except Exception:
+                pass
+        # Neutralize the close-guard BEFORE closing: a deliberately-stuck
+        # or fake worker (the reentrancy test's) would otherwise open the
+        # blocking "close anyway?" modal — which hangs forever offscreen.
+        try:
+            dlg._worker = None
+        except Exception:
+            pass
+        try:
+            dlg.close()
+            dlg.deleteLater()
+        except Exception:
+            pass
+    _DIALOGS.clear()
+    if app is not None:
+        for _ in range(5):
+            app.processEvents()
+    from utils.settings import Settings
+
+    if isinstance(getattr(Settings, "_test_override", None), _TestSettings):
+        Settings._test_override = None  # type: ignore[assignment]
+
+
 def _fake_llm(canned: str = _CANNED_XML, calls: list | None = None, err: str | None = None):
     """A deterministic stand-in for the dialog's ``_call_llm`` instance method."""
 
@@ -212,9 +259,9 @@ def _make_dialog(controller=None):
         SummarizationServiceDialog,
     )
 
-    return SummarizationServiceDialog(
-        controller if controller is not None else _StubController()
-    ), app
+    dlg = SummarizationServiceDialog(controller if controller is not None else _StubController())
+    _DIALOGS.append(dlg)
+    return dlg, app
 
 
 def _spin_until_done(app, dlg, timeout_s: float = 30.0) -> bool:
@@ -370,6 +417,7 @@ class TestOllamaBaseUrlNormalization:
 # ── Layer 2 (LIVE): the dialog's real LLM call path on the shim ─────────────
 
 
+@pytest.mark.live_llm
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 @pytest.mark.skipif(not _shim_live(), reason="zai-llamacpp shim :3031 not reachable")
 class TestCallLlmLiveShim:
@@ -661,7 +709,10 @@ class TestDialogDriveFakeLlm:
         # and segfaulted the interpreter (observed in the full-suite run).
         # The pre-flight contract itself has its own dedicated tests above.
         _install_settings(
-            {**{"summarisation.model": "fake-model", "summarisation.provider": "llamacpp"}, **(values or {})}
+            {
+                **{"summarisation.model": "fake-model", "summarisation.provider": "llamacpp"},
+                **(values or {}),
+            }
         )
         dlg, app = _make_dialog()
         dlg._call_llm = _fake_llm()
@@ -849,6 +900,7 @@ class TestDialogDriveFakeLlm:
 # ── Layer 3 (LIVE): full dialog drive through the real shim ─────────────────
 
 
+@pytest.mark.live_llm
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 @pytest.mark.skipif(not _shim_live(), reason="zai-llamacpp shim :3031 not reachable")
 class TestDialogDriveLiveShim:

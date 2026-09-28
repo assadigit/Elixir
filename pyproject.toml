@@ -239,6 +239,7 @@ markers = [
     "regression: version-anchored regression tests (test_v18_*_*.py)",
     "characterization: byte-for-byte stability gates for extracted modules",
     "gpu: tests requiring a real GPU (currently none — all mocked)",
+    "live_llm: tests making REAL LLM calls through the zai-llamacpp shim (:3031) — deselected for deterministic net-green runs via `-m 'not live_llm'` (the shim may be rate-limited); each class also self-skips when the shim is unreachable",
 ]
 
 [tool.coverage.run]

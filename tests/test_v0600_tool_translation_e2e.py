@@ -1345,6 +1345,7 @@ class TestServiceTranslateFile:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.live_llm
 @_shim_gate
 class TestLiveEngineShim:
     def test_single_line_en_to_fa(self):
@@ -1814,6 +1815,7 @@ class TestDialogGuards:
         assert recorder.calls
 
 
+@pytest.mark.live_llm
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 @pytest.mark.skipif(not _SHIM_OK, reason="zai-llamacpp shim :3031 unavailable")
 class TestDialogLiveDrive:
