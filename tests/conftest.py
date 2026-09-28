@@ -41,6 +41,28 @@ if "tiktoken" not in sys.modules:
         sys.modules["tiktoken"] = _tk
         del _TkEnc
 
+# ── V0.6.0 (campaign 4-b, test-infra): hermetic markitdown gate ────────────
+# 36 test files carry a copy-pasted ``if "markitdown" not in sys.modules:`` stub
+# block — the exact tiktoken-poisoning class conftest fixed above (V18.20.2.0).
+# Whichever file is collected FIRST installs ITS fake MarkItDown even when the
+# REAL markitdown is installed (a core requirements.txt dep) — real conversions
+# then fail session-wide, order-dependently (observed live during the V0.6.0
+# tools campaign: the doc-to-md e2e suite passed alone and failed when a
+# stubbing file was collected first). Pinning the real package here (one
+# functional stub when absent) makes every guarded stub a no-op.
+if "markitdown" not in sys.modules:
+    try:
+        _md_real = _ilu.find_spec("markitdown") is not None
+    except Exception:  # pragma: no cover - defensive
+        _md_real = False
+    if _md_real:
+        import markitdown  # noqa: F401  — pin the real package before stubs can shadow it
+    else:  # pragma: no cover - only on envs without markitdown
+        _md = _types.ModuleType("markitdown")
+        _md.MarkItDown = lambda *a, **k: None
+        sys.modules["markitdown"] = _md
+        del _md
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
