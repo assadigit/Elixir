@@ -688,6 +688,7 @@ class TtsServiceDialog(BaseServiceDialog):
                     detected = lang
 
                 # V11.40.0: simplified preview — Kokoro, VibeVoice, Sherpa only.
+                synth_voice = voice or None
                 if voice and voice.startswith("vibevoice:"):
                     voice_name = voice[len("vibevoice:") :]
                     vv_path = s.get("tts.vibevoice_model_path", "")
@@ -701,10 +702,14 @@ class TtsServiceDialog(BaseServiceDialog):
                             default_voice=voice_name,
                             log_callback=lambda msg, level="INFO": None,
                         )
+                        synth_voice = voice_name
                     else:
                         from core.tts.engine import KokoroEngine
 
                         engine = KokoroEngine(log_callback=lambda msg, level="INFO": None)
+                        # V0.6.0 (T1): the "vibevoice:…" id is not a Kokoro
+                        # voice — drop it so Kokoro uses its default.
+                        synth_voice = None
                 elif detected == "fa":
                     # V11.44.0: Farsi preview: Kokoro
                     from core.tts.engine import KokoroEngine
@@ -718,7 +723,7 @@ class TtsServiceDialog(BaseServiceDialog):
 
                 tmp_path = _P(tempfile.mktemp(suffix=".wav"))
                 # V11.31.7: single call, no splitting, no fallback.
-                result = engine.synthesize(preview_text, tmp_path, voice or None, 1.0)
+                result = engine.synthesize(preview_text, tmp_path, synth_voice, 1.0)
                 return str(result) if result else None
             except Exception as e:
                 return f"Error: {e}"
@@ -1022,7 +1027,11 @@ VibeVoice on your GPU.
                     from core.tts.engine_cache import get_kokoro_engine
 
                     engine = get_kokoro_engine(log_callback=lambda msg, level="INFO": None)
-                    voice_for_engine = voice
+                    # V0.6.0 (T1): a "vibevoice:…" id is not a Kokoro voice —
+                    # passing it through made the advertised Kokoro fallback fail
+                    # on the unknown voice instead of falling back. Drop it and
+                    # let Kokoro use its own default voice.
+                    voice_for_engine = None
                     self._last_engine_name = "Kokoro (fallback)"
                     self._last_engine_class = type(engine).__name__
                     self._last_engine_model = "kokoro-pipeline"

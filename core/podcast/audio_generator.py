@@ -68,14 +68,17 @@ def _crossfade_overlap(prev_audio, next_audio, overlap_samples):
 
 
 def _detect_language(text: str) -> str:
-    """Detect if text is Farsi or English."""
-    import re
+    """Detect if text is Farsi or English.
 
-    arabic_chars = len(re.findall(r"[\u0600-\u06FF\u0750-\u077F]", text))
-    non_space = max(len([c for c in text if not c.isspace()]), 1)
-    if arabic_chars / non_space > 0.2:
-        return "fa"
-    return "en"
+    V0.6.0 (A1): delegates to the canonical ``core.tts.engine.detect_language``
+    — the local copy this replaced matched only the base Arabic block and
+    silently missed the presentation-form blocks (U+FB50–U+FDFF /
+    U+FE70–U+FEFF), so Persian text extracted in presentation forms routed
+    to the English engine branch.
+    """
+    from core.tts.engine import detect_language
+
+    return detect_language(text)
 
 
 def _synthesize_line(
