@@ -2,7 +2,7 @@
 
 ## Context
 
-You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.5.18`).
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.5.20`).
 
 **STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
@@ -80,10 +80,53 @@ individual-level coverage (67/73 strict-string), 0 fabricated claims,
 verification flag 2/0 honest** — the ~95% band holds on a fourth
 configuration (ch.6 rig 94.6%, ch.1 sandbox 100%, ch.9 rig 95.65%, ch.9
 rig full-book 94.5%). The run's cost: the V0.5.19/.1 continuation joins
-regressed on the full-book extraction's layout (see the new backlog items
-below). Audit:
+regressed on the full-book extraction's layout (all four filed defects
+are now FIXED — see the V0.5.20 paragraph below). Audit:
 `audit/results/AUDIT_V0.5.19.1_run20260928-155851-011587f0_ch9_summary_vs_source.md`
 (on main) + `audit/results/bench_v0519_1_ch9_histrionic_schizotypal_rig2/`.
+
+**V0.5.20 (2026-09-28, the four rig-run-2 backlog items — ALL SHIPPED,
+tag `V0.5.20`, 37 new tests, zero new suite failures):**
+
+- **The layout-independent (marker-sequence-driven) continuation join +
+  the terminal-shape lint.** The run-in marker patterns now accept a
+  marker at a paragraph tail (`…, and (4).` matched, punct consumed);
+  the open-tail predicate treats empty/punctuation-only marker tails as
+  OPEN; the final-item continuation rule joins an open list to a
+  LOWERCASE successor paragraph carrying no same-style marker (the
+  "embraces casual | acquaintances…" family — the histrionic criteria
+  roman list now carries item (iv) COMPLETE with (v) attached on the
+  real ch.9 source, a 4-item truncated capture in every prior run); up
+  to 2 PAGE-FURNITURE paragraphs (bare page numbers / ALL-CAPS running
+  headers — the new shared `core/common/layout_furniture.py`) between a
+  list and its continuation are looked past; `extract_structured_criteria`
+  skips furniture LINES without closing the cluster (the 5/8 + 3/9
+  schizotypal prefix-truncations → 8/8). The lint
+  (`ends_in_dangling_enum_marker`, advisory `enumeration/flag` in
+  `postcheck_bullets`) makes the "enumerated items N/N" floor's blind
+  spot audit-visible: no shipped bullet may end in a bare `and (N).`.
+- **The keypoints-layer author-coverage veto.** The keypoints dedup
+  (embedding + rapidfuzz paths) no longer removes a bullet that uniquely
+  names a roster author absent from the rest of the keypoints (the same
+  roster/anchor/deferred-judgment/promotion-guard semantics as the
+  V0.5.18 summary-layer veto, order-preserved, fail-open).
+- **The glossary handoff path.** The `.glossary.md` persists INSIDE the
+  run's per-book output folder (`request._run_output_dir`, attached by
+  `run_summarization`; falls back to `request.output_dir` on the harness
+  path) and the glossary dict carries `path` — the "Glossary: (none)"
+  audit-trail family is dead.
+- **The thin-bullet colon-less variant.** `Name made significant
+  contributions to…` / `Name (*1980*) contributed to…` one-liners (≤280
+  chars) are now flagged alongside the colon form; real claims
+  (`contributed the X` — no "to") and substantive thorough prose stay
+  unflagged; the colon form's pinned behavior is unchanged.
+
+NOT yet verified on the operator rig: the four fixes are pinned by 37
+unit tests incl. REAL-source checks (the six-grounds 6/6, the Reveals
+4/4 with item (4) complete, the criteria 8/8 across furniture) — the
+next full-book rig run should confirm them LIVE (the joins now read the
+marker sequence instead of the paragraph structure, so the p.222-242
+pagination artifacts the run exposed are all handled).
 
 ## Key files (current)
 
@@ -123,6 +166,17 @@ below). Audit:
 - `tests/test_v0518_*.py` — the 28 V0.5.18 characterization tests (anchor
   matrix / dedup-veto matrix via the fake-embedder twin groups / citation-run
   + year-consistency matrix)
+- `core/common/layout_furniture.py` — **V0.5.20**: the shared page-furniture
+  shapes (bare page numbers + multi-token ALL-CAPS running headers), used by
+  BOTH layout-join sites (the enumeration paragraph join + the criteria
+  cluster collector)
+- `core/summarisation/enumeration.py` — **V0.5.20**: the marker-sequence
+  join (tail-marker patterns / `_runin_tail_open` / the final-item
+  continuation rule / the furniture look-past)
+- `core/summarisation/keypoints_builder.py` — **V0.5.20**: the
+  keypoints-layer author-coverage veto (both dedup paths)
+- `tests/test_v0520_layout_vetoes.py` — the 37 V0.5.20 characterization
+  tests
 
 ## The next session goals
 
@@ -135,20 +189,9 @@ below). Audit:
    (OllamaEmbedBackend): the V0.5.16 guard no-op'd as designed (Phase 2.2 all
    bullets ≥0.50), the V0.5.17 veto fired correctly, 95.65% floor. A
    controlled ch.1/ch.6 re-run remains optional for exact-parity comparison.
-3. **The V0.5.20 backlog (small, evidenced)** — the V0.5.19 items are ALL
-   SHIPPED (V0.5.19 + the V0.5.19.1 patch; see the CHANGELOG's two entries +
-   the 59 new tests): the append-mode correction type (landed the flagged-
-   missing Simic bullet LIVE on the ch.9 re-run, verbatim-grounded), the
-   normalized correction anchor (the ch.1 5-of-6-skipped near-miss family),
-   the D3 length-guard reorder (replacements-only judgment), the glossary
-   structural-name filter (0 manual-codes in the ch.9 V0.5.19.1 glossary),
-   the prose-form year check 3b + the thin-bullet quality flag (4/4 true
-   positives live), the scholar-reflection loosened quote-guard, the four
-   criteria continuation rules (the Reproduced-Criteria section CLEAN on
-   ch.9 — was garbled), and the paragraph-break joins (extract_inline_lists
-   + the V0.5.19.1 enumeration-guarantee wrapped-continuation fix: the
-   Kernberg six-grounds list ships 6/6 — was 5/6 in every prior run). What
-   remains:
+3. **The V0.5.21 backlog (small, evidenced)** — the V0.5.19 AND V0.5.20
+   items are ALL SHIPPED (V0.5.19 + V0.5.19.1 + V0.5.20; see the
+   CHANGELOG's three entries + the 96 new tests). What remains:
    - **the thin roster-gap-fill bullet quality** (the Wolf/Chick/Robins/
      Frances one-liners recurred in the V0.5.19.1 run — now ALL caught by
      the quality flag, but the MODEL still writes them; a gap-fill prompt
@@ -161,44 +204,15 @@ below). Audit:
      the reverse pair as missing while both individuals are covered; dedupe
      commuted pair-forms at glossary ingestion)
    - **the Searles-family see-also bound** (below, unchanged)
-   - **the layout-independent continuation join** (NEW, from the V0.5.19.1
-     rig run #2 — `audit/results/bench_v0519_1_ch9_histrionic_schizotypal_rig2/`,
-     run `20260928-155851-011587f0`, the FULL-BOOK ingestion path: the 397-page
-     PDF with ch.9 TOC-selected p.222-242, the operator's real-embedder rig):
-     the V0.5.19 inline-list paragraph-break join + the V0.5.19.1
-     wrapped-continuation join did NOT fire on the full-book extraction's
-     layout — the Kernberg six-grounds list REGRESSED to 5/6 (item (5)
-     truncated at "oedipal rivals", item (6) lost), a dangling `and (4).`
-     marker shipped (the "Reveals" list's item-(4) content sits past the
-     break), a DSM-III-R histrionic criteria item truncated mid-phrase at
-     "embraces casual", and both reproduced schizotypal blocks are
-     prefix-truncated (DSM-III 5/8, DSM-III-R 3/9) — all invisible to the
-     pipeline's own "enumerated items 74/74" floor (the missed items never
-     entered the denominator). The joins verified on the single-chapter
-     extraction are paragraph-structure heuristics; they need a
-     marker-sequence-driven form that works across arbitrary line/paragraph/
-     page boundaries, + a terminal-shape lint (no shipped enumeration bullet
-     may end in a bare "and (N).")
-   - **the keypoints-layer author-coverage veto** (NEW, same run): the
-     keypoints embedding dedup ("Keypoints dedup: removed 2 duplicates, 76 →
-     74") removed the EXACT two bullets the V0.5.18 summary-layer veto had
-     just rescued (Kallman + Widiger — the log names them verbatim); the
-     keypoints dedup call site lacks the author-coverage veto → the
-     .Keypoints.md output loses uniquely-covered authors
-   - **the glossary handoff path on the full-book ingestion** (NEW, same
-     run): the glossary was generated + persisted OUTSIDE the run's output
-     dir (`…\5.19.1\summaries\.glossaries\9 - HISTRIONIC….glossary.md` vs
-     the output dir `…\5.19.1\Broken Structures Salman Akhtar\`) and the
-     verification layer reloaded "(none)" → the glossary-grounded
-     verification coverage + the append-mode ran without their ground truth
-     (the gap-fill DID use the in-memory glossary; no verification_append
-     fired this run)
-   - **the thin-bullet detector's colon-less variant** (NEW, same run): ~12
-     thin one-liners shipped UNFLAGGED ("Kretschmer made significant
-     contributions to…" / "Frances (*1980*) contributed to…" — no colon after
-     the name) vs 121429's 4/4 flagged (the "Name: Contributed to…" colon
-     form) — the V0.5.19 detector's shape is colon-form-specific; widen it
-4. **The Searles caveat**4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
+   - **the rig LIVE verification of the V0.5.20 fixes** — the four fixes
+     are unit-pinned (37 tests incl. real-source checks: the six-grounds
+     6/6, the Reveals 4/4 with item (4) complete, the criteria 8/8 across
+     furniture) but the full-book rig run that exposed them has not been
+     re-run; the next operator run should confirm the joins fire on the
+     real full-book extraction layout (the lint + the empty-item skip
+     guarantee the defects are at least audit-visible even if a new
+     layout family escapes)
+4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
    discussed the longing to abandon the human quality of identity" on a
    see-also-only citation — verify whether the glossary context should bound
    the bullet's claim more tightly (the audit flagged slight content
@@ -211,7 +225,7 @@ below). Audit:
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.18.zip` + `Elixir-V0.5.19.zip` + `Elixir-V0.5.19.1.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`
 
 ## Sandbox benchmarking note (the reaper)
 
