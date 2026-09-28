@@ -70,6 +70,21 @@ it will fire live on the operator's real-embedder rig. Audit:
 `audit/results/AUDIT_V0.5.18_run20260928-010037-71084cb1_ch9_summary_vs_source.md`
 (on main) + `audit/results/bench_v0518_ch9_histrionic_schizotypal/`.
 
+**V0.5.19.1 rig run #2 (2026-09-28, the FULL-BOOK ingestion path — run
+`20260928-155851-011587f0`):** the operator ran the whole 397-page
+"Broken Structures" PDF with ch.9 TOC-selected (p.222-242) on their
+real-embedder rig — the first end-to-end full-book → chapter-selected run
+and the first live fire of the V0.5.18 semantic-dedup veto (Kallman +
+Widiger rescued; the sandbox runs were inert). **69/73 = 94.5%
+individual-level coverage (67/73 strict-string), 0 fabricated claims,
+verification flag 2/0 honest** — the ~95% band holds on a fourth
+configuration (ch.6 rig 94.6%, ch.1 sandbox 100%, ch.9 rig 95.65%, ch.9
+rig full-book 94.5%). The run's cost: the V0.5.19/.1 continuation joins
+regressed on the full-book extraction's layout (see the new backlog items
+below). Audit:
+`audit/results/AUDIT_V0.5.19.1_run20260928-155851-011587f0_ch9_summary_vs_source.md`
+(on main) + `audit/results/bench_v0519_1_ch9_histrionic_schizotypal_rig2/`.
+
 ## Key files (current)
 
 - `scripts/repeatability_run.py` — the headless end-to-end chapter run
@@ -146,6 +161,43 @@ it will fire live on the operator's real-embedder rig. Audit:
      the reverse pair as missing while both individuals are covered; dedupe
      commuted pair-forms at glossary ingestion)
    - **the Searles-family see-also bound** (below, unchanged)
+   - **the layout-independent continuation join** (NEW, from the V0.5.19.1
+     rig run #2 — `audit/results/bench_v0519_1_ch9_histrionic_schizotypal_rig2/`,
+     run `20260928-155851-011587f0`, the FULL-BOOK ingestion path: the 397-page
+     PDF with ch.9 TOC-selected p.222-242, the operator's real-embedder rig):
+     the V0.5.19 inline-list paragraph-break join + the V0.5.19.1
+     wrapped-continuation join did NOT fire on the full-book extraction's
+     layout — the Kernberg six-grounds list REGRESSED to 5/6 (item (5)
+     truncated at "oedipal rivals", item (6) lost), a dangling `and (4).`
+     marker shipped (the "Reveals" list's item-(4) content sits past the
+     break), a DSM-III-R histrionic criteria item truncated mid-phrase at
+     "embraces casual", and both reproduced schizotypal blocks are
+     prefix-truncated (DSM-III 5/8, DSM-III-R 3/9) — all invisible to the
+     pipeline's own "enumerated items 74/74" floor (the missed items never
+     entered the denominator). The joins verified on the single-chapter
+     extraction are paragraph-structure heuristics; they need a
+     marker-sequence-driven form that works across arbitrary line/paragraph/
+     page boundaries, + a terminal-shape lint (no shipped enumeration bullet
+     may end in a bare "and (N).")
+   - **the keypoints-layer author-coverage veto** (NEW, same run): the
+     keypoints embedding dedup ("Keypoints dedup: removed 2 duplicates, 76 →
+     74") removed the EXACT two bullets the V0.5.18 summary-layer veto had
+     just rescued (Kallman + Widiger — the log names them verbatim); the
+     keypoints dedup call site lacks the author-coverage veto → the
+     .Keypoints.md output loses uniquely-covered authors
+   - **the glossary handoff path on the full-book ingestion** (NEW, same
+     run): the glossary was generated + persisted OUTSIDE the run's output
+     dir (`…\5.19.1\summaries\.glossaries\9 - HISTRIONIC….glossary.md` vs
+     the output dir `…\5.19.1\Broken Structures Salman Akhtar\`) and the
+     verification layer reloaded "(none)" → the glossary-grounded
+     verification coverage + the append-mode ran without their ground truth
+     (the gap-fill DID use the in-memory glossary; no verification_append
+     fired this run)
+   - **the thin-bullet detector's colon-less variant** (NEW, same run): ~12
+     thin one-liners shipped UNFLAGGED ("Kretschmer made significant
+     contributions to…" / "Frances (*1980*) contributed to…" — no colon after
+     the name) vs 121429's 4/4 flagged (the "Name: Contributed to…" colon
+     form) — the V0.5.19 detector's shape is colon-form-specific; widen it
 4. **The Searles caveat**4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
    discussed the longing to abandon the human quality of identity" on a
    see-also-only citation — verify whether the glossary context should bound
