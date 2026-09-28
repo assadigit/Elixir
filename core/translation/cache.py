@@ -89,7 +89,10 @@ def get_cached_translation(
         if data.get("text_preview", "")[:100] != text[:100]:
             return None
         return data
-    except OSError:
+    except (OSError, ValueError):
+        # V0.6.0 (T6): a corrupted/truncated cache file (json.JSONDecodeError
+        # is a ValueError) must degrade to a cache miss — it used to crash
+        # the chunk translation.
         return None
 
 

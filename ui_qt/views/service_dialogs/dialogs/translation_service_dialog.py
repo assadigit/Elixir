@@ -781,7 +781,14 @@ class TranslationServiceDialog(BaseServiceDialog):
                     results.append(f"❌ {p.name} → {type(e).__name__}: {e}")
 
             elapsed = time.time() - (self._start_time or time.time())
-            self._emit_progress(100, f"✅ All files translated — {self._format_elapsed(elapsed)}")
+            # V0.6.0 (T7): honest final progress — "✅" only when at least
+            # one file actually translated.
+            any_ok = any(r.strip().startswith("✅") for r in results)
+            final_emoji = "✅" if any_ok else "⚠️"
+            self._emit_progress(
+                100,
+                f"{final_emoji} All files processed — {self._format_elapsed(elapsed)}",
+            )
             return "\n".join(results)
 
         self._worker = SimpleWorker(_run_queue)
@@ -790,31 +797,58 @@ class TranslationServiceDialog(BaseServiceDialog):
         # (which calls _save_result and would overwrite the real files with
         # the summary string). Instead, show the summary in the status +
         # result preview + success modal directly.
-        def _on_queue_finished(summary: str):
-            self._reset_ui()
-            self.result_preview.setPlainText(summary)
-            self.result_preview.setVisible(True)
-            self.status_label.setText(summary)
-            self.again_btn.setVisible(True)
-            # V11.30: defer the success modal via QTimer.singleShot(0, ...)
-            # to prevent QTextDocument thread-safety crash.
-            from PySide6.QtCore import QTimer
+        #
+        # V0.6.0 (T9): the slot is a BOUND METHOD of this QObject dialog.
+        # It used to be a plain closure — plain-function slots have no
+        # receiver thread affinity, so Qt executed it DIRECTLY ON THE
+        # WORKER THREAD, where it touched widgets (result_preview's
+        # QTextDocument, status_label) and called QTimer.singleShot from
+        # the wrong thread — the exact "QTextDocument thread-safety
+        # crash" class the V11.30 comments say this code avoids. Bound
+        # methods of a QObject are auto-queued to the main thread.
+        self._queue_out_folder = out_folder
+        self._worker.finished.connect(self._on_queue_finished)
+        self._worker.failed.connect(self._on_error)
+        self._worker.progress.connect(self._on_progress)
+        self._worker.start()
 
+    def _on_queue_finished(self, summary: str) -> None:
+        """V11.29.1 + V0.6.0 (T9): show the multi-file queue summary on the
+        MAIN thread (queued slot — see the wiring note in ``_on_process``).
+        """
+        self._reset_ui()
+        self.result_preview.setPlainText(summary)
+        self.result_preview.setVisible(True)
+        self.status_label.setText(summary)
+        self.again_btn.setVisible(True)
+        # V11.30: defer the success modal via QTimer.singleShot(0, ...)
+        # to prevent QTextDocument thread-safety crash.
+        from PySide6.QtCore import QTimer
+
+        # V0.6.0 (T7): never a success modal on failure — when every
+        # queued file failed (no "✅" line in the summary), warn
+        # instead of announcing "✅ Translation Complete".
+        any_ok = any(line.strip().startswith("✅") for line in summary.splitlines())
+        if any_ok:
             QTimer.singleShot(
                 0,
                 lambda: _show_success_modal(
                     self,
                     "✅ Translation Complete",
                     summary,
-                    file_path=out_folder,
+                    file_path=self._queue_out_folder,
                     on_try_another=self._on_try_another,
                 ),
             )
-
-        self._worker.finished.connect(_on_queue_finished)
-        self._worker.failed.connect(self._on_error)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.start()
+        else:
+            QTimer.singleShot(
+                0,
+                lambda: QMessageBox.warning(
+                    self,
+                    "⚠️ Translation Failed",
+                    summary,
+                ),
+            )
 
     # ----------------------------------------------------------------
     # _process - delegates to TranslationEngine (V11.28, kept in V11.29)
@@ -864,9 +898,13 @@ class TranslationServiceDialog(BaseServiceDialog):
         except ModelNotFoundError as e:
             # V11.29.3: model not installed — return clear error, don't
             # silently copy-paste the original text.
-            return f"❌ {e}"
+            # V0.6.0 (T2): shared.py ``_on_finished`` (V11.31.12 contract)
+            # routes ONLY strings starting with "Error:" to the failure
+            # branch — the old "❌ {e}" / "Translation error: ..." shapes
+            # were written to the output file and reported as ✅ success.
+            return f"Error: {e}"
         except Exception as e:
-            return f"Translation error: {type(e).__name__}: {e}"
+            return f"Error: translation failed — {type(e).__name__}: {e}"
 
     @staticmethod
     def _format_elapsed(seconds: float) -> str:

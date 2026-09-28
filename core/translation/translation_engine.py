@@ -170,13 +170,18 @@ class TranslationEngine:
         """
         self._start_time = time.time()
         lines = text.split("\n")
+        # V0.6.0 (T5): YAML front-matter pass-through is bounded by the
+        # LEADING --- block, not by a line-count heuristic (see
+        # _frontmatter_end). A prose "Note: ..." line inside the first 20
+        # lines used to skip translation entirely.
+        fm_end = self._frontmatter_end(lines)
         non_empty = sum(1 for line in lines if line.strip())
         translated_lines: list[str] = []
         done = 0
 
         for i, line in enumerate(lines):
             try:
-                result = self._translate_line(line, line_idx=i)
+                result = self._translate_line(line, line_idx=i, in_frontmatter=i < fm_end)
             except ModelNotFoundError:
                 # V11.29.3: bail immediately — no point retrying every line.
                 raise
@@ -241,7 +246,20 @@ class TranslationEngine:
 
     # ── Core line translation ────────────────────────────────────────
 
-    def _translate_line(self, line: str, line_idx: int = 0) -> str:
+    @staticmethod
+    def _frontmatter_end(lines: list[str]) -> int:
+        """V0.6.0 (T5): index one past the closing ``---`` of a LEADING
+        YAML front-matter block, or 0 when the text does not start with
+        one (an unterminated ``---`` is not a front-matter block).
+        """
+        if not lines or lines[0].strip() != "---":
+            return 0
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return i + 1
+        return 0
+
+    def _translate_line(self, line: str, line_idx: int = 0, in_frontmatter: bool = False) -> str:
         """Translate a single line with retry logic.
 
         Returns the translated line, or the original line if all retries fail.
@@ -256,9 +274,11 @@ class TranslationEngine:
         if stripped in ("---", "***", "___"):
             return line
 
-        # Pass-through: YAML front-matter key-value lines (first 20 lines).
+        # Pass-through: YAML front-matter key-value lines — ONLY inside a
+        # leading --- block (V0.6.0/T5: the old ``line_idx < 20`` heuristic
+        # silently skipped any prose line shaped like "Note: ...").
         if (
-            line_idx < 20
+            in_frontmatter
             and re.match(r"^[\w\-]+:\s", stripped)
             and not stripped.startswith(("-", "#", ">"))
         ):
@@ -294,6 +314,12 @@ class TranslationEngine:
             except requests.exceptions.Timeout:
                 self._log(f"  ⚠️ Line {line_idx + 1}: timeout on attempt {attempt + 1}", "WARNING")
                 continue
+            except ModelNotFoundError:
+                # V0.6.0 (T1): a 404 is permanent — bail the whole document
+                # (the caller + the dialog surface a clear error) instead of
+                # retrying 3× per line and silently returning the original
+                # text as the "translation".
+                raise
             except Exception as e:
                 self._log(
                     f"  ⚠️ Line {line_idx + 1}: {type(e).__name__}: {e} on attempt {attempt + 1}",
@@ -443,6 +469,12 @@ class TranslationEngine:
         for pat in _ECHO_PATTERNS:
             text = re.sub(pat, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
 
+        # 2.5 V0.6.0 (T3): line-count verification — this engine translates
+        # LINE BY LINE, so one input line must yield ONE output line (the
+        # module contract). A model reply with embedded newlines used to
+        # silently inflate the output's line/paragraph structure.
+        text = re.sub(r"\s*\n\s*", " ", text).strip()
+
         # 3. Detect refusals.
         for phrase in _REFUSAL_PATTERNS:
             if phrase in text:
@@ -472,13 +504,19 @@ class TranslationEngine:
             bullet = orig_stripped[0]
             return f"{prefix}{bullet} {trans_stripped}"
 
-        # Heading markers: #, ##, ###
-        if orig_stripped.startswith("#") and not trans_stripped.startswith("#"):
+        # Heading markers: #, ##, ### — restore the ORIGINAL level even
+        # when the model emits a different one (V0.6.0/T4: live-observed an
+        # H1 line translated as H2 — the marker survives but the level
+        # drifts, corrupting the document's heading hierarchy).
+        if orig_stripped.startswith("#"):
             heading_match = re.match(r"^(#{1,6})\s", orig_stripped)
             if heading_match:
                 prefix = original[: len(original) - len(orig_stripped)]
                 hashes = heading_match.group(1)
-                return f"{prefix}{hashes} {trans_stripped}"
+                # Drop whatever heading marker the model emitted (if any)
+                # and re-add the original level.
+                body = re.sub(r"^#{1,6}\s*", "", trans_stripped).strip()
+                return f"{prefix}{hashes} {body}"
 
         # Blockquote: >
         if orig_stripped.startswith(">") and not trans_stripped.startswith(">"):
@@ -576,49 +614,53 @@ class TranslationEngine:
         for m in re.finditer(r"(?<=[\s,;:(])\b([A-Z][a-z]{2,15})\b(?!\s+[A-Z])", text):
             word = m.group(1)
             # Filter out common sentence-start words.
+            # V0.6.0 (T8): the tuple was Title-case while the comparison
+            # lowercases the word — the filter never matched, so generic
+            # function words ("The", "This", ...) polluted the term
+            # memory as fake "key terms".
             if word.lower() not in (
-                "The",
-                "This",
-                "That",
-                "These",
-                "Those",
-                "Most",
-                "Many",
-                "Some",
-                "Every",
-                "Each",
-                "He",
-                "She",
-                "It",
-                "We",
-                "They",
-                "You",
-                "His",
-                "Her",
-                "Its",
-                "Our",
-                "Their",
-                "A",
-                "An",
-                "In",
-                "On",
-                "At",
-                "By",
-                "For",
-                "But",
-                "And",
-                "Or",
-                "Not",
-                "If",
-                "When",
-                "While",
-                "Finally",
-                "First",
-                "Second",
-                "Modern",
-                "Historical",
-                "Central",
-                "True",
+                "the",
+                "this",
+                "that",
+                "these",
+                "those",
+                "most",
+                "many",
+                "some",
+                "every",
+                "each",
+                "he",
+                "she",
+                "it",
+                "we",
+                "they",
+                "you",
+                "his",
+                "her",
+                "its",
+                "our",
+                "their",
+                "a",
+                "an",
+                "in",
+                "on",
+                "at",
+                "by",
+                "for",
+                "but",
+                "and",
+                "or",
+                "not",
+                "if",
+                "when",
+                "while",
+                "finally",
+                "first",
+                "second",
+                "modern",
+                "historical",
+                "central",
+                "true",
             ):
                 terms.append(word)
 
