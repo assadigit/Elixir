@@ -1003,6 +1003,61 @@ _DANGLING_TAIL_WORDS = frozenset(
 # punctuation + closing quotes/brackets/ellipsis (both ASCII and curly).
 _TAIL_STRIP_CHARS = ".,;:!?)'\"\u201d\u2019\u2026"
 
+# V0.5.20 — the terminal-shape lint (the dangling enumeration marker).
+#
+# The rig-run-2 audit (the FULL-BOOK ingestion, run 20260928-155851-011587f0,
+# audit defect E2): the shipped "Reveals" guarantee bullet ended
+# ``…; (3) much physical illness during childhood, and (4).`` — a bare
+# conjunction + marker + period with the item-(4) CONTENT dropped (the
+# extraction's page boundary left the marker at a paragraph end and the
+# content past the break; the join missed it, and the pipeline's own
+# "enumerated items 74/74" floor was BLIND to the loss — the missed item
+# never entered the denominator). A shipped bullet may never end in a
+# bare enumeration marker: the marker promises an item that is not there.
+#
+# Two tail shapes (after stripping trailing quotes/brackets + ONE
+# sentence-punct char):
+#   * the PAREN marker, with or without a leading conjunction:
+#     ``…, and (4).`` / ``…, and (iv).`` / ``…, (b).`` / ``…, (4)``
+#   * the BARE marker, conjunction required (a bare trailing "4." is too
+#     ambiguous; "and 4." is not): ``…, and 4.`` / ``…, or iii.``
+_DANGLING_ENUM_MARKER_RE = re.compile(
+    r"(?:\b(?:and|or)\s*)?\((?:\d{1,2}|[a-z]{1,3}|[ivxlc]{1,5})\)$"
+)
+_DANGLING_BARE_MARKER_RE = re.compile(
+    r"\b(?:and|or)\s+(?:\d{1,2}|[a-z]|[ivxlc]{1,5})$"
+)
+
+
+def ends_in_dangling_enum_marker(bullet: str) -> bool:
+    """V0.5.20: True if the bullet's tail is a bare enumeration marker —
+    a paren marker ``(4)`` / ``(iv)`` / ``(b)`` (optionally preceded by
+    ``and``/``or``) or a conjunction + bare marker (``and 4.``), ignoring
+    trailing quotes and ONE terminal punctuation char.
+
+    The terminal-shape lint's predicate: a bullet that ends this way
+    carries a marker whose item content was lost to a missed continuation
+    join (the rig-run-2 dangling ``and (4).``). Pure function — no side
+    effects. Characterization tests in ``tests/test_v0520_layout_vetoes.py``.
+    """
+    if not bullet:
+        return False
+    # NB: deliberately NOT reusing _TAIL_STRIP_CHARS here — it strips ")"
+    # and would eat the marker's own closing paren ("…and (4)." → "…and (4"
+    # — unmatchable). Strip trailing whitespace + closing QUOTES only, then
+    # ONE sentence-punct char (the renderer appends a final period to
+    # guarantee bullets — the marker sits just before it).
+    core = bullet.rstrip().rstrip(" '‘’“”")
+    if not core:
+        return False
+    if core[-1] in ".,;:!?…":
+        core = core[:-1].rstrip().rstrip(" '‘’“”")
+    if not core:
+        return False
+    return bool(
+        _DANGLING_ENUM_MARKER_RE.search(core) or _DANGLING_BARE_MARKER_RE.search(core)
+    )
+
 
 def ends_on_dangling_word(bullet: str) -> bool:
     """V18.20.3.0 (Audit FLAG-02): True if the bullet's final word (ignoring

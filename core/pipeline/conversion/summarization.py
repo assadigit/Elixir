@@ -454,6 +454,30 @@ def run_summarization(
     except Exception:  # pragma: no cover — unification must never break the phase
         pass
 
+    # V0.5.20 (the rig-run-2 glossary handoff break): thread the RUN's
+    # output dir + the unified run id onto the REQUEST object (the same
+    # attached-attribute pattern ``_run_id`` already uses) so the deep
+    # summarization stack — the V0.5.7 glossary extraction call in
+    # ``primary_call._extract_glossary_for_call`` — persists the
+    # .glossary.md INSIDE the run's per-book output folder.
+    #
+    # The V0.5.19.1 FULL-BOOK run (20260928-155851-011587f0) proved the
+    # fragility: ``request.output_dir`` is the BASE dir the user picked
+    # (``…\Desktop\5.19.1``), while the converter ALWAYS creates the
+    # per-book run folder under it (``…\5.19.1\<the book's run folder>
+    # \``) — the glossary landed at
+    # ``…\5.19.1\summaries\.glossaries\…`` (OUTSIDE the run's output dir),
+    # and every audit-trail line reported "Glossary: (none)" (the dict
+    # never carried its path). Defensive setattr — fail-open (the glossary
+    # call falls back to ``request.output_dir``, the harness behavior).
+    try:
+        request._run_id = getattr(summarizer, "_run_id", "") or ""
+        _run_out = getattr(converter, "output_dir", None)
+        if _run_out is not None:
+            request._run_output_dir = str(_run_out)
+    except Exception:  # pragma: no cover — the handoff must never break the phase
+        pass
+
     # V15.2.0: Enhanced concept extraction (6 techniques) — the foundation fix.
     # Replaces the old extract_all_concepts() with extract_concepts_rich() which
     # combines: intro+conclusion weighting, proper-noun theorists, section headings,

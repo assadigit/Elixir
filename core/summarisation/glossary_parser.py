@@ -606,6 +606,14 @@ def extract_persist_and_cross_reference_glossary(
             app_version=app_version,
         )
         log(f"    📖 V0.5.6 source glossary → {out_path}", "INFO")
+        # V0.5.20 (the rig-run-2 handoff break): carry the persisted path
+        # ON the glossary dict — the verification LAYER + the gap-fill
+        # report "Glossary: <path>" from this field, and the run's audit
+        # correlates the .glossary.md artifact with the chapter. The
+        # V0.5.19.1 full-book run showed "(none)" on every audit-trail
+        # line because the dict never carried it.
+        if isinstance(glossary, dict):
+            glossary["path"] = str(out_path)
     except Exception as _e:  # noqa: BLE001 — fail-open
         logger.warning(
             "V0.5.6 glossary persist crashed (non-fatal): %s: %s",
@@ -897,6 +905,13 @@ def extract_glossary_via_llm(
             f"    📖 V0.5.7 source glossary (separate call) → {out_path}",
             "INFO",
         )
+        # V0.5.20 (the rig-run-2 handoff break): carry the persisted path
+        # on the glossary dict — the verification LAYER + the gap-fill
+        # audit-trail lines read it ("Glossary: <path>"; the V0.5.19.1
+        # full-book run showed "(none)" everywhere because the dict never
+        # carried the field).
+        if isinstance(glossary, dict):
+            glossary["path"] = str(out_path)
     except Exception as _e:  # noqa: BLE001 — fail-open
         logger.warning(
             "⚠️ V0.5.7 glossary persist crashed (non-fatal — the parsed "

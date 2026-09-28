@@ -110,6 +110,40 @@ _THIN_GAPFILL_BULLET_RE = re.compile(
     re.IGNORECASE,
 )
 
+# V0.5.20: the COLON-LESS variant of the thin roster-gap-fill shape. The
+# V0.5.19.1 rig run #2 (the FULL-BOOK ingestion, run 20260928-155851-011587f0)
+# shipped ~12 thin one-liners UNFLAGGED ("Kretschmer made significant
+# contributions to the description of schizoid personality following
+# Bleuler in 1925." / "Frances (*1980*) contributed to the debate on
+# whether histrionic is a synonym for hysterical personality." / "Nanarello
+# (*1953*) contributed to the description of schizoid personality.") vs
+# 121429's 4/4 flagged (the "Name: Contributed to…" COLON form) — the
+# V0.5.19 detector's shape is colon-form-specific, so the quality signal
+# was run-dependent (model variance moved the SHAPE, not the family).
+#
+# The widened shape: a LEADING NAME (single, "Name and Name" pair, or
+# "et al."), an OPTIONAL year parenthetical ((*1980*) / (1910) /
+# (*1968*, *1971*)), then DIRECTLY one of the citation-registry verb
+# phrases — "made significant contributions to" / "contributed to" /
+# "authored literature on". Real claims do not match: "AuthorN
+# contributed the six-grounds distinction" (contributed + OBJECT, no
+# "to") and "Bleuler described latent schizophrenia" (a content verb)
+# stay unflagged. Bounded to ONE-LINERS (≤ 280 chars) — the evidenced
+# thin bullets are 70-210 chars, while substantive thorough-summary
+# prose that OPENS with the same name+verb shape ("Hoch (*1910*) and
+# Kretschmer (*1925*) contributed to the early characterization … while
+# … further refined …") runs on for paragraphs and must not be flagged.
+_THIN_GAPFILL_SENTENCE_RE = re.compile(
+    r"^[A-Z][\w'\u2019-]+"
+    r"(?:\s+(?:and\s+)?[A-Z][\w'\u2019-]+)?"
+    r"(?:\s+et\s+al\.?)?"
+    r"(?:\s*\(\s*\*?\d{4}\*?[^)]{0,40}\))?"
+    r"\s+(?:made\s+significant\s+contributions\s+to|contributed\s+to|authored\s+literature\s+on)\b",
+    re.IGNORECASE,
+)
+# the colon-less variant's one-liner bound (chars, on the stripped line).
+_THIN_GAPFILL_SENTENCE_MAX = 280
+
 # V0.5.18: the non-name stopword shapes (check 2's inline literal, hoisted
 # to a module constant so the new check 3 shares the exact same guard —
 # "In (1950)" / "His (1986)" are not author citations in EITHER check).
@@ -475,7 +509,8 @@ def validate_years(
                 )
             )
 
-    # --- Thin roster-gap-fill bullet flag (V0.5.19) ---------------------------
+    # --- Thin roster-gap-fill bullet flag (V0.5.19; V0.5.20 the colon-less
+    # variant) ------------------------------------------------------------
     # The V0.5.18 ch.9 re-run shipped two thin one-liners from the roster
     # gap-fill ("AuthorD: Cited in a work from NNNN regarding X." /
     # "AuthorE: Authored literature on Y (cites).") — shape-only bullets
@@ -483,11 +518,22 @@ def validate_years(
     # prose-year check 3b catches the YEAR slips; this flag catches the
     # SHAPE so the audit sees the quality signal. Advisory-only (Rule 1:
     # the shape is generic — "Name: Cited/Authored/Contributed ...").
+    # V0.5.20: the same family written COLON-LESS ("Kretschmer made
+    # significant contributions to …" / "Frances (*1980*) contributed to
+    # …") — the rig-run-2 model variance — is now caught too (the
+    # one-liner-bounded _THIN_GAPFILL_SENTENCE_RE).
     try:
         _seen_thin: set[str] = set()
         for _line in text.split("\n"):
             _l = _line.strip().lstrip("-*• ").strip()
-            _tm = _THIN_GAPFILL_BULLET_RE.match(_l)
+            _tm = _THIN_GAPFILL_BULLET_RE.match(_l) or (
+                # V0.5.20: the colon-less variant — one-liners only (the
+                # length bound keeps substantive thorough prose that opens
+                # with the same name+verb shape out of the flag).
+                _THIN_GAPFILL_SENTENCE_RE.match(_l)
+                if len(_l) <= _THIN_GAPFILL_SENTENCE_MAX
+                else None
+            )
             if not _tm:
                 continue
             if _l.casefold() in _seen_thin:
@@ -502,7 +548,8 @@ def validate_years(
                     detail=(
                         "thin roster-gap-fill bullet shape (citation-only "
                         "one-liner, no contribution carried) — quality signal "
-                        "for the audit (V0.5.19)"
+                        "for the audit (V0.5.19 colon form / V0.5.20 "
+                        "colon-less form)"
                     ),
                 )
             )

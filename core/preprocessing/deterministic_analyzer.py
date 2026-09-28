@@ -33,6 +33,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from core.common.heading_utils import segment_filename_slug
+from core.common.layout_furniture import is_page_furniture_line as _is_page_furniture_line
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +569,20 @@ def extract_structured_criteria(md_text: str) -> list[dict]:
             # often wraps letters and sub-items on separate lines with a
             # blank in between). Just skip — the next letter/sub-item or
             # prose will decide the cluster's fate.
+            continue
+        elif _is_page_furniture_line(stripped):
+            # V0.5.20 (the full-book ingestion, run 20260928-155851-011587f0
+            # — audit E7): a PAGE BOUNDARY inserts furniture lines (a bare
+            # page number "224", a short ALL-CAPS running header) into the
+            # extracted text. Both shapes start upper/digit — the V0.5.19
+            # rule-1 prose test read them as discussion prose and CLOSED
+            # the cluster mid-list, so every sub-item after the page break
+            # arrived with no parent letter and was skipped (the reproduced
+            # schizotypal criteria blocks shipped prefix-truncated: DSM-III
+            # (i)-(v) of (i)-(viii), DSM-III-R (i)-(iii) of (i)-(ix)).
+            # Furniture lines are never item content — skip them exactly
+            # like blank lines: the cluster stays open, the next
+            # letter/sub-item/prose line decides its fate.
             continue
         else:
             # prose line — V0.5.19: first try the embedded-marker split

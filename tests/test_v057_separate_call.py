@@ -300,8 +300,12 @@ class TestExtractGlossaryViaLlmReturnsParsedDict:
             output_dir=str(tmp_path),
             run_id="run-v057-test",
         )
-        # The glossary is parsed (3 names + 2 dates + 2 terms).
-        assert set(glossary.keys()) == {"names", "dates", "terms"}
+        # The glossary is parsed (3 names + 2 dates + 2 terms). V0.5.20: the
+        # dict ALSO carries the persisted file path ("path") — the rig-run-2
+        # handoff break fix (the verification LAYER + the gap-fill report
+        # "Glossary: <path>" from this field; the run showed "(none)"
+        # everywhere because the dict never carried it).
+        assert set(glossary.keys()) == {"names", "dates", "terms", "path"}
         assert len(glossary["names"]) == 3
         assert glossary["names"][0]["name"] == "Bak"
         assert glossary["names"][0]["year"] == "1946"
@@ -309,6 +313,8 @@ class TestExtractGlossaryViaLlmReturnsParsedDict:
         assert glossary["dates"][0]["date"] == "1887-1902"
         assert len(glossary["terms"]) == 2
         assert glossary["terms"][0]["term"] == "paranoid-schizoid position"
+        # V0.5.20: the path field points at the persisted file.
+        assert str(glossary["path"]).endswith("Test Chapter.glossary.md")
         # The .glossary.md file was written.
         glossary_file = tmp_path / "summaries" / ".glossaries" / "Test Chapter.glossary.md"
         assert glossary_file.exists(), (

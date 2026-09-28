@@ -214,11 +214,38 @@ class SummarizerAdditiveMixin:
                     continue  # fully covered — nothing to guarantee
                 # Build ONE consolidated bullet with ALL items (verbatim,
                 # comma-joined) — the label derives from the list's stem.
-                label = stem_label(enum.stem, enum.count)
+                # V0.5.20 (the rig-run-2 dangling marker): items whose
+                # cleaned text is EMPTY (a marker detected at a paragraph/
+                # page tail whose content sits past the break — the
+                # "…, and (4)." layout) are SKIPPED from the rendered
+                # bullet + logged — a rendered "(4) " with no text is the
+                # dangling-marker defect itself, and a count that includes
+                # the empty item would lie about what is carried.
+                _render_items = [
+                    it for it in enum.items if clean_enum_text(it.text)
+                ]
+                _skipped = enum.count - len(_render_items)
+                if _skipped:
+                    self.log(
+                        f"    ⚠️ V0.5.20: enumeration guarantee — {_skipped} "
+                        f"empty-text item marker(s) skipped for a "
+                        f"{enum.count}-marker {enum.style} list (a marker "
+                        f"whose content sits past a layout break — the "
+                        f"terminal-shape lint + the layout-independent join "
+                        f"target this family)",
+                        "WARNING",
+                    )
+                if not _render_items:
+                    continue
+                label = stem_label(enum.stem, len(_render_items))
                 items_text = "; ".join(
-                    f"({k}) {clean_enum_text(it.text)}" for k, it in enumerate(enum.items, 1)
+                    f"({k}) {clean_enum_text(it.text)}"
+                    for k, it in enumerate(_render_items, 1)
                 )
-                consolidated = f"**{label}** — {enum.count} items from the source: {items_text}."
+                consolidated = (
+                    f"**{label}** — {len(_render_items)} items from the "
+                    f"source: {items_text}."
+                )
                 # The bullet text does NOT start with "- " (the markdown
                 # formatter adds the marker — the V18.15.9.1 double-dash
                 # lesson).

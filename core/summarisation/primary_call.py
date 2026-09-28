@@ -172,7 +172,24 @@ def _extract_glossary_for_call(
             max_output_tokens=8192,  # V0.5.9: was 4096 (overrode the V0.5.8 default) — the glossary for 74 authors needs >4096
             log=log,
             chapter_heading=heading,
-            output_dir=str(getattr(request, "output_dir", _Path("."))),
+            # V0.5.20 (the rig-run-2 handoff break): persist into the RUN's
+            # output dir, not the user's base dir. ``request.output_dir`` is
+            # the BASE the user picked; the converter ALWAYS creates a
+            # per-book run folder under it (``create_output_folder(…,
+            # per_book=True)`` → ``…\5.19.1\<the book's run folder>\``)
+            # and attaches it to the request as ``_run_output_dir`` (the
+            # run_summarization wiring, right next to the ``_run_id``
+            # unification). The V0.5.19.1 full-book run persisted the
+            # glossary OUTSIDE the run's output dir
+            # (``…\5.19.1\summaries\.glossaries\…`` vs
+            # ``…\5.19.1\<the book's run folder>\``) — an audit
+            # looking for the .glossary.md in the run dir found nothing.
+            # Fall back to ``request.output_dir`` (the harness path, where
+            # the request IS the run dir). Content-agnostic (Rule 1 ✓).
+            output_dir=str(
+                getattr(request, "_run_output_dir", None)
+                or getattr(request, "output_dir", _Path("."))
+            ),
             run_id=str(getattr(request, "_run_id", "")),
         )
         # Stash the glossary into the verification LAYER's module-level

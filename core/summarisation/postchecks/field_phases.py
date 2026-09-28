@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from core.summarisation.post_processing import (
     SELF_TALK_PATTERNS,
     classify_scar,
+    ends_in_dangling_enum_marker,
     is_citation_only_fragment,
     is_truncated,
 )
@@ -369,6 +370,34 @@ def postcheck_bullets(
                         ),
                     )
                 ]
+        # V0.5.20 (the rig-run-2 dangling marker — audit defect E2): the
+        # TERMINAL-SHAPE LINT. No shipped bullet may end in a bare
+        # enumeration marker (``…, and (4).``): the marker promises an
+        # item whose content was lost to a missed continuation join, and
+        # the pipeline's own "enumerated items N/N" floor is BLIND to
+        # the loss (the missed item never entered the denominator). The
+        # lint makes the loss audit-visible instead of silent. Advisory
+        # (severity=flag): the bullet is NOT dropped — the (1)…(N-1) items
+        # it carries are verbatim source content; the flag names the
+        # defect for the quality report.
+        enum_lint_issues: list = []
+        if bp_str.strip() and ends_in_dangling_enum_marker(bp_str):
+            enum_lint_issues = [
+                Issue(
+                    detector="enumeration",
+                    severity="flag",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "terminal-shape lint: bullet ends in a bare "
+                        "enumeration marker (\"and (N).\") — the marker's "
+                        "item content was lost to a missed continuation "
+                        "join (V0.5.20); the enumerated-items floor cannot "
+                        "see this loss (the missed item never entered the "
+                        "denominator)"
+                    ),
+                )
+            ]
         # Collect ALL issues so the report fully accounts for every fix/flag.
         report.issues.extend(leak1)
         report.issues.extend(space1)
@@ -389,6 +418,7 @@ def postcheck_bullets(
         report.issues.extend(pronoun_issues or [])
         report.issues.extend(year_digit_issues or [])
         report.issues.extend(trunc_issues)
+        report.issues.extend(enum_lint_issues)  # V0.5.20 — the terminal-shape lint
         # V18.20.3.2 (audit N1 / P0-2): ship-time self-talk drop. Generation-
         # time filtering (classify_bullets) is the primary gate, but bullets
         # can acquire self-talk later (consolidation merges, gap-fill
