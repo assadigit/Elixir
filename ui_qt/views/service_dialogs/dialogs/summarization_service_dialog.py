@@ -56,8 +56,12 @@ class SummarizationServiceDialog(QDialog):
         .txt/.md files; each is summarized independently and saved as
         ``{stem}_{quality}_summary{ext}``.
       - **Output format dropdown**: ``.md``, ``.docx``, ``.pdf`` (via the
-        shared ``service_formatters`` module — Word/PDF always available
-        because python-docx + reportlab are in requirements.txt).
+        shared ``service_formatters`` module). python-docx is in
+        requirements.txt; the PDF path needs WeasyPrint or ReportLab —
+        neither is in requirements.txt (V0.6.0 docstring correction: the
+        old text claimed "reportlab is in requirements.txt", which was
+        never true), so on a bare install ``write_pdf`` degrades to
+        writing the ``.md`` next to the requested ``.pdf``.
       - **Obsidian-style markdown** toggle: when on (and format is .md),
         the summary is wrapped in YAML front-matter + Obsidian callouts
         (``> [!summary]``, ``> [!info]``, …) so it drops cleanly into an
@@ -642,10 +646,18 @@ class SummarizationServiceDialog(QDialog):
             return None, f"❌ LLM call failed: {type(e).__name__}: {e}"
 
         if not result or not result.strip():
+            # V0.6.0 (S3): the old hint was Ollama-specific ("check `ollama
+            # logs` for OOM errors") — for the llama.cpp / OpenAI-compat /
+            # Claude providers that advice points at the wrong backend (a
+            # refused llama-server connection lands here as an empty
+            # result, since complete_streaming returns None on transport
+            # failure). Name the actual provider.
             return None, (
                 f"❌ LLM returned an empty response for model '<b>{model}</b>'.<br>"
-                f"This usually means the model failed to load — check `ollama logs` for OOM errors, "
-                f"or try a smaller model."
+                f"This usually means the model failed to load or the "
+                f"<b>{provider_name}</b> backend is unreachable — check the "
+                f"backend is running and the model name is correct, or try a "
+                f"smaller model."
             )
 
         # Strip <think> blocks (response_parser also does this, but do it
@@ -836,7 +848,23 @@ class SummarizationServiceDialog(QDialog):
         # 3s freeze); it now reports "Verifying model…" and runs here.
         if report is not None:
             report(0, "Verifying model…")
-        installed = self._fetch_installed_models(timeout=3.0)
+        # V0.6.0 (S1 fix): the pre-flight speaks the OLLAMA /api/tags
+        # protocol against ``summarisation.endpoint`` — it is only
+        # meaningful when the summarisation provider IS Ollama. For any
+        # other provider the check consults an endpoint that is NOT the
+        # configured backend, so a perfectly healthy backend hard-stopped
+        # with "Model 'X' is not installed in Ollama" (reproduced live:
+        # provider=llama.cpp serving the model while the legacy endpoint
+        # key points at the llama.cpp server → /api/tags 404 → [] →
+        # model_missing). Skip the check and let the provider call surface
+        # the real error — the same semantics as the unreachable-Ollama
+        # path below.
+        from utils.settings import Settings
+
+        _provider = (
+            str(Settings().get("summarisation.provider", "ollama") or "ollama").strip().lower()
+        )
+        installed = self._fetch_installed_models(timeout=3.0) if _provider == "ollama" else None
         if installed is not None and model not in installed:
             avail = ", ".join(installed) if installed else "(none installed)"
             pull_hint = f"<br>👉 Fix: <code>ollama pull {model}</code>"
@@ -975,9 +1003,17 @@ class SummarizationServiceDialog(QDialog):
         result = result or {}
 
         if result.get("model_missing"):
-            self.status_label.setText(result.get("error_html", "❌ Model not installed."))
+            _err_html = result.get("error_html", "❌ Model not installed.")
+            self.status_label.setText(_err_html)
             # Main-thread model refresh (touches the combo + status label).
             self._refresh_models()
+            # V0.6.0 (S2 fix): _refresh_models ends by writing its own
+            # reachability status ("Ollama is running but has no models…"),
+            # which CLOBBERED the actionable error above within the same
+            # handler — the user never saw why the run failed (reproduced
+            # live). Re-assert the error after the refresh; the combo stays
+            # refreshed either way.
+            self.status_label.setText(_err_html)
             self.action_btn.setEnabled(True)
             self.action_btn.setText("Summarize")
             return
