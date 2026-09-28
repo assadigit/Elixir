@@ -24,6 +24,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# V18.20.4.12 (W-a10) follow-up: the DEFAULT model tag here was the
+# KNOWN-BAD "…-Q4_K_M:latest" variant that 404s on the rig (the dialog
+# combo already uses RIG_FALLBACK_MODEL; the service default now matches
+# so programmatic callers don't hit the dead tag).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -209,7 +215,7 @@ def format_transcript_with_timestamps(segments: list) -> str:
 
 def summarize_transcript(
     transcript: str,
-    model: str = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest",
+    model: str = RIG_FALLBACK_MODEL,
     ollama_url: str = "http://localhost:11434",
     log_callback=None,
     progress_callback=None,
@@ -247,12 +253,25 @@ def summarize_transcript(
         from utils.settings import Settings
 
         s = Settings()
+        # V0.6.0 (T2): provider now follows the configured
+        # ``summarisation.provider`` (the app-wide factory pattern, cf. the
+        # Summarization dialog) — it was hardcoded to "ollama", so any rig
+        # configured for another backend got connection-refused here.
+        provider_name = str(s.get("summarisation.provider", "ollama") or "ollama").strip().lower()
         # V13.28.0: Create provider via the factory — gets supervisor + retry
         provider = create_provider(
-            provider="ollama",
+            provider=provider_name,
             settings=s,
             log_callback=lambda msg, level="INFO": log(f"  [LLM] {msg}", level),
         )
+        # V0.6.0 (T2): honor the caller's explicit endpoint on the Ollama
+        # path — the factory pins the default localhost:11434, but this
+        # service is always invoked with the endpoint the dialog resolved
+        # from Settings, and the ``ollama_url`` parameter used to be dead.
+        if provider_name == "ollama" and ollama_url:
+            _base = str(ollama_url).rstrip("/")
+            if _base and _base != "http://localhost:11434":
+                provider.base_url = _base
         # Override model + timeout for this specific call (transcripts need 600s)
         result = provider.complete_streaming(
             prompt=prompt,

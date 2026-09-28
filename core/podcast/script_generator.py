@@ -25,6 +25,13 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+# V18.20.4.12 (W-a10) follow-up: the DEFAULT model tag here was the
+# KNOWN-BAD "…-Q4_K_M:latest" variant that 404s on the rig (the
+# PodcastMakerView combo already falls back to RIG_FALLBACK_MODEL; the
+# service default now matches so programmatic callers don't hit the dead
+# tag).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,6 +170,17 @@ def extract_bullets(text: str) -> list[str]:
 
     for line in lines:
         stripped = line.strip()
+        # V0.6.0 (P3): markdown headings are STRUCTURE, not content —
+        # ``preprocess_source_text`` prepends its own "# Source Material"
+        # heading, which used to be captured here as a phantom bullet and
+        # fed to the LLM as "[BULLET N] # Source Material" (inflating the
+        # coverage requirement with a non-bullet). Flush the current
+        # bullet and skip the heading line.
+        if re.match(r"^#{1,6}\s+", stripped):
+            if current_bullet:
+                bullets.append(current_bullet.strip())
+                current_bullet = ""
+            continue
         # Markdown bullet or numbered list
         if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+[.)]\s+", stripped):
             if current_bullet:
@@ -1212,7 +1230,7 @@ def generate_podcast_script(
     temperature: float = 0.7,
     language: str = "en",
     ollama_url: str = "http://localhost:11434",
-    model: str = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest",
+    model: str = RIG_FALLBACK_MODEL,
     max_retries: int = 2,
     log_callback=None,
 ) -> ScriptResult:
@@ -1497,13 +1515,19 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
     import re as _re
 
     # Mapping of common spelled-out years and numbers
+    # V0.6.0 (P2): the alternation below is LONGEST-FIRST. It used to list
+    # "twenty" before "twenty-two", so the regex stopped at the word
+    # boundary and "two thousand twenty-two" matched only "…twenty" →
+    # rewritten as "2020-two" (a mangled year the TTS reads aloud).
     YEAR_PATTERN = _re.compile(
-        r"\b(two thousand (?:and )?)(twenty|twenty-one|twenty-two|twenty-three|"
-        r"twenty-four|twenty-five|twenty-six|twenty-seven|twenty-eight|twenty-nine|"
-        r"thirty|thirty-one|thirty-two|thirty-three|thirty-four|thirty-five|"
-        r"thirty-six|thirty-seven|thirty-eight|thirty-nine|forty|forty-one|"
-        r"forty-two|forty-three|forty-four|forty-five|forty-six|forty-seven|"
-        r"forty-eight|forty-nine|fifty)\b",
+        r"\b(two thousand (?:and )?)("
+        r"twenty-nine|twenty-eight|twenty-seven|twenty-six|twenty-five|"
+        r"twenty-four|twenty-three|twenty-two|twenty-one|twenty|"
+        r"thirty-nine|thirty-eight|thirty-seven|thirty-six|thirty-five|"
+        r"thirty-four|thirty-three|thirty-two|thirty-one|thirty|"
+        r"forty-nine|forty-eight|forty-seven|forty-six|forty-five|"
+        r"forty-four|forty-three|forty-two|forty-one|forty|"
+        r"fifty)\b",
         _re.IGNORECASE,
     )
 

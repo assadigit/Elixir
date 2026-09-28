@@ -330,7 +330,15 @@ class TranscribeServiceDialog(QDialog):
         is_video = ext in (".mp4", ".mkv", ".avi", ".mov", ".webm")
 
         s = Settings()
-        ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
+        # V0.6.0 (T2): resolve the endpoint through the canonical
+        # ``get_ollama_url()`` (5-key priority, settings.py) instead of the
+        # single legacy ``summarisation.ollama_url`` key — the value is
+        # forwarded to ``summarize_transcript``, which now honors it.
+        ollama_url = (
+            s.get_ollama_url()
+            if hasattr(s, "get_ollama_url")
+            else s.get("summarisation.ollama_url", "http://localhost:11434")
+        )
 
         results = {"raw_path": None, "summary_path": None, "error": None}
 
