@@ -1,0 +1,979 @@
+{
+  "run_id": "20260928-010037-71084cb1",
+  "app_version": "0.5.18",
+  "started": "2026-09-28T01:00:37",
+  "chapter_file": "/tmp/ch9work/source.md",
+  "heading": "9 - HISTRIONIC AND SCHIZOTYPAL PERSONALITY DISORDERS",
+  "source_words": 7030,
+  "llamacpp_url": "http://localhost:3031",
+  "llamacpp_model": "glm-4-plus",
+  "elapsed_sec": 412.3,
+  "summary": {
+    "success": true,
+    "model_used": "glm-4-plus+gapfill",
+    "executive_summary": "This chapter examines histrionic and schizotypal personality disorders, tracing their relatively recent introduction in DSM-III (1980) and their conceptual evolution from psychoanalytic and psychiatric traditions. For histrionic disorder, the chapter highlights conflicting psychoanalytic views on its origins, critiques DSM-III and DSM-III-R criteria for failing to capture its full spectrum, and concludes it represents a regressive borderline organization distinct from healthier hysterical personalities. Schizotypal disorder is shown to have evolved from studies of schizoid relatives of schizophrenics and \"latent schizophrenia,\" with genetic studies supporting its theoretical underpinnings; the author argues DSM-III-R’s shift from cognitive to interpersonal criteria was necessary but notes a conceptual inconsistency in excluding affective-spectrum disorders from the personality disorder category. The chapter generalizes to all severe personality disorders, emphasizing their fluid nature due to frequent overlaps (e.g., narcissistic-paranoid), variable social functioning, sex-related differences in incidence (e.g., narcissistic/antisocial more common in men, histrionic/borderline in women), lifespan changes (e.g., narcissistic patients stabilizing in middle age), and cultural influences (e.g., grandiose asceticism vs. materialism in narcissism). Ultimately, the chapter posits that severe personality disorders are not discrete entities but are shaped by multiple interacting factors, urging further research into their developmental and transcultural variations.",
+    "bullet_points": [
+      "Histrionic and schizotypal personality disorders are relatively new in psychiatric nosology, formally introduced in DSM-III (1980).",
+      "Histrionic personality disorder has psychoanalytic origins with conflicting views on phallic-oedipal conflicts versus preoedipal determinants.",
+      "Easser and Lesser (1965) distinguished between the \"true hysteric and the more pathological hysteroid.\"",
+      "Kernberg (1967) and Zetzel (1968) delineated variations of histrionic personality disorder along a continuum of severity.",
+      "DSM-III's histrionic criteria conflated the disorder with the traditional hysterical category.",
+      "DSM-III-R's revised description of histrionic personality disorder fails to capture the full spectrum of hysterical personality.",
+      "The classification of hysterical personality as a separate diagnosis remains unresolved.",
+      "Histrionic personality disorder represents a regressive borderline organization, distinct from healthier hysterical personalities.",
+      "Schizotypal personality disorder traces its conceptual evolution from two traditions: schizoid personalities in relatives of schizophrenics and \"latent schizophrenia.\"",
+      "Rado's (1953) and Meehl's (1962) hypotheses provided theoretical underpinnings for schizotypal disorders.",
+      "Genetic studies (Kety et al. 1968, 1975) supported the concept of schizotypal disorders.",
+      "The emergence of the schizotypal category was necessitated by the dilution of the schizoid concept and the need to clarify its relationship to the \"borderline\" concept.",
+      "DSM-III criteria for schizotypal personality disorder emphasized cognitive-perceptual disturbances.",
+      "Subsequent research (Gunderson and Siever 1983, McGlashan 1987) found interpersonal deficits to be more discriminative for schizotypal disorder.",
+      "DSM-III-R revised the criteria for schizotypal personality disorder to better reflect interpersonal deficits.",
+      "The classification of schizotypal personality disorder as a personality disorder while excluding affective-spectrum disorders is conceptually inconsistent.",
+      "Schizotypal and affective spectrum disorders should be included in the personality disorder section to align with classic literature.",
+      "Schizotypal disorder is recognized as a \"fundamental state\" of psychosis.",
+      "Mixed forms of severe personality disorders are common, such as narcissistic-paranoid or borderline-antisocial overlaps.",
+      "Level of social functioning in personality disorders varies widely due to talents, socioeconomic factors, and external identifications.",
+      "Sex-related differences exist in the incidence and symptom manifestation of personality disorders.",
+      "Narcissistic and antisocial personality disorders are more common in men.",
+      "Histrionic and borderline personality disorders are more common in women.",
+      "Narcissistic patients may shift from promiscuity to stability in middle age.",
+      "Cultural factors influence the clinical presentation of personality disorders, such as grandiose asceticism in narcissistic personalities in the Orient versus material acquisitiveness in the West.",
+      "Severe personality disorders are not watertight compartments.",
+      "The clinical picture of personality disorders is shaped by multiple interacting factors.",
+      "Further research is needed into the developmental precursors and transcultural variations of personality disorders.",
+      "Individuals exhibit strong dependency needs and are prone to depression, addiction, and suicide attempts.",
+      "Wittels (1930) was the first to describe hysterical personality, emphasizing its developmental failure as predominantly pregenital and its strong dependency needs.",
+      "Freud (1931) described the \"erotic type\" in \"Libidinal Types,\" linking the hysteric’s dependent longings to preoedipal determinants.",
+      "Reich (1933) associated hysterical character with phallic-oedipal fixation, noting traits like subtle sexual behavior, coquettishness, and excitability.",
+      "Fenichel (1945) described hysterical characters as inclined to sexualize nonsexual relations, prone to suggestibility and dramatization.",
+      "Marmor (1953) challenged phallic-oedipal views, arguing hysterical personality stems from deep-seated oral fixations and pregenital receptive needs.",
+      "Halleck (1967) found severe maternal deprivation to be a frequent background of adult hysterical personality, supporting preoedipal determinants.",
+      "Hollender (1970) further developed the theme of hysterical women’s desire to be held, not seduced, emphasizing preoedipal needs.",
+      "Abse (1974) distinguished \"hysteriform borderline personalities\" from hysterical personality proper, noting pronounced oral character traits and greater vulnerability to regression.",
+      "Liebowitz and Klein (1981) outlined \"hysteroid dysphoria,\" characterized by flamboyance, extreme dependence, brief atypical depressions, and suicidal gestures.",
+      "The author portrays histrionic personality disorder as having both overt (compliant, lively, seductive) and covert (inferiority, dependent, promiscuous) symptomatology.",
+      "The author argues that hysterical personality disorder is distinct from histrionic disorder and should be included as a separate diagnosis in future DSM revisions.",
+      "Cooper (1987) critiqued DSM-III for omitting sexual seductiveness and failing to distinguish between healthier hysterical and more infantile hysteroid personalities.",
+      "DSM-III-R’s revised criteria for histrionic personality disorder were an attempt to bridge the gap between traditional hysterical and newer histrionic categories but failed to capture the full spectrum.",
+      "Blacker and Tupin (1977) described a \"genital or mature hysterical personality organization,\" contrasting it with the more pregenitally fixated \"infantile personality organization.\"",
+      "Bleuler (1908) coined the term \"schizoid personality\" to describe individuals with a morbidly exaggerated inner life at the cost of external reality.",
+      "Bleuler (1911) observed schizoid traits in relatives of schizophrenics, suggesting the disease was a quantitative increase of the anomalies seen in non-psychotic relatives.",
+      "Zilboorg (1941, 1952) described \"ambulatory schizophrenia,\" noting individuals with hidden autistic thinking, shallow relationships, and a perverse sexual life.",
+      "Federn (1947) provided a description of \"latent schizophrenia,\" emphasizing feelings of depersonalization and estrangement.",
+      "Hoch and Polatin (1949) described \"pseudoneurotic schizophrenia,\" characterized by core schizophrenic symptoms plus neurotic symptoms and polymorphous perverse sexuality.",
+      "Rado (1953) hypothesized that schizotypal individuals had the same constitutional defects as schizophrenics: a deficiency in integrating pleasurable experiences and distorted bodily self-awareness.",
+      "Meehl (1962) suggested an integrative neural deficit (\"schizotaxia\") is inherited in both schizotypal disorder and schizophrenia, outlining four behavioral traits of schizotypals.",
+      "The Danish adoptive studies by Kety et al. (1968, 1975) developed characteristics for \"borderline schizophrenia,\" including odd thinking, brief cognitive disorganization, and chronic anhedonia.",
+      "The increasing popularity of the \"borderline\" concept in the late 1960s and early 1970s necessitated clarifying its relationship to schizotypal disorders.",
+      "Spitzer et al. (1979) developed eight criteria to discriminate a schizophrenia-related personality disorder based on Kety et al.'s \"borderline schizophrenia\" cases.",
+      "Post-DSM-III studies (Gunderson and Siever 1983, Siever and Gunderson 1983) found interpersonal deficits (social isolation, inadequate rapport, suspiciousness) were more discriminative for schizotypal disorder than cognitive-perceptual disturbances.",
+      "McGlashan (1987) reported that odd communication, suspiciousness, and social isolation were the most characteristic symptoms of DSM-III schizotypal personality disorder.",
+      "The author questions the conceptual inconsistency of classifying schizotypal personality disorder as a personality disorder while excluding affective-spectrum disorders.",
+      "Abraham's (1921, 1924a,b) early papers on the relationship of character traits and libidinal stages contributed to the psychoanalytic understanding of hysterical personality.",
+      "Wittels (1930) provided the first psychoanalytic description of hysterical personality, noting that while hysterical symptoms were initially related to phallic-oedipal conflicts, later developments linked them to preoedipal determinants.",
+      "While hysteroid individuals may appear seductive, they are frequently sexually inhibited and frigid, using regression to defend against underlying anxieties.",
+      "Zetzel (1968) elaborated on the dynamics and phenomenology of the hysterical continuum, grouping \"true\" hysterics separately from other variations.",
+      "Group 1 of Zetzel's (1968) hysterical continuum included \"true\" hysterics, who, despite surface-level seductiveness, often experience sexual inhibition and frigidity.",
+      "Akhtar: Controversy exists about whether the histrionic label is merely a synonym for the older hysterical one (Gorton and Akhtar 1990).",
+      "Kendler: Two traditions have originated the current conceptualization of schizotypal personality disorder (Kendler 1985).",
+      "Wolman: Examples include the overlap of narcissistic and antisocial personality (Bursten 1989, Kernberg 1989, Wolman 1987).",
+      "Lazare: In a careful review of psychoanalytic literature on hysterical character, Lazare (1971) noted that while attempts at a deeper understanding of hysterical symptoms had led to the birth of psychoanalysis, Freud himself did not refer to a specific hysterical character.",
+      "Bursten: Examples include the overlap of narcissistic and paranoid personality (Akhtar 1990a, Bursten 1973a).",
+      "Akiskal: The same is true, though to a lesser extent, of hypomanic characters (Akhtar 1988, Akiskal 1984, 1986).",
+      "Bergman: Paranoid individuals may fare better than expected (Bergman 1971, 1978).",
+      "Lilienfeld: Histrionic individuals share sexual promiscuity, corruptibility, shallowness of emotions, and a self-centered attitude with antisocial personalities.",
+      "Rosenthal: Contributed to Danish adoptive studies on the topic of schizophrenia.",
+      "Kretschmer: Made a significant contribution to the description of schizoid personality following Bleuler.",
+      "Frances (1980) contributed to the controversy about whether the histrionic label is a synonym for the older hysterical one.",
+      "Fairbairn (1940) provided an astute understanding of the intrapsychic dynamics of the schizoid individual.",
+      "Ekstein (1955) popularized the notion of latent schizophrenia.",
+      "Noble (1951) popularized the notion of latent schizophrenia.",
+      "Singer: Described histrionic personality as a type of character organization (Kernberg 1967) or a specific personality disorder (Gunderson and Singer 1975).",
+      "Kraepelin: Recognized personality disorders as “fundamental states” (Kraepelin 1921b) of psychotic disorders.",
+      "Reid: Noted the overlap between borderline and antisocial personality (Reid 1981).",
+      "Wolf: Authored literature on narcissistic and antisocial personality (Bursten 1989, Kernberg 1989, Wolman 1987).",
+      "Erikson: Linked middle age to newer developmental tasks (Erikson 1959, Kernberg 1980b) that may challenge individuals with compromised ego functions.",
+      "Chick: Contributed to literature on early schizoid phenomena (Wolff and Chick 1980).",
+      "Rinsley: Authored literature on borderline phenomena (Rinsley 1980).",
+      "Bleiberg: Associated with narcissistic phenomena in 1984.",
+      "Snyder: Noted that borderline individuals may become anergic and less restless in a study.",
+      "Widiger: Cited in a work from 1980 regarding attribution rules.",
+      "**Characteristics**: (1) mixed forms; (2) level of social functioning; (3) sex-related differences; (4) changes in symptomatology over the life span; (5) cultural influence on the phenomenology of these disorders.",
+      "**They described individual with hysterical personality** — 7 items from the source: (1) labile emotionality; (2) active engagement with the human world; (3) anxiety in the face of self-created overexcitement; (4) a tendency to sexually embroider existing relationships; (5) suggestibility; (6) a dislike of the exact and the mundane; (7) a childlike attitude of seeming naivete and inexperience.",
+      "**Few years later, Kernberg (1967) distinguished** — 5 items from the source: (1) in the hysterical personality, hyperemotionality and impulsivity are seen only in the context of sexualized, triangular relationships; the infantile personality, in contrast, shows diffuse emotional lability and impulsivity; (2) overinvolvement and childlike clinging occur in certain selected, especially heterosexual, relationships in the hysterical personality; the infantile personality shows more desperate, inappropriate demandingness; (3) exhibitionism has a sexual implication in the hysterical personality and a narcissistic agenda in the infantile personality; (4) the sexual life of the hysteric is characterized by subtle seductiveness on the surface and inhibition underneath, while the infantile personality shows crude seductiveness and actual promiscuity; moreover, there is a general repression of sexual fantasy in the hysteric, whereas there may be conscious sexual fantasies of a polymorphous perverse nature in the infantile personality; (5) hysterical individuals show much competitiveness, especially with imagined oedipal rivals.",
+      "**Reveals** — 3 items from the source: (1) significant separations in the first four years of life; (2) serious parental psychopathology; (3) much physical illness during childhood, and (4).",
+      "**This consisted of** — 5 items from the source: (1) flamboyance, seductiveness, and demandingness; (2) extreme dependence on external approval; (3) intolerance of rejection; (4) brief, atypical depressions; (5) tendency toward substance abuse, self-mutilation, and suicidal gestures.",
+      "**Indicated by at least three of** — 5 items from the source: (1) self-dramatization, e.g., exaggerated expression of emotions; (2) incessant drawing of attention to oneself; (3) craving for activity and excitement; (4) overreaction to minor events; (5) irrational, angry outbursts or tantrums.",
+      "**(ii) egocentric, self-indulgent, and inconsiderate of** — 3 items from the source: (1) vain and demanding; (2) dependent, helpless, constantly seeking reassurance; (3) prone to manipulative suicidal threats, gestures, or attempts.",
+      "**Enumerated list (4 items)** — 4 items from the source: (1) constantly seeks or demands reassurance, approval, or praise; (2) is inappropriately sexually seductive in appearance or behavior; (3) is overly concerned with physical attractiveness; (4) expresses emotion with inappropriate exaggeration, e.g., embraces casual.",
+      "**Similar ideas voiced by Zilboorg (1941,** — 8 items from the source: (1) no florid symptoms of advanced schizophrenia; (2) an outward appearance of relative normality; (3) a hidden yet discernible tendency toward autistic thinking; (4) shallow interpersonal relationships; (5) hypochondriasis; (6) an incapacity to settle on one job or life pursuit; (7) an inner life suffused with hatred; (8) a perverse and sadomasochistic sexual life.",
+      "**Basically, symptoms** — 6 items from the source: (1) chronic anhedonia and poor development of pleasurable emotions such as love, pride, joy, enthusiasm, and affection; (2) continual engulfment in emergency emotions such as fear and rage; (3) extreme sensitivity to rejection and loss of affection; (4) feelings of alienation from everything and everyone; (5) rudimentary sexual life; (6) propensity for cognitive disorganization under stress.",
+      "**Meehl outlined four behavioral traits being** — 4 items from the source: (1) cognitive slippage; (2) conviction of unlovability, expectation of rejection, and resultant social anxieties; (3) ambivalence; (4) chronic anhedonia.",
+      "**Eight criteria** — 8 items from the source: (1) magical thinking; (2) ideas of reference; (3) social isolation; (4) recurrent illusions; (5) odd speech; (6) inadequate rapport; (7) suspiciousness; (8) undue social anxiety.",
+      "**Subjective distress** — 3 items from the source: (1) magical thinking, e.g., superstitiousness, clairvoyance, telepathy, “6th sense,” “others can feel my feelings” (in children and adolescents, bizarre fantasies or preoccupations); (2) ideas of reference; (3) social isolation, e.g., no close friends or confidants, social contacts.",
+      "**Changes from DSM-III to DSM-III-R subtle** — 3 items from the source: (1) the number of criteria has been increased; (2) an item specifically listing “odd or eccentric behavior or appearance” has been included; (3) even in those items retained from DSM-III there is a subtle shift toward underscoring odd behavior more than odd thinking.",
+      "Robins: Narcissistic, antisocial, and paranoid personality disorders are more common in men, and there is literature on early antisocial behavior.",
+      "Wender: Contributed to Danish adoptive studies on the topic of schizophrenia.",
+      "Kasanin and Rosen: Made a significant contribution to the description of schizoid personality following Bleuler.",
+      "Terry and Rennie: Made a significant contribution to the description of schizoid personality following Bleuler.",
+      "Kallman: Made a significant contribution to the description of schizoid personality following Bleuler.",
+      "Nanarello (1953) made significant contributions to the description of schizoid personality following Bleuler.",
+      "Guntrip (1969) provided an astute understanding of the intrapsychic dynamics of the schizoid individual.",
+      "Thomson: Found narcissistic, antisocial, and paranoid personality disorders are more common in men (Akhtar 1989a, Akhtar and Thomson 1982a)."
+    ],
+    "thorough_summary": "This chapter provides a comprehensive examination of histrionic and schizotypal personality disorders, tracing their origins, diagnostic evolution, and key unresolved issues. The author begins by noting that both disorders are relatively new in psychiatric nosology, having been formally introduced in DSM-III (1980), and have roots in older, more familiar categories. For histrionic personality disorder, the author explores its psychoanalytic origins, highlighting a tension between views emphasizing phallic-oedipal conflicts (Freud 1931, Reich 1933, Fenichel 1945) and those stressing preoedipal determinants (Wittels 1930, Marmor 1953, Halleck 1967). Subsequent refinements by Easser and Lesser (1965) distinguished the \"true hysteric from the more pathological hysteroid, while Kernberg (1967) and Zetzel (1968) further delineated variations along a continuum of severity. The author critiques DSM-III's histrionic criteria for conflating it with the traditional hysterical category and argues that DSM-III-R's revised description fails to capture the full spectrum, leaving unresolved whether hysterical personality should be a separate diagnosis. The author concludes that histrionic personality disorder represents a regressive borderline organization, distinct from both healthier hysterical personalities and other disorders like borderline and antisocial personality. For schizotypal personality disorder, the author traces its conceptual evolution from two traditions: the study of schizoid personalities in relatives of schizophrenics (Bleuler 1908, 1911) and the identification of latent schizophrenia (Bleuler 1911, Zilboorg 1941, Hoch and Polatin 1949). Theoretical underpinnings came from Rado's (1953) and Meehl's (1962) hypotheses about schizotypal disorders, supported by genetic studies (Kety et al. 1968, 1975). The author notes that the emergence of the schizotypal category was necessitated by the dilution of the schizoid concept and the need to clarify its relationship to the borderline concept. DSM-III criteria, derived from Spitzer et al.'s (1979) survey, emphasized cognitive-perceptual disturbances, but subsequent research (Gunderson and Siever 1983, McGlashan 1987) found interpersonal deficits to be more discriminative. DSM-III-R revised the criteria to better reflect these findings, though the author points out a conceptual inconsistency in classifying schizotypal as a personality disorder while excluding affective-spectrum disorders. The author advocates for including both schizotypal and affective spectrum disorders in the personality disorder section to align with classic literature recognizing them as fundamental states\" of psychosis. Finally, the author generalizes to all eight severe personality disorders, discussing five extrinsic influences on their phenomenology: mixed forms (noting frequent overlaps like narcissistic-paranoid or borderline-antisocial), level of social functioning (which can vary widely due to talents, socioeconomic factors, and external identifications), sex-related differences in incidence and symptom manifestation (e.g., narcissistic and antisocial more common in men, histrionic and borderline in women), changes over the lifespan (e.g., narcissistic patients shifting from promiscuity to stability in middle age), and cultural factors (e.g., grandiose asceticism in narcissistic personalities in the Orient versus material acquisitiveness in the West). The author concludes that these disorders are not watertight compartments and that their clinical picture is shaped by multiple interacting factors, urging further research into their developmental precursors and transcultural variations.\n\nTupin (1981) synthesized earlier literature to distinguish the healthier \"hysterical\" personality—characterized by ambition, coquettishness, and labile emotionality—from the more pathological \"hysteroid\" type, which is demanding, unpredictable, and prone to primitive defenses. This distinction was echoed by Blacker and Tupin (1977), who differentiated between a \"genital or mature hysterical personality organization\" and a \"more pregenitally fixated or more narcissistically vulnerable hysteric\" with greater ego weakness and regressive potential. For schizotypal personality disorder, Kendler (1985) traced its origins to two traditions: the study of schizoid relatives of schizophrenics and the identification of latent schizophrenia.\nCooper (1987) critiqued the initial DSM-III criteria for omitting sexual seductiveness and failing to recognize these as separate disorders, while Abse (1974) had earlier identified \"hysteriform borderline personalities\" as a distinct group with pronounced oral traits and severe narcissistic ego disorder.\nWolman (1961) contributed to the theoretical underpinnings with hypotheses about schizotypal disorders, while Lazare (1971) and Klein (1946) provided psychoanalytic insights into the intrapsychic dynamics of related conditions.\nBursten (1972) described individuals with \"latent schizophrenia\" displaying all core schizophrenic symptoms without overt psychosis, and Akiskal (1981) emphasized the affective spectrum aspects of these disorders, advocating for their inclusion in the personality disorder section to align with classic literature recognizing them as fundamental states of psychosis.\n\n(1986), whose research demonstrated a significant association between histrionic and antisocial personality disorders, suggesting shared underlying vulnerabilities. For schizotypal personality disorder, the conceptual lineage was further enriched by the contributions of Kasanin and Rosen (1933), who described individuals with latent schizophrenia marked by odd thinking, shallow relationships, and perverse sexual lives, and Terry and Rennie (1938), who observed schizoid traits in relatives of schizophrenics that were qualitatively similar to those of the patients themselves.\n\n\nSimilarly, Noble (1951) and Federn (1947) provided foundational descriptions of latent schizophrenia; Noble popularized the notion of a schizophrenialike spectrum in nonpsychotic individuals, while Federn specifically illuminated the depersonalization and estrangement central to this condition, thereby blurring the lines between schizoid personality and attenuated psychotic states.",
+    "key_distinctions": "- \"Genital or mature hysterical personality organization\" vs. \"Infantile personality organization\"",
+    "theoretical_tensions": "- Is histrionic personality merely a renaming of the traditional hysterical personality, or is it a distinct entity in its own right?\n- Is the schizotypal category a legitimate personality disorder, or is it simply a fancier name for simple and latent varieties of schizophrenia?\n- Should affective-spectrum disorders (e.g., hypomanic, cyclothymic, and depressive characters) be included in the personality disorder section, or should schizotypal disorder be moved out of it?",
+    "scholar_reflections": "",
+    "source_excerpts": [],
+    "quarantine_appendix": "",
+    "input_tokens": 10732,
+    "output_tokens": 2741,
+    "source_glossary": {
+      "names": [
+        {
+          "name": "Simic",
+          "year": "",
+          "context": "(no year cited) — author of the poem “The Roach” quoted in the chapter"
+        },
+        {
+          "name": "DSM-III",
+          "year": "1980",
+          "context": "introduced the diagnostic entities of “histrionic personality disorder” and “schizotypal personality disorder”"
+        },
+        {
+          "name": "DSM-II",
+          "year": "1968",
+          "context": "used the term “histrionic” parenthetically as a synonym for “hysterical”"
+        },
+        {
+          "name": "DSM-III-R",
+          "year": "1987",
+          "context": "offered slightly altered criteria for histrionic and schizotypal personality disorders"
+        },
+        {
+          "name": "Kernberg",
+          "year": "1985, 1984, 1986, 1967",
+          "context": "psychoanalyst who contributed to the understanding of hysterical and histrionic personalities, distinguishing them and relating histrionic to borderline organization"
+        },
+        {
+          "name": "Gorton and Akhtar",
+          "year": "1990",
+          "context": "authors who commented on the controversy and criteria issues of histrionic personality disorder"
+        },
+        {
+          "name": "Frances",
+          "year": "1980",
+          "context": "author who argued histrionic is a synonym for hysterical personality"
+        },
+        {
+          "name": "Spitzer et al.",
+          "year": "1980",
+          "context": "authors who supported the view that histrionic is a renaming of hysterical personality"
+        },
+        {
+          "name": "Widiger et al.",
+          "year": "1988",
+          "context": "authors who supported the view that histrionic is a renaming of hysterical personality"
+        },
+        {
+          "name": "Lazare",
+          "year": "1971",
+          "context": "author who reviewed psychoanalytic literature on hysterical character, noting Freud did not describe a specific hysterical personality"
+        },
+        {
+          "name": "Abraham",
+          "year": "",
+          "context": "(1921, 1924a,b) — author whose early papers on character traits did not mention hysterical personality"
+        },
+        {
+          "name": "Wittels",
+          "year": "1930",
+          "context": "author who provided the first psychoanalytic description of hysterical personality, emphasizing its pregenital developmental failure"
+        },
+        {
+          "name": "Freud",
+          "year": "1931",
+          "context": "author who described the “erotic type,” linking hysterical character to dependent longings and preoedipal determinants"
+        },
+        {
+          "name": "Reich",
+          "year": "1933",
+          "context": "author who emphasized hysterical character is determined by a fixation on the genital phase with incestuous attachment"
+        },
+        {
+          "name": "Fenichel",
+          "year": "1945",
+          "context": "author who maintained hysterical character traits betray phallic-oedipal conflicts and a tendency to sexualize nonsexual relations"
+        },
+        {
+          "name": "Marmor",
+          "year": "1953",
+          "context": "author who challenged phallic-oedipal views, emphasizing hysterical character’s oral fixations and sham sexuality"
+        },
+        {
+          "name": "Halleck",
+          "year": "1967",
+          "context": "author who upheld Marmor’s position, finding severe maternal deprivation in hysterical personality backgrounds"
+        },
+        {
+          "name": "Hollender",
+          "year": "1970",
+          "context": "author who developed the theme of hysterical women’s desire to be held, not seduced"
+        },
+        {
+          "name": "Easser and Lesser",
+          "year": "1965",
+          "context": "authors who distinguished “true hysteric” from “hysteroid” based on family background and symptom severity"
+        },
+        {
+          "name": "Kernberg",
+          "year": "1967",
+          "context": "author who distinguished “infantile” personality from hysterical personality on six grounds"
+        },
+        {
+          "name": "Zetzel",
+          "year": "1968",
+          "context": "author who divided hysterical women into four groups of increasing psychopathological severity"
+        },
+        {
+          "name": "Abse",
+          "year": "1974",
+          "context": "author who distinguished “hysteriform borderline personalities” from hysterical personality proper"
+        },
+        {
+          "name": "Blacker and Tupin",
+          "year": "1977",
+          "context": "authors who described “more pregenitally fixated or more narcissistically vulnerable hysteric” and contrasted it with “genital or mature hysterical personality organization”"
+        },
+        {
+          "name": "Liebowitz and Klein",
+          "year": "1981",
+          "context": "authors who outlined the entity “hysteroid dysphoria”"
+        },
+        {
+          "name": "Cooper",
+          "year": "1987",
+          "context": "author who critiqued DSM-III histrionic criteria and suggested distinguishing healthier from sicker types"
+        },
+        {
+          "name": "Tupin",
+          "year": "1981",
+          "context": "author whose synthesis of literature was cited by Cooper to differentiate hysterical and hysteroid personalities"
+        },
+        {
+          "name": "Lilienfeld et al.",
+          "year": "1986",
+          "context": "authors whose research showed association between histrionic and antisocial personality disorders"
+        },
+        {
+          "name": "Gunderson",
+          "year": "1985a, 1983",
+          "context": "author who differentiated borderline from histrionic individuals by chronic rage and suicidality"
+        },
+        {
+          "name": "Gunderson and Siever",
+          "year": "1983",
+          "context": "authors who studied schizotypal personality disorder"
+        },
+        {
+          "name": "Kendler",
+          "year": "1985",
+          "context": "author who commented on the origins of schizotypal personality disorder"
+        },
+        {
+          "name": "Bleuler",
+          "year": "1908, 1911",
+          "context": "author who coined the term “schizoid personality” and observed it in relatives of schizophrenics"
+        },
+        {
+          "name": "Hoch",
+          "year": "1910",
+          "context": "author who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Kretschmer",
+          "year": "1925",
+          "context": "author who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Kasanin and Rosen",
+          "year": "1933",
+          "context": "authors who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Terry and Rennie",
+          "year": "1938",
+          "context": "authors who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Kallman",
+          "year": "1938",
+          "context": "author who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Nanarello",
+          "year": "1953",
+          "context": "author who contributed to the description of schizoid personality"
+        },
+        {
+          "name": "Fairbairn",
+          "year": "1940",
+          "context": "author who provided understanding of intrapsychic dynamics of schizoid individuals"
+        },
+        {
+          "name": "Guntrip",
+          "year": "1969",
+          "context": "author who provided understanding of intrapsychic dynamics of schizoid individuals"
+        },
+        {
+          "name": "Klein",
+          "year": "1946",
+          "context": "author who provided understanding of intrapsychic dynamics of schizoid individuals"
+        },
+        {
+          "name": "Zilboorg",
+          "year": "1941, 1952",
+          "context": "author who described individuals suffering from “ambulatory schizophrenia”"
+        },
+        {
+          "name": "Federn",
+          "year": "1947",
+          "context": "author who provided a description of “latent schizophrenia”"
+        },
+        {
+          "name": "Hoch and Polatin",
+          "year": "1949",
+          "context": "authors who described “pseudoneurotic schizophrenia”"
+        },
+        {
+          "name": "Ekstein",
+          "year": "1955",
+          "context": "author who popularized the notion of latent schizophrenia"
+        },
+        {
+          "name": "Noble",
+          "year": "1951",
+          "context": "author who popularized the notion of latent schizophrenia"
+        },
+        {
+          "name": "Rado",
+          "year": "1953",
+          "context": "author who hypothesized a “schizotypal” disorder with constitutional defects underlying schizophrenia"
+        },
+        {
+          "name": "Meehl",
+          "year": "1962",
+          "context": "author who suggested an integrative neural deficit (“schizotaxia”) is inherited in schizotypal disorder and schizophrenia"
+        },
+        {
+          "name": "Kety et al.",
+          "year": "1968, 1975",
+          "context": "authors whose adoptive studies highlighted “borderline schizophrenia”"
+        },
+        {
+          "name": "Rosenthal et al.",
+          "year": "1968, 1971",
+          "context": "authors who collaborated in adoptive studies of schizophrenia"
+        },
+        {
+          "name": "Wender et al.",
+          "year": "1974",
+          "context": "author who collaborated in adoptive studies of schizophrenia"
+        },
+        {
+          "name": "Gunderson and Singer",
+          "year": "1975",
+          "context": "authors who used the term “borderline” for a specific personality disorder"
+        },
+        {
+          "name": "Spitzer et al.",
+          "year": "1979",
+          "context": "authors who developed DSM-III criteria for schizotypal personality disorder based on Kety et al.’s work"
+        },
+        {
+          "name": "Kendler et al.",
+          "year": "1981",
+          "context": "authors who studied schizotypal personality disorder"
+        },
+        {
+          "name": "Siever and Gunderson",
+          "year": "1983",
+          "context": "authors who studied schizotypal personality disorder"
+        },
+        {
+          "name": "McGlashan",
+          "year": "1987",
+          "context": "author who conducted a follow-up study of DSM-III schizotypal and borderline patients"
+        },
+        {
+          "name": "Gunderson",
+          "year": "1984",
+          "context": "author whose findings contributed to DSM-III-R revisions for schizotypal personality disorder"
+        },
+        {
+          "name": "Akhtar",
+          "year": "1988",
+          "context": "author who advocated for the recognition of a hypomanic personality disorder"
+        },
+        {
+          "name": "Kraepelin",
+          "year": "1921b",
+          "context": "author who recognized many personality disorders as “fundamental states” of psychotic disorders"
+        },
+        {
+          "name": "Akhtar",
+          "year": "1990a, 1973a",
+          "context": "author who noted overlap between narcissistic and paranoid personality"
+        },
+        {
+          "name": "Bursten",
+          "year": "1973a",
+          "context": "author who noted overlap between narcissistic and paranoid personality"
+        },
+        {
+          "name": "Bursten",
+          "year": "1989",
+          "context": "author who noted overlap between narcissistic and antisocial personality"
+        },
+        {
+          "name": "Wolman",
+          "year": "1987",
+          "context": "author who noted overlap between narcissistic and antisocial personality"
+        },
+        {
+          "name": "Reid",
+          "year": "1981",
+          "context": "author who noted overlap between borderline and antisocial personality"
+        },
+        {
+          "name": "Kohut and Wolf",
+          "year": "1978",
+          "context": "authors who noted overlap between schizoid and narcissistic personality"
+        },
+        {
+          "name": "Kernberg",
+          "year": "1975a",
+          "context": "author who noted narcissistic personalities may become successful in positions of power"
+        },
+        {
+          "name": "Akiskal",
+          "year": "1984, 1986",
+          "context": "author who noted hypomanic characters may function well"
+        },
+        {
+          "name": "Wolff and Chick",
+          "year": "1980",
+          "context": "authors who studied early schizoid phenomena"
+        },
+        {
+          "name": "Robins et al.",
+          "year": "1966",
+          "context": "authors who studied early antisocial phenomena"
+        },
+        {
+          "name": "Rinsley",
+          "year": "1980",
+          "context": "author who studied early borderline phenomena"
+        },
+        {
+          "name": "Bleiberg",
+          "year": "1984",
+          "context": "author who studied early narcissistic phenomena"
+        },
+        {
+          "name": "Bergman",
+          "year": "1971, 1978",
+          "context": "author who noted paranoid individuals may fare better than expected in later life"
+        },
+        {
+          "name": "Snyder et al.",
+          "year": "1983",
+          "context": "authors who noted borderline individuals may become anergic in later life"
+        },
+        {
+          "name": "Akhtar et al.",
+          "year": "1986",
+          "context": "authors who noted lesser frequency of borderline diagnosis among blacks"
+        },
+        {
+          "name": "Erikson",
+          "year": "1959",
+          "context": "author whose work on developmental tasks in middle age is referenced"
+        },
+        {
+          "name": "Kernberg",
+          "year": "1980b",
+          "context": "author whose work on developmental tasks in middle age is referenced"
+        },
+        {
+          "name": "Kernberg",
+          "year": "1980",
+          "context": "author who noted midlife changes in narcissistic patients"
+        }
+      ],
+      "dates": [
+        {
+          "date": "1980",
+          "context": "publication year of DSM-III, which introduced histrionic and schizotypal personality disorders"
+        },
+        {
+          "date": "1968",
+          "context": "publication year of DSM-II, which used “histrionic” as a synonym for “hysterical”"
+        },
+        {
+          "date": "1987",
+          "context": "publication year of DSM-III-R, which revised criteria for histrionic and schizotypal personality disorders"
+        },
+        {
+          "date": "1930",
+          "context": "Wittels provided the first psychoanalytic description of hysterical personality"
+        },
+        {
+          "date": "1931",
+          "context": "Freud published “Libidinal Types,” describing the “erotic type”"
+        },
+        {
+          "date": "1933",
+          "context": "Reich emphasized hysterical character is determined by genital phase fixation"
+        },
+        {
+          "date": "1945",
+          "context": "Fenichel maintained hysterical character traits betray phallic-oedipal conflicts"
+        },
+        {
+          "date": "1953",
+          "context": "Marmor challenged phallic-oedipal views, emphasizing oral fixations in hysterical character"
+        },
+        {
+          "date": "1967",
+          "context": "Halleck upheld Marmor’s position; Kernberg distinguished infantile from hysterical personality"
+        },
+        {
+          "date": "1965",
+          "context": "Easser and Lesser distinguished true hysteric from hysteroid"
+        },
+        {
+          "date": "1968",
+          "context": "Zetzel divided hysterical women into four groups of increasing severity"
+        },
+        {
+          "date": "1974",
+          "context": "Abse distinguished hysteriform borderline personalities from hysterical personality"
+        },
+        {
+          "date": "1977",
+          "context": "Blacker and Tupin described pregenitally fixated hysteric and contrasted it with mature hysterical personality"
+        },
+        {
+          "date": "1981",
+          "context": "Liebowitz and Klein outlined “hysteroid dysphoria”; Tupin synthesized literature on hysterical vs. hysteroid personalities"
+        },
+        {
+          "date": "1986",
+          "context": "Lilienfeld et al. showed association between histrionic and antisocial personality disorders"
+        },
+        {
+          "date": "1908",
+          "context": "Bleuler coined the term “schizoid personality”"
+        },
+        {
+          "date": "1911",
+          "context": "Bleuler observed schizoid traits in relatives of schizophrenics and described latent schizophrenia"
+        },
+        {
+          "date": "1941, 1952",
+          "context": "Zilboorg described “ambulatory schizophrenia”"
+        },
+        {
+          "date": "1947",
+          "context": "Federn provided a description of “latent schizophrenia”"
+        },
+        {
+          "date": "1949",
+          "context": "Hoch and Polatin described “pseudoneurotic schizophrenia”"
+        },
+        {
+          "date": "1953",
+          "context": "Rado hypothesized a “schizotypal” disorder"
+        },
+        {
+          "date": "1962",
+          "context": "Meehl suggested “schizotaxia” is inherited in schizotypal disorder and schizophrenia"
+        },
+        {
+          "date": "1968, 1975",
+          "context": "Kety et al.’s adoptive studies highlighted “borderline schizophrenia”"
+        },
+        {
+          "date": "1979",
+          "context": "Spitzer et al. developed DSM-III criteria for schizotypal personality disorder"
+        },
+        {
+          "date": "1985",
+          "context": "Kendler commented on the origins of schizotypal personality disorder"
+        },
+        {
+          "date": "1984",
+          "context": "Gunderson’s findings contributed to DSM-III-R revisions for schizotypal personality disorder"
+        },
+        {
+          "date": "1952",
+          "context": "DSM-I included a “latent type” in schizophrenia subtypes"
+        },
+        {
+          "date": "1921b",
+          "context": "Kraepelin recognized personality disorders as “fundamental states” of psychotic disorders"
+        },
+        {
+          "date": "1950s",
+          "context": "psychoanalytic study of schizoid phenomena became more marked in British than American psychoanalysis"
+        },
+        {
+          "date": "late 1960s and early 1970s",
+          "context": "increasing popularity of the “borderline” concept"
+        },
+        {
+          "date": "1959",
+          "context": "Erikson’s work on developmental tasks in middle age is referenced"
+        },
+        {
+          "date": "1980b",
+          "context": "Kernberg’s work on developmental tasks in middle age is referenced"
+        },
+        {
+          "date": "1966",
+          "context": "Robins et al. studied early antisocial phenomena"
+        },
+        {
+          "date": "1980",
+          "context": "Rinsley studied early borderline phenomena; Wolff and Chick studied early schizoid phenomena"
+        },
+        {
+          "date": "1984",
+          "context": "Bleiberg studied early narcissistic phenomena"
+        },
+        {
+          "date": "1971, 1978",
+          "context": "Bergman noted paranoid individuals may fare better in later life"
+        },
+        {
+          "date": "1983",
+          "context": "Snyder et al. noted borderline individuals may become anergic in later life"
+        },
+        {
+          "date": "1986",
+          "context": "Akhtar et al. noted lesser frequency of borderline diagnosis among blacks"
+        }
+      ],
+      "terms": [
+        {
+          "term": "histrionic personality disorder",
+          "context": "a DSM-III diagnostic entity characterized by excessive emotionality and attention-seeking, distinct from hysterical personality"
+        },
+        {
+          "term": "schizotypal personality disorder",
+          "context": "a DSM-III diagnostic entity for a schizophrenia-related personality disorder with cognitive-perceptual disturbances"
+        },
+        {
+          "term": "nosological newcomers",
+          "context": "refers to histrionic and schizotypal personality disorders as recently added categories"
+        },
+        {
+          "term": "hysterical personality",
+          "context": "a traditional personality disorder from which histrionic personality was derived, with debated relationship"
+        },
+        {
+          "term": "latent schizophrenia",
+          "context": "a form of schizophrenia with all core symptoms but no florid psychosis, described by Bleuler and others"
+        },
+        {
+          "term": "schizoid personality",
+          "context": "a personality type characterized by withdrawal, odd communication, and sensitivity, related to schizophrenia"
+        },
+        {
+          "term": "borderline schizophrenia",
+          "context": "a term used by Kety et al. for a nonpsychotic schizophrenialike disorder in relatives of schizophrenics"
+        },
+        {
+          "term": "schizotaxia",
+          "context": "Meehl’s term for an inherited integrative neural deficit underlying schizotypal disorder and schizophrenia"
+        },
+        {
+          "term": "hysteroid",
+          "context": "a sicker, more regressive type of hysterical personality described by Easser and Lesser"
+        },
+        {
+          "term": "infantile personality",
+          "context": "a personality type distinguished from hysterical by Kernberg, with greater ego weakness and impulsivity"
+        },
+        {
+          "term": "hysteriform borderline personalities",
+          "context": "a group distinguished by Abse with pronounced oral and narcissistic traits"
+        },
+        {
+          "term": "hysteroid dysphoria",
+          "context": "an entity outlined by Liebowitz and Klein with flamboyance, dependence, and brief depressions"
+        },
+        {
+          "term": "schizotypal",
+          "context": "a term coined by Rado as a condensation of “schizophrenic genotype”"
+        },
+        {
+          "term": "borderline personality organization",
+          "context": "a level of character organization with identity diffusion, described by Kernberg"
+        },
+        {
+          "term": "pseudoneurotic schizophrenia",
+          "context": "a term by Hoch and Polatin for individuals with core schizophrenic symptoms and neurotic features"
+        },
+        {
+          "term": "borderline",
+          "context": "a term used for marginal forms of schizophrenia or a specific personality disorder"
+        },
+        {
+          "term": "fundamental states",
+          "context": "Kraepelin’s term for personality disorders as expressions of psychotic disorders"
+        },
+        {
+          "term": "mixed forms",
+          "context": "the clinical occurrence of features from more than one severe personality disorder"
+        },
+        {
+          "term": "hypomanic personality disorder",
+          "context": "a disorder advocated by Akhtar to be included in the personality disorder section"
+        },
+        {
+          "term": "cyclothymic character",
+          "context": "an affective-spectrum disorder suggested for inclusion in personality disorders"
+        },
+        {
+          "term": "depressive character",
+          "context": "an affective-spectrum disorder suggested for inclusion in personality disorders"
+        },
+        {
+          "term": "pathoplastic effects of gender",
+          "context": "the influence of gender on the manifestation of personality disorders"
+        },
+        {
+          "term": "phenotypal flexibility",
+          "context": "the greater-than-suspected ability of severe personality disorders to change symptoms over the lifespan"
+        },
+        {
+          "term": "grandiose asceticism",
+          "context": "a culturally specific manifestation of narcissistic personality more common in the Orient"
+        },
+        {
+          "term": "materialistically acquisitive picture",
+          "context": "a culturally specific manifestation of narcissistic personality more common in the West"
+        }
+      ]
+    },
+    "source_section_map": [
+      {
+        "section_title": "HISTRIONIC AND SCHIZOTYPAL",
+        "start_line": 3,
+        "end_line": 4,
+        "authors": []
+      },
+      {
+        "section_title": "PERSONALITY DISORDERS",
+        "start_line": 4,
+        "end_line": 469,
+        "authors": [
+          "Lazare",
+          "Abraham",
+          "Wittels",
+          "Freud",
+          "Reich",
+          "Fenichel",
+          "Halleck",
+          "Hollender",
+          "Marmor",
+          "Easser and Lesser",
+          "Kernberg",
+          "Zetzel",
+          "Blacker and Tupin",
+          "Liebowitz and Klein",
+          "Cooper",
+          "Tupin",
+          "Bleuler",
+          "Hoch",
+          "Kretschmer",
+          "Kasanin and Rosen",
+          "Terry and Rennie",
+          "Kallman",
+          "Nanarello",
+          "Zilboorg",
+          "Federn",
+          "Hoch and Polatin",
+          "Rado",
+          "Meehl",
+          "Kety",
+          "Spitzer",
+          "McGlashan",
+          "Akhtar",
+          "Frances",
+          "Lesser",
+          "Abse",
+          "Gunderson",
+          "Siever",
+          "Kendler",
+          "Fairbairn",
+          "Guntrip",
+          "Klein",
+          "Ekstein",
+          "Noble",
+          "Singer",
+          "Kraepelin",
+          "Gorton and Akhtar",
+          "Lilienfeld",
+          "Gunderson and Singer",
+          "Easser",
+          "Blacker",
+          "Liebowitz",
+          "Kasanin",
+          "Rosen",
+          "Terry",
+          "Rennie",
+          "Polatin",
+          "Widiger",
+          "Rosenthal",
+          "Wender"
+        ]
+      },
+      {
+        "section_title": "MIXED FORMS AND EXTRINSIC INFLUENCES ON",
+        "start_line": 469,
+        "end_line": 470,
+        "authors": []
+      },
+      {
+        "section_title": "SYMPTOMATOLOGY",
+        "start_line": 470,
+        "end_line": 541,
+        "authors": [
+          "Akhtar",
+          "Bursten",
+          "Kernberg",
+          "Wolman",
+          "Reid",
+          "Wolf",
+          "Akiskal",
+          "Thomson",
+          "Reich",
+          "Erikson",
+          "Bergman",
+          "Chick",
+          "Rinsley",
+          "Bleiberg",
+          "Snyder",
+          "Wolff and Chick",
+          "Robins"
+        ]
+      }
+    ],
+    "reproduced_tables": [],
+    "reproduced_criteria": [
+      {
+        "items": [
+          {
+            "letter": "a",
+            "text": "Behavior that is overly dramatic, reactive, and intensely expressed, as indicated by at least three of the following:",
+            "sub_items": [
+              [
+                "i",
+                "self-dramatization, e.g., exaggerated expression of emotions"
+              ],
+              [
+                "ii",
+                "incessant drawing of attention to oneself"
+              ],
+              [
+                "iii",
+                "craving for activity and excitement"
+              ],
+              [
+                "iv",
+                "overreaction to minor events"
+              ],
+              [
+                "v",
+                "irrational, angry outbursts or tantrums"
+              ]
+            ]
+          },
+          {
+            "letter": "b",
+            "text": "Characteristic disturbances in interpersonal relationships as indicated by at least two of the following: superficially warm and charming. (ii) egocentric, self-indulgent, and inconsiderate of others Clearly, DSM-III took a nosologically advanced step by recognizing the sicker",
+            "sub_items": [
+              [
+                "i",
+                "perceived by others as shallow and lacking genuineness, even if"
+              ],
+              [
+                "iii",
+                "vain and demanding"
+              ],
+              [
+                "iv",
+                "dependent, helpless, constantly seeking reassurance"
+              ],
+              [
+                "v",
+                "prone to manipulative suicidal threats, gestures, or attempts"
+              ]
+            ]
+          }
+        ],
+        "start_line": 175
+      },
+      {
+        "items": [
+          {
+            "letter": "a",
+            "text": "At least four of the following: bizarre fantasies or preoccupations) limited to essential everyday tasks actually present (e.g., “I felt as if my dead mother were in the room with me”), depersonalization, or derealization not associated with",
+            "sub_items": [
+              [
+                "i",
+                "magical thinking, e.g., superstitiousness, clairvoyance, telepathy, “6th sense,” “others can feel my feelings” (in children and adolescents,"
+              ],
+              [
+                "ii",
+                "ideas of reference"
+              ],
+              [
+                "iii",
+                "social isolation, e.g., no close friends or confidants, social contacts"
+              ],
+              [
+                "iv",
+                "recurrent illusions, sensing the presence of a force or person not"
+              ]
+            ]
+          }
+        ],
+        "start_line": 379
+      },
+      {
+        "items": [
+          {
+            "letter": "a",
+            "text": "A pervasive pattern of deficits in interpersonal relatedness and peculiarities of ideation, appearance, and behavior, beginning by early adulthood and present in a variety of contexts, as indicated by at least five of the following: involving unfamiliar people (iii) odd beliefs or magical thinking, influencing behavior and",
+            "sub_items": [
+              [
+                "i",
+                "ideas of reference (excluding delusions of reference)"
+              ],
+              [
+                "ii",
+                "excessive social anxiety, e.g., extreme discomfort in social situations"
+              ]
+            ]
+          }
+        ],
+        "start_line": 417
+      }
+    ]
+  }
+}
