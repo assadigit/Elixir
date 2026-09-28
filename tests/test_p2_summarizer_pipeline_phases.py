@@ -890,7 +890,11 @@ class TestCrashGuards:
         s = make_summarizer(tmp_path, log_lines=logs)
         ScriptedLLM(primary_response=_full_response(source)).install(s)
 
-        def _dedup(bullets, threshold=0.85):
+        # V0.5.18: the dedup call sites now pass the author-coverage veto's
+        # kwargs (source_authors / context_text / source_text) — the stub
+        # accepts them (the veto itself is characterization-tested directly
+        # in tests/test_v0518_semantic_dedup_veto.py).
+        def _dedup(bullets, threshold=0.85, **_veto_kwargs):
             return list(bullets)[:-1] if len(bullets) > 1 else list(bullets)
 
         s._semantic_dedup_bullets = _dedup  # type: ignore[method-assign]

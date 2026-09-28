@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from functools import lru_cache
 
 from core.preprocessing.citations_regex import APOS as _CIT_APOS
 from core.preprocessing.citations_regex import NAME_SEP as _CIT_NAME_SEP
@@ -48,7 +49,15 @@ _SUMMARY_CITATION_RE = re.compile(
     r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)?"
     r"(?:\s+et\s+al\.?)?"
     r")"
-    r"\s*\(?(\d{4}[a-z]?)\)?"
+    # V0.5.18 (ch.9 audit E2 — a cross-field year slip): the author→year
+    # join now tolerates the markdown/comma shapes the shipped bullets
+    # actually use: "AuthorA et al., 1984", "AuthorB *1987*",
+    # "AuthorC (*1985a*". Pre-V0.5.18 the join was ``\s*\(?\d`` — a comma
+    # or an italic asterisk between author and year made the citation
+    # INVISIBLE to the grounding check (the mis-cited year slipped through
+    # unnamed). Optional, zero-width additions: every previously-matching
+    # shape still matches byte-for-byte.
+    r"[\s,]*(?:\(\s*)?\*?\s*(\d{4}[a-z]?)\)?\*?"
 )
 
 _BOLD_NAME_RE = re.compile(
@@ -96,6 +105,46 @@ _BOLD_NAME_STRUCTURAL_LABELS = frozenset(
 )
 
 _BARE_YEAR_RE = re.compile(r"\b(1\d{3}|20\d{2}|21\d{2})\b")
+
+# V0.5.18: the non-name stopword shapes (check 2's inline literal, hoisted
+# to a module constant so the new check 3 shares the exact same guard —
+# "In (1950)" / "His (1986)" are not author citations in EITHER check).
+_STOPWORD_NAME_SHAPES = frozenset(
+    {
+        "in",
+        "by",
+        "the",
+        "a",
+        "an",
+        "as",
+        "at",
+        "to",
+        "of",
+        "and",
+        "or",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "while",
+        "when",
+        "where",
+        "later",
+        "then",
+        "early",
+        # V0.5.2 (TUNING): pronouns falsely matched as author names by the
+        # citation regex (e.g. "His (1986)" in "Volkan: His 1986 insights...").
+        "his",
+        "her",
+        "their",
+        "its",
+        "he",
+        "she",
+        "they",
+        "his,",
+    }
+)
 
 
 def validate_years(
@@ -198,41 +247,7 @@ def validate_years(
                 if garbage_author_reason(author_clean, year, check_year=True):
                     continue
                 # Skip obvious non-names (the regex can catch "In (1950)" etc.)
-                if author_clean.split()[0].lower() in {
-                    "in",
-                    "by",
-                    "the",
-                    "a",
-                    "an",
-                    "as",
-                    "at",
-                    "to",
-                    "of",
-                    "and",
-                    "or",
-                    "for",
-                    "with",
-                    "from",
-                    "that",
-                    "this",
-                    "while",
-                    "when",
-                    "where",
-                    "later",
-                    "then",
-                    "early",
-                    # V0.5.2 (TUNING): pronouns falsely matched as author
-                    # names by the citation regex (e.g. "His (1986)" in
-                    # "Volkan: His 1986 insights...").
-                    "his",
-                    "her",
-                    "their",
-                    "its",
-                    "he",
-                    "she",
-                    "they",
-                    "his,",
-                }:
+                if author_clean.split()[0].lower() in _STOPWORD_NAME_SHAPES:
                     continue
                 if _author_in_source(author_clean, src_lower):
                     continue
@@ -278,7 +293,127 @@ def validate_years(
                 )
             )
 
+    # --- Check 3 (V0.5.18): author-YEAR consistency -------------------------
+    # The ch.9 audit's E2 slip: a bullet cited "(AuthorA et al., 1984)"
+    # while the source pairs that author with 1986 — 1984 belongs to the
+    # ADJACENT citation for a DIFFERENT author. The author is real (check 2
+    # passes), the year is plausible (check 1 passes) — only the PAIR is
+    # wrong. This check flags a KNOWN source author cited with
+    # a year that is neither in the roster's author→years set NOR
+    # citation-shaped-adjacent to the name in the raw source (the exemption
+    # for years the regex roster missed but the source genuinely pairs with
+    # the name — "Name[non-digits ≤48]year"). Flag-only: the correction is
+    # ambiguous without an LLM (which year is right?), same posture as
+    # checks 1-2. Content-agnostic (Rule 1 ✓): the year sets come from the
+    # runtime extract_citations on source_text.
+    if source_authors and source_text:
+        try:
+            _src_years = _source_author_years(source_text)
+            if _src_years:
+                _seen_pairs: set[tuple[str, str]] = set()
+                for m in _SUMMARY_CITATION_RE.finditer(text):
+                    author = m.group(1).strip()
+                    year = m.group(2)
+                    _clean = re.sub(r"['\u2019]s$", "", author).strip(".,;:")
+                    _clean = re.sub(r"\s+et\s+al\.?$", "", _clean, flags=re.IGNORECASE).strip()
+                    if len(_clean) < 3:
+                        continue
+                    from core.preprocessing.author_garbage import garbage_author_reason
+
+                    if garbage_author_reason(_clean, year, check_year=True):
+                        continue
+                    if _clean.split()[0].lower() in _STOPWORD_NAME_SHAPES:
+                        continue
+                    # The roster's year set for this author (try the full
+                    # cleaned name, then the first token — "X and Y" rosters
+                    # under the first author; particle surnames match full).
+                    _lookup_keys = [_clean.casefold()]
+                    if " " in _clean:
+                        _lookup_keys.append(_clean.split()[0].casefold())
+                    _roster_years: set[str] = set()
+                    for _k in _lookup_keys:
+                        _roster_years |= _src_years.get(_k, set())
+                    if not _roster_years:
+                        continue  # unknown author → check 2's job, not ours
+                    _base_year = year[:4]
+                    if _base_year in _roster_years:
+                        continue
+                    # Citation-shaped exemption: the source pairs the name
+                    # with this year in a form the roster build missed.
+                    # ``[^\d]{0,48}`` keeps the window citation-shaped (an
+                    # intervening DIGIT — e.g. the men-citation's other
+                    # years — blocks a false long-range join).
+                    _exempt = any(
+                        re.search(
+                            re.escape(_k_full) + r"[^\d]{0,48}?" + _base_year,
+                            source_text,
+                            re.IGNORECASE,
+                        )
+                        for _k_full in ([_clean] + ([_clean.split()[0]] if " " in _clean else []))
+                    )
+                    if _exempt:
+                        continue
+                    _pair = (_clean.casefold(), _base_year)
+                    if _pair in _seen_pairs:
+                        continue
+                    _seen_pairs.add(_pair)
+                    snippet = _snippet(text, m.start())
+                    issues.append(
+                        Issue(
+                            detector="year",
+                            severity="flag",
+                            field=field_label,
+                            snippet=snippet,
+                            detail=(
+                                f"author '{_clean}' cited with {year}, but the source "
+                                f"cites this author with {sorted(_roster_years)[:6]} "
+                                f"— possible cross-field year contamination "
+                                f"(V0.5.18 consistency check)"
+                            ),
+                        )
+                    )
+        except Exception as e:  # fail-open
+            issues.append(
+                Issue(
+                    detector="year",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=f"author-year consistency check crashed: {e!r}",
+                )
+            )
+
     return text, issues
+
+
+# V0.5.18: the cached source author→base-years map for check 3. Built from
+# the runtime ``extract_citations`` on ``source_text``; ``lru_cache`` keeps
+# one entry per distinct source string (validate_years runs per bullet, so
+# without the cache a 90-bullet chapter would re-run the extractor 90×).
+# Keys are the casefolded cleaned author names (multi-word forms included —
+# check 3's lookup tries the full name, then the first token); values are
+# the BASE 4-digit years (letter suffixes stripped — "1924a" and "1924b"
+# are the same year for consistency purposes).
+_SOURCE_AUTHOR_YEARS_CACHE_MAX = 8
+
+
+@lru_cache(maxsize=_SOURCE_AUTHOR_YEARS_CACHE_MAX)
+def _source_author_years(source_text: str) -> dict[str, frozenset[str]]:
+    try:
+        from core.preprocessing.deterministic_analyzer import extract_citations
+
+        out: dict[str, set[str]] = {}
+        for c in extract_citations(source_text):
+            a = (c.get("author") or "").strip()
+            if not a or len(a) < 3:
+                continue
+            key = a.casefold()
+            years = out.setdefault(key, set())
+            for y in re.findall(r"\d{4}", c.get("years") or ""):
+                years.add(y)
+        return {k: frozenset(v) for k, v in out.items()}
+    except Exception:  # noqa: BLE001 — fail-open (empty map ⇒ check 3 no-ops)
+        return {}
 
 
 def _author_in_source(author: str, src_lower: dict[str, str]) -> bool:

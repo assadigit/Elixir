@@ -536,7 +536,10 @@ class TestDedupNotSkippable:
         assert "skipping optional phase: post-gap-fill semantic dedup" not in src
         assert src.count("Post-gap-fill semantic dedup crashed") == 1
         # the call itself remains, inside a non-gated try/except
-        assert "_semantic_dedup_bullets(bullets)" in src
+        # (V0.5.18: the call now also passes the author-coverage veto's
+        # kwargs — source roster + context + source text)
+        assert "_semantic_dedup_bullets(" in src
+        assert "source_author_surnames(content)" in src
 
     def test_gap_fill_loop_has_veto_accounting(self):
         # RC-4: the loop must track per-author vetoes, switch to

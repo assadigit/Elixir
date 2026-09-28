@@ -515,11 +515,16 @@ def run_post_checks(
         for _i, _b in _near_dup_deferred:
             _rescue_authors: list[str] = []
             if source_authors:
+                # V0.5.18: the shared boundary-safe anchor (the ch.9 audit's
+                # Bug #1 family — ``\b`` after a name ending in a non-word
+                # char never matches). Surname rosters behaved identically
+                # under both forms; routing through ``author_anchor`` keeps
+                # every author-coverage veto in the pipeline on ONE matcher.
+                from core.summarisation.author_anchor import author_in_text as _anchor_in
+
                 _b_lower = _b.lower()
                 for _a in source_authors:
-                    if re.search(rf"\b{re.escape(_a.lower())}\b", _b_lower) and not re.search(
-                        rf"\b{re.escape(_a.lower())}\b", _kept_text
-                    ):
+                    if _anchor_in(_a, _b_lower) and not _anchor_in(_a, _kept_text):
                         _rescue_authors.append(_a)
             # V0.5.17 (refinement): a CONFIRMED parenthetical promotion is
             # NOT rescuable — the near-dup twin of a misattributed bullet

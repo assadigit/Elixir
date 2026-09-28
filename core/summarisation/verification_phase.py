@@ -297,18 +297,28 @@ def cross_reference_glossary(
     audit can see the cross-reference buckets.
     """
     glossary_names = _extract_glossary_names(glossary)
-    regex_set = {a.lower() for a in (regex_authors or []) if a and len(a) >= 3}
-    glossary_set = {a.lower() for a in glossary_names}
+    # V0.5.18: anchor-normalize both sides before the set ops. The glossary
+    # writes multi-author works as "AuthorB et al." while the regex roster
+    # holds the bare surname "AuthorB" — a raw casefold set difference put
+    # every et-al glossary name in llm_only (a misleading audit-trail
+    # bucket: the regex extractor HAD caught the author). The shared
+    # ``author_anchor`` strip ("AuthorB et al." → "authorb") makes the
+    # buckets measure what they claim to measure. Display names stay
+    # original-case.
+    from core.summarisation.author_anchor import author_anchor as _anchor_of
+
+    regex_set = {_anchor_of(a) for a in (regex_authors or []) if a and len(a) >= 3}
+    glossary_set = {_anchor_of(a) for a in glossary_names}
     confirmed_lower = glossary_set & regex_set
     llm_only_lower = glossary_set - regex_set
     regex_only_lower = regex_set - glossary_set
     # Preserve the original-case name (first occurrence wins).
     name_lookup: dict[str, str] = {}
     for a in glossary_names:
-        name_lookup.setdefault(a.lower(), a)
+        name_lookup.setdefault(_anchor_of(a), a)
     for a in regex_authors or []:
         if a and len(a) >= 3:
-            name_lookup.setdefault(a.lower(), a)
+            name_lookup.setdefault(_anchor_of(a), a)
     return {
         "confirmed": sorted(name_lookup[k] for k in confirmed_lower),
         "llm_only": sorted(name_lookup[k] for k in llm_only_lower),
@@ -787,31 +797,30 @@ def verify_and_polish_summary(
                 for _gn in _glossary_names:
                     if _gn not in _src_author_years:
                         _src_author_years[_gn] = []
-            # V0.5.4 (B1): word-boundary regex instead of substring `in`.
-            # Pre-V0.5.4 the check was `_a.lower() not in _rendered_lower` —
-            # a SUBSTRING test. The AUDIT-V0.5.3-ground-truth found that a
-            # 3-letter source author cited once in a subsection was SILENTLY
-            # SKIPPED by the coverage check whenever the summary happened to
-            # mention a DIFFERENT real source author whose surname CONTAINED
-            # that 3-letter substring (e.g. summary "Xyzabc" contains the
-            # substring "abc" → false "covered" verdict → no missing-author
-            # flag fired for the 3-letter author). Word-boundary anchoring
-            # requires the author to appear as a standalone token (anchored
-            # by ``\b``) to count as covered, eliminating the
-            # false-negative. Content-agnostic (Rule 1 ✓): the regex is built
-            # from the runtime extract_citations list, no hardcoded names —
-            # the ``\b`` anchors are generic regex, not book-specific.
+            # V0.5.4 (B1) → V0.5.18: boundary-safe author-anchor search via
+            # ``core.summarisation.author_anchor``. Pre-V0.5.4 the check was
+            # a SUBSTRING test (`_a.lower() not in _rendered_lower`) which
+            # silently SKIPPED short authors contained in longer surnames
+            # (the false-"covered" verdict). V0.5.4 anchored the name with
+            # ``\b`` … V0.5.18 replaces that with ``(?<!\w)name(?!\w)`` PLUS
+            # the et-al strip: the V0.5.17 ch.9 operator-rig audit found the
+            # B1 pattern can NEVER match a glossary name ending in "et al."
+            # (the terminal ``\b`` after the escaped period needs a
+            # following word char; prose always has "et al. " + space) — 6
+            # of the 8 flagged-missing authors were present in the shipped
+            # text. The anchor "AuthorA et al." → "authora" matches every
+            # prose form (AuthorA et al. / AuthorA's / AuthorA and
+            # colleagues), and the
+            # lookaround boundaries keep the B1 no-substring-inside-longer-
+            # -word property for word-char names. Content-agnostic (Rule 1 ✓):
+            # anchors are built from the runtime glossary/extract_citations
+            # lists, no hardcoded names.
+            from core.summarisation.author_anchor import author_in_text as _anchor_in
+
             _missing = []
             for _a in _ground_truth_authors:
-                _a_lower = _a.lower()
-                _a_plural = _a_lower.rstrip("s")  # crude plural-strip heuristic
-                _a_pat = re.compile(r"\b" + re.escape(_a_lower) + r"\b")
-                if _a_pat.search(_rendered_lower):
+                if _anchor_in(_a, _rendered_lower):
                     continue
-                if _a_plural != _a_lower:
-                    _a_plural_pat = re.compile(r"\b" + re.escape(_a_plural) + r"\b")
-                    if _a_plural_pat.search(_rendered_lower):
-                        continue
                 _missing.append(_a)
             if _missing:
                 # V0.5.4 (B2): list EACH missing author with their year(s)

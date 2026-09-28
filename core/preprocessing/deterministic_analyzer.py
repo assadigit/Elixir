@@ -739,7 +739,7 @@ def extract_citations(md_text: str) -> list[dict]:
         r"(?:" + _APOS + r"[sS]?)?"
         r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?)?"
         r"(?:\s+et\s+al\.?)?)"
-        r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*)\)",
+        r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*(?:\s*,\s*[a-z])*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical")
@@ -853,6 +853,43 @@ def extract_citations(md_text: str) -> list[dict]:
             continue
         for _nm in _name_list:
             _add(_nm, _years, "multi_author")
+
+    # Pattern 6 (V0.5.18, ch.9 audit MEDIUM): PARENTHETICAL CITATION RUNS —
+    # a comma/semicolon enumeration of ``Name[ et al.] year[, year...]``
+    # items inside ONE paren pair, with the years NOT in their own parens:
+    #   ``(A et al. 1968, 1975, B et al. 1968, 1971, C et al. 1974)``
+    #   ``(A 1980, B et al. 1980, C et al. 1988)``
+    #   ``(A et al. 1968, 1975)``  (single item)
+    # Patterns 1-5 all require the years in their OWN parens (``A et al.
+    # (1968)``) or a single name before a bare year (``A 1968``) — the run
+    # shape therefore captured only what another pattern happened to hit,
+    # so co-cited authors vanished from the deterministic roster (the
+    # ch.9 audit found a three-name run that yielded ONE name — the two
+    # co-cited authors were absent from the roster every author-coverage
+    # veto judges against). Each item is added with ITS years. Additive:
+    # existing ``author|years`` keys are deduped by ``_add``; single-item
+    # shapes overlap Pattern 2 harmlessly.
+    # FP guards: names must start capitalized (so "(see A 1970)" and "(cf.
+    # A 1970)" never match) and ``_add``'s existing stopword/garbage
+    # filters ("In"/"By"/... — "(In 1965)" is not a citation) apply
+    # unchanged. Content-agnostic (Rule 1 ✓): pure citation grammar.
+    _RUN_NAME = (
+        _NAME
+        + r"(?:\s+et\s+al\.?)?"
+        + r"(?:" + _APOS + r"[sS]?)?"
+    )
+    _RUN_ITEM = (
+        r"(" + _RUN_NAME + r")"
+        r"\s+"
+        r"([0-9]{4}[a-z]?(?:\s*,\s*[0-9]{4}[a-z]?)*(?:\s*,\s*[a-z])*)"
+    )
+    for match in re.finditer(
+        r"\((" + _RUN_ITEM + r"(?:\s*[,;]\s*" + _RUN_ITEM + r"*)*)\)",
+        md_text,
+    ):
+        _run = match.group(1)
+        for _item in re.finditer(_RUN_ITEM, _run):
+            _add(_item.group(1), _item.group(2), "citation_run")
 
     # V0.4.23: expose the garbage ledger (module-level, deduped,
     # order-preserving) for the analysis report's honest line.

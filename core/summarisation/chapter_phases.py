@@ -186,7 +186,18 @@ class SummarizerChapterPhasesMixin:
             # to catch cross-stage redundancy that rapidfuzz missed.
             try:
                 before_count = len(bullets)
-                bullets = self._semantic_dedup_bullets(bullets)
+                # V0.5.18: the author-coverage veto (source roster + exec/
+                # thorough context + the promotion guard's source text) —
+                # the uniquely-named-author-bullet drop pattern fixed at
+                # THIS removal layer too.
+                from core.summarisation.author_anchor import source_author_surnames
+
+                bullets = self._semantic_dedup_bullets(
+                    bullets,
+                    source_authors=source_author_surnames(content),
+                    context_text="\n".join([exec_sum or "", thorough or ""]),
+                    source_text=content,
+                )
                 after_count = len(bullets)
                 if before_count != after_count:
                     self.log(
@@ -500,7 +511,20 @@ class SummarizerChapterPhasesMixin:
         try:
             _before2 = len(bullets)
             _dedup_started = time.time()
-            bullets = self._semantic_dedup_bullets(bullets)
+            # V0.5.18: the author-coverage veto on the post-gap-fill pass —
+            # the ch.9 operator-rig run lost two uniquely-named-author
+            # bullets HERE (round 4 accepted them; this pass dropped them
+            # as sim-twins 95→87). Roster + exec/thorough context + source
+            # text so the veto (and its parenthetical-promotion guard) can
+            # judge the drop.
+            from core.summarisation.author_anchor import source_author_surnames
+
+            bullets = self._semantic_dedup_bullets(
+                bullets,
+                source_authors=source_author_surnames(content),
+                context_text="\n".join([exec_sum or "", thorough or ""]),
+                source_text=content,
+            )
             if len(bullets) != _before2:
                 self.log(
                     f"    🧹 V18.20.3.2: Post-gap-fill semantic dedup: "

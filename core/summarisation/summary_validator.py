@@ -517,6 +517,9 @@ def semantic_dedup_bullets(
     bullets: list[str],
     threshold: float = 0.92,
     log: LogCallback | None = None,
+    source_authors: list[str] | None = None,
+    context_text: str = "",
+    source_text: str | None = None,
 ) -> list[str]:
     """V13.45.5: Semantic dedup pass using sentence-transformer embeddings.
 
@@ -537,6 +540,22 @@ def semantic_dedup_bullets(
     3. For any pair with similarity ≥ threshold, keeps the FIRST bullet
        (which is usually from the main summarization pass, not gap-fill)
     4. Returns the deduplicated list (order preserved)
+
+    V0.5.18 — the AUTHOR-COVERAGE VETO (the V0.5.17 near-dup veto, one
+    removal layer over). The V0.5.17 ch.9 operator-rig run: the
+    final-check round 4 accepted gap-fill bullets uniquely naming two
+    source authors, then THIS pass (the post-gap-fill semantic dedup,
+    95→87) silently dropped them — the same pattern as the V0.5.16 ch.1
+    loss (a uniquely-named-author bullet deleted by an author-blind
+    removal layer), in the one layer the V0.5.17 veto did not cover.
+    When ``source_authors`` is provided, a to-be-dropped semantic twin is
+    KEPT if it names a roster author that appears NOWHERE in the surviving
+    text (kept bullets + ``context_text`` — pass exec + thorough). One
+    extra near-duplicate bullet is a smaller defect than losing an author
+    entirely. A CONFIRMED parenthetical promotion is NOT rescuable (the
+    misattributed twin has negative value — same refinement as V0.5.17,
+    via the same ``detect_parenthetical_promotion`` detector, and only
+    when ``source_text`` is supplied).
 
     Content-agnostic: works for any book/topic. The threshold (0.85) is
     conservative — only removes near-semantic-duplicates, not related-but-
@@ -596,13 +615,13 @@ def semantic_dedup_bullets(
         # Greedy dedup: for each bullet, check if it's a duplicate of an
         # earlier bullet (similarity ≥ threshold). Keep the first occurrence.
         keep_indices = []
-        removed = 0
+        dropped_indices = []
         for i in range(len(bullet_strs)):
             is_dup = False
             for j in keep_indices:
                 if sim_matrix[i][j] >= threshold:
                     is_dup = True
-                    removed += 1
+                    dropped_indices.append(i)
                     _log(
                         f"    🧹 Semantic dedup: removing bullet {i + 1} (sim={sim_matrix[i][j]:.2f} with bullet {j + 1})",
                         "DEBUG",
@@ -610,6 +629,66 @@ def semantic_dedup_bullets(
                     break
             if not is_dup:
                 keep_indices.append(i)
+
+        # ── V0.5.18: the author-coverage veto ──────────────────────────
+        # Runs AFTER the greedy pass (deferred, mirroring the orchestrator's
+        # near-dup veto) so the survivor text is the COMPLETE kept set, not
+        # just the prefix seen so far. Fail-open: any veto error keeps the
+        # greedy result (the veto must never widen a drop).
+        if dropped_indices and source_authors:
+            try:
+                from core.summarisation.author_anchor import author_in_text as _anchor_in
+
+                kept_text = (
+                    "\n".join(bullets[i] for i in keep_indices)
+                    + "\n"
+                    + (context_text or "")
+                ).lower()
+                rescued: list[int] = []
+                for i in dropped_indices:
+                    _b = bullets[i]
+                    _rescue_authors = [
+                        _a
+                        for _a in source_authors
+                        if _anchor_in(_a, str(_b).lower()) and not _anchor_in(_a, kept_text)
+                    ]
+                    if not _rescue_authors:
+                        continue
+                    # The V0.5.17 refinement: a CONFIRMED parenthetical
+                    # promotion is NOT rescuable — the twin duplicates the
+                    # kept bullet's content under the wrong author's name.
+                    _is_promotion = False
+                    if source_text:
+                        try:
+                            from core.summarisation.postcheck_detectors import (
+                                detect_parenthetical_promotion,
+                            )
+
+                            _is_promotion = (
+                                detect_parenthetical_promotion(_b, source_text, source_authors)
+                                is not None
+                            )
+                        except Exception:
+                            _is_promotion = False  # fail-open
+                    if _is_promotion:
+                        continue
+                    keep_indices.append(i)
+                    kept_text += "\n" + str(_b).lower()
+                    rescued.append(i)
+                    _log(
+                        f"    🛡️ V0.5.18 semantic-dedup veto: KEPT bullet {i + 1} "
+                        f"(sim-twin) — uniquely covers source author(s) "
+                        f"{', '.join(_rescue_authors[:3])} absent from the rest "
+                        f"of the summary",
+                        "INFO",
+                    )
+                if rescued:
+                    keep_indices = sorted(keep_indices)  # order preserved
+            except Exception as _veto_e:  # noqa: BLE001 — fail-open
+                _log(
+                    f"    ⚠️ V0.5.18 semantic-dedup veto crashed (non-fatal): {_veto_e}",
+                    "WARNING",
+                )
 
         return [bullets[i] for i in keep_indices]
 

@@ -129,7 +129,10 @@ class TestDeadlineWatchdogIntegration:
         content = sum_path.read_text(encoding="utf-8")
         dedup_idx = content.find('_deadline_exceeded("semantic dedup")')
         assert dedup_idx > 0, "semantic dedup must be guarded by _deadline_exceeded"
-        dedup_call_idx = content.find("self._semantic_dedup_bullets(bullets)", dedup_idx)
+        # V0.5.18: the call site gained the author-coverage veto's kwargs —
+        # match on the prefix (same precedent as the consolidation pin's
+        # V18.20.3.7 heading-kwarg note; the ordering intent is unchanged).
+        dedup_call_idx = content.find("self._semantic_dedup_bullets(", dedup_idx)
         assert dedup_call_idx > dedup_idx, (
             "_deadline_exceeded must come before _semantic_dedup_bullets"
         )

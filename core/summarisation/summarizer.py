@@ -871,7 +871,14 @@ class Summarizer(
         """
         sv_anti_false_precision_check(heading, text, result, log=self.log)
 
-    def _semantic_dedup_bullets(self, bullets: list[str], threshold: float = 0.85) -> list[str]:
+    def _semantic_dedup_bullets(
+        self,
+        bullets: list[str],
+        threshold: float = 0.85,
+        source_authors: list[str] | None = None,
+        context_text: str = "",
+        source_text: str | None = None,
+    ) -> list[str]:
         """V13.45.5: Semantic dedup — delegates to summary_validator.semantic_dedup_bullets.
 
         V18.7 (Phase 5.2): extracted verbatim to ``summary_validator.semantic_dedup_bullets``.
@@ -887,8 +894,18 @@ class Summarizer(
         layers now apply the same bar. The validator function's own default
         is untouched (its other callers keep their behavior); the shipped
         path is this delegate.
+        V0.5.18: ``source_authors`` / ``context_text`` / ``source_text`` pass
+        through to the validator's author-coverage veto (the V0.5.17 near-dup
+        veto, one removal layer over — the ch.9 audit's Bug #2).
         """
-        return sv_semantic_dedup_bullets(bullets, threshold=threshold, log=self.log)
+        return sv_semantic_dedup_bullets(
+            bullets,
+            threshold=threshold,
+            log=self.log,
+            source_authors=source_authors,
+            context_text=context_text,
+            source_text=source_text,
+        )
 
     def _self_review(self, heading: str, text: str, summary: str) -> str | None:
         """Ask a model to review the summary against the source and flag unsupported claims.

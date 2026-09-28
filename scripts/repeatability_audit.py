@@ -38,6 +38,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.preprocessing.deterministic_analyzer import extract_citations
+from core.summarisation.author_anchor import author_anchor_patterns, author_in_text
 
 
 def author_set(text: str) -> dict[str, list[str]]:
@@ -59,11 +60,12 @@ def author_set(text: str) -> dict[str, list[str]]:
 
 
 def covered(authors: dict[str, list[str]], summary_text: str) -> tuple[list[str], list[str]]:
-    """Word-boundary coverage check (V0.5.4 B1 rule)."""
+    """Boundary-safe anchor coverage check (the V0.5.4 B1 rule, V0.5.18
+    anchor form — ``\b`` after a name ending in "et al." never matched)."""
     hay = summary_text.lower()
     have, missing = [], []
     for a in authors:
-        if re.search(rf"\b{re.escape(a.lower())}\b", hay):
+        if author_in_text(a, hay):
             have.append(a)
         else:
             missing.append(a)
@@ -112,9 +114,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # summary-side names NOT in the source roster (hallucination candidates)
     summ_roster = author_set(combined)
-    hallucination_candidates = [
-        a for a in summ_roster if not re.search(rf"\b{re.escape(a.lower())}\b", source.lower())
-    ]
+    hallucination_candidates = [a for a in summ_roster if not author_in_text(a, source.lower())]
 
     # glossary cross-reference
     gloss = s.get("source_glossary") or {}
@@ -135,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\n  Missing authors (source-mention counts):")
         src_low = source.lower()
         for a in sorted(missing):
-            cnt = len(re.findall(rf"\b{re.escape(a.lower())}\b", src_low))
+            # boundary-safe count (the anchor form — see covered())
+            cnt = sum(len(p.findall(src_low)) for p in author_anchor_patterns(a))
             yrs = ",".join(roster[a][:4])
             print(f"    - {a} ({yrs}) — {cnt} source mention(s)")
     print(f"\n  Glossary: {len(gloss_names)} LLM names; "

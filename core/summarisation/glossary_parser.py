@@ -407,12 +407,28 @@ def cross_reference_glossary(
             (a recall gap to flag — the LLM glossary should have
             caught them).
     """
-    g = {n.strip() for n in (glossary_names or []) if n and n.strip()}
-    r = {a.strip() for a in (regex_authors or set()) if a and a.strip()}
+    # V0.5.18: anchor-normalize both sides before the set ops. The glossary
+    # writes multi-author works as "AuthorB et al." while the regex roster
+    # holds the bare surname "AuthorB" — raw string sets put every et-al
+    # glossary name in llm_only even when the regex extractor HAD caught
+    # the author (the ch.9 audit's Bug #1 family). Display names keep their
+    # original form; only the SET KEYS are anchored.
+    from core.summarisation.author_anchor import author_anchor
+
+    g_raw = [n.strip() for n in (glossary_names or []) if n and n.strip()]
+    r_raw = [a.strip() for a in (regex_authors or set()) if a and a.strip()]
+    g = {author_anchor(n) for n in g_raw}
+    r = {author_anchor(a) for a in r_raw}
+    # Preserve the original-case display form (first occurrence wins).
+    display: dict[str, str] = {}
+    for n in g_raw:
+        display.setdefault(author_anchor(n), n)
+    for a in r_raw:
+        display.setdefault(author_anchor(a), a)
     return {
-        "confirmed": sorted(g & r),
-        "llm_only": sorted(g - r),
-        "regex_only": sorted(r - g),
+        "confirmed": sorted(display[k] for k in (g & r) if k in display),
+        "llm_only": sorted(display[k] for k in (g - r) if k in display),
+        "regex_only": sorted(display[k] for k in (r - g) if k in display),
     }
 
 
