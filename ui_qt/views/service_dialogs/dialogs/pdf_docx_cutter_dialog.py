@@ -158,6 +158,12 @@ class PdfDocxCutterDialog(QDialog):
 
     @staticmethod
     def _parse_range(text: str) -> list[int] | None:
+        # V0.6.0 (campaign C1): normalize typographic dashes (en/em/minus)
+        # to ASCII hyphens BEFORE splitting — a range pasted from a PDF/TOC
+        # ("2–4") previously failed every int() parse, returned None, and
+        # the cut silently produced the WHOLE document. Punctuation-class
+        # normalization only (Rule 1 clean).
+        text = text.replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-")
         text = text.strip().lower()
         if not text or text == "all":
             return None
@@ -197,7 +203,16 @@ class PdfDocxCutterDialog(QDialog):
         if not out_path:
             self.status_label.setText("⚠️ Please choose where to save the output.")
             return
-        pages = self._parse_range(self.range_edit.text())
+        range_text = self.range_edit.text().strip()
+        pages = self._parse_range(range_text)
+        # V0.6.0 (campaign C1): a NON-EMPTY, non-"all" range that parses to
+        # None (garbage, "0", "5-") used to silently cut the WHOLE document —
+        # now the user is told and nothing runs. Empty/"all" still means all.
+        if pages is None and range_text and range_text.strip().lower() != "all":
+            self.status_label.setText(
+                "⚠️ Couldn't read that page range — use e.g. 1-10, 1,3,5, or 'all'."
+            )
+            return
         self.action_btn.setEnabled(False)
         self.action_btn.setText("Processing…")
         # V18.20.4.5 (W-b5): the blocking cut (pypdf / python-docx work on
@@ -282,10 +297,19 @@ class PdfDocxCutterDialog(QDialog):
             for page in reader.pages:
                 writer.add_page(page)
         else:
+            added = 0
             for pg in pages:
                 idx = pg - 1
                 if 0 <= idx < len(reader.pages):
                     writer.add_page(reader.pages[idx])
+                    added += 1
+            # V0.6.0 (campaign C2): a range entirely beyond the page count
+            # used to write a 0-page PDF and report success — now it errors
+            # through the standard worker error path (nothing is written).
+            if added == 0:
+                raise ValueError(
+                    f"no pages matched the range (document has {len(reader.pages)} pages)"
+                )
         out_p = _P(out_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         with open(out_p, "wb") as f:
@@ -366,6 +390,13 @@ class PdfDocxCutterDialog(QDialog):
                 idx = pg - 1
                 if 0 <= idx < len(page_groups):
                     selected_groups.append(page_groups[idx])
+            # V0.6.0 (campaign C2): same no-match guard as the PDF path —
+            # an out-of-range DOCX selection errors instead of silently
+            # saving an empty document.
+            if not selected_groups:
+                raise ValueError(
+                    f"no pages matched the range (document has {len(page_groups)} pages)"
+                )
 
         # Copy paragraphs to the new document (preserving formatting).
         for group in selected_groups:
