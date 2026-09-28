@@ -91,6 +91,13 @@ class QuickConvertDialog(QDialog):
         ".wav",
         ".txt",
         ".md",
+        # V0.6.0 (Tool 4-b): markitdown[all] (a core requirements.txt dep)
+        # fully converts .pptx/.xlsx. Since anydoc was removed from the
+        # requirements (not published on PyPI), these formats hard-failed
+        # on the only shipped engine even though the dialog advertises
+        # them (hint label + input filter) — restored here.
+        ".pptx",
+        ".xlsx",
     }
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
@@ -393,12 +400,12 @@ class QuickConvertDialog(QDialog):
         engine = self._selected_engine()
         if engine == "anydoc" and ext not in self._ANYDOC_EXTS:
             self.status_label.setText(
-                f"❌ AnyDoc does not support {ext} files. Use markitdown instead."
+                f"❌ AnyDoc does not support {ext or 'this'} files. Use markitdown instead."
             )
             return
         if engine == "markitdown" and ext not in self._MARKITDOWN_EXTS:
             self.status_label.setText(
-                f"❌ markitdown does not support {ext} files. Use AnyDoc instead."
+                f"❌ markitdown does not support {ext or 'this'} files. Use AnyDoc instead."
             )
             return
 
