@@ -156,6 +156,35 @@ _DATE_BULLET_RE = re.compile(_BULLET_PREFIX_RE + r"(?:[\u2014\-\u2013:]\s*)?" + 
 
 _TERM_BULLET_RE = re.compile(_BULLET_PREFIX_RE + r"(?:[\u2014\-\u2013:]\s*)?" + r"(?P<context>.*)$")
 
+# V0.5.21: the commuted pair-form dedup key. The rig glossary listed BOTH
+# "[NameA] and [NameB]" AND "[NameB] and [NameA]" (the audit's duplicate
+# pair-form artifact — the individuals themselves were covered; the pair
+# was listed twice in both orders). A TWO-surname entry joined by "and"
+# or "&" maps to an UNORDERED pair key so the commuted duplicate is
+# dropped at INGESTION (keep-first). Content-agnostic (Rule 1 ✓): pure
+# structural shape — two capitalized surname-shaped tokens around a
+# conjunction; no name list. Three-name forms ("A, B and C"), single
+# names, and degenerate "A and A" shapes are NOT pair-forms (None key
+# → untouched by the dedup).
+_PAIR_FORM_RE = re.compile(r"^([A-Z][\w'\u2019-]+)\s+(?:and|&)\s+([A-Z][\w'\u2019-]+)$")
+
+
+def _pair_form_key(name: str) -> tuple[str, ...] | None:
+    """V0.5.21: the unordered pair key for a two-surname entry, else ``None``.
+
+    ``"Alpha and Beta"`` and ``"Beta and Alpha"`` (and ``"Alpha & Beta"``)
+    all map to ``("alpha", "beta")`` — the commuted pair-form family.
+    Anything else (single names, three-name forms, "Alpha and Alpha")
+    returns ``None`` (not a pair-form — the caller leaves it alone).
+    """
+    m = _PAIR_FORM_RE.match((name or "").strip())
+    if not m:
+        return None
+    a, b = m.group(1).lower(), m.group(2).lower()
+    if a == b:
+        return None  # "A and A" is not a commuted pair
+    return tuple(sorted((a, b)))
+
 
 # ── parse_name_glossary ─────────────────────────────────────────────────────
 
@@ -320,6 +349,12 @@ def _parse_sections(block: str) -> dict[str, list[dict[str, str]]]:
 
 def _parse_name_bullets(text: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
+    # V0.5.21: keep-first dedup of commuted pair-forms (the unordered
+    # pair key from ``_pair_form_key`` — see its comment for the audit
+    # evidence). Every parse tier funnels names through here, so the
+    # dedup applies at INGESTION for all three tiers + the persist /
+    # cross-reference / verification consumers downstream.
+    seen_pair_keys: set[tuple[str, ...]] = set()
     for line in text.splitlines():
         m = _NAME_BULLET_RE.match(line)
         if not m:
@@ -327,6 +362,16 @@ def _parse_name_bullets(text: str) -> list[dict[str, str]]:
         name = (m.group("payload") or "").strip()
         if not name:
             continue
+        pair_key = _pair_form_key(name)
+        if pair_key is not None:
+            if pair_key in seen_pair_keys:
+                logger.debug(
+                    "V0.5.21 glossary pair-form dedup: dropped the commuted "
+                    "duplicate name entry '%s' (keep-first)",
+                    name,
+                )
+                continue
+            seen_pair_keys.add(pair_key)
         out.append(
             {
                 "name": name,

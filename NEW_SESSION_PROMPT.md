@@ -1,8 +1,8 @@
-# New Session Prompt — Elixir V0.5.20+ (the dedicated-tools verification session)
+# New Session Prompt — Elixir V0.6.1+ (the post-campaign hardening session)
 
 ## Context
 
-You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.5.20`).
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.1`).
 
 **STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
@@ -14,7 +14,7 @@ You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (lla
 4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
 5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Where the campaign stands (V0.5.15 → V0.5.20 — CLOSED)
+## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED)
 
 The V0.5.x repeatability campaign PROVED the source-glossary
 summarization architecture (LLM glossary → gap-fill → final-check →
@@ -41,13 +41,40 @@ families. The benchmark record, all filed on `main`:
 
 Full detail: `CHANGELOG.md` (the V0.5.18 / V0.5.19 / V0.5.19.1 / V0.5.20
 entries) + the audit mds on `main` (`audit/results/AUDIT_V0.5.1*_*.md` +
-the `bench_v05*` folders). Do NOT re-litigate the campaign — what remains
-of it is the small V0.5.21 backlog (secondary agenda, below).
+the `bench_v05*` folders). Do NOT re-litigate the campaigns — the V0.5.21
+backlog is SHIPPED (V0.6.1) and the tools campaign is CLOSED (V0.6.0).
 
-## THE NEXT SESSION AGENDA (primary): verify every dedicated tool of the app works
+## THE NEXT SESSION AGENDA (primary): the rig LIVE verification + whatever the next audit surfaces
 
-**The operator's directive:** *"making sure all dedicated tools of the app
-works, such as podcast maker, ocr, summarization etc."*
+**V0.6.1 status:** the three code-fixable V0.5.21 backlog items shipped
+(the gap-fill prompt tightening, the glossary pair-form dedup, the
+see-also bound — 29 tests, 22 defect-driven; see the V0.6.1 CHANGELOG
+entry). What remains is inherently OPERATOR territory:
+
+1. **The rig LIVE verification** — re-run the full-book rig benchmark
+   (the run shape that exposed the V0.5.20 defects) to confirm: the
+   marker-sequence joins fire on the real layout, the see-also bound
+   accepts/rejects correctly on the real glossary contexts (expect a
+   see-also-only author or two to finish honestly missing rather than
+   inflated — the documented precision-over-coverage trade), the pair
+   forms appear once, the thin one-liner count drops.
+2. **The V0.6.0 rig checklist** (the CHANGELOG V0.6.0 entry): live
+   qwen/OlmOCR via Ollama + Persian `fas.traineddata` + UnlimitedOCR
+   torch/transformers + PaddleOCR CPU + provider-vision; real-Ollama
+   translation; live qwen/vibevoice GPU + sherpa + Kokoro/Piper;
+   faster-whisper; anydoc.
+3. **Audit whatever the run surfaces** — the backlog discipline:
+   evidence → backlog item → fix → release entry. `audit/results/` is
+   the precedent; move rig uploads to `bench_v*` folders + write the
+   audit md.
+
+If a sandbox session is asked to continue code work: the standing
+method still applies (evidence-first trace → characterization tests
+FIRST → content-agnostic fix → net-green → CHANGELOG + zip). The tool
+inventory + per-tool method below remain the reference for
+RE-verification or for any NEW tool card.
+
+**Historical context — the V0.6.0 campaign charter (completed):**
 
 The V0.5.x campaign verified ONE tool end-to-end (the Full Conversion
 pipeline's summarization quality). The app's ToolDashboard ships TWELVE
@@ -135,22 +162,34 @@ media pack, executive briefing, flashcards (`core/outputs/`).
 - Translation is EN ↔ FA (Persian — `core/translation/harakat.py`);
   TTS ships 5+ engines (check which are bundled vs external binaries).
 
-## Secondary agenda — the V0.5.21 backlog (small, evidenced)
+## Secondary agenda — the V0.5.21 backlog (SHIPPED in V0.6.1 — kept for the record)
 
-1. **Thin roster-gap-fill bullet quality** — the one-liners recur (now
-   ALL caught by the quality flag, but the MODEL still writes them); a
-   gap-fill prompt tightening ("state the author's specific
-   contribution") or a quality gate at the gap-fill merge.
-2. **Glossary pair-form dedup** — the ch.9 glossary lists both
-   "Gunderson and Siever" AND "Siever and Gunderson"; dedupe commuted
-   pair-forms at glossary ingestion.
-3. **The Searles see-also bound** — the loosened quote-guard accepted a
-   see-also-only citation bullet with slight content inflation; verify
-   whether the glossary context should bound it.
-4. **Rig LIVE verification of the V0.5.20 fixes** — the four fixes are
-   unit-pinned (37 tests + real-source checks) but the full-book rig run
-   that exposed them has not been re-run; the next operator run should
-   confirm the joins fire on the real full-book layout.
+1. **Thin roster-gap-fill bullet quality** — ✅ SHIPPED (V0.6.1): both
+   roster gap-fill prompts (the main batch + the final-check round 4)
+   now demand the author's SPECIFIC contribution + ban the generic
+   registry phrases (the V0.5.19 detector's set). The backlog's "or a
+   quality gate at the merge" option was deliberately NOT taken (a
+   merge-time drop would re-open the coverage-gap problem; the flags
+   stay the safety net).
+2. **Glossary pair-form dedup** — ✅ SHIPPED (V0.6.1): commuted
+   two-surname pair-forms ("A and B" vs "B and A", "and"/"&") deduped
+   keep-first at ingestion, in `_parse_name_bullets` (all 3 parse
+   tiers + persist + cross-reference + verification downstream).
+3. **The Searles see-also bound** — ✅ SHIPPED (V0.6.1): the loosened
+   quote-guard's glossary-backed acceptance (the V0.5.6 main-loop
+   override + the round-4 final-check) now requires ≥55% content-token
+   coverage of the bullet by the glossary context (light-verb-stripped,
+   name/year-excluded, prefix/plural-tolerant); a bound-rejected author
+   finishes honestly missing (the veto/mention-only escalation applies).
+   The V0.5.10 regex fallback is deliberately unbounded (no glossary
+   context exists on that path).
+4. **Rig LIVE verification of the V0.5.20 fixes** — ☑ REMAINS THE
+   OPERATOR'S: the next full-book rig run should confirm the joins fire
+   on the real layout AND now the V0.5.21 fixes' live behavior (the
+   see-also bound's accept/reject on real glossary contexts; pair forms
+   once; fewer thin one-liners). The sandbox live leg was blocked by
+   upstream LLM rate-limits (documented in the V0.6.1 CHANGELOG entry)
+   — the hermetic + deterministic-pipeline evidence stands.
 
 ## Key files (current)
 
@@ -186,7 +225,7 @@ media pack, executive briefing, flashcards (`core/outputs/`).
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`
 
 ## Sandbox benchmarking note (the reaper)
 

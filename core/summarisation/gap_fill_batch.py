@@ -113,6 +113,7 @@ the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from typing import Any, NamedTuple
@@ -270,6 +271,117 @@ def _v0510_author_in_regex(regex_authors: list[str] | None, name: str) -> bool:
     if not name or not regex_authors:
         return False
     return name.lower() in {a.lower() for a in regex_authors if a}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.5.21 (backlog item 3): the see-also bound on the loosened quote-guard.
+#
+# The V0.5.17 audit found the loosened quote-guard (the V0.5.6 glossary-
+# backed override + the final-check round 4) accepting a see-also-only
+# citation bullet with slight content inflation: the bullet credited the
+# see-also author with the HOLDER's claim words that sit in the same
+# source sentence (the connection was in the source; the specific claim
+# wording went a step beyond a see-also-only citation). The backlog:
+# "verify whether the glossary context should bound it" — it should.
+#
+# The bound: a loosened acceptance now requires the bullet's content
+# tokens (light-verb-stripped, author-name/year-removed — the house
+# ``_content_tokens`` tokenizer style) to be ≥ ``_V0521_BOUND_FLOOR``
+# covered by the GLOSSARY CONTEXT for the author. Source sentences are
+# deliberately NOT part of the grounding: the holder's claim words sit
+# in the SAME sentence that mentions the see-also author — grounding on
+# the source would pass exactly the inflation the bound exists to catch.
+# The glossary context is the architecture's own grounding claim (the
+# V0.5.6 semantic: "the glossary IS the grounding") — the bound just
+# ENFORCES it. A contextless glossary entry grounds nothing (a
+# contribution bullet cannot be bounded by it → fail-closed).
+#
+# A bound-rejected bullet is treated like a vetoed one: the author stays
+# honestly missing (the honest-gap policy — a bullet whose content is
+# not grounded is worse than the gap), the veto count increments (the
+# mention-only escalation + give-up machinery applies). The V0.5.10
+# regex fallback is NOT bounded: on that path the author is not in the
+# glossary by construction (no glossary context exists to bound by) —
+# the regex confirms PRESENCE, not content.
+#
+# Content-agnostic (Rule 1 ✓): the measure uses the RUNTIME glossary
+# context + generic English light verbs (the existing
+# ``post_processing._LIGHT_VERB_RE``); no book-derived vocabulary.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The house containment floor (the per-bullet content-token containment
+# 0.55 precedent in ``summarizer_coverage.py``).
+_V0521_BOUND_FLOOR = 0.55
+
+
+def _v0521_bound_tokens(text: str) -> set[str]:
+    """V0.5.21: the house content-token set — lowercase ``[a-z0-9]+``
+    words (len > 2) with light plural normalization (``relations`` →
+    ``relation``; both forms kept). Mirrors the ``_content_tokens``
+    tokenizer in ``postchecks.orchestrator`` / ``summarizer_coverage``.
+    """
+    out: set[str] = set()
+    for w in re.findall(r"[a-z0-9]+", (text or "").lower()):
+        if len(w) <= 2:
+            continue
+        if len(w) > 3 and w.endswith("s"):
+            out.add(w[:-1])
+        out.add(w)
+    return out
+
+
+def _v0521_token_covered(tok: str, ground: set[str]) -> bool:
+    """V0.5.21: token coverage with a derivational-prefix tolerance.
+
+    Exact equality, or (both tokens ≥ 5 chars) one startswith the other
+    — "abandon" ~ "abandonment", the inflection/derivation family the
+    plural-only normalization cannot reach. Deterministic and
+    content-agnostic.
+    """
+    if tok in ground:
+        return True
+    if len(tok) < 5:
+        return False
+    return any(len(g) >= 5 and (g.startswith(tok) or tok.startswith(g)) for g in ground)
+
+
+def _v0521_see_also_bound(
+    bullet: str,
+    author: str,
+    grounding_texts: list[str],
+) -> float:
+    """V0.5.21: content-token coverage of a loosened-quote-guard bullet
+    by the GLOSSARY CONTEXT for the author (see the module-comment block
+    above for the semantics + the audit evidence).
+
+    The bullet is light-verb-stripped (``post_processing._LIGHT_VERB_RE``
+    — attribution verbs never count against the coverage), the author's
+    name tokens + 4-digit year tokens are removed (trivially grounded),
+    then the fraction of the remaining content tokens covered by the
+    union of ``grounding_texts``' token sets is returned. Empty bullet
+    token set → 1.0 (nothing to bound); empty grounding → 0.0 (nothing
+    grounds the bullet — fail-closed).
+    """
+    if not bullet:
+        return 1.0
+    # Lazy import (the house pattern — post_processing is imported
+    # lazily elsewhere in this module to avoid import cycles).
+    from core.summarisation.post_processing import _LIGHT_VERB_RE
+
+    stripped = _LIGHT_VERB_RE.sub(" ", bullet)
+    toks = _v0521_bound_tokens(stripped)
+    name_toks = {t for t in _v0521_bound_tokens(author) if len(t) > 2}
+    year_toks = {t for t in _v0521_bound_tokens(bullet) if len(t) == 4 and t.isdigit()}
+    toks -= name_toks | year_toks
+    if not toks:
+        return 1.0  # a bullet that is only the name + year has no content to bound
+    ground: set[str] = set()
+    for t in grounding_texts or []:
+        ground |= _v0521_bound_tokens(str(t))
+    if not ground:
+        return 0.0  # nothing grounds the bullet — fail-closed
+    covered = sum(1 for t in toks if _v0521_token_covered(t, ground))
+    return covered / len(toks)
 
 
 class GapFillOutcome(NamedTuple):
@@ -554,7 +666,23 @@ def batch_gap_fill(
                 f"- When the source excerpt cites an author JOINTLY with a "
                 f"co-author (e.g., 'AuthorA and AuthorB (Year)'), retain the "
                 f"multi-author attribution form in the bullet — do not reduce "
-                f"it to a single name.\n\n"
+                f"it to a single name.\n"
+                # V0.5.21 (backlog item 1): the thin one-liner quality
+                # rule. The V0.5.19/V0.5.20 ship-time flags catch the
+                # thin registry-phrase bullets ("made significant
+                # contributions to …"), but the MODEL still wrote them —
+                # the gap-fill prompt never demanded the SPECIFIC
+                # contribution. The banned phrases are the generic
+                # citation-registry verb set the V0.5.19 detector pins
+                # (generic English — Rule 1 ✓, no book vocabulary).
+                f"- State the author's SPECIFIC contribution — the "
+                f"theory, term, distinction, finding, or method the source "
+                f"excerpt attributes to THAT author. NEVER write a generic "
+                f"registry phrase ('made significant contributions to …', "
+                f"'contributed to the literature on …', 'authored "
+                f"literature on …') — a bullet that names only the topic "
+                f"area without the author's exact role in it carries no "
+                f"contribution.\n\n"
                 f"{_tail_instruction} No preamble."
             )
             # V18.20.3.7 (RC-B.2, audit v182036): never
@@ -807,6 +935,47 @@ def batch_gap_fill(
                                         )
                                     )
                                     if _v056_glossary_backed:
+                                        # V0.5.21 (backlog item 3): the
+                                        # see-also bound. The V0.5.6
+                                        # override accepts glossary-
+                                        # backed bullets without a
+                                        # verbatim quote — but the
+                                        # V0.5.17 audit found the model
+                                        # crediting the see-also author
+                                        # with the HOLDER's claim words
+                                        # from the same source sentence
+                                        # (slight content inflation).
+                                        # The glossary context — the
+                                        # architecture's own grounding —
+                                        # must BOUND the bullet: ≥ 55%
+                                        # of the bullet's content tokens
+                                        # covered by it. A bound
+                                        # rejection is treated like a
+                                        # veto (the author stays
+                                        # honestly missing; the
+                                        # escalation machinery applies).
+                                        _v0521_ctx = _v056_glossary_context_for(
+                                            source_glossary, _veto_key
+                                        )
+                                        _v0521_cov = _v0521_see_also_bound(
+                                            _filtered[0], _veto_key, [_v0521_ctx]
+                                        )
+                                        if _v0521_cov < _V0521_BOUND_FLOOR:
+                                            log(
+                                                f"    🚫 V0.5.21 see-also bound — "
+                                                f"dropped '{_filtered[0][:60]}…' "
+                                                f"for '{_veto_key}' (only "
+                                                f"{_v0521_cov:.0%} of its content "
+                                                f"words trace to the glossary "
+                                                f"context — a see-also-only "
+                                                f"citation inflated)",
+                                                "WARNING",
+                                            )
+                                            _veto_counts[_veto_key] = (
+                                                _veto_counts.get(_veto_key, 0) + 1
+                                            )
+                                            _tl["veto"] += 1
+                                            continue
                                         log(
                                             f"    ✨ V0.5.6 gap-fill: accepted "
                                             f"bullet for '{_veto_key}' "
@@ -824,6 +993,12 @@ def batch_gap_fill(
                                         # override). Fall through to
                                         # bullets.append below.
                                     elif _v0510_regex_backed:
+                                        # V0.5.21: NOT bounded — on this
+                                        # path the author is not in the
+                                        # glossary by construction (no
+                                        # glossary context exists to
+                                        # bound by); the regex confirms
+                                        # PRESENCE, not content.
                                         log(
                                             f"    ✨ V0.5.10 gap-fill: accepted "
                                             f"bullet for '{_veto_key}' "
@@ -1025,7 +1200,15 @@ def batch_gap_fill(
                 f"Chapter: {heading}\n\n"
                 f"For EACH author above, write ONE bullet (starting with "
                 f"'- ') that names the author + their year + their "
-                f"contribution (from the glossary context). Output "
+                # V0.5.21 (backlog item 1): the SPECIFIC-contribution
+                # demand + the generic-registry-phrase ban (the thin
+                # one-liner family — the same banned set the V0.5.19
+                # detector pins; generic English, Rule 1 ✓).
+                f"SPECIFIC contribution (from the glossary context — the "
+                f"theory, term, distinction, finding, or method it names; "
+                f"NEVER a generic registry phrase like 'made significant "
+                f"contributions to …' or 'contributed to the literature "
+                f"on …'). Output "
                 f"{len(_final_check_pool)} bullets total, one per line, "
                 f"each starting with '- '. Begin each bullet with the "
                 f"author's name. No preamble."
@@ -1080,27 +1263,62 @@ def batch_gap_fill(
                                         "INFO",
                                     )
                                     continue
+                                # Identify the glossary author cited in
+                                # this bullet (for the bound + the
+                                # audit log).
+                                _fc_b_lower = _fc_filtered[0].lower()
+                                _fc_author_hit = next(
+                                    (a for a in _final_check_pool if a.lower() in _fc_b_lower),
+                                    None,
+                                )
+                                # V0.5.21 (backlog item 3): the see-also
+                                # bound on the round-4 acceptance. The
+                                # V0.5.17 audit's inflated see-also
+                                # bullet came from THIS path — the
+                                # round-4 acceptance was unconditional.
+                                # The bullet's content tokens must now
+                                # be ≥ 55% covered by the author's
+                                # glossary context (the grounding the
+                                # round-4 prompt itself names); a
+                                # contextless entry grounds nothing →
+                                # fail-closed. A rejected bullet leaves
+                                # the author honestly missing (the
+                                # final-check coverage line reports it).
+                                if _fc_author_hit is not None:
+                                    _fc_ctx = _v056_glossary_context_for(
+                                        source_glossary, _fc_author_hit
+                                    )
+                                    _fc_cov = _v0521_see_also_bound(
+                                        _fc_filtered[0], _fc_author_hit, [_fc_ctx]
+                                    )
+                                    if _fc_cov < _V0521_BOUND_FLOOR:
+                                        log(
+                                            f"    🚫 V0.5.21 see-also bound — "
+                                            f"round 4 dropped "
+                                            f"'{_fc_filtered[0][:60]}…' "
+                                            f"for '{_fc_author_hit}' (only "
+                                            f"{_fc_cov:.0%} of its content "
+                                            f"words trace to the glossary "
+                                            f"context — a see-also-only "
+                                            f"citation inflated)",
+                                            "WARNING",
+                                        )
+                                        continue
                                 # The loosened quote-guard: glossary-
                                 # sourced authors are accepted WITHOUT a
                                 # verbatim source quote (the glossary IS
-                                # the grounding). Detect the cited author
-                                # + log the V0.5.6 acceptance.
+                                # the grounding — now BOUNDED by it).
                                 bullets.append(_fc_filtered[0])
                                 _fc_added += 1
                                 _final_check_added += 1
-                                # Identify the glossary author cited in
-                                # this bullet for the audit log.
-                                _fc_b_lower = _fc_filtered[0].lower()
-                                for _fc_a in _final_check_pool:
-                                    if _fc_a.lower() in _fc_b_lower:
-                                        log(
-                                            f"    ✨ V0.5.6 gap-fill: accepted "
-                                            f"bullet for '{_fc_a}' "
-                                            f"(grounded in glossary context, "
-                                            f"not verbatim quote)",
-                                            "INFO",
-                                        )
-                                        break
+                                if _fc_author_hit is not None:
+                                    log(
+                                        f"    ✨ V0.5.6 gap-fill: accepted "
+                                        f"bullet for '{_fc_author_hit}' "
+                                        f"(grounded in glossary context, "
+                                        f"not verbatim quote)",
+                                        "INFO",
+                                    )
                     if _fc_added > 0:
                         log(
                             f"    ✨ V0.5.6 final-check: round 4 added "

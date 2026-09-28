@@ -332,6 +332,10 @@ class TestQuoteGuardRegexFallback:
         # the glossary). The V0.5.10 regex-backed override would have
         # fired too, but it's only checked if the glossary path is
         # skipped (the elif branch).
+        # V0.5.21: the glossary context carries the SAME content as the
+        # bullet, so the see-also bound passes (a context that does NOT
+        # ground the bullet is bound-rejected — see
+        # tests/test_v0521_backlog.py).
         src = (
             "Zeta established the unified framework of identity "
             "development, drawing on Epsilon (1948)."
@@ -339,7 +343,11 @@ class TestQuoteGuardRegexFallback:
         bad = "- Epsilon: Established the unified framework of identity development."
         glossary = {
             "names": [
-                {"name": "Epsilon", "year": "1948", "context": "cited as a precursor"},
+                {
+                    "name": "Epsilon",
+                    "year": "1948",
+                    "context": "established the unified framework of identity development",
+                },
             ],
             "path": "summaries/.glossaries/ch_test.glossary.md",
         }

@@ -313,14 +313,19 @@ class TestLoosenedQuoteGuard:
         """A gap-fill bullet for a glossary author that fires the
         parenthetical-promotion veto (the source attributes the claim
         to a DIFFERENT author) → ACCEPTED anyway (the glossary IS the
-        grounding). The V0.5.6 INFO log line fires.
+        grounding — V0.5.21 update: provided the bullet's content is
+        covered by the glossary context, the see-also bound; a bullet
+        exceeding the context is bound-rejected, see
+        tests/test_v0521_backlog.py). The V0.5.6 INFO log line fires.
         """
         from core.summarisation.gap_fill_batch import GapFillOutcome
 
         # Source: Zeta established the framework, drawing on Epsilon
         # (1948). The bullet claims Epsilon established it → the veto
         # fires (correctly, per V18.20.3.2). Epsilon is in the glossary
-        # → the loosened quote-guard accepts the bullet.
+        # AND the glossary context grounds the bullet's content → the
+        # loosened quote-guard accepts the bullet (V0.5.21: the context
+        # carries the SAME content, so the see-also bound passes).
         src = (
             "Zeta established the unified framework of identity "
             "development, drawing on Epsilon (1948)."
@@ -328,7 +333,11 @@ class TestLoosenedQuoteGuard:
         bad = "- Epsilon: Established the unified framework of identity development."
         glossary = {
             "names": [
-                {"name": "Epsilon", "year": "1948", "context": "cited as a precursor"},
+                {
+                    "name": "Epsilon",
+                    "year": "1948",
+                    "context": "established the unified framework of identity development",
+                },
             ],
             "path": "summaries/.glossaries/ch_test.glossary.md",
         }
