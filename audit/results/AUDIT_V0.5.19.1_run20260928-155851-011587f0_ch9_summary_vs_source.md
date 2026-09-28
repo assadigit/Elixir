@@ -1,0 +1,124 @@
+# AUDIT V0.5.19.1 — ch.9 rig run #2 (the FULL-BOOK ingestion path — the first TOC-selected end-to-end run + the V0.5.18 veto's first LIVE fire)
+
+**Run:** `20260928-155851-011587f0` (V0.5.19.1, **operator rig** — Ternary-Bonsai-2-27B-Instruct-Vision @ t=0.70 via llamacpp on a Zotac RTX 3060 (EMERGENCY VRAM profile), **REAL embedder** (OllamaEmbedBackend, nomic-embed-text), Windows 10 + PyTorch 2.13 cu126; 878s chapter (vs the 480s deadline), 76 bullets; input = the **full-book PDF** `Broken Structures Salman Akhtar.pdf` (397 pages) with ch.9 TOC-selected p.222–242 (21 pages) — NOT the pre-extracted single-chapter PDF of every prior run)
+**Source:** `001_9 - HISTRIONIC AND SCHIZOTYPAL PERSONALITY DISORDERS.md` (7,089 words, 564 lines — the same chapter as all four prior benchmarks; NOTE the run's actual extraction came from the full-book PDF, so the line/paragraph layout the deterministic detectors saw differs from this ground-truth extraction — the audit's key confound, see Part 1)
+**Candidate:** `001_9_-_HISTRIONIC_AND_SCHIZOTYPAL_PERSONALITY_DISORDERS_v0.5.19.1_20260928-155851-011587f0_summary.md` (76 bullets, exec 2,136 chars, thorough 4,126 chars; provenance stamp v0.5.19.1 ✓ + COMPLETE sentinel ✓; the `Broken Structures Salman Akhtar.summary*.md` uploads are the byte-identical book-level copies — the Book-Summary wrapper of the same chapter content)
+**Method:** the standing four-pillar framework (EVALUATION_FRAMEWORK.md) + the deterministic author-roster cross-reference (the V0.5.18 anchor rule, run via the repo's own `extract_citations`/`author_in_text`) + conversion-log cross-check (stage-fire evidence).
+**Benchmark:** the V0.5.19.1 sandbox run `121429-8b2f3b9b` on this exact chapter (73/73 = 100%, flag 2/0, 116 bullets) — this run answers: what changes on the SAME chapter + SAME version when the model (glm-4-plus cloud shim → Ternary-Bonsai-2-27B local), the embedder (none → real), the machine (sandbox → operator rig), AND the ingestion path (pre-extracted single-chapter PDF → full-book PDF with TOC chapter selection) all change at once?
+
+## Headline: the ~95% band holds on the operator rig through a brand-new ingestion path — and the V0.5.18 veto fired LIVE for the first time — but the V0.5.19/.1 continuation joins turned out extraction-layout-fragile
+
+| Metric | V0.5.17 rig (022401) | V0.5.18 sandbox (010037) | V0.5.19.1 sandbox (121429) | **V0.5.19.1 rig #2 (155851)** |
+|---|---|---|---|---|
+| Input path | single-chapter PDF | single-chapter (harness) | single-chapter (harness) | **FULL-BOOK PDF, ch.9 TOC-selected p.222–242** |
+| Deterministic roster / covered | 66/69 = 95.65% | 73/73 = 100% | 73/73 = 100% | **67/73 = 91.8% strict-string / 69/73 = 94.5% individual-level** |
+| Missing (individuals) | Erikson only (full-text) | 0 | 0 | **Erikson, Gorton, Kraepelin, Singer** (+ 2 pair-form strings with members covered) |
+| Fabricated names/claims | 0 | 0 | 0 | **0** |
+| Verification missing-author flag | 8 flagged / 6 false (the et-al bug) | 3 / 0 | 2 / 0 | **2 / 0** (both pair-form artifacts; Gorton genuinely absent as an individual) |
+| Kernberg's six-grounds list | 5/6 | 5/6 | **6/6** (the V0.5.19.1 fix) | **5/6 — REGRESSED** (item (5) truncated at the break, item (6) lost) |
+| Reproduced criteria blocks | garbled | garbled (families) | **CLEAN + complete** | **histrionic a+b complete; schizotypal DSM-III 5/8 + DSM-III-R 3/9 — prefix-truncated** |
+| Semantic-dedup author veto | near-dup veto fired (Kretschmer, Nanarello) | inert (no embedder; unit-pinned) | inert (vetoed=0 all rounds) | **FIRED LIVE 2× (Kallman + Widiger rescued — the first live fire on a real embedder)** |
+| Thin roster-gap-fill one-liners | present | 2 (unflagged) | 4 (all flagged) | **~12 (NONE flagged — the model wrote them colon-less; the V0.5.19 detector's shape missed them)** |
+| Bullets / exec / thorough chars | 87 / — / — | 107 / — / — | 116 / 1,395 / 11,297 | **76 / 2,136 / 4,126 (thorough 545 words < the 800 floor — 4 expansion attempts failed on the rig; best-effort kept)** |
+
+**The system answer:** the architecture's deterministic floors + glossary-grounded gap-fill held the ~95% coverage band (94.5% individual-level — the FOURTH confirmation: ch.6 rig 94.6%, ch.1 sandbox 100%, ch.9 rig 95.65%, ch.9 rig full-book 94.5%) on a completely new ingestion path, with 0 fabricated claims and an honest verification flag. The sandbox's 100% vs the rig's ~95% is model strength, not architecture. BUT the run also exposed that the V0.5.19/V0.5.19.1 enumeration-continuation joins are **extraction-layout-fragile**: the same deterministic detectors that ship 6/6 grounds and complete criteria on the single-chapter extraction lost the Kernberg 6th ground, shipped a dangling `and (4).`, truncated a criteria item mid-phrase ("embraces casual"), and prefix-truncated both schizotypal criteria blocks on the full-book extraction's layout. The pipeline's own "enumerated items 74/74" floor cannot see these (the missed items are outside its denominator — detection blind spots). Four new backlog items filed (Part 1).
+
+## Part 1: Detailed Report
+
+### Fact-Check Log (every named bullet checked against the source)
+
+**Verified verbatim-faithful (~35 checked; the factual spine is sound):**
+
+| # | Bullet claim (summary) | Source evidence | Verdict |
+|---|---|---|---|
+| 1 | Akhtar controversy bullet — "Argued that there is considerable controversy over whether the histrionic label is merely a synonym for the older hysterical one, noting that DSM-III-R criteria appear to fit an intermediate level of psychopathology" | L55-56 ("considerable controversy (Gorton and Akhtar 1990)") + L266 ("fit an intermediate level of psychopathology… (Gorton and Akhtar 1990)") | **VERIFIED** — though the model wrote the pair-cite as Akhtar-alone, dropping Gorton (the coverage mechanism behind Gorton's absence) |
+| 2 | Zetzel four groups — "dividing hysterical women patients into four groups of increasing psychopathological severity" | L143-145, near-verbatim | **VERIFIED** |
+| 3 | Tupin bullet — co-described with Blacker "the more pregenitally fixated or more narcissistically vulnerable hysteric," contrasted the "infantile personality organization" with the "genital or mature hysterical personality organization" | L171-172 + L181-183, both quotes verbatim | **VERIFIED** (both individuals present — the "Blacker and Tupin" flag is a pair-string artifact) |
+| 4 | Gunderson — "the borderline individual is chronically enraged, frequently vituperative, and more readily suicidal, while the histrionic individual is… more suggestible, and less overtly self-destructive" | L293 (Gunderson 1985a) | **VERIFIED** |
+| 5 | Fenichel — conflicts between intense fears of sexuality and repressed sexual strivings, sexualizing nonsexual relations | L88, verbatim (year 1941/1945 not carried — the date-flag is honest) | **VERIFIED** |
+| 6 | Cooper — DSM-III critique (omitted seductiveness; healthier hysterical vs infantile hysteroid; "two separate disorders"), "arguing that Tupin's (*1981*) synthesis revealed these as significantly different entities" | L234-240 — the source itself has Cooper citing "Tupin's (1981) synthesis" and concluding "significantly different personalities… two separate disorders" | **VERIFIED** (the Tupin attribution is the source's own framing — not a conflation) |
+| 7 | Abse (*1974*) — hysteriform borderline personalities, pronounced oral traits, severe narcissistic ego disorder, greater vulnerability to regression | L167-169, verbatim | **VERIFIED** |
+| 8 | Lazare (*1971*) — Freud himself did not refer to a specific hysterical character, despite deeper understanding leading to the birth of psychoanalysis | L61-63, near-verbatim | **VERIFIED** |
+| 9 | Liebowitz and Klein (*1981*) — "hysteroid dysphoria" (flamboyance, seductiveness, demandingness, extreme dependence on external approval, intolerance of rejection, brief atypical depressions, substance abuse/self-harm) | L187-191 | **VERIFIED** |
+| 10 | Hoch (*1910*) schizoid description following Bleuler + the 1949 pseudoneurotic-schizophrenia co-authorship with Polatin; Kretschmer (*1925*), Kasanin and Rosen (*1933*), Terry and Rennie (*1938*), Kallman (*1938*), Nanarello (*1953*) — every thin contributor year checked | L320-321 (the contributors run) + L353 (Hoch and Polatin 1949) | **VERIFIED** — all six years roster-exact |
+| 11 | Zilboorg's ambulatory-schizophrenia portrait — **8 items** (no florid symptoms → perverse and sadomasochistic sexual life) | L344-347 | **VERIFIED 8/8** (the 121429 run carried this list as a 6-item capture — the full-book extraction split it differently and the detector got all 8) |
+| 12 | Meehl's four behavioral traits (cognitive slippage, unlovability, ambivalence, chronic anhedonia) | L372-375, verbatim | **VERIFIED 4/4** |
+| 13 | Spitzer's **eight criteria** (magical thinking → undue social anxiety) | L393-395, verbatim | **VERIFIED 8/8** |
+| 14 | Easser and Lesser's 7-item hysterical-personality portrait (labile emotionality → childlike attitude of seeming naivete and inexperience) | L109-112, verbatim | **VERIFIED 7/7** (the bullet's "They" anchor is subject-less — the pair is named at bullet L18; minor clarity) |
+| 15 | The five extrinsic issues (mixed forms, social functioning, sex differences, lifespan, culture) | L496-499, verbatim 5/5 | **VERIFIED** |
+| 16 | The overlap-literature thin bullets — Wolman→narcissistic-and-antisocial, Bursten→narcissistic-and-paranoid, Reid→borderline-and-antisocial, Kohut and Wolf→schizoid-and-narcissistic | L501-505 — each name is in exactly the pair the bullet names | **VERIFIED — correctly paired** (the 121429 run's E1 cross-wired this citation run onto Wolf; this run's model distributed it correctly) |
+| 17 | Akiskal (*1984*, *1986*) hypomanic characters; Bergman (*1971*, *1978*) paranoid fare-better; Snyder et al. (*1983*) anergic borderline; Bleiberg/Rinsley/Robins/Wolff-and-Chick early-phenomena | L514-515, L542, L546-551, L524 | **VERIFIED** (Robins's 1966/1984 dual cite exact) |
+| 18 | Rosenthal team bullet + Rosenthal et al. (*1968*, *1971*) Danish adoptive studies | L374-375, verbatim ("Kety, Wender, Rosenthal, and their colleagues") | **VERIFIED** (this is also what keeps Wender covered) |
+| 19 | Hollender — the held-rather-than-seduced theme; Ekstein (*1955*)/Noble (*1951*) popularized latent schizophrenia; Fairbairn (*1940*)/Guntrip (*1969*) intrapsychic dynamics of the schizoid | L101, L357-358, L328-329 — all verbatim-anchored | **VERIFIED** |
+| 20 | Lilienfeld et al. — shared sexual promiscuity, corruptibility, shallow emotions, self-centered attitude with antisocial personalities; + the Key-Distinctions "sustained, calculated, and ruthless disregard of social mores and laws" contrast | L232, L294-296 | **VERIFIED** |
+| 21 | Kendler — two traditions (1985); Kendler et al. (*1981*) post-DSM-III syndrome support (thorough) | L306, L431 | **VERIFIED** |
+| 22 | The reproduced **histrionic** criteria blocks — DSM-III a (i)-(v) + b (i)-(v) | L199-218, every sub-item completes | **VERIFIED — complete** |
+| 23 | McGlashan (*1987*) — odd communication/suspiciousness/social isolation most characteristic; illusions/depersonalization least discriminating | L434-437 | **VERIFIED** (the takeaways bullet; the thorough's "DSM-III and borderline patients" dropped "schizotypal" — E6) |
+| 24 | Key Distinctions ×5 + Theoretical Tensions ×4 (incl. page anchors p.~222–238) | L130-141, L294-296, L336-341, L489-491, L495-499, L55-60 | **VERIFIED** (all five distinctions + four tensions grounded; page anchors plausible for the p.222-242 range) |
+
+**Flagged errors (7 — one extraction-layout family + two model-prose slips + one known unsourced year):**
+
+| # | Summary claim | Source | Verdict |
+|---|---|---|---|
+| E1 | **The Kernberg grounds bullet — "5 items from the source"**: item (5) ends "…especially with imagined oedipal rivals," item (6) absent | L130-141 — item (5) continues "while infantile personalities show less chronic competitiveness and overall less differentiation in their behavior toward the two sexes; and (6) masochistic tendencies are more restricted and less intense…" | **TRUNCATED + ITEM LOST — the pre-V0.5.19.1 shape REGRESSED on the full-book extraction** (the V0.5.19.1 wrapped-continuation join verified 6/6 on the single-chapter layout in 121429 did not fire here — layout-fragile) |
+| E2 | "**Reveals** — 3 items from the source: (1) significant separations…; (2) serious parental psychopathology; (3) much physical illness during childhood, **and (4).**" | L162-163 — the item-(4) content "absence of meaningful, sustained relations with either sex" sits on the physical line after "and (4)" | **DANGLING MARKER SHIPPED** — a syntactically broken "and (4)." fragment with the content dropped (the V0.5.19 inline-list paragraph-break join missed this layout) |
+| E3 | "**Enumerated list (4 items)**" item (4): "expresses emotion with inappropriate exaggeration, e.g., **embraces casual**" | L249-251 — the item continues "acquaintances with excessive ardor, uncontrollable sobbing on minor sentimental occasions, has temper tantrums" (separated by a blank line in the extraction) | **MID-PHRASE TRUNCATION** — same join family as E2 |
+| E4 | "Simic (*1980*) was a poet whose work 'The Roach' is quoted at the start of the chapter." | L40 — '"The Roach," Charles Simic' — **no year in the source** | **UNSOURCED YEAR** — the glossary-borne Simic-1980 family (V0.5.17 rig run, handoff item 4); the 121429 append-mode bullet was yearless-clean |
+| E5 | Thorough: "Robins is mentioned in the context of post-DSM-III studies that supported the notion of schizotypal syndrome while noting that cognitive-perceptual disturbances were less salient than interpersonal deficits" | L431-436 — those findings belong to **Gunderson and Siever 1983, Kendler et al. 1981, Siever and Gunderson 1983**; Robins's actual cites are the sex-differences run (L524) and early-antisocial (L547) | **CROSS-WIRED ATTRIBUTION** in the model-written thorough prose (the takeaways bullet L71 is correct — the 121429 E1 Wolf family, thorough-prose form) |
+| E6 | Thorough: "McGlashan (*1987*) provided critical follow-up data on DSM-III and borderline patients" | L434 — "a follow-up study of DSMIII **schizotypal** and borderline patients" | **MINOR WORDING SLIP** — "schizotypal" dropped |
+| E7 | The reproduced **schizotypal** criteria blocks: DSM-III "a. At least four of the following" carries (i)-(v) only; DSM-III-R "a. … at least five of the following" carries (i)-(iii) only | L404-429 (the DSM-III list runs (i)-(viii)) + L441-473 (the DSM-III-R list runs (i)-(ix)) | **PREFIX-TRUNCATED (5/8 and 3/9)** — vs 121429's complete blocks; both stops fall at extraction layout boundaries (the takeaways "Eight criteria" bullet still carries the DSM-III 8/8, so the content is not wholly lost) |
+
+**Hallucination verdict: 0 fabricated entities/claims.** The deterministic roster diff found 0 candidate names absent from the source.
+
+### Missing Information (the four missing individuals + structural)
+
+1. **Erikson** (L538 — the middle-age developmental-tasks cite; covered in 121429; 1-mention author, run-to-run variance).
+2. **Kraepelin** (L491 — the affective-spectrum exclusion cite; the tension bullet L136 carries the argument but namelessly).
+3. **Singer / Gunderson and Singer** (L385 — the borderline-synthesis cite; 1-mention).
+4. **Gorton** (L55-56 + L266 — the pair-mate of the controversy bullet; the gap-fill ASKED for 'Gorton and Akhtar' (conv-log: "accepted bullet for 'Gorton and Akhtar'") but the model wrote the Akhtar-alone attribution — the pair-mate drop).
+5. The reproduced schizotypal criteria truncations (E7) and Rado's six-symptom list carried only as its 4-item tail (the "**Rage**" bullet; items (1) chronic anhedonia and (2) emergency emotions not carried — anhedonia survives via Meehl's list).
+6. The thorough summary is thin (545 words vs the 800 floor — 4 expansion attempts failed within the rig's deadline; best-effort kept by design). The takeaways (76 bullets) carry the content.
+7. The "third factor" borderline-concept narrative + the black/borderline subcultural finding — still not carried (unchanged across all five runs; a model-choice, not a pipeline defect).
+
+### Clarity / Conciseness
+
+- The dangling "and (4)." (E2) is the worst-looking artifact this run — a shipped bullet that is syntactically broken. The subject-less anchors ("**They described individual with hysterical personality**", "**Reveals**", "**Rage**") are verbatim source fragments but read poorly standalone (the antecedents exist elsewhere in the summary).
+- ~12 thin roster-gap-fill one-liners ("Kretschmer made significant contributions to the description of schizoid personality following Bleuler in 1925") — accurate but contribution-free; ALL escaped the V0.5.19 thin-bullet detector this run because the model wrote them **colon-less** ("Name made…" / "Name contributed…" vs 121429's "Name: Contributed to…") — the detector's shape is colon-form-specific.
+- 76 bullets is the leanest ch.9 set (121429: 116) — the rig's deadline pressure skipped bullet consolidation and scholar reflection entirely; the summary is correspondingly less redundant (one overlap: the "Subjective distress" 3-item bullet duplicates the head of the Eight-criteria 8-item bullet).
+
+### Conversion-Log Cross-Check (stage-fire evidence)
+
+- ✅ **The V0.5.18 semantic-dedup author-coverage veto FIRED LIVE — the first live fire on a real embedder** (all prior evidence unit-pinned or sandbox-inert): "🛡️ KEPT bullet 44 (sim-twin) — uniquely covers source author(s) **Kallman** absent from the rest of the summary" + "KEPT bullet 71 — **Widiger**" (12 candidate removals → 10 removed, 86→76; the veto re-kept the two uniquely-roster-grounded twins). The V0.5.17 near-dup veto (Kretschmer/Nanarello, V0.5.17 rig) + this = both vetoes now have live-fire evidence.
+- ⚠️ **NEW BUG #1 (HIGH for the keypoints output)**: the keypoints-layer embedding dedup ("Keypoints dedup: removed 2 duplicates (76 → 74)") removed **the exact two bullets the veto had just rescued** — the log names them verbatim ("Kallman made significant contributions to the description of…" + "Widiger et al. (1988) contributed to the debate on whether h…", "embedding sim > 0.85"). The keypoints dedup call site lacks the author-coverage veto → the .Keypoints.md output loses Kallman + Widiger coverage. (The uploaded summary retains them; the keypoints file was not uploaded — evidence is in-log.)
+- ⚠️ **NEW BUG #2 (MEDIUM — glossary handoff broke on the full-book path)**: the glossary WAS generated and persisted (L473: `…\Desktop\5.19.1\summaries\.glossaries\9 - HISTRIONIC….glossary.md` — **outside the run's output dir** `…\5.19.1\Broken Structures Salman Akhtar\`), and the gap-fill used it ("TARGETED round 4 for 25 glossary-grounded authors", "grounded in glossary context"), but the verification layer reported "**Glossary: (none)**" → the glossary-grounded verification coverage + the append-mode ran without their file-based ground truth (the flag degenerated to regex pair-forms; **no verification_append fired** — vs 121429's Simic append; the pair-form targets would likely have failed the append guards anyway, so no harm this run, but the path fragility is real).
+- ⚠️ **NEW BUG #3 (MEDIUM — thin-detector shape gap)**: 1 attribution/flag total this run (bullet[62] — a bold-anchor similarity flag on the verbatim-faithful Five-issues bullet, borderline false positive) vs 121429's 9 flags incl. 4 true thin positives. The ~12 thin one-liners went unflagged — colon-less variant (see Clarity).
+- ⚠️ **NEW BUG #4 (HIGH — the layout-fragile continuation joins)**: E1/E2/E3/E7 are all the same root cause: the V0.5.19 inline-list paragraph-break join + the V0.5.19.1 wrapped-continuation join verified on the single-chapter extraction did not fire on the full-book extraction's layout (different line/paragraph/page boundaries — p.222-242 pagination, page-break artifacts). The pipeline's own floor ("enumerated items (all lists, whole chapter) 74/74") is blind to this — the missed items never entered the denominator. A terminal-shape lint would also have caught E2 (no shipped enumeration bullet should end in a bare "and (4).").
+- ✅ Gap-fill: 5 rounds, 28 bullets added (8/8/4/5/3; vetoed=0 all rounds, filler filtered 0/0/4/3/5) + final-check round 4 for 25 glossary-grounded authors; thorough theorist floor 14/73 → 39/73 (3 chunked calls; 23 names beyond the 3-call bound carried by the bullets/recall floor). Attribution-edge drops: 10 gap-fill sentences (incl. a Blacker-and-Tupin 1977, a Kendler 1985, a Fairbairn 1940, a Wolman) — 1 recovered by the V0.5.15 regex-grounding rescue; Fairbairn re-landed via round 4.
+- ✅ Deadline machinery worked as designed: thorough 545 < 800 words → 4 dedicated expansion attempts (all < 800) → best-effort kept at 492s > 480s; optional phases skipped (scholar reflection, exec-layer semantic dedup, bullet consolidation); the NON-SKIPPABLE floors ran anyway ("the thorough theorist floor gap-fill is NON-SKIPPABLE — the coverage deficit is the V0.20 campaign target; timing is not" + the post-gap-fill semantic dedup "non-skippable per V18.20.3.4"). Chapter total 878s — the RTX 3060 + 27B single-worker rig is simply slower than the 480s budget assumes (a rig-budget observation, not a defect).
+- ✅ Date-check flags (1990 ×2, 1945 ×2, 1970, 1905, 1909, 1977 ×3): ALL honest year-not-carried notices on grounded bullets (Fenichel 1945, Freud 1905/1909, Hollender 1970, Blacker-and-Tupin 1977, Gorton-and-Akhtar 1990) — 0 false.
+- ✅ Recall floor (final set): theorists 68/73 (missing: Singer, Kraepelin, Erikson, Gorton and Akhtar, Gunderson and Singer); conclusion items 5/5. Note the pipeline's pair handling is inconsistent (Blacker and Tupin resolved to its covered members and not counted missing; Gunderson and Singer counted missing despite Gunderson being covered) — same pair-form family as the verification flag.
+
+### Variance characterization (121429 vs 155851 — the same chapter, the same version, everything else changed)
+
+- **Coverage**: 73/73 → 67/73 strict / 69/73 individual. The 6-name strict delta = 2 pair-form strings + 4 one-mention individuals (Erikson, Kraepelin, Singer, Gorton). The ~95% individual band is exactly where the V0.5.15/V0.5.17 rig runs landed — the deterministic floors + gap-fill hold the band on the operator rig regardless of model; the sandbox 100% reflects glm-4-plus being the stronger summarizer, not a pipeline difference.
+- **List completeness regressed** (6-grounds 6→5, criteria complete→prefix-truncated, + the new dangling-marker/mid-phrase artifacts) — NOT model variance: the enumeration detectors are deterministic over the extracted text, and the extraction input changed (full-book PDF layout). This is the run's most actionable finding.
+- **Thin bullets**: 4 (colon form, all flagged) → ~12 (colon-less, none flagged) — model variance visible in the SHAPE; the detector gap makes the quality signal run-dependent.
+- **Volume**: 116 → 76 bullets; thorough 11,297 → 4,126 chars (the rig's deadline pressure); exec grew 1,395 → 2,136 chars.
+- **The vetoes**: 121429 had no live dedup (no embedder); this run has the first live V0.5.18 veto fire — and simultaneously exposed that the keypoints layer undoes it (Bug #1).
+
+## Part 2: Structured JSON Scorecard
+
+```json
+{
+  "summary_id": "V0.5.19.1_run20260928-155851-011587f0_ch9_rig2_fullbook",
+  "overall_score": 7,
+  "factual_consistency_score": 8,
+  "coverage_score": 7,
+  "clarity_score": 6,
+  "conciseness_score": 7,
+  "hallucinations_detected": 0,
+  "critical_omissions_detected": 0,
+  "verdict": "PASS",
+  "justification": "The first full-book-ingestion run (397-page PDF, ch.9 TOC-selected p.222-242) on the operator's real-embedder rig: the ~95% coverage band holds (69/73 = 94.5% individual-level; 67/73 strict incl. 2 pair-form strings), 0 fabricated claims, verification flag honest (2/0), all 8 date-flags honest, the thin overlap-literature bullets correctly paired this run, and the V0.5.18 semantic-dedup veto fired LIVE for the first time (Kallman + Widiger rescued). But the V0.5.19/.1 continuation joins proved extraction-layout-fragile: the Kernberg six-grounds list regressed to 5/6, a dangling 'and (4).' shipped, a criteria item truncated mid-phrase, and both schizotypal criteria blocks are prefix-truncated (5/8, 3/9) — all invisible to the pipeline's own 74/74 enumerated-items floor. Four new V0.5.20 backlog items filed: the layout-independent continuation join, the keypoints-layer author-coverage veto (the dedup un-rescued the veto's own bullets), the glossary handoff path on the full-book ingestion (verification saw '(none)'), and the thin-bullet detector's colon-less variant."
+}
+```
