@@ -268,15 +268,28 @@ class ImageExtractorDialog(QDialog):
             QMessageBox.warning(self, "No output", "Please choose an output folder.")
             return
 
+        # V0.6.0 (4-a/D2): an inverted page range (From > To — the two
+        # spin boxes are independent) used to fall through to the service,
+        # which processes an EMPTY page range and reports "✅ 0 images".
+        # Refuse the impossible range up front (no worker spawned).
+        page_range = None
+        if not self.cb_all_pages.isChecked():
+            range_from = self.spin_from.value()
+            range_to = self.spin_to.value()
+            if range_from > range_to:
+                QMessageBox.warning(
+                    self,
+                    "Invalid page range",
+                    "The 'From' page must not be greater than the 'To' page.",
+                )
+                return
+            page_range = (range_from, range_to)
+
         self.process_btn.setEnabled(False)
         self.process_btn.setText("⏳ Extracting...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.status_label.setText("🖼️ Starting extraction...")
-
-        page_range = None
-        if not self.cb_all_pages.isChecked():
-            page_range = (self.spin_from.value(), self.spin_to.value())
 
         options = {
             "files": list(self._files),
@@ -357,6 +370,12 @@ class ImageExtractorDialog(QDialog):
                     results.append(f"❌ {file_stem}: unsupported format ({ext})")
                     continue
 
+                # V0.6.0 (4-a/D1): a file the service could not open at all
+                # must land as a ❌ line, not as "✅ 0 images".
+                if counts.get("error"):
+                    results.append(f"❌ {file_stem}: {counts['error']}")
+                    continue
+
                 results.append(
                     f"✅ {file_stem}: {counts['total']} images "
                     f"(photos: {counts['photos']}, charts: {counts['charts']}, "
@@ -401,13 +420,22 @@ class ImageExtractorDialog(QDialog):
 
         if results:
             summary = "\n".join(results)
-            self.status_label.setText(f"✅ Done!\n{summary}")
-            # Success modal
+            # V0.6.0 (4-a/D1): the status prefix + modal must reflect
+            # per-file failures — "✅ Done!" for an all-failed batch was a
+            # failure disguised as success.
+            failures = sum(1 for r in results if r.startswith("❌"))
             out_folder = self.out_edit.text().strip()
-            QMessageBox.information(
-                self,
-                "✅ Extraction Complete",
-                f"Image extraction complete!\n\n{summary}\n\nOutput: {out_folder}",
-            )
+            if failures and failures == len(results):
+                self.status_label.setText(f"❌ Extraction failed\n{summary}")
+                QMessageBox.critical(self, "❌ Extraction Failed", summary)
+            else:
+                prefix = "⚠️" if failures else "✅"
+                self.status_label.setText(f"{prefix} Done!\n{summary}")
+                # Success modal
+                QMessageBox.information(
+                    self,
+                    "✅ Extraction Complete",
+                    f"Image extraction complete!\n\n{summary}\n\nOutput: {out_folder}",
+                )
         else:
             self.status_label.setText("⚠️ No images extracted")
