@@ -130,17 +130,9 @@ class MarkdownStylerDialog(QDialog):
         self.cb_key_concepts.setChecked(True)
         opt_lay.addWidget(self.cb_key_concepts)
 
-        self.cb_bullets = _QChB("Add bullet points for main ideas")
-        self.cb_bullets.setChecked(True)
-        opt_lay.addWidget(self.cb_bullets)
-
         self.cb_tags = _QChB("Add YAML frontmatter + tags")
         self.cb_tags.setChecked(True)
         opt_lay.addWidget(self.cb_tags)
-
-        self.cb_links = _QChB("Convert related terms to [[wikilinks]]")
-        self.cb_links.setChecked(False)
-        opt_lay.addWidget(self.cb_links)
 
         lay.addWidget(opt_group)
 
@@ -198,12 +190,13 @@ class MarkdownStylerDialog(QDialog):
         self.status_label.setText("✨ Styling markdown (instant)...")
         self.output_preview.clear()
 
+        # V0.6.0: the "bullets"/"links" keys are gone — the deterministic
+        # engine never read them (dead checkboxes advertising unimplemented
+        # LLM-era features since the V11.71.0 rewrite).
         options = {
             "tldr": self.cb_tldr.isChecked(),
             "key_concepts": self.cb_key_concepts.isChecked(),
-            "bullets": self.cb_bullets.isChecked(),
             "tags": self.cb_tags.isChecked(),
-            "links": self.cb_links.isChecked(),
         }
 
         # V11.71.0: deterministic — no worker thread needed, runs instantly
@@ -262,8 +255,11 @@ class MarkdownStylerDialog(QDialog):
         text = text.replace("\t", "    ")
         # Remove trailing whitespace on each line
         text = re.sub(r"[ \t]+$", "", text, flags=re.MULTILINE)
-        # Collapse multiple spaces (but not at line start)
-        text = re.sub(r"(?<= ) +", " ", text)
+        # Collapse runs of 2+ spaces after a word character to a single
+        # space (line-start indentation is preserved). V0.6.0: the old
+        # ``(?<= ) +`` → " " always left TWO spaces behind (one lookbehind
+        # anchor + the replacement) — double spaces never collapsed.
+        text = re.sub(r"(?<=\S) {2,}", " ", text)
         # Limit consecutive blank lines to 2
         text = re.sub(r"\n{4,}", "\n\n\n", text)
         # Remove leading/trailing blank lines
@@ -346,6 +342,10 @@ class MarkdownStylerDialog(QDialog):
             # Extract a title from the first heading or first line
             title_match = re.search(r"^#{1,6}\s+(.+)$", text, re.MULTILINE)
             title = title_match.group(1) if title_match else "Untitled Note"
+            # V0.6.0: escape YAML double-quoted scalars — a heading
+            # containing a ``"`` produced invalid frontmatter
+            # (``title: "The "Fast" Track"``).
+            title = title.replace("\\", "\\\\").replace('"', '\\"')
             # Generate tags from common words in the text
             words = re.findall(r"\b[A-Z][a-z]{3,}\b", text)
             from collections import Counter
@@ -365,8 +365,15 @@ tags: [{", ".join(tags)}]
         # ── Step 8: Add TLDR callout (if enabled) ─────────────────────
         tldr_block = ""
         if options.get("tldr"):
-            # Extract first meaningful sentence
-            sentences = re.split(r"(?<=[.!?])\s+", text)
+            # Extract first meaningful sentence. V0.6.0: heading lines are
+            # dropped first — the sentence splitter glues a heading to the
+            # following paragraph (headings carry no terminal punctuation),
+            # so the first CONTENT sentence was skipped whenever a heading
+            # preceded it and the TL;DR fell through to a later sentence.
+            tldr_source = "\n".join(
+                ln for ln in text.split("\n") if not ln.lstrip().startswith("#")
+            )
+            sentences = re.split(r"(?<=[.!?])\s+", tldr_source)
             first_sentence = ""
             for s in sentences:
                 s = s.strip()
@@ -388,7 +395,11 @@ tags: [{", ".join(tags)}]
             bold_terms = re.findall(r"\*\*(.+?)\*\*", text)
             if not bold_terms:
                 # Fall back to capitalized words
-                bold_terms = re.findall(r"\b([A-Z][a-z]{4,}(?:\s+[A-Z][a-z]+)*)\b", text)
+                bold_terms = re.findall(r"\b([A-Z][a-z]{4,}(?:[ \t]+[A-Z][a-z]+)*)\b", text)
+                # V0.6.0: ``[ \t]`` (not ``\s``) in the continuation —
+                # ``\s`` matched across the newline, so a term spanning
+                # two lines emitted an un-prefixed line INSIDE the ``> -
+                # **...**`` callout, breaking the Obsidian callout block.
                 bold_terms = list(dict.fromkeys(bold_terms))[:5]  # unique, top 5
             if bold_terms:
                 concepts = "\n".join(f"> - **{t}**" for t in bold_terms[:5])

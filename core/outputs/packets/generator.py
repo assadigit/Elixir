@@ -23,6 +23,7 @@ from core.outputs.packets.models import LogFn, Packet, PacketCollection
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
 from utils.atomic_io import atomic_write_text
+from utils.filename import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +109,21 @@ class PacketGenerator:
             f"  📊 Collected {len(all_bullets)} keypoints from {len(summaries)} chapters", "INFO"
         )
 
-        # V13.19.0 Fix 2: Pre-clustering deduplication (rapidfuzz, 85% threshold).
-        # Done BEFORE clustering so duplicate bullets don't pollute the clusters.
+        # V13.19.0 Fix 2: Pre-clustering deduplication (rapidfuzz, 70%
+        # threshold + content-word Jaccard). Done BEFORE clustering so
+        # duplicate bullets don't pollute the clusters.
+        # V0.6.0: cross-chapter mode ONLY — chapter-aligned packets keep
+        # the author's own bullets verbatim (clustered per chapter, not
+        # semantically), so the deduped list only fed the doc/coverage
+        # COUNTS there and made the report disagree with the actual
+        # content (10 input bullets → "2 keypoints", >100% coverage,
+        # false "orphan bullets" lines).
         original_bullet_count = len(all_bullets)
-        all_bullets = self._deduplicate_bullets(all_bullets)
-        dedup_bullet_count = len(all_bullets)
+        if mode == "chapter":
+            dedup_bullet_count = original_bullet_count
+        else:
+            all_bullets = self._deduplicate_bullets(all_bullets)
+            dedup_bullet_count = len(all_bullets)
 
         # 2. Cluster into packets — branch on mode
         if mode == "chapter":
@@ -183,27 +194,34 @@ class PacketGenerator:
         output_paths: list[Path] = []
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # V0.6.0: sanitize the book title for the output FILE names (the
+        # shared utils.filename helper — the same contract the obsidian
+        # KB rider applies). An unsanitized title scattered the four
+        # outputs into unintended subdirectories ("My/Notes" → a "My"
+        # subdir, silently) and raises OSError on Windows-illegal chars.
+        safe_title = sanitize_filename(book_title)
+
         # Full packets document
-        full_path = output_dir / f"{book_title}.Packets.md"
+        full_path = output_dir / f"{safe_title}.Packets.md"
         self._write_full_document(collection, full_path)
         output_paths.append(full_path)
         self.log(f"  ✅ Packets: {full_path.name}", "SUCCESS")
 
         # One-page distillation
-        one_page_path = output_dir / f"{book_title}.Packets.OnePage.md"
+        one_page_path = output_dir / f"{safe_title}.Packets.OnePage.md"
         # V18.20.4.12 (T-c3): atomic — disk-full can't leave partial output
         atomic_write_text(one_page_path, one_page, encoding="utf-8")
         output_paths.append(one_page_path)
         self.log(f"  ✅ One-page distillation: {one_page_path.name}", "SUCCESS")
 
         # Knowledge map (Mermaid)
-        map_path = output_dir / f"{book_title}.Packets.Map.md"
+        map_path = output_dir / f"{safe_title}.Packets.Map.md"
         self._write_knowledge_map(collection, map_path)
         output_paths.append(map_path)
         self.log(f"  ✅ Knowledge map: {map_path.name}", "SUCCESS")
 
         # V13.19.0 Fix 4: Coverage report — bullet → packet mapping
-        coverage_path = output_dir / f"{book_title}.Packets.Coverage.md"
+        coverage_path = output_dir / f"{safe_title}.Packets.Coverage.md"
         self._write_coverage_report(
             collection=collection,
             original_bullets=all_bullets,
@@ -530,7 +548,7 @@ class PacketGenerator:
         """Split a list of bullets into chunks of ~target_size each.
 
         Distributes remainder evenly across chunks (not all in the last).
-        E.g. 22 bullets with target 7 → [8, 7, 7] (not [7, 7, 8]).
+        E.g. 22 bullets with target 7 → 4 chunks of [6, 6, 5, 5].
         """
         if not bullets:
             return []
