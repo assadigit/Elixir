@@ -638,7 +638,19 @@ def _join_split_runin_paragraphs(source_text: str) -> str:
 
 
 def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
-    """True when paragraph B continues paragraph A's open run-in list."""
+    """True when paragraph B continues paragraph A's open run-in list.
+
+    V0.5.19.1 (the wrapped-continuation family): the next-sequential
+    marker is searched in B's FULL paragraph text, not just its first
+    physical line — a PDF hard-wrap puts the continuation marker on a
+    LATER line of B (the ch.9 six-grounds list: B opens "while the
+    second type shows … two sexes; and (6) …" — (6) sits ~2 wrapped
+    lines in; the first-line-only search never found it, so the join
+    never fired and the guarantee bullet carried 5/6 with item (5)
+    truncated at the break). The pre-marker continuation-length guard
+    (< 300 chars, now measured across the wrapped lines) keeps the
+    new-topic-paragraph rejection.
+    """
     try:
         b_first = b_text.split("\n", 1)[0].strip()
         if not b_first or b_first.startswith("#"):
@@ -667,8 +679,10 @@ def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
             tail = a_text[a_last.end() :].strip()
             if not tail or tail[-1] in ".!?\u201d\u2019":
                 continue
-            # B must open with the NEXT sequential marker of the same style
-            b_first_m = pat.search(b_first)
+            # B must carry the NEXT sequential marker of the same style
+            # (V0.5.19.1: anywhere in B — a PDF hard-wrap may put it on a
+            # later physical line, not just the first).
+            b_first_m = pat.search(b_text)
             if not b_first_m:
                 continue
             b_idx = _marker_index(seq, b_first_m.group(1)) if seq else None
@@ -676,7 +690,7 @@ def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
                 continue
             # B's pre-marker continuation must be short (an item tail, not
             # a new topic paragraph that happens to contain (n+1))
-            pre = b_first[: b_first_m.start()].strip()
+            pre = b_text[: b_first_m.start()].strip()
             if len(pre) > 300:
                 continue
             return True

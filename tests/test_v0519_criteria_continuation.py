@@ -41,6 +41,12 @@ from core.preprocessing.deterministic_analyzer import (  # noqa: E402
     extract_inline_lists,
     extract_structured_criteria,
 )
+from core.summarisation.enumeration import detect_enumerations  # noqa: E402
+
+
+def _pad(text: str) -> str:
+    """Pad a short source past detect_enumerations' 120-char floor."""
+    return "Intro prose that is long enough to pass the detector's minimum-length gate. " + text
 
 # ── rule 4: the embedded-marker split helper ────────────────────────────────
 
@@ -278,3 +284,61 @@ class TestInlineListParagraphBreakJoin:
         assert lists == [] or all(
             "under another heading" not in it["text"] for lst in lists for it in lst["items"]
         )
+
+
+# ── V0.5.19.1: the enumeration-guarantee wrapped-continuation join ──────────
+
+
+class TestEnumerationWrappedContinuationJoin:
+    """The V0.5.19.1 patch: ``_paragraphs_joinable`` searched only B's
+    FIRST physical line for the next-sequential marker — a PDF hard-wrap
+    puts the marker on a LATER line of B, so the join never fired and the
+    guarantee bullet carried the list truncated at the paragraph break
+    (the ch.9 six-grounds mirror below: 5/6 with item (5) cut)."""
+
+    SIX_GROUNDS = (
+        "An earlier author (1967) distinguished one type from another on six "
+        "grounds: (1) in the first type, lability appears in certain "
+        "relationships; (2) overinvolvement occurs in selected relationships; "
+        "(3) exhibitionism has an agenda; (4) the first type shows inhibition "
+        "underneath; moreover, (5) the first type shows competitiveness,\n\n"
+        "while the second type shows less chronic competitiveness and overall "
+        "less\ndifferentiation in behavior toward the two sexes; and (6) "
+        "tendencies are more restricted in the first type.\n\n"
+        "A closing paragraph of ordinary prose follows the list."
+    )
+
+    def test_wrapped_next_marker_joins(self):
+        """The (6) marker sits ~2 wrapped lines into B — the full-paragraph
+        search finds it, the join fires, the list detects as ONE 6-item
+        run with item (5) completed."""
+        enums = detect_enumerations(_pad(self.SIX_GROUNDS))
+        six = [e for e in enums if e.style == "runin_arabic" and e.count == 6]
+        assert six, f"expected a 6-item runin list, got {[e.count for e in enums]}"
+        item5 = six[0].items[4].text
+        assert "while the second type shows less chronic competitiveness" in item5
+        assert six[0].items[5].text.startswith("tendencies are more restricted")
+
+    def test_first_line_marker_still_joins(self):
+        """The V0.4.24 behavior (the marker on B's FIRST line) is
+        unchanged — the Stern-family shape."""
+        src = _pad(
+            "The list begins here: (1) alpha; (2) beta; (3) gamma; (4) delta or a\n\n"
+            "constitutional continuation, (5) epsilon; (6) zeta.\n\n"
+            "A closing paragraph."
+        )
+        enums = detect_enumerations(src)
+        assert [e for e in enums if e.style == "runin_arabic" and e.count == 6]
+
+    def test_non_sequential_wrapped_marker_still_rejected(self):
+        """The sequence + pre-length guards keep rejecting a new-topic
+        paragraph whose wrapped lines merely contain a stray marker."""
+        src = _pad(
+            "The list begins here: (1) alpha; (2) beta; (3) gamma; (4) delta or a\n\n"
+            "new topic paragraph that goes on about entirely different matters "
+            "and\nafter many wrapped lines of prose eventually mentions a stray "
+            "(9) marker\nin passing before concluding.\n\n"
+            "A closing paragraph."
+        )
+        enums = detect_enumerations(src)
+        assert not [e for e in enums if e.style == "runin_arabic" and e.count == 5]
