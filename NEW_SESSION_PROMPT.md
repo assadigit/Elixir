@@ -120,36 +120,33 @@ it will fire live on the operator's real-embedder rig. Audit:
    (OllamaEmbedBackend): the V0.5.16 guard no-op'd as designed (Phase 2.2 all
    bullets ≥0.50), the V0.5.17 veto fired correctly, 95.65% floor. A
    controlled ch.1/ch.6 re-run remains optional for exact-parity comparison.
-3. **The V0.5.19 backlog (small, evidenced)** — the V0.5.18 items are ALL
-   SHIPPED (the et-al anchor, the semantic-dedup veto, the citation-run
-   Pattern 6, the author-year consistency check; see the CHANGELOG's
-   V0.5.18 entry + the 28 new tests). What remains:
-   - **the verification LAYER's additions are brittle** (exact-substring
-     corrections; 5 of 6 proposed corrections were skipped in the ch.1 run;
-     in the V0.5.18 ch.9 re-run the flag was accurate but the corrections
-     still didn't land Simic/Kohut-and-Wolf bullets) — consider an append-mode
-     correction type. NOTE: with the et-al false positive fixed, append-mode
-     is now SAFE to build (the flag no longer names present authors).
-   - **thin roster-gap-fill bullet quality** (the V0.5.18 re-run's 2 minor
-     slips are both thin one-liners: the Wolf bullet attaches the overlap-
-     literature cites (Bursten/Kernberg/Wolman) to Wolf whose real co-cite is
-     "Kohut and Wolf 1978"; the Widiger bullet says "a work from 1980" — the
-     year is 1988 and it sits in PROSE, out of the citation-regex's reach) —
-     the year-consistency check only sees `(Author Year)` pairs; a prose-form
-     year check or a thin-bullet quality gate would close this
-   - **the glossary lists structural labels as names** ("DSM-II" in the ch.9
-     V0.5.18 glossary names — the garbage-glossary family; filter
-     `_BOLD_NAME_STRUCTURAL_LABELS`-style labels at glossary ingestion)
-   - **the scholar-reflection quote guard** (scholar_reflection.py:594
-     "Dropped gap-fill without quote") could take the V0.5.6 loosened
-     quote-guard for glossary-backed authors (same pattern as V0.5.15/V0.5.17)
-   - **the deterministic list capture's paragraph-break join** (Kernberg's
-     6-ground list carries 5/6 with item 5 truncated — the source's paragraph
-     break INSIDE item (5) splits the capture; both ch.9 runs identical)
-   - **the Reproduced-Criteria stem-slicing garble** (source-PDF line-wrap +
-     stem slicing; every token source-faithful — the V0.4.24 family, worst
-     on heavily line-wrapped DSM lists)
-4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
+3. **The V0.5.20 backlog (small, evidenced)** — the V0.5.19 items are ALL
+   SHIPPED (V0.5.19 + the V0.5.19.1 patch; see the CHANGELOG's two entries +
+   the 59 new tests): the append-mode correction type (landed the flagged-
+   missing Simic bullet LIVE on the ch.9 re-run, verbatim-grounded), the
+   normalized correction anchor (the ch.1 5-of-6-skipped near-miss family),
+   the D3 length-guard reorder (replacements-only judgment), the glossary
+   structural-name filter (0 manual-codes in the ch.9 V0.5.19.1 glossary),
+   the prose-form year check 3b + the thin-bullet quality flag (4/4 true
+   positives live), the scholar-reflection loosened quote-guard, the four
+   criteria continuation rules (the Reproduced-Criteria section CLEAN on
+   ch.9 — was garbled), and the paragraph-break joins (extract_inline_lists
+   + the V0.5.19.1 enumeration-guarantee wrapped-continuation fix: the
+   Kernberg six-grounds list ships 6/6 — was 5/6 in every prior run). What
+   remains:
+   - **the thin roster-gap-fill bullet quality** (the Wolf/Chick/Robins/
+     Frances one-liners recurred in the V0.5.19.1 run — now ALL caught by
+     the quality flag, but the MODEL still writes them; a gap-fill prompt
+     tightening ("state the author's specific contribution") or a
+     quality-gate at the gap-fill merge would reduce the family at the
+     source)
+   - **the glossary pair-form dedup** (the ch.9 V0.5.19.1 glossary lists
+     both "Gunderson and Siever" AND "Siever and Gunderson" as separate
+     names — the anchor-check pair-form made the verification flag name
+     the reverse pair as missing while both individuals are covered; dedupe
+     commuted pair-forms at glossary ingestion)
+   - **the Searles-family see-also bound** (below, unchanged)
+4. **The Searles caveat**4. **The Searles caveat**: the loosened quote-guard accepted "Searles (1960)
    discussed the longing to abandon the human quality of identity" on a
    see-also-only citation — verify whether the glossary context should bound
    the bullet's claim more tightly (the audit flagged slight content
@@ -162,7 +159,7 @@ it will fire live on the operator's real-embedder rig. Audit:
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/Elixir-V0.5.16.zip` + `Elixir-V0.5.17.zip` + `Elixir-V0.5.18.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.18.zip` + `Elixir-V0.5.19.zip` + `Elixir-V0.5.19.1.zip`
 
 ## Sandbox benchmarking note (the reaper)
 
