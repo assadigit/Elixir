@@ -722,8 +722,15 @@ class OcrServiceDialog(QDialog):
           - "1-10" → [1,2,3,…,10]
           - "1,3,5" → [1,3,5]
           - "1-3,5,7-9" → [1,2,3,5,7,8,9]
+
+        V0.6.0 (4-c): typographic dashes (en/em/minus — the pasted-from-PDF
+        range family) are normalized to ASCII hyphen BEFORE parsing, so
+        "2\u20134" now selects pages 2-4 instead of parsing as garbage.
         """
         text = text.strip().lower()
+        # V0.6.0 (4-c): dash normalization (en, em, minus, figure dashes).
+        for _dash in ("\u2013", "\u2014", "\u2212", "\u2012"):
+            text = text.replace(_dash, "-")
         if not text or text == "all":
             return None
         pages: set[int] = set()
@@ -771,6 +778,16 @@ class OcrServiceDialog(QDialog):
         # V11.20: parse the page range (None = all pages).
         page_range_text = self.range_edit.text().strip()
         pages = self._parse_page_range(page_range_text)
+        # V0.6.0 (4-c): a NON-EMPTY unparseable range ("abc", "0", "5-")
+        # parses to None — which _ocr_work reads as EVERY page — so a typo
+        # silently OCR'd the whole document. Refuse instead (the same
+        # guard the PDF/DOCX Cutter got in V0.6.0).
+        if pages is None and page_range_text.strip().lower() not in ("", "all"):
+            self.status_label.setText(
+                f"⚠️ Couldn't read that page range: \u201c{page_range_text.strip()}\u201d — "
+                "use e.g. 1-10, 1,3,5, or all."
+            )
+            return
         if pages is None:
             pages_desc = "all pages"
         else:
@@ -1115,10 +1132,25 @@ class OcrServiceDialog(QDialog):
         only). Uses ``first_page``/``last_page`` in ``convert_from_path`` for
         efficiency, then filters to the exact set.
         """
+        from pathlib import Path
+
         from utils.settings import Settings
 
         s = Settings()
         tess_cmd = s.get("paths.tesseract", "")
+        # V0.6.0 (4-c): resolve the tesseract binary the same way
+        # OCRService.__init__ does. The default ``paths.tesseract`` value
+        # is the Windows installer path (utils/settings.py:541) — on every
+        # other host the image branch below crashes (subprocess can't exec
+        # a non-existent path) and the PDF branch pins a broken
+        # pytesseract.tesseract_cmd. Fall back to a PATH lookup; fail-open
+        # (keep the configured value) when nothing is found.
+        if not tess_cmd or not Path(tess_cmd).is_file():
+            import shutil as _shutil
+
+            _detected_tess = _shutil.which("tesseract")
+            if _detected_tess:
+                tess_cmd = _detected_tess
 
         if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
             # Direct image OCR — page range doesn't apply.

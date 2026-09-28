@@ -176,15 +176,22 @@ class UnlimitedOCREngine(OCREngine):
         self,
         pages: list,  # list of pypdf PageObject
         page_numbers: list[int],
-        image_max_size: int = 1024,
+        image_max_size: int | None = None,
         poppler_path: str = "",
     ) -> dict[int, OcrResult]:
         """
         Process ALL scanned pages in a single model call.
         Returns dict mapping page_number → OcrResult.
+
+        V0.6.0 (4-c): ``image_max_size`` was a dead parameter — the service
+        passes ``request.image_max_size`` here (core/ocr/service.py:310)
+        but the call below always used the constructor's ``image_size``.
+        Honor the caller's value; fall back to the constructor value when
+        the caller passes nothing.
         """
         if not page_numbers:
             return {}
+        _img_size = image_max_size if image_max_size else self.image_size
 
         if self._model is None:
             if not self.load():
@@ -202,13 +209,18 @@ class UnlimitedOCREngine(OCREngine):
         # Render all scanned pages to JPEG images in a temp directory
         tmp_dir = Path(tempfile.mkdtemp(prefix="unlimited_ocr_"))
         image_paths: list[str] = []
-        page_map: dict[int, int] = {}  # image_index → page_number
+        # V0.6.0 (4-c): keyed by image PATH, not by zip index — when an
+        # earlier page fails rasterization, the image_paths enumeration
+        # shifted relative to the zip enumeration and every later result
+        # was keyed by the WRONG page number (or -1, a bogus key the
+        # service loop then ignored).
+        page_map: dict[str, int] = {}  # image_path → page_number
 
         try:
             from pdf2image import convert_from_bytes
             from pypdf import PdfWriter
 
-            for idx, (page, page_num) in enumerate(zip(pages, page_numbers, strict=False)):
+            for page, page_num in zip(pages, page_numbers, strict=False):
                 writer = PdfWriter()
                 writer.add_page(page)
                 buf = io.BytesIO()
@@ -227,7 +239,7 @@ class UnlimitedOCREngine(OCREngine):
                     img_path = str(tmp_dir / f"page_{page_num:04d}.jpg")
                     imgs[0].save(img_path, format="JPEG", quality=90)
                     image_paths.append(img_path)
-                    page_map[idx] = page_num
+                    page_map[img_path] = page_num
 
         except Exception as e:
             self.log(f"  ❌ UnlimitedOCR image prep failed: {e}", "ERROR")
@@ -262,13 +274,13 @@ class UnlimitedOCREngine(OCREngine):
                 prompt="<image>document parsing.",
                 image_files=image_paths,
                 output_path=str(output_dir),
-                image_size=self.image_size,
+                image_size=_img_size,
                 max_length=self.max_length,
             )
 
             # Read output files — UnlimitedOCR writes per-image .md or .json files
-            for idx, img_path in enumerate(image_paths):
-                page_num = page_map.get(idx, -1)
+            for img_path in image_paths:
+                page_num = page_map.get(img_path, -1)
                 stem = Path(img_path).stem
 
                 # Try .md output first, then .json, then .txt

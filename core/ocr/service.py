@@ -38,6 +38,7 @@ import io
 import os
 import platform
 import re
+import shutil
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -120,6 +121,22 @@ class OCRService:
             "paths.tesseract",
             r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         )
+        # V0.6.0 (4-c): tesseract auto-resolution. The shipped default for
+        # ``paths.tesseract`` is the Windows installer path
+        # (utils/settings.py:541); on every other host that value points at
+        # a non-existent file, and ``_tesseract_ocr`` pins
+        # ``pytesseract.pytesseract.tesseract_cmd`` to it → every call
+        # raises (TesseractNotFoundError, or PermissionError for the
+        # blanked value) and the page degrades to "all OCR methods failed"
+        # even though a working tesseract sits on PATH. Mirror the poppler
+        # auto-detection above: probe PATH and use the found binary when
+        # the configured one is absent. Fail-open: keep the configured
+        # value when nothing is found (behavior unchanged).
+        if not self._tesseract_cmd or not os.path.isfile(self._tesseract_cmd):
+            _detected_tess = shutil.which("tesseract")
+            if _detected_tess:
+                self.log(f"  🔍 Tesseract auto-detected: {_detected_tess}", "INFO")
+                self._tesseract_cmd = _detected_tess
         self._image_dpi = settings.get("ocr.image_dpi", 300)
 
         # --- FIX: Force OCR timeout to at least 120 seconds ---
@@ -1325,7 +1342,11 @@ class OCRService:
             import pytesseract
             from PIL import Image
 
-            pytesseract.pytesseract.tesseract_cmd = self._tesseract_cmd
+            # V0.6.0 (4-c): only pin the global when a usable command was
+            # resolved — assigning a blank/bogus value overrides
+            # pytesseract's own PATH resolution with a broken binary path.
+            if self._tesseract_cmd:
+                pytesseract.pytesseract.tesseract_cmd = self._tesseract_cmd
             pil_image = Image.open(io.BytesIO(image_bytes))
             # V0.4.24 (V4.23 run post-mortem — p.107): the default pass is
             # byte-identical to V0.4.23; when it returns NOTHING, retry
