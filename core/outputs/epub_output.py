@@ -16,6 +16,7 @@ format.
 
 from __future__ import annotations
 
+import html
 import logging
 from pathlib import Path
 
@@ -107,14 +108,22 @@ class EPUBGenerator(OutputGeneratorBase):
         epub_module.write_epub(str(epub_path), book, {})
 
     def _build_chapter_html(self, summ: SummaryResult, idx: int) -> str:
-        """Build the HTML content for one chapter."""
-        heading = summ.chapter_heading or f"Chapter {idx}"
+        """Build the HTML content for one chapter.
+
+        V10.6.0 fix (D1): every text fragment is XML-escaped (``html.escape``).
+        Book titles, chapter headings, and bullet points routinely contain
+        ``&`` / ``<`` / ``>``; the fallback ZIP writer interpolates this HTML
+        verbatim into XHTML, so unescaped text produced not-well-formed
+        chapter files.  ebooklib re-parses this string and re-serialises the
+        entities identically, so the primary path is byte-identical.
+        """
+        heading = html.escape(summ.chapter_heading or f"Chapter {idx}")
         parts = [f"<h1>{heading}</h1>"]
 
         # Executive summary
         if summ.executive_summary:
             parts.append("<h2>Executive Summary</h2>")
-            parts.append(f"<p>{summ.executive_summary}</p>")
+            parts.append(f"<p>{html.escape(summ.executive_summary)}</p>")
 
         # Key takeaways
         if summ.bullet_points:
@@ -123,7 +132,7 @@ class EPUBGenerator(OutputGeneratorBase):
             for bp in summ.bullet_points:
                 bp_str = str(bp).strip()
                 if bp_str:
-                    parts.append(f"<li>{bp_str}</li>")
+                    parts.append(f"<li>{html.escape(bp_str)}</li>")
             parts.append("</ul>")
 
         # Thorough summary
@@ -133,7 +142,7 @@ class EPUBGenerator(OutputGeneratorBase):
             for para in summ.thorough_summary.split("\n\n"):
                 para = para.strip()
                 if para:
-                    parts.append(f"<p>{para}</p>")
+                    parts.append(f"<p>{html.escape(para)}</p>")
 
         return "\n".join(parts)
 
@@ -150,8 +159,14 @@ class EPUBGenerator(OutputGeneratorBase):
         book_id = str(uuid.uuid4())
 
         with zipfile.ZipFile(epub_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # mimetype (must be first, uncompressed)
-            zf.writestr("mimetype", "application/epub+zip")
+            # mimetype (must be first, uncompressed).  V10.6.0 fix (D2): the
+            # ZipFile-level DEFLATE default was compressing this entry too,
+            # violating the OCF spec (epubcheck rejects it) despite the
+            # comment claiming "uncompressed".  An explicit ZipInfo with
+            # ZIP_STORED keeps the entry both first AND stored.
+            _mimetype = zipfile.ZipInfo("mimetype")
+            _mimetype.compress_type = zipfile.ZIP_STORED
+            zf.writestr(_mimetype, "application/epub+zip")
 
             # container.xml
             zf.writestr(
@@ -171,7 +186,7 @@ class EPUBGenerator(OutputGeneratorBase):
             for idx, summ in enumerate(summaries, 1):
                 manifest_items += f'<item id="ch{idx}" href="ch_{idx:03d}.xhtml" media-type="application/xhtml+xml"/>\n'
                 spine_items += f'<itemref idref="ch{idx}"/>\n'
-                heading = summ.chapter_heading or f"Chapter {idx}"
+                heading = html.escape(summ.chapter_heading or f"Chapter {idx}")
                 toc_entries += f'<navPoint id="ch{idx}"><navLabel><text>{heading}</text></navLabel><content src="ch_{idx:03d}.xhtml"/></navPoint>\n'
 
             zf.writestr(
@@ -180,7 +195,7 @@ class EPUBGenerator(OutputGeneratorBase):
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">{book_id}</dc:identifier>
-    <dc:title>{book_title}</dc:title>
+    <dc:title>{html.escape(book_title)}</dc:title>
     <dc:language>en</dc:language>
     <dc:creator>Elixir</dc:creator>
   </metadata>
@@ -198,18 +213,19 @@ class EPUBGenerator(OutputGeneratorBase):
                 f"""<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head><meta name="dtb:uid" content="{book_id}"/></head>
-  <docTitle><text>{book_title}</text></docTitle>
+  <docTitle><text>{html.escape(book_title)}</text></docTitle>
   <navMap>
 {toc_entries}  </navMap>
 </ncx>""",
             )
 
-            # Chapter files
+            # Chapter files (heading escaped — D1: valid XHTML for any title)
             for idx, summ in enumerate(summaries, 1):
-                html = self._build_chapter_html(summ, idx)
+                html_content = self._build_chapter_html(summ, idx)
+                title = html.escape(summ.chapter_heading or f"Chapter {idx}")
                 zf.writestr(
                     f"OEBPS/ch_{idx:03d}.xhtml",
-                    f'<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><title>{summ.chapter_heading or f"Chapter {idx}"}</title></head><body>{html}</body></html>',
+                    f'<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><title>{title}</title></head><body>{html_content}</body></html>',
                 )
 
 
