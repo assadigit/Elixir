@@ -1,0 +1,150 @@
+# Source Glossary — 9 - HISTRIONIC AND SCHIZOTYPAL PERSONALITY DISORDERS
+<!-- generated-by: Elixir 0.5.7 | chapter=9 - HISTRIONIC AND SCHIZOTYPAL PERSONALITY DISORDERS -->
+
+## Names
+- **Simic** — (no year cited) — author of the poem "The Roach" quoted in the chapter
+- **DSM-III** (1980) — introduced the diagnostic entities of "histrionic personality disorder" and "schizotypal personality disorder"
+- **DSM-II** (1968) — used the term "histrionic" parenthetically as a synonym for "hysterical"
+- **Kernberg** (1985, 1984, 1986, 1967, 1975a) — psychoanalyst who contributed to the understanding of histrionic and schizotypal personality disorders, distinguishing hysterical from histrionic personalities and describing borderline personality organization
+- **Gorton and Akhtar** (1990) — authors who discussed controversies surrounding the histrionic label and the DSM-III-R portrayal of histrionic personality disorder
+- **Frances** (1980) — author who argued that histrionic is a synonym for hysterical personality
+- **Spitzer et al.** (1980) — authors who supported the view that histrionic is a synonym for hysterical personality
+- **Widiger et al.** (1988) — authors who supported the view that histrionic is a synonym for hysterical personality
+- **Lazare** (1971) — author who reviewed psychoanalytic literature on hysterical character, noting Freud's lack of specific reference to hysterical personality
+- **Abraham** — (1921, 1924a,b) — author whose early papers on character traits and libidinal stages did not mention hysterical personality
+- **Wittels** (1930) — author who provided the first psychoanalytic description of hysterical personality, emphasizing its pregenital developmental failure
+- **Freud** (1931) — author who described the "erotic type" in "Libidinal Types," noting the hysteric's dependent longings and preoedipal determinants
+- **Reich** (1933) — author who emphasized that hysterical character is determined by a fixation on the genital phase of infantile development
+- **Fenichel** (1945) — author who maintained that hysterical character traits betray conflicts between fears of sexuality and repressed sexual strivings
+- **Marmor** (1953) — author who challenged the notion that hysterical personality emanated predominantly from phallic-oedipal conflicts, emphasizing oral fixations
+- **Halleck** (1967) — author who upheld Marmor's position, finding severe maternal deprivation to be a frequent background of adult hysterical personality
+- **Hollender** (1970) — author who further developed the theme of hysterical women's desire to be held, not seduced
+- **Easser and Lesser** (1965) — authors who distinguished the true hysteric from the "hysteroid," describing their different family backgrounds and characteristics
+- **Kernberg** (1967) — author who distinguished an "infantile" personality from a hysterical personality on six grounds
+- **Zetzel** (1968) — author who divided hysterical women patients into four groups of increasing psychopathological severity
+- **Abse** (1974) — author who distinguished "hysteriform borderline personalities" from hysterical personality proper
+- **Blacker and Tupin** (1977) — authors who described "the more pregenitally fixated or more narcissistically vulnerable hysteric" and contrasted it with "genital or mature hysterical personality organization"
+- **Liebowitz and Klein** (1981) — authors who outlined an entity called "hysteroid dysphoria"
+- **Cooper** (1987) — author who critiqued DSM-III histrionic personality disorder criteria, noting omissions and suggesting two separate disorders
+- **Tupin** (1981) — author whose synthesis of earlier literature was cited by Cooper to distinguish healthier "hysterical" from more "infantile" hysteric
+- **Lilienfeld et al.** (1986) — authors whose research showed the association between histrionic and antisocial personality disorders
+- **Gunderson** (1985a, 1983) — author who discussed differences between borderline and histrionic individuals
+- **Gunderson and Siever** (1983) — authors who studied schizotypal personality disorder
+- **Kendler et al.** (1981) — authors who studied schizotypal personality disorder
+- **Siever and Gunderson** (1983) — authors who studied schizotypal personality disorder
+- **McGlashan** (1987) — author who conducted a follow-up study of DSM-III schizotypal and borderline patients
+- **Gunderson** (1984) — author whose findings contributed to DSM-III-R revisions of schizotypal personality disorder
+- **Kendler** (1985) — author who commented on the origins of schizotypal personality disorder
+- **Bleuler** (1908, 1911) — author who coined the term "schizoid personality" and observed these traits among relatives of schizophrenics
+- **Hoch** (1910) — author who contributed to the description of schizoid personality
+- **Kretschmer** (1925) — author who contributed to the description of schizoid personality
+- **Kasanin and Rosen** (1933) — authors who contributed to the description of schizoid personality
+- **Terry and Rennie** (1938) — authors who contributed to the description of schizoid personality
+- **Kallman** (1938) — author who contributed to the description of schizoid personality
+- **Nanarello** (1953) — author who contributed to the description of schizoid personality
+- **Fairbairn** (1940) — author who provided an understanding of the intrapsychic dynamics of the schizoid individual
+- **Guntrip** (1969) — author who provided an understanding of the intrapsychic dynamics of the schizoid individual
+- **Klein** (1946) — author who provided an understanding of the intrapsychic dynamics of the schizoid individual
+- **Zilboorg** (1941, 1952) — author who described individuals suffering from "ambulatory schizophrenia"
+- **Federn** (1947) — author who provided a description of "latent schizophrenia"
+- **Hoch and Polatin** (1949) — authors who described what they termed "pseudoneurotic schizophrenia"
+- **Ekstein** (1955) — author who popularized the notion of latent schizophrenia
+- **Noble** (1951) — author who popularized the notion of latent schizophrenia
+- **Rado** (1953) — author who hypothesized that schizotypal individuals had the same constitutional defects as schizophrenia
+- **Meehl** (1962) — author who suggested that an integrative neural deficit ("schizotaxia") is inherited in both schizotypal disorder and schizophrenia
+- **Kety et al.** (1968, 1975) — authors whose genetic studies highlighted the syndrome of "borderline schizophrenia"
+- **Rosenthal et al.** (1968, 1971) — authors who conducted adoptive studies of schizophrenia
+- **Wender et al.** (1974) — authors who conducted adoptive studies of schizophrenia
+- **Gunderson and Singer** (1975) — authors who used the term "borderline" to designate a specific personality disorder
+- **Spitzer et al.** (1979) — authors who developed DSM-III criteria for personality disorders, including schizotypal personality disorder
+- **Kendler** (1985) — author who commented on the origins of schizotypal personality disorder
+- **Akhtar** (1988, 1990a, 1987, 1989a, 1982a, 1986) — author who advocated for the recognition of hypomanic personality disorder and discussed various overlaps and differences in personality disorders
+- **Akiskal** (1984, 1986) — author who discussed hypomanic characters
+- **Bursten** (1973a, 1989) — author who noted the overlap of narcissistic with paranoid and antisocial personality disorders
+- **Wolman** (1987) — author who noted the overlap of narcissistic with antisocial personality disorders and discussed changes in antisocial individuals over the life span
+- **Reid** (1981) — author who noted the overlap of borderline and antisocial personality
+- **Kohut and Wolf** (1978) — author who noted the overlap of schizoid and narcissistic personality
+- **Kernberg** (1980) — author who noted changes in narcissistic patients over the life span
+- **Bergman** (1971, 1978) — author who noted that paranoid individuals may fare better than expected
+- **Snyder et al.** (1983) — author who noted that borderline individuals may become anergic and less restless
+- **Wolff and Chick** (1980) — author who discussed early schizoid phenomena
+- **Robins et al.** (1966) — author who discussed early antisocial phenomena
+- **Rinsley** (1980) — author who discussed early borderline phenomena
+- **Bleiberg** (1984) — author who discussed early narcissistic phenomena
+- **Erikson** (1959) — author whose theory of developmental tasks was referenced in discussing changes in symptomatology over the life span
+- **Akhtar et al.** (1986) — authors who noted sex-related differences in personality disorders and the lesser frequency of borderline diagnosis among blacks
+- **Reich** (1987) — author who noted sex-related differences in personality disorders
+- **Robins et al.** (1984) — author who noted sex-related differences in personality disorders
+
+## Dates
+- **1980** — publication year of DSM-III, which introduced histrionic and schizotypal personality disorders
+- **1968** — publication year of DSM-II, which used "histrionic" as a synonym for "hysterical"
+- **1987** — publication year of DSM-III-R, which offered revised criteria for histrionic and schizotypal personality disorders
+- **1930** — year Wittels provided the first psychoanalytic description of hysterical personality
+- **1931** — year Freud published "Libidinal Types," describing the "erotic type"
+- **1933** — year Reich emphasized hysterical character's fixation on the genital phase
+- **1945** — year Fenichel maintained hysterical character traits betray conflicts between fears of sexuality and repressed strivings
+- **1953** — year Marmor challenged the notion that hysterical personality emanated predominantly from phallic-oedipal conflicts
+- **1967** — year Halleck upheld Marmor's position and year Kernberg distinguished infantile from hysterical personality
+- **1965** — year Easser and Lesser distinguished the true hysteric from the "hysteroid"
+- **1968** — year Zetzel divided hysterical women patients into four groups of increasing severity
+- **1974** — year Abse distinguished "hysteriform borderline personalities" from hysterical personality proper
+- **1977** — year Blacker and Tupin described "the more pregenitally fixated or more narcissistically vulnerable hysteric"
+- **1981** — year Liebowitz and Klein outlined "hysteroid dysphoria" and year Tupin synthesized earlier literature on hysterical personalities
+- **1984** — year Kernberg highlighted differences between hysterical and histrionic personalities
+- **1986** — year Kernberg provided detailed descriptions of histrionic and hysterical disorders in male and female patients
+- **1908** — year Bleuler coined the term "schizoid personality"
+- **1911** — year Bleuler observed schizoid traits among relatives of schizophrenics and described latent schizophrenia
+- **1941, 1952** — years Zilboorg described individuals suffering from "ambulatory schizophrenia"
+- **1947** — year Federn provided a description of "latent schizophrenia"
+- **1949** — year Hoch and Polatin described "pseudoneurotic schizophrenia"
+- **1953** — year Rado hypothesized constitutional defects underlying schizotypal disorder
+- **1962** — year Meehl suggested an integrative neural deficit ("schizotaxia") is inherited in schizotypal disorder and schizophrenia
+- **1968, 1975** — years Kety et al. conducted adoptive studies highlighting "borderline schizophrenia"
+- **1979** — year Spitzer et al. developed DSM-III criteria for schizotypal personality disorder
+- **1950s** — decade when interest developed in the psychoanalytic study of schizoid phenomena
+- **1960s and 1970s** — period when the "borderline" concept gained popularity
+- **1921b** — year Kraepelin recognized many personality disorders as "fundamental states" of psychotic disorders
+- **1959** — year Erikson's theory of developmental tasks was referenced
+- **1980** — year Kernberg noted midlife crossover between narcissistic and schizoid personalities
+- **1966** — year Robins et al. discussed early antisocial phenomena
+- **1980** — year Wolff and Chick discussed early schizoid phenomena
+- **1980** — year Rinsley discussed early borderline phenomena
+- **1984** — year Bleiberg discussed early narcissistic phenomena
+
+## Terms
+- **histrionic personality disorder** — a diagnostic entity introduced in DSM-III (1980) characterized by excessive emotionality and attention-seeking behavior
+- **schizotypal personality disorder** — a diagnostic entity introduced in DSM-III (1980) characterized by deficits in interpersonal relatedness and peculiarities of ideation, appearance, and behavior
+- **nosological newcomers** — refers to histrionic and schizotypal personality disorders, which were newly classified in DSM-III
+- **hysterical personality** — a traditional category from which histrionic personality disorder was derived, with historical roots in psychoanalytic literature
+- **latent schizophrenia** — a form of schizophrenia described by Bleuler (1911) where all symptoms are present but in attenuated form
+- **schizoid personality** — a term coined by Bleuler (1908) to describe individuals with a morbidly exaggerated interest in inner life at the cost of external reality
+- **borderline schizophrenia** — a syndrome identified in adoptive studies by Kety et al. (1968, 1975), characterized by odd thinking, brief episodes of disorganization, and poor social relations
+- **schizotaxia** — Meehl's (1962) term for an integrative neural deficit hypothesized to be inherited in both schizotypal disorder and schizophrenia
+- **hysteroid** — a more severe form of hysterical personality distinguished by Easser and Lesser (1965), characterized by greater impulsivity and instability
+- **infantile personality** — a personality type distinguished by Kernberg (1967) from hysterical personality, showing more diffuse emotional lability and inappropriate demandingness
+- **hysteroid dysphoria** — an entity outlined by Liebowitz and Klein (1981) consisting of flamboyance, seductiveness, dependence, and brief atypical depressions
+- **borderline personality organization** — a level of personality organization described by Kernberg (1985) characterized by identity diffusion and primitive defense mechanisms
+- **schizotypal** — a term first used by Rado (1953) as a condensation of "schizophrenic genotype," referring to a nonpsychotic schizophrenialike disorder
+- **borderline personality disorder** — a personality disorder distinguished from schizotypal personality disorder, characterized by chronic anger and greater suicidality
+- **antisocial personality disorder** — a personality disorder that shares sexual promiscuity and corruptibility with histrionic personality but lacks sustained disregard for social norms
+- **pseudoneurotic schizophrenia** — a term described by Hoch and Polatin (1949) for individuals with all core symptoms of schizophrenia plus multiple neurotic symptoms
+- **magical thinking** — a criterion for schizotypal personality disorder involving superstitiousness or belief in clairvoyance
+- **ideas of reference** — a criterion for schizotypal personality disorder involving the belief that events are personally directed
+- **social isolation** — a criterion for schizotypal personality disorder involving lack of close friends or confidants
+- **odd speech** — a criterion for schizotypal personality disorder involving digressive, vague, or overelaborate communication
+- **inadequate rapport** — a criterion for schizotypal personality disorder involving constricted or inappropriate affect in social interaction
+- **suspiciousness** — a criterion for schizotypal personality disorder involving paranoid ideation
+- **undue social anxiety** — a criterion for schizotypal personality disorder involving hypersensitivity to criticism
+- **hypomanic personality disorder** — a disorder advocated by Akhtar (1988) to be included in the personality disorder section
+- **depressive personality disorder** — a disorder suggested by Akhtar (1988) to be included in the personality disorder section
+- **cyclothymic personality disorder** — a disorder suggested by Akhtar (1988) to be included in the personality disorder section
+- **fundamental states** — a term used by Kraepelin (1921b) to describe personality disorders as variants of psychotic disorders
+- **mixed forms** — refers to the clinical occurrence of features from more than one severe personality disorder in a single patient
+- **level of social functioning** — refers to the degree to which individuals with severe personality disorders can function in society, which is not always impaired
+- **sex-related differences** — refers to differences in incidence and manifestation of severe personality disorders between men and women
+- **changes in symptomatology over the life span** — refers to the evolution of personality disorder symptoms as individuals age and face new developmental tasks
+- **cultural factors** — refers to the influence of culture on the phenotypal outcome and surface manifestations of personality disorders
+- **pathoplastic effects** — refers to the way culture shapes the expression of psychopathology
+- **grandiose asceticism** — a culturally specific manifestation of narcissistic personality more common in the Orient
+- **materialistically acquisitive picture** — a culturally specific manifestation of narcissistic personality more common in the West

@@ -1,0 +1,31 @@
+{
+  "settings": {
+    "summarisation.provider": "llamacpp",
+    "summarisation.llamacpp_base_url": "http://localhost:3031",
+    "summarisation.llamacpp_model": "glm-4-plus",
+    "summarisation.llamacpp_api_key": "local",
+    "summarisation.llamacpp_context_tokens": 128000,
+    "summarisation.llamacpp_max_output_tokens": 32768,
+    "summarisation.model": "glm-4-plus",
+    "summarisation.temperature": 0.7,
+    "summarisation.model_architecture": "llamacpp",
+    "summarisation.cache_enabled": false,
+    "summarisation.parallel_stages": false,
+    "embedding.enabled": false,
+    "local.http_timeout_sec": 600,
+    "local.chapter_deadline_sec": 0,
+    "local.vram_recovery_delay_sec": 0,
+    "local.b4_max_sections": 3,
+    "local.vram_overbudget_policy": "proceed",
+    "model_temperatures": {}
+  },
+  "request": {
+    "temperature": 0.7,
+    "coverage_threshold": 0.85,
+    "overdeliver_enabled": true,
+    "summarisation_max_context_tokens": 128000,
+    "summarisation_max_output_tokens": 32768,
+    "model_architecture": "single_local",
+    "max_workers": 1
+  }
+}
