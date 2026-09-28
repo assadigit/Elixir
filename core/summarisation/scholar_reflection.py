@@ -547,6 +547,11 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                             gap_bullets.append(bullet)
 
                 if gap_bullets:
+                    # V0.5.19: the lazy per-call source roster for the
+                    # loosened quote-guard (built once on first quote-less
+                    # bullet — see the else-branch below).
+                    _v0519_roster: list[str] | None = None
+
                     # V13.42.0: Source-ground each gap-fill bullet (anti-hallucination)
                     # Each bullet MUST contain a verbatim quote from the source
                     grounded_bullets = []
@@ -590,10 +595,44 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
                                     f"- {gb}"
                                 )  # has quotes but can't extract — keep
                         else:
-                            log(
-                                f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026",
-                                "DEBUG",
-                            )
+                            # V0.5.19: the V0.5.10 regex-roster fallback for
+                            # the loosened quote-guard (the same pattern
+                            # gap_fill_batch took in V0.5.6/V0.5.10). A
+                            # quote-less gap-fill bullet that NAMES a
+                            # runtime-roster source author is KEPT — the
+                            # deterministic roster IS the grounding (the
+                            # bullet cites a person the regex confirmed in
+                            # the source). Quote-less bullets naming NO
+                            # roster author stay dropped (the strict
+                            # V13.42.0 guard). Fail-open: on roster-build
+                            # error, keep the strict drop.
+                            _roster_ok = False
+                            try:
+                                from core.summarisation.author_anchor import (
+                                    author_in_text,
+                                    source_author_surnames,
+                                )
+
+                                if _v0519_roster is None:
+                                    _v0519_roster = source_author_surnames(src_text)
+                                if _v0519_roster and any(
+                                    author_in_text(_rn, gb.lower()) for _rn in _v0519_roster
+                                ):
+                                    _roster_ok = True
+                            except Exception:
+                                _roster_ok = False
+                            if _roster_ok:
+                                grounded_bullets.append(f"- {gb}")
+                                log(
+                                    f"    \U0001f393 Accepted roster-grounded gap-fill "
+                                    f"without quote: {gb[:60]}\u2026",
+                                    "DEBUG",
+                                )
+                            else:
+                                log(
+                                    f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026",
+                                    "DEBUG",
+                                )
 
                     if grounded_bullets:
                         # Add the gap-fill bullets to the summary's bullet_points

@@ -12,6 +12,10 @@ from functools import lru_cache
 
 from core.preprocessing.citations_regex import APOS as _CIT_APOS
 from core.preprocessing.citations_regex import NAME_SEP as _CIT_NAME_SEP
+from core.summarisation.author_anchor import (
+    STRUCTURAL_LABEL_WORDS as _BOLD_NAME_STRUCTURAL_LABELS,  # noqa: F401 — V0.5.19 alias
+)
+from core.summarisation.author_anchor import author_in_text
 from core.summarisation.postchecks.shared import (  # noqa: F401
     Issue,
     _is_subsequence,
@@ -74,37 +78,37 @@ _BOLD_NAME_RE = re.compile(
 # (Rule 1): these are generic English publishing/discourse section
 # labels, not book-specific terms — the same list applies to a physics
 # textbook, a novel, or a cooking manual.
-_BOLD_NAME_STRUCTURAL_LABELS = frozenset(
-    {
-        "conclusions",
-        "summary",
-        "overview",
-        "introduction",
-        "discussion",
-        "references",
-        "bibliography",
-        "appendix",
-        "notes",
-        "preface",
-        "foreword",
-        "acknowledgments",
-        "acknowledgements",
-        "index",
-        "postscript",
-        "addendum",
-        "glossary",
-        "abstract",
-        "background",
-        "methods",
-        "methodology",
-        "results",
-        "findings",
-        "limitations",
-        "highlights",
-    }
-)
+#
+# V0.5.19: the canonical copy of this set moved to
+# core.summarisation.author_anchor (STRUCTURAL_LABEL_WORDS) so the
+# glossary-ingestion structural-name filter and this postcheck judge
+# against ONE list; the module-level ``_BOLD_NAME_STRUCTURAL_LABELS``
+# alias is imported above (the existing uses + tests keep the name).
 
 _BARE_YEAR_RE = re.compile(r"\b(1\d{3}|20\d{2}|21\d{2})\b")
+
+# V0.5.19 (check 3b): a scholarly-work prose-year attachment — "a work
+# from 1980" / "a paper in 1984" / "a study of 1910". The year sits in
+# PROSE (no parentheses), so the citation-shaped checks 1/3 cannot see
+# it. Years are restricted to 1800-2099 (a 4-digit COUNT like "a study of
+# 1200 patients" must not read as a year). Generic scholarly-work nouns
+# only (Rule 1); "edition"/"volume" are deliberately EXCLUDED — a
+# manual-edition year is not an author-year and would false-flag.
+_PROSE_WORK_YEAR_RE = re.compile(
+    r"\b(?:works?|papers?|studies|study|articles?|books?|monographs?|publications?|reports?)\s+"
+    r"(?:from|in|of)\s+\*?((?:1[89]\d{2}|20\d{2}))\b\)?"
+)
+
+# V0.5.19: the thin roster-gap-fill bullet shape — "Name: Cited in a
+# work..." / "Name: Authored literature on..." / "Name: Contributed to
+# literature on..." — a one-liner that names a roster author without
+# carrying their contribution. Only the citation-registry verbs trip it;
+# real claims ("AuthorA: Demonstrated ...") do not. Generic shapes
+# (Rule 1).
+_THIN_GAPFILL_BULLET_RE = re.compile(
+    r"^[A-Z][\w'\u2019-]+:\s+(?:Cited in|Authored|Contributed to)\b",
+    re.IGNORECASE,
+)
 
 # V0.5.18: the non-name stopword shapes (check 2's inline literal, hoisted
 # to a module constant so the new check 3 shares the exact same guard —
@@ -382,6 +386,136 @@ def validate_years(
                     detail=f"author-year consistency check crashed: {e!r}",
                 )
             )
+
+    # --- Check 3b (V0.5.19): PROSE-form author-year consistency ----------------
+    # The V0.5.18 ch.9 re-run's thin roster-gap-fill bullet said an author
+    # was "Cited in a work from 1980" — the real year is 1988, but the year
+    # sat in PROSE (no parentheses), so the citation-shaped check 3 could
+    # not see it. This check scans SENTENCES: when a sentence names a KNOWN
+    # roster author AND carries a scholarly-work prose-year attachment
+    # ("a work/paper/study/... from/in/of NNNN"), the year must be in the
+    # roster years of an author named in that sentence, or be
+    # citation-shaped-adjacent in the source. Flag-only (the attribution
+    # can be ambiguous — which named author the year belongs to — so no
+    # deterministic fix; same posture as checks 1-3).
+    if source_authors and source_text:
+        try:
+            _src_years = _source_author_years(source_text)
+            if _src_years:
+                _seen_ppairs: set[tuple[str, str]] = set()
+                # Sentence-scan: split on sentence-final punctuation, keeping
+                # bullet lines intact (a thin bullet is one sentence).
+                for _sent in re.split(r"(?<=[.!?])\s+", text):
+                    if not _sent or len(_sent) > 600:
+                        continue
+                    _prose_years = list(_PROSE_WORK_YEAR_RE.finditer(_sent))
+                    if not _prose_years:
+                        continue
+                    # The roster authors named in this sentence (anchor-based,
+                    # same matcher as the V0.5.18 veto family).
+                    _named = [
+                        a
+                        for a in source_authors
+                        if len(a) >= 3 and author_in_text(a, _sent.lower())
+                    ]
+                    if not _named:
+                        continue  # no known author in the sentence → not our case
+                    for _pm in _prose_years:
+                        _py = _pm.group(1)
+                        _ok = False
+                        for _a in _named:
+                            _keys = [_a.casefold()]
+                            if " " in _a:
+                                _keys.append(_a.split()[0].casefold())
+                            if any(_py in _src_years.get(_k, set()) for _k in _keys):
+                                _ok = True
+                                break
+                        if _ok:
+                            continue
+                        # Citation-shaped exemption: the source pairs one of
+                        # the named authors with this year in a form the
+                        # roster build missed (same exemption as check 3).
+                        _exempt = any(
+                            re.search(
+                                re.escape(_a) + r"[^\d]{0,48}?" + _py,
+                                source_text,
+                                re.IGNORECASE,
+                            )
+                            for _a in _named
+                        )
+                        if _exempt:
+                            continue
+                        _pkey = (_sent[:80].casefold(), _py)
+                        if _pkey in _seen_ppairs:
+                            continue
+                        _seen_ppairs.add(_pkey)
+                        _names_txt = ", ".join(_named[:3])
+                        issues.append(
+                            Issue(
+                                detector="year",
+                                severity="flag",
+                                field=field_label,
+                                snippet=_snippet(_sent, _pm.start()),
+                                detail=(
+                                    f"prose-form year {_py} near author(s) "
+                                    f"'{_names_txt}', but the source cites them "
+                                    f"without {_py} — possible prose-form year "
+                                    f"slip (V0.5.19 check 3b)"
+                                ),
+                            )
+                        )
+        except Exception as e:  # fail-open
+            issues.append(
+                Issue(
+                    detector="year",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=f"prose-form year consistency check crashed: {e!r}",
+                )
+            )
+
+    # --- Thin roster-gap-fill bullet flag (V0.5.19) ---------------------------
+    # The V0.5.18 ch.9 re-run shipped two thin one-liners from the roster
+    # gap-fill ("AuthorD: Cited in a work from NNNN regarding X." /
+    # "AuthorE: Authored literature on Y (cites).") — shape-only bullets
+    # that name a roster author without carrying their contribution. The
+    # prose-year check 3b catches the YEAR slips; this flag catches the
+    # SHAPE so the audit sees the quality signal. Advisory-only (Rule 1:
+    # the shape is generic — "Name: Cited/Authored/Contributed ...").
+    try:
+        _seen_thin: set[str] = set()
+        for _line in text.split("\n"):
+            _l = _line.strip().lstrip("-*• ").strip()
+            _tm = _THIN_GAPFILL_BULLET_RE.match(_l)
+            if not _tm:
+                continue
+            if _l.casefold() in _seen_thin:
+                continue
+            _seen_thin.add(_l.casefold())
+            issues.append(
+                Issue(
+                    detector="attribution",
+                    severity="flag",
+                    field=field_label,
+                    snippet=_l[:60],
+                    detail=(
+                        "thin roster-gap-fill bullet shape (citation-only "
+                        "one-liner, no contribution carried) — quality signal "
+                        "for the audit (V0.5.19)"
+                    ),
+                )
+            )
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
+                detector="attribution",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"thin-bullet shape check crashed: {e!r}",
+            )
+        )
 
     return text, issues
 

@@ -216,7 +216,15 @@ def _extract_glossary_names(glossary: dict | list | None) -> list[str]:
             continue
         seen.add(name.lower())
         out.append(name)
-    return out
+    # V0.5.19: drop structural-label entries (the glossary garbage-name
+    # family — the V0.5.18 ch.9 run's glossary carried a classification-
+    # manual code as a "name", and the coverage check then demanded an
+    # author that is a manual). Shape-based filter (all-caps code shapes +
+    # section-label words), shared with the bold-name postcheck via
+    # ``core.summarisation.author_anchor`` (Rule 1 ✓).
+    from core.summarisation.author_anchor import filter_structural_names
+
+    return filter_structural_names(out)
 
 
 def _extract_glossary_path(glossary: dict | None) -> str:
@@ -346,12 +354,15 @@ _VERIFICATION_PROMPT = """You are a verification + polish pass. The SUMMARY belo
 3. CRITICAL OMISSIONS: key source claims/contributors the summary missed. Add a concise grounded bullet (or thorough sentence) for each critical omission.
 4. HALLUCINATIONS: fabricated claims (claims not in the source). Remove or correct each.
 
-Return a JSON array of TARGETED corrections. Each correction MUST be: {"original": "<an EXACT substring of the summary to replace>", "corrected": "<the replacement text>", "reason": "<one of: date|name|omission|hallucination>"}.
+Return a JSON array of TARGETED corrections. Each correction MUST be one of two shapes:
+- A REPLACEMENT: {"original": "<an EXACT substring of the summary to replace>", "corrected": "<the replacement text>", "reason": "<one of: date|name|omission|hallucination>"}
+- An APPEND (for omitted authors/contributors ONLY): {"append": "<the full new bullet text, one bullet, grounded in the source>", "author": "<the omitted author's name>", "reason": "omission"}
 
 Rules:
-- The "original" field MUST be an EXACT substring of the SUMMARY (copied verbatim, including punctuation) so it can be located + replaced. If you can't quote an exact substring, don't propose the correction.
-- Do NOT rewrite the whole summary. Only targeted, located corrections.
-- For omissions, the "original" can be a short anchor substring where the new bullet/sentence should be INSERTED (the "corrected" is the anchor + the new content).
+- For REPLACEMENTS: the "original" field MUST be an EXACT substring of the SUMMARY (copied verbatim, including punctuation) so it can be located + replaced. If you can't quote an exact substring, don't propose the replacement.
+- For APPENDS: use them ONLY for a source author/contributor who is genuinely absent from the summary (the additional coverage check below names them). The "append" text must be a single self-contained bullet that states the author's specific contribution from the source. Do NOT use appends for authors already cited in the summary.
+- Do NOT rewrite the whole summary. Only targeted, located corrections + grounded appends.
+- For omissions with a natural insertion anchor, the REPLACEMENT shape also works: the "original" can be a short anchor substring where the new bullet/sentence should be INSERTED (the "corrected" is the anchor + the new content).
 - Return [] if no corrections are needed.
 - Output ONLY the JSON array, no commentary, no markdown fences.
 
@@ -396,6 +407,175 @@ def _extract_corrections(raw: str) -> list[dict]:
     if not isinstance(parsed, list):
         return []
     return [c for c in parsed if isinstance(c, dict)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V0.5.19: the fuzzy anchor locator + the append-mode correction type.
+#
+# The V0.5.17 ch.1 run's verification proposed 6 corrections and 5 were
+# SKIPPED — the LLM's "original" substrings were near-misses (markdown
+# emphasis, curly/straight quotes, whitespace wraps). The ch.9 V0.5.18
+# re-run's flag was accurate but the anchor-insert corrections for the
+# genuinely-missing authors STILL didn't land. Two fixes, one mechanism:
+#
+# 1. ``_locate_correction_anchor`` — exact substring first; on miss, a
+#    NORMALIZED search (casefold + whitespace collapse + emphasis/quote
+#    dropping + dash unification) that maps back to the original span.
+#    The LLM can now quote the anchor in ANY reasonable casing/emphasis
+#    form and the correction still lands.
+# 2. Append-mode corrections — an omission correction can be
+#    ``{"append": "<bullet>", "author": "<name>", "reason": "omission"}``
+#    with NO anchor at all. SAFE to build now (the V0.5.18 et-al fix made
+#    the missing-author flag honest — an append never names a present
+#    author): each append must name a CURRENTLY-missing roster author,
+#    the insertion is the end of the last bullet list, and the D3 length
+#    guard runs on the REPLACEMENTS only (appends are bounded by their
+#    own caps) — the old guard rejected every correction whenever the
+#    additions pushed the polished text past 115%.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Chars that carry no anchor identity: markdown emphasis + straight/curly
+# quotes/apostrophes. Dropped (not unified) so "**A**" ≡ "A" and
+# "don't" ≡ "dont" for the anchor match.
+_ANCHOR_DROP_CHARS = set("*_'\"‘’“”")
+# Whitespace runs collapse to a single space; dashes unify to hyphen.
+_ANCHOR_DASHES = {"\u2013": "-", "\u2014": "-", "\u2212": "-"}
+
+
+def _normalized_index_map(text: str) -> tuple[str, list[int]]:
+    """Normalize ``text`` for anchor matching, keeping a map back to the
+    ORIGINAL character indices (``norm[i]`` came from ``text[idx_map[i]]``).
+
+    Casefold letters; drop emphasis/quote chars; collapse whitespace runs
+    to one space; unify en/em/minuses to the ASCII hyphen.
+    """
+    norm_chars: list[str] = []
+    idx_map: list[int] = []
+    prev_space = False
+    for i, ch in enumerate(text):
+        if ch in _ANCHOR_DROP_CHARS:
+            continue
+        if ch.isspace():
+            if not prev_space and norm_chars:
+                norm_chars.append(" ")
+                idx_map.append(i)
+            prev_space = True
+            continue
+        prev_space = False
+        norm_chars.append(_ANCHOR_DASHES.get(ch, ch).casefold())
+        idx_map.append(i)
+    return "".join(norm_chars), idx_map
+
+
+def _locate_correction_anchor(text: str, original: str) -> tuple[int, int] | None:
+    """Locate the LLM's "original" anchor in ``text``.
+
+    1. Exact substring (the V0.4.40 contract — first occurrence).
+    2. Normalized match (V0.5.19): case/whitespace/emphasis/quote/dash
+       tolerant, mapped back to the original span.
+
+    Returns ``(start, end)`` (end exclusive) or None when the anchor
+    can't be located. Fail-open: None → the correction is skipped (the
+    original text kept) — never a crash, never a fuzzy mis-replace.
+    """
+    if not text or not original:
+        return None
+    pos = text.find(original)
+    if pos >= 0:
+        return (pos, pos + len(original))
+    # Short anchors are ambiguous under normalization — require substance.
+    if len(original.strip()) < 8:
+        return None
+    try:
+        norm_text, text_map = _normalized_index_map(text)
+        norm_orig, _ = _normalized_index_map(original)
+        if len(norm_orig) < 8:
+            return None
+        npos = norm_text.find(norm_orig)
+        if npos < 0:
+            return None
+        start = text_map[npos]
+        end = text_map[npos + len(norm_orig) - 1] + 1
+        if end - start < 4:
+            return None
+        return (start, end)
+    except Exception:
+        return None
+
+
+# V0.5.19: the append-mode guard caps. Content-agnostic bounds — at most
+# 8 appended bullets, each 40-400 chars (a real bullet, not a fragment),
+# total appended text ≤ 15% of the original summary length. Together
+# with the replacements-only D3 guard, the worst-case polished length is
+# bounded (~1.15 × 1.15 ≈ 1.32) and always logged.
+_APPEND_MAX_COUNT = 8
+_APPEND_MIN_CHARS = 40
+_APPEND_MAX_CHARS = 400
+_APPEND_MAX_TOTAL_FRAC = 0.15
+
+
+def _match_missing_author(author: str, still_missing: list[str]) -> str | None:
+    """Match an append's ``author`` field against the still-missing roster.
+
+    Anchor-based (the V0.5.18 et-al strip): ``"AuthorQ et al."`` matches
+    ``"AuthorQ"``, ``"AuthorR"`` matches ``"AuthorR and AuthorS"`` (either
+    containment direction — the LLM may shorten a paired name). Returns
+    the matched roster name or None. The caller re-verifies that the
+    append TEXT names the matched author, so a loose pair-match here can
+    never inject coverage for someone the bullet doesn't cite.
+    """
+    if not author or not still_missing:
+        return None
+    from core.summarisation.author_anchor import author_anchor
+
+    a = author_anchor(author)
+    if not a:
+        return None
+    for m in still_missing:
+        ma = author_anchor(m)
+        if not ma:
+            continue
+        if a == ma or a in ma or ma in a:
+            return m
+    return None
+
+
+def _find_append_insertion_offset(md: str) -> int | None:
+    """The char offset where an appended bullet should be inserted: right
+    after the LAST bullet line of the TAKEAWAYS region (the bullets before
+    the canonical ``## Thorough Summary`` heading — a pipeline-generated
+    section name, not book content, so referencing it is Rule 1 clean).
+    Falls back to the body's last bullet when the heading is absent.
+    None when the body has no bullet list at all (the append path fails
+    open).
+    """
+    if not md:
+        return None
+    footer_starts: list[int] = []
+    m = re.search(r"\n-{3,}\s*\n\s*\*Generated by", md)
+    if m:
+        footer_starts.append(m.start())
+    m = re.search(r"<!--\s*COMPLETE", md)
+    if m:
+        footer_starts.append(m.start())
+    body_end = min(footer_starts) if footer_starts else len(md)
+    body = md[:body_end]
+    thorough_m = re.search(r"^##\s+Thorough Summary\s*$", body, re.MULTILINE)
+    region_end = thorough_m.start() if thorough_m else len(body)
+    last_bullet_end = None
+    for bm in re.finditer(r"^[ \t]*-[ \t][^\n]*$", body[:region_end], re.MULTILINE):
+        last_bullet_end = bm.end()
+    if last_bullet_end is None:
+        # No bullet in the takeaways region — fall back to the whole body.
+        for bm in re.finditer(r"^[ \t]*-[ \t][^\n]*$", body, re.MULTILINE):
+            last_bullet_end = bm.end()
+    if last_bullet_end is None:
+        return None
+    # Insert after the bullet line's newline (or at the line end when the
+    # body ends without one).
+    if last_bullet_end < len(md) and md[last_bullet_end] == "\n":
+        return last_bullet_end + 1
+    return last_bullet_end
 
 
 def _count_polish_guard_flags(text: str, source_text: str, field_label: str) -> int:
@@ -604,6 +784,24 @@ def verify_and_polish_summary(
       - When no glossary is available, falls back to the V0.5.4
         ``extract_citations`` regex behavior (fail-open).
 
+    V0.5.19 evolution (append-mode corrections + the normalized anchor):
+      - The LLM's corrections now come in two shapes: REPLACEMENTS
+        (``{original, corrected}`` — the V0.4.40 contract) and APPENDS
+        (``{append, author, reason: omission}`` — a grounded bullet for a
+        genuinely-missing roster author, no anchor needed). Safe since
+        the V0.5.18 et-al fix made the missing-author flag honest.
+      - Replacement anchors are located EXACT first, then via the
+        NORMALIZED match (case/whitespace/emphasis/quote/dash tolerant)
+        — the ch.1 run lost 5 of 6 corrections to near-miss anchors.
+      - The D3 length guard judges the REPLACEMENTS only (before the
+        appends); appends are deterministically guarded (roster author
+        still missing, the bullet names them, one per author, 40-400
+        chars each, ≤8 total, ≤15% of the original, individually
+        clean) and inserted at the end of the takeaways region.
+      - The glossary ``names`` ground truth now drops structural-label
+        entries (all-caps code shapes + section-label words — the ch.9
+        glossary's manual-code "name").
+
     Args:
         rendered_md: the rendered per-chapter summary markdown (the output
             of ``render_summary_markdown``).
@@ -761,6 +959,10 @@ def verify_and_polish_summary(
         # hardcoded names).
         _coverage_note = ""
         _src_authors: list[str] = []
+        # V0.5.19: the ground-truth roster surfaced for the append-mode
+        # guards (empty when the coverage try fails open — appends then
+        # skip with a flag, the conservative direction).
+        _ground_truth_authors_cache: list[str] = []
         try:
             from core.preprocessing.deterministic_analyzer import extract_citations
 
@@ -797,6 +999,7 @@ def verify_and_polish_summary(
                 for _gn in _glossary_names:
                     if _gn not in _src_author_years:
                         _src_author_years[_gn] = []
+            _ground_truth_authors_cache = list(_ground_truth_authors)
             # V0.5.4 (B1) → V0.5.18: boundary-safe author-anchor search via
             # ``core.summarisation.author_anchor``. Pre-V0.5.4 the check was
             # a SUBSTRING test (`_a.lower() not in _rendered_lower`) which
@@ -876,10 +1079,13 @@ def verify_and_polish_summary(
                     + "Before adding a bullet for an author, check the existing "
                     "summary — if the author is already cited, do NOT add a "
                     "duplicate bullet. Do NOT re-cite authors already covered. "
-                    'Use the targeted-correction format: the "original" is '
-                    "the anchor text (e.g. the **Conclusions** bullet) and the "
-                    '"corrected" is the anchor + the new bullet(s) inserted '
-                    "before it."
+                    'For each missing author, PREFER the append correction '
+                    'shape: {"append": "<the full new bullet text>", '
+                    '"author": "<the missing author>", "reason": "omission"} '
+                    '(no anchor needed). Alternatively use the targeted-'
+                    'correction shape: the "original" is the anchor text '
+                    '(e.g. the **Conclusions** bullet) and the "corrected" '
+                    'is the anchor + the new bullet(s) inserted before it.'
                 )
                 # V0.5.6: the coverage flag's audit-trail log line now
                 # includes the glossary path + the cross-reference
@@ -955,32 +1161,51 @@ def verify_and_polish_summary(
                 rendered_md, issues
             ), issues  # no corrections proposed → no-op
 
-        # Apply targeted corrections (verbatim string replacements).
+        # ── V0.5.19: partition + apply the two correction shapes ──────────
+        # REPLACEMENTS ({"original", "corrected"}) — located via the exact
+        # substring first, then the V0.5.19 normalized anchor (the ch.1
+        # run lost 5 of 6 corrections to near-miss anchors).
+        # APPENDS ({"append", "author"}) — omission bullets for genuinely
+        # missing roster authors, inserted at the end of the last bullet
+        # list, deterministically guarded (see the append block below).
+        _replacements = [
+            c
+            for c in corrections
+            if c.get("original") and c.get("corrected") and str(c.get("original")) != str(c.get("corrected"))
+        ]
+        _appends = [
+            c
+            for c in corrections
+            if not c.get("original") and c.get("append") and c.get("author")
+        ]
         polished = rendered_md
         applied = 0
         skipped = 0
-        for c in corrections:
+        fuzzy_applied = 0
+        for c in _replacements:
             orig = str(c.get("original", ""))
             corr = str(c.get("corrected", ""))
             reason = str(c.get("reason", "unknown"))
-            if not orig or orig == corr:
-                continue
-            if orig in polished:
-                polished = polished.replace(orig, corr, 1)
-                applied += 1
-                issues.append(
-                    Issue(
-                        detector="verification",
-                        severity="fix",
-                        field="summary",
-                        snippet=orig[:60],
-                        detail=(f"applied {reason} correction: {orig[:50]!r} -> {corr[:50]!r}"),
-                    )
-                )
-            else:
-                # The LLM's "original" wasn't an exact substring — skip.
+            span = _locate_correction_anchor(polished, orig)
+            if span is None:
+                # The LLM's "original" couldn't be located (exact or
+                # normalized) — skip (fail-open).
                 skipped += 1
-        if applied == 0:
+                continue
+            polished = polished[: span[0]] + corr + polished[span[1] :]
+            applied += 1
+            if orig not in rendered_md:
+                fuzzy_applied += 1
+            issues.append(
+                Issue(
+                    detector="verification",
+                    severity="fix",
+                    field="summary",
+                    snippet=orig[:60],
+                    detail=(f"applied {reason} correction: {orig[:50]!r} -> {corr[:50]!r}"),
+                )
+            )
+        if applied == 0 and not _appends:
             if skipped:
                 issues.append(
                     Issue(
@@ -1004,8 +1229,12 @@ def verify_and_polish_summary(
         # hallucination. This prevents the coverage-targeting from
         # introducing hallucinations while fixing coverage (the AUDIT-V0.5.3
         # concern that the gap-fill might ADD authors not in the source).
-        # Runs BEFORE the length/flag-count guards so those operate on
-        # the de-contaminated polished text.
+        # V0.5.19: still runs BEFORE the length guard (the V0.5.4 contract
+        # — the guards operate on the DE-CONTAMINATED text, so a D4 drop
+        # can bring a replacement-heavy polish back inside 85-115%) and
+        # BEFORE the appends (appended bullets are roster-grounded by
+        # their own deterministic guards — the still-missing match — so
+        # they cannot introduce a fabricated author by construction).
         #
         # V0.5.6: the source-author set now INCLUDES the glossary names
         # (when available). A newly-added author that IS in the glossary
@@ -1094,25 +1323,145 @@ def verify_and_polish_summary(
         except Exception:
             logger.warning("gap-fill hallucination guard crashed (non-fatal)")
 
-        # D3-style guard: length check (no major rewrite).
+        # ── V0.5.19: the D3 length guard runs on the REPLACEMENTS only ────
+        # (before the appends). The old position rejected EVERY correction
+        # whenever omission additions pushed the polished text past 115% —
+        # the "brittle additions" the V0.5.19 backlog filed. Appends are
+        # bounded by their own caps below, so the no-major-rewrite contract
+        # keeps its meaning (replacements alone stay within 85-115%).
         orig_len = len(rendered_md)
-        polish_len = len(polished)
-        if not (0.85 * orig_len <= polish_len <= 1.15 * orig_len):
-            issues.append(
-                Issue(
-                    detector="verification",
-                    severity="flag",
-                    field="summary",
-                    snippet=rendered_md[:60],
-                    detail=(
-                        f"verification rejected: polished length {polish_len} outside "
-                        f"85-115% of original {orig_len} — original kept."
-                    ),
+        if applied:
+            polish_len = len(polished)
+            if not (0.85 * orig_len <= polish_len <= 1.15 * orig_len):
+                issues.append(
+                    Issue(
+                        detector="verification",
+                        severity="flag",
+                        field="summary",
+                        snippet=rendered_md[:60],
+                        detail=(
+                            f"verification rejected: replacement-polished length "
+                            f"{polish_len} outside 85-115% of original {orig_len} "
+                            f"— original kept."
+                        ),
+                    )
                 )
-            )
+                return _apply_deterministic_fixes(rendered_md, issues), issues
+
+        # ── V0.5.19: apply the guarded APPEND-mode corrections ────────────
+        # An append lands ONLY when every deterministic guard passes:
+        #   a. the "author" matches a roster author STILL missing from the
+        #      replacement-polished text (the flag is honest since V0.5.18 —
+        #      an append never names a present author);
+        #   b. the append text itself names that author (the bullet covers
+        #      the person it claims);
+        #   c. one append per missing author (first wins);
+        #   d. per-append shape caps (40-400 chars) + total ≤ 15% of the
+        #      original + at most 8 appends;
+        #   e. the append is individually clean (0 deterministic polish
+        #      flags — a stray-quote/fragment append is skipped, not
+        #      shipped).
+        appended_count = 0
+        if _appends:
+            _gt_authors = _ground_truth_authors_cache or []
+            _polished_lower = polished.lower()
+            _still_missing = [a for a in _gt_authors if not _anchor_in(a, _polished_lower)]
+            _served: set[str] = set()
+            _append_budget = int(_APPEND_MAX_TOTAL_FRAC * orig_len)
+            _insert_off = _find_append_insertion_offset(polished)
+            if _insert_off is None:
+                if _appends:
+                    issues.append(
+                        Issue(
+                            detector="verification_append",
+                            severity="flag",
+                            field="summary",
+                            snippet=rendered_md[:60],
+                            detail=(
+                                f"verification proposed {len(_appends)} append "
+                                f"correction(s) but the summary has no bullet "
+                                f"list to append to — original kept."
+                            ),
+                        )
+                    )
+            else:
+                _append_skipped = 0
+                for c in _appends[:_APPEND_MAX_COUNT]:
+                    _atext = str(c.get("append", "")).strip().lstrip("-*• ").strip()
+                    _aauthor = str(c.get("author", "")).strip()
+                    if not (_APPEND_MIN_CHARS <= len(_atext) <= _APPEND_MAX_CHARS):
+                        _append_skipped += 1
+                        continue
+                    if len(_atext) + 2 > _append_budget:
+                        _append_skipped += 1
+                        continue
+                    _matched_missing = _match_missing_author(_aauthor, _still_missing)
+                    if _matched_missing is None:
+                        _append_skipped += 1
+                        if log:
+                            log(
+                                f"    ✨ V0.5.19 append guard: skipped append for "
+                                f"'{_aauthor[:40]}' (not a still-missing roster author).",
+                                "DEBUG",
+                            )
+                        continue
+                    _mk = _matched_missing.casefold()
+                    if _mk in _served:
+                        _append_skipped += 1
+                        continue
+                    if not _anchor_in(_matched_missing, _atext.lower()):
+                        # The bullet must name the author it covers.
+                        _append_skipped += 1
+                        continue
+                    if _count_polish_guard_flags(_atext, source_text, "append") > 0:
+                        _append_skipped += 1
+                        continue
+                    _served.add(_mk)
+                    _bullet_line = f"- {_atext}\n"
+                    polished = polished[:_insert_off] + _bullet_line + polished[_insert_off:]
+                    _insert_off += len(_bullet_line)
+                    _append_budget -= len(_bullet_line)
+                    appended_count += 1
+                    issues.append(
+                        Issue(
+                            detector="verification_append",
+                            severity="fix",
+                            field="summary",
+                            snippet=_atext[:60],
+                            detail=(
+                                f"appended omission correction for author "
+                                f"'{_matched_missing}' (append-mode, V0.5.19): "
+                                f"{_atext[:80]!r}"
+                            ),
+                        )
+                    )
+                if _append_skipped and appended_count == 0:
+                    issues.append(
+                        Issue(
+                            detector="verification_append",
+                            severity="flag",
+                            field="summary",
+                            snippet=rendered_md[:60],
+                            detail=(
+                                f"verification proposed {len(_appends)} append "
+                                f"correction(s) but none passed the deterministic "
+                                f"guards (roster/shape/caps) — none appended."
+                            ),
+                        )
+                    )
+
+        # The post-append polished text with at least one applied change
+        # (replacement or append); when nothing landed at all, the original
+        # is kept (the flags above already record why).
+        if applied == 0 and appended_count == 0:
             return _apply_deterministic_fixes(rendered_md, issues), issues
 
         # D3-style guard: flag-count check (no new structural defects).
+        # V0.5.19: the length guard moved BEFORE the appends (it judges
+        # the REPLACEMENTS only — the additions are bounded by the append
+        # caps); this guard stays on the FINAL polished text, and the
+        # appends were already individually clean-checked, so a failure
+        # here indicts the replacements (the original V0.4.40 contract).
         pre_flags = _count_polish_guard_flags(rendered_md, source_text, "summary")
         post_flags = _count_polish_guard_flags(polished, source_text, "summary")
         if post_flags > pre_flags:
@@ -1131,10 +1480,12 @@ def verify_and_polish_summary(
             )
             return _apply_deterministic_fixes(rendered_md, issues), issues
 
+        polish_len = len(polished)
         if log:
             log(
                 f"    ✨ V0.4.40 verification: applied {applied} targeted correction(s) "
-                f"({skipped} skipped) — polished output "
+                f"({fuzzy_applied} via normalized anchor, {skipped} skipped) + "
+                f"{appended_count} append(s) — polished output "
                 f"({polish_len} chars, {post_flags} flags vs {pre_flags}).",
                 "INFO",
             )

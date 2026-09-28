@@ -119,6 +119,12 @@ def main(argv: list[str] | None = None) -> int:
     # glossary cross-reference
     gloss = s.get("source_glossary") or {}
     gloss_names = [n.get("name", "") for n in (gloss.get("names") or []) if n.get("name")]
+    # V0.5.19: drop structural-label entries (the glossary garbage-name
+    # family — mirrors the pipeline-side filter so the scorecard roster
+    # and the pipeline's ground truth agree).
+    from core.summarisation.author_anchor import filter_structural_names
+
+    gloss_names = filter_structural_names(gloss_names)
     from core.summarisation.glossary_parser import cross_reference_glossary
 
     xref = cross_reference_glossary(gloss_names, list(roster.keys()))

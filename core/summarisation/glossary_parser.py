@@ -413,9 +413,17 @@ def cross_reference_glossary(
     # glossary name in llm_only even when the regex extractor HAD caught
     # the author (the ch.9 audit's Bug #1 family). Display names keep their
     # original form; only the SET KEYS are anchored.
-    from core.summarisation.author_anchor import author_anchor
+    from core.summarisation.author_anchor import author_anchor, filter_structural_names
 
-    g_raw = [n.strip() for n in (glossary_names or []) if n and n.strip()]
+    # V0.5.19: drop structural-label entries from the glossary side FIRST
+    # (the garbage-glossary family — a classification-manual code listed
+    # as a "name" would otherwise land in llm_only and inflate the
+    # coverage ground truth at the consumers).
+    g_raw = [
+        n.strip()
+        for n in filter_structural_names([n for n in (glossary_names or []) if n and n.strip()])
+        if n.strip()
+    ]
     r_raw = [a.strip() for a in (regex_authors or set()) if a and a.strip()]
     g = {author_anchor(n) for n in g_raw}
     r = {author_anchor(a) for a in r_raw}

@@ -376,6 +376,48 @@ _CRITERION_ROMAN_SUBITEM_RE = re.compile(
     r"^\s*\(([ivx]+)\)\s+(.+)$",
 )
 
+# V0.5.19: the Roman-numeral sequence machinery for the criteria
+# continuation rules — value lookup for the "sequence-extending embedded
+# marker" split (rule 4) + the reverse map for the sub-item name.
+_ROMAN_ITEM_VALUES = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10}
+_ROMAN_VALUE_NAMES = {v: k for k, v in _ROMAN_ITEM_VALUES.items()}
+
+
+def _split_embedded_roman_segments(line: str, last_roman_value: int) -> list[tuple[str, int, str]] | None:
+    """V0.5.19 (criteria rule 4): split a prose line at EMBEDDED,
+    sequence-extending ``(roman)`` markers.
+
+    The PDF hard-wrap family: a wrapped sub-item tail and the NEXT
+    sub-item's text land on ONE physical line — "…even if superficially
+    warm and charming. (ii) egocentric, self-indulgent, …". The split
+    fires ONLY when the embedded marker EXTENDS the active sub-item
+    sequence (value == last + 1) — a random ``(iv)`` mention in
+    discussion prose never matches the expected value, so the line stays
+    prose (no false split).
+
+    Returns ``[("tail", 0, "<pre-marker text>"), ("item", 2, "<text>"),
+    …]`` or None when no sequence-extending marker is embedded.
+    """
+    expected = last_roman_value + 1
+    cuts: list[tuple[re.Match, int]] = []
+    for mm in re.finditer(r"\(([ivx]+)\)", line):
+        rv = _ROMAN_ITEM_VALUES.get(mm.group(1))
+        if rv is not None and rv == expected:
+            cuts.append((mm, rv))
+            expected += 1
+    if not cuts:
+        return None
+    out: list[tuple[str, int, str]] = []
+    tail = line[: cuts[0][0].start()].strip().strip(",;")
+    if tail:
+        out.append(("tail", 0, tail))
+    for idx, (mm, rv) in enumerate(cuts):
+        end = cuts[idx + 1][0].start() if idx + 1 < len(cuts) else len(line)
+        txt = line[mm.end() : end].strip().strip(",;")
+        if txt:
+            out.append(("item", rv, txt))
+    return out
+
 
 def extract_structured_criteria(md_text: str) -> list[dict]:
     """V0.5.4 (Track B4): extract ``a. b. c. d.`` + ``(i) (ii)`` criteria.
@@ -454,6 +496,50 @@ def extract_structured_criteria(md_text: str) -> list[dict]:
         current_items = []
         cluster_start = None
 
+    # V0.5.19 (criteria continuation rules — the "Reproduced Criteria"
+    # garble family): the ch.9 V0.5.18 re-run shipped a garbled criteria
+    # section because PDF hard-wraps slice sub-item text across lines and
+    # paragraph breaks. Four rules fix the family (all shape-based,
+    # Rule 1 ✓):
+    #   1. a prose line that CONTINUES the pending text must start
+    #      LOWERCASE (a mid-sentence wrap); an UPPERCASE-start prose line
+    #      after a marker is a NEW paragraph (discussion prose) and CLOSES
+    #      the cluster — the old code glued it into the letter's text.
+    #   2. a continuation after a SUB-ITEM marker appends to the LAST
+    #      SUB-ITEM (the old code appended it to the parent letter's
+    #      text — the "(i) ... even if\n\nsuperficially warm and
+    #      charming." truncation family).
+    #   3. multi-paragraph continuations: a lowercase line may also
+    #      continue when the PREVIOUS non-blank line was itself a
+    #      lowercase continuation (the "not associated with\npanic
+    #      attacks" family).
+    #   4. an EMBEDDED sequence-extending ``(roman)`` marker mid-line
+    #      splits the line: the pre-marker tail continues the pending
+    #      sub-item, the post-marker text starts the next sub-item (the
+    #      "charming. (ii) egocentric, ..." family).
+    # Plus a duplicate-tail guard (the PDF double-print family — a
+    # repeated final word as its own line) and continuation length caps.
+    last_roman_value = 0
+    last_was_lower_prose = False
+
+    def _append_continuation(txt: str) -> None:
+        """Append a continuation line to the pending target: the LAST
+        SUB-ITEM when the last marker was a sub-item, else the letter
+        text (V0.5.19 rule 2). Duplicate-tail guarded + length capped."""
+        nonlocal current_text, current_subs
+        t = txt.strip().strip(",;")
+        if not t:
+            return
+        if current_subs and last_roman_value > 0:
+            _m0, _t0 = current_subs[-1]
+            if _t0.rstrip().lower().endswith(t.lower()):
+                return  # duplicate-tail PDF artifact — already the tail
+            current_subs[-1] = (_m0, (_t0 + " " + t).strip()[:1000])
+        else:
+            if current_text.rstrip().lower().endswith(t.lower()):
+                return
+            current_text = (current_text + " " + t).strip()[:1000]
+
     for i, raw in enumerate(lines, 1):
         stripped = raw.strip()
         m_let = _CRITERION_LETTER_RE.match(raw)
@@ -466,6 +552,8 @@ def extract_structured_criteria(md_text: str) -> list[dict]:
             current_text = m_let.group(2).strip()
             current_subs = []
             last_was_marker = True
+            last_was_lower_prose = False
+            last_roman_value = 0
         elif m_rom:
             # require an active letter (sub-items under a parent) —
             # otherwise this is a stray Roman list, not a criterion cluster.
@@ -473,6 +561,8 @@ def extract_structured_criteria(md_text: str) -> list[dict]:
                 continue
             current_subs.append((m_rom.group(1), m_rom.group(2).strip()))
             last_was_marker = True
+            last_was_lower_prose = False
+            last_roman_value = _ROMAN_ITEM_VALUES.get(m_rom.group(1), 0)
         elif stripped == "":
             # blank line: do NOT terminate the cluster (PDF→MD extraction
             # often wraps letters and sub-items on separate lines with a
@@ -480,19 +570,38 @@ def extract_structured_criteria(md_text: str) -> list[dict]:
             # prose will decide the cluster's fate.
             continue
         else:
-            # prose line
-            if current_letter is not None and last_was_marker:
-                # one-line continuation of the current letter's text
-                # (e.g., "a. Pervasive...\n\nby at least three of the following:")
-                current_text = (current_text + " " + stripped).strip()
+            # prose line — V0.5.19: first try the embedded-marker split
+            # (rule 4), then the lowercase-continuation test (rules 1-3).
+            _split = _split_embedded_roman_segments(stripped, last_roman_value)
+            if _split is not None and current_letter is not None:
+                for _kind, _rv, _txt in _split:
+                    if _kind == "tail":
+                        _append_continuation(_txt)
+                    else:
+                        current_subs.append((_ROMAN_VALUE_NAMES[_rv], _txt[:1000]))
+                        last_roman_value = _rv
+                last_was_marker = True
+                last_was_lower_prose = False
+                continue
+            _starts_lower = stripped[:1].islower()
+            if (
+                current_letter is not None
+                and _starts_lower
+                and (last_was_marker or last_was_lower_prose)
+                and len(stripped) <= 400
+            ):
+                # a mid-sentence continuation of the pending item text.
+                _append_continuation(stripped)
                 last_was_marker = False
-            elif cluster_start is not None:
-                # prose break inside a cluster boundary — close the cluster.
-                # This is the signal that the document moved on to discussion
-                # prose (the cluster is complete).
-                _flush_cluster()
+                last_was_lower_prose = True
+            else:
+                # NOT a continuation — an uppercase-start prose line (a
+                # new paragraph / discussion prose) or a detached line:
+                # close the cluster if one is active.
+                if cluster_start is not None:
+                    _flush_cluster()
                 last_was_marker = False
-            # else: prose outside any cluster — ignore.
+                last_was_lower_prose = False
     if cluster_start is not None:
         _flush_cluster()
     # Final conservative gate: a cluster must have at least one lettered
@@ -1129,6 +1238,42 @@ def extract_inline_lists(md_text: str, headings: list[dict]) -> list[dict]:
                 current_para = []
     if current_para:
         paragraphs.append((" ".join(current_para), last_heading, len(lines) - len(current_para)))
+
+    # V0.5.19 (paragraph-break join — the numbered-list continuation family):
+    # a PDF hard-wrap can split a numbered list item mid-sentence across a
+    # paragraph break (the ch.9 audit's 6-ground list captured 5/6 with
+    # item (5) truncated — the continuation paragraph "while … ; and (6) …"
+    # was never attached). A list paragraph joins its successor when:
+    #   - it carries ≥2 inline numbered markers (either `` (N) `` shape),
+    #   - it does NOT end with sentence-final punctuation (period/question/
+    #     exclamation/colon, after stripping trailing quotes/brackets),
+    #   - the successor starts with a LOWERCASE letter (a mid-sentence
+    #     continuation — a new discourse paragraph starts uppercase), and
+    #   - the joined text stays ≤ 6000 chars + at most 3 joins (bounded).
+    # All shape-based (Rule 1 ✓) — no book content involved.
+    _v0519_joined: list[tuple[str, str, int]] = []
+    _pi = 0
+    while _pi < len(paragraphs):
+        _ptxt, _phead, _pline = paragraphs[_pi]
+        _joins = 0
+        while _joins < 3 and _pi + 1 < len(paragraphs):
+            _ntxt, _nhead, _nline = paragraphs[_pi + 1]
+            if _nhead != _phead:
+                break  # a heading boundary never joins
+            if len(re.findall(r"\(\d{1,2}\)|(?<!\d)\d{1,2}\)", _ptxt)) < 2:
+                break  # not a numbered-list paragraph
+            if _ptxt.rstrip("\"'\u201d\u2019)]").rstrip()[-1:] in ".?!:":
+                break  # the paragraph is sentence-complete
+            if not _ntxt[:1].islower():
+                break  # the successor is not a mid-sentence continuation
+            if len(_ptxt) + len(_ntxt) + 1 > 6000:
+                break  # bounded join
+            _ptxt = _ptxt + " " + _ntxt
+            _pi += 1
+            _joins += 1
+        _v0519_joined.append((_ptxt, _phead, _pline))
+        _pi += 1
+    paragraphs = _v0519_joined
 
     for para_text, para_heading, para_line in paragraphs:
         # Pattern 1: (1) item (2) item — parenthetical numbered

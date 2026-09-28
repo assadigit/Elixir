@@ -168,7 +168,12 @@ def _v056_extract_glossary_names(glossary: dict | list | None) -> list[str]:
             continue
         seen.add(name.lower())
         out.append(name)
-    return out
+    # V0.5.19: drop structural-label entries (the glossary garbage-name
+    # family — mirrors verification_phase._extract_glossary_names; the
+    # shape-based filter lives in core.summarisation.author_anchor).
+    from core.summarisation.author_anchor import filter_structural_names
+
+    return filter_structural_names(out)
 
 
 def _v056_extract_glossary_path(glossary: dict | None) -> str:
