@@ -9,7 +9,7 @@ ui_qt.views.service_dialogs.base_dialog re-exports both names
 
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 
 # V13.20.1: Master fix — import ALL QtWidgets so subagent edits that use
 # any widget class (QTableWidget, QSpinBox, QRadioButton, QCheckBox, etc.)
@@ -218,7 +218,12 @@ class HallucinationAuditDialog(QDialog):
             reason = report.get("reason", "")
             overlap = f"{report.get('source_overlap', 0):.0%}"
             similarity = f"{report.get('semantic_similarity', 0):.0%}"
-            self.results_table.setItem(i, 0, _QTI(bullet))
+            bullet_item = _QTI(bullet)
+            # V0.6.0: keep the FULL bullet on the item — _copy_filtered used
+            # the display text (truncated at 80 chars + a literal "..."),
+            # so the copied "grounded bullets" were corrupted.
+            bullet_item.setData(Qt.ItemDataRole.UserRole, report.get("bullet", ""))
+            self.results_table.setItem(i, 0, bullet_item)
             self.results_table.setItem(i, 1, _QTI(verdict))
             self.results_table.setItem(i, 2, _QTI(reason))
             self.results_table.setItem(i, 3, _QTI(overlap))
@@ -230,13 +235,17 @@ class HallucinationAuditDialog(QDialog):
         )
 
     def _copy_filtered(self):
-        """Copy only grounded bullets to clipboard."""
+        """Copy only grounded bullets to clipboard (the FULL text — the
+        table cell shows a truncated version for display)."""
         grounded = []
         for i in range(self.results_table.rowCount()):
             verdict_item = self.results_table.item(i, 1)
             bullet_item = self.results_table.item(i, 0)
             if verdict_item and "✅" in verdict_item.text() and bullet_item:
-                grounded.append(f"- {bullet_item.text()}")
+                full = bullet_item.data(Qt.ItemDataRole.UserRole)
+                if not isinstance(full, str) or not full:
+                    full = bullet_item.text()
+                grounded.append(f"- {full}")
         if grounded:
             from PySide6.QtWidgets import QApplication
 
