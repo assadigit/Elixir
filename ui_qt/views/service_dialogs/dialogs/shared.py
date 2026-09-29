@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from ui_qt.components.modal_button_fit import fit_message_box_buttons
 from ui_qt.components.simple_worker import SimpleWorker
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,13 @@ def _show_success_modal(
     if on_try_another:
         again_btn = msg.addButton("🔄 Try Another", QMessageBox.ActionRole)
     msg.addButton("✓ Close", QMessageBox.RejectRole)
+
+    # V0.6.3: belt-and-braces — the app-level ModalButtonFitFilter also fits
+    # this box on its Show event; the explicit call pins the fix at the site
+    # where the clip was reported (a short message + three QSS-padded buttons
+    # rendered the dialog 19px narrower than the button row needs, clipping
+    # "📂 Open File Location" and "🔄 Try Another").
+    fit_message_box_buttons(msg)
 
     msg.exec()
 

@@ -1,8 +1,8 @@
-# New Session Prompt — Elixir V0.6.2+ (the post-campaign hardening session)
+# New Session Prompt — Elixir V0.6.3+ (the post-campaign hardening session)
 
 ## Context
 
-You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.2`).
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.3`).
 
 **STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
@@ -14,7 +14,7 @@ You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (lla
 4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
 5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED · V0.6.2 user-bugfixes CLOSED)
+## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED · V0.6.2 user-bugfixes CLOSED · V0.6.3 modal-fit CLOSED)
 
 The V0.5.x repeatability campaign PROVED the source-glossary
 summarization architecture (LLM glossary → gap-fill → final-check →
@@ -58,6 +58,19 @@ machinery; "at least N — NO MAXIMUM" on thin chapters; no combined
 budget + Tier-2 insertions bypassed the near-dup check). 34 tests, 19
 defect-driven; golden nonfiction/academic re-frozen + eval re-baselined
 (academic ROUGE-L IMPROVED). See the V0.6.2 CHANGELOG entry.
+
+**V0.6.3 status:** the USER-REPORTED modal button clipping shipped —
+"Open file location is truncated" on the Summarization success modal:
+QMessageBox can settle 19px BELOW its own sizeHint when the message
+text is short (355 rendered vs 374 needed; "📂 Open File Location"
+132/142px, "🔄 Try Another" 95/104px), so QPushButton clips its label.
+THE FIX: per-button `minimumWidth` = `sizeHint().width()` (propagates
+up the layout chain; a dialog-level floor was tried and REJECTED —
+layout activation overwrites it, pinned by a test) applied globally
+via a `QApplication` Show-event filter (`ui_qt/components/modal_button_fit.py`,
+installed in `ui_qt.app.run`) + belt-and-braces in
+`shared._show_success_modal`. 17 tests (15 defect-driven). Pure
+geometry — content-agnostic. See the V0.6.3 CHANGELOG entry.
 
 What remains is inherently OPERATOR territory:
 
@@ -239,7 +252,7 @@ media pack, executive briefing, flashcards (`core/outputs/`).
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`, `Elixir-V0.6.2.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`, `Elixir-V0.6.2.zip`, `Elixir-V0.6.3.zip`
 
 ## Sandbox benchmarking note (the reaper)
 

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.icons import icon, load_brand_logo
+from ui_qt.components.modal_button_fit import install_modal_button_fit
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings import SettingsDialog
 from ui_qt.theme import theme_manager
@@ -868,6 +869,13 @@ def run() -> None:
     _acquire_single_instance_lock(app)
 
     theme_manager.apply(app)
+
+    # V0.6.3: fit every modal's buttons to their full label width. The
+    # success modal's "📂 Open File Location" clipped its tail whenever the
+    # message text was short (QMessageBox can settle below its own sizeHint
+    # when the text label is narrow). Installed here — one call covers every
+    # message box the process will ever show.
+    install_modal_button_fit(app)
 
     controller = Controller()
     window = ElixirWindow(controller)
