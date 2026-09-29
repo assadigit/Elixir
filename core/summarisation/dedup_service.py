@@ -155,6 +155,32 @@ class DedupService:
             )
         return deduped, dropped
 
+    def is_near_duplicate(
+        self,
+        candidate: str,
+        existing: list[str],
+        threshold: int = WITHIN_CHAPTER_THRESHOLD,
+    ) -> bool:
+        """True when ``candidate`` is a near-duplicate of a bullet in ``existing``.
+
+        V0.6.2 (user-reported thin-book bug): the Tier-2 gap-fill
+        insertion guard. Reuses ``dedup_bullets`` unchanged — the
+        candidate is appended to the existing list and deduped; if the
+        candidate does not survive, it is a near-duplicate (bullets are
+        only ever compared against EARLIER bullets, so the existing
+        bullets' internal order/set is unaffected). Falls back to
+        exact-match semantics when rapidfuzz is unavailable
+        (``self._fuzz is None``) — fail-open by construction.
+        """
+        if not existing or not candidate:
+            return False
+        kept, _dropped = self.dedup_bullets(
+            [str(b) for b in existing] + [str(candidate)],
+            threshold=threshold,
+            stage="near_dup_check",
+        )
+        return str(candidate) not in kept
+
     def cross_chapter_dedup(
         self,
         chapter_bullets: list[tuple[str, list[str]]],

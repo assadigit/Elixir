@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "mode": "from-fixtures",
+  "mode": "pipeline-rerun",
   "prompt_manifest_hash": "887f44b504f4f1b9d70e892b7161b6c9a508c8d2975f852bb620be149504eb8c",
   "chapters": {
     "academic": {
@@ -12,16 +12,16 @@
       "hallucinations_detected": 0,
       "critical_omissions_detected": 0,
       "verdict": "PASS",
-      "justification": "deterministic proxy — rouge_l_f1=0.442, hallucination_rate=0.0%, coverage=76.7%, faithfulness=99.4%",
+      "justification": "deterministic proxy — rouge_l_f1=0.454, hallucination_rate=0.0%, coverage=76.7%, faithfulness=99.3%",
       "metrics": {
         "rouge_l": {
-          "precision": 0.3099,
+          "precision": 0.3227,
           "recall": 0.7674,
-          "fmeasure": 0.4415
+          "fmeasure": 0.4544
         },
-        "faithfulness": 0.9935,
+        "faithfulness": 0.9932,
         "hallucination_rate": 0.0,
-        "claims": 27.0,
+        "claims": 26.0,
         "coverage": 0.7667,
         "f4_min_overlap": 1.0,
         "fragment_rate": 0.0,
@@ -32,15 +32,15 @@
               "words": 43,
               "target": [
                 40,
-                60
+                47
               ],
               "compliant": true
             },
             "thorough": {
-              "words": 148,
+              "words": 131,
               "target": [
                 80,
-                120
+                106
               ],
               "compliant": false
             },
@@ -232,16 +232,16 @@
       "hallucinations_detected": 0,
       "critical_omissions_detected": 1,
       "verdict": "PASS",
-      "justification": "deterministic proxy — rouge_l_f1=0.416, hallucination_rate=0.0%, coverage=86.7%, faithfulness=99.2%",
+      "justification": "deterministic proxy — rouge_l_f1=0.388, hallucination_rate=0.0%, coverage=86.7%, faithfulness=99.2%",
       "metrics": {
         "rouge_l": {
-          "precision": 0.3095,
-          "recall": 0.6341,
-          "fmeasure": 0.416
+          "precision": 0.2943,
+          "recall": 0.5671,
+          "fmeasure": 0.3875
         },
-        "faithfulness": 0.9924,
+        "faithfulness": 0.9921,
         "hallucination_rate": 0.0,
-        "claims": 29.0,
+        "claims": 28.0,
         "coverage": 0.8667,
         "f4_min_overlap": 1.0,
         "fragment_rate": 0.0,
@@ -252,15 +252,15 @@
               "words": 38,
               "target": [
                 40,
-                60
+                45
               ],
               "compliant": false
             },
             "thorough": {
-              "words": 146,
+              "words": 126,
               "target": [
                 80,
-                120
+                101
               ],
               "compliant": false
             },

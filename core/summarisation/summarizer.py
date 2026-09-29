@@ -80,13 +80,17 @@ from core.summarisation.summarizer_init import SummarizerInitMixin
 
 
 def _lp_bullet_cap_fn(source_text: str) -> int | None:
-    """V0.4.23 (user directive): there is NO bullet cap — returns 0.
+    """V0.6.2 (thin-content fix): TWO REGIMES via ``length_policy.bullet_cap``.
 
-    Historically returned ``length_policy.bullet_cap`` (the source-scaled
-    hard cap). Every consumer treats ``None``/``<= 0`` as "no cap"
-    (fail-open) — the 0 now means exactly that, deliberately: bullets can
-    be as long as necessary for full coverage (dedup/consolidation/filler
-    floor are the reducers, never a numeric cap).
+    THIN sources (< 800 words): the source-scaled ADDITIVE budget
+    (bullet_target hi) — bounds gap-fill/resurrection additions only,
+    never primary bullets (the user-reported thin book shipped
+    exec + bullets + thorough above the source, padded with rephrased
+    near-duplicate gap-fill bullets). NORMAL sources: 0 — the V0.4.23
+    no-cap user directive stands ("bullets can be as long as necessary
+    for full coverage"). Every consumer treats ``None``/``<= 0`` as
+    "no cap" (fail-open); the count reducers for primary bullets remain
+    the semantic dedup, consolidation, and the filler floor.
     """
     try:
         return _lp_bullet_cap_mod(_lp_count_source_words_mod(source_text or ""))

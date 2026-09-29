@@ -115,7 +115,10 @@ class TestA4PromptOverfitting:
         )
         for fragment in (
             "FLOWING PROSE PARAGRAPHS",
-            "80-120 word thorough summary",  # V0.05: source-scaled target
+            # V0.05: source-scaled target; V0.6.2 (thin-content fix): the
+            # 240-word fixture source now obeys the TRUE 45% cap (108) —
+            # the old 120-word floor pushed the target to 50% of the source
+            "80-108 word thorough summary",
             "Cover ALL key concepts",
             "Include every named author/theorist",
             "Do NOT invent facts",

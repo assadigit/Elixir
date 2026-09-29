@@ -305,7 +305,7 @@ class TestLengthPolicy:
         from core.summarisation.prompt_manager import PromptManager
 
         pm = PromptManager()
-        chapter = "word " * 340  # a 340-word chapter
+        chapter = "word " * 340  # a 340-word chapter (THIN)
         rendered = pm.render("default", "Ch.1", chapter, "Write in English.")
         assert rendered is not None
         assert "800-1200" not in rendered
@@ -313,9 +313,16 @@ class TestLengthPolicy:
         import re as _re
 
         assert _re.search(r"\b\d+-\d+ word detailed analysis", rendered)
-        # V0.4.23: the bullet count is a coverage FLOOR with no maximum
-        # ("at least N distinct key takeaways"), not a fixed range.
-        assert _re.search(r"at least \d+ distinct key takeaways", rendered)
+        # V0.6.2 (user-reported thin-book bug): THIN chapters get a
+        # BOUNDED bullet range ("N-M distinct key takeaways") — the
+        # "at least N" + NO-MAXIMUM phrasing invited rephrase-padding on
+        # chapters with fewer distinct ideas than N.
+        assert _re.search(r"\b\d+-\d+ distinct key takeaways", rendered), rendered
+        # NORMAL chapters keep the V0.4.23 coverage-floor phrasing
+        fat_chapter = "word " * 1200
+        rendered_fat = pm.render("default", "Ch.1", fat_chapter, "Write in English.")
+        assert rendered_fat is not None
+        assert _re.search(r"at least \d+ distinct key takeaways", rendered_fat)
 
     def test_f1_validation_caps_scale_to_source(self):
         """The F1 truncation caps scale (340-word source → ~150-190-word

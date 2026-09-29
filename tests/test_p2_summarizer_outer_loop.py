@@ -438,11 +438,22 @@ class TestModuleBulletCapFn:
         monkeypatch.setattr(sz_mod, "_lp_count_source_words_mod", _boom)
         assert sz_mod._lp_bullet_cap_fn("some source text") is None
 
-    def test_probe_success_returns_no_cap(self):
-        """V0.4.23 (user directive): there is NO bullet cap — the probe
-        helper returns 0 (= "no cap" for every consumer; ``None`` remains
-        the crash-mode fail-open value)."""
+    def test_probe_success_returns_two_regime_cap(self):
+        """V0.6.2 (user-reported thin-book bug): the probe helper returns
+        the TWO-REGIME cap — 0 (= "no cap") for NORMAL chapters (the
+        V0.4.23 user directive), the source-scaled ADDITIVE budget for
+        THIN chapters (< 800 words — bounds gap-fill/resurrection
+        additions only, never primary bullets). ``None`` remains the
+        crash-mode fail-open value."""
         import core.summarisation.summarizer as sz_mod
+        from core.summarisation.length_policy import bullet_target
 
-        cap = sz_mod._lp_bullet_cap_fn(a_chapter(paragraphs=10))
-        assert cap == 0, f"expected 0 (no cap, V0.4.23), got {cap}"
+        thin = a_chapter(paragraphs=10)  # ~240 words — the thin regime
+        thin_words = len(thin.split())
+        cap = sz_mod._lp_bullet_cap_fn(thin)
+        assert cap == bullet_target(thin_words)[1] > 0, (
+            f"expected the thin additive budget for a {thin_words}-word chapter, got {cap}"
+        )
+        # a NORMAL chapter (>= 800 words): no cap (V0.4.23 directive)
+        fat = a_chapter(paragraphs=40)  # ~960 words
+        assert sz_mod._lp_bullet_cap_fn(fat) == 0

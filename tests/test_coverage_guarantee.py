@@ -129,11 +129,20 @@ class TestApply3TierCoverage:
         assert gapfill_calls["n"] == 0
 
     def test_tier2_gapfill_appends_and_sets_model_tag(self):
-        """Tier 2: gap-fill returns bullets → filtered + appended + '+gapfill' tag."""
+        """Tier 2: gap-fill returns bullets → filtered + appended + '+gapfill' tag.
+
+        V0.6.2: the fixture bullets are DISTINCT content — the new
+        near-duplicate insertion guard drops a gap-fill bullet that
+        rephrases an existing one (pinned in test_v062_thin_content_fixes);
+        the old fixture ("new bullet 1"/"new bullet 2") was a synthetic
+        near-dup pair the guard correctly drops."""
         result = _base_result(bullets=["existing"])
 
         def gapfill(heading, text, missing):
-            return ["new bullet 1", "new bullet 2"]
+            return [
+                "Orexin neurons regulate wakefulness and appetite.",
+                "Brown fat thermogenesis protects neonatal mice from cold.",
+            ]
 
         # filter passes everything through
         def filt(bullets):
@@ -154,17 +163,36 @@ class TestApply3TierCoverage:
             compute_coverage=lambda s, c: 0.95,  # final >= threshold
             force_insert_missing=lambda t, m, r: None,
         )
-        assert "new bullet 1" in result["bullet_points"]
-        assert "new bullet 2" in result["bullet_points"]
+        assert "Orexin neurons regulate wakefulness and appetite." in result["bullet_points"]
+        assert (
+            "Brown fat thermogenesis protects neonatal mice from cold." in result["bullet_points"]
+        )
         assert result["model"] == "primary+gapfill"
         assert ret == 0.95
 
     def test_max_bullets_cap_applied(self):
-        """max_bullets_per_chapter caps the bullet list after gap-fill."""
+        """max_bullets_per_chapter caps the bullet list after gap-fill.
+
+        V0.6.2: the gap-fill bullets are DISTINCT content (the old
+        f"new{i}" fixture was 10 synthetic near-dups of each other —
+        the new near-dup insertion guard correctly drops them)."""
         result = _base_result(bullets=["b0"])
 
+        _distinct = [
+            "Orexin neurons regulate wakefulness and appetite.",
+            "Brown fat thermogenesis protects neonatal mice from cold.",
+            "Copper mining expanded across the northern valley.",
+            "The committee approved the revised quarterly budget.",
+            "Migratory birds navigate using polarized skylight.",
+            "The tribunal adjourned after the third witness.",
+            "Desert shrubs harvest moisture through deep taproots.",
+            "The orchestra rehearsed the revised second movement.",
+            "Voltage gated sodium channels propagate action potentials.",
+            "Glacial retreat exposed new moraine deposits upstream.",
+        ]
+
         def gapfill(*a):
-            return [f"new{i}" for i in range(10)]
+            return _distinct
 
         def filt(b):
             return list(b)

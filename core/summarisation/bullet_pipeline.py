@@ -420,10 +420,26 @@ class BulletPipeline:
                 f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w (source={_src_words}w; targets exec<={_ehi}w, thorough<={_thi}w)",
                 "DEBUG",
             )
+            # V0.6.2 (user-reported thin-book bug): the bullet words are part
+            # of the honest measurement — the user's defect is the COMBINED
+            # ratio ("exec summary + bullet point + thorough summary risen
+            # above the original source word count"), which the old log line
+            # could not even express. expansion_audit flags the combined
+            # ratio for thin sources (W < 800) at >= 1.0x the source.
+            # getattr: duck-typed callers/tests may carry a state without a
+            # bullets field — the measurement must never crash the stage.
+            _bullet_wc = sum(len(str(b).split()) for b in (getattr(state, "bullets", None) or []))
+            s.log(
+                f"    📏 F1: bullets={_bullet_wc}w — combined sections "
+                f"{exec_wc + _bullet_wc + thorough_wc}w / source {_src_words}w",
+                "DEBUG",
+            )
             # V0.05 honest measurement: the compression-ratio audit the rig
             # run was missing. A summary section in expansion territory is
             # a defect worth a visible WARNING, not a DEBUG line.
-            for _finding in expansion_audit(_src_words, exec_wc, thorough_wc):
+            for _finding in expansion_audit(
+                _src_words, exec_wc, thorough_wc, bullet_words=_bullet_wc
+            ):
                 s.log(f"    ⚠️ F1 ratio: {_finding}", "WARNING")
         except Exception as _e:
             logging.getLogger(__name__).debug("ignored %s: %s", type(_e).__name__, _e)

@@ -158,6 +158,34 @@ def apply_3tier_coverage(
                     [bp_str],
                 )
                 if _filtered:
+                    # V0.6.2 (user-reported thin-book bug): the near-duplicate
+                    # insertion guard. The old check was EXACT-string only —
+                    # a gap-fill bullet that REPHRASED an existing bullet
+                    # ("repetitive bullets - which were rephrased the same
+                    # concepts") was appended unconditionally, inflating thin
+                    # chapters past their own word count. The guard reuses the
+                    # within-chapter dedup threshold (token_set_ratio >= 75,
+                    # DedupService) and fails open on any crash (the F4
+                    # precedent: a gate crash is loud, never silently
+                    # widening behavior).
+                    try:
+                        from core.summarisation.dedup_service import get_dedup_service
+
+                        if get_dedup_service().is_near_duplicate(
+                            _filtered[0], result.get("bullet_points", [])
+                        ):
+                            log(
+                                f"    🧹 V0.6.2: Tier-2 gap-fill bullet SKIPPED — "
+                                f"near-duplicate of an existing bullet: {bp_str[:60]}…",
+                                "INFO",
+                            )
+                            continue
+                    except Exception as _e:
+                        log(
+                            f"    ⚠️ V0.6.2: near-dup insertion guard CRASHED — "
+                            f"bullet appended unguarded: {type(_e).__name__}: {_e}",
+                            "WARNING",
+                        )
                     result["bullet_points"].append(_filtered[0])
                 else:
                     log(

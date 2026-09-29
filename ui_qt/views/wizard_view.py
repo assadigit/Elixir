@@ -750,22 +750,34 @@ class WizardView(QDialog):
     # ── V8.1.0: Hardware monitor ─────────────────────────────────────────
 
     def _start_elapsed_timer(self) -> None:
-        """V10.25.0: Start a live elapsed timer shown in Step9Logs."""
-        from PySide6.QtCore import QTime
+        """V10.25.0: Start a live elapsed timer shown in Step9Logs.
+
+        V0.6.2 (user-reported bug): the clock is ``time.monotonic()`` —
+        NOT ``QTime.currentTime()``. ``QTime`` is a time-of-DAY type with
+        no day tracking: a conversion that crossed midnight made
+        ``secsTo`` return a negative in [-86400, 0) — a run started at
+        23:34:45 viewed at 02:00:00 (2h25m15s real) rendered a
+        misleading "-21:34:45"-style negative (the user's ~2h40m book
+        run), and a >24h run wrapped modulo 24h and silently reset. The
+        monotonic clock is negative-impossible and wrap-impossible.
+        """
         from PySide6.QtCore import QTimer as _QTimer
 
-        self._elapsed_start = QTime.currentTime()
+        self._elapsed_start = time.monotonic()
         self._elapsed_timer = _QTimer(self)
         self._elapsed_timer.timeout.connect(self._update_elapsed)
         self._elapsed_timer.start(1000)  # update every 1 second
 
     def _update_elapsed(self) -> None:
-        """Update the elapsed time label."""
-        from PySide6.QtCore import QTime
+        """Update the elapsed time label (monotonic — V0.6.2).
 
+        The clamp at zero is belt-and-braces: a monotonic clock only
+        moves forward, but a formatter must never be able to render a
+        negative duration even under a skewed clock read.
+        """
         if not hasattr(self, "_elapsed_start") or not hasattr(self.step9, "elapsed_label"):
             return
-        elapsed = self._elapsed_start.secsTo(QTime.currentTime())
+        elapsed = max(0, int(time.monotonic() - self._elapsed_start))
         h = elapsed // 3600
         m = (elapsed % 3600) // 60
         s = elapsed % 60

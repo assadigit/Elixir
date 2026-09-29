@@ -1,8 +1,8 @@
-# New Session Prompt — Elixir V0.6.1+ (the post-campaign hardening session)
+# New Session Prompt — Elixir V0.6.2+ (the post-campaign hardening session)
 
 ## Context
 
-You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.1`).
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.2`).
 
 **STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
@@ -14,7 +14,7 @@ You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (lla
 4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
 5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED)
+## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED · V0.6.2 user-bugfixes CLOSED)
 
 The V0.5.x repeatability campaign PROVED the source-glossary
 summarization architecture (LLM glossary → gap-fill → final-check →
@@ -46,10 +46,20 @@ backlog is SHIPPED (V0.6.1) and the tools campaign is CLOSED (V0.6.0).
 
 ## THE NEXT SESSION AGENDA (primary): the rig LIVE verification + whatever the next audit surfaces
 
-**V0.6.1 status:** the three code-fixable V0.5.21 backlog items shipped
-(the gap-fill prompt tightening, the glossary pair-form dedup, the
-see-also bound — 29 tests, 22 defect-driven; see the V0.6.1 CHANGELOG
-entry). What remains is inherently OPERATOR territory:
+**V0.6.2 status:** the two USER-REPORTED bugs from a real ~2h40m book
+run shipped — (1) the Step-9 elapsed timer went NEGATIVE when a
+conversion crossed midnight (`QTime.secsTo` is time-of-day arithmetic;
+fixed on `time.monotonic()`); (2) a thin-chapter book (1-2 page
+chapters) shipped exec + bullets + thorough ABOVE the source word
+count with rephrased near-duplicate gap-fill bullets (four stacked
+length-policy defects: the thorough/exec floors broke their 45%/20%
+fraction caps for W < 267/300; `bullet_cap` = 0 unbounded the ADDITIVE
+machinery; "at least N — NO MAXIMUM" on thin chapters; no combined
+budget + Tier-2 insertions bypassed the near-dup check). 34 tests, 19
+defect-driven; golden nonfiction/academic re-frozen + eval re-baselined
+(academic ROUGE-L IMPROVED). See the V0.6.2 CHANGELOG entry.
+
+What remains is inherently OPERATOR territory:
 
 1. **The rig LIVE verification** — re-run the full-book rig benchmark
    (the run shape that exposed the V0.5.20 defects) to confirm: the
@@ -57,7 +67,11 @@ entry). What remains is inherently OPERATOR territory:
    accepts/rejects correctly on the real glossary contexts (expect a
    see-also-only author or two to finish honestly missing rather than
    inflated — the documented precision-over-coverage trade), the pair
-   forms appear once, the thin one-liner count drops.
+   forms appear once, the thin one-liner count drops. NOW ALSO: run one
+   THIN-chapter book (1-2 page chapters) and confirm the combined
+   sections stay under the source word count + no rephrased duplicate
+   bullets (the V0.6.2 contract — expect the 📏 F1 combined line + any
+   ⚠️ combined over-generation WARNING in the log).
 2. **The V0.6.0 rig checklist** (the CHANGELOG V0.6.0 entry): live
    qwen/OlmOCR via Ollama + Persian `fas.traineddata` + UnlimitedOCR
    torch/transformers + PaddleOCR CPU + provider-vision; real-Ollama
@@ -225,7 +239,7 @@ media pack, executive briefing, flashcards (`core/outputs/`).
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`, `Elixir-V0.6.2.zip`
 
 ## Sandbox benchmarking note (the reaper)
 

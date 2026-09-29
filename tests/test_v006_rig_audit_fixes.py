@@ -389,17 +389,24 @@ class TestF3NoDoubleListing:
 
 
 class TestF4BulletCap:
-    def test_bullet_cap_removed_for_all_chapters(self):
-        """V0.4.23 (user directive — bullets "can be as long as necessary
-        for full coverage"): there is NO bullet cap, for ANY chapter size.
-        The historical V0.06 caps (14/14/18/18/16 for the rig chapters,
-        40 for normal chapters) are REMOVED — the V0.4.22 ch.4 audit
-        proved the cap displaced coverage-critical bullets; dedup +
-        consolidation + the V0.4.23 filler floor are the only reducers.
+    def test_bullet_cap_is_two_regime(self):
+        """V0.6.2 (user-reported thin-book bug): ``bullet_cap`` is
+        TWO-REGIME. THIN chapters (the rig sizes below, < 800 words): the
+        V0.06 source-scaled ADDITIVE budget is RESTORED (14/14/18/18/16 —
+        the cap bounds Tier-2/scholar gap-fill + resurrection ADDITIONS
+        only, never primary bullets; the user's thin book shipped
+        exec + bullets + thorough ABOVE the source word count, padded
+        with rephrased gap-fill bullets). NORMAL chapters (>= 800 words,
+        e.g. 1000/20000): 0 — the V0.4.23 no-cap user directive stands
+        (the V0.4.22 ch.4 displacement failure that removed the cap was
+        a content-rich chapter; dedup + consolidation + the filler floor
+        remain the reducers there).
         """
         from core.summarisation.length_policy import bullet_cap
 
-        for w in (344, 358, 439, 445, 412, 1000, 20000):
+        for w, expected in ((344, 14), (358, 14), (439, 18), (445, 18), (412, 16)):
+            assert bullet_cap(w) == expected, f"W={w}: expected {expected}"
+        for w in (1000, 20000):
             assert bullet_cap(w) == 0, f"W={w}: expected no cap (0)"
 
     def test_ship_time_budget_no_truncation_source_pin(self):
