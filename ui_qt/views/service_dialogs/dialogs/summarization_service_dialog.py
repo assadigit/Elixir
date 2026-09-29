@@ -44,8 +44,11 @@ class SummarizationServiceDialog(QDialog):
     - ``utils.network.list_ollama_models()`` for model listing (proxy-proof)
     - ``summarisation.endpoint`` for the Ollama URL (was wrong key: ocr.ollama_url)
 
-    UI: text area, model picker, quality dropdown, output path, single Convert
-    button, synchronous execution with streaming for UI responsiveness.
+    UI: text area, model picker, DEPTH dropdown (V0.6.4: was "quality"),
+    output-format CHECKBOX row (V0.6.4: was a single-choice dropdown —
+    every checked format is written from one run), custom-title input
+    (V0.6.4: toggle-hidden), output path, single Convert button,
+    synchronous execution with streaming for UI responsiveness.
 
     V11.17: Added model picker (auto-populated from /api/tags), pre-flight
     model check, and actionable 404/error messages that list available
@@ -71,6 +74,21 @@ class SummarizationServiceDialog(QDialog):
         folder is used and each file gets its own auto-named output.
       - **Try Another File** button after a run: clears inputs/outputs so
         the user can summarize the next file without reopening the dialog.
+
+      V0.6.4 (user report — six MEDIUM items):
+      - **Multiple output formats**: the format dropdown is now a
+        Markdown / Word / PDF checkbox row; every checked format gets its
+        own file from ONE summarisation run (one LLM call, N writes).
+      - **Custom title**: a toggle-hidden input replaces the auto
+        ``"{stem} — {depth} summary"`` document heading (e.g. "BMW
+        Company History").
+      - **Fine-tuned depth prompts**: the user-supplied Fast / Standard /
+        Thorough prompt texts (``core/summarisation/tool_prompts.py``),
+        each carrying "Write in the same language as the text." — Farsi
+        in → Farsi out (the old shared prompt translated it to English).
+        The raw (thinking-stripped) response is written verbatim; no XML
+        re-assembly.
+      - **"Quality" → "Depth"**: the term change, UI-wide for this tool.
     """
 
     # Default model used when settings has nothing and Ollama is unreachable.
@@ -180,24 +198,56 @@ class SummarizationServiceDialog(QDialog):
         # reads from quick_services.defaults.* at run-time.
         opt_row = _HL()
         opt_row.setSpacing(8)
-        opt_row.addWidget(_QL("Quality:"))
+        # V0.6.4 (user report): "Quality" -> "Depth" (term change); the
+        # descriptions now describe the fine-tuned depth prompts
+        # (core/summarisation/tool_prompts.py). The settings KEY keeps its
+        # historical name (quick_services.defaults.summarize_quality).
+        opt_row.addWidget(_QL("Depth:"))
         self.quality_combo = _QCB()
         self.quality_combo.addItem("Default (change in Settings)", "__default__")
-        self.quality_combo.addItem("Fast (exec summary + 5 keypoints)", "fast")
-        self.quality_combo.addItem("Standard (exec + 10 keypoints + thorough)", "standard")
-        self.quality_combo.addItem("Thorough (detailed + analysis)", "thorough")
+        self.quality_combo.addItem("Fast (quick brief, ~200 words)", "fast")
+        self.quality_combo.addItem("Standard (overview + key points, ≤500 words)", "standard")
+        self.quality_combo.addItem("Thorough (structured deep summary, ≤60% of source)", "thorough")
         opt_row.addWidget(self.quality_combo)
         opt_row.addSpacing(16)
-        opt_row.addWidget(_QL("Format:"))
-        self.fmt_combo = _QCB()
-        self.fmt_combo.addItem("Default (change in Settings)", "__default__")
-        self.fmt_combo.addItem("Markdown (.md)", ".md")
-        self.fmt_combo.addItem("Word document (.docx)", ".docx")
-        self.fmt_combo.addItem("PDF (.pdf)", ".pdf")
-        self.fmt_combo.currentIndexChanged.connect(self._on_format_changed)
-        opt_row.addWidget(self.fmt_combo)
+        # V0.6.4 (user report): multiple output formats — a CHECKBOX ROW
+        # replaces the single-choice Format combo. Every checked format
+        # gets its own output file from ONE summarisation run.
+        opt_row.addWidget(_QL("Formats:"))
+        self.fmt_md_chk = _QChB("Markdown (.md)")
+        self.fmt_docx_chk = _QChB("Word (.docx)")
+        self.fmt_pdf_chk = _QChB("PDF (.pdf)")
+        # Initial state: check the format matching the settings default.
+        from utils.settings import Settings as _Settings
+
+        _default_fmt = _Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+        self.fmt_md_chk.setChecked(_default_fmt == ".md")
+        self.fmt_docx_chk.setChecked(_default_fmt == ".docx")
+        self.fmt_pdf_chk.setChecked(_default_fmt == ".pdf")
+        for _chk in (self.fmt_md_chk, self.fmt_docx_chk, self.fmt_pdf_chk):
+            opt_row.addWidget(_chk)
         opt_row.addStretch()
         lay.addLayout(opt_row)
+
+        # ── Custom title row (V0.6.4) ──────────────────────────────
+        # The user report: the auto "pasted — standard summary" heading
+        # must be replaceable with a custom document title, hidden by a
+        # toggle (e.g. "BMW Company History").
+        title_row = _HL()
+        title_row.setSpacing(8)
+        self.custom_title_chk = _QChB("Custom title:")
+        self.custom_title_chk.setToolTip(
+            "When ON, the text in the field becomes the document heading of "
+            'every output file (e.g. "BMW Company History") instead of the '
+            "automatic '<stem> — <depth> summary' title."
+        )
+        self.custom_title_edit = _QLE()
+        self.custom_title_edit.setPlaceholderText('e.g. "BMW Company History"')
+        self.custom_title_edit.setVisible(False)  # hidden until toggled on
+        self.custom_title_chk.toggled.connect(self._on_custom_title_toggled)
+        title_row.addWidget(self.custom_title_chk)
+        title_row.addWidget(self.custom_title_edit, 1)
+        lay.addLayout(title_row)
 
         # ── Obsidian toggle (V11.18) ──────────────────────────────────
         obs_row = _HL()
@@ -212,7 +262,11 @@ class SummarizationServiceDialog(QDialog):
         self.obsidian_chk.setTristate(True)
         # Start in "Default" state (follows quick_services.defaults.summarize_obsidian).
         self.obsidian_chk.setCheckState(Qt.PartiallyChecked)
-        self.obsidian_chk.setEnabled(True)
+        # V0.6.4: only meaningful when Markdown is among the checked
+        # formats. Connected HERE (after obsidian_chk exists) so the
+        # init-time setChecked calls above never hit the handler.
+        self.obsidian_chk.setEnabled(self.fmt_md_chk.isChecked())
+        self.fmt_md_chk.toggled.connect(self._on_fmt_toggled)
         obs_row.addWidget(self.obsidian_chk)
         obs_row.addStretch()
         lay.addLayout(obs_row)
@@ -437,21 +491,16 @@ class SummarizationServiceDialog(QDialog):
             if folder:
                 self.out_edit.setText(folder)
         else:
-            # V11.67.0: resolve "__default__" to a real extension before using it.
-            # Previously, ext was "__default__" which caused:
-            # 1. The file dialog to show "All files" instead of "Markdown"
-            # 2. The extension "__default__" to be appended to the filename
-            #    (e.g., "summary.md__default__" — unreadable file!)
-            ext = self.fmt_combo.currentData()
-            if not ext or ext == "__default__":
-                from utils.settings import Settings
-
-                ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+            # V0.6.4: the save dialog's filter follows the FIRST checked
+            # format (the checkboxes are authoritative now — the typed file
+            # name is the BASE name and each checked format writes its own
+            # suffix off it).
+            exts = self._selected_exts() or [".md"]
             filter_str = {
                 ".md": "Markdown (*.md)",
                 ".docx": "Word document (*.docx)",
                 ".pdf": "PDF (*.pdf)",
-            }.get(ext, "All files (*.*)")
+            }.get(exts[0], "All files (*.*)")
             path, _ = QFileDialog.getSaveFileName(
                 self, "Save summary as", "", f"{filter_str};;All files (*.*)"
             )
@@ -463,26 +512,43 @@ class SummarizationServiceDialog(QDialog):
 
                 p = _P(path)
                 if not p.suffix or p.suffix.lower() not in (".md", ".docx", ".pdf", ".txt"):
-                    if not path.endswith(ext):
-                        path += ext
+                    if not path.endswith(exts[0]):
+                        path += exts[0]
                 self.out_edit.setText(path)
 
-    def _on_format_changed(self):
-        """V11.18/V11.19: When the format dropdown changes, toggle the Obsidian
-        checkbox enabled-state. Only meaningful for .md. The "__default__"
-        sentinel resolves to the setting's default format — if that's .md,
-        Obsidian stays enabled.
-        """
-        ext = self.fmt_combo.currentData() or ".md"
-        if ext == "__default__":
-            # Resolve from settings to decide whether Obsidian applies.
-            from utils.settings import Settings
+    def _selected_exts(self) -> list[str]:
+        """V0.6.4: the checked output formats, in the canonical
+        .md → .docx → .pdf order (deterministic output naming regardless
+        of the order the checkboxes were toggled in). Empty list = nothing
+        checked (the _do_summarize guard blocks the run)."""
+        exts: list[str] = []
+        if self.fmt_md_chk.isChecked():
+            exts.append(".md")
+        if self.fmt_docx_chk.isChecked():
+            exts.append(".docx")
+        if self.fmt_pdf_chk.isChecked():
+            exts.append(".pdf")
+        return exts
 
-            ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
-        self.obsidian_chk.setEnabled(ext == ".md")
-        if ext != ".md":
-            # Keep the tri-state but force to off when format isn't .md.
+    def _on_fmt_toggled(self, _on: bool) -> None:
+        """V0.6.4: the Obsidian option is only meaningful when Markdown is
+        among the checked output formats (callouts are markdown-only
+        syntax — the V11.18 rule, checkbox edition)."""
+        md_on = self.fmt_md_chk.isChecked()
+        self.obsidian_chk.setEnabled(md_on)
+        if not md_on:
+            # Keep the tri-state but force to off when no .md output exists.
             self.obsidian_chk.setCheckState(Qt.Unchecked)
+
+    def _on_custom_title_toggled(self, checked: bool) -> None:
+        """V0.6.4: reveal/hide the custom-title input. Untoggling clears
+        the text — the toggle is the authority on whether a custom title
+        exists (an unchecked box can never contribute a stale title)."""
+        self.custom_title_edit.setVisible(checked)
+        if checked:
+            self.custom_title_edit.setFocus()
+        else:
+            self.custom_title_edit.clear()
 
     def _on_action(self):
         if self.action_btn.text() == "Close":
@@ -491,18 +557,29 @@ class SummarizationServiceDialog(QDialog):
         self._do_summarize()
 
     def _on_try_another(self):
-        """V11.18: Clear inputs/outputs for the next batch."""
+        """V11.18: Clear inputs/outputs for the next batch.
+
+        V0.6.4: also resets the custom-title toggle (the handler hides +
+        clears the input) and the format checkboxes back to the settings
+        default."""
         self.text_input.clear()
         self._files.clear()
         self.file_list.clear()
         self.out_edit.clear()
-        # V11.19: reset model/quality/format to "Default", obsidian to PartiallyChecked.
+        # V11.19: reset model/depth to "Default", obsidian to PartiallyChecked.
         if self.model_combo.count() > 0:
             self.model_combo.setCurrentIndex(0)  # "Default Model"
         if self.quality_combo.count() > 0:
             self.quality_combo.setCurrentIndex(0)  # "Default"
-        if self.fmt_combo.count() > 0:
-            self.fmt_combo.setCurrentIndex(0)  # "Default"
+        # V0.6.4: custom title off (hides + clears via the toggled handler).
+        self.custom_title_chk.setChecked(False)
+        # V0.6.4: formats back to the settings default (usually Markdown).
+        from utils.settings import Settings
+
+        _default_fmt = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+        self.fmt_md_chk.setChecked(_default_fmt == ".md")
+        self.fmt_docx_chk.setChecked(_default_fmt == ".docx")
+        self.fmt_pdf_chk.setChecked(_default_fmt == ".pdf")
         self.obsidian_chk.setCheckState(Qt.PartiallyChecked)
         self.status_label.setText(
             "Ready for the next file — paste text or add files and click Summarize."
@@ -529,49 +606,30 @@ class SummarizationServiceDialog(QDialog):
     # presets are respected.
 
     @staticmethod
-    def _build_prompt(input_text: str, quality: str) -> tuple[str, int]:
-        """Build the summarization prompt using the PromptManager.
+    def _build_prompt(input_text: str, quality: str, model: str = "") -> tuple[str, int]:
+        """Build the summarization prompt from the fine-tuned depth bank.
 
-        V13.25.0: Delegates to ``PromptManager.render("default", ...)`` —
-        the same prompt bank the Summarizer uses. User's custom prompts in
-        ``~/.elixir/prompts/default.md`` are respected.
+        V0.6.4 (user report): the tool now uses
+        ``core.summarisation.tool_prompts`` — the user-supplied
+        Fast/Standard/Thorough prompt texts, verbatim. Previously this
+        delegated to ``PromptManager.render("default", ...)`` (the shared
+        book-pipeline prompt with an empty ``{{language}}`` variable) —
+        an all-English prompt that translated Farsi pastes into English;
+        every depth prompt now carries
+        "Write in the same language as the text."
 
-        The prompt bank template produces XML-tagged output
-        (``<executive_summary>``, ``<bullet_points>``, ``<thorough_summary>``)
-        which is parsed by ``response_parser.parse_response()`` after the
-        LLM call.
+        The untrusted source text keeps the V18.2.21 prompt-injection
+        fence (with the V18.2.29 low-bit-quant skip and the fail-open
+        rule — mirrored from ``PromptManager.render_template``).
 
-        Quality controls max_tokens (how much the LLM writes):
-        - fast: 1024 tokens (~500 words)
-        - standard: 2048 tokens (~1000 words)
-        - thorough: 4096 tokens (~2000 words)
+        Depth controls max_tokens (a ceiling, not a target):
+        - fast: 1024, standard: 2048, thorough: 4096
 
         Returns ``(prompt, max_tokens)``.
         """
-        from core.summarisation.prompt_manager import PromptManager
+        from core.summarisation.tool_prompts import render_tool_prompt
 
-        pm = PromptManager()
-        heading = "Pasted Text"
-        lang = ""  # let the prompt template decide
-
-        # Try the user's custom default prompt, fall back to built-in
-        rendered = pm.render("default", heading, input_text, lang)
-        if not rendered:
-            # Fallback: minimal prompt (shouldn't happen — PromptManager
-            # copies built-ins to ~/.elixir/prompts/ on first run)
-            rendered = (
-                "You are an expert summariser.\n\n"
-                f'Summarising: "{heading}"\n\n'
-                f"Chapter content:\n{input_text}\n\n"
-                "Output ONLY the three XML sections:\n"
-                "<executive_summary>...</executive_summary>\n"
-                "<bullet_points>...</bullet_points>\n"
-                "<thorough_summary>...</thorough_summary>"
-            )
-
-        # Map quality → max_tokens
-        max_tokens = {"fast": 1024, "standard": 2048, "thorough": 4096}.get(quality, 2048)
-        return rendered, max_tokens
+        return render_tool_prompt(quality, input_text, model=model)
 
     def _call_llm(
         self, model: str, prompt: str, max_tokens: int, temp: float, report=None
@@ -705,20 +763,28 @@ class SummarizationServiceDialog(QDialog):
         if quality == "__default__" or not quality:
             quality = s.get("quick_services.defaults.summarize_quality", "standard") or "standard"
 
-        # ── Format ─────────────────────────────────────────────────────
-        ext = self.fmt_combo.currentData()
-        if ext == "__default__" or not ext:
-            ext = s.get("quick_services.defaults.summarize_format", ".md") or ".md"
+        # ── Format (V0.6.4: multiple — every checked format is written) ──
+        exts = self._selected_exts()
+        if not exts:
+            self.status_label.setText(
+                "⚠️ Choose at least one output format (Markdown, Word, or PDF)."
+            )
+            return
+
+        # ── Custom title (V0.6.4: toggle-hidden input; empty = auto title) ──
+        custom_title = ""
+        if self.custom_title_chk.isChecked():
+            custom_title = self.custom_title_edit.text().strip()
 
         # ── Obsidian (tri-state: Unchecked=use default, PartiallyChecked=off, Checked=on) ──
         obs_state = self.obsidian_chk.checkState()
         if obs_state == Qt.PartiallyChecked:
             # "Default" — follow the setting
             obsidian = (
-                bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ext == ".md"
+                bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ".md" in exts
             )
         elif obs_state == Qt.Checked:
-            obsidian = ext == ".md"
+            obsidian = ".md" in exts
         else:  # Qt.Unchecked → user explicitly turned it off
             obsidian = False
 
@@ -801,7 +867,8 @@ class SummarizationServiceDialog(QDialog):
                 model,
                 model_data,
                 quality,
-                ext,
+                exts,
+                custom_title,
                 obsidian,
                 temp,
                 report=self._worker.progress.emit,
@@ -820,8 +887,9 @@ class SummarizationServiceDialog(QDialog):
         out_path,
         model,
         model_data,
-        quality,
-        ext,
+        depth,
+        exts,
+        custom_title,
         obsidian,
         temp,
         report=None,
@@ -835,11 +903,21 @@ class SummarizationServiceDialog(QDialog):
         error-result dict; the model combo refresh happens in the FINISHED
         handler on the main thread, never here. Returns the plain result
         dict consumed by ``_on_summarize_finished``.
+
+        V0.6.4 (user report):
+        - ``exts`` is the LIST of checked output formats (was: a single
+          ``ext`` string) — ONE LLM call per input, one file per format.
+        - ``custom_title`` (str; "" = none) replaces the auto
+          ``"{stem} — {depth} summary"`` document heading when set.
+        - The depth prompts produce the final document directly — the raw
+          (thinking-stripped) response is written as-is (with the bare
+          section labels normalised to markdown headings), NOT re-assembled
+          from XML sections (the old book-pipeline contract).
         """
         from pathlib import Path as _P
 
         from core.outputs.service_formatters import write_output
-        from core.summarisation.response_parser import parse_response
+        from core.summarisation.response_parser import strip_thinking
 
         # ── Pre-flight: verify the model exists. V11.20: short timeout (3s)
         # so a slow Ollama doesn't hang; if the check itself times out, skip
@@ -885,26 +963,28 @@ class SummarizationServiceDialog(QDialog):
         results: list[str] = []
         total = len(inputs)
         for i, (stem, text) in enumerate(inputs):
-            # Determine output path for this item.
+            # V0.6.4: compute the output BASE (a path WITHOUT suffix) for
+            # this item — every checked format appends its own suffix.
             if is_multi:
-                out_path_i = str(_P(out_folder) / f"{stem}_{quality}_summary{ext}")
+                out_base = _P(out_folder) / f"{stem}_{depth}_summary"
             else:
-                # Single paste: use the user-chosen path as-is, but if it's a
-                # folder, fall back to auto-naming.
-                if _P(out_path).is_dir():
-                    out_path_i = str(_P(out_path) / f"{stem}_{quality}_summary{ext}")
+                # Single paste: the user-chosen path is the BASE name; a
+                # typed suffix (.md/.docx/.pdf/.txt) is only the base's
+                # tail — the checkboxes are the authoritative format
+                # declaration (one file per format, so .docx bytes can
+                # never land in a .md-named file).
+                p_out = _P(out_path)
+                if p_out.is_dir():
+                    out_base = p_out / f"{stem}_{depth}_summary"
+                elif p_out.suffix.lower() in (".md", ".docx", ".pdf", ".txt"):
+                    out_base = p_out.with_suffix("")
                 else:
-                    out_path_i = out_path
-                    # V11.67.0: if the user manually typed a file extension
-                    # (e.g., .md), use THAT format — not the combo's resolved
-                    # format. This prevents writing .docx binary data into a
-                    # .md file (which makes it unreadable).
-                    user_ext = _P(out_path).suffix.lower()
-                    if user_ext in (".md", ".docx", ".pdf", ".txt"):
-                        ext = user_ext
+                    out_base = p_out
 
             # V11.20: bigger, bolder, eye-catching progress text (identical
             # HTML to the old inline version, now via the queued signal).
+            # V0.6.4: "quality" → "depth" (the user term change) and the
+            # format list shows every checked format.
             if report is not None:
                 report(
                     int(i * 100 / total) if total else 0,
@@ -913,12 +993,12 @@ class SummarizationServiceDialog(QDialog):
                         f"🤖 Summarizing {i + 1}/{total}: <span style='color: var(--primary);'>{stem}</span>"
                         f"</div>"
                         f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
-                        f"model: {model}  |  quality: {quality}  |  format: {ext}"
+                        f"model: {model}  |  depth: {depth}  |  formats: {', '.join(exts)}"
                         f"</div>"
                     ),
                 )
 
-            prompt, max_tokens = self._build_prompt(text, quality)
+            prompt, max_tokens = self._build_prompt(text, depth, model=model)
             # V13.25.0: Use _call_llm (delegates to llm_provider) instead of
             # _call_ollama (direct requests.post with no supervisor/retry).
             # V18.20.4.5 (W-b5): forward ``report`` so the streaming chunks
@@ -933,51 +1013,59 @@ class SummarizationServiceDialog(QDialog):
                     break
                 continue
 
-            # V13.25.0: Parse the XML-tagged response into structured sections
-            # using the core response_parser. This handles <executive_summary>,
-            # <bullet_points>, <thorough_summary> tags, strips thinking blocks,
-            # and falls back to plain-text parsing if the model didn't use XML.
-            parsed = parse_response(raw_response, academic_rigor=False)
-            exec_summary = parsed.get("executive_summary", "")
-            bullet_points = parsed.get("bullet_points", [])
-            thorough = parsed.get("thorough_summary", "")
+            # V0.6.4 (user report): the depth prompts produce the FINAL
+            # document directly (their FORMAT contracts elicit "Overview:",
+            # bullets, sections — plain text, NOT the book pipeline's XML
+            # sections). Strip any thinking block, then upgrade the bare
+            # section labels to markdown headings so the docx/pdf writers
+            # emit real Heading styles (and Obsidian can map callouts).
+            # The response is written VERBATIM otherwise — Farsi in, Farsi
+            # out (the tool summarizes; it never translates).
+            from core.summarisation.tool_prompts import normalize_depth_headings
 
-            # Build a clean markdown document from the parsed sections.
-            # For "fast" quality, skip the thorough summary to keep it short.
-            md_parts = []
-            if exec_summary:
-                md_parts.append(f"## Executive Summary\n\n{exec_summary}")
-            if bullet_points:
-                bullets_md = "\n".join(f"- {b}" for b in bullet_points)
-                md_parts.append(f"## Key Takeaways\n\n{bullets_md}")
-            if thorough and quality != "fast":
-                md_parts.append(f"## Detailed Summary\n\n{thorough}")
+            summary_text = normalize_depth_headings(strip_thinking(raw_response))
 
-            summary_text = "\n\n---\n\n".join(md_parts) if md_parts else raw_response
+            # V0.6.4: the document heading — the custom title (when set)
+            # replaces the auto "{stem} — {depth} summary" title. Only a
+            # CUSTOM title is prepended to the markdown body (a bare .md
+            # never carried a heading — unchanged when no custom title).
+            title = custom_title or f"{stem} — {depth} summary"
+            md_body = f"# {custom_title}\n\n{summary_text}" if custom_title else summary_text
 
-            # V11.18: write via shared formatter (md/docx/pdf + optional Obsidian)
-            ok, msg = write_output(
-                summary_text,
-                _P(out_path_i),
-                fmt=ext,
-                title=f"{stem} — {quality} summary",
-                obsidian=obsidian,
-                source_filename=f"{stem}.txt" if stem == "pasted" else f"{stem}.txt",
-                quality=quality,
-                model=model,
-            )
-            if ok:
-                results.append(f"✅ {stem} → {_P(out_path_i).name} ({len(summary_text):,} chars)")
-            else:
-                results.append(f"⚠️ {stem} → {msg}")
+            # V11.18/V0.6.4: write via the shared formatter — ONE file per
+            # checked format, all fed by this single LLM response.
+            for ext_i in exts:
+                out_path_i = out_base.with_suffix(ext_i)
+                ok, msg = write_output(
+                    md_body if ext_i == ".md" else summary_text,
+                    out_path_i,
+                    fmt=ext_i,
+                    title=title,
+                    obsidian=obsidian and ext_i == ".md",
+                    source_filename=f"{stem}.txt",
+                    quality=depth,
+                    model=model,
+                )
+                if ok:
+                    _chars = f" ({len(summary_text):,} chars)" if ext_i == ".md" else ""
+                    results.append(f"✅ {stem} → {out_path_i.name}{_chars}")
+                else:
+                    results.append(f"⚠️ {stem} → {msg}")
 
         # V11.25: file arg for the success modal (computed here — pure file
         # checks; the finished handler just passes it through).
+        # V0.6.4: with multiple formats the "first output" is the first
+        # CHECKED format's file (the typed path's own name may never be
+        # written when its suffix was only the base-name tail).
         if is_multi:
             file_arg = out_folder
         else:
             p = _P(out_path)
-            file_arg = str(p) if p.exists() else str(p.parent)
+            if p.is_dir():
+                file_arg = str(p)
+            else:
+                first_out = p.with_suffix(exts[0])
+                file_arg = str(first_out) if first_out.exists() else str(first_out.parent)
 
         return {
             "results": results,

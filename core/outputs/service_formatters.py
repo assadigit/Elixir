@@ -98,6 +98,12 @@ def to_obsidian_markdown(
         "warnings": "warning",
         "questions": "question",
         "quotes": "quote",
+        # V0.6.4: the depth-prompt sections (normalize_depth_headings turns
+        # the bare "Overview:" labels into ## headings, which land here).
+        "overview": "summary",
+        "important details": "info",
+        "key facts and figures": "info",
+        "conclusions and takeaways": "success",
     }
     out_lines: list[str] = []
     in_callout = False
@@ -169,11 +175,22 @@ def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
 
     doc = Document()
 
+    # V0.6.4 (user report): BLACK headings by default. python-docx's default
+    # template styles Heading 1-4 with the Word blue theme; the old code
+    # only explicitly darkened the level-0 title, so every section heading
+    # rendered blue. Every heading run now carries the explicit near-black
+    # RGB (0x1A1A1A — the same value the title already used).
+    _BLACK = RGBColor(0x1A, 0x1A, 0x1A)
+
+    def _add_black_heading(text: str, level: int):
+        h = doc.add_heading(text, level=level)
+        for run in h.runs:
+            run.font.color.rgb = _BLACK
+        return h
+
     # Optional title
     if title:
-        h = doc.add_heading(title, level=0)
-        for run in h.runs:
-            run.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
+        _add_black_heading(title, level=0)
 
     for raw_line in text.splitlines():
         line = raw_line.rstrip()
@@ -184,7 +201,7 @@ def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
         m = re.match(r"^(#{1,6})\s+(.+)$", line)
         if m:
             level = min(len(m.group(1)), 4)  # Word only has Heading 1–4; #/## map to Title/Heading1
-            doc.add_heading(m.group(2).strip(), level=level if level >= 1 else 1)
+            _add_black_heading(m.group(2).strip(), level=level if level >= 1 else 1)
             continue
         # Bullet list
         if re.match(r"^\s*[-*+]\s+", line):
@@ -231,6 +248,30 @@ def write_docx(text: str, out_path: Path, *, title: str | None = None) -> bool:
 # ── PDF formatter ─────────────────────────────────────────────────────
 
 
+# V0.6.4 (user report): the pdf CSS is a BLACK-THEME module constant (was
+# a green theme inlined in write_pdf: #166534/#15803d/#16a34a headings,
+# #86efac blockquote border, #f0fdf4 tinted backgrounds). Module-level so
+# tests can pin the declared default. Neutral grays for the structural
+# accents; near-black #1a1a1a for all text.
+_PDF_CSS = """
+        @page { size: A4; margin: 2cm; }
+        body { font-family: 'Segoe UI', 'Helvetica', sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; }
+        h1 { color: #1a1a1a; font-size: 20pt; border-bottom: 2px solid #1a1a1a; padding-bottom: 4px; }
+        h2 { color: #1a1a1a; font-size: 15pt; margin-top: 1.2em; }
+        h3 { color: #333333; font-size: 12pt; }
+        blockquote { border-left: 3px solid #9ca3af; margin-left: 0; padding: 4px 12px; color: #374151; background: #f9fafb; }
+        code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 9.5pt; }
+        pre { background: #f3f4f6; padding: 8px; border-radius: 4px; overflow-x: auto; }
+        pre code { background: none; padding: 0; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #d1d5db; padding: 4px 8px; text-align: left; }
+        th { background: #f3f4f6; }
+        ul, ol { padding-left: 20px; }
+        li { margin: 2px 0; }
+        hr { border: none; border-top: 1px solid #d1d5db; margin: 1em 0; }
+        """
+
+
 def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
     """Write a markdown-ish string to a PDF file.
 
@@ -247,24 +288,8 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
         import markdown as _md  # type: ignore
 
         html_body = _md.markdown(text, extensions=["extra", "tables", "fenced_code"])
-        # Inline a little CSS for a clean, readable PDF
-        css = """
-        @page { size: A4; margin: 2cm; }
-        body { font-family: 'Segoe UI', 'Helvetica', sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; }
-        h1 { color: #166534; font-size: 20pt; border-bottom: 2px solid #166534; padding-bottom: 4px; }
-        h2 { color: #15803d; font-size: 15pt; margin-top: 1.2em; }
-        h3 { color: #16a34a; font-size: 12pt; }
-        blockquote { border-left: 3px solid #86efac; margin-left: 0; padding: 4px 12px; color: #374151; background: #f0fdf4; }
-        code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 9.5pt; }
-        pre { background: #f3f4f6; padding: 8px; border-radius: 4px; overflow-x: auto; }
-        pre code { background: none; padding: 0; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #d1d5db; padding: 4px 8px; text-align: left; }
-        th { background: #f0fdf4; }
-        ul, ol { padding-left: 20px; }
-        li { margin: 2px 0; }
-        hr { border: none; border-top: 1px solid #d1d5db; margin: 1em 0; }
-        """
+        # V0.6.4: the black-theme CSS (module constant — see _PDF_CSS).
+        css = _PDF_CSS
         full_html = (
             f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>{css}</style></head><body>"
         )
@@ -307,17 +332,20 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
             bottomMargin=2 * cm,
         )
         styles = getSampleStyleSheet()
+        # V0.6.4 (user report): BLACK text colors (was the green theme
+        # #166534/#15803d/#16a34a). Near-black for the title + H1, the
+        # neutral #333 for H2 — matching the WeasyPrint CSS hierarchy.
         title_style = ParagraphStyle(
             "Title2",
             parent=styles["Title"],
-            textColor=HexColor("#166534"),
+            textColor=HexColor("#1a1a1a"),
             fontSize=20,
             spaceAfter=12,
         )
         h1_style = ParagraphStyle(
             "H1",
             parent=styles["Heading1"],
-            textColor=HexColor("#15803d"),
+            textColor=HexColor("#1a1a1a"),
             fontSize=15,
             spaceBefore=12,
             spaceAfter=6,
@@ -325,7 +353,7 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
         h2_style = ParagraphStyle(
             "H2",
             parent=styles["Heading2"],
-            textColor=HexColor("#16a34a"),
+            textColor=HexColor("#333333"),
             fontSize=12,
             spaceBefore=10,
             spaceAfter=4,
@@ -344,7 +372,7 @@ def write_pdf(text: str, out_path: Path, *, title: str | None = None) -> bool:
                 HRFlowable(
                     width="100%",
                     thickness=1,
-                    color=HexColor("#166534"),
+                    color=HexColor("#1a1a1a"),
                     spaceBefore=2,
                     spaceAfter=10,
                 )

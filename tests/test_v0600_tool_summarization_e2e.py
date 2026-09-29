@@ -133,6 +133,18 @@ _CANNED_XML = (
     "relationship, and the stated conclusions.</thorough_summary>"
 )
 
+# V0.6.4: the depth prompts produce plain sections (no XML) — the fake
+# LLM's default response is now a depth-style answer (the old XML canned
+# text remains above for the parser characterizations).
+_CANNED_DEPTH = (
+    "The material explains how one insect species supports plant "
+    "reproduction and how its colonies organise their labor.\n\n"
+    "Key Points:\n"
+    "- Pollen is transferred while the insects forage for nectar.\n"
+    "- Colony labor is divided among a queen, workers, and drones.\n"
+    "- Workers change roles over their lifetime, ending as foragers."
+)
+
 
 class _StubController:
     """The dialog only stores the controller (grep: self.controller :83 only)."""
@@ -238,7 +250,7 @@ def _join_workers_and_clear_settings():
         Settings._test_override = None  # type: ignore[assignment]
 
 
-def _fake_llm(canned: str = _CANNED_XML, calls: list | None = None, err: str | None = None):
+def _fake_llm(canned: str = _CANNED_DEPTH, calls: list | None = None, err: str | None = None):
     """A deterministic stand-in for the dialog's ``_call_llm`` instance method."""
 
     def _f(model, prompt, max_tokens, temp, report=None):
@@ -297,7 +309,12 @@ def _hermetic_env():
 
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 class TestBuildPromptCharacterization:
-    """``_build_prompt`` — the dialog's PromptManager delegation (V13.25.0)."""
+    """``_build_prompt`` — V0.6.4: the fine-tuned depth-prompt bank
+    (``core.summarisation.tool_prompts`` — the user-supplied Fast /
+    Standard / Thorough texts, verbatim). Replaced the V13.25.0
+    PromptManager delegation to the shared book-pipeline prompt (which
+    translated Farsi pastes into English — every depth prompt now carries
+    "Write in the same language as the text.")."""
 
     def _build(self, quality: str, text: str = TEXT):
         from ui_qt.views.service_dialogs.dialogs.summarization_service_dialog import (
@@ -306,15 +323,16 @@ class TestBuildPromptCharacterization:
 
         return SummarizationServiceDialog._build_prompt(text, quality)
 
-    def test_prompt_contains_input_and_xml_contract(self):
+    def test_prompt_contains_instructions_and_text(self):
         prompt, _ = self._build("standard")
         assert TEXT[:60] in prompt  # the source text rides the prompt (fenced)
-        assert "<executive_summary>" in prompt
-        assert "<bullet_points>" in prompt
-        assert "<thorough_summary>" in prompt
+        assert "You are a summarizer." in prompt
+        assert "Write in the same language as the text." in prompt
+        assert prompt.index("You are a summarizer.") < prompt.index(TEXT[:60])
 
     def test_prompt_wraps_untrusted_source(self):
-        # V18.2.21 prompt-injection defense: the text variable is fenced.
+        # V18.2.21 prompt-injection defense: the text variable is fenced
+        # (kept through the V0.6.4 rewrite — render_tool_prompt).
         prompt, _ = self._build("standard")
         assert "<untrusted_source>" in prompt
 
@@ -324,22 +342,17 @@ class TestBuildPromptCharacterization:
         assert self._build("thorough")[1] == 4096
         assert self._build("unknown-quality")[1] == 2048
 
-    def test_fallback_prompt_when_render_returns_none(self, monkeypatch):
-        from core.summarisation.prompt_manager import PromptManager
-
-        monkeypatch.setattr(PromptManager, "render", lambda self, *a, **k: None, raising=True)
-        prompt, max_tokens = self._build("fast")
-        assert "expert summariser" in prompt
-        assert "Pasted Text" in prompt
-        assert TEXT[:60] in prompt
-        assert "<executive_summary>" in prompt
-        assert max_tokens == 1024
+    def test_unknown_depth_falls_back_to_standard_prompt(self):
+        prompt, _ = self._build("unknown-quality")
+        assert "condense and organize" in prompt  # the Standard opener
 
 
 class TestResponseParsingCharacterization:
-    """``parse_response`` / ``strip_thinking`` — what the dialog feeds every
-    LLM response through (``_summarize_work`` → ``parse_response(raw,
-    academic_rigor=False)``). Pure functions, no Qt."""
+    """``parse_response`` / ``strip_thinking``. V0.6.4 note: the TOOL no
+    longer parses XML (the depth prompts' plain output is written verbatim
+    after ``strip_thinking``); these characterizations pin the parser for
+    the BOOK PIPELINE's XML contract (``primary_call`` et al.). Pure
+    functions, no Qt."""
 
     def test_xml_tagged_response_parses_into_sections(self):
         from core.summarisation.response_parser import parse_response
@@ -483,6 +496,7 @@ class TestSummarizeWorkServiceLevel:
         if llm is not None:
             dlg._call_llm = llm
         default_inputs = [("pasted", TEXT)]
+        # V0.6.4: ``ext`` (single str) → ``exts`` (list) + ``custom_title``.
         return dlg._summarize_work(
             inputs if inputs is not None else default_inputs,
             kw.get("is_multi", False),
@@ -491,12 +505,16 @@ class TestSummarizeWorkServiceLevel:
             kw.get("model", "fake-model"),
             kw.get("model_data", "__default__"),
             kw.get("quality", "standard"),
-            kw.get("ext", ".md"),
+            kw.get("exts", [kw.get("ext", ".md")]),
+            kw.get("custom_title", ""),
             kw.get("obsidian", False),
             kw.get("temp", 0.6),
         )
 
     def test_single_paste_writes_md_with_sections(self, tmp_path):
+        # V0.6.4: the depth-style response is written verbatim, with the
+        # bare "Key Points:" label normalised to a markdown heading (no
+        # XML re-assembly into Executive/Key Takeaways/Detailed sections).
         out = tmp_path / "summary.md"
         result = self._work(tmp_path, out_path=str(out), llm=_fake_llm())
         assert result["total"] == 1
@@ -504,18 +522,9 @@ class TestSummarizeWorkServiceLevel:
         assert result["file_arg"] == str(out)
         assert len(result["results"]) == 1 and result["results"][0].startswith("✅")
         content = out.read_text(encoding="utf-8")
-        assert "## Executive Summary" in content
-        assert "## Key Takeaways" in content
-        assert "## Detailed Summary" in content
-        assert "- First key takeaway" in content
-        assert "\n\n---\n\n" in content  # the section separator
-
-    def test_fast_quality_omits_detailed_section(self, tmp_path):
-        out = tmp_path / "fast.md"
-        self._work(tmp_path, out_path=str(out), quality="fast", llm=_fake_llm())
-        content = out.read_text(encoding="utf-8")
-        assert "## Executive Summary" in content
-        assert "## Detailed Summary" not in content
+        assert "The material explains how one insect species" in content
+        assert "## Key Points" in content  # the label → heading normalisation
+        assert "- Pollen is transferred while the insects forage" in content
 
     def test_plain_prose_response_still_writes_output(self, tmp_path):
         out = tmp_path / "prose.md"
@@ -534,16 +543,19 @@ class TestSummarizeWorkServiceLevel:
         assert result["file_arg"] == str(folder)
 
     def test_user_typed_docx_extension_wins(self, tmp_path):
-        # V11.67.0: the user's typed extension overrides the combo's format.
+        # V0.6.4: the checkboxes are the authoritative format declaration —
+        # typing "typed.docx" with only .md checked writes typed.md (the
+        # typed suffix is the BASE name's tail; .docx bytes can never land
+        # in a .md-named file). (The V11.67.0 defect class stays dead.)
         out = tmp_path / "typed.docx"
-        self._work(tmp_path, out_path=str(out), ext=".md", llm=_fake_llm())
-        assert out.exists()
-        assert out.read_bytes()[:2] == b"PK"  # a real docx (zip) file
+        self._work(tmp_path, out_path=str(out), exts=[".md"], llm=_fake_llm())
+        assert (tmp_path / "typed.md").exists()
+        assert not out.exists()
 
     @pytest.mark.skipif(not _reportlab_available(), reason="reportlab unavailable")
     def test_pdf_format_written(self, tmp_path):
         out = tmp_path / "summary.pdf"
-        result = self._work(tmp_path, out_path=str(out), ext=".pdf", llm=_fake_llm())
+        result = self._work(tmp_path, out_path=str(out), exts=[".pdf"], llm=_fake_llm())
         assert result["results"][0].startswith("✅")
         assert out.read_bytes()[:5] == b"%PDF-"
 
@@ -586,7 +598,8 @@ class TestSummarizeWorkServiceLevel:
             "fake-model",
             "__default__",
             "standard",
-            ".md",
+            [".md"],
+            "",
             False,
             0.6,
         )
@@ -622,7 +635,8 @@ class TestSummarizeWorkServiceLevel:
             "fake-model",
             "__default__",
             "standard",
-            ".md",
+            [".md"],
+            "",
             False,
             0.6,
         )
@@ -660,6 +674,8 @@ class TestSummarizeWorkServiceLevel:
     def test_worker_body_takes_plain_values_only(self):
         # W-b5 contract spot-check: _summarize_work's signature accepts only
         # plain captured values (no widget reads inside the thread).
+        # V0.6.4: ``ext`` → ``exts`` (the checked-format list) + the
+        # ``custom_title`` str — both plain values.
         import inspect
 
         from ui_qt.views.service_dialogs.dialogs.summarization_service_dialog import (
@@ -675,8 +691,9 @@ class TestSummarizeWorkServiceLevel:
             "out_path",
             "model",
             "model_data",
-            "quality",
-            "ext",
+            "depth",
+            "exts",
+            "custom_title",
             "obsidian",
             "temp",
             "report",
@@ -726,8 +743,10 @@ class TestDialogDriveFakeLlm:
         dlg._do_summarize()
         assert _spin_until_done(app, dlg), dlg.status_label.text()
         assert dlg.status_label.text().startswith("✅"), dlg.status_label.text()
+        # V0.6.4: the depth-style response is written verbatim (with the
+        # "Key Points:" label normalised) — no XML section re-assembly.
         content = out.read_text(encoding="utf-8")
-        assert "## Executive Summary" in content
+        assert "## Key Points" in content
         assert len(content) > 100
         assert recorded and recorded[0][0] == "Σ Summarization Complete"
         assert recorded[0][2] == str(out)
@@ -895,6 +914,13 @@ class TestDialogDriveFakeLlm:
         assert dlg.action_btn.text() == "Summarize" and dlg.action_btn.isEnabled()
         assert dlg.again_btn.isHidden()
         assert dlg.status_label.text().startswith("Ready for the next file")
+        # V0.6.4: the custom-title toggle + input are reset too.
+        assert dlg.custom_title_chk.isChecked() is False
+        assert dlg.custom_title_edit.isHidden()
+        assert dlg.custom_title_edit.text() == ""
+        # V0.6.4: the format checkboxes return to the settings default.
+        assert dlg.fmt_md_chk.isChecked() is True
+        assert dlg.fmt_docx_chk.isChecked() is False
 
 
 # ── Layer 3 (LIVE): full dialog drive through the real shim ─────────────────
@@ -941,7 +967,9 @@ class TestDialogDriveLiveShim:
         assert dlg.status_label.text().startswith("✅"), dlg.status_label.text()
         content = out.read_text(encoding="utf-8")
         assert len(content) >= 200, content[:200]
-        assert "## " in content  # the md assembly (exec/bullets/detailed sections)
+        # V0.6.4: the depth prompt's plain output (sections/bullets);
+        # bullets are the one structural guarantee across depths.
+        assert content.count("- ") >= 1 or "## " in content, content[:200]
         assert recorded and recorded[0][0] == "Σ Summarization Complete"
         assert recorded[0][2] == str(out)
         assert dlg.action_btn.text() == "Close"

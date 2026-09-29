@@ -54,7 +54,7 @@ class DefaultsSection(QGroupBox):
         self.summ_quality_combo.addItem("Fast", "fast")
         self.summ_quality_combo.addItem("Standard", "standard")
         self.summ_quality_combo.addItem("Thorough", "thorough")
-        f.addRow("Default quality", self.summ_quality_combo)
+        f.addRow("Default depth", self.summ_quality_combo)
 
         self.summ_format_combo = QComboBox()
         self.summ_format_combo.addItem("Markdown (.md)", ".md")

@@ -1,8 +1,8 @@
-# New Session Prompt — Elixir V0.6.3+ (the post-campaign hardening session)
+# New Session Prompt — Elixir V0.6.4+ (the post-campaign hardening session)
 
 ## Context
 
-You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.3`).
+You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (llama.cpp) that summarizes books. The project is at `https://github.com/assadigit/elixir` on branch `refactor/audit-session` (tag `V0.6.4`).
 
 **STANDING RULE**: the elixir project is PURELY PYTHON (PySide6 desktop app + local LLM). Any Next.js sandbox at `/home/z/my-project` is disposable tooling only — NOT part of the elixir project. Never describe elixir with web-framework framing.
 
@@ -14,7 +14,7 @@ You are continuing work on **Elixir** — a PySide6 desktop app + local LLM (lla
 4. **Rule 4 (provenance)**: changes traceable in CHANGELOG + commits.
 5. **Rule 5 (zip-per-release)**: zip per release in `/home/z/my-project/download/`.
 
-## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED · V0.6.2 user-bugfixes CLOSED · V0.6.3 modal-fit CLOSED)
+## Where the campaigns stand (V0.5.15 → V0.5.20 CLOSED · V0.6.0 tools CLOSED · V0.6.1 backlog CLOSED · V0.6.2 user-bugfixes CLOSED · V0.6.3 modal-fit CLOSED · V0.6.4 summarizer-tool backlog CLOSED)
 
 The V0.5.x repeatability campaign PROVED the source-glossary
 summarization architecture (LLM glossary → gap-fill → final-check →
@@ -72,6 +72,22 @@ installed in `ui_qt.app.run`) + belt-and-braces in
 `shared._show_success_modal`. 17 tests (15 defect-driven). Pure
 geometry — content-agnostic. See the V0.6.3 CHANGELOG entry.
 
+**V0.6.4 status:** the USER-REPORTED Summarizer Tool backlog (six
+MEDIUM items) shipped — (1) multi-format outputs via a Md/docx/pdf
+CHECKBOX row (one LLM call, one file per checked format); (2) a
+toggle-hidden custom-title input replacing the auto "pasted — standard
+summary" heading (e.g. "BMW Company History"); (3) BLACK docx+pdf output
+styling by default (was green-theme pdf + Word-blue docx headings); (4)
+the FARSI fix — every depth prompt carries "Write in the same language
+as the text." and the raw response is written verbatim (no XML
+re-assembly, which re-labeled content in English); (5) the user-supplied
+Fast/Standard/Thorough prompts VERBATIM in
+`core/summarisation/tool_prompts.py` (code module, NOT a prompts/ bank
+file — manifest/eval identity untouched); (6) "Quality" → "Depth" (UI
+term; the settings KEY keeps its historical name). 56 tests (35
+defect-driven), net-green (the same 14 env failures, 7,305 passed, eval
+gate OK, manifest OK). See the V0.6.4 CHANGELOG entry.
+
 What remains is inherently OPERATOR territory:
 
 1. **The rig LIVE verification** — re-run the full-book rig benchmark
@@ -84,7 +100,11 @@ What remains is inherently OPERATOR territory:
    THIN-chapter book (1-2 page chapters) and confirm the combined
    sections stay under the source word count + no rephrased duplicate
    bullets (the V0.6.2 contract — expect the 📏 F1 combined line + any
-   ⚠️ combined over-generation WARNING in the log).
+   ⚠️ combined over-generation WARNING in the log). AND (V0.6.4): one
+   FARSI paste through the Summarizer Tool (the output must be FARSI —
+   the sandbox live leg was rate-limited and deferred), one multi-format
+   run (md+docx+pdf from one Summarize click), one custom-title run, and
+   an eyeball of the docx/pdf outputs (black headings, no blue/green).
 2. **The V0.6.0 rig checklist** (the CHANGELOG V0.6.0 entry): live
    qwen/OlmOCR via Ollama + Persian `fas.traineddata` + UnlimitedOCR
    torch/transformers + PaddleOCR CPU + provider-vision; real-Ollama
@@ -252,7 +272,7 @@ media pack, executive briefing, flashcards (`core/outputs/`).
 
 - GitHub token: `[REDACTED:github_token]` (one-off URL, scrub after use per Rule 4)
 - Repo: `https://github.com/assadigit/elixir` (branch `refactor/audit-session`)
-- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`, `Elixir-V0.6.2.zip`, `Elixir-V0.6.3.zip`
+- Zips: `/home/z/my-project/download/` — `Elixir-V0.5.16.zip` … `Elixir-V0.5.20.zip`, `Elixir-V0.6.0.zip`, `Elixir-V0.6.1.zip`, `Elixir-V0.6.2.zip`, `Elixir-V0.6.3.zip`, `Elixir-V0.6.4.zip`
 
 ## Sandbox benchmarking note (the reaper)
 
