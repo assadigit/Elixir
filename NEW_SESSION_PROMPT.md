@@ -1,4 +1,4 @@
-# New Session Prompt — Elixir V0.6.8+ (the Fix, Improve and Optimize Loop)
+# New Session Prompt — Elixir V0.6.9+ (the Fix, Improve and Optimize Loop)
 
 ## WHO I AM AND HOW TO TALK TO ME
 
@@ -12,14 +12,17 @@ ran it in this session and can show what you ran.
 
 **Elixir** — a PySide6 desktop app + local LLM (llama.cpp / Ollama) that
 summarizes books, at `https://github.com/assadigit/elixir`, branch
-`refactor/audit-session`, tag **V0.6.8** (the SWOT re-audit release). Purely
+`refactor/audit-session`, tag **V0.6.9** (the green-baseline release: both
+operator DECISIONS landed — the VRAM enforcement restored, the
+parenthetical-promotion grounding tightened — the suite green for the
+first time at 7,548 P / 0 F). Purely
 Python — any Next.js sandbox at `/home/z/my-project` is disposable tooling,
 NOT part of the project. **Read `AGENTS.md` first** — its 6 rules are
 non-negotiable (Rule 1 content-agnostic, Rule 2 evidence-first, Rule 3
 net-green, Rule 4 provenance, Rule 5 zip-per-release, Rule 6
 GitHub-Release-per-version). **Read `docs/AUDIT_SWOT_V0.6.7.md`** — the full
-audit this session's backlog comes from. Read `CHANGELOG.md`'s V0.6.8 entry.
-Do NOT re-litigate closed campaigns; do NOT redo the audit.
+audit this session's backlog comes from. Read `CHANGELOG.md`'s V0.6.9 and
+V0.6.8 entries. Do NOT re-litigate closed campaigns; do NOT redo the audit.
 
 **Environment (this sandbox):**
 - venv `/home/z/.venv` (Python 3.12.14; if reset, reinstall: PySide6
@@ -66,80 +69,48 @@ FOCUS_AREAS           = the prioritized backlog below first; then the standing l
 NOTES_FOLDER          = .review-loop/ (add it to .gitignore; keep all loop notes there)
 ```
 
-## THE BASELINE YOU INHERIT (V0.6.8, measured by the audit session)
+## THE BASELINE YOU INHERIT (V0.6.9, measured)
 
-- Full suite (Linux sandbox, offscreen Qt, full PySide6): **7,481 passing /
-  14 failed / 43 skipped / 16 deselected in ~4 min**. The 14 are NOT
-  environment failures — the audit decomposed every one of them:
-  - **12 = the dead VRAM-policy code** (see DECISION 1 below) —
-    `converter_impl.py:502` returns unconditionally; the policy block
-    `:503-536` is unreachable; the tests correctly fail.
-  - **2 = the V0.5.15 vs V18.20.3.2 contract conflict** (see DECISION 2) —
-    `postchecks/field_phases.py:482-501`.
-- ruff 0.16.8 clean (check + format on 737 files; one invalid-`# noqa`
-  warning at `core/llm/response_cache.py:107`).
-- **A green baseline is achievable THIS session** — that is your first job.
-  Anything beyond 14 failures is a regression to fix; anything fewer means
-  you fixed the backlog below.
+- Full suite (Linux sandbox, offscreen Qt, full PySide6): **7,548 passing /
+  0 failed / 43 skipped / 16 deselected in ~4 min** — the first GREEN
+  baseline. **Any failure is now a regression** — decompose it, fix it,
+  and say what broke. The historical 14 (12 VRAM-policy + 2 contract)
+  were closed in V0.6.9 (the two DECISIONS below, both landed).
+- ruff 0.16.8 clean (check + format) at the CI pin.
+- Known flaky: `test_v0600_internal_tabs_e2e::TestQueueViewDrive::
+  test_full_sequential_run_two_books` (failed once in a prior session's
+  full run, passed alone + in every run since). If it flakes, re-run it
+  solo; if it fails solo, THAT is the regression to root-cause.
 
-## DECISIONS I OWE YOU (ask in your first reply; until then, use the DEFAULT)
+## DECISIONS STATUS (both answered — V0.6.9)
 
-1. **VRAM policy (12 red tests):** restore the proceed/ask/abort enforcement,
-   or delete the policy honestly (dead block + setting + docstring + the 12
-   tests updated to the non-blocking contract)? **DEFAULT: restore** — the
-   audit found no evidence the operator asked for non-blocking; the V0.5.14
-   hotfix comment says "NON-BLOCKING — always proceed", so present both
-   sides with the git evidence and let me pick. Do NOT touch it until I answer.
-2. **The parenthetical-promotion conflict (2 red tests):** adopt the V0.5.15
-   "regex-grounded exemption" contract in the tests, or tighten the exemption
-   so parenthetical-only authors don't count as grounded? **DEFAULT: tighten
-   the exemption** (it currently defeats the veto's whole purpose — the
-   detector returns the right pair, the drop just never fires).
-   Present the trade-off first; wait for my call.
-3. **Everything else in the backlog is pre-approved** — fix in order, one
-   commit per item, evidence cited.
+1. **VRAM policy — ANSWERED (Option A "restore"):** enforcement is
+   RESTORED (commit `1352425`); the wizard's "Proceed anyway" click and
+   the global `local.vram_overbudget_policy='proceed'` are the only
+   escapes. ONE NEW FLAG for me to consider:
+   `summarisation.model_vram_override_gb` (the V0.5.13 per-model
+   TRUE-size override) has ZERO runtime read sites — its README rows
+   were removed as placebo docs. Restoring the override read would give
+   special-quant owners a real escape hatch beyond the one-click
+   proceed (the estimator false-positive case). **DECISION owed: restore
+   the V0.5.13 override read, or leave the click-only cost model?
+   DEFAULT: leave it (the operator chose the click-cost model
+   explicitly); present the trade-off before touching.**
+2. **The parenthetical-promotion contract — ANSWERED (Option A
+   "tighten"):** an author counts as "grounded" only when an
+   attribution verb is actually held somewhere (or within the matching
+   range); a pure citation-list name does not. Landed in
+   `postchecks/field_phases.py` (`_v069_grounded`) + the thorough-floor
+   sibling (`thorough_theorist_floor.py::_v069_recoverable_sentence`,
+   the review-2 find). No action owed.
+3. **Everything else in the backlog below is pre-approved** — fix in
+   order, one commit per item, evidence cited.
 
 ## THE PRIORITIZED BACKLOG (from docs/AUDIT_SWOT_V0.6.7.md — evidence in the report)
 
-**Wave 1 — suite honesty (this unlocks Rule 3 again):**
-- B1. The VRAM decision (DECISION 1): block + docstring + setting +
-  `tests/test_converter_phase3_characterization.py` (8) +
-  `tests/test_v1820410_p0_segmentation_vram.py` (4) in ONE commit.
-- B2. The contract conflict (DECISION 2):
-  `tests/test_v182032_audit_fixes.py` (2 tests) +
-  `core/summarisation/postchecks/field_phases.py:482-501`.
-- B3. Re-baseline: full suite expected **zero** failures; record it.
-
-**Wave 2 — silent-routing bugs (each: failing/characterization test FIRST):**
-- B4. `dual_api` override no-op — `conversion/summarization.py:793-798`
-  checks `_base_url`/`_api_key` but `OpenAICompatProvider` stores public
-  `base_url`/`api_key` (`openai_compat_provider.py:39-40`). Fix + pin.
-  Also sweep the 5 sibling dead `hasattr(_provider, "_model")` sites
-  (`:821,837,861,903,924`).
-- B5. The 6 bare-`requests` UI sites → `list_ollama_models()` /
-  `is_ollama_reachable()`: `translation_service_dialog.py:579` (the recorded
-  5th), `podcast_maker_view.py:359`, `transcribe_service_dialog.py:237`,
-  `summarization_service_dialog.py:386`, `dependency_checker.py:210`,
-  `ai_model_section.py:380-392`.
-
-**Wave 3 — dependency truth:**
-- B6. `arabic-reshaper` + `python-bidi` into `pyproject [project.dependencies]`
-  + regenerate `requirements.lock` (V0.6.5 drift; 2 of 3 install surfaces
-  lack them today).
-- B7. (flag for me, don't do it) markitdown[all] → used-extras slimming;
-  the audit kept it a recommendation (T4).
-
-**Wave 4 — the highest-value exception swallows (from the audit's ~8
-medium-risk list — log at WARNING, narrow the type; NO mass rewrite):**
-- B8. `chapter_checkpoint.py:1045` — corrupt manifest silently → `{}` (resume
-  disabled invisibly).
-- B9. `response_cache.py:245` + `embedding_cache.py:424` — disk-cache clear
-  failure swallowed (stale cache survives).
-- B10. `bullet_pipeline.py:221` — the embedder-health guard swallows its own
-  import failure (guard can't guard).
-- B11. `thresholds.py:112`, `model_singletons.py:483`,
-  `prompt_builders.py:329/427`, `bullet_consolidation.py:397` — same pattern,
-  WARNING + narrow.
+**DONE (V0.6.8+ fix-loop + V0.6.9 — do not redo):** B1 (VRAM restore,
+`1352425`), B2 (parenthetical tighten, `c00830a` + the thorough-floor
+sibling `6615f98`), B3 (green baseline recorded), B4–B11, B18, B19.
 
 **Wave 5 — god-function decomposition (the V0.6.7 pattern ONLY: verbatim
 extraction, AST-identity verified, characterization tests first):**
@@ -158,11 +129,11 @@ extraction, AST-identity verified, characterization tests first):**
   conftest gates; update the stale conftest counts 51/36 → 78/37 while there).
 - B17. 9 service dialogs onto `BaseServiceDialog` (the tts/translation
   precedent); `_pick_output` ×8, `_on_process` ×6 fold in.
-- B18. `G:\` default literals single-sourced (`utils/settings.py:791-793` ←
-  `core/outputs/podcast_audio.py:169-185` reads settings, not re-declares).
-- B19. Lying docs: `step4_outputs.py:29` (19 → 21 output types),
-  `main.py:54` V18.2.37 print, `response_cache.py:107` invalid noqa,
-  `segmenter.py:1410` dead `fuzzy_threshold` param (remove or wire).
+
+**Standing flags (decisions/rig tasks, not sandbox-fixable):** the
+`model_vram_override_gb` restoration decision (see DECISIONS §1); the
+`requirements.lock` full clean-install regen; the rig checklist
+(live TTS/OCR/Ollama paths) — the honest boundary per AUDIT_SWOT §8.
 
 ## RULES THAT ALWAYS APPLY
 

@@ -1,26 +1,30 @@
-# Elixir — SWOT Re-Audit Session Report (V0.6.7 → V0.6.8)
+# Elixir — Fix-Session Report (V0.6.8 → V0.6.9)
 
-- **Repo:** https://github.com/assadigit/elixir @ refactor/audit-session, tag V0.6.7 (`7cb180c`) audited → **V0.6.8** released (audit-only: docs + charter, zero runtime changes).
-- **Method:** read-only audit — scripted shape/complexity/MI/import-graph metrics (stdlib AST + radon 6.0.1), vulture dead-code scan, security greps, full-suite run, per-failure root-cause diagnosis, two independent fresh-eyes subagent review passes (code-quality; architecture/integration), every top finding re-verified by the orchestrator before filing. AGENTS.md rules honored (read-only on runtime code; evidence-first; no history rewrite).
-- **The full report:** `docs/AUDIT_SWOT_V0.6.7.md` — scorecard (A 2.5 / B 4 / C 3.5 / D 4 / E 2.5 / F 3.5 / G 3.5, overall 3.4), SWOT quadrants with IDs + evidence + confidence labels, top-10 hotspot map, integration/dependency registry with reliability ratings, findability spot-test, and the honest not-verified list.
+- **Repo:** https://github.com/assadigit/elixir @ refactor/audit-session. Inherited V0.6.8+14 commits (the fix-loop session's B4–B11/B18/B19 + reviewer follow-ups, unpushed, un-released). This session: the two operator DECISIONS landed + the review loop → **V0.6.9** released.
+- **Method:** the NEW_SESSION_PROMPT charter — baseline reproduced (14 F / 7,522 P, exactly the audit's decomposition), both DECISIONS presented with git evidence, the operator answered (both Option A), one fix-commit per decision, a read-only fresh-eyes reviewer over the full diff (review-2), every finding verified then fixed, full-suite re-baseline per step.
 
-## Headline findings (all MEASURED/OBSERVED, none speculative)
+## Headline
 
-1. **BLOCKER — the VRAM-overbudget safety gate is unreachable dead code** (`converter_impl.py:502` unconditional return; policy block `:503-536` dead; setting + request field + docstring are placebo). Its **12 red tests were mispinned as "environment failures"** by the last two session baselines — the "14 pinned families" myth is retired; the census: 12 = this defect, 2 = the contract conflict below, 0 true environment failures with a complete Qt install.
-2. **The 2 v182032 "environment" failures are a real contract conflict** — the V0.5.15 regex-grounded exemption (`field_phases.py:482-501`) defeats the V18.20.3.2 parenthetical-promotion drop for parenthetical-only authors; reproduced deterministically; owner decision required.
-3. **`dual_api` fast-provider override is a silent no-op** — `hasattr(_base_url/_api_key)` vs public attrs (`summarization.py:793-798` vs `openai_compat_provider.py:39-40`): wrong-endpoint routing on a supported architecture, errors swallowed.
-4. **RTL dependency drift** — arabic-reshaper/python-bidi only in requirements.txt (missing from pyproject + lock).
-5. **The structural debt is quantified for the next session** — five god functions CC 105–136; 125 functions >150 LOC; 4 modules at MI 0.00; 152 pass-only exception swallows (~8 medium-risk sites cited); timeout scatter 60 sites/11 values; 91 inert stub-block test files; 9/11 dialogs un-migrated; lying docs incl. a safety-gate docstring.
-6. **The strengths are equally strong** — 7,481-test net; zero core→UI layering violations (headless core); LLM ops engineering (supervisor + retry taxonomy + transport SSOT); crash-safety architecture; zero known vulns with a waiver policy; the proven verbatim-extraction pattern.
+**The suite is green for the first time: 7,548 passed / 0 failed / 43 skipped / 16 deselected (~240 s, offscreen Qt).** Session start was 14 F / 7,522 P; net +26 passing (14 un-red + 12 new pins). Rule 3 (net-green) is meaningful again — any red from V0.6.9 onward is a regression, not a "pinned environment family."
 
-## What shipped in V0.6.8
+## What shipped (4 commits)
 
-- `docs/AUDIT_SWOT_V0.6.7.md` (the audit) · `release_notes/V0.6.8.md` · the CHANGELOG entry · the rewritten `NEW_SESSION_PROMPT.md` (the fix/improve/optimize charter: 2 operator decisions + the B1–B19 prioritized backlog in 6 waves) · this session report · VERSION bump + tag + zip + push + GitHub Release (per AGENTS.md Rules 5–6).
+1. `1352425` — **DECISION 1 (Option A "restore"):** the V0.5.14 non-blocking block (unconditional `return None` + nvidia-smi probe) removed from `Converter._enforce_vram_budget`; the V18.20.4.10 policy block (proceed/ask+ack/abort) runs again, byte-identical (review-2 verified against `a0b711c~1`). The 12 previously-red tests pass unchanged. `repeatability_run.py` keeps its explicit `policy=proceed`.
+2. `c00830a` — **DECISION 2 (Option A "tighten"):** `_v0515_grounded` (citation-roster membership alone) → `_v069_grounded` (roster AND `_name_holds_any_attrib_verb(claimed, source_text)`) in `postchecks/field_phases.py`. The 2 previously-red tests pass unchanged. Layer parity with the generation-time veto restored.
+3. `6615f98` — **review-2 follow-ups:** the V0.5.15 exemption's SIBLING (the thorough-floor dropped-sentence recovery, roster-only) tightened via the extracted `_v069_recoverable_sentence` helper; README's non-blocking row + both `model_vram_override_gb` placebo rows removed (zero runtime read sites); `models.py`/`errors.py`/`field_phases` doc accuracy; the BUT-KEPT corridor + 4 thorough-floor pins added.
+4. The release commit — `release_notes/V0.6.9.md`, the CHANGELOG entry, VERSION → 0.6.9, this report, the updated `NEW_SESSION_PROMPT.md`.
+
+## Verification
+
+- Full suite before each commit milestone; final: 7,548 P / 0 F / 43 S / 16 D.
+- review-2 (read-only subagent): both commits sound, 0 BLOCKERs; byte-identity of the restored block confirmed; anti-cheat scan clean (no deleted/skipped/loosened tests; the 14 previously-red tests untouched); its own full-suite run independently reproduced 7,548 P / 0 F.
+- ruff 0.16.8 check + format clean on all touched files; the content-agnostic deny-list families green (one self-inflicted runtime-comment placeholder violation was caught by the suite in-session and fixed — the net works).
+- Corridor reachability: review-2's analysis (the BUT-KEPT rescue is reachable ONLY via passive-agent 80-char window clipping) confirmed empirically and pinned as a test.
 
 ## Baseline handed to the next session
 
-Suite 7,481 P / 14 F / 43 S / 16 D (~4 min, offscreen Qt, full PySide6) — with every failure decomposed and a path to green (B1–B3). Ruff clean at the CI pin. The next session's success criterion: an honestly-green suite first, then the waves in order.
+**Green, with a precise remaining backlog** (see `NEW_SESSION_PROMPT.md`): B12–B17 (god-function decompositions `scholar_reflection` CC 118 / `verify_and_polish_summary` CC 110 next; the timeout policy leaf; the 91-file stub sweep; the 9 dialog migrations), the flagged operator decision on `model_vram_override_gb` restoration (a real special-quant escape hatch beyond the one-click proceed), the flaky `test_full_sequential_run_two_books` root-cause (passed all runs this session), and `requirements.lock` full clean-install regen (rig task).
 
 ## Not verified (honest limits)
 
-Live-LLM behaviors (deselected `live_llm`), the rig-only surface (real OCR/TTS/full-book runs), coverage percentages (ran `--no-cov`), pip-audit re-run (offline; lock + waiver state relied on). Full list: `docs/AUDIT_SWOT_V0.6.7.md` §8.
+Unchanged from `docs/AUDIT_SWOT_V0.6.7.md` §8: live-LLM behaviors (deselected `live_llm`), the rig-only surface (real OCR/TTS/full-book runs), coverage percentages (`--no-cov`), pip-audit re-run (offline). Both V0.6.9 fixes are deterministic pre-LLM paths, exercised end-to-end in the sandbox.
