@@ -507,3 +507,77 @@ class TestB18WindowsPathsSingleSourced:
         assert '"neutts_gguf_path": r"G:\\Program Files\\neutts-air' in src
         assert '"neutts_project_path": r"G:\\Program Files\\neutts-air"' in src
         assert '"piper_binary": r"C:\\piper_windows_amd64' in src
+
+
+# ── Review-loop follow-ups (Loop 3 — the fresh-eyes reviewer's findings) ────
+#
+# The independent review of this session's diff surfaced four residuals of
+# the B4/B5/B10 bug CLASSES outside the charter's named sites; each was
+# verified before fixing (one reviewer claim — "the CHANGELOG V0.04
+# known-follow-ups note does not exist" — was corrected: it lives at
+# CHANGELOG_ARCHIVE.md:1497; the deferral was documented, and is now closed).
+
+
+class TestLoop3LlmDispatcherSweep:
+    def test_call_via_llm_provider_no_private_attr_guards(self):
+        import inspect
+
+        from core.summarisation.llm_dispatcher import call_via_llm_provider
+
+        src = inspect.getsource(call_via_llm_provider)
+        assert 'hasattr(provider, "_model")' not in src
+        assert "provider._base_url = " not in src
+        assert "provider._api_key = " not in src
+        # The per-call endpoint/key overrides now target the PUBLIC attrs.
+        assert "provider.base_url = base_url" in src
+        assert "provider.api_key = api_key" in src
+
+    def test_ollama_delegation_no_private_model_guard(self):
+        import inspect
+
+        import core.summarisation.llm_dispatcher as disp
+
+        # The first sweep site (call_ollama-style delegation, ~line 138).
+        src = inspect.getsource(disp)
+        assert 'hasattr(provider, "_model")' not in src
+
+
+class TestLoop3MarkdownStylerSeventhSite:
+    def test_refresh_models_routed_through_shared_transport(self):
+        s = _method_src(
+            _B5_FILES["translation_service_dialog.py"].parent / "markdown_styler_dialog.py",
+            "_refresh_models",
+        )
+        assert "import requests" not in s, "the 7th bare-requests site is back"
+        assert "list_ollama_models(" in s
+
+
+class TestLoop3TimeoutBudgets:
+    def test_list_ollama_models_has_timeout_param(self):
+        import inspect
+
+        from utils.network import list_ollama_models
+
+        sig = str(inspect.signature(list_ollama_models))
+        assert "timeout" in sig
+
+    def test_dialogs_pass_their_latency_budgets(self):
+        checks = {
+            "translation_service_dialog.py": "list_ollama_models(ollama_url, timeout=5)",
+            "transcribe_service_dialog.py": "list_ollama_models(ollama_url, timeout=5)",
+            "podcast_maker_view.py": "list_ollama_models(ollama_url, timeout=5)",
+        }
+        for name, needle in checks.items():
+            src = _B5_FILES[name].read_text(encoding="utf-8")
+            assert needle in src, f"{name}: the 5s budget is not passed"
+
+
+class TestLoop3GapFillGuardFailsSafe:
+    def test_gap_fill_guard_is_fail_safe(self):
+        src = (REPO / "core/summarisation/bullet_pipeline.py").read_text(encoding="utf-8")
+        # The gap-fill twin's old fail-open shape (guard crash → healthy →
+        # proceed) must be gone: no bare pass after the health check.
+        assert "_embedder_healthy = False\n            summarizer.log(" in src, (
+            "the fail-safe crash path (health-check failure = unhealthy) is missing"
+        )
+        assert "Gap-fill validation: embedder health check failed" in src

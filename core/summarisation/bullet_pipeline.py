@@ -777,19 +777,32 @@ class BulletPipeline:
         # embedder is unhealthy, skip the semantic check (rely on F4),
         # exactly like the main stage does.
         _embedder_healthy = True
+        # V0.6.8 (review-loop follow-up, B10 class — fresh-eyes finding):
+        # the twin guard used to swallow its own failure and leave
+        # _embedder_healthy = True (fail-OPEN — the same "guard can't
+        # guard" pattern fixed one method earlier). Now fails SAFE: a
+        # crashed/unimportable health check skips the semantic check (F4
+        # still gates every bullet).
         try:
             from core.llm.model_singletons import is_embedder_healthy
 
-            if not is_embedder_healthy():
-                _embedder_healthy = False
+            _embedder_healthy = is_embedder_healthy()
+        except Exception as _e:
+            _embedder_healthy = False
+            summarizer.log(
+                "    ⏭️  Gap-fill validation: embedder health check failed "
+                f"({type(_e).__name__}: {_e}) — skipping Phase 2.2 "
+                "(fail-safe: F4 source-overlap still gates every bullet)",
+                "WARNING",
+            )
+        else:
+            if not _embedder_healthy:
                 summarizer.log(
                     "    ⏭️  Gap-fill validation: embedder unhealthy — skipping "
                     "Phase 2.2 (F4 source-overlap still gates every bullet; a "
                     "zero-vector similarity would falsely reject them all)",
                     "WARNING",
                 )
-        except Exception:
-            pass
         for bullet in gap_bullets:
             # F4: token overlap check
             # V18.20.2.0 (SWOT-A2): thresholds from thresholds.py (was 0.25).
