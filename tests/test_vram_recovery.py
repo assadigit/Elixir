@@ -54,7 +54,8 @@ class TestRecoverVRAM:
         nominally guarding the V13.44.3 log path. Now pins the delegation:
         ``_recover_vram`` forwards is_local / delays / context / log_fn to
         ``core.summarisation.vram.recover_vram`` (whose real log behavior
-        is separately tested in test_vram_phases.py)."""
+        is separately tested by TestA18VramDelay in
+        tests/test_v18202_summarisation_fixes.py)."""
         import core.summarisation.vram as vram_mod
 
         calls = []

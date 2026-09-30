@@ -200,8 +200,9 @@ class TestDuplicateHeadingCheckpointSurvival:
         assert saver.skipped_existing == 0
 
     def test_duplicate_positions_are_never_shared_in_manifest(self, tmp_path):
-        """The manifest is keyed by str(pos) — distinct fallback positions
-        mean distinct manifest records (no chapter record is clobbered)."""
+        """The manifest is keyed by the canonical md FILENAME (V0.6.6 L2-3)
+        — distinct filenames guarantee distinct records even when two
+        chapters share a position number (no chapter record is clobbered)."""
         import json
 
         from core.pipeline.chapter_checkpoint import ChapterCheckpointSaver
@@ -508,6 +509,27 @@ class TestPublishReleaseCliGuard:
         )
         assert r.returncode == 0
         assert "would create/update release" in r.stdout
+
+    def test_api_transport_failure_returns_clean_zero(self):
+        """V0.6.6 (review-loop A6): a URLError (connection refused / DNS)
+        must return (0, message) — the callers' clean ❌ path — not raise
+        a raw traceback."""
+        code = (
+            "import importlib.util, sys\n"
+            "spec = importlib.util.spec_from_file_location('pr', sys.argv[1])\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(mod)\n"
+            "status, body = mod._api('GET', 'http://127.0.0.1:1/nothing', 'tok', 'o/r')\n"
+            "print(status, type(body).__name__)\n"
+        )
+        r = subprocess.run(
+            [sys.executable, "-c", code, str(REPO / "tools" / "publish_release.py")],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip().startswith("0 "), "transport failure → status 0 + message"
 
 
 # ═══════════════════════════════════════════════════════════════════════

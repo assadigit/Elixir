@@ -78,6 +78,11 @@ def _api(
             return e.code, json.loads(body)
         except Exception:
             return e.code, body
+    except urllib.error.URLError as e:
+        # V0.6.6 (review-loop A6): transport failures (DNS, connection
+        # refused, proxy down) previously escaped as a raw traceback —
+        # now they take the same clean ❌ failure path as HTTP errors.
+        return 0, f"{type(e).__name__}: {e}"
 
 
 def _find_asset_endpoint(release: dict, name: str) -> str | None:
@@ -164,6 +169,11 @@ def publish_release(
                 print(f"   ✅ asset uploaded: {asset_name} ({zip_path.stat().st_size:,} bytes)")
         except urllib.error.HTTPError as e:
             print(f"❌ asset upload failed: {e.code} {e.read()[:200]!r}")
+            return False
+        except urllib.error.URLError as e:
+            # V0.6.6 (review-loop A6): transport failures get the clean
+            # ❌ path instead of a raw traceback.
+            print(f"❌ asset upload failed: {type(e).__name__}: {e}")
             return False
 
     return True
