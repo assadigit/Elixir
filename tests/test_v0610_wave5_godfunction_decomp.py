@@ -381,6 +381,41 @@ class TestScholarGapfillOnlyPreserved:
         assert len(result["bullet_points"]) == 2
 
 
+# ── B13 structural pins (the V0.6.10 exit funnel) ───────────────────────────
+
+
+class TestB13ExitFunnelStructure:
+    """V0.6.10 (B13): verify_and_polish_summary's 12 copy-pasted exits
+    collapse to the single ``_exit`` helper — the D1 deterministic-fix layer
+    is structurally guaranteed at every exit (no future exit site can forget
+    it). Behavioral D1 coverage: TestVerifyExitFunnel above + the V0.5.4/V0.5.6
+    suites (tests/test_v054_verification_layer.py,
+    tests/test_v056_verification_glossary.py)."""
+
+    def test_exit_helper_exists_and_is_the_only_deterministic_fix_caller(self):
+        import inspect
+
+        import core.summarisation.verification_phase as vp
+
+        assert callable(getattr(vp, "_exit", None))
+        exit_src = inspect.getsource(vp._exit)
+        # the helper is the old return expression verbatim (one call site)
+        assert exit_src.count("_apply_deterministic_fixes(text, issues)") == 1
+
+    def test_verify_body_has_no_direct_deterministic_fix_calls(self):
+        import inspect
+
+        import core.summarisation.verification_phase as vp
+
+        body = inspect.getsource(vp.verify_and_polish_summary)
+        assert "_apply_deterministic_fixes(" not in body, (
+            "every exit must funnel through _exit (the D1 guarantee)"
+        )
+        # the 12 exits: 11 rendered_md keeps + 1 polished success
+        assert body.count("return _exit(rendered_md, issues)") == 11
+        assert body.count("return _exit(polished, issues)") == 1
+
+
 # ── B13 characterization: the exit-funnel contracts ─────────────────────────
 
 

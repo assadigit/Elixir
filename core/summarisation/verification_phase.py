@@ -742,6 +742,19 @@ def _apply_deterministic_fixes(text: str, issues: list[Issue]) -> str:
     return fixed
 
 
+def _exit(text: str, issues: list[Issue]) -> tuple[str, list[Issue]]:
+    """V0.6.10 (B13): the single exit funnel for ``verify_and_polish_summary``.
+
+    The 12 copy-pasted ``return _apply_deterministic_fixes(X, issues), issues``
+    exits collapse to THIS helper so the D1 contract (V0.5.4: the deterministic
+    auto-apply — en-dash normalization — runs at EVERY return path, even when
+    the LLM is unavailable) cannot be forgotten by a future exit site: there is
+    exactly one place that wraps the outgoing text. Behavior byte-identical —
+    the helper is the old return expression verbatim.
+    """
+    return _apply_deterministic_fixes(text, issues), issues
+
+
 def verify_and_polish_summary(
     rendered_md: str,
     source_text: str,
@@ -783,6 +796,11 @@ def verify_and_polish_summary(
         ``cross_reference_glossary``.
       - When no glossary is available, falls back to the V0.5.4
         ``extract_citations`` regex behavior (fail-open).
+
+    V0.6.10 evolution (B13 — the exit funnel):
+      - The 12 copy-pasted exit expressions now route through ``_exit``
+        (one helper wrapping ``_apply_deterministic_fixes``): the D1
+        deterministic-fix layer is structurally guaranteed at every exit.
 
     V0.5.19 evolution (append-mode corrections + the normalized anchor):
       - The LLM's corrections now come in two shapes: REPLACEMENTS
@@ -829,7 +847,7 @@ def verify_and_polish_summary(
         # Even on the empty-input path, apply deterministic fixes (no-op
         # when the input is empty — keeps the contract that the returned
         # text always goes through canonicalization).
-        return _apply_deterministic_fixes(rendered_md, issues), issues
+        return _exit(rendered_md, issues)
 
     # V0.5.6: resolve the source glossary. Prefer the explicit keyword
     # arg; else the module-level side-channel cache (the master-summary
@@ -910,7 +928,7 @@ def verify_and_polish_summary(
     if not model:
         # No model configured → no LLM call, but the deterministic
         # auto-apply (en-dash normalization) still runs.
-        return _apply_deterministic_fixes(rendered_md, issues), issues  # no-op (fail-open)
+        return _exit(rendered_md, issues)  # no-op (fail-open)
 
     try:
         # V0.4.13 pattern: use the provider abstraction (Ollama + llama.cpp).
@@ -925,13 +943,11 @@ def verify_and_polish_summary(
             provider_name = "ollama"
 
         if provider_name not in ("ollama", "llamacpp"):
-            return _apply_deterministic_fixes(
-                rendered_md, issues
-            ), issues  # cloud providers not supported
+            return _exit(rendered_md, issues)  # cloud providers not supported
 
         provider = create_provider(provider_name, settings)
         if not provider:
-            return _apply_deterministic_fixes(rendered_md, issues), issues
+            return _exit(rendered_md, issues)
 
         # V0.5.1 / V0.5.4 (B2+C3): coverage-targeting — extract source
         # authors + their year(s), check which authors are NOT covered
@@ -1151,15 +1167,11 @@ def verify_and_polish_summary(
         )
 
         if not raw or len(raw) < 10:
-            return _apply_deterministic_fixes(
-                rendered_md, issues
-            ), issues  # empty/short response → no-op
+            return _exit(rendered_md, issues)  # empty/short response → no-op
 
         corrections = _extract_corrections(raw)
         if not corrections:
-            return _apply_deterministic_fixes(
-                rendered_md, issues
-            ), issues  # no corrections proposed → no-op
+            return _exit(rendered_md, issues)  # no corrections proposed → no-op
 
         # ── V0.5.19: partition + apply the two correction shapes ──────────
         # REPLACEMENTS ({"original", "corrected"}) — located via the exact
@@ -1219,7 +1231,7 @@ def verify_and_polish_summary(
                         ),
                     )
                 )
-            return _apply_deterministic_fixes(rendered_md, issues), issues
+            return _exit(rendered_md, issues)
 
         # V0.5.4 (D4): gap-fill hallucination guard — after the LLM's
         # targeted corrections are applied, re-run extract_citations on
@@ -1346,7 +1358,7 @@ def verify_and_polish_summary(
                         ),
                     )
                 )
-                return _apply_deterministic_fixes(rendered_md, issues), issues
+                return _exit(rendered_md, issues)
 
         # ── V0.5.19: apply the guarded APPEND-mode corrections ────────────
         # An append lands ONLY when every deterministic guard passes:
@@ -1454,7 +1466,7 @@ def verify_and_polish_summary(
         # (replacement or append); when nothing landed at all, the original
         # is kept (the flags above already record why).
         if applied == 0 and appended_count == 0:
-            return _apply_deterministic_fixes(rendered_md, issues), issues
+            return _exit(rendered_md, issues)
 
         # D3-style guard: flag-count check (no new structural defects).
         # V0.5.19: the length guard moved BEFORE the appends (it judges
@@ -1478,7 +1490,7 @@ def verify_and_polish_summary(
                     ),
                 )
             )
-            return _apply_deterministic_fixes(rendered_md, issues), issues
+            return _exit(rendered_md, issues)
 
         polish_len = len(polished)
         if log:
@@ -1489,7 +1501,7 @@ def verify_and_polish_summary(
                 f"({polish_len} chars, {post_flags} flags vs {pre_flags}).",
                 "INFO",
             )
-        return _apply_deterministic_fixes(polished, issues), issues
+        return _exit(polished, issues)
     except Exception as e:
         logger.warning("verification phase crashed (non-fatal): %s: %s", type(e).__name__, e)
         issues.append(
@@ -1501,4 +1513,4 @@ def verify_and_polish_summary(
                 detail=f"verification phase failed: {type(e).__name__}: {e} — original kept.",
             )
         )
-        return _apply_deterministic_fixes(rendered_md, issues), issues
+        return _exit(rendered_md, issues)
