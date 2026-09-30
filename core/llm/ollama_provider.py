@@ -34,7 +34,7 @@ from core.llm.retry import (
     retry_with_oom_context_halving,
 )
 from core.system.ollama_supervisor import OllamaSupervisor
-from utils.network import safe_ollama_request
+from utils.network import safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -717,10 +717,12 @@ class OllamaProvider(LLMProvider):
         (fail-safe — don't attempt vision if we can't confirm it).
         """
         try:
-            import requests as _req
-
             url = f"{self.base_url}/api/show"
-            resp = _req.post(url, json={"name": self.model}, timeout=10)
+            # V0.6.7 (review-loop A5): pooled transport via session_for_url —
+            # localhost Ollama gets the proxy-immune session (a misconfigured
+            # HTTP_PROXY must never break the /api/show probe); remote Ollama
+            # hosts keep env-proxy behavior. Same timeout, plus connection reuse.
+            resp = session_for_url(url).post(url, json={"name": self.model}, timeout=10)
             if resp.status_code != 200:
                 return False
             info = resp.json()
@@ -782,9 +784,10 @@ class OllamaProvider(LLMProvider):
         }
         url = f"{self.base_url}/api/generate"
         try:
-            import requests as _req
-
-            resp = _req.post(url, json=payload, timeout=self.timeout)
+            # V0.6.7 (review-loop A5): pooled transport via session_for_url —
+            # same routing rule as supports_vision (proxy-immune for localhost,
+            # env-proxy for remote hosts), plus connection reuse.
+            resp = session_for_url(url).post(url, json=payload, timeout=self.timeout)
             if resp.status_code == 200:
                 return resp.json().get("response", "").strip() or None
         except Exception as e:

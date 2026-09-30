@@ -26,7 +26,9 @@ returns None safely (never raises). Plus the V0.11 repair ladder through
 
 Hermeticity: no socket is ever opened. Every HTTP boundary is monkey-
 patched (``core.llm.ollama_provider.safe_ollama_request``,
-``core.llm.llamacpp_provider._no_proxy_session``, ``requests.post``,
+``core.llm.llamacpp_provider._no_proxy_session``, the provider
+``session_for_url`` seams — ``core.llm.openai_compat_provider`` /
+``core.llm.claude_provider`` since V0.6.7 (review-loop A5) — and
 ``core.summarisation.llm_dispatcher.session_for_url``). The suite's
 autouse raising-keyring stub (conftest.py) keeps the factory tests off
 the real OS keychain.
@@ -489,6 +491,20 @@ def _cloud_ok(text: str = "ok") -> requests.Response:
     return _resp(200, {"choices": [{"message": {"content": text}}]})
 
 
+def _seam_session(monkeypatch, module: str, post):
+    """V0.6.7 (review-loop A5): the provider transport seam.
+
+    The provider ``complete()`` transports now route through the pooled
+    ``session_for_url`` (top-level import), so the old
+    ``monkeypatch.setattr(requests, "post", ...)`` target no longer
+    intercepts — patch the provider module's ``session_for_url`` with a
+    session whose ``.post`` is the test's existing fake instead. The fakes'
+    signatures and the assertions stay exactly as they were.
+    """
+    sess = types.SimpleNamespace(post=post)
+    monkeypatch.setattr(f"{module}.session_for_url", lambda url: sess)
+
+
 class TestOpenAICompatHardening:
     def test_timeout_reaches_http_layer(self, monkeypatch):
         calls: list[dict] = []
@@ -497,7 +513,7 @@ class TestOpenAICompatHardening:
             calls.append({"url": url, "timeout": timeout})
             return _cloud_ok("text")
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.openai_compat_provider", _fake_post)
         p, _logs = _openai_provider()
         assert p.complete("prompt") == "text"
         assert calls[0]["timeout"] == 77
@@ -514,7 +530,7 @@ class TestOpenAICompatHardening:
                 raise item
             return item
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.openai_compat_provider", _fake_post)
         p, _logs = _openai_provider(retries=1)
         assert p.complete("prompt") == "second try"
         assert len(deterministic_retry) == 1
@@ -527,7 +543,7 @@ class TestOpenAICompatHardening:
             calls.append(1)
             return _resp(404, {"error": {"message": "model m not found"}})
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.openai_compat_provider", _fake_post)
         p, logs = _openai_provider(retries=1)
         assert p.complete("prompt") is None
         assert len(calls) == 1  # raise_for_status → HTTPError 404 → non-retryable
@@ -559,7 +575,7 @@ class TestOpenAICompatHardening:
             item = script.pop(0)
             return item
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.openai_compat_provider", _fake_post)
         p, _logs = _openai_provider(retries=1)
         assert p.complete("prompt") == "filled"
 
@@ -591,7 +607,7 @@ class TestClaudeProviderHardening:
             calls.append({"url": url, "timeout": timeout, "headers": headers})
             return _claude_ok("ans")
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.claude_provider", _fake_post)
         p, _logs = self._provider()
         assert p.complete("prompt") == "ans"
         assert calls[0]["timeout"] == 55
@@ -609,7 +625,7 @@ class TestClaudeProviderHardening:
                 raise item
             return item
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.claude_provider", _fake_post)
         p, _logs = self._provider(retries=1)
         assert p.complete("prompt") == "second"
         assert len(deterministic_retry) == 1
@@ -621,7 +637,7 @@ class TestClaudeProviderHardening:
             calls.append(1)
             return _resp(401, {})
 
-        monkeypatch.setattr(requests, "post", _fake_post)
+        _seam_session(monkeypatch, "core.llm.claude_provider", _fake_post)
         p, logs = self._provider(retries=1)
         assert p.complete("prompt") is None
         assert len(calls) == 1  # bad API key — retrying is pointless

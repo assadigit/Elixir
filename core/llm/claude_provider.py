@@ -13,6 +13,7 @@ import requests as _requests
 
 from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
+from utils.network import session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,14 @@ class ClaudeProvider(LLMProvider):
                 f"    🧠 Claude ({_model}) t={_temp:.2f} attempt…",
                 "INFO",
             )
-            resp = _requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+            # V0.6.7 (review-loop A5): pooled transport via session_for_url —
+            # the ONE routing rule (same migration as llm_dispatcher.call_claude
+            # in V18.20.4.11). Claude endpoints are cloud URLs, so this is the
+            # proxy-trusting pooled session: same timeout, same retries, plus
+            # connection reuse.
+            resp = session_for_url(url).post(
+                url, headers=headers, json=payload, timeout=self.timeout
+            )
             resp.raise_for_status()  # → HTTPError for 401/429/5xx
             data = resp.json()
             content = data.get("content", [])

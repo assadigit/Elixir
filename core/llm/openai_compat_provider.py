@@ -15,6 +15,7 @@ from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import (
     retry_llm_call,
 )
+from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +90,21 @@ class OpenAICompatProvider(LLMProvider):
                 f"    ☁️ {self.label} ({_model}) t={_temp:.2f} attempt…",
                 "INFO",
             )
-            resp = _requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+            # V0.6.7 (review-loop A5): pooled transport via session_for_url —
+            # the ONE routing rule (cloud endpoints trust env proxies, localhost
+            # /v1 endpoints like FreeLLMAPI get the proxy-immune session) —
+            # replaces the bare per-call ``_requests.post``: same timeout, same
+            # retries, plus connection reuse. The deep-index choices[0] parse
+            # becomes the shared shape-safe extract_openai_content (same
+            # migration as llm_dispatcher.call_openai_compat in V18.20.4.11):
+            # a malformed/error payload now flows into the SAME empty-response
+            # retry path as an empty-but-valid response (previously it raised
+            # KeyError straight to the outer except → None, skipping retry).
+            resp = session_for_url(url).post(
+                url, headers=headers, json=payload, timeout=self.timeout
+            )
             resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"].strip()
+            text = extract_openai_content(resp.json())
             if not text:
                 # Empty response — raise ConnectionError so the decorator
                 # retries (preserves old "log empty + sleep + retry" behavior).
