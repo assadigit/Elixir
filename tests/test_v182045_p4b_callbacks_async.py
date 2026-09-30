@@ -53,10 +53,9 @@ from __future__ import annotations
 
 import ast
 import sys
-import types
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -69,11 +68,6 @@ if str(_project_root) not in sys.path:
 # in this sandbox; the stub keeps the eager core.pipeline import chain
 # loadable so the controller behavioral tests can construct a REAL
 # Controller).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from utils.settings import Settings  # noqa: E402
 
 _CONTROLLER = _project_root / "controller.py"

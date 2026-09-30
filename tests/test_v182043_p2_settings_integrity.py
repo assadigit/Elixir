@@ -58,10 +58,9 @@ PySide6 is unavailable (the headless rig).
 from __future__ import annotations
 
 import sys
-import types
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
@@ -70,11 +69,6 @@ if str(_project_root) not in sys.path:
 # Stub the optional heavy deps exactly like tests/test_v182041_p0_crash_honesty.py
 # (markitdown is not installed in this sandbox; the stub keeps the eager
 # core.pipeline import chain loadable for the controller behavioral tests).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from utils.settings import Settings  # noqa: E402
 
 _CONTROLLER = _project_root / "controller.py"

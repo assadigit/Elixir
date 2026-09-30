@@ -30,19 +30,11 @@ Scope of this version (all approved by the user in the 2026-08-31 session):
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 # Stub the optional heavy deps exactly like tests/test_v18203_incremental_checkpoint.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 ROOT = Path(__file__).resolve().parent.parent
 
 from core.summarisation.bullet_consolidation import consolidate_bullets  # noqa: E402

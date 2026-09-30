@@ -11,7 +11,6 @@ Run: pytest tests/test_text_utils_ext.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parent.parent
@@ -20,24 +19,6 @@ if str(_project_root) not in sys.path:
 
 # Stub tiktoken so the import chain (utils.token_counter → tiktoken) works
 # without the real package installed in the sandbox.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        def encode(self, s, disallowed_special=()):  # pragma: no cover - stub
-            # Crude word-based token approximation (good enough for the
-            # count_tokens fallback path; tests below don't assert exact
-            # token counts, only structural properties).
-            return s.split()
-
-        def decode(self, tokens):  # pragma: no cover - stub
-            return " ".join(tokens)
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: _E()
-    tk.encoding_for_model = lambda *a, **k: _E()
-    sys.modules["tiktoken"] = tk
-
 from core.summarisation.text_utils_ext import smart_truncate
 
 # ── helper: capturing log ──────────────────────────────────────────────────

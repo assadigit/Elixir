@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 # ── V18.20.2.0 (SWOT test-infra): hermetic tiktoken gate ────────────────────
-# 51 test files carry a copy-pasted ``if "tiktoken" not in sys.modules:`` stub
-# block. Whichever file is collected FIRST installs ITS variant (some are
-# MagicMock encoders) even when the REAL tiktoken is installed — poisoning
+# (V0.6.10 / B16 history) 51→78 test files HAD carried a copy-pasted
+# ``if "tiktoken" not in sys.modules:`` stub block — the count comments here
+# had drifted to 51/36 while the reality was 78/37 (the AUDIT_SWOT W7
+# lying-docs find; 79/38 at sweep time — this session's new
+# test_v0610_wave5_godfunction_decomp.py had added one of each). The V0.6.10
+# sweep REMOVED all 109 inert per-file blocks (87 files) — this gate is now
+# the ONLY installer. Whichever file was collected FIRST used to install ITS
+# variant (some were MagicMock encoders) even when the REAL tiktoken was
+# installed — poisoning
 # ``utils.token_counter`` lazy ``_ENCODER`` init for the entire session
 # (root cause of the order-dependent failures in test_map_reduce /
 # test_primary_call / test_text_utils_ext). conftest is imported by pytest
@@ -42,11 +48,14 @@ if "tiktoken" not in sys.modules:
         del _TkEnc
 
 # ── V0.6.0 (campaign 4-b, test-infra): hermetic markitdown gate ────────────
-# 36 test files carry a copy-pasted ``if "markitdown" not in sys.modules:`` stub
-# block — the exact tiktoken-poisoning class conftest fixed above (V18.20.2.0).
-# Whichever file is collected FIRST installs ITS fake MarkItDown even when the
-# REAL markitdown is installed (a core requirements.txt dep) — real conversions
-# then fail session-wide, order-dependently (observed live during the V0.6.0
+# (V0.6.10 / B16) 36→37 test files HAD carried a copy-pasted
+# ``if "markitdown" not in sys.modules:`` stub block — removed by the V0.6.10
+# sweep; this gate is the only installer. The exact tiktoken-poisoning class
+# conftest fixed above (V18.20.2.0):
+# Whichever file was collected FIRST used to install ITS fake MarkItDown even
+# when the REAL markitdown was installed (a core requirements.txt dep) — real
+# conversions then failed session-wide, order-dependently (observed live during
+# the V0.6.0
 # tools campaign: the doc-to-md e2e suite passed alone and failed when a
 # stubbing file was collected first). Pinning the real package here (one
 # functional stub when absent) makes every guarded stub a no-op.

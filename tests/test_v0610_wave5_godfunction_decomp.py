@@ -31,31 +31,11 @@ Run: pytest tests/test_v0610_wave5_godfunction_decomp.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub the optional heavy deps exactly like tests/test_scholar_reflection.py /
-# tests/test_v054_verification_layer.py (tiktoken + markitdown are not
-# installed in this sandbox; the stubs keep the import chains loadable).
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
-
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
 
 from core.summarisation.scholar_reflection import (
     scholar_reflection,

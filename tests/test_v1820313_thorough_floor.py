@@ -46,26 +46,9 @@ from __future__ import annotations
 
 import sys
 import time
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-
-# ── Hermetic stubs (order matters: before the summarizer import) ───────────
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-
-    class _Enc:  # noqa: D401 — placeholder class, not a docstring subject
-        pass
-
-    _tk.Encoding = _Enc
-    _tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = _tk
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

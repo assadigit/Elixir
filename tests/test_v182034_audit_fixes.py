@@ -14,32 +14,7 @@ exact behaviour the fix bundle was designed to produce:
   RC-5c borderline attribution band verifies named entities before flagging
 """
 
-import sys
-import types
-
 import pytest
-
-# ── Hermetic tiktoken gate (same approach as tests/conftest.py) ─────────────
-if "tiktoken" not in sys.modules:
-    import importlib.util as _ilu
-
-    if _ilu.find_spec("tiktoken") is not None:
-        import tiktoken  # noqa: F401
-    else:
-        _tk = types.ModuleType("tiktoken")
-        _tk.Encoding = object
-
-        class _FakeEnc:
-            def encode(self, s, **kw):
-                return list(range(len((s or "").split())))
-
-            def decode(self, ids, **kw):
-                return " ".join("w" for _ in ids)
-
-        _tk.get_encoding = lambda *a, **kw: _FakeEnc()
-        _tk.encoding_for_model = lambda *a, **kw: _FakeEnc()
-        sys.modules["tiktoken"] = _tk
-
 
 from core.preprocessing.deterministic_analyzer import extract_citations
 from core.summarisation.post_processing import (

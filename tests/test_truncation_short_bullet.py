@@ -21,17 +21,7 @@ Run: ``pytest tests/test_truncation_short_bullet.py -v``
 
 from __future__ import annotations
 
-import sys
-import types
-
 import pytest
-
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
 
 from core.summarisation.post_processing import is_truncated
 

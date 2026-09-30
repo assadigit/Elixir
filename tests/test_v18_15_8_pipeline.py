@@ -16,7 +16,6 @@ Run: pytest tests/test_v18_15_8_pipeline.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -24,13 +23,6 @@ import pytest
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = lambda *a, **k: None
-    tk.encoding_for_model = lambda *a, **k: None
-    tk.Encoding = type("_E", (), {})
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation.prompt_assembly import build_exec_from_thorough_prompt
 from core.summarisation.quarantine import (

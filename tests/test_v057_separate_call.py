@@ -36,29 +36,13 @@ Beta / Gamma — Rule 1 exempt).
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18202_system_fixes.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
-# Stub tiktoken (not installed in test env) — same pattern as conftest.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = lambda *a, **k: None
-    tk.encoding_for_model = lambda *a, **k: None
-    tk.Encoding = type("_E", (), {})
-    sys.modules["tiktoken"] = tk
-
 from core.summarisation import primary_call as pc_mod  # noqa: E402
 from core.summarisation.glossary_parser import (  # noqa: E402
     extract_glossary_via_llm,

@@ -32,22 +32,14 @@ Contracts tested here:
 from __future__ import annotations
 
 import re
-import sys
 import time
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18203_incremental_checkpoint.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from utils.logging import ConversionLogger  # noqa: E402
 
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")

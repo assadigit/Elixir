@@ -37,30 +37,14 @@ from __future__ import annotations
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-
-# ── hermetic tiktoken gate (house pattern) ─────────────────────────────────
-if "tiktoken" not in sys.modules:
-    try:
-        import tiktoken  # type: ignore  # noqa: F401
-    except ImportError:
-        _tk = types.ModuleType("tiktoken")
-        _tk.get_encoding = lambda *a, **k: None  # type: ignore[attr-defined]
-        _tk.Encoding = object  # type: ignore[attr-defined]
-        sys.modules["tiktoken"] = _tk
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # markitdown is not installed in this sandbox; the stub keeps the eager
 # core.pipeline → core.pdf import chains loadable (V0.03 house pattern).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from core.models.models import (  # noqa: E402
     ConversionRequest,
     SummaryResult,

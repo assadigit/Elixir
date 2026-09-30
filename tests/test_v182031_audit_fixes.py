@@ -41,7 +41,6 @@ D7 — CONSOLIDATION/SCHOLAR CAPS TOO SMALL: 2048/3000-token budgets cut
 
 from __future__ import annotations
 
-import sys
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -49,11 +48,6 @@ from unittest.mock import MagicMock
 # Stub the optional heavy deps exactly like tests/test_v18203_audit_fixes.py
 # (markitdown is not installed in this sandbox; the stub keeps the eager
 # postchecks→…→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 

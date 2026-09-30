@@ -56,29 +56,13 @@ author lists, no hardcoded names.
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v054_extract_citations.py
 # (markitdown not installed in the sandbox; the stub keeps the eager
 # core.pipeline→core.pdf import chain loadable for any transitive imports).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
-# Stub tiktoken (not installed in test env) — same pattern as conftest.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = lambda *a, **k: None
-    tk.encoding_for_model = lambda *a, **k: None
-    tk.Encoding = type("_E", (), {})
-    sys.modules["tiktoken"] = tk
-
 from core.preprocessing.citations_regex import NAME_SEP
 from core.preprocessing.deterministic_analyzer import (
     _CIT_PARTICLE_PREFIX,

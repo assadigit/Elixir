@@ -35,27 +35,14 @@ rig shapes appear only as regression fixtures.
 
 from __future__ import annotations
 
-import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # ── Minimal heavy-dep stubs (matches test_v18202_system_fixes.py) ──────────
 # tiktoken + markitdown are not installed in this sandbox; the stubs keep
 # the eager core.pipeline → core.pdf import chains loadable.
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from core.models import ConversionRequest, SummaryResult
 from core.preprocessing.deterministic_analyzer import (
     extract_bylines,

@@ -48,18 +48,6 @@ if str(_project_root) not in sys.path:
 # Stub the optional heavy deps exactly like tests/test_conversion_modules.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager controller→pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════

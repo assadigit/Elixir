@@ -14,29 +14,11 @@ Run: pytest tests/test_gap_fill_batch.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub the optional heavy deps exactly like tests/test_thorough_fallback.py
-# (tiktoken for the core.summarisation import chain) and
-# tests/test_v18203_incremental_checkpoint.py (markitdown, defensively).
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = lambda *a, **k: None
-    sys.modules["markitdown"] = _md
 
 from core.summarisation.gap_fill_batch import (  # noqa: E402 — after the sys.modules stubs, like test_thorough_fallback.py
     GapFillOutcome,

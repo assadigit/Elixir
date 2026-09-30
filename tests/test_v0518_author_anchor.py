@@ -37,29 +37,11 @@ Run: ``pytest tests/test_v0518_author_anchor.py -v``
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub the optional heavy deps exactly like tests/test_v056_verification_glossary.py
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    _tk.Encoding = _E
-    _tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = _tk
-
 
 from core.summarisation.author_anchor import (
     author_anchor,

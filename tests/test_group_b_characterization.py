@@ -32,8 +32,6 @@ Run: ``pytest tests/test_group_b_characterization.py -v``
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -45,14 +43,6 @@ import pytest
 # pdfplumber etc. — those bare stubs would pollute sys.modules and break
 # downstream tests (test_conversion_modules::test_empty_summaries imports
 # core.pdf → pypdf/rapidfuzz and needs the real or absent modules, not bare
-# stubs missing `fuzz`/`__version__`).
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
-
 from core.models import ConversionRequest
 from core.summarisation.summarizer import Summarizer
 

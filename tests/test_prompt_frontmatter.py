@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -29,18 +28,6 @@ import pytest
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub tiktoken so Summarizer can be imported in the TestSelectPrompt class
-# (tiktoken is not installed in the test sandbox).
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _Encoding:
-        pass
-
-    tk.Encoding = _Encoding
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
 
 # Load prompt_manager.py directly (bypasses core.summarisation.__init__)
 _spec = importlib.util.spec_from_file_location(

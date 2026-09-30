@@ -59,19 +59,6 @@ def _stub_module(name: str, **attrs):
     return mod
 
 
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = object
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-
-    class _Enc:  # noqa: D401 — placeholder class, not a docstring subject
-        pass
-
-    _tk.Encoding = _Enc
-    _tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = _tk
 if "utils.token_counter" not in sys.modules:
     _stub_module(
         "utils.token_counter",

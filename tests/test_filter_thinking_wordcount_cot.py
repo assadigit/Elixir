@@ -22,18 +22,7 @@ Run: ``pytest tests/test_filter_thinking_wordcount_cot.py -v``
 
 from __future__ import annotations
 
-import sys
-import types
-
 import pytest
-
-# Minimal heavy-dep stub (tiktoken only) — matches test_anti_hallucination.py
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
 
 from core.summarisation.post_processing import classify_bullets
 

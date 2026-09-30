@@ -30,7 +30,6 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
-from types import ModuleType
 from unittest.mock import MagicMock
 
 _project_root = Path(__file__).resolve().parent.parent
@@ -40,17 +39,6 @@ if str(_project_root) not in sys.path:
 # Hermeticity stub (same as test_v18202_system_fixes / test_v182041):
 # markitdown + tiktoken are not installed in this sandbox; the eager
 # core.summarisation import chain pulls them.
-if "markitdown" not in sys.modules:
-    _md = ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
 _SCHOLAR = _project_root / "core" / "summarisation" / "scholar_reflection.py"
 _BCONS = _project_root / "core" / "summarisation" / "bullet_consolidation.py"
 

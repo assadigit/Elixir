@@ -12,17 +12,6 @@ the impl module (and vice versa) because both reference the SAME state object.
 
 from __future__ import annotations
 
-import sys
-import types
-
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. The shared state object is the SAME across re-export + impl modules
 # ═══════════════════════════════════════════════════════════════════════════

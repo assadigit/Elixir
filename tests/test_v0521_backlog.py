@@ -48,7 +48,6 @@ detector already pins.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -56,20 +55,6 @@ import pytest
 # Stub the optional heavy deps exactly like tests/test_v0510_quoteguard_markitdown.py
 # (markitdown) and tests/test_gap_fill_batch.py (tiktoken + markitdown) —
 # both modules are imported eagerly by the core.summarisation chain.
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = lambda *a, **k: None
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    _tk.Encoding = _E
-    _tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = _tk
-
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))

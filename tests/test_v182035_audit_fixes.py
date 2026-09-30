@@ -31,34 +31,8 @@ fixes must be structural/morphological so they generalize to any book):
 
 from __future__ import annotations
 
-import sys
-import types
-
 # ── Hermetic tiktoken gate (same as conftest; this file is also run
 # standalone by scripts/e2e_v182035_postchecks.py) ─────────────────────────
-if "tiktoken" not in sys.modules:
-    import importlib.util as _ilu
-
-    try:
-        _tk_real = _ilu.find_spec("tiktoken") is not None
-    except Exception:
-        _tk_real = False
-    if not _tk_real:
-        _tk = types.ModuleType("tiktoken")
-
-        class _TkEnc:
-            def encode(self, s, disallowed_special=()):
-                return (s or "").split()
-
-            def decode(self, tokens):
-                return " ".join(str(t) for t in tokens)
-
-        _tk.Encoding = _TkEnc
-        _tk.get_encoding = lambda *a, **k: _TkEnc()
-        _tk.encoding_for_model = lambda *a, **k: _TkEnc()
-        sys.modules["tiktoken"] = _tk
-
-
 # ── Fixtures: the REAL strings from the rig run ─────────────────────────────
 
 # The exact bullet that shipped as a misattribution (audit E1). Winnicott's

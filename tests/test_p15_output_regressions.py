@@ -33,7 +33,6 @@ Run: pytest tests/test_p15_output_regressions.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -44,13 +43,6 @@ if str(_project_root) not in sys.path:
 
 # markitdown is not installed in this sandbox; the core.segmentation import
 # chain (package __init__ -> segmenter -> core.pdf.adaptive_toc) needs it.
-# Same stub pattern as tests/test_v003_rig_audit_fixes.py.
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = type("MarkItDown", (), {})
-    sys.modules["markitdown"] = _md
-
-
 # ════════════════════════════════════════════════════════════════════════════
 # (a) Bullet collapse — V18 richness restored for normal chapters
 # ════════════════════════════════════════════════════════════════════════════

@@ -36,8 +36,6 @@ import ast
 import os
 import sys
 from pathlib import Path
-from types import ModuleType
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -49,17 +47,6 @@ if str(_project_root) not in sys.path:
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline import chain loadable for the library_manager
 # behavioral tests).
-if "markitdown" not in sys.modules:
-    _md = ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
 _APP = _project_root / "ui_qt" / "app.py"
 _CONVERT_VIEW = _project_root / "ui_qt" / "views" / "convert_view.py"
 _WIZARD = _project_root / "ui_qt" / "views" / "wizard_view.py"

@@ -14,19 +14,7 @@ Tests verify:
 
 from __future__ import annotations
 
-import sys
-import types
-from unittest.mock import MagicMock
-
 import pytest
-
-# Stub tiktoken (not installed in test env)
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = MagicMock(return_value=MagicMock())
-    tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = tk
 
 # V18.2.17: Import via the package chain (same as test_summarizer.py).
 # The package __init__ imports the full summarizer, which is heavy but

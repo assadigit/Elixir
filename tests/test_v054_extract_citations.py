@@ -41,29 +41,13 @@ hardcoded names.
 from __future__ import annotations
 
 import re
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18202_system_fixes.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable for the LAYER test).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
-# Stub tiktoken (not installed in test env) — same pattern as conftest.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = lambda *a, **k: None
-    tk.encoding_for_model = lambda *a, **k: None
-    tk.Encoding = type("_E", (), {})
-    sys.modules["tiktoken"] = tk
-
 from core.preprocessing.deterministic_analyzer import extract_citations
 from core.summarisation.postchecks.attribution import _SUMMARY_CITATION_RE
 

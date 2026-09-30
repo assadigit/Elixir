@@ -16,21 +16,12 @@ in runtime code. The production prompt template uses runtime-extracted
 from __future__ import annotations
 
 import json
-import sys
-import types
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18202_system_fixes.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared test scaffolding (mirrors tests/test_v0500_date_extractor.py)
 # ─────────────────────────────────────────────────────────────────────────────
