@@ -416,64 +416,6 @@ class ConversionRequest:
     def layout_reorder_enabled(self) -> bool:
         return self.source_type == "academic_paper"
 
-    # V10.21.0 (B2): Nested config views — read-only grouped access to the
-    # 115 flat fields.  Each property returns a frozen dataclass built from
-    # the flat fields.  New code can use `request.ocr.primary_model` instead
-    # of `request.primary_ocr_model`.  Old code keeps working unchanged.
-    @property
-    def ocr(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["ocr"]
-
-    @property
-    def postprocess(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["postprocess"]
-
-    @property
-    def segmentation(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["segmentation"]
-
-    @property
-    def summarization(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["summarization"]
-
-    @property
-    def outputs(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["outputs"]
-
-    @property
-    def quality(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["quality"]
-
-    @property
-    def advanced(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["advanced"]
-
-    @property
-    def selection(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["selection"]
-
-    @property
-    def docx_config(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["docx"]
-
     def get_segment_strategy_enum(self) -> SegmentStrategy:
         if isinstance(self.segment_strategy, SegmentStrategy):
             return self.segment_strategy

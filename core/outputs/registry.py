@@ -30,8 +30,8 @@ Design notes
   regenerable from the scanner (e.g. core summaries, DOCX).
 - **generator_class_name** is the class name (string, not the class —
   avoids importing the generators here, which would pull in heavy deps).
-- **cost_tier** is the label used by ``output_time_estimates`` for the
-  badge colour: "instant" / "fast" / "medium" / "slow" / "very_slow".
+- **cost_tier** is the output's cost badge tier for the UI:
+  "instant" / "fast" / "medium" / "slow" / "very_slow".
 """
 
 from __future__ import annotations
