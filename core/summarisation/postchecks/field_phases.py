@@ -25,6 +25,7 @@ from core.summarisation.post_processing import (
     is_truncated,
 )
 from core.summarisation.postchecks.attribution import (
+    _name_holds_any_attrib_verb,
     detect_attribution_subject_swap,
     detect_dropped_digit_years,
     detect_parenthetical_promotion,
@@ -470,19 +471,34 @@ def postcheck_bullets(
             )
             if _promo:
                 _claimed, _real = _promo
-                # V0.5.15: if the claimed author is in the regex
-                # source_authors (the deterministic extract_citations
-                # output), DON'T drop — the regex IS the grounding. The
-                # author IS a cited source author (even if they appear
-                # only as a citation/list item — the gap-fill's loosened
-                # quote-guard already accepted the bullet based on the
-                # glossary/regex grounding; the post-check should NOT
-                # re-veto it). Content-agnostic (Rule 1 ✓): uses the
-                # runtime source_authors list, no hardcoded names.
-                _v0515_grounded = bool(
-                    source_authors and _claimed.lower() in {a.lower() for a in source_authors}
+                # V0.6.9 (operator DECISION 2, audit Option A "tighten"):
+                # the V0.5.15 "regex-grounded exemption" is TIGHTENED — a
+                # citation-roster name alone no longer counts as grounding.
+                # A parenthetical-only cited author ("… (AuthorC 1983) …")
+                # lands in that roster BY CONSTRUCTION, so the old check
+                # defeated exactly the misattribution drop this veto was
+                # built to enforce (the V0.6.7 audit's documented contract
+                # conflict — 2 red tests). An author now counts as grounded
+                # only when they actually HOLD an attribution verb
+                # somewhere in the source (the detector itself already
+                # guarantees the claimed author holds none within its
+                # matching range — otherwise no promotion would have been
+                # confirmed). Correctly attributed authors — verb held
+                # somewhere else, e.g. pronoun-anaphora sentences outside
+                # the surname-matching range — remain rescued as a
+                # fallback; a pure citation-list name does not. This also
+                # restores parity with the generation-time veto
+                # (gap_fill_batch), which never had the exemption and
+                # therefore dropped what this layer kept.
+                # Content-agnostic (Rule 1 ✓): uses the runtime
+                # source_authors roster + the generic attrib-verb grammar
+                # (_name_holds_any_attrib_verb), no hardcoded names.
+                _v069_grounded = bool(
+                    source_authors
+                    and _claimed.lower() in {a.lower() for a in source_authors}
+                    and _name_holds_any_attrib_verb(_claimed, source_text)
                 )
-                if _v0515_grounded:
+                if _v069_grounded:
                     report.issues.append(
                         Issue(
                             detector="parenthetical_promotion",
@@ -490,11 +506,13 @@ def postcheck_bullets(
                             field=label,
                             snippet=bp_str[:60],
                             detail=(
-                                f"V0.5.15: bullet for '{_claimed}' flagged as "
+                                f"V0.6.9: bullet for '{_claimed}' flagged as "
                                 f"parenthetical promotion BUT KEPT — the author "
-                                f"is in the regex extract_citations (the "
-                                f"deterministic source roster). The regex IS "
-                                f"the grounding."
+                                f"is in the citation roster AND genuinely holds "
+                                f"an attribution verb elsewhere in the source "
+                                f"(correctly attributed — the tightened V0.5.15 "
+                                f"exemption; a pure citation-list name no "
+                                f"longer counts as grounding)."
                             ),
                         )
                     )
@@ -510,8 +528,10 @@ def postcheck_bullets(
                                 f"dropped misattributed bullet: '{_claimed}' is "
                                 f"credited with a claim the source attributes to "
                                 f"'{_real}' ('{_claimed}' appears there only as a "
-                                f"citation/list item). Verified via the generation-"
-                                f"time active-subject veto."
+                                f"citation/list item — never holding an "
+                                f"attribution verb anywhere in the source; the "
+                                f"V0.6.9 tightened grounding check). Verified "
+                                f"via the generation-time active-subject veto."
                             ),
                         )
                     )
