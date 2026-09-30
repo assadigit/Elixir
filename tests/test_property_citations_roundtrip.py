@@ -84,12 +84,27 @@ _NAME_SEP_CHARS = ["-", "\u2013", "\u2014", "\u2010", "\u2011"]  # the NAME_SEP 
 _IMPOSSIBLE_AUTHORS = ["Qzvx", "Xkqj", "Vvwq", "Zzqx", "Wvkj", "Jxqz"]
 _GROUNDED_AUTHORS = ["Freud", "Jung", "Erikson", "Marcia", "Federn"]
 
+# V0.6.10 (B17-review find, the c5c499c embedded-particles precedent's
+# sibling): the extractor's V0.4.23 shape filter deliberately drops BARE
+# month-name tokens ("May 1975" dates must not read as citations —
+# author_garbage.garbage_author_reason), so the strategy must never draw
+# one. Hypothesis found it on the 6-b review's full-suite run:
+# surname='Mar', poss='', year='1000' → "Mar' (1000)" → extract_citations
+# returns [] (by design) while the roundtrip asserted a citation — a
+# generator-domain hole, not an extractor regression (behavior verified
+# byte-identical at HEAD 31be4eb). Compound names stay legal
+# ("Mar-Feb (1952)" extracts fine — only bare tokens are dropped).
+_MONTH_TOKENS = frozenset(
+    {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+)
+
 
 @st.composite
 def _surname(draw):
     name = draw(st.sampled_from(_UPPER)) + draw(st.text(alphabet=_LOWER, min_size=2, max_size=9))
     # never collide with the extractor's English stopword list ("The", "In"…)
-    return name if name not in _ENGLISH_FALSE_POSITIVES else name + "q"
+    # or its month-name shape filter (see _MONTH_TOKENS above).
+    return name if name not in _ENGLISH_FALSE_POSITIVES | _MONTH_TOKENS else name + "q"
 
 
 @st.composite
