@@ -93,6 +93,27 @@ if "utils.token_counter" not in sys.modules:
         pass
 
 
+# ── V0.6.6 (review-loop B1): session-wide _runtime_state reset ─────────
+# The V18.20.1.0 (D3) refactor moved the shared summarisation singletons
+# onto core.summarisation._runtime_state.state, but the reset fixture
+# lived ONLY in tests/test_runtime_state.py — file-scoped. Other files'
+# fixtures (test_golden_freeze / test_group_b_characterization /
+# test_p2_summarizer_harness) still snapshot/restore the DEAD module-
+# level proxies, so a run that polluted the state (e.g. golden_freeze's
+# warned_embedding_disabled=True) leaked it into every LATER file —
+# the same cross-file poisoning class as the Settings._test_override
+# leak (proven live: golden_freeze + a state-asserting victim → 1
+# failed). Resetting here, autouse for EVERY test, makes the whole
+# class impossible regardless of which file pollutes.
+@pytest.fixture(autouse=True)
+def _reset_runtime_state():
+    from core.summarisation._runtime_state import state
+
+    state.reset()
+    yield
+    state.reset()
+
+
 @pytest.fixture
 def tmp_output_dir(tmp_path: Path) -> Path:
     """A temporary output directory for conversion tests."""

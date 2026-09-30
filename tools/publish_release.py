@@ -100,8 +100,10 @@ def publish_release(
     print(f"📦 {tag}: notes {len(body):,} chars" + (f", asset {zip_path}" if zip_path else ""))
 
     if dry_run:
-        print(f"   (dry-run) would create/update release {tag} on {repo}"
-              + (" and upload the asset" if zip_path else ""))
+        print(
+            f"   (dry-run) would create/update release {tag} on {repo}"
+            + (" and upload the asset" if zip_path else "")
+        )
         return True
 
     # Does the release already exist?
@@ -158,7 +160,7 @@ def publish_release(
         req.add_header("Content-Type", "application/zip")
         req.add_header("User-Agent", "elixir-release-publisher")
         try:
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            with urllib.request.urlopen(req, timeout=600):
                 print(f"   ✅ asset uploaded: {asset_name} ({zip_path.stat().st_size:,} bytes)")
         except urllib.error.HTTPError as e:
             print(f"❌ asset upload failed: {e.code} {e.read()[:200]!r}")
@@ -168,7 +170,9 @@ def publish_release(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("tag", nargs="?", help="e.g. V0.6.5 (or omit with --all)")
     ap.add_argument("--all", action="store_true", help="publish every release_notes/*.md tag")
     ap.add_argument("--zip", type=Path, default=None, help="the release asset to upload")
@@ -180,6 +184,17 @@ def main() -> int:
     )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+
+    # V0.6.6 (review-loop A3): --all never forwarded --zip to the per-tag
+    # publish call, so `--all --zip X` silently published every release
+    # with ZERO assets and exited 0 (a Rule-6 break). Each tag ships its
+    # OWN zip — uploading one zip to six releases is never what the
+    # caller meant, so reject the combination instead of guessing.
+    if args.all and args.zip is not None:
+        ap.error(
+            "--zip uploads ONE tag's asset and cannot be combined with --all "
+            "(each tag ships its own zip — run once per tag)"
+        )
 
     token = args.token or os.environ.get("GITHUB_TOKEN")
     if not token and not args.dry_run:
@@ -195,10 +210,16 @@ def main() -> int:
         ok = True
         for t in tags:
             # Only the newest is "Latest".
-            ok = publish_release(
-                t, token=token or "", repo=args.repo, dry_run=args.dry_run,
-                make_latest=(t == tags[-1]),
-            ) and ok
+            ok = (
+                publish_release(
+                    t,
+                    token=token or "",
+                    repo=args.repo,
+                    dry_run=args.dry_run,
+                    make_latest=(t == tags[-1]),
+                )
+                and ok
+            )
         return 0 if ok else 1
 
     if not args.tag:

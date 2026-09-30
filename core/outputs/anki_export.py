@@ -19,6 +19,27 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _stable_anki_ids(book_title: str) -> tuple[int, int]:
+    """Deterministic genanki (model_id, deck_id) pair for a book title.
+
+    V0.6.6 (review-loop A2): the ids were derived via ``hash()`` under a
+    "deterministic from book title" comment — but CPython salts ``hash()``
+    per process (PYTHONHASHSEED), so every Elixir run minted a DIFFERENT
+    id pair for the same book. Anki keys decks/notes by these ids, so
+    re-importing an updated .apkg from a later conversion created a
+    DUPLICATE deck + duplicate notes instead of updating the existing
+    one. crc32 is stable across processes and platforms (content-
+    agnostic: any title hashes the same way — Rule 1).
+    """
+    import zlib
+
+    base = 1607392319
+    return (
+        base + (zlib.crc32(book_title.encode("utf-8")) % 100000),
+        base + (zlib.crc32((book_title + "deck").encode("utf-8")) % 100000),
+    )
+
+
 def export_anki_deck(
     flashcards: list[tuple[str, str, str, str]],
     book_title: str,
@@ -48,9 +69,9 @@ def export_anki_deck(
         log("  ℹ️ Anki export: genanki not installed. Install with: pip install genanki", "DEBUG")
         return None
 
-    # Create a unique model ID + deck ID (deterministic from book title)
-    model_id = 1607392319 + (hash(book_title) % 100000)
-    deck_id = 1607392319 + (hash(book_title + "deck") % 100000)
+    # Unique model + deck ids, deterministic from the book title
+    # (V0.6.6: crc32-based — see _stable_anki_ids).
+    model_id, deck_id = _stable_anki_ids(book_title)
 
     # Define the Anki note model (Basic + tags + extra)
     model = genanki.Model(

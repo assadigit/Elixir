@@ -708,6 +708,12 @@ class TestTranslationFallbackResolution:
 
         from utils.settings import Settings
 
+        # V0.6.6 (review-loop): snapshot/restore — restoring to {} (not
+        # None) left a truthy-for-__new__ empty dict as the global
+        # Settings() for the rest of the session (every .get() → None;
+        # the 15th baseline failure — test_incremental_chapter_save_
+        # default_true — was the first victim).
+        _prev_override = Settings._test_override
         Settings._test_override = {
             "summarisation.provider": "llamacpp",
             "summarisation.model": "active-model-x",
@@ -719,7 +725,7 @@ class TestTranslationFallbackResolution:
             assert dlg._resolved_model == "active-model-x"
             assert "llamacpp" in dlg._active_llm_info
         finally:
-            Settings._test_override = {}
+            Settings._test_override = _prev_override
 
     def test_dedicated_model_present_no_fallback(self, monkeypatch):
         dlg, _app, _tr = self._make(monkeypatch)
@@ -731,12 +737,13 @@ class TestTranslationFallbackResolution:
 
         from utils.settings import Settings
 
+        _prev_override = Settings._test_override
         Settings._test_override = {"summarisation.provider": "llamacpp"}
         try:
             dlg._collect_options()
             assert dlg._active_llm_fallback is False
         finally:
-            Settings._test_override = {}
+            Settings._test_override = _prev_override
 
     def test_real_installed_pick_survives_fallback(self, monkeypatch):
         dlg, _app, _tr = self._make(monkeypatch)

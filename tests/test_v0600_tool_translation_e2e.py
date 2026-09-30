@@ -1512,7 +1512,11 @@ class TestDialogHermeticHelpers:
             assert dlg2._collect_options()["model"] == "active-model-x"
             assert dlg2._active_llm_fallback is True
         finally:
-            Settings._test_override = prev or {}
+            # V0.6.6 (review-loop): restore the PREVIOUS value verbatim —
+            # `prev or {}` turned the neutral None into {}, and {} passes
+            # Settings.__new__'s `is not None` check, so the empty dict
+            # became the global Settings() for the rest of the session.
+            Settings._test_override = prev
 
     def test_collect_options_persian_input_flips_direction(self):
         dlg = _make_dialog()

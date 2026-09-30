@@ -62,6 +62,45 @@ class SummarizationResult:
     summaries: list[SummaryResult]
 
 
+def compute_final_positions(
+    segments: list[Any],
+    todo_headings: set,
+    loaded_headings: set,
+) -> dict:
+    """Map each UNAMBIGUOUS chapter heading to its final merged position.
+
+    Walks the segment order counting every segment that will have a
+    summary (this run's todo chapters + resume-loaded chapters) — the
+    same numbering the end-of-run writer produces for the merged list.
+
+    V0.6.6 (review-loop A1): a heading carried by TWO summarized
+    chapters (duplicate headings — two "Introduction" segments;
+    content-agnostic, any book can have them) is deliberately LEFT OUT
+    of the map. The checkpoint saver keys its filenames by this map, so
+    a duplicate heading would collapse BOTH chapters onto one
+    filename: the second chapter's summary was silently LOST (the
+    write-once guarantee skips it) while the first was saved TWICE
+    (once per-run-index, once per-map-position) and the second's
+    per-chapter DOCX overwrote the first's. Colliding headings fall
+    back to the saver's per-run chapter index — unique per chapter and
+    identical to the end-of-run writer's numbering whenever no resume
+    merge shifts positions.
+    """
+    from collections import Counter
+
+    counted = Counter(
+        s.heading for s in segments if s.heading in todo_headings or s.heading in loaded_headings
+    )
+    positions: dict = {}
+    fp = 0
+    for seg in segments:
+        if seg.heading in todo_headings or seg.heading in loaded_headings:
+            fp += 1
+            if counted[seg.heading] == 1:
+                positions[seg.heading] = fp
+    return positions
+
+
 def run_summarization(
     converter: Any,
     segments: list[Any],
@@ -906,14 +945,13 @@ def run_summarization(
         # order restricted to segments that will have summaries — so the
         # checkpoint files written mid-run carry the same numbering the
         # end-of-run writer produces, and resume numbering stays stable.
-        _final_positions: dict = {}
+        # V0.6.6: duplicate headings are excluded from the map (see
+        # compute_final_positions) — they fall back to the saver's
+        # per-run chapter index so no chapter is ever lost to a filename
+        # collision.
         _todo_headings = {cd["heading"] for cd in chapter_dicts}
         _loaded_headings = {s.chapter_heading for s in loaded_summaries}
-        _fp = 0
-        for _seg in segments:
-            if _seg.heading in _todo_headings or _seg.heading in _loaded_headings:
-                _fp += 1
-                _final_positions[_seg.heading] = _fp
+        _final_positions = compute_final_positions(segments, _todo_headings, _loaded_headings)
         _cp_saver = None
         if converter.settings.get("summarisation.incremental_chapter_save", True):
             from core.pipeline.chapter_checkpoint import ChapterCheckpointSaver
