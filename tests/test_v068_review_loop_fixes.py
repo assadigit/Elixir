@@ -319,3 +319,49 @@ class TestB8CorruptManifestWarning:
         assert saver._load_manifest() == {"chapters": {"c1": {}}}
 
 
+class TestB9DiskCacheClearWarning:
+    def test_response_cache_clear_failure_warns(self, tmp_path, caplog, monkeypatch):
+        import logging
+        import pathlib
+
+        import core.llm.response_cache as rc_mod
+
+        cache = rc_mod.ResponseCache(max_entries=5, persist_to_disk=False)
+        cache._persist = True
+        monkeypatch.setattr(rc_mod, "_CACHE_FILE", tmp_path / "rc.jsonl")
+
+        def _boom(self, missing_ok=False):
+            raise OSError("locked")
+
+        monkeypatch.setattr(pathlib.Path, "unlink", _boom)
+        with caplog.at_level(logging.WARNING):
+            cache.clear()
+        assert any("response_cache disk clear FAILED" in r.message for r in caplog.records), (
+            "a failed disk clear must log at WARNING — pre-fix the stale cache survived silently"
+        )
+
+    def test_embedding_cache_clear_failure_warns(self, tmp_path, caplog, monkeypatch):
+        import logging
+        import pathlib
+
+        from core.llm.embedding_cache import EmbeddingCache
+
+        cache = EmbeddingCache(persist_to_disk=False, cache_file=tmp_path / "ec.jsonl")
+        cache._persist = True
+
+        def _boom(self, missing_ok=False):
+            raise OSError("locked")
+
+        monkeypatch.setattr(pathlib.Path, "unlink", _boom)
+        with caplog.at_level(logging.WARNING):
+            cache.clear()
+        assert any("embedding_cache disk clear FAILED" in r.message for r in caplog.records)
+
+    def test_clear_still_succeeds_when_file_removable(self, tmp_path, monkeypatch):
+        from core.llm.embedding_cache import EmbeddingCache
+
+        cache = EmbeddingCache(persist_to_disk=False, cache_file=tmp_path / "ec.jsonl")
+        cache._persist = True
+        (tmp_path / "ec.jsonl").write_text("{}", encoding="utf-8")
+        cache.clear()  # no exception, no warning needed
+        assert not (tmp_path / "ec.jsonl").exists()

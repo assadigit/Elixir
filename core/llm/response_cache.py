@@ -242,8 +242,17 @@ class ResponseCache:
         if self._persist:
             try:
                 _CACHE_FILE.unlink(missing_ok=True)
-            except Exception as _e:
-                pass
+            except OSError as _e:
+                # V0.6.8 (audit B9): a failed disk-cache clear was SILENT —
+                # the stale cache survived the "clear" with no trace.
+                # OSError is the narrow family (permissions / FS errors);
+                # a missing file is already handled by missing_ok=True.
+                logger.warning(
+                    "response_cache disk clear FAILED — stale cache survives (%s: %s); path=%s",
+                    type(_e).__name__,
+                    _e,
+                    _CACHE_FILE,
+                )
 
 
 # Phase 6.4 (V0.19): periodic instrumentation interval (lookups between
