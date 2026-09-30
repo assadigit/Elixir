@@ -37,3 +37,4 @@ crash_reports/
 *.local.json
 secrets.json
 runs/
+review-loop/
