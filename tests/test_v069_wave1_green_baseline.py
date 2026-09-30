@@ -7,13 +7,15 @@ unconditional ``return None`` ahead of the policy block silenced
 ``local.vram_overbudget_policy`` for every non-interactive start path
 (queue / service dialogs / scripted runs) and left the registered setting
 a placebo, with 12 red characterization tests at HEAD (the V0.6.7 audit's
-BLOCKER). V0.6.9 restores the V18.20.4.10 enforcement verbatim: the cost
-of an estimator false positive is ONE "Proceed anyway" click in the wizard
-(the button already exists and stamps
-``request.vram_overbudget_acknowledged``). The 12 previously-red tests
-(test_converter_phase3_characterization.py::TestVramBudgetPolicies ×8,
-test_v1820410_p0_segmentation_vram.py::TestVramPolicy ×4) are the primary
-behavioral pins — this file adds the regression guard against a
+BLOCKER). V0.6.9 restores the V18.20.4.10 policy block verbatim — the
+hotfix's INSERTED non-blocking block (nvidia-smi probe + unconditional
+proceed) is what was removed; the older V0.5.13 belt-and-suspenders
+escapes were NOT reinstated (strict enforcement: the wizard's
+"Proceed anyway" click and the global policy=proceed are the only
+escapes, per the operator's stated cost model). The 12 previously-red
+tests (test_converter_phase3_characterization.py::TestVramBudgetPolicies
+×8, test_v1820410_p0_segmentation_vram.py::TestVramPolicy ×4) are the
+primary behavioral pins — this file adds the regression guard against a
 resurrection of the silent non-blocking path.
 
 DECISION 2 (parenthetical promotion, audit Option A "tighten"): the
@@ -29,7 +31,15 @@ citation-list name no longer counts. Correctly attributed authors remain
 safe as a fallback: the detector's own escape (a) never confirms a
 promotion for an author who holds an attribution verb in a
 surname-matching span, and the tightened exemption still rescues the
-rare verb-held-outside-the-range shapes.
+rare verb-held-outside-the-range shapes (the passive-agent
+window-clipping corridor, pinned below).
+
+review-2 follow-ups pinned here too: the V0.5.15 exemption's SIBLING —
+the thorough-floor dropped-sentence recovery
+(thorough_theorist_floor.py) re-admitted attribution-edge-dropped
+sentences on roster membership alone, the exact rationale DECISION 2
+rejected — is tightened with the same conjunction (roster AND
+verb-held-somewhere).
 
 Headless: pure-stdlib paths only (no PySide6 import).
 """
@@ -186,3 +196,122 @@ class TestParentheticalGroundingTightened:
         assert "_name_holds_any_attrib_verb(_claimed, source_text)" in src
         # The old roster-only predicate is gone.
         assert "_v0515_grounded" not in src
+
+    def test_but_kept_corridor_passive_window_clipping(self):
+        """The ONE reachable shape of the BUT-KEPT rescue (review-2's
+        reachability analysis, verified here): a passive-agent
+        "… <attrib-verb> by Name" whose verb sits TWO sentences back —
+        inside the full-text scan's 80-char look-back window, but OUTSIDE
+        the detector's per-span window (clipped at the previous sentence's
+        start). The detector confirms the promotion (escape (a) saw no
+        verb-holding span), while the tightened full-text check sees the
+        passive hold → the bullet is KEPT with the V0.6.9 flag — exactly
+        the operator's "held somewhere (or within the matching range)"
+        union semantics."""
+        from core.summarisation.postcheck_detectors import (
+            detect_parenthetical_promotion,
+        )
+        from core.summarisation.postchecks import run_post_checks
+
+        # 'described' (an _ATTRIB_VERB) ends sentence 1; 'by Khan' is in
+        # sentence 3 — 79 chars apart (inside the full-text 80-char
+        # window). The detector's span for the 'by Khan' sentence = the
+        # verb-free filler sentence 2 + sentence 3 (sentence 1 is NOT in
+        # the span) → its clipped window sees NO verb → no escape (a) →
+        # the promotion (confirmed by the Winnicott sentence) stands,
+        # while the full-text passive-agent scan DOES see the hold.
+        src = (
+            "The foundational stance was described. "
+            "in his famous account of the seminars. "
+            "by Khan at the height of his career. " + _SRC_KHAN
+        )
+        # The corridor itself: confirmed promotion AND full-text hold.
+        assert detect_parenthetical_promotion(_BULLET_KHAN, src) == (
+            "Khan",
+            "Winnicott",
+        )
+        from core.summarisation.postchecks.attribution import (
+            _name_holds_any_attrib_verb,
+        )
+
+        assert _name_holds_any_attrib_verb("Khan", src)
+
+        report = run_post_checks(
+            bullets=[_BULLET_KHAN],
+            executive_summary="A summary.",
+            thorough_summary="A thorough summary.",
+            source_text=src,
+        )
+        # BUT KEPT — the tightened exemption's fallback fired.
+        assert _BULLET_KHAN in report.bullets
+        promos = [i for i in report.issues if i.detector == "parenthetical_promotion"]
+        assert len(promos) == 1
+        assert promos[0].severity == "flag"
+        assert "V0.6.9" in promos[0].detail
+
+
+# ═════════════════════════════════════════════════════════════════════
+# review-2 follow-up — the thorough-floor V0.5.15 sibling, tightened
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestThoroughFloorRecoveryTightened:
+    """The V0.5.15 recovery block in thorough_theorist_floor.py (its
+    dropped-sentence re-admission on roster membership alone — the same
+    "the regex IS the grounding" rationale DECISION 2 rejected) is
+    tightened to the same conjunction: roster AND verb-held-somewhere."""
+
+    def test_citation_list_only_name_not_recoverable(self):
+        """'Khan' is in the roster (the parenthetical "(Khan 1983)") but
+        never holds an attribution verb in the source → the dropped
+        sentence STAYS dropped (no re-admission)."""
+        from core.summarisation.thorough_theorist_floor import (
+            _v069_recoverable_sentence,
+        )
+
+        assert not _v069_recoverable_sentence(
+            "Khan described the corporeality concept in depth.",
+            {"khan"},
+            _SRC_KHAN,
+        )
+
+    def test_verb_holding_roster_name_recoverable(self):
+        """A roster author who genuinely holds an attribution verb
+        somewhere (active 'Mahler formulated') stays recoverable — the
+        correctly-attributed fallback."""
+        from core.summarisation.thorough_theorist_floor import (
+            _v069_recoverable_sentence,
+        )
+
+        src = "Mahler formulated the separation-individuation theory."
+        assert _v069_recoverable_sentence(
+            "Mahler described the separation-individuation framework.",
+            {"mahler"},
+            src,
+        )
+
+    def test_non_roster_name_not_recoverable(self):
+        """A name outside the roster is never recoverable (unchanged rule
+        — the roster is still the first gate)."""
+        from core.summarisation.thorough_theorist_floor import (
+            _v069_recoverable_sentence,
+        )
+
+        src = "Mahler formulated the separation-individuation theory."
+        assert not _v069_recoverable_sentence(
+            "Erikson described the identity stages.",
+            {"mahler"},
+            src,
+        )
+
+    def test_tightened_recovery_wired_in_floor(self):
+        """Source pin: the mixin routes its recovery decision through the
+        tightened helper; the old roster-only predicate is gone."""
+        import inspect
+
+        from core.summarisation import thorough_theorist_floor as ttf
+
+        src = inspect.getsource(ttf)
+        assert "_v069_recoverable_sentence(" in src
+        # The old V0.5.15 roster-only predicate is gone.
+        assert "any(_w.lower() in _sa_lower for _w in _ds.split()[:5])" not in src

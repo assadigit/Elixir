@@ -224,6 +224,33 @@ def _grounded_addition_sentences(
         return addition, []
 
 
+def _v069_recoverable_sentence(sentence: str, roster_lower: set, source: str) -> bool:
+    """V0.6.9 (operator DECISION 2, tightened to the thorough floor): is a
+    sentence dropped by the attribution-edge filter recoverable?
+
+    The V0.5.15 recovery re-admitted any dropped sentence whose first five
+    words named a citation-roster author — "the regex IS the grounding".
+    That is the exact rationale the operator rejected for the ship-time
+    parenthetical veto (a parenthetical-only cited author lands in that
+    roster BY CONSTRUCTION), and this block is that exemption's V0.5.15
+    sibling (found by the review-2 fresh-eyes pass, previously unpinned).
+    Tightened contract, same as ``field_phases._v069_grounded``: an author
+    counts as grounded only when an attribution verb is actually HELD
+    somewhere in the source — active ("AuthorC <attrib-verb>"), possessive
+    ("AuthorC's <noun> <attrib-verb>") or passive agent ("… <attrib-verb>
+    by AuthorC"), via ``_name_holds_any_attrib_verb``. Correctly
+    attributed authors stay recoverable; a pure citation-list name does
+    not. Content-agnostic (Rule 1 ✓): runtime roster + generic
+    attrib-verb grammar, no hardcoded names.
+    """
+    from core.summarisation.postchecks.attribution import _name_holds_any_attrib_verb
+
+    for _w in sentence.split()[:5]:
+        if _w.lower() in roster_lower and _name_holds_any_attrib_verb(_w, source):
+            return True
+    return False
+
+
 def _year_attribution_probe(text: str, source: str, names: list[str]) -> tuple[str, list[str]]:
     """V0.4.35 (F1): year-attribution probe on ANY thorough output.
 
@@ -787,32 +814,38 @@ Chapter content:
                 _addition, _dropped_sents = _grounded_addition_sentences(
                     _addition, content or "", _chunk
                 )
-                # V0.5.15: RECOVER dropped sentences whose authors are in
-                # the regex extract_citations output (the deterministic
-                # source roster). The attribution-edge drops sentences
-                # where "names never co-occur with the claim's key
-                # phrases" — but for authors confirmed by extract_citations
-                # (the author IS a cited source author), the regex IS the
-                # grounding. Content-agnostic (Rule 1 ✓): uses the runtime
-                # _det_authors list, no hardcoded names.
-                _v0515_recovered = []
+                # V0.6.9 (operator DECISION 2, tightened): RECOVER dropped
+                # sentences whose authors are in the citation roster AND
+                # genuinely hold an attribution verb somewhere in the
+                # source. The V0.5.15 recovery re-admitted any sentence
+                # whose first five words named a roster author ("the regex
+                # IS the grounding") — the exact rationale the operator
+                # rejected for the ship-time parenthetical veto, and this
+                # block is its sibling (review-2 finding): a
+                # parenthetical-only cited author lands in the roster BY
+                # CONSTRUCTION, so the old recovery re-admitted precisely
+                # the welded-attribution sentences the V0.4.24/V0.4.32
+                # attribution-edge filter had dropped. Content-agnostic
+                # (Rule 1 ✓): uses the runtime citation roster + the
+                # generic attrib-verb grammar, no hardcoded names.
+                _v069_recovered = []
                 if _dropped_sents:
                     try:
                         from core.preprocessing.deterministic_analyzer import (
-                            extract_citations as _v0515_ec,
+                            extract_citations as _v069_ec,
                         )
 
                         _sa_lower = {
                             c.get("author", "").lower()
-                            for c in _v0515_ec(content or "")
+                            for c in _v069_ec(content or "")
                             if c.get("author")
                         }
                     except Exception:
                         _sa_lower = set()
                     for _ds in _dropped_sents:
-                        _ds_recoverable = any(_w.lower() in _sa_lower for _w in _ds.split()[:5])
+                        _ds_recoverable = _v069_recoverable_sentence(_ds, _sa_lower, content or "")
                         if _ds_recoverable:
-                            _v0515_recovered.append(_ds)
+                            _v069_recovered.append(_ds)
                         else:
                             self.log(
                                 f"    🧹 V0.4.24: gap-fill sentence dropped "
@@ -820,13 +853,15 @@ Chapter content:
                                 f"co-occur with the claim's key phrases in the source",
                                 "WARNING",
                             )
-                    if _v0515_recovered:
-                        _addition = _addition + "\n" + "\n".join(_v0515_recovered)
+                    if _v069_recovered:
+                        _addition = _addition + "\n" + "\n".join(_v069_recovered)
                         self.log(
-                            f"  ✨ V0.5.15: recovered {len(_v0515_recovered)} "
+                            f"  ✨ V0.6.9: recovered {len(_v069_recovered)} "
                             f"gap-fill sentence(s) whose authors are in the "
-                            f"regex extract_citations (the attribution-edge "
-                            f"dropped them but the regex IS the grounding)",
+                            f"citation roster AND hold an attribution verb in "
+                            f"the source (the tightened V0.5.15 recovery — "
+                            f"roster membership alone no longer counts as "
+                            f"grounding)",
                             "INFO",
                         )
                 if len(_addition.split()) < 20:

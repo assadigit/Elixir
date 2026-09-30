@@ -484,9 +484,12 @@ def postcheck_bullets(
                 # guarantees the claimed author holds none within its
                 # matching range — otherwise no promotion would have been
                 # confirmed). Correctly attributed authors — verb held
-                # somewhere else, e.g. pronoun-anaphora sentences outside
-                # the surname-matching range — remain rescued as a
-                # fallback; a pure citation-list name does not. This also
+                # in some other surname-matching span, or held via a
+                # passive-agent shape whose 80-char look-back window the
+                # detector's per-span scan clipped (the one reachable
+                # divergence between the full-text scan here and escape
+                # (a)'s span scan) — remain rescued as a fallback; a pure
+                # citation-list name does not. This also
                 # restores parity with the generation-time veto
                 # (gap_fill_batch), which never had the exemption and
                 # therefore dropped what this layer kept.
@@ -527,10 +530,11 @@ def postcheck_bullets(
                             detail=(
                                 f"dropped misattributed bullet: '{_claimed}' is "
                                 f"credited with a claim the source attributes to "
-                                f"'{_real}' ('{_claimed}' appears there only as a "
-                                f"citation/list item — never holding an "
-                                f"attribution verb anywhere in the source; the "
-                                f"V0.6.9 tightened grounding check). Verified "
+                                f"'{_real}' ('{_claimed}' is not grounded — either "
+                                f"absent from the citation roster or appearing "
+                                f"there only as a citation/list item, never "
+                                f"holding an attribution verb; the V0.6.9 "
+                                f"tightened grounding check). Verified "
                                 f"via the generation-time active-subject veto."
                             ),
                         )

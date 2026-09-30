@@ -281,9 +281,11 @@ class ConversionRequest:
     # ── Pre-flight VRAM acknowledgment (V18.20.4.10 / P0-c) ────────────────
     # Set to True ONLY by an interactive user action (the wizard's
     # "Proceed anyway" button on the VRAM-overbudget dialog). The converter
-    # enforces ``local.vram_overbudget_policy``: an overbudget plan without
-    # this acknowledgment fails fast with VramOverbudgetError instead of
-    # warn-and-continue.
+    # enforces ``local.vram_overbudget_policy`` (enforcement restored
+    # V0.6.9): an overbudget plan without this acknowledgment fails fast —
+    # the converter returns the policy's error message as a failed
+    # ConversionResult (the VramOverbudgetError class exists for callers
+    # that prefer exceptions) instead of warn-and-continue.
     vram_overbudget_acknowledged: bool = False
 
     # ── Manual segmentation override ──────────────────────────────────────

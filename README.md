@@ -269,8 +269,6 @@ A real-world incident (a 257-page book on a 12GB GPU with a 20.2GB model) produc
 | 🧱 **Bounded short-segment merge** | Short chapters merge up to `2 × min_pages`, then a new group starts — the whole-book "monster segment" cascade is structurally impossible now |
 | 🗺️ **Map-Reduce rails** | Wall-clock budget for the whole map phase (`local.map_phase_max_seconds`, default 1800s) → a chapter **fails loudly** instead of silently grinding for days |
 | ⚡ **VRAM fail-fast** | `local.vram_overbudget_policy` ∈ `ask` *(default — wizard asks with **Abort preselected**)* / `abort` / `proceed`. Queue & service starts (no UI to ask) always abort with guidance. No more warn-and-continue. |
-| 🚫 **Non-blocking overbudget** *(V0.5.14)* | The param-count VRAM estimate is wrong for special-quant models (a 27B tag on a 7.6 GB quant → a false "OVERBUDGET" that blocked conversions). The check is now **advisory** — logs a WARNING + proceeds; llama.cpp errors at load time if the model truly doesn't fit (a clearer error than the elixir-side estimate). |
-| 🔧 **Per-model VRAM override** *(V0.5.13)* | Set `summarisation.model_vram_override_gb` (e.g. `7.6`) to declare a special-quant model's TRUE size — the budget check uses it instead of the param-count estimate. For rigs where `torch.cuda.mem_get_info()` isn't available or the model isn't loaded yet. Leave unset to keep the estimate-based behavior. |
 
 ---
 
@@ -318,7 +316,6 @@ Settings file: `~/.elixir/settings.json`
 | `embedding.enabled` | `true` | Gate the semantic fact-check path |
 | `embedding.fallback` | `"jaccard"` | `"jaccard"` (lexical) or `"skip"` (omit Phase 2.2) |
 | `local.vram_overbudget_policy` | `"ask"` | `ask` / `abort` / `proceed` — enforced before extraction |
-| `summarisation.model_vram_override_gb` | *(unset)* | **V0.5.13** — declare a special-quant model's TRUE VRAM size (e.g. `7.6`); the budget check uses it instead of the (wrong-for-special-quants) param-count estimate |
 | `local.map_phase_max_seconds` | `1800` | Wall-clock budget for a map-reduce map phase |
 | `summarisation.parallel_stages` | `false` | **V0.19 (Phase 6)** — master switch for the intra-chapter LLM-call overlap levers (see ⚡ Performance Levers) |
 | `summarisation.parallel_stages_map` | `true` | Map-reduce chunk overlap (when master ON) |

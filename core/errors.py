@@ -40,10 +40,13 @@ class VramOverbudgetError(ConversionError):
     """V18.20.4.10 (P0-c): the pre-flight VRAM budget check determined the
     planned model(s) do not fit on the GPU and the configured policy says
     abort (``local.vram_overbudget_policy`` = "abort", or "ask" without an
-    interactive acknowledgment). Raised by the converter BEFORE extraction
-    so nothing is wasted — the alternative (warn-and-continue) is what let
+    interactive acknowledgment). The converter reports this BEFORE
+    extraction so nothing is wasted (it returns the policy's error message
+    as a failed ConversionResult; this class exists for callers that
+    prefer exceptions) — the alternative (warn-and-continue) is what let
     a 20.2 GB model start on a 12 GB card and stall for hours in the
-    V18.20.4.9 97-Things incident."""
+    V18.20.4.9 97-Things incident. Enforcement restored in V0.6.9
+    (operator DECISION 1) after the V0.5.14 non-blocking hotfix."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, phase="preflight")
