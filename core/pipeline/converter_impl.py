@@ -427,6 +427,19 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
         failure of the check itself is fail-open with a DEBUG line — the
         budget calculator must never block a conversion it cannot compute
         (unchanged V7.1.0 semantics).
+
+        V0.6.9 (operator DECISION 1, audit Option A "restore"):
+        enforcement RESTORED. The V0.5.14 hotfix (a0b711c) had made this
+        check NON-BLOCKING (nvidia-smi informational probe + unconditional
+        proceed) — which silently silenced the policy for every
+        non-interactive start path (queue / service dialogs / scripted
+        runs) and left the registered setting a placebo, with 12 red
+        characterization tests failing at HEAD (the V0.6.7 audit's
+        BLOCKER). The operator's chosen cost model: an estimator error
+        (e.g. a special-quant 27B estimated at 12.9 GB vs 7.6 GB actual)
+        now costs ONE "Proceed anyway" click in the wizard — the button
+        already exists and stamps the acknowledgment honored below; a
+        genuine overbudget is stopped before any work is done.
         """
         try:
             from core.vram_calculator import calculate_vram_budget, get_total_vram
@@ -453,53 +466,14 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
             )
             if peak <= _total_vram:
                 return None  # fits — nothing to enforce
-            # V0.5.14: the VRAM overbudget check is now NON-BLOCKING. The
-            # param-count estimate (e.g., 27B ternary → 12.9 GB) is WRONG for
-            # special-quant models (the user's 7.6 GB special-quant is
-            # estimated at 12.9 GB → false "OVERBUDGET" → the conversion
-            # BLOCKED). torch.cuda.mem_get_info() doesn't help on Windows
-            # (it returns per-process VRAM, not GPU-wide — the llama-server
-            # process's VRAM usage isn't visible). The V0.5.13 nvidia-smi
-            # + torch.cuda approaches both failed. The most robust fix:
-            # DON'T BLOCK — log the estimate as a WARNING + proceed. If
-            # the model truly doesn't fit, llama.cpp will error at load
-            # time (a clearer error than the elixir-side estimate).
-            # Also try nvidia-smi for the actual GPU-wide free VRAM:
-            _actual_free = None
-            try:
-                import subprocess
-
-                _r = subprocess.run(
-                    ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if _r.returncode == 0 and _r.stdout.strip():
-                    _actual_free = float(_r.stdout.strip().splitlines()[0]) / 1024  # MiB → GB
-            except Exception:
-                pass  # nvidia-smi not available — skip
-            if _actual_free is not None:
-                self._log(
-                    f"  ℹ️ V0.5.14: VRAM budget estimate (peak {peak:.1f} GB) > "
-                    f"total ({_total_vram:.1f} GB), BUT nvidia-smi reports "
-                    f"{_actual_free:.2f} GB free (GPU-wide, across all processes). "
-                    f"The param-count estimate may be wrong for this model. "
-                    f"Proceeding — llama.cpp will error at load time if the model "
-                    f"truly doesn't fit.",
-                    "INFO",
-                )
-            else:
-                self._log(
-                    f"  ⚠️ V0.5.14: VRAM budget estimate (peak {peak:.1f} GB) > "
-                    f"total ({_total_vram:.1f} GB). The param-count estimate may be "
-                    f"wrong for special-quant models. Proceeding anyway — llama.cpp "
-                    f"will error at load time if the model truly doesn't fit. "
-                    f"(To silence this warning, set summarisation."
-                    f"model_vram_override_gb to your model's actual GB.)",
-                    "WARNING",
-                )
-            return None  # V0.5.14: NON-BLOCKING — always proceed
+            # V0.6.9: enforcement restored (operator DECISION 1 — see the
+            # docstring for the full V0.5.14 history). The V0.5.14
+            # non-blocking block (nvidia-smi GPU-wide free-VRAM probe +
+            # unconditional proceed) is REVERTED: an estimator false
+            # positive costs one wizard "Proceed anyway" click, not a
+            # silenced policy. The wizard's interactive ask
+            # (wizard_view._check_vram_budget) was never touched by the
+            # hotfix — only this converter-side re-check was.
             policy = str(self.settings.get("local.vram_overbudget_policy", "ask")).strip().lower()
             if policy == "proceed":
                 self._log(

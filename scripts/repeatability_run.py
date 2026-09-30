@@ -117,7 +117,9 @@ class RepeatabilitySettings:
         "local.chapter_deadline_sec": 0,
         "local.vram_recovery_delay_sec": 0,
         "local.b4_max_sections": 3,
-        "local.vram_overbudget_policy": "proceed",  # V0.5.14: non-blocking
+        "local.vram_overbudget_policy": "proceed",  # V0.6.9: enforcement restored
+        # (converter re-checks the budget) — scripted runs cannot ask
+        # interactively, so they opt into proceed explicitly.
         "model_temperatures": {},
     }
 
