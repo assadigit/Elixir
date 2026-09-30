@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     # strip frontmatter for the citation scan (same as the summarizer sees)
     fm = re.match(r"\A---\s*\n.*?\n---\s*\n", source, re.DOTALL)
     if fm:
-        source = source[fm.end():]
+        source = source[fm.end() :]
 
     s = result.get("summary") or {}
     fields = {
@@ -131,8 +131,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print("=" * 72)
     print(f"  REPEATABILITY AUDIT — {result['heading']}")
-    print(f"  run {result['run_id']} (v{result['app_version']}, {result['elapsed_sec']}s, "
-          f"model={result['llamacpp_model']})")
+    print(
+        f"  run {result['run_id']} (v{result['app_version']}, {result['elapsed_sec']}s, "
+        f"model={result['llamacpp_model']})"
+    )
     print("=" * 72)
     print(f"  source authors (regex roster): {n_total}")
     print(f"  COVERED in shipped summary:    {n_have}  ({pct:.1f}%)")
@@ -145,16 +147,22 @@ def main(argv: list[str] | None = None) -> int:
             cnt = sum(len(p.findall(src_low)) for p in author_anchor_patterns(a))
             yrs = ",".join(roster[a][:4])
             print(f"    - {a} ({yrs}) — {cnt} source mention(s)")
-    print(f"\n  Glossary: {len(gloss_names)} LLM names; "
-          f"xref confirmed={len(xref['confirmed'])} llm_only={len(xref['llm_only'])} "
-          f"regex_only={len(xref['regex_only'])}")
+    print(
+        f"\n  Glossary: {len(gloss_names)} LLM names; "
+        f"xref confirmed={len(xref['confirmed'])} llm_only={len(xref['llm_only'])} "
+        f"regex_only={len(xref['regex_only'])}"
+    )
     if xref["llm_only"]:
         print(f"    llm_only (glossary caught, regex missed): {', '.join(xref['llm_only'][:15])}")
     if xref["regex_only"]:
-        print(f"    regex_only (regex caught, glossary missed): {', '.join(xref['regex_only'][:15])}")
+        print(
+            f"    regex_only (regex caught, glossary missed): {', '.join(xref['regex_only'][:15])}"
+        )
     print(f"\n  Bullets: {len(s.get('bullet_points') or [])}")
-    print(f"  Hallucination candidates (names in summary absent from source): "
-          f"{len(hallucination_candidates)}")
+    print(
+        f"  Hallucination candidates (names in summary absent from source): "
+        f"{len(hallucination_candidates)}"
+    )
     for a in hallucination_candidates[:15]:
         print(f"    - {a}")
     print("=" * 72)

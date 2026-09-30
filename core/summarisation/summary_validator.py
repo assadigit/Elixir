@@ -640,9 +640,7 @@ def semantic_dedup_bullets(
                 from core.summarisation.author_anchor import author_in_text as _anchor_in
 
                 kept_text = (
-                    "\n".join(bullets[i] for i in keep_indices)
-                    + "\n"
-                    + (context_text or "")
+                    "\n".join(bullets[i] for i in keep_indices) + "\n" + (context_text or "")
                 ).lower()
                 rescued: list[int] = []
                 for i in dropped_indices:

@@ -77,9 +77,7 @@ class TestProseFormYearConsistency:
     def test_co_cited_author_year_passes(self):
         """When the sentence names multiple roster authors and the year
         belongs to one of THEM, the check stays silent (conservative)."""
-        source = (
-            "AuthorB (1980) critiqued the rules. AuthorA et al. (1988) reviewed them."
-        )
+        source = "AuthorB (1980) critiqued the rules. AuthorA et al. (1988) reviewed them."
         issues = self._run(
             "- AuthorA and AuthorB: a study from 1980 changed the field.",
             source,
@@ -145,7 +143,9 @@ class TestThinGapFillBulletFlag:
         assert not self._thin_flags(
             "- AuthorA (1975) delineated the organization and its three levels of severity."
         )
-        assert not self._thin_flags("- AuthorA: Demonstrated that the mechanism operates in stages.")
+        assert not self._thin_flags(
+            "- AuthorA: Demonstrated that the mechanism operates in stages."
+        )
 
     def test_deduped_per_line(self):
         text = "- AuthorA: Cited in a work from 1980 regarding rules."
@@ -170,7 +170,11 @@ class _FakePromptManager:
 
 
 def _run_scholar(src: str, llm: str):
-    result = {"executive_summary": "e", "bullet_points": ["existing bullet"], "thorough_summary": "t"}
+    result = {
+        "executive_summary": "e",
+        "bullet_points": ["existing bullet"],
+        "thorough_summary": "t",
+    }
     log = _CapturingLog()
     scholar_reflection(
         "Ch",

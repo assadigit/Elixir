@@ -390,7 +390,7 @@ def postcheck_bullets(
                     snippet=bp_str[:60],
                     detail=(
                         "terminal-shape lint: bullet ends in a bare "
-                        "enumeration marker (\"and (N).\") — the marker's "
+                        'enumeration marker ("and (N).") — the marker\'s '
                         "item content was lost to a missed continuation "
                         "join (V0.5.20); the enumerated-items floor cannot "
                         "see this loss (the missed item never entered the "

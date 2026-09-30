@@ -243,9 +243,7 @@ class KeypointsBuilder:
                     source_author_surnames,
                 )
 
-                _kp_source_text = " ".join(
-                    str(getattr(s, "content", "") or "") for s in segments
-                )
+                _kp_source_text = " ".join(str(getattr(s, "content", "") or "") for s in segments)
                 _kp_roster = source_author_surnames(_kp_source_text)
                 if _kp_roster:
                     _kept_text = "\n".join(b for _, b in _kept_with_pos).lower()
@@ -254,8 +252,7 @@ class KeypointsBuilder:
                         _rescue_authors = [
                             _a
                             for _a in _kp_roster
-                            if author_in_text(_a, _b.lower())
-                            and not author_in_text(_a, _kept_text)
+                            if author_in_text(_a, _b.lower()) and not author_in_text(_a, _kept_text)
                         ]
                         if not _rescue_authors:
                             continue
@@ -270,9 +267,7 @@ class KeypointsBuilder:
                             )
 
                             _is_promotion = (
-                                detect_parenthetical_promotion(
-                                    _b, _kp_source_text, _kp_roster
-                                )
+                                detect_parenthetical_promotion(_b, _kp_source_text, _kp_roster)
                                 is not None
                             )
                         except Exception:
@@ -304,7 +299,9 @@ class KeypointsBuilder:
             # order preserved: the rescued bullets re-enter at their
             # ORIGINAL positions (the V0.5.18 ``sorted(keep_indices)``).
             _kept_with_pos.sort(key=lambda t: t[0])
-            dedup_dropped -= _veto_rescued  # the net removal count (the log must not contradict the file)
+            dedup_dropped -= (
+                _veto_rescued  # the net removal count (the log must not contradict the file)
+            )
         unique_bullets = [b for _, b in _kept_with_pos]
 
         if dedup_dropped > 0:

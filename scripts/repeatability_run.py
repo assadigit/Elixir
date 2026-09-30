@@ -175,7 +175,7 @@ def load_chapter(path: Path, max_chars: int = 0) -> tuple[str, str, str]:
             fm = yaml.safe_load(m.group(1)) or {}
         except Exception:
             fm = {}
-        raw = raw[m.end():]
+        raw = raw[m.end() :]
     heading = ""
     for line in raw.splitlines():
         if line.startswith("# "):
@@ -249,8 +249,19 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return _run_pipeline(
-            args, log, log_lines, heading, source, out_dir, summary_folder,
-            label, run_id, app_version, started, t0, settings,
+            args,
+            log,
+            log_lines,
+            heading,
+            source,
+            out_dir,
+            summary_folder,
+            label,
+            run_id,
+            app_version,
+            started,
+            t0,
+            settings,
         )
     finally:
         Settings._test_override = previous_override
@@ -280,23 +291,30 @@ def _run_pipeline(
     req = ConversionRequest(input_path=Path(args.chapter).resolve(), output_dir=out_dir)
     req.generate_summaries = True
     req.summarisation_model = args.llamacpp_model
-    req.summarisation_max_context_tokens = 128000   # rig: 128000
-    req.summarisation_max_output_tokens = 32768     # rig: 32768
-    req.temperature = 0.7                            # rig: 0.70
-    req.coverage_threshold = 0.85                    # rig: 85%
-    req.overdeliver_enabled = True                   # rig: ENABLED (85→100%)
-    req.self_consistency = False                     # rig: False
-    req.b3_voting_enabled = False                    # default (damages depth)
-    req.academic_rigor = False                       # rig: False
-    req.model_architecture = "single_local"          # rig mode; fast tasks → primary
-    req.max_workers = 1                              # rig: sequential
+    req.summarisation_max_context_tokens = 128000  # rig: 128000
+    req.summarisation_max_output_tokens = 32768  # rig: 32768
+    req.temperature = 0.7  # rig: 0.70
+    req.coverage_threshold = 0.85  # rig: 85%
+    req.overdeliver_enabled = True  # rig: ENABLED (85→100%)
+    req.self_consistency = False  # rig: False
+    req.b3_voting_enabled = False  # default (damages depth)
+    req.academic_rigor = False  # rig: False
+    req.model_architecture = "single_local"  # rig mode; fast tasks → primary
+    req.max_workers = 1  # rig: sequential
     req.source_type = "normal_book"
 
     log("━━━ Conversion Settings (repeatability harness) ━━━", "INFO")
     for key in (
-        "provider=llamacpp", "model=" + args.llamacpp_model, "t=0.70",
-        "max_context=128000", "max_output=32768", "coverage_floor=0.85",
-        "overdeliver=True", "workers=1", "lang=en", "Layer8=disabled (local backend)",
+        "provider=llamacpp",
+        "model=" + args.llamacpp_model,
+        "t=0.70",
+        "max_context=128000",
+        "max_output=32768",
+        "coverage_floor=0.85",
+        "overdeliver=True",
+        "workers=1",
+        "lang=en",
+        "Layer8=disabled (local backend)",
     ):
         log(f"  {key}", "INFO")
 
@@ -326,7 +344,10 @@ def _run_pipeline(
     seg_file.write_text(source, encoding="utf-8")
     try:
         analyze_segment_file(seg_file)
-        log(f"  📊 V17.2 Deterministic analysis: 1/1 segments analyzed → {seg_file.stem}_analysis.md", "INFO")
+        log(
+            f"  📊 V17.2 Deterministic analysis: 1/1 segments analyzed → {seg_file.stem}_analysis.md",
+            "INFO",
+        )
     except Exception as _e:
         log(f"  ⚠️ Deterministic analysis failed for {seg_file.name}: {_e}", "WARNING")
 
@@ -373,9 +394,7 @@ def _run_pipeline(
         except Exception as _e:
             log(f"  ℹ️ concept-extraction provider unavailable ({_e}) — deterministic only", "DEBUG")
 
-        concepts = extract_concepts_rich(
-            source, max_terms=50, llm_call_fn=_llm_call_fn, log_fn=log
-        )
+        concepts = extract_concepts_rich(source, max_terms=50, llm_call_fn=_llm_call_fn, log_fn=log)
     except Exception as _e:
         log(f"  ⚠️ extract_concepts_rich failed ({_e}) — falling back", "DEBUG")
         try:
@@ -416,8 +435,20 @@ def _run_pipeline(
     if not results:
         log("❌ no results — run failed", "ERROR")
         _write_artifacts(
-            log, log_lines, out_dir, summary_folder, label, run_id, app_version,
-            started, t0, None, source, heading, settings, args,
+            log,
+            log_lines,
+            out_dir,
+            summary_folder,
+            label,
+            run_id,
+            app_version,
+            started,
+            t0,
+            None,
+            source,
+            heading,
+            settings,
+            args,
         )
         return 2
 
@@ -458,9 +489,7 @@ def _run_pipeline(
         _prov_note = provenance_comment(app_version, run_id, started, len(summ.bullet_points))
         if not _rendered.startswith("<!--"):
             _rendered = f"{_prov_note}\n\n{_rendered}"
-        _rendered = (
-            f"{_rendered.rstrip()}\n{visible_footer(app_version, run_id, started, len(summ.bullet_points))}"
-        )
+        _rendered = f"{_rendered.rstrip()}\n{visible_footer(app_version, run_id, started, len(summ.bullet_points))}"
     except Exception as _e:
         log(f"  ⚠️ provenance stamp skipped ({_e})", "WARNING")
 
@@ -476,15 +505,39 @@ def _run_pipeline(
     log(f"💾 Saved chapter summary: summaries/{sf_name}", "INFO")
 
     _write_artifacts(
-        log, log_lines, out_dir, summary_folder, label, run_id, app_version,
-        started, t0, summ, source, heading, settings, args,
+        log,
+        log_lines,
+        out_dir,
+        summary_folder,
+        label,
+        run_id,
+        app_version,
+        started,
+        t0,
+        summ,
+        source,
+        heading,
+        settings,
+        args,
     )
     return 0 if summ.success else 2
 
 
 def _write_artifacts(
-    log, log_lines, out_dir, summary_folder, label, run_id, app_version,
-    started, t0, summ, source, heading, settings, args,
+    log,
+    log_lines,
+    out_dir,
+    summary_folder,
+    label,
+    run_id,
+    app_version,
+    started,
+    t0,
+    summ,
+    source,
+    heading,
+    settings,
+    args,
 ) -> None:
     # conversion log (rig format)
     label_safe = re.sub(r'[:?*<>|"\\/]', "", label).strip() or "chapter"

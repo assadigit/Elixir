@@ -471,7 +471,9 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
 
                 _r = subprocess.run(
                     ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if _r.returncode == 0 and _r.stdout.strip():
                     _actual_free = float(_r.stdout.strip().splitlines()[0]) / 1024  # MiB → GB

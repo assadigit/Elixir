@@ -221,9 +221,7 @@ class SummarizerAdditiveMixin:
                 # bullet + logged — a rendered "(4) " with no text is the
                 # dangling-marker defect itself, and a count that includes
                 # the empty item would lie about what is carried.
-                _render_items = [
-                    it for it in enum.items if clean_enum_text(it.text)
-                ]
+                _render_items = [it for it in enum.items if clean_enum_text(it.text)]
                 _skipped = enum.count - len(_render_items)
                 if _skipped:
                     self.log(
@@ -239,12 +237,10 @@ class SummarizerAdditiveMixin:
                     continue
                 label = stem_label(enum.stem, len(_render_items))
                 items_text = "; ".join(
-                    f"({k}) {clean_enum_text(it.text)}"
-                    for k, it in enumerate(_render_items, 1)
+                    f"({k}) {clean_enum_text(it.text)}" for k, it in enumerate(_render_items, 1)
                 )
                 consolidated = (
-                    f"**{label}** — {len(_render_items)} items from the "
-                    f"source: {items_text}."
+                    f"**{label}** — {len(_render_items)} items from the source: {items_text}."
                 )
                 # The bullet text does NOT start with "- " (the markdown
                 # formatter adds the marker — the V18.15.9.1 double-dash

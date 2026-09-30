@@ -303,8 +303,7 @@ class ScriptedLLM:
             if self.judge_gapfill is not None:
                 return self.judge_gapfill
             return (
-                "No additions are required. The existing bullets cover "
-                "all the identified claims."
+                "No additions are required. The existing bullets cover all the identified claims."
             )
         if shape == "dedicated_thorough":
             if self.dedicated_thorough is not None:

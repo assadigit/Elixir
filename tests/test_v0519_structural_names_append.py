@@ -93,9 +93,7 @@ class TestStructuralNameShapes:
         assert not is_structural_name("")
 
     def test_filter_preserves_order(self):
-        out = filter_structural_names(
-            ["AuthorA", "ABX-II", "AuthorB et al.", "Summary", "AuthorC"]
-        )
+        out = filter_structural_names(["AuthorA", "ABX-II", "AuthorB et al.", "Summary", "AuthorC"])
         assert out == ["AuthorA", "AuthorB et al.", "AuthorC"]
 
     def test_glossary_names_extraction_filters_structural_entries(self):
@@ -124,9 +122,7 @@ class TestStructuralNameShapes:
         the glossary side (they never appear as llm_only noise)."""
         from core.summarisation.glossary_parser import cross_reference_glossary
 
-        xref = cross_reference_glossary(
-            ["AuthorA", "ABX-II", "Conclusions"], ["AuthorA"]
-        )
+        xref = cross_reference_glossary(["AuthorA", "ABX-II", "Conclusions"], ["AuthorA"])
         assert xref["confirmed"] == ["AuthorA"]
         assert xref["llm_only"] == []
         assert xref["regex_only"] == []
@@ -148,8 +144,8 @@ class TestNormalizedAnchor:
     def test_emphasis_and_quote_tolerance(self):
         """The LLM drops markdown emphasis + uses straight quotes — the
         anchor still locates (the ch.1 5-of-6-skipped family)."""
-        text = '- AuthorA (1975) described the \u201cinfantile\u201d organization.'
-        anchor = "AuthorA (1975) described the \"infantile\" organization"
+        text = "- AuthorA (1975) described the \u201cinfantile\u201d organization."
+        anchor = 'AuthorA (1975) described the "infantile" organization'
         span = _locate_correction_anchor(text, anchor)
         assert span is not None
         # the span covers the anchor's original text (emphasis/quotes kept
@@ -319,7 +315,8 @@ class TestAppendMode:
             [
                 {"append": "Too short.", "author": "AuthorD", "reason": "omission"},
                 {
-                    "append": "AuthorD et al. (1974) reviewed the studies " + "very thoroughly " * 40,
+                    "append": "AuthorD et al. (1974) reviewed the studies "
+                    + "very thoroughly " * 40,
                     "author": "AuthorD",
                     "reason": "omission",
                 },
@@ -396,8 +393,7 @@ class TestAppendMode:
         out, issues = verify_and_polish_summary(no_bullets, _SOURCE, settings=_MockSettings())
         assert "AuthorD et al. (1974) reviewed" not in out
         assert any(
-            i.detector == "verification_append" and "no bullet list" in i.detail
-            for i in issues
+            i.detector == "verification_append" and "no bullet list" in i.detail for i in issues
         )
 
     def test_length_guard_does_not_reject_appends(self, monkeypatch):

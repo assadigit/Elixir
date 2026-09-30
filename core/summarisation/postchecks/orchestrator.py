@@ -543,9 +543,9 @@ def run_post_checks(
                         detect_parenthetical_promotion,
                     )
 
-                    _is_promotion = detect_parenthetical_promotion(
-                        _b, source_text, source_authors
-                    ) is not None
+                    _is_promotion = (
+                        detect_parenthetical_promotion(_b, source_text, source_authors) is not None
+                    )
                 except Exception:
                     _is_promotion = False  # fail-open — the detector must never widen the drop
             if _rescue_authors and not _is_promotion:

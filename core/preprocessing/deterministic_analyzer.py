@@ -380,11 +380,24 @@ _CRITERION_ROMAN_SUBITEM_RE = re.compile(
 # V0.5.19: the Roman-numeral sequence machinery for the criteria
 # continuation rules — value lookup for the "sequence-extending embedded
 # marker" split (rule 4) + the reverse map for the sub-item name.
-_ROMAN_ITEM_VALUES = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10}
+_ROMAN_ITEM_VALUES = {
+    "i": 1,
+    "ii": 2,
+    "iii": 3,
+    "iv": 4,
+    "v": 5,
+    "vi": 6,
+    "vii": 7,
+    "viii": 8,
+    "ix": 9,
+    "x": 10,
+}
 _ROMAN_VALUE_NAMES = {v: k for k, v in _ROMAN_ITEM_VALUES.items()}
 
 
-def _split_embedded_roman_segments(line: str, last_roman_value: int) -> list[tuple[str, int, str]] | None:
+def _split_embedded_roman_segments(
+    line: str, last_roman_value: int
+) -> list[tuple[str, int, str]] | None:
     """V0.5.19 (criteria rule 4): split a prose line at EMBEDDED,
     sequence-extending ``(roman)`` markers.
 
@@ -997,11 +1010,7 @@ def extract_citations(md_text: str) -> list[dict]:
     # A 1970)" never match) and ``_add``'s existing stopword/garbage
     # filters ("In"/"By"/... — "(In 1965)" is not a citation) apply
     # unchanged. Content-agnostic (Rule 1 ✓): pure citation grammar.
-    _RUN_NAME = (
-        _NAME
-        + r"(?:\s+et\s+al\.?)?"
-        + r"(?:" + _APOS + r"[sS]?)?"
-    )
+    _RUN_NAME = _NAME + r"(?:\s+et\s+al\.?)?" + r"(?:" + _APOS + r"[sS]?)?"
     _RUN_ITEM = (
         r"(" + _RUN_NAME + r")"
         r"\s+"

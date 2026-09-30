@@ -48,6 +48,7 @@ def _pad(text: str) -> str:
     """Pad a short source past detect_enumerations' 120-char floor."""
     return "Intro prose that is long enough to pass the detector's minimum-length gate. " + text
 
+
 # ── rule 4: the embedded-marker split helper ────────────────────────────────
 
 
@@ -56,7 +57,10 @@ class TestEmbeddedRomanSplit:
         segs = _split_embedded_roman_segments(
             "superficially warm and charming. (ii) egocentric and inconsiderate", 1
         )
-        assert segs == [("tail", 0, "superficially warm and charming."), ("item", 2, "egocentric and inconsiderate")]
+        assert segs == [
+            ("tail", 0, "superficially warm and charming."),
+            ("item", 2, "egocentric and inconsiderate"),
+        ]
 
     def test_requires_sequence_extension(self):
         """A random ``(iv)`` mention that does NOT extend the sequence
@@ -74,7 +78,9 @@ class TestEmbeddedRomanSplit:
     def test_first_item_after_letter_intro(self):
         """expected=1 (no sub-items yet): an embedded (i) splits the
         letter-intro tail from the first sub-item."""
-        segs = _split_embedded_roman_segments("by at least two of the following: (i) first thing", 0)
+        segs = _split_embedded_roman_segments(
+            "by at least two of the following: (i) first thing", 0
+        )
         assert segs == [
             ("tail", 0, "by at least two of the following:"),
             ("item", 1, "first thing"),

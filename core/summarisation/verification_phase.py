@@ -1079,13 +1079,13 @@ def verify_and_polish_summary(
                     + "Before adding a bullet for an author, check the existing "
                     "summary — if the author is already cited, do NOT add a "
                     "duplicate bullet. Do NOT re-cite authors already covered. "
-                    'For each missing author, PREFER the append correction '
+                    "For each missing author, PREFER the append correction "
                     'shape: {"append": "<the full new bullet text>", '
                     '"author": "<the missing author>", "reason": "omission"} '
-                    '(no anchor needed). Alternatively use the targeted-'
+                    "(no anchor needed). Alternatively use the targeted-"
                     'correction shape: the "original" is the anchor text '
                     '(e.g. the **Conclusions** bullet) and the "corrected" '
-                    'is the anchor + the new bullet(s) inserted before it.'
+                    "is the anchor + the new bullet(s) inserted before it."
                 )
                 # V0.5.6: the coverage flag's audit-trail log line now
                 # includes the glossary path + the cross-reference
@@ -1171,12 +1171,12 @@ def verify_and_polish_summary(
         _replacements = [
             c
             for c in corrections
-            if c.get("original") and c.get("corrected") and str(c.get("original")) != str(c.get("corrected"))
+            if c.get("original")
+            and c.get("corrected")
+            and str(c.get("original")) != str(c.get("corrected"))
         ]
         _appends = [
-            c
-            for c in corrections
-            if not c.get("original") and c.get("append") and c.get("author")
+            c for c in corrections if not c.get("original") and c.get("append") and c.get("author")
         ]
         polished = rendered_md
         applied = 0

@@ -1024,9 +1024,7 @@ _TAIL_STRIP_CHARS = ".,;:!?)'\"\u201d\u2019\u2026"
 _DANGLING_ENUM_MARKER_RE = re.compile(
     r"(?:\b(?:and|or)\s*)?\((?:\d{1,2}|[a-z]{1,3}|[ivxlc]{1,5})\)$"
 )
-_DANGLING_BARE_MARKER_RE = re.compile(
-    r"\b(?:and|or)\s+(?:\d{1,2}|[a-z]|[ivxlc]{1,5})$"
-)
+_DANGLING_BARE_MARKER_RE = re.compile(r"\b(?:and|or)\s+(?:\d{1,2}|[a-z]|[ivxlc]{1,5})$")
 
 
 def ends_in_dangling_enum_marker(bullet: str) -> bool:
@@ -1054,9 +1052,7 @@ def ends_in_dangling_enum_marker(bullet: str) -> bool:
         core = core[:-1].rstrip().rstrip(" '‘’“”")
     if not core:
         return False
-    return bool(
-        _DANGLING_ENUM_MARKER_RE.search(core) or _DANGLING_BARE_MARKER_RE.search(core)
-    )
+    return bool(_DANGLING_ENUM_MARKER_RE.search(core) or _DANGLING_BARE_MARKER_RE.search(core))
 
 
 def ends_on_dangling_word(bullet: str) -> bool:

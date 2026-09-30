@@ -125,12 +125,24 @@ _SRC = (
     "and the women-citation (Authortwo et al. 1986) differ."
 )
 
-_ROSTER = ["Authorone", "Authortwo", "Authorthree", "Authorfour", "Authorfive", "Authorsix", "Authorseven"]
+_ROSTER = [
+    "Authorone",
+    "Authortwo",
+    "Authorthree",
+    "Authorfour",
+    "Authorfive",
+    "Authorsix",
+    "Authorseven",
+]
 
 
 def _consistency_flags(text: str) -> list[str]:
     _, issues = validate_years(text, "bullet[0]", _ROSTER, _SRC)
-    return [i.detail for i in issues if "consistency" in i.detail or "cites this author with" in i.detail]
+    return [
+        i.detail
+        for i in issues
+        if "consistency" in i.detail or "cites this author with" in i.detail
+    ]
 
 
 def test_cross_field_year_slip_flagged():
@@ -153,7 +165,10 @@ def test_faithful_years_not_flagged():
 def test_prose_adjacency_exemption():
     """A year the roster build missed but the source genuinely pairs with
     the name in prose (citation-shaped window) is NOT flagged."""
-    src = _SRC + "\nAuthoreight (1970) formalized it. Authoreight noted in 1984 that the pattern held."
+    src = (
+        _SRC
+        + "\nAuthoreight (1970) formalized it. Authoreight noted in 1984 that the pattern held."
+    )
     _, issues = validate_years(
         "Authoreight (1984) noted the pattern.", "bullet[0]", _ROSTER + ["Authoreight"], src
     )

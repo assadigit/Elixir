@@ -557,9 +557,9 @@ class TestV0440VerificationLayer:
         out, issues = verify_and_polish_summary(summary, source, settings=_MockSettings(model=""))
         assert out == summary
         # No date-check issues (matching dates) + no LLM fix issues.
-        assert all(
-            i.detector != "verification" or i.severity != "fix" for i in issues
-        ), "no LLM fix issues when no model configured"
+        assert all(i.detector != "verification" or i.severity != "fix" for i in issues), (
+            "no LLM fix issues when no model configured"
+        )
 
     def test_fail_open_on_provider_exception(self, monkeypatch):
         """Provider creation raises → fail-open (original kept)."""

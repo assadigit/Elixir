@@ -3,6 +3,7 @@ controller. Catches import errors, missing deps, constructor crashes.
 
 Run: QT_QPA_PLATFORM=offscreen python scripts/tmp_dialog_smoke.py
 """
+
 from __future__ import annotations
 
 import os
@@ -42,7 +43,10 @@ DIALOGS = [
     ("PdfDocxCutterDialog", "ui_qt.views.service_dialogs.dialogs.pdf_docx_cutter_dialog"),
     ("ImageExtractorDialog", "ui_qt.views.service_dialogs.dialogs.image_extractor_dialog"),
     ("OcrServiceDialog", "ui_qt.views.service_dialogs.dialogs.ocr_service_dialog"),
-    ("SummarizationServiceDialog", "ui_qt.views.service_dialogs.dialogs.summarization_service_dialog"),
+    (
+        "SummarizationServiceDialog",
+        "ui_qt.views.service_dialogs.dialogs.summarization_service_dialog",
+    ),
     ("TranslationServiceDialog", "ui_qt.views.service_dialogs.dialogs.translation_service_dialog"),
     ("MarkdownStylerDialog", "ui_qt.views.service_dialogs.dialogs.markdown_styler_dialog"),
     ("PacketsToolDialog", "ui_qt.views.service_dialogs.dialogs.packets_tool_dialog"),

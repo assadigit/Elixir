@@ -119,8 +119,7 @@ _TWIN_PLAIN = (
 )
 # a non-twin bullet that covers Authorone (for the later-bullet scenario)
 _STANDALONE_AUTHORONE = (
-    "Authorone (1970) charted developmental stages toward selfsameness "
-    "with a longitudinal design."
+    "Authorone (1970) charted developmental stages toward selfsameness with a longitudinal design."
 )
 
 
@@ -198,7 +197,11 @@ def test_order_preserved_on_rescue(monkeypatch):
     """A rescued twin re-enters at its ORIGINAL position (order preserved)."""
     out, _ = _dedup(
         monkeypatch,
-        [_KEPT, _TWIN_UNIQUE, _STANDALONE_AUTHORONE.replace("Authorone (1970) charted", "Authorx (1970) charted")],
+        [
+            _KEPT,
+            _TWIN_UNIQUE,
+            _STANDALONE_AUTHORONE.replace("Authorone (1970) charted", "Authorx (1970) charted"),
+        ],
         twin_groups=[[_KEPT, _TWIN_UNIQUE]],
         source_authors=source_author_surnames(_SOURCE),
         context_text="",

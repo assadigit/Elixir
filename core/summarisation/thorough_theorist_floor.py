@@ -801,6 +801,7 @@ Chapter content:
                         from core.preprocessing.deterministic_analyzer import (
                             extract_citations as _v0515_ec,
                         )
+
                         _sa_lower = {
                             c.get("author", "").lower()
                             for c in _v0515_ec(content or "")
