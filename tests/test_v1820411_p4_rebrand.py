@@ -30,6 +30,19 @@ _ALLOWED = {
     "README.md",  # the "previously known as" callout
     "NEW_SESSION_PROMPT.md",  # working-agreement history note (checked below)
 }
+# V0.6.7 (review-loop Step 4): release_notes/ joined the historical-record
+# allowance. Root cause: the V0.6.6 note (1714c6d, last session) truthfully
+# describes the settings-comment fix ("the real migration is
+# ~/.markitdown_pro → ~/.elixir") — the first release note ever to mention
+# the old brand. That made this sweep fail from the release commit itself;
+# the failure was LATENT because the session's final suite ran BEFORE the
+# release-notes file was written (verified: the test fails at tag V0.6.6).
+# Release notes are exactly the "what shipped, when" record this test's
+# allowlist exists to carry — rewriting a published note to dodge a pattern
+# would be evidence-tampering, and CODE brand strings stay fully covered.
+_ALLOWED_PREFIXES = (
+    "release_notes/",  # historical release records (V0.6.0+)
+)
 _BRAND_PATTERNS = [
     "MarkItDown Pro Ultimate",
     "MarkItDown Pro",
@@ -63,6 +76,7 @@ class TestRebrandSweepComplete:
             rel = p.relative_to(_REPO).as_posix()
             if (
                 rel in _ALLOWED
+                or rel.startswith(_ALLOWED_PREFIXES)
                 or rel.startswith("tests/test_ground/")  # historical run records
                 or rel == "tests/test_v1820411_p4_rebrand.py"  # this file's own pins
             ):
