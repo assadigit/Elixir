@@ -199,9 +199,17 @@ class TestChapterCheckpointSaver:
         manifest = json.loads((root / "checkpoints" / "chapter_manifest.json").read_text())
         assert manifest["book"] == "MyBook"
         assert manifest["version"] == "18.20.3.0"
-        assert set(manifest["chapters"].keys()) == {"1", "2"}
-        assert manifest["chapters"]["1"]["bullets"] == 5
-        assert manifest["chapters"]["2"]["success"] is True
+        # V0.6.6 contract change (review-loop L2-3): manifest records are
+        # keyed by the canonical md FILENAME (unique per chapter+run), not
+        # str(pos) — pos is not unique once duplicate headings fall back
+        # to per-run indexes.
+        assert set(manifest["chapters"].keys()) == {
+            "001_Chapter_One_summary.md",
+            "002_Chapter_Two_summary.md",
+        }
+        assert manifest["chapters"]["001_Chapter_One_summary.md"]["bullets"] == 5
+        assert manifest["chapters"]["001_Chapter_One_summary.md"]["pos"] == 1
+        assert manifest["chapters"]["002_Chapter_Two_summary.md"]["success"] is True
 
     def test_crash_recovery_resume_compatibility(self, stub_env):
         """THE critical property: chapter_resume parses the checkpoint files,

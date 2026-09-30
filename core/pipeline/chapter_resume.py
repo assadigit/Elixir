@@ -310,21 +310,32 @@ def merge_summaries(
 
     Returns:
         A single list of SummaryResults in the original chapter order.
-    """
-    # Build a lookup by sanitized heading
-    by_heading: dict[str, SummaryResult] = {}
-    for s in todo_summaries:
-        key = _sanitize_heading(s.chapter_heading).lower()
-        by_heading[key] = s
-    for s in loaded_summaries:
-        key = _sanitize_heading(s.chapter_heading).lower()
-        if key not in by_heading:  # don't overwrite new with loaded
-            by_heading[key] = s
 
-    # Reassemble in original order
+    V0.6.6 (review-loop L2-2): occurrence-aware merge. The old heading-
+    keyed dict dropped a LOADED chapter's summary whenever duplicate
+    headings + resume coincided (two "Notes" chapters: the loaded one
+    was lost and the new one duplicated into both positions — silent
+    data loss in the final book outputs, which build on the merged
+    list). Now each heading consumes its summaries in order (todo
+    first — the "don't overwrite new with loaded" rule is preserved:
+    the FIRST occurrence of a heading still gets the new summary), and
+    no summary object is ever emitted twice.
+    """
+    from collections import defaultdict, deque
+
+    # Per-heading queues: todo entries first, loaded behind them — for a
+    # UNIQUE heading the queue holds at most one entry and behavior is
+    # byte-identical to the old dict (new wins, loaded dropped on ties).
+    by_heading: dict[str, deque] = defaultdict(deque)
+    for s in todo_summaries:
+        by_heading[_sanitize_heading(s.chapter_heading).lower()].append(s)
+    for s in loaded_summaries:
+        by_heading[_sanitize_heading(s.chapter_heading).lower()].append(s)
+
+    # Reassemble in original order, one summary per occurrence.
     merged: list[SummaryResult] = []
     for heading in chapter_order:
-        key = _sanitize_heading(heading).lower()
-        if key in by_heading:
-            merged.append(by_heading[key])
+        q = by_heading.get(_sanitize_heading(heading).lower())
+        if q:
+            merged.append(q.popleft())
     return merged

@@ -236,9 +236,21 @@ class Controller:
         # 3. Crash-report zip (traceback + redacted settings + system info).
         _crash_path = None
         try:
-            from core.system.crash_report import generate_crash_report
+            # V0.6.6 (review-loop B3): pass the recent system.log lines —
+            # this call site had drifted from main.py's V13.29.0 (P3.8) fix
+            # (a crash inside a conversion produced a zip without the
+            # recent-log context). Same shared collector now.
+            from core.system.crash_report import (
+                collect_recent_log_lines,
+                generate_crash_report,
+            )
 
-            _crash_path = generate_crash_report(type(exc), exc, exc.__traceback__)
+            _crash_path = generate_crash_report(
+                type(exc),
+                exc,
+                exc.__traceback__,
+                extra_log_lines=collect_recent_log_lines(),
+            )
         except Exception as _e:
             logger.debug("crash report generation failed: %s: %s", type(_e).__name__, _e)
 

@@ -205,25 +205,16 @@ def _install_excepthook() -> None:
         # passed, so recent_log.txt was never written).
         _crash_path = None
         try:
-            from core.system.crash_report import generate_crash_report
+            # V0.6.6 (review-loop B3): the inline last-200-lines collector
+            # moved into crash_report.collect_recent_log_lines — shared with
+            # the controller's crash path, which had drifted (V13.29.0 gave
+            # main.py the recent-log context but not the conversion path).
+            from core.system.crash_report import (
+                collect_recent_log_lines,
+                generate_crash_report,
+            )
 
-            # V13.29.0: Collect the last 200 lines of system.log
-            _extra_lines = None
-            try:
-                from pathlib import Path as _P
-
-                _log_file = _P.home() / ".elixir" / "system.log"
-                if _log_file.exists():
-                    # Read last 200 lines efficiently (don't load whole file)
-                    with open(_log_file, encoding="utf-8", errors="replace") as _f:
-                        from collections import deque
-
-                        _lines = deque(_f, maxlen=200)
-                    _extra_lines = list(_lines)
-            except Exception as _e:
-                logger.debug(
-                    "could not read system.log for crash report: %s: %s", type(_e).__name__, _e
-                )
+            _extra_lines = collect_recent_log_lines()
 
             _crash_path = generate_crash_report(
                 exc_type,

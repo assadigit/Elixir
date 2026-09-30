@@ -330,8 +330,11 @@ class TestStampedChapterSummaryNames:
         import json
 
         manifest = json.loads((root / "checkpoints" / "chapter_manifest.json").read_text())
-        assert "1" in manifest["chapters"]
-        assert rid in manifest["chapters"]["1"].get("summary_md", "")
+        # V0.6.6 contract change (review-loop L2-3): keyed by the canonical
+        # md filename (unique per chapter+run), not str(pos).
+        expected_key = f"001_Chapter_One_v0.4.25_{rid}_summary.md"
+        assert expected_key in manifest["chapters"]
+        assert rid in manifest["chapters"][expected_key].get("summary_md", "")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

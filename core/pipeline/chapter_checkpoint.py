@@ -851,10 +851,17 @@ class ChapterCheckpointSaver:
 
         docx_path: Path | None = None
         if self._build_docx:
+            # V0.6.6 (review-loop L2-3): the per-chapter DOCX now carries
+            # the SAME run stamp as its sibling .md — an un-stamped name
+            # was shared across runs, so a resumed duplicate-heading
+            # chapter OVERWROTE the completed chapter's DOCX at the same
+            # pos+heading path (fresh-eyes probe: RUN1 marker gone after
+            # RUN2), violating the "completed chapters are never touched"
+            # guarantee. Stamped names coexist per run instead.
             docx_path = self._build_chapter_docx(
                 summary,
                 chapter or {"heading": heading, "content": ""},
-                chapter_folder / f"{pos:03d}_{safe}_summary.docx",
+                chapter_folder / f"{pos:03d}_{safe}{_stamp}_summary.docx",
             )
             if docx_path is not None:
                 self.docx_count += 1
@@ -996,7 +1003,15 @@ class ChapterCheckpointSaver:
 
         manifest = self._load_manifest()
         chapters: dict[str, Any] = manifest.setdefault("chapters", {})
-        chapters[str(pos)] = {
+        # V0.6.6 (review-loop L2-3): keyed by the canonical FILENAME, not
+        # str(pos) — pos is not unique once duplicate headings fall back
+        # to per-run indexes (a fallback idx can equal another chapter's
+        # mapped position; the fresh-eyes probe ended with one manifest
+        # record clobbering another). The canonical md filename is unique
+        # per chapter+run (pos + heading + run stamp) — and it still
+        # merges idempotently: a re-saved chapter rewrites its own record.
+        chapters[canonical_md.name] = {
+            "pos": pos,
             "heading": heading,
             "done_at": datetime.now().isoformat(timespec="seconds"),
             "summary_md": str(canonical_md),

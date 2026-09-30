@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 # ── V18.20.4.11 (rebrand): user-data directory + one-time migration ─────────
-# The app was renamed Elixir → Elixir; the user-data directory moved
-# ~/.elixir → ~/.elixir. user_data_dir() is the SINGLE choke point:
+# The app was renamed MarkItDown Pro → Elixir; the user-data directory moved
+# ~/.markitdown_pro → ~/.elixir. user_data_dir() is the SINGLE choke point:
 # on first call it migrates the legacy directory (shutil.move — instant on
 # the same filesystem) so settings, cached models, prompts, and secrets all
 # survive the rebrand. Idempotent, thread-safe, and NEVER raises (a failed
@@ -47,7 +47,7 @@ _user_dir_resolved = False
 
 def user_data_dir() -> Path:
     """Return the app's user-data directory (~/.elixir), migrating the
-    legacy ~/.elixir on first call (V18.20.4.11 rebrand)."""
+    legacy ~/.markitdown_pro on first call (V18.20.4.11 rebrand)."""
     global _user_dir_resolved
     new_dir = Path.home() / _USER_DIR_NAME
     if _user_dir_resolved:
