@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     _confirm_close_with_running_worker,
@@ -314,22 +315,13 @@ class OcrServiceDialog(QDialog):
     # its name (case-insensitive) contains any of these. Content-agnostic:
     # the list is the canonical set of OCR/vision model family names, not
     # hardcoded specific model versions.
-    _OCR_KEYWORDS = (
-        "ocr",  # OlmOCR, ocr-vision, etc.
-        "vision",  # qwen2-vl, llama-vision, etc.
-        "vl",  # qwen2-vl, llava-vl, etc. (vision-language)
-        "llava",  # llava family
-        "minicpm",  # minicpm-v (vision)
-        "moondream",  # moondream2 (vision)
-        "bakllava",  # bakllava
-        "llama-vision",  # meta llama-vision
-        "qwen-vl",  # qwen vision-language
-        "internvl",  # internvl
-        "cogvlm",  # cogvlm
-        "fuyu",  # adept fuyu
-        "kosmos",  # microsoft kosmos
-        "florence",  # microsoft florence
-    )
+    #
+    # V0.6.7 (review-loop B4): the list is now a DIRECT reference to the
+    # model_taxonomy SSOT (the union of the 3 keyword variants that had
+    # drifted apart across the tree) — this dialog gains olmo/mmproj/
+    # multimodal/bonsai detection and can never drift from the badge /
+    # dependencies / llamacpp classifications again.
+    _OCR_KEYWORDS = VISION_MODEL_KEYWORDS
 
     def _populate_ollama_models(self) -> None:
         """V0.4.5: query Ollama /api/tags and list every installed model

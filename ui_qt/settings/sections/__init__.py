@@ -12,11 +12,14 @@ preserves the historical ``ui_qt.settings.sections`` import surface exactly
 (``from ui_qt.settings.sections import <X>`` keeps working for every
 previously importable name — classes, helpers, and constants):
 
-  - ``helpers``           — model-picker helpers: ``_VISION_KW``, ``_badge``,
+  - ``helpers``           — model-picker helpers: ``_badge``,
                             ``_get_ollama_models``, ``_populate_models``,
                             ``_populate_models_async`` /
                             ``_refresh_models_async`` (the W-b11 async
-                            model-fetch machinery)
+                            model-fetch machinery).  ``_VISION_KW`` was
+                            dropped in V0.6.7 (review-loop B4: the keyword
+                            list moved to model_taxonomy.is_vision_model;
+                            it had no importers anywhere)
   - ``providers``         — ``PROVIDER_LABELS`` / ``PROVIDER_KEYS`` /
                             ``PROVIDER_URLS`` / ``PROVIDER_MODEL_HINTS``
   - ``ocr_sections``      — ``OcrEngineSection``, ``OcrModelSection``,
@@ -51,7 +54,6 @@ from ui_qt.settings.sections.ai_prompt_quality import (  # noqa: F401
 )
 from ui_qt.settings.sections.defaults_section import DefaultsSection  # noqa: F401
 from ui_qt.settings.sections.helpers import (  # noqa: F401
-    _VISION_KW,
     _badge,
     _get_ollama_models,
     _populate_models,

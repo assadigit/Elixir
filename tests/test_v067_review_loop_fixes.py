@@ -220,3 +220,168 @@ class TestProviderSeamRouting:
         with patch("core.llm.claude_provider.session_for_url", return_value=sess):
             assert p.complete("p") == "x"
         assert sess.post.call_args.args[0] == "https://api.anthropic.com/v1/messages"
+
+
+# ── B4: the vision-keyword SSOT (model_taxonomy.VISION_MODEL_KEYWORDS) ──────
+
+
+from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS, is_vision_model  # noqa: E402
+
+
+class TestIsVisionModel:
+    """Layer 1 — the SSOT predicate (the union of the 3 drifted variants)."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "minicpm-v",  # THE drift bug: classified TEXT by dependencies, listed by the OCR dialog
+            "MiniCPM-V-2.6:latest",  # case-insensitive
+            "qwen2.5-vl:7b",
+            "llava:13b",
+            "bakllava",
+            "olmocr:latest",  # caught by both 'ocr' and 'olmo'
+            "deepseek-ocr",
+            "moondream2",
+            "fuyu-8b",  # variant C family the llamacpp gate previously missed
+            "kosmos-2",
+            "florence-2",
+            "GLM-OCR-Q8",  # caught by 'ocr'
+            "mmproj-test",
+            "multimodal-v1",
+        ],
+    )
+    def test_vision_families_true(self, name):
+        assert is_vision_model(name) is True
+
+    @pytest.mark.parametrize(
+        "name", ["llama3.1:8b", "gemma3:12b", "mistral:7b", "qwen3:8b", "codellama:13b"]
+    )
+    def test_text_families_false(self, name):
+        assert is_vision_model(name) is False
+
+    def test_empty_and_none_false(self):
+        assert is_vision_model("") is False
+        assert is_vision_model(None) is False
+
+    def test_ssot_superset_of_every_legacy_variant(self):
+        """The union policy pin: every keyword from each of the 3 legacy
+        variants is present in the SSOT."""
+        variant_a = ("vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo")
+        variant_b = (
+            "vision",
+            "vl",
+            "vlm",
+            "mmproj",
+            "multimodal",
+            "llava",
+            "bakllava",
+            "qwen-vl",
+            "gemma-vl",
+            "instruct-vision",
+            "bonsai",
+        )
+        variant_c = (
+            "ocr",
+            "vision",
+            "vl",
+            "llava",
+            "minicpm",
+            "moondream",
+            "bakllava",
+            "llama-vision",
+            "qwen-vl",
+            "internvl",
+            "cogvlm",
+            "fuyu",
+            "kosmos",
+            "florence",
+        )
+        for kw in variant_a + variant_b + variant_c:
+            assert kw in VISION_MODEL_KEYWORDS, kw
+
+
+class TestBadgeUsesSSOT:
+    """Layer 2 — the settings badge helper (was variant A)."""
+
+    def test_minicpm_badged_vision(self):
+        from ui_qt.settings.sections.helpers import _badge
+
+        assert _badge("minicpm-v") == "🔍 "  # pre-fix: 📝 (the drift symptom)
+        assert _badge("qwen2.5-vl:7b") == "🔍 "
+        assert _badge("llama3.1:8b") == "📝 "
+        assert _badge("gemma3:12b") == "📝 "
+
+
+class TestOcrDialogKeywordsAreSSOT:
+    """The anti-drift pin: the OCR dialog references the SSOT object itself,
+    so its engine list can never silently diverge from the badge /
+    dependencies / llamacpp classifications again."""
+
+    def test_dialog_references_the_ssot(self):
+        import core.llm.model_taxonomy as mt
+        from ui_qt.views.service_dialogs.dialogs.ocr_service_dialog import OcrServiceDialog
+
+        assert OcrServiceDialog._OCR_KEYWORDS is mt.VISION_MODEL_KEYWORDS
+
+
+class TestLlamacppGateUsesSSOT:
+    """Layer 2 — the llama.cpp vision-attempt gate (was variant B)."""
+
+    @staticmethod
+    def _alive_session(monkeypatch, status=200):
+        class _Sess:
+            def get(self, url, headers=None, timeout=None):
+                return _resp(status, {})
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr("core.llm.llamacpp_provider._no_proxy_session", lambda: _Sess())
+
+    def test_minicpm_gated_vision(self, monkeypatch):
+        """Pre-fix (variant B): False — a minicpm-v on llama.cpp silently
+        degraded to the Tesseract OCR path."""
+        from core.llm.llamacpp_provider import LlamaCppProvider
+
+        self._alive_session(monkeypatch)
+        p = LlamaCppProvider(model="minicpm-v", retries=0)
+        assert p.supports_vision() is True
+
+    def test_text_model_gated_false(self, monkeypatch):
+        from core.llm.llamacpp_provider import LlamaCppProvider
+
+        self._alive_session(monkeypatch)
+        p = LlamaCppProvider(model="llama3.1:8b", retries=0)
+        assert p.supports_vision() is False
+
+    def test_server_down_returns_false(self, monkeypatch):
+        from core.llm.llamacpp_provider import LlamaCppProvider
+
+        self._alive_session(monkeypatch, status=503)
+        p = LlamaCppProvider(model="qwen2.5-vl:7b", retries=0)
+        assert p.supports_vision() is False
+
+
+class TestDependenciesVisionSplit:
+    """Layer 2 — DependencyChecker.get_ollama_models (was variant A ×2)."""
+
+    MODELS = [
+        "minicpm-v",
+        "llama3.1:8b",
+        "qwen2.5-vl:7b",
+        "gemma3:12b",
+        "moondream2",  # variant C family dependencies previously missed
+    ]
+
+    def test_split_uses_ssot(self, monkeypatch):
+        from utils.dependencies import DependencyChecker
+
+        checker = DependencyChecker()
+        monkeypatch.setattr(checker, "_get_cached", lambda key, fetcher: list(self.MODELS))
+        assert checker.get_ollama_models("vision") == [
+            "minicpm-v",
+            "qwen2.5-vl:7b",
+            "moondream2",
+        ]
+        assert checker.get_ollama_models("text") == ["llama3.1:8b", "gemma3:12b"]
+        assert checker.get_ollama_models() == self.MODELS

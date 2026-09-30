@@ -464,21 +464,18 @@ class LlamaCppProvider(LLMProvider):
             # safe — it never sends an image. The keywords are generic
             # English words that indicate vision capability, not
             # book-specific terms.
-            _model_lower = (self.model or "").lower()
-            _vision_keywords = (
-                "vision",
-                "vl",
-                "vlm",
-                "mmproj",
-                "multimodal",
-                "llava",
-                "bakllava",
-                "qwen-vl",
-                "gemma-vl",
-                "instruct-vision",
-                "bonsai",
-            )
-            return any(kw in _model_lower for kw in _vision_keywords)
+            #
+            # V0.6.7 (review-loop B4): routes through the model_taxonomy
+            # SSOT (the union of the 3 keyword variants that had drifted
+            # across the tree) — this gate GAINS the ocr/deepseek-ocr/
+            # minicpm/moondream/fuyu/kosmos/florence families it previously
+            # missed (a minicpm-v on llama.cpp silently degraded to the
+            # Tesseract path). A false positive is fail-soft: one failed
+            # image attempt per page, then the OCR service falls through
+            # to Qwen/Paddle/Tesseract (see the model_taxonomy comment).
+            from core.llm.model_taxonomy import is_vision_model
+
+            return is_vision_model(self.model)
         except Exception:
             return False
 

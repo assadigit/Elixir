@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from core.llm.model_taxonomy import is_vision_model
 from utils.logging import get_main_logger
 
 logger = get_main_logger()
@@ -80,23 +81,13 @@ class DependencyChecker:
                 if resp.status_code == 200:
                     models = [m["name"] for m in resp.json().get("models", [])]
                     deps["models"] = models
-                    # 'ocr' (OlmOCR, DeepSeek-OCR), 'vl'/'vision' (Qwen3-VL, LLaVA),
-                    # 'bakllava' — all are vision-capable OCR engines.
-                    vision_keywords = [
-                        "vl",
-                        "vision",
-                        "deepseek-ocr",
-                        "llava",
-                        "bakllava",
-                        "ocr",
-                        "olmo",
-                    ]
-                    deps["vision_models"] = [
-                        m for m in models if any(k in m.lower() for k in vision_keywords)
-                    ]
-                    deps["text_models"] = [
-                        m for m in models if not any(k in m.lower() for k in vision_keywords)
-                    ]
+                    # V0.6.7 (review-loop B4): the vision/text split routes
+                    # through model_taxonomy.is_vision_model — the SSOT union
+                    # of the 3 keyword variants that had drifted apart (a
+                    # minicpm-v used to classify TEXT here while the OCR
+                    # dialog listed it as an OCR model).
+                    deps["vision_models"] = [m for m in models if is_vision_model(m)]
+                    deps["text_models"] = [m for m in models if not is_vision_model(m)]
             except Exception as e:
                 logger.warning(f"Could not fetch models: {e}")
 
@@ -134,11 +125,11 @@ class DependencyChecker:
             return []
 
         all_models = self._get_cached("ollama_models", fetch)
-        vision_kw = ["vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo"]
+        # V0.6.7 (review-loop B4): same SSOT split as check_all above.
         if model_type == "vision":
-            return [m for m in all_models if any(k in m.lower() for k in vision_kw)]
+            return [m for m in all_models if is_vision_model(m)]
         elif model_type == "text":
-            return [m for m in all_models if not any(k in m.lower() for k in vision_kw)]
+            return [m for m in all_models if not is_vision_model(m)]
         return all_models
 
     def model_exists(self, model_name: str) -> bool:

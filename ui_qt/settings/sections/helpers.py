@@ -13,6 +13,7 @@ import logging
 
 from PySide6.QtWidgets import QComboBox
 
+from core.llm.model_taxonomy import is_vision_model
 from ui_qt.components.simple_worker import SimpleWorker
 
 # V18.20.3.12 follow-up (W-b11): module logger for the async model-fetch
@@ -23,12 +24,12 @@ logger = logging.getLogger(__name__)
 # Helper: badge prefix for model pickers
 # ════════════════════════════════════════════════════════════════════════════
 
-_VISION_KW = ("vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo")
-
 
 def _badge(model: str) -> str:
-    low = model.lower()
-    return "🔍 " if any(k in low for k in _VISION_KW) else "📝 "
+    # V0.6.7 (review-loop B4): the vision badge routes through the
+    # model_taxonomy SSOT (was a 4th copy of the keyword list — a minicpm-v
+    # badged 📝 here while the OCR dialog listed it as an OCR model).
+    return "🔍 " if is_vision_model(model) else "📝 "
 
 
 def _get_ollama_models(controller) -> list:

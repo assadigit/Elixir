@@ -46,12 +46,14 @@ import re
 
 __all__ = [
     "LOW_BIT_TOKENS",
+    "VISION_MODEL_KEYWORDS",  # V0.6.7 (review-loop B4): the vision-model SSOT
     "LEGACY_DEFAULT_MODEL",  # V18.20.4.11 (P2): legacy "gemma3:12b" sentinel
     "DEFAULT_FALLBACK_OCR_MODEL",  # V18.20.4.11 (P2): "qwen3-vl:8b" request-side OCR default
     "RIG_FALLBACK_MODEL",  # V18.20.4.12 (W-a10): rig-tuned qwythos fallback tag
     "KNOWN_BAD_MODEL_ALIASES",  # V18.20.4.12 (W-a10): names that 404 — never default to these
     "is_low_bit_quant",
     "is_iq2_s",
+    "is_vision_model",  # V0.6.7 (review-loop B4)
     "param_count_b",
     "is_small_model",
     "is_27b_plus",
@@ -78,6 +80,78 @@ LOW_BIT_TOKENS: tuple[str, ...] = (
     "q2_k",  # 2-bit K-quants (Q2_K, Q2_K_XL, Q2_K_S) — redundant with q2_ but explicit
     "q2_",  # generic 2-bit prefix (catches q2_k, q2_s, AND iq2_* via substring)
     "q1_",  # generic 1-bit prefix (catches q1_0, etc.)
+)
+
+
+# ── Vision-model classification keywords (V0.6.7 / review-loop B4) ─────────
+#
+# Before V0.6.7 the vision-model keyword heuristic was copy-pasted across
+# 5 call sites in 3 DRIFTED variants:
+#
+#   utils/dependencies.py:85-93 + 137 (×2) —
+#       vl, vision, deepseek-ocr, llava, bakllava, ocr, olmo
+#   ui_qt/settings/sections/helpers.py:26 — same 7 (the badge helper)
+#   ui_qt/views/about_system_dialog.py:225 — same 7 (the About dialog)
+#   core/llm/llamacpp_provider.py:468-480 (the vision-attempt gate) —
+#       vision, vl, vlm, mmproj, multimodal, llava, bakllava, qwen-vl,
+#       gemma-vl, instruct-vision, bonsai
+#   ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py:317-332 —
+#       ocr, vision, vl, llava, minicpm, moondream, bakllava, llama-vision,
+#       qwen-vl, internvl, cogvlm, fuyu, kosmos, florence
+#
+# The drift had a user-visible symptom: ``minicpm-v`` was listed in the OCR
+# dialog (variant C) but classified TEXT by dependencies.py (variant A) —
+# the exact misclassification this union fixes.
+#
+# This tuple is the UNION of all three variants (same policy as
+# LOW_BIT_TOKENS: the most complete detection). Per-site behavior deltas
+# when wiring to ``is_vision_model``:
+#   - dependencies/badge/About (variant A sites) GAIN: mmproj, multimodal,
+#     bonsai, minicpm, moondream, fuyu, kosmos, florence (+ the
+#     substring-redundant vlm/qwen-vl/gemma-vl/instruct-vision/llama-vision/
+#     internvl/cogvlm);
+#   - the OCR dialog (variant C) GAINS: olmo, mmproj, multimodal, bonsai;
+#   - the llamacpp gate (variant B) GAINS: ocr, deepseek-ocr, olmo, minicpm,
+#     moondream, fuyu, kosmos, florence — vision families it previously
+#     missed (a minicpm-v on llama.cpp silently degraded to Tesseract).
+#
+# CAVEAT (documented, kept for provenance): ``olmo`` matches text-only
+# OLMo-family tags too. It was in variant A for years (dependencies/
+# About/badge all classify olmo:7b as vision today); at the llamacpp gate
+# a false positive costs one failed image attempt per page before the
+# Qwen/Tesseract fall-through (core/ocr/service.py never treats a vision
+# failure as fatal). Removing it would be a behavior change in the other
+# direction and needs rig evidence — left in, flagged here.
+#
+# Substring-redundant entries (vl ⊂ vlm/qwen-vl/gemma-vl/internvl/cogvlm,
+# vision ⊂ instruct-vision/llama-vision, ocr ⊂ deepseek-ocr) are kept for
+# provenance, like LOW_BIT_TOKENS keeps ``q2_k`` alongside ``q2_``.
+VISION_MODEL_KEYWORDS: tuple[str, ...] = (
+    # — variant A (dependencies ×2, badge helper, About dialog) —
+    "vl",
+    "vision",
+    "deepseek-ocr",
+    "llava",
+    "bakllava",
+    "ocr",
+    "olmo",
+    # — variant B (the llamacpp vision-attempt gate) —
+    "vlm",
+    "mmproj",
+    "multimodal",
+    "qwen-vl",
+    "gemma-vl",
+    "instruct-vision",
+    "bonsai",
+    # — variant C (the OCR service dialog) —
+    "minicpm",
+    "moondream",
+    "llama-vision",
+    "internvl",
+    "cogvlm",
+    "fuyu",
+    "kosmos",
+    "florence",
 )
 
 
@@ -178,6 +252,37 @@ def is_low_bit_quant(model: str | None) -> bool:
         return False
     m = model.lower()
     return any(tok in m for tok in LOW_BIT_TOKENS)
+
+
+def is_vision_model(model: str | None) -> bool:
+    """True if the model name indicates a vision-capable family.
+
+    V0.6.7 (review-loop B4): the canonical replacement for the 5 copy-pasted
+    keyword heuristics (utils/dependencies ×2, the settings badge helper, the
+    About dialog, the llamacpp vision gate, the OCR dialog). Uses the UNION of
+    the 3 drifted variants — strictly more complete than any individual site
+    (same policy as :func:`is_low_bit_quant`). See ``VISION_MODEL_KEYWORDS``
+    for the per-site deltas and the ``olmo`` caveat.
+
+    >>> is_vision_model("minicpm-v")   # the drift bug: was TEXT in dependencies
+    True
+    >>> is_vision_model("qwen2.5-vl:7b")
+    True
+    >>> is_vision_model("moondream2")
+    True
+    >>> is_vision_model("llama3.1:8b")
+    False
+    >>> is_vision_model("gemma3:12b")
+    False
+    >>> is_vision_model("")
+    False
+    >>> is_vision_model(None)
+    False
+    """
+    if not model:
+        return False
+    m = model.lower()
+    return any(kw in m for kw in VISION_MODEL_KEYWORDS)
 
 
 def is_iq2_s(model: str | None) -> bool:
