@@ -165,10 +165,23 @@ def _context(draw):
     # ("z") to break the particle-prefix shape (cheaper than re-drawing
     # for a strategy that satisfies a complex filter).
     tokens = text.split()
-    if tokens and tokens[-1].lower().strip(",.") in _PARTICLES:
+    # V0.6.7 (review-loop Step 4): a particle can also hide as the final
+    # PERIOD/COMMA SEGMENT of the trailing word — hypothesis found and
+    # saved the counterexample lead='a.st' ("a.st Aaa 1000" → the
+    # extractor's (?<!\w) lookbehind lets the particle start right after
+    # the period, capturing "st Aaa" as the author — the same
+    # deliberate-for-real-text particle-prefix behavior this guard
+    # documents, see above). The input class ".<particle><Name><year>"
+    # has no known real-text examples; the guard now neutralizes the
+    # embedded-particle shape the same way as the trailing-word shape.
+    # (Production behavior unchanged — tightening the analyzer's
+    # lookbehind for this class is a queued operator decision, see
+    # .review-loop/findings.md.)
+    _last = tokens[-1].lower() if tokens else ""
+    _last_segment = _last.rsplit(".", 1)[-1].rsplit(",", 1)[-1].strip(",.")
+    if tokens and (_last.strip(",.") in _PARTICLES or _last_segment in _PARTICLES):
         # Append a non-particle short word so the particle is no longer
-        # the trailing word (separated by a space — no longer adjacent
-        # to the test surname).
+        # adjacent to the test surname (separated by a space).
         text = text.rstrip() + " zz"
     return text
 

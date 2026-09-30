@@ -58,7 +58,14 @@ def _iter_repo_files():
     for p in sorted(_REPO.rglob("*")):
         if not p.is_file():
             continue
-        if any(part in {".git", "__pycache__", ".pytest_cache"} for part in p.parts):
+        # V0.6.7 (review-loop Step 4): ".review-loop" joined the skip set —
+        # the (gitignored) review-session notes/evidence folder legitimately
+        # quotes the old brand when documenting the migration story; the
+        # sweep guards the REPO, not untracked session records (same class
+        # as tests/test_ground/ historical run records).
+        if any(
+            part in {".git", "__pycache__", ".pytest_cache", ".review-loop"} for part in p.parts
+        ):
             continue
         if (
             p.suffix.lower()
