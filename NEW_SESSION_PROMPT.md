@@ -1,4 +1,4 @@
-# New Session Prompt — Elixir V0.6.9+ (the Fix, Improve and Optimize Loop)
+# New Session Prompt — Elixir V0.6.10+ (the Fix, Improve and Optimize Loop)
 
 ## WHO I AM AND HOW TO TALK TO ME
 
@@ -12,17 +12,18 @@ ran it in this session and can show what you ran.
 
 **Elixir** — a PySide6 desktop app + local LLM (llama.cpp / Ollama) that
 summarizes books, at `https://github.com/assadigit/elixir`, branch
-`refactor/audit-session`, tag **V0.6.9** (the green-baseline release: both
-operator DECISIONS landed — the VRAM enforcement restored, the
-parenthetical-promotion grounding tightened — the suite green for the
-first time at 7,548 P / 0 F). Purely
+`refactor/audit-session`, tag **V0.6.10** (the mechanical-wins release:
+B12 `scholar_reflection` CC118 → 8 phase helpers, AST-identity verified;
+B13 the 12-exit funnel; B15 `core/system/timeouts.py` the policy leaf;
+B16 the 109-block stub sweep; B17 all 9 dialogs on `BaseServiceDialog` —
+7,581 P / 0 F). Purely
 Python — any Next.js sandbox at `/home/z/my-project` is disposable tooling,
 NOT part of the project. **Read `AGENTS.md` first** — its 6 rules are
 non-negotiable (Rule 1 content-agnostic, Rule 2 evidence-first, Rule 3
 net-green, Rule 4 provenance, Rule 5 zip-per-release, Rule 6
 GitHub-Release-per-version). **Read `docs/AUDIT_SWOT_V0.6.7.md`** — the full
-audit this session's backlog comes from. Read `CHANGELOG.md`'s V0.6.9 and
-V0.6.8 entries. Do NOT re-litigate closed campaigns; do NOT redo the audit.
+audit this session's backlog comes from. Read `CHANGELOG.md`'s V0.6.10 and
+V0.6.9 entries. Do NOT re-litigate closed campaigns; do NOT redo the audit.
 
 **Environment (this sandbox):**
 - venv `/home/z/.venv` (Python 3.12.14; if reset, reinstall: PySide6
@@ -69,34 +70,29 @@ FOCUS_AREAS           = the prioritized backlog below first; then the standing l
 NOTES_FOLDER          = .review-loop/ (add it to .gitignore; keep all loop notes there)
 ```
 
-## THE BASELINE YOU INHERIT (V0.6.9, measured)
+## THE BASELINE YOU INHERIT (V0.6.10, measured)
 
-- Full suite (Linux sandbox, offscreen Qt, full PySide6): **7,548 passing /
-  0 failed / 43 skipped / 16 deselected in ~4 min** — the first GREEN
-  baseline. **Any failure is now a regression** — decompose it, fix it,
-  and say what broke. The historical 14 (12 VRAM-policy + 2 contract)
-  were closed in V0.6.9 (the two DECISIONS below, both landed).
+- Full suite (Linux sandbox, offscreen Qt, full PySide6): **7,581 passing /
+  0 failed / 43 skipped / 16 deselected in ~4 min** (V0.6.9's 7,548 + 33
+  net-new: 14 wave-5 + 11 B15 + 4 B16 + 4 B17). **Any failure is a
+  regression** — decompose it, fix it, and say what broke.
 - ruff 0.16.8 clean (check + format) at the CI pin.
 - Known flaky: `test_v0600_internal_tabs_e2e::TestQueueViewDrive::
   test_full_sequential_run_two_books` (failed once in a prior session's
   full run, passed alone + in every run since). If it flakes, re-run it
   solo; if it fails solo, THAT is the regression to root-cause.
 
-## DECISIONS STATUS (both answered — V0.6.9)
+## DECISIONS STATUS (all answered)
 
-1. **VRAM policy — ANSWERED (Option A "restore"):** enforcement is
+1. **VRAM policy — ANSWERED (V0.6.9, Option A "restore"):** enforcement is
    RESTORED (commit `1352425`); the wizard's "Proceed anyway" click and
    the global `local.vram_overbudget_policy='proceed'` are the only
-   escapes. ONE NEW FLAG for me to consider:
-   `summarisation.model_vram_override_gb` (the V0.5.13 per-model
-   TRUE-size override) has ZERO runtime read sites — its README rows
-   were removed as placebo docs. Restoring the override read would give
-   special-quant owners a real escape hatch beyond the one-click
-   proceed (the estimator false-positive case). **DECISION owed: restore
-   the V0.5.13 override read, or leave the click-only cost model?
-   DEFAULT: leave it (the operator chose the click-cost model
-   explicitly); present the trade-off before touching.**
-2. **The parenthetical-promotion contract — ANSWERED (Option A
+   escapes. The follow-up flag — restoring the V0.5.13
+   `summarisation.model_vram_override_gb` read (a special-quant escape
+   hatch) — is **ANSWERED (V0.6.10): LEFT OUT.** The operator kept the
+   click-only cost model explicitly; zero runtime read sites; the README
+   placebo rows stay removed. Do not re-raise.
+2. **The parenthetical-promotion contract — ANSWERED (V0.6.9, Option A
    "tighten"):** an author counts as "grounded" only when an
    attribution verb is actually held somewhere (or within the matching
    range); a pure citation-list name does not. Landed in
@@ -108,30 +104,30 @@ NOTES_FOLDER          = .review-loop/ (add it to .gitignore; keep all loop notes
 
 ## THE PRIORITIZED BACKLOG (from docs/AUDIT_SWOT_V0.6.7.md — evidence in the report)
 
-**DONE (V0.6.8+ fix-loop + V0.6.9 — do not redo):** B1 (VRAM restore,
+**DONE (V0.6.8 → V0.6.10 — do not redo):** B1 (VRAM restore,
 `1352425`), B2 (parenthetical tighten, `c00830a` + the thorough-floor
-sibling `6615f98`), B3 (green baseline recorded), B4–B11, B18, B19.
+sibling `6615f98`), B3 (green baseline recorded), B4–B11, B18, B19,
+B12 (`6de5475` — the `scholar_reflection` phase split, AST-identity
+verified), B13 (`b1a5c2c` — the 12-exit funnel), B15 (`cc833a8` —
+`core/system/timeouts.py`, 10 sites migrated), B16 (`31be4eb` — the
+109-block stub sweep), B17 (`230571e` — all 9 dialogs on
+`BaseServiceDialog`, 11 of 11 total).
 
-**Wave 5 — god-function decomposition (the V0.6.7 pattern ONLY: verbatim
-extraction, AST-identity verified, characterization tests first):**
-- B12. `scholar_reflection` (CC 118, 13 params) — split probe-gate / LLM call
-  / parse / grounding / dedup behind a context dataclass.
-- B13. `verify_and_polish_summary` (CC 110) — the 12 copy-pasted exits →
-  one exit helper.
-- B14. (flag only) `run_summarization` CC 136 and `batch_gap_fill` CC 107 —
-  next session candidates; the save-block extraction is the template.
+**Wave 7 — the remaining god functions (the V0.6.7 pattern ONLY:
+verbatim extraction, AST-identity verified, characterization tests
+first):**
+- B14. `run_summarization` (CC 136) and `batch_gap_fill` (CC 107) — the
+  save-block extraction is the template (B12's `_ScholarCtx` shape is
+  the precedent for the context object if the param count demands it).
 
-**Wave 6 — mechanical wins (one commit each, tests-only or dead-simple):**
-- B15. Timeout policy leaf `core/system/timeouts.py` (60 sites / 11 magic
-  values; the tts/ named-constant precedent is the style) — migrate the
-  highest-churn 10 first, flag the rest.
-- B16. The 91-file tiktoken/markitdown stub-block sweep (inert since the
-  conftest gates; update the stale conftest counts 51/36 → 78/37 while there).
-- B17. 9 service dialogs onto `BaseServiceDialog` (the tts/translation
-  precedent); `_pick_output` ×8, `_on_process` ×6 fold in.
+**Wave 8 — the flagged timeout migration (mechanical, one commit per
+family, the evidence list lives in `core/system/timeouts.py`):**
+- ~49 sites still inline (UI-probe 5s ×9, CLI-poll 10s ×11, subsecond
+  2s ×4, batch 30s ×4, fetch 60s ×5, fast-LLM 120s ×9, slow 180s ×8,
+  request 300s ×8, keypoints 420s, long-run 600s ×3, CLI-sweep 20s) —
+import + swap, values byte-identical, the file's tests green.
 
 **Standing flags (decisions/rig tasks, not sandbox-fixable):** the
-`model_vram_override_gb` restoration decision (see DECISIONS §1); the
 `requirements.lock` full clean-install regen; the rig checklist
 (live TTS/OCR/Ollama paths) — the honest boundary per AUDIT_SWOT §8.
 
