@@ -101,6 +101,218 @@ def compute_final_positions(
     return positions
 
 
+def _save_chapter_summaries_write_once(
+    converter: Any,
+    segments: list[Any],
+    summaries: list[SummaryResult],
+    log: Any,
+) -> None:
+    """V0.6.7 (review-loop B6): the per-chapter end-of-run summary save
+    block, moved VERBATIM from run_summarization (V0.6.6 lines 992-1175) so
+    it can be characterized directly — the finding's "extraction +
+    characterization candidate". Pure move: the statement sequence is
+    AST-identical to the original block (verified at extraction time); the
+    behavior contract is pinned in tests/test_v067_review_loop_fixes.py.
+    The only rebindings
+    are the enclosing-scope names → parameters (``converter`` /
+    ``segments`` / ``summaries`` / ``log`` were the only outsiders the
+    block touched). It writes files + logs only — nothing downstream
+    consumed its locals.
+
+    Behavior contract (pinned by TestSaveChapterSummariesWriteOnce):
+    failed/empty summaries are skipped; filenames are run-stamped (legacy
+    unstamped results keep the exact legacy name); a pre-existing file
+    WITH the COMPLETE sentinel is never rewritten (write-once
+    crash-safety) — without the sentinel, or unreadable, it is rewritten;
+    the verification layer is fail-open; errno-28 raises the actionable
+    disk-full error, any other OSError propagates unchanged.
+    """
+    # ── Incremental saving (atomic write each summary) ──────────────
+    # V10.24.0: Write summaries to the summaries/ subfolder (not
+    # markdown/chapters/summaries/).  The markdown/ folder should only
+    # contain markitdown-generated .md files, not LLM-generated summaries.
+    # V18.20.3.0: the per-chapter markdown is now rendered by the shared
+    # ``render_summary_markdown`` helper (same bytes the incremental
+    # chapter-checkpoint saver writes mid-run), and the write is WRITE-ONCE:
+    # a file that already exists WITH the COMPLETE sentinel is never
+    # rewritten — completed chapters stay byte-identical even if the
+    # end-of-run writer sees them again.
+    summary_folder = converter.paths.book_summary.parent
+    summary_folder.mkdir(exist_ok=True)
+    from core.pipeline.chapter_checkpoint import render_summary_markdown
+
+    # V0.4.40: build a heading->source map for the post-conversion
+    # verification + polish LAYER (verify_and_polish_summary). The
+    # verification runs AFTER render on the assembled per-chapter output;
+    # it needs the chapter source to check Dates/Names/Omissions/
+    # Hallucinations. Best-effort heading match (exact, then
+    # case-insensitive, then contains) — fail-open (no match → the
+    # verification skips that chapter, the original output ships).
+    # V0.5.2 (BUG fix): build from `segments` (ALL segments, not just
+    # `segments_for_summary` which may have been filtered) + add a
+    # fallback (largest segment = the main chapter content) + log the
+    # match result so the audit can see whether the LAYER fired.
+    _source_by_heading: dict[str, str] = {}
+    for _seg in segments:
+        if getattr(_seg, "heading", None) and getattr(_seg, "content", None):
+            _source_by_heading[_seg.heading] = _seg.content
+
+    def _source_for_summary(_summ_heading: str) -> str:
+        """Best-effort match the summary's heading to a segment's source.
+
+        V0.5.2: if no heading match, fall back to the LARGEST segment
+        (the main chapter content is usually the largest). This ensures
+        the verification LAYER fires even when the heading match fails.
+        """
+        if not _summ_heading:
+            # Fallback: return the largest segment's content.
+            _largest = max(
+                _source_by_heading.values(),
+                key=len,
+                default="",
+            )
+            if _largest:
+                log(
+                    f"    ℹ️  V0.5.2 verification: no heading match — "
+                    f"using largest segment ({len(_largest)} chars) as source.",
+                    "DEBUG",
+                )
+            return _largest
+        if _summ_heading in _source_by_heading:
+            return _source_by_heading[_summ_heading]
+        _hl = _summ_heading.lower()
+        for _h, _c in _source_by_heading.items():
+            if _h.lower() == _hl or _hl in _h.lower() or _h.lower() in _hl:
+                return _c
+        # Fallback: return the largest segment's content.
+        _largest = max(_source_by_heading.values(), key=len, default="")
+        if _largest:
+            log(
+                f"    ℹ️  V0.5.2 verification: heading "
+                f"'{_summ_heading[:50]}' not matched — using largest "
+                f"segment ({len(_largest)} chars) as source.",
+                "DEBUG",
+            )
+        return _largest
+
+    for i, summ in enumerate(summaries, 1):
+        # V18.2.4: Don't save failed/empty summaries. Previously the pipeline
+        # saved EVERY summary (including failed ones with empty exec_summary),
+        # which created empty files with <!-- COMPLETE --> markers. This caused
+        # false "Conversion complete" reports and confused the user.
+        # Now: skip saving if the summary failed or has no content.
+        if not getattr(summ, "success", True) or (
+            not summ.executive_summary and not summ.bullet_points and not summ.thorough_summary
+        ):
+            log(
+                f"  ⚠️ Skipped saving FAILED summary {i}/{len(summaries)}: "
+                f"{summ.chapter_heading[:50]}… (no content — model returned empty)",
+                "WARNING",
+            )
+            continue
+        safe_heading = converter._sanitize_filename(summ.chapter_heading)
+        # V0.4.25: run-stamped filename — each conversion's chapter summary
+        # gets a unique name (``{NNN}_{heading}_v{ver}_{run_id}_summary.md``)
+        # so the operator's file-transfer layer (which caches by filename)
+        # can never deliver a stale run's bytes. The stamp comes from the
+        # summary's OWN provenance: an adopted (resume-reused) chapter keeps
+        # its ORIGINAL run's stamp — the filename always tells the truth
+        # about which run produced the content. Unstamped (legacy) results
+        # fall back to the exact legacy filename for write-once compat.
+        _stamp = ""
+        try:
+            from core.system.provenance import run_stamp_suffix
+
+            _stamp = run_stamp_suffix(getattr(summ, "app_version", ""), getattr(summ, "run_id", ""))
+        except Exception:  # pragma: no cover — stamping must never break the save
+            _stamp = ""
+        if safe_heading:
+            sf_name = f"{i:03d}_{safe_heading}{_stamp}_summary.md"
+        else:
+            sf_name = f"{i:03d}{_stamp}_summary.md"
+        sf = summary_folder / sf_name
+        # V18.20.3.0: write-once — the incremental checkpoint saver already
+        # persisted this chapter the moment it completed; a completed
+        # chapter is NEVER rewritten (crash-safety guarantee: files that
+        # existed before a crash stay untouched by the recovery run).
+        if sf.exists():
+            try:
+                _existing_sf = sf.read_text(encoding="utf-8")
+                # V18.20.3.7: accepts both the legacy bare sentinel and the
+                # run-id-stamped form; logs the adoption when the existing
+                # file came from a different run (the V18.20.3.6 stale-file
+                # confusion killer — the log now names the producing run).
+                from core.system.provenance import (
+                    adoption_note,
+                    has_complete_sentinel,
+                )
+
+                if has_complete_sentinel(_existing_sf):
+                    _prov_note = adoption_note(
+                        _existing_sf,
+                        render_summary_markdown(summ),
+                    )
+                    log(
+                        f"  💾 Summary {i}/{len(summaries)} already saved — leaving untouched: {sf_name}"
+                        + (f" 🪪 {_prov_note}" if _prov_note else ""),
+                        "DEBUG",
+                    )
+                    continue
+            except OSError:
+                pass  # unreadable → rewrite below
+        # V18.20.2.0 (SWOT A30): atomic_write_text is imported at module
+        # level (see top of file) — same-dir temp + fsync + os.replace.
+        try:
+            # V0.4.40: the post-conversion verification + polish LAYER.
+            # Runs AFTER render on the assembled per-chapter output. The
+            # generation LLM did a ~7/10 job; this LLM layer (in a
+            # VERIFICATION role, not generation) fills holes + fixes
+            # mistakes (Dates/Names/Omissions/Hallucinations) to make it
+            # 9/10-10/10. Targeted corrections (verbatim string
+            # replacements, NOT a full rewrite) + D3-style guard +
+            # fail-open. Non-skippable (catches LLM-variance-driven defects
+            # every conversion). Content-agnostic (Rule 1). No-op when no
+            # model configured (the common test path) OR no source match.
+            _rendered = render_summary_markdown(summ)
+            _v_source = _source_for_summary(summ.chapter_heading)
+            if _v_source:
+                try:
+                    from core.summarisation.verification_phase import (
+                        verify_and_polish_summary,
+                    )
+
+                    _rendered, _v_issues = verify_and_polish_summary(
+                        _rendered, _v_source, converter.settings, log
+                    )
+                    # V0.5.1 (BUG fix): LOG the verification issues to the
+                    # conversion log (was silently dropped — the audit
+                    # couldn't see the date-check + LLM verification output).
+                    for _vi in _v_issues or []:
+                        log(
+                            f"    ✨ V0.5.1 verification: [{_vi.detector}/{_vi.severity}] "
+                            f"{_vi.detail[:120]}",
+                            "DEBUG" if _vi.severity == "fix" else "WARNING",
+                        )
+                except Exception as _ve:  # pragma: no cover — the layer must never break the write
+                    log(
+                        f"    ⚠️  V0.4.40 verification crashed (non-fatal): "
+                        f"{type(_ve).__name__}: {_ve}",
+                        "WARNING",
+                    )
+            atomic_write_text(sf, _rendered)
+        except OSError as _owe:
+            if _owe.errno == 28 or "No space left" in str(_owe):
+                raise OSError(
+                    f"Disk is full — cannot save summary "
+                    f"{sf_name}. Free space on "
+                    f"{sf.anchor} and re-run (resume will skip "
+                    f"completed chapters). Original error: {_owe}"
+                ) from _owe
+            raise
+        log(f"  💾 Saved summary {i}/{len(summaries)}: {sf_name}", "DEBUG")
+    log(f"📝 {len(summaries)} summaries → {summary_folder}")
+
+
 def run_summarization(
     converter: Any,
     segments: list[Any],
@@ -989,190 +1201,9 @@ def run_summarization(
             "INFO",
         )
 
-    # ── Incremental saving (atomic write each summary) ──────────────
-    # V10.24.0: Write summaries to the summaries/ subfolder (not
-    # markdown/chapters/summaries/).  The markdown/ folder should only
-    # contain markitdown-generated .md files, not LLM-generated summaries.
-    # V18.20.3.0: the per-chapter markdown is now rendered by the shared
-    # ``render_summary_markdown`` helper (same bytes the incremental
-    # chapter-checkpoint saver writes mid-run), and the write is WRITE-ONCE:
-    # a file that already exists WITH the COMPLETE sentinel is never
-    # rewritten — completed chapters stay byte-identical even if the
-    # end-of-run writer sees them again.
-    summary_folder = converter.paths.book_summary.parent
-    summary_folder.mkdir(exist_ok=True)
-    from core.pipeline.chapter_checkpoint import render_summary_markdown
-
-    # V0.4.40: build a heading->source map for the post-conversion
-    # verification + polish LAYER (verify_and_polish_summary). The
-    # verification runs AFTER render on the assembled per-chapter output;
-    # it needs the chapter source to check Dates/Names/Omissions/
-    # Hallucinations. Best-effort heading match (exact, then
-    # case-insensitive, then contains) — fail-open (no match → the
-    # verification skips that chapter, the original output ships).
-    # V0.5.2 (BUG fix): build from `segments` (ALL segments, not just
-    # `segments_for_summary` which may have been filtered) + add a
-    # fallback (largest segment = the main chapter content) + log the
-    # match result so the audit can see whether the LAYER fired.
-    _source_by_heading: dict[str, str] = {}
-    for _seg in segments:
-        if getattr(_seg, "heading", None) and getattr(_seg, "content", None):
-            _source_by_heading[_seg.heading] = _seg.content
-
-    def _source_for_summary(_summ_heading: str) -> str:
-        """Best-effort match the summary's heading to a segment's source.
-
-        V0.5.2: if no heading match, fall back to the LARGEST segment
-        (the main chapter content is usually the largest). This ensures
-        the verification LAYER fires even when the heading match fails.
-        """
-        if not _summ_heading:
-            # Fallback: return the largest segment's content.
-            _largest = max(
-                _source_by_heading.values(),
-                key=len,
-                default="",
-            )
-            if _largest:
-                log(
-                    f"    ℹ️  V0.5.2 verification: no heading match — "
-                    f"using largest segment ({len(_largest)} chars) as source.",
-                    "DEBUG",
-                )
-            return _largest
-        if _summ_heading in _source_by_heading:
-            return _source_by_heading[_summ_heading]
-        _hl = _summ_heading.lower()
-        for _h, _c in _source_by_heading.items():
-            if _h.lower() == _hl or _hl in _h.lower() or _h.lower() in _hl:
-                return _c
-        # Fallback: return the largest segment's content.
-        _largest = max(_source_by_heading.values(), key=len, default="")
-        if _largest:
-            log(
-                f"    ℹ️  V0.5.2 verification: heading "
-                f"'{_summ_heading[:50]}' not matched — using largest "
-                f"segment ({len(_largest)} chars) as source.",
-                "DEBUG",
-            )
-        return _largest
-
-    for i, summ in enumerate(summaries, 1):
-        # V18.2.4: Don't save failed/empty summaries. Previously the pipeline
-        # saved EVERY summary (including failed ones with empty exec_summary),
-        # which created empty files with <!-- COMPLETE --> markers. This caused
-        # false "Conversion complete" reports and confused the user.
-        # Now: skip saving if the summary failed or has no content.
-        if not getattr(summ, "success", True) or (
-            not summ.executive_summary and not summ.bullet_points and not summ.thorough_summary
-        ):
-            log(
-                f"  ⚠️ Skipped saving FAILED summary {i}/{len(summaries)}: "
-                f"{summ.chapter_heading[:50]}… (no content — model returned empty)",
-                "WARNING",
-            )
-            continue
-        safe_heading = converter._sanitize_filename(summ.chapter_heading)
-        # V0.4.25: run-stamped filename — each conversion's chapter summary
-        # gets a unique name (``{NNN}_{heading}_v{ver}_{run_id}_summary.md``)
-        # so the operator's file-transfer layer (which caches by filename)
-        # can never deliver a stale run's bytes. The stamp comes from the
-        # summary's OWN provenance: an adopted (resume-reused) chapter keeps
-        # its ORIGINAL run's stamp — the filename always tells the truth
-        # about which run produced the content. Unstamped (legacy) results
-        # fall back to the exact legacy filename for write-once compat.
-        _stamp = ""
-        try:
-            from core.system.provenance import run_stamp_suffix
-
-            _stamp = run_stamp_suffix(getattr(summ, "app_version", ""), getattr(summ, "run_id", ""))
-        except Exception:  # pragma: no cover — stamping must never break the save
-            _stamp = ""
-        if safe_heading:
-            sf_name = f"{i:03d}_{safe_heading}{_stamp}_summary.md"
-        else:
-            sf_name = f"{i:03d}{_stamp}_summary.md"
-        sf = summary_folder / sf_name
-        # V18.20.3.0: write-once — the incremental checkpoint saver already
-        # persisted this chapter the moment it completed; a completed
-        # chapter is NEVER rewritten (crash-safety guarantee: files that
-        # existed before a crash stay untouched by the recovery run).
-        if sf.exists():
-            try:
-                _existing_sf = sf.read_text(encoding="utf-8")
-                # V18.20.3.7: accepts both the legacy bare sentinel and the
-                # run-id-stamped form; logs the adoption when the existing
-                # file came from a different run (the V18.20.3.6 stale-file
-                # confusion killer — the log now names the producing run).
-                from core.system.provenance import (
-                    adoption_note,
-                    has_complete_sentinel,
-                )
-
-                if has_complete_sentinel(_existing_sf):
-                    _prov_note = adoption_note(
-                        _existing_sf,
-                        render_summary_markdown(summ),
-                    )
-                    log(
-                        f"  💾 Summary {i}/{len(summaries)} already saved — leaving untouched: {sf_name}"
-                        + (f" 🪪 {_prov_note}" if _prov_note else ""),
-                        "DEBUG",
-                    )
-                    continue
-            except OSError:
-                pass  # unreadable → rewrite below
-        # V18.20.2.0 (SWOT A30): atomic_write_text is imported at module
-        # level (see top of file) — same-dir temp + fsync + os.replace.
-        try:
-            # V0.4.40: the post-conversion verification + polish LAYER.
-            # Runs AFTER render on the assembled per-chapter output. The
-            # generation LLM did a ~7/10 job; this LLM layer (in a
-            # VERIFICATION role, not generation) fills holes + fixes
-            # mistakes (Dates/Names/Omissions/Hallucinations) to make it
-            # 9/10-10/10. Targeted corrections (verbatim string
-            # replacements, NOT a full rewrite) + D3-style guard +
-            # fail-open. Non-skippable (catches LLM-variance-driven defects
-            # every conversion). Content-agnostic (Rule 1). No-op when no
-            # model configured (the common test path) OR no source match.
-            _rendered = render_summary_markdown(summ)
-            _v_source = _source_for_summary(summ.chapter_heading)
-            if _v_source:
-                try:
-                    from core.summarisation.verification_phase import (
-                        verify_and_polish_summary,
-                    )
-
-                    _rendered, _v_issues = verify_and_polish_summary(
-                        _rendered, _v_source, converter.settings, log
-                    )
-                    # V0.5.1 (BUG fix): LOG the verification issues to the
-                    # conversion log (was silently dropped — the audit
-                    # couldn't see the date-check + LLM verification output).
-                    for _vi in _v_issues or []:
-                        log(
-                            f"    ✨ V0.5.1 verification: [{_vi.detector}/{_vi.severity}] "
-                            f"{_vi.detail[:120]}",
-                            "DEBUG" if _vi.severity == "fix" else "WARNING",
-                        )
-                except Exception as _ve:  # pragma: no cover — the layer must never break the write
-                    log(
-                        f"    ⚠️  V0.4.40 verification crashed (non-fatal): "
-                        f"{type(_ve).__name__}: {_ve}",
-                        "WARNING",
-                    )
-            atomic_write_text(sf, _rendered)
-        except OSError as _owe:
-            if _owe.errno == 28 or "No space left" in str(_owe):
-                raise OSError(
-                    f"Disk is full — cannot save summary "
-                    f"{sf_name}. Free space on "
-                    f"{sf.anchor} and re-run (resume will skip "
-                    f"completed chapters). Original error: {_owe}"
-                ) from _owe
-            raise
-        log(f"  💾 Saved summary {i}/{len(summaries)}: {sf_name}", "DEBUG")
-    log(f"📝 {len(summaries)} summaries → {summary_folder}")
+    # V0.6.7 (review-loop B6): the per-chapter save block moved VERBATIM to
+    # _save_chapter_summaries_write_once (module level, directly testable).
+    _save_chapter_summaries_write_once(converter, segments, summaries, log)
 
     if converter.settings.get("summarisation.include_book_summary", True):
         # V0.03 (P1-6): collect the ACTUAL aggregated bullet count — the

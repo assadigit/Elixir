@@ -24,6 +24,7 @@ import base64
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -385,3 +386,257 @@ class TestDependenciesVisionSplit:
         ]
         assert checker.get_ollama_models("text") == ["llama3.1:8b", "gemma3:12b"]
         assert checker.get_ollama_models() == self.MODELS
+
+
+# ── B6: the run_summarization incremental-save block, extracted + pinned ────
+
+
+from core.models.models import SummaryResult  # noqa: E402
+from core.pipeline.conversion.summarization import (  # noqa: E402
+    _save_chapter_summaries_write_once,
+)
+from core.system.provenance import run_stamp_suffix  # noqa: E402
+
+
+class _SaveSettings:
+    """The minimal ``settings.get(path, default)`` surface the block needs."""
+
+    def __init__(self, data: dict | None = None) -> None:
+        self._d = data or {}
+
+    def get(self, key, default=None):
+        return self._d.get(key, default)
+
+
+class _SaveConverter:
+    """The minimal converter surface the extracted save block touches:
+    ``settings``, ``paths.book_summary`` (the summaries/ folder is its
+    parent) and ``_sanitize_filename``."""
+
+    def __init__(self, root: Path) -> None:
+        self.settings = _SaveSettings({})
+        self.paths = SimpleNamespace(book_summary=root / "summaries" / "Book.summary.md")
+        self._sanitize_filename = lambda heading: heading.replace(" ", "_")
+
+
+def _mk_summary(heading: str = "Chapter One", **overrides) -> SummaryResult:
+    kw = dict(
+        chapter_heading=heading,
+        executive_summary="EXE summary text.",
+        thorough_summary="THOROUGH summary body.",
+        bullet_points=["Point one", "Point two"],
+        success=True,
+    )
+    kw.update(overrides)
+    return SummaryResult(**kw)
+
+
+def _mk_segments():
+    return [
+        SimpleNamespace(heading="Chapter One", content="src text chapter one"),
+        SimpleNamespace(heading="Other", content="y" * 100),
+    ]
+
+
+@pytest.fixture
+def save_logs() -> list[tuple[str, str]]:
+    return []
+
+
+@pytest.fixture
+def save_env(tmp_path, save_logs):
+    conv = _SaveConverter(tmp_path)
+    log = lambda msg, level="INFO": save_logs.append((level, msg))  # noqa: E731
+    return conv, log, tmp_path / "summaries"
+
+
+class TestSaveChapterSummariesWriteOnce:
+    """B6 — the previously-untested end-of-run save block (V0.6.6
+    run_summarization lines 992-1175), moved VERBATIM to module level in
+    V0.6.7 and characterized here for the first time."""
+
+    def test_success_stamped_filename_and_sentinel(self, save_env, save_logs):
+        conv, log, folder = save_env
+        summ = _mk_summary(app_version="0.6.7", run_id="20260101-120000-abcdef12")
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        stamp = run_stamp_suffix("0.6.7", "20260101-120000-abcdef12")
+        sf = folder / f"001_Chapter_One{stamp}_summary.md"
+        assert sf.exists()
+        content = sf.read_text(encoding="utf-8")
+        assert "<!-- COMPLETE" in content  # the sentinel (write-once marker)
+        assert "EXE summary text." in content
+        assert any("Saved summary 1/1" in m for (_, m) in save_logs)
+
+    def test_legacy_unstamped_result_keeps_exact_legacy_name(self, save_env):
+        conv, log, folder = save_env
+        summ = _mk_summary()  # no app_version/run_id → stamp ""
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        assert (folder / "001_Chapter_One_summary.md").exists()
+        assert not list(folder.glob("*_v*_summary.md"))
+
+    def test_failed_summary_skipped_with_warning(self, save_env, save_logs):
+        conv, log, folder = save_env
+        summ = _mk_summary(success=False)
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        assert not list(folder.glob("*.md"))
+        assert any("Skipped saving FAILED summary" in m for (_, m) in save_logs)
+
+    def test_empty_summary_skipped(self, save_env, save_logs):
+        conv, log, folder = save_env
+        summ = _mk_summary(executive_summary="", thorough_summary="", bullet_points=[])
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        assert not list(folder.glob("*.md"))
+        assert any("Skipped saving FAILED summary" in m for (_, m) in save_logs)
+
+    def test_write_once_complete_file_never_rewritten(self, save_env, save_logs):
+        """The crash-safety contract: a file WITH the COMPLETE sentinel is
+        left byte-identical; the adoption note names the producing run."""
+        conv, log, folder = save_env
+        summ = _mk_summary(app_version="0.6.7", run_id="20260101-120000-abcdef12")
+        stamp = run_stamp_suffix("0.6.7", "20260101-120000-abcdef12")
+        sf = folder / f"001_Chapter_One{stamp}_summary.md"
+        folder.mkdir(parents=True, exist_ok=True)
+        sf.write_text(
+            "# OLD CHAPTER ONE\n\nold bytes\n\n<!-- COMPLETE v0.6.6_20250101-000000-00000000 -->\n",
+            encoding="utf-8",
+        )
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        assert "old bytes" in sf.read_text(encoding="utf-8")  # untouched
+        assert any("already saved — leaving untouched" in m for (_, m) in save_logs)
+
+    def test_incomplete_existing_file_is_rewritten(self, save_env):
+        """No sentinel (crash mid-write) → the file IS rewritten fresh."""
+        conv, log, folder = save_env
+        summ = _mk_summary()
+        folder.mkdir(parents=True, exist_ok=True)
+        sf = folder / "001_Chapter_One_summary.md"
+        sf.write_text("partial garbage without a sentinel", encoding="utf-8")
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        content = sf.read_text(encoding="utf-8")
+        assert "EXE summary text." in content
+        assert "<!-- COMPLETE" in content
+        assert "partial garbage" not in content
+
+    def test_empty_heading_filename_without_heading(self, save_env):
+        conv, log, folder = save_env
+        summ = _mk_summary(
+            heading="",
+            app_version="0.6.7",
+            run_id="20260101-120000-abcdef12",
+        )
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        stamp = run_stamp_suffix("0.6.7", "20260101-120000-abcdef12")
+        assert (folder / f"001{stamp}_summary.md").exists()
+
+    def test_disk_full_raises_actionable_error(self, save_env, monkeypatch):
+        conv, log, folder = save_env
+
+        def _full(path, text):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr("core.pipeline.conversion.summarization.atomic_write_text", _full)
+        with pytest.raises(OSError) as ei:
+            _save_chapter_summaries_write_once(conv, _mk_segments(), [_mk_summary()], log)
+        assert "Disk is full" in str(ei.value)
+        assert "resume will skip" in str(ei.value)  # the actionable hint
+
+    def test_other_oserror_propagates_unchanged(self, save_env, monkeypatch):
+        conv, log, folder = save_env
+
+        def _denied(path, text):
+            raise OSError(13, "Permission denied")
+
+        monkeypatch.setattr("core.pipeline.conversion.summarization.atomic_write_text", _denied)
+        with pytest.raises(OSError) as ei:
+            _save_chapter_summaries_write_once(conv, _mk_segments(), [_mk_summary()], log)
+        assert "Disk is full" not in str(ei.value)
+
+    def test_verification_polish_applied_and_issues_logged(self, save_env, save_logs, monkeypatch):
+        import core.summarisation.verification_phase as vp
+
+        captured = {}
+
+        def _polish(rendered, source, settings, log_cb):
+            captured["rendered"], captured["source"] = rendered, source
+            return "POLISHED OUTPUT\n<!-- COMPLETE -->", [
+                SimpleNamespace(detector="dates", severity="fix", detail="fixed the year 1999")
+            ]
+
+        monkeypatch.setattr(vp, "verify_and_polish_summary", _polish)
+        conv, log, folder = save_env
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [_mk_summary()], log)
+        sf = folder / "001_Chapter_One_summary.md"
+        assert sf.read_text(encoding="utf-8") == "POLISHED OUTPUT\n<!-- COMPLETE -->"
+        assert any("V0.5.1 verification: [dates/fix]" in m for (_, m) in save_logs)
+        # exact heading match → that segment's content is the verification source
+        assert captured["source"] == "src text chapter one"
+        assert "EXE summary text." in captured["rendered"]
+
+    def test_verification_crash_fail_open(self, save_env, save_logs, monkeypatch):
+        import core.summarisation.verification_phase as vp
+
+        def _crash(rendered, source, settings, log_cb):
+            raise RuntimeError("verify boom")
+
+        monkeypatch.setattr(vp, "verify_and_polish_summary", _crash)
+        conv, log, folder = save_env
+        summ = _mk_summary()
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        content = (folder / "001_Chapter_One_summary.md").read_text(encoding="utf-8")
+        assert "EXE summary text." in content  # original render ships
+        assert any("verification crashed (non-fatal)" in m for (_, m) in save_logs)
+
+    def test_source_matcher_falls_back_to_largest_segment(self, save_env, monkeypatch):
+        import core.summarisation.verification_phase as vp
+
+        captured = {}
+
+        def _noop(rendered, source, settings, log_cb):
+            captured["source"] = source
+            return rendered, []
+
+        monkeypatch.setattr(vp, "verify_and_polish_summary", _noop)
+        conv, log, folder = save_env
+        summ = _mk_summary(heading="A Heading That Matches No Segment")
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        assert captured["source"] == "y" * 100  # the largest segment wins
+
+    def test_unreadable_existing_file_rewritten(self, save_env, monkeypatch):
+        """The OSError-on-read path (line 1123-1124): unreadable existing
+        file → fall through to the rewrite below."""
+        conv, log, folder = save_env
+        summ = _mk_summary()
+        folder.mkdir(parents=True, exist_ok=True)
+        sf = folder / "001_Chapter_One_summary.md"
+        sf.write_text("cannot read this", encoding="utf-8")
+
+        real_read = Path.read_text
+
+        def _boom(self, *a, **k):
+            if self == sf:
+                raise OSError(5, "Input/output error")
+            return real_read(self, *a, **k)
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        _save_chapter_summaries_write_once(conv, _mk_segments(), [summ], log)
+        # read via open() — the monkeypatched Path.read_text is still active
+        with open(sf, encoding="utf-8") as fh:
+            content = fh.read()
+        assert "EXE summary text." in content  # rewritten
+
+
+class TestSaveBlockWiring:
+    """run_summarization is not headless-drivable (house precedent:
+    tests/test_v1820412_b_semantics.py TestWa11SourcePins) — the wiring of
+    the extracted block is source-pinned."""
+
+    def test_run_summarization_calls_the_extracted_helper(self):
+        src = (REPO / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
+            encoding="utf-8"
+        )
+        assert "_save_chapter_summaries_write_once(converter, segments, summaries, log)" in src
+        # the moved code lives in exactly one place (the module-level helper)
+        assert src.count("def _save_chapter_summaries_write_once(") == 1
+        # the write-once contract marker survived the move
+        assert "has_complete_sentinel(_existing_sf)" in src
+        assert "errno == 28" in src
