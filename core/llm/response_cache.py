@@ -101,11 +101,13 @@ class ResponseCache:
         # surface: an attacker who can control the prompt can already
         # cause cache misses, not incorrect hits — the worst case is a
         # performance degradation, not a correctness/security bug).
-        # V18.2.26 (A13): added the noqa directive on the line above to
-        # silence ruff/bandit security scanners that flag hashlib.md5
-        # without context. (Note: this comment avoids spelling the directive
-        # inline — a literal '# noqa: S324' inside a comment is itself parsed
-        # as an invalid directive by newer ruff.)
+        # V18.2.26 (A13): added the noqa directive on the ``h = hashlib.md5()``
+        # line above to silence ruff/bandit security scanners that flag
+        # hashlib.md5 without context. (Note: this comment deliberately does
+        # NOT spell the directive text verbatim — a literal directive string
+        # inside a comment is itself parsed as an invalid directive by newer
+        # ruff. V0.6.8 (audit B19): the old parenthetical spelled it out and
+        # WAS the invalid-directive warning it was warning about.)
         h.update(str(prompt).encode())
         return h.hexdigest()
 

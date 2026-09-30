@@ -438,3 +438,46 @@ class TestB11NarrowedSwallows:
         src = (REPO / "core/summarisation/bullet_consolidation.py").read_text(encoding="utf-8")
         assert "except ImportError as _e:" in src
         assert "truncation flag unavailable" in src
+
+
+# ── B19: the lying docs / dead param ────────────────────────────────────────
+#
+# Four small honesty fixes: the step4 docstring claimed 19 output types
+# (registry + list carry 21), main.py printed a stale "[V18.2.37]" version
+# tag, response_cache.py's comment ABOUT the invalid-noqa hazard spelled
+# the directive verbatim (becoming the very warning it described), and
+# segmenter._find_heading_in_markdown's fuzzy_threshold param was dead
+# (callers always passed the default; the body hardcodes the ladder).
+
+
+class TestB19LyingDocs:
+    def test_step4_docstring_matches_registry(self):
+        from core.outputs.registry import OUTPUT_REGISTRY
+
+        src = (REPO / "ui_qt/views/wizard_steps/step4_outputs.py").read_text(encoding="utf-8")
+        n = len(OUTPUT_REGISTRY)
+        assert f"+ 4 core = {n} total" in src, (
+            f"the step4 docstring must state the real registry total ({n})"
+        )
+        assert "= 19 total" not in src, "the stale 19-total claim is back"
+
+    def test_main_has_no_stale_version_prints(self):
+        src = (REPO / "main.py").read_text(encoding="utf-8")
+        assert "[V18.2.37]" not in src, "the stale V18.2.37 print label is back"
+        assert "[Elixir] Deleted" in src
+
+    def test_segmenter_fuzzy_threshold_param_gone(self):
+        src = (REPO / "core/segmentation/segmenter.py").read_text(encoding="utf-8")
+        assert "fuzzy_threshold: float = 0.85" not in src, (
+            "the dead fuzzy_threshold parameter is back in the signature"
+        )
+        # the two call sites no longer pass it either
+        assert "fuzzy_threshold=0.85" not in src
+
+    def test_response_cache_comment_does_not_spell_directive(self):
+        src = (REPO / "core/llm/response_cache.py").read_text(encoding="utf-8")
+        # The comment must not contain a literal directive text (the old
+        # comment spelled it and WAS ruff's invalid-directive warning).
+        assert "# noqa: S324' inside" not in src
+        # the REAL directive on the md5 line is still there
+        assert "h = hashlib.md5()  # noqa: S324" in src

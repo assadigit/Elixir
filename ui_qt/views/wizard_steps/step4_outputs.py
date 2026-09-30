@@ -26,14 +26,17 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 
 
 class Step4Outputs(WizardStep):
-    """Output type selection (15 Output Studio types + 4 core = 19 total).
+    """Output type selection (17 Output Studio types + 4 core = 21 total).
 
-    V10.29.0 (Sprint 2): The 15 Output Studio types now match
+    V10.29.0 (Sprint 2): The Output Studio types now match
     ``core.outputs.registry.OUTPUT_REGISTRY`` exactly (was previously a
     hand-maintained list that drifted).  The core outputs remain
     wizard-specific (sub-options like exec/thorough summary don't belong
     in the shared registry).
-    """
+
+    V0.6.8 (audit B19): the counts were corrected — the old docstring
+    said "15 + 4 = 19" while the registry (and this list) carry 21
+    OutputSpecs (17 studio + 4 core)."""
 
     def _build(self) -> None:
         lay = QVBoxLayout(self)

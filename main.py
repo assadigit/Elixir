@@ -51,7 +51,9 @@ try:
 except Exception:
     pass
 if _pycache_deleted > 0:
-    print(f"[V18.2.37] Deleted {_pycache_deleted} stale __pycache__ directory(ies).")
+    # V0.6.8 (audit B19): the stale "V18.2.37" version tag removed — the
+    # label lied about the running version; "Elixir" is version-neutral.
+    print(f"[Elixir] Deleted {_pycache_deleted} stale __pycache__ directory(ies).")
 
 # V13.33.1 note: PYTHONDONTWRITEBYTECODE above is the whole stale-pyc strategy.
 
