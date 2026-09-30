@@ -480,8 +480,18 @@ def is_embedder_healthy() -> bool:
                     "V18.2.37b: forcing embedder to CPU (low-bit quant model active — "
                     "GPU VRAM is needed for the LLM, embedder runs on CPU ~1-3s/batch)"
                 )
-        except Exception:
-            pass
+        except (ImportError, OSError, ValueError) as _e:
+            # V0.6.8 (audit B11): was `except Exception: pass` — the CPU
+            # force-off silently didn't happen, risking the VRAM conflict
+            # the flag exists to prevent. Narrow family: ImportError
+            # (module chain), OSError (settings file I/O), ValueError (bad
+            # setting value). Unexpected failures now surface.
+            logger.warning(
+                "low-bit-quant embedder CPU-force check failed (%s: %s) — "
+                "embedder may contend with the LLM for VRAM",
+                type(_e).__name__,
+                _e,
+            )
         _embed_model = get_embed_model()
     if _embed_model is None:
         return False

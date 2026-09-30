@@ -399,3 +399,42 @@ class TestB10EmbedderGuardFailsSafe:
         state = SimpleNamespace(bullets=[], content="")
         pipeline.apply_phase22_semantic_fact_check(state)
         assert any("embedder unhealthy" in msg for _, msg in logs)
+
+
+class TestB11NarrowedSwallows:
+    def test_thresholds_calibration_failure_warns(self, monkeypatch, caplog):
+        import logging
+
+        import core.summarisation.thresholds as th_mod
+        import utils.settings as settings_mod
+
+        monkeypatch.setattr(th_mod, "_THRESHOLD_SCALE", 1.0)
+
+        class _Boom:
+            def __init__(self):
+                raise OSError("settings unreadable")
+
+        monkeypatch.setattr(settings_mod, "Settings", _Boom)
+        with caplog.at_level(logging.WARNING):
+            assert th_mod._get_threshold_scale() == 1.0
+        assert any("auto-calibration failed" in r.message for r in caplog.records)
+
+    def test_model_singletons_cpu_force_failure_warns(self):
+        """Source pin: the low-bit-quant check's except is narrowed and
+        logs at WARNING (behavioral test would need the embedder import
+        chain torn down — the pin guards the contract)."""
+        src = (REPO / "core/llm/model_singletons.py").read_text(encoding="utf-8")
+        assert "except (ImportError, OSError, ValueError) as _e:" in src
+        assert "may contend with the LLM for VRAM" in src
+
+    def test_prompt_builders_coverage_blocks_narrowed(self):
+        src = (REPO / "core/summarisation/prompt_builders.py").read_text(encoding="utf-8")
+        assert src.count("enumeration_coverage_block_template") >= 1
+        assert src.count("enumeration_coverage_block_inline") >= 1
+        # The old bare swallows are gone on BOTH prompt paths.
+        assert "except Exception:\n                    pass" not in src
+
+    def test_bullet_consolidation_truncation_flag_narrowed(self):
+        src = (REPO / "core/summarisation/bullet_consolidation.py").read_text(encoding="utf-8")
+        assert "except ImportError as _e:" in src
+        assert "truncation flag unavailable" in src

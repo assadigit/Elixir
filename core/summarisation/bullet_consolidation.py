@@ -394,8 +394,18 @@ def consolidate_bullets(
             from core.llm.call_meta import consume_call_truncated
 
             _response_truncated = consume_call_truncated()
-        except Exception:
-            pass
+        except ImportError as _e:
+            # V0.6.8 (audit B11): was `except Exception: pass` — a missing
+            # call_meta silently disabled the truncation salvage path (the
+            # strict assertion then fires on every truncated consolidation).
+            # ImportError is the only expected failure (the ContextVar has
+            # default=False, so consume_call_truncated itself cannot raise).
+            log(
+                "    ⚠️ Bullet consolidation: truncation flag unavailable "
+                f"({type(_e).__name__}: {_e}) — truncated responses will hit "
+                "the strict assertion instead of the salvage path",
+                "WARNING",
+            )
 
         if not raw or len(raw.strip()) < 50:
             log(

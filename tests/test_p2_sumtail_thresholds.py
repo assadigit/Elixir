@@ -52,17 +52,23 @@ class _FakeSettings:
 
 
 class _ExplodingSettings:
-    """Settings stand-in whose .get always raises (fail-open path)."""
+    """Settings stand-in whose .get always raises (fail-open path).
+
+    V0.6.8 (audit B11, contract evolution): raises OSError — the realistic
+    settings-read failure family. The old RuntimeError variant moved to
+    test_unexpected_exception_surfaces: the narrowed except no longer
+    absorbs non-family exceptions."""
 
     def get(self, key, default=None):
-        raise RuntimeError("settings store unavailable")
+        raise OSError("settings store unavailable")
 
 
 class _RaisingSettings:
-    """Settings() constructor itself raises."""
+    """Settings() constructor itself raises (OSError — the realistic
+    settings-construction failure; see _ExplodingSettings note)."""
 
     def __init__(self):
-        raise RuntimeError("cannot construct Settings")
+        raise OSError("cannot construct Settings")
 
 
 @pytest.fixture(autouse=True)
@@ -172,6 +178,20 @@ class TestFailOpen:
         """A non-float threshold_scale value raises inside the try → fail-open."""
         _patch_settings(monkeypatch, _FakeSettings({"embedding.threshold_scale": "not-a-number"}))
         assert thresholds._get_threshold_scale() == 1.0
+
+    def test_unexpected_exception_surfaces(self, monkeypatch):
+        """V0.6.8 (audit B11): the swallow is NARROWED — an exception
+        outside the expected settings-read family (ImportError/OSError/
+        ValueError) now propagates instead of being silently absorbed
+        with scale stuck at 1.0. Pre-fix, ANY exception was swallowed."""
+
+        class _BugSettings:
+            def get(self, key, default=None):
+                raise RuntimeError("a code bug, not a settings failure")
+
+        _patch_settings(monkeypatch, _BugSettings)
+        with pytest.raises(RuntimeError, match="a code bug"):
+            thresholds._get_threshold_scale()
 
 
 # ── 4. scaled_threshold clamping ───────────────────────────────────────────
