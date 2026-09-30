@@ -37,4 +37,6 @@ crash_reports/
 *.local.json
 secrets.json
 runs/
-review-loop/
+# V0.6.6: the dot-prefix actually matters — bare `review-loop/` never
+# matched `.review-loop/`, so the notes folder showed up as untracked.
+.review-loop/
