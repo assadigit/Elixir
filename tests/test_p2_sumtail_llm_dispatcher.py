@@ -415,8 +415,13 @@ class TestCallViaLlmProviderOverrides:
                 **self._base_kwargs(log),
             )
         assert result == "compat response"
-        assert provider._base_url == "http://localhost:8000/v1"
-        assert provider._api_key == "sk-test-123"
+        # V0.6.8 (review-loop follow-up, contract evolution): the overrides
+        # target the PUBLIC attrs now — the old _base_url/_api_key spellings
+        # were no-ops on the REAL OpenAICompatProvider (MagicMock made the
+        # dead assignment look alive here); see tests/test_v068_review_loop_fixes.py
+        # TestLoop3LlmDispatcherSweep.
+        assert provider.base_url == "http://localhost:8000/v1"
+        assert provider.api_key == "sk-test-123"
         assert any("via llm_provider.openai_compat" in m for m, _ in logs)
 
     def test_llamacpp_endpoint_overrides(self):
