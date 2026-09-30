@@ -1034,7 +1034,11 @@ class ChapterCheckpointSaver:
             )
 
     def _load_manifest(self) -> dict[str, Any]:
-        """Load the manifest, tolerating absence/corruption (crash safety)."""
+        """Load the manifest, tolerating absence/corruption (crash safety).
+
+        V0.6.8 (audit B8): a corrupt/unreadable manifest now logs at
+        WARNING — it silently returned {} before, invisibly disabling
+        chapter resume (every chapter re-summarized) with no trace."""
         try:
             if self._manifest_path.exists():
                 import json
@@ -1042,8 +1046,22 @@ class ChapterCheckpointSaver:
                 data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
-        except Exception:
-            pass
+                logger.warning(
+                    "chapter manifest is valid JSON but not an object (%s) — "
+                    "resume disabled, all chapters will re-summarize; path=%s",
+                    type(data).__name__,
+                    self._manifest_path,
+                )
+        except (OSError, ValueError) as _e:
+            # OSError: unreadable file (AV/indexer lock, permissions);
+            # ValueError: json.JSONDecodeError — a corrupt/partial write.
+            # The narrow, expected failure family; anything else surfaces.
+            log_swallow(
+                "chapter_manifest_load",
+                _e,
+                level=logging.WARNING,
+                detail=f"path={self._manifest_path} (resume disabled — chapters re-summarize)",
+            )
         return {}
 
     def _mark_checkpoint_progress(self) -> None:

@@ -29,6 +29,7 @@ from __future__ import annotations
 import inspect
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -263,3 +264,58 @@ class TestB6RtlDepsOnAllSurfaces:
         lock = (REPO / "requirements.lock").read_text(encoding="utf-8")
         assert "arabic-reshaper==3.0.1" in lock
         assert "python-bidi==0.6.11" in lock
+
+
+# ── B8-B11: the highest-value exception swallows → WARNING + narrow ─────────
+#
+# The audit's Wave 4: silent failure paths whose failure mode is invisible
+# (resume disabled, stale cache surviving, guards not guarding, coverage
+# contracts vanishing). Each fix logs at WARNING and narrows the caught
+# family; B10 additionally fails SAFE (health-check failure = unhealthy).
+
+
+class TestB8CorruptManifestWarning:
+    def _saver(self, tmp_path):
+        from core.pipeline.chapter_checkpoint import ChapterCheckpointSaver
+
+        conv = SimpleNamespace(
+            output_dir=str(tmp_path),
+            paths=SimpleNamespace(summaries_dir=str(tmp_path / "summaries")),
+            _log=lambda msg, level="INFO": None,
+            request=None,
+        )
+        return ChapterCheckpointSaver(conv)
+
+    def test_corrupt_manifest_returns_empty_and_warns(self, tmp_path, caplog, monkeypatch):
+        import logging
+
+        saver = self._saver(tmp_path)
+        manifest = tmp_path / "checkpoints" / "chapter_manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"chapters": [truncated', encoding="utf-8")
+        with caplog.at_level(logging.WARNING):
+            assert saver._load_manifest() == {}
+        assert any("chapter_manifest_load" in r.message for r in caplog.records), (
+            "a corrupt manifest must log at WARNING — pre-fix it silently "
+            "returned {} and invisibly disabled chapter resume"
+        )
+
+    def test_non_dict_manifest_warns(self, tmp_path, caplog):
+        import logging
+
+        saver = self._saver(tmp_path)
+        manifest = tmp_path / "checkpoints" / "chapter_manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text("[1, 2, 3]", encoding="utf-8")
+        with caplog.at_level(logging.WARNING):
+            assert saver._load_manifest() == {}
+        assert any("not an object" in r.message for r in caplog.records)
+
+    def test_valid_manifest_still_loads(self, tmp_path):
+        saver = self._saver(tmp_path)
+        manifest = tmp_path / "checkpoints" / "chapter_manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"chapters": {"c1": {}}}', encoding="utf-8")
+        assert saver._load_manifest() == {"chapters": {"c1": {}}}
+
+
