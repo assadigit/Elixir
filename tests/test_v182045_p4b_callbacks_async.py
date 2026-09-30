@@ -735,10 +735,18 @@ class TestSectionsAsyncModelsPins:
     def test_fetch_models_from_is_widget_free(self):
         """AiLocalModelSection's fetch must be callable on the worker
         thread: the URL is snapshotted on the main thread and the actual
-        fetch takes it as a plain argument (no combo reads)."""
+        fetch takes it as a plain argument (no combo reads).
+
+        V0.6.8 (audit B5, contract evolution): the fetch now routes through
+        the shared proxy-proof transports (list_llamacpp_models for the
+        OpenAI-style LM Studio probe, list_ollama_models for /api/tags)
+        instead of a self-built requests.Session — the old
+        ``assert "requests" in body`` pin was updated to the new transport
+        contract. The widget-free property is unchanged."""
         body = _func_src(_AI_MODEL_SECTION, "_fetch_models_from", "AiLocalModelSection")
         assert "def _fetch_models_from(self, url: str)" in body
-        assert "requests" in body
+        assert "list_llamacpp_models(" in body
+        assert "list_ollama_models(" in body
         assert "self." not in body.replace("def _fetch_models_from(self, url: str)", ""), (
             "_fetch_models_from must not touch any widget (worker-safe)"
         )

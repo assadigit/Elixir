@@ -375,26 +375,27 @@ class AiLocalModelSection(QGroupBox):
             return []
 
     def _fetch_models_from(self, url: str) -> list:
-        """Widget-free fetch from ``url`` (safe to run on a worker thread)."""
-        try:
-            import requests
+        """Widget-free fetch from ``url`` (safe to run on a worker thread).
 
-            sess = requests.Session()
-            sess.trust_env = False
-            sess.proxies = {"http": None, "https": None}
-            # LM Studio uses OpenAI-style /v1/models; Ollama uses /api/tags.
-            if "localhost:1234" in url or "lmstudio" in url.lower():
-                resp = sess.get(f"{url.rstrip('/')}/v1/models", timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json().get("data", [])
-                    return [m.get("id", "") for m in data if m.get("id")]
-            # Ollama-style
-            resp = sess.get(f"{url.rstrip('/')}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                return [m["name"] for m in resp.json().get("models", [])]
-        except Exception:
-            pass  # best-effort (UI — never crash)
-        return []
+        V0.6.8 (audit B5): the self-built no-proxy session is replaced by
+        the shared transports — ``list_llamacpp_models`` for the OpenAI-style
+        LM Studio ``/v1/models`` probe and ``list_ollama_models`` for
+        ``/api/tags`` (both proxy-proof). LM Studio 200-with-empty-data now
+        falls through to the ``/api/tags`` probe (same observable [] result —
+        LM Studio does not serve ``/api/tags``).
+        """
+        base = url.rstrip("/")
+        # LM Studio uses OpenAI-style /v1/models; Ollama uses /api/tags.
+        if "localhost:1234" in url or "lmstudio" in url.lower():
+            from core.llm.llamacpp_provider import list_llamacpp_models
+
+            models = list_llamacpp_models(f"{base}/v1", "local", timeout=5)
+            if models:
+                return models
+        # Ollama-style
+        from utils.network import list_ollama_models
+
+        return list_ollama_models(base)
 
     def _refresh_models(self) -> None:
         """V18.20.4.5 (W-b11): fetch on a background worker — this ran a

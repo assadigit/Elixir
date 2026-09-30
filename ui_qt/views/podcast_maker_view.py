@@ -348,31 +348,35 @@ class PodcastMakerView(QWidget):
         return root
 
     def _refresh_models(self) -> None:
-        """V11.37.2: fetch installed models from Ollama /api/tags."""
-        import requests
+        """V11.37.2: fetch installed models from Ollama /api/tags.
 
+        V0.6.8 (audit B5): routed through utils.network.list_ollama_models /
+        is_ollama_reachable (safe_ollama_request → proxy-proof) — was a bare
+        requests.get that broke on machines with HTTP_PROXY set. The non-200
+        "Ollama returned HTTP {status}" message folds into "Could not
+        connect" (the helpers return list/bool, not status codes).
+        """
+        from utils.network import is_ollama_reachable, list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m.get("name", "") for m in resp.json().get("models", [])]
-                if models:
-                    current = self.model_combo.currentText()
-                    self.model_combo.clear()
-                    for m in models:
-                        self.model_combo.addItem(m)
-                    # Restore previous selection if still available
-                    idx = self.model_combo.findText(current)
-                    if idx >= 0:
-                        self.model_combo.setCurrentIndex(idx)
-                    self.status_label.setText(f"✅ Found {len(models)} models")
-                else:
-                    self.status_label.setText("⚠️ No models installed in Ollama")
+            models = [m for m in list_ollama_models(ollama_url) if m]
+            if models:
+                current = self.model_combo.currentText()
+                self.model_combo.clear()
+                for m in models:
+                    self.model_combo.addItem(m)
+                # Restore previous selection if still available
+                idx = self.model_combo.findText(current)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                self.status_label.setText(f"✅ Found {len(models)} models")
+            elif is_ollama_reachable(ollama_url):
+                self.status_label.setText("⚠️ No models installed in Ollama")
             else:
-                self.status_label.setText(f"⚠️ Ollama returned HTTP {resp.status_code}")
+                self.status_label.setText("⚠️ Could not connect to Ollama")
         except Exception as e:
             self.status_label.setText(f"⚠️ Could not connect to Ollama: {e}")
 

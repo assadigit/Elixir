@@ -152,3 +152,88 @@ class TestDualApiOverrideBehavioral:
             "complete() must route at the OVERRIDDEN base_url — pre-fix the "
             "override was a no-op and the primary endpoint was kept"
         )
+
+
+# ── B5: the six bare-requests UI sites → shared transports ──────────────────
+#
+# utils/network.py provides the proxy-proof Ollama transports
+# (is_ollama_reachable / list_ollama_models via safe_ollama_request) and
+# core/llm/llamacpp_provider.py provides list_llamacpp_models (OpenAI-style
+# /v1/models, proxy-proof). Six UI/system sites still probed /api/tags with
+# bare requests.get / self-built sessions — breaking on HTTP_PROXY machines
+# and duplicating the transport. House source-pin style (UI modules are not
+# imported; see tests/test_v182045_p4a_service_dialog_threads.py).
+
+import re  # noqa: E402
+
+_B5_FILES = {
+    "translation_service_dialog.py": REPO
+    / "ui_qt/views/service_dialogs/dialogs/translation_service_dialog.py",
+    "podcast_maker_view.py": REPO / "ui_qt/views/podcast_maker_view.py",
+    "transcribe_service_dialog.py": REPO
+    / "ui_qt/views/service_dialogs/dialogs/transcribe_service_dialog.py",
+    "summarization_service_dialog.py": REPO
+    / "ui_qt/views/service_dialogs/dialogs/summarization_service_dialog.py",
+    "dependency_checker.py": REPO / "core/system/dependency_checker.py",
+    "ai_model_section.py": REPO / "ui_qt/settings/sections/ai_model_section.py",
+}
+
+
+def _method_src(path: Path, name: str) -> str:
+    """Slice a method's source (def name → the next same-indent def/docstring
+    boundary). Asserts the method exists — a rename fails loudly here."""
+    src = path.read_text(encoding="utf-8")
+    m = re.search(rf"^([ \t]*)def {re.escape(name)}\(", src, re.M)
+    assert m, f"{path.name}: def {name} not found"
+    start = m.start()
+    rest = src[m.end() :]
+    nxt = re.search(r"^([ \t]*)(def |class |@)", rest, re.M)
+    end = m.end() + (nxt.start() if nxt else len(rest))
+    return src[start:end]
+
+
+class TestB5BareRequestsSwept:
+    """Every one of the six audited sites must fetch through the shared
+    transports — no lazy ``import requests`` inside the method (the
+    tell-tale of the bare-call pattern: each file imports requests ONLY
+    inside these methods)."""
+
+    def test_refresh_models_translation_dialog(self):
+        s = _method_src(_B5_FILES["translation_service_dialog.py"], "_refresh_models")
+        assert "import requests" not in s, "bare requests import remains"
+        assert "list_ollama_models(" in s, "must route through list_ollama_models"
+
+    def test_refresh_models_podcast_maker_view(self):
+        s = _method_src(_B5_FILES["podcast_maker_view.py"], "_refresh_models")
+        assert "import requests" not in s
+        assert "list_ollama_models(" in s
+        assert "is_ollama_reachable(" in s  # the no-models vs down distinction
+
+    def test_refresh_models_transcribe_dialog(self):
+        s = _method_src(_B5_FILES["transcribe_service_dialog.py"], "_refresh_models")
+        assert "import requests" not in s
+        assert "list_ollama_models(" in s
+
+    def test_fetch_installed_models_summarization_dialog(self):
+        s = _method_src(_B5_FILES["summarization_service_dialog.py"], "_fetch_installed_models")
+        assert "import requests" not in s, "the bare _req.get pre-check remains"
+        assert "is_ollama_reachable(" in s, (
+            "the reachability pre-check must use the SAME proxy-proof "
+            "transport as the list call (pre-fix: proxy could answer the "
+            "bare pre-check while the proxy-proof list call failed)"
+        )
+
+    def test_check_ollama_dependency_checker(self):
+        s = _method_src(_B5_FILES["dependency_checker.py"], "_check_ollama")
+        assert "import requests" not in s
+        assert "list_ollama_models(" in s
+        assert "is_ollama_reachable(" in s
+
+    def test_fetch_models_from_ai_model_section(self):
+        s = _method_src(_B5_FILES["ai_model_section.py"], "_fetch_models_from")
+        assert "import requests" not in s, "self-built session remains"
+        assert "requests.Session()" not in s
+        assert "list_ollama_models(" in s, "the Ollama branch must use the helper"
+        assert "list_llamacpp_models(" in s, (
+            "the LM Studio OpenAI-style /v1/models branch must use the shared proxy-proof lister"
+        )

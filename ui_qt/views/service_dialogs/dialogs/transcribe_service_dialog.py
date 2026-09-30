@@ -226,25 +226,27 @@ class TranscribeServiceDialog(QDialog):
         super().closeEvent(event)
 
     def _refresh_models(self):
-        """Fetch installed Ollama models."""
-        import requests
+        """Fetch installed Ollama models.
 
+        V0.6.8 (audit B5): routed through utils.network.list_ollama_models
+        (safe_ollama_request → proxy-proof) — was a bare requests.get that
+        broke on machines with HTTP_PROXY set.
+        """
+        from utils.network import list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m.get("name", "") for m in resp.json().get("models", [])]
-                if models:
-                    current = self.llm_combo.currentText()
-                    self.llm_combo.clear()
-                    for m in models:
-                        self.llm_combo.addItem(m)
-                    idx = self.llm_combo.findText(current)
-                    if idx >= 0:
-                        self.llm_combo.setCurrentIndex(idx)
+            models = [m for m in list_ollama_models(ollama_url) if m]
+            if models:
+                current = self.llm_combo.currentText()
+                self.llm_combo.clear()
+                for m in models:
+                    self.llm_combo.addItem(m)
+                idx = self.llm_combo.findText(current)
+                if idx >= 0:
+                    self.llm_combo.setCurrentIndex(idx)
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 

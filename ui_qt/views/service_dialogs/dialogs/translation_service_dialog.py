@@ -557,14 +557,16 @@ class TranslationServiceDialog(BaseServiceDialog):
         """
         if not getattr(self, "model_combo", None):
             return
-        import requests as _req
-
+        from utils.network import list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         preferred = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
 
         # Fetch installed models from Ollama.
+        # V0.6.8 (audit B5): routed through utils.network.list_ollama_models
+        # (safe_ollama_request → proxy-proof) — was a bare requests.get
+        # that broke on machines with HTTP_PROXY set.
         ollama_url = (
             s.get("translation.endpoint", "http://localhost:11434/v1")
             or "http://localhost:11434/v1"
@@ -576,9 +578,7 @@ class TranslationServiceDialog(BaseServiceDialog):
 
         models: list[str] = []
         try:
-            r = _req.get(f"{ollama_url}/api/tags", timeout=5)
-            if r.status_code == 200:
-                models = [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+            models = [m for m in list_ollama_models(ollama_url) if m]
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 

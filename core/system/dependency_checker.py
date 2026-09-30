@@ -203,13 +203,19 @@ class DetailedDependencyChecker:
             )
 
     def _check_ollama(self) -> DependencyStatus:
-        """Check if Ollama is running on localhost:11434."""
-        import requests
+        """Check if Ollama is running on localhost:11434.
+
+        V0.6.8 (audit B5): routed through utils.network (is_ollama_reachable
+        + list_ollama_models — safe_ollama_request → proxy-proof) — was a
+        bare requests.get that broke on machines with HTTP_PROXY set. The
+        non-200 "HTTP {status}" detail folds into "not running" (the
+        helpers return bool/list, not status codes).
+        """
+        from utils.network import is_ollama_reachable, list_ollama_models
 
         try:
-            resp = requests.get("http://localhost:11434/api/tags", timeout=2)
-            if resp.status_code == 200:
-                models = resp.json().get("models", [])
+            if is_ollama_reachable(timeout=2):
+                models = list_ollama_models()
                 return DependencyStatus(
                     name="Ollama (LLM runtime)",
                     category="binary",
@@ -218,19 +224,14 @@ class DetailedDependencyChecker:
                     version="",
                     path="localhost:11434",
                 )
-            return DependencyStatus(
-                name="Ollama (LLM runtime)",
-                category="binary",
-                ok=False,
-                status_text=f"HTTP {resp.status_code}",
-            )
-        except Exception as _e:
-            return DependencyStatus(
-                name="Ollama (LLM runtime)",
-                category="binary",
-                ok=False,
-                status_text="not running (start: ollama serve)",
-            )
+        except Exception:
+            logger.debug("ollama reachability check failed", exc_info=True)
+        return DependencyStatus(
+            name="Ollama (LLM runtime)",
+            category="binary",
+            ok=False,
+            status_text="not running (start: ollama serve)",
+        )
 
     def _check_piper_binary(self) -> DependencyStatus:
         """Check if the Piper binary exists."""

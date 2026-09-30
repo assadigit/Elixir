@@ -1545,43 +1545,36 @@ class TestDialogHermeticHelpers:
         assert cls._format_elapsed(125.0) == "2m 5s"
 
     def test_refresh_models_from_api_tags(self, mock_settings, monkeypatch):
-        import requests
-
         mock_settings.data = {"translation.endpoint": f"{SHIM_URL}/v1"}
-
-        class _R:
-            status_code = 200
-
-            def json(self):
-                return {
-                    "models": [
-                        {"name": "qwen3:8b"},
-                        {"name": "translategemma-12b-it.Q4_K_M_mradermacher:latest"},
-                    ]
-                }
 
         seen: list[str] = []
 
-        def fake_get(url, timeout=None):
-            seen.append(url)
-            return _R()
+        def fake_list(base_url="http://localhost:11434"):
+            seen.append(base_url)
+            return ["qwen3:8b", "translategemma-12b-it.Q4_K_M_mradermacher:latest"]
 
-        monkeypatch.setattr(requests, "get", fake_get)
+        import utils.network as net
+
+        # V0.6.8 (audit B5, contract evolution): the dialog now routes
+        # through utils.network.list_ollama_models (proxy-proof transport)
+        # instead of a bare requests.get — the mock moved to the new seam.
+        # The /v1-stripping pin is unchanged in intent: the helper must
+        # receive the endpoint with "/v1" stripped (it appends /api/tags).
+        monkeypatch.setattr(net, "list_ollama_models", fake_list)
         dlg = _make_dialog()
         dlg._refresh_models()
-        assert seen == [f"{SHIM_URL}/api/tags"]  # /v1 stripped for /api/tags
+        assert seen == [SHIM_URL]  # /v1 stripped for the /api/tags transport
         assert dlg.model_combo.count() == 2
         assert dlg.model_combo.currentData() == "translategemma-12b-it.Q4_K_M_mradermacher:latest"
 
     def test_refresh_models_unreachable_seeds_default(self, mock_settings, monkeypatch):
-        import requests
-
         mock_settings.data = {"translation.endpoint": f"{SHIM_URL}/v1"}
 
-        def fake_get(url, timeout=None):
-            raise requests.ConnectionError("down")
+        import utils.network as net
 
-        monkeypatch.setattr(requests, "get", fake_get)
+        # list_ollama_models returns [] on connection failure — that IS the
+        # unreachable signal for the dialog (V0.6.8 audit B5 seam).
+        monkeypatch.setattr(net, "list_ollama_models", lambda *a, **k: [])
         dlg = _make_dialog()
         dlg._refresh_models()
         assert dlg.model_combo.count() == 1

@@ -374,17 +374,18 @@ class SummarizationServiceDialog(QDialog):
         Returns the list of model names, or None if unreachable (empty list
         from list_ollama_models means Ollama is up but has no models).
         """
-        from utils.network import list_ollama_models
+        from utils.network import is_ollama_reachable, list_ollama_models
 
         base = self._ollama_base_url()
         # list_ollama_models returns [] on connection failure (not None),
         # so we need to distinguish "unreachable" from "empty".
-        # We do a quick reachability check first.
-        import requests as _req
-
-        try:
-            _req.get(f"{base}/api/tags", timeout=timeout)
-        except Exception:
+        # V0.6.8 (audit B5): the pre-check now uses the SAME proxy-proof
+        # transport as the list call — was a bare _req.get, which could
+        # succeed via an HTTP_PROXY while the proxy-proof list call failed
+        # (misreporting reachable-but-list-failure as a clean "unreachable").
+        # The helper requires HTTP 200 — an endpoint answering anything else
+        # counts as unreachable (pre-fix any answer counted).
+        if not is_ollama_reachable(base, timeout=int(timeout)):
             return None  # unreachable
         models = list_ollama_models(base)
         return models
