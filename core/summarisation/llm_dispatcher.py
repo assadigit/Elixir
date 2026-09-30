@@ -135,8 +135,11 @@ def call_ollama(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, "_model"):
-            provider._model = model
+        # V0.6.8 (review-loop follow-up, B4 class): public attr — the
+        # "_model" guard was always False (OllamaProvider exposes
+        # self.model); masked because model= is also passed per-call.
+        if hasattr(provider, "model"):
+            provider.model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s,
         # but we need 600s for Gemma 4 12B (takes 5+ min per call)
         if hasattr(provider, "timeout"):
@@ -650,25 +653,33 @@ def call_via_llm_provider(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, "_model"):
-            provider._model = model
+        # V0.6.8 (review-loop follow-up, B4 class): public attr — the
+        # "_model" guard was always False; masked because model= is also
+        # passed per-call.
+        if hasattr(provider, "model"):
+            provider.model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s
         if hasattr(provider, "timeout"):
             provider.timeout = timeout
-        # Apply cloud-specific settings (base_url, api_key) for openai_compat
+        # Apply cloud-specific settings (base_url, api_key) for openai_compat.
+        # V0.6.8 (review-loop follow-up, B4 class — fresh-eyes finding): the
+        # underscore-prefixed assignments below were NO-OPS against
+        # OpenAICompatProvider's PUBLIC attrs (self.base_url/self.api_key),
+        # so an explicit per-call endpoint/key override (e.g. the
+        # Summarizer's freellmapi_url vs the settings' primary cloud URL)
+        # was silently dropped and the call kept hitting the settings
+        # endpoint. The V0.04-era deferral (CHANGELOG_ARCHIVE "known
+        # follow-ups") is now closed: the overrides apply for real.
         if provider_type == "openai_compat" and base_url:
-            provider._base_url = base_url
+            provider.base_url = base_url
         if provider_type == "openai_compat" and api_key:
-            provider._api_key = api_key
+            provider.api_key = api_key
         # V0.04: llama.cpp — apply the endpoint overrides through the REAL
-        # attribute names (LlamaCppProvider exposes base_url/api_key, not
-        # the underscore-prefixed names the openai_compat branch targets —
-        # that legacy branch is inert dead code and is left untouched; see
-        # the known-follow-ups note in CHANGELOG V0.04). The Summarizer
-        # passes the same values create_provider already read from the
-        # llamacpp_* settings, so this is a no-op in practice — it exists
-        # so an explicit per-call endpoint override can never be silently
-        # dropped for the new backend.
+        # attribute names (LlamaCppProvider exposes base_url/api_key). The
+        # Summarizer passes the same values create_provider already read
+        # from the llamacpp_* settings, so this is a no-op in practice — it
+        # exists so an explicit per-call endpoint override can never be
+        # silently dropped for the new backend.
         if provider_type == "llamacpp":
             if base_url and hasattr(provider, "base_url"):
                 provider.base_url = base_url.rstrip("/")
