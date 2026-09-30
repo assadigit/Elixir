@@ -386,16 +386,25 @@ class AiLocalModelSection(QGroupBox):
         """
         base = url.rstrip("/")
         # LM Studio uses OpenAI-style /v1/models; Ollama uses /api/tags.
-        if "localhost:1234" in url or "lmstudio" in url.lower():
-            from core.llm.llamacpp_provider import list_llamacpp_models
+        # V0.6.8 (review-loop follow-up): both shared helpers never raise
+        # for the expected failure families, but a 200 response with a
+        # malformed body (top-level JSON array, entry missing "name"/"id")
+        # raises AttributeError/KeyError out of them — the old body's
+        # never-raise contract (worker-safe, returns []) is restored with
+        # a narrow local catch.
+        try:
+            if "localhost:1234" in url or "lmstudio" in url.lower():
+                from core.llm.llamacpp_provider import list_llamacpp_models
 
-            models = list_llamacpp_models(f"{base}/v1", "local", timeout=5)
-            if models:
-                return models
-        # Ollama-style
-        from utils.network import list_ollama_models
+                models = list_llamacpp_models(f"{base}/v1", "local", timeout=5)
+                if models:
+                    return models
+            # Ollama-style
+            from utils.network import list_ollama_models
 
-        return list_ollama_models(base)
+            return list_ollama_models(base, timeout=5)
+        except (AttributeError, KeyError, TypeError):
+            return []
 
     def _refresh_models(self) -> None:
         """V18.20.4.5 (W-b11): fetch on a background worker — this ran a
