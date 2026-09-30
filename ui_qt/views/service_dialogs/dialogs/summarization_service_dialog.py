@@ -3,7 +3,19 @@
 SummarizationServiceDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, Paste Text tab, options container, output row,
+progress, status, buttons) to the base and folds its byte-identical
+closeEvent guard + _get_input_text away; the multi-file queue tab, the
+model/depth/format options, the folder-or-file output picker and the
+W-b5 worker flow (_do_summarize → _summarize_work → _on_summarize_*)
+stay as-is. The dialog keeps its DIRECT Settings() reads/writes
+(quick_services.defaults.* + summarisation.*) — it does not use the
+base's quick_services.{service}.* helpers, so no persisted key changed.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +27,6 @@ from PySide6.QtCore import Qt
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QWidget,
 )
@@ -27,13 +38,12 @@ from controller import Controller
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    PlainTextTextEdit,
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
     _show_success_modal,
 )
 
 
-class SummarizationServiceDialog(QDialog):
+class SummarizationServiceDialog(BaseServiceDialog):
     """V11: Standalone Summarization — paste text → get summary + keypoints.
 
     V13.25.0 (P1.2): Now delegates to core modules instead of duplicating logic:
@@ -101,12 +111,49 @@ class SummarizationServiceDialog(QDialog):
     _DEFAULT_MODEL = RIG_FALLBACK_MODEL
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("Σ Summarization Service")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options, and _refresh_models (called
+        # below, at the pre-B17 __init__ tail position) reads
+        # _last_known_models. The typed _worker init stays verbatim — the
+        # W-b5 re-entrancy guard in _do_summarize depends on it.
+        self._last_known_models: list[str] = []
+        self._files: list[str] = []  # V11.18: multi-file list
+        # V18.20.4.5 (W-b5/T-b2): the background summarization worker
+        # (SimpleWorker).
+        self._worker: SimpleWorker | None = None
+        super().__init__(
+            controller, "Σ Summarization Service", parent, accept_files=True, accept_text=True
+        )
         self.setMinimumSize(640, 540)
-        self.setModal(True)
+        # V0.6.10 (B17): the base builds out_path_edit / process_btn with
+        # its own labels; this dialog's historical attribute names
+        # (out_edit / action_btn — pinned by the e2e drive tests) are
+        # restored as aliases of the SAME widgets (single source of truth).
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText(
+            "Single file: full path  |  Multi-file: output FOLDER (files auto-named {stem}_{quality}_summary{ext})"
+        )
+        self.action_btn = self.process_btn
+        self.action_btn.setText("Summarize")
+        # V11.20: bigger, bolder status label + a busy progress bar during
+        # processing so the user gets clear visual feedback.
+        self.status_label.setMinimumHeight(50)
+        self.status_label.setTextFormat(Qt.RichText)
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.progress_bar.setFixedHeight(8)
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_summarize_progress only
+        # sets status text) — hide the dead toggle.
+        self._log_toggle_btn.setVisible(False)
 
+        # Populate the model picker on first show (pre-B17 __init__ tail).
+        self._refresh_models()
+
+    def _build_options(self, layout) -> None:
+        """V0.6.10 (B17): the summarization-specific rows, folded into the
+        base's options container — the multi-file queue tab (tab index 1),
+        the model picker, the depth + format-checkbox row, the custom
+        title and the Obsidian tri-state."""
         from PySide6.QtWidgets import (
             QCheckBox as _QChB,
         )
@@ -129,35 +176,21 @@ class SummarizationServiceDialog(QDialog):
             QPushButton as _QPB,
         )
         from PySide6.QtWidgets import (
-            QTabWidget as _QTW,
-        )
-        from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
 
-        # V11.66.0: PlainTextTextEdit is defined at the top of this file,
-        # NOT in PySide6.QtWidgets. This was causing an ImportError.
-        _QTE = PlainTextTextEdit
+        # V0.6.10 (B17): the base's tabs come with a single-file "Pick
+        # File" tab at index 1; this dialog's contract is a MULTI-file
+        # queue tab at that index (pinned: tabs.setCurrentIndex(1) in the
+        # e2e drive tests). Swap the page, keeping a Python reference to
+        # the removed page so the base's file_path_edit stays alive (Qt
+        # returns ownership to Python on removeTab — a GC'd page would
+        # destroy the base's line edit; with the single-file picker gone,
+        # the inherited _get_input_text returns "" on the queue tab,
+        # exactly the deleted local override's contract).
+        self._base_file_tab = self.tabs.widget(1)
+        self.tabs.removeTab(1)
 
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("Σ Summarization Service")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        # ── Input tabs: paste text / pick files (multi) ───────────────
-        self.tabs = _QTW()
-        # Tab 1: paste text
-        text_tab = QWidget()
-        text_lay = _VL(text_tab)
-        self.text_input = _QTE()
-        self.text_input.setPlaceholderText("Paste your text here…")
-        self.text_input.setAcceptRichText(False)  # V11.31: strip styling on paste
-        text_lay.addWidget(self.text_input)
-        self.tabs.addTab(text_tab, "📋 Paste Text")
-        # Tab 2: pick files (multi) — V11.18
         file_tab = QWidget()
         file_lay = _VL(file_tab)
         self.file_list = _QLW()
@@ -177,7 +210,6 @@ class SummarizationServiceDialog(QDialog):
         file_lay.addWidget(self.file_list)
         file_lay.addLayout(file_btn_row)
         self.tabs.addTab(file_tab, "📁 Pick Files (multi)")
-        lay.addWidget(self.tabs)
 
         # ── Model picker row ───────────────────────────────────────────
         model_row = _HL()
@@ -191,7 +223,7 @@ class SummarizationServiceDialog(QDialog):
         self.refresh_btn.setToolTip("Re-fetch the list of installed Ollama models")
         self.refresh_btn.clicked.connect(self._refresh_models)
         model_row.addWidget(self.refresh_btn)
-        lay.addLayout(model_row)
+        layout.addLayout(model_row)
 
         # ── Options row: quality + output format ──────────────────────
         # V11.19: each combo has a "Default" option (data="__default__") that
@@ -227,7 +259,7 @@ class SummarizationServiceDialog(QDialog):
         for _chk in (self.fmt_md_chk, self.fmt_docx_chk, self.fmt_pdf_chk):
             opt_row.addWidget(_chk)
         opt_row.addStretch()
-        lay.addLayout(opt_row)
+        layout.addLayout(opt_row)
 
         # ── Custom title row (V0.6.4) ──────────────────────────────
         # The user report: the auto "pasted — standard summary" heading
@@ -247,7 +279,7 @@ class SummarizationServiceDialog(QDialog):
         self.custom_title_chk.toggled.connect(self._on_custom_title_toggled)
         title_row.addWidget(self.custom_title_chk)
         title_row.addWidget(self.custom_title_edit, 1)
-        lay.addLayout(title_row)
+        layout.addLayout(title_row)
 
         # ── Obsidian toggle (V11.18) ──────────────────────────────────
         obs_row = _HL()
@@ -269,74 +301,21 @@ class SummarizationServiceDialog(QDialog):
         self.fmt_md_chk.toggled.connect(self._on_fmt_toggled)
         obs_row.addWidget(self.obsidian_chk)
         obs_row.addStretch()
-        lay.addLayout(obs_row)
+        layout.addLayout(obs_row)
 
-        # ── Output row ────────────────────────────────────────────────
-        out_row = _HL()
-        out_row.setSpacing(8)
-        out_row.addWidget(_QL("Save to:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText(
-            "Single file: full path  |  Multi-file: output FOLDER (files auto-named {stem}_{quality}_summary{ext})"
-        )
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) and
+    # _get_input_text (the base's returns the paste text on tab 0 and ""
+    # on the queue tab, where the removed single-file picker leaves
+    # file_path_edit empty) are now INHERITED; the pre-B17 copies were
+    # behaviorally equivalent and were deleted. _on_process routes the
+    # base's process button into this dialog's action dispatch.
 
-        # ── Status ────────────────────────────────────────────────────
-        # V11.20: bigger, bolder status label + a busy progress bar during
-        # processing so the user gets clear visual feedback.
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        self.status_label.setMinimumHeight(50)
-        self.status_label.setTextFormat(Qt.RichText)
-        self.status_label.setAlignment(Qt.AlignCenter)
-        lay.addWidget(self.status_label, 1)
-
-        # V11.20: busy progress bar — visible only during processing.
-        from PySide6.QtWidgets import QProgressBar as _QPB2
-
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 0)  # busy/indeterminate mode
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        # ── Buttons ───────────────────────────────────────────────────
-        btn_row = _HL()
-        btn_row.addStretch()
-        self.again_btn = _QPB("🔄 Try Another File")
-        self.again_btn.setObjectName("Compact")
-        self.again_btn.setVisible(False)
-        self.again_btn.clicked.connect(self._on_try_another)
-        self.action_btn = _QPB("Summarize")
-        self.action_btn.setObjectName("Primary")
-        self.action_btn.clicked.connect(self._on_action)
-        btn_row.addWidget(self.again_btn)
-        btn_row.addWidget(self.action_btn)
-        lay.addLayout(btn_row)
-
-        # Populate the model picker on first show.
-        self._last_known_models: list[str] = []
-        self._files: list[str] = []  # V11.18: multi-file list
-        # V18.20.4.5 (W-b5/T-b2): the background summarization worker
-        # (SimpleWorker).
-        self._worker: SimpleWorker | None = None
-        self._refresh_models()
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the summarization
-        # worker runs — the "QThread: Destroyed while thread is still
-        # running" abort class. Ask; on "close anyway" detach the worker
-        # so the LLM loop's result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    def _on_process(self) -> None:
+        # V0.6.10 (B17): the base wired the (aliased) action_btn to
+        # _on_process; this dialog's dispatch is the _on_action chain
+        # (Close-vs-Summarize → _do_summarize's W-b5 worker spawn).
+        self._on_action()
 
     # ── Ollama helpers ────────────────────────────────────────────────
 
@@ -593,13 +572,6 @@ class SummarizationServiceDialog(QDialog):
         self.action_btn.setText("Summarize")
         self.action_btn.setEnabled(True)
         self.tabs.setCurrentIndex(0)
-
-    def _get_input_text(self) -> str:
-        if self.tabs.currentIndex() == 0:
-            return self.text_input.toPlainText()
-        else:
-            # Multi-file tab — return empty; _do_summarize handles the list.
-            return ""
 
     # ── Prompt builder ────────────────────────────────────────────────
 

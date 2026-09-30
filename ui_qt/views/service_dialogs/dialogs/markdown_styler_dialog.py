@@ -7,7 +7,20 @@ pipeline in core/summarisation/markdown_styler.py — the LLM scans the
 article, detects/generates the headings, then the deterministic
 assembler emits the Obsidian note) with the V11.71.0 deterministic
 regex path as the no-LLM fallback. ui_qt.views.service_dialogs.
-base_dialog re-exports it (back-compat facade)."""
+base_dialog re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, paste-text area, options container, progress, status,
+buttons) to the base and folds its byte-identical closeEvent guard
+away (inherited). The LLM row + option checkboxes + the output
+preview/save row fold into _build_options; the base's "Save to:" row
+is hidden (the styler previews FIRST and picks the save location at
+save time via _on_save — the reverse of the base's
+pick-output-first flow, so nothing would ever read out_path_edit).
+The V0.6.5 LLM worker launch keeps its pinned shape: _run_llm_styling
+spawns the SimpleWorker (the base's _process/_collect_options flow
+does not fit the preview-then-save contract)."""
 
 from __future__ import annotations
 
@@ -21,9 +34,14 @@ from pathlib import Path
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
+    QCheckBox,
+    QComboBox,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
     QMessageBox,
+    QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -31,8 +49,8 @@ from controller import Controller
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
+    BaseServiceDialog,
     PlainTextTextEdit,
-    _confirm_close_with_running_worker,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +62,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 
 
-class MarkdownStylerDialog(QDialog):
+class MarkdownStylerDialog(BaseServiceDialog):
     """V0.6.5: Markdown Styler — LLM-STRUCTURED first, deterministic fallback.
 
     The user's requirement: turning a raw article into markdown cannot
@@ -65,73 +83,74 @@ class MarkdownStylerDialog(QDialog):
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("✨ Markdown Styler")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options (the LLM row + checkboxes +
+        # output preview), which needs nothing pre-set. The base also
+        # initializes self._worker (its closeEvent guards it).
+        super().__init__(
+            controller, "✨ Markdown Styler", parent, accept_files=False, accept_text=True
+        )
+        # V0.6.10 (B17): this dialog's original geometry over the base's
+        # generic 560×480, its taller paste area + guidance placeholder,
+        # and the styler trigger label on the base Process button.
         self.setMinimumSize(700, 620)
-        self.setModal(True)
-        self._worker: SimpleWorker | None = None
+        self.text_input.setPlaceholderText(
+            "Paste your messy article here — copy-pasted from a website, "
+            "with weird formatting, broken links, missing structure, etc."
+        )
+        self.text_input.setMinimumHeight(150)
+        self.process_btn.setText("✨ Style My Markdown")
+        # V0.6.10 (B17): hide the base "Save to:" row — the styler picks
+        # the save location AT save time (via _on_save's QFileDialog); the
+        # row's pre-picked path would never be read.
+        self._hide_base_output_row()
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_llm_progress override
+        # only sets status text) — hide the dead toggle (the transcribe
+        # B17 precedent).
+        self._log_toggle_btn.setVisible(False)
 
-        from PySide6.QtWidgets import (
-            QCheckBox as _QChB,
-        )
-        from PySide6.QtWidgets import (
-            QGroupBox as _QGB,
-        )
-        from PySide6.QtWidgets import (
-            QHBoxLayout as _HL,
-        )
-        from PySide6.QtWidgets import (
-            QLabel as _QL,
-        )
-        from PySide6.QtWidgets import (
-            QProgressBar as _QPB2,
-        )
-        from PySide6.QtWidgets import (
-            QPushButton as _QPB,
-        )
-        from PySide6.QtWidgets import (
-            QVBoxLayout as _VL,
-        )
+        # V0.6.5: populate the model picker on open.
+        self._refresh_models()
 
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
+    def _hide_base_output_row(self) -> None:
+        """V0.6.10 (B17): hide the base class's "Save to:" row — the
+        styler previews the note first and picks the save location at
+        save time (``_on_save``), so the row's pre-picked path would be
+        dead UI (nothing in this dialog ever reads ``out_path_edit``)."""
+        root = self.layout()
+        if root is None:
+            return
+        for i in range(root.count()):
+            item = root.itemAt(i)
+            row = item.layout() if item is not None else None
+            if row is None or row.indexOf(self.out_path_edit) < 0:
+                continue
+            for j in range(row.count()):
+                w = row.itemAt(j).widget()
+                if w is not None:
+                    w.setVisible(False)
+            return
 
-        title = _QL("✨ Markdown Styler")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        desc = _QL(
+    def _build_options(self, layout: QVBoxLayout) -> None:
+        """V0.6.10 (B17): the styler's option rows (the V0.6.5 LLM
+        structuring row + the V11.71.0 output checkboxes) and its result
+        surface (the output preview + save row) folded into the base's
+        options container. The preview-then-save flow is the reverse of
+        the base's pick-output-first flow — the base's result_preview
+        stays hidden and this dialog's output_preview is the live one."""
+        desc = QLabel(
             "Paste a raw article — an LLM scans it, finds (or writes) the "
             "headings, and stylizes it into a clean Obsidian note. "
             "Uncheck LLM structuring for the instant offline (regex) path."
         )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
-        lay.addWidget(desc)
-
-        # Input text
-        input_group = _QGB("1. Paste messy article:")
-        input_lay = _VL(input_group)
-        self.text_input = PlainTextTextEdit()
-        self.text_input.setPlaceholderText(
-            "Paste your messy article here — copy-pasted from a website, "
-            "with weird formatting, broken links, missing structure, etc."
-        )
-        self.text_input.setMinimumHeight(150)
-        input_lay.addWidget(self.text_input)
-        lay.addWidget(input_group)
-
-        # Options
-        opt_group = _QGB("2. Options:")
-        opt_lay = _VL(opt_group)
+        layout.addWidget(desc)
 
         # V0.6.5: the LLM structuring row — model picker + toggle.
-        from PySide6.QtWidgets import QComboBox as _QCB
-
-        llm_row = _HL()
-        self.llm_chk = _QChB("🤖 LLM structuring (scan → headings → Obsidian)")
+        llm_row = QHBoxLayout()
+        self.llm_chk = QCheckBox("🤖 LLM structuring (scan → headings → Obsidian)")
         self.llm_chk.setToolTip(
             "The LLM reads the article, detects its real headings (or writes "
             "a fitting title when there is none), then the note is assembled "
@@ -142,85 +161,62 @@ class MarkdownStylerDialog(QDialog):
         self.llm_chk.toggled.connect(self._on_llm_toggled)
         llm_row.addWidget(self.llm_chk)
         llm_row.addSpacing(12)
-        llm_row.addWidget(_QL("Model:"))
-        self.model_combo = _QCB()
+        llm_row.addWidget(QLabel("Model:"))
+        self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.setMinimumWidth(220)
         llm_row.addWidget(self.model_combo, 1)
-        refresh_btn = _QPB("🔄")
+        refresh_btn = QPushButton("🔄")
         refresh_btn.setFixedWidth(34)
         refresh_btn.setToolTip("Re-fetch the installed model list")
         refresh_btn.clicked.connect(self._refresh_models)
         llm_row.addWidget(refresh_btn)
-        opt_lay.addLayout(llm_row)
+        layout.addLayout(llm_row)
 
         # Checkboxes for output options
-        self.cb_tldr = _QChB("Add TLDR (1-2 sentence summary at the top)")
+        self.cb_tldr = QCheckBox("Add TLDR (1-2 sentence summary at the top)")
         self.cb_tldr.setChecked(True)
-        opt_lay.addWidget(self.cb_tldr)
+        layout.addWidget(self.cb_tldr)
 
-        self.cb_key_concepts = _QChB("Extract key concepts as a callout block")
+        self.cb_key_concepts = QCheckBox("Extract key concepts as a callout block")
         self.cb_key_concepts.setChecked(True)
-        opt_lay.addWidget(self.cb_key_concepts)
+        layout.addWidget(self.cb_key_concepts)
 
-        self.cb_tags = _QChB("Add YAML frontmatter + tags")
+        self.cb_tags = QCheckBox("Add YAML frontmatter + tags")
         self.cb_tags.setChecked(True)
-        opt_lay.addWidget(self.cb_tags)
+        layout.addWidget(self.cb_tags)
 
-        lay.addWidget(opt_group)
-
-        # Output
-        out_group = _QGB("3. Output:")
-        out_lay = _VL(out_group)
+        # Output preview + save row (the styler's result surface).
         self.output_preview = PlainTextTextEdit()
         self.output_preview.setReadOnly(True)
         self.output_preview.setPlaceholderText("Cleaned markdown will appear here after styling.")
         self.output_preview.setMinimumHeight(150)
-        out_lay.addWidget(self.output_preview)
+        layout.addWidget(self.output_preview)
 
-        out_btn_row = _HL()
-        self.save_btn = _QPB("💾 Save as .md")
+        out_btn_row = QHBoxLayout()
+        self.save_btn = QPushButton("💾 Save as .md")
         self.save_btn.setObjectName("Primary")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self._on_save)
         out_btn_row.addStretch()
         out_btn_row.addWidget(self.save_btn)
-        out_lay.addLayout(out_btn_row)
-        lay.addWidget(out_group)
+        layout.addLayout(out_btn_row)
 
-        # Process button
-        self.process_btn = _QPB("✨ Style My Markdown")
-        self.process_btn.setObjectName("Primary")
-        self.process_btn.clicked.connect(self._on_process)
-        lay.addWidget(self.process_btn)
-
-        # Progress
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.setFixedHeight(6)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        lay.addWidget(self.status_label)
-
-        # V0.6.5: populate the model picker on open.
-        self._refresh_models()
-
-    def closeEvent(self, event) -> None:
-        # V0.6.5, V18.20.4.5 (T-b2) shape: LLM runs ride a SimpleWorker —
-        # guard against the "QThread: Destroyed while thread is still
-        # running" abort class (the same T-b2 contract every
-        # worker-owning dialog carries).
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) is now
+    # INHERITED from BaseServiceDialog; the pre-B17 copy was
+    # byte-equivalent and was deleted.
 
     # ── V0.6.5: LLM structuring wiring ─────────────────────────────
+
+    def _get_service_name(self) -> str:
+        # V0.6.10 (B17): base-class identity hook. This dialog persists no
+        # controller settings (grep: zero controller.update_setting /
+        # controller.get_setting calls — the model defaults are read via
+        # Settings() with their legacy key shapes:
+        # quick_services.defaults.summarize_model / summarisation.model),
+        # so the name is identity-only.
+        return "markdown_styler"
 
     def _on_llm_toggled(self, checked: bool) -> None:
         """The model picker only matters for the LLM path."""
@@ -292,6 +288,12 @@ class MarkdownStylerDialog(QDialog):
     def _on_process(self):
         """V0.6.5: route to the LLM structuring pipeline (default) or the
         V11.71.0 deterministic path (unchecked / fallback)."""
+        # V0.6.10 (B17): kept override — the base's _on_process validates a
+        # generic text/output-path pair and spawns
+        # SimpleWorker(self._process, …); this dialog's contract is the
+        # ≥20-char guard, its own options dict, and the deterministic /
+        # LLM routing with the preview-then-save completion pair (no
+        # base-equivalent flow). Body unchanged.
         text = self.text_input.toPlainText().strip()
         if not text or len(text) < 20:
             QMessageBox.warning(
