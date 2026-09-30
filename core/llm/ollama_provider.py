@@ -34,6 +34,7 @@ from core.llm.retry import (
     retry_with_oom_context_halving,
 )
 from core.system.ollama_supervisor import OllamaSupervisor
+from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
 from utils.network import safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -401,7 +402,7 @@ class OllamaProvider(LLMProvider):
         try:
             from utils.network import safe_ollama_request
 
-            resp = safe_ollama_request("GET", f"{self.base_url}/api/ps", timeout=5)
+            resp = safe_ollama_request("GET", f"{self.base_url}/api/ps", timeout=UI_PROBE_TIMEOUT_S)
             data = resp.json()
             used_bytes = 0
             for _entry in data.get("models", []) or []:

@@ -70,6 +70,7 @@ import requests as _requests
 from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
+from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
 
 logger = logging.getLogger(__name__)
 
@@ -452,7 +453,7 @@ class LlamaCppProvider(LLMProvider):
                 resp = sess.get(
                     f"{self.base_url}/models",
                     headers=self._headers(),
-                    timeout=5,
+                    timeout=UI_PROBE_TIMEOUT_S,
                 )
                 if resp.status_code != 200:
                     return False

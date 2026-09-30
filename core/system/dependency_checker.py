@@ -32,6 +32,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
+
 # ── Status dataclass ──────────────────────────────────────────────────────
 
 
@@ -385,7 +387,7 @@ class DetailedDependencyChecker:
                     [cmd, "--version"],
                     capture_output=True,
                     text=True,
-                    timeout=5,
+                    timeout=UI_PROBE_TIMEOUT_S,
                 )
                 if result.returncode == 0:
                     version = result.stdout.strip().split("\n")[0][:60]

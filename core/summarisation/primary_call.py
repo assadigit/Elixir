@@ -41,6 +41,7 @@ from typing import Any
 # at windows > 32768 the strategy engine (core/summarisation/strategy.py)
 # disables b4_sections/chunked_output entirely.
 from core.llm.context_budget import LEGACY_WINDOW
+from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
 
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
@@ -93,7 +94,7 @@ def _read_gpu_temp_c() -> float:
             ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=UI_PROBE_TIMEOUT_S,
         )
         if _r.returncode == 0 and _r.stdout.strip():
             _temp = float(_r.stdout.strip().split()[0])

@@ -53,6 +53,11 @@ logger = logging.getLogger(__name__)
 # Backward-compat proxy kept so existing ``monkeypatch.setattr`` calls don't
 # break (but the impl reads/writes state.keep_alive_cache directly).
 from core.summarisation._runtime_state import state as _runtime_state
+from core.system.timeouts import (  # V0.6.10 (B15): the timeout policy leaf
+    LLM_REQUEST_TIMEOUT_S,
+    SLOW_LLM_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,
+)
 
 _keep_alive_cache: str | None = None  # backward-compat proxy (impl uses _runtime_state)
 
@@ -238,7 +243,7 @@ def create_provider(
                 "ollama",
                 configured=settings.get("summarisation.max_context_tokens"),
             ),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             supervisor=supervisor,
@@ -264,7 +269,7 @@ def create_provider(
         # the server is unreachable or /v1/models is empty.
         _detected_model = _configured_model
         try:
-            _served = list_llamacpp_models(_lc_base, _lc_key, timeout=5)
+            _served = list_llamacpp_models(_lc_base, _lc_key, timeout=UI_PROBE_TIMEOUT_S)
             if _served:
                 _detected_model = _served[0]
                 if _detected_model != _configured_model:
@@ -310,7 +315,7 @@ def create_provider(
             api_key=_get_secret("summarisation.api_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             label=provider.capitalize(),
@@ -324,7 +329,7 @@ def create_provider(
             api_key=_get_secret("summarisation.freellmapi_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             label="FreeLLMAPI",
@@ -338,7 +343,7 @@ def create_provider(
             base_url=settings.get("summarisation.claude_base_url", "https://api.anthropic.com/v1"),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=180,
+            timeout=SLOW_LLM_TIMEOUT_S,
             retries=1,
             log_callback=log,
         )

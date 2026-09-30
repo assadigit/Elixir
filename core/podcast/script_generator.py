@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 # service default now matches so programmatic callers don't hit the dead
 # tag).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
 
 logger = logging.getLogger(__name__)
 
@@ -1324,7 +1325,9 @@ def generate_podcast_script(
             # List available models to help the user
             available = []
             try:
-                tags_resp = _session_for_url(ollama_url).get(f"{ollama_url}/api/tags", timeout=5)
+                tags_resp = _session_for_url(ollama_url).get(
+                    f"{ollama_url}/api/tags", timeout=UI_PROBE_TIMEOUT_S
+                )
                 if tags_resp.status_code == 200:
                     available = [m.get("name", "") for m in tags_resp.json().get("models", [])]
             except Exception as _e:
