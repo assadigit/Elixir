@@ -41,6 +41,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPO = "assadigit/elixir"
 API = "https://api.github.com"
+UPLOADS = "https://uploads.github.com"  # asset uploads use a different host
 
 
 def _read_notes(tag: str) -> str:
@@ -147,7 +148,9 @@ def publish_release(
                 del_status, _ = _api("DELETE", endpoint, token, repo)
                 if del_status not in (204,):
                     print(f"   ⚠️ old asset delete returned {del_status} (continuing)")
-        upload_url = f"{API}/repos/{repo}/releases/{release_id}/assets?name={asset_name}"
+        # V0.6.5 fix: asset uploads go to uploads.github.com, NOT
+        # api.github.com (the API host 404s the multipart upload).
+        upload_url = f"{UPLOADS}/repos/{repo}/releases/{release_id}/assets?name={asset_name}"
         # Raw binary upload (the shared _api helper JSON-encodes payloads).
         req = urllib.request.Request(upload_url, data=zip_path.read_bytes(), method="POST")
         req.add_header("Authorization", f"Bearer {token}")
