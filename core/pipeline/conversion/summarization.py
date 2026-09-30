@@ -790,12 +790,17 @@ def run_summarization(
                         supervisor=None,
                     )
                     # Override the cloud settings to point at the fast API.
-                    if hasattr(_provider, "_base_url"):
-                        _provider._base_url = _api_url
-                    if hasattr(_provider, "_api_key"):
-                        _provider._api_key = _api_key
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _api_model
+                    # V0.6.8 (audit B4): the override now sets the PUBLIC
+                    # provider attributes — the old hasattr("_base_url"/
+                    # "_api_key"/"_model") guards were always False
+                    # (OpenAICompatProvider stores self.base_url/self.api_key
+                    # — openai_compat_provider.py:39-40), so the fast-API
+                    # URL/key were silently ignored and calls kept hitting
+                    # the settings cloud endpoint. Pinned by
+                    # tests/test_v068_review_loop_fixes.py.
+                    _provider.base_url = _api_url
+                    _provider.api_key = _api_key
+                    _provider.model = _api_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 120
                     _summ_model = _api_model
@@ -818,8 +823,10 @@ def run_summarization(
                         supervisor=None,
                     )
                     _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _summ_model
+                    # V0.6.8 (audit B4): public attr — the "_model" guard was
+                    # always False (OllamaProvider exposes self.model).
+                    if hasattr(_provider, "model"):
+                        _provider.model = _summ_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 300
             elif _arch == "dual_local":
@@ -834,8 +841,10 @@ def run_summarization(
                         log_callback=log,
                         supervisor=None,
                     )
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _fast_model
+                    # V0.6.8 (audit B4): public attr — the "_model" guard was
+                    # always False (OllamaProvider exposes self.model).
+                    if hasattr(_provider, "model"):
+                        _provider.model = _fast_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 120  # fast model = shorter timeout
                     _summ_model = _fast_model
@@ -858,8 +867,10 @@ def run_summarization(
                         supervisor=None,
                     )
                     _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _summ_model
+                    # V0.6.8 (audit B4): public attr — the "_model" guard was
+                    # always False (OllamaProvider exposes self.model).
+                    if hasattr(_provider, "model"):
+                        _provider.model = _summ_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 300
             else:
@@ -900,8 +911,10 @@ def run_summarization(
                         supervisor=None,
                     )
                     _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _summ_model
+                    # V0.6.8 (audit B4): public attr — the "_model" guard was
+                    # always False (OllamaProvider exposes self.model).
+                    if hasattr(_provider, "model"):
+                        _provider.model = _summ_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 300  # 5 min for concept extraction
                     log(
@@ -921,8 +934,10 @@ def run_summarization(
                         supervisor=None,
                     )
                     _summ_model = _settings.get("summarisation.cloud_model", "gpt-4o-mini")
-                    if hasattr(_provider, "_model"):
-                        _provider._model = _summ_model
+                    # V0.6.8 (audit B4): public attr — the "_model" guard was
+                    # always False (OpenAICompatProvider exposes self.model).
+                    if hasattr(_provider, "model"):
+                        _provider.model = _summ_model
                     if hasattr(_provider, "timeout"):
                         _provider.timeout = 300
                     log(
