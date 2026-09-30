@@ -240,15 +240,18 @@ class MarkdownStylerDialog(QDialog):
         except Exception:
             configured, base = RIG_FALLBACK_MODEL, "http://localhost:11434"
 
-        models: list[str] | None = None
+        models: list[str] = []
+        # V0.6.8 (review-loop follow-up, B5 class — the 7th site the fresh
+        # reviewer found): routed through the shared proxy-proof transport
+        # (was a bare requests.get that broke on HTTP_PROXY machines);
+        # timeout=3 preserves the original latency budget. The [] vs None
+        # distinction was vestigial (both took the same else-branch below).
         try:
-            import requests as _req
+            from utils.network import list_ollama_models
 
-            r = _req.get(f"{base}/api/tags", timeout=3)
-            if r.status_code == 200:
-                models = [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+            models = [m for m in list_ollama_models(base, timeout=3) if m]
         except Exception:
-            models = None  # unreachable — keep the default row
+            models = []  # unreachable/bad response — keep the default row
 
         current = self.model_combo.currentText().strip()
         self.model_combo.clear()

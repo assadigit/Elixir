@@ -387,7 +387,11 @@ class SummarizationServiceDialog(QDialog):
         # counts as unreachable (pre-fix any answer counted).
         if not is_ollama_reachable(base, timeout=int(timeout)):
             return None  # unreachable
-        models = list_ollama_models(base)
+        # V0.6.8 (review-loop follow-up): the caller's timeout budget now
+        # applies to the LIST call too (previously only the pre-check
+        # honored it; the helper's 10s default could block a worker for
+        # 3s+10s on a blackholed endpoint).
+        models = list_ollama_models(base, timeout=int(timeout))
         return models
 
     def _refresh_models(self) -> None:

@@ -238,7 +238,9 @@ class TranscribeServiceDialog(QDialog):
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            models = [m for m in list_ollama_models(ollama_url) if m]
+            # V0.6.8 (review-loop follow-up): timeout=5 preserves the
+            # original bare-call latency budget (the helper default is 10).
+            models = [m for m in list_ollama_models(ollama_url, timeout=5) if m]
             if models:
                 current = self.llm_combo.currentText()
                 self.llm_combo.clear()

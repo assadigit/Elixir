@@ -578,7 +578,9 @@ class TranslationServiceDialog(BaseServiceDialog):
 
         models: list[str] = []
         try:
-            models = [m for m in list_ollama_models(ollama_url) if m]
+            # V0.6.8 (review-loop follow-up): timeout=5 preserves the
+            # original bare-call latency budget (the helper default is 10).
+            models = [m for m in list_ollama_models(ollama_url, timeout=5) if m]
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 

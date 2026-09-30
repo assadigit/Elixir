@@ -1549,7 +1549,7 @@ class TestDialogHermeticHelpers:
 
         seen: list[str] = []
 
-        def fake_list(base_url="http://localhost:11434"):
+        def fake_list(base_url="http://localhost:11434", timeout=10):
             seen.append(base_url)
             return ["qwen3:8b", "translategemma-12b-it.Q4_K_M_mradermacher:latest"]
 

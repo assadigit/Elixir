@@ -170,9 +170,16 @@ def is_ollama_reachable(base_url: str = "http://localhost:11434", timeout: int =
         return False
 
 
-def list_ollama_models(base_url: str = "http://localhost:11434") -> list:
+def list_ollama_models(base_url: str = "http://localhost:11434", timeout: int = 10) -> list:
+    """List installed Ollama model names via ``/api/tags``.
+
+    V0.6.8 (review-loop follow-up): gained a ``timeout`` parameter so UI
+    callers can keep their own latency budgets (the pre-B5 bare calls used
+    3-5s; the shared 10s default doubled worst-case UI-thread blocks on
+    blackholed endpoints).
+    """
     try:
-        resp = safe_ollama_request("GET", f"{base_url}/api/tags", timeout=10)
+        resp = safe_ollama_request("GET", f"{base_url}/api/tags", timeout=timeout)
         data = resp.json()
         return [model["name"] for model in data.get("models", [])]
     except (ConnectionError, TimeoutError, OSError):
