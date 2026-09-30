@@ -640,3 +640,405 @@ class TestSaveBlockWiring:
         # the write-once contract marker survived the move
         assert "has_complete_sentinel(_existing_sf)" in src
         assert "errno == 28" in src
+
+
+# ── B8: the four 0%-coverage live modules, characterized ─────────────────────
+
+
+class TestDependencyCheckerCacheAndCheckAll:
+    """utils/dependencies.py — check_all / the TTL cache / the server probe
+    (the vision split is pinned above in TestDependenciesVisionSplit)."""
+
+    def test_cache_ttl_hit_and_expiry(self):
+        import utils.dependencies as deps_mod
+
+        checker = deps_mod.DependencyChecker(cache_ttl=10.0)
+        calls = []
+
+        def fetch():
+            calls.append(1)
+            return ["m1"]
+
+        assert checker._get_cached("k", fetch) == ["m1"]
+        assert checker._get_cached("k", fetch) == ["m1"]  # within TTL → cached
+        assert len(calls) == 1
+        # force expiry
+        checker._cache_time["k"] -= 20.0
+        assert checker._get_cached("k", fetch) == ["m1"]  # refetched
+        assert len(calls) == 2
+
+    def test_server_running_true_false(self, monkeypatch):
+        import utils.dependencies as deps_mod
+
+        checker = deps_mod.DependencyChecker()
+
+        class _Resp:
+            status_code = 200
+
+        class _Sess:
+            def get(self, url, timeout=None):
+                return _Resp()
+
+        monkeypatch.setattr(checker, "_session", _Sess())
+        assert checker._is_ollama_server_running() is True
+
+        class _Down:
+            def get(self, url, timeout=None):
+                raise ConnectionError("refused")
+
+        monkeypatch.setattr(checker, "_session", _Down())
+        assert checker._is_ollama_server_running() is False
+
+    def test_check_all_shape_and_model_split(self, monkeypatch):
+        """check_all with the server up + a model list: the vision/text
+        split comes from the SSOT; every dependency key is present."""
+        import utils.dependencies as deps_mod
+
+        checker = deps_mod.DependencyChecker()
+
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "models": [
+                        {"name": "minicpm-v"},
+                        {"name": "llama3.1:8b"},
+                        {"name": "qwen2.5-vl:7b"},
+                    ]
+                }
+
+        class _Sess:
+            def get(self, url, timeout=None):
+                return _Resp()
+
+        monkeypatch.setattr(checker, "_session", _Sess())
+        monkeypatch.setattr(checker, "_is_ollama_server_running", lambda: True)
+        deps = checker.check_all()
+        for key in (
+            "markitdown",
+            "tesseract",
+            "ollama",
+            "ollama_running",
+            "models",
+            "vision_models",
+            "text_models",
+            "markdowncleaner",
+            "wordninja",
+            "python_docx",
+            "pdf2image",
+        ):
+            assert key in deps, key
+        assert deps["ollama_running"] is True
+        assert deps["models"] == ["minicpm-v", "llama3.1:8b", "qwen2.5-vl:7b"]
+        assert deps["vision_models"] == ["minicpm-v", "qwen2.5-vl:7b"]
+        assert deps["text_models"] == ["llama3.1:8b"]
+
+    def test_check_all_server_down_defaults(self, monkeypatch):
+        import utils.dependencies as deps_mod
+
+        checker = deps_mod.DependencyChecker()
+        monkeypatch.setattr(checker, "_is_ollama_server_running", lambda: False)
+        deps = checker.check_all()
+        assert deps["ollama_running"] is False
+        assert deps["models"] == []
+        assert deps["vision_models"] == []
+
+    def test_model_exists_uses_the_model_list(self, monkeypatch):
+        import utils.dependencies as deps_mod
+
+        checker = deps_mod.DependencyChecker()
+        monkeypatch.setattr(checker, "_get_cached", lambda key, fetcher: ["qwen3:8b", "minicpm-v"])
+        assert checker.model_exists("minicpm-v") is True
+        assert checker.model_exists("gemma3:12b") is False
+
+
+class TestProfilesRoundtrip:
+    """core/pipeline/profiles.py — the wizard's named-settings profiles.
+    _PROFILES_DIR is redirected to tmp_path (the module writes the real
+    ~/.elixir otherwise — the suite-wide hermeticity question is a separate
+    open operator decision, but NEW tests must not add to it)."""
+
+    @pytest.fixture(autouse=True)
+    def _profiles_dir(self, tmp_path, monkeypatch):
+        import core.pipeline.profiles as profiles_mod
+
+        monkeypatch.setattr(profiles_mod, "_PROFILES_DIR", tmp_path / "profiles")
+        return profiles_mod
+
+    def test_sanitize_name(self):
+        from core.pipeline.profiles import _sanitize_name
+
+        assert _sanitize_name('My "Book": Psychology?') == "My_Book_Psychology"
+        assert _sanitize_name("a/b\\c|d*e") == "abcde"
+        assert _sanitize_name("   spaced   name   ") == "spaced_name"
+        assert len(_sanitize_name("x" * 100)) == 60
+        assert _sanitize_name(":::") == ""
+
+    def test_save_list_load_delete_roundtrip(self):
+        from core.pipeline.profiles import delete_profile, list_profiles, load_profile, save_profile
+
+        settings = {"source_type": "academic_paper", "outputs": {"briefing": True}}
+        assert save_profile("Psychology Book", settings) is True
+        profiles = list_profiles()
+        assert len(profiles) == 1
+        assert profiles[0]["name"] == "Psychology Book"
+        assert profiles[0]["created_at"]  # ISO timestamp recorded
+        assert load_profile("Psychology Book") == settings
+        assert delete_profile("Psychology Book") is True
+        assert load_profile("Psychology Book") is None
+        assert delete_profile("Psychology Book") is False  # already gone
+
+    def test_load_missing_returns_none(self):
+        from core.pipeline.profiles import load_profile
+
+        assert load_profile("Never Saved") is None
+
+    def test_save_empty_name_false(self):
+        from core.pipeline.profiles import save_profile
+
+        assert save_profile(":::", {"a": 1}) is False  # sanitizes to empty
+
+    def test_list_skips_corrupt_json(self, tmp_path):
+        import core.pipeline.profiles as profiles_mod
+
+        (tmp_path / "profiles").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "profiles" / "corrupt.json").write_text("{not json", encoding="utf-8")
+        assert profiles_mod.save_profile("Good One", {"k": 1}) is True
+        profiles = profiles_mod.list_profiles()
+        assert [p["name"] for p in profiles] == ["Good One"]  # corrupt skipped
+
+
+class TestMultiPdfMerge:
+    """core/pipeline/multi_pdf_merge.py — merge_books."""
+
+    @staticmethod
+    def _make_book(root: Path, name: str, summary: str, keypoints: str | None):
+        book = root / name
+        (book / "summaries").mkdir(parents=True, exist_ok=True)
+        (book / "summaries" / f"{name}.summary.md").write_text(summary, encoding="utf-8")
+        if keypoints is not None:
+            (book / "keypoints").mkdir(parents=True, exist_ok=True)
+            (book / "keypoints" / f"{name}.Keypoints.md").write_text(keypoints, encoding="utf-8")
+        return book
+
+    def test_merge_happy_path(self, tmp_path):
+        from core.pipeline.multi_pdf_merge import merge_books
+
+        b1 = self._make_book(tmp_path, "book1", "Summary of book one.", "Kp of book one.")
+        b2 = self._make_book(tmp_path, "book2", "Summary of book two.", "Kp of book two.")
+        out = tmp_path / "merged"
+        logs: list[tuple[str, str]] = []
+        result = merge_books([b1, b2], out, log_callback=lambda m, l="INFO": logs.append((l, m)))
+        assert result == out / "Merged_Summary.md"
+        summary = result.read_text(encoding="utf-8")
+        assert summary.startswith("# Merged Summary: book1, book2")
+        assert "**2 books merged**" in summary
+        assert "## From: book1" in summary and "Summary of book one." in summary
+        assert "## From: book2" in summary and "Summary of book two." in summary
+        assert "\n\n---\n\n" in summary  # the section separator
+        kp = (out / "Merged_Keypoints.md").read_text(encoding="utf-8")
+        assert kp.startswith("# Merged Keypoints: book1, book2")
+        assert "Kp of book one." in kp and "Kp of book two." in kp
+        assert any("Merged summary: 2 books" in m for (_, m) in logs)
+
+    def test_missing_book_dir_skipped_with_warning(self, tmp_path):
+        from core.pipeline.multi_pdf_merge import merge_books
+
+        b1 = self._make_book(tmp_path, "book1", "Only book summary.", None)
+        logs: list[tuple[str, str]] = []
+        result = merge_books(
+            [b1, tmp_path / "nope"],
+            tmp_path / "merged",
+            log_callback=lambda m, l="INFO": logs.append((l, m)),
+        )
+        assert result is not None
+        assert "book1" in result.read_text(encoding="utf-8")
+        assert any("nope" in m and "not found" in m for (_, m) in logs)
+
+    def test_no_summaries_anywhere_returns_none(self, tmp_path):
+        from core.pipeline.multi_pdf_merge import merge_books
+
+        logs: list[tuple[str, str]] = []
+        result = merge_books(
+            [], tmp_path / "merged", log_callback=lambda m, l="INFO": logs.append((l, m))
+        )
+        assert result is None
+        assert any("no summaries found" in m for (_, m) in logs)
+        assert not (tmp_path / "merged").exists()  # nothing written
+
+    def test_no_keypoints_writes_no_keypoints_file(self, tmp_path):
+        from core.pipeline.multi_pdf_merge import merge_books
+
+        b1 = self._make_book(tmp_path, "book1", "Summary only.", None)
+        out = tmp_path / "merged"
+        result = merge_books([b1], out, log_callback=None)
+        assert result == out / "Merged_Summary.md"
+        assert not (out / "Merged_Keypoints.md").exists()
+
+    def test_first_summary_file_wins_sorted(self, tmp_path):
+        from core.pipeline.multi_pdf_merge import merge_books
+
+        book = tmp_path / "book1"
+        (book / "summaries").mkdir(parents=True)
+        (book / "summaries" / "aaa.summary.md").write_text("AAA first.", encoding="utf-8")
+        (book / "summaries" / "zzz.summary.md").write_text("ZZZ second.", encoding="utf-8")
+        result = merge_books([book], tmp_path / "merged", log_callback=None)
+        assert "AAA first." in result.read_text(encoding="utf-8")
+        assert "ZZZ second." not in result.read_text(encoding="utf-8")
+
+
+class TestPodcastCoverage:
+    """core/outputs/podcast_coverage.py — the ≥90% podcast coverage gate."""
+
+    def test_extract_key_phrases_quoted_capitalized_long_bigram(self):
+        from core.outputs.podcast_coverage import _extract_key_phrases
+
+        kp = 'The "End Game" strategy relies on Kahneman-style System thinking and Default Mode Networks'
+        phrases = _extract_key_phrases(kp)
+        # CHARACTERIZED (not the intuitive reading): the top-5-by-length cap
+        # crowds the 8-char quoted phrase "end game" OUT — longer bigrams
+        # win. Pinned exactly (stable-order sort by length desc):
+        assert phrases == [
+            "kahneman-style system",
+            "strategy relies",
+            "system thinking",
+            "game strategy",
+            "mode networks",
+        ]
+        assert "end game" not in phrases  # the crowd-out quirk, documented
+        assert len(phrases) == 5  # top-5 cap
+
+    def test_extract_key_phrases_single_quotes_not_matched(self):
+        """DOCUMENTED LIMITATION (recorded as a finding): the quoted-phrase
+        rule only matches DOUBLE quotes, and any word < 4 chars is dropped
+        from bigrams — so 'end game' in single quotes, or in plain text,
+        is never extractable. Coverage for such keypoints relies on their
+        OTHER phrases (or fails open when none exist)."""
+        from core.outputs.podcast_coverage import _extract_key_phrases
+
+        # single-quoted → rule 1 misses it; 'end' is 3 chars → no bigram
+        assert _extract_key_phrases("The 'end game' of focus training") == ["focus training"]
+        assert _extract_key_phrases("uncover the end game again") == ["game again"]
+
+    def test_extract_key_phrases_stopwords_and_short_words_excluded(self):
+        from core.outputs.podcast_coverage import _extract_key_phrases
+
+        phrases = _extract_key_phrases("this is a test of the system")
+        # 'this is'/'is a'/'a test'... all contain stop/short words; the long-word
+        # regex needs ≥9 letters — nothing survives
+        assert phrases == []
+
+    def test_check_keypoint_covered_match_and_miss(self):
+        from core.outputs.podcast_coverage import _check_keypoint_covered
+
+        kp = 'The "End Game" concept matters'
+        ok, matched = _check_keypoint_covered(kp, "we discuss the end game at length")
+        assert ok is True and matched == "end game"
+        ok, matched = _check_keypoint_covered(kp, "completely unrelated text")
+        assert ok is False and matched is None
+
+    def test_check_keypoint_no_phrases_assumes_covered(self):
+        from core.outputs.podcast_coverage import _check_keypoint_covered
+
+        ok, matched = _check_keypoint_covered("a the is", "anything")
+        assert ok is True and matched is None  # fail-open
+
+    def test_coverage_report_thresholds(self):
+        from core.outputs.podcast_coverage import CoverageReport
+
+        complete = CoverageReport(total=4, covered_count=4, missing=[], percentage=100.0)
+        assert complete.needs_revision is False and complete.is_complete is True
+        borderline = CoverageReport(total=10, covered_count=9, missing=["k"], percentage=90.0)
+        assert borderline.needs_revision is False  # exactly 90% → no revision
+        failing = CoverageReport(total=10, covered_count=8, missing=["a", "b"], percentage=80.0)
+        assert failing.needs_revision is True and failing.is_complete is False
+        # percentage < 90 but NOTHING missing → no revision needed
+        odd = CoverageReport(total=0, covered_count=0, missing=[], percentage=100.0)
+        assert odd.needs_revision is False and odd.is_complete is True
+
+    @staticmethod
+    def _checker(logs):
+        from core.outputs.podcast_coverage import PodcastCoverageChecker
+
+        request = SimpleNamespace(summarisation_model="test-model")
+        return PodcastCoverageChecker(request, log_callback=lambda m, l="INFO": logs.append((l, m)))
+
+    def test_verify_counts_and_logs_missing(self):
+        logs: list[tuple[str, str]] = []
+        checker = self._checker(logs)
+        script = "The end game of focus training is deep work."
+        report = checker.verify(
+            script,
+            [
+                "- The 'end game' of focus training",  # covered via "focus training" (the quoted phrase itself is unextractable — see the limitation pin)
+                "Quantum chromatography alignment fails",  # not in script
+                "uncover the end game again",  # "game again" not in script → MISSING (the "end game" wording can't save it)
+            ],
+        )
+        assert report.total == 3
+        assert report.covered_count == 1
+        assert report.missing == [
+            "Quantum chromatography alignment fails",
+            "uncover the end game again",
+        ]
+        assert report.percentage == pytest.approx(33.33, abs=0.1)
+        assert report.needs_revision is True
+        assert any("NOT covered" in m for (_, m) in logs)
+        assert any("Coverage: 1/3" in m for (_, m) in logs)
+
+    def test_verify_empty_keypoints_complete(self):
+        logs: list[tuple[str, str]] = []
+        checker = self._checker(logs)
+        report = checker.verify("script", [])
+        assert report.total == 0 and report.percentage == 100.0
+        assert report.is_complete is True
+
+    def test_build_report_markdown(self):
+        from core.outputs.podcast_coverage import CoverageReport
+
+        logs: list[tuple[str, str]] = []
+        checker = self._checker(logs)
+        md = checker.build_report_markdown(
+            CoverageReport(total=2, covered_count=1, missing=["the missing one"], percentage=50.0)
+        )
+        assert "## Coverage Report" in md
+        assert "1/2 (50%)" in md
+        assert "### Missing Key Points" in md
+        assert "1. the missing one" in md
+        full = checker.build_report_markdown(
+            CoverageReport(total=2, covered_count=2, missing=[], percentage=100.0)
+        )
+        assert "✅ All key points are covered" in full
+
+    def test_revise_no_missing_returns_script_unchanged(self):
+        logs: list[tuple[str, str]] = []
+        checker = self._checker(logs)
+        assert checker.revise("SCRIPT", [], "Book") == "SCRIPT"
+
+    def test_revise_llm_success_and_failure_paths(self):
+        logs: list[tuple[str, str]] = []
+        checker = self._checker(logs)
+        rendered = {}
+
+        checker.prompt_manager = SimpleNamespace(
+            render_template=lambda tpl, **kw: rendered.update({"tpl": tpl, **kw}) or "PROMPT"
+        )
+        checker._call_llm = lambda prompt, temperature=None, max_tokens=None: (
+            "REVISED <think>x</think> BODY"
+        )
+        checker._strip_thinking = lambda text: "REVISED BODY"
+        assert checker.revise("SCRIPT", ["missing kp"], "Book") == "REVISED BODY"
+        assert rendered["tpl"] == "outputs/podcast_coverage_revise"
+        assert "- missing kp" in rendered["missing_text"]
+
+        # LLM failure → None + warning
+        checker._call_llm = lambda prompt, temperature=None, max_tokens=None: None
+        assert checker.revise("SCRIPT", ["missing kp"], "Book") is None
+        assert any("no LLM response" in m for (_, m) in logs)
+
+        # Empty revision → None + warning
+        checker._call_llm = lambda prompt, temperature=None, max_tokens=None: "resp"
+        checker._strip_thinking = lambda text: "   "
+        assert checker.revise("SCRIPT", ["missing kp"], "Book") is None
+        assert any("empty response" in m for (_, m) in logs)
