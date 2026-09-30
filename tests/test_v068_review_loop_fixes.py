@@ -237,3 +237,29 @@ class TestB5BareRequestsSwept:
         assert "list_llamacpp_models(" in s, (
             "the LM Studio OpenAI-style /v1/models branch must use the shared proxy-proof lister"
         )
+
+
+# ── B6: the RTL deps on all three install surfaces ─────────────────────────
+#
+# V0.6.5 added arabic-reshaper + python-bidi for RTL PDF shaping
+# (core/outputs/service_formatters.py) but only to requirements.txt — the
+# pyproject [project.dependencies] and requirements.lock surfaces lacked
+# them (audit B6 / dependency drift). All three must carry them.
+
+
+class TestB6RtlDepsOnAllSurfaces:
+    def test_rtl_deps_present_everywhere(self):
+        surfaces = {
+            "pyproject.toml": REPO / "pyproject.toml",
+            "requirements.txt": REPO / "requirements.txt",
+            "requirements.lock": REPO / "requirements.lock",
+        }
+        for name, path in surfaces.items():
+            src = path.read_text(encoding="utf-8")
+            assert "arabic-reshaper" in src, f"{name}: arabic-reshaper missing"
+            assert "python-bidi" in src, f"{name}: python-bidi missing"
+
+    def test_lock_pins_exact_versions(self):
+        lock = (REPO / "requirements.lock").read_text(encoding="utf-8")
+        assert "arabic-reshaper==3.0.1" in lock
+        assert "python-bidi==0.6.11" in lock

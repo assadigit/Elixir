@@ -26,6 +26,12 @@ aiosignal==1.4.0
 annotated-types==0.8.0
 anyio==4.15.1
 async-timeout==5.0.1
+# V0.6.8 (audit B6): the V0.6.5 RTL deps re-pinned here — the lock had
+# drifted since V0.6.5 (requirements.txt carried them, this file did
+# not). Versions resolved + import-verified in the audit sandbox venv
+# (arabic_reshaper.reshape + bidi.algorithm.get_display exercised by the
+# RTL suites); a full clean-install regeneration is a rig task.
+arabic-reshaper==3.0.1
 attrs==26.1.0
 azure-ai-contentunderstanding==1.2.0b3
 azure-ai-documentintelligence==1.0.2
@@ -113,6 +119,7 @@ PySide6==6.11.2
 PySide6_Addons==6.11.2
 PySide6_Essentials==6.11.2
 pytesseract==0.3.13
+python-bidi==0.6.11
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
 python-dotenv==1.2.3

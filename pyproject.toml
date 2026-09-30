@@ -35,6 +35,15 @@ dependencies = [
     # V0.16 (Phase 3 / 3.1): OS-keychain storage for API keys (Windows
     # Credential Manager via the keyring library). See core/system/secrets.py.
     "keyring>=25.0.0",
+    # V0.6.5: RTL output shaping — arabic_reshaper + bidi.algorithm
+    # .get_display produce the visual order ReportLab must draw for
+    # Farsi/Arabic PDF text (core/outputs/service_formatters.py; guarded
+    # import degrades to unshaped RTL with a WARNING when absent).
+    # V0.6.8 (audit B6): added HERE too — they had drifted into
+    # requirements.txt only, so 2 of the 3 install surfaces (pyproject +
+    # requirements.lock) lacked them.
+    "arabic-reshaper>=3.0.0",
+    "python-bidi>=0.4.2",
 ]
 
 [project.optional-dependencies]
