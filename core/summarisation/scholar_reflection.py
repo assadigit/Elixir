@@ -23,13 +23,25 @@ original methods. The Summarizer methods now delegate to these functions.
 **V18.6.3 crash mitigation**: Uses EXPLICIT PARAMETERS (not a context object).
 Matches the proven Phase 4 + Phase 5 + Batch 1-2 pattern.
 
-Characterization tests: ``tests/test_scholar_reflection.py`` captures the
-gap-identification, gap-fill (source-grounded), and gapfill-only paths with
-mocked ``call_fast_llm`` / ``prompt_manager`` / ``recover_vram``.
+**V0.6.10 (B12, the V0.6.7 god-function pattern)**: the 740-line CC-118 body
+split into phase helpers behind the ``_ScholarCtx`` dataclass —
+prepare / probe-gate / prompt / overflow-guard / LLM-call+retry / parse /
+grounding / dedup-merge — with the PUBLIC ``scholar_reflection`` signature
+and contract unchanged (the orchestrator keeps the original statement order;
+every helper body is the verbatim original block, ``ctx.X`` threading only).
+The AST-identity of the moved statements is verified by
+``tests/test_v0610_wave5_godfunction_decomp.py`` against the pre-split
+function. Characterization tests:
+``tests/test_scholar_reflection.py`` (the V18.12 net),
+``tests/test_v182042_p1_scholar_probe_gate.py`` (the probe gate),
+``tests/test_v1820412_b_semantics.py`` (the O-a4 retry + V0.20.2 overflow
+guards), ``tests/test_v0610_wave5_godfunction_decomp.py`` (the filler floor /
+budget trim / filter crash paths the older suites missed).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 from collections.abc import Callable
@@ -60,49 +72,57 @@ def _noop_log(msg: str, level: str = "INFO") -> None:
     pass
 
 
-# ── scholar_reflection (extracted verbatim) ────────────────────────────────
+# ── V0.6.10 (B12): the scholar-reflection phase context ─────────────────────
 
 
-def scholar_reflection(
-    heading: str,
-    text: str,
-    result: dict,
-    *,
-    max_context_tokens: int,
-    language: str,
-    temperature: float,
-    prompt_manager: PromptManagerLike,
-    recover_vram: RecoverVramFn,
-    call_fast_llm: CallFastLlmFn,
-    strip_thinking: StripThinkingFn,
-    filter_thinking_bullets: FilterThinkingFn | None = None,
-    log: LogCallback | None = None,
-    bullet_cap: int | None = None,
-) -> None:
-    """V13.41.0: Meta-cognitive reflection — the LLM reviews its own summary for gaps.
+@dataclasses.dataclass
+class _ScholarCtx:
+    """V0.6.10 (B12): the phase-shared state for ONE ``scholar_reflection`` run.
 
-    V13.42.0: Now also FILLS the gaps — generates missing content as new bullets
-    and adds them to the summary. The scholar reflection identifies what's
-    missing, writes a bullet for each gap (with a verbatim source quote),
-    and the bullets are appended to the summary's bullet_points list.
-
-    Anti-hallucination: each gap-fill bullet MUST include a verbatim quote
-    from the source. Bullets that can't be source-ground are dropped.
-
-    Extracted verbatim from ``Summarizer._scholar_reflection``. The only
-    changes are ``self.X`` → named parameters. The full-summary overview
-    (V18.2 audit Fix 1 — no aggressive truncation), the deterministic theorist
-    extraction with the expanded stopword list (V13.45.0), the VRAM recovery
-    before the call, the two-section parsing (``<scholar_reflections>`` +
-    ``<gap_fill_bullets>``), the source-grounding of gap-fill bullets (60%
-    quote-word match), the dedup against existing bullets, and the result-dict
-    mutation are byte-for-byte identical.
-
-    Mutates ``result`` in-place: extends ``result["bullet_points"]`` with
-    source-grounded gap-fill bullets and sets ``result["scholar_reflections"]``
-    to the identification text.
+    The V0.6.7 god-function decomposition pattern: the 13 public parameters
+    plus the derived per-phase state (the overview, the truncated source, the
+    theorist roster, the rendered prompt, the raw response + truncation flag,
+    the parsed sections, the merge count) live HERE so each phase helper is a
+    pure ``ctx`` reader/writer and the orchestrator keeps the original
+    statement order. Nothing here is public — the module API is still the two
+    functions below.
     """
-    log = log or _noop_log
+
+    # the 13 public parameters (same order as the signature)
+    heading: str
+    text: str
+    result: dict
+    max_context_tokens: int
+    language: str
+    temperature: float
+    prompt_manager: PromptManagerLike
+    recover_vram: RecoverVramFn
+    call_fast_llm: CallFastLlmFn
+    strip_thinking: StripThinkingFn
+    filter_thinking_bullets: FilterThinkingFn | None = None
+    log: LogCallback = _noop_log
+    bullet_cap: int | None = None
+    # derived per-phase state (V0.6.10 / B12 — names match the original locals)
+    bullets: list = dataclasses.field(default_factory=list)
+    summary_overview: str = ""
+    src_text: str = ""
+    theorists_found: list = dataclasses.field(default_factory=list)
+    prompt: str = ""
+    raw: str = ""
+    response_truncated: bool = False
+    reflections_text: str = ""
+    gap_text: str = ""
+    gfm_closed: bool = False
+    gap_bullets_added: int = 0
+
+
+# ── phase 1: prepare (overview + truncated source + theorist roster) ────────
+
+
+def _sr_prepare(ctx: _ScholarCtx) -> None:
+    """V0.6.10 (B12): the verbatim overview/src/theorist block — sets
+    ``ctx.summary_overview``, ``ctx.src_text``, ``ctx.theorists_found``."""
+    result = ctx.result
     # Build a concise summary overview for the LLM to review
     _exec = result.get("executive_summary", "") or ""
     _bullets = result.get("bullet_points", []) or []
@@ -134,8 +154,8 @@ THEORETICAL TENSIONS:
 {_tt}"""
 
     # Truncate source text to fit context window
-    max_src = max(max_context_tokens - 2500, 8000)
-    src_text = text[: max_src * 4]
+    max_src = max(ctx.max_context_tokens - 2500, 8000)
+    src_text = ctx.text[: max_src * 4]
 
     # V13.45.0: Deterministic theorist extraction — find all "Surname (year)"
     # patterns in the source so we can ask the LLM to verify each is covered.
@@ -166,6 +186,23 @@ THEORETICAL TENSIONS:
             theorists_found.append(key)
     # Cap to keep prompt manageable
     theorists_found = theorists_found[:30]
+
+    ctx.bullets = _bullets
+    ctx.summary_overview = _summary_overview
+    ctx.src_text = src_text
+    ctx.theorists_found = theorists_found
+
+
+# ── phase 2: the deterministic probe-gate ───────────────────────────────────
+
+
+def _sr_probe_gate(ctx: _ScholarCtx) -> bool:
+    """V0.6.10 (B12): the verbatim probe-gate block — True when the chapter
+    should SKIP the LLM call entirely (all named authors already covered)."""
+    log = ctx.log
+    result = ctx.result
+    theorists_found = ctx.theorists_found
+    _bullets = ctx.bullets
 
     # V18.20.4.2 (P1 / F9, Phase 3.c): deterministic probe-gate BEFORE the
     # 6144-token LLM call — mirrors the V18.20.3.11 consolidation skip
@@ -205,7 +242,18 @@ THEORETICAL TENSIONS:
             "INFO",
         )
         result["scholar_reflections"] = ""
-        return
+        return True
+    return False
+
+
+# ── phase 3: the prompt build + VRAM recovery ───────────────────────────────
+
+
+def _sr_build_prompt(ctx: _ScholarCtx) -> None:
+    """V0.6.10 (B12): the verbatim theorists-hint / language / prompt-render /
+    pre-call log / recover_vram block — sets ``ctx.prompt``."""
+    log = ctx.log
+    theorists_found = ctx.theorists_found
 
     theorists_hint = ""
     if theorists_found:
@@ -214,12 +262,12 @@ THEORIST COVERAGE CHECK — Authors cited in source: {", ".join(theorists_found)
 Verify EACH appears in the summary with their specific contribution. Flag ANY missing. Secondary contributors are EASIEST to miss.
 """
 
-    lang = "Write in Persian (Farsi)." if language == "fa" else "Write in English."
-    prompt = prompt_manager.render_template(
+    lang = "Write in Persian (Farsi)." if ctx.language == "fa" else "Write in English."
+    prompt = ctx.prompt_manager.render_template(
         "summarisation/scholar_reflection",
-        heading=heading,
-        src_text=src_text,
-        summary_overview=_summary_overview,
+        heading=ctx.heading,
+        src_text=ctx.src_text,
+        summary_overview=ctx.summary_overview,
         theorists_hint=theorists_hint,
         language=lang,
     )
@@ -234,7 +282,22 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
 
     # V13.41.0: VRAM recovery before scholar reflection — this runs at the
     # very end after B4 + gap-fill + judge + recovery, when GPU is most exhausted.
-    recover_vram(context="pre-scholar-reflection", delay_sec=15.0)
+    ctx.recover_vram(context="pre-scholar-reflection", delay_sec=15.0)
+
+    ctx.prompt = prompt
+
+
+# ── phase 4: the prompt-overflow guard (V0.20.2 Defect L1) ──────────────────
+
+
+def _sr_prompt_overflow_skip(ctx: _ScholarCtx) -> bool:
+    """V0.6.10 (B12): the verbatim V0.20.2 prompt-cap guard — True when the
+    single-big-call gap-fill should be SKIPPED (the batch gap-fill fallback
+    becomes the default)."""
+    log = ctx.log
+    result = ctx.result
+    prompt = ctx.prompt
+    max_context_tokens = ctx.max_context_tokens
 
     # V0.20.2 (Quality Campaign, conversion-log audit Defect L1): skip the
     # scholar reflection's single-big-call gap-fill when its prompt would
@@ -277,510 +340,636 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
             "WARNING",
         )
         result["scholar_reflections"] = ""
-        return
+        return True
+    return False
 
+
+# ── phase 5: the LLM call + truncation detection + the one O-a4 retry ───────
+
+
+def _sr_call_llm(ctx: _ScholarCtx) -> bool:
+    """V0.6.10 (B12): the verbatim call/strip/truncation-eval/O-a4-retry
+    block. Returns False when the call came back EMPTY (the original
+    ``if not raw`` early-return); otherwise sets ``ctx.raw`` (post-strip,
+    post-retry combined text) + ``ctx.response_truncated`` and returns True."""
+    log = ctx.log
+    prompt = ctx.prompt
+    temperature = ctx.temperature
+
+    # V18.20.3.1 (real-rig audit D7): 3000 → 4096. The V18.20.3.0 run cut
+    # the scholar response at the 3000 cap (done_reason=length, 11171
+    # chars out) — "identified gaps but could not fill them" was the
+    # truncation, not the model's verdict. 4096 stays under the 8192
+    # output ceiling.
+    # V18.20.3.2 (audit D7 follow-up / P1-d): 4096 -> 6144. The V18.20.3.1
+    # run STILL hit the 4096 cap (done_reason=length, 15,297 chars out)
+    # and "no significant gaps found" was parsed from the TRUNCATED
+    # response \u2014 the gap analysis never completed, so the verdict was
+    # unreliable. 6144 = 75% of the output ceiling.
+    raw = ctx.call_fast_llm(prompt, temperature=temperature, max_tokens=6144)
+    if not raw:
+        log("    \u26a0\ufe0f Scholar reflection returned empty \u2014 skipping", "WARNING")
+        return False
+    raw = ctx.strip_thinking(raw)
+
+    # V18.20.3.5 (audit v182034): authoritative truncation signal from
+    # the provider (done_reason=length, propagated via ContextVar — see
+    # core/llm/call_meta.py). The V18.20.3.4 rig run's scholar response
+    # was cut at 26,237 chars BEFORE <gap_fill_bullets> ever opened, the
+    # tag heuristic below evaluated False, and the pipeline logged a
+    # clean "no significant gaps found" from an analysis that never
+    # finished. The provider flag has no such blind spot.
     try:
-        # V18.20.3.1 (real-rig audit D7): 3000 → 4096. The V18.20.3.0 run cut
-        # the scholar response at the 3000 cap (done_reason=length, 11171
-        # chars out) — "identified gaps but could not fill them" was the
-        # truncation, not the model's verdict. 4096 stays under the 8192
-        # output ceiling.
-        # V18.20.3.2 (audit D7 follow-up / P1-d): 4096 -> 6144. The V18.20.3.1
-        # run STILL hit the 4096 cap (done_reason=length, 15,297 chars out)
-        # and "no significant gaps found" was parsed from the TRUNCATED
-        # response \u2014 the gap analysis never completed, so the verdict was
-        # unreliable. 6144 = 75% of the output ceiling.
-        raw = call_fast_llm(prompt, temperature=temperature, max_tokens=6144)
-        if not raw:
-            log("    \u26a0\ufe0f Scholar reflection returned empty \u2014 skipping", "WARNING")
-            return
-        raw = strip_thinking(raw)
+        from core.llm.call_meta import consume_call_truncated
 
-        # V18.20.3.5 (audit v182034): authoritative truncation signal from
-        # the provider (done_reason=length, propagated via ContextVar — see
-        # core/llm/call_meta.py). The V18.20.3.4 rig run's scholar response
-        # was cut at 26,237 chars BEFORE <gap_fill_bullets> ever opened, the
-        # tag heuristic below evaluated False, and the pipeline logged a
-        # clean "no significant gaps found" from an analysis that never
-        # finished. The provider flag has no such blind spot.
+        _provider_truncated = consume_call_truncated()
+    except Exception:  # pragma: no cover — flag must never break the stage
+        _provider_truncated = False
+
+    # V18.20.3.2 (P1-d): truncation signal for the verdict-qualification
+    # below. The response format asks for <scholar_reflections> then
+    # <gap_fill_bullets> (in that order). When the LAST section's closing
+    # tag is missing, generation was cut mid-output \u2014 any "no gaps"
+    # verdict parsed from an unclosed <scholar_reflections> section is
+    # the truncation point, NOT the model's conclusion.
+    # V18.20.3.5: the heuristic is BROADENED — but it must still TRUST a
+    # properly closed verdict: "<scholar_reflections>none</scholar_
+    # reflections>" with no gap-fill section is a compliant "no gaps"
+    # answer. The suspect shapes are (a) <gap_fill_bullets> opened but
+    # never closed, and (b) the gap-fill section entirely absent WHILE
+    # the reflections section is also absent-or-unclosed (the .3.4 rig
+    # response was cut before ANY section completed). Kept as the
+    # fallback signal because it is provider-agnostic; the provider
+    # flag above is the primary.
+    _rl = raw.lower()
+    _has_refl_open = "<scholar_reflections>" in _rl
+    _has_refl_close = "</scholar_reflections>" in _rl
+    _has_gf_open = "<gap_fill_bullets>" in _rl
+    _has_gf_close = "</gap_fill_bullets>" in _rl
+    _response_truncated = (
+        _provider_truncated
+        or (_has_gf_open and not _has_gf_close)
+        or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
+    )
+
+    # V18.20.4.12 (O-a4): ONE additive continuation retry — ports the
+    # V18.20.3.2 additive mass-truncation retry shape (additive_sections
+    # P1-e: ONE retry, additive result) to the scholar call. History:
+    # the .3.1/.3.2/.3.4/.3.7/.3.8/.3.14 rig runs repeatedly hit the
+    # 6144-token cap mid-gap-analysis, and the only remedy was the
+    # verdict-qualification below (the verdict can't be trusted) — the
+    # analysis CONTENT was still lost. When truncation is detected
+    # (provider flag OR tag heuristic), issue ONE continuation call
+    # (the original prompt + a short suffix pointing the model at where
+    # its output stopped), concatenate the continuation onto the
+    # response (additive — the parse below then sees the completed
+    # sections), and re-evaluate truncation on the COMBINED text (the
+    # provider flag is re-read AFTER the second call — the ContextVar
+    # is consume-on-read). Still truncated after the one retry → the
+    # EXISTING parse + verdict-qualification path runs UNCHANGED. A
+    # retry crash falls back to the original single-parse path
+    # (fail-open, WARNING). ONE retry max — no sleeps, no budget
+    # changes; max_tokens stays 6144.
+    if _response_truncated:
+        # V0.20.2 (Quality Campaign, conversion-log audit Defect L2):
+        # the O-a4 retry is COUNTERPRODUCTIVE when the scholar prompt is
+        # already near the context cap. The retry prompt = the original
+        # prompt + a ~60-token continuation suffix + the last 2000 chars
+        # of the truncated response, so it is ALWAYS larger than the
+        # original prompt. When the original prompt is already near the
+        # context cap, the retry hits the CONTEXT window (not the
+        # output cap) and produces even less output. The V0.18 rig run
+        # (run 20260920-084745-c0874728) showed this exactly: call 5
+        # prompt 13418 tok + output 2710 tok (truncated at the 8192
+        # output cap); the O-a4 retry (call 6) prompt grew to 14003 tok
+        # + output 2125 tok = 16128 > 16000 num_ctx → done_reason=length
+        # AGAIN, and the output was dropped (no quotes). 133s wasted.
+        # The V18.14.1 batch gap-fill (already chunked, small prompts,
+        # quote-enforced) is the working fallback — it ran immediately
+        # after and produced 27 bullets in 384s.
+        #
+        # Content-agnostic guard (no chapter-specific thresholds): the
+        # retry is skipped when the continuation prompt would leave less
+        # than MIN_OUTPUT_ROOM_FOR_RETRY tokens of output headroom under
+        # the context cap. The threshold is a RATIO of the output budget
+        # the retry requests (max_tokens=6144) — 25%, i.e. 1536 tok. This
+        # is the minimum useful output a retry could produce; a retry
+        # that can only emit < 1536 tok before hitting the context cap
+        # cannot complete a truncated gap_fill_bullets section.
         try:
-            from core.llm.call_meta import consume_call_truncated
+            from utils.token_counter import count_tokens
 
-            _provider_truncated = consume_call_truncated()
-        except Exception:  # pragma: no cover — flag must never break the stage
-            _provider_truncated = False
+            _prompt_tok = count_tokens(prompt)
+            # Continuation overhead: the ~60-token suffix + the last
+            # 2000 chars of `raw` (≈500 tok). Conservative estimate.
+            _cont_overhead_tok = 60 + count_tokens(raw[-2000:])
+            _retry_max_output = 6144
+            _min_output_room = _retry_max_output // 4  # 1536 tok
+            _retry_would_overflow = (
+                _prompt_tok + _cont_overhead_tok + _min_output_room > ctx.max_context_tokens
+            )
+        except Exception:  # pragma: no cover — guard must never break the stage
+            _retry_would_overflow = False
 
-        # V18.20.3.2 (P1-d): truncation signal for the verdict-qualification
-        # below. The response format asks for <scholar_reflections> then
-        # <gap_fill_bullets> (in that order). When the LAST section's closing
-        # tag is missing, generation was cut mid-output \u2014 any "no gaps"
-        # verdict parsed from an unclosed <scholar_reflections> section is
-        # the truncation point, NOT the model's conclusion.
-        # V18.20.3.5: the heuristic is BROADENED — but it must still TRUST a
-        # properly closed verdict: "<scholar_reflections>none</scholar_
-        # reflections>" with no gap-fill section is a compliant "no gaps"
-        # answer. The suspect shapes are (a) <gap_fill_bullets> opened but
-        # never closed, and (b) the gap-fill section entirely absent WHILE
-        # the reflections section is also absent-or-unclosed (the .3.4 rig
-        # response was cut before ANY section completed). Kept as the
-        # fallback signal because it is provider-agnostic; the provider
-        # flag above is the primary.
-        _rl = raw.lower()
-        _has_refl_open = "<scholar_reflections>" in _rl
-        _has_refl_close = "</scholar_reflections>" in _rl
-        _has_gf_open = "<gap_fill_bullets>" in _rl
-        _has_gf_close = "</gap_fill_bullets>" in _rl
-        _response_truncated = (
-            _provider_truncated
-            or (_has_gf_open and not _has_gf_close)
-            or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
-        )
-
-        # V18.20.4.12 (O-a4): ONE additive continuation retry — ports the
-        # V18.20.3.2 additive mass-truncation retry shape (additive_sections
-        # P1-e: ONE retry, additive result) to the scholar call. History:
-        # the .3.1/.3.2/.3.4/.3.7/.3.8/.3.14 rig runs repeatedly hit the
-        # 6144-token cap mid-gap-analysis, and the only remedy was the
-        # verdict-qualification below (the verdict can't be trusted) — the
-        # analysis CONTENT was still lost. When truncation is detected
-        # (provider flag OR tag heuristic), issue ONE continuation call
-        # (the original prompt + a short suffix pointing the model at where
-        # its output stopped), concatenate the continuation onto the
-        # response (additive — the parse below then sees the completed
-        # sections), and re-evaluate truncation on the COMBINED text (the
-        # provider flag is re-read AFTER the second call — the ContextVar
-        # is consume-on-read). Still truncated after the one retry → the
-        # EXISTING parse + verdict-qualification path runs UNCHANGED. A
-        # retry crash falls back to the original single-parse path
-        # (fail-open, WARNING). ONE retry max — no sleeps, no budget
-        # changes; max_tokens stays 6144.
-        if _response_truncated:
-            # V0.20.2 (Quality Campaign, conversion-log audit Defect L2):
-            # the O-a4 retry is COUNTERPRODUCTIVE when the scholar prompt is
-            # already near the context cap. The retry prompt = the original
-            # prompt + a ~60-token continuation suffix + the last 2000 chars
-            # of the truncated response, so it is ALWAYS larger than the
-            # original prompt. When the original prompt is already near the
-            # context cap, the retry hits the CONTEXT window (not the
-            # output cap) and produces even less output. The V0.18 rig run
-            # (run 20260920-084745-c0874728) showed this exactly: call 5
-            # prompt 13418 tok + output 2710 tok (truncated at the 8192
-            # output cap); the O-a4 retry (call 6) prompt grew to 14003 tok
-            # + output 2125 tok = 16128 > 16000 num_ctx → done_reason=length
-            # AGAIN, and the output was dropped (no quotes). 133s wasted.
-            # The V18.14.1 batch gap-fill (already chunked, small prompts,
-            # quote-enforced) is the working fallback — it ran immediately
-            # after and produced 27 bullets in 384s.
-            #
-            # Content-agnostic guard (no chapter-specific thresholds): the
-            # retry is skipped when the continuation prompt would leave less
-            # than MIN_OUTPUT_ROOM_FOR_RETRY tokens of output headroom under
-            # the context cap. The threshold is a RATIO of the output budget
-            # the retry requests (max_tokens=6144) — 25%, i.e. 1536 tok. This
-            # is the minimum useful output a retry could produce; a retry
-            # that can only emit < 1536 tok before hitting the context cap
-            # cannot complete a truncated gap_fill_bullets section.
+        if _retry_would_overflow:
+            log(
+                f"    ⏭️  V0.20.2: Scholar O-a4 retry SKIPPED \u2014 the "
+                f"continuation prompt (~{_prompt_tok + _cont_overhead_tok} "
+                f"tok) would leave < {_min_output_room} tok of output "
+                f"headroom under the {ctx.max_context_tokens}-tok context cap; "
+                f"the retry would hit the context window (the V0.18 rig "
+                f"Defect L2 shape). The V18.14.1 batch gap-fill (chunked, "
+                f"quote-enforced) will handle the missing theorists.",
+                "WARNING",
+            )
+        else:
+            log(
+                "    \U0001f4dc Scholar response truncated \u2014 one additive "
+                "continuation retry (V18.20.4.12 / O-a4)",
+                "INFO",
+            )
             try:
-                from utils.token_counter import count_tokens
-
-                _prompt_tok = count_tokens(prompt)
-                # Continuation overhead: the ~60-token suffix + the last
-                # 2000 chars of `raw` (≈500 tok). Conservative estimate.
-                _cont_overhead_tok = 60 + count_tokens(raw[-2000:])
-                _retry_max_output = 6144
-                _min_output_room = _retry_max_output // 4  # 1536 tok
-                _retry_would_overflow = (
-                    _prompt_tok + _cont_overhead_tok + _min_output_room > max_context_tokens
+                _cont_prompt = (
+                    prompt + "\n\nCONTINUATION REQUEST: your previous response was "
+                    "cut off at the output token cap before it completed. "
+                    "Continue EXACTLY where the previous output stopped \u2014 "
+                    "do NOT repeat any content you already produced, and "
+                    "close all open section tags (</scholar_reflections>, "
+                    "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
                 )
-            except Exception:  # pragma: no cover — guard must never break the stage
-                _retry_would_overflow = False
+                _cont = ctx.call_fast_llm(
+                    _cont_prompt,
+                    temperature=temperature,
+                    max_tokens=6144,
+                )
+                if _cont:
+                    _cont = ctx.strip_thinking(_cont)
+                _combined = raw + "\n" + _cont
+                # Re-read the provider flag AFTER the second call (the
+                # ContextVar is consume-on-read) + re-run the tag
+                # heuristic on the COMBINED text.
+                try:
+                    from core.llm.call_meta import consume_call_truncated
 
-            if _retry_would_overflow:
+                    _provider_truncated = consume_call_truncated()
+                except Exception:  # pragma: no cover — flag must never break the stage
+                    _provider_truncated = False
+                _rl = _combined.lower()
+                _has_refl_open = "<scholar_reflections>" in _rl
+                _has_refl_close = "</scholar_reflections>" in _rl
+                _has_gf_open = "<gap_fill_bullets>" in _rl
+                _has_gf_close = "</gap_fill_bullets>" in _rl
+                _still_truncated = (
+                    _provider_truncated
+                    or (_has_gf_open and not _has_gf_close)
+                    or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
+                )
+                raw = _combined
+                _response_truncated = _still_truncated
+            except Exception as _cont_e:
+                # Fail-open: the original single-parse path (with its
+                # verdict qualification) runs on the FIRST response.
                 log(
-                    f"    ⏭️  V0.20.2: Scholar O-a4 retry SKIPPED \u2014 the "
-                    f"continuation prompt (~{_prompt_tok + _cont_overhead_tok} "
-                    f"tok) would leave < {_min_output_room} tok of output "
-                    f"headroom under the {max_context_tokens}-tok context cap; "
-                    f"the retry would hit the context window (the V0.18 rig "
-                    f"Defect L2 shape). The V18.14.1 batch gap-fill (chunked, "
-                    f"quote-enforced) will handle the missing theorists.",
+                    f"    \u26a0\ufe0f Scholar continuation retry failed \u2014 "
+                    f"falling back to the single-parse path (non-fatal): "
+                    f"{_cont_e}",
+                    "WARNING",
+                )
+                logger.debug(
+                    "scholar continuation retry failed: %s: %s",
+                    type(_cont_e).__name__,
+                    _cont_e,
+                )
+
+    ctx.raw = raw
+    ctx.response_truncated = _response_truncated
+    return True
+
+
+# ── phase 6: parse the two sections ─────────────────────────────────────────
+
+
+def _sr_parse_response(ctx: _ScholarCtx) -> None:
+    """V0.6.10 (B12): the verbatim two-section parse + reflections processing
+    + the truncated gap-tail drop — sets ``ctx.reflections_text``,
+    ``ctx.gap_text``, ``ctx.gfm_closed``."""
+    log = ctx.log
+    raw = ctx.raw
+
+    # Parse the <scholar_reflections> section (identification)
+    srm = re.search(
+        r"<scholar_reflections>\s*(.*?)(?:</scholar_reflections>|<gap_fill_bullets>|$)",
+        raw,
+        re.DOTALL | re.IGNORECASE,
+    )
+    # V13.42.0: Parse the <gap_fill_bullets> section (the actual fill content)
+    gfm = re.search(
+        r"<gap_fill_bullets>\s*(.*?)(?:</gap_fill_bullets>|$)",
+        raw,
+        re.DOTALL | re.IGNORECASE,
+    )
+    # V18.20.3.1 (real-rig audit D1 class): if the response was cut at
+    # the output cap mid-gap-fill, the `$` fallback captures an
+    # incomplete trailing bullet — drop it (same helper as the additive
+    # sections; complete sections are never touched).
+    _gfm_closed = "</gap_fill_bullets>" in raw.lower()
+
+    # Process scholar reflections (identification)
+    reflections_text = ""
+    if srm:
+        reflections = srm.group(1).strip()
+        reflections_norm = reflections.strip().lower()
+        if reflections_norm in ("none", "n/a", "no gaps found", ""):
+            # V18.20.3.2 (P1-d): a "no gaps" verdict from a TRUNCATED
+            # response is unreliable \u2014 the analysis may have been cut
+            # before reaching the gaps. Qualify the log so the operator
+            # knows the verdict cannot be trusted (the V18.20.3.1 run
+            # logged a clean "no significant gaps found" from a
+            # done_reason=length response).
+            if ctx.response_truncated:
+                log(
+                    "    \U0001f393 Scholar reflection: no significant gaps found "
+                    "\u2014 \u26a0\ufe0f VERDICT UNRELIABLE (response truncated at the "
+                    "output cap; the gap analysis was cut short and the "
+                    "gap-fill section never closed)",
                     "WARNING",
                 )
             else:
+                log("    \U0001f393 Scholar reflection: no significant gaps found", "INFO")
+        else:
+            items = []
+            for line in reflections.split("\n"):
+                line = line.strip()
+                if line and (line.startswith("- ") or line.startswith("\u2022 ")):
+                    items.append(line)
+            if not items and reflections.strip():
+                items = [reflections.strip()]
+            grounded_items = []
+            for item in items:
+                if '"' in item or "\u201c" in item or "\u201d" in item:
+                    grounded_items.append(item)
+                else:
+                    grounded_items.append(item)
+            reflections_text = "\n".join(grounded_items) if grounded_items else ""
+
+    # Process gap-fill bullets (the actual missing content)
+    if gfm:
+        gap_text = gfm.group(1).strip()
+        if not _gfm_closed and gap_text:
+            from core.summarisation.response_parser import strip_truncated_section_tail
+
+            _gap_clean = strip_truncated_section_tail(gap_text, closing_tag_present=False)
+            if _gap_clean != gap_text:
                 log(
-                    "    \U0001f4dc Scholar response truncated \u2014 one additive "
-                    "continuation retry (V18.20.4.12 / O-a4)",
+                    f"    \u2702\ufe0f Scholar gap-fill truncated \u2014 dropped the incomplete "
+                    f"trailing bullet ({len(gap_text) - len(_gap_clean)} chars).",
+                    "WARNING",
+                )
+                gap_text = _gap_clean
+        ctx.gap_text = gap_text
+    ctx.gfm_closed = _gfm_closed
+    ctx.reflections_text = reflections_text
+
+
+# ── phase 7: source-ground the gap-fill bullets ─────────────────────────────
+
+
+def _sr_ground_gap_bullets(ctx: _ScholarCtx) -> list[str]:
+    """V0.6.10 (B12): the verbatim quote-guard / roster-fallback grounding
+    loop — returns the ``grounded_bullets`` list (possibly empty)."""
+    log = ctx.log
+    src_text = ctx.src_text
+    gap_text = ctx.gap_text
+
+    if gap_text and gap_text.lower() not in ("none", "n/a", ""):
+        gap_bullets = []
+        for line in gap_text.split("\n"):
+            line = line.strip()
+            if line and (line.startswith("- ") or line.startswith("\u2022 ")):
+                # Clean up the bullet
+                bullet = line.lstrip("- \u2022\t").strip()
+                if bullet and len(bullet) > 10:
+                    gap_bullets.append(bullet)
+
+        if gap_bullets:
+            # V0.5.19: the lazy per-call source roster for the
+            # loosened quote-guard (built once on first quote-less
+            # bullet — see the else-branch below).
+            _v0519_roster: list[str] | None = None
+
+            # V13.42.0: Source-ground each gap-fill bullet (anti-hallucination)
+            # Each bullet MUST contain a verbatim quote from the source
+            grounded_bullets = []
+            for gb in gap_bullets:
+                # Check if the bullet contains a quote
+                has_quote = (
+                    '"' in gb or "\u201c" in gb or "\u201d" in gb or "''" in gb or "\u2014" in gb
+                )
+                if has_quote:
+                    # Verify the quote appears in the source (at least partially)
+                    # Extract quoted portions and check against source
+                    quotes = re.findall(
+                        r'["\u201c\u201d]([^"\u201c\u201d]{15,})["\u201c\u201d]', gb
+                    )
+                    if quotes:
+                        source_lower = src_text.lower()
+                        quote_found = False
+                        for q in quotes:
+                            # Check if at least 60% of the quote words appear in source
+                            q_words = [w.lower().strip(".,;:!?") for w in q.split() if len(w) > 3]
+                            if q_words:
+                                found = sum(1 for w in q_words if w in source_lower)
+                                if found / len(q_words) >= 0.6:
+                                    quote_found = True
+                                    break
+                        if quote_found:
+                            grounded_bullets.append(f"- {gb}")
+                        else:
+                            log(
+                                f"    \U0001f393 Dropped ungrounded gap-fill: {gb[:60]}\u2026",
+                                "DEBUG",
+                            )
+                    else:
+                        grounded_bullets.append(f"- {gb}")  # has quotes but can't extract — keep
+                else:
+                    # V0.5.19: the V0.5.10 regex-roster fallback for
+                    # the loosened quote-guard (the same pattern
+                    # gap_fill_batch took in V0.5.6/V0.5.10). A
+                    # quote-less gap-fill bullet that NAMES a
+                    # runtime-roster source author is KEPT — the
+                    # deterministic roster IS the grounding (the
+                    # bullet cites a person the regex confirmed in
+                    # the source). Quote-less bullets naming NO
+                    # roster author stay dropped (the strict
+                    # V13.42.0 guard). Fail-open: on roster-build
+                    # error, keep the strict drop.
+                    _roster_ok = False
+                    try:
+                        from core.summarisation.author_anchor import (
+                            author_in_text,
+                            source_author_surnames,
+                        )
+
+                        if _v0519_roster is None:
+                            _v0519_roster = source_author_surnames(src_text)
+                        if _v0519_roster and any(
+                            author_in_text(_rn, gb.lower()) for _rn in _v0519_roster
+                        ):
+                            _roster_ok = True
+                    except Exception:
+                        _roster_ok = False
+                    if _roster_ok:
+                        grounded_bullets.append(f"- {gb}")
+                        log(
+                            f"    \U0001f393 Accepted roster-grounded gap-fill "
+                            f"without quote: {gb[:60]}\u2026",
+                            "DEBUG",
+                        )
+                    else:
+                        log(
+                            f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026",
+                            "DEBUG",
+                        )
+            return grounded_bullets
+    return []
+
+
+# ── phase 8: dedup + filters + the budget cap + the merge ───────────────────
+
+
+def _sr_merge_gap_bullets(ctx: _ScholarCtx, grounded_bullets: list[str]) -> None:
+    """V0.6.10 (B12): the verbatim dedup / thinking-filter / filler-floor /
+    V0.06 bullet-budget / merge block — sets ``ctx.gap_bullets_added``."""
+    log = ctx.log
+    result = ctx.result
+    text = ctx.text
+
+    if grounded_bullets:
+        # Add the gap-fill bullets to the summary's bullet_points
+        existing_bps = result.get("bullet_points", [])
+        existing_norms = set()
+        for bp in existing_bps:
+            norm = re.sub(r"[^\w\s]", "", str(bp).lower().strip()[:60])
+            existing_norms.add(norm)
+
+        new_bullets = []
+        for gb in grounded_bullets:
+            norm = re.sub(r"[^\w\s]", "", gb.lower()).strip()[:60]
+            if norm not in existing_norms:
+                new_bullets.append(gb)
+                existing_norms.add(norm)
+
+        # V18.20.3.4 (RC-1 layer 2, audit v182033): run the
+        # SAME thinking/self-talk/scar filter the expansion
+        # path uses over the gap-fill bullets BEFORE they
+        # merge into bullet_points. The V18.20.3.3 run shipped
+        # 8 scarred bullets; the scholar-reflection path (+8)
+        # and the V18.14.1 batch path (+5) had no equivalent
+        # filter (only quote-grounding), so CoT planning
+        # notes and checklist stubs from those paths entered
+        # the final Key Takeaways unfiltered. The filter is
+        # OPTIONAL (default None) so direct callers/tests
+        # keep working; the Summarizer delegates pass
+        # self._filter_thinking_bullets.
+        if ctx.filter_thinking_bullets is not None:
+            try:
+                _pre_n = len(new_bullets)
+                new_bullets = [
+                    nb
+                    for nb in ctx.filter_thinking_bullets(
+                        [b.lstrip("- \u2022\t").strip() for b in new_bullets],
+                        concepts=None,
+                        source_text=text,
+                    )
+                    if nb and nb.strip()
+                ]
+                if len(new_bullets) != _pre_n:
+                    log(
+                        f"    \U0001f9e9 V18.20.3.4: Filtered "
+                        f"{_pre_n - len(new_bullets)} "
+                        f"thinking/scar bullet(s) from scholar "
+                        f"gap-fill before merge",
+                        "INFO",
+                    )
+            except Exception as _fe:
+                log(
+                    f"    \u26a0\ufe0f V18.20.3.4: Scholar gap-fill "
+                    f"filter crashed (non-fatal, bullets kept "
+                    f"unfiltered): {_fe}",
+                    "WARNING",
+                )
+        # V0.4.23 (audit V0.4.22, backlog #4): the FILLER
+        # FLOOR — same rule as the batch gap-fill path:
+        # citation-adjacency bullets ("is cited/listed…",
+        # "The text notes…") carry no content and must not
+        # merge into Key Takeaways (7 of the 40 V0.4.22
+        # bullets were exactly this shape).
+        try:
+            from core.summarisation.post_processing import (
+                is_citation_filler_bullet,
+            )
+
+            _pre_fill = len(new_bullets)
+            new_bullets = [nb for nb in new_bullets if not is_citation_filler_bullet(nb)]
+            if len(new_bullets) != _pre_fill:
+                log(
+                    f"    \U0001f9fd V0.4.23: Filler floor dropped "
+                    f"{_pre_fill - len(new_bullets)} citation-"
+                    f"adjacency bullet(s) from scholar gap-fill "
+                    f"before merge",
                     "INFO",
                 )
-                try:
-                    _cont_prompt = (
-                        prompt + "\n\nCONTINUATION REQUEST: your previous response was "
-                        "cut off at the output token cap before it completed. "
-                        "Continue EXACTLY where the previous output stopped \u2014 "
-                        "do NOT repeat any content you already produced, and "
-                        "close all open section tags (</scholar_reflections>, "
-                        "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
-                    )
-                    _cont = call_fast_llm(
-                        _cont_prompt,
-                        temperature=temperature,
-                        max_tokens=6144,
-                    )
-                    if _cont:
-                        _cont = strip_thinking(_cont)
-                    _combined = raw + "\n" + _cont
-                    # Re-read the provider flag AFTER the second call (the
-                    # ContextVar is consume-on-read) + re-run the tag
-                    # heuristic on the COMBINED text.
-                    try:
-                        from core.llm.call_meta import consume_call_truncated
-
-                        _provider_truncated = consume_call_truncated()
-                    except Exception:  # pragma: no cover — flag must never break the stage
-                        _provider_truncated = False
-                    _rl = _combined.lower()
-                    _has_refl_open = "<scholar_reflections>" in _rl
-                    _has_refl_close = "</scholar_reflections>" in _rl
-                    _has_gf_open = "<gap_fill_bullets>" in _rl
-                    _has_gf_close = "</gap_fill_bullets>" in _rl
-                    _still_truncated = (
-                        _provider_truncated
-                        or (_has_gf_open and not _has_gf_close)
-                        or (not _has_gf_open and not (_has_refl_open and _has_refl_close))
-                    )
-                    raw = _combined
-                    _response_truncated = _still_truncated
-                except Exception as _cont_e:
-                    # Fail-open: the original single-parse path (with its
-                    # verdict qualification) runs on the FIRST response.
-                    log(
-                        f"    \u26a0\ufe0f Scholar continuation retry failed \u2014 "
-                        f"falling back to the single-parse path (non-fatal): "
-                        f"{_cont_e}",
-                        "WARNING",
-                    )
-                    logger.debug(
-                        "scholar continuation retry failed: %s: %s",
-                        type(_cont_e).__name__,
-                        _cont_e,
-                    )
-
-        # Parse the <scholar_reflections> section (identification)
-        srm = re.search(
-            r"<scholar_reflections>\s*(.*?)(?:</scholar_reflections>|<gap_fill_bullets>|$)",
-            raw,
-            re.DOTALL | re.IGNORECASE,
+        except Exception as _ffe:
+            log(
+                f"    \u26a0\ufe0f V0.4.23: Scholar gap-fill filler "
+                f"floor crashed (non-fatal): {_ffe}",
+                "WARNING",
+            )
+        # V0.06 (rig audit F4-b — GENERAL RULE: the source-
+        # scaled bullet budget is a HARD CAP at every
+        # insertion site): the scholar gap-fill merges at
+        # most (cap - existing) new bullets. The V0.05 rig
+        # added 13/22/8/10 gap-fill bullets on top of
+        # chapters already at their source-scaled target
+        # (19/18/14/12 shipped vs 5-7/5-7/6-9/5-8) — the
+        # surplus was near-duplicate restatement. When the
+        # budget is full the addition is skipped and logged
+        # honestly; with partial room only the first
+        # ``room`` grounded bullets merge.
+        _cap_sg = (
+            int(ctx.bullet_cap)
+            if isinstance(ctx.bullet_cap, (int, float)) and ctx.bullet_cap
+            else 0
         )
-        # V13.42.0: Parse the <gap_fill_bullets> section (the actual fill content)
-        gfm = re.search(
-            r"<gap_fill_bullets>\s*(.*?)(?:</gap_fill_bullets>|$)",
-            raw,
-            re.DOTALL | re.IGNORECASE,
-        )
-        # V18.20.3.1 (real-rig audit D1 class): if the response was cut at
-        # the output cap mid-gap-fill, the `$` fallback captures an
-        # incomplete trailing bullet — drop it (same helper as the additive
-        # sections; complete sections are never touched).
-        _gfm_closed = "</gap_fill_bullets>" in raw.lower()
+        if _cap_sg > 0:
+            _room_sg = _cap_sg - len(existing_bps)
+            if _room_sg <= 0:
+                log(
+                    f"    \u2702\ufe0f V0.06: bullet budget reached "
+                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
+                    f"gap-fill merge SKIPPED ({len(new_bullets)} "
+                    f"grounded bullet(s) not merged; the summary "
+                    f"stays at its source-scaled target).",
+                    "INFO",
+                )
+                new_bullets = []
+            elif len(new_bullets) > _room_sg:
+                log(
+                    f"    \u2702\ufe0f V0.06: bullet budget allows "
+                    f"{_room_sg} more bullet(s) "
+                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
+                    f"gap-fill trimmed from {len(new_bullets)} "
+                    f"to {_room_sg}.",
+                    "INFO",
+                )
+                new_bullets = new_bullets[:_room_sg]
+        if new_bullets:
+            result["bullet_points"] = list(existing_bps) + new_bullets
+            ctx.gap_bullets_added = len(new_bullets)
+            log(
+                f"    \U0001f393 Gap-fill: added {ctx.gap_bullets_added} new bullet(s) "
+                f"from scholar reflection (source-grounded)",
+                "INFO",
+            )
 
-        # Process scholar reflections (identification)
-        reflections_text = ""
-        if srm:
-            reflections = srm.group(1).strip()
-            reflections_norm = reflections.strip().lower()
-            if reflections_norm in ("none", "n/a", "no gaps found", ""):
-                # V18.20.3.2 (P1-d): a "no gaps" verdict from a TRUNCATED
-                # response is unreliable \u2014 the analysis may have been cut
-                # before reaching the gaps. Qualify the log so the operator
-                # knows the verdict cannot be trusted (the V18.20.3.1 run
-                # logged a clean "no significant gaps found" from a
-                # done_reason=length response).
-                if _response_truncated:
-                    log(
-                        "    \U0001f393 Scholar reflection: no significant gaps found "
-                        "\u2014 \u26a0\ufe0f VERDICT UNRELIABLE (response truncated at the "
-                        "output cap; the gap analysis was cut short and the "
-                        "gap-fill section never closed)",
-                        "WARNING",
-                    )
-                else:
-                    log("    \U0001f393 Scholar reflection: no significant gaps found", "INFO")
-            else:
-                items = []
-                for line in reflections.split("\n"):
-                    line = line.strip()
-                    if line and (line.startswith("- ") or line.startswith("\u2022 ")):
-                        items.append(line)
-                if not items and reflections.strip():
-                    items = [reflections.strip()]
-                grounded_items = []
-                for item in items:
-                    if '"' in item or "\u201c" in item or "\u201d" in item:
-                        grounded_items.append(item)
-                    else:
-                        grounded_items.append(item)
-                reflections_text = "\n".join(grounded_items) if grounded_items else ""
 
-        # Process gap-fill bullets (the actual missing content)
-        gap_bullets_added = 0
-        if gfm:
-            gap_text = gfm.group(1).strip()
-            if not _gfm_closed and gap_text:
-                from core.summarisation.response_parser import strip_truncated_section_tail
+# ── scholar_reflection (the V0.6.10 orchestrator) ───────────────────────────
 
-                _gap_clean = strip_truncated_section_tail(gap_text, closing_tag_present=False)
-                if _gap_clean != gap_text:
-                    log(
-                        f"    \u2702\ufe0f Scholar gap-fill truncated \u2014 dropped the incomplete "
-                        f"trailing bullet ({len(gap_text) - len(_gap_clean)} chars).",
-                        "WARNING",
-                    )
-                    gap_text = _gap_clean
-            if gap_text and gap_text.lower() not in ("none", "n/a", ""):
-                gap_bullets = []
-                for line in gap_text.split("\n"):
-                    line = line.strip()
-                    if line and (line.startswith("- ") or line.startswith("\u2022 ")):
-                        # Clean up the bullet
-                        bullet = line.lstrip("- \u2022\t").strip()
-                        if bullet and len(bullet) > 10:
-                            gap_bullets.append(bullet)
 
-                if gap_bullets:
-                    # V0.5.19: the lazy per-call source roster for the
-                    # loosened quote-guard (built once on first quote-less
-                    # bullet — see the else-branch below).
-                    _v0519_roster: list[str] | None = None
+def scholar_reflection(
+    heading: str,
+    text: str,
+    result: dict,
+    *,
+    max_context_tokens: int,
+    language: str,
+    temperature: float,
+    prompt_manager: PromptManagerLike,
+    recover_vram: RecoverVramFn,
+    call_fast_llm: CallFastLlmFn,
+    strip_thinking: StripThinkingFn,
+    filter_thinking_bullets: FilterThinkingFn | None = None,
+    log: LogCallback | None = None,
+    bullet_cap: int | None = None,
+) -> None:
+    """V13.41.0: Meta-cognitive reflection — the LLM reviews its own summary for gaps.
 
-                    # V13.42.0: Source-ground each gap-fill bullet (anti-hallucination)
-                    # Each bullet MUST contain a verbatim quote from the source
-                    grounded_bullets = []
-                    for gb in gap_bullets:
-                        # Check if the bullet contains a quote
-                        has_quote = (
-                            '"' in gb
-                            or "\u201c" in gb
-                            or "\u201d" in gb
-                            or "''" in gb
-                            or "\u2014" in gb
-                        )
-                        if has_quote:
-                            # Verify the quote appears in the source (at least partially)
-                            # Extract quoted portions and check against source
-                            quotes = re.findall(
-                                r'["\u201c\u201d]([^"\u201c\u201d]{15,})["\u201c\u201d]', gb
-                            )
-                            if quotes:
-                                source_lower = src_text.lower()
-                                quote_found = False
-                                for q in quotes:
-                                    # Check if at least 60% of the quote words appear in source
-                                    q_words = [
-                                        w.lower().strip(".,;:!?") for w in q.split() if len(w) > 3
-                                    ]
-                                    if q_words:
-                                        found = sum(1 for w in q_words if w in source_lower)
-                                        if found / len(q_words) >= 0.6:
-                                            quote_found = True
-                                            break
-                                if quote_found:
-                                    grounded_bullets.append(f"- {gb}")
-                                else:
-                                    log(
-                                        f"    \U0001f393 Dropped ungrounded gap-fill: {gb[:60]}\u2026",
-                                        "DEBUG",
-                                    )
-                            else:
-                                grounded_bullets.append(
-                                    f"- {gb}"
-                                )  # has quotes but can't extract — keep
-                        else:
-                            # V0.5.19: the V0.5.10 regex-roster fallback for
-                            # the loosened quote-guard (the same pattern
-                            # gap_fill_batch took in V0.5.6/V0.5.10). A
-                            # quote-less gap-fill bullet that NAMES a
-                            # runtime-roster source author is KEPT — the
-                            # deterministic roster IS the grounding (the
-                            # bullet cites a person the regex confirmed in
-                            # the source). Quote-less bullets naming NO
-                            # roster author stay dropped (the strict
-                            # V13.42.0 guard). Fail-open: on roster-build
-                            # error, keep the strict drop.
-                            _roster_ok = False
-                            try:
-                                from core.summarisation.author_anchor import (
-                                    author_in_text,
-                                    source_author_surnames,
-                                )
+    V13.42.0: Now also FILLS the gaps — generates missing content as new bullets
+    and adds them to the summary. The scholar reflection identifies what's
+    missing, writes a bullet for each gap (with a verbatim source quote),
+    and the bullets are appended to the summary's bullet_points list.
 
-                                if _v0519_roster is None:
-                                    _v0519_roster = source_author_surnames(src_text)
-                                if _v0519_roster and any(
-                                    author_in_text(_rn, gb.lower()) for _rn in _v0519_roster
-                                ):
-                                    _roster_ok = True
-                            except Exception:
-                                _roster_ok = False
-                            if _roster_ok:
-                                grounded_bullets.append(f"- {gb}")
-                                log(
-                                    f"    \U0001f393 Accepted roster-grounded gap-fill "
-                                    f"without quote: {gb[:60]}\u2026",
-                                    "DEBUG",
-                                )
-                            else:
-                                log(
-                                    f"    \U0001f393 Dropped gap-fill without quote: {gb[:60]}\u2026",
-                                    "DEBUG",
-                                )
+    Anti-hallucination: each gap-fill bullet MUST include a verbatim quote
+    from the source. Bullets that can't be source-ground are dropped.
 
-                    if grounded_bullets:
-                        # Add the gap-fill bullets to the summary's bullet_points
-                        existing_bps = result.get("bullet_points", [])
-                        existing_norms = set()
-                        for bp in existing_bps:
-                            norm = re.sub(r"[^\w\s]", "", str(bp).lower().strip()[:60])
-                            existing_norms.add(norm)
+    Extracted verbatim from ``Summarizer._scholar_reflection``. The only
+    changes are ``self.X`` → named parameters. The full-summary overview
+    (V18.2 audit Fix 1 — no aggressive truncation), the deterministic theorist
+    extraction with the expanded stopword list (V13.45.0), the VRAM recovery
+    before the call, the two-section parsing (``<scholar_reflections>`` +
+    ``<gap_fill_bullets>``), the source-grounding of gap-fill bullets (60%
+    quote-word match), the dedup against existing bullets, and the result-dict
+    mutation are byte-for-byte identical.
 
-                        new_bullets = []
-                        for gb in grounded_bullets:
-                            norm = re.sub(r"[^\w\s]", "", gb.lower()).strip()[:60]
-                            if norm not in existing_norms:
-                                new_bullets.append(gb)
-                                existing_norms.add(norm)
+    V0.6.10 (B12): the body is now the phase sequence behind ``_ScholarCtx``
+    (prepare → probe-gate → prompt → overflow-guard → LLM call+retry → parse
+    → grounding → dedup-merge) — the public signature, the call/statement
+    ORDER, and every moved block are unchanged (AST-identity pinned by
+    tests/test_v0610_wave5_godfunction_decomp.py).
 
-                        # V18.20.3.4 (RC-1 layer 2, audit v182033): run the
-                        # SAME thinking/self-talk/scar filter the expansion
-                        # path uses over the gap-fill bullets BEFORE they
-                        # merge into bullet_points. The V18.20.3.3 run shipped
-                        # 8 scarred bullets; the scholar-reflection path (+8)
-                        # and the V18.14.1 batch path (+5) had no equivalent
-                        # filter (only quote-grounding), so CoT planning
-                        # notes and checklist stubs from those paths entered
-                        # the final Key Takeaways unfiltered. The filter is
-                        # OPTIONAL (default None) so direct callers/tests
-                        # keep working; the Summarizer delegates pass
-                        # self._filter_thinking_bullets.
-                        if filter_thinking_bullets is not None:
-                            try:
-                                _pre_n = len(new_bullets)
-                                new_bullets = [
-                                    nb
-                                    for nb in filter_thinking_bullets(
-                                        [b.lstrip("- \u2022\t").strip() for b in new_bullets],
-                                        concepts=None,
-                                        source_text=text,
-                                    )
-                                    if nb and nb.strip()
-                                ]
-                                if len(new_bullets) != _pre_n:
-                                    log(
-                                        f"    \U0001f9e9 V18.20.3.4: Filtered "
-                                        f"{_pre_n - len(new_bullets)} "
-                                        f"thinking/scar bullet(s) from scholar "
-                                        f"gap-fill before merge",
-                                        "INFO",
-                                    )
-                            except Exception as _fe:
-                                log(
-                                    f"    \u26a0\ufe0f V18.20.3.4: Scholar gap-fill "
-                                    f"filter crashed (non-fatal, bullets kept "
-                                    f"unfiltered): {_fe}",
-                                    "WARNING",
-                                )
-                        # V0.4.23 (audit V0.4.22, backlog #4): the FILLER
-                        # FLOOR — same rule as the batch gap-fill path:
-                        # citation-adjacency bullets ("is cited/listed…",
-                        # "The text notes…") carry no content and must not
-                        # merge into Key Takeaways (7 of the 40 V0.4.22
-                        # bullets were exactly this shape).
-                        try:
-                            from core.summarisation.post_processing import (
-                                is_citation_filler_bullet,
-                            )
+    Mutates ``result`` in-place: extends ``result["bullet_points"]`` with
+    source-grounded gap-fill bullets and sets ``result["scholar_reflections"]``
+    to the identification text.
+    """
+    ctx = _ScholarCtx(
+        heading=heading,
+        text=text,
+        result=result,
+        max_context_tokens=max_context_tokens,
+        language=language,
+        temperature=temperature,
+        prompt_manager=prompt_manager,
+        recover_vram=recover_vram,
+        call_fast_llm=call_fast_llm,
+        strip_thinking=strip_thinking,
+        filter_thinking_bullets=filter_thinking_bullets,
+        log=log or _noop_log,
+        bullet_cap=bullet_cap,
+    )
+    log = ctx.log
 
-                            _pre_fill = len(new_bullets)
-                            new_bullets = [
-                                nb for nb in new_bullets if not is_citation_filler_bullet(nb)
-                            ]
-                            if len(new_bullets) != _pre_fill:
-                                log(
-                                    f"    \U0001f9fd V0.4.23: Filler floor dropped "
-                                    f"{_pre_fill - len(new_bullets)} citation-"
-                                    f"adjacency bullet(s) from scholar gap-fill "
-                                    f"before merge",
-                                    "INFO",
-                                )
-                        except Exception as _ffe:
-                            log(
-                                f"    \u26a0\ufe0f V0.4.23: Scholar gap-fill filler "
-                                f"floor crashed (non-fatal): {_ffe}",
-                                "WARNING",
-                            )
-                        # V0.06 (rig audit F4-b — GENERAL RULE: the source-
-                        # scaled bullet budget is a HARD CAP at every
-                        # insertion site): the scholar gap-fill merges at
-                        # most (cap - existing) new bullets. The V0.05 rig
-                        # added 13/22/8/10 gap-fill bullets on top of
-                        # chapters already at their source-scaled target
-                        # (19/18/14/12 shipped vs 5-7/5-7/6-9/5-8) — the
-                        # surplus was near-duplicate restatement. When the
-                        # budget is full the addition is skipped and logged
-                        # honestly; with partial room only the first
-                        # ``room`` grounded bullets merge.
-                        _cap_sg = (
-                            int(bullet_cap)
-                            if isinstance(bullet_cap, (int, float)) and bullet_cap
-                            else 0
-                        )
-                        if _cap_sg > 0:
-                            _room_sg = _cap_sg - len(existing_bps)
-                            if _room_sg <= 0:
-                                log(
-                                    f"    \u2702\ufe0f V0.06: bullet budget reached "
-                                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
-                                    f"gap-fill merge SKIPPED ({len(new_bullets)} "
-                                    f"grounded bullet(s) not merged; the summary "
-                                    f"stays at its source-scaled target).",
-                                    "INFO",
-                                )
-                                new_bullets = []
-                            elif len(new_bullets) > _room_sg:
-                                log(
-                                    f"    \u2702\ufe0f V0.06: bullet budget allows "
-                                    f"{_room_sg} more bullet(s) "
-                                    f"({len(existing_bps)}/{_cap_sg}) — scholar "
-                                    f"gap-fill trimmed from {len(new_bullets)} "
-                                    f"to {_room_sg}.",
-                                    "INFO",
-                                )
-                                new_bullets = new_bullets[:_room_sg]
-                        if new_bullets:
-                            result["bullet_points"] = list(existing_bps) + new_bullets
-                            gap_bullets_added = len(new_bullets)
-                            log(
-                                f"    \U0001f393 Gap-fill: added {gap_bullets_added} new bullet(s) "
-                                f"from scholar reflection (source-grounded)",
-                                "INFO",
-                            )
+    _sr_prepare(ctx)
+    if _sr_probe_gate(ctx):
+        return
+    _sr_build_prompt(ctx)
+    if _sr_prompt_overflow_skip(ctx):
+        return
+
+    try:
+        if not _sr_call_llm(ctx):
+            return
+        _sr_parse_response(ctx)
+        _grounded = _sr_ground_gap_bullets(ctx)
+        _sr_merge_gap_bullets(ctx, _grounded)
 
         # Store the reflections text (identification, not the fill)
         # V13.45.5: Removed the "NOTE: N gap(s) FILLED" prefix — the user
         # found it confusing as end-user-facing metadata. The gap-fill
         # bullets themselves appear in Key Takeaways; the reflections
         # section now just shows what gaps were identified (clean content).
-        result["scholar_reflections"] = reflections_text
-        if reflections_text and gap_bullets_added > 0:
+        result["scholar_reflections"] = ctx.reflections_text
+        if ctx.reflections_text and ctx.gap_bullets_added > 0:
             log(
-                f"    \U0001f393 Scholar reflection: identified {reflections_text.count(chr(10)) + 1} gap(s), "
-                f"filled {gap_bullets_added} with new bullets",
+                f"    \U0001f393 Scholar reflection: identified "
+                f"{ctx.reflections_text.count(chr(10)) + 1} gap(s), "
+                f"filled {ctx.gap_bullets_added} with new bullets",
                 "INFO",
             )
-        elif reflections_text:
+        elif ctx.reflections_text:
             log(
                 "    \U0001f393 Scholar reflection: identified gaps but could not fill them", "INFO"
             )
-        elif not reflections_text and gap_bullets_added == 0:
+        elif not ctx.reflections_text and ctx.gap_bullets_added == 0:
             # V18.20.3.5 (audit v182034): this is the exact path that lied
             # in the rig run — the response was truncated before the gap
             # analysis reached any conclusion, both sections parsed empty,
@@ -788,7 +977,7 @@ Verify EACH appears in the summary with their specific contribution. Flag ANY mi
             # A cut analysis has no verdict. Qualify loudly and fall through
             # to the deterministic theorist-coverage judge (V17.6/V18.14),
             # which is what actually caught the gaps in that run.
-            if _response_truncated:
+            if ctx.response_truncated:
                 log(
                     "    \U0001f393 Scholar reflection: no significant gaps found "
                     "\u2014 \u26a0\ufe0f VERDICT UNRELIABLE (response truncated at "

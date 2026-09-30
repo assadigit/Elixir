@@ -654,10 +654,17 @@ class TestTokenCaps:
     def test_scholar_cap_6144(self):
         import inspect
 
-        from core.summarisation.scholar_reflection import scholar_reflection
+        from core.summarisation import scholar_reflection as sr
 
-        src = inspect.getsource(scholar_reflection)
+        # V0.6.10 (B12) pin evolution: the scholar LLM call site moved from
+        # ``scholar_reflection``'s body into the ``_sr_call_llm`` phase
+        # helper (god-function decomposition, AST-identity verified); the
+        # 6144 contract itself is unchanged. Both the helper AND the
+        # orchestrator's delegating body are pinned.
+        src = inspect.getsource(sr._sr_call_llm)
         assert "max_tokens=6144" in src
+        orch = inspect.getsource(sr.scholar_reflection)
+        assert "_sr_call_llm(ctx)" in orch
 
 
 class TestScholarTruncatedVerdict:
