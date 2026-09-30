@@ -481,3 +481,29 @@ class TestB19LyingDocs:
         assert "# noqa: S324' inside" not in src
         # the REAL directive on the md5 line is still there
         assert "h = hashlib.md5()  # noqa: S324" in src
+
+
+# ── B18: the Windows-path defaults single-sourced ───────────────────────────
+#
+# The G:\ / C:\ TTS path literals lived in BOTH the Settings defaults
+# registry (utils/settings.py:791-793, the single source — _load()
+# deep-merges defaults under user data) AND re-declared inline in
+# podcast_audio.py's reads (the audit's W5 duplication: the copies could
+# silently drift). Remaining intentional copies elsewhere (noted, not
+# fixed this session): core/tts/voice_manager.py:112,
+# core/system/dependency_checker.py:312/336 (existence probes),
+# core/tts/neutts_engine.py:206 (subprocess argv fallback), and the
+# tts_page.py UI placeholder.
+
+
+class TestB18WindowsPathsSingleSourced:
+    def test_podcast_audio_does_not_redeclare_path_literals(self):
+        src = (REPO / "core/outputs/podcast_audio.py").read_text(encoding="utf-8")
+        assert "G:\\Program Files" not in src, "the G:\\ literal re-declaration is back"
+        assert "C:\\piper_windows_amd64" not in src, "the piper literal re-declaration is back"
+
+    def test_settings_registry_keeps_the_single_source(self):
+        src = (REPO / "utils/settings.py").read_text(encoding="utf-8")
+        assert '"neutts_gguf_path": r"G:\\Program Files\\neutts-air' in src
+        assert '"neutts_project_path": r"G:\\Program Files\\neutts-air"' in src
+        assert '"piper_binary": r"C:\\piper_windows_amd64' in src
