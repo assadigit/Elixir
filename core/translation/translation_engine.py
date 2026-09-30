@@ -143,6 +143,7 @@ class TranslationEngine:
         temperature: float = 0.3,
         progress_callback: ProgressFn | None = None,
         log_callback: LogFn | None = None,
+        llm_complete: Callable[[str], str | None] | None = None,
     ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
         if self.ollama_url.endswith("/v1"):
@@ -155,6 +156,13 @@ class TranslationEngine:
         self.temperature = temperature
         self._progress = progress_callback or (lambda pct, msg: None)
         self._log = log_callback or (lambda msg, level="INFO": None)
+        # V0.6.5: provider-backed transport — when set, every line call
+        # goes through this callable (``prompt -> text | None``) instead
+        # of the raw Ollama /api/generate POST. The dialog injects it for
+        # the "no dedicated translation model → use the ACTIVE LLM"
+        # fallback (the user requirement: works with ollama OR llama.cpp
+        # — the provider factory speaks both transports).
+        self._llm_complete = llm_complete
         # V11.29: dynamic consistency memory — learns term translations
         # as they appear, then enforces them for the rest of the document.
         # Key = source-language term (lowercase), Value = first translation.
@@ -403,12 +411,25 @@ class TranslationEngine:
     # ── Ollama API call ──────────────────────────────────────────────
 
     def _call_ollama(self, prompt: str) -> str | None:
-        """Call Ollama /api/generate and return the response text.
+        """Call the LLM and return the response text.
 
-        Raises ``ModelNotFoundError`` on HTTP 404 (model not installed) so
-        the caller can bail immediately instead of silently falling back
-        to the original text for every line.
+        V0.6.5: when a provider-backed ``llm_complete`` callable was
+        injected, it REPLACES the raw Ollama /api/generate transport (the
+        active-LLM fallback path — llama.cpp / OpenAI-compat backends
+        don't speak the Ollama protocol). A None return feeds the same
+        retry machinery as a transport failure on the raw path.
+
+        Raises ``ModelNotFoundError`` on HTTP 404 (model not installed)
+        on the raw path so the caller can bail immediately instead of
+        silently falling back to the original text for every line.
         """
+        if self._llm_complete is not None:
+            try:
+                return self._llm_complete(prompt)
+            except Exception as e:
+                self._log(f"  Active-LLM transport error: {e}", "ERROR")
+                return None
+
         payload = {
             "model": self.model,
             "prompt": prompt,

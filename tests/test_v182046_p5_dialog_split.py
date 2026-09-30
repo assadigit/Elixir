@@ -325,12 +325,13 @@ class TestPerDialogModules:
             assert _top_level_defs(_tree(py)), py.name
 
     def test_dialog_family_close_event_guards_survived(self):
-        # The 10 T-b2 closeEvent guards span the family (p4a pins the
-        # shapes; this pins the family union stayed intact).
+        # The 11 T-b2 closeEvent guards span the family (p4a pins the
+        # shapes; this pins the family union stayed intact). V0.6.5: the
+        # MarkdownStyler joined the family (its LLM path owns a worker).
         union = _src(_BASE_DIALOG) + "\n".join(
             _src(_DIALOGS / p) for p in sorted(q.name for q in _DIALOGS.glob("*.py"))
         )
-        assert union.count("def closeEvent") == 10
+        assert union.count("def closeEvent") == 11
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -614,6 +614,11 @@ class TranslationServiceDialog(BaseServiceDialog):
             # Ollama unreachable — seed with the preferred default.
             self.model_combo.addItem(preferred + "  (Ollama unreachable)", preferred)
 
+        # V0.6.5: remember the installed list for the active-LLM fallback
+        # resolution in _collect_options (a REAL installed model stays the
+        # user's choice; anything else falls back to the active LLM).
+        self._installed_models = models or []
+
     # ----------------------------------------------------------------
     # Options resolution (runs on the MAIN thread before _process)
     # ----------------------------------------------------------------
@@ -659,6 +664,56 @@ class TranslationServiceDialog(BaseServiceDialog):
                 self._resolved_model = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
         else:
             self._resolved_model = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
+
+        # -- V0.6.5: the active-LLM fallback ---------------------------
+        # The user requirement: "the translation tool should fall back to
+        # the CURRENT ACTIVE LLM (ollama or llama.cpp) when no dedicated
+        # translation model is found." A dedicated model = a
+        # translation-named entry in the combo (translategemma / translate
+        # families). When none is present AND the combo's model isn't a
+        # real installed translation model, route the whole run through
+        # the active provider (summarisation.provider + its model — the
+        # same resolution the Summarizer tool uses), via the engine's
+        # provider-backed llm_complete transport.
+        self._active_llm_fallback = False
+        self._active_llm_info = ""
+        combo_texts = (
+            [self.model_combo.itemText(i).lower() for i in range(self.model_combo.count())]
+            if self.model_combo
+            else []
+        )
+        has_dedicated = any(
+            ("translategemma" in t or "translate" in t) and "unreachable" not in t
+            for t in combo_texts
+        )
+        if not has_dedicated:
+            try:
+                from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
+                _s = Settings()
+                active_model = (
+                    _s.get("quick_services.defaults.summarize_model", "")
+                    or _s.get("summarisation.model", "")
+                    or RIG_FALLBACK_MODEL
+                )
+                self._active_llm_fallback = True
+                # Model resolution: keep ANY real installed model AND any
+                # model the user TYPED (an editable combo — their pick is
+                # authoritative); only the "unreachable" seeded default or
+                # an empty selection swaps to the ACTIVE LLM's model (the
+                # user requirement).
+                installed = getattr(self, "_installed_models", []) or []
+                current_text = (
+                    (self.model_combo.currentText() or "").strip() if self.model_combo else ""
+                )
+                seeded_or_empty = not current_text or "unreachable" in current_text.lower()
+                if self._resolved_model not in installed and seeded_or_empty:
+                    self._resolved_model = active_model
+                self._active_llm_info = (
+                    f"{_s.get('summarisation.provider', 'ollama')} / {self._resolved_model}"
+                )
+            except Exception:
+                logger.debug("active-llm fallback resolution failed", exc_info=True)
 
         # -- Resolve format (V11.29: removed "__default__" - always a real ext) --
         fmt = self.fmt_combo.currentData() if self.fmt_combo else ".md"
@@ -884,6 +939,43 @@ class TranslationServiceDialog(BaseServiceDialog):
         try:
             from core.translation.translation_engine import ModelNotFoundError, TranslationEngine
 
+            # V0.6.5: the active-LLM fallback transport. When no dedicated
+            # translation model was found (see _collect_options), every
+            # line call rides the ACTIVE provider (ollama / llama.cpp /
+            # OpenAI-compat) through create_provider — the engine's raw
+            # /api/generate transport stays for the dedicated-model path.
+            llm_complete = None
+            if getattr(self, "_active_llm_fallback", False):
+                from core.llm.llm_provider import create_provider
+
+                provider_name = s.get("summarisation.provider", "ollama")
+                try:
+                    provider = create_provider(
+                        provider=provider_name,
+                        settings=s,
+                        log_callback=lambda msg, level="INFO": None,
+                    )
+                    fallback_model = self._resolved_model
+
+                    def _llm_complete(prompt: str) -> str | None:
+                        return provider.complete_streaming(
+                            prompt=prompt,
+                            temperature=0.3,
+                            max_tokens=2048,
+                            model=fallback_model,
+                        )
+
+                    llm_complete = _llm_complete
+                    self._emit_progress(
+                        0,
+                        f"ℹ️ No dedicated translation model — using the active LLM "
+                        f"({self._active_llm_info}).",
+                    )
+                except Exception as e:
+                    logger.warning("active-LLM fallback provider failed: %s", e)
+                    # Provider unreachable → engine tries the raw path and
+                    # surfaces its honest error.
+
             engine = TranslationEngine(
                 ollama_url=ollama_url,
                 model=model,
@@ -893,6 +985,7 @@ class TranslationServiceDialog(BaseServiceDialog):
                 temperature=0.3,
                 progress_callback=self._emit_progress,
                 log_callback=lambda msg, level="INFO": None,
+                llm_complete=llm_complete,
             )
             return engine.translate_text(input_text)
         except ModelNotFoundError as e:

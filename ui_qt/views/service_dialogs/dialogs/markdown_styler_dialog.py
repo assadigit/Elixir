@@ -2,8 +2,11 @@
 
 MarkdownStylerDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
-top-of-file imports differ. Deterministic (V11.71.0): no LLM, no
-worker, hence no closeEvent guard. ui_qt.views.service_dialogs.
+top-of-file imports differ. V0.6.5: LLM-STRUCTURED (the two-phase
+pipeline in core/summarisation/markdown_styler.py — the LLM scans the
+article, detects/generates the headings, then the deterministic
+assembler emits the Obsidian note) with the V11.71.0 deterministic
+regex path as the no-LLM fallback. ui_qt.views.service_dialogs.
 base_dialog re-exports it (back-compat facade)."""
 
 from __future__ import annotations
@@ -25,8 +28,11 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     PlainTextTextEdit,
+    _confirm_close_with_running_worker,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,30 +45,32 @@ logger = logging.getLogger(__name__)
 
 
 class MarkdownStylerDialog(QDialog):
-    """V11.71.0: Markdown Styler — DETERMINISTIC (no LLM, instant).
+    """V0.6.5: Markdown Styler — LLM-STRUCTURED first, deterministic fallback.
 
-    Cleans up messy notes (copy-pasted from websites) into clean
-    Obsidian-friendly markdown using Python regex — no LLM needed,
-    so it's instant and reliable.
+    The user's requirement: turning a raw article into markdown cannot
+    be fully deterministic — FIRST an LLM scans the article and finds
+    the headings (generating a fitting title when the article has none),
+    THEN the note is stylized into the Obsidian shape (front-matter,
+    ``> [!tldr]`` / ``> [!info]`` callouts, ``##``/``###`` sections,
+    clean spacing). That is exactly what
+    ``core.summarisation.markdown_styler.style_markdown_llm`` does.
 
-    Features:
-    - Removes HTML tags, CSS, website artifacts
-    - Fixes broken formatting (excessive blank lines, weird spacing)
-    - Detects headings and formats them properly (#, ##, ###)
-    - Converts bullet lists to proper markdown (- )
-    - Adds YAML frontmatter with title + date + tags
-    - Adds TLDR callout (extracts first sentence)
-    - Adds Key Concepts callout (extracts bold/important terms)
-    - Normalizes links, code blocks, blockquotes
+    Unchecking "LLM structuring" runs the V11.71.0 deterministic regex
+    path (instant, offline); an LLM failure also falls back to it with
+    a ⚠️ in the status line — the tool never hard-fails on a model miss.
+
+    V11.71.0 heritage (kept): removes HTML/CSS artifacts, fixes broken
+    formatting, normalizes bullets/links, YAML front-matter + tags,
+    TLDR + Key Concepts callouts.
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
         super().__init__(parent)
         self.controller = controller
         self.setWindowTitle("✨ Markdown Styler")
-        self.setMinimumSize(700, 600)
+        self.setMinimumSize(700, 620)
         self.setModal(True)
-        self._worker = None
+        self._worker: SimpleWorker | None = None
 
         from PySide6.QtWidgets import (
             QCheckBox as _QChB,
@@ -95,9 +103,9 @@ class MarkdownStylerDialog(QDialog):
         lay.addWidget(title)
 
         desc = _QL(
-            "Paste messy notes (copy-pasted from a website) and get "
-            "clean, Obsidian-friendly markdown INSTANTLY — no LLM, "
-            "no waiting. Pure Python formatting."
+            "Paste a raw article — an LLM scans it, finds (or writes) the "
+            "headings, and stylizes it into a clean Obsidian note. "
+            "Uncheck LLM structuring for the instant offline (regex) path."
         )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
@@ -119,7 +127,32 @@ class MarkdownStylerDialog(QDialog):
         opt_group = _QGB("2. Options:")
         opt_lay = _VL(opt_group)
 
-        # V11.71.0: no model selection — deterministic, no LLM
+        # V0.6.5: the LLM structuring row — model picker + toggle.
+        from PySide6.QtWidgets import QComboBox as _QCB
+
+        llm_row = _HL()
+        self.llm_chk = _QChB("🤖 LLM structuring (scan → headings → Obsidian)")
+        self.llm_chk.setToolTip(
+            "The LLM reads the article, detects its real headings (or writes "
+            "a fitting title when there is none), then the note is assembled "
+            "in the Obsidian style. Falls back to the instant regex path when "
+            "the model is unreachable."
+        )
+        self.llm_chk.setChecked(True)
+        self.llm_chk.toggled.connect(self._on_llm_toggled)
+        llm_row.addWidget(self.llm_chk)
+        llm_row.addSpacing(12)
+        llm_row.addWidget(_QL("Model:"))
+        self.model_combo = _QCB()
+        self.model_combo.setEditable(True)
+        self.model_combo.setMinimumWidth(220)
+        llm_row.addWidget(self.model_combo, 1)
+        refresh_btn = _QPB("🔄")
+        refresh_btn.setFixedWidth(34)
+        refresh_btn.setToolTip("Re-fetch the installed model list")
+        refresh_btn.clicked.connect(self._refresh_models)
+        llm_row.addWidget(refresh_btn)
+        opt_lay.addLayout(llm_row)
 
         # Checkboxes for output options
         self.cb_tldr = _QChB("Add TLDR (1-2 sentence summary at the top)")
@@ -174,10 +207,88 @@ class MarkdownStylerDialog(QDialog):
         self.status_label.setWordWrap(True)
         lay.addWidget(self.status_label)
 
-        # V11.71.0: no model refresh needed — deterministic, no LLM
+        # V0.6.5: populate the model picker on open.
+        self._refresh_models()
+
+    def closeEvent(self, event) -> None:
+        # V0.6.5, V18.20.4.5 (T-b2) shape: LLM runs ride a SimpleWorker —
+        # guard against the "QThread: Destroyed while thread is still
+        # running" abort class (the same T-b2 contract every
+        # worker-owning dialog carries).
+        if not _confirm_close_with_running_worker(self, self._worker):
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    # ── V0.6.5: LLM structuring wiring ─────────────────────────────
+
+    def _on_llm_toggled(self, checked: bool) -> None:
+        """The model picker only matters for the LLM path."""
+        self.model_combo.setEnabled(checked)
+
+    def _refresh_models(self) -> None:
+        """V0.6.5: populate the model combo (the summarizer dialog's
+        pattern — /api/tags via the canonical get_ollama_url, "Default
+        Model" sentinel first, configured model kept visible when
+        missing)."""
+        from utils.settings import Settings
+
+        try:
+            s = Settings()
+            configured = s.get("summarisation.model", RIG_FALLBACK_MODEL) or RIG_FALLBACK_MODEL
+            base = s.get_ollama_url()
+        except Exception:
+            configured, base = RIG_FALLBACK_MODEL, "http://localhost:11434"
+
+        models: list[str] | None = None
+        try:
+            import requests as _req
+
+            r = _req.get(f"{base}/api/tags", timeout=3)
+            if r.status_code == 200:
+                models = [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+        except Exception:
+            models = None  # unreachable — keep the default row
+
+        current = self.model_combo.currentText().strip()
+        self.model_combo.clear()
+        self.model_combo.addItem("Default Model (change in Settings)", "__default__")
+        if models:
+            for m in models:
+                self.model_combo.addItem(m, m)
+            if configured not in models:
+                self.model_combo.addItem(configured, configured)
+        else:
+            self.model_combo.addItem(configured, configured)
+
+        # Restore the selection.
+        if current and current != "Default Model (change in Settings)":
+            idx = self.model_combo.findText(current)
+            if idx >= 0:
+                self.model_combo.setCurrentIndex(idx)
+            else:
+                self.model_combo.setEditText(current)
+        else:
+            self.model_combo.setCurrentIndex(0)
+
+    def _resolve_model(self) -> str:
+        """The combo's current model, resolving the "__default__" sentinel
+        through quick_services → summarisation → RIG_FALLBACK."""
+        from utils.settings import Settings
+
+        data = self.model_combo.currentData()
+        if data and data != "__default__":
+            return str(data)
+        s = Settings()
+        return (
+            s.get("quick_services.defaults.summarize_model", "")
+            or s.get("summarisation.model", "")
+            or RIG_FALLBACK_MODEL
+        )
 
     def _on_process(self):
-        """V11.71.0: Deterministic styling — instant, no LLM, no timeout."""
+        """V0.6.5: route to the LLM structuring pipeline (default) or the
+        V11.71.0 deterministic path (unchecked / fallback)."""
         text = self.text_input.toPlainText().strip()
         if not text or len(text) < 20:
             QMessageBox.warning(
@@ -185,21 +296,21 @@ class MarkdownStylerDialog(QDialog):
             )
             return
 
-        self.process_btn.setEnabled(False)
-        self.process_btn.setText("⚡ Styling...")
-        self.status_label.setText("✨ Styling markdown (instant)...")
-        self.output_preview.clear()
-
-        # V0.6.0: the "bullets"/"links" keys are gone — the deterministic
-        # engine never read them (dead checkboxes advertising unimplemented
-        # LLM-era features since the V11.71.0 rewrite).
         options = {
             "tldr": self.cb_tldr.isChecked(),
             "key_concepts": self.cb_key_concepts.isChecked(),
             "tags": self.cb_tags.isChecked(),
         }
 
-        # V11.71.0: deterministic — no worker thread needed, runs instantly
+        if self.llm_chk.isChecked():
+            self._run_llm_styling(text, options)
+            return
+
+        # ── Deterministic path (V11.71.0, unchanged) ─────────────
+        self.process_btn.setEnabled(False)
+        self.process_btn.setText("⚡ Styling...")
+        self.status_label.setText("✨ Styling markdown (instant, offline)...")
+        self.output_preview.clear()
         try:
             result = self._style_markdown_deterministic(text, options)
             if result and not result.startswith("Error:"):
@@ -211,14 +322,118 @@ class MarkdownStylerDialog(QDialog):
             else:
                 self.status_label.setText(f"❌ {result}")
         except Exception as e:
-            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the
-            # status + user box (was str(e)-only — zero diagnostics).
             logger.warning("markdown styling failed", exc_info=True)
             self.status_label.setText(f"❌ Error: {e}")
             QMessageBox.critical(self, "❌ Markdown Styler Failed", f"Error:\n\n{e}")
         finally:
             self.process_btn.setEnabled(True)
             self.process_btn.setText("✨ Style My Markdown")
+
+    def _run_llm_styling(self, text: str, options: dict) -> None:
+        """V0.6.5: the LLM path on a worker thread (the streaming call can
+        take a minute — never on the UI thread; the W-b5 contract)."""
+        model = self._resolve_model()
+
+        self.process_btn.setEnabled(False)
+        self.process_btn.setText("🤖 Scanning structure…")
+        self.progress_bar.setVisible(True)
+        self.status_label.setText(f"🤖 LLM scanning the article for headings (model: {model})…")
+        self.output_preview.clear()
+
+        self._worker = SimpleWorker(
+            lambda: self._llm_styling_work(text, options, model, report=self._worker.progress.emit)
+        )
+        self._worker.progress.connect(self._on_llm_progress)
+        self._worker.finished.connect(self._on_llm_finished)
+        self._worker.failed.connect(self._on_llm_failed)
+        self._worker.start()
+
+    def _llm_styling_work(self, text: str, options: dict, model: str, report=None) -> dict:
+        """Worker body: pure LLM/file work, no widget access. Falls back to
+        the deterministic path INSIDE the worker when the LLM fails, so the
+        finished handler only ever renders a result."""
+        from core.summarisation.markdown_styler import style_markdown_llm
+
+        def _llm_call(prompt: str) -> str | None:
+            from core.llm.llm_provider import create_provider
+            from utils.settings import Settings
+
+            if report is not None:
+                report(0, "🤖 LLM scanning the article…")
+            try:
+                provider = create_provider(
+                    provider=Settings().get("summarisation.provider", "ollama"),
+                    settings=Settings(),
+                    log_callback=lambda msg, level="INFO": None,
+                )
+            except Exception as e:
+                logger.warning("styler: provider creation failed: %s", e)
+                return None
+            try:
+                return provider.complete_streaming(
+                    prompt=prompt,
+                    temperature=0.2,
+                    max_tokens=6144,
+                    model=model,
+                )
+            except Exception as e:
+                logger.warning("styler: LLM call failed: %s", e)
+                return None
+
+        result = style_markdown_llm(
+            text,
+            _llm_call,
+            include_tldr=options.get("tldr", True),
+            include_concepts=options.get("key_concepts", True),
+            include_tags=options.get("tags", True),
+        )
+
+        if result is not None:
+            note, structure = result
+            return {
+                "note": note,
+                "llm": True,
+                "title": structure.get("title", ""),
+                "sections": len(structure.get("sections", [])),
+                "model": model,
+            }
+
+        # Fallback: the deterministic path, flagged.
+        logger.warning("styler: LLM structuring failed — deterministic fallback")
+        det = self._style_markdown_deterministic(text, options)
+        return {"note": det, "llm": False, "model": model}
+
+    def _on_llm_progress(self, pct: int, msg: str) -> None:
+        self.status_label.setText(msg)
+
+    def _on_llm_finished(self, result: dict) -> None:
+        self.progress_bar.setVisible(False)
+        self.process_btn.setEnabled(True)
+        self.process_btn.setText("✨ Style My Markdown")
+        result = result or {}
+        note = result.get("note", "")
+        if note and not note.startswith("Error:"):
+            self.output_preview.setPlainText(note)
+            self.save_btn.setEnabled(True)
+            if result.get("llm"):
+                self.status_label.setText(
+                    f"✅ Styled by LLM — title: “{result.get('title', '')}’, "
+                    f"{result.get('sections', 0)} section(s), model {result.get('model')}. "
+                    "Review and save."
+                )
+            else:
+                self.status_label.setText(
+                    "⚠️ LLM structuring unavailable — styled with the instant "
+                    "offline path. Check the model/backend and retry."
+                )
+        else:
+            self.status_label.setText(f"❌ {note or 'Styling failed.'}")
+
+    def _on_llm_failed(self, err: str) -> None:
+        self.progress_bar.setVisible(False)
+        self.process_btn.setEnabled(True)
+        self.process_btn.setText("✨ Style My Markdown")
+        self.status_label.setText(f"❌ Error: {err}")
 
     def _style_markdown_deterministic(self, text: str, options: dict) -> str:
         """V11.71.0: Deterministic markdown styling — pure Python, instant.

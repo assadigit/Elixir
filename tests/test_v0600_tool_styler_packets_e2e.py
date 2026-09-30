@@ -456,6 +456,11 @@ class TestStylerDialogDrive:
 
     def test_full_style_flow_lands_success(self, monkeypatch):
         dlg, _app, rec, _mod = self._make(monkeypatch)
+        # V0.6.5 contract update: the dialog now defaults to the LLM path;
+        # this Layer-3 drive pins the DETERMINISTIC engine, so it opts out
+        # explicitly (the LLM path has its own drive in
+        # test_v065_rtl_styler_translation.py with a fake at the seam).
+        dlg.llm_chk.setChecked(False)
         messy = (
             "<div>Study Notes On Trains</div>\n\n"
             "Railways changed how people travel and trade goods across continents.\n\n"
@@ -477,6 +482,7 @@ class TestStylerDialogDrive:
 
     def test_short_text_guard_warns_and_skips(self, monkeypatch):
         dlg, _app, rec, _mod = self._make(monkeypatch)
+        dlg.llm_chk.setChecked(False)  # V0.6.5: deterministic path for this drive
         dlg.text_input.setPlainText("too short")
         dlg._on_process()
         assert rec.titles() == ["Need more text"]

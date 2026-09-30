@@ -557,7 +557,11 @@ class TestTranslateTextHermetic:
         results = e.translate_files([str(src)], tmp_path / "outdir")
         out = tmp_path / "outdir" / "doc_translated.md"
         assert out.exists()
-        assert out.read_text(encoding="utf-8") == "سلام\nسلام"
+        # V0.6.5 contract: RTL-dominant output (.md) gains the Obsidian
+        # ``dir: rtl`` front-matter property (write_output auto-detect).
+        content = out.read_text(encoding="utf-8")
+        assert content.startswith("---\ndir: rtl\n---")
+        assert content.endswith("سلام\nسلام")
         assert results == ["✅ doc.md → doc_translated.md"]
 
     def test_translate_files_empty_file_skipped(self, tmp_path):
@@ -1481,19 +1485,34 @@ class TestDialogHermeticHelpers:
     def test_collect_options_model_resolution(self):
         dlg = _make_dialog()
         dlg.text_input.setPlainText("English input line")
-        # (a) typed model text (editable combo, no items yet)
+        # (a) typed model text (editable combo, no items yet) — a typed
+        # model stays authoritative even under the V0.6.5 active-LLM
+        # fallback (it rides the provider transport with THAT model).
         dlg.model_combo.setCurrentText("glm-4-plus")
         opts = dlg._collect_options()
         assert opts["model"] == "glm-4-plus"
         assert opts["source_lang"] == "en" and opts["target_lang"] == "fa"
         assert opts["mode"] == "literal" and opts["format"] == ".md"
-        # (b) no text at all → the documented 12B default
-        dlg2 = _make_dialog()
-        dlg2.model_combo.setCurrentText("")
-        dlg2.text_input.setPlainText("Another English line")
-        assert dlg2._collect_options()["model"] == (
-            "translategemma-12b-it.Q4_K_M_mradermacher:latest"
-        )
+        # (b) no text at all → V0.6.5 contract: no dedicated translation
+        # model exists, so the resolution falls back to the ACTIVE LLM
+        # (the user requirement — was the hardcoded 12B default that
+        # 404'd when translategemma isn't installed).
+        from utils.settings import Settings
+
+        prev = getattr(Settings, "_test_override", None)
+        Settings._test_override = {
+            "summarisation.provider": "llamacpp",
+            "summarisation.model": "active-model-x",
+            "quick_services.defaults.summarize_model": "",
+        }
+        try:
+            dlg2 = _make_dialog()
+            dlg2.model_combo.setCurrentText("")
+            dlg2.text_input.setPlainText("Another English line")
+            assert dlg2._collect_options()["model"] == "active-model-x"
+            assert dlg2._active_llm_fallback is True
+        finally:
+            Settings._test_override = prev or {}
 
     def test_collect_options_persian_input_flips_direction(self):
         dlg = _make_dialog()
@@ -1675,7 +1694,12 @@ class TestDialogQueueFlow:
         for name in ("one-fa-translation.md", "two-fa-translation.md"):
             f = tmp_path / name
             assert f.exists(), name
-            assert f.read_text(encoding="utf-8") == "ترجمه‌ی این فایل"
+            # V0.6.5 contract: Persian output (.md) carries the Obsidian
+            # ``dir: rtl`` front-matter property — byte-exact equality
+            # with the bare translation no longer holds.
+            content = f.read_text(encoding="utf-8")
+            assert content.startswith("---\ndir: rtl\n---")
+            assert content.endswith("ترجمه‌ی این فایل")
         assert "✅ one.md → one-fa-translation.md" in dlg.result_preview.toPlainText()
         # The modal is DEFERRED (QTimer.singleShot(0)) — flush so it fires
         # inside THIS test instead of leaking into the next one's spin.

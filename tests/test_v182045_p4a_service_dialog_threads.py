@@ -176,6 +176,9 @@ T_B2_DIALOGS = [
     "HallucinationAuditDialog",
     "ImageExtractorDialog",
     "TranscribeServiceDialog",
+    # V0.6.5: the Markdown Styler gained the LLM-structuring path — it
+    # now owns a SimpleWorker and carries the T-b2 guard (11 dialogs).
+    "MarkdownStylerDialog",
 ]
 
 
@@ -480,22 +483,25 @@ class TestTb2CloseEventGuards:
     """Every worker-owning dialog has a closeEvent guard."""
 
     def test_close_event_count(self):
-        # Exactly the 10 worker-owning dialogs (Base + the four W-b5
+        # Exactly the 11 worker-owning dialogs (Base + the four W-b5
         # dialogs + Tts + Packets + Hallucination + ImageExtractor +
-        # Transcribe). MarkdownStylerDialog has no worker → no guard.
+        # Transcribe + the V0.6.5 LLM-path MarkdownStyler).
         assert SRC.count("def closeEvent") == len(T_B2_DIALOGS)
-        assert SRC.count("def closeEvent") == 10
+        assert SRC.count("def closeEvent") == 11
 
     def test_every_worker_dialog_has_close_event(self):
         for cls in T_B2_DIALOGS:
             assert "def closeEvent" in _class_src(cls), cls
 
     def test_markdown_styler_has_no_close_event(self):
-        # Deterministic + instant (no worker, self._worker is dead code) —
-        # deliberately untouched by T-b2.
+        # V0.6.5 contract change: the styler gained the LLM-structuring
+        # path (a SimpleWorker) — it now OWNS the T-b2 guard, exactly like
+        # every other worker-owning dialog (was: deterministic-only, no
+        # worker, deliberately untouched by T-b2).
         cls_src = _class_src("MarkdownStylerDialog")
-        assert "def closeEvent" not in cls_src
-        assert "SimpleWorker(" not in cls_src
+        assert "def closeEvent" in cls_src
+        assert "_confirm_close_with_running_worker(self," in cls_src
+        assert "SimpleWorker(" in cls_src
 
     def test_each_guard_shape(self):
         # Worker reference + shared confirm guard + event.ignore() on veto
