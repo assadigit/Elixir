@@ -209,17 +209,29 @@ class BulletPipeline:
         # V18.20.2.0 (SWOT-A2): from thresholds.py (was hardcoded 0.5).
         _P22_THRESHOLD = _SEMANTIC_FACT_CHECK_DROP
         # V18.2.30: short-circuit when embedder is unhealthy.
+        # V0.6.8 (audit B10): the guard used to swallow its own failure and
+        # PROCEED (guard can't guard) — an unavailable or crashing health
+        # check now fails SAFE: the phase is skipped (the F4 source-overlap
+        # drop still filters hallucinations without embeddings) and the
+        # failure is logged at WARNING instead of silently passing.
         try:
             from core.llm.model_singletons import is_embedder_healthy
 
-            if not is_embedder_healthy():
-                s.log(
-                    "    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)",
-                    "WARNING",
-                )
-                return
-        except Exception:
-            pass
+            _embedder_healthy = is_embedder_healthy()
+        except Exception as _e:
+            s.log(
+                "    ⏭️  Phase 2.2: embedder health check failed "
+                f"({type(_e).__name__}: {_e}) — skipping semantic fact-check "
+                "(fail-safe: health-check failure treated as unhealthy)",
+                "WARNING",
+            )
+            return
+        if not _embedder_healthy:
+            s.log(
+                "    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)",
+                "WARNING",
+            )
+            return
         try:
             from core.summarisation.text_preprocessor import semantic_fact_check
 

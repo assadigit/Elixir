@@ -365,3 +365,37 @@ class TestB9DiskCacheClearWarning:
         (tmp_path / "ec.jsonl").write_text("{}", encoding="utf-8")
         cache.clear()  # no exception, no warning needed
         assert not (tmp_path / "ec.jsonl").exists()
+
+
+class TestB10EmbedderGuardFailsSafe:
+    def _pipeline(self):
+        from core.summarisation.bullet_pipeline import BulletPipeline
+
+        logs: list[tuple[str, str]] = []
+        s = SimpleNamespace(log=lambda msg, level="INFO": logs.append((level, msg)))
+        return BulletPipeline(s), logs
+
+    def test_health_check_crash_skips_phase_with_warning(self, monkeypatch):
+        import core.llm.model_singletons as ms
+
+        def _boom():
+            raise RuntimeError("sentinel-crash")
+
+        monkeypatch.setattr(ms, "is_embedder_healthy", _boom)
+        pipeline, logs = self._pipeline()
+        state = SimpleNamespace(bullets=[], content="")
+        pipeline.apply_phase22_semantic_fact_check(state)
+        assert any(
+            level == "WARNING" and "health check failed" in msg and "sentinel-crash" in msg
+            for level, msg in logs
+        ), "pre-fix the guard swallowed its own failure and PROCEEDED"
+        assert state.bullets == []  # phase skipped (no transformation attempted)
+
+    def test_unhealthy_still_skips(self, monkeypatch):
+        import core.llm.model_singletons as ms
+
+        monkeypatch.setattr(ms, "is_embedder_healthy", lambda: False)
+        pipeline, logs = self._pipeline()
+        state = SimpleNamespace(bullets=[], content="")
+        pipeline.apply_phase22_semantic_fact_check(state)
+        assert any("embedder unhealthy" in msg for _, msg in logs)
