@@ -1288,17 +1288,79 @@ def generate_podcast_script(
 
     import requests
 
+    # V0.6.13: the llama.cpp-first local fallback (the operator's follow-up
+    # report: "PODCAST ... FIND[S] LLM ON OLLAMA ONLY"). This tool is
+    # Ollama-native (raw /api/generate below), so the policy applies when
+    # its target is LOCAL: a live llama-server takes over — the
+    # OpenAI-compat /chat/completions branch with the DETECTED served model
+    # + bearer key; dead → the configured Ollama path runs byte-identical
+    # to V0.6.12. A deliberately-configured REMOTE ollama_url is never
+    # probed (the same treatment cloud providers get).
+    from core.llm.local_fallback import decide_llamacpp_first, is_local_url
+
     # V18.20.4.11 (P3 / O-c5): pooled transport — every LLM/endpoint call in
     # this module goes through the shared session selected by endpoint
     # locality (localhost → no-proxy pooled, cloud → proxy-trusting pooled).
     # Same timeouts/status handling as before; connection reuse added.
     from utils.network import session_for_url as _session_for_url
 
+    _llamacpp = None
+    if is_local_url(ollama_url):
+        from utils.settings import Settings
+
+        _d = decide_llamacpp_first(Settings(), "ollama")
+        if _d.note:
+            log(f"  🦙 {_d.note}", "INFO")
+        if _d.use_llamacpp:
+            _llamacpp = _d
+            model = _d.model  # the DETECTED served model wins (V0.4.30)
+
+    def _call_llamacpp(prompt_text: str) -> str:
+        """V0.6.13: the llama.cpp takeover — OpenAI-compatible
+        ``{base}/chat/completions`` (non-streaming; the served model +
+        bearer key). The num_predict/num_ctx Ollama options map to
+        max_tokens (llama.cpp fits the window server-side)."""
+        from utils.network import extract_openai_content
+
+        try:
+            resp = _session_for_url(_llamacpp.base_url).post(
+                f"{_llamacpp.base_url}/chat/completions",
+                json={
+                    "model": _llamacpp.model,
+                    "messages": [{"role": "user", "content": prompt_text}],
+                    "temperature": temperature,
+                    "max_tokens": 4096,
+                    "stream": False,
+                },
+                headers={"Authorization": f"Bearer {_llamacpp.api_key}"},
+                timeout=LLM_REQUEST_TIMEOUT_S,
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"Could not connect to llama.cpp at {_llamacpp.base_url}. Is llama-server running?"
+            ) from e
+        if resp.status_code != 200:
+            err = f"HTTP {resp.status_code}"
+            try:
+                _body = resp.json().get("error", "")
+                if isinstance(_body, dict):  # the llama.cpp error shape
+                    _body = _body.get("message", "")
+                if _body:
+                    err += f": {_body}"
+            except Exception as _e:
+                logger.debug("ignored %s: %s", type(_e).__name__, _e)
+            raise RuntimeError(f"llama.cpp error: {err}")
+        return extract_openai_content(resp.json())
+
     def _call_ollama(prompt_text: str) -> str:
-        """Call Ollama and return the response text.
+        """Call the LLM and return the response text.
 
         V11.37.2: better error reporting for 404 (model not found).
+        V0.6.13: the llama.cpp takeover dispatches to _call_llamacpp
+        (the OpenAI-compat branch) instead of the Ollama endpoint.
         """
+        if _llamacpp is not None:
+            return _call_llamacpp(prompt_text)
         try:
             resp = _session_for_url(ollama_url).post(
                 f"{ollama_url}/api/generate",
@@ -1462,7 +1524,11 @@ def generate_podcast_script(
     result.lines = _fix_number_formatting(result.lines, log)
 
     # V11.51.0: Generate a short title for the podcast from the script content
-    result.title = _generate_podcast_title(result.lines, ollama_url, model, temperature, log)
+    # V0.6.13: the llama.cpp takeover routes the title call too (same
+    # decision, same served model).
+    result.title = _generate_podcast_title(
+        result.lines, ollama_url, model, temperature, log, llamacpp=_llamacpp
+    )
 
     return result
 
@@ -1604,7 +1670,12 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
 
 
 def _generate_podcast_title(
-    lines: list[ScriptLine], ollama_url: str, model: str, temperature: float, log
+    lines: list[ScriptLine],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    log,
+    llamacpp=None,
 ) -> str:
     """V11.51.0/V11.53.0/V11.62.0: Ask the LLM for a 3-6 word podcast title.
 
@@ -1613,6 +1684,14 @@ def _generate_podcast_title(
     explicitly forbids <think> tags, (b) if the stripped title is empty,
     extract any text AFTER the </think> tag, (c) retry with a raw format
     prompt if the first attempt fails.
+
+    V0.6.13: ``llamacpp`` (a LlamacppFirstDecision or None — the decision
+    generate_podcast_script already made) routes the title call through
+    the llama.cpp takeover: the OpenAI-compat ``{base}/chat/completions``
+    branch with the DETECTED served model + bearer key (num_predict 50
+    maps to max_tokens). None → the Ollama path, byte-identical to
+    V0.6.12 (the only dead-path delta: the "(title was empty after
+    stripping…)" DEBUG line now requires a non-empty PRE-cleanup title).
     """
     import re
 
@@ -1634,22 +1713,46 @@ def _generate_podcast_title(
         "Title:"
     )
     try:
-        resp = _session_for_url(ollama_url).post(
-            f"{ollama_url}/api/generate",
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
+        # V0.6.13: the llama.cpp takeover routes the title call the same
+        # way generate_podcast_script routed the script calls — the
+        # OpenAI-compat branch with the DETECTED served model + bearer
+        # key. None → the Ollama path, byte-identical to V0.6.12.
+        title = ""
+        if llamacpp is not None:
+            from utils.network import extract_openai_content
+
+            resp = _session_for_url(llamacpp.base_url).post(
+                f"{llamacpp.base_url}/chat/completions",
+                json={
+                    "model": llamacpp.model,
+                    "messages": [{"role": "user", "content": prompt}],
                     "temperature": max(0.3, temperature),
-                    "num_predict": 50,
-                    "num_ctx": 4096,
+                    "max_tokens": 50,
+                    "stream": False,
                 },
-            },
-            timeout=API_BATCH_TIMEOUT_S,
-        )
-        if resp.status_code == 200:
-            title = resp.json().get("response", "").strip()
+                headers={"Authorization": f"Bearer {llamacpp.api_key}"},
+                timeout=API_BATCH_TIMEOUT_S,
+            )
+            if resp.status_code == 200:
+                title = str(extract_openai_content(resp.json()) or "").strip()
+        else:
+            resp = _session_for_url(ollama_url).post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": max(0.3, temperature),
+                        "num_predict": 50,
+                        "num_ctx": 4096,
+                    },
+                },
+                timeout=API_BATCH_TIMEOUT_S,
+            )
+            if resp.status_code == 200:
+                title = resp.json().get("response", "").strip()
+        if title:
             # V11.62.0: extract text AFTER </think> if present
             think_match = re.search(r"</think>\s*(.*)", title, re.DOTALL | re.IGNORECASE)
             if think_match:
