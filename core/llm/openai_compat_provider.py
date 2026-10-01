@@ -15,6 +15,7 @@ from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import (
     retry_llm_call,
 )
+from core.system.timeouts import API_BATCH_TIMEOUT_S
 from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -246,7 +247,7 @@ class OpenAICompatProvider(LLMProvider):
                     "Authorization": f"Bearer {self.api_key}",
                 },
                 files=files,
-                timeout=30,
+                timeout=API_BATCH_TIMEOUT_S,
             )
             if upload_resp.status_code != 200:
                 self.log(f"  ⚠️ Batch API: file upload failed ({upload_resp.status_code})", "DEBUG")
@@ -262,7 +263,9 @@ class OpenAICompatProvider(LLMProvider):
                 "endpoint": "/v1/chat/completions",
                 "completion_window": "24h",
             }
-            batch_resp = _requests.post(batch_url, headers=headers, json=batch_payload, timeout=30)
+            batch_resp = _requests.post(
+                batch_url, headers=headers, json=batch_payload, timeout=API_BATCH_TIMEOUT_S
+            )
             if batch_resp.status_code != 200:
                 self.log(
                     f"  ⚠️ Batch API: batch creation failed ({batch_resp.status_code})", "DEBUG"
@@ -285,7 +288,7 @@ class OpenAICompatProvider(LLMProvider):
                 poll_resp = _requests.get(
                     f"{batch_url}/{batch_id}",
                     headers=headers,
-                    timeout=30,
+                    timeout=API_BATCH_TIMEOUT_S,
                 )
                 if poll_resp.status_code != 200:
                     continue

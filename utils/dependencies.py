@@ -7,7 +7,7 @@ from typing import Any
 import requests
 
 from core.llm.model_taxonomy import is_vision_model
-from core.system.timeouts import UI_PROBE_TIMEOUT_S
+from core.system.timeouts import SUBSECOND_PROBE_TIMEOUT_S, UI_PROBE_TIMEOUT_S
 from utils.logging import get_main_logger
 
 logger = get_main_logger()
@@ -64,13 +64,17 @@ class DependencyChecker:
             pass
 
         try:
-            subprocess.run(["tesseract", "--version"], capture_output=True, timeout=2)
+            subprocess.run(
+                ["tesseract", "--version"], capture_output=True, timeout=SUBSECOND_PROBE_TIMEOUT_S
+            )
             deps["tesseract"] = True
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
         try:
-            subprocess.run(["ollama", "--version"], capture_output=True, timeout=2)
+            subprocess.run(
+                ["ollama", "--version"], capture_output=True, timeout=SUBSECOND_PROBE_TIMEOUT_S
+            )
             deps["ollama"] = True
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)

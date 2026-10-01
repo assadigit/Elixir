@@ -31,7 +31,10 @@ from dataclasses import dataclass, field
 # service default now matches so programmatic callers don't hit the dead
 # tag).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
-from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
+from core.system.timeouts import (
+    API_BATCH_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1642,7 +1645,7 @@ def _generate_podcast_title(
                     "num_ctx": 4096,
                 },
             },
-            timeout=30,
+            timeout=API_BATCH_TIMEOUT_S,
         )
         if resp.status_code == 200:
             title = resp.json().get("response", "").strip()

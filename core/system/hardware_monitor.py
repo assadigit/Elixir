@@ -43,7 +43,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.system.timeouts import CLI_POLL_TIMEOUT_S
+from core.system.timeouts import CLI_POLL_TIMEOUT_S, SUBSECOND_PROBE_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -910,7 +910,7 @@ class HardwareMonitor:
         """Stop the background monitoring thread."""
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=2)
+            self._thread.join(timeout=SUBSECOND_PROBE_TIMEOUT_S)
             self._thread = None
 
     def get_snapshot(self) -> HardwareSnapshot:

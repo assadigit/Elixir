@@ -32,7 +32,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
+from core.system.timeouts import (
+    SUBSECOND_PROBE_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
 
 # ── Status dataclass ──────────────────────────────────────────────────────
 
@@ -216,7 +219,7 @@ class DetailedDependencyChecker:
         from utils.network import is_ollama_reachable, list_ollama_models
 
         try:
-            if is_ollama_reachable(timeout=2):
+            if is_ollama_reachable(timeout=SUBSECOND_PROBE_TIMEOUT_S):
                 models = list_ollama_models()
                 return DependencyStatus(
                     name="Ollama (LLM runtime)",

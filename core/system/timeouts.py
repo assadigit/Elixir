@@ -117,14 +117,6 @@ LONG_RUN_TIMEOUT_S = 600
 #   UI_PROBE_TIGHT_TIMEOUT_S above, per the V0.6.10 note).
 #
 #
-# SUBSECOND_PROBE_TIMEOUT_S (2):
-#   core/system/dependency_checker.py:217  is_ollama_reachable
-#   core/system/hardware_monitor.py:911  thread join
-#   utils/dependencies.py:66,72  CLI version probes
-#
-# API_BATCH_TIMEOUT_S (30):
-#   core/llm/openai_compat_provider.py:249,265,288
-#   core/podcast/script_generator.py:1642
 #
 # HTTP_FETCH_TIMEOUT_S (60):
 #   core/tts/normalizer.py:405  session POST
