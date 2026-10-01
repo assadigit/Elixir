@@ -5,7 +5,19 @@ intent): Ollama is the always-on default (auto-start); llama.cpp
 (``llama-server``) is started deliberately, only when needed — so
 "llama.cpp is up" MEANS "route to it and the model it serves".
 Every raw-request LOCAL call site (Packets of Knowledge, the
-new-output riders) therefore asks this module BEFORE dispatching:
+new-output riders) therefore asks this module BEFORE dispatching.
+
+V0.6.13 extends the wired sites (the operator's follow-up report:
+"tts, TRANSCRIBE SERVICE AND PODCAST HAVE SAME PROBLEM, THEY FIND
+LLM ON OLLAMA ONLY"): the transcribe summary
+(``summarize_transcript``), the Podcast Maker script generator
+(``generate_podcast_script`` + ``_generate_podcast_title``), and the
+TTS text normalizer (``create_normalizer_from_settings`` — also the
+podcast-audio normalize step). The sites WITHOUT a provider concept
+(podcast ``ollama_url``, TTS ``tts.normalize_endpoint``) consult the
+policy only when their configured URL is LOCAL (``is_local_url``) — a
+deliberately-configured remote endpoint passes through untouched, the
+same treatment cloud providers get.
 
   1. A live llama.cpp server at ``summarisation.llamacpp_base_url``?
      → the call routes THERE (OpenAI-compatible, the served model
@@ -34,6 +46,7 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from core.llm.llamacpp_provider import list_llamacpp_models
 from core.system.timeouts import UI_PROBE_TIMEOUT_S
@@ -49,6 +62,31 @@ LLAMACPP_DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
 CLOUD_PROVIDERS = frozenset(
     {"cloud", "openrouter", "openai", "openai_compatible", "freellmapi", "claude"}
 )
+
+# Loopback hostnames (case-insensitive) — the URL-locality predicate
+# below. ``urlparse().hostname`` lowercases and strips the brackets off
+# IPv6 literals, so "::1" is compared bare.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def is_local_url(url: str) -> bool:
+    """True when ``url`` points at this machine's loopback interface.
+
+    V0.6.13: the policy only overrides LOCAL call sites. A tool whose
+    configured endpoint is a DELIBERATE non-local choice (a LAN Ollama,
+    a hosted OpenAI-compatible URL) passes through untouched — the same
+    treatment cloud providers get. Used by the wired sites that have no
+    provider concept and only a URL (the podcast script generator's
+    ``ollama_url``, the TTS normalizer's ``tts.normalize_endpoint``).
+
+    Empty / malformed input → False (never probe, never take over — the
+    conservative answer that leaves the caller's own path alone).
+    """
+    try:
+        host = (urlparse(str(url or "")).hostname or "").lower()
+    except Exception:
+        return False
+    return host in _LOCAL_HOSTS
 
 
 @dataclass(frozen=True)
