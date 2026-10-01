@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from core.system.timeouts import (
     API_BATCH_TIMEOUT_S,
+    LLM_REQUEST_TIMEOUT_S,
     UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
 )
 
@@ -1311,7 +1312,7 @@ def generate_podcast_script(
                         "num_ctx": 131072,
                     },
                 },
-                timeout=300,
+                timeout=LLM_REQUEST_TIMEOUT_S,
             )
         except requests.exceptions.ConnectionError as e:
             raise RuntimeError(

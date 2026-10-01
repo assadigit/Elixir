@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS
-from core.system.timeouts import HTTP_FETCH_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
+from core.system.timeouts import HTTP_FETCH_TIMEOUT_S, LLM_REQUEST_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -1349,7 +1349,7 @@ RAW OCR TEXT:
             "options": {"temperature": 0.1, "num_predict": 8192, "top_p": 0.9},
         }
         url = f"{ollama_url}/api/generate"
-        resp = safe_ollama_request("POST", url, json=payload, timeout=300)
+        resp = safe_ollama_request("POST", url, json=payload, timeout=LLM_REQUEST_TIMEOUT_S)
         stylized = resp.json().get("response", "").strip()
         if stylized and len(stylized) >= 20:
             return stylized

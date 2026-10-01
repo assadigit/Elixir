@@ -41,7 +41,7 @@ from core.summarisation import Summarizer
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
 from core.summarisation.filter_thinking import qwen_no_think
-from core.system.timeouts import FAST_LLM_TIMEOUT_S
+from core.system.timeouts import FAST_LLM_TIMEOUT_S, LLM_REQUEST_TIMEOUT_S
 
 # V18.20.2.0 (SWOT A30): module-level import — the per-chapter write loop
 # previously imported this INSIDE the loop body, which left the name
@@ -869,7 +869,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 if hasattr(_provider, "model"):
                     _provider.model = _summ_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 300
+                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
         elif _arch == "dual_local":
             # Use the local fast model via Ollama for fast concept extraction.
             _fast_model = getattr(request, "fast_model", "") or _settings.get(
@@ -913,7 +913,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 if hasattr(_provider, "model"):
                     _provider.model = _summ_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 300
+                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
         else:
             # single_local or single_api — primary heavy model.
             # single_local  → provider is ollama (or lmstudio/llamacpp)
@@ -924,7 +924,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
             _prov = _settings.get("summarisation.provider", "ollama")
             if _prov == "llamacpp":
                 # V0.04: llama.cpp server — a local backend with its own
-                # provider (NOT an Ollama-shaped call). The 300s timeout
+                # provider (NOT an Ollama-shaped call). The 300 s budget
                 # override below does not apply: llama.cpp generates
                 # stream-first (per-chunk timeout), so the provider's
                 # own budget-derived timeouts govern.
@@ -957,7 +957,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 if hasattr(_provider, "model"):
                     _provider.model = _summ_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 300  # 5 min for concept extraction
+                    _provider.timeout = LLM_REQUEST_TIMEOUT_S  # 5 min for concept extraction
                 log(
                     f"  🚀 V16.0.9 concept extraction: single_local mode "
                     f"(heavy local model = {_summ_model})",
@@ -980,7 +980,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 if hasattr(_provider, "model"):
                     _provider.model = _summ_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 300
+                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
                 log(
                     f"  🚀 V16.0.9 concept extraction: single_api mode "
                     f"(heavy cloud model = {_summ_model})",

@@ -123,10 +123,7 @@ class TestFlaggedRemainder:
         # from the list when its wave lands (a MIGRATED note replaces it) —
         # the UI-probe family is gone; the not-yet-migrated families stay.
         assert "MIGRATED in V0.6.11 wave 8" in src
-        for marker in (
-            "LLM_REQUEST_TIMEOUT_S (300) remaining",
-            "LONG_RUN_TIMEOUT_S (600)",
-        ):
+        for marker in ("LONG_RUN_TIMEOUT_S (600)",):
             assert marker in src, f"missing flag section: {marker}"
 
     def test_flagged_sites_still_inline_not_yet_migrated(self):
@@ -135,4 +132,8 @@ class TestFlaggedRemainder:
         per family."""
         assert "timeout=600, retries=1" in _src("core/llm/model_manager.py")
         assert "self.timeout = 600" in _src("core/summarisation/summarizer_init.py")
-        assert "_provider.timeout = 300" in _src("core/pipeline/conversion/summarization.py")
+        # V0.6.11 (wave 8) pin evolution: the 300 s summarization sites
+        # migrated to the named constant — spot-check the constant wiring.
+        assert "_provider.timeout = LLM_REQUEST_TIMEOUT_S" in _src(
+            "core/pipeline/conversion/summarization.py"
+        )

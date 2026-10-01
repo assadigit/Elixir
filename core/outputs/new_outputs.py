@@ -18,6 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from core.models import ConversionRequest, SummaryResult
+from core.system.timeouts import LLM_REQUEST_TIMEOUT_S
 
 # V18.20.4.12 (T-c3): atomic output writes — a crash / disk-full mid-write
 # can no longer leave a truncated .md behind (temp file + os.replace).
@@ -132,7 +133,7 @@ class OutputGeneratorBase:
                 },
             }
             url = f"{self.ollama_base_url}/api/generate"
-            resp = safe_ollama_request("POST", url, json=payload, timeout=300)
+            resp = safe_ollama_request("POST", url, json=payload, timeout=LLM_REQUEST_TIMEOUT_S)
             return resp.json().get("response", "").strip()
         except Exception as e:
             self.log(f"  ⚠️ Ollama call failed: {e}", "WARNING")
@@ -162,7 +163,10 @@ class OutputGeneratorBase:
         }
         try:
             resp = session_for_url(base_url).post(
-                f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300
+                f"{base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=LLM_REQUEST_TIMEOUT_S,
             )
             resp.raise_for_status()
             return extract_openai_content(resp.json())

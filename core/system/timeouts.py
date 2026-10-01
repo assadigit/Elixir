@@ -121,11 +121,6 @@ LONG_RUN_TIMEOUT_S = 600
 #
 #
 #
-# LLM_REQUEST_TIMEOUT_S (300) remaining:
-#   core/pipeline/conversion/summarization.py:831,875,919,942  provider timeouts
-#   core/podcast/script_generator.py:1310  script generation
-#   core/outputs/new_outputs.py:135,165  new-output LLM calls
-#   ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py:1356
 #
 # KEYPOINTS_WHOLE_CALL_TIMEOUT_S (420):
 #   core/summarisation/simplified_keypoints.py:123
