@@ -504,3 +504,170 @@ class TestPacketsCallLlmRouting:
         assert h.call() is not None
         notes = [m for m in h.info_logs() if "not reachable" in m]
         assert len(notes) == 1, h.info_logs()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Layer 3 — the new-output riders (OutputGeneratorBase._call_llm_once)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class _OllamaUrlSettingsStub(_SettingsStub):
+    """Adds the get_ollama_url() surface OutputGeneratorBase.__init__ reads
+    (the real resolution order, utils/settings.py:1449, minimal honest
+    mirror: canonical key → legacy keys → default, /v1 stripped)."""
+
+    def get_ollama_url(self) -> str:
+        url = str(self.get("llm.ollama_url", "") or "")
+        if not url:
+            for legacy in (
+                "summarisation.endpoint",
+                "summarisation.ollama_url",
+                "ocr.ollama_url",
+                "translation.endpoint",
+            ):
+                url = str(self.get(legacy, "") or "")
+                if url:
+                    break
+        if not url:
+            url = "http://localhost:11434"
+        if url.endswith("/v1"):
+            url = url[:-3]
+        return url.rstrip("/")
+
+
+class _FakeJsonResponse:
+    """The raise_for_status/json contract _call_openai_compat needs."""
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def _openai_payload(text: str = "rider synthesis text") -> dict:
+    return {"choices": [{"message": {"content": text}}]}
+
+
+class _RidersHarness:
+    """An ExecutiveBriefingGenerator + faked transport + faked probe."""
+
+    def __init__(self, monkeypatch, values: dict, probe_models: list[str]) -> None:
+        import utils.network as net_mod
+        from utils.settings import Settings
+
+        self.settings = _OllamaUrlSettingsStub(values)
+        monkeypatch.setattr(Settings, "_test_override", self.settings, raising=False)
+
+        from core.llm import local_fallback
+
+        self.spy = _ProbeSpy(models=probe_models)
+        monkeypatch.setattr(local_fallback, "list_llamacpp_models", self.spy)
+
+        self.session = _FakeSession(response=_FakeJsonResponse(_openai_payload()))
+        monkeypatch.setattr(net_mod, "session_for_url", lambda url: self.session)
+
+        from core.outputs.new_outputs import ExecutiveBriefingGenerator
+        from tests.fixtures import make_minimal_request
+
+        self.logs: list[tuple[str, str]] = []
+        self.gen = ExecutiveBriefingGenerator(
+            make_minimal_request(),
+            log_callback=lambda m, level="INFO": self.logs.append((level, m)),
+        )
+
+    def call_once(self, prompt: str = "hi") -> str | None:
+        return self.gen._call_llm_once(prompt, 0.2, 512)
+
+
+class TestNewOutputsRidersRouting:
+    def test_provider_llamacpp_dead_calls_configured_llamacpp_url(self, monkeypatch):
+        """CHARACTERIZATION (the adjacent defect found while wiring the
+        policy): provider="llamacpp" — the fresh-install DEFAULT — matched
+        NO branch in _call_llm_once and silently returned None (riders
+        produced nothing on a llama.cpp rig). Now: the configured llamacpp
+        URL gets the OpenAI-compatible call with the configured model."""
+        h = _RidersHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "llamacpp",
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+                "summarisation.llamacpp_model": "configured-lc",
+                "summarisation.llamacpp_api_key": "sekrit",
+            },
+            probe_models=[],  # server currently down → no takeover
+        )
+        assert h.call_once() == "rider synthesis text"
+        url, kwargs = h.session.calls[0]
+        assert url == f"{_LLAMACPP_URL}/chat/completions"
+        assert kwargs["json"]["model"] == "configured-lc"
+        assert kwargs["headers"]["Authorization"] == "Bearer sekrit"
+        assert any("not reachable" in m for _lvl, m in h.logs)
+
+    def test_provider_ollama_live_llamacpp_takes_over(self, monkeypatch):
+        """Same policy as Packets: saved provider Ollama + live llama-server
+        → the rider's call routes to llama.cpp with the served model."""
+        h = _RidersHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "llm.ollama_url": "http://localhost:11434",
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=["served-27b"],
+        )
+        assert h.call_once() == "rider synthesis text"
+        url, kwargs = h.session.calls[0]
+        assert url == f"{_LLAMACPP_URL}/chat/completions"
+        assert kwargs["json"]["model"] == "served-27b"
+        assert kwargs["headers"]["Authorization"] == "Bearer local"
+
+    def test_provider_ollama_llamacpp_down_calls_ollama(self, monkeypatch):
+        """Pin: llama.cpp off → the configured Ollama path runs unchanged
+        (safe_ollama_request → /api/generate with the request's model)."""
+        import utils.network as net_mod
+
+        h = _RidersHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "llm.ollama_url": "http://localhost:11434",
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=[],
+        )
+        calls: list[tuple[str, str, dict]] = []
+
+        def fake_safe_request(method, url, timeout=300, retries=0, **kwargs):
+            calls.append((method, url, kwargs))
+            return _FakeJsonResponse({"response": "ollama says"})
+
+        monkeypatch.setattr(net_mod, "safe_ollama_request", fake_safe_request)
+        assert h.call_once() == "ollama says"
+        # the POST went to the Ollama native endpoint with the request model
+        assert len(calls) == 1
+        method, url, kwargs = calls[0]
+        assert method == "POST"
+        assert url == "http://localhost:11434/api/generate"
+        assert kwargs["json"]["model"] == "test-model:latest"
+
+    def test_cloud_provider_untouched(self, monkeypatch):
+        h = _RidersHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "openrouter",
+                "summarisation.api_base_url": "https://openrouter.ai/api/v1",
+                "summarisation.api_key": "sk-1",
+                "summarisation.cloud_model": "cloud-m",
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=["live-would-take-over"],
+        )
+        assert h.call_once() == "rider synthesis text"
+        assert h.spy.calls == []
+        url, kwargs = h.session.calls[0]
+        assert url == "https://openrouter.ai/api/v1/chat/completions"
+        assert kwargs["json"]["model"] == "cloud-m"

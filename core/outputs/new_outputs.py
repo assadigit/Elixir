@@ -42,6 +42,7 @@ class OutputGeneratorBase:
         from utils.settings import Settings
 
         settings = Settings()
+        self._llm_settings = settings  # V0.6.12: kept for _call_llm_once
         self.provider = settings.get("summarisation.provider", "ollama")
         self.primary_model = request.summarisation_model
         self.ollama_base_url = (
@@ -97,6 +98,32 @@ class OutputGeneratorBase:
         """Single LLM call (no retry). Called by _call_llm."""
         temp = temperature if temperature is not None else self.temperature
 
+        # V0.6.12: the llama.cpp-first local fallback (the shared policy,
+        # core/llm/local_fallback.py — the operator rule: llama-server up
+        # = route to it and its served model). Cloud selections are never
+        # probed. Also fixes the silent skip: provider="llamacpp" (the
+        # fresh-install DEFAULT) previously matched NO branch below and
+        # returned None — the briefing/podcast/flashcards riders quietly
+        # produced nothing on a llama.cpp rig.
+        from core.llm.local_fallback import (
+            LLAMACPP_DEFAULT_BASE_URL,
+            decide_llamacpp_first,
+        )
+
+        decision = decide_llamacpp_first(self._llm_settings, self.provider)
+        if decision.note and not getattr(self, "_llamacpp_route_logged", False):
+            self.log(f"  🦙 {decision.note}", "INFO")
+            self._llamacpp_route_logged = True
+        if decision.use_llamacpp:
+            return self._call_openai_compat(
+                prompt,
+                temp,
+                max_tokens,
+                base_url=decision.base_url,
+                api_key=decision.api_key,
+                model=decision.model,
+            )
+
         if self.provider == "ollama":
             return self._call_ollama(prompt, temp, max_tokens)
         elif self.provider in ("openrouter", "openai", "openai_compatible"):
@@ -114,6 +141,27 @@ class OutputGeneratorBase:
                 base_url=s.get("summarisation.freellmapi_url", "http://localhost:3001/v1"),
                 api_key=get_secret("summarisation.freellmapi_key", s, ""),
                 model=s.get("summarisation.freellmapi_model", "auto"),
+            )
+        elif self.provider == "llamacpp":
+            # V0.6.12: the CONFIGURED llama.cpp backend (not currently
+            # reachable — the takeover above would have fired). Route the
+            # OpenAI-compatible call at the configured llamacpp URL
+            # instead of silently returning None (the pre-V0.6.12 defect,
+            # pinned by the characterization test in
+            # tests/test_v0612_llamacpp_first_fallback.py Layer 3).
+            from core.system.secrets import get_secret
+
+            return self._call_openai_compat(
+                prompt,
+                temp,
+                max_tokens,
+                base_url=self._llm_settings.get(
+                    "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_BASE_URL
+                ),
+                api_key=get_secret("summarisation.llamacpp_api_key", self._llm_settings, "local")
+                or "local",
+                model=self._llm_settings.get("summarisation.llamacpp_model", "")
+                or self.primary_model,
             )
         return None
 
