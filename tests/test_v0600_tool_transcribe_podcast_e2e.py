@@ -140,6 +140,13 @@ class _TestSettings:
             "summarisation.endpoint": "",
             "llm.ollama_url": "",
             "summarisation.model": "",
+            # V0.6.13: summarize_transcript + generate_podcast_script now
+            # consult the llama.cpp-first policy, which probes this key —
+            # pin it at a DEAD port (the V0.6.12 packets-shim precedent)
+            # so every test in this file is deterministic even on a rig
+            # with a real llama-server on 8080. Tests that WANT the live
+            # shim override it explicitly (cf. TestLiveSummarizeTranscript).
+            "summarisation.llamacpp_base_url": "http://127.0.0.1:9/v1",
         }
         if values:
             self._values.update(values)

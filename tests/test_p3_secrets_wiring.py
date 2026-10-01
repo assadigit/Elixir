@@ -313,7 +313,15 @@ class TestConsumerWiring:
         from core.tts.normalizer import create_normalizer_from_settings
 
         settings_stub.data.update(
-            {"tts.normalize_enabled": True, "tts.normalize_model": "qwen2.5:3b"}
+            {
+                "tts.normalize_enabled": True,
+                "tts.normalize_model": "qwen2.5:3b",
+                # V0.6.13: the factory now consults the llama.cpp-first
+                # policy when the (default-local) endpoint is local — pin
+                # the probe at a dead port so this test is deterministic
+                # on a rig with a live llama-server (the V0.6.12 precedent).
+                "summarisation.llamacpp_base_url": "http://127.0.0.1:9/v1",
+            }
         )
         set_secret("tts.normalize_api_key", "sk-tts-norm", settings_stub)
         norm = create_normalizer_from_settings(log_callback=None)
