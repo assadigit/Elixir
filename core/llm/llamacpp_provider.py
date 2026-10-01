@@ -72,6 +72,7 @@ from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
 from core.system.timeouts import (
     CLI_POLL_TIMEOUT_S,
+    HTTP_FETCH_TIMEOUT_S,
     UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
 )
 
@@ -739,10 +740,10 @@ def test_llamacpp_connection(
         model=probe_model,
         base_url=base,
         api_key=api_key,
-        timeout=60,
+        timeout=HTTP_FETCH_TIMEOUT_S,
         log_callback=lambda msg, level="INFO": logs.append(f"{level}: {msg}"),
     )
-    ok = probe.smoke_test(timeout=60, prompt="hi")
+    ok = probe.smoke_test(timeout=HTTP_FETCH_TIMEOUT_S, prompt="hi")
     if ok:
         extra = f" (served: {', '.join(models[:3])})" if models else ""
         return True, f"llama.cpp OK — '{probe_model}' responded{extra}"

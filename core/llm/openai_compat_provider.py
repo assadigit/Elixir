@@ -15,7 +15,7 @@ from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import (
     retry_llm_call,
 )
-from core.system.timeouts import API_BATCH_TIMEOUT_S
+from core.system.timeouts import API_BATCH_TIMEOUT_S, HTTP_FETCH_TIMEOUT_S
 from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -305,7 +305,7 @@ class OpenAICompatProvider(LLMProvider):
 
             # 5. Download the results
             dl_url = f"{self.base_url.rstrip('/')}/files/{output_file_id}/content"
-            dl_resp = _requests.get(dl_url, headers=headers, timeout=60)
+            dl_resp = _requests.get(dl_url, headers=headers, timeout=HTTP_FETCH_TIMEOUT_S)
             if dl_resp.status_code != 200:
                 return None
 

@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS
+from core.system.timeouts import HTTP_FETCH_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -1142,7 +1143,9 @@ class OcrServiceDialog(BaseServiceDialog):
             import subprocess
 
             cmd = [tess_cmd, str(path), "-", "-l", "eng+fas"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=HTTP_FETCH_TIMEOUT_S
+            )
             return result.stdout.strip()
         else:
             # PDF: convert to images then OCR each.

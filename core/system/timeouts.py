@@ -118,11 +118,6 @@ LONG_RUN_TIMEOUT_S = 600
 #
 #
 #
-# HTTP_FETCH_TIMEOUT_S (60):
-#   core/tts/normalizer.py:405  session POST
-#   core/llm/openai_compat_provider.py:305  model download
-#   core/llm/llamacpp_provider.py:738,741  smoke test (2 sites)
-#   ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py:1152  OCR subprocess
 #
 # FAST_LLM_TIMEOUT_S (120):
 #   core/tts/_json_subprocess.py:69  JSON read

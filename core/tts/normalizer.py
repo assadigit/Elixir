@@ -40,7 +40,7 @@ from core.llm.model_errors import is_model_not_found, model_not_found_hint
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
-from core.system.timeouts import UI_PROBE_TIMEOUT_S
+from core.system.timeouts import HTTP_FETCH_TIMEOUT_S, UI_PROBE_TIMEOUT_S
 
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
 # response extraction (replaces the bare requests.post + deep-index parse).
@@ -403,7 +403,9 @@ class TextNormalizer:
         # V18.20.4.11 (P3 / O-c5): pooled transport + shape-safe parse — a
         # malformed provider payload now returns "" (deterministic fallback
         # path) instead of raising KeyError.
-        resp = session_for_url(url).post(url, json=payload, headers=headers, timeout=60)
+        resp = session_for_url(url).post(
+            url, json=payload, headers=headers, timeout=HTTP_FETCH_TIMEOUT_S
+        )
         # V18.20.4.12 (T-c7): the pre-emptive auto-discovery in
         # create_normalizer_from_settings covers empty/known-bad DEFAULTS,
         # but an explicitly-configured model that isn't pulled still 404s
