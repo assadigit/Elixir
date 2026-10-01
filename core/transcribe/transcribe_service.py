@@ -29,6 +29,7 @@ from pathlib import Path
 # combo already uses RIG_FALLBACK_MODEL; the service default now matches
 # so programmatic callers don't hit the dead tag).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import LONG_RUN_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def extract_audio_from_video(
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=LONG_RUN_TIMEOUT_S,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         if result.returncode != 0:

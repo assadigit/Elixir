@@ -268,7 +268,12 @@ class TestPostCompletionSourcePins:
             "the blind fire-and-forget Popen call must not come back (W-c15); "
             "mentions of the old behaviour only survive in comments/docstrings"
         )
-        assert "subprocess.run(cmd, capture_output=True, text=True, timeout=20)" in code
+        # V0.6.11 (wave 8) pin evolution: the 20 s sweep literal became the
+        # named constant (value byte-identical — CLI_SWEEP_TIMEOUT_S = 20).
+        assert (
+            "subprocess.run(cmd, capture_output=True, text=True, timeout=CLI_SWEEP_TIMEOUT_S)"
+            in code
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════

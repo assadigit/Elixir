@@ -103,35 +103,35 @@ LONG_RUN_TIMEOUT_S = 600
 #   core/system/dependency_checker.py:388  ollama reachability (timeout=5)
 
 
-# ── the FLAGGED remainder (the remaining waves) ─────────────────────────────
+# ── the flagged remainder — RETIRED (V0.6.11 wave 8, all 11 families) ───────
 #
-# NOT migrated yet, per the charter ("migrate the highest-churn 10 first,
-# flag the rest"). Each future wave: import the constant, swap the literal,
-# run the file's tests, one commit. Evidence snapshot (V0.6.10 line numbers;
-# V0.6.11 note: line numbers drift as waves land — grep the value):
+# The V0.6.10 charter ("migrate the highest-churn 10 first, flag the rest")
+# is COMPLETE: every flagged site now imports its constant here. The
+# migration record (one commit per family, values byte-identical):
 #
 # MIGRATED in V0.6.11 wave 8 — the UI-probe family (10 sites): the
 #   normalizer _tags_url probe, the dependencies /api/tags probes ×3, the
 #   translation/transcribe/podcast model pickers, the ai_model_section
 #   listings ×3, and the markdown-styler tight probe (its own leaf value
 #   UI_PROBE_TIGHT_TIMEOUT_S above, per the V0.6.10 note).
+# MIGRATED — the CLI-poll family (11 sites): the ollama POST-generate poll,
+#   the llamacpp model listings ×2, the model-manager CLI POSTs ×2, the
+#   thermal polls ×2, the nvidia-smi calls ×3, the llamacpp-config listing.
+# MIGRATED — the subsecond family (4 sites) + the API-batch family (4 sites).
+# MIGRATED — the HTTP-fetch family (5 sites).
+# MIGRATED — the fast-LLM family (9 sites).
+# MIGRATED — the slow-LLM family (7 sites).
+# MIGRATED — the LLM-request family (8 sites).
+# MIGRATED — the keypoints whole-call family (1 site: the simplified-keypoints
+#   primary budget).
+# MIGRATED — the long-run family (3 sites): the model pull, the summarizer
+#   primary timeout, and the transcription wall.
+# MIGRATED — the CLI-sweep family (1 site: the hardware-monitor full sweep).
 #
-#
-#
-#
-#
-#
-#
-# KEYPOINTS_WHOLE_CALL_TIMEOUT_S (420):
-#   core/summarisation/simplified_keypoints.py:123
-#
-# LONG_RUN_TIMEOUT_S (600):
-#   core/llm/model_manager.py:191  model pull
-#   core/summarisation/summarizer_init.py:161  primary timeout
-#   core/transcribe/transcribe_service.py:69  transcription
-#
-# CLI_SWEEP_TIMEOUT_S (20):
-#   core/system/hardware_monitor.py:1021  full CLI sweep
+# OUT OF SCOPE by design (NOT timeout-literal sites): the settings DEFAULT
+# local.http_timeout_sec (a user-configurable setting, not a policy literal)
+# and the tts/ family's own named inline constants (their module-local
+# precedent, cited in the V0.6.10 leaf header).
 
 __all__ = [
     "SUBSECOND_PROBE_TIMEOUT_S",

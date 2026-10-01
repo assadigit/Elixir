@@ -43,7 +43,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.system.timeouts import CLI_POLL_TIMEOUT_S, SUBSECOND_PROBE_TIMEOUT_S
+from core.system.timeouts import CLI_POLL_TIMEOUT_S, CLI_SWEEP_TIMEOUT_S, SUBSECOND_PROBE_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -1020,7 +1020,7 @@ def _run_post_completion_command(action: str, cmd: list[str], log: LogFn) -> Non
     import sys
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=CLI_SWEEP_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         # NOT a failure: ``rundll32 powrprof.dll,SetSuspendState`` can block
         # indefinitely while the machine is ALREADY suspending, and killing

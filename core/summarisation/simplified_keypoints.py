@@ -28,7 +28,7 @@ from core.models import ConversionRequest, SummaryResult
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
 from core.summarisation.filter_thinking import qwen_no_think
-from core.system.timeouts import FAST_LLM_TIMEOUT_S
+from core.system.timeouts import FAST_LLM_TIMEOUT_S, KEYPOINTS_WHOLE_CALL_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -121,7 +121,7 @@ class SimplifiedKeypointsBuilder:
         # FIX V3.1.5: Raised timeout from 300 → 420 to accommodate thinking
         # model overhead (no /no_think directive). 10-item batches with
         # thinking take ~60-80s; 420s gives ample headroom for retries.
-        self.timeout = 420
+        self.timeout = KEYPOINTS_WHOLE_CALL_TIMEOUT_S
         self.retries = 1
 
         # For token counting when batching

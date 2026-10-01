@@ -117,23 +117,22 @@ class TestFlaggedRemainder:
     itself carries the evidence snapshot for the next waves."""
 
     def test_flagged_sections_present(self):
+        # V0.6.11 (wave 8) pin evolution: ALL 11 families migrated — the
+        # flagged list is RETIRED (the migration record replaced it).
         src = _src("core/system/timeouts.py")
-        assert "FLAGGED remainder" in src
-        # V0.6.11 (wave 8) pin evolution: a family's flag section is REMOVED
-        # from the list when its wave lands (a MIGRATED note replaces it) —
-        # the UI-probe family is gone; the not-yet-migrated families stay.
+        assert "RETIRED (V0.6.11 wave 8, all 11 families)" in src
         assert "MIGRATED in V0.6.11 wave 8" in src
-        for marker in ("LONG_RUN_TIMEOUT_S (600)",):
-            assert marker in src, f"missing flag section: {marker}"
 
     def test_flagged_sites_still_inline_not_yet_migrated(self):
-        """Honesty pin: the flagged sites are still inline literals (the
-        migration is 10 sites, not a silent mass-replace) — spot-check one
-        per family."""
-        assert "timeout=600, retries=1" in _src("core/llm/model_manager.py")
-        assert "self.timeout = 600" in _src("core/summarisation/summarizer_init.py")
-        # V0.6.11 (wave 8) pin evolution: the 300 s summarization sites
-        # migrated to the named constant — spot-check the constant wiring.
+        """Honesty pin, evolved (V0.6.11 wave 8): the migration is COMPLETE —
+        spot-check that the formerly-inline literals are now the named
+        constants (one per family, value contract in the leaf)."""
+        assert "timeout=LONG_RUN_TIMEOUT_S, retries=1" in _src("core/llm/model_manager.py")
+        assert "self.timeout = LONG_RUN_TIMEOUT_S" in _src("core/summarisation/summarizer_init.py")
         assert "_provider.timeout = LLM_REQUEST_TIMEOUT_S" in _src(
             "core/pipeline/conversion/summarization.py"
         )
+        assert "self.timeout = KEYPOINTS_WHOLE_CALL_TIMEOUT_S" in _src(
+            "core/summarisation/simplified_keypoints.py"
+        )
+        assert "timeout=CLI_SWEEP_TIMEOUT_S" in _src("core/system/hardware_monitor.py")

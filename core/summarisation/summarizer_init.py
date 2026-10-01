@@ -21,6 +21,7 @@ from typing import Any
 from core.llm import ModelManager
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
 from core.system.ollama_supervisor import OllamaSupervisor
+from core.system.timeouts import LONG_RUN_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.settings import Settings
 
@@ -158,7 +159,7 @@ class SummarizerInitMixin:
             self.ollama_base_url = Settings().get_ollama_url()
         except Exception:
             self.ollama_base_url = "http://localhost:11434"
-        self.timeout = 600
+        self.timeout = LONG_RUN_TIMEOUT_S
         self.retries = 1
         self._streaming_enabled = bool(getattr(request, "_streaming_enabled", False))
         self._ollama_supervisor = OllamaSupervisor(

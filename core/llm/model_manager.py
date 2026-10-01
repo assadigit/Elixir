@@ -17,7 +17,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Optional
 
-from core.system.timeouts import CLI_POLL_TIMEOUT_S
+from core.system.timeouts import CLI_POLL_TIMEOUT_S, LONG_RUN_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import is_ollama_reachable, list_ollama_models, safe_ollama_request
 from utils.settings import Settings
@@ -191,7 +191,9 @@ class ModelManager:
         }
         try:
             logger.info(f"Loading model {model} (may take several minutes on HDD)...")
-            resp = safe_ollama_request("POST", url, json=payload, timeout=600, retries=1)
+            resp = safe_ollama_request(
+                "POST", url, json=payload, timeout=LONG_RUN_TIMEOUT_S, retries=1
+            )
             if resp.status_code == 200:
                 logger.info(f"Model {model} loaded successfully.")
                 return True
