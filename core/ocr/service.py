@@ -47,6 +47,7 @@ from pypdf import PdfReader, PdfWriter
 
 from core.llm import ModelManager, ModelType
 from core.models import ConversionRequest, OcrEngine, OcrResult, PdfAnalysisResult
+from core.system.timeouts import FAST_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -1296,7 +1297,7 @@ class OCRService:
                 "POST",
                 f"{ollama_url}/api/generate",
                 json=payload,
-                timeout=120,
+                timeout=FAST_LLM_TIMEOUT_S,
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()

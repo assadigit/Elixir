@@ -119,14 +119,6 @@ LONG_RUN_TIMEOUT_S = 600
 #
 #
 #
-# FAST_LLM_TIMEOUT_S (120):
-#   core/tts/_json_subprocess.py:69  JSON read
-#   core/summarisation/llm_dispatcher.py:772  ollama POST
-#   core/summarisation/summarizer_coverage.py:149  future.result
-#   core/summarisation/simplified_keypoints.py:274,324  fast-path timeouts
-#   core/pipeline/conversion/summarization.py:805,849  fast-model provider timeouts
-#   core/ocr/service.py:1299  OCR vision call
-#   core/pdf/toc_extractor.py:361  TOC vision call
 #
 # SLOW_LLM_TIMEOUT_S (180) remaining:
 #   core/summarisation/llm_dispatcher.py:567  openai-compat POST

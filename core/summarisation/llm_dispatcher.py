@@ -48,6 +48,7 @@ from typing import Any
 import requests as _requests
 
 from core.llm.retry import retry_llm_call
+from core.system.timeouts import FAST_LLM_TIMEOUT_S
 from utils.network import extract_openai_content, safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -769,7 +770,7 @@ def call_fast_ollama(
     @retry_llm_call(max_attempts=2, log_callback=_log)
     def _do_one_call() -> str:
         _log(f"    🤖 {model} (t={temp:.2f}, ctx={ctx // 1024}K) attempt…", "INFO")
-        resp = safe_ollama_request("POST", url, json=payload, timeout=120)
+        resp = safe_ollama_request("POST", url, json=payload, timeout=FAST_LLM_TIMEOUT_S)
         text = resp.json().get("response", "").strip()
         if not text:
             raise _requests.exceptions.ConnectionError("empty response from fast model")

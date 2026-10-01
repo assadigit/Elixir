@@ -41,6 +41,7 @@ from core.summarisation import Summarizer
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
 from core.summarisation.filter_thinking import qwen_no_think
+from core.system.timeouts import FAST_LLM_TIMEOUT_S
 
 # V18.20.2.0 (SWOT A30): module-level import — the per-chapter write loop
 # previously imported this INSIDE the loop body, which left the name
@@ -842,7 +843,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 _provider.api_key = _api_key
                 _provider.model = _api_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 120
+                    _provider.timeout = FAST_LLM_TIMEOUT_S
                 _summ_model = _api_model
                 log(
                     f"  🚀 V16.0.8 concept extraction: dual_api mode "
@@ -886,7 +887,7 @@ def _rs_make_concept_llm_fn(ctx: _SummCtx):
                 if hasattr(_provider, "model"):
                     _provider.model = _fast_model
                 if hasattr(_provider, "timeout"):
-                    _provider.timeout = 120  # fast model = shorter timeout
+                    _provider.timeout = FAST_LLM_TIMEOUT_S  # fast model = shorter timeout
                 _summ_model = _fast_model
                 log(
                     f"  🚀 V16.0.8 concept extraction: dual_local mode "

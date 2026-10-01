@@ -55,6 +55,7 @@ from core.summarisation.gap_filler import gap_fill_concepts as gf_gap_fill_conce
 from core.summarisation.summary_validator import (
     compute_coverage as sv_compute_coverage,
 )
+from core.system.timeouts import FAST_LLM_TIMEOUT_S
 
 # V18.2.14 (B4): traceable error-handling helpers — replace silent
 # ``except Exception: pass`` with ``log_swallow()`` so failures leave a
@@ -146,7 +147,7 @@ class SummarizerCoverageMixin:
                 futures = {executor.submit(_fill_one, pair): pair for pair in gap_pairs}
                 for future in concurrent.futures.as_completed(futures):
                     try:
-                        bp = future.result(timeout=120)
+                        bp = future.result(timeout=FAST_LLM_TIMEOUT_S)
                         if bp:
                             new_bullets.append(bp)
                     except Exception as _e:
