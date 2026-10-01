@@ -668,3 +668,242 @@ class TestB14aStructure:
         assert orch.complexity <= 15, (
             f"orchestrator must stay a thin coordinator (CC={orch.complexity})"
         )
+
+
+# ── B14-b: batch_gap_fill — the previously-untested paths ───────────────────
+
+
+class _GapLog:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, msg, level="INFO"):
+        self.calls.append((msg, level))
+
+
+def _gap_deps(response_fn=None):
+    """Hermetic deps in the test_gap_fill_batch.py house style."""
+    log = _GapLog()
+    llm_calls = []
+
+    def check_coverage(analysis, text):
+        text = text or ""
+        covered = [a for a in analysis["authors"] if a in text]
+        missing = [a for a in analysis["authors"] if a not in text]
+        return {
+            "covered": covered,
+            "missing": missing,
+            "total": len(analysis["authors"]),
+            "coverage_pct": (len(covered) / len(analysis["authors"]))
+            if analysis["authors"]
+            else 0.0,
+        }
+
+    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+        i = len(llm_calls)
+        llm_calls.append(prompt)
+        if response_fn is not None:
+            return response_fn(prompt, i)
+        return None
+
+    return {
+        "log": log,
+        "check_coverage": check_coverage,
+        "call_fast_llm": call_fast_llm,
+        "strip_thinking": lambda t: t,
+        "filter_thinking_bullets": lambda b, concepts=None, source_text="": list(b),
+        "llm_calls": llm_calls,
+    }
+
+
+def _gap_run(deps, content, bullets, missing, analysis, det_authors):
+    from core.summarisation.gap_fill_batch import batch_gap_fill
+
+    return batch_gap_fill(
+        "Chapter 1 — Identity",
+        content,
+        bullets,
+        missing,
+        analysis,
+        det_authors,
+        check_coverage=deps["check_coverage"],
+        call_fast_llm=deps["call_fast_llm"],
+        temperature=0.2,
+        strip_thinking=deps["strip_thinking"],
+        filter_thinking_bullets=deps["filter_thinking_bullets"],
+        log=deps["log"],
+    )
+
+
+class TestNoYieldEscalation:
+    """V18.20.3.7 (RC-B.1): an author with NO bullet for 2 CONSECUTIVE
+    zero-yield rounds switches to the mention-only prompt — the escalation
+    test_v182037 only source-pins; the behavioral corridor was never driven
+    (empty responses never trip the veto counter, so RC-4 alone cannot
+    escalate)."""
+
+    def test_two_zero_yield_rounds_escalate_to_mention_only(self):
+        deps = _gap_deps(response_fn=lambda prompt, i: "")  # always empty
+        bullets: list[str] = []
+        analysis = {"authors": ["Voss", "Ibarra"]}
+        content = "Voss (1957) framed the model. Ibarra (1959) extended it."
+        out = _gap_run(deps, content, bullets, ["Voss", "Ibarra"], analysis, ["Voss", "Ibarra"])
+        assert out.total_added == 0
+        # the full RC-B.1 → RC-4 chain: rounds 1-2 empty (no-yield counts hit
+        # 2) → round 3 mention-only → still missing → BOTH given up → round 4
+        # breaks on the empty actionable pool
+        assert out.rounds == 4
+        assert out.given_up == {"Voss", "Ibarra"}
+        assert sorted(out.still_missing) == ["Ibarra", "Voss"]
+        infos = [m for m, lvl in deps["log"].calls]
+        assert any("'Voss' yielded no bullet for 2 consecutive rounds" in m for m in infos)
+        assert any("'Ibarra' yielded no bullet for 2 consecutive rounds" in m for m in infos)
+        assert any("No actionable authors left" in m for m in infos)
+        assert any("Giving up on 'Voss'" in m for m in infos)
+        assert any("Giving up on 'Ibarra'" in m for m in infos)
+        # exactly 3 prompts sent; round 3's carries the mention-only block
+        assert len(deps["llm_calls"]) == 3
+        assert "MENTION-ONLY authors: Voss, Ibarra." in deps["llm_calls"][2]
+        # rounds 1-2 did NOT carry it
+        assert "MENTION-ONLY" not in deps["llm_calls"][0]
+        assert "MENTION-ONLY" not in deps["llm_calls"][1]
+
+
+class TestDuplicateGuard:
+    def test_punctuation_and_case_insensitive_duplicate_dropped(self):
+        """The dup guard normalizes BOTH sides (strip non-word chars, lower,
+        first 60) — a response bullet differing only in punctuation/case from
+        an existing bullet is dropped, not re-added."""
+        deps = _gap_deps(
+            response_fn=lambda prompt, i: (
+                "- VOSS 1957 framed the two factor model of market dynamics"
+            )
+        )
+        bullets = ["Voss (1957) framed the two-factor model of market dynamics."]
+        analysis = {"authors": ["Voss"]}
+        content = "Voss (1957) framed the model."
+        out = _gap_run(deps, content, bullets, ["Voss"], analysis, ["Voss"])
+        assert out.total_added == 0
+        assert len(bullets) == 1  # the punctuation variant was NOT appended
+
+
+class TestResponseBulletCap:
+    def test_response_considered_at_most_two_bullets_per_author(self):
+        """``_max_gap_bullets = len(_batch_authors) * 2`` — with 2 authors in
+        the pool, only the FIRST 4 response lines are ever evaluated; a valid
+        5th bullet beyond the cap is never appended."""
+        response = "\n".join(
+            [
+                "- First filler bullet about testing alpha",
+                "- Second filler bullet about testing beta",
+                "- Third filler bullet about testing gamma",
+                "- Fourth filler bullet about testing delta",
+                "- Fifth filler bullet about testing epsilon",
+            ]
+        )
+        deps = _gap_deps(response_fn=lambda prompt, i: response)
+        bullets: list[str] = []
+        analysis = {"authors": ["Voss", "Ibarra"]}
+        content = "Voss (1957) framed the model. Ibarra (1959) extended it."
+        out = _gap_run(deps, content, bullets, ["Voss", "Ibarra"], analysis, ["Voss", "Ibarra"])
+        assert out.total_added == 4  # the cap: 2 authors × 2, not 5
+        assert len(bullets) == 4
+        assert not any("epsilon" in b for b in bullets)  # the 5th never landed
+
+
+class TestB14bStructure:
+    """V0.6.11 (B14-b): the batch_gap_fill god-function decomposition —
+    the phase structure + the CC ceiling. The behavioral contract is pinned
+    by the classes above + the pre-existing suites (test_gap_fill_batch,
+    test_v182032/34/35/37/38/39, test_v05xx)."""
+
+    def test_ctx_dataclass_holds_the_14_params_and_loop_state(self):
+        import dataclasses
+
+        from core.summarisation import gap_fill_batch as gfb
+
+        fields = {f.name for f in dataclasses.fields(gfb._GapFillCtx)}
+        expected = {
+            # the 14 public parameters (same order as the signature)
+            "heading",
+            "content",
+            "bullets",
+            "missing",
+            "analysis",
+            "det_authors",
+            "check_coverage",
+            "call_fast_llm",
+            "temperature",
+            "strip_thinking",
+            "filter_thinking_bullets",
+            "log",
+            "source_glossary",
+            "regex_confirmed_authors",
+            # the loop state (names match the original locals)
+            "_sentences",
+            "_gap_fill_round",
+            "_still_missing",
+            "_total_added",
+            "_veto_counts",
+            "_mention_attempted",
+            "_given_up",
+            "_no_yield_counts",
+            "_batch_authors",
+            "_mention_only",
+            "_batch_context",
+            "_final_check_added",
+            "_final_check_rounds",
+        }
+        assert expected <= fields
+
+    def test_phase_helpers_exist_and_orchestrator_keeps_order(self):
+        import inspect
+
+        from core.summarisation import gap_fill_batch as gfb
+
+        helpers = [
+            "_gff_prepare",
+            "_gff_round_pool",
+            "_gff_round_context",
+            "_gff_round_execute",
+            "_gff_post_round_accounting",
+            "_gff_final_check",
+            "_gff_report_still_missing",
+        ]
+        for name in helpers:
+            assert callable(getattr(gfb, name, None)), f"missing {name}"
+        src = inspect.getsource(gfb.batch_gap_fill)
+        order = [src.index(f"{name}(ctx)") for name in helpers]
+        assert order == sorted(order), "phase call order must match the original flow"
+        # the loop + the two break plumbings stay in the orchestrator
+        assert "while ctx._still_missing and ctx._gap_fill_round < 5:" in src
+        assert "if not _gff_round_pool(ctx):" in src
+        assert "if not _gff_round_execute(ctx):" in src
+        # the no-op guard + the outcome contract are unchanged
+        assert "if not missing:" in src
+        assert "return GapFillOutcome(" in src
+
+    def test_cc_ceiling_orchestrator_thin_and_no_f_grade(self):
+        """radon CC: batch_gap_fill must be a thin coordinator (≤ 15) and no
+        function in the module may reach F (≥ 41) — the worst verbatim units
+        are the E(36) round-execute and final-check blocks (the B12 E(31)
+        verbatim-loop precedent)."""
+        import ast as ast_mod
+        import inspect
+
+        from radon.visitors import ComplexityVisitor
+
+        from core.summarisation import gap_fill_batch as gfb
+
+        src = inspect.getsource(gfb)
+        tree = ast_mod.parse(src)
+        visitor = ComplexityVisitor()
+        visitor.visit(tree)
+        blocks = visitor.blocks
+        assert blocks
+        worst = max(b.complexity for b in blocks)
+        assert worst < 41, f"no F-grade function allowed (worst={worst})"
+        orch = next(b for b in blocks if b.name == "batch_gap_fill")
+        assert orch.complexity <= 15, (
+            f"orchestrator must stay a thin coordinator (CC={orch.complexity})"
+        )

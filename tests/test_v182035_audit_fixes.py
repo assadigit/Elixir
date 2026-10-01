@@ -294,12 +294,14 @@ class TestMentionOnlyTemplate:
     unchanged."""
 
     def test_template_is_object_position_and_pronoun_free(self):
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        # The rewritten mention-only block must demand object position…
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "OWNS the claim is the grammatical" in src
         assert "OBJECT of a" in src
         # …forbid pronouns (the Kris "Her" class)…
@@ -308,12 +310,14 @@ class TestMentionOnlyTemplate:
         assert "NEVER open the" in src
 
     def test_tail_instruction_conditional(self):
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        # The "begin each bullet with the author's name" instruction must
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         # be conditional now (it contradicted the mention-only block).
         assert "_tail_instruction" in src
         assert "if not _mention_only" in src

@@ -523,11 +523,14 @@ class TestDedupNotSkippable:
         # Summarizer._summarize_inner to gap_fill_batch.batch_gap_fill —
         # re-pointed at the new module (Summarizer passes its judge locals
         # _analysis/_det_authors/_missing in as explicit parameters).
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "_veto_counts" in src
         assert "_mention_only" in src
         assert "_given_up" in src

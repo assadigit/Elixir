@@ -518,12 +518,14 @@ class TestParentheticalPromotion:
         V18.20.3.12 (Phase 4 / W6-O5): the gap-fill loop moved VERBATIM from
         ``Summarizer._summarize_inner`` to ``gap_fill_batch.batch_gap_fill``
         — re-pointed at the new module; the pinned wiring is unchanged."""
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        assert "active-subject" in src
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "detect_parenthetical_promotion(" in src
         assert "GENERATION-TIME active-subject" in src
 

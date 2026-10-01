@@ -51,8 +51,13 @@ lines carried over verbatim from ``summarizer.py`` (the codebase-wide
 ruff debt sweep owns those — the markers keep this new file ruff-clean
 without touching the code tokens).
 
-**V18.6.3 crash mitigation**: Uses EXPLICIT PARAMETERS (not a context
-object). Matches the proven Phase 4 + Phase 5 + Batch 1-2 pattern.
+**V0.6.11 (B14-b)**: the loop state now threads through the
+``_GapFillCtx`` dataclass (the B12 ``_ScholarCtx`` precedent — the
+14 public parameters are unchanged and the public signature is
+identical; the V18.6.3 explicit-parameters note described the pre-B12
+era). The body is split into phase helpers (prepare / round pool /
+round prompt / round call / post-round accounting / final check /
+report), verbatim extraction, AST-identity verified.
 
 Characterization tests: ``tests/test_gap_fill_batch.py`` captures the
 happy path (bullet added for a missing author), the empty-response path,
@@ -112,6 +117,7 @@ the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 import time
@@ -408,54 +414,63 @@ class GapFillOutcome(NamedTuple):
     final_check_rounds: int = 0
 
 
-# ── batch_gap_fill (extracted verbatim) ────────────────────────────────────
+# ── V0.6.11 (B14-b): the batch gap-fill loop context ──────────────────────
 
 
-def batch_gap_fill(
-    heading: str,
-    content: str,
-    bullets: list[str],
-    missing: list[str],
-    analysis: Any,
-    det_authors: list[str],
-    *,
-    check_coverage: CheckCoverageFn,
-    call_fast_llm: CallFastLlmFn,
-    temperature: float,
-    strip_thinking: StripThinkingFn,
-    filter_thinking_bullets: FilterThinkingFn,
-    log: LogCallback | None = None,
-    source_glossary: dict | list | None = None,
-    regex_confirmed_authors: list[str] | None = None,
-) -> GapFillOutcome:
-    """V18.14.1: Batch gap-fill loop — the bullets-only coverage guarantee.
+@dataclasses.dataclass
+class _GapFillCtx:
+    """V0.6.11 (B14-b): the loop-shared state for ONE ``batch_gap_fill`` run.
 
-    Extracted verbatim from the ``if _missing:`` block in
-    ``Summarizer._summarize_inner`` (V18.20.3.12 / Phase 4 / W6-O5). See
-    the module docstring for the extraction map and the free-variable
-    inventory. Mutates ``bullets`` in-place (appends the accepted
-    gap-fill bullets); returns a ``GapFillOutcome`` for logging parity.
+    The B12 ``_ScholarCtx`` pattern: the 14 public parameters (same order
+    as the signature) plus the loop state (the sentences, the round
+    counter, the still-missing list, the veto/mention/give-up/no-yield
+    accounting, the per-round batch + prompt, the final-check counts).
+    Field names KEEP the original leading underscores so every source
+    pin on the loop internals stays byte-identical (ctx.X threading is
+    the only normalization). Nothing here is public — the module API is
+    still ``batch_gap_fill`` + ``GapFillOutcome``."""
 
-    V0.5.10: ``regex_confirmed_authors`` — the runtime regex
-    ``extract_citations`` output (passed by the caller,
-    ``chapter_phases.py``, where it is the analysis-extracted author
-    list ``_det_authors``). Used as the V0.5.6 glossary-unavailable
-    FALLBACK for the loosened quote-guard: when no glossary is provided
-    OR the claimed author is NOT in the glossary, the regex-confirmed
-    membership test fires as a fallback grounding (accept the bullet
-    with a "grounded-in-regex-extraction" grounding level). Default
-    ``None`` → the V0.5.5 strict-veto behavior (no loosened override).
-    """
-    log = log or _noop_log
-    # No-op guard — the original block was wrapped in ``if _missing:``.
-    if not missing:
-        return GapFillOutcome(total_added=0, rounds=0, still_missing=[], given_up=set())
-    import re as _re2
+    # the 14 public parameters (same order as the signature)
+    heading: str
+    content: str
+    bullets: list[str]
+    missing: list[str]
+    analysis: Any
+    det_authors: list[str]
+    check_coverage: CheckCoverageFn
+    call_fast_llm: CallFastLlmFn
+    temperature: float
+    strip_thinking: StripThinkingFn
+    filter_thinking_bullets: FilterThinkingFn
+    log: LogCallback
+    source_glossary: dict | list | None = None
+    regex_confirmed_authors: list[str] | None = None
+    # the loop state (V0.6.11 / B14-b — names match the original locals;
+    # the inits run verbatim in _gff_prepare, the defaults are typing only)
+    _sentences: list = dataclasses.field(default_factory=list)
+    _gap_fill_round: int = 0
+    _still_missing: list = dataclasses.field(default_factory=list)
+    _total_added: int = 0
+    _veto_counts: dict = dataclasses.field(default_factory=dict)
+    _mention_attempted: set = dataclasses.field(default_factory=set)
+    _given_up: set = dataclasses.field(default_factory=set)
+    _no_yield_counts: dict = dataclasses.field(default_factory=dict)
+    _batch_authors: list = dataclasses.field(default_factory=list)
+    _mention_only: list = dataclasses.field(default_factory=list)
+    _batch_context: str = ""
+    _final_check_added: int = 0
+    _final_check_rounds: int = 0
 
-    _sentences = _re2.split(r"(?<=[.!?])\s+", content)
-    _gap_fill_round = 0
-    _still_missing = list(missing)
-    _total_added = 0
+
+def _gff_prepare(ctx: _GapFillCtx) -> None:
+    """V0.6.11 (B14-b): the verbatim loop init — the sentence split, the
+    round/total counters, and the veto/mention/give-up/no-yield accounting
+    (comments carried verbatim). The ``import re as _re2`` alias became the
+    module-level ``re`` import (declared normalization)."""
+    ctx._sentences = re.split(r"(?<=[.!?])\s+", ctx.content)
+    ctx._gap_fill_round = 0
+    ctx._still_missing = list(ctx.missing)
+    ctx._total_added = 0
     # V18.20.3.4 (RC-4, audit v182033): per-author veto
     # accounting. The V18.20.3.3 run burned FOUR gap-fill
     # rounds (~20 s each, zero yield after round 1)
@@ -471,9 +486,9 @@ def batch_gap_fill(
     # stays exactly as designed (it blocked 10
     # misattributed candidates in that run — a quality
     # WIN worth keeping).
-    _veto_counts: dict = {}
-    _mention_attempted: set = set()
-    _given_up: set = set()
+    ctx._veto_counts: dict = {}
+    ctx._mention_attempted: set = set()
+    ctx._given_up: set = set()
     # V18.20.3.7 (RC-B.1, audit v182036): per-author
     # consecutive zero-yield counter. The V18.20.3.6
     # run's gap-fill rounds 2-4 were ~1s no-ops (empty
@@ -487,7 +502,7 @@ def batch_gap_fill(
     # CONSECUTIVE rounds ALSO switches to mention-only
     # (not only twice-vetoed authors). Yielding resets
     # the counter.
-    _no_yield_counts: dict = {}
+    ctx._no_yield_counts: dict = {}
     # V18.14.2: Removed the deadline gate from the gap-fill
     # loop. The V18.14.1 audit found that when the deadline
     # was exceeded (2080s > 1800s), the while loop condition
@@ -500,668 +515,706 @@ def batch_gap_fill(
     # cap (max 40 theorists) and each round is ~2 min, so
     # the worst case is ~10 min past the deadline — a small
     # extension to guarantee 100% bullet coverage.
-    while _still_missing and _gap_fill_round < 5:
-        _gap_fill_round += 1
-        # V18.20.3.4 (RC-4): exclude given-up authors from
-        # the batch pool; stop when nothing actionable
-        # remains (all persistent-veto authors).
-        _batch_pool = [a for a in _still_missing if a not in _given_up]
-        if not _batch_pool:
-            log(
-                f"    ⏹️  V18.20.3.4: No actionable authors left "
-                f"for gap-fill ({len(_still_missing)} "
-                f"persistent-veto author(s) given up): "
-                f"{sorted(_still_missing)[:8]}",
-                "INFO",
-            )
-            break
-        _batch_authors = _batch_pool[:8]  # 8 per LLM call
-        # V18.20.3.4 (RC-4): authors vetoed twice switch to
-        # the mention-only prompt this round.
-        # V18.20.3.7 (RC-B.1): mention-only after 2
-        # vetoes OR 2 consecutive zero-yield rounds.
-        _mention_only = [
-            a
-            for a in _batch_authors
-            if _veto_counts.get(a, 0) >= 2 or _no_yield_counts.get(a, 0) >= 2
-        ]
+
+
+def _gff_round_pool(ctx: _GapFillCtx) -> bool:
+    """V0.6.11 (B14-b): the verbatim round setup — the round bump, the
+    actionable pool (given-up excluded), the RC-4/RC-B.1 mention-only
+    selection, and the round-header log. Returns False when the pool is
+    empty (the original ``break`` — return plumbing, declared)."""
+    log = ctx.log
+    _veto_counts = ctx._veto_counts
+    _no_yield_counts = ctx._no_yield_counts
+    ctx._gap_fill_round += 1
+    # V18.20.3.4 (RC-4): exclude given-up authors from
+    # the batch pool; stop when nothing actionable
+    # remains (all persistent-veto authors).
+    _batch_pool = [a for a in ctx._still_missing if a not in ctx._given_up]
+    if not _batch_pool:
         log(
-            f"    🔍 V18.14.1: Batch gap-fill round {_gap_fill_round}: "
-            f"filling {len(_batch_authors)} missing authors: "
-            f"{_batch_authors[:5]}{'…' if len(_batch_authors) > 5 else ''}"
-            + (f" (mention-only: {_mention_only[:5]})" if _mention_only else ""),
+            f"    ⏹️  V18.20.3.4: No actionable authors left "
+            f"for gap-fill ({len(ctx._still_missing)} "
+            f"persistent-veto author(s) given up): "
+            f"{sorted(ctx._still_missing)[:8]}",
             "INFO",
         )
-        _mention_attempted.update(_mention_only)
-        _batch_context = ""
-        for _author in _batch_authors:
-            _author_lower = _author.lower()
-            _relevant = [s.strip() for s in _sentences if _author_lower in s.lower()][:2]
-            if _relevant:
-                _batch_context += f"\n\n### {_author}\n" + " ".join(_relevant)[:500]
+        return False  # was: break (the empty actionable pool)
+    ctx._batch_authors = _batch_pool[:8]  # 8 per LLM call
+    # V18.20.3.4 (RC-4): authors vetoed twice switch to
+    # the mention-only prompt this round.
+    # V18.20.3.7 (RC-B.1): mention-only after 2
+    # vetoes OR 2 consecutive zero-yield rounds.
+    ctx._mention_only = [
+        a
+        for a in ctx._batch_authors
+        if _veto_counts.get(a, 0) >= 2 or _no_yield_counts.get(a, 0) >= 2
+    ]
+    log(
+        f"    🔍 V18.14.1: Batch gap-fill round {ctx._gap_fill_round}: "
+        f"filling {len(ctx._batch_authors)} missing authors: "
+        f"{ctx._batch_authors[:5]}{'…' if len(ctx._batch_authors) > 5 else ''}"
+        + (f" (mention-only: {ctx._mention_only[:5]})" if ctx._mention_only else ""),
+        "INFO",
+    )
+    ctx._mention_attempted.update(ctx._mention_only)
+    return True
 
-        if _batch_context and len(_batch_context) > 50:
-            _mention_block = ""
-            if _mention_only:
-                # V18.20.3.5 (audit v182034, defect E1):
-                # rewritten after the possessive-subject
-                # leak. The old template said "write ONE
-                # bullet that NAMES the theorist" — under
-                # the "each bullet starts with the author's
-                # name" instruction below, the model
-                # produced colon-form bullets (vetoed
-                # twice) and then evaded the veto by
-                # rephrasing to the possessive "Name's
-                # work provides…", shipping the claim's
-                # real holder under the cited-only name.
-                # The template makes the REQUIREMENT
-                # structural: the OWNING theorist is the
-                # grammatical subject; the mention-only
-                # author appears only in object position
-                # behind a citation verb; NO pronouns
-                # (kills the wrong-gender class — the
-                # model cannot gender a name it has no
-                # evidence for); NO possessive claim
-                # openings. Content-agnostic phrasing
-                # rules.
-                # V18.20.3.9 (Phase 2 / B3 + residuals
-                # sweep): (a) the few-shot example is now
-                # fully SYNTHETIC (was a real chapter's
-                # authors — book-derived vocabulary in a
-                # live prompt); (b) hard rule (1) extended
-                # from "never OPEN with Name's" to a ban
-                # on possessive-subject attribution
-                # ANYWHERE in the bullet ("Name's
-                # work/theory/account <attribution
-                # verb>") — the shape the round-3
-                # mention-only leak used (F3, V18.20.3.8
-                # rig audit).
-                # V18.20.4.7 (P5 / W-a14): the example's
-                # concept surface is neutral too — the
-                # old model phrase paraphrased the test
-                # chapter's staged-process vocabulary
-                # (book-derived-adjacent); the synthetic
-                # names stay (the house placeholder
-                # pair). Structure unchanged: owner +
-                # citation verb + cited name (year) in
-                # object position.
-                _mention_block = (
-                    f"\n\nIMPORTANT — MENTION-ONLY authors: "
-                    f"{', '.join(_mention_only)}. The source "
-                    f"discusses each of them only inside "
-                    f"ANOTHER theorist's work (as a "
-                    f"citation, an integrated reference, or "
-                    f"a 'see also'). For each, write ONE "
-                    f"bullet in which the theorist who "
-                    f"OWNS the claim is the grammatical "
-                    f"SUBJECT and the mention-only author "
-                    f"appears ONLY as the OBJECT of a "
-                    f"citation verb — e.g. 'Voss "
-                    f"integrated Ibarra (1957) into his "
-                    f"two-factor model of "
-                    f"market dynamics.' Hard rules for "
-                    f"these authors: (1) NEVER open the "
-                    f"bullet with 'Name:' or \"Name's\", "
-                    f"and NEVER write 'Name's "
-                    f"work/theory/account/formulation "
-                    f"provides/establishes/offers …' "
-                    f"ANYWHERE in the bullet — the "
-                    f"mention-only author must never be "
-                    f"the grammatical subject of an "
-                    f"attribution verb, not even in a "
-                    f"possessive construction; "
-                    f"(2) NEVER use the pronouns "
-                    f"his/her/he/she for them; (3) NEVER "
-                    f"attribute an original claim, "
-                    f"theory, term, or finding to them — "
-                    f"they are cited, not credited."
-                )
-            # V18.20.3.5: the closing line must not
-            # contradict the mention-only block. The old
-            # unconditional "each starting with '- ' and
-            # the author's name" forced the "Name: claim"
-            # shape for mention-only authors too — the
-            # exact shape the active-subject veto exists
-            # to reject.
-            _tail_instruction = (
-                f"Output {len(_batch_authors)} bullets, one per line, each starting with '- '."
-            )
-            if not _mention_only:
-                _tail_instruction += f" Begin each bullet with the author's name."  # noqa: F541 — verbatim: carried from _summarize_inner
-            _batch_prompt = (
-                f"Write ONE bullet point (starting with '- ') for EACH of the following "
-                f"authors, summarizing their key contribution as described in the source "
-                f"text. Write {len(_batch_authors)} bullets total, one per author.\n\n"
-                f"Chapter: {heading}\n\n"
-                f"Source excerpts for each missing author:\n{_batch_context}\n"
-                f"{_mention_block}\n\n"
-                # V0.11 (real-rig audit, attribution findings): three
-                # attribution-fidelity rules. The V0.10 rig's gap-fill
-                # bullets misattributed (a) the chapter author's
-                # section-level framing to a specific theorist (a
-                # methodological note about the whole section), (b) an
-                # invented causal link between one theorist's hypothesis
-                # and a DIFFERENT theorist's clinical material, and (c)
-                # stated intent where the source merely draws a parallel.
-                # Plus citation-year fidelity (adjacent-year swaps).
-                f"Attribution rules (STRICT):\n"
-                f"- Attribute to an author ONLY what the source excerpt "
-                f"attributes to THAT author. Never fold the chapter author's "
-                f"general framing, another author's material, or your own "
-                f"synthesis into their bullet.\n"
-                f"- Never invent causal links between an author's work and "
-                f"other material in the chapter. If the source draws a "
-                f"parallel or merely cites, say so — do not state that the "
-                f"author used the concept to explain something.\n"
-                f"- Keep citation years EXACTLY as they appear in the source "
-                f"excerpt — never substitute a different year for an author.\n"
-                # V0.4.37 (F4): retain multi-author attribution form. The
-                # V0.4.36 ch.6 audit (F4, LOW PRIORITY) found gap-fill
-                # bullets that dropped a co-author (e.g. the source's
-                # "AuthorA and AuthorB (Year)" shipped as just
-                # "AuthorB"). The single-name form is accurate but loses
-                # citation granularity. Genre-agnostic (Rule 1 ✓): the
-                # instruction is about citation FORM, not content; the
-                # placeholders are generic.
-                f"- When the source excerpt cites an author JOINTLY with a "
-                f"co-author (e.g., 'AuthorA and AuthorB (Year)'), retain the "
-                f"multi-author attribution form in the bullet — do not reduce "
-                f"it to a single name.\n"
-                # V0.5.21 (backlog item 1): the thin one-liner quality
-                # rule. The V0.5.19/V0.5.20 ship-time flags catch the
-                # thin registry-phrase bullets ("made significant
-                # contributions to …"), but the MODEL still wrote them —
-                # the gap-fill prompt never demanded the SPECIFIC
-                # contribution. The banned phrases are the generic
-                # citation-registry verb set the V0.5.19 detector pins
-                # (generic English — Rule 1 ✓, no book vocabulary).
-                f"- State the author's SPECIFIC contribution — the "
-                f"theory, term, distinction, finding, or method the source "
-                f"excerpt attributes to THAT author. NEVER write a generic "
-                f"registry phrase ('made significant contributions to …', "
-                f"'contributed to the literature on …', 'authored "
-                f"literature on …') — a bullet that names only the topic "
-                f"area without the author's exact role in it carries no "
-                f"contribution.\n\n"
-                f"{_tail_instruction} No preamble."
-            )
-            # V18.20.3.7 (RC-B.2, audit v182036): never
-            # re-send an IDENTICAL gap-fill prompt. The
-            # V18.20.3.6 rounds 2-4 sent the byte-identical
-            # prompt and got ~1s empty responses three
-            # times in a row (real rounds take 17-25s).
-            # The retry marker changes the prompt bytes
-            # (deterministic — the round number makes
-            # every retry unique) and instructs the model
-            # to re-phrase, so a degenerate first-attempt
-            # completion cannot be re-sampled verbatim.
-            if _gap_fill_round > 1:
-                _batch_prompt += (
-                    f"\n\nNOTE \u2014 attempt {_gap_fill_round} for these authors: "
-                    f"a previous attempt produced no usable bullets. "
-                    f"Re-phrase every bullet from scratch \u2014 different "
-                    f"sentence structure, different openings \u2014 and make "
-                    f"sure every listed author gets exactly one bullet."
-                )
-            try:
-                # V18.20.3.2 (P1-a): lazy import of the
-                # active-subject veto detector (used on
-                # each generated gap-fill bullet below).
-                from core.summarisation.postcheck_detectors import (
-                    detect_parenthetical_promotion,
-                )
 
-                # V18.20.3.7 (RC-C, audit v182036):
-                # per-round telemetry. The V18.20.3.6
-                # "added 0/3" rounds were ~1s no-ops and
-                # the log could not distinguish empty
-                # response / duplicates / thinking-filtered
-                # / vetoed. Every round now reports its
-                # fate at DEBUG, and an EMPTY response is
-                # called out at WARNING with its duration
-                # (a real round takes 17-25s; ~1s empty
-                # = degenerate completion).
-                _tl_t0 = time.monotonic()
-                _raw = call_fast_llm(
-                    _batch_prompt,
-                    max_tokens=2000,
-                    temperature=temperature,
+def _gff_round_context(ctx: _GapFillCtx) -> None:
+    """V0.6.11 (B14-b): the verbatim sentence-excerpt build — up to 2
+    source sentences per missing author — sets ``ctx._batch_context``."""
+    _batch_authors = ctx._batch_authors
+    _sentences = ctx._sentences
+    _batch_context = ""
+    for _author in _batch_authors:
+        _author_lower = _author.lower()
+        _relevant = [s.strip() for s in _sentences if _author_lower in s.lower()][:2]
+        if _relevant:
+            _batch_context += f"\n\n### {_author}\n" + " ".join(_relevant)[:500]
+    ctx._batch_context = _batch_context
+
+
+def _gff_round_execute(ctx: _GapFillCtx) -> bool:
+    """V0.6.11 (B14-b): the verbatim `if _batch_context:` round body — the
+    V18.20.3.5 mention-only prompt build + the attribution rules + the
+    RC-B.2 retry marker, then the LLM call with the RC-C telemetry and the
+    bullet loop (dup guard / thinking filter / filler floor / active-subject
+    veto with the V0.5.6 glossary + V0.5.10 regex overrides + the V0.5.21
+    see-also bound). One verbatim unit (the B12 E-grade grounding-loop
+    precedent). Returns False on the round exception (the original
+    ``break`` — return plumbing, declared)."""
+    log = ctx.log
+    heading = ctx.heading
+    content = ctx.content
+    bullets = ctx.bullets
+    det_authors = ctx.det_authors
+    call_fast_llm = ctx.call_fast_llm
+    temperature = ctx.temperature
+    strip_thinking = ctx.strip_thinking
+    filter_thinking_bullets = ctx.filter_thinking_bullets
+    source_glossary = ctx.source_glossary
+    regex_confirmed_authors = ctx.regex_confirmed_authors
+    _batch_authors = ctx._batch_authors
+    _mention_only = ctx._mention_only
+    _gap_fill_round = ctx._gap_fill_round
+    _veto_counts = ctx._veto_counts
+    _batch_context = ctx._batch_context
+    if _batch_context and len(_batch_context) > 50:
+        _mention_block = ""
+        if _mention_only:
+            # V18.20.3.5 (audit v182034, defect E1):
+            # rewritten after the possessive-subject
+            # leak. The old template said "write ONE
+            # bullet that NAMES the theorist" — under
+            # the "each bullet starts with the author's
+            # name" instruction below, the model
+            # produced colon-form bullets (vetoed
+            # twice) and then evaded the veto by
+            # rephrasing to the possessive "Name's
+            # work provides…", shipping the claim's
+            # real holder under the cited-only name.
+            # The template makes the REQUIREMENT
+            # structural: the OWNING theorist is the
+            # grammatical subject; the mention-only
+            # author appears only in object position
+            # behind a citation verb; NO pronouns
+            # (kills the wrong-gender class — the
+            # model cannot gender a name it has no
+            # evidence for); NO possessive claim
+            # openings. Content-agnostic phrasing
+            # rules.
+            # V18.20.3.9 (Phase 2 / B3 + residuals
+            # sweep): (a) the few-shot example is now
+            # fully SYNTHETIC (was a real chapter's
+            # authors — book-derived vocabulary in a
+            # live prompt); (b) hard rule (1) extended
+            # from "never OPEN with Name's" to a ban
+            # on possessive-subject attribution
+            # ANYWHERE in the bullet ("Name's
+            # work/theory/account <attribution
+            # verb>") — the shape the round-3
+            # mention-only leak used (F3, V18.20.3.8
+            # rig audit).
+            # V18.20.4.7 (P5 / W-a14): the example's
+            # concept surface is neutral too — the
+            # old model phrase paraphrased the test
+            # chapter's staged-process vocabulary
+            # (book-derived-adjacent); the synthetic
+            # names stay (the house placeholder
+            # pair). Structure unchanged: owner +
+            # citation verb + cited name (year) in
+            # object position.
+            _mention_block = (
+                f"\n\nIMPORTANT — MENTION-ONLY authors: "
+                f"{', '.join(_mention_only)}. The source "
+                f"discusses each of them only inside "
+                f"ANOTHER theorist's work (as a "
+                f"citation, an integrated reference, or "
+                f"a 'see also'). For each, write ONE "
+                f"bullet in which the theorist who "
+                f"OWNS the claim is the grammatical "
+                f"SUBJECT and the mention-only author "
+                f"appears ONLY as the OBJECT of a "
+                f"citation verb — e.g. 'Voss "
+                f"integrated Ibarra (1957) into his "
+                f"two-factor model of "
+                f"market dynamics.' Hard rules for "
+                f"these authors: (1) NEVER open the "
+                f"bullet with 'Name:' or \"Name's\", "
+                f"and NEVER write 'Name's "
+                f"work/theory/account/formulation "
+                f"provides/establishes/offers …' "
+                f"ANYWHERE in the bullet — the "
+                f"mention-only author must never be "
+                f"the grammatical subject of an "
+                f"attribution verb, not even in a "
+                f"possessive construction; "
+                f"(2) NEVER use the pronouns "
+                f"his/her/he/she for them; (3) NEVER "
+                f"attribute an original claim, "
+                f"theory, term, or finding to them — "
+                f"they are cited, not credited."
+            )
+        # V18.20.3.5: the closing line must not
+        # contradict the mention-only block. The old
+        # unconditional "each starting with '- ' and
+        # the author's name" forced the "Name: claim"
+        # shape for mention-only authors too — the
+        # exact shape the active-subject veto exists
+        # to reject.
+        _tail_instruction = (
+            f"Output {len(_batch_authors)} bullets, one per line, each starting with '- '."
+        )
+        if not _mention_only:
+            _tail_instruction += f" Begin each bullet with the author's name."  # noqa: F541 — verbatim: carried from _summarize_inner
+        _batch_prompt = (
+            f"Write ONE bullet point (starting with '- ') for EACH of the following "
+            f"authors, summarizing their key contribution as described in the source "
+            f"text. Write {len(_batch_authors)} bullets total, one per author.\n\n"
+            f"Chapter: {heading}\n\n"
+            f"Source excerpts for each missing author:\n{_batch_context}\n"
+            f"{_mention_block}\n\n"
+            # V0.11 (real-rig audit, attribution findings): three
+            # attribution-fidelity rules. The V0.10 rig's gap-fill
+            # bullets misattributed (a) the chapter author's
+            # section-level framing to a specific theorist (a
+            # methodological note about the whole section), (b) an
+            # invented causal link between one theorist's hypothesis
+            # and a DIFFERENT theorist's clinical material, and (c)
+            # stated intent where the source merely draws a parallel.
+            # Plus citation-year fidelity (adjacent-year swaps).
+            f"Attribution rules (STRICT):\n"
+            f"- Attribute to an author ONLY what the source excerpt "
+            f"attributes to THAT author. Never fold the chapter author's "
+            f"general framing, another author's material, or your own "
+            f"synthesis into their bullet.\n"
+            f"- Never invent causal links between an author's work and "
+            f"other material in the chapter. If the source draws a "
+            f"parallel or merely cites, say so — do not state that the "
+            f"author used the concept to explain something.\n"
+            f"- Keep citation years EXACTLY as they appear in the source "
+            f"excerpt — never substitute a different year for an author.\n"
+            # V0.4.37 (F4): retain multi-author attribution form. The
+            # V0.4.36 ch.6 audit (F4, LOW PRIORITY) found gap-fill
+            # bullets that dropped a co-author (e.g. the source's
+            # "AuthorA and AuthorB (Year)" shipped as just
+            # "AuthorB"). The single-name form is accurate but loses
+            # citation granularity. Genre-agnostic (Rule 1 ✓): the
+            # instruction is about citation FORM, not content; the
+            # placeholders are generic.
+            f"- When the source excerpt cites an author JOINTLY with a "
+            f"co-author (e.g., 'AuthorA and AuthorB (Year)'), retain the "
+            f"multi-author attribution form in the bullet — do not reduce "
+            f"it to a single name.\n"
+            # V0.5.21 (backlog item 1): the thin one-liner quality
+            # rule. The V0.5.19/V0.5.20 ship-time flags catch the
+            # thin registry-phrase bullets ("made significant
+            # contributions to …"), but the MODEL still wrote them —
+            # the gap-fill prompt never demanded the SPECIFIC
+            # contribution. The banned phrases are the generic
+            # citation-registry verb set the V0.5.19 detector pins
+            # (generic English — Rule 1 ✓, no book vocabulary).
+            f"- State the author's SPECIFIC contribution — the "
+            f"theory, term, distinction, finding, or method the source "
+            f"excerpt attributes to THAT author. NEVER write a generic "
+            f"registry phrase ('made significant contributions to …', "
+            f"'contributed to the literature on …', 'authored "
+            f"literature on …') — a bullet that names only the topic "
+            f"area without the author's exact role in it carries no "
+            f"contribution.\n\n"
+            f"{_tail_instruction} No preamble."
+        )
+        # V18.20.3.7 (RC-B.2, audit v182036): never
+        # re-send an IDENTICAL gap-fill prompt. The
+        # V18.20.3.6 rounds 2-4 sent the byte-identical
+        # prompt and got ~1s empty responses three
+        # times in a row (real rounds take 17-25s).
+        # The retry marker changes the prompt bytes
+        # (deterministic — the round number makes
+        # every retry unique) and instructs the model
+        # to re-phrase, so a degenerate first-attempt
+        # completion cannot be re-sampled verbatim.
+        if _gap_fill_round > 1:
+            _batch_prompt += (
+                f"\n\nNOTE \u2014 attempt {_gap_fill_round} for these authors: "
+                f"a previous attempt produced no usable bullets. "
+                f"Re-phrase every bullet from scratch \u2014 different "
+                f"sentence structure, different openings \u2014 and make "
+                f"sure every listed author gets exactly one bullet."
+            )
+        try:
+            # V18.20.3.2 (P1-a): lazy import of the
+            # active-subject veto detector (used on
+            # each generated gap-fill bullet below).
+            from core.summarisation.postcheck_detectors import (
+                detect_parenthetical_promotion,
+            )
+
+            # V18.20.3.7 (RC-C, audit v182036):
+            # per-round telemetry. The V18.20.3.6
+            # "added 0/3" rounds were ~1s no-ops and
+            # the log could not distinguish empty
+            # response / duplicates / thinking-filtered
+            # / vetoed. Every round now reports its
+            # fate at DEBUG, and an EMPTY response is
+            # called out at WARNING with its duration
+            # (a real round takes 17-25s; ~1s empty
+            # = degenerate completion).
+            _tl_t0 = time.monotonic()
+            _raw = call_fast_llm(
+                _batch_prompt,
+                max_tokens=2000,
+                temperature=temperature,
+            )
+            _tl_dur = time.monotonic() - _tl_t0
+            _tl = {"dup": 0, "think": 0, "veto": 0, "filler": 0, "added": 0}
+            if not _raw:
+                log(
+                    f"    ⚠️ V18.20.3.7: Batch gap-fill round "
+                    f"{_gap_fill_round} EMPTY response "
+                    f"({_tl_dur:.1f}s) — the model returned "
+                    f"nothing usable; prompt varies next round",
+                    "WARNING",
                 )
-                _tl_dur = time.monotonic() - _tl_t0
-                _tl = {"dup": 0, "think": 0, "veto": 0, "filler": 0, "added": 0}
-                if not _raw:
-                    log(
-                        f"    ⚠️ V18.20.3.7: Batch gap-fill round "
-                        f"{_gap_fill_round} EMPTY response "
-                        f"({_tl_dur:.1f}s) — the model returned "
-                        f"nothing usable; prompt varies next round",
-                        "WARNING",
+            if _raw:
+                _raw = strip_thinking(_raw).strip()
+                _gap_bullets = [
+                    line.strip() for line in _raw.split("\n") if line.strip().startswith("-")
+                ]  # V0.13: 'l' renamed to 'line' (E741); carried from _summarize_inner
+                _added = 0
+                _max_gap_bullets = len(_batch_authors) * 2
+                for _gb in _gap_bullets[:_max_gap_bullets]:
+                    _gb = _gb.strip()
+                    _gb_norm = re.sub(r"[^\w\s]", "", _gb.lower()).strip()[:60]
+                    _is_dup = any(
+                        _gb_norm in re.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
+                        for b in bullets
                     )
-                if _raw:
-                    _raw = strip_thinking(_raw).strip()
-                    _gap_bullets = [
-                        line.strip() for line in _raw.split("\n") if line.strip().startswith("-")
-                    ]  # V0.13: 'l' renamed to 'line' (E741); carried from _summarize_inner
-                    _added = 0
-                    _max_gap_bullets = len(_batch_authors) * 2
-                    for _gb in _gap_bullets[:_max_gap_bullets]:
-                        _gb = _gb.strip()
-                        _gb_norm = _re2.sub(r"[^\w\s]", "", _gb.lower()).strip()[:60]
-                        _is_dup = any(
-                            _gb_norm in _re2.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
-                            for b in bullets
+                    if _is_dup:
+                        _tl["dup"] += 1
+                        continue
+                    if _gb and len(_gb) > 10:
+                        _filtered = filter_thinking_bullets(
+                            [_gb],
+                            concepts=None,
+                            source_text="",
                         )
-                        if _is_dup:
-                            _tl["dup"] += 1
-                            continue
-                        if _gb and len(_gb) > 10:
-                            _filtered = filter_thinking_bullets(
-                                [_gb],
-                                concepts=None,
-                                source_text="",
+                        if _filtered:
+                            # V0.4.23 (audit V0.4.22, backlog #4): the
+                            # FILLER FLOOR — reject gap-fill bullets
+                            # whose main assertion is citation
+                            # adjacency ("is cited/listed/recognized…",
+                            # "The text notes…"), not content. The
+                            # V0.4.22 run shipped 7 such bullets of 40
+                            # (gap-fill writing checklist-satisfiers
+                            # after deadline-skipped consolidation).
+                            # The author stays "missing from bullets"
+                            # and is reported honestly by the loop's
+                            # re-check + final WARNING — exactly like a
+                            # vetoed author: a filler bullet carries no
+                            # information, so shipping it is worse than
+                            # the honest gap.
+                            from core.summarisation.post_processing import (
+                                is_citation_filler_bullet,
                             )
-                            if _filtered:
-                                # V0.4.23 (audit V0.4.22, backlog #4): the
-                                # FILLER FLOOR — reject gap-fill bullets
-                                # whose main assertion is citation
-                                # adjacency ("is cited/listed/recognized…",
-                                # "The text notes…"), not content. The
-                                # V0.4.22 run shipped 7 such bullets of 40
-                                # (gap-fill writing checklist-satisfiers
-                                # after deadline-skipped consolidation).
-                                # The author stays "missing from bullets"
-                                # and is reported honestly by the loop's
-                                # re-check + final WARNING — exactly like a
-                                # vetoed author: a filler bullet carries no
-                                # information, so shipping it is worse than
-                                # the honest gap.
-                                from core.summarisation.post_processing import (
-                                    is_citation_filler_bullet,
-                                )
 
-                                if is_citation_filler_bullet(_filtered[0]):
-                                    _tl["filler"] += 1
-                                    log(
-                                        f"    🧽 V0.4.23: gap-fill filler floor — "
-                                        f"dropped citation-adjacency bullet: "
-                                        f"{_filtered[0][:70]}…",
-                                        "INFO",
-                                    )
-                                    continue
-                                # V18.20.3.2 (audit N4 / P1-a):
-                                # GENERATION-TIME active-subject
-                                # veto. The V18.20.3.1 run shipped
-                                # THREE parenthetical promotions
-                                # from this exact path (AuthorC→
-                                # AuthorB's claim, AuthorE→
-                                # AuthorD's, AuthorF→
-                                # AuthorG's): the model is
-                                # asked for "one bullet per
-                                # author" from excerpts where
-                                # the author appears ONLY as a
-                                # citation — so it promotes the
-                                # cited name to claim subject.
-                                # The veto verifies the claimed
-                                # author actually HOLDS an
-                                # attribution verb in the
-                                # matched source span before the
-                                # bullet is allowed to ship. A
-                                # vetoed author stays "missing
-                                # from bullets" and the loop's
-                                # re-check + final WARNING report
-                                # it honestly — for a "see also"-
-                                # only author there IS no
-                                # legitimate contribution bullet.
-                                _promo = detect_parenthetical_promotion(
-                                    _filtered[0],
-                                    content,
-                                    # V18.20.3.8 (Phase 1 /
-                                    # W4): pass the
-                                    # citation-extracted
-                                    # author list — full
-                                    # parity with the
-                                    # ship-time check
-                                    # (postchecks passes
-                                    # source_authors).
-                                    # The generation-time
-                                    # veto previously
-                                    # passed None, so
-                                    # pronoun-antecedent
-                                    # resolution ran
-                                    # WITHOUT the author
-                                    # list here while the
-                                    # ship-time layer had
-                                    # it — the two layers
-                                    # of the same veto
-                                    # disagreed.
-                                    det_authors,
+                            if is_citation_filler_bullet(_filtered[0]):
+                                _tl["filler"] += 1
+                                log(
+                                    f"    🧽 V0.4.23: gap-fill filler floor — "
+                                    f"dropped citation-adjacency bullet: "
+                                    f"{_filtered[0][:70]}…",
+                                    "INFO",
                                 )
-                                if _promo:
-                                    _pv_claimed, _pv_real = _promo
-                                    # V18.20.3.4 (RC-4):
-                                    # count the veto
-                                    # against the missing
-                                    # author this bullet
-                                    # was generated for
-                                    # (the claimed
-                                    # subject is the
-                                    # author the batch
-                                    # asked for). Two
-                                    # vetoes → mention-only
-                                    # prompt; a failed
-                                    # mention-only attempt
-                                    # → give up honestly.
-                                    _veto_key = None
-                                    _cl_l = str(_pv_claimed).lower()
+                                continue
+                            # V18.20.3.2 (audit N4 / P1-a):
+                            # GENERATION-TIME active-subject
+                            # veto. The V18.20.3.1 run shipped
+                            # THREE parenthetical promotions
+                            # from this exact path (AuthorC→
+                            # AuthorB's claim, AuthorE→
+                            # AuthorD's, AuthorF→
+                            # AuthorG's): the model is
+                            # asked for "one bullet per
+                            # author" from excerpts where
+                            # the author appears ONLY as a
+                            # citation — so it promotes the
+                            # cited name to claim subject.
+                            # The veto verifies the claimed
+                            # author actually HOLDS an
+                            # attribution verb in the
+                            # matched source span before the
+                            # bullet is allowed to ship. A
+                            # vetoed author stays "missing
+                            # from bullets" and the loop's
+                            # re-check + final WARNING report
+                            # it honestly — for a "see also"-
+                            # only author there IS no
+                            # legitimate contribution bullet.
+                            _promo = detect_parenthetical_promotion(
+                                _filtered[0],
+                                content,
+                                # V18.20.3.8 (Phase 1 /
+                                # W4): pass the
+                                # citation-extracted
+                                # author list — full
+                                # parity with the
+                                # ship-time check
+                                # (postchecks passes
+                                # source_authors).
+                                # The generation-time
+                                # veto previously
+                                # passed None, so
+                                # pronoun-antecedent
+                                # resolution ran
+                                # WITHOUT the author
+                                # list here while the
+                                # ship-time layer had
+                                # it — the two layers
+                                # of the same veto
+                                # disagreed.
+                                det_authors,
+                            )
+                            if _promo:
+                                _pv_claimed, _pv_real = _promo
+                                # V18.20.3.4 (RC-4):
+                                # count the veto
+                                # against the missing
+                                # author this bullet
+                                # was generated for
+                                # (the claimed
+                                # subject is the
+                                # author the batch
+                                # asked for). Two
+                                # vetoes → mention-only
+                                # prompt; a failed
+                                # mention-only attempt
+                                # → give up honestly.
+                                _veto_key = None
+                                _cl_l = str(_pv_claimed).lower()
+                                for _va in _batch_authors:
+                                    if (
+                                        _va.lower() == _cl_l
+                                        or _va.lower() in _cl_l
+                                        or _cl_l in _va.lower()
+                                    ):
+                                        _veto_key = _va
+                                        break
+                                if _veto_key is None:
+                                    _fl = _filtered[0].lower()[:80]
                                     for _va in _batch_authors:
-                                        if (
-                                            _va.lower() == _cl_l
-                                            or _va.lower() in _cl_l
-                                            or _cl_l in _va.lower()
-                                        ):
+                                        if _va.lower() in _fl:
                                             _veto_key = _va
                                             break
-                                    if _veto_key is None:
-                                        _fl = _filtered[0].lower()[:80]
-                                        for _va in _batch_authors:
-                                            if _va.lower() in _fl:
-                                                _veto_key = _va
-                                                break
-                                    # V0.5.6: glossary-grounded
-                                    # override. For glossary-sourced
-                                    # authors, the glossary IS the
-                                    # grounding (it was extracted
-                                    # from the source by the LLM,
-                                    # the same call that produced
-                                    # the summary). The bullet can
-                                    # write "Bak (1946) introduced
-                                    # the 'higher level' character
-                                    # organization" grounded in the
-                                    # glossary context, without
-                                    # needing a verbatim source
-                                    # quote. The V0.5.5 audit found
-                                    # the strict V18.20.3.2 veto
-                                    # DROPPED bullets for 5 of 8
-                                    # missing authors (the "see
-                                    # also"-only authors) — the
-                                    # loosened override accepts
-                                    # them.
-                                    # Content-agnostic (Rule 1 ✓):
-                                    # the membership test uses the
-                                    # runtime LLM-generated
-                                    # glossary, no hardcoded names.
-                                    _v056_glossary_backed = (
-                                        source_glossary is not None
-                                        and _veto_key is not None
-                                        and _v056_author_in_glossary(source_glossary, _veto_key)
+                                # V0.5.6: glossary-grounded
+                                # override. For glossary-sourced
+                                # authors, the glossary IS the
+                                # grounding (it was extracted
+                                # from the source by the LLM,
+                                # the same call that produced
+                                # the summary). The bullet can
+                                # write "Bak (1946) introduced
+                                # the 'higher level' character
+                                # organization" grounded in the
+                                # glossary context, without
+                                # needing a verbatim source
+                                # quote. The V0.5.5 audit found
+                                # the strict V18.20.3.2 veto
+                                # DROPPED bullets for 5 of 8
+                                # missing authors (the "see
+                                # also"-only authors) — the
+                                # loosened override accepts
+                                # them.
+                                # Content-agnostic (Rule 1 ✓):
+                                # the membership test uses the
+                                # runtime LLM-generated
+                                # glossary, no hardcoded names.
+                                _v056_glossary_backed = (
+                                    source_glossary is not None
+                                    and _veto_key is not None
+                                    and _v056_author_in_glossary(source_glossary, _veto_key)
+                                )
+                                # V0.5.10: regex-confirmed
+                                # author FALLBACK. The V0.5.6
+                                # loosened override fired only
+                                # for glossary-sourced authors.
+                                # But the V0.5.6→V0.5.9 audits
+                                # showed the LLM glossary call
+                                # STILL failed (the master-
+                                # summary returned EMPTY → no
+                                # ``<name_glossary>`` block →
+                                # the loosened override never
+                                # fired → the 4 still-missing
+                                # authors stayed missing because
+                                # the strict V18.20.3.2 veto
+                                # dropped their bullets). The
+                                # V0.5.10 fallback: if the
+                                # glossary is NOT available OR
+                                # the author is NOT in the
+                                # glossary, check if the author
+                                # is in the REGEX
+                                # ``extract_citations`` output
+                                # (the deterministic source-
+                                # roster the LAYER already
+                                # trusts as the V0.5.5 fallback
+                                # when no glossary is available).
+                                # If yes → ALSO loosen the veto
+                                # (the regex IS the grounding —
+                                # the author IS in the source,
+                                # just not as an active subject).
+                                # Content-agnostic (Rule 1 ✓):
+                                # the membership test uses the
+                                # runtime regex extract_citations
+                                # output, no hardcoded names.
+                                _v0510_regex_backed = (
+                                    not _v056_glossary_backed
+                                    and _veto_key is not None
+                                    and _v0510_author_in_regex(regex_confirmed_authors, _veto_key)
+                                )
+                                if _v056_glossary_backed:
+                                    # V0.5.21 (backlog item 3): the
+                                    # see-also bound. The V0.5.6
+                                    # override accepts glossary-
+                                    # backed bullets without a
+                                    # verbatim quote — but the
+                                    # V0.5.17 audit found the model
+                                    # crediting the see-also author
+                                    # with the HOLDER's claim words
+                                    # from the same source sentence
+                                    # (slight content inflation).
+                                    # The glossary context — the
+                                    # architecture's own grounding —
+                                    # must BOUND the bullet: ≥ 55%
+                                    # of the bullet's content tokens
+                                    # covered by it. A bound
+                                    # rejection is treated like a
+                                    # veto (the author stays
+                                    # honestly missing; the
+                                    # escalation machinery applies).
+                                    _v0521_ctx = _v056_glossary_context_for(
+                                        source_glossary, _veto_key
                                     )
-                                    # V0.5.10: regex-confirmed
-                                    # author FALLBACK. The V0.5.6
-                                    # loosened override fired only
-                                    # for glossary-sourced authors.
-                                    # But the V0.5.6→V0.5.9 audits
-                                    # showed the LLM glossary call
-                                    # STILL failed (the master-
-                                    # summary returned EMPTY → no
-                                    # ``<name_glossary>`` block →
-                                    # the loosened override never
-                                    # fired → the 4 still-missing
-                                    # authors stayed missing because
-                                    # the strict V18.20.3.2 veto
-                                    # dropped their bullets). The
-                                    # V0.5.10 fallback: if the
-                                    # glossary is NOT available OR
-                                    # the author is NOT in the
-                                    # glossary, check if the author
-                                    # is in the REGEX
-                                    # ``extract_citations`` output
-                                    # (the deterministic source-
-                                    # roster the LAYER already
-                                    # trusts as the V0.5.5 fallback
-                                    # when no glossary is available).
-                                    # If yes → ALSO loosen the veto
-                                    # (the regex IS the grounding —
-                                    # the author IS in the source,
-                                    # just not as an active subject).
-                                    # Content-agnostic (Rule 1 ✓):
-                                    # the membership test uses the
-                                    # runtime regex extract_citations
-                                    # output, no hardcoded names.
-                                    _v0510_regex_backed = (
-                                        not _v056_glossary_backed
-                                        and _veto_key is not None
-                                        and _v0510_author_in_regex(
-                                            regex_confirmed_authors, _veto_key
-                                        )
+                                    _v0521_cov = _v0521_see_also_bound(
+                                        _filtered[0], _veto_key, [_v0521_ctx]
                                     )
-                                    if _v056_glossary_backed:
-                                        # V0.5.21 (backlog item 3): the
-                                        # see-also bound. The V0.5.6
-                                        # override accepts glossary-
-                                        # backed bullets without a
-                                        # verbatim quote — but the
-                                        # V0.5.17 audit found the model
-                                        # crediting the see-also author
-                                        # with the HOLDER's claim words
-                                        # from the same source sentence
-                                        # (slight content inflation).
-                                        # The glossary context — the
-                                        # architecture's own grounding —
-                                        # must BOUND the bullet: ≥ 55%
-                                        # of the bullet's content tokens
-                                        # covered by it. A bound
-                                        # rejection is treated like a
-                                        # veto (the author stays
-                                        # honestly missing; the
-                                        # escalation machinery applies).
-                                        _v0521_ctx = _v056_glossary_context_for(
-                                            source_glossary, _veto_key
-                                        )
-                                        _v0521_cov = _v0521_see_also_bound(
-                                            _filtered[0], _veto_key, [_v0521_ctx]
-                                        )
-                                        if _v0521_cov < _V0521_BOUND_FLOOR:
-                                            log(
-                                                f"    🚫 V0.5.21 see-also bound — "
-                                                f"dropped '{_filtered[0][:60]}…' "
-                                                f"for '{_veto_key}' (only "
-                                                f"{_v0521_cov:.0%} of its content "
-                                                f"words trace to the glossary "
-                                                f"context — a see-also-only "
-                                                f"citation inflated)",
-                                                "WARNING",
-                                            )
-                                            _veto_counts[_veto_key] = (
-                                                _veto_counts.get(_veto_key, 0) + 1
-                                            )
-                                            _tl["veto"] += 1
-                                            continue
+                                    if _v0521_cov < _V0521_BOUND_FLOOR:
                                         log(
-                                            f"    ✨ V0.5.6 gap-fill: accepted "
-                                            f"bullet for '{_veto_key}' "
-                                            f"(grounded in glossary context, "
-                                            f"not verbatim quote)",
-                                            "INFO",
-                                        )
-                                        # Do NOT count the veto
-                                        # against the author (the
-                                        # loosened quote-guard
-                                        # accepted the bullet — the
-                                        # mention-only / give-up
-                                        # escalation should NOT fire
-                                        # from a glossary-backed
-                                        # override). Fall through to
-                                        # bullets.append below.
-                                    elif _v0510_regex_backed:
-                                        # V0.5.21: NOT bounded — on this
-                                        # path the author is not in the
-                                        # glossary by construction (no
-                                        # glossary context exists to
-                                        # bound by); the regex confirms
-                                        # PRESENCE, not content.
-                                        log(
-                                            f"    ✨ V0.5.10 gap-fill: accepted "
-                                            f"bullet for '{_veto_key}' "
-                                            f"(grounded in regex extract_citations, "
-                                            f"not verbatim quote)",
-                                            "INFO",
-                                        )
-                                        # Same don't-count-the-veto
-                                        # rule as the V0.5.6 glossary
-                                        # path (the loosened
-                                        # quote-guard accepted the
-                                        # bullet — the mention-only /
-                                        # give-up escalation should
-                                        # NOT fire from a regex-backed
-                                        # override). Fall through to
-                                        # bullets.append below.
-                                    else:
-                                        log(
-                                            f"    🚫 V18.20.3.2: gap-fill active-subject "
-                                            f"veto — dropped '{_filtered[0][:60]}…' "
-                                            f"(source attributes this claim to "
-                                            f"'{_pv_real}', not '{_pv_claimed}')",
+                                            f"    🚫 V0.5.21 see-also bound — "
+                                            f"dropped '{_filtered[0][:60]}…' "
+                                            f"for '{_veto_key}' (only "
+                                            f"{_v0521_cov:.0%} of its content "
+                                            f"words trace to the glossary "
+                                            f"context — a see-also-only "
+                                            f"citation inflated)",
                                             "WARNING",
                                         )
-                                        if _veto_key is not None:
-                                            _veto_counts[_veto_key] = (
-                                                _veto_counts.get(_veto_key, 0) + 1
-                                            )
+                                        _veto_counts[_veto_key] = _veto_counts.get(_veto_key, 0) + 1
                                         _tl["veto"] += 1
                                         continue
-                                bullets.append(_filtered[0])
-                                _added += 1
-                                _total_added += 1
-                                _tl["added"] += 1
-                            else:
-                                _tl["think"] += 1
-                                log(
-                                    f"    🎓 V18.12.2: Dropped gap-fill bullet "
-                                    f"(prompt-leakage/thinking): {_gb[:60]}\u2026",
-                                    "DEBUG",
-                                )
-                    log(
-                        f"    ✅ V18.14.1: Batch gap-fill round {_gap_fill_round} "
-                        f"added {_added}/{len(_batch_authors)} bullets",
-                        "INFO",
-                    )
-                    # V18.20.3.7 (RC-C): the round's fate,
-                    # breakdown-visible. `parsed` counts
-                    # raw "- " lines from the response.
-                    log(
-                        f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
-                        f"({_tl_dur:.1f}s): response="
-                        f"{len(_gap_bullets) if _gap_bullets else 0} bullet lines, "
-                        f"dup={_tl['dup']}, think-filtered={_tl['think']}, "
-                        f"vetoed={_tl['veto']}, filler={_tl['filler']}, "
-                        f"added={_tl['added']}",
-                        "DEBUG",
-                    )
-                elif not _raw:
-                    # Empty response: still emit the
-                    # telemetry line so the round is
-                    # countable in the log (the WARNING
-                    # above names the emptiness).
-                    log(
-                        f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
-                        f"({_tl_dur:.1f}s): response=EMPTY, "
-                        f"dup=0, think-filtered=0, vetoed=0, filler=0, added=0",
-                        "DEBUG",
-                    )
-            except Exception as _be:
+                                    log(
+                                        f"    ✨ V0.5.6 gap-fill: accepted "
+                                        f"bullet for '{_veto_key}' "
+                                        f"(grounded in glossary context, "
+                                        f"not verbatim quote)",
+                                        "INFO",
+                                    )
+                                    # Do NOT count the veto
+                                    # against the author (the
+                                    # loosened quote-guard
+                                    # accepted the bullet — the
+                                    # mention-only / give-up
+                                    # escalation should NOT fire
+                                    # from a glossary-backed
+                                    # override). Fall through to
+                                    # bullets.append below.
+                                elif _v0510_regex_backed:
+                                    # V0.5.21: NOT bounded — on this
+                                    # path the author is not in the
+                                    # glossary by construction (no
+                                    # glossary context exists to
+                                    # bound by); the regex confirms
+                                    # PRESENCE, not content.
+                                    log(
+                                        f"    ✨ V0.5.10 gap-fill: accepted "
+                                        f"bullet for '{_veto_key}' "
+                                        f"(grounded in regex extract_citations, "
+                                        f"not verbatim quote)",
+                                        "INFO",
+                                    )
+                                    # Same don't-count-the-veto
+                                    # rule as the V0.5.6 glossary
+                                    # path (the loosened
+                                    # quote-guard accepted the
+                                    # bullet — the mention-only /
+                                    # give-up escalation should
+                                    # NOT fire from a regex-backed
+                                    # override). Fall through to
+                                    # bullets.append below.
+                                else:
+                                    log(
+                                        f"    🚫 V18.20.3.2: gap-fill active-subject "
+                                        f"veto — dropped '{_filtered[0][:60]}…' "
+                                        f"(source attributes this claim to "
+                                        f"'{_pv_real}', not '{_pv_claimed}')",
+                                        "WARNING",
+                                    )
+                                    if _veto_key is not None:
+                                        _veto_counts[_veto_key] = _veto_counts.get(_veto_key, 0) + 1
+                                    _tl["veto"] += 1
+                                    continue
+                            bullets.append(_filtered[0])
+                            _added += 1
+                            ctx._total_added += 1
+                            _tl["added"] += 1
+                        else:
+                            _tl["think"] += 1
+                            log(
+                                f"    🎓 V18.12.2: Dropped gap-fill bullet "
+                                f"(prompt-leakage/thinking): {_gb[:60]}\u2026",
+                                "DEBUG",
+                            )
                 log(
-                    f"    ⚠️ V18.14.1: Batch gap-fill round {_gap_fill_round} failed: {_be}",
-                    "WARNING",
+                    f"    ✅ V18.14.1: Batch gap-fill round {_gap_fill_round} "
+                    f"added {_added}/{len(_batch_authors)} bullets",
+                    "INFO",
                 )
-                break  # stop the loop on persistent failures
-
-        # Re-check bullets-only coverage to see what's still missing
-        _bullets_only_after = " ".join(bullets) if bullets else ""
-        _cov_after = check_coverage(analysis, _bullets_only_after)
-        _still_missing = _cov_after["missing"]
-        # V18.20.3.7 (RC-B.1): per-author consecutive
-        # zero-yield accounting. A batch author that is
-        # STILL missing after this round got nothing from
-        # it (empty response, duplicate, filtered, or
-        # vetoed) — count it; two consecutive no-yield
-        # rounds escalate to mention-only next round.
-        # A covered author resets to 0.
-        _cov_after_set = set(_cov_after.get("covered", []))
-        for _ya in _batch_authors:
-            if _ya in _given_up:
-                continue
-            if _ya in _cov_after_set:
-                _no_yield_counts[_ya] = 0
-            else:
-                _no_yield_counts[_ya] = _no_yield_counts.get(_ya, 0) + 1
-                if (
-                    _no_yield_counts[_ya] == 2
-                    and _veto_counts.get(_ya, 0) < 2
-                    and _ya not in _mention_attempted
-                ):
-                    log(
-                        f"    🔁 V18.20.3.7: '{_ya}' yielded no bullet for 2 "
-                        f"consecutive rounds — switching to the "
-                        f"mention-only prompt next round",
-                        "INFO",
-                    )
-        # V18.20.3.4 (RC-4): authors whose mention-only
-        # attempt this round still left them missing are
-        # given up on — retrying the identical failure is
-        # the exact waste this fix removes. The final
-        # WARNING below reports them honestly.
-        for _ma in list(_mention_attempted):
-            if _ma in _still_missing and _ma not in _given_up:
-                _given_up.add(_ma)
+                # V18.20.3.7 (RC-C): the round's fate,
+                # breakdown-visible. `parsed` counts
+                # raw "- " lines from the response.
                 log(
-                    f"    ⏹️  V18.20.3.4: Giving up on '{_ma}' — "
-                    f"mention-only attempt also failed the "
-                    f"attribution veto; no attribution-safe "
-                    f"bullet exists for this author",
-                    "WARNING",
+                    f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
+                    f"({_tl_dur:.1f}s): response="
+                    f"{len(_gap_bullets) if _gap_bullets else 0} bullet lines, "
+                    f"dup={_tl['dup']}, think-filtered={_tl['think']}, "
+                    f"vetoed={_tl['veto']}, filler={_tl['filler']}, "
+                    f"added={_tl['added']}",
+                    "DEBUG",
                 )
-        if _still_missing:
+            elif not _raw:
+                # Empty response: still emit the
+                # telemetry line so the round is
+                # countable in the log (the WARNING
+                # above names the emptiness).
+                log(
+                    f"    📊 V18.20.3.7: round {_gap_fill_round} telemetry "
+                    f"({_tl_dur:.1f}s): response=EMPTY, "
+                    f"dup=0, think-filtered=0, vetoed=0, filler=0, added=0",
+                    "DEBUG",
+                )
+        except Exception as _be:
             log(
-                f"    📊 V18.14.1: After round {_gap_fill_round}, "
-                f"{len(_still_missing)} still missing from bullets: "
-                f"{_still_missing[:5]}{'…' if len(_still_missing) > 5 else ''}",
-                "DEBUG",
+                f"    ⚠️ V18.14.1: Batch gap-fill round {_gap_fill_round} failed: {_be}",
+                "WARNING",
             )
+            return False  # was: break (persistent failures)
+    return True
 
-    if _total_added > 0:
+
+def _gff_post_round_accounting(ctx: _GapFillCtx) -> None:
+    """V0.6.11 (B14-b): the verbatim post-round block — the coverage
+    re-check, the RC-B.1 consecutive no-yield accounting, and the RC-4
+    mention-only give-up — updates ``ctx._still_missing`` and the
+    accounting state."""
+    log = ctx.log
+    bullets = ctx.bullets
+    check_coverage = ctx.check_coverage
+    analysis = ctx.analysis
+    # Re-check bullets-only coverage to see what's still missing
+    _bullets_only_after = " ".join(bullets) if bullets else ""
+    _cov_after = check_coverage(analysis, _bullets_only_after)
+    ctx._still_missing = _cov_after["missing"]
+    # V18.20.3.7 (RC-B.1): per-author consecutive
+    # zero-yield accounting. A batch author that is
+    # STILL missing after this round got nothing from
+    # it (empty response, duplicate, filtered, or
+    # vetoed) — count it; two consecutive no-yield
+    # rounds escalate to mention-only next round.
+    # A covered author resets to 0.
+    _cov_after_set = set(_cov_after.get("covered", []))
+    for _ya in ctx._batch_authors:
+        if _ya in ctx._given_up:
+            continue
+        if _ya in _cov_after_set:
+            ctx._no_yield_counts[_ya] = 0
+        else:
+            ctx._no_yield_counts[_ya] = ctx._no_yield_counts.get(_ya, 0) + 1
+            if (
+                ctx._no_yield_counts[_ya] == 2
+                and ctx._veto_counts.get(_ya, 0) < 2
+                and _ya not in ctx._mention_attempted
+            ):
+                log(
+                    f"    🔁 V18.20.3.7: '{_ya}' yielded no bullet for 2 "
+                    f"consecutive rounds — switching to the "
+                    f"mention-only prompt next round",
+                    "INFO",
+                )
+    # V18.20.3.4 (RC-4): authors whose mention-only
+    # attempt this round still left them missing are
+    # given up on — retrying the identical failure is
+    # the exact waste this fix removes. The final
+    # WARNING below reports them honestly.
+    for _ma in list(ctx._mention_attempted):
+        if _ma in ctx._still_missing and _ma not in ctx._given_up:
+            ctx._given_up.add(_ma)
+            log(
+                f"    ⏹️  V18.20.3.4: Giving up on '{_ma}' — "
+                f"mention-only attempt also failed the "
+                f"attribution veto; no attribution-safe "
+                f"bullet exists for this author",
+                "WARNING",
+            )
+    if ctx._still_missing:
         log(
-            f"    ✅ V18.14.1: Batch gap-fill complete — "
-            f"added {_total_added} bullets across {_gap_fill_round} round(s)",
-            "INFO",
+            f"    📊 V18.14.1: After round {ctx._gap_fill_round}, "
+            f"{len(ctx._still_missing)} still missing from bullets: "
+            f"{ctx._still_missing[:5]}{'…' if len(ctx._still_missing) > 5 else ''}",
+            "DEBUG",
         )
 
-    # ───────────────────────────────────────────────────────────────────────
-    # V0.5.6: final-check round 4 (targeted, glossary-grounded).
-    #
-    # After the standard 5-round gap-fill loop terminates, if a source
-    # glossary is available AND there are still-missing authors, fire a
-    # TARGETED round 4 using the glossary context as the grounding + the
-    # loosened quote-guard. The round 4 prompt names each still-missing
-    # author + their glossary context (year + description), and
-    # explicitly instructs the LLM not to drop them for lack of a
-    # verbatim source quote — the glossary IS the grounding.
-    #
-    # This is the V0.5.6 closing-round for the V0.5.5 audit's 5-author
-    # coverage gap (Jack+Morey+Ndtei+Rettersol+Bak — all "see also"-
-    # only authors the strict V18.20.3.2 veto dropped). The final-check
-    # score is logged for the audit trail.
-    #
-    # Content-agnostic (Rule 1 ✓): the round 4 prompt uses
-    # ``{missing_authors_with_context}`` placeholders built from the
-    # runtime LLM-generated glossary — no hardcoded names.
-    # ───────────────────────────────────────────────────────────────────────
-    _final_check_added = 0
-    _final_check_rounds = 0
+
+def _gff_final_check(ctx: _GapFillCtx) -> None:
+    """V0.6.11 (B14-b): the verbatim V0.5.6 final-check round 4 — the
+    glossary re-diff, the targeted glossary-grounded prompt, the bounded
+    acceptance, and the coverage score — updates ``ctx._still_missing`` /
+    ``ctx._final_check_added`` / ``ctx._final_check_rounds``. The
+    ``import re as _re3`` alias became the module-level ``re`` (declared)."""
+    log = ctx.log
+    heading = ctx.heading
+    source_glossary = ctx.source_glossary
+    call_fast_llm = ctx.call_fast_llm
+    temperature = ctx.temperature
+    strip_thinking = ctx.strip_thinking
+    filter_thinking_bullets = ctx.filter_thinking_bullets
+    bullets = ctx.bullets
+    _gap_fill_round = ctx._gap_fill_round
+    ctx._final_check_added = 0
+    ctx._final_check_rounds = 0
     _glossary_names_v056 = _v056_extract_glossary_names(source_glossary)
     _glossary_path_v056 = _v056_extract_glossary_path(
         source_glossary if isinstance(source_glossary, dict) else None
     )
-    if source_glossary is not None and _glossary_names_v056 and _still_missing:
+    if source_glossary is not None and _glossary_names_v056 and ctx._still_missing:
         # Re-diff against the glossary names (the ground truth for the
         # final-check — catches glossary-only authors the regex-based
         # ``check_coverage`` would mark covered via a substring match).
@@ -1169,19 +1222,19 @@ def batch_gap_fill(
         _still_missing_v056 = [
             a
             for a in _glossary_names_v056
-            if a not in _still_missing and a.lower() not in _bullets_after.lower()
+            if a not in ctx._still_missing and a.lower() not in _bullets_after.lower()
         ]
         # The final-check pool = the union of (a) the standard loop's
         # still_missing + (b) the glossary-only still-missing (LLM-
         # extracted authors the regex check_coverage missed).
-        _final_check_pool = list({*map(str, _still_missing), *_still_missing_v056})
+        _final_check_pool = list({*map(str, ctx._still_missing), *_still_missing_v056})
         # Filter to glossary-backed authors only (the loosened
         # quote-guard requires the glossary to be the grounding).
         _final_check_pool = [
             a for a in _final_check_pool if _v056_author_in_glossary(source_glossary, a)
         ]
         if _final_check_pool:
-            _final_check_rounds = 1
+            ctx._final_check_rounds = 1
             # Build the per-author glossary-context line for each
             # still-missing author (the grounding).
             _missing_with_context = "; ".join(
@@ -1233,13 +1286,12 @@ def batch_gap_fill(
                     ]
                     _fc_added = 0
                     _fc_max = len(_final_check_pool) * 2
-                    import re as _re3
 
                     for _fc_b in _fc_bullets[:_fc_max]:
                         _fc_b = _fc_b.strip()
-                        _fc_norm = _re3.sub(r"[^\w\s]", "", _fc_b.lower()).strip()[:60]
+                        _fc_norm = re.sub(r"[^\w\s]", "", _fc_b.lower()).strip()[:60]
                         _fc_is_dup = any(
-                            _fc_norm in _re3.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
+                            _fc_norm in re.sub(r"[^\w\s]", "", str(b).lower()).strip()[:60]
                             for b in bullets
                         )
                         if _fc_is_dup:
@@ -1310,7 +1362,7 @@ def batch_gap_fill(
                                 # the grounding — now BOUNDED by it).
                                 bullets.append(_fc_filtered[0])
                                 _fc_added += 1
-                                _final_check_added += 1
+                                ctx._final_check_added += 1
                                 if _fc_author_hit is not None:
                                     log(
                                         f"    ✨ V0.5.6 gap-fill: accepted "
@@ -1375,18 +1427,23 @@ def batch_gap_fill(
             # Update _still_missing to reflect the post-final-check
             # state (the returned GapFillOutcome reports the final
             # still-missing set, which the caller can use).
-            _still_missing = _still_missing_after_fc
+            ctx._still_missing = _still_missing_after_fc
 
-    if _still_missing:
+
+def _gff_report_still_missing(ctx: _GapFillCtx) -> None:
+    """V0.6.11 (B14-b): the verbatim final WARNING — the gave-up vs
+    never-covered split report."""
+    log = ctx.log
+    if ctx._still_missing:
         # V18.20.3.4 (RC-4): split the report — authors
         # we actively gave up on (persistent veto) vs
         # authors that simply never landed. The operator
         # needs to know which class each name is in.
-        _gave_up_missing = [a for a in _still_missing if a in _given_up]
-        _plain_missing = [a for a in _still_missing if a not in _given_up]
+        _gave_up_missing = [a for a in ctx._still_missing if a in ctx._given_up]
+        _plain_missing = [a for a in ctx._still_missing if a not in ctx._given_up]
         log(
-            f"    ⚠️ V18.14.1: {len(_still_missing)} theorists still "
-            f"missing from bullets after gap-fill: {_still_missing[:8]}"
+            f"    ⚠️ V18.14.1: {len(ctx._still_missing)} theorists still "
+            f"missing from bullets after gap-fill: {ctx._still_missing[:8]}"
             + (
                 f" — of these, {len(_gave_up_missing)} given up on "
                 f"after a failed mention-only attempt (no "
@@ -1404,13 +1461,95 @@ def batch_gap_fill(
             "WARNING",
         )
 
+
+# ── batch_gap_fill (the V0.6.11 orchestrator) ───────────────────────────────
+
+
+def batch_gap_fill(
+    heading: str,
+    content: str,
+    bullets: list[str],
+    missing: list[str],
+    analysis: Any,
+    det_authors: list[str],
+    *,
+    check_coverage: CheckCoverageFn,
+    call_fast_llm: CallFastLlmFn,
+    temperature: float,
+    strip_thinking: StripThinkingFn,
+    filter_thinking_bullets: FilterThinkingFn,
+    log: LogCallback | None = None,
+    source_glossary: dict | list | None = None,
+    regex_confirmed_authors: list[str] | None = None,
+) -> GapFillOutcome:
+    """V18.14.1: Batch gap-fill loop — the bullets-only coverage guarantee.
+
+    Extracted verbatim from the ``if _missing:`` block in
+    ``Summarizer._summarize_inner`` (V18.20.3.12 / Phase 4 / W6-O5). See
+    the module docstring for the extraction map and the free-variable
+    inventory. Mutates ``bullets`` in-place (appends the accepted
+    gap-fill bullets); returns a ``GapFillOutcome`` for logging parity.
+
+    V0.5.10: ``regex_confirmed_authors`` — the runtime regex
+    ``extract_citations`` output (passed by the caller,
+    ``chapter_phases.py``, where it is the analysis-extracted author
+    list ``_det_authors``). Used as the V0.5.6 glossary-unavailable
+    FALLBACK for the loosened quote-guard: when no glossary is provided
+    OR the claimed author is NOT in the glossary, the regex-confirmed
+    membership test fires as a fallback grounding (accept the bullet
+    with a "grounded-in-regex-extraction" grounding level). Default
+    ``None`` → the V0.5.5 strict-veto behavior (no loosened override).
+
+    V0.6.11 (B14-b): the body is now the phase sequence behind
+    ``_GapFillCtx`` (prepare → [round pool → round prompt → round call →
+    post-round accounting] × the 5-round loop → total log → final check →
+    report) — the public signature, the loop order, and every moved block
+    are unchanged (AST-identity pinned by
+    tests/test_v0611_wave7_godfunction_decomp.py).
+    """
+    log = log or _noop_log
+    # No-op guard — the original block was wrapped in ``if _missing:``.
+    if not missing:
+        return GapFillOutcome(total_added=0, rounds=0, still_missing=[], given_up=set())
+    ctx = _GapFillCtx(
+        heading=heading,
+        content=content,
+        bullets=bullets,
+        missing=missing,
+        analysis=analysis,
+        det_authors=det_authors,
+        check_coverage=check_coverage,
+        call_fast_llm=call_fast_llm,
+        temperature=temperature,
+        strip_thinking=strip_thinking,
+        filter_thinking_bullets=filter_thinking_bullets,
+        log=log,
+        source_glossary=source_glossary,
+        regex_confirmed_authors=regex_confirmed_authors,
+    )
+    _gff_prepare(ctx)
+    while ctx._still_missing and ctx._gap_fill_round < 5:
+        if not _gff_round_pool(ctx):
+            break
+        _gff_round_context(ctx)
+        if not _gff_round_execute(ctx):
+            break
+        _gff_post_round_accounting(ctx)
+    if ctx._total_added > 0:
+        log(
+            f"    ✅ V18.14.1: Batch gap-fill complete — "
+            f"added {ctx._total_added} bullets across {ctx._gap_fill_round} round(s)",
+            "INFO",
+        )
+    _gff_final_check(ctx)
+    _gff_report_still_missing(ctx)
     return GapFillOutcome(
-        total_added=_total_added,
-        rounds=_gap_fill_round,
-        still_missing=_still_missing,
-        given_up=_given_up,
-        final_check_added=_final_check_added,
-        final_check_rounds=_final_check_rounds,
+        total_added=ctx._total_added,
+        rounds=ctx._gap_fill_round,
+        still_missing=ctx._still_missing,
+        given_up=ctx._given_up,
+        final_check_added=ctx._final_check_added,
+        final_check_rounds=ctx._final_check_rounds,
     )
 
 

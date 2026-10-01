@@ -447,12 +447,14 @@ class TestMentionOnlyPromptBan:
         mention-only prompt template) moved VERBATIM from
         ``Summarizer._summarize_inner`` to ``gap_fill_batch.batch_gap_fill``
         — re-pointed at the new module; the pinned strings are unchanged."""
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        assert "ANYWHERE in the bullet" in src
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "possessive construction" in src
         # the synthetic example replaced the book-derived one
         assert "Voss" in src and "Ibarra" in src
