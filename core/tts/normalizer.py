@@ -448,6 +448,19 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
     V4.7.24: If the normalization model is not set or doesn't match any
     Ollama model, auto-discover the first available model from Ollama.
     This prevents the 404 error when the default model name doesn't exist.
+
+    V0.6.13: the llama.cpp-first local fallback (the operator's follow-up
+    report: "TTS ... FIND[S] LLM ON OLLAMA ONLY"). When the configured
+    ``tts.normalize_endpoint`` is LOCAL and a llama-server is up, the
+    normalizer is pointed at it — the OpenAI-compat
+    ``{base}/chat/completions`` the TextNormalizer already speaks — with
+    the DETECTED served model + bearer key, and the Ollama ``/api/tags``
+    discovery is SKIPPED (with Ollama down the discovery failed and
+    normalization DISABLED itself — the reported defect). The served
+    model is NOT persisted to ``tts.normalize_model`` (that setting
+    names the configured backend's model for the no-llama.cpp case). A
+    remote endpoint, the ``local.llamacpp_first=false`` kill switch, or
+    a dead llama.cpp → the configured path, byte-identical to V0.6.12.
     """
     from utils.settings import Settings
 
@@ -455,6 +468,26 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
 
     if not s.get("tts.normalize_enabled", False):
         return None
+
+    # V0.6.13: resolve the policy BEFORE the model resolution — a
+    # takeover supplies BOTH the endpoint and the model.
+    from core.llm.local_fallback import decide_llamacpp_first, is_local_url
+
+    _endpoint = str(s.get("tts.normalize_endpoint", "http://localhost:11434/v1") or "")
+    if is_local_url(_endpoint):
+        _d = decide_llamacpp_first(s, "ollama")
+        if _d.note and log_callback:
+            log_callback(f"  🦙 {_d.note}", "INFO")
+        if _d.use_llamacpp:
+            return TextNormalizer(
+                endpoint=_d.base_url,
+                api_key=_d.api_key,
+                model=_d.model,
+                custom_prompt_en=s.get("tts.normalize_prompt_en", ""),
+                custom_prompt_fa=s.get("tts.normalize_prompt_fa", ""),
+                context_mode=s.get("tts.normalize_context_mode", "sentence"),
+                log_callback=log_callback,
+            )
 
     # V4.7.24: Resolve the model — try in order:
     # 1. tts.normalize_model (explicitly set)
