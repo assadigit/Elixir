@@ -668,7 +668,7 @@ class TestScholarTruncatedVerdict:
 
         captured = {}
 
-        def fake_call_fast_llm(prompt, temperature=0.7, max_tokens=4096, **kw):
+        def fake_call_llm(prompt, temperature=0.7, max_tokens=4096, **kw):
             captured["max_tokens"] = max_tokens
             return raw_response
 
@@ -698,7 +698,7 @@ class TestScholarTruncatedVerdict:
             temperature=0.7,
             prompt_manager=_PM(),
             recover_vram=fake_recover_vram,
-            call_fast_llm=fake_call_fast_llm,
+            call_llm=fake_call_llm,
             strip_thinking=fake_strip_thinking,
             log=lambda msg, level="INFO": logs.append((level, msg)),
         )
@@ -1008,8 +1008,10 @@ class TestSettingsBanner:
             page_group_size=10,
             generate_summaries=True,
             summarisation_model="Qwen3.8-27B:latest",
-            fast_model="",
-            heavy_model="",
+            # V0.6.14 (single-model order): the fast_model/heavy_model
+            # stub fields REMOVED — settings_logger no longer reads them
+            # (the "Fast model: ... / Heavy model: ..." banner line is
+            # retired; one model does every LLM task).
             max_workers=1,
             temperature=0.7,
             self_consistency=False,

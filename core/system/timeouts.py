@@ -60,10 +60,11 @@ API_BATCH_TIMEOUT_S = 30
 # flagged; the tts/ normalizer already names its own 60 s family inline).
 HTTP_FETCH_TIMEOUT_S = 60
 
-# 120 s — the fast-model call family (dispatcher fallback, coverage
-# futures, pipeline fast-model timeouts, OCR/TOC vision calls; 9 sites,
-# flagged).
-FAST_LLM_TIMEOUT_S = 120
+# 120 s — the short-request LLM family (coverage gap-fill futures, the
+# simplified-keypoints short predicts, the OCR/TOC vision calls).
+# V0.6.14: renamed FAST_LLM → SHORT_LLM with the single-model order (the
+# fast-model concept is retired; the 120 s value is byte-identical).
+SHORT_LLM_TIMEOUT_S = 120
 
 # 180 s — the slow-request family: the Claude provider constructor (the
 # one migrated site below), the dispatcher's openai-compat POST, the
@@ -119,7 +120,8 @@ LONG_RUN_TIMEOUT_S = 600
 #   thermal polls ×2, the nvidia-smi calls ×3, the llamacpp-config listing.
 # MIGRATED — the subsecond family (4 sites) + the API-batch family (4 sites).
 # MIGRATED — the HTTP-fetch family (5 sites).
-# MIGRATED — the fast-LLM family (9 sites).
+# MIGRATED — the short-LLM family (9 sites; V0.6.14: FAST_LLM renamed
+#   SHORT_LLM with the single-model order).
 # MIGRATED — the slow-LLM family (7 sites).
 # MIGRATED — the LLM-request family (8 sites).
 # MIGRATED — the keypoints whole-call family (1 site: the simplified-keypoints
@@ -141,7 +143,7 @@ __all__ = [
     "CLI_SWEEP_TIMEOUT_S",
     "API_BATCH_TIMEOUT_S",
     "HTTP_FETCH_TIMEOUT_S",
-    "FAST_LLM_TIMEOUT_S",
+    "SHORT_LLM_TIMEOUT_S",
     "SLOW_LLM_TIMEOUT_S",
     "LLM_REQUEST_TIMEOUT_S",
     "KEYPOINTS_WHOLE_CALL_TIMEOUT_S",

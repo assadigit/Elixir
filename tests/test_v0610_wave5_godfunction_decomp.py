@@ -68,7 +68,7 @@ class TestB12Structure:
             "temperature",
             "prompt_manager",
             "recover_vram",
-            "call_fast_llm",
+            "call_llm",  # V0.6.14 (single-model order): was call_fast_llm
             "strip_thinking",
             "filter_thinking_bullets",
             "log",
@@ -163,7 +163,9 @@ def _make_deps(*, llm_responses=None, llm_raises=None):
     llm_calls = []
     rvram_calls = []
 
-    def call_fast_llm(prompt, temperature=None, max_tokens=None, **kw):
+    # V0.6.14 (single-model order): the dep was renamed call_fast_llm →
+    # call_llm (the ONE model's empty-retry path); mock renamed to match.
+    def call_llm(prompt, temperature=None, max_tokens=None, **kw):
         llm_calls.append({"prompt": prompt, "temperature": temperature, "max_tokens": max_tokens})
         if llm_raises is not None:
             raise llm_raises
@@ -180,7 +182,7 @@ def _make_deps(*, llm_responses=None, llm_raises=None):
     return {
         "prompt_manager": _FakePromptManager(),
         "recover_vram": recover_vram,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "_llm_calls": llm_calls,
         "_rvram_calls": rvram_calls,
@@ -198,7 +200,7 @@ def _run_scholar(deps, result, *, text="src", bullet_cap=None, filter_fn=None):
         temperature=0.7,
         prompt_manager=deps["prompt_manager"],
         recover_vram=deps["recover_vram"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         strip_thinking=deps["strip_thinking"],
         filter_thinking_bullets=filter_fn,
         log=log,
@@ -353,7 +355,7 @@ class TestScholarGapfillOnlyPreserved:
             temperature=0.7,
             prompt_manager=deps["prompt_manager"],
             recover_vram=deps["recover_vram"],
-            call_fast_llm=deps["call_fast_llm"],
+            call_llm=deps["call_llm"],  # V0.6.14: was call_fast_llm
             strip_thinking=deps["strip_thinking"],
             log=log,
         )

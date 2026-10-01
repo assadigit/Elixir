@@ -211,7 +211,7 @@ class SummarizerInitMixin:
 
         Extracted from Group F part 1. MUST be called BEFORE Group B (which
         reads self.is_local, self.timeout, self.local_chapter_deadline for the
-        IQ2_S overrides). Does NOT read self.primary_model or self.heavy_model.
+        IQ2_S overrides). Does NOT read self.primary_model.
         """
         # V0.04: "llamacpp" is a LOCAL backend — VRAM recovery, thermal
         # guards, and local timeouts all apply to llama-server exactly as
@@ -240,8 +240,9 @@ class SummarizerInitMixin:
         """V18.17.0.1: Initialize max_workers + VRAM safeguards.
 
         Extracted from Group F part 2. MUST be called AFTER Group B (which
-        sets self.primary_model and self.heavy_model). Reads both to determine
-        safe worker count.
+        sets self.primary_model). Reads it to determine safe worker count.
+        V0.6.14: the heavy-model max_workers=1 forcing is retired with the
+        single-model order.
         """
         self.max_workers = getattr(self.request, "max_workers", 2)
         try:
@@ -260,12 +261,6 @@ class SummarizerInitMixin:
                 f"  ℹ️ Could not query VRAM for max_workers cap ({type(_e).__name__}: {_e}).",
                 "DEBUG",
             )
-        if self.heavy_model and self.max_workers > 1:
-            self.log(
-                f"  ⚠️ Heavy model enabled – forcing max_workers from {self.max_workers} to 1 to prevent OOM.",
-                "WARNING",
-            )
-            self.max_workers = 1
         model_lower = (self.primary_model or "").lower()
         # V18.20.4.12 (W-a10): dropped dead uppercase entries — model_lower is lowercased
         if any(k in model_lower for k in ("14b", "32b", "70b")):
@@ -385,26 +380,23 @@ class SummarizerInitMixin:
              by the 16000-force for large models (locked as current behavior)
           10. overdeliver_target clamping ([coverage_threshold, 1.0])
           11. model profile assignment (Qwen → thinking_strip_aggressive)
-          12. heavy_model fallback (heavy == primary → None)
-          13. per-model temperature enforcement (model_temperatures setting)
+          12. per-model temperature enforcement (model_temperatures setting)
 
         Ordering constraints (documented in __init__ comments):
           - MUST come AFTER _init_thermal_guard (reads self.is_local, self.timeout,
             self.local_chapter_deadline).
           - MUST come BEFORE _init_max_workers + _init_map_reduce_and_prompts
-            (which read self.primary_model + self.heavy_model set here).
+            (which read self.primary_model set here).
 
         Args:
             settings: the ``Settings()`` instance created in __init__ (passed
                 explicitly to avoid re-reading settings.json).
         """
         # Quality parameters from request
+        # V0.6.14 (single-model order): self.fast_model / self.heavy_model
+        # are retired — ONE model (self.primary_model) does every LLM task.
         self.temperature = getattr(self.request, "temperature", 0.2)
         self.self_consistency = getattr(self.request, "self_consistency", False)
-        self.fast_model = getattr(
-            self.request, "fast_model", "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest"
-        )
-        self.heavy_model = getattr(self.request, "heavy_model", "")
         self.coverage_threshold = getattr(self.request, "coverage_threshold", 0.70)
 
         from core.llm.content_presets import get_content_preset
@@ -532,16 +524,8 @@ class SummarizerInitMixin:
         except Exception:
             self.profile = None
 
-        # Heavy model fallback
-        if not self.heavy_model or self.heavy_model == self.primary_model:
-            self.heavy_model = None
-            self.log("  ℹ️ Heavy model fallback disabled (same as primary or empty).", "INFO")
-        else:
-            self.log(f"  ℹ️ Heavy model fallback set to: {self.heavy_model}", "INFO")
-
         # V18.17.0.1 (Phase 2b): Max_workers + VRAM (Group F part 2) extracted to
-        # sub-constructor. MUST come AFTER Group B (which sets self.primary_model
-        # and self.heavy_model).
+        # sub-constructor. MUST come AFTER Group B (which sets self.primary_model).
         self._init_max_workers()
 
         # V18.17.0.0 (Phase 2b): Map-reduce params + prompt bank extracted to

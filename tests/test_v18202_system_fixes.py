@@ -815,7 +815,14 @@ class TestA15CancelSkipsDownstreamPhases:
 
 
 class TestA28SettingsFastModel:
-    """V18.20.2.0 (SWOT A28): exactly one fast_model key per location."""
+    """V18.20.2.0 (SWOT A28): exactly one key per dict/ensure-list
+    location (the original defect was duplicate ``fast_model`` keys).
+
+    V0.6.14 (single-model order): 1 test DELETED
+    (test_effective_fast_model_default_unchanged — it pinned the
+    ``summarisation.fast_model`` default ""; the settings key is
+    RETIRED with the fast model, one model does every LLM task). The
+    two AST duplicate-key guards survive unchanged."""
 
     def test_no_duplicate_dict_keys_anywhere_in_settings(self):
         """AST guard: no dict literal in settings.py repeats a string key."""
@@ -856,13 +863,10 @@ class TestA28SettingsFastModel:
                         dups.append((node.lineno, v))
         assert dups == [], f"duplicate ensure-list entries remain: {dups}"
 
-    def test_effective_fast_model_default_unchanged(self):
-        """Behavioral: the effective default stays "" (the value that was
-        silently winning by dict-literal semantics pre-dedupe)."""
-        from utils.settings import Settings
-
-        defaults = Settings._defaults()
-        assert defaults["summarisation"]["fast_model"] == ""
+    # V0.6.14 (single-model order): test_effective_fast_model_default_
+    # unchanged DELETED here — it pinned defaults["summarisation"]
+    # ["fast_model"] == ""; the settings key is RETIRED (the 1-test
+    # removal named in the class docstring above).
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -915,7 +919,11 @@ class TestA30AtomicWrites:
         assert cfg.exists()
         data = json.loads(cfg.read_text(encoding="utf-8"))
         assert data["input_path"].endswith("book.pdf")
-        assert data["fast_model"] == request.fast_model
+        # V0.6.14 (single-model order): the fast_model payload pin replaced
+        # with the surviving summarisation_model row — the request field is
+        # retired (one model does every LLM task); the atomic-write contract
+        # under test is unchanged.
+        assert data["summarisation_model"] == request.summarisation_model
         assert _tmp_artifacts(tmp_path) == [], "no .tmp leftovers"
 
     def test_quality_report_atomic(self, tmp_path):

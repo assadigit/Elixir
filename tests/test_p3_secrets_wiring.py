@@ -143,10 +143,15 @@ class TestPlaintextMigration:
         assert len(warnings) == 1
 
     def test_migrate_all_secrets_covers_new_paths(self, memory_keyring, settings_stub):
-        """fast_api_key / llamacpp / tts.normalize / translation.api_key are
-        now in _SECRET_PATHS — migrate_all_secrets must move them too."""
+        """llamacpp / tts.normalize / translation.api_key are
+        in _SECRET_PATHS — migrate_all_secrets must move them too.
+
+        V0.6.14 (single-model order): the ``summarisation.fast_api_key``
+        entry is RETIRED from this test — it was removed from
+        _SECRET_PATHS with the fast-API endpoint (a stale keychain entry
+        is inert, never read), so migrate_all_secrets must NOT claim it.
+        """
         legacy = {
-            "summarisation.fast_api_key": "sk-fast",
             "summarisation.llamacpp_api_key": "tok-llama",
             "tts.normalize_api_key": "sk-tts",
             "translation.api_key": "sk-tr-old",
@@ -435,29 +440,14 @@ class TestControllerWiring:
         assert ctrl.get_secret("summarisation.api_key", "") == "sk-ctrl"
         assert not settings_stub.data.get("summarisation.api_key")
 
-    def test_build_request_resolves_keychain_only_fast_key(self, memory_keyring, settings_stub):
-        """A fast_api_key that exists ONLY in the keychain must land in the
-        ConversionRequest (the old plaintext read resolved it as "")."""
-        ctrl = self._controller(settings_stub)
-        set_secret("summarisation.fast_api_key", "sk-fast-req", settings_stub)
-        request = ctrl.build_request_from_ui({"input_path": "/tmp/book.pdf"})
-        assert request.fast_api_key == "sk-fast-req"
-
-    def test_save_book_settings_omits_fast_key(self, memory_keyring, settings_stub, tmp_path):
-        """V0.16: the per-book config must not leak the API key to disk."""
-        import json
-
-        ctrl = self._controller(settings_stub)
-        from core.models import ConversionRequest
-
-        req = ConversionRequest(
-            input_path=tmp_path / "in.pdf",
-            output_dir=tmp_path,
-            fast_api_key="sk-should-not-leak",
-        )
-        ctrl.save_book_settings(tmp_path, req)
-        cfg_path = tmp_path / ".conversion_config.json"
-        assert cfg_path.exists()
-        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
-        assert "fast_api_key" not in raw
-        assert "sk-should-not-leak" not in cfg_path.read_text(encoding="utf-8")
+    # V0.6.14 (single-model order): 2 tests REMOVED —
+    #   * test_build_request_resolves_keychain_only_fast_key pinned the
+    #     fast_api_key request field (the ONLY secret-path row in
+    #     _REQUEST_FIELD_MAP). The field no longer exists on
+    #     ConversionRequest and no remaining request field is a secret,
+    #     so the keychain→request wiring it pinned is retired with it.
+    #   * test_save_book_settings_omits_fast_key constructed a
+    #     ConversionRequest carrying fast_api_key and asserted the
+    #     per-book config never leaked it. No request field carries key
+    #     material anymore and save_book_settings writes no api-key key,
+    #     so the leak vector itself is gone.

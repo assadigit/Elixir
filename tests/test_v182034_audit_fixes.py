@@ -624,7 +624,7 @@ class TestScholarGapFillFilter:
             temperature=0.7,
             prompt_manager=self._fake_prompt_manager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=fake_llm,
+            call_llm=fake_llm,
             strip_thinking=lambda s: s,
             filter_thinking_bullets=lambda bs, **kw: [
                 b for b in bs if classify_scar(b) is None and len(b.split()) >= 4
@@ -654,7 +654,7 @@ class TestScholarGapFillFilter:
             temperature=0.7,
             prompt_manager=self._fake_prompt_manager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=lambda prompt, **kw: raw_llm,
+            call_llm=lambda prompt, **kw: raw_llm,
             strip_thinking=lambda s: s,
             log=lambda m, l="INFO": None,
         )

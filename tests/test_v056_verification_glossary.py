@@ -57,17 +57,19 @@ class _MockVerifyProvider:
 
 
 class _MockSettings:
-    """Minimal Settings stub returning a configured model + ollama arch."""
+    """Minimal Settings stub returning a configured model.
 
-    def __init__(self, *, model="mock-model", arch="single_local"):
+    V0.6.14 (single-model order): the ``summarisation.model_architecture``
+    stub key REMOVED — the verification phase now reads
+    ``summarisation.provider`` directly (the architecture field is
+    retired; one model does every LLM task)."""
+
+    def __init__(self, *, model="mock-model"):
         self._model = model
-        self._arch = arch
 
     def get(self, key, default=None):
         if key == "summarisation.model":
             return self._model
-        if key == "summarisation.model_architecture":
-            return self._arch
         return default
 
 
@@ -94,7 +96,7 @@ def _make_gap_fill_deps(*, responses=None, response_fn=None):
         pct = (len(covered) / total) if total else 0.0
         return {"covered": covered, "missing": missing, "total": total, "coverage_pct": pct}
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = len(llm_calls)
         llm_calls.append({"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature})
         if response_fn is not None:
@@ -112,7 +114,7 @@ def _make_gap_fill_deps(*, responses=None, response_fn=None):
     return {
         "log": log,
         "check_coverage": check_coverage,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "filter_thinking_bullets": filter_thinking_bullets,
         "llm_calls": llm_calls,
@@ -140,7 +142,7 @@ def _run_gap_fill(
         analysis,
         det_authors,
         check_coverage=deps["check_coverage"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         temperature=0.2,
         strip_thinking=deps["strip_thinking"],
         filter_thinking_bullets=deps["filter_thinking_bullets"],

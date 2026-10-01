@@ -8,7 +8,7 @@ calls to fill them; also runs the V17.3 deterministic judge for author coverage.
 
 | Summarizer method (old) | gap_filler function (new) | self deps |
 |------------------------|--------------------------|-----------|
-| ``_gap_fill_concepts``  | ``gap_fill_concepts``    | ``request.output_dir``, ``log``, ``_recover_vram``, ``prompt_manager``, ``_call_fast_llm``, ``_strip_thinking``, ``_switch_to_fast_model``, ``overdeliver_enabled``, ``overdeliver_target``, ``coverage_threshold``, ``_effective_target``, ``temperature`` |
+| ``_gap_fill_concepts``  | ``gap_fill_concepts``    | ``request.output_dir``, ``log``, ``_recover_vram``, ``prompt_manager``, ``call_llm`` (V0.6.14: was ``_call_fast_llm``), ``_strip_thinking``, ``overdeliver_enabled``, ``overdeliver_target``, ``coverage_threshold``, ``_effective_target``, ``temperature`` |
 
 **Mutable-state handling**: ``self._last_coverage`` is mutated at the end of
 the method (set to the post-gap-fill coverage %). The extracted function takes
@@ -24,7 +24,7 @@ Matches the proven Phase 4 + Phase 5 + Batch 1-2 pattern.
 
 Characterization tests: ``tests/test_gap_filler.py`` captures the
 analysis-skip path, coverage-threshold-skip path, concept gap-fill, and
-deterministic-judge paths with mocked ``call_fast_llm`` / ``prompt_manager``.
+deterministic-judge paths with mocked ``call_llm`` / ``prompt_manager``.
 """
 
 from __future__ import annotations
@@ -39,10 +39,9 @@ from utils.error_trace import log_swallow
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
 PromptManagerLike = Any
-CallFastLlmFn = Callable[..., str | None]
+CallLlmFn = Callable[..., str | None]
 RecoverVramFn = Callable[..., None]
 StripThinkingFn = Callable[[str], str]
-SwitchToFastModelFn = Callable[[], None]
 SetLastCoverageFn = Callable[[float], None]
 CheckCoverageFn = Callable[[Any, str], dict]
 
@@ -73,9 +72,8 @@ def gap_fill_concepts(
     coverage_threshold: float,
     prompt_manager: PromptManagerLike,
     recover_vram: RecoverVramFn,
-    call_fast_llm: CallFastLlmFn,
+    call_llm: CallLlmFn,
     strip_thinking: StripThinkingFn,
-    switch_to_fast_model: SwitchToFastModelFn,
     set_last_coverage: SetLastCoverageFn,
     log: LogCallback | None = None,
 ) -> list[str]:
@@ -90,8 +88,9 @@ def gap_fill_concepts(
     changes are ``self.X`` → named parameters. The V17.4/V17.5 early-skip when
     deterministic analysis exists, the V13.37.0 whitespace-normalized coverage
     matrix, the V13.40.5 coverage-threshold skip (with V15.1.0 over-deliver
-    target), the 30s VRAM recovery, the V15.2.0 12-concept cap, the V17.1.2
-    routing to fast model, the V16.0.4 post-gap-fill coverage matrix (sets
+    target), the 30s VRAM recovery, the V15.2.0 12-concept cap (V0.6.14: the
+    V17.1.2 fast-model routing is retired — the ONE model takes the call),
+    the V16.0.4 post-gap-fill coverage matrix (sets
     ``self._last_coverage`` via the ``set_last_coverage`` callback), and the
     V17.3 deterministic author-coverage judge with targeted gap-fill for
     missing authors are byte-for-byte identical.
@@ -227,19 +226,11 @@ def gap_fill_concepts(
             context=context,
         )
 
-        # V17.1.2: Route gap-fill to the FAST model per the task delegation table.
-        # Gap-fill is a simple paraphrasing task (write one bullet for an
-        # uncovered concept given the source sentence) — the fast model
-        # handles it well and saves the heavy model's VRAM/attention for
-        # B4/synthesis/judge. In single_local/single_api mode, _call_fast_llm
-        # routes back to the heavy model automatically (no behaviour change).
+        # V0.6.14 (single-model order): the V17.1.2 fast-model routing is
+        # retired — the ONE model takes the gap-fill call directly (the
+        # single-mode behaviour of the old router, byte-identical).
         try:
-            # On the first call, switch VRAM to the fast model. Subsequent
-            # calls already have the fast model loaded — the gap-fill loop's
-            # own 30s VRAM recovery between calls handles any contention.
-            if _gi == 0:
-                switch_to_fast_model()
-            raw = call_fast_llm(
+            raw = call_llm(
                 prompt,
                 max_tokens=200,
                 temperature=temperature,
@@ -350,7 +341,7 @@ def gap_fill_concepts(
                         )
                         if _gap_prompt:
                             try:
-                                _raw = call_fast_llm(
+                                _raw = call_llm(
                                     _gap_prompt,
                                     max_tokens=200,
                                     temperature=temperature,

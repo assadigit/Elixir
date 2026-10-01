@@ -41,7 +41,7 @@ from core.summarisation import Summarizer
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
 from core.summarisation.filter_thinking import qwen_no_think
-from core.system.timeouts import FAST_LLM_TIMEOUT_S, LLM_REQUEST_TIMEOUT_S
+from core.system.timeouts import LLM_REQUEST_TIMEOUT_S
 
 # V18.20.2.0 (SWOT A30): module-level import — the per-chapter write loop
 # previously imported this INSIDE the loop body, which left the name
@@ -785,207 +785,84 @@ def _rs_thread_glossary_handoff(ctx: _SummCtx) -> None:
 
 
 def _rs_make_concept_llm_fn(ctx: _SummCtx):
-    """V0.6.11 (B14-a): the verbatim V15.2.0/V16.0.9 concept-extraction LLM
-    factory — the 4-mode architecture selection (dual_api / dual_local /
-    single_local / single_api) + the qwen-gated ``_llm_call_fn`` closure with
-    the empty-response nudge retry. Returns the callable, or ``None`` on the
+    """V0.6.11 (B14-a) / V0.6.14 (single-model order): the concept-extraction
+    LLM factory — the provider-routed model selection (local Ollama/llama.cpp
+    vs cloud, per ``summarisation.provider``; the 4-mode architecture branches
+    are retired) + the qwen-gated ``_llm_call_fn`` closure with the
+    empty-response nudge retry. Returns the callable, or ``None`` on the
     documented degradation path (the original inner try/except; the
     ``_llm_call_fn = None`` init became the ``return None`` — the declared
     normalization)."""
     log = ctx.log
-    request = ctx.request
     try:
         # Lazy import to avoid circular dependency
         from core.llm.llm_provider import create_provider
         from utils.settings import Settings as _S
 
         _settings = _S()
-        _arch = (
-            getattr(request, "model_architecture", None)
-            or _settings.get("summarisation.model_architecture", "single_local")
-            or "single_local"
-        )
-        # V16.0.9: backward-compat — legacy "single" → "single_local"
-        if _arch == "single":
-            _arch = "single_local"
-
-        if _arch == "dual_api":
-            # Use the OpenAI-compatible cloud API for fast concept extraction.
-            _api_url = getattr(request, "fast_api_url", "") or _settings.get(
-                "summarisation.fast_api_url", ""
+        # V0.6.14 (single-model order): the 4-mode architecture selection
+        # (dual_api / dual_local fast-model branches) is RETIRED — THE model
+        # takes the concept-extraction calls. Local vs cloud is the provider:
+        #   ollama / lmstudio / llamacpp / fusion → local model
+        #   openai_compatible / claude / …        → cloud model
+        # The provider is read from settings so the wizard's choice (which
+        # sets ``summarisation.provider``) is honoured.
+        _prov = _settings.get("summarisation.provider", "ollama")
+        if _prov == "llamacpp":
+            # V0.04: llama.cpp server — a local backend with its own
+            # provider (NOT an Ollama-shaped call). The 300 s budget
+            # override below does not apply: llama.cpp generates
+            # stream-first (per-chunk timeout), so the provider's
+            # own budget-derived timeouts govern.
+            _provider = create_provider(
+                provider="llamacpp",
+                settings=_settings,
+                log_callback=log,
+                supervisor=None,
             )
-            # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
-            from core.system.secrets import get_secret
-
-            _api_key = getattr(request, "fast_api_key", "") or get_secret(
-                "summarisation.fast_api_key", _settings, ""
+            _summ_model = _settings.get(
+                "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
             )
-            _api_model = getattr(request, "fast_api_model", "") or _settings.get(
-                "summarisation.fast_api_model", ""
+            if hasattr(_provider, "model"):
+                _provider.model = _summ_model
+            log(
+                f"  🚀 V0.04 concept extraction: llama.cpp model = {_summ_model}",
+                "INFO",
             )
-            if _api_url and _api_model:
-                _provider = create_provider(
-                    provider="openai_compatible",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                # Override the cloud settings to point at the fast API.
-                # V0.6.8 (audit B4): the override now sets the PUBLIC
-                # provider attributes — the old hasattr("_base_url"/
-                # "_api_key"/"_model") guards were always False
-                # (OpenAICompatProvider stores self.base_url/self.api_key
-                # — openai_compat_provider.py:39-40), so the fast-API
-                # URL/key were silently ignored and calls kept hitting
-                # the settings cloud endpoint. Pinned by
-                # tests/test_v068_review_loop_fixes.py.
-                _provider.base_url = _api_url
-                _provider.api_key = _api_key
-                _provider.model = _api_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = FAST_LLM_TIMEOUT_S
-                _summ_model = _api_model
-                log(
-                    f"  🚀 V16.0.8 concept extraction: dual_api mode "
-                    f"(fast cloud model = {_api_model})",
-                    "INFO",
-                )
-            else:
-                log(
-                    "  ⚠️ V16.0.8 dual_api configured but fast_api_url or "
-                    "fast_api_model is empty — falling back to primary "
-                    "summarisation model for concept extraction",
-                    "WARNING",
-                )
-                _provider = create_provider(
-                    provider="ollama",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                # V0.6.8 (audit B4): public attr — the "_model" guard was
-                # always False (OllamaProvider exposes self.model).
-                if hasattr(_provider, "model"):
-                    _provider.model = _summ_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
-        elif _arch == "dual_local":
-            # Use the local fast model via Ollama for fast concept extraction.
-            _fast_model = getattr(request, "fast_model", "") or _settings.get(
-                "summarisation.fast_model", ""
+        elif _prov in ("ollama", "lmstudio", "fusion"):
+            _provider = create_provider(
+                provider="ollama",
+                settings=_settings,
+                log_callback=log,
+                supervisor=None,
             )
-            if _fast_model:
-                _provider = create_provider(
-                    provider="ollama",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                # V0.6.8 (audit B4): public attr — the "_model" guard was
-                # always False (OllamaProvider exposes self.model).
-                if hasattr(_provider, "model"):
-                    _provider.model = _fast_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = FAST_LLM_TIMEOUT_S  # fast model = shorter timeout
-                _summ_model = _fast_model
-                log(
-                    f"  🚀 V16.0.8 concept extraction: dual_local mode "
-                    f"(fast Ollama model = {_fast_model})",
-                    "INFO",
-                )
-            else:
-                log(
-                    "  ⚠️ V16.0.8 dual_local configured but fast_model is "
-                    "empty — falling back to primary summarisation model "
-                    "for concept extraction",
-                    "WARNING",
-                )
-                _provider = create_provider(
-                    provider="ollama",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                # V0.6.8 (audit B4): public attr — the "_model" guard was
-                # always False (OllamaProvider exposes self.model).
-                if hasattr(_provider, "model"):
-                    _provider.model = _summ_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
+            _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
+            # V0.6.8 (audit B4): public attr — the "_model" guard was
+            # always False (OllamaProvider exposes self.model).
+            if hasattr(_provider, "model"):
+                _provider.model = _summ_model
+            if hasattr(_provider, "timeout"):
+                _provider.timeout = LLM_REQUEST_TIMEOUT_S  # 5 min for concept extraction
+            log(f"  🚀 Concept extraction: local model = {_summ_model}", "INFO")
         else:
-            # single_local or single_api — primary heavy model.
-            # single_local  → provider is ollama (or lmstudio/llamacpp)
-            #                 → local model
-            # single_api    → provider is openai_compatible   → cloud model
-            # The provider is read from settings so the wizard's mode
-            # choice (which sets ``summarisation.provider``) is honoured.
-            _prov = _settings.get("summarisation.provider", "ollama")
-            if _prov == "llamacpp":
-                # V0.04: llama.cpp server — a local backend with its own
-                # provider (NOT an Ollama-shaped call). The 300 s budget
-                # override below does not apply: llama.cpp generates
-                # stream-first (per-chunk timeout), so the provider's
-                # own budget-derived timeouts govern.
-                _provider = create_provider(
-                    provider="llamacpp",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                _summ_model = _settings.get(
-                    "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
-                )
-                if hasattr(_provider, "model"):
-                    _provider.model = _summ_model
-                log(
-                    f"  🚀 V0.04 concept extraction: single_local mode "
-                    f"(llama.cpp model = {_summ_model})",
-                    "INFO",
-                )
-            elif _prov in ("ollama", "lmstudio", "fusion"):
-                _provider = create_provider(
-                    provider="ollama",
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                # V0.6.8 (audit B4): public attr — the "_model" guard was
-                # always False (OllamaProvider exposes self.model).
-                if hasattr(_provider, "model"):
-                    _provider.model = _summ_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = LLM_REQUEST_TIMEOUT_S  # 5 min for concept extraction
-                log(
-                    f"  🚀 V16.0.9 concept extraction: single_local mode "
-                    f"(heavy local model = {_summ_model})",
-                    "INFO",
-                )
-            else:
-                # Cloud provider (openrouter / openai / openai_compatible /
-                # claude / freellmapi). create_provider reads api_base_url,
-                # api_key, cloud_model from settings automatically.
-                _cloud_prov = "openai_compatible" if _prov not in ("claude",) else _prov
-                _provider = create_provider(
-                    provider=_cloud_prov,
-                    settings=_settings,
-                    log_callback=log,
-                    supervisor=None,
-                )
-                _summ_model = _settings.get("summarisation.cloud_model", "gpt-4o-mini")
-                # V0.6.8 (audit B4): public attr — the "_model" guard was
-                # always False (OpenAICompatProvider exposes self.model).
-                if hasattr(_provider, "model"):
-                    _provider.model = _summ_model
-                if hasattr(_provider, "timeout"):
-                    _provider.timeout = LLM_REQUEST_TIMEOUT_S
-                log(
-                    f"  🚀 V16.0.9 concept extraction: single_api mode "
-                    f"(heavy cloud model = {_summ_model})",
-                    "INFO",
-                )
+            # Cloud provider (openrouter / openai / openai_compatible /
+            # claude / freellmapi). create_provider reads api_base_url,
+            # api_key, cloud_model from settings automatically.
+            _cloud_prov = "openai_compatible" if _prov not in ("claude",) else _prov
+            _provider = create_provider(
+                provider=_cloud_prov,
+                settings=_settings,
+                log_callback=log,
+                supervisor=None,
+            )
+            _summ_model = _settings.get("summarisation.cloud_model", "gpt-4o-mini")
+            # V0.6.8 (audit B4): public attr — the "_model" guard was
+            # always False (OpenAICompatProvider exposes self.model).
+            if hasattr(_provider, "model"):
+                _provider.model = _summ_model
+            if hasattr(_provider, "timeout"):
+                _provider.timeout = LLM_REQUEST_TIMEOUT_S
+            log(f"  🚀 Concept extraction: cloud model = {_summ_model}", "INFO")
 
         def _llm_call_fn(prompt):
             # V18.20.4.12 (W-a11): /no_think is now GATED on Qwen-family
@@ -1039,16 +916,9 @@ def _rs_build_chapter_dicts(ctx: _SummCtx) -> None:
 
         pp = DeterministicPreprocessor()
         # V15.2.0: Build a lightweight LLM call function for Technique #5.
-        # This calls the primary summarisation model with a low temp for
-        # deterministic concept extraction.
-        #
-        # V16.0.9: 4-mode model architecture — route concept extraction to the
-        # fast model when ``model_architecture`` is ``dual_local`` or
-        # ``dual_api``. In ``single_local`` / ``single_api`` mode it uses the
-        # primary summarisation model (local Ollama or cloud API, depending on
-        # provider). Legacy ``single`` is mapped to ``single_local`` for
-        # backward compat. Architecture is read from the request first
-        # (per-conversion override) and then from settings as a fallback.
+        # This calls THE summarisation model with a low temp for
+        # deterministic concept extraction. (V0.6.14: the V16.0.9 fast-model
+        # routing is retired — single-model order.)
         _llm_call_fn = _rs_make_concept_llm_fn(ctx)
         chapter_dicts = []
         for s in segments_for_summary:

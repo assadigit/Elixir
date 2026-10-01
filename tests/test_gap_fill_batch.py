@@ -3,7 +3,7 @@
 Byte-for-byte stability gate for ``batch_gap_fill`` extracted verbatim from
 the ``if _missing:`` V18.14.1 batch gap-fill block of
 ``Summarizer._summarize_inner``. Uses hermetic stubs (capturing log, canned
-fast-LLM responses, identity thinking filters, deterministic
+LLM responses, identity thinking filters, deterministic
 ``check_coverage``) — no LLM, no embedder, no markitdown. The REAL
 ``detect_parenthetical_promotion`` veto runs (it is deterministic and
 hermetic); the fixtures were verified against it directly.
@@ -55,7 +55,7 @@ def _make_deps(*, responses=None, response_fn=None):
         pct = (len(covered) / total) if total else 0.0
         return {"covered": covered, "missing": missing, "total": total, "coverage_pct": pct}
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = len(llm_calls)
         llm_calls.append({"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature})
         if response_fn is not None:
@@ -73,7 +73,7 @@ def _make_deps(*, responses=None, response_fn=None):
     return {
         "log": log,
         "check_coverage": check_coverage,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "filter_thinking_bullets": filter_thinking_bullets,
         "llm_calls": llm_calls,
@@ -89,7 +89,7 @@ def _run(deps, *, content, bullets, missing, analysis, det_authors, heading="Cha
         analysis,
         det_authors,
         check_coverage=deps["check_coverage"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         temperature=0.2,
         strip_thinking=deps["strip_thinking"],
         filter_thinking_bullets=deps["filter_thinking_bullets"],
@@ -395,7 +395,7 @@ class TestNoOpGuard:
 
 class TestRoundCap:
     def test_loop_terminates_at_five_round_cap(self):
-        """9 missing authors, the fast LLM ALWAYS returning bullets that
+        """9 missing authors, the LLM ALWAYS returning bullets that
         fail grounding (every bullet is a colon-form misattribution vetoed
         by the real detector): rounds 1-2 veto the first 8 authors, round 3
         is their mention-only round (also vetoed → all 8 given up), rounds
@@ -505,7 +505,7 @@ class TestByteForByte:
                 "total": 1,
                 "coverage_pct": 0.0,
             },
-            call_fast_llm=lambda p, **k: None,
+            call_llm=lambda p, **k: None,
             temperature=0.2,
             strip_thinking=lambda t: t,
             filter_thinking_bullets=lambda b, **k: list(b),

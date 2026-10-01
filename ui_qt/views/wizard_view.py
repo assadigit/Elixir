@@ -302,22 +302,14 @@ class WizardView(QDialog):
             _mw = s.get_setting("summarisation.max_workers", 1)
             _temp = s.get_setting("summarisation.temperature", 0.6)
             _model = s.get_setting("summarisation.model", "")
-            _fast = s.get_setting("summarisation.fast_model", "")
             _ocr = s.get_setting("ocr.primary_model", "")
             _source = s.get_setting("source_type", "normal_book")
             _cov = s.get_setting("summarisation.coverage_threshold", 50)
-            _arch = (
-                s.get_setting("summarisation.model_architecture", "single_local") or "single_local"
-            )
-            # Apply to state
+            # Apply to state (V0.6.14: fast_model / model_architecture retired)
             self.state.max_workers = int(_mw)
             self.state.temperature = float(_temp)
-            # V16.0.9: backward-compat — legacy "single" → "single_local"
-            self.state.model_architecture = "single_local" if _arch == "single" else _arch
             if _model:
                 self.state.summarisation_model = _model
-            if _fast:
-                self.state.fast_model = _fast
             if _ocr:
                 self.state.primary_ocr_model = _ocr
                 self.state.fallback_ocr_model = _ocr
@@ -666,8 +658,6 @@ class WizardView(QDialog):
             estimates, peak, total, recommendation = calculate_vram_budget(
                 ocr_model=s.primary_ocr_model,
                 summarization_model=s.summarisation_model,
-                fast_model=s.fast_model,
-                heavy_model=s.heavy_model,
                 translation_backend=s.translation_backend if s.translation_enabled else "",
                 translation_model=s.summarisation_model,  # Ollama translator
                 harakat_model=s.translation_harakat_model if s.translation_enabled else "",
@@ -920,7 +910,6 @@ class WizardView(QDialog):
         # Models
         log.append(f"  Summarization model: {s.summarisation_model or '(default)'}", "INFO")
         log.append(f"  OCR model: {s.primary_ocr_model or '(default)'}", "INFO")
-        log.append(f"  Fast model: {s.fast_model or '(default)'}", "INFO")
         log.append(f"  Workers: {s.max_workers}, Temperature: {s.temperature}", "INFO")
         # Translation
         log.append(f"  Translation enabled: {s.translation_enabled}", "INFO")
@@ -952,8 +941,6 @@ class WizardView(QDialog):
             f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO"
         )
         log.append(f"  Cache: {s.cache_enabled}", "INFO")
-        log.append(f"  Heavy model: {s.heavy_model or '(disabled)'}", "INFO")
-        log.append(f"  Simplification model: {s.simplification_model or '(use fast)'}", "INFO")
         log.append(
             f"  Extract math: {s.extract_math}, Layout analysis: {s.layout_analysis}", "INFO"
         )

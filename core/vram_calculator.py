@@ -286,8 +286,6 @@ def get_total_vram() -> float | None:
 def calculate_vram_budget(
     ocr_model: str = "",
     summarization_model: str = "",
-    fast_model: str = "",
-    heavy_model: str = "",
     translation_backend: str = "",
     translation_model: str = "",
     harakat_model: str = "",
@@ -322,11 +320,12 @@ def calculate_vram_budget(
     #
     # Phase grouping (only models in the SAME phase can be loaded simultaneously):
     #   Phase 1 (Extraction): OCR model only
-    #   Phase 2 (Summarization): summarization + fast + heavy (model swap during phase)
+    #   Phase 2 (Summarization): the summarisation model (V0.6.14: the
+    #             fast/heavy swap entries are retired — single-model order)
     #   Phase 3 (Translation): translation + harakat + judge
     #   Phase 4 (TTS): TTS engine
     #
-    # Within a phase, models MAY overlap (e.g., summarizer + fast model swap).
+    # Within a phase, models MAY overlap (e.g., parallel workers).
     # Across phases, they NEVER overlap (each phase completes before the next starts).
 
     # Phase 1: OCR + extraction (OCR model loaded)
@@ -334,18 +333,11 @@ def calculate_vram_budget(
         vram = _estimate_model_vram(ocr_model, "OCR", context_tokens)
         estimates.append(ModelVRAMEstimate(ocr_model, "OCR", vram, True))
 
-    # Phase 2: Summarization (summarizer + potentially fast model)
-    # V13.40.2: These ARE simultaneous with each other (model swap within phase),
-    # but NOT simultaneous with OCR (different phase).
+    # Phase 2: Summarization (the ONE model)
+    # V13.40.2: NOT simultaneous with OCR (different phase).
     if summarization_model:
         vram = _estimate_model_vram(summarization_model, "Summarization", context_tokens)
         estimates.append(ModelVRAMEstimate(summarization_model, "Summarization", vram, True))
-    if fast_model and fast_model != summarization_model:
-        vram = _estimate_model_vram(fast_model, "Fast/Simplification", context_tokens)
-        estimates.append(ModelVRAMEstimate(fast_model, "Fast/Simplification", vram, True))
-    if heavy_model:
-        vram = _estimate_model_vram(heavy_model, "Heavy model", context_tokens)
-        estimates.append(ModelVRAMEstimate(heavy_model, "Heavy model", vram, True))
 
     # Phase 3: Translation (if enabled)
     # V13.40.2: Translation is a separate phase — never overlaps with OCR or Summarization.

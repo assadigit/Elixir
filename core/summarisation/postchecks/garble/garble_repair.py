@@ -141,13 +141,8 @@ def repair_garbles_via_llm(
         # AND llama.cpp).
         from core.llm.llm_provider_impl import create_provider
 
-        arch = settings.get("summarisation.model_architecture", "single_local") or "single_local"
-        if arch == "llamacpp":
-            provider_name = "llamacpp"
-        elif arch in ("single_api", "dual_api"):
-            provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
-        else:
-            provider_name = "ollama"
+        # V0.6.14: provider from the canonical setting (model_architecture retired)
+        provider_name = settings.get("summarisation.provider", "ollama") or "ollama"
 
         if provider_name not in ("ollama", "llamacpp"):
             return text, issues  # cloud providers not supported for repair

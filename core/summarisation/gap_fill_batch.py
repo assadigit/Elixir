@@ -16,7 +16,7 @@ per-round telemetry, and the V18.20.3.2 generation-time active-subject veto.
 
 | Summarizer site (old)                                            | gap_fill_batch function (new) | self deps |
 |-------------------------------------------------------------------|-------------------------------|-----------|
-| ``_summarize_inner`` inline block (the ``if _missing:`` V18.14.1 batch gap-fill loop, ~478 lines) | ``batch_gap_fill`` | ``log``, ``_call_fast_llm``, ``temperature``, ``_strip_thinking``, ``_filter_thinking_bullets`` |
+| ``_summarize_inner`` inline block (the ``if _missing:`` V18.14.1 batch gap-fill loop, ~478 lines) | ``batch_gap_fill`` | ``log``, ``_call_llm``, ``temperature``, ``_strip_thinking``, ``_filter_thinking_bullets`` |
 
 Enclosing-scope deps (locals of ``_summarize_inner``) passed as explicit
 parameters: ``heading`` (chapter heading), ``content`` (chapter source
@@ -62,7 +62,7 @@ report), verbatim extraction, AST-identity verified.
 Characterization tests: ``tests/test_gap_fill_batch.py`` captures the
 happy path (bullet added for a missing author), the empty-response path,
 the veto-twice → mention-only → give-up escalation, the no-op guard, and
-the 5-round cap with mocked ``call_fast_llm`` / ``check_coverage`` /
+the 5-round cap with mocked ``call_llm`` / ``check_coverage`` /
 ``filter_thinking_bullets`` / ``log``.
 
 **V0.5.6 (glossary-driven coverage + loosened quote-guard + final-check)**:
@@ -127,7 +127,7 @@ from typing import Any, NamedTuple
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
 CheckCoverageFn = Callable[[Any, str], dict]
-CallFastLlmFn = Callable[..., str | None]
+CallLlmFn = Callable[..., str | None]
 StripThinkingFn = Callable[[str], str]
 FilterThinkingFn = Callable[..., list]
 
@@ -438,7 +438,7 @@ class _GapFillCtx:
     analysis: Any
     det_authors: list[str]
     check_coverage: CheckCoverageFn
-    call_fast_llm: CallFastLlmFn
+    call_llm: CallLlmFn
     temperature: float
     strip_thinking: StripThinkingFn
     filter_thinking_bullets: FilterThinkingFn
@@ -588,7 +588,7 @@ def _gff_round_execute(ctx: _GapFillCtx) -> bool:
     content = ctx.content
     bullets = ctx.bullets
     det_authors = ctx.det_authors
-    call_fast_llm = ctx.call_fast_llm
+    call_llm = ctx.call_llm
     temperature = ctx.temperature
     strip_thinking = ctx.strip_thinking
     filter_thinking_bullets = ctx.filter_thinking_bullets
@@ -781,7 +781,7 @@ def _gff_round_execute(ctx: _GapFillCtx) -> bool:
             # (a real round takes 17-25s; ~1s empty
             # = degenerate completion).
             _tl_t0 = time.monotonic()
-            _raw = call_fast_llm(
+            _raw = call_llm(
                 _batch_prompt,
                 max_tokens=2000,
                 temperature=temperature,
@@ -1202,7 +1202,7 @@ def _gff_final_check(ctx: _GapFillCtx) -> None:
     log = ctx.log
     heading = ctx.heading
     source_glossary = ctx.source_glossary
-    call_fast_llm = ctx.call_fast_llm
+    call_llm = ctx.call_llm
     temperature = ctx.temperature
     strip_thinking = ctx.strip_thinking
     filter_thinking_bullets = ctx.filter_thinking_bullets
@@ -1274,7 +1274,7 @@ def _gff_final_check(ctx: _GapFillCtx) -> None:
                 "INFO",
             )
             try:
-                _fc_raw = call_fast_llm(
+                _fc_raw = call_llm(
                     _final_check_prompt,
                     max_tokens=2000,
                     temperature=temperature,
@@ -1474,7 +1474,7 @@ def batch_gap_fill(
     det_authors: list[str],
     *,
     check_coverage: CheckCoverageFn,
-    call_fast_llm: CallFastLlmFn,
+    call_llm: CallLlmFn,
     temperature: float,
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn,
@@ -1519,7 +1519,7 @@ def batch_gap_fill(
         analysis=analysis,
         det_authors=det_authors,
         check_coverage=check_coverage,
-        call_fast_llm=call_fast_llm,
+        call_llm=call_llm,
         temperature=temperature,
         strip_thinking=strip_thinking,
         filter_thinking_bullets=filter_thinking_bullets,

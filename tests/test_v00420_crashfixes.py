@@ -104,14 +104,17 @@ class TestStep5ScrollHost:
         assert re.search(r"lay\.addWidget\(scroll,\s*1\)", src), "scroll takes the step's stretch"
 
     def test_boxes_live_in_host_layout(self) -> None:
-        """All five group boxes must be added to the scroll host's layout,
-        never directly to the step layout."""
+        """All the group boxes must be added to the scroll host's layout,
+        never directly to the step layout.
+
+        V0.6.14 (single-model order): "self.fast_api_box" removed from
+        the tuple (4 boxes remain) — the Fast API box is RETIRED from
+        step5, one model does every LLM task."""
         src = _STEP5.read_text(encoding="utf-8")
         for widget in (
             "arch_box",
             "self.local_box",
             "self.heavy_api_box",
-            "self.fast_api_box",
             "params_box",
         ):
             assert re.search(rf"host_lay\.addWidget\({re.escape(widget)}\)", src), (
@@ -122,11 +125,12 @@ class TestStep5ScrollHost:
         """The old clipped layout added boxes straight to the step layout;
         those lines must be gone."""
         src = _STEP5.read_text(encoding="utf-8")
+        # V0.6.14 (single-model order): "self.fast_api_box" removed from
+        # the tuple — the Fast API box is RETIRED from step5.
         for widget in (
             "arch_box",
             "self.local_box",
             "self.heavy_api_box",
-            "self.fast_api_box",
             "params_box",
         ):
             assert not re.search(rf"^\s*lay\.addWidget\({re.escape(widget)}\)\s*$", src, re.M), (
@@ -255,8 +259,14 @@ class TestTypeCardIconGeometry:
 
 @pytest.mark.skipif(not _qt_available(), reason="PySide6/offscreen unavailable")
 class TestStep5ScrollBehavior:
-    """Widget-level proof: with llama.cpp selected, all five boxes are
-    inside the scroll host and the full content is reachable."""
+    """Widget-level proof: with llama.cpp selected, all the boxes are
+    inside the scroll host and the full content is reachable.
+
+    V0.6.14 (single-model order): the expected-title set updated to the
+    4-box single-model layout — "Model architecture" is now the 2-option
+    "Where does the model run?" (Local/Cloud, writes provider), the ONE
+    cloud box is "☁️ Cloud API configuration (the model)", and the
+    "⚡ Fast API configuration (cheap workhorse)" box is RETIRED."""
 
     class _StubCtl:
         """Minimal controller — reads only the keys Step5Models touches."""
@@ -264,7 +274,9 @@ class TestStep5ScrollBehavior:
         def get_setting(self, key, default=None):
             return {
                 "summarisation.provider": "llamacpp",
-                "summarisation.model_architecture": "single_local",
+                # V0.6.14 (single-model order): the "summarisation.
+                # model_architecture" stub key REMOVED — the setting is
+                # retired (the arch combo now writes provider only).
                 "summarisation.llamacpp_base_url": "http://127.0.0.1:8080/v1",
                 "summarisation.llamacpp_model": "Ternary-Bonsai-2-27B-Instruct-Vision",
                 "summarisation.llamacpp_context_tokens": 65536,
@@ -291,7 +303,8 @@ class TestStep5ScrollBehavior:
         from ui_qt.views.wizard_steps.step5_models import Step5Models
 
         state = WizardState()
-        state.model_architecture = "single_local"
+        # V0.6.14 (single-model order): the state.model_architecture stub
+        # assignment REMOVED — the WizardState field is retired.
         step = Step5Models(self._StubCtl(), state)
         step.resize(790, 400)  # the compact wizard's step viewport
         step.show()
@@ -305,12 +318,11 @@ class TestStep5ScrollBehavior:
         host = scroll.widget()
         box_titles = {b.title() for b in host.findChildren(type(step.local_box))}
         assert box_titles == {
-            "Model architecture",
+            "Where does the model run?",
             "Parameters",
-            "☁️ Heavy API configuration (accurate model)",
-            "⚡ Fast API configuration (cheap workhorse)",
+            "☁️ Cloud API configuration (the model)",
             "🏠 Local configuration",
-        }, f"all five boxes must live in the scroll host, got {sorted(box_titles)}"
+        }, f"all four boxes must live in the scroll host, got {sorted(box_titles)}"
 
         # The content exceeds the compact viewport → scrolling works and
         # nothing is clipped: the host gets its full sizeHint height.

@@ -61,7 +61,7 @@ class TestGapFillBatchWiring:
         def log(msg, level="INFO"):
             logs.append((level, msg))
 
-        def call_fast_llm(prompt, **_kw):
+        def call_llm(prompt, **_kw):
             return raw_response
 
         def check_coverage(analysis, text):
@@ -91,7 +91,7 @@ class TestGapFillBatchWiring:
             analysis=analysis,
             det_authors=det_authors,
             check_coverage=check_coverage,
-            call_fast_llm=call_fast_llm,
+            call_llm=call_llm,
             temperature=0.2,
             strip_thinking=lambda t: t,
             filter_thinking_bullets=lambda bl, concepts=None, source_text="": list(bl),

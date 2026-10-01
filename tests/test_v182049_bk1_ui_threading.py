@@ -397,7 +397,13 @@ class TestWb12MergeOffload:
 
 
 class TestWb18rWizardTestButtons:
-    """Step5Models' cloud/fast TEST buttons."""
+    """Step5Models' cloud TEST buttons.
+
+    V0.6.14 (single-model order): 1 test DELETED
+    (test_fast_test_worker_keeps_ref_and_wires_failed — it pinned the
+    fast-API TEST button's worker wiring; the Fast API box + its test
+    methods are RETIRED from step5, one model does every LLM task). The
+    cloud TEST button pins survive unchanged."""
 
     def test_cloud_test_worker_keeps_ref_and_wires_failed(self):
         body = _strip_comments(_method(_STEP5, "Step5Models", "_test_cloud_connection"))
@@ -405,11 +411,11 @@ class TestWb18rWizardTestButtons:
         assert "w.failed.connect(self._on_cloud_test_failed)" in body
         assert "w.start()" in body
 
-    def test_fast_test_worker_keeps_ref_and_wires_failed(self):
-        body = _strip_comments(_method(_STEP5, "Step5Models", "_test_fast_cloud_connection"))
-        assert "self._fast_cloud_test_worker = w" in body
-        assert "w.failed.connect(self._on_fast_cloud_test_failed)" in body
-        assert "w.start()" in body
+    # V0.6.14 (single-model order): test_fast_test_worker_keeps_ref_and_
+    # wires_failed DELETED here — it pinned _test_fast_cloud_connection /
+    # _fast_cloud_test_worker / _on_fast_cloud_test_failed, all RETIRED
+    # with the fast-API UI (the 1-test removal named in the class
+    # docstring above).
 
     def test_failed_handlers_route_through_existing_result_slots(self):
         """No new user-visible strings — the existing ✅/❌ display +
@@ -417,9 +423,6 @@ class TestWb18rWizardTestButtons:
         cloud = _strip_comments(_method(_STEP5, "Step5Models", "_on_cloud_test_failed"))
         assert "self._pending_cloud_result = (False, error)" in cloud
         assert "self._set_cloud_test_result()" in cloud
-        fast = _strip_comments(_method(_STEP5, "Step5Models", "_on_fast_cloud_test_failed"))
-        assert "self._pending_fast_cloud_result = (False, error)" in fast
-        assert "self._set_fast_cloud_test_result()" in fast
 
     def test_no_bare_fire_and_forget_spawns_remain(self):
         src = _strip_comments(_src(_STEP5))

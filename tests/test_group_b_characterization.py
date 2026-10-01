@@ -19,8 +19,11 @@ future extraction is a safe, byte-for-byte-equivalent refactor:
   9. compact_summaries cap    — min(orig, 2048)
   10. overdeliver_target clamp — [coverage_threshold, 1.0]
   11. model profile assignment — Qwen → thinking_strip_aggressive
-  12. heavy_model fallback    — heavy == primary → None
-  13. per-model temperature enforcement (model_temperatures setting)
+  12. per-model temperature enforcement (model_temperatures setting)
+
+V0.6.14 (single-model order): the heavy_model fallback pins (old item 12 —
+heavy == primary → None) were REMOVED (3 tests); self.heavy_model no longer
+exists (ONE model does every LLM task).
 
 These tests are TEST-ONLY (no production code changed). They construct a real
 ``Summarizer`` with a ``_FakeSettings`` stand-in (so they're hermetic — no
@@ -473,31 +476,12 @@ class TestModelProfileAssignment:
 # 11. heavy_model fallback
 # ═══════════════════════════════════════════════════════════════════════════
 
-
-class TestHeavyModelFallback:
-    """When heavy_model equals primary_model (or is empty), heavy fallback is disabled."""
-
-    def test_heavy_equals_primary_disables_fallback(self, monkeypatch):
-        s = _make_summarizer(
-            monkeypatch,
-            model=LARGE_FP_MODEL,
-            heavy_model=LARGE_FP_MODEL,
-        )
-        assert s.heavy_model is None, (
-            "heavy_model == primary_model must disable fallback (set to None)"
-        )
-
-    def test_empty_heavy_model_disables_fallback(self, monkeypatch):
-        s = _make_summarizer(monkeypatch, model=LARGE_FP_MODEL, heavy_model="")
-        assert s.heavy_model is None
-
-    def test_distinct_heavy_model_preserved(self, monkeypatch):
-        s = _make_summarizer(
-            monkeypatch,
-            model="gemma3:12b",
-            heavy_model=LARGE_FP_MODEL,
-        )
-        assert s.heavy_model == LARGE_FP_MODEL
+# V0.6.14 (single-model order): the TestHeavyModelFallback class was
+# REMOVED (3 tests: heavy==primary→None, empty→None, distinct preserved).
+# Their whole purpose was the heavy-model fallback wiring in
+# Summarizer._init_quality_params (self.heavy_model + the heavy==primary
+# disable rule), which is retired — ONE model (self.primary_model) does
+# every LLM task and there is no fallback model to configure.
 
 
 # ═══════════════════════════════════════════════════════════════════════════

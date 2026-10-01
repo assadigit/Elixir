@@ -355,14 +355,13 @@ def consolidate_bullets(
         log("    \u26a0\ufe0f Bullet consolidation: prompt file not found, skipping", "WARNING")
         return bullets, fire_count
     try:
-        # V17.1.3: Moved consolidation from FAST → HEAVY.
-        # The fast model (LFM2.5-2.6B) is too small for this task — it
-        # echoes the input format ("Bullet 1:", "Bullet 2:"), leaks
-        # chain-of-thought ("I need to systematically group them"), and
-        # produces cluster headers instead of clean merged bullets.
-        # The consolidation prompt has a 7-step process that requires
-        # semantic understanding + format following — only the heavy
-        # model handles it reliably.
+        # V17.1.3 (history): consolidation originally tried a small
+        # side-model and moved to the primary model — the small model
+        # echoed the input format, leaked chain-of-thought, and produced
+        # cluster headers instead of clean merged bullets. The
+        # consolidation prompt's 7-step process needs the primary model's
+        # semantic understanding + format following. (V0.6.14: the
+        # fast/heavy split itself is retired — THE model consolidates.)
         raw = call_llm_with_empty_retry(
             prompt,
             model=primary_model,

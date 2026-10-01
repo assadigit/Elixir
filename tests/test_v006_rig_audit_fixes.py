@@ -485,14 +485,14 @@ class TestF4ScholarCap:
             def render_template(self, name, **kw):
                 return "PROMPT"
 
-        def call_fast_llm(prompt, **kw):
+        def call_llm(prompt, **kw):
             llm_calls.append(prompt)
             return llm_resp
 
         return dict(
             prompt_manager=_PM(),
             recover_vram=lambda context="", delay_sec=0.0, **kw: rvram_calls.append(context),
-            call_fast_llm=call_fast_llm,
+            call_llm=call_llm,
             strip_thinking=lambda t: t,
         )
 

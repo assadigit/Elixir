@@ -176,15 +176,12 @@ def _mk_request(root: Path, **overrides) -> SimpleNamespace:
         enable_content_filter=False,
         selected_chapters=[],
         max_workers=2,
-        model_architecture="single_local",
         summarisation_model="",
         primary_model="",
         output_dir=str(root / "output"),
         generate_docx=False,
-        fast_api_url="",
-        fast_api_key="",
-        fast_api_model="",
-        fast_model="",
+        # V0.6.14 (single-model order): the retired request-stub keys
+        # (model_architecture / fast_api_* / fast_model) are pruned.
     )
     kw.update(overrides)
     return SimpleNamespace(**kw)
@@ -699,7 +696,9 @@ def _gap_deps(response_fn=None):
             else 0.0,
         }
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    # V0.6.14 (single-model order): the dep was renamed call_fast_llm →
+    # call_llm (the ONE model's empty-retry path); mock renamed to match.
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = len(llm_calls)
         llm_calls.append(prompt)
         if response_fn is not None:
@@ -709,7 +708,7 @@ def _gap_deps(response_fn=None):
     return {
         "log": log,
         "check_coverage": check_coverage,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": lambda t: t,
         "filter_thinking_bullets": lambda b, concepts=None, source_text="": list(b),
         "llm_calls": llm_calls,
@@ -727,7 +726,7 @@ def _gap_run(deps, content, bullets, missing, analysis, det_authors):
         analysis,
         det_authors,
         check_coverage=deps["check_coverage"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],  # V0.6.14: was call_fast_llm
         temperature=0.2,
         strip_thinking=deps["strip_thinking"],
         filter_thinking_bullets=deps["filter_thinking_bullets"],
@@ -832,7 +831,7 @@ class TestB14bStructure:
             "analysis",
             "det_authors",
             "check_coverage",
-            "call_fast_llm",
+            "call_llm",  # V0.6.14 (single-model order): was call_fast_llm
             "temperature",
             "strip_thinking",
             "filter_thinking_bullets",

@@ -47,7 +47,7 @@ from pypdf import PdfReader, PdfWriter
 
 from core.llm import ModelManager, ModelType
 from core.models import ConversionRequest, OcrEngine, OcrResult, PdfAnalysisResult
-from core.system.timeouts import FAST_LLM_TIMEOUT_S
+from core.system.timeouts import SHORT_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -401,9 +401,7 @@ class OCRService:
                 log_swallow("ocr_prescan", _e, detail="falling back to full pages_to_ocr set")
 
         # ── FIX: Before loading vision model, unload summarisation model if loaded ──
-        summary_model = getattr(self.request, "summarisation_model", None) or getattr(
-            self.request, "fast_model", None
-        )
+        summary_model = getattr(self.request, "summarisation_model", None)
         if summary_model:
             loaded = self.model_manager.get_loaded_models()
             if summary_model in loaded:
@@ -437,10 +435,9 @@ class OCRService:
                 )
             except Exception:
                 _gate_provider = "ollama"
-            _gate_arch = (
-                getattr(self.request, "model_architecture", "single_local") or "single_local"
-            ).lower()
-            if _gate_provider == "llamacpp" or _gate_arch == "llamacpp":
+            # V0.6.14: model_architecture retired — the provider setting is
+            # the single source.
+            if _gate_provider == "llamacpp":
                 self.log(
                     "  ℹ️ Provider is llama.cpp — page OCR routes via the "
                     "llama-server vision provider (no Ollama model load).",
@@ -840,8 +837,8 @@ class OCRService:
     # Content-agnostic (AGENTS.md Rule 1): no hardcoded model names —
     # the vision capability is detected via a LIVE API probe, not a
     # name-keyed check. The provider (Ollama or llama.cpp) is determined
-    # by the app's model_architecture setting, not hardcoded in the OCR
-    # code.
+    # by the app's summarisation.provider setting, not hardcoded in the
+    # OCR code.
     # ─────────────────────────────────────────────────────────────────────────
 
     def _get_vision_provider(self):
@@ -867,7 +864,8 @@ class OCRService:
         from utils.settings import Settings as _S
 
         settings = _S()
-        arch = getattr(self.request, "model_architecture", "single_local") or "single_local"
+        # V0.6.14: model_architecture retired — the provider setting routes.
+        arch = (settings.get("summarisation.provider", "ollama") or "ollama").strip().lower()
 
         # Step 1: check the MAIN model
         main_model = getattr(self.request, "summarisation_model", "") or ""
@@ -914,25 +912,26 @@ class OCRService:
         probe Ollama (not llama.cpp) for that OCR model.
 
         V0.4.24 (V4.23 run post-mortem): the ACTIVE provider setting
-        (``summarisation.provider``) is authoritative too. The V4.23 rig
-        ran provider=llamacpp while ``model_architecture`` stayed
-        "single_local", so this method created an OLLAMA provider,
-        probed Ollama for the vision model, found nothing, and the OCR
-        silently degraded 3 scanned pages to Tesseract while
-        llama-server was serving the vision model.
+        (``summarisation.provider``) is authoritative. (V0.6.14: the old
+        ``model_architecture`` cross-read is retired — the provider
+        setting is the single source.)
         """
         try:
             from core.llm.llm_provider_impl import create_provider
 
-            # Determine the provider name from the architecture AND the
-            # active provider setting (V0.4.24).
+            # Determine the provider name (V0.6.14: the canonical provider
+            # setting — model_architecture retired; the arch param now
+            # carries the provider name itself).
             _provider_setting = (
                 (settings.get("summarisation.provider", "ollama") or "ollama").strip().lower()
             )
             if arch == "llamacpp" or _provider_setting == "llamacpp":
                 provider_name = "llamacpp"
-            elif arch in ("single_api", "dual_api"):
-                provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
+            elif arch in ("openai_compatible", "claude", "freellmapi"):
+                # V0.6.14: a cloud-hosted model has NO local vision probe —
+                # same result as the old cloud-architecture branch (the OCR
+                # vision path is local-only by design).
+                provider_name = None
             else:
                 provider_name = "ollama"
 
@@ -1297,7 +1296,7 @@ class OCRService:
                 "POST",
                 f"{ollama_url}/api/generate",
                 json=payload,
-                timeout=FAST_LLM_TIMEOUT_S,
+                timeout=SHORT_LLM_TIMEOUT_S,
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()

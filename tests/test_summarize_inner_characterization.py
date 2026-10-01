@@ -322,14 +322,14 @@ class TestSourcePinSpeculativeScholar:
             "theoretical_tensions",
         )
 
-    def test_dual_model_skip_log_literal(self):
-        """The dual-model DEBUG skip log skeleton."""
-        src = _summarizer_src()
-        for fragment in (
-            "ℹ️ Phase 6.2: judge∥scholar speculation skipped",
-            "dual-model architecture switches models mid-call)",
-        ):
-            assert fragment in src, f"dual-model skip log literal {fragment!r} missing"
+    # V0.6.14 (single-model order): test_dual_model_skip_log_literal
+    # DELETED here — it pinned the "judge∥scholar speculation skipped /
+    # dual-model architecture switches models mid-call" DEBUG log, the
+    # gate that disabled speculation under the fast/heavy model swap.
+    # The model_architecture field and the mid-run switching are RETIRED
+    # (one model does every LLM task), so the gate and its log literal
+    # are gone (1 of the 2 removals in this file — see also
+    # TestSpeculativeScholarFailSoft below).
 
     def test_scholar_launch_log_literal(self):
         """The launch INFO log skeleton."""
@@ -1034,9 +1034,14 @@ class TestConceptsCalloutsInjection:
 
 
 class TestSpeculativeScholarFailSoft:
-    """Pin the 4 return-None branches of _p6_prepare_speculative_scholar
+    """Pin the return-None branches of _p6_prepare_speculative_scholar
     (the V0.19 lever's fail-soft paths) — each branch is observable via
-    the logs it emits (or doesn't)."""
+    the logs it emits (or doesn't).
+
+    V0.6.14 (single-model order): 1 test DELETED
+    (test_dual_model_architecture_returns_none_with_debug_log — the
+    dual_local gate + its DEBUG skip log are RETIRED with the fast/heavy
+    model swap; 3 return-None branches remain pinned)."""
 
     def test_lever_off_returns_none(self, tmp_path):
         """Default (lever off) → None. No Phase 6.2 logs."""
@@ -1048,27 +1053,11 @@ class TestSpeculativeScholarFailSoft:
         assert handle is None
         assert not any("Phase 6.2" in m for (_lvl, m) in logs)
 
-    def test_dual_model_architecture_returns_none_with_debug_log(self, tmp_path):
-        """Dual-model architecture → None + the DEBUG skip log (model
-        switching mid-call would race)."""
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            settings_values={
-                "summarisation.parallel_stages": True,
-                "summarisation.parallel_stages_judge_scholar": True,
-            },
-            request_fields={"model_architecture": "dual_local"},
-            log_lines=logs,
-        )
-        fresh_deadline(s)
-        handle = s._p6_prepare_speculative_scholar(heading, source, {})
-        assert handle is None
-        # The dual-model skip log fires at DEBUG
-        msgs = [m for (lvl, m) in logs if lvl == "DEBUG" and "Phase 6.2" in m]
-        assert any("judge∥scholar speculation skipped" in m for m in msgs)
-        assert any("dual-model architecture switches models mid-call" in m for m in msgs)
+    # V0.6.14 (single-model order): test_dual_model_architecture_returns_
+    # none_with_debug_log DELETED here — the model_architecture gate in
+    # _p6_prepare_speculative_scholar (speculation off because the old
+    # call_fast_llm switched models mid-run — racy) is RETIRED; the field
+    # no longer exists (the 1-test removal named in the class docstring).
 
     def test_scholar_reflections_enabled_returns_none(self, tmp_path):
         """When scholar_reflections_enabled is True, the speculative path

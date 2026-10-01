@@ -66,7 +66,7 @@ class PersistentJsonSubprocess:
         sub = PersistentJsonSubprocess(name="qwen-tts", log=my_log_fn)
         sub.spawn([sys.executable, script], env=my_env)
         sub.send({"action": "load", "model_path": "…"})
-        msg = sub.read_json(timeout=FAST_LLM_TIMEOUT_S)      # real timeout, no blocking readline
+        msg = sub.read_json(timeout=SHORT_LLM_TIMEOUT_S)      # real timeout, no blocking readline
         …
         sub.close()                              # quit → wait → kill escalation
 

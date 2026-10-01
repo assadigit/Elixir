@@ -323,7 +323,6 @@ class Step1Pdf(WizardStep):
         _STATE_TO_SETTING = {
             "summarisation_model": "summarisation.model",
             "primary_ocr_model": "ocr.primary_model",
-            "fast_model": "summarisation.fast_model",
             "max_workers": "summarisation.max_workers",
             "temperature": "summarisation.temperature",
             "translation_backend": "translation.backend",

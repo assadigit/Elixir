@@ -45,7 +45,7 @@ def _make_deps(
     llm_calls = []
     rvram_calls = []
 
-    def call_fast_llm(prompt, temperature=None, max_tokens=None, **kw):
+    def call_llm(prompt, temperature=None, max_tokens=None, **kw):
         llm_calls.append({"prompt": prompt, "temperature": temperature, "max_tokens": max_tokens})
         if llm_raises is not None:
             raise llm_raises
@@ -60,7 +60,7 @@ def _make_deps(
     return {
         "prompt_manager": _FakePromptManager(),
         "recover_vram": recover_vram,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "_llm_calls": llm_calls,
         "_rvram_calls": rvram_calls,
@@ -74,7 +74,7 @@ def _common_kwargs(deps):
         temperature=0.7,
         prompt_manager=deps["prompt_manager"],
         recover_vram=deps["recover_vram"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         strip_thinking=deps["strip_thinking"],
         log=_CapturingLog(),
     )
@@ -220,7 +220,7 @@ class TestTheoristExtraction:
         result = {"executive_summary": "e", "bullet_points": [], "thorough_summary": "t"}
         scholar_reflection("Ch", src, result, **{k: v for k, v in _common_kwargs(deps).items()})
         # The prompt_manager captured the theorists_hint; verify it contains the extracted theorists
-        # (via the call_fast_llm prompt — but we mocked that; instead verify via the DEBUG log)
+        # (via the call_llm prompt — but we mocked that; instead verify via the DEBUG log)
         # Actually the prompt is built before the LLM call; we can't easily inspect it here.
         # Smoke: the method ran without error and the theorists were found (the DEBUG log mentions it).
         # Just assert no crash and the method completed.

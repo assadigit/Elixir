@@ -73,30 +73,6 @@ def _populate_models(
         combo.setCurrentIndex(0)
 
 
-def _populate_models_async(
-    combo: QComboBox,
-    controller,
-    current: str = "",
-    allow_empty: bool = False,
-    prefer_ocr: bool = False,
-) -> None:
-    """V18.20.4.5 (W-b11): fetch models OFF the UI thread; populate the
-    combo on the main thread when done. Opening Settings no longer freezes
-    the UI for up to 5s when Ollama is down."""
-    worker = SimpleWorker(_get_ollama_models, controller)
-    # Keep a ref on the combo so the worker isn't GC'd mid-run.
-    combo._models_worker = worker
-
-    def _apply(models):
-        _populate_models(
-            combo, models or [], current=current, allow_empty=allow_empty, prefer_ocr=prefer_ocr
-        )
-
-    worker.finished.connect(_apply)
-    worker.failed.connect(lambda _err: None)  # fail-soft: combo keeps its items
-    worker.start()
-
-
 def _refresh_models_async(section, fetch_fn, on_loaded, refresh_btn=None) -> None:
     """V18.20.4.5 (W-b11): shared async model refresh for the settings
     sections (OcrModel / AiLocalModel / Defaults).

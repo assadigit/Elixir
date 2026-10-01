@@ -11,7 +11,7 @@ FIXES in this version:
     converter.py now handles the recommendation silently (auto-accept + log).
   - set_tk_root() and _tk_call() remain for all other UI callbacks
     (progress, status, log, complete) which still need thread-safe dispatch.
-  - Added manual_segments, temperature, self_consistency, fast_model, heavy_model,
+  - Added manual_segments, temperature, self_consistency,
     and coverage_threshold to build_request_from_ui().
   - Added save_book_settings() and load_book_settings() for per-book configuration.
   - NEW: Added page_range_start, page_range_end, selected_chapters to build_request_from_ui().
@@ -565,17 +565,10 @@ class Controller:
             "max_workers": request.max_workers,
             "temperature": request.temperature,
             "self_consistency": request.self_consistency,
-            "fast_model": request.fast_model,
-            "heavy_model": request.heavy_model,
-            # V16.0.9: 4-mode model architecture
-            "model_architecture": getattr(request, "model_architecture", "single_local"),
-            "fast_api_url": getattr(request, "fast_api_url", ""),
-            # V0.16 (Phase 3 / 3.2): fast_api_key is intentionally NOT
-            # written to the per-book config — the pipeline re-resolves
-            # it from the OS keychain when the request field is empty
-            # (core/pipeline/conversion/summarization.py), so writing it
-            # here would only leak the key to disk next to the outputs.
-            "fast_api_model": getattr(request, "fast_api_model", ""),
+            # V0.6.14 (single-model order): fast_model / heavy_model /
+            # model_architecture / fast_api_url / fast_api_model no longer
+            # exist on the request — ONE model (summarisation_model) does
+            # every LLM generation task.
             "coverage_threshold": request.coverage_threshold,
             "manual_segments": request.manual_segments,
             # ── NEW fields ──────────────────────────────────────────────────
@@ -804,44 +797,11 @@ class Controller:
             lambda v: float(v) / 100.0 if v > 1.0 else float(v),
         ),
         ("b3_voting_enabled", "b3_voting_enabled", "summarisation.b3_voting_enabled", False, None),
-        # V18.20.4.3 (P2 / W-c1): fast_model fallback unified — the
-        # canonical settings default is "" (use the main model); the old
-        # "gemma3:12b" literal named a model the rig never had (it is on
-        # the known-bad-default blacklist in core/tts/normalizer.py).
-        ("fast_model", "fast_model", "summarisation.fast_model", "", None),
-        ("heavy_model", "heavy_model", "summarisation.heavy_model", "", None),
-        # V16.0.9: 4-mode model architecture (single_local | dual_local | single_api | dual_api)
-        (
-            "model_architecture",
-            "model_architecture",
-            "summarisation.model_architecture",
-            "single_local",
-            None,
-        ),
-        (
-            "fast_model_temperature",
-            "fast_model_temperature",
-            "summarisation.fast_model_temperature",
-            0.1,
-            None,
-        ),
-        (
-            "fast_model_context",
-            "fast_model_context",
-            "summarisation.fast_model_context",
-            131072,
-            None,
-        ),
-        ("fast_api_url", "fast_api_url", "summarisation.fast_api_url", "", None),
-        ("fast_api_key", "fast_api_key", "summarisation.fast_api_key", "", None),
-        ("fast_api_model", "fast_api_model", "summarisation.fast_api_model", "", None),
-        (
-            "simplification_model",
-            "simplification_model",
-            "summarisation.simplification_model",
-            "",
-            None,
-        ),
+        # V0.6.14 (single-model order): the fast/heavy request-field rows are
+        # REMOVED — fast_model, heavy_model, model_architecture,
+        # fast_model_temperature, fast_model_context, fast_api_url,
+        # fast_api_key, fast_api_model, simplification_model. ONE model
+        # (summarisation_model via the provider) does every LLM task.
         ("extract_tables", "extract_tables", "advanced.extract_tables", False, None),
         ("extract_math", "extract_math", "advanced.extract_math", False, None),
         ("layout_analysis", "layout_analysis", "advanced.layout_analysis", False, None),

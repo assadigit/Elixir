@@ -599,83 +599,15 @@ class TestCoverageFallbackLadders:
         assert_logged(logs, "B3 voting disabled")
         assert result.success is True
 
-    def test_heavy_model_better_merges(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-        llm = ScriptedLLM()
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                return _full_response(source)  # heavy is well-grounded
-            return _ungrounded_response()  # primary is thin
-
-        llm.responder = responder
-        llm.install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "using heavy model: other:model")
-        assert_logged(logs, "Merged primary + heavy summaries")
-        assert result.model_used == "primary+heavy"
-        assert result.success is True
-
-    def test_heavy_model_not_better_adds_unique_bullets(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                # heavy is EQUALLY thin (same ~0% coverage) but carries a
-                # DIFFERENT bullet → the not-better branch appends it.
-                return _ungrounded_response().replace(
-                    "Purple telescopes dream about electric cabbage.",
-                    "Marble giraffes negotiate with translucent turnips.",
-                )
-            return _ungrounded_response()
-
-        ScriptedLLM(responder=responder).install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "Added unique heavy bullets to primary summary")
-        # The thin merged summary may subsequently be hard-rejected by the
-        # content judge — either return is valid current behavior; the
-        # ladder branch itself is asserted via the log line above.
-        assert result is not None
-
-    def test_heavy_model_no_response_keeps_primary(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                return None  # heavy model fails
-            return _ungrounded_response()
-
-        ScriptedLLM(responder=responder).install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "Heavy model returned no response, keeping primary")
-        assert result.model_used != "primary+heavy"
+    # V0.6.14 (single-model order): 3 tests REMOVED —
+    # test_heavy_model_better_merges, test_heavy_model_not_better_adds_unique_bullets
+    # and test_heavy_model_no_response_keeps_primary. All three pinned the
+    # heavy-model coverage fallback in chapter_phases (the "using heavy
+    # model: …" / "Merged primary + heavy summaries" / "Added unique heavy
+    # bullets" / "Heavy model returned no response" ladder + the
+    # model_used == "primary+heavy" outcome), which is retired — ONE model;
+    # low coverage relies on gap-fill + over-delivery + the 3-Tier Guarantee
+    # (pinned by TestCoverageRetryFloor / TestBulletExpansion below).
 
 
 # ── 7. Dedicated bullet expansion ───────────────────────────────────────────

@@ -174,7 +174,7 @@ def _run_scholar(src: str, llm: str):
         temperature=0.7,
         prompt_manager=_FakePromptManager(),
         recover_vram=lambda *a, **k: None,
-        call_fast_llm=lambda prompt, **kw: llm,
+        call_llm=lambda prompt, **kw: llm,
         strip_thinking=lambda t: t,
         log=log,
     )

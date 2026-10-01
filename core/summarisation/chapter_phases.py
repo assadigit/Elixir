@@ -359,7 +359,7 @@ class SummarizerChapterPhasesMixin:
                             _analysis,
                             _det_authors,
                             check_coverage=check_coverage,
-                            call_fast_llm=self._call_fast_llm,
+                            call_llm=self._call_llm_with_empty_retry,
                             temperature=self.temperature,
                             strip_thinking=self._strip_thinking,
                             filter_thinking_bullets=self._filter_thinking_bullets,
@@ -1508,10 +1508,8 @@ class SummarizerChapterPhasesMixin:
         # When disabled, coverage falls through to 3-Tier + gap-fill +
         # over-delivery, which is deterministic and targeted.
         if (
-            round(coverage, 2) < self.coverage_threshold
-            and not self.heavy_model
-            and self.b3_voting_enabled
-        ):  # V15.1.1: gated
+            round(coverage, 2) < self.coverage_threshold and self.b3_voting_enabled
+        ):  # V15.1.1: gated (V0.6.14: heavy_model gate retired — single model)
             self.log(
                 f"    🔄 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – trying multi-sample voting (B3)…",
                 "INFO",
@@ -1542,48 +1540,9 @@ class SummarizerChapterPhasesMixin:
                 "INFO",
             )
 
-        if coverage < self.coverage_threshold and self.heavy_model:
-            self.log(
-                f"    🔥 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – using heavy model: {self.heavy_model}",
-                "INFO",
-            )
-            heavy_result = self._summarize_with_model(
-                heading, text, self.heavy_model, self.temperature * 0.5, with_cot=True
-            )
-            if heavy_result:
-                _hbps = [
-                    str(b) if not isinstance(b, str) else b
-                    for b in heavy_result.get("bullet_points", [])
-                    if b
-                ]
-                heavy_combined = f"{heavy_result.get('executive_summary', '')} {' '.join(_hbps)} {heavy_result.get('thorough_summary', '')}"
-                heavy_coverage = self._compute_coverage(content, heavy_combined)
-                self.log(f"    📊 Heavy coverage: {heavy_coverage:.0%}", "INFO")
-                if heavy_coverage > coverage:
-                    merged_bullets = list(heavy_result.get("bullet_points", []))
-                    for bp in result.get("bullet_points", []):
-                        if bp not in merged_bullets:
-                            merged_bullets.append(bp)
-                    result["executive_summary"] = heavy_result.get(
-                        "executive_summary", result.get("executive_summary", "")
-                    )
-                    result["thorough_summary"] = heavy_result.get(
-                        "thorough_summary", result.get("thorough_summary", "")
-                    )
-                    result["bullet_points"] = merged_bullets[: self.max_bullets_per_chapter]
-                    result["model"] = "primary+heavy"
-                    self.log("    ✅ Merged primary + heavy summaries", "INFO")
-                else:
-                    for bp in heavy_result.get("bullet_points", []):
-                        if bp not in result.get("bullet_points", []):
-                            result["bullet_points"].append(bp)
-                    result["bullet_points"] = result["bullet_points"][
-                        : self.max_bullets_per_chapter
-                    ]
-                    result["model"] = "primary+heavy_bullets"
-                    self.log("    ✅ Added unique heavy bullets to primary summary", "INFO")
-            else:
-                self.log("    ⚠️ Heavy model returned no response, keeping primary", "WARNING")
+        # V0.6.14 (single-model order): the heavy-model coverage
+        # fallback block is retired — ONE model; low coverage relies on
+        # gap-fill + over-delivery + the 3-Tier Guarantee below.
 
         # ── V13.32.8: 3-Tier Coverage Guarantee System ──────────────────
         # V15.1.0: Use _effective_target (over-delivery target when enabled,

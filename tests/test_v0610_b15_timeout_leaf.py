@@ -25,11 +25,11 @@ from core.system.timeouts import (
     API_BATCH_TIMEOUT_S,
     CLI_POLL_TIMEOUT_S,
     CLI_SWEEP_TIMEOUT_S,
-    FAST_LLM_TIMEOUT_S,
     HTTP_FETCH_TIMEOUT_S,
     KEYPOINTS_WHOLE_CALL_TIMEOUT_S,
     LLM_REQUEST_TIMEOUT_S,
     LONG_RUN_TIMEOUT_S,
+    SHORT_LLM_TIMEOUT_S,
     SLOW_LLM_TIMEOUT_S,
     SUBSECOND_PROBE_TIMEOUT_S,
     UI_PROBE_TIMEOUT_S,
@@ -48,7 +48,8 @@ class TestPolicyTable:
         assert CLI_SWEEP_TIMEOUT_S == 20
         assert API_BATCH_TIMEOUT_S == 30
         assert HTTP_FETCH_TIMEOUT_S == 60
-        assert FAST_LLM_TIMEOUT_S == 120
+        # V0.6.14: FAST_LLM renamed SHORT_LLM (single-model order), value pinned
+        assert SHORT_LLM_TIMEOUT_S == 120
         assert SLOW_LLM_TIMEOUT_S == 180
         assert LLM_REQUEST_TIMEOUT_S == 300
         assert KEYPOINTS_WHOLE_CALL_TIMEOUT_S == 420

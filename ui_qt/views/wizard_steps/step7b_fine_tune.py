@@ -117,24 +117,7 @@ class Step7bFineTune(WizardStep):
         self.filter_cb = QCheckBox("Content filter (filter out headers/footers/non-content)")
         self.filter_cb.setChecked(self.state.enable_content_filter)
         q_lay.addWidget(self.filter_cb)
-        # Heavy model
-        try:
-            models = self.controller.list_ollama_models()
-        except Exception:
-            models = []
-        heavy_row = QHBoxLayout()
-        heavy_row.setSpacing(8)
-        heavy_row.addWidget(QLabel("Heavy model:"))
-        self.heavy_combo = QComboBox()
-        self.heavy_combo.addItem("  (disabled)", "")
-        for m in models:
-            self.heavy_combo.addItem("📝 " + m, m)
-        if self.state.heavy_model:
-            idx = self.heavy_combo.findData(self.state.heavy_model)
-            if idx >= 0:
-                self.heavy_combo.setCurrentIndex(idx)
-        heavy_row.addWidget(self.heavy_combo, 1)
-        q_lay.addLayout(heavy_row)
+        # V0.6.14 (single-model order): the heavy-model picker is retired.
         # Coverage threshold
         cov_row = QHBoxLayout()
         cov_row.setSpacing(8)
@@ -193,20 +176,8 @@ class Step7bFineTune(WizardStep):
         self.cache_cb = QCheckBox("Cache summaries to disk (faster re-runs)")
         self.cache_cb.setChecked(self.state.cache_enabled)
         sum_lay.addWidget(self.cache_cb)
-        # Simplification model
-        simpl_row = QHBoxLayout()
-        simpl_row.setSpacing(8)
-        simpl_row.addWidget(QLabel("Simplification model:"))
-        self.simpl_combo = QComboBox()
-        self.simpl_combo.addItem("  (use fast model)", "")
-        for m in models:
-            self.simpl_combo.addItem("📝 " + m, m)
-        if self.state.simplification_model:
-            idx = self.simpl_combo.findData(self.state.simplification_model)
-            if idx >= 0:
-                self.simpl_combo.setCurrentIndex(idx)
-        simpl_row.addWidget(self.simpl_combo, 1)
-        sum_lay.addLayout(simpl_row)
+        # V0.6.14 (single-model order): the simplification-model picker is
+        # retired — THE model simplifies the keypoints.
         host_lay.addWidget(sum_box)
 
         # ── Advanced doc handling (2) ───────────────────────────────────
@@ -347,14 +318,12 @@ class Step7bFineTune(WizardStep):
         self.state.docx_author = self.author_edit.text().strip()
         self.state.docx_include_toc = self.toc_cb.isChecked()
         self.state.self_consistency = self.self_consist_cb.isChecked()
-        self.state.heavy_model = self.heavy_combo.currentData() or ""
         self.state.coverage_threshold = self.coverage_spin.value()
         self.state.resume_enabled = self.resume_cb.isChecked()
         self.state.enable_content_filter = self.filter_cb.isChecked()
         self.state.max_context_tokens = self.ctx_spin.value()
         self.state.max_output_tokens = self.out_spin.value()
         self.state.cache_enabled = self.cache_cb.isChecked()
-        self.state.simplification_model = self.simpl_combo.currentData() or ""
         self.state.extract_math = self.math_cb.isChecked()
         self.state.layout_analysis = self.layout_cb.isChecked()
         # V18.2.1: Persist performance + embedding settings to settings.json

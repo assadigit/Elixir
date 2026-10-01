@@ -294,36 +294,18 @@ class ConversionRequest:
     # ── Quality Controls ──────────────────────────────────────────────────
     temperature: float = 0.2
     self_consistency: bool = False
-    # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
-    # (value unchanged: "gemma3:12b"). NOTE: this field is re-declared (and
-    # shadowed by "" ) at the V16.0.9 model-architecture block below — the
-    # dataclass takes the LATER default; the wiring here preserves the
-    # historical literal for the shadowed declaration, byte-identical.
-    fast_model: str = LEGACY_DEFAULT_MODEL
-    heavy_model: str = ""  # disabled by default
-    # ── V16.0.9: 4-mode model architecture ──────────────────────────────
-    # "single_local" — one LOCAL model (Ollama/LM Studio) does everything
-    # "dual_local"   — heavy local + fast local model (both via Ollama)
-    # "single_api"   — one CLOUD API model does everything
-    # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
-    # Legacy "single" is accepted for backward compat (mapped → "single_local").
-    model_architecture: str = "single_local"
-    fast_model: str = ""  # small/fast LOCAL model for simple tasks
-    fast_model_temperature: float = 0.1  # V16.0.8: LFM2.5 recommends 0.1
-    fast_model_context: int = 131072  # V16.0.8: LFM2.5 max 128K context
-    fast_api_url: str = ""  # API URL for dual_api mode (fast cloud model)
-    fast_api_key: str = ""  # API key for dual_api mode (fast cloud model)
-    fast_api_model: str = ""  # Model name for dual_api mode (fast cloud model)
+    # V0.6.14 (single-model order): the whole fast/heavy dual-model family
+    # is REMOVED — fast_model (incl. the shadowed LEGACY_DEFAULT_MODEL
+    # declaration), heavy_model, model_architecture (the 4-mode selector),
+    # fast_model_temperature, fast_model_context, fast_api_url/key/model,
+    # and simplification_model below. ONE model (summarisation_model,
+    # reached through the provider) does every LLM generation task; OCR /
+    # transcribe / translation / TTS keep their own dedicated models.
     coverage_threshold: float = 0.50  # lowered to 50%
     # V15.1.0: Over-delivery — keep improving coverage past the minimum threshold
     overdeliver_enabled: bool = True  # default ON
     overdeliver_target: float = 1.0  # V15.1.1: 100% (the more the better)
     b3_voting_enabled: bool = False  # V15.1.1: disabled (damages depth)
-
-    # V3.5.0: Separate model for simplified keypoints — enables sequential
-    # model loading (unload summarization model, load simplification model).
-    # If empty, falls back to fast_model or summarisation_model.
-    simplification_model: str = ""
 
     # ── Page range selection ──────────────────────────────────────────────
     page_range_start: int | None = None

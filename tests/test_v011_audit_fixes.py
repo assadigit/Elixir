@@ -402,7 +402,7 @@ class TestGapFillAttributionRules:
         prompts: list[str] = []
         logged: list[tuple[str, str]] = []
 
-        def fake_call_fast_llm(prompt, max_tokens=2000, temperature=0.7):
+        def fake_call_llm(prompt, max_tokens=2000, temperature=0.7):
             prompts.append(prompt)
             return (
                 "- Fromm: explored the sociocultural determinants of identity.\n"
@@ -426,7 +426,7 @@ class TestGapFillAttributionRules:
             "analysis text naming Fromm and Wheelis",
             ["Fromm", "Wheelis"],
             check_coverage=fake_check_coverage,
-            call_fast_llm=fake_call_fast_llm,
+            call_llm=fake_call_llm,
             temperature=0.7,
             strip_thinking=lambda x: x,
             filter_thinking_bullets=lambda bullets, concepts=None, source_text="": bullets,

@@ -120,7 +120,7 @@ class _FakePromptManager:
 
 
 class _ScriptedLLM:
-    """call_fast_llm fake: pops one (flag, response) per call — the flag is
+    """call_llm fake: pops one (flag, response) per call — the flag is
     marked on the call_meta ContextVar exactly like the provider layer
     (mark on EVERY response so no stale True can leak)."""
 
@@ -157,7 +157,7 @@ def _run_scholar(script, *, text=_SRC_GROUNDED, max_context_tokens=32768):
         temperature=0.7,
         prompt_manager=_FakePromptManager(),
         recover_vram=lambda **kw: None,
-        call_fast_llm=llm,
+        call_llm=llm,
         strip_thinking=lambda t: t,
         log=log,
     )
@@ -362,7 +362,7 @@ class TestV0202SkipOa4RetryNearContextCap:
             temperature=0.7,
             prompt_manager=_BigPromptManager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=llm,
+            call_llm=llm,
             strip_thinking=lambda t: t,
             log=log,
         )
@@ -424,7 +424,7 @@ class TestV0202SkipOa4RetryNearContextCap:
             temperature=0.7,
             prompt_manager=_BigPromptManager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=llm,
+            call_llm=llm,
             strip_thinking=lambda t: t,
             log=log,
         )

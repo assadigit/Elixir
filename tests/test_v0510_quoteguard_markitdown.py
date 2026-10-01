@@ -80,7 +80,7 @@ def _make_gap_fill_deps(*, responses=None, response_fn=None):
         pct = (len(covered) / total) if total else 0.0
         return {"covered": covered, "missing": missing, "total": total, "coverage_pct": pct}
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = len(llm_calls)
         llm_calls.append({"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature})
         if response_fn is not None:
@@ -98,7 +98,7 @@ def _make_gap_fill_deps(*, responses=None, response_fn=None):
     return {
         "log": log,
         "check_coverage": check_coverage,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "filter_thinking_bullets": filter_thinking_bullets,
         "llm_calls": llm_calls,
@@ -127,7 +127,7 @@ def _run_gap_fill(
         analysis,
         det_authors,
         check_coverage=deps["check_coverage"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         temperature=0.2,
         strip_thinking=deps["strip_thinking"],
         filter_thinking_bullets=deps["filter_thinking_bullets"],

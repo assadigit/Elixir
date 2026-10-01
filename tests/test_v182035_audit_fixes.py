@@ -356,7 +356,7 @@ class TestTruncationAwareScholarVerdict:
             temperature=0.7,
             prompt_manager=_PM(),
             recover_vram=lambda *a, **k: None,
-            call_fast_llm=lambda *a, **k: llm_response,
+            call_llm=lambda *a, **k: llm_response,
             strip_thinking=lambda s: s,
             log=_log_fn,
         )
@@ -415,7 +415,7 @@ class TestTruncationAwareScholarVerdict:
                 temperature=0.7,
                 prompt_manager=_PM(),
                 recover_vram=lambda *a, **k: None,
-                call_fast_llm=_llm,
+                call_llm=_llm,
                 strip_thinking=lambda s: s,
                 log=lambda m, l="INFO": log_calls.append((m, l)),
             )

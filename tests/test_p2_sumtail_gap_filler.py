@@ -1,7 +1,7 @@
 """Phase 2 (Test-Net Deepening) — long-tail coverage for gap_filler.py.
 
 ``tests/test_gap_filler.py`` covers the main paths (early returns, concept
-gap-fill, VRAM recovery, fast-model switch). This file targets the 39
+gap-fill, VRAM recovery). This file targets the 39
 UNCOVERED lines:
 
   * the ``analysis_exists`` exception path (V17.5 WARNING, line 126-127)
@@ -116,9 +116,8 @@ def _make_deps(llm_responses=None):
     idx = {"i": 0}
     llm_calls = []
     setlc_calls = []
-    switch_calls = []
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = idx["i"]
         idx["i"] += 1
         llm_calls.append(prompt)
@@ -127,13 +126,11 @@ def _make_deps(llm_responses=None):
     return {
         "prompt_manager": _FakePromptManager(),
         "recover_vram": lambda context="", delay_sec=0.0, **kw: None,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": lambda t: t,
-        "switch_to_fast_model": lambda: switch_calls.append(True),
         "set_last_coverage": lambda pct: setlc_calls.append(pct),
         "_llm_calls": llm_calls,
         "_setlc_calls": setlc_calls,
-        "_switch_calls": switch_calls,
     }
 
 
@@ -147,9 +144,8 @@ def _kwargs(deps, log=None, **overrides):
         coverage_threshold=0.70,
         prompt_manager=deps["prompt_manager"],
         recover_vram=deps["recover_vram"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         strip_thinking=deps["strip_thinking"],
-        switch_to_fast_model=deps["switch_to_fast_model"],
         set_last_coverage=deps["set_last_coverage"],
         log=log if log is not None else _CapturingLog(),
     )
@@ -365,10 +361,10 @@ class TestDeterministicJudge:
         )
 
         def _crash(prompt, max_tokens=None, temperature=None, **kw):
-            raise RuntimeError("fast model exploded")
+            raise RuntimeError("the LLM call exploded")
 
         deps = _make_deps()
-        deps["call_fast_llm"] = _crash
+        deps["call_llm"] = _crash
         log = _CapturingLog()
         content = "AuthorY described the mirror stage in infants during 1949."
         out = gap_fill_concepts(

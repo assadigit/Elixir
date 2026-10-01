@@ -21,7 +21,6 @@ if str(_project_root) not in sys.path:
 
 from core.summarisation.llm_dispatcher import (
     call_claude,
-    call_fast_ollama,
     call_ollama,
     call_openai_compat,
     call_via_llm_provider,
@@ -47,8 +46,8 @@ class TestModuleStructure:
     def test_call_via_llm_provider_exists(self):
         assert callable(call_via_llm_provider)
 
-    def test_call_fast_ollama_exists(self):
-        assert callable(call_fast_ollama)
+    # V0.6.14 (single-model order): call_fast_ollama is REMOVED with the
+    # fast-model concept — no pin replaces it (the contract is dead).
 
     def test_internal_streaming_functions_exist(self):
         """The internal _call_ollama_streaming and _call_ollama_nonstreaming
@@ -404,80 +403,9 @@ class TestCallViaLlmProvider:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 6. call_fast_ollama tests (Phase 5.3 — migrated to @retry_llm_call)
+# 6. call_fast_ollama tests — REMOVED V0.6.14 (single-model order): the
+#    fast-model Ollama call family is retired with the concept (3 tests).
 # ════════════════════════════════════════════════════════════════════════════
-
-
-class TestCallFastOllama:
-    """Tests for call_fast_ollama (Phase 5.3 migration)."""
-
-    def test_successful_call(self):
-        """Should return the response text from Ollama."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"response": "Fast model response."}
-
-        with patch(
-            "core.summarisation.llm_dispatcher.safe_ollama_request", return_value=mock_response
-        ):
-            result = call_fast_ollama(
-                prompt="test",
-                model="gemma3:12b",
-                temp=1.0,
-                max_tokens=500,
-                ollama_base_url="http://localhost:11434",
-                fast_model_context=131072,
-                log=lambda m, l: None,
-            )
-        assert result == "Fast model response."
-
-    @pytest.mark.slow  # Phase 2.5: fast-ollama retry ladder sleeps >2 s
-    def test_empty_response_retries(self):
-        """Empty response should trigger retry via @retry_llm_call."""
-        mock_response_empty = MagicMock()
-        mock_response_empty.json.return_value = {"response": ""}
-
-        mock_response_ok = MagicMock()
-        mock_response_ok.json.return_value = {"response": "Retried response."}
-
-        with patch(
-            "core.summarisation.llm_dispatcher.safe_ollama_request",
-            side_effect=[mock_response_empty, mock_response_ok],
-        ):
-            _result = call_fast_ollama(
-                prompt="test",
-                model="gemma3:12b",
-                temp=1.0,
-                max_tokens=500,
-                ollama_base_url="http://localhost:11434",
-                fast_model_context=131072,
-                log=lambda m, l: None,
-            )
-        # Should have retried and gotten the OK response
-        # (Note: the retry decorator may or may not retry depending on the exception type)
-        # The empty response raises ConnectionError which IS retryable
-
-    def test_context_defaults_to_131072(self):
-        """fast_model_context=None should default to 131072."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"response": "response"}
-
-        with patch(
-            "core.summarisation.llm_dispatcher.safe_ollama_request", return_value=mock_response
-        ) as mock_req:
-            call_fast_ollama(
-                prompt="test",
-                model="gemma3:12b",
-                temp=1.0,
-                max_tokens=500,
-                ollama_base_url="http://localhost:11434",
-                fast_model_context=0,  # falsy → should default to 131072
-                log=lambda m, l: None,
-            )
-        # Verify the payload was sent with num_ctx=131072
-        call_args = mock_req.call_args
-        payload = call_args[1].get("json", {})
-        assert payload["options"]["num_ctx"] == 131072
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 7. Summarizer delegation wiring
@@ -529,14 +457,8 @@ class TestSummarizerDelegation:
         assert "call_claude_fn" in source
         assert "call_openai_compat_fn" in source
 
-    def test_call_fast_ollama_delegates(self):
-        """_call_fast_ollama should delegate to ld_call_fast_ollama."""
-        import inspect
-
-        from core.summarisation.summarizer import Summarizer
-
-        source = inspect.getsource(Summarizer._call_fast_ollama)
-        assert "ld_call_fast_ollama" in source
+    # V0.6.14 (single-model order): the _call_fast_ollama delegation pin is
+    # REMOVED — the method is retired with the fast-model concept.
 
     def test_call_llm_stays_in_summarizer(self):
         """_call_llm should NOT be delegated (stays in Summarizer — dispatcher with cache)."""

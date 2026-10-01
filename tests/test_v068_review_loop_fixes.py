@@ -74,8 +74,15 @@ class TestProviderAttributeContract:
 
 
 class TestDualApiOverrideWiring:
-    """The dual_api override must set the PUBLIC provider attributes, and
-    no private-attr hasattr guard may remain in run_summarization."""
+    """The provider overrides must set the PUBLIC provider attributes, and
+    no private-attr hasattr guard may remain in run_summarization.
+
+    V0.6.14 (single-model order): 1 test DELETED
+    (test_dual_api_override_sets_public_attrs — it pinned the dual-API
+    override block ``_provider.base_url/_api_key/_api_model = _api_*``;
+    the whole fast-API override branch is RETIRED from
+    _rs_make_concept_llm_fn, one model does every LLM task). The
+    surviving public-attr + no-dead-guard pins are kept."""
 
     @property
     def _src(self) -> str:
@@ -87,14 +94,11 @@ class TestDualApiOverrideWiring:
             encoding="utf-8"
         )
 
-    def test_dual_api_override_sets_public_attrs(self):
-        src = self._src
-        assert "_provider.base_url = _api_url" in src, (
-            "the dual_api override must set the PUBLIC base_url "
-            "(openai_compat_provider stores self.base_url, not _base_url)"
-        )
-        assert "_provider.api_key = _api_key" in src
-        assert "_provider.model = _api_model" in src
+    # V0.6.14 (single-model order): test_dual_api_override_sets_public_
+    # attrs DELETED here — it pinned the retired dual-API override block
+    # (the 1-test removal named in the class docstring above). The
+    # behavioral counterpart below (TestDualApiOverrideBehavioral) keeps
+    # the public-attr routing contract pinned on a REAL provider.
 
     def test_no_private_attr_hasattr_guards_remain(self):
         src = self._src
@@ -106,10 +110,14 @@ class TestDualApiOverrideWiring:
 
     def test_model_assignments_use_public_attr(self):
         src = self._src
-        # The ollama fallback/dual_local/single_local branches assign the
-        # model via the public attribute (the :888 llamacpp precedent).
+        # The llamacpp/ollama/cloud branches assign the model via the
+        # public attribute (the :888 llamacpp precedent).
         assert "_provider.model = _summ_model" in src
-        assert "_provider.model = _fast_model" in src
+        # V0.6.14 (single-model order): the "_provider.model = _fast_model"
+        # pin REMOVED — the fast-model assignment branch is RETIRED (one
+        # model does every LLM task); the ONE surviving assignment spelling
+        # (_provider.model = _summ_model) keeps the public-attr contract
+        # pinned.
 
 
 # ── B4 behavioral: the override actually reaches the wire ───────────────────

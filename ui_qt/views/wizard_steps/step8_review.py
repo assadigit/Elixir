@@ -185,17 +185,8 @@ class Step8Review(WizardStep):
 
         # Models
         lines.append("<b>🤖 Models</b>")
-        _arch_label = {
-            "single_local": "🏠 Single — Local (one model does everything)",
-            "dual_local": "🏠 Dual — Local (heavy + fast)",
-            "single_api": "☁️ Single — API (one cloud model)",
-            "dual_api": "☁️ Dual — API (fast + accurate)",
-        }.get(s.model_architecture, s.model_architecture or "(default)")
-        lines.append(f"  Architecture: {_arch_label}")
         lines.append(f"  Summarization: {s.summarisation_model or '(default)'}")
         lines.append(f"  OCR: {s.primary_ocr_model or '(default)'}")
-        if s.fast_model:
-            lines.append(f"  Fast: {s.fast_model}")
         lines.append(f"  Workers: {s.max_workers}, Temperature: {s.temperature}")
         lines.append("")
 
@@ -231,7 +222,6 @@ class Step8Review(WizardStep):
         lines.append(f"  DOCX author: {s.docx_author}")
         lines.append(f"  DOCX TOC: {'yes' if s.docx_include_toc else 'no'}")
         lines.append(f"  Self-consistency: {'yes' if s.self_consistency else 'no'}")
-        lines.append(f"  Heavy model: {s.heavy_model or '(disabled)'}")
         lines.append(f"  Coverage threshold: {s.coverage_threshold}%")
         lines.append(
             f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}"
@@ -240,7 +230,6 @@ class Step8Review(WizardStep):
         lines.append(f"  Max context: {s.max_context_tokens} tokens")
         lines.append(f"  Max output: {s.max_output_tokens} tokens")
         lines.append(f"  Cache: {'yes' if s.cache_enabled else 'no'}")
-        lines.append(f"  Simplification model: {s.simplification_model or '(use fast)'}")
         lines.append(f"  Extract math: {'yes' if s.extract_math else 'no'}")
         lines.append(f"  Layout analysis: {'yes' if s.layout_analysis else 'no'}")
         # V18.2.1: Performance & Embeddings in review

@@ -270,7 +270,7 @@ def _v0437_f4_capturing_deps():
         pct = (len(covered) / total) if total else 0.0
         return {"covered": covered, "missing": missing, "total": total, "coverage_pct": pct}
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         llm_calls.append(prompt)
         # Return a bullet naming the missing author so coverage clears →
         # the loop exits after round 1 (one prompt captured).
@@ -287,7 +287,7 @@ def _v0437_f4_capturing_deps():
 
     return {
         "check_coverage": check_coverage,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
         "filter_thinking_bullets": filter_thinking_bullets,
         "log": log,
@@ -321,7 +321,7 @@ class TestV0437F4MultiAuthorAttribution:
             analysis,
             ["AuthorA", "AuthorB"],
             check_coverage=deps["check_coverage"],
-            call_fast_llm=deps["call_fast_llm"],
+            call_llm=deps["call_llm"],
             temperature=0.2,
             strip_thinking=deps["strip_thinking"],
             filter_thinking_bullets=deps["filter_thinking_bullets"],

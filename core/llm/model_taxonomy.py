@@ -160,14 +160,15 @@ VISION_MODEL_KEYWORDS: tuple[str, ...] = (
 # Single source of truth for the legacy default-model string literals that
 # were previously duplicated across the codebase (core/models/models.py ×4
 # dataclass fields, core/summarisation/summarizer.py:614,
-# core/summarisation/fast_llm.py:106, core/tts/normalizer.py:405,
-# core/pipeline/conversion/postprocess.py:442). This is DE-DUPLICATION ONLY —
-# every wired site keeps its exact value (zero behavior change).
+# core/tts/normalizer.py:405,
+# core/pipeline/conversion/postprocess.py:442; V0.6.14: the
+# core/summarisation/fast_llm.py site is retired with the single-model
+# order). This is DE-DUPLICATION ONLY — every wired site keeps its exact
+# value (zero behavior change).
 #
 # NOTE: ``LEGACY_DEFAULT_MODEL`` is a LEGACY SENTINEL, never a
-# recommendation. It means "no explicit model configured":
-#   - fast_llm.py treats it as "no real fast model available" and routes
-#     fast tasks to the primary model;
+# recommendation. It means "no explicit model configured" (V0.6.14: the
+# old fast_llm.py consumer is retired with the single-model order):
 #   - core/tts/normalizer.py treats it as a known-bad default and
 #     auto-discovers a model from the Ollama daemon.
 # Do NOT use it as a default for new features.

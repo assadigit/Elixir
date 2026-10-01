@@ -57,10 +57,10 @@ class TestScholarProbeGateSourcePins:
         ast.parse(_src(_SCHOLAR))
 
     def test_probe_gate_present_before_llm_call(self):
-        """The probe-gate must run BEFORE the 6144-token call_fast_llm."""
+        """The probe-gate must run BEFORE the 6144-token call_llm."""
         src = _src(_SCHOLAR)
         probe_pos = src.find("_probe_missing = -1")
-        call_pos = src.find("call_fast_llm(prompt, temperature=temperature, max_tokens=6144)")
+        call_pos = src.find("call_llm(prompt, temperature=temperature, max_tokens=6144)")
         assert probe_pos != -1 and call_pos != -1
         assert probe_pos < call_pos, "the probe-gate must run BEFORE the 6144-token LLM call"
 
@@ -110,13 +110,13 @@ class TestScholarProbeGateSourcePins:
 
 
 def _make_call():
-    """A MagicMock call_fast_llm that records invocations + returns a
+    """A MagicMock call_llm that records invocations + returns a
     truncated-looking empty response (the .3.14 shape)."""
     call = MagicMock(return_value="")
     return call
 
 
-def _make_fns(call_fast_llm):
+def _make_fns(call_llm):
     """Build the dependency tuple scholar_reflection expects."""
     pm = MagicMock()
     pm.render_template.return_value = "prompt"
@@ -128,7 +128,7 @@ def _make_fns(call_fast_llm):
         temperature=0.7,
         prompt_manager=pm,
         recover_vram=recover,
-        call_fast_llm=call_fast_llm,
+        call_llm=call_llm,
         strip_thinking=strip,
     )
 

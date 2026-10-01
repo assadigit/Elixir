@@ -420,7 +420,8 @@ def _drive_summarizer(tmp_path, primary_thorough: str, calls: list) -> Summarize
     s.provider = "ollama"
     s.primary_model = "test-model"
     s.temperature = 0.2
-    s.heavy_model = None
+    # V0.6.14 (single-model order): s.heavy_model stub REMOVED — the
+    # Summarizer attribute is retired (one model does every LLM task).
     s.b3_voting_enabled = False
     s.self_consistency = False
     s.academic_rigor = False
@@ -600,34 +601,13 @@ class TestModelLiterals:
         assert r.summarisation_model == LEGACY_DEFAULT_MODEL
         assert r.primary_ocr_model == DEFAULT_FALLBACK_OCR_MODEL
         assert r.fallback_ocr_model == DEFAULT_FALLBACK_OCR_MODEL
-        # The V16.0.9 re-declaration shadows the LEGACY_DEFAULT_MODEL-wired
-        # field — pin the effective default too (pre-existing quirk, kept).
-        assert r.fast_model == ""
-
-    def test_fast_llm_sentinel_routes_to_primary(self):
-        """Behavioral pin: the sentinel still means 'no real fast model' —
-        dual_local + fast_model == LEGACY_DEFAULT_MODEL routes to the heavy
-        fallback (the test_fast_llm.py case-5 contract, via the constant)."""
-        from core.summarisation.fast_llm import call_fast_llm
-
-        state = {"heavy": 0}
-
-        def heavy(prompt, **kw):
-            state["heavy"] += 1
-            return "HEAVY"
-
-        req = types.SimpleNamespace(
-            model_architecture="dual_local",
-            fast_model=LEGACY_DEFAULT_MODEL,
-            fast_model_temperature=0.1,
-        )
-        out = call_fast_llm(
-            "prompt",
-            request=req,
-            call_llm_with_empty_retry=heavy,
-            log=lambda msg, level="INFO": None,
-        )
-        assert out == "HEAVY" and state["heavy"] == 1
+        # V0.6.14 (single-model order): the fast_model field + its
+        # "shadows the LEGACY_DEFAULT_MODEL-wired field" quirk pin REMOVED
+        # — the ConversionRequest field is retired (one model does every
+        # LLM task). The test below this one (test_fast_llm_sentinel_
+        # routes_to_primary — 1 test) was DELETED for the same reason: it
+        # imported the DELETED core.summarisation.fast_llm router to pin
+        # the fast/heavy sentinel routing, a retired contract.
 
     @staticmethod
     def _docstring_nodes(tree: ast.AST) -> set:
@@ -646,14 +626,17 @@ class TestModelLiterals:
         return docs
 
     def test_no_bare_gemma_literal_outside_taxonomy(self):
-        """Source scan: none of the 5 previously-duplicated files may carry a
+        """Source scan: none of the previously-duplicated files may carry a
         bare CODE string literal containing 'gemma3:12b' (docstrings and
-        comments are allowed — fast_llm.py:26 and summarizer.py's
-        _init_quality_params docstring mention it historically)."""
+        comments are allowed — summarizer.py's _init_quality_params
+        docstring mentions it historically).
+
+        V0.6.14 (single-model order): core/summarisation/fast_llm.py
+        REMOVED from the scan list — the module is DELETED (the 4-mode
+        fast/heavy router is retired)."""
         files = [
             "core/models/models.py",
             "core/summarisation/summarizer.py",
-            "core/summarisation/fast_llm.py",
             "core/tts/normalizer.py",
             "core/pipeline/conversion/postprocess.py",
         ]

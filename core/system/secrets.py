@@ -66,7 +66,9 @@ _SECRET_PATHS = {
     "summarisation.claude_api_key",
     "summarisation.freellmapi_key",
     "summarisation.fusion_cloud_api_key",
-    "summarisation.fast_api_key",
+    # V0.6.14: "summarisation.fast_api_key" RETIRED (single-model order) —
+    # the fast-API endpoint no longer exists; a stale keychain entry is
+    # inert (never read).
     "summarisation.llamacpp_api_key",
     "grounding.cloud_api_key",
     "translation.cloud_api_key",

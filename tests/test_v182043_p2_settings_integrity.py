@@ -22,7 +22,9 @@ run's output):
   ``summarisation.fast_model`` — an invisible orphaned ``fast_combo``
   (never added to any layout row) fed a dead write before the real
   ``fast_model_combo`` write, and stole the global model refresh.
-  Orphan deleted; one authoritative write.
+  Orphan deleted; one authoritative write. (V0.6.14 single-model order:
+  the whole fast-model row is retired with the dual-model concept; 3 of
+  the 4 W-b7 tests were removed then — only the orphan guard remains.)
 - **W-c7:** the ``adaptive_toc.py`` LLM call was the only ``requests``
   call in the tree with NO timeout (half-open connection → TOC stage
   hung forever, no cancel path) + a hardcoded model not installed on
@@ -294,34 +296,17 @@ class TestWb7FastModelDoubleWrite:
             "the orphaned invisible fast_combo widget must be gone (W-b7)"
         )
 
-    def test_exactly_one_fast_model_write(self):
-        src = _strip_comments(_sections_src())
-        count = src.count('update_setting("summarisation.fast_model"')
-        assert count == 1, f"exactly one authoritative fast_model write expected, found {count}"
-
-    def test_single_write_comes_from_visible_combo(self):
-        src = _strip_comments(_sections_src())
-        assert (
-            'update_setting("summarisation.fast_model", self.fast_model_combo.currentData() or "")'
-            in src
-        )
-
-    def test_refresh_models_targets_visible_combo(self):
-        # V18.20.4.5 (W-b11): the populate body moved from _refresh_models
-        # into the async finished-handler _on_models_loaded (the fetch now
-        # runs on a SimpleWorker). Same W-b7 policy, evolved anchor: the
-        # AiLocal populate handler is the one touching simplification_combo.
-        src = _strip_comments(_sections_src())
-        body_start = src.find("def _on_models_loaded")
-        bodies = []
-        while body_start != -1:
-            bodies.append(src[body_start : src.find("\n    def ", body_start)])
-            body_start = src.find("def _on_models_loaded", body_start + 1)
-        ai_local = next((b for b in bodies if "self.simplification_combo" in b), "")
-        assert "self.fast_model_combo" in ai_local, (
-            "the model refresh must populate the VISIBLE fast_model_combo "
-            "(W-b7; W-b11 moved the populate into _on_models_loaded)"
-        )
+    # V0.6.14 (single-model order): 3 tests REMOVED —
+    #   * test_exactly_one_fast_model_write
+    #   * test_single_write_comes_from_visible_combo
+    #   * test_refresh_models_targets_visible_combo
+    # All three pinned the summarisation.fast_model UI write/refresh in
+    # ai_model_section.py (the fast_model_combo row). The whole fast-model
+    # row — and the heavy/simplification rows with it — is RETIRED by the
+    # single-model order: ONE model (summarisation.model via the provider)
+    # does every LLM task, so there is no fast_model write left to pin
+    # (exactly zero now, not exactly one). The surviving orphan guard above
+    # still passes and now also guards the single-model order.
 
 
 # ═══════════════════════════════════════════════════════════════════════════

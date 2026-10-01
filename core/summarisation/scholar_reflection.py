@@ -13,7 +13,7 @@ the self-contradicting reflections text section.
 
 | Summarizer method (old)                  | scholar_reflection function (new)         | self deps |
 |------------------------------------------|------------------------------------------|-----------|
-| ``_scholar_reflection``                   | ``scholar_reflection``                   | ``request.summarisation_max_context_tokens``, ``language``, ``prompt_manager``, ``log``, ``_recover_vram``, ``_call_fast_llm``, ``_strip_thinking`` |
+| ``_scholar_reflection``                   | ``scholar_reflection``                   | ``request.summarisation_max_context_tokens``, ``language``, ``prompt_manager``, ``log``, ``_recover_vram``, ``_call_llm``, ``_strip_thinking`` |
 | ``_scholar_reflection_gapfill_only``      | ``scholar_reflection_gapfill_only``      | delegates to ``scholar_reflection`` + ``log`` |
 
 Both functions mutate the ``result`` dict IN-PLACE (add/extend
@@ -54,7 +54,7 @@ from core.summarisation.structural_stopwords import THEORIST_NAME_STOPWORDS
 # Type aliases (duck-typed — matches the established convention).
 LogCallback = Callable[[str, str], None]
 PromptManagerLike = Any
-CallFastLlmFn = Callable[..., str | None]
+CallLlmFn = Callable[..., str | None]
 RecoverVramFn = Callable[..., None]
 StripThinkingFn = Callable[[str], str]
 # V18.20.3.4 (RC-1 layer 2): optional thinking-filter callback — same
@@ -97,7 +97,7 @@ class _ScholarCtx:
     temperature: float
     prompt_manager: PromptManagerLike
     recover_vram: RecoverVramFn
-    call_fast_llm: CallFastLlmFn
+    call_llm: CallLlmFn
     strip_thinking: StripThinkingFn
     filter_thinking_bullets: FilterThinkingFn | None = None
     log: LogCallback = _noop_log
@@ -366,7 +366,7 @@ def _sr_call_llm(ctx: _ScholarCtx) -> bool:
     # and "no significant gaps found" was parsed from the TRUNCATED
     # response \u2014 the gap analysis never completed, so the verdict was
     # unreliable. 6144 = 75% of the output ceiling.
-    raw = ctx.call_fast_llm(prompt, temperature=temperature, max_tokens=6144)
+    raw = ctx.call_llm(prompt, temperature=temperature, max_tokens=6144)
     if not raw:
         log("    \u26a0\ufe0f Scholar reflection returned empty \u2014 skipping", "WARNING")
         return False
@@ -497,7 +497,7 @@ def _sr_call_llm(ctx: _ScholarCtx) -> bool:
                     "close all open section tags (</scholar_reflections>, "
                     "</gap_fill_bullets>). Your previous output ended with:\n\n" + raw[-2000:]
                 )
-                _cont = ctx.call_fast_llm(
+                _cont = ctx.call_llm(
                     _cont_prompt,
                     temperature=temperature,
                     max_tokens=6144,
@@ -886,7 +886,7 @@ def scholar_reflection(
     temperature: float,
     prompt_manager: PromptManagerLike,
     recover_vram: RecoverVramFn,
-    call_fast_llm: CallFastLlmFn,
+    call_llm: CallLlmFn,
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn | None = None,
     log: LogCallback | None = None,
@@ -930,7 +930,7 @@ def scholar_reflection(
         temperature=temperature,
         prompt_manager=prompt_manager,
         recover_vram=recover_vram,
-        call_fast_llm=call_fast_llm,
+        call_llm=call_llm,
         strip_thinking=strip_thinking,
         filter_thinking_bullets=filter_thinking_bullets,
         log=log or _noop_log,
@@ -1007,7 +1007,7 @@ def scholar_reflection_gapfill_only(
     temperature: float,
     prompt_manager: PromptManagerLike,
     recover_vram: RecoverVramFn,
-    call_fast_llm: CallFastLlmFn,
+    call_llm: CallLlmFn,
     strip_thinking: StripThinkingFn,
     filter_thinking_bullets: FilterThinkingFn | None = None,
     log: LogCallback | None = None,
@@ -1045,7 +1045,7 @@ def scholar_reflection_gapfill_only(
         temperature=temperature,
         prompt_manager=prompt_manager,
         recover_vram=recover_vram,
-        call_fast_llm=call_fast_llm,
+        call_llm=call_llm,
         strip_thinking=strip_thinking,
         filter_thinking_bullets=filter_thinking_bullets,
         log=log,

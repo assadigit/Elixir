@@ -448,11 +448,10 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
             _total_vram = get_total_vram()
             if not _total_vram:
                 return None  # no GPU detected (CPU-only rig) — nothing to enforce
+            # V0.6.14: fast_model/heavy_model args retired (single-model order)
             estimates, peak, total, _rec = calculate_vram_budget(
                 ocr_model=r.primary_ocr_model if r.use_llm_ocr else "",
                 summarization_model=r.summarisation_model,
-                fast_model=r.fast_model,
-                heavy_model=r.heavy_model or "",
                 translation_backend=(
                     self.settings.get("translation.backend", "")
                     if self.settings.get("translation.enabled")

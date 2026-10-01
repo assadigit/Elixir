@@ -549,7 +549,10 @@ class TestWizardAsyncModelsPins:
         assert "self.refresh_btn.setEnabled(True)" in body
         assert "No models found" in body, "the empty-models information box must survive verbatim"
         assert "ollama pull gemma4-12b:latest" in body
-        for attr in ("summ_combo", "ocr_combo", "fast_combo"):
+        # V0.6.14 (single-model order): "fast_combo" removed from the
+        # tuple — the fast-model picker row is RETIRED from step5 (one
+        # model does every LLM task); the surviving combos keep the pin.
+        for attr in ("summ_combo", "ocr_combo"):
             assert f"self.{attr}.currentData()" in body
         assert "combo.clear()" in body
         assert "combo.addItem" in body
@@ -587,23 +590,10 @@ class TestSectionsAsyncModelsPins:
         src = _src(_HELPERS)
         assert "from ui_qt.components.simple_worker import SimpleWorker" in src
 
-    def test_populate_models_async_helper_shape(self):
-        """The module-level constructor-site helper: fetch on the worker,
-        populate on the main thread, worker ref kept on the combo,
-        fail-soft on error."""
-        body = _func_src(_HELPERS, "_populate_models_async")
-        assert "SimpleWorker(_get_ollama_models, controller)" in body
-        assert "combo._models_worker = worker" in body, (
-            "the combo must hold a Python ref to the worker (QObject GC)"
-        )
-        assert "worker.finished.connect(_apply)" in body
-        assert "worker.failed.connect" in body
-        assert "worker.start()" in body
-        # V0.13: format-wrapped — pin the arg list on its continuation line
-        assert (
-            "combo, models or [], current=current, allow_empty=allow_empty, prefer_ocr=prefer_ocr"
-            in body
-        )
+    # V0.6.14 (single-model order): test_populate_models_async_helper_shape
+    # REMOVED (1 test) — the helper is dead code with the fast-model combo
+    # (its only caller); the shared _refresh_models_async contract is pinned
+    # by test_shared_refresh_helper_contract below.
 
     def test_no_sync_populate_receives_get_ollama_models(self):
         """THE W-b11 core regression pin: no synchronous ``_populate_models``
@@ -670,13 +660,12 @@ class TestSectionsAsyncModelsPins:
 
     def test_ai_local_section_populate_semantics_kept(self):
         body = _func_src(_AI_MODEL_SECTION, "_on_models_loaded", "AiLocalModelSection")
-        for combo in ("summary_combo", "fast_model_combo", "heavy_combo", "simplification_combo"):
-            assert f"self.{combo}" in body
-        assert body.count("allow_empty=True") == 2
+        # V0.6.14 (single-model order): the fast/heavy/simplification
+        # combo pins + their settings keys REMOVED (the rows are RETIRED —
+        # one model does every LLM task); the surviving pin is the ONE
+        # summary combo populated from summarisation.model.
+        assert "self.summary_combo" in body
         assert "summarisation.model" in body
-        assert "summarisation.fast_model" in body
-        assert "summarisation.heavy_model" in body
-        assert "summarisation.simplification_model" in body
 
     def test_defaults_section_populate_semantics_kept(self):
         body = _func_src(_DEFAULTS_SECTION, "_on_models_loaded", "DefaultsSection")
@@ -711,17 +700,23 @@ class TestSectionsAsyncModelsPins:
 
     def test_constructor_time_populates_are_async(self):
         """The blocking constructor-time sites (~337/347/354 + reload
-        ~613/621 in the SWOT) are replaced by _populate_models_async."""
+        ~613/621 in the SWOT) are replaced by the async path.
+
+        V0.6.14 (single-model order): the fast-model combo and its
+        dedicated ``_populate_models_async`` call are RETIRED — the ONE
+        summary combo is populated through ``_refresh_models`` →
+        ``_refresh_models_async`` (the shared helper, pinned in
+        test_three_sections_refresh_via_shared_helper). The W-b11
+        property pinned here survives: NO blocking populate at
+        construction or reload."""
         init = _func_src(_AI_MODEL_SECTION, "__init__", "AiLocalModelSection")
-        # V0.13: format-wrapped — combo + controller on the following line
-        assert (
-            "_populate_models_async(\n            self.fast_model_combo,\n            controller,"
-            in init
+        assert "_populate_models(" not in init, (
+            "constructor must not run a blocking populate (W-b11)"
         )
-        # the fast-combo ↻ refresh click routes through the async helper
-        assert "lambda: _populate_models_async(" in init
+        assert "self._refresh_models()" in init
         reload_src = _func_src(_AI_MODEL_SECTION, "reload", "AiLocalModelSection")
-        assert "_populate_models_async(\n            self.fast_model_combo, c," in reload_src
+        assert "_populate_models(" not in reload_src
+        assert "self._refresh_models()" in reload_src
         # ...and the synchronous shapes are gone everywhere in the package
         src = _sections_all_src()
         assert "lambda: _populate_models(" not in src

@@ -19,9 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.summarisation import llm_dispatcher as _ld
-from core.summarisation.fast_llm import call_fast_llm as fl_call_fast_llm
 from core.summarisation.llm_dispatcher import call_claude as ld_call_claude
-from core.summarisation.llm_dispatcher import call_fast_ollama as ld_call_fast_ollama
 from core.summarisation.llm_dispatcher import call_ollama as ld_call_ollama
 from core.summarisation.llm_dispatcher import call_openai_compat as ld_call_openai_compat
 from core.summarisation.llm_dispatcher import call_via_llm_provider as ld_call_via_llm_provider
@@ -470,54 +468,5 @@ class SummarizerTransportMixin:
             max_tokens,
             provider=getattr(self, "provider", "ollama"),
             parse_response=self._parse_response,
-            log=self.log,
-        )
-
-    def _call_fast_llm(
-        self,
-        prompt: str,
-        max_tokens: int = 500,
-        temperature: float = 1.0,
-    ) -> str | None:
-        """V16.0.9: Call the fast/small model for simple tasks.
-
-        V18.15.3 (Phase 5 Stage 3, Batch 4.4): logic extracted verbatim to
-        ``fast_llm.call_fast_llm``. The 7 ``self`` deps (``request``,
-        ``_call_llm_with_empty_retry``, ``_switch_to_fast_model``,
-        ``_call_fast_ollama``, ``_switch_to_heavy_model``,
-        ``_call_openai_compat``, ``log``) are passed as explicit kwargs (the
-        proven-safe pattern — NOT a context object). ``request`` is the
-        read-only ConversionRequest data object (accessed only via getattr).
-        Byte-for-byte identical behaviour (characterization tests in
-        ``tests/test_fast_llm.py``).
-        """
-        return fl_call_fast_llm(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            request=self.request,
-            call_llm_with_empty_retry=self._call_llm_with_empty_retry,
-            switch_to_fast_model=self._switch_to_fast_model,
-            call_fast_ollama=self._call_fast_ollama,
-            switch_to_heavy_model=self._switch_to_heavy_model,
-            call_openai_compat=self._call_openai_compat,
-            log=self.log,
-        )
-
-    def _call_fast_ollama(
-        self, prompt: str, model: str, temp: float, max_tokens: int
-    ) -> str | None:
-        """V18.8 (Phase 5.3): delegates to llm_dispatcher.call_fast_ollama.
-
-        Migrated from inline ``for attempt in range(2)`` loop to
-        ``@retry_llm_call`` decorator (the last holdout).
-        """
-        return ld_call_fast_ollama(
-            prompt,
-            model,
-            temp,
-            max_tokens,
-            ollama_base_url=self.ollama_base_url,
-            fast_model_context=getattr(self.request, "fast_model_context", 131072),
             log=self.log,
         )
