@@ -36,7 +36,7 @@ from core.common import (
     is_likely_heading,
 )
 from core.llm import ModelManager, ModelType
-from core.system.timeouts import FAST_LLM_TIMEOUT_S
+from core.system.timeouts import FAST_LLM_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport (localhost → no-proxy
@@ -211,7 +211,7 @@ class TocExtractor:
                         model_name=model_name,
                         image_max_size=1200,
                         poppler_path=poppler_path,
-                        timeout=180,
+                        timeout=SLOW_LLM_TIMEOUT_S,
                         retries=1,
                     )
                 else:

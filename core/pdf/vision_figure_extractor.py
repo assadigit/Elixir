@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover — optional dependency
     fitz = None  # type: ignore[assignment]
 
 from core.llm import ModelManager, ModelType
+from core.system.timeouts import SLOW_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -54,7 +55,7 @@ class VisionFigureExtractor:
         # V18.20.4.3 (P2 / W-c9): canonical URL from settings (was
         # hardcoded localhost — split behavior on remote-Ollama rigs).
         self.ollama_base_url = self.settings.get_ollama_url()
-        self.timeout = 180
+        self.timeout = SLOW_LLM_TIMEOUT_S
         self.retries = 2
 
         # Cache for extracted text per page

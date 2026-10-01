@@ -41,6 +41,8 @@ import logging
 import re
 from collections.abc import Callable
 
+from core.system.timeouts import SLOW_LLM_TIMEOUT_S
+
 logger = logging.getLogger(__name__)
 
 
@@ -104,7 +106,7 @@ def label_headings_with_llm(
             },
         }
         log(f"  🤖 Ultra-Precise TOC: calling LLM ({model})…", "INFO")
-        resp = safe_ollama_request("POST", url, json=payload, timeout=180)
+        resp = safe_ollama_request("POST", url, json=payload, timeout=SLOW_LLM_TIMEOUT_S)
         text = resp.json().get("response", "").strip()
         if not text:
             log("  ⚠️ Ultra-Precise TOC: LLM returned empty response", "WARNING")

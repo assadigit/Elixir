@@ -124,7 +124,6 @@ class TestFlaggedRemainder:
         # the UI-probe family is gone; the not-yet-migrated families stay.
         assert "MIGRATED in V0.6.11 wave 8" in src
         for marker in (
-            "SLOW_LLM_TIMEOUT_S (180) remaining",
             "LLM_REQUEST_TIMEOUT_S (300) remaining",
             "LONG_RUN_TIMEOUT_S (600)",
         ):

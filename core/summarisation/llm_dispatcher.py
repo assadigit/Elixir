@@ -48,7 +48,7 @@ from typing import Any
 import requests as _requests
 
 from core.llm.retry import retry_llm_call
-from core.system.timeouts import FAST_LLM_TIMEOUT_S
+from core.system.timeouts import FAST_LLM_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from utils.network import extract_openai_content, safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -565,7 +565,9 @@ def call_claude(
             "INFO",
         )
         # V18.20.4.11 (P3 / O-c5): pooled session (see call_openai_compat).
-        resp = session_for_url(url).post(url, headers=headers, json=payload, timeout=180)
+        resp = session_for_url(url).post(
+            url, headers=headers, json=payload, timeout=SLOW_LLM_TIMEOUT_S
+        )
         resp.raise_for_status()  # → HTTPError for 401/429/5xx
         data = resp.json()
         # Claude returns content as a list of text blocks

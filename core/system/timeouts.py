@@ -120,14 +120,6 @@ LONG_RUN_TIMEOUT_S = 600
 #
 #
 #
-# SLOW_LLM_TIMEOUT_S (180) remaining:
-#   core/summarisation/llm_dispatcher.py:567  openai-compat POST
-#   core/segmentation/semantic_segmenter.py:49  segmenter budget
-#   core/pdf/toc_extractor.py:213  TOC LLM call
-#   core/pdf/llm_heading_labeler.py:107  heading labeler
-#   core/pdf/vision_figure_extractor.py:57  figure extractor
-#   core/tts/neutts_engine.py:851  JSON-line read
-#   ui_qt/views/service_dialogs/dialogs/ocr_service_dialog.py:1085
 #
 # LLM_REQUEST_TIMEOUT_S (300) remaining:
 #   core/pipeline/conversion/summarization.py:831,875,919,942  provider timeouts
