@@ -119,8 +119,11 @@ class TestFlaggedRemainder:
     def test_flagged_sections_present(self):
         src = _src("core/system/timeouts.py")
         assert "FLAGGED remainder" in src
+        # V0.6.11 (wave 8) pin evolution: a family's flag section is REMOVED
+        # from the list when its wave lands (a MIGRATED note replaces it) —
+        # the UI-probe family is gone; the not-yet-migrated families stay.
+        assert "MIGRATED in V0.6.11 wave 8" in src
         for marker in (
-            "UI_PROBE_TIMEOUT_S (5) remaining",
             "CLI_POLL_TIMEOUT_S (10)",
             "FAST_LLM_TIMEOUT_S (120)",
             "SLOW_LLM_TIMEOUT_S (180) remaining",

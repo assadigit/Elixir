@@ -37,8 +37,14 @@ SUBSECOND_PROBE_TIMEOUT_S = 2
 # several dialogs (the V0.6.8 review-loop finding: the shared transports'
 # 10 s default had silently doubled worst-case UI-thread blocks on
 # blackholed endpoints) — keep this budget SMALL (measured: 15 sites —
-# the 6 migrated below + 9 flagged).
+# the 6 migrated in V0.6.10 + the 9 below, ALL migrated in V0.6.11
+# wave 8 together with the markdown-styler tight sibling).
 UI_PROBE_TIMEOUT_S = 5
+
+# 3 s — the markdown-styler's tight probe budget (the V0.6.8 review-loop
+# restored latency budget; its own leaf value per the V0.6.10 note —
+# migrated in V0.6.11 wave 8).
+UI_PROBE_TIGHT_TIMEOUT_S = 3
 
 # 10 s — CLI/subprocess polling (nvidia-smi, ollama CLI, thermal safety,
 # llamacpp model listing; 10 sites, all flagged).
@@ -97,22 +103,18 @@ LONG_RUN_TIMEOUT_S = 600
 #   core/system/dependency_checker.py:388  ollama reachability (timeout=5)
 
 
-# ── the FLAGGED remainder (~49 sites — next mechanical waves) ───────────────
+# ── the FLAGGED remainder (the remaining waves) ─────────────────────────────
 #
 # NOT migrated yet, per the charter ("migrate the highest-churn 10 first,
 # flag the rest"). Each future wave: import the constant, swap the literal,
-# run the file's tests, one commit. Evidence snapshot (V0.6.10 line numbers):
+# run the file's tests, one commit. Evidence snapshot (V0.6.10 line numbers;
+# V0.6.11 note: line numbers drift as waves land — grep the value):
 #
-# UI_PROBE_TIMEOUT_S (5) remaining:
-#   core/tts/normalizer.py:471 _tags_url probe
-#   utils/dependencies.py:38,80,120 /api/tags probes
-#   ui_qt/views/service_dialogs/dialogs/translation_service_dialog.py:583
-#   ui_qt/views/service_dialogs/dialogs/transcribe_service_dialog.py:243
-#   ui_qt/views/podcast_maker_view.py:367
-#   ui_qt/settings/sections/ai_model_section.py:369,399,405
-#   ui_qt/views/service_dialogs/dialogs/markdown_styler_dialog.py:252 (3 s —
-#     the V0.6.8 review-loop restored budget; migrate as its own leaf value
-#     UI_PROBE_TIGHT_TIMEOUT_S = 3 when that wave lands)
+# MIGRATED in V0.6.11 wave 8 — the UI-probe family (10 sites): the
+#   normalizer _tags_url probe, the dependencies /api/tags probes ×3, the
+#   translation/transcribe/podcast model pickers, the ai_model_section
+#   listings ×3, and the markdown-styler tight probe (its own leaf value
+#   UI_PROBE_TIGHT_TIMEOUT_S above, per the V0.6.10 note).
 #
 # CLI_POLL_TIMEOUT_S (10):
 #   core/llm/ollama_provider.py:725  POST generate
@@ -175,6 +177,7 @@ LONG_RUN_TIMEOUT_S = 600
 __all__ = [
     "SUBSECOND_PROBE_TIMEOUT_S",
     "UI_PROBE_TIMEOUT_S",
+    "UI_PROBE_TIGHT_TIMEOUT_S",
     "CLI_POLL_TIMEOUT_S",
     "CLI_SWEEP_TIMEOUT_S",
     "API_BATCH_TIMEOUT_S",

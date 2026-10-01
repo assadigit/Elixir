@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 from core.llm.model_taxonomy import is_vision_model
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from utils.logging import get_main_logger
 
 logger = get_main_logger()
@@ -35,7 +36,7 @@ class DependencyChecker:
 
     def _is_ollama_server_running(self) -> bool:
         try:
-            resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=5)
+            resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=UI_PROBE_TIMEOUT_S)
             return resp.status_code == 200
         except (ConnectionError, TimeoutError, OSError):
             return False
@@ -77,7 +78,7 @@ class DependencyChecker:
         if self._is_ollama_server_running():
             deps["ollama_running"] = True
             try:
-                resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=5)
+                resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=UI_PROBE_TIMEOUT_S)
                 if resp.status_code == 200:
                     models = [m["name"] for m in resp.json().get("models", [])]
                     deps["models"] = models
@@ -117,7 +118,7 @@ class DependencyChecker:
     def get_ollama_models(self, model_type: str | None = None) -> list[str]:
         def fetch():
             try:
-                resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=5)
+                resp = self._session.get(f"{self.ollama_url}/api/tags", timeout=UI_PROBE_TIMEOUT_S)
                 if resp.status_code == 200:
                     return [m["name"] for m in resp.json().get("models", [])]
             except Exception as e:

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -578,9 +579,10 @@ class TranslationServiceDialog(BaseServiceDialog):
 
         models: list[str] = []
         try:
-            # V0.6.8 (review-loop follow-up): timeout=5 preserves the
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
             # original bare-call latency budget (the helper default is 10).
-            models = [m for m in list_ollama_models(ollama_url, timeout=5) if m]
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 

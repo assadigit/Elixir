@@ -49,6 +49,7 @@ from core.podcast.script_generator import (
     ScriptResult,
     generate_podcast_script,
 )
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -362,9 +363,10 @@ class PodcastMakerView(QWidget):
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            # V0.6.8 (review-loop follow-up): timeout=5 preserves the
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
             # original bare-call latency budget (the helper default is 10).
-            models = [m for m in list_ollama_models(ollama_url, timeout=5) if m]
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
             if models:
                 current = self.model_combo.currentText()
                 self.model_combo.clear()

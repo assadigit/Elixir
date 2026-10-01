@@ -40,6 +40,7 @@ from core.llm.model_errors import is_model_not_found, model_not_found_hint
 # V18.20.4.11 (P2 / W-a7 partial): single source of truth for the legacy
 # default-model literal (de-duplication only — value byte-identical).
 from core.llm.model_taxonomy import LEGACY_DEFAULT_MODEL
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport + shape-safe OpenAI-compat
 # response extraction (replaces the bare requests.post + deep-index parse).
@@ -468,7 +469,7 @@ def create_normalizer_from_settings(log_callback: LogFn | None = None) -> TextNo
         try:
             _tags_url = f"{s.get_ollama_url()}/api/tags"
             resp = session_for_url(_tags_url).get(
-                _tags_url, timeout=5
+                _tags_url, timeout=UI_PROBE_TIMEOUT_S
             )  # V18.20.4.3 (W-c9): canonical URL; V18.20.4.11: pooled
             if resp.status_code == 200:
                 models = resp.json().get("models", [])

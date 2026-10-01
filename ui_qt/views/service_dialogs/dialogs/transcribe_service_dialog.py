@@ -36,6 +36,7 @@ from controller import Controller
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -195,9 +196,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            # V0.6.8 (review-loop follow-up): timeout=5 preserves the
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
             # original bare-call latency budget (the helper default is 10).
-            models = [m for m in list_ollama_models(ollama_url, timeout=5) if m]
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
             if models:
                 current = self.llm_combo.currentText()
                 self.llm_combo.clear()

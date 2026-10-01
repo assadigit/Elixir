@@ -564,10 +564,16 @@ class TestLoop3TimeoutBudgets:
         assert "timeout" in sig
 
     def test_dialogs_pass_their_latency_budgets(self):
+        # V0.6.11 (wave 8) pin evolution: the 5 s budget is now passed via
+        # the named constant (value byte-identical — asserted from the leaf
+        # so the VALUE contract stays pinned alongside the wiring).
+        from core.system.timeouts import UI_PROBE_TIMEOUT_S
+
+        assert UI_PROBE_TIMEOUT_S == 5
         checks = {
-            "translation_service_dialog.py": "list_ollama_models(ollama_url, timeout=5)",
-            "transcribe_service_dialog.py": "list_ollama_models(ollama_url, timeout=5)",
-            "podcast_maker_view.py": "list_ollama_models(ollama_url, timeout=5)",
+            "translation_service_dialog.py": "list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S)",
+            "transcribe_service_dialog.py": "list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S)",
+            "podcast_maker_view.py": "list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S)",
         }
         for name, needle in checks.items():
             src = _B5_FILES[name].read_text(encoding="utf-8")

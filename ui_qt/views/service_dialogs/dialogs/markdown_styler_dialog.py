@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import UI_PROBE_TIGHT_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -240,12 +241,13 @@ class MarkdownStylerDialog(BaseServiceDialog):
         # V0.6.8 (review-loop follow-up, B5 class — the 7th site the fresh
         # reviewer found): routed through the shared proxy-proof transport
         # (was a bare requests.get that broke on HTTP_PROXY machines);
-        # timeout=3 preserves the original latency budget. The [] vs None
+        # UI_PROBE_TIGHT_TIMEOUT_S (3 s; V0.6.11 wave 8: the named constant)
+        # preserves the original latency budget. The [] vs None
         # distinction was vestigial (both took the same else-branch below).
         try:
             from utils.network import list_ollama_models
 
-            models = [m for m in list_ollama_models(base, timeout=3) if m]
+            models = [m for m in list_ollama_models(base, timeout=UI_PROBE_TIGHT_TIMEOUT_S) if m]
         except Exception:
             models = []  # unreachable/bad response — keep the default row
 

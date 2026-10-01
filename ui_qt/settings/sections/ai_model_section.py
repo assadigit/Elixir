@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.icons import icon
 from ui_qt.settings.widgets import labeled_line, make_form
 
@@ -366,7 +367,7 @@ class AiLocalModelSection(QGroupBox):
                 "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
             )
             key = self.controller.get_secret("summarisation.llamacpp_api_key", "local")
-            models = list_llamacpp_models(base, key, timeout=5)
+            models = list_llamacpp_models(base, key, timeout=UI_PROBE_TIMEOUT_S)
             if models:
                 return models
             configured = self.controller.get_setting("summarisation.llamacpp_model", "")
@@ -396,13 +397,13 @@ class AiLocalModelSection(QGroupBox):
             if "localhost:1234" in url or "lmstudio" in url.lower():
                 from core.llm.llamacpp_provider import list_llamacpp_models
 
-                models = list_llamacpp_models(f"{base}/v1", "local", timeout=5)
+                models = list_llamacpp_models(f"{base}/v1", "local", timeout=UI_PROBE_TIMEOUT_S)
                 if models:
                     return models
             # Ollama-style
             from utils.network import list_ollama_models
 
-            return list_ollama_models(base, timeout=5)
+            return list_ollama_models(base, timeout=UI_PROBE_TIMEOUT_S)
         except (AttributeError, KeyError, TypeError):
             return []
 
