@@ -461,6 +461,16 @@ class Settings:
                 # IQ2_XXS HTTP timeout; a legit larger chapter should be
                 # segmented, not map-reduced (see the segmenter fixes).
                 "map_phase_max_seconds": 1800,
+                # V0.6.12: llama.cpp-first local fallback. Any LOCAL LLM
+                # call (Ollama / llama.cpp / LM Studio backend) first
+                # probes the configured llama.cpp server
+                # (summarisation.llamacpp_base_url); if it is up, the call
+                # routes there with its served model — the operator starts
+                # llama-server deliberately, so "it is on" means "use it".
+                # When it is off, the configured backend runs (Ollama, the
+                # always-on default). Cloud providers are never overridden.
+                # false restores the pre-V0.6.12 behavior (no probe).
+                "llamacpp_first": True,
             },
             "source_type": "normal_book",
             "is_academic": False,
