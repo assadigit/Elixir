@@ -67,6 +67,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from core.system.timeouts import CLI_POLL_TIMEOUT_S
+
 logger = logging.getLogger(__name__)
 
 LogFn = Callable[[str, str], None]
@@ -402,7 +404,7 @@ def query_vram_temp(nvidia_smi_path: str) -> int | None:
             [nvidia_smi_path, "--query-gpu=temperature.memory", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=CLI_POLL_TIMEOUT_S,
         )
         if result.returncode != 0:
             return None
@@ -602,7 +604,7 @@ def preflight_thermal_check(
                 [nvidia_smi_path, "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=CLI_POLL_TIMEOUT_S,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(result.stdout.strip().split(", ")[0])

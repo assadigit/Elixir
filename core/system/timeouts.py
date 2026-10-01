@@ -116,13 +116,6 @@ LONG_RUN_TIMEOUT_S = 600
 #   listings ×3, and the markdown-styler tight probe (its own leaf value
 #   UI_PROBE_TIGHT_TIMEOUT_S above, per the V0.6.10 note).
 #
-# CLI_POLL_TIMEOUT_S (10):
-#   core/llm/ollama_provider.py:725  POST generate
-#   core/llm/llamacpp_provider.py:709,717  model listing
-#   core/llm/model_manager.py:171,210  ollama CLI POSTs
-#   core/system/thermal_safety.py:405,605  thermal polls
-#   core/system/hardware_monitor.py:289,318,576  nvidia-smi calls
-#   ui_qt/components/llamacpp_config.py:205  model listing
 #
 # SUBSECOND_PROBE_TIMEOUT_S (2):
 #   core/system/dependency_checker.py:217  is_ollama_reachable

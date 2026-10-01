@@ -70,7 +70,10 @@ import requests as _requests
 from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
-from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
+from core.system.timeouts import (
+    CLI_POLL_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -707,7 +710,7 @@ def test_llamacpp_connection(
     base = (base_url or "").strip() or "http://127.0.0.1:8080/v1"
 
     # Stage 1 — server reachability + model listing.
-    models = list_llamacpp_models(base, api_key, timeout=10)
+    models = list_llamacpp_models(base, api_key, timeout=CLI_POLL_TIMEOUT_S)
     if not models:
         # Distinguish "server down" from "200 but empty list".
         sess = _no_proxy_session()
@@ -715,7 +718,7 @@ def test_llamacpp_connection(
             resp = sess.get(
                 f"{base.rstrip('/')}/models",
                 headers={"Authorization": f"Bearer {api_key or 'local'}"},
-                timeout=10,
+                timeout=CLI_POLL_TIMEOUT_S,
             )
             if resp.status_code in (401, 403):
                 return False, f"server reachable but rejected the API key (HTTP {resp.status_code})"

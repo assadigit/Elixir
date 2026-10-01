@@ -34,7 +34,10 @@ from core.llm.retry import (
     retry_with_oom_context_halving,
 )
 from core.system.ollama_supervisor import OllamaSupervisor
-from core.system.timeouts import UI_PROBE_TIMEOUT_S  # V0.6.10 (B15)
+from core.system.timeouts import (
+    CLI_POLL_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
 from utils.network import safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -723,7 +726,9 @@ class OllamaProvider(LLMProvider):
             # localhost Ollama gets the proxy-immune session (a misconfigured
             # HTTP_PROXY must never break the /api/show probe); remote Ollama
             # hosts keep env-proxy behavior. Same timeout, plus connection reuse.
-            resp = session_for_url(url).post(url, json={"name": self.model}, timeout=10)
+            resp = session_for_url(url).post(
+                url, json={"name": self.model}, timeout=CLI_POLL_TIMEOUT_S
+            )
             if resp.status_code != 200:
                 return False
             info = resp.json()

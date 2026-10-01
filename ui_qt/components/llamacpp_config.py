@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.system.timeouts import CLI_POLL_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.theme import theme_manager
 
@@ -202,7 +203,7 @@ class LlamaCppConfigMixin:
                 "summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_URL
             )
             key = self.controller.get_secret("summarisation.llamacpp_api_key", "local")
-            models = list_llamacpp_models(base, key, timeout=10)
+            models = list_llamacpp_models(base, key, timeout=CLI_POLL_TIMEOUT_S)
             if models:
                 return models
             configured = self.controller.get_setting("summarisation.llamacpp_model", "")

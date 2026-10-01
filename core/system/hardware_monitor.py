@@ -43,6 +43,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.system.timeouts import CLI_POLL_TIMEOUT_S
+
 logger = logging.getLogger(__name__)
 
 LogFn = Callable[[str, str], None]
@@ -286,7 +288,7 @@ def detect_gpu_profile_from_system() -> tuple:
                         [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
                         capture_output=True,
                         text=True,
-                        timeout=10,
+                        timeout=CLI_POLL_TIMEOUT_S,
                     )
                     if result.returncode == 0 and result.stdout.strip():
                         _gpu_name = result.stdout.strip().split(", ")[0].strip()
@@ -315,7 +317,7 @@ def detect_gpu_profile_from_system() -> tuple:
             [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=CLI_POLL_TIMEOUT_S,
         )
         if result.returncode == 0 and result.stdout.strip():
             gpu_name = result.stdout.strip().split(", ")[0].strip()
@@ -573,7 +575,7 @@ class HardwareMonitor:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=CLI_POLL_TIMEOUT_S,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return {}

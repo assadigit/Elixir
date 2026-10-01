@@ -17,6 +17,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Optional
 
+from core.system.timeouts import CLI_POLL_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import is_ollama_reachable, list_ollama_models, safe_ollama_request
 from utils.settings import Settings
@@ -168,7 +169,9 @@ class ModelManager:
                 "stream": False,
                 "options": {"num_predict": 1},
             }
-            resp = safe_ollama_request("POST", url, json=payload, timeout=10, retries=0)
+            resp = safe_ollama_request(
+                "POST", url, json=payload, timeout=CLI_POLL_TIMEOUT_S, retries=0
+            )
             if resp.status_code == 200:
                 logger.info(f"Model '{model_name}' verified via /api/generate (not in tags list).")
                 return True
@@ -207,7 +210,7 @@ class ModelManager:
             "options": {"keep_alive": 0},
         }
         try:
-            safe_ollama_request("POST", url, json=payload, timeout=10)
+            safe_ollama_request("POST", url, json=payload, timeout=CLI_POLL_TIMEOUT_S)
             logger.info(f"Unloaded model: {model_name}")
             return True
         except Exception as e:
