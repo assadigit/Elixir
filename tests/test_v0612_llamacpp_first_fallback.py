@@ -263,3 +263,244 @@ class TestDecideLlamacppFirst:
         spy = _ProbeSpy(models=[])
         self._decide(monkeypatch, "ollama", spy=spy)
         assert spy.calls == [("http://127.0.0.1:8080/v1", "local", 5)]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Layer 2 — PacketGenerator._call_llm routing (the reported call site)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class _FakeStreamedResponse:
+    """The iter_lines/raise_for_status/close contract _call_llm needs."""
+
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = list(lines)
+        self.closed = False
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def iter_lines(self, decode_unicode=True):
+        return iter(self._lines)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _sse_lines(text: str = "hello world") -> list[str]:
+    """OpenAI-compatible SSE chunks carrying ``text`` then [DONE]."""
+    mid = len(text) // 2
+    parts = [text[:mid], text[mid:]]
+    return [f'data: {{"choices": [{{"delta": {{"content": "{p}"}}}}]}}' for p in parts if p] + [
+        "data: [DONE]"
+    ]
+
+
+_NDJSON_LINES = ['{"response": "hi ", "done": false}', '{"response": "there", "done": true}']
+
+
+class _FakeSession:
+    def __init__(self, response=None, error: Exception | None = None) -> None:
+        self.response = response
+        self.error = error
+        self.calls: list[tuple[str, dict]] = []
+
+    def post(self, url: str, **kwargs):
+        self.calls.append((url, kwargs))
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+class _PacketsHarness:
+    """A PacketGenerator + faked transport + faked probe + Settings override."""
+
+    def __init__(self, monkeypatch, values: dict, probe_models: list[str]) -> None:
+        import utils.network as net_mod
+        from utils.settings import Settings
+
+        # Settings._test_override DI hook (the repeatability_run pattern;
+        # _call_llm constructs Settings() internally). monkeypatch sets it
+        # now and restores the PRE-test value at teardown.
+        self.settings = _SettingsStub(values)
+        monkeypatch.setattr(Settings, "_test_override", self.settings, raising=False)
+
+        from core.llm import local_fallback
+
+        self.spy = _ProbeSpy(models=probe_models)
+        monkeypatch.setattr(local_fallback, "list_llamacpp_models", self.spy)
+
+        self.session = _FakeSession(response=_FakeStreamedResponse(_sse_lines()))
+        monkeypatch.setattr(net_mod, "session_for_url", lambda url: self.session)
+
+        from core.outputs.packets.generator import PacketGenerator
+
+        self.logs: list[tuple[str, str]] = []
+        self.gen = PacketGenerator(
+            request=None, log_callback=lambda m, level="INFO": self.logs.append((level, m))
+        )
+
+    def call(self, prompt: str = "hi", model: str = "req-model", provider: str = "") -> str | None:
+        _provider = provider or str(self.settings.get("summarisation.provider", "ollama"))
+        return self.gen._call_llm(prompt, model, _provider, 0.1)
+
+    def info_logs(self) -> list[str]:
+        return [m for _lvl, m in self.logs]
+
+
+_LLAMACPP_URL = "http://127.0.0.1:8080/v1"
+_OLLAMA_ENDPOINT = "http://localhost:11434/v1"
+
+
+class TestPacketsCallLlmRouting:
+    def test_provider_llamacpp_with_live_server_routes_to_llamacpp_url(self, monkeypatch):
+        """THE REPORT ('Packets of Knowledge is not connected to llama.cpp'):
+        provider=llamacpp used to call the :11434 endpoint regardless —
+        now a live llama-server gets the call, with its DETECTED model
+        and the bearer key."""
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "llamacpp",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,  # the stale pre-V0.6.12 default
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+                "summarisation.llamacpp_model": "configured-name",
+                "summarisation.llamacpp_api_key": "sekrit",
+            },
+            probe_models=["detected-x"],
+        )
+        assert h.call() == "hello world"
+        url, kwargs = h.session.calls[0]
+        assert url == f"{_LLAMACPP_URL}/chat/completions"
+        assert kwargs["json"]["model"] == "detected-x"  # detected wins (V0.4.30)
+        assert kwargs["headers"] == {"Authorization": "Bearer sekrit"}
+
+    def test_provider_ollama_with_live_llamacpp_takes_over(self, monkeypatch):
+        """THE POLICY: the saved provider is Ollama but llama-server is up
+        (the operator started it deliberately) → the packets calls route
+        to llama.cpp with its served model."""
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=["served-27b"],
+        )
+        assert h.call() == "hello world"
+        url, kwargs = h.session.calls[0]
+        assert url == f"{_LLAMACPP_URL}/chat/completions"
+        assert kwargs["json"]["model"] == "served-27b"
+        assert kwargs["headers"]["Authorization"] == "Bearer local"
+
+    def test_llamacpp_down_uses_configured_ollama_endpoint(self, monkeypatch):
+        """llama.cpp off → the configured backend runs, byte-identical to
+        V0.6.11 (the native :11434 /api/generate branch, no auth header)."""
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,
+            },
+            probe_models=[],
+        )
+        h.session.response = _FakeStreamedResponse(_NDJSON_LINES)
+        assert h.call() == "hi there"
+        url, kwargs = h.session.calls[0]
+        assert url == "http://localhost:11434/api/generate"
+        assert "headers" not in kwargs
+        assert kwargs["json"]["model"] == "req-model"
+
+    def test_custom_endpoint_openai_compat_branch_unchanged(self, monkeypatch):
+        """A non-11434 endpoint with llama.cpp down keeps the exact
+        pre-V0.6.12 openai-compat POST (no explicit headers)."""
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "llamacpp",
+                "summarisation.endpoint": "http://localhost:3031/v1",
+            },
+            probe_models=[],
+        )
+        assert h.call() == "hello world"
+        url, kwargs = h.session.calls[0]
+        assert url == "http://localhost:3031/v1/chat/completions"
+        assert "headers" not in kwargs
+
+    def test_cloud_provider_never_probes(self, monkeypatch):
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "cloud",
+                "summarisation.api_base_url": "https://api.example.com/v1",
+                "summarisation.api_key": "sk-1",
+                "summarisation.cloud_model": "cloud-m",
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=["live-would-take-over"],
+        )
+        assert h.call() == "hello world"
+        assert h.spy.calls == []  # never probed
+        url, kwargs = h.session.calls[0]
+        assert url == "https://api.example.com/v1/chat/completions"
+        assert kwargs["headers"]["Authorization"] == "Bearer sk-1"
+        assert kwargs["json"]["model"] == "cloud-m"
+
+    def test_connection_error_names_the_backend(self, monkeypatch):
+        """The user report's raw urllib3 HTTPConnectionPool blob
+        (WinError 10061) is replaced by a line naming the target and the
+        likely cause. Control flow unchanged: first failure returns None."""
+        import requests
+
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,
+            },
+            probe_models=[],
+        )
+        h.session.error = requests.exceptions.ConnectionError(
+            "HTTPConnectionPool(host='localhost', port=11434): "
+            "Max retries exceeded (WinError 10061)"
+        )
+        assert h.call() is None
+        errs = [m for lvl, m in h.logs if lvl == "WARNING" and "Cannot reach" in m]
+        assert len(errs) == 1, h.logs
+        assert "is Ollama running?" in errs[0]
+        assert "HTTPConnectionPool" not in errs[0]
+        assert len(h.session.calls) == 1  # no retry on connection errors (unchanged)
+
+    def test_takeover_note_logged_once_per_generator(self, monkeypatch):
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=["served-27b"],
+        )
+        assert h.call() is not None
+        assert h.call() is not None
+        notes = [m for m in h.info_logs() if "llama.cpp detected" in m]
+        assert len(notes) == 1, h.info_logs()
+        assert len(h.spy.calls) == 1  # the probe cache held across calls
+        assert len(h.session.calls) == 2
+
+    def test_llamacpp_down_note_logged_once(self, monkeypatch):
+        h = _PacketsHarness(
+            monkeypatch,
+            values={
+                "summarisation.provider": "ollama",
+                "summarisation.endpoint": _OLLAMA_ENDPOINT,
+                "summarisation.llamacpp_base_url": _LLAMACPP_URL,
+            },
+            probe_models=[],
+        )
+        h.session.response = _FakeStreamedResponse(_NDJSON_LINES)
+        assert h.call() is not None
+        assert h.call() is not None
+        notes = [m for m in h.info_logs() if "not reachable" in m]
+        assert len(notes) == 1, h.info_logs()

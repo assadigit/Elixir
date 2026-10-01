@@ -164,11 +164,19 @@ def settings_override(monkeypatch):
 def _shim_values() -> dict[str, object]:
     """Provider plumbing that routes PacketGenerator._call_llm at the shim
     (generator.py:1030: provider != "cloud" + endpoint containing "/v1"
-    but not "11434" → OpenAI-compatible /chat/completions SSE branch)."""
+    but not "11434" → OpenAI-compatible /chat/completions SSE branch).
+
+    V0.6.12: the llama.cpp-first policy probes
+    ``summarisation.llamacpp_base_url`` before every local call — pin it
+    at a dead port so the live test routes at the SHIM deterministically
+    even on a rig with a real llama-server running on 8080 (probe falls
+    through → the configured endpoint, which IS the shim here — the
+    test's intent unchanged)."""
     return {
         "summarisation.provider": "llamacpp",
         "summarisation.endpoint": _SHIM_URL,
         "summarisation.model": _SHIM_MODEL,
+        "summarisation.llamacpp_base_url": "http://127.0.0.1:9/v1",
     }
 
 

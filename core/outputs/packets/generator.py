@@ -1057,8 +1057,26 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
 
         s = Settings()
 
+        # V0.6.12: the llama.cpp-first local fallback (the operator policy:
+        # llama-server running = route to it and its served model; the
+        # configured backend — Ollama, the always-on default — runs when it
+        # is not). Cloud providers are never overridden. Pre-V0.6.12 this
+        # call site read ONLY ``summarisation.endpoint`` (default :11434),
+        # so a provider=llamacpp configuration still called the Ollama
+        # URL — the "Packets of Knowledge is not connected to llama.cpp"
+        # report.
+        from core.llm.local_fallback import decide_llamacpp_first
+
+        decision = decide_llamacpp_first(s, provider)
+        if decision.use_llamacpp:
+            provider, model = "llamacpp", decision.model
+        if decision.note and not getattr(self, "_llamacpp_route_logged", False):
+            self.log(f"    🦙 {decision.note}", "INFO")
+            self._llamacpp_route_logged = True
+
         timeout = (10, 300)  # 10s connect, 300s read
         max_retries = 2
+        api_url = ""  # bound for the ConnectionError handler below
 
         for attempt in range(max_retries):
             try:
@@ -1094,8 +1112,14 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                         # discarded) instead of leaking a pool connection.
                         resp.close()
                 else:
-                    # Ollama — use native /api/generate for better timeout handling
-                    api_url = s.get("summarisation.endpoint", "http://localhost:11434/v1")
+                    # Local backend. V0.6.12: the llama.cpp-first takeover
+                    # routes at the llamacpp_* URL; otherwise the configured
+                    # endpoint (Ollama — native /api/generate below for
+                    # better timeout handling).
+                    if decision.use_llamacpp:
+                        api_url = decision.base_url
+                    else:
+                        api_url = s.get("summarisation.endpoint", "http://localhost:11434/v1")
                     if "/v1" in api_url and "11434" in api_url:
                         native_url = api_url.replace("/v1", "") + "/api/generate"
                         payload = {
@@ -1119,11 +1143,22 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                             "temperature": temperature,
                             "stream": True,
                         }
+                        # V0.6.12: the llama.cpp-first takeover sends the
+                        # llama-server API key (enforced only when the server
+                        # runs --api-key — the V0.04 provider contract); the
+                        # non-takeover path sends no explicit headers,
+                        # byte-identical to V0.6.11.
+                        _post_kwargs = (
+                            {"headers": {"Authorization": f"Bearer {decision.api_key}"}}
+                            if decision.use_llamacpp
+                            else {}
+                        )
                         resp = session_for_url(api_url).post(
                             f"{api_url}/chat/completions",
                             json=payload,
                             timeout=timeout,
                             stream=True,
+                            **_post_kwargs,
                         )
                         try:
                             resp.raise_for_status()
@@ -1148,6 +1183,23 @@ to understand the bullets; do NOT treat these as primary bullets to synthesize):
                     )
                     continue
                 self.log(f"    ❌ LLM timed out after {max_retries} attempts", "WARNING")
+                return None
+            except requests.exceptions.ConnectionError:
+                # V0.6.12: this used to fall into the blanket ``except
+                # Exception`` below and print the raw urllib3
+                # HTTPConnectionPool blob (the user report's WinError 10061
+                # wall of text). Name the actual target + likely cause.
+                if decision.use_llamacpp:
+                    _who = "llama.cpp (llama-server)"
+                elif "11434" in (api_url or ""):
+                    _who = "Ollama"
+                else:
+                    _who = "the configured LLM backend"
+                self.log(
+                    f"    ❌ Cannot reach {api_url or 'the configured endpoint'} "
+                    f"— is {_who} running?",
+                    "WARNING",
+                )
                 return None
             except requests.exceptions.HTTPError as e:
                 # V18.20.4.12 (T-c7): 404 = model not pulled — log the
