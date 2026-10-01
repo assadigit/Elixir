@@ -36,6 +36,13 @@ logger = logging.getLogger(__name__)
 VIBEVOICE_LOAD_TIMEOUT_S = 300  # was the inline `300` in _ensure_model
 VIBEVOICE_LINE_TIMEOUT_S = 600  # was the inline `600` in synthesize
 
+# V0.6.15: free-VRAM pre-flight floor. The model is ~2.6 GB on VRAM plus
+# activations; below this the load usually dies on CUDA OOM — most often
+# with llama.cpp / Ollama still holding the card (the operator's rig runs
+# llama-server for the LLM step of the same podcast). Fail-soft: a WARNING,
+# never a block.
+VIBEVOICE_MIN_FREE_VRAM_GB = 3.5
+
 
 # All 25 voice presets from the VibeVoice GitHub repo
 VIBEVOICE_VOICES = [
@@ -98,6 +105,34 @@ class VibeVoiceEngine(TTSEngine):
         self._device = "unknown"  # V11.42.0: track device for proof file
         self.last_error: str | None = None
 
+    def _preflight_vram(self) -> None:
+        """V0.6.15: free-VRAM pre-flight (fail-soft, best-effort — no torch
+        in the parent means no check, never a failure). The live report
+        "the podcast generated the text but VibeVoice had an error" is most
+        often the 2.6 GB load dying on CUDA out-of-memory while llama.cpp /
+        Ollama still hold the card. Naming the likely holders turns a raw
+        CUDA blob into an actionable log line."""
+        try:
+            import torch as _torch_preflight
+
+            if _torch_preflight.cuda.is_available():
+                _free_b, _total_b = _torch_preflight.cuda.mem_get_info()
+                _free_gb = _free_b / (1024**3)
+                self.log(f"  🎮 GPU free VRAM: {_free_gb:.1f} GB", "INFO")
+                if _free_gb < VIBEVOICE_MIN_FREE_VRAM_GB:
+                    self.log(
+                        f"  ⚠️ Only {_free_gb:.1f} GB VRAM free — VibeVoice needs "
+                        f"~{VIBEVOICE_MIN_FREE_VRAM_GB} GB. llama.cpp / Ollama may "
+                        f"still be holding the GPU; free VRAM (or close them) or "
+                        f"the model load may fail with CUDA out-of-memory.",
+                        "WARNING",
+                    )
+        except Exception:
+            logger.debug(
+                "best-effort op failed [vibevoice_engine:_preflight_vram]",
+                exc_info=True,
+            )
+
     def get_device(self) -> str:
         """V11.42.0: Return the device (cuda/cpu) the engine is using."""
         return self._device
@@ -140,6 +175,8 @@ class VibeVoiceEngine(TTSEngine):
 
         import sys
         import time
+
+        self._preflight_vram()  # V0.6.15: the free-VRAM warning, fail-soft
 
         script_path = str(Path(__file__).parent / "_vibevoice_subprocess.py")
         self.log("  🔄 Starting VibeVoice persistent subprocess...", "INFO")
@@ -259,17 +296,50 @@ class VibeVoiceEngine(TTSEngine):
                 break
             status = msg.get("status", "")
             if status == "loading":
-                self.log(f"  🔄 Model loading (device: {msg.get('device', '?')})...", "INFO")
+                _load_dev = msg.get("device", "?")
+                self.log(f"  🔄 Model loading (device: {_load_dev})...", "INFO")
+                # V0.6.15: a CPU load is the 600 s per-line timeout in slow
+                # motion — name it while the user can still cancel instead
+                # of waiting an hour for line 1 to die.
+                if _load_dev == "cpu":
+                    self.log(
+                        "  ⚠️ VibeVoice is loading on CPU — generation is "
+                        "~100x slower and each line will likely hit the "
+                        "600s timeout. Check the GPU/torch install "
+                        "(details: ~/.elixir/gpu_probe.log).",
+                        "WARNING",
+                    )
             elif status == "ready":
                 self._device = msg.get("device", "unknown")
                 self.log(f"  ✅ VibeVoice ready on {self._device.upper()}", "INFO")
                 self._loaded = True
                 return
             elif status == "error":
+                # V0.6.15: forward the subprocess traceback — the old path
+                # dropped it, so the live log showed the WHAT ("Model load
+                # failed: …") but never the WHY. The traceback is the line
+                # the operator pastes back.
+                _load_err = msg.get("error", "unknown")
+                _load_tb = (msg.get("traceback") or "").strip()
+                if _load_tb:
+                    self.log(f"  📋 VibeVoice load traceback:\n{_load_tb}", "ERROR")
                 # V18.20.4.4 (W-c2): kill before raising — a reported load
                 # error can leave the subprocess alive holding VRAM.
-                self._kill_subprocess(f"load error: {msg.get('error', 'unknown')}")
-                raise RuntimeError(f"Model load failed: {msg.get('error', 'unknown')}")
+                self._kill_subprocess(f"load error: {_load_err}")
+                # V0.6.15: when the vibevoice package itself is missing,
+                # append the install command — the single most common
+                # fresh-rig load failure and fully actionable.
+                _install_hint = ""
+                if (
+                    "No module named 'vibevoice'" in _load_err
+                    or 'No module named "vibevoice"' in _load_err
+                ):
+                    _install_hint = (
+                        " — install VibeVoice: git clone "
+                        "https://github.com/microsoft/VibeVoice.git && "
+                        'cd VibeVoice && pip install -e ".[streamingtts]"'
+                    )
+                raise RuntimeError(f"Model load failed: {_load_err}{_install_hint}")
 
         # V18.20.4.4 (W-c2): kill the still-loading subprocess before
         # raising. Previously this path raised with the handle still set
@@ -442,8 +512,13 @@ class VibeVoiceEngine(TTSEngine):
                     raise RuntimeError("VibeVoice: file not written")
                 elif status == "error":
                     err_msg = msg.get("error", "unknown")
+                    # V0.6.15: forward the subprocess traceback (was dropped
+                    # — same diagnosability gap as the load-error path).
+                    _gen_tb = (msg.get("traceback") or "").strip()
+                    if _gen_tb:
+                        self.log(f"  📋 VibeVoice generation traceback:\n{_gen_tb}", "ERROR")
                     self.log(f"  ❌ Generation error: {err_msg}", "ERROR")
-                    self._kill_subprocess(f"generation error: {err_msg[:80]}")
+                    self._kill_subprocess(f"generation error: {err_msg[:200]}")
                     # V11.57.0: RAISE — don't return None.
                     raise RuntimeError(f"VibeVoice generation error: {err_msg}")
         except RuntimeError:

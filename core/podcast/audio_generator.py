@@ -81,6 +81,25 @@ def _detect_language(text: str) -> str:
     return detect_language(text)
 
 
+def _log_vibevoice_config(vv_path: str, vv_voices: str, log: LogFn) -> None:
+    """V0.6.15: log the VibeVoice config TRUTH (path + existence) before the
+    subprocess spawn — when a podcast fails at the VibeVoice step the
+    operator's report must show whether the paths were valid without a
+    second round-trip."""
+    _vv_path_ok = bool(vv_path) and Path(vv_path).exists()
+    _vv_voices_ok = bool(vv_voices) and Path(vv_voices).is_dir()
+    log(
+        f"  🎙️ VibeVoice model: {vv_path or '(not set)'}"
+        f"{' — OK' if _vv_path_ok else ' — NOT FOUND' if vv_path else ''}",
+        "INFO",
+    )
+    log(
+        f"  🎙️ VibeVoice voices dir: {vv_voices or '(not set)'}"
+        f"{' — OK' if _vv_voices_ok else ' — NOT FOUND' if vv_voices else ''}",
+        "INFO",
+    )
+
+
 def _synthesize_line(
     line: ScriptLine,
     out_path: Path,
@@ -105,6 +124,7 @@ def _synthesize_line(
             voice_name = voice[len("vibevoice:") :]
             vv_path = settings.get("tts.vibevoice_model_path", "")
             vv_voices = settings.get("tts.vibevoice_voices_dir", "")
+            _log_vibevoice_config(vv_path, vv_voices, log)  # V0.6.15
             if not vv_path:
                 log(
                     "  ❌ VibeVoice model path not set — cannot generate. "

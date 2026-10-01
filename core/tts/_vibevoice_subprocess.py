@@ -169,6 +169,40 @@ def safe_print(msg, file=None, flush=True):
             )
 
 
+def _load_voice_preset(torch, preset_path, map_loc, allowed_globals):
+    """V0.6.15: the voice-preset torch.load fallback chain.
+
+    1. The OFFICIAL path (the VibeVoice demo): weights_only=True inside
+       safe_globals — the safe loader, works on torch >= 2.6 with the
+       current presets.
+    2. The legacy escape hatch: weights_only=False — needed when a preset
+       references globals beyond the two allowed (or a future torch
+       restricts the unsafe path differently).
+    3. Bare torch.load — torch < 2.6 has no safe_globals at all
+       (AttributeError on the context manager itself).
+    """
+    BaseModelOutputWithPast, DynamicCache = allowed_globals
+    try:
+        with torch.serialization.safe_globals([BaseModelOutputWithPast, DynamicCache]):
+            return torch.load(preset_path, map_location=map_loc, weights_only=True)
+    except AttributeError:
+        safe_print(
+            "[SUBPROCESS] torch.serialization.safe_globals unavailable "
+            "(torch < 2.6) — plain torch.load",
+            file=sys.stderr,
+            flush=True,
+        )
+        return torch.load(preset_path, map_location=map_loc)
+    except Exception:
+        safe_print(
+            "[SUBPROCESS] weights_only=True preset load failed — retrying with weights_only=False",
+            file=sys.stderr,
+            flush=True,
+        )
+        with torch.serialization.safe_globals([BaseModelOutputWithPast, DynamicCache]):
+            return torch.load(preset_path, map_location=map_loc, weights_only=False)
+
+
 def main():
     model = None
     processor = None
@@ -241,11 +275,27 @@ def main():
                         safe_print(f"[SUBPROCESS] GPU: {_SUBPROCESS_CUDA_DEVICE}", file=sys.stderr)
                     try:
                         vram_mb = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024)
-                        safe_print(f"[SUBPROCESS] VRAM: {vram_mb} MB", file=sys.stderr)
+                        # V0.6.15: FREE memory too — total alone hides the
+                        # llama.cpp / Ollama VRAM hold that kills the load.
+                        _free_b, _total_b = torch.cuda.mem_get_info()
+                        free_mb = _free_b // (1024 * 1024)
                         safe_print(
-                            f"[SUBPROCESS] Forcing ALL layers on GPU ({vram_mb} MB)",
+                            f"[SUBPROCESS] VRAM: {free_mb} MB free / {vram_mb} MB total",
                             file=sys.stderr,
                         )
+                        if free_mb < 3584:
+                            safe_print(
+                                f"[SUBPROCESS] WARNING: only {free_mb} MB VRAM free — "
+                                f"VibeVoice needs ~2.6 GB. llama.cpp / Ollama may be "
+                                f"holding the GPU; the load may fail with CUDA "
+                                f"out-of-memory.",
+                                file=sys.stderr,
+                            )
+                        else:
+                            safe_print(
+                                f"[SUBPROCESS] Forcing ALL layers on GPU ({vram_mb} MB)",
+                                file=sys.stderr,
+                            )
                     except Exception:
                         safe_print(
                             "[SUBPROCESS] (could not read VRAM — using cached device)",
@@ -290,6 +340,10 @@ def main():
                 safe_print(json.dumps({"status": "ready", "device": device}))
 
             except Exception as e:
+                # V0.6.15: full traceback to stderr as well (the JSON copy is
+                # truncated to 500 chars — the live log keeps the whole story).
+                safe_print("[SUBPROCESS] TRACEBACK (load):", file=sys.stderr, flush=True)
+                safe_print(traceback.format_exc(), file=sys.stderr, flush=True)
                 safe_print(
                     json.dumps(
                         {
@@ -357,10 +411,12 @@ def main():
                 # V11.41.8: use the correct map_location based on device
                 map_loc = "cuda" if cuda_ok else "cpu"
                 t0 = _time.time()
-                with torch.serialization.safe_globals([BaseModelOutputWithPast, DynamicCache]):
-                    cached_prompt = torch.load(
-                        preset_path, map_location=map_loc, weights_only=False
-                    )
+                cached_prompt = _load_voice_preset(
+                    torch,
+                    preset_path,
+                    map_loc,
+                    (BaseModelOutputWithPast, DynamicCache),
+                )
                 safe_print(
                     f"[SUBPROCESS] voice preset loaded in {_time.time() - t0:.1f}s",
                     file=sys.stderr,
@@ -482,6 +538,12 @@ def main():
                     )
 
             except Exception as e:
+                # V0.6.15: the FULL traceback also goes to stderr — the
+                # parent's stderr drain logs it live with the [vibevoice]
+                # prefix, so the JSON's 500-char truncation is no longer
+                # the only copy the operator can paste back.
+                safe_print("[SUBPROCESS] TRACEBACK (generate):", file=sys.stderr, flush=True)
+                safe_print(traceback.format_exc(), file=sys.stderr, flush=True)
                 safe_print(
                     json.dumps(
                         {
