@@ -36,7 +36,6 @@ sys.path.insert(0, str(REPO))
 
 from core.llm.ollama_provider import OllamaProvider  # noqa: E402
 from core.llm.openai_compat_provider import OpenAICompatProvider  # noqa: E402
-from core.pipeline.conversion.summarization import run_summarization  # noqa: E402
 
 # ── B4: the provider attribute contract (public, not private) ───────────────
 
@@ -80,7 +79,13 @@ class TestDualApiOverrideWiring:
 
     @property
     def _src(self) -> str:
-        return inspect.getsource(run_summarization)
+        # V0.6.11 (B14-a) pin evolution: the override block moved VERBATIM into
+        # _rs_make_concept_llm_fn (invoked by run_summarization — the B12
+        # call-site-following precedent). Anchoring on the whole module keeps
+        # the no-dead-guards assertion non-vacuous; the contract is unchanged.
+        return (REPO / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
+            encoding="utf-8"
+        )
 
     def test_dual_api_override_sets_public_attrs(self):
         src = self._src
@@ -520,7 +525,6 @@ class TestB18WindowsPathsSingleSourced:
 
 class TestLoop3LlmDispatcherSweep:
     def test_call_via_llm_provider_no_private_attr_guards(self):
-        import inspect
 
         from core.summarisation.llm_dispatcher import call_via_llm_provider
 
@@ -533,7 +537,6 @@ class TestLoop3LlmDispatcherSweep:
         assert "provider.api_key = api_key" in src
 
     def test_ollama_delegation_no_private_model_guard(self):
-        import inspect
 
         import core.summarisation.llm_dispatcher as disp
 
@@ -554,7 +557,6 @@ class TestLoop3MarkdownStylerSeventhSite:
 
 class TestLoop3TimeoutBudgets:
     def test_list_ollama_models_has_timeout_param(self):
-        import inspect
 
         from utils.network import list_ollama_models
 

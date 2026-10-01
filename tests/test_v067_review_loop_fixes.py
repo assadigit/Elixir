@@ -634,7 +634,9 @@ class TestSaveBlockWiring:
         src = (REPO / "core" / "pipeline" / "conversion" / "summarization.py").read_text(
             encoding="utf-8"
         )
-        assert "_save_chapter_summaries_write_once(converter, segments, summaries, log)" in src
+        # V0.6.11 (B14-a) pin evolution: summaries → ctx.summaries (the phase
+        # state now lives on _SummCtx); the call + the contract are unchanged.
+        assert "_save_chapter_summaries_write_once(converter, segments, ctx.summaries, log)" in src
         # the moved code lives in exactly one place (the module-level helper)
         assert src.count("def _save_chapter_summaries_write_once(") == 1
         # the write-once contract marker survived the move

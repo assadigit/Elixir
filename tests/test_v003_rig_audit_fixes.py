@@ -738,7 +738,10 @@ class TestMetadataHonesty:
 
         from core.pipeline.conversion import summarization
 
-        src = inspect.getsource(summarization.run_summarization)
+        # V0.6.11 (B14-a) pin evolution: the stamp block moved VERBATIM into
+        # the _rs_write_book_summary phase helper (called by
+        # run_summarization — the B12 call-site-following precedent).
+        src = inspect.getsource(summarization._rs_write_book_summary)
         assert "_bk_bullet_count" in src
         # V0.13: ruff-format put each argument on its own line — pin the call
         # plus all four arguments (order preserved).

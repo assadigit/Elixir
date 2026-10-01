@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from core.models import ConversionResult, SummaryResult
@@ -313,54 +313,54 @@ def _save_chapter_summaries_write_once(
     log(f"📝 {len(summaries)} summaries → {summary_folder}")
 
 
-def run_summarization(
-    converter: Any,
-    segments: list[Any],
-    segments_folder: Any,
-    detected_lang: str,
-    book_title: str,
-    elapsed_fn: Any,
-) -> SummarizationResult | ConversionResult:
-    """Run the summarization phase (Step 9).
+# ── V0.6.11 (B14-a): the summarization-phase context ──────────────────────
 
-    Args:
-        converter: the Converter instance (accessed for ``self.request``,
-            ``self._log``, ``self._update_status``, ``self._update_progress``,
-            ``self.settings``, ``self.output_dir``, ``self.paths``,
-            ``self.checkpoint``, ``self.cancel_event``,
-            ``self._filter_segment_content``, ``self._match_chapter``,
-            ``self._summarisation_progress``, ``self._sanitize_filename``,
-            ``self._build_error_result``, ``self.summary_md_path``).
-        segments: the segment list (from segmentation phase).
-        segments_folder: the folder where segment files were saved (used
-            for the summaries subfolder).
-        detected_lang: the detected language code (from output_save phase).
-        book_title: the detected book title (from output_save phase).
-        elapsed_fn: a callable returning the elapsed-time string (the
-            converter's ``_elapsed`` closure timer).  Called once at the
-            start of the phase for the "Summary phase starting" log line.
 
-    Returns:
-        ``SummarizationResult`` (summaries) on success, or
-        ``ConversionResult`` (success=False) on early exit.
+@dataclass
+class _SummCtx:
+    """V0.6.11 (B14-a): the phase-shared state for ONE ``run_summarization`` run.
+
+    The V0.6.7/B12 god-function decomposition pattern: the 6 public
+    parameters, the converter surface the phase reads (``log`` /
+    ``update_status`` / ``update_progress`` / ``request``), and the derived
+    per-phase state (the resolved language, the filtered segment list, the
+    claim extractor, the GPU profile + thermal controller, the summarizer,
+    the chapter dicts, the resume split, the merged summaries) live HERE so
+    each phase helper is a thin ``ctx`` reader/writer and the orchestrator
+    keeps the original statement order. Nothing here is public — the module
+    API is still ``run_summarization`` + ``SummarizationResult``.
     """
-    log = converter._log
-    update_status = converter._update_status
-    update_progress = converter._update_progress
-    request = converter.request
 
-    summaries: list[SummaryResult] = []
+    # the 6 public parameters (same order as the signature)
+    converter: Any
+    segments: list[Any]
+    segments_folder: Any
+    detected_lang: str
+    book_title: str
+    elapsed_fn: Any
+    # the converter surface (V0.6.11 / B14-a — was locals at function top)
+    log: Any
+    update_status: Any
+    update_progress: Any
+    request: Any
+    # derived per-phase state (V0.6.11 / B14-a — names match the original locals)
+    summary_lang: str = ""
+    segments_for_summary: list = field(default_factory=list)
+    claim_extractor: Any = None
+    gpu_name: str = ""
+    gpu_profile: Any = None
+    thermal_safety: Any = None
+    summarizer: Any = None
+    chapter_dicts: list = field(default_factory=list)
+    loaded_summaries: list = field(default_factory=list)
+    summaries: list[SummaryResult] = field(default_factory=list)
 
-    if not request.generate_summaries:
-        return SummarizationResult(summaries=summaries)
 
-    if converter.cancel_event.is_set():
-        return ConversionResult(success=False, error_msg="Cancelled by user")
-
-    update_status("Generating summaries…")
-    log(f"  ⏱️ Summary phase starting | [{elapsed_fn()}]", "INFO")
-    update_progress(0.25)  # Summary phase starts here (0.25-0.80)
-
+def _rs_unload_ocr_vram(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim force-unload block — frees the LLM-OCR
+    model's VRAM before summarization starts."""
+    log = ctx.log
+    request = ctx.request
     # ── Force-unload OCR model to free VRAM ──────────────────────────
     if request.use_llm_ocr and request.primary_ocr_model:
         from core.llm import ModelManager
@@ -378,10 +378,14 @@ def run_summarization(
 
         _time.sleep(2)
 
-    # ── Determine summary language ───────────────────────────────────
-    lang_setting = converter.settings.get("summarisation.language", "auto")
-    summary_lang = detected_lang if lang_setting == "auto" else lang_setting
 
+def _rs_apply_content_filter(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim content-filter block (opt-in page
+    cleanup before summarization)."""
+    log = ctx.log
+    converter = ctx.converter
+    request = ctx.request
+    segments = ctx.segments
     # ── Apply content filter ONLY if enabled ─────────────────────────
     if request.enable_content_filter:
         log("  🧹 Content filter enabled – removing non‑content pages.", "INFO")
@@ -390,6 +394,14 @@ def run_summarization(
     else:
         log("  ⏭️ Content filter disabled – keeping all pages.", "INFO")
 
+
+def _rs_filter_reference_sections(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim front-matter skip (references /
+    bibliography / appendix families) with the selected-chapters DISABLE —
+    sets ``ctx.segments_for_summary``."""
+    log = ctx.log
+    request = ctx.request
+    segments = ctx.segments
     # ── Skip reference/supplementary sections from summarization ─────
     # V0.02 (false-success RCA): when the user EXPLICITLY selected chapters,
     # this skip is DISABLED. The real incident: the user's two selected
@@ -406,7 +418,7 @@ def run_summarization(
             f"always summarized).",
             "INFO",
         )
-        segments_for_summary = segments
+        ctx.segments_for_summary = segments
     else:
         _skip_patterns = [
             (r"^references\s*$", "references"),
@@ -448,25 +460,30 @@ def run_summarization(
                 f"  📋 Skipped {_skipped_count} reference/supplementary section(s) from summarization",
                 "INFO",
             )
-            segments_for_summary = _filtered_segments
+            ctx.segments_for_summary = _filtered_segments
         else:
-            segments_for_summary = segments
+            ctx.segments_for_summary = segments
 
+
+def _rs_build_claim_extractor(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim Layer-8 (langextract) claim-extractor
+    init with its three fail-open exits — sets ``ctx.claim_extractor``."""
+    log = ctx.log
     # ── Build ClaimExtractor for Layer 8 (langextract) grounding ─────
-    _claim_extractor = None
+    ctx.claim_extractor = None
     try:
         from core.grounding import ClaimExtractor, is_langextract_available
         from utils.settings import Settings as _S
 
-        _claim_extractor = ClaimExtractor(
+        ctx.claim_extractor = ClaimExtractor(
             settings=_S(),
             log_callback=log,
         )
-        if _claim_extractor._is_enabled():
+        if ctx.claim_extractor._is_enabled():
             if is_langextract_available():
                 log(
                     f"  🛡️ Source grounding ENABLED "
-                    f"(backend={_claim_extractor._get_backend().value}) — "
+                    f"(backend={ctx.claim_extractor._get_backend().value}) — "
                     f"Layer 8 (langextract) active",
                     "INFO",
                 )
@@ -481,7 +498,7 @@ def run_summarization(
         else:
             # V15.0.4: Check if user enabled grounding but the backend is
             # local Ollama (which can't produce char_intervals).
-            _reason = getattr(_claim_extractor, "_disabled_reason", None)
+            _reason = getattr(ctx.claim_extractor, "_disabled_reason", None)
             if _reason == "ollama_no_char_intervals":
                 # V18.2.19: Downgraded WARNING → INFO. This is INTENTIONAL
                 # behavior (Decision #4 in the handout): local models can't
@@ -504,44 +521,52 @@ def run_summarization(
             f"Layer 8 disabled, using Layers 1-7 only",
             "WARNING",
         )
-        _claim_extractor = None
+        ctx.claim_extractor = None
     except Exception as _ce:
         log(
             f"  🛡️❌ Unexpected error in ClaimExtractor init "
             f"({type(_ce).__name__}: {_ce}) — Layer 8 disabled",
             "ERROR",
         )
-        _claim_extractor = None
+        ctx.claim_extractor = None
 
+
+def _rs_detect_gpu_profile(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim GPU thermal-profile detection + the two
+    max_workers caps (thermal profile cap; the VRAM-calculator 85% cap) —
+    sets ``ctx.gpu_name`` / ``ctx.gpu_profile``."""
+    log = ctx.log
+    request = ctx.request
+    converter = ctx.converter
     # ── Detect GPU thermal profile + cap max_workers ────────────────
-    _gpu_name = ""
-    _gpu_profile = None
+    ctx.gpu_name = ""
+    ctx.gpu_profile = None
     try:
         from core.system.hardware_monitor import detect_gpu_profile_from_system
 
-        _gpu_name, _gpu_profile = detect_gpu_profile_from_system()
-        if _gpu_name:
-            log(f"  🎯 GPU detected: {_gpu_name}", "INFO")
+        ctx.gpu_name, ctx.gpu_profile = detect_gpu_profile_from_system()
+        if ctx.gpu_name:
+            log(f"  🎯 GPU detected: {ctx.gpu_name}", "INFO")
             log(
-                f"  🌡️ Thermal profile: {_gpu_profile.name} — "
-                f"warning {_gpu_profile.warning_c}°C, "
-                f"caution {_gpu_profile.caution_c}°C, "
-                f"critical {_gpu_profile.critical_c}°C "
-                f"(hotspot delta ~{_gpu_profile.hotspot_delta_c}°C)",
+                f"  🌡️ Thermal profile: {ctx.gpu_profile.name} — "
+                f"warning {ctx.gpu_profile.warning_c}°C, "
+                f"caution {ctx.gpu_profile.caution_c}°C, "
+                f"critical {ctx.gpu_profile.critical_c}°C "
+                f"(hotspot delta ~{ctx.gpu_profile.hotspot_delta_c}°C)",
                 "INFO",
             )
             current_workers = getattr(request, "max_workers", 2)
-            if _gpu_profile.max_safe_workers < current_workers:
+            if ctx.gpu_profile.max_safe_workers < current_workers:
                 log(
                     f"  🚨 VRAM protection: max_workers capped "
-                    f"{current_workers} → {_gpu_profile.max_safe_workers} "
-                    f"for {_gpu_profile.name}.  LLM inference is a "
+                    f"{current_workers} → {ctx.gpu_profile.max_safe_workers} "
+                    f"for {ctx.gpu_profile.name}.  LLM inference is a "
                     f"memory-bandwidth-bound workload — multiple workers "
                     f"multiply VRAM heat.  This cap protects your card's "
                     f"VRAM from thermal damage.",
                     "WARNING",
                 )
-                request.max_workers = _gpu_profile.max_safe_workers
+                request.max_workers = ctx.gpu_profile.max_safe_workers
 
             # V13.28.0 (P2.9): VRAM-based max_workers cap — complements the
             # thermal cap above. Uses the V13.26.0 VRAM calculator (with
@@ -583,14 +608,14 @@ def run_summarization(
                         )
             except Exception as _vram_e:
                 log(f"  ℹ️ VRAM calculator check skipped ({_vram_e})", "DEBUG")
-            if _gpu_profile.emergency_mode:
+            if ctx.gpu_profile.emergency_mode:
                 log(
-                    f"  🚨 EMERGENCY MODE: {_gpu_profile.name}. "
+                    f"  🚨 EMERGENCY MODE: {ctx.gpu_profile.name}. "
                     f"If you see visual artifacts (red dots/lines on "
                     f"your monitor) during this conversion, STOP "
                     f"IMMEDIATELY — the VRAM is overheating.  The "
-                    f"auto-pause will fire at {_gpu_profile.critical_c}°C "
-                    f"core (est. {_gpu_profile.critical_c + _gpu_profile.hotspot_delta_c}°C "
+                    f"auto-pause will fire at {ctx.gpu_profile.critical_c}°C "
+                    f"core (est. {ctx.gpu_profile.critical_c + ctx.gpu_profile.hotspot_delta_c}°C "
                     f"VRAM).  If artifacts appear BELOW this threshold, "
                     f"the VRAM thermal pads need physical replacement — "
                     f"no software setting can fix that.",
@@ -605,9 +630,9 @@ def run_summarization(
         try:
             from core.system.hardware_monitor import _PROFILE_DEFAULT
 
-            _gpu_profile = _PROFILE_DEFAULT
+            ctx.gpu_profile = _PROFILE_DEFAULT
         except Exception as _e:
-            _gpu_profile = None
+            ctx.gpu_profile = None
     except Exception as _ge:
         log(
             f"  ❌ Unexpected error in GPU profile detection "
@@ -617,13 +642,22 @@ def run_summarization(
         try:
             from core.system.hardware_monitor import _PROFILE_DEFAULT
 
-            _gpu_profile = _PROFILE_DEFAULT
+            ctx.gpu_profile = _PROFILE_DEFAULT
         except Exception as _e:
-            _gpu_profile = None
+            ctx.gpu_profile = None
 
+
+def _rs_start_thermal_safety(ctx: _SummCtx) -> ConversionResult | None:
+    """V0.6.11 (B14-a): the verbatim Thermal Safety System pre-flight + start
+    block — sets ``ctx.thermal_safety`` (and the converter stash). Returns the
+    built error result when the pre-flight fails (the original early return),
+    else ``None`` (return plumbing — the declared normalization)."""
+    log = ctx.log
+    converter = ctx.converter
+    request = ctx.request
     # ── Thermal Safety System — pre-flight + start ──────────────────
-    _thermal_safety = None
-    if _gpu_profile is not None:
+    ctx.thermal_safety = None
+    if ctx.gpu_profile is not None:
         try:
             from core.system.thermal_safety import (
                 ThermalSafetyController,
@@ -631,22 +665,22 @@ def run_summarization(
                 recommend_thermal_safe_models,
             )
 
-            _thermal_safety = ThermalSafetyController(
+            ctx.thermal_safety = ThermalSafetyController(
                 log_callback=log,
-                profile=_gpu_profile,
+                profile=ctx.gpu_profile,
             )
 
             # 1. Output count guard
             check_output_count_safety(
                 request,
-                _gpu_profile,
+                ctx.gpu_profile,
                 log_callback=log,
             )
 
             # 2. Model recommendation
             recommend_thermal_safe_models(
                 getattr(request, "summarisation_model", ""),
-                _gpu_profile,
+                ctx.gpu_profile,
                 log_callback=log,
             )
 
@@ -658,7 +692,7 @@ def run_summarization(
                 _nvidia_smi = HardwareMonitor._find_nvidia_smi() or ""
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
-            _pf_passed, _pf_msg = _thermal_safety.preflight_check(
+            _pf_passed, _pf_msg = ctx.thermal_safety.preflight_check(
                 nvidia_smi_path=_nvidia_smi,
                 model_manager=None,  # skip warmup — too slow for pre-flight
                 model_name=getattr(request, "summarisation_model", ""),
@@ -671,8 +705,8 @@ def run_summarization(
                 return converter._build_error_result(_pf_msg)
 
             # 4. Start the thermal safety controller
-            _thermal_safety.start()
-            converter._thermal_safety = _thermal_safety  # stash for later
+            ctx.thermal_safety.start()
+            converter._thermal_safety = ctx.thermal_safety  # stash for later
         except Exception as _tse:
             log(
                 f"  ℹ️ Thermal Safety System init skipped ({_tse})",
@@ -683,7 +717,17 @@ def run_summarization(
             "  ℹ️ Thermal Safety System skipped (GPU profile not available)",
             "DEBUG",
         )
+    return None
 
+
+def _rs_init_summarizer(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim Summarizer construction + the V0.4.25
+    run-id unification — sets ``ctx.summarizer``."""
+    log = ctx.log
+    converter = ctx.converter
+    request = ctx.request
+    summary_lang = ctx.summary_lang
+    _claim_extractor = ctx.claim_extractor
     # ── Run the Summarizer ───────────────────────────────────────────
     summarizer = Summarizer(
         request,
@@ -704,7 +748,16 @@ def run_summarization(
             summarizer._run_id = _conv_rid
     except Exception:  # pragma: no cover — unification must never break the phase
         pass
+    ctx.summarizer = summarizer
 
+
+def _rs_thread_glossary_handoff(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim V0.5.20 glossary-handoff block — threads
+    the unified run id + the run's output dir onto the request so the deep
+    stack persists the glossary INSIDE the run folder."""
+    request = ctx.request
+    converter = ctx.converter
+    summarizer = ctx.summarizer
     # V0.5.20 (the rig-run-2 glossary handoff break): thread the RUN's
     # output dir + the unified run id onto the REQUEST object (the same
     # attached-attribute pattern ``_run_id`` already uses) so the deep
@@ -729,11 +782,254 @@ def run_summarization(
     except Exception:  # pragma: no cover — the handoff must never break the phase
         pass
 
-    # V15.2.0: Enhanced concept extraction (6 techniques) — the foundation fix.
-    # Replaces the old extract_all_concepts() with extract_concepts_rich() which
-    # combines: intro+conclusion weighting, proper-noun theorists, section headings,
-    # conclusion lists, LLM-assisted extraction, and source-grounded filtering.
-    # Falls back to the old method if the new one fails.
+
+def _rs_make_concept_llm_fn(ctx: _SummCtx):
+    """V0.6.11 (B14-a): the verbatim V15.2.0/V16.0.9 concept-extraction LLM
+    factory — the 4-mode architecture selection (dual_api / dual_local /
+    single_local / single_api) + the qwen-gated ``_llm_call_fn`` closure with
+    the empty-response nudge retry. Returns the callable, or ``None`` on the
+    documented degradation path (the original inner try/except; the
+    ``_llm_call_fn = None`` init became the ``return None`` — the declared
+    normalization)."""
+    log = ctx.log
+    request = ctx.request
+    try:
+        # Lazy import to avoid circular dependency
+        from core.llm.llm_provider import create_provider
+        from utils.settings import Settings as _S
+
+        _settings = _S()
+        _arch = (
+            getattr(request, "model_architecture", None)
+            or _settings.get("summarisation.model_architecture", "single_local")
+            or "single_local"
+        )
+        # V16.0.9: backward-compat — legacy "single" → "single_local"
+        if _arch == "single":
+            _arch = "single_local"
+
+        if _arch == "dual_api":
+            # Use the OpenAI-compatible cloud API for fast concept extraction.
+            _api_url = getattr(request, "fast_api_url", "") or _settings.get(
+                "summarisation.fast_api_url", ""
+            )
+            # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
+            from core.system.secrets import get_secret
+
+            _api_key = getattr(request, "fast_api_key", "") or get_secret(
+                "summarisation.fast_api_key", _settings, ""
+            )
+            _api_model = getattr(request, "fast_api_model", "") or _settings.get(
+                "summarisation.fast_api_model", ""
+            )
+            if _api_url and _api_model:
+                _provider = create_provider(
+                    provider="openai_compatible",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                # Override the cloud settings to point at the fast API.
+                # V0.6.8 (audit B4): the override now sets the PUBLIC
+                # provider attributes — the old hasattr("_base_url"/
+                # "_api_key"/"_model") guards were always False
+                # (OpenAICompatProvider stores self.base_url/self.api_key
+                # — openai_compat_provider.py:39-40), so the fast-API
+                # URL/key were silently ignored and calls kept hitting
+                # the settings cloud endpoint. Pinned by
+                # tests/test_v068_review_loop_fixes.py.
+                _provider.base_url = _api_url
+                _provider.api_key = _api_key
+                _provider.model = _api_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 120
+                _summ_model = _api_model
+                log(
+                    f"  🚀 V16.0.8 concept extraction: dual_api mode "
+                    f"(fast cloud model = {_api_model})",
+                    "INFO",
+                )
+            else:
+                log(
+                    "  ⚠️ V16.0.8 dual_api configured but fast_api_url or "
+                    "fast_api_model is empty — falling back to primary "
+                    "summarisation model for concept extraction",
+                    "WARNING",
+                )
+                _provider = create_provider(
+                    provider="ollama",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
+                # V0.6.8 (audit B4): public attr — the "_model" guard was
+                # always False (OllamaProvider exposes self.model).
+                if hasattr(_provider, "model"):
+                    _provider.model = _summ_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 300
+        elif _arch == "dual_local":
+            # Use the local fast model via Ollama for fast concept extraction.
+            _fast_model = getattr(request, "fast_model", "") or _settings.get(
+                "summarisation.fast_model", ""
+            )
+            if _fast_model:
+                _provider = create_provider(
+                    provider="ollama",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                # V0.6.8 (audit B4): public attr — the "_model" guard was
+                # always False (OllamaProvider exposes self.model).
+                if hasattr(_provider, "model"):
+                    _provider.model = _fast_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 120  # fast model = shorter timeout
+                _summ_model = _fast_model
+                log(
+                    f"  🚀 V16.0.8 concept extraction: dual_local mode "
+                    f"(fast Ollama model = {_fast_model})",
+                    "INFO",
+                )
+            else:
+                log(
+                    "  ⚠️ V16.0.8 dual_local configured but fast_model is "
+                    "empty — falling back to primary summarisation model "
+                    "for concept extraction",
+                    "WARNING",
+                )
+                _provider = create_provider(
+                    provider="ollama",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
+                # V0.6.8 (audit B4): public attr — the "_model" guard was
+                # always False (OllamaProvider exposes self.model).
+                if hasattr(_provider, "model"):
+                    _provider.model = _summ_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 300
+        else:
+            # single_local or single_api — primary heavy model.
+            # single_local  → provider is ollama (or lmstudio/llamacpp)
+            #                 → local model
+            # single_api    → provider is openai_compatible   → cloud model
+            # The provider is read from settings so the wizard's mode
+            # choice (which sets ``summarisation.provider``) is honoured.
+            _prov = _settings.get("summarisation.provider", "ollama")
+            if _prov == "llamacpp":
+                # V0.04: llama.cpp server — a local backend with its own
+                # provider (NOT an Ollama-shaped call). The 300s timeout
+                # override below does not apply: llama.cpp generates
+                # stream-first (per-chunk timeout), so the provider's
+                # own budget-derived timeouts govern.
+                _provider = create_provider(
+                    provider="llamacpp",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                _summ_model = _settings.get(
+                    "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
+                )
+                if hasattr(_provider, "model"):
+                    _provider.model = _summ_model
+                log(
+                    f"  🚀 V0.04 concept extraction: single_local mode "
+                    f"(llama.cpp model = {_summ_model})",
+                    "INFO",
+                )
+            elif _prov in ("ollama", "lmstudio", "fusion"):
+                _provider = create_provider(
+                    provider="ollama",
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
+                # V0.6.8 (audit B4): public attr — the "_model" guard was
+                # always False (OllamaProvider exposes self.model).
+                if hasattr(_provider, "model"):
+                    _provider.model = _summ_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 300  # 5 min for concept extraction
+                log(
+                    f"  🚀 V16.0.9 concept extraction: single_local mode "
+                    f"(heavy local model = {_summ_model})",
+                    "INFO",
+                )
+            else:
+                # Cloud provider (openrouter / openai / openai_compatible /
+                # claude / freellmapi). create_provider reads api_base_url,
+                # api_key, cloud_model from settings automatically.
+                _cloud_prov = "openai_compatible" if _prov not in ("claude",) else _prov
+                _provider = create_provider(
+                    provider=_cloud_prov,
+                    settings=_settings,
+                    log_callback=log,
+                    supervisor=None,
+                )
+                _summ_model = _settings.get("summarisation.cloud_model", "gpt-4o-mini")
+                # V0.6.8 (audit B4): public attr — the "_model" guard was
+                # always False (OpenAICompatProvider exposes self.model).
+                if hasattr(_provider, "model"):
+                    _provider.model = _summ_model
+                if hasattr(_provider, "timeout"):
+                    _provider.timeout = 300
+                log(
+                    f"  🚀 V16.0.9 concept extraction: single_api mode "
+                    f"(heavy cloud model = {_summ_model})",
+                    "INFO",
+                )
+
+        def _llm_call_fn(prompt):
+            # V18.20.4.12 (W-a11): /no_think is now GATED on Qwen-family
+            # models via the shared ``qwen_no_think`` helper — was the
+            # V16.0.4 unconditional "/no_think\n\n" prefix "for ALL
+            # models" (prompt pollution for non-Qwen models; the
+            # directive is a Qwen3 soft-switch). The empty-response
+            # nudge retry below is UNTOUCHED.
+            _actual_prompt = qwen_no_think(prompt, _summ_model)
+            try:
+                _result = _provider.complete(
+                    prompt=_actual_prompt,
+                    temperature=1.0,
+                    max_tokens=800,
+                    model=_summ_model,
+                )
+                if _result and len(_result.strip()) >= 20:
+                    return _result
+                # V16.0.4: Retry with nudge suffix
+                _nudge_prompt = _actual_prompt + "\n\nPlease output the response now."
+                _result2 = _provider.complete(
+                    prompt=_nudge_prompt,
+                    temperature=1.0,
+                    max_tokens=800,
+                    model=_summ_model,
+                )
+                return _result2 if _result2 and len(_result2.strip()) >= 20 else None
+            except Exception:
+                return None
+
+        return _llm_call_fn
+    except Exception as _e:
+        log(f"  ℹ️ V15.2.0: LLM-assisted concept extraction unavailable ({_e})", "DEBUG")
+        return None
+
+
+def _rs_build_chapter_dicts(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim V15.2.0 concept-extraction block — the
+    per-segment concepts/callouts loop with the deterministic-analysis skip
+    and the fail-open fallback — sets ``ctx.chapter_dicts``. The LLM factory
+    moved to ``_rs_make_concept_llm_fn`` (same body, one indent shallower)."""
+    log = ctx.log
+    request = ctx.request
+    segments_for_summary = ctx.segments_for_summary
+    segments = ctx.segments
     try:
         from core.summarisation.text_preprocessor import (
             DeterministicPreprocessor,
@@ -752,231 +1048,7 @@ def run_summarization(
         # provider). Legacy ``single`` is mapped to ``single_local`` for
         # backward compat. Architecture is read from the request first
         # (per-conversion override) and then from settings as a fallback.
-        _llm_call_fn = None
-        try:
-            # Lazy import to avoid circular dependency
-            from core.llm.llm_provider import create_provider
-            from utils.settings import Settings as _S
-
-            _settings = _S()
-            _arch = (
-                getattr(request, "model_architecture", None)
-                or _settings.get("summarisation.model_architecture", "single_local")
-                or "single_local"
-            )
-            # V16.0.9: backward-compat — legacy "single" → "single_local"
-            if _arch == "single":
-                _arch = "single_local"
-
-            if _arch == "dual_api":
-                # Use the OpenAI-compatible cloud API for fast concept extraction.
-                _api_url = getattr(request, "fast_api_url", "") or _settings.get(
-                    "summarisation.fast_api_url", ""
-                )
-                # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
-                from core.system.secrets import get_secret
-
-                _api_key = getattr(request, "fast_api_key", "") or get_secret(
-                    "summarisation.fast_api_key", _settings, ""
-                )
-                _api_model = getattr(request, "fast_api_model", "") or _settings.get(
-                    "summarisation.fast_api_model", ""
-                )
-                if _api_url and _api_model:
-                    _provider = create_provider(
-                        provider="openai_compatible",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    # Override the cloud settings to point at the fast API.
-                    # V0.6.8 (audit B4): the override now sets the PUBLIC
-                    # provider attributes — the old hasattr("_base_url"/
-                    # "_api_key"/"_model") guards were always False
-                    # (OpenAICompatProvider stores self.base_url/self.api_key
-                    # — openai_compat_provider.py:39-40), so the fast-API
-                    # URL/key were silently ignored and calls kept hitting
-                    # the settings cloud endpoint. Pinned by
-                    # tests/test_v068_review_loop_fixes.py.
-                    _provider.base_url = _api_url
-                    _provider.api_key = _api_key
-                    _provider.model = _api_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 120
-                    _summ_model = _api_model
-                    log(
-                        f"  🚀 V16.0.8 concept extraction: dual_api mode "
-                        f"(fast cloud model = {_api_model})",
-                        "INFO",
-                    )
-                else:
-                    log(
-                        "  ⚠️ V16.0.8 dual_api configured but fast_api_url or "
-                        "fast_api_model is empty — falling back to primary "
-                        "summarisation model for concept extraction",
-                        "WARNING",
-                    )
-                    _provider = create_provider(
-                        provider="ollama",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    # V0.6.8 (audit B4): public attr — the "_model" guard was
-                    # always False (OllamaProvider exposes self.model).
-                    if hasattr(_provider, "model"):
-                        _provider.model = _summ_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 300
-            elif _arch == "dual_local":
-                # Use the local fast model via Ollama for fast concept extraction.
-                _fast_model = getattr(request, "fast_model", "") or _settings.get(
-                    "summarisation.fast_model", ""
-                )
-                if _fast_model:
-                    _provider = create_provider(
-                        provider="ollama",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    # V0.6.8 (audit B4): public attr — the "_model" guard was
-                    # always False (OllamaProvider exposes self.model).
-                    if hasattr(_provider, "model"):
-                        _provider.model = _fast_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 120  # fast model = shorter timeout
-                    _summ_model = _fast_model
-                    log(
-                        f"  🚀 V16.0.8 concept extraction: dual_local mode "
-                        f"(fast Ollama model = {_fast_model})",
-                        "INFO",
-                    )
-                else:
-                    log(
-                        "  ⚠️ V16.0.8 dual_local configured but fast_model is "
-                        "empty — falling back to primary summarisation model "
-                        "for concept extraction",
-                        "WARNING",
-                    )
-                    _provider = create_provider(
-                        provider="ollama",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    # V0.6.8 (audit B4): public attr — the "_model" guard was
-                    # always False (OllamaProvider exposes self.model).
-                    if hasattr(_provider, "model"):
-                        _provider.model = _summ_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 300
-            else:
-                # single_local or single_api — primary heavy model.
-                # single_local  → provider is ollama (or lmstudio/llamacpp)
-                #                 → local model
-                # single_api    → provider is openai_compatible   → cloud model
-                # The provider is read from settings so the wizard's mode
-                # choice (which sets ``summarisation.provider``) is honoured.
-                _prov = _settings.get("summarisation.provider", "ollama")
-                if _prov == "llamacpp":
-                    # V0.04: llama.cpp server — a local backend with its own
-                    # provider (NOT an Ollama-shaped call). The 300s timeout
-                    # override below does not apply: llama.cpp generates
-                    # stream-first (per-chunk timeout), so the provider's
-                    # own budget-derived timeouts govern.
-                    _provider = create_provider(
-                        provider="llamacpp",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    _summ_model = _settings.get(
-                        "summarisation.llamacpp_model", "Ternary-Bonsai-2-27B-Instruct-Vision"
-                    )
-                    if hasattr(_provider, "model"):
-                        _provider.model = _summ_model
-                    log(
-                        f"  🚀 V0.04 concept extraction: single_local mode "
-                        f"(llama.cpp model = {_summ_model})",
-                        "INFO",
-                    )
-                elif _prov in ("ollama", "lmstudio", "fusion"):
-                    _provider = create_provider(
-                        provider="ollama",
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    _summ_model = _settings.get("summarisation.model", "gemma4-12b:latest")
-                    # V0.6.8 (audit B4): public attr — the "_model" guard was
-                    # always False (OllamaProvider exposes self.model).
-                    if hasattr(_provider, "model"):
-                        _provider.model = _summ_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 300  # 5 min for concept extraction
-                    log(
-                        f"  🚀 V16.0.9 concept extraction: single_local mode "
-                        f"(heavy local model = {_summ_model})",
-                        "INFO",
-                    )
-                else:
-                    # Cloud provider (openrouter / openai / openai_compatible /
-                    # claude / freellmapi). create_provider reads api_base_url,
-                    # api_key, cloud_model from settings automatically.
-                    _cloud_prov = "openai_compatible" if _prov not in ("claude",) else _prov
-                    _provider = create_provider(
-                        provider=_cloud_prov,
-                        settings=_settings,
-                        log_callback=log,
-                        supervisor=None,
-                    )
-                    _summ_model = _settings.get("summarisation.cloud_model", "gpt-4o-mini")
-                    # V0.6.8 (audit B4): public attr — the "_model" guard was
-                    # always False (OpenAICompatProvider exposes self.model).
-                    if hasattr(_provider, "model"):
-                        _provider.model = _summ_model
-                    if hasattr(_provider, "timeout"):
-                        _provider.timeout = 300
-                    log(
-                        f"  🚀 V16.0.9 concept extraction: single_api mode "
-                        f"(heavy cloud model = {_summ_model})",
-                        "INFO",
-                    )
-
-            def _llm_call_fn(prompt):
-                # V18.20.4.12 (W-a11): /no_think is now GATED on Qwen-family
-                # models via the shared ``qwen_no_think`` helper — was the
-                # V16.0.4 unconditional "/no_think\n\n" prefix "for ALL
-                # models" (prompt pollution for non-Qwen models; the
-                # directive is a Qwen3 soft-switch). The empty-response
-                # nudge retry below is UNTOUCHED.
-                _actual_prompt = qwen_no_think(prompt, _summ_model)
-                try:
-                    _result = _provider.complete(
-                        prompt=_actual_prompt,
-                        temperature=1.0,
-                        max_tokens=800,
-                        model=_summ_model,
-                    )
-                    if _result and len(_result.strip()) >= 20:
-                        return _result
-                    # V16.0.4: Retry with nudge suffix
-                    _nudge_prompt = _actual_prompt + "\n\nPlease output the response now."
-                    _result2 = _provider.complete(
-                        prompt=_nudge_prompt,
-                        temperature=1.0,
-                        max_tokens=800,
-                        model=_summ_model,
-                    )
-                    return _result2 if _result2 and len(_result2.strip()) >= 20 else None
-                except Exception:
-                    return None
-        except Exception as _e:
-            log(f"  ℹ️ V15.2.0: LLM-assisted concept extraction unavailable ({_e})", "DEBUG")
-
+        _llm_call_fn = _rs_make_concept_llm_fn(ctx)
         chapter_dicts = []
         for s in segments_for_summary:
             # V17.4/V17.5: When the deterministic analysis is available (V17.2),
@@ -1039,6 +1111,7 @@ def run_summarization(
                     "end_page": getattr(s, "end_page", None),
                 }
             )
+        ctx.chapter_dicts = chapter_dicts
     except Exception as e:
         log(f"  ⚠️ Concept extraction skipped: {e}", "DEBUG")
         chapter_dicts = [
@@ -1051,9 +1124,16 @@ def run_summarization(
             for s in segments
         ]
 
+
+def _rs_split_resume(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim chapter-level resume split — loads
+    previously-completed chapters and narrows the todo set — sets
+    ``ctx.loaded_summaries`` / ``ctx.chapter_dicts``."""
+    log = ctx.log
+    converter = ctx.converter
     # ── Chapter-level resume ─────────────────────────────────────────
     resume_enabled = converter.settings.get("summarisation.resume_enabled", True)
-    loaded_summaries: list[SummaryResult] = []
+    ctx.loaded_summaries: list[SummaryResult] = []
     if resume_enabled:
         from core.pipeline.chapter_resume import (
             detect_processed_chapters,
@@ -1062,26 +1142,38 @@ def run_summarization(
 
         processed = detect_processed_chapters(converter.output_dir)
         if processed:
-            todo_chapters, loaded_summaries = split_chapters_for_resume(
-                chapter_dicts,
+            todo_chapters, ctx.loaded_summaries = split_chapters_for_resume(
+                ctx.chapter_dicts,
                 processed,
                 log,
             )
-            if loaded_summaries and not todo_chapters:
+            if ctx.loaded_summaries and not todo_chapters:
                 log(
                     "  ✅ All chapters already processed — skipping "
                     "summarization entirely (whole-book outputs will "
                     "still regenerate from loaded summaries).",
                     "INFO",
                 )
-            chapter_dicts = todo_chapters
+            ctx.chapter_dicts = todo_chapters
 
-    summaries = []
-    if chapter_dicts:
+
+def _rs_summarize_chapters(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim summarize block — the short-chapter
+    warnings, the selected-chapter matcher with its FAIL-CLOSED
+    ChapterMatchFailure, the incremental checkpoint-saver wiring, and the
+    ``summarize_chapters`` call — sets ``ctx.summaries``."""
+    log = ctx.log
+    converter = ctx.converter
+    request = ctx.request
+    segments = ctx.segments
+    summarizer = ctx.summarizer
+    book_title = ctx.book_title
+    ctx.summaries = []
+    if ctx.chapter_dicts:
         # V10.24.0: Warn about very short chapters (< 200 tokens)
         # These produce garbage summaries because the LLM doesn't have enough
         # source text to work with.
-        for _cd in chapter_dicts:
+        for _cd in ctx.chapter_dicts:
             try:
                 from utils.token_counter import count_tokens
 
@@ -1095,14 +1187,14 @@ def run_summarization(
             except Exception as _e:
                 logger.debug("ignored %s: %s", type(_e).__name__, _e)
         _selected_count = len(request.selected_chapters) if request.selected_chapters else 0
-        _to_summarize = len(chapter_dicts)
+        _to_summarize = len(ctx.chapter_dicts)
         log(
             f"📚 Summarising {_to_summarize} chapter(s) with {request.max_workers} worker(s)...",
             "INFO",
         )
-        for _ci, _cd in enumerate(chapter_dicts, 1):
+        for _ci, _cd in enumerate(ctx.chapter_dicts, 1):
             log(
-                f"  📖 Chapter {_ci}/{len(chapter_dicts)}: "
+                f"  📖 Chapter {_ci}/{len(ctx.chapter_dicts)}: "
                 f"'{_cd['heading'][:50]}' ({len(_cd['content'])} chars)",
                 "INFO",
             )
@@ -1113,13 +1205,13 @@ def run_summarization(
                 f"  ⚠️ WARNING: User selected {_selected_count} chapter(s) "
                 f"but {_to_summarize} are being summarized. "
                 f"This may indicate a segmentation issue. "
-                f"Chapters: {[cd['heading'][:40] for cd in chapter_dicts]}",
+                f"Chapters: {[cd['heading'][:40] for cd in ctx.chapter_dicts]}",
                 "WARNING",
             )
             _selected_titles = request.selected_chapters or []
             # V18.3.1 (P0): capture the available headings BEFORE filtering,
             # so the ChapterMatchFailure error can list what segments exist.
-            _all_available_headings = [cd["heading"] for cd in chapter_dicts]
+            _all_available_headings = [cd["heading"] for cd in ctx.chapter_dicts]
             # V18.3.3 (F4): use the unified ChapterMatcher — replaces the
             # inline heading-text + page-based logic. This is the SAME matcher
             # used by Stage 1 (segmentation), so the two stages now agree.
@@ -1130,13 +1222,13 @@ def run_summarization(
             )
             _matched = _matcher.match(
                 _selected_titles,
-                chapter_dicts,
+                ctx.chapter_dicts,
                 max_results=len(_selected_titles) if _selected_titles else None,
             )
-            chapter_dicts = [seg for _, seg in _matched]
+            ctx.chapter_dicts = [seg for _, seg in _matched]
             log(
-                f"  ✂️ Selected best {len(chapter_dicts)} match(es): "
-                f"{[cd['heading'][:40] for cd in chapter_dicts]}",
+                f"  ✂️ Selected best {len(ctx.chapter_dicts)} match(es): "
+                f"{[cd['heading'][:40] for cd in ctx.chapter_dicts]}",
                 "INFO",
             )
 
@@ -1144,7 +1236,7 @@ def run_summarization(
             # FAIL-CLOSED — if the user selected chapters but the unified matcher
             # (heading-text + aliases + page-based) found 0 matches, ABORT with
             # an actionable error instead of silently producing an empty summary.
-            if _selected_titles and not chapter_dicts:
+            if _selected_titles and not ctx.chapter_dicts:
                 from core.errors import ChapterMatchFailure
 
                 _sel_preview = [t[:50] for t in _selected_titles[:3]]
@@ -1164,8 +1256,8 @@ def run_summarization(
                     available=_all_available_headings,
                 )
         _thermal_cb = None
-        if _thermal_safety is not None:
-            _thermal_cb = _thermal_safety.wait_if_paused
+        if ctx.thermal_safety is not None:
+            _thermal_cb = ctx.thermal_safety.wait_if_paused
         # ── V18.20.3.0: incremental chapter checkpointing ───────────────
         # Compute each todo chapter's FINAL position in the merged
         # (loaded + new) summary list UP FRONT — positions are the segment
@@ -1176,8 +1268,8 @@ def run_summarization(
         # compute_final_positions) — they fall back to the saver's
         # per-run chapter index so no chapter is ever lost to a filename
         # collision.
-        _todo_headings = {cd["heading"] for cd in chapter_dicts}
-        _loaded_headings = {s.chapter_heading for s in loaded_summaries}
+        _todo_headings = {cd["heading"] for cd in ctx.chapter_dicts}
+        _loaded_headings = {s.chapter_heading for s in ctx.loaded_summaries}
         _final_positions = compute_final_positions(segments, _todo_headings, _loaded_headings)
         _cp_saver = None
         if converter.settings.get("summarisation.incremental_chapter_save", True):
@@ -1186,7 +1278,7 @@ def run_summarization(
             _cp_saver = ChapterCheckpointSaver(
                 converter,
                 heading_positions=_final_positions,
-                chapters_total=len(chapter_dicts) + len(loaded_summaries),
+                chapters_total=len(ctx.chapter_dicts) + len(ctx.loaded_summaries),
                 build_docx=bool(getattr(request, "generate_docx", False)),
                 book_title=book_title,
             )
@@ -1196,30 +1288,42 @@ def run_summarization(
                 "completes; a crash/cancel never loses finished chapters.",
                 "INFO",
             )
-        summaries = summarizer.summarize_chapters(
-            chapter_dicts,
+        ctx.summaries = summarizer.summarize_chapters(
+            ctx.chapter_dicts,
             progress_callback=converter._summarisation_progress,
             cancel_event=converter.cancel_event,
             thermal_pause_callback=_thermal_cb,
             chapter_done_callback=(_cp_saver.on_chapter_done if _cp_saver is not None else None),
         )
 
+
+def _rs_merge_loaded_summaries(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim loaded+new merge — re-orders the merged
+    list by segment order — updates ``ctx.summaries``."""
+    log = ctx.log
+    segments = ctx.segments
     # ── Merge loaded + new summaries ────────────────────────────────
-    if loaded_summaries:
+    if ctx.loaded_summaries:
         from core.pipeline.chapter_resume import merge_summaries
 
         all_headings = [s.heading for s in segments]
-        summaries = merge_summaries(summaries, loaded_summaries, all_headings)
+        ctx.summaries = merge_summaries(ctx.summaries, ctx.loaded_summaries, all_headings)
         log(
-            f"  📂 Merged {len(loaded_summaries)} loaded + "
-            f"{len(summaries) - len(loaded_summaries)} new summaries",
+            f"  📂 Merged {len(ctx.loaded_summaries)} loaded + "
+            f"{len(ctx.summaries) - len(ctx.loaded_summaries)} new summaries",
             "INFO",
         )
 
-    # V0.6.7 (review-loop B6): the per-chapter save block moved VERBATIM to
-    # _save_chapter_summaries_write_once (module level, directly testable).
-    _save_chapter_summaries_write_once(converter, segments, summaries, log)
 
+def _rs_write_book_summary(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim book-summary block — the build, the
+    V18.20.3.7 provenance stamp + visible footer, the atomic write, and the
+    V0.4.25 run-stamped copy."""
+    log = ctx.log
+    converter = ctx.converter
+    book_title = ctx.book_title
+    summarizer = ctx.summarizer
+    summaries = ctx.summaries
     if converter.settings.get("summarisation.include_book_summary", True):
         # V0.03 (P1-6): collect the ACTUAL aggregated bullet count — the
         # provenance stamp previously passed len(summaries) (the CHAPTER
@@ -1298,6 +1402,16 @@ def run_summarization(
         except Exception:  # pragma: no cover — the stamped copy must never break the save
             pass
 
+
+def _rs_finalize(ctx: _SummCtx) -> None:
+    """V0.6.11 (B14-a): the verbatim finalize block — the 0.80 progress, the
+    cancel-leaves-checkpoint-pending contract (SWOT A15), the judge_results
+    stash + Layer-8 count, and the best-effort torch VRAM cleanup."""
+    log = ctx.log
+    converter = ctx.converter
+    summarizer = ctx.summarizer
+    summaries = ctx.summaries
+    update_progress = ctx.update_progress
     update_progress(0.80)  # Summaries done
     # V18.20.2.0 (SWOT A15): a cancelled run must NOT mark the
     # summarization phase checkpoint-done on PARTIAL state —
@@ -1347,4 +1461,91 @@ def run_summarization(
     except Exception as _e:
         logger.debug("ignored %s: %s", type(_e).__name__, _e)  # never crash on VRAM cleanup
 
-    return SummarizationResult(summaries=summaries)
+
+def run_summarization(
+    converter: Any,
+    segments: list[Any],
+    segments_folder: Any,
+    detected_lang: str,
+    book_title: str,
+    elapsed_fn: Any,
+) -> SummarizationResult | ConversionResult:
+    """Run the summarization phase (Step 9).
+
+    Args:
+        converter: the Converter instance (accessed for ``self.request``,
+            ``self._log``, ``self._update_status``, ``self._update_progress``,
+            ``self.settings``, ``self.output_dir``, ``self.paths``,
+            ``self.checkpoint``, ``self.cancel_event``,
+            ``self._filter_segment_content``, ``self._match_chapter``,
+            ``self._summarisation_progress``, ``self._sanitize_filename``,
+            ``self._build_error_result``, ``self.summary_md_path``).
+        segments: the segment list (from segmentation phase).
+        segments_folder: the folder where segment files were saved (used
+            for the summaries subfolder).
+        detected_lang: the detected language code (from output_save phase).
+        book_title: the detected book title (from output_save phase).
+        elapsed_fn: a callable returning the elapsed-time string (the
+            converter's ``_elapsed`` closure timer).  Called once at the
+            start of the phase for the "Summary phase starting" log line.
+
+    Returns:
+        ``SummarizationResult`` (summaries) on success, or
+        ``ConversionResult`` (success=False) on early exit.
+
+    V0.6.11 (B14-a): the body is now the phase sequence behind ``_SummCtx``
+    (unload-VRAM → content filter → reference-skip → claim extractor → GPU
+    profile → thermal safety → summarizer init → glossary handoff → chapter
+    dicts → resume split → summarize → merge → save → book summary →
+    finalize) — the public signature, the call/statement ORDER, and every
+    moved block are unchanged (AST-identity pinned by
+    tests/test_v0611_wave7_godfunction_decomp.py).
+    """
+    ctx = _SummCtx(
+        converter=converter,
+        segments=segments,
+        segments_folder=segments_folder,
+        detected_lang=detected_lang,
+        book_title=book_title,
+        elapsed_fn=elapsed_fn,
+        log=converter._log,
+        update_status=converter._update_status,
+        update_progress=converter._update_progress,
+        request=converter.request,
+    )
+    log = ctx.log
+    update_status = ctx.update_status
+    update_progress = ctx.update_progress
+    request = ctx.request
+
+    if not request.generate_summaries:
+        return SummarizationResult(summaries=ctx.summaries)
+
+    if converter.cancel_event.is_set():
+        return ConversionResult(success=False, error_msg="Cancelled by user")
+
+    update_status("Generating summaries…")
+    log(f"  ⏱️ Summary phase starting | [{elapsed_fn()}]", "INFO")
+    update_progress(0.25)  # Summary phase starts here (0.25-0.80)
+
+    _rs_unload_ocr_vram(ctx)
+    # ── Determine summary language ───────────────────────────────────
+    lang_setting = converter.settings.get("summarisation.language", "auto")
+    ctx.summary_lang = detected_lang if lang_setting == "auto" else lang_setting
+    _rs_apply_content_filter(ctx)
+    _rs_filter_reference_sections(ctx)
+    _rs_build_claim_extractor(ctx)
+    _rs_detect_gpu_profile(ctx)
+    _error = _rs_start_thermal_safety(ctx)
+    if _error is not None:
+        return _error
+    _rs_init_summarizer(ctx)
+    _rs_thread_glossary_handoff(ctx)
+    _rs_build_chapter_dicts(ctx)
+    _rs_split_resume(ctx)
+    _rs_summarize_chapters(ctx)
+    _rs_merge_loaded_summaries(ctx)
+    _save_chapter_summaries_write_once(converter, segments, ctx.summaries, log)
+    _rs_write_book_summary(ctx)
+    _rs_finalize(ctx)
+    return SummarizationResult(summaries=ctx.summaries)
