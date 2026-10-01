@@ -259,6 +259,22 @@ def summarize_transcript(
         # Summarization dialog) — it was hardcoded to "ollama", so any rig
         # configured for another backend got connection-refused here.
         provider_name = str(s.get("summarisation.provider", "ollama") or "ollama").strip().lower()
+
+        # V0.6.13: the llama.cpp-first local fallback (the operator's
+        # follow-up report: "TRANSCRIBE SERVICE ... FIND[S] LLM ON OLLAMA
+        # ONLY"). A live llama-server takes over the call — the factory's
+        # llamacpp branch speaks OpenAI-compat to it and the DETECTED
+        # served model wins over the dialog's model pick (the V0.4.30
+        # precedent). Cloud selections are never probed; a dead llama.cpp
+        # leaves this path byte-identical to V0.6.12.
+        from core.llm.local_fallback import decide_llamacpp_first
+
+        _lc = decide_llamacpp_first(s, provider_name)
+        if _lc.note:
+            log(f"  🦙 {_lc.note}", "INFO")
+        if _lc.use_llamacpp:
+            provider_name = "llamacpp"
+
         # V13.28.0: Create provider via the factory — gets supervisor + retry
         provider = create_provider(
             provider=provider_name,
@@ -269,16 +285,20 @@ def summarize_transcript(
         # path — the factory pins the default localhost:11434, but this
         # service is always invoked with the endpoint the dialog resolved
         # from Settings, and the ``ollama_url`` parameter used to be dead.
+        # (V0.6.13: skipped on the llama.cpp takeover — that provider reads
+        # the llamacpp_* block, not the Ollama URL.)
         if provider_name == "ollama" and ollama_url:
             _base = str(ollama_url).rstrip("/")
             if _base and _base != "http://localhost:11434":
                 provider.base_url = _base
-        # Override model + timeout for this specific call (transcripts need 600s)
+        # Override model + timeout for this specific call (transcripts need 600s).
+        # V0.6.13: on the llama.cpp takeover the DETECTED served model wins
+        # over the dialog's pick.
         result = provider.complete_streaming(
             prompt=prompt,
             temperature=0.3,
             max_tokens=4096,
-            model=model,
+            model=_lc.model if _lc.use_llamacpp else model,
             on_chunk=None,  # no progress display during streaming
         )
 
