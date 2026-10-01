@@ -339,7 +339,22 @@ class VibeVoiceEngine(TTSEngine):
                         "https://github.com/microsoft/VibeVoice.git && "
                         'cd VibeVoice && pip install -e ".[streamingtts]"'
                     )
-                raise RuntimeError(f"Model load failed: {_load_err}{_install_hint}")
+                # V0.6.16: the native-VibeVoice duplicate registration —
+                # transformers v5.13+ pre-registers the same config names
+                # the from-source package registers at import time and the
+                # load dies with "'...' is already used by a Transformers
+                # model." The subprocess now tolerates this automatically;
+                # this hint only fires if the tolerance itself could not
+                # be installed (a future transformers layout change).
+                _native_hint = ""
+                if "is already used by a Transformers model" in _load_err:
+                    _native_hint = (
+                        " — your transformers already ships native VibeVoice "
+                        "classes and the from-source VibeVoice package re-"
+                        "registers them; update Elixir to the latest build "
+                        "(it tolerates this) or pin 'transformers<5.13'"
+                    )
+                raise RuntimeError(f"Model load failed: {_load_err}{_install_hint}{_native_hint}")
 
         # V18.20.4.4 (W-c2): kill the still-loading subprocess before
         # raising. Previously this path raised with the handle still set

@@ -203,6 +203,239 @@ def _load_voice_preset(torch, preset_path, map_loc, allowed_globals):
             return torch.load(preset_path, map_location=map_loc, weights_only=False)
 
 
+# V0.6.16: the transformers-v5 compatibility state. Set once by
+# _install_transformers_compat() so a second load command can never
+# double-wrap a patch or re-alias a module.
+_REGISTER_COMPAT_INSTALLED = False
+
+
+def _make_tolerant_register(fn):
+    """V0.6.16: wrap a register callable so the native-VibeVoice duplicate
+    ValueError is retried with exist_ok=True — the from-source class then
+    wins, the exact end-state of a transformers WITHOUT native vibevoice.
+    Every other ValueError (e.g. the config-class mismatch) propagates
+    unchanged; a caller that already passes exist_ok=True goes straight
+    through. The retried collision is named in a NOTE line so the live
+    log says what happened and that it is safe."""
+
+    def _wrapper(*args, **kwargs):
+        if kwargs.get("exist_ok"):
+            return fn(*args, **kwargs)
+        try:
+            return fn(*args, **kwargs)
+        except ValueError as exc:
+            if "is already used by a Transformers model" not in str(exc):
+                raise
+            key = args[1] if len(args) > 1 else kwargs.get("key") or kwargs.get("config_class")
+            safe_print(
+                f"[SUBPROCESS] NOTE: {getattr(key, '__name__', key)!r} is "
+                "already registered by your transformers' native VibeVoice "
+                "support — re-registering the from-source class (safe: the "
+                "app instantiates the from-source classes directly).",
+                file=sys.stderr,
+                flush=True,
+            )
+            retry = dict(kwargs)
+            retry["exist_ok"] = True
+            return fn(*args, **retry)
+
+    return _wrapper
+
+
+def _patch_lazy_auto_mapping_register():
+    """V0.6.16 primary patch: the shared _LazyAutoMapping.register — the
+    single choke point every Auto*.register call flows through (AutoModel,
+    AutoModelForCausalLM and the rest). Returns True when patched."""
+    try:
+        from transformers.models.auto.auto_factory import _LazyAutoMapping
+
+        original = _LazyAutoMapping.register
+    except Exception:
+        return False
+    if original is None or getattr(original, "_vv_tolerant", False):
+        return False
+    wrapped = _make_tolerant_register(original)
+    wrapped._vv_tolerant = True
+    _LazyAutoMapping.register = wrapped
+    return True
+
+
+def _patch_auto_classmethods(transformers):
+    """V0.6.16 fallback patch: the documented AutoModel.register /
+    AutoModelForCausalLM.register classmethods — used only when the
+    private _LazyAutoMapping path moved (a future transformers layout).
+    Returns the patched names."""
+    patched = []
+    for auto_name in ("AutoModel", "AutoModelForCausalLM"):
+        try:
+            auto_cls = getattr(transformers, auto_name, None)
+            original = getattr(auto_cls, "register", None) if auto_cls else None
+            if auto_cls is not None and original is not None:
+                func = getattr(original, "__func__", original)
+                if not getattr(func, "_vv_tolerant", False):
+                    wrapped = _make_tolerant_register(func)
+                    wrapped._vv_tolerant = True
+                    auto_cls.register = classmethod(wrapped)
+                    patched.append(f"{auto_name}.register")
+        except Exception:
+            continue
+    return patched
+
+
+def _tolerate_native_vibevoice_register():
+    """V0.6.16: survive transformers' NATIVE VibeVoice registrations.
+
+    transformers v5.13+ ships VibeVoice natively (models/vibevoice*), and
+    its auto-generated registry (models/auto/auto_mappings.py) already
+    contains the config-class NAME 'VibeVoiceAcousticTokenizerConfig'.
+    The from-source vibevoice package re-registers its OWN class with
+    that same name at import time (modular/modular_vibevoice_tokenizer.py:
+    'AutoModel.register(...)'), and transformers' _LazyAutoMapping.register
+    checks duplicates BY NAME — so the very first import dies with
+
+      ValueError: '<class 'vibevoice.modular.configuration_vibevoice.
+      VibeVoiceAcousticTokenizerConfig'>' is already used by a
+      Transformers model.
+
+    which killed every podcast at line 1 (the operator's V0.6.15 report:
+    the script generated fine, VibeVoice errored). The mapping entry is
+    cosmetic for us — the streaming inference path instantiates its
+    classes directly and never resolves them through AutoModel — so the
+    duplicate is made harmless: the register call is retried with
+    exist_ok=True and a NOTE is logged.
+
+    Belt and braces: the primary patch is the shared mapping register
+    (covers AutoModel, AutoModelForCausalLM and every other Auto* class
+    the package may register through); if that private path ever moves,
+    the documented classmethods are patched instead. If neither can be
+    patched the load proceeds unpatched — the V0.6.15 traceback
+    diagnostics then still show the original error. Never raises.
+    """
+    try:
+        import transformers
+
+        safe_print(
+            f"[SUBPROCESS] transformers {getattr(transformers, '__version__', '?')}",
+            file=sys.stderr,
+            flush=True,
+        )
+    except Exception:
+        # No transformers at all → the vibevoice import itself will fail
+        # with the V0.6.15 install hint; nothing for us to patch.
+        safe_print(
+            "[SUBPROCESS] (transformers not importable — no register patch needed)",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+
+    if _patch_lazy_auto_mapping_register():
+        safe_print(
+            "[SUBPROCESS] native-VibeVoice duplicate-register tolerance active "
+            "(_LazyAutoMapping.register)",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    patched = _patch_auto_classmethods(transformers)
+    if patched:
+        safe_print(
+            "[SUBPROCESS] native-VibeVoice duplicate-register tolerance active "
+            f"({', '.join(patched)})",
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
+        safe_print(
+            "[SUBPROCESS] WARNING: could not install the duplicate-register "
+            'tolerance — if the load fails with "is already used by a '
+            "Transformers model\", pin 'transformers<5.13' or update the "
+            "VibeVoice checkout",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+# V0.6.16: the legacy submodule paths the from-source VibeVoice package
+# imports that transformers v5 REMOVED (the classes still exist, moved
+# into the model package itself). (legacy path, package, class name).
+_LEGACY_TOKENIZER_MODULES = [
+    (
+        "transformers.models.qwen2.tokenization_qwen2_fast",
+        "transformers.models.qwen2",
+        "Qwen2TokenizerFast",
+    ),
+]
+
+
+def _alias_legacy_tokenizer_modules():
+    """V0.6.16: alias the tokenizer submodules transformers v5 removed.
+
+    transformers v5 dropped the per-model ``*_fast`` tokenizer submodules —
+    e.g. ``transformers.models.qwen2.tokenization_qwen2_fast`` no longer
+    exists, but ``Qwen2TokenizerFast`` is still importable from
+    ``transformers.models.qwen2`` directly. The from-source vibevoice
+    package still imports the legacy path
+    (modular/modular_vibevoice_text_tokenizer.py), which dies with
+    ModuleNotFoundError right AFTER the register fix unblocks the first
+    import — the second act of the same v5 breakage (proven live against
+    transformers 5.17.0). Each legacy path is pre-registered in sys.modules
+    as a one-attribute alias module built from the package's own class;
+    when the REAL module exists (transformers < 5) nothing is aliased at
+    all. Never raises.
+    """
+    import importlib
+    import types
+
+    for legacy_path, package_name, class_name in _LEGACY_TOKENIZER_MODULES:
+        if legacy_path in sys.modules:
+            continue
+        try:
+            importlib.import_module(legacy_path)
+            continue  # the real module exists — nothing to alias
+        except ImportError:
+            pass
+        try:
+            package = importlib.import_module(package_name)
+            real_class = getattr(package, class_name, None)
+        except Exception:
+            continue  # the vibevoice import will surface the real error
+        if real_class is None:
+            continue
+        alias = types.ModuleType(legacy_path)
+        setattr(alias, class_name, real_class)
+        sys.modules[legacy_path] = alias
+        safe_print(
+            f"[SUBPROCESS] NOTE: aliased {legacy_path} (removed in "
+            f"transformers v5) — {class_name} taken from {package_name}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def _install_transformers_compat():
+    """V0.6.16: the transformers-v5 compatibility layer for the from-source
+    VibeVoice package — both shims proven against the REAL stack (torch
+    2.14 CPU + transformers 5.17.0 + microsoft/VibeVoice @ main, the
+    operator's exact failure reproduced first):
+
+    1. _tolerate_native_vibevoice_register() — the native-VibeVoice
+       duplicate registration that kills the import at
+       modular_vibevoice_tokenizer.py:1200;
+    2. _alias_legacy_tokenizer_modules() — the removed *_fast tokenizer
+       submodule paths that kill it at
+       modular_vibevoice_text_tokenizer.py one import later.
+
+    Idempotent; never raises.
+    """
+    global _REGISTER_COMPAT_INSTALLED
+    if _REGISTER_COMPAT_INSTALLED:
+        return
+    _REGISTER_COMPAT_INSTALLED = True
+    _tolerate_native_vibevoice_register()
+    _alias_legacy_tokenizer_modules()
+
+
 def main():
     model = None
     processor = None
@@ -233,6 +466,13 @@ def main():
 
             try:
                 import torch
+
+                # V0.6.16: transformers v5 (the operator's rig runs it)
+                # breaks the from-source vibevoice import twice — the
+                # native-VibeVoice duplicate registration AND the removed
+                # *_fast tokenizer submodule. Install the compat layer
+                # BEFORE the first import.
+                _install_transformers_compat()
                 from vibevoice.modular.modeling_vibevoice_streaming_inference import (
                     VibeVoiceStreamingForConditionalGenerationInference,
                 )
