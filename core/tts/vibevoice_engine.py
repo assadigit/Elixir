@@ -354,7 +354,26 @@ class VibeVoiceEngine(TTSEngine):
                         "registers them; update Elixir to the latest build "
                         "(it tolerates this) or pin 'transformers<5.13'"
                     )
-                raise RuntimeError(f"Model load failed: {_load_err}{_install_hint}{_native_hint}")
+                # V0.6.17: the meta-device model init — transformers v5
+                # builds every model on the meta device and VibeVoice's
+                # noise scheduler cannot survive it (its cosine-schedule
+                # betas become meta tensors; dpm_solver.py:295 dies with
+                # "Cannot copy out of meta tensor; no data!" — the
+                # operator's V0.6.16 paste-back). The subprocess now
+                # guards this automatically; this hint only fires if the
+                # guard itself could not be installed (e.g. a future
+                # VibeVoice layout change).
+                _meta_hint = ""
+                if "meta tensor" in _load_err:
+                    _meta_hint = (
+                        " — transformers v5's meta-device model init broke "
+                        "the VibeVoice noise scheduler; update Elixir to "
+                        "the latest build (it guards this) or pin "
+                        "'transformers<5'"
+                    )
+                raise RuntimeError(
+                    f"Model load failed: {_load_err}{_install_hint}{_native_hint}{_meta_hint}"
+                )
 
         # V18.20.4.4 (W-c2): kill the still-loading subprocess before
         # raising. Previously this path raised with the handle still set
