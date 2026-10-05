@@ -177,6 +177,43 @@ def _cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_stats(args: argparse.Namespace) -> int:
+    """V0.6.20 (W-f2): the stats subcommand — compute + print rich
+    analytics (word count, est. duration, host split, segment
+    distribution, reading level). Exits 0 on success, 2 on file/parse
+    error."""
+    from core.podcast.script_stats import compute_stats, format_stats_for_display
+
+    script_path = Path(args.script)
+    if not script_path.exists():
+        print(f"❌ Script file not found: {script_path}", file=sys.stderr)
+        return 2
+    try:
+        script = _load_script_json(script_path)
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"❌ Failed to parse script JSON: {e}", file=sys.stderr)
+        return 2
+
+    stats = compute_stats(script, wpm=args.wpm)
+    if args.json:
+        # JSON output — for piping to other tools / a future web view.
+        # Uses asdict-equivalent via the dataclasses' __dict__ (the
+        # nested HostStats/SegmentStats are dataclasses too).
+        import dataclasses
+
+        def _serialize(obj):
+            if dataclasses.is_dataclass(obj):
+                return {k: _serialize(v) for k, v in dataclasses.asdict(obj).items()}
+            if isinstance(obj, list):
+                return [_serialize(x) for x in obj]
+            return obj
+
+        print(json.dumps(_serialize(stats), indent=2, ensure_ascii=False))
+    else:
+        print(format_stats_for_display(stats, log=_log_to_stdout))
+    return 0
+
+
 def _cmd_generate(args: argparse.Namespace) -> int:
     """The generate subcommand — validate, then generate audio."""
     from core.podcast.audio_generator import generate_podcast_audio
@@ -287,9 +324,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m core.podcast.cli",
         description=(
-            "V0.6.19 (W-e3): headless podcast CLI. Validates a script JSON, "
-            "then generates audio without launching the Qt wizard. "
-            "Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
+            "V0.6.20 (W-f2): headless podcast CLI. Validates a script JSON, "
+            "computes statistics, then generates audio without launching the "
+            "Qt wizard. Ctrl-C cancels at the next line boundary "
+            "(V0.6.18 CancelToken)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -343,6 +381,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_info.add_argument("--script", required=True, help="Path to the script JSON.")
     p_info.set_defaults(func=_cmd_info)
+
+    # V0.6.20 (W-f2): stats — the rich analytics (word count, est. duration,
+    # host split, segment distribution, reading level). The info subcommand
+    # prints metadata; stats prints the deeper analytics the operator needs
+    # to plan a generation run.
+    p_stats = sub.add_parser(
+        "stats",
+        help="Compute + print rich statistics (word count, est. duration, host split, reading level).",
+    )
+    p_stats.add_argument("--script", required=True, help="Path to the script JSON.")
+    p_stats.add_argument(
+        "--wpm",
+        type=int,
+        default=None,
+        help="Override words-per-minute (default: 150 EN / 130 FA, auto-detected).",
+    )
+    p_stats.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON (for piping to other tools).",
+    )
+    p_stats.set_defaults(func=_cmd_stats)
 
     return parser
 
