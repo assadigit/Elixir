@@ -249,6 +249,55 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_templates(args: argparse.Namespace) -> int:
+    """V0.6.22 (W-h2): the templates subcommand — list pre-built podcast
+    script templates, or write one to a JSON file. Without --name, lists
+    all available templates. With --name + --out, writes the template's
+    ScriptResult to the JSON file (the operator can then edit + import it).
+    Exits 0 on success, 1 if the template name is unknown, 2 on file error."""
+    from core.podcast.script_templates import (
+        TEMPLATES,
+        format_templates_for_display,
+        get_template,
+    )
+
+    if args.name is None:
+        # List mode — print all templates.
+        print(format_templates_for_display(log=_log_to_stdout))
+        return 0
+
+    # Write mode — require --out.
+    if args.out is None:
+        print(
+            "❌ --out <FILE> is required when --name is set "
+            "(use `templates` without args to list available names).",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.name not in TEMPLATES:
+        print(
+            f"❌ Unknown template name: {args.name!r}. Available: "
+            f"{', '.join(sorted(TEMPLATES.keys()))}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    script = get_template(args.name)
+    out_path = Path(args.out)
+    try:
+        out_path.write_text(script.to_json(), encoding="utf-8")
+    except OSError as e:
+        print(f"❌ Failed to write {out_path}: {e}", file=sys.stderr)
+        return 2
+
+    print(
+        f"✅ Template {args.name!r} written to {out_path} "
+        f"({len(script.lines)} lines). Edit it, then use `generate --script {out_path}`."
+    )
+    return 0
+
+
 def _cmd_generate(args: argparse.Namespace) -> int:
     """The generate subcommand — validate, then generate audio."""
     from core.podcast.audio_generator import generate_podcast_audio
@@ -359,9 +408,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m core.podcast.cli",
         description=(
-            "V0.6.21 (W-g2): headless podcast CLI. Validates, computes statistics, "
-            "diffs two scripts, and generates audio without launching the Qt wizard. "
-            "Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
+            "V0.6.22 (W-h2): headless podcast CLI. Validates, computes statistics, "
+            "diffs scripts, lists templates, and generates audio without launching "
+            "the Qt wizard. Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -467,6 +516,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print only the one-line summary (e.g., '3 added, 1 deleted, 2 modified').",
     )
     p_diff.set_defaults(func=_cmd_diff)
+
+    # V0.6.22 (W-h2): templates — list pre-built podcast script templates,
+    # or write one to a JSON file. The operator can start from a template
+    # instead of a blank script (the wizard's future "New from template" button).
+    p_tmpl = sub.add_parser(
+        "templates",
+        help="List pre-built podcast script templates, or write one to a JSON file.",
+    )
+    p_tmpl.add_argument(
+        "--name",
+        default=None,
+        help="Template name to write (e.g., 'lecture_intro'). Without --name, lists all.",
+    )
+    p_tmpl.add_argument(
+        "--out",
+        default=None,
+        help="Output JSON path (required with --name). The template's ScriptResult is written here.",
+    )
+    p_tmpl.set_defaults(func=_cmd_templates)
 
     return parser
 
