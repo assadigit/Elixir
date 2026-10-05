@@ -651,6 +651,47 @@ class PodcastMakerView(QWidget):
             )
             self.out_edit.setText(out_path)
 
+        # V0.6.33 (W-q2): GPU-ONLY GATE — if torch.cuda is NOT available,
+        # show a confirmation modal before proceeding. CPU generation is
+        # ~100x slower (~34 min/line at 4 it/s vs ~20s/line on GPU). The
+        # operator's report ("it is still on CPU, 4 t per second, took
+        # 30 min then crashed and started from token 1") demanded this:
+        # "if it wanted to work on CPU, at must show a confirm modal."
+        try:
+            import torch as _torch_check
+
+            _cuda_ok = _torch_check.cuda.is_available()
+        except ImportError:
+            _cuda_ok = False  # torch not installed at all -> definitely CPU
+
+        if not _cuda_ok:
+            _torch_ver = "not installed"
+            try:
+                _torch_ver = getattr(_torch_check, "__version__", "unknown")
+            except Exception:
+                pass
+            _cuda_ver = "N/A"
+            try:
+                _cuda_ver = repr(_torch_check.version.cuda)
+            except Exception:
+                pass
+            _reply = QMessageBox.question(
+                self,
+                "No GPU Detected - CPU Generation",
+                f"VibeVoice will run on CPU at ~4 tokens/second (~34 minutes per line, "
+                f"~100x slower than GPU). A 50-line podcast could take 28+ HOURS.\n\n"
+                f"torch version: {_torch_ver}\n"
+                f"torch.version.cuda: {_cuda_ver}\n\n"
+                f"To fix (install CUDA torch):\n"
+                f"  pip install torch --index-url https://download.pytorch.org/whl/cu126\n\n"
+                f"Do you want to proceed on CPU anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if _reply != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Generation cancelled - no GPU detected.")
+                return  # abort - don't start generation
+
         self.gen_audio_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 100)
