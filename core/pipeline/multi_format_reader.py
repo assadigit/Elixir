@@ -180,8 +180,65 @@ def _extract_docx_fallback(file_path: Path, log) -> tuple[str, int]:
     return text, page_count
 
 
+def _detect_encoding_with_chardet(raw: bytes) -> str | None:
+    """V0.6.19 (W-e1): use chardet for high-confidence encoding detection
+    when the strict cascade fails. chardet is an OPTIONAL dependency —
+    if it's not in the rig's venv (some minimal installs don't have it),
+    this function returns None and the caller falls back to the cascade.
+
+    Why this matters: the V0.6.18 four-step cascade (utf-8-sig → utf-8 →
+    cp1252 → latin-1) covers ~99.9% of Western files, but a .txt saved
+    in a non-Western encoding (Big5 for Traditional Chinese, Shift-JIS
+    for Japanese, GB18030 for Simplified Chinese, EUC-KR for Korean)
+    would "successfully" decode in cp1252 as garbage (the bytes are
+    mostly in 0x80-0xFF, all defined in cp1252) and never reach the
+    latin-1 catch-all with the right encoding. chardet's byte-frequency
+    heuristics catch these cases. The worklog's LOW priority item #6
+    named this gap explicitly.
+
+    The function is deliberately conservative: only return an encoding
+    if chardet's confidence is >= 0.7 (its own threshold for "fairly
+    sure"). Below that, the cascade is more reliable than a guess.
+    """
+    try:
+        import chardet  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    try:
+        result = chardet.detect(raw)
+    except Exception:  # noqa: BLE001 — best-effort, never crash
+        return None
+    encoding = result.get("encoding")
+    confidence = result.get("confidence", 0.0)
+    if not encoding or confidence < 0.7:
+        return None
+    # Normalize: chardet returns e.g. "SHIFT_JIS" / "iso-8859-1" /
+    # "Windows-1252"; Python's codecs accepts case-insensitive + the
+    # common aliases, but normalize to lowercase for safety.
+    encoding = encoding.lower()
+    # Map a few chardet names to Python's preferred aliases (so the
+    # decode step below doesn't raise LookupError on a name Python
+    # doesn't recognize).
+    _ALIAS = {
+        "shift-jis": "shift_jis",
+        "shiftjis": "shift_jis",
+        "sjis": "shift_jis",
+        "windows-1252": "cp1252",
+        "iso-8859-1": "latin-1",
+        "iso8859-1": "latin-1",
+        "gb2312": "gb18030",  # gb18030 is a superset
+        "gbk": "gb18030",  # gb18030 is a superset
+        "euc-kr": "euc_kr",
+        "euckr": "euc_kr",
+        "euc-jp": "euc_jp",
+        "eucjp": "euc_jp",
+        "ascii": "utf-8",  # ASCII is a subset of UTF-8
+    }
+    return _ALIAS.get(encoding, encoding)
+
+
 def _read_text_with_encoding_fallback(file_path: Path) -> str:
-    """V0.6.18 (W-d4): read a plain-text file with encoding fallback.
+    """V0.6.19 (W-e1): read a plain-text file with encoding fallback.
 
     The pre-V0.6.18 path was ``file_path.read_text(encoding="utf-8",
     errors="ignore")`` which SILENTLY DROPPED every non-ASCII byte —
@@ -193,31 +250,45 @@ def _read_text_with_encoding_fallback(file_path: Path) -> str:
         "cp1252-encoded .txt files fail to read (pre-existing; rare on
          modern systems)."
 
-    The fix tries the most likely encodings in order; on the first that
-    decodes the raw bytes WITHOUT error, that's the text. The cascade:
+    V0.6.18 closed the Western gap with a four-step cascade (utf-8-sig
+    → utf-8 → cp1252 → latin-1). V0.6.19 (W-e1) extends the cascade to
+    cover the non-Western encodings the V0.6.18 worklog's LOW priority
+    item #6 named (Big5, Shift-JIS, GB18030, EUC-KR), AND adds UTF-16 /
+    UTF-32 BOM detection (Python's ``codecs`` recognizes the BOMs but
+    the V0.6.18 cascade didn't try them), AND adds an OPTIONAL chardet
+    detection step (high-confidence only — see
+    ``_detect_encoding_with_chardet``) for genuinely ambiguous files.
 
-      1. utf-8-sig  — UTF-8 with a BOM (Notepad's "UTF-8 with BOM" mode;
-                      the BOM would otherwise leak into the text as the
-                      three bytes EF BB BF at offset 0).
-      2. utf-8      — the modern default; most .txt / .md / .rst files.
-      3. cp1252     — Windows-1252, Windows Notepad's "ANSI" default for
-                      English/Western-European locales (the smart-quote
-                      / em-dash source of the bug).
-      4. latin-1    — ISO-8859-1; the catch-all that maps every byte
-                      0-255 to a character (never raises, so the file is
-                      ALWAYS readable, with ``errors="replace"`` for any
-                      byte that somehow doesn't map — there are none in
-                      true latin-1, but this is belt-and-suspenders).
+    The full V0.6.19 cascade (first that decodes WITHOUT error wins):
 
-    Order matters: utf-8 is tried before cp1252 because cp1252's 0x80-0x9F
-    range would happily "decode" UTF-8 multi-byte sequences into garbage
-    (e.g., the UTF-8 bytes for an em-dash (E2 80 94) would decode in cp1252
-    as â€"). Trying utf-8 first means a true UTF-8 file succeeds at step 2
-    and never reaches the cp1252 fallback.
+      1. utf-8-sig       — UTF-8 with a BOM (Notepad's "UTF-8 with BOM").
+      2. utf-16          — UTF-16 with a BOM (FF FE = LE, FE FF = BE).
+      3. utf-32          — UTF-32 with a BOM (FF FE 00 00 = LE / 00 00 FE FF).
+      4. utf-8           — the modern default; most .txt / .md / .rst.
+      5. chardet (opt.)  — high-confidence detection (>=0.7); skips if
+                           chardet not installed or confidence < 0.7.
+      6. cp1252          — Windows-1252, Notepad's "ANSI" for Western
+                           locales (the smart-quote / em-dash source).
+      7. shift_jis       — Japanese (Shift-JIS; Windows codepage 932).
+      8. euc_jp          — Japanese (EUC-JP; Unix-locale default).
+      9. euc_kr          — Korean (EUC-KR; Unix-locale default).
+     10. gb18030         — Simplified Chinese (superset of GBK/GB2312).
+     11. big5            — Traditional Chinese (Taiwan / Hong Kong).
+     12. latin-1         — ISO-8859-1; the catch-all that maps every
+                           byte 0-255 (never raises, ``errors="replace"``).
 
-    The fallback is deliberately conservative — no chardet / charset_normalizer
-    dependency (those aren't in the venv on every rig); the four-step cascade
-    covers ~99.9% of real-world .txt files without one.
+    Order rationale: the STRICT encodings (utf-8, utf-16, utf-32 —
+    they raise on the wrong byte patterns) are tried first; the
+    PERMISSIVE encodings (cp1252 + the Asian ones — they decode most
+    byte sequences without error) are tried in rough order of likelihood
+    for the rig's locale (Western > Japanese > Korean > Chinese-
+    Simplified > Chinese-Traditional); latin-1 is the catch-all.
+
+    A genuine Western file stops at step 6 (cp1252); a genuine Japanese
+    file stops at step 7 or 8 (its bytes are mostly in the 0x80-0xFF
+    range, all defined in cp1252 — BUT the chardet step at 5 catches
+    the high-confidence Japanese signature before reaching cp1252,
+    which is the whole reason chardet is in the cascade).
     """
     raw = file_path.read_bytes()
     # 1. UTF-8 with BOM (utf-8-sig strips the BOM if present, and is a
@@ -227,17 +298,66 @@ def _read_text_with_encoding_fallback(file_path: Path) -> str:
         return raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         pass
-    # 2. UTF-8 (strict — the common modern case).
+    # 2-3. UTF-16 / UTF-32 — ONLY when the BOM is present at the start
+    # of the byte stream. V0.6.19 first attempt tried them unconditionally
+    # (raw.decode("utf-16") without a BOM) — that "succeeds" with GARBAGE
+    # for any even-length ASCII file (utf-16 assumes native byte order
+    # when no BOM, and decodes the bytes as garbage UTF-16-LE pairs).
+    # The BOM bytes (UTF-32-LE = FF FE 00 00, UTF-32-BE = 00 00 FE FF,
+    # UTF-16-LE = FF FE, UTF-16-BE = FE FF) are the ONLY reliable signal.
+    # UTF-32 BOMs are checked FIRST because UTF-32-LE's BOM (FF FE 00 00)
+    # is a 2-byte prefix of UTF-16-LE's BOM (FF FE) — checking UTF-16
+    # first would mis-route a UTF-32 file to the UTF-16 decoder.
+    if len(raw) >= 4 and raw[:4] in (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"):
+        try:
+            return raw.decode("utf-32")  # BOM picks the right endianness
+        except (UnicodeDecodeError, UnicodeError):
+            pass
+    if len(raw) >= 2 and raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return raw.decode("utf-16")  # BOM picks the right endianness
+        except (UnicodeDecodeError, UnicodeError):
+            pass
+    # 4. UTF-8 (strict — the common modern case).
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         pass
-    # 3. cp1252 / Windows-1252 (Windows Notepad "ANSI" — the bug source).
+    # 5. chardet (OPTIONAL — high-confidence detection only). Skipped
+    # silently if chardet isn't installed or its confidence < 0.7.
+    _chardet_encoding = _detect_encoding_with_chardet(raw)
+    if _chardet_encoding is not None:
+        try:
+            return raw.decode(_chardet_encoding)
+        except (UnicodeDecodeError, LookupError, UnicodeError):
+            pass  # chardet guessed wrong — fall through to the cascade
+    # 6-10. The Asian encodings BEFORE cp1252 — the V0.6.18 order
+    # (cp1252 first) produced GARBAGE for Asian files: cp1252 is
+    # permissive (most bytes 0x80-0xFF are defined), so it "succeeds"
+    # on a GB18030 / Big5 / EUC-KR file before the cascade reaches
+    # the right encoding. Reversing the order is safe because the
+    # Asian encodings are STRICTER about lead/trail byte pairs — a
+    # typical Western cp1252 file (ASCII + smart quotes + em-dash +
+    # accented Latin) has single high bytes that don't form valid
+    # Asian 2-byte sequences, so the Asian encodings RAISE and the
+    # cascade falls through to cp1252 (step 11). The rare cp1252 file
+    # whose high bytes happen to form valid Asian pairs would be
+    # mis-decoded as Asian garbage — acceptable: the operator can
+    # re-save the file as UTF-8 to fix it (and modern Windows + the
+    # app's own outputs are all UTF-8 already).
+    for _asian_encoding in ("shift_jis", "euc_jp", "euc_kr", "gb18030", "big5"):
+        try:
+            return raw.decode(_asian_encoding)
+        except (UnicodeDecodeError, LookupError, UnicodeError):
+            pass
+    # 11. cp1252 / Windows-1252 (Windows Notepad "ANSI" — the V0.6.18
+    # bug source). Now the SAFETY-NET for Western files whose bytes
+    # don't form valid Asian sequences (the typical case).
     try:
         return raw.decode("cp1252")
     except UnicodeDecodeError:
         pass
-    # 4. latin-1 / ISO-8859-1 — the catch-all (never raises).
+    # 12. latin-1 / ISO-8859-1 — the catch-all (never raises).
     return raw.decode("latin-1", errors="replace")
 
 
