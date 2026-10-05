@@ -415,12 +415,19 @@ def test_v0618_read_text_with_encoding_fallback_never_raises_on_garbage(
     from core.pipeline.multi_format_reader import _read_text_with_encoding_fallback
 
     p = tmp_path / "garbage.txt"
-    # 0xff 0xfe is the UTF-16 BOM, but as a standalone sequence it's
-    # invalid in utf-8 and undefined at 0xff in cp1252 → falls to latin-1.
-    p.write_bytes(b"\xff\xfe\x80\x81\x97Some text")
+    # Bytes that don't form a valid BOM (no FF FE / FE FF / EF BB BF
+    # prefix) and aren't valid in any of utf-8 / cp1252 (0x81 is
+    # undefined in cp1252) → fall through to the latin-1 catch-all.
+    # V0.6.19 (W-e1) added UTF-16/UTF-32 BOM detection to the cascade,
+    # so bytes starting with FF FE would now be decoded as UTF-16-LE
+    # (with garbage) — this test deliberately avoids BOM-prefixed bytes
+    # to pin the V0.6.18 "garbage bytes never raise" contract on the
+    # latin-1 catch-all path.
+    p.write_bytes(b"\x80\x81\x97\xabSome text here")
     result = _read_text_with_encoding_fallback(p)
-    # Must NOT raise, and must contain the ASCII tail verbatim.
-    assert "Some text" in result
+    # Must NOT raise, and must contain the ASCII tail verbatim (latin-1
+    # decodes each byte 1:1, so ASCII subsequences are preserved).
+    assert "Some text here" in result
 
 
 def test_v0618_extract_text_file_uses_the_fallback(tmp_path: Path) -> None:
