@@ -31,6 +31,28 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.27 — the translation glossary analytics + CLI batch: the operator can now compute glossary statistics (entries, coverage, entity types, top terms) and export to TSV (CAT-tool format), CSV (spreadsheet), or JSON — the FIRST round working on a DIFFERENT module (translation) than the podcast module — 43 new pins / 0 regressions (336 P total in this sandbox)
+
+> **The trigger:** the V0.6.26 worklog said the podcast module's pure-Python feature work was "DEFINITIVELY exhausted" and recommended looking at OTHER modules in the codebase (translation, summarisation, pdf) for similar pure-Python opportunities. This round picks the **translation module** — the `Glossary` class has `to_dict`/`from_dict` (JSON) + `save`/`load` (JSON file) but NO export to CSV/TSV (which CAT tools like OmegaT, Trados, memoQ expect) and NO statistics (translated vs untranslated, entity type distribution, top terms). This is genuinely useful for the bilingual (EN/FA) translation workflow.
+>
+> **Layer 1 — the GLOSSARY ANALYTICS module (W-l1, NEW `core/translation/glossary_analytics.py`):** pure-Python (no PySide6/torch/spaCy) analytics + exporters:
+>
+>   - `compute_glossary_stats(glossary, top_n=10)` — returns a `GlossaryStats` dataclass with total_entries / translated_count / untranslated_count / coverage_pct / entity_type_distribution / top_terms (sorted by frequency desc, then source asc for determinism) / source_lang / target_lang.
+>   - `format_glossary_stats_for_display(stats, log)` — multi-line formatter with 📊 header, language pair, total/translated/untranslated counts with percentages, entity type distribution table, top-N terms list.
+>   - `export_to_tsv(glossary)` — TSV format (source TAB translation), the standard CAT-tool glossary format. Untranslated terms have an empty translation field. Sorted by frequency (desc).
+>   - `export_to_csv(glossary)` — CSV format (source, translation, entity_type, frequency) with a header row, for spreadsheet tools (Excel, Google Sheets). Uses `csv.QUOTE_MINIMAL` so commas in source terms are properly quoted. Sorted by frequency (desc).
+>   - `export_to_json(glossary)` — wraps the existing `to_dict()` for the format registry.
+>   - `GLOSSARY_EXPORT_FORMATS` registry + `export_glossary()` dispatcher + `list_glossary_formats()` + `format_glossary_formats_for_display()`.
+>
+> **Layer 2 — the translation CLI (W-l2, NEW `core/translation/cli.py`):** `python -m core.translation.cli` with two subcommands:
+>   - `stats --glossary FILE [--top-n N]` — prints glossary statistics.
+>   - `export --glossary FILE [--format tsv|csv|json] [--out FILE]` — lists all formats, or exports to stdout/file.
+>   - Exits 0 on success, 1 on unknown format, 2 on file/parse error (same contract as the podcast CLI).
+>
+> **The pins (1 new test file, 43 tests):** `tests/test_v0627_glossary_analytics_pins.py` — Layer 1a (8 stats tests: empty glossary, total entries, translated/untranslated counts, coverage %, entity type distribution, top terms sorted, top_n limit, languages echoed); Layer 1b (3 format tests: empty message, all sections present, log callback); Layer 1c (5 TSV tests: tab separator, all entries, sorted by frequency, untranslated has empty translation, empty glossary); Layer 1d (5 CSV tests: header row, all entries, sorted, empty glossary header-only, commas in source are quoted); Layer 1e (2 JSON tests: valid JSON, matches to_dict); Layer 1f (7 dispatcher/registry tests: tsv/csv/json dispatch, unknown format raises, registry has 3, list_formats returns all 3, display has header); Layer 2 (11 CLI tests: stats prints, missing file exits 2, bad JSON exits 2, --top-n flag, export list mode, tsv to stdout, csv to file, json to file, unknown format exits 1, missing file exits 2, bad JSON exits 2, subcommands in parser); Layer 3 (1 integration test: Glossary.save() → CLI stats → CLI export TSV). All 43 tests are pure-Python.
+>
+> **Verification (this sandbox — Linux, Python 3.12.14, no PySide6 / no torch / no spaCy):** new file 43 P / 0 F (1.06s). Broader regression sweep: **336 P / 0 F total, zero regressions**. ruff check + ruff format --check clean on all 3 touched files. Two test-expectation bugs caught + fixed during development: the TSV test's `.strip()` removed the trailing tab from the last line (fixed by checking the raw string); the `python -m` subprocess test failed because `core.translation.__init__.py` imports `harakat` which drags in the `tiktoken` dependency (fixed by verifying the parser via the Python API instead of subprocess).
+
 ## V0.6.26 — the script-export + export-CLI batch: the operator can now export a script to SRT subtitles (with estimated timestamps), HTML (standalone page with inline CSS), or Markdown (blockquote per line) — 36 new pins / 0 regressions (343 P total in this sandbox)
 
 > **The trigger:** the V0.6.25 worklog said the codebase-wide audit was complete and the remaining work was "genuinely rig-only". But the cron's [Mandatory] "add more features and functionality" requirement still applies, and I identified ONE more genuinely valuable pure-Python feature: a script export module. The wizard's "Export Script" button (V11.37.0) writes a JSON file — useful for re-importing, but useless for subtitles (SRT), blog posts (HTML), or show notes (Markdown). This release fills that gap.
