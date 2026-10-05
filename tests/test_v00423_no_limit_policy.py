@@ -10,17 +10,31 @@ from __future__ import annotations
 
 
 class TestNoBulletCap:
-    def test_bullet_cap_is_zero_everywhere(self):
-        from core.summarisation.length_policy import bullet_cap
+    def test_bullet_cap_is_two_regime(self):
+        """V0.6.2 (user-reported thin-book bug): ``bullet_cap`` is
+        TWO-REGIME. NORMAL chapters (>= 800 words): 0 — the V0.4.23
+        no-cap user directive stands. THIN chapters (< 800 words): the
+        source-scaled ADDITIVE budget (bullet_target hi) — the cap only
+        ever bounds gap-fill/resurrection ADDITIONS, never primary
+        bullets; it bounds exactly the machinery that padded the user's
+        thin book (1-2 page chapters) past its own source word count.
+        The historical V0.4.22 displacement failure (the reason the cap
+        was removed) was a content-rich chapter — those keep 0."""
+        from core.summarisation.length_policy import bullet_cap, bullet_target
 
-        for w in (50, 150, 340, 441, 800, 1000, 3000, 12000, 100000):
+        for w in (800, 1000, 3000, 12000, 100000):
             assert bullet_cap(w) == 0, w
+        for w in (50, 150, 340, 441):
+            assert bullet_cap(w) == bullet_target(w)[1] > 0, w
 
-    def test_bullet_range_phrase_is_a_floor(self):
+    def test_bullet_range_phrase_is_a_floor_for_normal_chapters(self):
         from core.summarisation.length_policy import bullet_range_phrase
 
         assert bullet_range_phrase(1000) == "at least 27"  # lo of the 27-40 guidance range
-        assert bullet_range_phrase(340).startswith("at least ")
+        # V0.6.2: thin chapters get a BOUNDED range instead (the
+        # "at least N ... NO MAXIMUM" phrasing invited rephrase-padding
+        # on chapters with fewer distinct ideas than N)
+        assert bullet_range_phrase(340) == "9-14"
 
     def test_budget_block_no_maximum_wording(self):
         from core.summarisation.length_policy import length_budget_block

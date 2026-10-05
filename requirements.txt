@@ -42,6 +42,11 @@ pytesseract>=0.3.10
 wordninja>=1.0.0
 tiktoken>=0.7.0
 python-docx>=1.1.0
+# V0.6.5: RTL output support — arabic_reshaper + python-bidi produce the
+# visual character order ReportLab needs for right-to-left PDFs (WeasyPrint
+# shapes Arabic natively via Pango; ReportLab does not). Pure-Python, tiny.
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
 requests>=2.31.0
 Pillow>=10.4.0
 PyYAML>=6.0.1

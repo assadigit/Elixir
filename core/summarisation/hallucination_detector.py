@@ -204,7 +204,12 @@ class HallucinationDetector:
                 claims = claim_extractor.extract(bullet, source_text)
                 if claims:
                     verbatim_pass = any(c.get("char_interval") is not None for c in claims)
-                    verbatim_reason = "langextract verbatim span found"
+                    # V0.6.0: the reason must match the verdict — claims
+                    # without a span used to report "verbatim span found"
+                    # on a FAILED verbatim check.
+                    verbatim_reason = (
+                        "langextract verbatim span found" if verbatim_pass else "no verbatim span"
+                    )
                 else:
                     verbatim_reason = "no verbatim span"
             except Exception as e:

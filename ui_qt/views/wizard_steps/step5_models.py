@@ -43,12 +43,16 @@ logger = logging.getLogger(__name__)
 
 
 class Step5Models(LlamaCppConfigMixin, WizardStep):
-    """V16.0.9: Model selection — 4-mode architecture (single/dual × local/API).
+    """Model selection — V0.6.14 single-model order.
 
-    V0.04: mixes in LlamaCppConfigMixin (ui_qt/components/llamacpp_config.py)
-    — the llama.cpp endpoint box, its two-stage Test-connection probe, and
-    model discovery live there so this step module stays inside the O-b1
-    per-step line budget.
+    The V16.0.9 4-mode architecture selector (single/dual × local/API) is
+    RETIRED — ONE model does every LLM task. What remains is a simple
+    Local-vs-Cloud choice (it writes ``summarisation.provider``), the local
+    backend picker (Ollama / llama.cpp / LM Studio), and the cloud endpoint
+    box. The llama.cpp endpoint box, its two-stage Test-connection probe,
+    and model discovery live in LlamaCppConfigMixin (ui_qt/components/
+    llamacpp_config.py) so this step module stays inside the O-b1 per-step
+    line budget.
     """
 
     def _build(self) -> None:
@@ -77,46 +81,43 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         host_lay.setSpacing(8)
         host_lay.setContentsMargins(0, 0, 0, 0)
 
-        # ── V16.0.9: 4-mode architecture selector ──────────────────────
-        arch_box = QGroupBox("Model architecture")
+        # ── V0.6.14: single-model run-location selector ────────────────
+        # The 4-mode architecture selector is retired (single-model order).
+        # ONE model does every LLM task; the only choice left is WHERE it
+        # runs — locally (Ollama / llama.cpp / LM Studio) or in the cloud.
+        arch_box = QGroupBox("Where does the model run?")
         arch_lay = QVBoxLayout(arch_box)
         arch_lay.setContentsMargins(10, 10, 10, 8)
         arch_lay.setSpacing(6)
 
         arch_desc_top = QLabel(
-            "Choose how models are used for this conversion. The 4 modes cover "
-            "every combination of single/dual × local/API."
+            "One model handles every task — summarisation, concept extraction, "
+            "gap-fill, judging. Choose where it runs."
         )
         arch_desc_top.setWordWrap(True)
         arch_desc_top.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
         arch_lay.addWidget(arch_desc_top)
 
         self.arch_combo = QComboBox()
-        self.arch_combo.addItem("🏠  Single model — Local", "single_local")
-        self.arch_combo.addItem("🏠  Dual model — Local (heavy + fast)", "dual_local")
-        self.arch_combo.addItem("☁️  Single model — API", "single_api")
-        self.arch_combo.addItem("☁️  Dual model — API (fast + accurate)", "dual_api")
-        _saved_arch = (
-            self.controller.get_setting("summarisation.model_architecture", "single_local")
-            or "single_local"
+        self.arch_combo.addItem("🏠  Local model (on your GPU)", "local")
+        self.arch_combo.addItem("☁️  Cloud API model", "cloud")
+        _saved_provider = (
+            (self.controller.get_setting("summarisation.provider", "llamacpp") or "llamacpp")
+            .strip()
+            .lower()
         )
-        # V16.0.9: backward-compat — legacy "single" → "single_local"
-        if _saved_arch == "single":
-            _saved_arch = "single_local"
+        _saved_arch = (
+            "cloud" if _saved_provider in ("openai_compatible", "claude", "freellmapi") else "local"
+        )
         _arch_idx = self.arch_combo.findData(_saved_arch)
         if _arch_idx >= 0:
             self.arch_combo.setCurrentIndex(_arch_idx)
         self.arch_combo.setToolTip(
-            "Select the model architecture for this conversion.\n\n"
-            "• Single — Local: One local model (Ollama/LM Studio) does everything. "
-            "Simplest setup, no VRAM juggling.\n"
-            "• Dual — Local: Heavy + fast local models alternate in VRAM. "
-            "Heavy (e.g. gemma4-12b) does deep work; fast (e.g. LFM2.5-2.6B) does "
-            "concept extraction, gap-fill, merging, scholar reflection.\n"
-            "• Single — API: One cloud API model (OpenRouter/OpenAI/9Router) does "
-            "everything. No GPU needed.\n"
-            "• Dual — API: Cheap fast cloud workhorse + expensive accurate cloud "
-            "model. Best cost/quality balance for cloud users."
+            "Where the ONE model runs for this conversion.\n\n"
+            "• Local: your GPU via Ollama, llama.cpp server, or LM Studio — "
+            "free, private, no API key.\n"
+            "• Cloud API: an OpenAI-compatible endpoint (OpenRouter, OpenAI, "
+            "9Router, Groq…) — no GPU needed, pay per token."
         )
         self.arch_combo.currentIndexChanged.connect(self._on_arch_change)
         arch_lay.addWidget(self.arch_combo)
@@ -131,7 +132,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         arch_lay.addWidget(self.arch_desc_label)
         host_lay.addWidget(arch_box)
 
-        # ── Local configuration box (modes 1, 2) ───────────────────────
+        # ── Local configuration box (local runs) ───────────────────────
         self.local_box = QGroupBox("🏠 Local configuration")
         local_lay = QVBoxLayout(self.local_box)
         local_lay.setContentsMargins(10, 10, 10, 8)
@@ -200,8 +201,8 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         refresh_row.addStretch()
         local_lay.addLayout(refresh_row)
 
-        # Heavy / summarization model
-        local_lay.addWidget(QLabel("Summarization (heavy) model:"))
+        # The ONE summarization model
+        local_lay.addWidget(QLabel("Summarization model:"))
         self.summ_combo = QComboBox()
         local_lay.addWidget(self.summ_combo)
 
@@ -211,24 +212,18 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.ocr_combo = QComboBox()
         local_lay.addWidget(self.ocr_combo)
 
-        # Fast model (mode 2 only)
-        self.fast_label = QLabel("Fast model (concept extraction / gap-fill / merge):")
-        local_lay.addWidget(self.fast_label)
-        self.fast_combo = QComboBox()
-        local_lay.addWidget(self.fast_combo)
-
         host_lay.addWidget(self.local_box)
 
-        # ── Heavy API configuration box (modes 3, 4) ───────────────────
-        self.heavy_api_box = QGroupBox("☁️ Heavy API configuration (accurate model)")
+        # ── Cloud API configuration box (cloud runs) ───────────────────
+        self.heavy_api_box = QGroupBox("☁️ Cloud API configuration (the model)")
         heavy_api_lay = QVBoxLayout(self.heavy_api_box)
         heavy_api_lay.setContentsMargins(10, 10, 10, 8)
         heavy_api_lay.setSpacing(6)
 
         self.heavy_api_desc = QLabel(
-            "The accurate / expensive cloud model. Handles deep summarization, "
-            "theme synthesis, and content judging. OpenAI-compatible (OpenRouter, "
-            "OpenAI, 9Router, Groq, …)."
+            "The ONE cloud model. Handles every task — summarization, "
+            "concept extraction, gap-fill, judging. OpenAI-compatible "
+            "(OpenRouter, OpenAI, 9Router, Groq, …)."
         )
         self.heavy_api_desc.setWordWrap(True)
         self.heavy_api_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
@@ -304,84 +299,6 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         host_lay.addWidget(self.heavy_api_box)
 
-        # ── Fast API configuration box (mode 4 only) ────────────────────
-        self.fast_api_box = QGroupBox("⚡ Fast API configuration (cheap workhorse)")
-        fast_api_lay = QVBoxLayout(self.fast_api_box)
-        fast_api_lay.setContentsMargins(10, 10, 10, 8)
-        fast_api_lay.setSpacing(6)
-
-        self.fast_api_desc = QLabel(
-            "The cheap fast cloud workhorse. Handles concept extraction, "
-            "gap-fill, bullet merging, and scholar reflection. Pick a low-cost "
-            "model (e.g. gemini-2.5-flash, gpt-4o-mini, llama-3.1-8b)."
-        )
-        self.fast_api_desc.setWordWrap(True)
-        self.fast_api_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
-        fast_api_lay.addWidget(self.fast_api_desc)
-
-        fast_preset_row = QHBoxLayout()
-        fast_preset_row.setSpacing(8)
-        fast_preset_row.addWidget(QLabel("Preset:"))
-        self.fast_preset_combo = QComboBox()
-        for p in CLOUD_PRESETS:
-            self.fast_preset_combo.addItem(p["label"])
-        fast_preset_row.addWidget(self.fast_preset_combo, 1)
-        self.fast_fill_btn = QPushButton("Fill")
-        self.fast_fill_btn.setObjectName("Compact")
-        self.fast_fill_btn.setCursor(Qt.PointingHandCursor)
-        self.fast_fill_btn.setToolTip("Fill base URL + model from the selected preset")
-        self.fast_fill_btn.clicked.connect(self._fill_fast_cloud_preset)
-        fast_preset_row.addWidget(self.fast_fill_btn)
-        fast_api_lay.addLayout(fast_preset_row)
-
-        fast_url_row = QHBoxLayout()
-        fast_url_row.setSpacing(8)
-        self.fast_api_url_edit = QLineEdit(
-            self.controller.get_setting("summarisation.fast_api_url", "")
-        )
-        self.fast_api_url_edit.setPlaceholderText("https://openrouter.ai/api/v1")
-        fast_url_row.addWidget(QLabel("API base URL:"))
-        fast_url_row.addWidget(self.fast_api_url_edit, 1)
-        fast_api_lay.addLayout(fast_url_row)
-
-        fast_key_row = QHBoxLayout()
-        fast_key_row.setSpacing(8)
-        # V0.16 (Phase 3 / 3.2): keyring-backed read (was plaintext).
-        self.fast_api_key_edit = QLineEdit(
-            self.controller.get_secret("summarisation.fast_api_key", "")
-        )
-        self.fast_api_key_edit.setEchoMode(QLineEdit.Password)
-        self.fast_api_key_edit.setPlaceholderText("sk-...")
-        fast_key_row.addWidget(QLabel("API key:"))
-        fast_key_row.addWidget(self.fast_api_key_edit, 1)
-        fast_api_lay.addLayout(fast_key_row)
-
-        fast_model_row = QHBoxLayout()
-        fast_model_row.setSpacing(8)
-        self.fast_api_model_edit = QLineEdit(
-            self.controller.get_setting("summarisation.fast_api_model", "")
-        )
-        self.fast_api_model_edit.setPlaceholderText("google/gemini-2.5-flash-preview:free")
-        fast_model_row.addWidget(QLabel("Model name:"))
-        fast_model_row.addWidget(self.fast_api_model_edit, 1)
-        fast_api_lay.addLayout(fast_model_row)
-
-        fast_test_row = QHBoxLayout()
-        fast_test_row.setSpacing(8)
-        self.fast_test_btn = QPushButton("🔌  Test connection")
-        self.fast_test_btn.setObjectName("Secondary")
-        self.fast_test_btn.setCursor(Qt.PointingHandCursor)
-        self.fast_test_btn.setToolTip("Send a tiny request to verify the fast API works.")
-        self.fast_test_btn.clicked.connect(self._test_fast_cloud_connection)
-        fast_test_row.addWidget(self.fast_test_btn)
-        self.fast_test_label = QLabel("")
-        self.fast_test_label.setObjectName("Caption")
-        self.fast_test_label.setWordWrap(True)
-        fast_test_row.addWidget(self.fast_test_label, 1)
-        fast_api_lay.addLayout(fast_test_row)
-
-        host_lay.addWidget(self.fast_api_box)
-
         # ── Parameters box (all modes) ─────────────────────────────────
         params_box = QGroupBox("Parameters")
         params_lay = QVBoxLayout(params_box)
@@ -412,14 +329,14 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.temp_spin.setDecimals(2)
         self.temp_spin.setValue(self.state.temperature)
         self.temp_spin.setToolTip(
-            "Sampling temperature for the heavy/primary model.\n\n"
+            "Sampling temperature for the ONE model.\n\n"
             "• Qwythos-9B: minimum 0.6 (fine-tuner spec)\n"
             "• gemma2:7b/9b: 0.4-0.9\n"
             "• qwen2.5:7b: 0.3-0.9\n"
             "• Cloud APIs: 0.2-0.7 typical\n"
             "• 0.0 — DO NOT USE — produces empty/degenerate output on most local models\n"
         )
-        row.addWidget(QLabel("Heavy temp:"))
+        row.addWidget(QLabel("Temperature:"))
         row.addWidget(self.temp_spin)
         self.temp_warn_label = QLabel("")
         self.temp_warn_label.setObjectName("Caption")
@@ -429,7 +346,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         row.addStretch()
         params_lay.addLayout(row)
 
-        # Heavy model context size
+        # Model context size
         # V0.04: range widened to 1024–262144 (was 4096–131072) so the GUI
         # never caps a model's real window — 65k-class local models
         # (llama.cpp Ternary-Bonsai: 65536) and 200k-class models now both
@@ -442,18 +359,18 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.heavy_ctx_spin.setSingleStep(4096)
         self.heavy_ctx_spin.setValue(min(max(self.state.max_context_tokens, 1024), 262144))
         self.heavy_ctx_spin.setToolTip(
-            "Context window size for the heavy/primary model.\n\n"
+            "Context window size for the ONE model.\n\n"
             "gemma4-12b: 32768 (32K)\n"
             "llama.cpp Ternary-Bonsai-2-27B: 65536 (65K)\n"
             "Cloud APIs: use the model's maximum (often 128K+).\n"
             "Set per your model's maximum."
         )
-        ctx_row.addWidget(QLabel("Heavy model context:"))
+        ctx_row.addWidget(QLabel("Model context:"))
         ctx_row.addWidget(self.heavy_ctx_spin)
         ctx_row.addStretch()
         params_lay.addLayout(ctx_row)
 
-        # V0.04: Heavy model OUTPUT budget — previously the wizard offered
+        # V0.04: model OUTPUT budget — previously the wizard offered
         # no way to set the output cap at the model step (only Step 7b had
         # it, starting from a stale 8192 state default). The 12k-output
         # llama.cpp model needs it front and centre: 12288.
@@ -466,66 +383,16 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             min(max(int(getattr(self.state, "max_output_tokens", 12288) or 12288), 256), 65536)
         )
         self.heavy_out_spin.setToolTip(
-            "Maximum OUTPUT tokens per LLM call for the heavy/primary model.\n\n"
+            "Maximum OUTPUT tokens per LLM call for the ONE model.\n\n"
             "llama.cpp Ternary-Bonsai-2-27B: 12288 (12K — the model's output cap)\n"
             "Ollama 27B quants: 16000\n"
             "This is a ceiling per call, not a target — shorter answers are fine.\n"
             "The provider clamps requests to this automatically."
         )
-        out_row.addWidget(QLabel("Heavy model output:"))
+        out_row.addWidget(QLabel("Model output:"))
         out_row.addWidget(self.heavy_out_spin)
         out_row.addStretch()
         params_lay.addLayout(out_row)
-
-        # Fast model temperature + context (modes 2, 4)
-        fast_row = QHBoxLayout()
-        fast_row.setSpacing(10)
-
-        self.fast_temp_spin = QDoubleSpinBox()
-        self.fast_temp_spin.setRange(0.0, 2.0)
-        self.fast_temp_spin.setSingleStep(0.05)
-        self.fast_temp_spin.setDecimals(2)
-        _default_fast_temp = 0.1
-        try:
-            _default_fast_temp = float(
-                self.controller.get_setting("summarisation.fast_model_temperature", 0.1)
-            )
-        except Exception:
-            pass
-        self.fast_temp_spin.setValue(_default_fast_temp)
-        self.fast_temp_spin.setToolTip(
-            "Sampling temperature for the fast model.\n\n"
-            "LFM2.5-2.6B recommends 0.1.\n"
-            "Qwen models recommend 0.6-0.8.\n"
-            "Gemma models recommend 1.0.\n"
-            "Cloud flash models: 0.2-0.4 typical."
-        )
-        self.fast_temp_label = QLabel("Fast temp:")
-        fast_row.addWidget(self.fast_temp_label)
-        fast_row.addWidget(self.fast_temp_spin)
-
-        self.fast_ctx_spin = QSpinBox()
-        self.fast_ctx_spin.setRange(1024, 262144)  # V0.04: widened with heavy ctx
-        self.fast_ctx_spin.setSingleStep(4096)
-        _default_fast_ctx = 131072
-        try:
-            _default_fast_ctx = int(
-                self.controller.get_setting("summarisation.fast_model_context", 131072)
-            )
-        except Exception:
-            pass
-        self.fast_ctx_spin.setValue(_default_fast_ctx)
-        self.fast_ctx_spin.setToolTip(
-            "Context window size for the fast model.\n\n"
-            "LFM2.5-2.6B supports up to 131072 (128K).\n"
-            "Cloud flash models: use the model's maximum.\n"
-            "Set to the model's maximum for best results."
-        )
-        self.fast_ctx_label = QLabel("Fast context:")
-        fast_row.addWidget(self.fast_ctx_label)
-        fast_row.addWidget(self.fast_ctx_spin)
-        fast_row.addStretch()
-        params_lay.addLayout(fast_row)
 
         host_lay.addWidget(params_box)
         host_lay.addStretch()
@@ -558,7 +425,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             return []
 
     def _refresh_models(self) -> None:
-        """Refresh the local model dropdowns (heavy, OCR, fast).
+        """Refresh the local model dropdowns (summarisation, OCR).
 
         V18.20.4.5 (W-b11): the fetch is a 5s-timeout HTTP call
         (DependencyChecker().get_ollama_models, utils/dependencies.py) that
@@ -615,15 +482,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         ocr_current = self.ocr_combo.currentData() or self.controller.get_setting(
             "ocr.primary_model", ""
         )
-        fast_current = self.fast_combo.currentData() or self.controller.get_setting(
-            "summarisation.fast_model", ""
-        )
 
         # Repopulate
         for combo, current, _label in [
             (self.summ_combo, summ_current, "Summarization"),
             (self.ocr_combo, ocr_current, "OCR"),
-            (self.fast_combo, fast_current, "Fast"),
         ]:
             combo.clear()
             combo.addItem("  (use default)", "")
@@ -641,72 +504,40 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.refresh_btn.setEnabled(True)
 
     def _on_arch_change(self) -> None:
-        """V16.0.9: Show/hide config boxes based on the selected architecture.
+        """V0.6.14: show the local box or the cloud box (single-model order).
 
-        4 modes:
-          single_local — local box only (heavy does everything)
-          dual_local   — local box + fast model dropdown + fast params
-          single_api   — heavy API box only
-          dual_api     — heavy API box + fast API box + fast params
+        The ONE model runs either locally (Ollama / llama.cpp / LM Studio)
+        or in the cloud — the choice maps to ``summarisation.provider``.
         """
-        arch = self.arch_combo.currentData() or "single_local"
-        is_local = arch in ("single_local", "dual_local")
-        is_api = arch in ("single_api", "dual_api")
-        is_dual = arch in ("dual_local", "dual_api")
+        arch = self.arch_combo.currentData() or "local"
+        is_local = arch == "local"
+        is_api = arch == "cloud"
 
         # Local box visibility
         self.local_box.setVisible(is_local)
-        # Heavy API box visibility
+        # Cloud API box visibility
         self.heavy_api_box.setVisible(is_api)
-        # Fast API box visibility (dual_api only)
-        self.fast_api_box.setVisible(arch == "dual_api")
-
-        # Fast model dropdown (local) — dual_local only
-        self.fast_label.setVisible(arch == "dual_local")
-        self.fast_combo.setVisible(arch == "dual_local")
-
-        # Refresh button — local modes only
+        # Refresh button — local only
         self.refresh_btn.setVisible(is_local)
 
-        # LM Studio URL — local modes + lmstudio backend
+        # LM Studio URL — local + lmstudio backend
         backend = self.backend_combo.currentData() if hasattr(self, "backend_combo") else "ollama"
         self.lmstudio_widget.setVisible(is_local and backend == "lmstudio")
-        # V0.04: llama.cpp config — local modes + llamacpp backend (mixin)
+        # V0.04: llama.cpp config — local + llamacpp backend (mixin)
         self.llamacpp_set_visible(is_local, backend)
 
-        # Fast temp + context params — dual modes only
-        self.fast_temp_label.setVisible(is_dual)
-        self.fast_temp_spin.setVisible(is_dual)
-        self.fast_ctx_label.setVisible(is_dual)
-        self.fast_ctx_spin.setVisible(is_dual)
-
-        # Architecture description
+        # Run-location description
         descs = {
-            "single_local": (
-                "🏠 Single — Local: One local model (via Ollama/LM Studio) handles "
-                "everything — summarization, OCR, concept extraction, judging. "
-                "Simplest setup, no VRAM juggling. Best for users with a single "
-                "capable model (e.g. gemma4-12b)."
+            "local": (
+                "🏠 Local: the ONE model runs on your GPU via Ollama, "
+                "llama.cpp, or LM Studio — it handles summarisation, concept "
+                "extraction, gap-fill, judging, everything. Free, private, "
+                "no API key."
             ),
-            "dual_local": (
-                "🏠 Dual — Local: A heavy model (e.g. gemma4-12b) does deep "
-                "summarization, theme synthesis, and judging; a fast model "
-                "(e.g. LFM2.5-2.6B) does concept extraction, gap-fill, bullet "
-                "merging, scholar reflection. The two models alternate in VRAM — "
-                "the app unloads one before loading the other."
-            ),
-            "single_api": (
-                "☁️ Single — API: One cloud model (OpenAI-compatible: OpenRouter, "
-                "OpenAI, 9Router, Groq) handles everything. No GPU needed — runs "
-                "entirely in the cloud. Best when you have no local GPU or want "
-                "maximum speed/quality. Pay per token."
-            ),
-            "dual_api": (
-                "☁️ Dual — API: A cheap fast workhorse (e.g. gemini-flash, "
-                "gpt-4o-mini) handles simple tasks; a more expensive accurate model "
-                "(e.g. gpt-4o, claude) handles deep summarization and judging. Best "
-                "cost/quality balance for cloud users — the cheap model does the "
-                "high-volume simple work."
+            "cloud": (
+                "☁️ Cloud: the ONE model runs on an OpenAI-compatible API "
+                "(OpenRouter, OpenAI, 9Router, Groq…) — it handles every "
+                "task. No GPU needed, pay per token."
             ),
         }
         self.arch_desc_label.setText(descs.get(arch, ""))
@@ -731,19 +562,6 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             if p["model"]:
                 self.cloud_model_edit.setText(p["model"])
             self.cloud_test_label.setText(p.get("hint", ""))
-
-    def _fill_fast_cloud_preset(self) -> None:
-        """V16.0.9: Fill fast API base URL + model from the selected preset."""
-        from core.llm.cloud_client import CLOUD_PRESETS
-
-        idx = self.fast_preset_combo.currentIndex()
-        if 0 <= idx < len(CLOUD_PRESETS):
-            p = CLOUD_PRESETS[idx]
-            if p["base_url"]:
-                self.fast_api_url_edit.setText(p["base_url"])
-            if p["model"]:
-                self.fast_api_model_edit.setText(p["model"])
-            self.fast_test_label.setText(p.get("hint", ""))
 
     def _test_cloud_connection(self) -> None:
         """Send a tiny request to verify the heavy cloud endpoint works.
@@ -784,50 +602,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         w.failed.connect(self._on_cloud_test_failed)
         w.start()
 
-    def _test_fast_cloud_connection(self) -> None:
-        """V16.0.9: Send a tiny request to verify the fast cloud endpoint works.
-
-        V18.20.4.9 (W-b18 remainder): same shape as the heavy test above —
-        ``failed`` connected + ref kept, so a raising test re-enables the
-        button instead of sticking it disabled.
-        """
-        base = self.fast_api_url_edit.text().strip()
-        key = self.fast_api_key_edit.text().strip()
-        model = self.fast_api_model_edit.text().strip()
-        self.fast_test_btn.setEnabled(False)
-        self.fast_test_label.setText("Testing…")
-
-        def _run():
-            from core.llm.cloud_client import test_cloud_connection
-
-            ok, msg = test_cloud_connection(base, key, model)
-            self._pending_fast_cloud_result = (ok, msg)
-            try:
-                from PySide6.QtCore import QMetaObject
-                from PySide6.QtCore import Qt as _Qt
-
-                QMetaObject.invokeMethod(
-                    self, "_set_fast_cloud_test_result", _Qt.ConnectionType.QueuedConnection
-                )
-            except Exception:
-                self._set_fast_cloud_test_result()
-
-        w = SimpleWorker(_run)
-        self._fast_cloud_test_worker = w  # Python ref (GC hazard, W-b11 pattern)
-        w.failed.connect(self._on_fast_cloud_test_failed)
-        w.start()
-
     def _on_cloud_test_failed(self, error: str) -> None:
         """W-b18 remainder: a raising test routes through the EXISTING
         result slot (same "❌ " display + re-enable; no new strings)."""
         self._pending_cloud_result = (False, error)
         self._set_cloud_test_result()
-
-    def _on_fast_cloud_test_failed(self, error: str) -> None:
-        """W-b18 remainder: a raising test routes through the EXISTING
-        result slot (same "❌ " display + re-enable; no new strings)."""
-        self._pending_fast_cloud_result = (False, error)
-        self._set_fast_cloud_test_result()
 
     @Slot()
     def _set_cloud_test_result(self) -> None:
@@ -840,25 +619,14 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         )
         self.cloud_test_btn.setEnabled(True)
 
-    @Slot()
-    def _set_fast_cloud_test_result(self) -> None:
-        ok, msg = getattr(self, "_pending_fast_cloud_result", (False, ""))
-        p = theme_manager.palette
-        color = p.success if ok else p.error
-        self.fast_test_label.setText(("✅ " if ok else "❌ ") + msg)
-        self.fast_test_label.setStyleSheet(
-            f"color: {color}; background: transparent; font-size: 10px;"
-        )
-        self.fast_test_btn.setEnabled(True)
-
     def save_to_state(self) -> None:
-        arch = self.arch_combo.currentData() or "single_local"
-        # V16.0.9: persist the architecture + carry it per-conversion
-        self.controller.update_setting("summarisation.model_architecture", arch)
-        self.state.model_architecture = arch
+        # V0.6.14 (single-model order): the run-location combo replaces the
+        # 4-mode architecture selector — it writes the provider only; ONE
+        # model (summarisation.model) does every LLM task.
+        arch = self.arch_combo.currentData() or "local"
 
-        if arch in ("single_local", "dual_local"):
-            # Local modes — provider is ollama, llamacpp or lmstudio
+        if arch == "local":
+            # Local — provider is ollama, llamacpp or lmstudio
             backend = self.backend_combo.currentData() or "ollama"
             self.controller.update_setting("summarisation.provider", backend)
             if backend == "lmstudio":
@@ -868,7 +636,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             if backend == "llamacpp":
                 # V0.04: persist the llama.cpp endpoint + model (mixin) and
                 # make the backend's model the request's summarisation model
-                # (same pattern as the API modes writing cloud_model into
+                # (same pattern as the cloud mode writing cloud_model into
                 # it) so logs, provenance and the request all name the
                 # served model.
                 _lc_model = self.save_llamacpp_settings()
@@ -881,7 +649,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 if _lc_model:
                     self.state.summarisation_model = _lc_model
                     self.controller.update_setting("summarisation.model", _lc_model)
-            # Heavy/summarization model
+            # The ONE summarization model
             if not (backend == "llamacpp" and self.state.summarisation_model):
                 self.state.summarisation_model = self.summ_combo.currentData() or ""
                 self.controller.update_setting(
@@ -890,18 +658,12 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             self.state.primary_ocr_model = self.ocr_combo.currentData() or ""
             self.state.fallback_ocr_model = self.ocr_combo.currentData() or ""
             self.controller.update_setting("ocr.primary_model", self.state.primary_ocr_model)
-            # Fast model (dual_local only; empty for single_local)
-            if arch == "dual_local":
-                self.state.fast_model = self.fast_combo.currentData() or ""
-                self.controller.update_setting("summarisation.fast_model", self.state.fast_model)
-            else:
-                self.state.fast_model = ""
-            # Local modes don't use fusion
+            # Local runs don't use fusion
             self.controller.update_setting("summarisation.fusion_enabled", False)
         else:
-            # API modes — provider is a cloud (openai_compatible)
+            # Cloud — provider is openai_compatible
             self.controller.update_setting("summarisation.provider", "openai_compatible")
-            # Heavy cloud API config
+            # Cloud API config
             self.controller.update_setting(
                 "summarisation.api_base_url", self.cloud_url_edit.text().strip()
             )
@@ -916,24 +678,6 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             self.state.fallback_ocr_model = self.controller.get_setting(
                 "ocr.fallback_model", self.state.primary_ocr_model
             )
-            # API modes don't use a local fast model
-            self.state.fast_model = ""
-            # Fast API config (dual_api only)
-            if arch == "dual_api":
-                self.controller.update_setting(
-                    "summarisation.fast_api_url", self.fast_api_url_edit.text().strip()
-                )
-                # V0.16 (Phase 3 / 3.2): keyring-backed write (completes the V18.1 TODO)
-                self.controller.set_secret(
-                    "summarisation.fast_api_key", self.fast_api_key_edit.text().strip()
-                )
-                self.controller.update_setting(
-                    "summarisation.fast_api_model", self.fast_api_model_edit.text().strip()
-                )
-            else:
-                # single_api — clear fast API fields so they don't leak
-                self.controller.update_setting("summarisation.fast_api_url", "")
-                self.controller.update_setting("summarisation.fast_api_model", "")
             self.controller.update_setting("summarisation.fusion_enabled", False)
 
         # Common parameters
@@ -951,12 +695,6 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         )
         self.controller.update_setting(
             "summarisation.max_output_tokens", self.heavy_out_spin.value()
-        )
-        self.controller.update_setting(
-            "summarisation.fast_model_temperature", self.fast_temp_spin.value()
-        )
-        self.controller.update_setting(
-            "summarisation.fast_model_context", self.fast_ctx_spin.value()
         )
 
     # V7.5.1: temperature=0 warning — many models produce degenerate output

@@ -37,6 +37,7 @@ orchestrator — pinned by ``_NOT_MOVED_NEIGHBOURS``), ``_prepare_text`` /
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 
@@ -47,6 +48,8 @@ from core.summarisation.map_reduce import (
 from core.summarisation.map_reduce import (
     section_map_reduce as mr_section_map_reduce,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SummarizerChunkingMixin:
@@ -143,6 +146,15 @@ class SummarizerChunkingMixin:
             "INFO",
         )
 
+        # V0.5.8: the V0.5.6 fused-path glossary extraction was REMOVED.
+        # The master-summary prompt no longer asks for <name_glossary> (the
+        # V0.5.7 revert), so parsing raw1 for it always returned empty + logged
+        # the noisy "no <name_glossary> block parsed from master summary".
+        # The V0.5.7 separate call (extract_glossary_via_llm in primary_call.py)
+        # now handles glossary extraction via a DEDICATED LLM call + the
+        # set_chapter_glossary side-channel. This fused path is dead code.
+        source_glossary: dict[str, list] = {"names": [], "dates": [], "terms": []}
+
         # ── Call 2: Bullet Points derivation FROM the master summary ──
         # The input is the master summary (much smaller than the full source)
         # → less context, less CoT risk, faster generation.
@@ -204,6 +216,12 @@ class SummarizerChunkingMixin:
             "thorough_summary": master_summary,
             "key_distinctions": "",  # filled by _ensure_additive_sections
             "theoretical_tensions": "",  # filled by _ensure_additive_sections
+            # V0.5.6 Phase 0.5: the source glossary parsed from Call 1/3's
+            # <name_glossary> block. Flows through to SummaryResult for the
+            # verification LAYER (coverage ground truth). Empty dict = the
+            # LLM didn't emit the block (fail-open — never blocks the
+            # master-summary).
+            "source_glossary": source_glossary,
             "raw": (raw1 or "")
             + "\n\n---V0.3-MASTER---\n\n"
             + (raw2 or "")

@@ -31,34 +31,8 @@ fixes must be structural/morphological so they generalize to any book):
 
 from __future__ import annotations
 
-import sys
-import types
-
 # ── Hermetic tiktoken gate (same as conftest; this file is also run
 # standalone by scripts/e2e_v182035_postchecks.py) ─────────────────────────
-if "tiktoken" not in sys.modules:
-    import importlib.util as _ilu
-
-    try:
-        _tk_real = _ilu.find_spec("tiktoken") is not None
-    except Exception:
-        _tk_real = False
-    if not _tk_real:
-        _tk = types.ModuleType("tiktoken")
-
-        class _TkEnc:
-            def encode(self, s, disallowed_special=()):
-                return (s or "").split()
-
-            def decode(self, tokens):
-                return " ".join(str(t) for t in tokens)
-
-        _tk.Encoding = _TkEnc
-        _tk.get_encoding = lambda *a, **k: _TkEnc()
-        _tk.encoding_for_model = lambda *a, **k: _TkEnc()
-        sys.modules["tiktoken"] = _tk
-
-
 # ── Fixtures: the REAL strings from the rig run ─────────────────────────────
 
 # The exact bullet that shipped as a misattribution (audit E1). Winnicott's
@@ -320,12 +294,14 @@ class TestMentionOnlyTemplate:
     unchanged."""
 
     def test_template_is_object_position_and_pronoun_free(self):
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        # The rewritten mention-only block must demand object position…
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "OWNS the claim is the grammatical" in src
         assert "OBJECT of a" in src
         # …forbid pronouns (the Kris "Her" class)…
@@ -334,12 +310,14 @@ class TestMentionOnlyTemplate:
         assert "NEVER open the" in src
 
     def test_tail_instruction_conditional(self):
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        # The "begin each bullet with the author's name" instruction must
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         # be conditional now (it contradicted the mention-only block).
         assert "_tail_instruction" in src
         assert "if not _mention_only" in src
@@ -378,7 +356,7 @@ class TestTruncationAwareScholarVerdict:
             temperature=0.7,
             prompt_manager=_PM(),
             recover_vram=lambda *a, **k: None,
-            call_fast_llm=lambda *a, **k: llm_response,
+            call_llm=lambda *a, **k: llm_response,
             strip_thinking=lambda s: s,
             log=_log_fn,
         )
@@ -437,7 +415,7 @@ class TestTruncationAwareScholarVerdict:
                 temperature=0.7,
                 prompt_manager=_PM(),
                 recover_vram=lambda *a, **k: None,
-                call_fast_llm=_llm,
+                call_llm=_llm,
                 strip_thinking=lambda s: s,
                 log=lambda m, l="INFO": log_calls.append((m, l)),
             )
@@ -540,14 +518,16 @@ class TestDiagnosticNumbers:
         # and the aggregated 'recall_floor'. (Read the FILE text — importing
         # converter_impl needs optional heavy deps. Check the CALL SITES,
         # not comments.)
+        # V0.4.26 (Phase 3 commit 1): the coverage/recall-floor reads moved
+        # VERBATIM to conversion/reporting.py (run_diagnostic_summary +
+        # ConverterReportingMixin) — the pin follows the moved bodies
+        # (union semantics, negative asserted over both files).
         from pathlib import Path
 
-        src = (
-            Path(__file__)
-            .resolve()
-            .parent.parent.joinpath("core/pipeline/converter_impl.py")
-            .read_text(encoding="utf-8")
-        )
+        root = Path(__file__).resolve().parent.parent
+        src = (root / "core/pipeline/converter_impl.py").read_text(encoding="utf-8") + (
+            root / "core/pipeline/conversion/reporting.py"
+        ).read_text(encoding="utf-8")
         assert "totals.get('coverage_percent'" not in src
         assert 'totals.get("avg_coverage")' in src
         assert "recall_floor" in src

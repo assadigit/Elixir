@@ -14,32 +14,7 @@ exact behaviour the fix bundle was designed to produce:
   RC-5c borderline attribution band verifies named entities before flagging
 """
 
-import sys
-import types
-
 import pytest
-
-# ── Hermetic tiktoken gate (same approach as tests/conftest.py) ─────────────
-if "tiktoken" not in sys.modules:
-    import importlib.util as _ilu
-
-    if _ilu.find_spec("tiktoken") is not None:
-        import tiktoken  # noqa: F401
-    else:
-        _tk = types.ModuleType("tiktoken")
-        _tk.Encoding = object
-
-        class _FakeEnc:
-            def encode(self, s, **kw):
-                return list(range(len((s or "").split())))
-
-            def decode(self, ids, **kw):
-                return " ".join("w" for _ in ids)
-
-        _tk.get_encoding = lambda *a, **kw: _FakeEnc()
-        _tk.encoding_for_model = lambda *a, **kw: _FakeEnc()
-        sys.modules["tiktoken"] = _tk
-
 
 from core.preprocessing.deterministic_analyzer import extract_citations
 from core.summarisation.post_processing import (
@@ -536,7 +511,10 @@ class TestDedupNotSkippable:
         assert "skipping optional phase: post-gap-fill semantic dedup" not in src
         assert src.count("Post-gap-fill semantic dedup crashed") == 1
         # the call itself remains, inside a non-gated try/except
-        assert "_semantic_dedup_bullets(bullets)" in src
+        # (V0.5.18: the call now also passes the author-coverage veto's
+        # kwargs — source roster + context + source text)
+        assert "_semantic_dedup_bullets(" in src
+        assert "source_author_surnames(content)" in src
 
     def test_gap_fill_loop_has_veto_accounting(self):
         # RC-4: the loop must track per-author vetoes, switch to
@@ -545,11 +523,14 @@ class TestDedupNotSkippable:
         # Summarizer._summarize_inner to gap_fill_batch.batch_gap_fill —
         # re-pointed at the new module (Summarizer passes its judge locals
         # _analysis/_det_authors/_missing in as explicit parameters).
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "_veto_counts" in src
         assert "_mention_only" in src
         assert "_given_up" in src
@@ -643,7 +624,7 @@ class TestScholarGapFillFilter:
             temperature=0.7,
             prompt_manager=self._fake_prompt_manager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=fake_llm,
+            call_llm=fake_llm,
             strip_thinking=lambda s: s,
             filter_thinking_bullets=lambda bs, **kw: [
                 b for b in bs if classify_scar(b) is None and len(b.split()) >= 4
@@ -673,7 +654,7 @@ class TestScholarGapFillFilter:
             temperature=0.7,
             prompt_manager=self._fake_prompt_manager(),
             recover_vram=lambda **kw: None,
-            call_fast_llm=lambda prompt, **kw: raw_llm,
+            call_llm=lambda prompt, **kw: raw_llm,
             strip_thinking=lambda s: s,
             log=lambda m, l="INFO": None,
         )

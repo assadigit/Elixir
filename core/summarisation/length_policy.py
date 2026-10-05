@@ -28,14 +28,28 @@ summary / 3 bullets" regressions):
     V18's 800-word contract, growing with 0.45x the source — V0.4.23:
     NO absolute ceiling (the historical 1200-word cap is REMOVED by user
     directive: a thorough summary may be "as long as necessary for full
-    coverage"; the never-exceed-the-source and never-pad rules remain);
-  * executive summary: at most ~20% of the source (floored at ~60 words,
-    ceiling stays 250);
+    coverage"; the never-exceed-the-source and never-pad rules remain).
+    V0.6.2: for THIN sources (< 800) the 45% fraction is the TRUE cap —
+    the small-source floor may never push the target past it;
+  * executive summary: at most ~20% of the source (ceiling stays 250).
+    V0.6.2: thin sources obey the 20% cap exactly (the 60-word floor is
+    capped by the fraction);
   * bullet points: one distinct takeaway per ~25 source words as the
     COVERAGE FLOOR GUIDANCE (4-40) — V0.4.23: there is NO maximum and NO
-    ship-time cap (user directive: bullets "can be as long as necessary
-    for full coverage"). The count reducers are the semantic dedup,
-    consolidation, and the filler floor — never a numeric cap.
+    ship-time cap for NORMAL chapters (user directive: bullets "can be
+    as long as necessary for full coverage"). The count reducers are the
+    semantic dedup, consolidation, and the filler floor — never a
+    numeric cap. V0.6.2: THIN sources (< 800) get a bounded prompt
+    range ("N-M") + the source-scaled ADDITIVE budget via
+    ``bullet_cap`` (gap-fill/resurrection additions only — never
+    primary bullets) + the combined budget below;
+  * V0.6.2 (the thin-book fix): THIN chapters (< 800 words — the
+    user-reported book with 1-2 page chapters) additionally get a
+    COMBINED BUDGET: exec + bullets + thorough together are prompted
+    under ~75% of the source and MEASURED at ship time
+    (``expansion_audit`` flags a combined ratio >= 1.0x — the
+    user-reported "summaries risen above the original source word
+    count").
 
 Scaling is a PURE function of the source word count — same rule for a
 1-page essay and a 40-page chapter. Nothing here knows about any book.
@@ -80,6 +94,10 @@ EXEC_ABS_MAX = 250
 THOROUGH_V18_FLOOR = 800
 # Small-source floors: for a source smaller than this, the target scales
 # down with the source (never instructing MORE than the source itself).
+# V0.6.2 (thin-content fix): these floors are now SOFT anchors — a floor
+# may never push a target past its source fraction (the fraction is the
+# TRUE cap; see thorough_target/executive_target). Kept as the documented
+# historical values for the 300-800-word band where they are inert.
 THOROUGH_SMALL_SOURCE = 120
 EXEC_SMALL_SOURCE = 60
 # Ratio between the target's low and high bound.
@@ -99,6 +117,18 @@ BULLET_LO_FRACTION = 0.67
 # this much of its source) is logged as an expansion-ratio warning.
 EXPANSION_WARN_TARGET_MULTIPLE = 1.5
 EXPANSION_WARN_SOURCE_FRACTION = 0.60
+# V0.6.2 (user-reported thin-book bug): the thin-chapter boundary and the
+# combined budget. THIN_SOURCE_WORDS is deliberately the SAME boundary as
+# THOROUGH_V18_FLOOR (the V0.05 small-source regime) — no new magic number;
+# the thin regime is where the section targets are small enough that their
+# SUM can reach (and, pre-fix, exceed) the source's own word count (the
+# user's book with 1-2 page chapters shipped exec + bullets + thorough
+# ABOVE the source, padded with rephrased near-duplicate bullets).
+THIN_SOURCE_WORDS = THOROUGH_V18_FLOOR
+# The thin-chapter COMBINED budget: exec + bullets + thorough together are
+# prompted to stay under ~this fraction of the source (75% leaves real
+# compression; the honest measurement flags >= 100%).
+THIN_COMBINED_FRACTION = 0.75
 
 
 def count_source_words(text: str | None) -> int:
@@ -123,27 +153,50 @@ def thorough_target(source_words: int) -> tuple[int, int]:
       contract still forbids padding and exceeding the source).
     * W < 800: the V0.05 anti-padding regime — at most ~45% of the source
       (the 97-Things rig fix: a 321-441-word chapter must not be told to
-      write 800-1200 words = 2.7x its source), at least ~120 for anything
-      but tiny sources, never above the source itself.
+      write 800-1200 words = 2.7x its source).
 
-    lo = max(80, round(hi * 0.6)).
+    V0.6.2 (user-reported thin-book bug): the 120-word small-source floor
+    may never push the target PAST the 45% fraction. Pre-fix the floor was
+    taken inside the max uncapped — a 150-word chapter was told to write a
+    120-word thorough (80% of its source) and a 100-word chapter a
+    100-word thorough (100%!) — instruction-driven padding on thin
+    chapters (the module docstring's own "hallucination-by-instruction"
+    failure mode). The fraction is now the TRUE cap: hi = min(W,
+    round(0.45 x W)). The 80-word lo floor applies only when the hi can
+    support it (no more point targets like "68-68 word" that force a
+    minimum a thin source cannot honestly fill).
+
+    lo = max(80, round(hi * 0.6)) when hi >= 80, else round(hi * 0.6).
     """
     w = max(0, int(source_words))
     if w >= THOROUGH_V18_FLOOR:
         hi = max(round(THOROUGH_SOURCE_FRACTION * w), THOROUGH_V18_FLOOR)
     else:
-        hi = min(w, max(round(THOROUGH_SOURCE_FRACTION * w), min(THOROUGH_SMALL_SOURCE, w)))
-    lo = max(80, round(hi * THOROUGH_LO_FRACTION))
+        # V0.6.2: the fraction is the cap — the small-source floor is
+        # inert for thin sources (it existed for the 300-800-word band,
+        # where 0.45xW >= 120 anyway and this branch is byte-identical).
+        hi = min(w, round(THOROUGH_SOURCE_FRACTION * w))
+    lo = round(hi * THOROUGH_LO_FRACTION)
+    if hi >= 80:
+        lo = max(lo, 80)
     if lo > hi:
         lo = hi
     return lo, hi
 
 
 def executive_target(source_words: int) -> tuple[int, int]:
-    """(lo, hi) word target for the executive summary, scaled to the source."""
+    """(lo, hi) word target for the executive summary, scaled to the source.
+
+    V0.6.2 (user-reported thin-book bug): the 60-word small-source floor
+    may never push the target past the 20% fraction (pre-fix a 100-word
+    chapter was told to write a 60-word exec = 60% of its source). The
+    40-word lo floor applies only when the hi can support it.
+    """
     w = max(0, int(source_words))
-    hi = min(EXEC_ABS_MAX, max(round(EXEC_SOURCE_FRACTION * w), min(EXEC_SMALL_SOURCE, w)))
-    lo = max(40, round(hi * EXEC_LO_FRACTION))
+    hi = min(EXEC_ABS_MAX, round(EXEC_SOURCE_FRACTION * w))
+    lo = round(hi * EXEC_LO_FRACTION)
+    if hi >= 40:
+        lo = max(lo, 40)
     if lo > hi:
         lo = hi
     return lo, hi
@@ -165,21 +218,27 @@ def bullet_target(source_words: int) -> tuple[int, int]:
 
 
 def bullet_cap(source_words: int) -> int:
-    """V0.4.23 (user directive): there is NO bullet cap — returns 0.
+    """V0.6.2 (user-reported thin-book bug): TWO REGIMES.
 
-    Historically (V0.06 rig audit F4) this returned the source-scaled
-    ``bullet_target`` hi as a HARD cap at every insertion site and at
-    ship time. The V0.4.22 ch.4 audit proved the cap's failure mode:
-    it DISPLACED coverage-critical bullets (the consolidated
-    characteristics bullet — the sole cover of the chapter's conclusion
-    items — and a name-corrupted bullet were both silently
-    dropped by the 40-cap). The user directive is explicit: bullets "can
-    be as long as necessary for full coverage". Consumers treat a result
-    ``<= 0`` as "no cap" (fail-open) — every insertion site and ship-time
-    truncation now no-ops; the count reducers are the non-skippable
-    semantic dedup, consolidation, and the V0.4.23 filler floor.
+    * THIN sources (W < THIN_SOURCE_WORDS = 800): the source-scaled
+      bullet_target hi — the V0.06 rig-audit F4-b ADDITIVE budget. The cap
+      ONLY ever bounds the ADDITIVE machinery (Tier-2 gap-fill, scholar
+      gap-fill, quarantine resurrection) — never primary bullets — so
+      this bounds exactly the machinery that padded the user's thin book
+      (gap-fill kept inserting rephrased bullets with no room limit:
+      "repetitive bullets which rephrased the same concepts").
+    * NORMAL sources: 0 — the V0.4.23 no-cap user directive stands
+      unchanged (bullets "can be as long as necessary for full coverage";
+      the V0.4.22 ch.4 displacement failure that removed the cap was a
+      content-rich chapter, not a thin one).
+
+    Consumers treat a result ``<= 0`` as "no cap" (fail-open).
     """
-    return 0
+    w = max(0, int(source_words))
+    if w >= THIN_SOURCE_WORDS:
+        return 0
+    _lo, hi = bullet_target(w)
+    return hi
 
 
 # ── Prompt-facing strings (one phrasing, every consumer) ────────────────────
@@ -200,9 +259,20 @@ def bullet_range_phrase(source_words: int) -> str:
     with NO maximum ("at least N"), per the user's no-limit directive.
     Legacy callers that interpolated a range now read "at least N",
     which is the intended contract: as many bullets as full coverage
-    requires, never fewer than the scaled floor, never padded."""
-    lo, _hi = bullet_target(source_words)
-    return f"at least {lo}"
+    requires, never fewer than the scaled floor, never padded.
+
+    V0.6.2 (user-reported thin-book bug): THIN sources (W < 800) get a
+    BOUNDED range ("N-M") instead — "at least N ... NO MAXIMUM" on a
+    340-word chapter is an explicit invitation to rephrase the same
+    concepts into more bullets when the chapter has fewer distinct
+    ideas than N (the user's repetitive-bullet report). The hi is the
+    same source-scaled bullet_target every coverage floor uses.
+    """
+    w = max(0, int(source_words))
+    lo, hi = bullet_target(w)
+    if w >= THIN_SOURCE_WORDS:
+        return f"at least {lo}"
+    return f"{lo}-{hi}"
 
 
 def length_budget_block(
@@ -225,24 +295,54 @@ def length_budget_block(
         " All section-length targets below are scaled to that length and"
         " OVERRIDE any other length numbers in this prompt:",
     ]
+    # V0.6.2 (user-reported thin-book bug): the THIN-chapter variant —
+    # bounded bullet count + the combined budget + the anti-repetition
+    # contract. Normal chapters keep the V0.4.23 no-maximum wording
+    # unchanged (their sections cannot sum past the source).
+    _thin = 0 < source_words < THIN_SOURCE_WORDS
     if include_executive:
         elo, ehi = executive_target(source_words)
         lines.append(f"- executive_summary: {elo}-{ehi} words.")
     if include_keypoints:
-        blo, _bhi = bullet_target(source_words)
-        lines.append(
-            f"- bullet_points: at least {blo} bullets — there is NO MAXIMUM:"
-            " add as many distinct takeaways as the chapter's content"
-            " requires for FULL coverage (every enumerated list item, every"
-            " named contributor, every distinct finding). Never fragment or"
-            " pad to inflate the count; a bullet must carry content."
-        )
+        blo, bhi = bullet_target(source_words)
+        if _thin:
+            lines.append(
+                f"- bullet_points: {blo}-{bhi} bullets. This is a THIN"
+                " chapter: emit ONE bullet per DISTINCT fact, claim, or"
+                " concept the chapter actually states. NEVER rephrase an"
+                " already-stated idea as an additional bullet — a"
+                " rephrased bullet is a defect, not coverage. If the"
+                " chapter has fewer distinct ideas than the floor, emit"
+                " fewer bullets; never fragment or pad to inflate the"
+                " count."
+            )
+        else:
+            lines.append(
+                f"- bullet_points: at least {blo} bullets — there is NO"
+                " MAXIMUM: add as many distinct takeaways as the chapter's"
+                " content requires for FULL coverage (every enumerated list"
+                " item, every named contributor, every distinct finding)."
+                " Never fragment or pad to inflate the count; a bullet must"
+                " carry content."
+            )
     if include_thorough:
         tlo, thi = thorough_target(source_words)
         lines.append(
             f"- thorough_summary: {tlo}-{thi} words (the target scales with"
             " the chapter; no absolute ceiling — write as much as full"
             " coverage requires)."
+        )
+    if _thin:
+        _combined_aim = max(30, round(THIN_COMBINED_FRACTION * source_words))
+        lines.append(
+            f"- COMBINED BUDGET: the sections above TOGETHER (executive +"
+            f" bullet points + thorough) must stay WELL UNDER this chapter's"
+            f" own {source_words} words — aim for ~{_combined_aim} words"
+            " total. The three sections are one summary of one thin"
+            " chapter, not three parallel expansions of it: do not restate"
+            " a bullet's content in the prose sections or vice versa. If a"
+            " section target cannot be filled with content the source"
+            " actually states, write less."
         )
     lines.append(
         "COMPRESSION CONTRACT: this is a SUMMARY — every section must be"
@@ -263,6 +363,7 @@ def expansion_audit(
     source_words: int,
     exec_words: int,
     thorough_words: int,
+    bullet_words: int = 0,
 ) -> list[str]:
     """Honest per-section compression-ratio findings (for the log line).
 
@@ -272,6 +373,14 @@ def expansion_audit(
     territory. Measurement only — truncation is NOT done here (prose must
     never be cut by a ratio heuristic; the F1 caps and the prompt-side
     scaling are the enforcement).
+
+    V0.6.2 (user-reported thin-book bug): the COMBINED finding — for thin
+    sources (W < 800) the three sections together (exec + bullet words +
+    thorough) at or above the source's own word count is exactly the
+    user-reported defect ("the exec summary + bullet point + thorough
+    summary risen above the original source word count"). Thin-scoped:
+    normal chapters keep the V18 richness contract where the combined
+    sections may legitimately reach the source's scale.
     """
     findings: list[str] = []
     if source_words > 0 and thorough_words > 0:
@@ -293,6 +402,14 @@ def expansion_audit(
             findings.append(
                 f"exec {exec_words}w = {exec_words / source_words:.1f}x "
                 f"its {source_words}w source (target {ehi}w) — expansion, not summary"
+            )
+    if 0 < source_words < THIN_SOURCE_WORDS:
+        _combined = max(0, exec_words) + max(0, bullet_words) + max(0, thorough_words)
+        if _combined >= source_words:
+            findings.append(
+                f"combined sections {_combined}w = {_combined / source_words:.1f}x "
+                f"the {source_words}w source — over-generation, not summary "
+                f"(thin chapter: the sections must sum to LESS than the source)"
             )
     return findings
 

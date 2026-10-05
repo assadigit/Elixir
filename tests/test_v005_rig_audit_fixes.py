@@ -37,30 +37,14 @@ from __future__ import annotations
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-
-# ── hermetic tiktoken gate (house pattern) ─────────────────────────────────
-if "tiktoken" not in sys.modules:
-    try:
-        import tiktoken  # type: ignore  # noqa: F401
-    except ImportError:
-        _tk = types.ModuleType("tiktoken")
-        _tk.get_encoding = lambda *a, **k: None  # type: ignore[attr-defined]
-        _tk.Encoding = object  # type: ignore[attr-defined]
-        sys.modules["tiktoken"] = _tk
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # markitdown is not installed in this sandbox; the stub keeps the eager
 # core.pipeline → core.pdf import chains loadable (V0.03 house pattern).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from core.models.models import (  # noqa: E402
     ConversionRequest,
     SummaryResult,
@@ -305,7 +289,7 @@ class TestLengthPolicy:
         from core.summarisation.prompt_manager import PromptManager
 
         pm = PromptManager()
-        chapter = "word " * 340  # a 340-word chapter
+        chapter = "word " * 340  # a 340-word chapter (THIN)
         rendered = pm.render("default", "Ch.1", chapter, "Write in English.")
         assert rendered is not None
         assert "800-1200" not in rendered
@@ -313,9 +297,16 @@ class TestLengthPolicy:
         import re as _re
 
         assert _re.search(r"\b\d+-\d+ word detailed analysis", rendered)
-        # V0.4.23: the bullet count is a coverage FLOOR with no maximum
-        # ("at least N distinct key takeaways"), not a fixed range.
-        assert _re.search(r"at least \d+ distinct key takeaways", rendered)
+        # V0.6.2 (user-reported thin-book bug): THIN chapters get a
+        # BOUNDED bullet range ("N-M distinct key takeaways") — the
+        # "at least N" + NO-MAXIMUM phrasing invited rephrase-padding on
+        # chapters with fewer distinct ideas than N.
+        assert _re.search(r"\b\d+-\d+ distinct key takeaways", rendered), rendered
+        # NORMAL chapters keep the V0.4.23 coverage-floor phrasing
+        fat_chapter = "word " * 1200
+        rendered_fat = pm.render("default", "Ch.1", fat_chapter, "Write in English.")
+        assert rendered_fat is not None
+        assert _re.search(r"at least \d+ distinct key takeaways", rendered_fat)
 
     def test_f1_validation_caps_scale_to_source(self):
         """The F1 truncation caps scale (340-word source → ~150-190-word
@@ -357,16 +348,33 @@ class TestLengthPolicy:
     def test_bullet_expansion_threshold_is_source_scaled(self):
         # V0.18 (Phase 5.1, steps 2-4): the expansion gates moved VERBATIM to
         # chapter_phases.py (SummarizerChapterPhasesMixin).
+        # V0.5.2: the bullet-count target gate is REMOVED (user directive:
+        # never set min/max/appropriate for bullet count). The expansion
+        # now fires whenever the primary produced bullets + keypoints
+        # requested + deadline allows — regardless of count.
         src = _strip_comments(_src("core/summarisation/chapter_phases.py"))
-        assert "len(bullets) < _bp_lo_lp" in src
+        assert "len(bullets) < _bp_lo_lp" not in src  # V0.5.2: removed
         assert "len(bullets) < 30" not in src
 
     def test_theorist_floor_budget_gate(self):
         """The 150-300-word append skips when the thorough already meets its
-        scaled ceiling (source pin + behaviour)."""
+        scaled ceiling (source pin + behaviour).
+
+        V0.4.37 (F3): the gate is now coverage-driven -- the word-count
+        comparison + scaled_target_hi live in the _v05_gapfill_should_skip
+        helper, which overrides the word-count skip when coverage is below
+        the engage fraction (_V05_COVERAGE_ENGAGE_FRACTION)."""
         src = _strip_comments(_src("core/summarisation/thorough_theorist_floor.py"))
         assert "scaled_target_hi" in src
-        assert "_tf_words >= int(scaled_target_hi)" in src
+        # V0.4.37 (F3): the word-count comparison moved into the
+        # _v05_gapfill_should_skip helper (parameter tf_words, not the
+        # method-local _tf_words). The method now DELEGATES to it.
+        assert "_v05_gapfill_should_skip" in src
+        assert "tf_words >= int(scaled_target_hi)" in src
+        # The coverage-driven override (F3): engage fraction constant +
+        # the helper call from the method body.
+        assert "_V05_COVERAGE_ENGAGE_FRACTION" in src
+        assert "_v05_gapfill_should_skip(" in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════

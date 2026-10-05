@@ -15,6 +15,7 @@ resolves exactly as before.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from core.summarisation.thorough_fallback import (
@@ -22,6 +23,7 @@ from core.summarisation.thorough_fallback import (
 )
 from utils.error_trace import log_swallow
 from utils.logging import get_main_logger
+from utils.settings import Settings
 
 # The SAME logger object summarizer.py's module-level ``logger`` holds.
 logger = get_main_logger()
@@ -325,8 +327,17 @@ QUALITY (cloud model): You are a high-capability model. Go beyond extraction:
                     _enum_blk = enumeration_coverage_block(text)
                     if _enum_blk:
                         rendered += "\n\n" + _enum_blk
-                except Exception:
-                    pass
+                except (ImportError, AttributeError, ValueError) as _e:
+                    # V0.6.8 (audit B11): was `except Exception: pass` — the
+                    # enumerated-list coverage contract silently vanished
+                    # from the prompt with no trace. log_swallow is the house
+                    # helper (same file: structural_outline_build et al.).
+                    log_swallow(
+                        "enumeration_coverage_block_template",
+                        _e,
+                        level=logging.WARNING,
+                        detail="coverage contract missing from the prompt",
+                    )
                 return rendered
 
         # V0.05 (F9a/F9b): the inline fallback formats build ONLY the
@@ -423,8 +434,16 @@ Do NOT describe the JSON structure. Only output the JSON object.
             _enum_blk_inline = enumeration_coverage_block(text)
             if _enum_blk_inline:
                 output_format += "\n\n" + _enum_blk_inline
-        except Exception:
-            pass
+        except (ImportError, AttributeError, ValueError) as _e:
+            # V0.6.8 (audit B11): was `except Exception: pass` — see the
+            # template-path twin above; the inline path had the same silent
+            # coverage-contract loss.
+            log_swallow(
+                "enumeration_coverage_block_inline",
+                _e,
+                level=logging.WARNING,
+                detail="coverage contract missing from the prompt",
+            )
 
         number_instruction = """
 IMPORTANT: Focus on descriptive findings, mechanisms, relationships, and qualitative conclusions.
@@ -547,6 +566,7 @@ Output ONLY the XML sections specified above. No preamble, no commentary, no thi
             or 8192,
             primary_model=self.primary_model,
             temperature=self.temperature,
+            temperature_multiplier=float(Settings().get("thorough.temperature_multiplier", 0.5)),
             strip_thinking=self._strip_thinking,
             call_llm=self._call_llm,
             deadline_exceeded=self._deadline_exceeded,

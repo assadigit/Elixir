@@ -141,8 +141,20 @@ def consolidate_duplicate_claims(
                 words1 = set(bp1.lower().split())
                 words2 = set(bp2.lower().split())
                 diff_words = words1.symmetric_difference(words2)
-                # If the difference is small (1-3 words), it's likely a subject merge
-                if 0 < len(diff_words) <= 6:
+                # V17.4: Raised threshold from 0.85 -> 0.92 to be less aggressive.
+                # The V17.1.3 conversion merged 30 of 61 bullets (49%!) -- too
+                # many unique bullets were lost. With 0.92, only near-exact
+                # duplicates merge, preserving more unique information.
+                # V0.4.37 (F2c): tightened the symmetric-difference guard
+                # from <=6 to <=4. A canonical subject-swap (one name A vs
+                # one name B) yields 2 diff words; an N-name swap still
+                # merges via pairwise 2-word diffs. A pair differing in 5-6
+                # words at sim>=0.92 is more likely rewording of a distinct
+                # claim than a subject swap -- preserving it lets more
+                # distinct gap-fill candidates ship (the V0.4.36 ch.6 audit
+                # F2c: the dedup round culled 20/99 = 20%). Content-agnostic
+                # (Rule 1): a numeric diff-count guard, not content.
+                if 0 < len(diff_words) <= 4:
                     merge_group.append(bp2)
                     used.add(j)
                     log(
@@ -343,14 +355,13 @@ def consolidate_bullets(
         log("    \u26a0\ufe0f Bullet consolidation: prompt file not found, skipping", "WARNING")
         return bullets, fire_count
     try:
-        # V17.1.3: Moved consolidation from FAST → HEAVY.
-        # The fast model (LFM2.5-2.6B) is too small for this task — it
-        # echoes the input format ("Bullet 1:", "Bullet 2:"), leaks
-        # chain-of-thought ("I need to systematically group them"), and
-        # produces cluster headers instead of clean merged bullets.
-        # The consolidation prompt has a 7-step process that requires
-        # semantic understanding + format following — only the heavy
-        # model handles it reliably.
+        # V17.1.3 (history): consolidation originally tried a small
+        # side-model and moved to the primary model — the small model
+        # echoed the input format, leaked chain-of-thought, and produced
+        # cluster headers instead of clean merged bullets. The
+        # consolidation prompt's 7-step process needs the primary model's
+        # semantic understanding + format following. (V0.6.14: the
+        # fast/heavy split itself is retired — THE model consolidates.)
         raw = call_llm_with_empty_retry(
             prompt,
             model=primary_model,
@@ -382,8 +393,18 @@ def consolidate_bullets(
             from core.llm.call_meta import consume_call_truncated
 
             _response_truncated = consume_call_truncated()
-        except Exception:
-            pass
+        except ImportError as _e:
+            # V0.6.8 (audit B11): was `except Exception: pass` — a missing
+            # call_meta silently disabled the truncation salvage path (the
+            # strict assertion then fires on every truncated consolidation).
+            # ImportError is the only expected failure (the ContextVar has
+            # default=False, so consume_call_truncated itself cannot raise).
+            log(
+                "    ⚠️ Bullet consolidation: truncation flag unavailable "
+                f"({type(_e).__name__}: {_e}) — truncated responses will hit "
+                "the strict assertion instead of the salvage path",
+                "WARNING",
+            )
 
         if not raw or len(raw.strip()) < 50:
             log(

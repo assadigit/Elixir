@@ -12,19 +12,6 @@ the impl module (and vice versa) because both reference the SAME state object.
 
 from __future__ import annotations
 
-import sys
-import types
-
-import pytest
-
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. The shared state object is the SAME across re-export + impl modules
 # ═══════════════════════════════════════════════════════════════════════════
@@ -159,20 +146,11 @@ class TestStateReset:
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. Autouse fixture: reset state before each test (prevents cross-test pollution)
+#
+# V0.6.6 (review-loop B1): the fixture itself MOVED to tests/conftest.py —
+# session-wide autouse. File-local copies could only protect this file;
+# the golden_freeze run proved the pollution crosses file boundaries
+# (shared _runtime_state carried warned_embedding_disabled=True into
+# later files). The conftest version resets before AND after every test
+# in the suite; this file's tests are covered by it like everything else.
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-@pytest.fixture(autouse=True)
-def _reset_runtime_state():
-    """Reset the shared runtime state before each test.
-
-    This is the V18.20.1.0 (D3) fix for the order-dependent test failures:
-    without this, a Summarizer construction in one test would pollute the
-    singleton state for downstream tests. The fixture mirrors the pattern in
-    test_embedder_optional.py (which manually reset 2 of these 5).
-    """
-    from core.summarisation._runtime_state import state
-
-    state.reset()
-    yield
-    state.reset()

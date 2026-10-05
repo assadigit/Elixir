@@ -33,7 +33,6 @@ Run: pytest tests/test_p15_output_regressions.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -44,13 +43,6 @@ if str(_project_root) not in sys.path:
 
 # markitdown is not installed in this sandbox; the core.segmentation import
 # chain (package __init__ -> segmenter -> core.pdf.adaptive_toc) needs it.
-# Same stub pattern as tests/test_v003_rig_audit_fixes.py.
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = type("MarkItDown", (), {})
-    sys.modules["markitdown"] = _md
-
-
 # ════════════════════════════════════════════════════════════════════════════
 # (a) Bullet collapse — V18 richness restored for normal chapters
 # ════════════════════════════════════════════════════════════════════════════
@@ -82,17 +74,24 @@ class TestBulletCollapseFix:
         lo, hi = bullet_target(150)
         assert lo >= 4 and hi <= 6, f"150-word fragment: got {lo}-{hi}"
 
-    def test_ship_cap_removed_for_all_chapters(self):
-        """V0.4.23 (user directive — bullets "can be as long as necessary
-        for full coverage"): there is NO bullet cap. The historical V0.06
-        source-scaled cap displaced coverage-critical bullets in the
-        V0.4.22 ch.4 run; dedup/consolidation/filler-floor are the only
-        reducers now."""
+    def test_ship_cap_is_two_regime(self):
+        """V0.6.2 (user-reported thin-book bug): ``bullet_cap`` is
+        TWO-REGIME. NORMAL chapters: 0 (the V0.4.23 user directive —
+        bullets "can be as long as necessary for full coverage"; the
+        historical V0.06 source-scaled cap displaced coverage-critical
+        bullets in the V0.4.22 ch.4 run — a CONTENT-RICH chapter).
+        THIN chapters (< 800 words): the source-scaled ADDITIVE budget is
+        restored — it bounds gap-fill/resurrection ADDITIONS only, never
+        primary bullets, and it bounds exactly the machinery that padded
+        the user's thin book (1-2 page chapters) past its own source
+        word count with rephrased near-duplicate bullets."""
         from core.summarisation.length_policy import bullet_cap
 
         assert bullet_cap(1000) == 0, "no cap for normal chapters"
-        assert bullet_cap(441) == 0, "no cap for rig-sized chapters"
         assert bullet_cap(20000) == 0, "no cap for huge chapters"
+        # thin regime: the additive budget (dedup/consolidation/filler
+        # floor remain the reducers for PRIMARY bullets)
+        assert 0 < bullet_cap(441) <= 18, "thin chapters carry the additive budget"
 
     def test_length_budget_block_states_no_maximum(self):
         """V0.4.23: the prompt block states the coverage FLOOR with NO

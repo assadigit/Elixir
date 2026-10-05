@@ -3,7 +3,19 @@
 SummarizationServiceDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, Paste Text tab, options container, output row,
+progress, status, buttons) to the base and folds its byte-identical
+closeEvent guard + _get_input_text away; the multi-file queue tab, the
+model/depth/format options, the folder-or-file output picker and the
+W-b5 worker flow (_do_summarize → _summarize_work → _on_summarize_*)
+stay as-is. The dialog keeps its DIRECT Settings() reads/writes
+(quick_services.defaults.* + summarisation.*) — it does not use the
+base's quick_services.{service}.* helpers, so no persisted key changed.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +27,6 @@ from PySide6.QtCore import Qt
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QWidget,
 )
@@ -27,13 +38,12 @@ from controller import Controller
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    PlainTextTextEdit,
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
     _show_success_modal,
 )
 
 
-class SummarizationServiceDialog(QDialog):
+class SummarizationServiceDialog(BaseServiceDialog):
     """V11: Standalone Summarization — paste text → get summary + keypoints.
 
     V13.25.0 (P1.2): Now delegates to core modules instead of duplicating logic:
@@ -44,8 +54,11 @@ class SummarizationServiceDialog(QDialog):
     - ``utils.network.list_ollama_models()`` for model listing (proxy-proof)
     - ``summarisation.endpoint`` for the Ollama URL (was wrong key: ocr.ollama_url)
 
-    UI: text area, model picker, quality dropdown, output path, single Convert
-    button, synchronous execution with streaming for UI responsiveness.
+    UI: text area, model picker, DEPTH dropdown (V0.6.4: was "quality"),
+    output-format CHECKBOX row (V0.6.4: was a single-choice dropdown —
+    every checked format is written from one run), custom-title input
+    (V0.6.4: toggle-hidden), output path, single Convert button,
+    synchronous execution with streaming for UI responsiveness.
 
     V11.17: Added model picker (auto-populated from /api/tags), pre-flight
     model check, and actionable 404/error messages that list available
@@ -56,8 +69,12 @@ class SummarizationServiceDialog(QDialog):
         .txt/.md files; each is summarized independently and saved as
         ``{stem}_{quality}_summary{ext}``.
       - **Output format dropdown**: ``.md``, ``.docx``, ``.pdf`` (via the
-        shared ``service_formatters`` module — Word/PDF always available
-        because python-docx + reportlab are in requirements.txt).
+        shared ``service_formatters`` module). python-docx is in
+        requirements.txt; the PDF path needs WeasyPrint or ReportLab —
+        neither is in requirements.txt (V0.6.0 docstring correction: the
+        old text claimed "reportlab is in requirements.txt", which was
+        never true), so on a bare install ``write_pdf`` degrades to
+        writing the ``.md`` next to the requested ``.pdf``.
       - **Obsidian-style markdown** toggle: when on (and format is .md),
         the summary is wrapped in YAML front-matter + Obsidian callouts
         (``> [!summary]``, ``> [!info]``, …) so it drops cleanly into an
@@ -67,6 +84,21 @@ class SummarizationServiceDialog(QDialog):
         folder is used and each file gets its own auto-named output.
       - **Try Another File** button after a run: clears inputs/outputs so
         the user can summarize the next file without reopening the dialog.
+
+      V0.6.4 (user report — six MEDIUM items):
+      - **Multiple output formats**: the format dropdown is now a
+        Markdown / Word / PDF checkbox row; every checked format gets its
+        own file from ONE summarisation run (one LLM call, N writes).
+      - **Custom title**: a toggle-hidden input replaces the auto
+        ``"{stem} — {depth} summary"`` document heading (e.g. "BMW
+        Company History").
+      - **Fine-tuned depth prompts**: the user-supplied Fast / Standard /
+        Thorough prompt texts (``core/summarisation/tool_prompts.py``),
+        each carrying "Write in the same language as the text." — Farsi
+        in → Farsi out (the old shared prompt translated it to English).
+        The raw (thinking-stripped) response is written verbatim; no XML
+        re-assembly.
+      - **"Quality" → "Depth"**: the term change, UI-wide for this tool.
     """
 
     # Default model used when settings has nothing and Ollama is unreachable.
@@ -79,12 +111,49 @@ class SummarizationServiceDialog(QDialog):
     _DEFAULT_MODEL = RIG_FALLBACK_MODEL
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("Σ Summarization Service")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options, and _refresh_models (called
+        # below, at the pre-B17 __init__ tail position) reads
+        # _last_known_models. The typed _worker init stays verbatim — the
+        # W-b5 re-entrancy guard in _do_summarize depends on it.
+        self._last_known_models: list[str] = []
+        self._files: list[str] = []  # V11.18: multi-file list
+        # V18.20.4.5 (W-b5/T-b2): the background summarization worker
+        # (SimpleWorker).
+        self._worker: SimpleWorker | None = None
+        super().__init__(
+            controller, "Σ Summarization Service", parent, accept_files=True, accept_text=True
+        )
         self.setMinimumSize(640, 540)
-        self.setModal(True)
+        # V0.6.10 (B17): the base builds out_path_edit / process_btn with
+        # its own labels; this dialog's historical attribute names
+        # (out_edit / action_btn — pinned by the e2e drive tests) are
+        # restored as aliases of the SAME widgets (single source of truth).
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText(
+            "Single file: full path  |  Multi-file: output FOLDER (files auto-named {stem}_{quality}_summary{ext})"
+        )
+        self.action_btn = self.process_btn
+        self.action_btn.setText("Summarize")
+        # V11.20: bigger, bolder status label + a busy progress bar during
+        # processing so the user gets clear visual feedback.
+        self.status_label.setMinimumHeight(50)
+        self.status_label.setTextFormat(Qt.RichText)
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.progress_bar.setFixedHeight(8)
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_summarize_progress only
+        # sets status text) — hide the dead toggle.
+        self._log_toggle_btn.setVisible(False)
 
+        # Populate the model picker on first show (pre-B17 __init__ tail).
+        self._refresh_models()
+
+    def _build_options(self, layout) -> None:
+        """V0.6.10 (B17): the summarization-specific rows, folded into the
+        base's options container — the multi-file queue tab (tab index 1),
+        the model picker, the depth + format-checkbox row, the custom
+        title and the Obsidian tri-state."""
         from PySide6.QtWidgets import (
             QCheckBox as _QChB,
         )
@@ -107,35 +176,21 @@ class SummarizationServiceDialog(QDialog):
             QPushButton as _QPB,
         )
         from PySide6.QtWidgets import (
-            QTabWidget as _QTW,
-        )
-        from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
 
-        # V11.66.0: PlainTextTextEdit is defined at the top of this file,
-        # NOT in PySide6.QtWidgets. This was causing an ImportError.
-        _QTE = PlainTextTextEdit
+        # V0.6.10 (B17): the base's tabs come with a single-file "Pick
+        # File" tab at index 1; this dialog's contract is a MULTI-file
+        # queue tab at that index (pinned: tabs.setCurrentIndex(1) in the
+        # e2e drive tests). Swap the page, keeping a Python reference to
+        # the removed page so the base's file_path_edit stays alive (Qt
+        # returns ownership to Python on removeTab — a GC'd page would
+        # destroy the base's line edit; with the single-file picker gone,
+        # the inherited _get_input_text returns "" on the queue tab,
+        # exactly the deleted local override's contract).
+        self._base_file_tab = self.tabs.widget(1)
+        self.tabs.removeTab(1)
 
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("Σ Summarization Service")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        # ── Input tabs: paste text / pick files (multi) ───────────────
-        self.tabs = _QTW()
-        # Tab 1: paste text
-        text_tab = QWidget()
-        text_lay = _VL(text_tab)
-        self.text_input = _QTE()
-        self.text_input.setPlaceholderText("Paste your text here…")
-        self.text_input.setAcceptRichText(False)  # V11.31: strip styling on paste
-        text_lay.addWidget(self.text_input)
-        self.tabs.addTab(text_tab, "📋 Paste Text")
-        # Tab 2: pick files (multi) — V11.18
         file_tab = QWidget()
         file_lay = _VL(file_tab)
         self.file_list = _QLW()
@@ -155,7 +210,6 @@ class SummarizationServiceDialog(QDialog):
         file_lay.addWidget(self.file_list)
         file_lay.addLayout(file_btn_row)
         self.tabs.addTab(file_tab, "📁 Pick Files (multi)")
-        lay.addWidget(self.tabs)
 
         # ── Model picker row ───────────────────────────────────────────
         model_row = _HL()
@@ -169,31 +223,63 @@ class SummarizationServiceDialog(QDialog):
         self.refresh_btn.setToolTip("Re-fetch the list of installed Ollama models")
         self.refresh_btn.clicked.connect(self._refresh_models)
         model_row.addWidget(self.refresh_btn)
-        lay.addLayout(model_row)
+        layout.addLayout(model_row)
 
         # ── Options row: quality + output format ──────────────────────
         # V11.19: each combo has a "Default" option (data="__default__") that
         # reads from quick_services.defaults.* at run-time.
         opt_row = _HL()
         opt_row.setSpacing(8)
-        opt_row.addWidget(_QL("Quality:"))
+        # V0.6.4 (user report): "Quality" -> "Depth" (term change); the
+        # descriptions now describe the fine-tuned depth prompts
+        # (core/summarisation/tool_prompts.py). The settings KEY keeps its
+        # historical name (quick_services.defaults.summarize_quality).
+        opt_row.addWidget(_QL("Depth:"))
         self.quality_combo = _QCB()
         self.quality_combo.addItem("Default (change in Settings)", "__default__")
-        self.quality_combo.addItem("Fast (exec summary + 5 keypoints)", "fast")
-        self.quality_combo.addItem("Standard (exec + 10 keypoints + thorough)", "standard")
-        self.quality_combo.addItem("Thorough (detailed + analysis)", "thorough")
+        self.quality_combo.addItem("Fast (quick brief, ~200 words)", "fast")
+        self.quality_combo.addItem("Standard (overview + key points, ≤500 words)", "standard")
+        self.quality_combo.addItem("Thorough (structured deep summary, ≤60% of source)", "thorough")
         opt_row.addWidget(self.quality_combo)
         opt_row.addSpacing(16)
-        opt_row.addWidget(_QL("Format:"))
-        self.fmt_combo = _QCB()
-        self.fmt_combo.addItem("Default (change in Settings)", "__default__")
-        self.fmt_combo.addItem("Markdown (.md)", ".md")
-        self.fmt_combo.addItem("Word document (.docx)", ".docx")
-        self.fmt_combo.addItem("PDF (.pdf)", ".pdf")
-        self.fmt_combo.currentIndexChanged.connect(self._on_format_changed)
-        opt_row.addWidget(self.fmt_combo)
+        # V0.6.4 (user report): multiple output formats — a CHECKBOX ROW
+        # replaces the single-choice Format combo. Every checked format
+        # gets its own output file from ONE summarisation run.
+        opt_row.addWidget(_QL("Formats:"))
+        self.fmt_md_chk = _QChB("Markdown (.md)")
+        self.fmt_docx_chk = _QChB("Word (.docx)")
+        self.fmt_pdf_chk = _QChB("PDF (.pdf)")
+        # Initial state: check the format matching the settings default.
+        from utils.settings import Settings as _Settings
+
+        _default_fmt = _Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+        self.fmt_md_chk.setChecked(_default_fmt == ".md")
+        self.fmt_docx_chk.setChecked(_default_fmt == ".docx")
+        self.fmt_pdf_chk.setChecked(_default_fmt == ".pdf")
+        for _chk in (self.fmt_md_chk, self.fmt_docx_chk, self.fmt_pdf_chk):
+            opt_row.addWidget(_chk)
         opt_row.addStretch()
-        lay.addLayout(opt_row)
+        layout.addLayout(opt_row)
+
+        # ── Custom title row (V0.6.4) ──────────────────────────────
+        # The user report: the auto "pasted — standard summary" heading
+        # must be replaceable with a custom document title, hidden by a
+        # toggle (e.g. "BMW Company History").
+        title_row = _HL()
+        title_row.setSpacing(8)
+        self.custom_title_chk = _QChB("Custom title:")
+        self.custom_title_chk.setToolTip(
+            "When ON, the text in the field becomes the document heading of "
+            'every output file (e.g. "BMW Company History") instead of the '
+            "automatic '<stem> — <depth> summary' title."
+        )
+        self.custom_title_edit = _QLE()
+        self.custom_title_edit.setPlaceholderText('e.g. "BMW Company History"')
+        self.custom_title_edit.setVisible(False)  # hidden until toggled on
+        self.custom_title_chk.toggled.connect(self._on_custom_title_toggled)
+        title_row.addWidget(self.custom_title_chk)
+        title_row.addWidget(self.custom_title_edit, 1)
+        layout.addLayout(title_row)
 
         # ── Obsidian toggle (V11.18) ──────────────────────────────────
         obs_row = _HL()
@@ -208,77 +294,28 @@ class SummarizationServiceDialog(QDialog):
         self.obsidian_chk.setTristate(True)
         # Start in "Default" state (follows quick_services.defaults.summarize_obsidian).
         self.obsidian_chk.setCheckState(Qt.PartiallyChecked)
-        self.obsidian_chk.setEnabled(True)
+        # V0.6.4: only meaningful when Markdown is among the checked
+        # formats. Connected HERE (after obsidian_chk exists) so the
+        # init-time setChecked calls above never hit the handler.
+        self.obsidian_chk.setEnabled(self.fmt_md_chk.isChecked())
+        self.fmt_md_chk.toggled.connect(self._on_fmt_toggled)
         obs_row.addWidget(self.obsidian_chk)
         obs_row.addStretch()
-        lay.addLayout(obs_row)
+        layout.addLayout(obs_row)
 
-        # ── Output row ────────────────────────────────────────────────
-        out_row = _HL()
-        out_row.setSpacing(8)
-        out_row.addWidget(_QL("Save to:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText(
-            "Single file: full path  |  Multi-file: output FOLDER (files auto-named {stem}_{quality}_summary{ext})"
-        )
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) and
+    # _get_input_text (the base's returns the paste text on tab 0 and ""
+    # on the queue tab, where the removed single-file picker leaves
+    # file_path_edit empty) are now INHERITED; the pre-B17 copies were
+    # behaviorally equivalent and were deleted. _on_process routes the
+    # base's process button into this dialog's action dispatch.
 
-        # ── Status ────────────────────────────────────────────────────
-        # V11.20: bigger, bolder status label + a busy progress bar during
-        # processing so the user gets clear visual feedback.
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        self.status_label.setMinimumHeight(50)
-        self.status_label.setTextFormat(Qt.RichText)
-        self.status_label.setAlignment(Qt.AlignCenter)
-        lay.addWidget(self.status_label, 1)
-
-        # V11.20: busy progress bar — visible only during processing.
-        from PySide6.QtWidgets import QProgressBar as _QPB2
-
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 0)  # busy/indeterminate mode
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        # ── Buttons ───────────────────────────────────────────────────
-        btn_row = _HL()
-        btn_row.addStretch()
-        self.again_btn = _QPB("🔄 Try Another File")
-        self.again_btn.setObjectName("Compact")
-        self.again_btn.setVisible(False)
-        self.again_btn.clicked.connect(self._on_try_another)
-        self.action_btn = _QPB("Summarize")
-        self.action_btn.setObjectName("Primary")
-        self.action_btn.clicked.connect(self._on_action)
-        btn_row.addWidget(self.again_btn)
-        btn_row.addWidget(self.action_btn)
-        lay.addLayout(btn_row)
-
-        # Populate the model picker on first show.
-        self._last_known_models: list[str] = []
-        self._files: list[str] = []  # V11.18: multi-file list
-        # V18.20.4.5 (W-b5/T-b2): the background summarization worker
-        # (SimpleWorker).
-        self._worker: SimpleWorker | None = None
-        self._refresh_models()
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the summarization
-        # worker runs — the "QThread: Destroyed while thread is still
-        # running" abort class. Ask; on "close anyway" detach the worker
-        # so the LLM loop's result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    def _on_process(self) -> None:
+        # V0.6.10 (B17): the base wired the (aliased) action_btn to
+        # _on_process; this dialog's dispatch is the _on_action chain
+        # (Close-vs-Summarize → _do_summarize's W-b5 worker spawn).
+        self._on_action()
 
     # ── Ollama helpers ────────────────────────────────────────────────
 
@@ -316,19 +353,24 @@ class SummarizationServiceDialog(QDialog):
         Returns the list of model names, or None if unreachable (empty list
         from list_ollama_models means Ollama is up but has no models).
         """
-        from utils.network import list_ollama_models
+        from utils.network import is_ollama_reachable, list_ollama_models
 
         base = self._ollama_base_url()
         # list_ollama_models returns [] on connection failure (not None),
         # so we need to distinguish "unreachable" from "empty".
-        # We do a quick reachability check first.
-        import requests as _req
-
-        try:
-            _req.get(f"{base}/api/tags", timeout=timeout)
-        except Exception:
+        # V0.6.8 (audit B5): the pre-check now uses the SAME proxy-proof
+        # transport as the list call — was a bare _req.get, which could
+        # succeed via an HTTP_PROXY while the proxy-proof list call failed
+        # (misreporting reachable-but-list-failure as a clean "unreachable").
+        # The helper requires HTTP 200 — an endpoint answering anything else
+        # counts as unreachable (pre-fix any answer counted).
+        if not is_ollama_reachable(base, timeout=int(timeout)):
             return None  # unreachable
-        models = list_ollama_models(base)
+        # V0.6.8 (review-loop follow-up): the caller's timeout budget now
+        # applies to the LIST call too (previously only the pre-check
+        # honored it; the helper's 10s default could block a worker for
+        # 3s+10s on a blackholed endpoint).
+        models = list_ollama_models(base, timeout=int(timeout))
         return models
 
     def _refresh_models(self) -> None:
@@ -433,21 +475,16 @@ class SummarizationServiceDialog(QDialog):
             if folder:
                 self.out_edit.setText(folder)
         else:
-            # V11.67.0: resolve "__default__" to a real extension before using it.
-            # Previously, ext was "__default__" which caused:
-            # 1. The file dialog to show "All files" instead of "Markdown"
-            # 2. The extension "__default__" to be appended to the filename
-            #    (e.g., "summary.md__default__" — unreadable file!)
-            ext = self.fmt_combo.currentData()
-            if not ext or ext == "__default__":
-                from utils.settings import Settings
-
-                ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+            # V0.6.4: the save dialog's filter follows the FIRST checked
+            # format (the checkboxes are authoritative now — the typed file
+            # name is the BASE name and each checked format writes its own
+            # suffix off it).
+            exts = self._selected_exts() or [".md"]
             filter_str = {
                 ".md": "Markdown (*.md)",
                 ".docx": "Word document (*.docx)",
                 ".pdf": "PDF (*.pdf)",
-            }.get(ext, "All files (*.*)")
+            }.get(exts[0], "All files (*.*)")
             path, _ = QFileDialog.getSaveFileName(
                 self, "Save summary as", "", f"{filter_str};;All files (*.*)"
             )
@@ -459,26 +496,43 @@ class SummarizationServiceDialog(QDialog):
 
                 p = _P(path)
                 if not p.suffix or p.suffix.lower() not in (".md", ".docx", ".pdf", ".txt"):
-                    if not path.endswith(ext):
-                        path += ext
+                    if not path.endswith(exts[0]):
+                        path += exts[0]
                 self.out_edit.setText(path)
 
-    def _on_format_changed(self):
-        """V11.18/V11.19: When the format dropdown changes, toggle the Obsidian
-        checkbox enabled-state. Only meaningful for .md. The "__default__"
-        sentinel resolves to the setting's default format — if that's .md,
-        Obsidian stays enabled.
-        """
-        ext = self.fmt_combo.currentData() or ".md"
-        if ext == "__default__":
-            # Resolve from settings to decide whether Obsidian applies.
-            from utils.settings import Settings
+    def _selected_exts(self) -> list[str]:
+        """V0.6.4: the checked output formats, in the canonical
+        .md → .docx → .pdf order (deterministic output naming regardless
+        of the order the checkboxes were toggled in). Empty list = nothing
+        checked (the _do_summarize guard blocks the run)."""
+        exts: list[str] = []
+        if self.fmt_md_chk.isChecked():
+            exts.append(".md")
+        if self.fmt_docx_chk.isChecked():
+            exts.append(".docx")
+        if self.fmt_pdf_chk.isChecked():
+            exts.append(".pdf")
+        return exts
 
-            ext = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
-        self.obsidian_chk.setEnabled(ext == ".md")
-        if ext != ".md":
-            # Keep the tri-state but force to off when format isn't .md.
+    def _on_fmt_toggled(self, _on: bool) -> None:
+        """V0.6.4: the Obsidian option is only meaningful when Markdown is
+        among the checked output formats (callouts are markdown-only
+        syntax — the V11.18 rule, checkbox edition)."""
+        md_on = self.fmt_md_chk.isChecked()
+        self.obsidian_chk.setEnabled(md_on)
+        if not md_on:
+            # Keep the tri-state but force to off when no .md output exists.
             self.obsidian_chk.setCheckState(Qt.Unchecked)
+
+    def _on_custom_title_toggled(self, checked: bool) -> None:
+        """V0.6.4: reveal/hide the custom-title input. Untoggling clears
+        the text — the toggle is the authority on whether a custom title
+        exists (an unchecked box can never contribute a stale title)."""
+        self.custom_title_edit.setVisible(checked)
+        if checked:
+            self.custom_title_edit.setFocus()
+        else:
+            self.custom_title_edit.clear()
 
     def _on_action(self):
         if self.action_btn.text() == "Close":
@@ -487,18 +541,29 @@ class SummarizationServiceDialog(QDialog):
         self._do_summarize()
 
     def _on_try_another(self):
-        """V11.18: Clear inputs/outputs for the next batch."""
+        """V11.18: Clear inputs/outputs for the next batch.
+
+        V0.6.4: also resets the custom-title toggle (the handler hides +
+        clears the input) and the format checkboxes back to the settings
+        default."""
         self.text_input.clear()
         self._files.clear()
         self.file_list.clear()
         self.out_edit.clear()
-        # V11.19: reset model/quality/format to "Default", obsidian to PartiallyChecked.
+        # V11.19: reset model/depth to "Default", obsidian to PartiallyChecked.
         if self.model_combo.count() > 0:
             self.model_combo.setCurrentIndex(0)  # "Default Model"
         if self.quality_combo.count() > 0:
             self.quality_combo.setCurrentIndex(0)  # "Default"
-        if self.fmt_combo.count() > 0:
-            self.fmt_combo.setCurrentIndex(0)  # "Default"
+        # V0.6.4: custom title off (hides + clears via the toggled handler).
+        self.custom_title_chk.setChecked(False)
+        # V0.6.4: formats back to the settings default (usually Markdown).
+        from utils.settings import Settings
+
+        _default_fmt = Settings().get("quick_services.defaults.summarize_format", ".md") or ".md"
+        self.fmt_md_chk.setChecked(_default_fmt == ".md")
+        self.fmt_docx_chk.setChecked(_default_fmt == ".docx")
+        self.fmt_pdf_chk.setChecked(_default_fmt == ".pdf")
         self.obsidian_chk.setCheckState(Qt.PartiallyChecked)
         self.status_label.setText(
             "Ready for the next file — paste text or add files and click Summarize."
@@ -507,13 +572,6 @@ class SummarizationServiceDialog(QDialog):
         self.action_btn.setText("Summarize")
         self.action_btn.setEnabled(True)
         self.tabs.setCurrentIndex(0)
-
-    def _get_input_text(self) -> str:
-        if self.tabs.currentIndex() == 0:
-            return self.text_input.toPlainText()
-        else:
-            # Multi-file tab — return empty; _do_summarize handles the list.
-            return ""
 
     # ── Prompt builder ────────────────────────────────────────────────
 
@@ -525,49 +583,30 @@ class SummarizationServiceDialog(QDialog):
     # presets are respected.
 
     @staticmethod
-    def _build_prompt(input_text: str, quality: str) -> tuple[str, int]:
-        """Build the summarization prompt using the PromptManager.
+    def _build_prompt(input_text: str, quality: str, model: str = "") -> tuple[str, int]:
+        """Build the summarization prompt from the fine-tuned depth bank.
 
-        V13.25.0: Delegates to ``PromptManager.render("default", ...)`` —
-        the same prompt bank the Summarizer uses. User's custom prompts in
-        ``~/.elixir/prompts/default.md`` are respected.
+        V0.6.4 (user report): the tool now uses
+        ``core.summarisation.tool_prompts`` — the user-supplied
+        Fast/Standard/Thorough prompt texts, verbatim. Previously this
+        delegated to ``PromptManager.render("default", ...)`` (the shared
+        book-pipeline prompt with an empty ``{{language}}`` variable) —
+        an all-English prompt that translated Farsi pastes into English;
+        every depth prompt now carries
+        "Write in the same language as the text."
 
-        The prompt bank template produces XML-tagged output
-        (``<executive_summary>``, ``<bullet_points>``, ``<thorough_summary>``)
-        which is parsed by ``response_parser.parse_response()`` after the
-        LLM call.
+        The untrusted source text keeps the V18.2.21 prompt-injection
+        fence (with the V18.2.29 low-bit-quant skip and the fail-open
+        rule — mirrored from ``PromptManager.render_template``).
 
-        Quality controls max_tokens (how much the LLM writes):
-        - fast: 1024 tokens (~500 words)
-        - standard: 2048 tokens (~1000 words)
-        - thorough: 4096 tokens (~2000 words)
+        Depth controls max_tokens (a ceiling, not a target):
+        - fast: 1024, standard: 2048, thorough: 4096
 
         Returns ``(prompt, max_tokens)``.
         """
-        from core.summarisation.prompt_manager import PromptManager
+        from core.summarisation.tool_prompts import render_tool_prompt
 
-        pm = PromptManager()
-        heading = "Pasted Text"
-        lang = ""  # let the prompt template decide
-
-        # Try the user's custom default prompt, fall back to built-in
-        rendered = pm.render("default", heading, input_text, lang)
-        if not rendered:
-            # Fallback: minimal prompt (shouldn't happen — PromptManager
-            # copies built-ins to ~/.elixir/prompts/ on first run)
-            rendered = (
-                "You are an expert summariser.\n\n"
-                f'Summarising: "{heading}"\n\n'
-                f"Chapter content:\n{input_text}\n\n"
-                "Output ONLY the three XML sections:\n"
-                "<executive_summary>...</executive_summary>\n"
-                "<bullet_points>...</bullet_points>\n"
-                "<thorough_summary>...</thorough_summary>"
-            )
-
-        # Map quality → max_tokens
-        max_tokens = {"fast": 1024, "standard": 2048, "thorough": 4096}.get(quality, 2048)
-        return rendered, max_tokens
+        return render_tool_prompt(quality, input_text, model=model)
 
     def _call_llm(
         self, model: str, prompt: str, max_tokens: int, temp: float, report=None
@@ -642,10 +681,18 @@ class SummarizationServiceDialog(QDialog):
             return None, f"❌ LLM call failed: {type(e).__name__}: {e}"
 
         if not result or not result.strip():
+            # V0.6.0 (S3): the old hint was Ollama-specific ("check `ollama
+            # logs` for OOM errors") — for the llama.cpp / OpenAI-compat /
+            # Claude providers that advice points at the wrong backend (a
+            # refused llama-server connection lands here as an empty
+            # result, since complete_streaming returns None on transport
+            # failure). Name the actual provider.
             return None, (
                 f"❌ LLM returned an empty response for model '<b>{model}</b>'.<br>"
-                f"This usually means the model failed to load — check `ollama logs` for OOM errors, "
-                f"or try a smaller model."
+                f"This usually means the model failed to load or the "
+                f"<b>{provider_name}</b> backend is unreachable — check the "
+                f"backend is running and the model name is correct, or try a "
+                f"smaller model."
             )
 
         # Strip <think> blocks (response_parser also does this, but do it
@@ -693,20 +740,28 @@ class SummarizationServiceDialog(QDialog):
         if quality == "__default__" or not quality:
             quality = s.get("quick_services.defaults.summarize_quality", "standard") or "standard"
 
-        # ── Format ─────────────────────────────────────────────────────
-        ext = self.fmt_combo.currentData()
-        if ext == "__default__" or not ext:
-            ext = s.get("quick_services.defaults.summarize_format", ".md") or ".md"
+        # ── Format (V0.6.4: multiple — every checked format is written) ──
+        exts = self._selected_exts()
+        if not exts:
+            self.status_label.setText(
+                "⚠️ Choose at least one output format (Markdown, Word, or PDF)."
+            )
+            return
+
+        # ── Custom title (V0.6.4: toggle-hidden input; empty = auto title) ──
+        custom_title = ""
+        if self.custom_title_chk.isChecked():
+            custom_title = self.custom_title_edit.text().strip()
 
         # ── Obsidian (tri-state: Unchecked=use default, PartiallyChecked=off, Checked=on) ──
         obs_state = self.obsidian_chk.checkState()
         if obs_state == Qt.PartiallyChecked:
             # "Default" — follow the setting
             obsidian = (
-                bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ext == ".md"
+                bool(s.get("quick_services.defaults.summarize_obsidian", False)) and ".md" in exts
             )
         elif obs_state == Qt.Checked:
-            obsidian = ext == ".md"
+            obsidian = ".md" in exts
         else:  # Qt.Unchecked → user explicitly turned it off
             obsidian = False
 
@@ -789,7 +844,8 @@ class SummarizationServiceDialog(QDialog):
                 model,
                 model_data,
                 quality,
-                ext,
+                exts,
+                custom_title,
                 obsidian,
                 temp,
                 report=self._worker.progress.emit,
@@ -808,8 +864,9 @@ class SummarizationServiceDialog(QDialog):
         out_path,
         model,
         model_data,
-        quality,
-        ext,
+        depth,
+        exts,
+        custom_title,
         obsidian,
         temp,
         report=None,
@@ -823,11 +880,21 @@ class SummarizationServiceDialog(QDialog):
         error-result dict; the model combo refresh happens in the FINISHED
         handler on the main thread, never here. Returns the plain result
         dict consumed by ``_on_summarize_finished``.
+
+        V0.6.4 (user report):
+        - ``exts`` is the LIST of checked output formats (was: a single
+          ``ext`` string) — ONE LLM call per input, one file per format.
+        - ``custom_title`` (str; "" = none) replaces the auto
+          ``"{stem} — {depth} summary"`` document heading when set.
+        - The depth prompts produce the final document directly — the raw
+          (thinking-stripped) response is written as-is (with the bare
+          section labels normalised to markdown headings), NOT re-assembled
+          from XML sections (the old book-pipeline contract).
         """
         from pathlib import Path as _P
 
         from core.outputs.service_formatters import write_output
-        from core.summarisation.response_parser import parse_response
+        from core.summarisation.response_parser import strip_thinking
 
         # ── Pre-flight: verify the model exists. V11.20: short timeout (3s)
         # so a slow Ollama doesn't hang; if the check itself times out, skip
@@ -836,7 +903,23 @@ class SummarizationServiceDialog(QDialog):
         # 3s freeze); it now reports "Verifying model…" and runs here.
         if report is not None:
             report(0, "Verifying model…")
-        installed = self._fetch_installed_models(timeout=3.0)
+        # V0.6.0 (S1 fix): the pre-flight speaks the OLLAMA /api/tags
+        # protocol against ``summarisation.endpoint`` — it is only
+        # meaningful when the summarisation provider IS Ollama. For any
+        # other provider the check consults an endpoint that is NOT the
+        # configured backend, so a perfectly healthy backend hard-stopped
+        # with "Model 'X' is not installed in Ollama" (reproduced live:
+        # provider=llama.cpp serving the model while the legacy endpoint
+        # key points at the llama.cpp server → /api/tags 404 → [] →
+        # model_missing). Skip the check and let the provider call surface
+        # the real error — the same semantics as the unreachable-Ollama
+        # path below.
+        from utils.settings import Settings
+
+        _provider = (
+            str(Settings().get("summarisation.provider", "ollama") or "ollama").strip().lower()
+        )
+        installed = self._fetch_installed_models(timeout=3.0) if _provider == "ollama" else None
         if installed is not None and model not in installed:
             avail = ", ".join(installed) if installed else "(none installed)"
             pull_hint = f"<br>👉 Fix: <code>ollama pull {model}</code>"
@@ -857,26 +940,28 @@ class SummarizationServiceDialog(QDialog):
         results: list[str] = []
         total = len(inputs)
         for i, (stem, text) in enumerate(inputs):
-            # Determine output path for this item.
+            # V0.6.4: compute the output BASE (a path WITHOUT suffix) for
+            # this item — every checked format appends its own suffix.
             if is_multi:
-                out_path_i = str(_P(out_folder) / f"{stem}_{quality}_summary{ext}")
+                out_base = _P(out_folder) / f"{stem}_{depth}_summary"
             else:
-                # Single paste: use the user-chosen path as-is, but if it's a
-                # folder, fall back to auto-naming.
-                if _P(out_path).is_dir():
-                    out_path_i = str(_P(out_path) / f"{stem}_{quality}_summary{ext}")
+                # Single paste: the user-chosen path is the BASE name; a
+                # typed suffix (.md/.docx/.pdf/.txt) is only the base's
+                # tail — the checkboxes are the authoritative format
+                # declaration (one file per format, so .docx bytes can
+                # never land in a .md-named file).
+                p_out = _P(out_path)
+                if p_out.is_dir():
+                    out_base = p_out / f"{stem}_{depth}_summary"
+                elif p_out.suffix.lower() in (".md", ".docx", ".pdf", ".txt"):
+                    out_base = p_out.with_suffix("")
                 else:
-                    out_path_i = out_path
-                    # V11.67.0: if the user manually typed a file extension
-                    # (e.g., .md), use THAT format — not the combo's resolved
-                    # format. This prevents writing .docx binary data into a
-                    # .md file (which makes it unreadable).
-                    user_ext = _P(out_path).suffix.lower()
-                    if user_ext in (".md", ".docx", ".pdf", ".txt"):
-                        ext = user_ext
+                    out_base = p_out
 
             # V11.20: bigger, bolder, eye-catching progress text (identical
             # HTML to the old inline version, now via the queued signal).
+            # V0.6.4: "quality" → "depth" (the user term change) and the
+            # format list shows every checked format.
             if report is not None:
                 report(
                     int(i * 100 / total) if total else 0,
@@ -885,12 +970,12 @@ class SummarizationServiceDialog(QDialog):
                         f"🤖 Summarizing {i + 1}/{total}: <span style='color: var(--primary);'>{stem}</span>"
                         f"</div>"
                         f"<div style='font-size:12px; color: var(--muted-foreground); margin-top:2px;'>"
-                        f"model: {model}  |  quality: {quality}  |  format: {ext}"
+                        f"model: {model}  |  depth: {depth}  |  formats: {', '.join(exts)}"
                         f"</div>"
                     ),
                 )
 
-            prompt, max_tokens = self._build_prompt(text, quality)
+            prompt, max_tokens = self._build_prompt(text, depth, model=model)
             # V13.25.0: Use _call_llm (delegates to llm_provider) instead of
             # _call_ollama (direct requests.post with no supervisor/retry).
             # V18.20.4.5 (W-b5): forward ``report`` so the streaming chunks
@@ -905,51 +990,59 @@ class SummarizationServiceDialog(QDialog):
                     break
                 continue
 
-            # V13.25.0: Parse the XML-tagged response into structured sections
-            # using the core response_parser. This handles <executive_summary>,
-            # <bullet_points>, <thorough_summary> tags, strips thinking blocks,
-            # and falls back to plain-text parsing if the model didn't use XML.
-            parsed = parse_response(raw_response, academic_rigor=False)
-            exec_summary = parsed.get("executive_summary", "")
-            bullet_points = parsed.get("bullet_points", [])
-            thorough = parsed.get("thorough_summary", "")
+            # V0.6.4 (user report): the depth prompts produce the FINAL
+            # document directly (their FORMAT contracts elicit "Overview:",
+            # bullets, sections — plain text, NOT the book pipeline's XML
+            # sections). Strip any thinking block, then upgrade the bare
+            # section labels to markdown headings so the docx/pdf writers
+            # emit real Heading styles (and Obsidian can map callouts).
+            # The response is written VERBATIM otherwise — Farsi in, Farsi
+            # out (the tool summarizes; it never translates).
+            from core.summarisation.tool_prompts import normalize_depth_headings
 
-            # Build a clean markdown document from the parsed sections.
-            # For "fast" quality, skip the thorough summary to keep it short.
-            md_parts = []
-            if exec_summary:
-                md_parts.append(f"## Executive Summary\n\n{exec_summary}")
-            if bullet_points:
-                bullets_md = "\n".join(f"- {b}" for b in bullet_points)
-                md_parts.append(f"## Key Takeaways\n\n{bullets_md}")
-            if thorough and quality != "fast":
-                md_parts.append(f"## Detailed Summary\n\n{thorough}")
+            summary_text = normalize_depth_headings(strip_thinking(raw_response))
 
-            summary_text = "\n\n---\n\n".join(md_parts) if md_parts else raw_response
+            # V0.6.4: the document heading — the custom title (when set)
+            # replaces the auto "{stem} — {depth} summary" title. Only a
+            # CUSTOM title is prepended to the markdown body (a bare .md
+            # never carried a heading — unchanged when no custom title).
+            title = custom_title or f"{stem} — {depth} summary"
+            md_body = f"# {custom_title}\n\n{summary_text}" if custom_title else summary_text
 
-            # V11.18: write via shared formatter (md/docx/pdf + optional Obsidian)
-            ok, msg = write_output(
-                summary_text,
-                _P(out_path_i),
-                fmt=ext,
-                title=f"{stem} — {quality} summary",
-                obsidian=obsidian,
-                source_filename=f"{stem}.txt" if stem == "pasted" else f"{stem}.txt",
-                quality=quality,
-                model=model,
-            )
-            if ok:
-                results.append(f"✅ {stem} → {_P(out_path_i).name} ({len(summary_text):,} chars)")
-            else:
-                results.append(f"⚠️ {stem} → {msg}")
+            # V11.18/V0.6.4: write via the shared formatter — ONE file per
+            # checked format, all fed by this single LLM response.
+            for ext_i in exts:
+                out_path_i = out_base.with_suffix(ext_i)
+                ok, msg = write_output(
+                    md_body if ext_i == ".md" else summary_text,
+                    out_path_i,
+                    fmt=ext_i,
+                    title=title,
+                    obsidian=obsidian and ext_i == ".md",
+                    source_filename=f"{stem}.txt",
+                    quality=depth,
+                    model=model,
+                )
+                if ok:
+                    _chars = f" ({len(summary_text):,} chars)" if ext_i == ".md" else ""
+                    results.append(f"✅ {stem} → {out_path_i.name}{_chars}")
+                else:
+                    results.append(f"⚠️ {stem} → {msg}")
 
         # V11.25: file arg for the success modal (computed here — pure file
         # checks; the finished handler just passes it through).
+        # V0.6.4: with multiple formats the "first output" is the first
+        # CHECKED format's file (the typed path's own name may never be
+        # written when its suffix was only the base-name tail).
         if is_multi:
             file_arg = out_folder
         else:
             p = _P(out_path)
-            file_arg = str(p) if p.exists() else str(p.parent)
+            if p.is_dir():
+                file_arg = str(p)
+            else:
+                first_out = p.with_suffix(exts[0])
+                file_arg = str(first_out) if first_out.exists() else str(first_out.parent)
 
         return {
             "results": results,
@@ -975,9 +1068,17 @@ class SummarizationServiceDialog(QDialog):
         result = result or {}
 
         if result.get("model_missing"):
-            self.status_label.setText(result.get("error_html", "❌ Model not installed."))
+            _err_html = result.get("error_html", "❌ Model not installed.")
+            self.status_label.setText(_err_html)
             # Main-thread model refresh (touches the combo + status label).
             self._refresh_models()
+            # V0.6.0 (S2 fix): _refresh_models ends by writing its own
+            # reachability status ("Ollama is running but has no models…"),
+            # which CLOBBERED the actionable error above within the same
+            # handler — the user never saw why the run failed (reproduced
+            # live). Re-assert the error after the refresh; the combo stays
+            # refreshed either way.
+            self.status_label.setText(_err_html)
             self.action_btn.setEnabled(True)
             self.action_btn.setText("Summarize")
             return

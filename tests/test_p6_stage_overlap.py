@@ -13,8 +13,11 @@ Covers the roadmap Phase-6 acceptance machinery:
 * Lever B3 — multi-sample overlap: ordered samples, no inter-sample
   VRAM sleeps, per-sample crash isolation.
 * Lever JUDGE-SCHOLAR — the speculative scholar: merge on unchanged
-  state, discard+re-run on judge-modified state, no speculation on
-  dual-model architectures or with reflections text on.
+  state, discard+re-run on judge-modified state, no speculation with
+  reflections text on. (V0.6.14 single-model order: the "no speculation
+  on dual-model architectures" case is retired — model_architecture no
+  longer exists; the ONE model never switches mid-run, so the racy
+  model-swap gate it guarded against is gone.)
 * Golden output equivalence — parallel-stages ON vs OFF produce
   BYTE-IDENTICAL pipeline outputs on the golden chapters (the freeze
   contract holds with the levers armed).
@@ -484,6 +487,17 @@ class TestSpeculativeScholar:
         parsed3 = dict(parsed, bullet_points=["a", "c"])
         assert s._p6_scholar_input_snapshot(parsed3) != snap
 
+    # V0.5.16 note: the merge-path test now EXPLICITLY scripts the judge's
+    # gap-fill reprompt to return no bullets (the ScriptedLLM judge_gapfill
+    # default). Before V0.5.16 the gap-fill bullets returned by the default
+    # primary-shaped response were all rejected at "Phase 2.2 sim 0.00"
+    # (the embedder-less test env makes semantic_fact_check fail closed —
+    # the bug V0.5.16 fixed with the degenerate-signal guard), so the judge
+    # tail left the state unchanged BY THAT BUG. With the fix, F4-grounded
+    # gap-fill bullets legitimately survive and change the state → the
+    # discard path (covered by test_discard_path_when_judge_changes_state
+    # below). The MERGE path needs a judge tail that genuinely changes
+    # nothing — hence the scripted no-bullets gap response.
     def test_merge_path_scholar_runs_once_concurrently(self, tmp_path):
         """Golden-shaped run: judge leaves the state unchanged → the
         speculative result is MERGED; the scholar runs exactly ONCE."""
@@ -491,7 +505,7 @@ class TestSpeculativeScholar:
         log_lines: list[tuple[str, str]] = []
         s = self._armed(tmp_path, log_lines)
         llm = ScriptedLLM(primary_response=build_primary_response(source))
-        llm.install(s)
+        llm.install(s)  # judge_gapfill defaults to the no-bullets reply
 
         scholar_calls = []
         orig_gapfill = s._scholar_reflection_gapfill_only
@@ -581,16 +595,13 @@ class TestSpeculativeScholar:
         handle = s._p6_prepare_speculative_scholar(heading, source, {"bullet_points": []})
         assert handle is None  # lever off → no speculation machinery at all
 
-    def test_dual_architecture_never_speculates(self, tmp_path):
-        heading, source = golden_chapter("nonfiction")
-        set_settings({"summarisation.parallel_stages": True})
-        s = make_summarizer(
-            tmp_path,
-            settings_values={"summarisation.parallel_stages": True},
-            request_fields={"model_architecture": "dual_local"},
-        )
-        handle = s._p6_prepare_speculative_scholar(heading, source, {"bullet_points": []})
-        assert handle is None  # call_fast_llm switches models — racy
+    # V0.6.14 (single-model order): 1 test REMOVED —
+    # test_dual_architecture_never_speculates pinned the
+    # model_architecture="dual_local" gate in _p6_prepare_speculative_scholar
+    # (speculation was disabled because call_fast_llm switched models
+    # mid-run — racy). The model_architecture request field and the
+    # fast-model switching are retired: there is no dual architecture left
+    # to guard against, so the gate — and the test pinning it — are gone.
 
     def test_reflections_text_variant_never_speculates(self, tmp_path):
         heading, source = golden_chapter("nonfiction")

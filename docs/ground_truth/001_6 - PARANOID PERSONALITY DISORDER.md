@@ -9,18 +9,18 @@ end_page: 160
 page_count: 24
 segment_type: "chapter"
 language: "en"
-word_count: 7418
-token_count: 11182
+word_count: 7415
+token_count: 11946
 source_type: "normal_book"
 tags:
   - "paranoid"
   - "personality"
   - "disorder"
   - "such"
-  - "self"
   - "individuals"
+  - "original"
 doc_type: "book_chapter"
-date_processed: "2026-09-26T21:13:58"
+date_processed: "2026-09-25T20:38:23"
 ---
 # 6 - PARANOID PERSONALITY DISORDER
 
@@ -415,40 +415,62 @@ features makes their relative diagnostic weight difficult to ascertain at this t
 
 TABLE 6-1. Clinical Features of Paranoid Personality Disorder.
 
-<think>
+YIOM JO 5۵71] ,IOS, ۴
+۸208 ‘otsnur ‏دتم‎ 0} ayqeun ‘aoejdy10m ye ٩۳۲۵۲۲ Maj sey 1302 UIed) sUINUAS
+20 0} a[qeUN 2۵۸ je sepuase 8۲۵۹1۵ uO soled ‘sonpnoyjip feuosiodiajur ۱03۳۱۵۵
 
-</think> Clinical Features
-Overt Characteristics
-Covert Characteristics
-I. Self-Concept
-Arrogant; overconfident; intimidating; self-righteously indignant; contemptuous and easily enraged
-Timid; frightened; doubt-ridden; guilty over aggression toward others; feels inferior and envious of others
-II. Interpersonal Relations
-Mistrustful; accusing; demanding; aloof; lacks sense of humor; superficial attempts at affiliability; appears emotionally cold and detached
-Naive; gullible; frightened of "powerful" people; terrified of loving and being loved; detests dependence; holds grudges and seeks revenge; highly sensitive
-III. Social Adaptation
-Industrious; driven; keeps detailed records; often successful in solitary critical lines of work; prefers "hard" data offered by mechanical, electronic, or even legal professions
-Frequent interpersonal difficulties; carries on personal agendas at work; unable to be genuine team member; has few friends at workplace; unable to enjoy music, poetry, and "soft" lines of work
+aatyIsuas 81۲ fa8udco1 syoos pue
+5220۳72 spjoy ‘aouepuadap sisajap ۵۸۲
+317120 pue 811۸0] jo 0۵1۲11121 0
+۳1320 jo 0۵2110128117 :۵]0۲]]۳۳۵ foareyy
 
-<think>
+۹131710 JO 5۳0۲۸۲۲۵ 0۲۲۶ ۲
+٩]23[ 613110 ۵18۸۸0( 10۵18531880 0
+Aym3 ‘usppu-3qnop ۵۵12118 ]1[ fpruity,
 
-</think> The provided image is blank and contains no visible text to extract.
+suotssajoid [e829] ۲2۸2 JO ۴۵۲۲01103]۵ ‘fesTUBYySeU Aq
+0922110 (00 .prey,, ‏1۵[21؟‎ ۱۱0۸۸ Jo ۲]
+Jeon. Areqyos ul ]۴۲89200۳86 uso ‘spr0de1 paytejop ۹022 ۲2۵۸۲0۵ ‘snoimsnpuy
 
-<think>
+peyoejop pue pjoo Ayfeuonoura sueadde ‘Ajpiqeyye 32 sjduraqye ferysadns 01۳۲ jo 251738 7]
+‘yooye ‘Surpueuwlap 81715۲12028 7
 
-</think>
+0۳2892102 Ajiseo pue snonjduraju0o (۲0810۲۲ A[snoa}YSt1-J[os
+181011۳۳011۲۲۲ ۰2۲13۵1۲۲۲0312۸0 7
 
-IV. Love and Sexuality
-Seemingly devoid of romantic interests; either averse to sexual gossip and innuendo or crudely humorous about sex
-Extremely anxious about sexual prowess; vulnerable to erotomania; unduly sensitive to pregenital trends in others; latent homosexuality; sadomasochistic perversions
+uoungopy 1۳1505 ۰ TIT suoynjay jouossegiaquy = “TJ 1G29U0/) -fja5 ‘T $914StLIIVLDY") 14900/) 52115142012040 0 ۶124711727 410
 
-V. Ethics, Standards, and Ideals
-Moralistic; values intellectual prowess; literal religiosity; occasional religious fanaticism
-Idiosyncratic moral systems; expedient mendacity; occasional sociopathic tendencies
+[Page 153: content unavailable]
 
-VI. Cognitive Style
-Sharp attention; hypervigilant; categorical; searching for "clues" that fit preexisting bias; rich vocabulary; ability for hairsplitting; often good public speaker; hyperamnesic
-Unable to grasp the "big picture"; loses proportion and context; readily dismisses the obvious; ignores evidence contradictory to personal beliefs; recall of past events distorted by personal motives
+__ eee
+
+23۸10۲ Jeuosiad Aq p2}10}stp ‏دمدتاده‎ 1:91 jo
+[Te9241 ‘syatjaq feuosied 03 020]
+30173۴۵1۸9 59701081 680۲۸00 ay}
+
+535511751۳ ۸۲۲۳8۵2 11231103 pue ۵021
+5350] ‏۵1۳701,؛‎ 81q,, oy) dsei8 0} ‏ود‎
+
+531011301733
+3۲1718001905 ۶170188330 (۲38۳۵۲0۵۲ yuatpedxa 509546 ]8101۲ 0101۳7]
+
+011911[3058 1110۳85 ‘AjTenxasouloy 1191۴8] 5721710 UI ‏پیدتام5‎ [eUasaid 0} aAlyIsuas A[NpuN ‘erueUIO}OIN 0} ‏دود‎
+‎‘ssamoid yenxes 1۳0۵0 snorxue ۵۵
+
+05 13041 تا 31531۲ ayqnd ۵002 uayo ‘Suniydsirey 10;
+Ayyiqe ‘Arepnqesoa you ‘seiq Sunstxseid
+Wey) 6912 Joy Suryoieas ‘pes08a}e9 quepsiassddy ‘uonusyyze dieys
+
+UISTIONeURy
+SNOISI[aI PeuoIsed00 ۲180181]21 01]
+*Ssamoid [enjoa]JaIUI sonyea 0
+
+225 jnoqe snoJouny Ajapnio 10 Opusnuut pue 15508 [enxas 0} 23972۸۴8 2
+‏(815373؛‎ ۲7۲ DIUEUIOI JO ploasp A[Zutuiseg
+
+LAS 2017148502 ۰ TA 572۳07 pup ‘spanpuny ۹52۷7 . ۸
+
+11107195 pun 2007 =‘ AY
 
 These reservations notwithstanding, this profile (Table 6-1) of paranoid personality disorder still remains superior to the ordinary checklist methods
 since it (1) includes both phenomenological and psychoanalytic observations; (2) values depth and complexity over descriptive oversimplification; and (3)

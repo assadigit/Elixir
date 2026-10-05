@@ -3,7 +3,18 @@
 OcrServiceDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, options container, output row, progress, status,
+buttons) to the base with accept_files=False/accept_text=False (the
+multi-file queue is an option row, not the base's single-file input).
+The closeEvent override STAYS (the TTS preview-worker pattern): it
+guards the extra test worker first, then delegates the main batch
+worker to the base guard. The W-b5 worker flow
+(_do_convert → _ocr_work → _on_convert_*) and every engine backend
+stay as-is."""
 
 from __future__ import annotations
 
@@ -17,14 +28,16 @@ from PySide6.QtCore import Qt
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QWidget,
 )
 
 from controller import Controller
+from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS
+from core.system.timeouts import HTTP_FETCH_TIMEOUT_S, LLM_REQUEST_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
+    BaseServiceDialog,
     _confirm_close_with_running_worker,
     _show_success_modal,
 )
@@ -32,7 +45,7 @@ from ui_qt.views.service_dialogs.dialogs.shared import (
 logger = logging.getLogger(__name__)
 
 
-class OcrServiceDialog(QDialog):
+class OcrServiceDialog(BaseServiceDialog):
     """V11: Standalone OCR Service — pick files → choose engine → Convert → done.
 
     V13.26.0 (P1.3): Now delegates to core OCR modules instead of duplicating:
@@ -45,17 +58,46 @@ class OcrServiceDialog(QDialog):
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("🔍 OCR Service")
-        self.setMinimumSize(560, 360)
-        self.setModal(True)
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options, which creates the file-queue
+        # row + engine combos. The typed _worker init stays verbatim — the
+        # W-b5 re-entrancy guard in _do_convert depends on it.
         self._files: list = []
         # V18.20.4.5 (W-b5/T-b2): the background OCR worker (SimpleWorker).
         self._worker: SimpleWorker | None = None
         # V0.4.5: cache of Ollama OCR models discovered via /api/tags.
         self._ollama_ocr_models: list[str] = []
+        # V0.6.10 (B17): accept_files=False/accept_text=False — the base
+        # builds NO input section (the multi-file queue + engine rows are
+        # this dialog's options; the base's single-file row does not fit
+        # the batch shape).
+        super().__init__(
+            controller, "🔍 OCR Service", parent, accept_files=False, accept_text=False
+        )
+        self.setMinimumSize(560, 360)
+        # V0.6.10 (B17): the base builds out_path_edit / process_btn with
+        # its own labels; this dialog's historical attribute names
+        # (out_edit / action_btn — pinned by the e2e drive tests) are
+        # restored as aliases of the SAME widgets (single source of truth).
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText("Choose where to save output files…")
+        self.action_btn = self.process_btn
+        self.action_btn.setText("Convert")
+        # V0.4.5: bigger status label (RichText HTML progress) — the base's
+        # plain Caption label gains the original formatting back.
+        self.status_label.setMinimumHeight(40)
+        self.status_label.setTextFormat(Qt.RichText)
+        self.progress_bar.setFixedHeight(8)
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_convert_progress only
+        # sets status text) — hide the dead toggle.
+        self._log_toggle_btn.setVisible(False)
 
+    def _build_options(self, layout) -> None:
+        """V0.6.10 (B17): the OCR-specific rows, folded into the base's
+        options container — the multi-file queue, the engine selector +
+        hint, the format row + stylize hint, the Test OCR box and the
+        Advanced button (the base already built the output row)."""
         from PySide6.QtWidgets import (
             QComboBox as _QCB,
         )
@@ -77,19 +119,9 @@ class OcrServiceDialog(QDialog):
         from PySide6.QtWidgets import (
             QPushButton as _QPB,
         )
-
-        # V0.4.5: QToolButton for the Advanced expander toggle.
         from PySide6.QtWidgets import (
             QVBoxLayout as _VL,
         )
-
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("🔍 OCR Service")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         # ── V0.4.5: File list (compact — single row of buttons beside the list)
         file_row = _HL()
@@ -108,7 +140,7 @@ class OcrServiceDialog(QDialog):
         file_btns.addStretch()
         file_row.addWidget(self.file_list, 1)
         file_row.addLayout(file_btns)
-        lay.addLayout(file_row)
+        layout.addLayout(file_row)
 
         # ── V0.4.5: Engine selector — reorganized to minimize cognitive load.
         # OLD: 6 options including "Default (change in Settings)" + 5 named
@@ -140,7 +172,7 @@ class OcrServiceDialog(QDialog):
         self._refresh_ollama_btn.setFixedWidth(32)
         self._refresh_ollama_btn.clicked.connect(self._populate_ollama_models)
         engine_row.addWidget(self._refresh_ollama_btn)
-        lay.addLayout(engine_row)
+        layout.addLayout(engine_row)
 
         # V0.4.5: one-line hint below the engine dropdown — explains what
         # the selected engine does, so the user doesn't have to guess.
@@ -150,7 +182,7 @@ class OcrServiceDialog(QDialog):
         self.engine_hint.setStyleSheet(
             "color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;"
         )
-        lay.addWidget(self.engine_hint)
+        layout.addWidget(self.engine_hint)
         self.engine_combo.currentIndexChanged.connect(self._update_engine_hint)
         # Populate on next tick (after the dialog is fully laid out) so
         # the hint shows the right text for the default "Auto" option.
@@ -172,7 +204,7 @@ class OcrServiceDialog(QDialog):
         self.fmt_combo.setCurrentIndex(0)
         fmt_row.addWidget(self.fmt_combo)
         fmt_row.addStretch()
-        lay.addLayout(fmt_row)
+        layout.addLayout(fmt_row)
 
         # V0.4.10: hint for the Stylized Markdown option.
         self.stylize_hint = _QL(
@@ -187,26 +219,10 @@ class OcrServiceDialog(QDialog):
             "color: var(--muted-foreground); margin-left: 60px; margin-top: -4px;"
         )
         self.stylize_hint.setVisible(False)
-        lay.addWidget(self.stylize_hint)
+        layout.addWidget(self.stylize_hint)
         # Show/hide the hint based on the selected format.
         self.fmt_combo.currentIndexChanged.connect(self._update_stylize_hint)
         _QTimer.singleShot(0, self._update_stylize_hint)
-
-        # ── V0.4.8: Output folder — BASIC control (not advanced).
-        # The V0.4.5 design put this under the Advanced expander, but the
-        # user's screenshot (5454.png) feedback was clear: "Output folder
-        # must be outside advanced because it's a basic setting." It's
-        # required for every conversion, so it belongs in the main view.
-        out_row = _HL()
-        out_row.setSpacing(8)
-        out_row.addWidget(_QL("Output folder:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText("Choose where to save output files…")
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output_folder)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
 
         # ── V0.4.8: Test OCR section — lets the user verify the selected
         # engine works before running a full conversion. Uses a bundled
@@ -246,7 +262,7 @@ class OcrServiceDialog(QDialog):
         self.test_result_label.setVisible(False)
         test_lay.addWidget(self.test_result_label)
 
-        lay.addWidget(test_box)
+        layout.addWidget(test_box)
 
         # ── V0.4.8: Advanced — now a MODAL dialog (not an expander).
         # The V0.4.5 expander had a layout bug (the screenshot 5454.png
@@ -262,7 +278,7 @@ class OcrServiceDialog(QDialog):
         )
         self.advanced_btn.clicked.connect(self._open_advanced_modal)
         adv_btn_row.addWidget(self.advanced_btn)
-        lay.addLayout(adv_btn_row)
+        layout.addLayout(adv_btn_row)
 
         # V0.4.8: the page-range + legacy-engine state lives on self
         # (set by the Advanced modal) so the main dialog can read it
@@ -277,59 +293,19 @@ class OcrServiceDialog(QDialog):
         )
         self.legacy_engine_combo.setCurrentIndex(0)
 
-        # ── V0.4.5: Status (bigger + progress bar — same as V11.20)
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        self.status_label.setMinimumHeight(40)
-        self.status_label.setTextFormat(Qt.RichText)
-        lay.addWidget(self.status_label)
-
-        from PySide6.QtWidgets import QProgressBar as _QPB2
-
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        # ── V0.4.5: Buttons (unchanged — "Try Another File" + Convert)
-        btn_row = _HL()
-        btn_row.addStretch()
-        self.again_btn = _QPB("🔄 Try Another File")
-        self.again_btn.setObjectName("Compact")
-        self.again_btn.setVisible(False)
-        self.again_btn.clicked.connect(self._on_try_another)
-        self.action_btn = _QPB("Convert")
-        self.action_btn.setObjectName("Primary")
-        self.action_btn.clicked.connect(self._on_action)
-        btn_row.addWidget(self.again_btn)
-        btn_row.addWidget(self.action_btn)
-        lay.addLayout(btn_row)
-
     # ── V0.4.5: Ollama OCR model auto-detection ───────────────────────────
 
     # OCR-related name keywords — a model is considered an OCR model if
     # its name (case-insensitive) contains any of these. Content-agnostic:
     # the list is the canonical set of OCR/vision model family names, not
     # hardcoded specific model versions.
-    _OCR_KEYWORDS = (
-        "ocr",  # OlmOCR, ocr-vision, etc.
-        "vision",  # qwen2-vl, llama-vision, etc.
-        "vl",  # qwen2-vl, llava-vl, etc. (vision-language)
-        "llava",  # llava family
-        "minicpm",  # minicpm-v (vision)
-        "moondream",  # moondream2 (vision)
-        "bakllava",  # bakllava
-        "llama-vision",  # meta llama-vision
-        "qwen-vl",  # qwen vision-language
-        "internvl",  # internvl
-        "cogvlm",  # cogvlm
-        "fuyu",  # adept fuyu
-        "kosmos",  # microsoft kosmos
-        "florence",  # microsoft florence
-    )
+    #
+    # V0.6.7 (review-loop B4): the list is now a DIRECT reference to the
+    # model_taxonomy SSOT (the union of the 3 keyword variants that had
+    # drifted apart across the tree) — this dialog gains olmo/mmproj/
+    # multimodal/bonsai detection and can never drift from the badge /
+    # dependencies / llamacpp classifications again.
+    _OCR_KEYWORDS = VISION_MODEL_KEYWORDS
 
     def _populate_ollama_models(self) -> None:
         """V0.4.5: query Ollama /api/tags and list every installed model
@@ -441,15 +417,15 @@ class OcrServiceDialog(QDialog):
         # worker runs — the "QThread: Destroyed while thread is still
         # running" abort class. Ask; on "close anyway" detach the worker
         # so the per-file loop's result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        # V0.4.8: also guard the test worker (same crash class).
+        # V0.6.10 (B17): migrated onto BaseServiceDialog — the TTS
+        # preview-worker pattern: this override guards the EXTRA test
+        # worker (V0.4.8) first, then delegates the main batch worker
+        # (self._worker) to the base class's guard via super().
         test_worker = getattr(self, "_test_worker", None)
         if not _confirm_close_with_running_worker(self, test_worker):
             event.ignore()
             return
-        super().closeEvent(event)
+        super().closeEvent(event)  # BaseServiceDialog guards self._worker
 
     # ── V0.4.8: Advanced modal + Test OCR ─────────────────────────────────
 
@@ -672,7 +648,11 @@ class OcrServiceDialog(QDialog):
         self.test_result_label.setText(f"❌ <b>Test failed:</b> {_html.escape(err)}")
         self.test_result_label.setVisible(True)
 
-    def _pick_output_folder(self):
+    def _pick_output(self):
+        # V0.6.10 (B17): was _pick_output_folder — renamed to OVERRIDE the
+        # base's file-save _pick_output (the base's output-row Browse button
+        # connects to it). OCR outputs go to a FOLDER (one file per input),
+        # so the folder picker stays (the B17 fold-in keeps it custom).
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
         if folder:
             self.out_edit.setText(folder)
@@ -702,6 +682,12 @@ class OcrServiceDialog(QDialog):
             return
         self._do_convert()
 
+    def _on_process(self) -> None:
+        # V0.6.10 (B17): the base wired the (aliased) action_btn to
+        # _on_process; this dialog's dispatch is the _on_action chain
+        # (Close-vs-Convert → _do_convert's W-b5 worker spawn).
+        self._on_action()
+
     def _on_try_another(self):
         """V11.18: Clear the file list + results for a fresh OCR batch."""
         self._files.clear()
@@ -722,8 +708,15 @@ class OcrServiceDialog(QDialog):
           - "1-10" → [1,2,3,…,10]
           - "1,3,5" → [1,3,5]
           - "1-3,5,7-9" → [1,2,3,5,7,8,9]
+
+        V0.6.0 (4-c): typographic dashes (en/em/minus — the pasted-from-PDF
+        range family) are normalized to ASCII hyphen BEFORE parsing, so
+        "2\u20134" now selects pages 2-4 instead of parsing as garbage.
         """
         text = text.strip().lower()
+        # V0.6.0 (4-c): dash normalization (en, em, minus, figure dashes).
+        for _dash in ("\u2013", "\u2014", "\u2212", "\u2012"):
+            text = text.replace(_dash, "-")
         if not text or text == "all":
             return None
         pages: set[int] = set()
@@ -771,6 +764,16 @@ class OcrServiceDialog(QDialog):
         # V11.20: parse the page range (None = all pages).
         page_range_text = self.range_edit.text().strip()
         pages = self._parse_page_range(page_range_text)
+        # V0.6.0 (4-c): a NON-EMPTY unparseable range ("abc", "0", "5-")
+        # parses to None — which _ocr_work reads as EVERY page — so a typo
+        # silently OCR'd the whole document. Refuse instead (the same
+        # guard the PDF/DOCX Cutter got in V0.6.0).
+        if pages is None and page_range_text.strip().lower() not in ("", "all"):
+            self.status_label.setText(
+                f"⚠️ Couldn't read that page range: \u201c{page_range_text.strip()}\u201d — "
+                "use e.g. 1-10, 1,3,5, or all."
+            )
+            return
         if pages is None:
             pages_desc = "all pages"
         else:
@@ -1073,7 +1076,7 @@ class OcrServiceDialog(QDialog):
         engine = QwenOCREngine(
             model_name=model,
             ollama_base_url=ollama_url,
-            timeout=180,
+            timeout=SLOW_LLM_TIMEOUT_S,
         )
 
         # Convert to image bytes
@@ -1115,17 +1118,34 @@ class OcrServiceDialog(QDialog):
         only). Uses ``first_page``/``last_page`` in ``convert_from_path`` for
         efficiency, then filters to the exact set.
         """
+        from pathlib import Path
+
         from utils.settings import Settings
 
         s = Settings()
         tess_cmd = s.get("paths.tesseract", "")
+        # V0.6.0 (4-c): resolve the tesseract binary the same way
+        # OCRService.__init__ does. The default ``paths.tesseract`` value
+        # is the Windows installer path (utils/settings.py:541) — on every
+        # other host the image branch below crashes (subprocess can't exec
+        # a non-existent path) and the PDF branch pins a broken
+        # pytesseract.tesseract_cmd. Fall back to a PATH lookup; fail-open
+        # (keep the configured value) when nothing is found.
+        if not tess_cmd or not Path(tess_cmd).is_file():
+            import shutil as _shutil
+
+            _detected_tess = _shutil.which("tesseract")
+            if _detected_tess:
+                tess_cmd = _detected_tess
 
         if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
             # Direct image OCR — page range doesn't apply.
             import subprocess
 
             cmd = [tess_cmd, str(path), "-", "-l", "eng+fas"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=HTTP_FETCH_TIMEOUT_S
+            )
             return result.stdout.strip()
         else:
             # PDF: convert to images then OCR each.
@@ -1329,7 +1349,7 @@ RAW OCR TEXT:
             "options": {"temperature": 0.1, "num_predict": 8192, "top_p": 0.9},
         }
         url = f"{ollama_url}/api/generate"
-        resp = safe_ollama_request("POST", url, json=payload, timeout=300)
+        resp = safe_ollama_request("POST", url, json=payload, timeout=LLM_REQUEST_TIMEOUT_S)
         stylized = resp.json().get("response", "").strip()
         if stylized and len(stylized) >= 20:
             return stylized

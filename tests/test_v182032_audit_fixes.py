@@ -63,15 +63,8 @@ import sys
 import threading
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-
-# Stub the optional heavy deps exactly like tests/test_v182031_audit_fixes.py
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -525,12 +518,14 @@ class TestParentheticalPromotion:
         V18.20.3.12 (Phase 4 / W6-O5): the gap-fill loop moved VERBATIM from
         ``Summarizer._summarize_inner`` to ``gap_fill_batch.batch_gap_fill``
         — re-pointed at the new module; the pinned wiring is unchanged."""
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        assert "active-subject" in src
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "detect_parenthetical_promotion(" in src
         assert "GENERATION-TIME active-subject" in src
 
@@ -654,10 +649,17 @@ class TestTokenCaps:
     def test_scholar_cap_6144(self):
         import inspect
 
-        from core.summarisation.scholar_reflection import scholar_reflection
+        from core.summarisation import scholar_reflection as sr
 
-        src = inspect.getsource(scholar_reflection)
+        # V0.6.10 (B12) pin evolution: the scholar LLM call site moved from
+        # ``scholar_reflection``'s body into the ``_sr_call_llm`` phase
+        # helper (god-function decomposition, AST-identity verified); the
+        # 6144 contract itself is unchanged. Both the helper AND the
+        # orchestrator's delegating body are pinned.
+        src = inspect.getsource(sr._sr_call_llm)
         assert "max_tokens=6144" in src
+        orch = inspect.getsource(sr.scholar_reflection)
+        assert "_sr_call_llm(ctx)" in orch
 
 
 class TestScholarTruncatedVerdict:
@@ -666,7 +668,7 @@ class TestScholarTruncatedVerdict:
 
         captured = {}
 
-        def fake_call_fast_llm(prompt, temperature=0.7, max_tokens=4096, **kw):
+        def fake_call_llm(prompt, temperature=0.7, max_tokens=4096, **kw):
             captured["max_tokens"] = max_tokens
             return raw_response
 
@@ -696,7 +698,7 @@ class TestScholarTruncatedVerdict:
             temperature=0.7,
             prompt_manager=_PM(),
             recover_vram=fake_recover_vram,
-            call_fast_llm=fake_call_fast_llm,
+            call_llm=fake_call_llm,
             strip_thinking=fake_strip_thinking,
             log=lambda msg, level="INFO": logs.append((level, msg)),
         )
@@ -938,7 +940,7 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Erikson (1956) wrote")
-        assert '<em style="font-size:0.9em">1956</em>' in out
+        assert "*1956*" in out  # V0.4.26: markdown italic, not <em>
 
     def test_multi_year_citation_styled(self):
         """The .3.1 inconsistency: '(1961, 1963)' shipped plain next to
@@ -946,8 +948,8 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Lichtenstein (1961, 1963) identifies")
-        assert '<em style="font-size:0.9em">1961</em>' in out
-        assert '<em style="font-size:0.9em">1963</em>' in out
+        assert "*1961*" in out  # V0.4.26: markdown italic
+        assert "*1963*" in out
 
     def test_year_letter_suffix_styled(self):
         """'(1950a, 1956)' — the 1950a letter-suffix form the old \\b regex
@@ -955,8 +957,8 @@ class TestYearStylingConsistency:
         from core.pipeline.chapter_checkpoint import format_years
 
         out = format_years("Erikson (1950a, 1956, 1958, 1959) resurrected")
-        assert '<em style="font-size:0.9em">1950</em>a' in out
-        assert '<em style="font-size:0.9em">1959</em>' in out
+        assert "*1950*a" in out  # V0.4.26: markdown italic; letter suffix stays adjacent
+        assert "*1959*" in out
 
     def test_non_year_parens_untouched(self):
         from core.pipeline.chapter_checkpoint import format_years
@@ -1006,8 +1008,10 @@ class TestSettingsBanner:
             page_group_size=10,
             generate_summaries=True,
             summarisation_model="Qwen3.8-27B:latest",
-            fast_model="",
-            heavy_model="",
+            # V0.6.14 (single-model order): the fast_model/heavy_model
+            # stub fields REMOVED — settings_logger no longer reads them
+            # (the "Fast model: ... / Heavy model: ..." banner line is
+            # retired; one model does every LLM task).
             max_workers=1,
             temperature=0.7,
             self_consistency=False,

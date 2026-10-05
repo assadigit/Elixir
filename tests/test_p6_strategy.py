@@ -32,7 +32,24 @@ from pathlib import Path
 
 import pytest
 
-from core.summarisation.strategy import (
+# V0.5.7: import the primary_call module so the autouse fixture can no-op
+# ``_extract_glossary_for_call`` (the new V0.5.7 glossary-extraction wiring
+# would otherwise consume the test's mock LLM call → break the byte-for-byte
+# ``result == {...}`` assertions in TestChunkedGateBehavior). The V0.5.7
+# wiring is exercised by the dedicated test_v057_separate_call.py.
+import core.summarisation.primary_call as _pc_mod_v057  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _noop_v057_glossary_extraction(monkeypatch):
+    """V0.5.7: no-op the glossary extraction in the primary_call
+    characterization tests (the V0.5.7 wiring is tested separately in
+    test_v057_separate_call.py)."""
+    monkeypatch.setattr(_pc_mod_v057, "_extract_glossary_for_call", lambda **kwargs: {})
+    yield
+
+
+from core.summarisation.strategy import (  # noqa: E402
     LEGACY_B4_THRESHOLD,
     LEGACY_CHUNKED_INPUT_THRESHOLD,
     LEGACY_CHUNKED_OUTPUT_THRESHOLD,
@@ -510,7 +527,14 @@ class TestChunkedGateBehavior:
         ok → chunked path fires (V18.3.5 behavior byte-identical)."""
         result, n_chunked = self._run(monkeypatch, 32768)
         assert n_chunked == 1
-        assert result == {"bullet_points": ["chunked"], "from_chunked": True}
+        # V0.5.7: the autouse _noop_v057_glossary_extraction fixture
+        # no-ops _extract_glossary_for_call → result carries an empty
+        # source_glossary: {} key (the new V0.5.7 field).
+        assert result == {
+            "bullet_points": ["chunked"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
 
     def test_220k_window_never_chunks(self, monkeypatch):
         """V0.4: master-summary is the DEFAULT — even at 220k window,
@@ -521,7 +545,14 @@ class TestChunkedGateBehavior:
         result, n_chunked = self._run(monkeypatch, 220000)
         # V0.4: chunked_summarize IS called (master-summary default)
         assert n_chunked == 1
-        assert result == {"bullet_points": ["chunked"], "from_chunked": True}
+        # V0.5.7: the autouse _noop_v057_glossary_extraction fixture
+        # no-ops _extract_glossary_for_call → result carries an empty
+        # source_glossary: {} key (the new V0.5.7 field).
+        assert result == {
+            "bullet_points": ["chunked"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
 
     def test_request_without_window_defaults_to_legacy(self, monkeypatch):
         """No context value on the request → default 32768 → legacy gate."""
@@ -552,7 +583,10 @@ class TestChunkedGateBehavior:
             parse_response=lambda x: {"bullet_points": []},
         )
         assert len(chunked_calls) == 1  # legacy default window → chunked fires
-        assert result == {"from_chunked": True}
+        # V0.5.7: the autouse _noop_v057_glossary_extraction fixture
+        # no-ops _extract_glossary_for_call → result carries an empty
+        # source_glossary: {} key (the new V0.5.7 field).
+        assert result == {"from_chunked": True, "source_glossary": {}}
 
 
 if __name__ == "__main__":

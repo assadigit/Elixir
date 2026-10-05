@@ -6,6 +6,9 @@ __pycache__/
 build/
 dist/
 
+# local audit venv
+.venv/
+
 # 🧪 Test / tooling caches
 .pytest_cache/
 .ruff_cache/
@@ -33,3 +36,7 @@ crash_reports/
 .env
 *.local.json
 secrets.json
+runs/
+# V0.6.6: the dot-prefix actually matters — bare `review-loop/` never
+# matched `.review-loop/`, so the notes folder showed up as untracked.
+.review-loop/

@@ -132,3 +132,33 @@ evidence, not the runtime code.
 > After every release (VERSION bump + tag + push), create a .zip of the tag
 > in `/home/z/my-project/download/` for local storage (CI/CD is limited).
 > The user stores these locally.
+
+---
+
+## Rule 6 — Every version gets a GitHub Release (V0.6.5)
+
+> **The user directive:** "For every version you create, add a release
+> version, like this one, with added changelogs and updates."
+
+Every release (VERSION bump + tag + push) MUST also publish a GitHub
+Release whose body is the version's release notes. The procedure:
+
+1. **Notes file first:** `release_notes/VX.Y.Z.md` — one file per
+   version, committed with the release. Style: the title line carries
+   the version + a `headline · items` summary; body sections per fix
+   with the user report that motivated it, the root cause, the fix
+   approach, the numbers (tests, fail-on-pre-fix count, suite state),
+   and a "Test path" section. Written for a human reading the release
+   page, not a changelog dump.
+2. **CHANGELOG entry** (the detailed engineering record) — the two
+   documents have different audiences and both stay.
+3. **Publish:** `python tools/publish_release.py VX.Y.Z --zip
+   /home/z/my-project/download/Elixir-VX.Y.Z.zip --token <one-off
+   token>` — or `--all` to backfill. The token is one-off in the
+   command line only (never committed, never logged — the standing
+   security procedure). `--dry-run` for a rehearsal.
+4. **Latest badge:** only the newest version's release is marked
+   Latest (`make_latest=true` in the API call).
+
+Skipping the release breaks the user's contract for the version —
+treat it as part of the release gate, not a follow-up.

@@ -34,11 +34,22 @@ logger = get_main_logger()
 # of any occurrence of the name in the source.
 _NAME_WINDOW = 600
 
+# V0.4.32 (audit backlog item 1): the source-size gate. The V0.4.32
+# rarest-4 keyword selection is meaningful only on sources large enough
+# that a 0-frequency rare word is a fabrication signature (the word
+# appears nowhere in a real-sized source → the claim is fabricated). On
+# tiny synthetic test sources (≤1000 chars), the rarest-4 degenerates
+# to all 0-frequency words (the source is too small to contain them);
+# the V0.4.24 first-8-by-position rule is used instead. Real chapter
+# sources are always ≥10× this threshold.
+_MIN_SOURCE_CHARS = 1000
+
 
 def _grounded_addition_sentences(
     addition: str, source: str, names: list[str]
 ) -> tuple[str, list[str]]:
-    """V0.4.24 (audit backlog #6): attribution-edge check on gap-fill prose.
+    """V0.4.24 (audit backlog #6) → V0.4.32 (audit backlog item 1):
+    attribution-edge check on gap-fill prose.
 
     The V0.4.23 thorough gap-fill shipped a sentence welding a theorist to
     a criticism he never appears near in the source ("N's theories were
@@ -49,16 +60,64 @@ def _grounded_addition_sentences(
     (±600 chars) with ANY of the sentence's distinctive content words —
     the welding signature.
 
+    V0.4.32 (V0.4.31 ch.6 audit backlog item 1 — the F1-F5 hallucination
+    class): the V0.4.24 first-N-by-position keyword selection (cap 8) was
+    too coarse — it picked common abstract words ("further", "distinct",
+    "affective", "individual") that share a window with any cited author
+    elsewhere in the source, passing fabricated substantive claims whose
+    actual content words never co-occur with the cited author. The rig
+    audit's F1 (a fabricated "differentiate from anxiety/depression" claim
+    attached to an author whose actual source claim is "phobic vs paranoid
+    characters") slipped because ONE of the first-8 keywords ("affective")
+    happens to appear in that author's ±600-char source window. The V0.4.32
+    fix sorts the candidate keywords by RAREST source frequency first and
+    takes the rarest 4 — the claim's distinctive content fingerprint — so
+    the common-word false-positive is removed and the fabricated claim is
+    dropped. (Content-agnostic per Rule 1: the rule is a structural
+    property of source-word-frequency, not a book-specific property. The
+    F1-F5 evidence is book-specific; the fix is generic — it improves
+    detection on any book where an LLM fabricates a substantive claim
+    attached to a real author whose actual source claim is different.)
+
+    Honest deviation disclosed (Rule 2): the audit's narrative said the
+    V0.4.24 attribution-edge drop "does NOT cover thorough additive
+    prose." That characterisation is inaccurate — the check IS applied
+    to the thorough-theorist-floor chunked gap-fill output (call site at
+    line 397 of this module; conversion-log lines 879-881 confirm the
+    check RAN on the V0.4.31 rig run, dropping 2 wrong-year thorough
+    additive sentences). The F1-F5 hallucinations slipped not because
+    the check was missing on the thorough path, but because the check's
+    keyword extraction was too coarse: the V0.4.24 first-N-by-position
+    selection picked common abstract words that share a window with any
+    cited author elsewhere in the source. The V0.4.32 fix targets THIS
+    root cause (rarest-first sort + cap 4 + a source-size gate so the
+    rarest-4 probe is only invoked when the source is large enough that
+    a 0-frequency rare word is a fabrication signature, not a small-source
+    artifact).
+
     High-precision by construction:
       * only sentences that carry one of the chunk's missing names are
         checked — prose without a gap-fill name passes untouched;
-      * keywords are ≥6 chars, de-duplicated, capped at 8, and exclude
+      * keywords are ≥6 chars, de-duplicated, sorted rarest-first, capped
+        at 4 (the V0.4.24 cap was 8 by position — too coarse), and exclude
         words so frequent in the source (>40 occurrences) that they
         cannot anchor a co-occurrence;
       * a name absent from the source entirely is kept (it arrived from
         the deterministic analysis, not the model);
+      * a sentence with no anchorable keywords after filtering is kept
+        (cannot probe — unverifiable);
       * a sentence is dropped only when EVERY name in it fails the
-        co-occurrence probe.
+        co-occurrence probe on the rarest-4 fingerprint.
+
+    Source-size gate (V0.4.32): on sources smaller than
+    ``_MIN_SOURCE_CHARS`` (~1000 chars / ~200 words — well below the
+    smallest real chapter, well above the synthetic test sources), the
+    rarest-4 selection degenerates (almost every distinctive word is
+    0-frequency because the source is too small to contain it). On
+    such tiny sources the V0.4.24 first-8-by-position rule is used
+    instead (lenient; matches the V0.4.24 test fixtures). On real
+    chapter sources the V0.4.32 rarest-4 rule is used (discriminating;
+    catches the F1-F5 fabricated-claim class).
 
     Returns ``(filtered_addition, dropped_sentences)`` — paragraph
     structure preserved; a paragraph whose every sentence was dropped
@@ -70,6 +129,14 @@ def _grounded_addition_sentences(
         src_lower = source.lower()
         freq = Counter(re.findall(r"[a-z]{6,}", src_lower))
         generic = {w for w, c in freq.items() if c > 40}
+        # V0.4.32 (audit backlog item 1): source-size gate. The rarest-
+        # 4 selection is meaningful only on sources large enough that
+        # a 0-frequency rare word is a fabrication signature. On tiny
+        # test sources (≤1000 chars) the rarest-4 degenerates to all
+        # 0-frequency words (the source simply doesn't contain them);
+        # the V0.4.24 first-8-by-position rule is used instead. Real
+        # chapter sources (≥10× the threshold) always use V0.4.32.
+        use_v0432_rarest4 = len(source) >= _MIN_SOURCE_CHARS
         out_paras: list[str] = []
         dropped: list[str] = []
         for para in re.split(r"\n{2,}", addition):
@@ -89,7 +156,30 @@ def _grounded_addition_sentences(
                     for w in re.findall(r"[a-z]{6,}", sent.lower())
                     if w not in generic and not any(w in n.lower() for n in sent_names)
                 ]
-                kws = list(dict.fromkeys(kws))[:8]
+                kws = list(dict.fromkeys(kws))
+                if use_v0432_rarest4:
+                    # V0.4.32 (audit backlog item 1): sort RAREST-first
+                    # (lowest source frequency) and cap at 4 — the V0.4.24
+                    # first-N-by-position cap (8) picked common abstract
+                    # words that share a window with any cited author
+                    # elsewhere in the source, passing the F1-F5 fabricated-
+                    # claim class. The rarest-4 are the claim's distinctive
+                    # content fingerprint; a fabricated substantive claim
+                    # whose actual content words never co-occur with the
+                    # cited author's source window is dropped even when a
+                    # common word like "affective" or "individual" happens
+                    # to share that window.
+                    kws.sort(key=lambda w: freq.get(w, 0))
+                    kws = kws[:4]
+                else:
+                    # V0.4.24 fallback: first 8 by position (lenient on
+                    # tiny test sources where rarest-first degenerates).
+                    kws = kws[:8]
+                # No anchorable keywords → cannot probe; keep (the V0.4.24
+                # unverifiable-keep behaviour, made explicit here).
+                if not kws:
+                    kept_s.append(sent)
+                    continue
                 grounded = False
                 for n in sent_names:
                     n_low = n.lower()
@@ -100,6 +190,26 @@ def _grounded_addition_sentences(
                         src_lower[max(0, m.start() - _NAME_WINDOW) : m.end() + _NAME_WINDOW]
                         for m in re.finditer(re.escape(n_low), src_lower)
                     )
+                    # V0.4.34 (audit item 1): year-attribution probe —
+                    # verify the YEAR cited in the sentence co-occurs with
+                    # the author in the source. A fabricated year (e.g.,
+                    # "Mackinnon (1972)" when the source has only
+                    # "Mackinnon and Michels (1971)") is the H1/H2
+                    # hallucination signature from the V0.4.33 audit.
+                    # Content-agnostic: the year-attribution check is a
+                    # structural property of source-citation-co-occurrence,
+                    # not a book-specific property (Rule 1 ✓).
+                    _sent_years = re.findall(r"(?<!\d)(1[89]\d{2})(?!\d)", sent)
+                    if _sent_years and use_v0432_rarest4:
+                        _yr_found = any(
+                            re.search(rf"(?<!\d){re.escape(_yr)}(?!\d)", windows)
+                            for _yr in _sent_years
+                        )
+                        if not _yr_found:
+                            # The year(s) don't co-occur with this author
+                            # → fabricated year → skip to next name; if NO
+                            # name grounds, the sentence is dropped below.
+                            continue
                     if any(re.search(rf"\b{re.escape(kw)}\b", windows) for kw in kws):
                         grounded = True
                         break
@@ -112,6 +222,285 @@ def _grounded_addition_sentences(
         return ("\n\n".join(out_paras), dropped)
     except Exception:
         return addition, []
+
+
+def _v069_recoverable_sentence(sentence: str, roster_lower: set, source: str) -> bool:
+    """V0.6.9 (operator DECISION 2, tightened to the thorough floor): is a
+    sentence dropped by the attribution-edge filter recoverable?
+
+    The V0.5.15 recovery re-admitted any dropped sentence whose first five
+    words named a citation-roster author — "the regex IS the grounding".
+    That is the exact rationale the operator rejected for the ship-time
+    parenthetical veto (a parenthetical-only cited author lands in that
+    roster BY CONSTRUCTION), and this block is that exemption's V0.5.15
+    sibling (found by the review-2 fresh-eyes pass, previously unpinned).
+    Tightened contract, same as ``field_phases._v069_grounded``: an author
+    counts as grounded only when an attribution verb is actually HELD
+    somewhere in the source — active ("AuthorC <attrib-verb>"), possessive
+    ("AuthorC's <noun> <attrib-verb>") or passive agent ("… <attrib-verb>
+    by AuthorC"), via ``_name_holds_any_attrib_verb``. Correctly
+    attributed authors stay recoverable; a pure citation-list name does
+    not. Content-agnostic (Rule 1 ✓): runtime roster + generic
+    attrib-verb grammar, no hardcoded names.
+    """
+    from core.summarisation.postchecks.attribution import _name_holds_any_attrib_verb
+
+    for _w in sentence.split()[:5]:
+        if _w.lower() in roster_lower and _name_holds_any_attrib_verb(_w, source):
+            return True
+    return False
+
+
+def _year_attribution_probe(text: str, source: str, names: list[str]) -> tuple[str, list[str]]:
+    """V0.4.35 (F1): year-attribution probe on ANY thorough output.
+
+    Extracted from the inline year-attribution logic in
+    ``_grounded_addition_sentences`` (V0.4.34 commit ``73660a0``). This
+    standalone version ONLY checks if the YEAR cited in a sentence
+    co-occurs with the AUTHOR in the source — it does NOT run the keyword
+    probe (rarest-4 fingerprint), which is too aggressive for full thorough
+    prose (would drop true-but-rephrased claims). The V0.4.34 audit found
+    H3 (Stanton 1980 fabricated year) slipped through the dedicated
+    expansion call which the inline probe didn't inspect (it lived in the
+    gap-fill path which was skipped by the V0.05 word-count gate). This
+    function is called at the coverage-check point (BEFORE the gap-fill
+    phase) so it catches fabricated-year claims regardless of whether the
+    gap-fill runs. Content-agnostic (Rule 1 ✓ — the year-attribution
+    check is a structural property of source-citation-co-occurrence, not
+    a book-specific property).
+
+    Args:
+        text: the thorough text to check (from the dedicated expansion call
+            or the gap-fill — any thorough output).
+        source: the chapter source text to ground against.
+        names: the list of known author names (from the analysis) to look
+            for in the text.
+
+    Returns:
+        ``(filtered_text, dropped_sentences)`` — paragraph structure
+        preserved; a paragraph whose every sentence was dropped vanishes.
+        Never raises.
+    """
+    try:
+        if not text or not source or not names:
+            return text, []
+        src_lower = source.lower()
+        # Same source-size gate as _grounded_addition_sentences: the year
+        # probe is only meaningful on real-sized sources (≥1000 chars).
+        if len(source) < _MIN_SOURCE_CHARS:
+            return text, []
+        out_paras: list[str] = []
+        dropped: list[str] = []
+        for para in re.split(r"\n{2,}", text):
+            para = para.strip()
+            if not para:
+                continue
+            kept_s: list[str] = []
+            for sent in (s.strip() for s in re.split(r"(?<=[.!?])\s+", para)):
+                if not sent:
+                    continue
+                sent_names = [
+                    n for n in names if re.search(rf"\b{re.escape(n)}\b", sent, re.IGNORECASE)
+                ]
+                if not sent_names:
+                    kept_s.append(sent)
+                    continue
+                _sent_years = re.findall(r"(?<!\d)(1[89]\d{2})(?!\d)", sent)
+                if not _sent_years:
+                    kept_s.append(sent)
+                    continue
+                grounded = False
+                for n in sent_names:
+                    n_low = n.lower()
+                    if n_low not in src_lower:
+                        grounded = True  # unverifiable — keep
+                        break
+                    windows = " \u0000 ".join(
+                        src_lower[max(0, m.start() - _NAME_WINDOW) : m.end() + _NAME_WINDOW]
+                        for m in re.finditer(re.escape(n_low), src_lower)
+                    )
+                    _yr_found = any(
+                        re.search(rf"(?<!\d){re.escape(_yr)}(?!\d)", windows) for _yr in _sent_years
+                    )
+                    if _yr_found:
+                        grounded = True
+                        break
+                if grounded:
+                    kept_s.append(sent)
+                else:
+                    dropped.append(sent)
+            if kept_s:
+                out_paras.append(" ".join(kept_s))
+        return "\n\n".join(out_paras), dropped
+    except Exception:
+        return text, []
+
+
+# V0.4.32 (audit backlog item 2): the Phase 2.2 semantic fact-check scope
+# extension — the SAME semantic_fact_check helper the bullet pipeline
+# (apply_phase22_semantic_fact_check, V3.7.0) runs on bullets, applied
+# to thorough additive prose. The V0.4.31 ch.6 rig audit's F1-F5
+# hallucinations would fail a ≥0.50 embedding similarity check (they're
+# fabricated claims, low similarity to the source's actual claims about
+# the cited authors). Content-agnostic per Rule 1: the check uses the
+# embedder + the source text, no hardcoded names.
+# V18.2.30 degenerate-signal guard (the V0.4.25 honest-divergence
+# pattern): when the embedder is unhealthy, the check is skipped with
+# an explicit log line — a broken embedder produces zero/NaN vectors
+# which always score <0.50 similarity, dropping ALL prose as
+# "hallucinated" (churn). In that case, rely on the attribution-edge
+# drop (item 1, _grounded_addition_sentences above) for hallucination
+# filtering.
+# V0.4.32 threshold source: thresholds.py _SEMANTIC_FACT_CHECK_DROP
+# (V18.20.2.0 SWOT-A2 — the same threshold the bullet pipeline uses;
+# the helper imports it lazily so the module doesn't pull in
+# thresholds.py at import time).
+def _semantic_ground_addition_sentences(
+    addition: str,
+    source: str,
+    threshold: float | None = None,
+) -> tuple[str, list[str]]:
+    """V0.4.32 (audit backlog item 2): semantic fact-check on
+    thorough additive prose.
+
+    The V3.7.0 Phase 2.2 semantic fact-check on bullets
+    (``apply_phase22_semantic_fact_check`` in ``bullet_pipeline.py``)
+    verifies each bullet's embedding similarity to the source ≥0.50
+    (the V18.20.2.0 ``_SEMANTIC_FACT_CHECK_DROP`` threshold). The
+    V0.4.31 ch.6 rig audit found 5 fabricated claims (F1-F5) in
+    thorough additive paragraph 5 that would have been caught by this
+    check (fabricated claims have low embedding similarity to the
+    source's actual claims about the cited authors). The V0.4.32
+    closes the bullets-only gap by running the SAME check on thorough
+    additive prose via this helper.
+
+    Fail-soft (house pattern): if the embedder is unhealthy (the V18.2.30
+    degenerate-signal guard — the V0.4.25 honest-divergence pattern),
+    the check is skipped and the original addition is returned unchanged
+    with no dropped sentences. A broken embedder produces zero/NaN
+    vectors which always score <0.50 similarity, dropping ALL prose as
+    "hallucinated" (churn); in that case, the attribution-edge drop
+    (item 1) is the active hallucination filter. The sandbox has no
+    sentence-transformers installed → the guard fires here; the actual
+    semantic check runs on the rig (which has nomic-embed-text via
+    Ollama).
+
+    Args:
+        addition: the thorough additive prose to filter (one or more
+            paragraphs, separated by blank lines).
+        source: the chapter source text to ground against.
+        threshold: the similarity threshold below which a sentence is
+            dropped. Defaults to ``_SEMANTIC_FACT_CHECK_DROP`` from
+            ``thresholds.py`` (0.50 — the same threshold the bullet
+            pipeline uses).
+
+    Returns:
+        ``(filtered_addition, dropped_sentences)`` — paragraph
+        structure preserved; a paragraph whose every sentence was
+        dropped vanishes. Never raises.
+    """
+    try:
+        if not addition or not source:
+            return addition, []
+        # V18.2.30: degenerate-signal guard. A broken embedder produces
+        # zero/NaN vectors which always score <0.50 similarity (dropping
+        # ALL prose as "hallucinated" — churn). Skip the check entirely
+        # and rely on the attribution-edge drop (item 1) for hallucination
+        # filtering in that case. The sandbox has no sentence-transformers
+        # → is_embedder_healthy() returns False → the guard fires here.
+        from core.llm.model_singletons import is_embedder_healthy
+
+        if not is_embedder_healthy():
+            return addition, []
+        if threshold is None:
+            from core.summarisation.thresholds import (
+                SEMANTIC_FACT_CHECK_DROP as _P22_THRESHOLD,
+            )
+
+            threshold = float(_P22_THRESHOLD)
+        from core.summarisation.text_preprocessor import semantic_fact_check
+
+        out_paras: list[str] = []
+        dropped: list[str] = []
+        for para in re.split(r"\n{2,}", addition):
+            para = para.strip()
+            if not para:
+                continue
+            kept_s: list[str] = []
+            for sent in (s.strip() for s in re.split(r"(?<=[.!?])\s+", para)):
+                if not sent:
+                    continue
+                # V0.4.32: very short sentences (<20 chars) are kept
+                # without probing — embedding similarity on very short
+                # text is unreliable (the bullet pipeline's
+                # apply_phase22_semantic_fact_check applies the same
+                # heuristic implicitly by operating on bullets ≥10 chars).
+                if len(sent) < 20:
+                    kept_s.append(sent)
+                    continue
+                result = semantic_fact_check(sent, source, threshold=threshold)
+                if result.get("is_grounded"):
+                    kept_s.append(sent)
+                else:
+                    dropped.append(sent)
+            if kept_s:
+                out_paras.append(" ".join(kept_s))
+        return ("\n\n".join(out_paras), dropped)
+    except Exception:
+        return addition, []
+
+
+# V0.4.37 (F3): coverage-driven engagement fraction. The V0.05 word-
+# count gate skips the thorough gap-fill when the thorough meets its
+# source-scaled word target. The V0.4.36 ch.6 audit (F3, LOW PRIORITY
+# -- observability) found this can ship a coverage deficit: a thorough
+# can meet its word target while still well below the coverage fraction
+# (the audit's example: a thorough at ~50/74 = 68% of theorists). The
+# gate now skips ONLY when word-count is met AND coverage is at/above
+# this fraction; below it, the gap-fill runs to close the coverage gap
+# regardless of word-count. Content-agnostic (Rule 1): the threshold
+# is a coverage FRACTION (0.70 -- close to the audit's 50/74 = 68%
+# example, rounded), not a chapter-specific theorist count.
+_V05_COVERAGE_ENGAGE_FRACTION = 0.70
+
+
+def _v05_gapfill_should_skip(
+    tf_words: int,
+    scaled_target_hi: int | None,
+    covered: int,
+    total: int,
+) -> tuple[bool, str]:
+    """Decide whether the V0.05 thorough gap-fill should be skipped.
+
+    Returns ``(skip, reason)``. The gap-fill is skipped on the word-
+    count gate ONLY when the thorough already meets its source-scaled
+    word target AND coverage is at/above the engage fraction -- the
+    few remaining missing contributors are then covered by the bullets/
+    recall floor. When coverage is below the engage fraction, the
+    word-count skip is OVERRIDDEN (coverage-driven engagement) so the
+    gap-fill closes the coverage gap regardless of word-count. When the
+    word target is None, the gate is inactive (no skip).
+    """
+    if scaled_target_hi is None:
+        return False, ""
+    if tf_words >= int(scaled_target_hi):
+        _frac = (covered / total) if total else 1.0
+        if _frac >= _V05_COVERAGE_ENGAGE_FRACTION:
+            return True, (
+                f"V0.05: thorough ({tf_words} words) meets its source-scaled "
+                f"target ({scaled_target_hi} words) AND coverage "
+                f"{covered}/{total} = {_frac:.0%} >= the engage fraction "
+                f"({_V05_COVERAGE_ENGAGE_FRACTION:.0%}); the missing "
+                f"contributor(s) are covered by the bullets/recall floor"
+            )
+        return False, (
+            f"V0.4.37 F3: thorough ({tf_words} words) meets its source-scaled "
+            f"target ({scaled_target_hi} words) BUT coverage "
+            f"{covered}/{total} = {_frac:.0%} < the engage fraction "
+            f"({_V05_COVERAGE_ENGAGE_FRACTION:.0%}) -- gap-fill runs "
+            f"(coverage-driven engagement, not word-count-driven)"
+        )
+    return False, ""
 
 
 class SummarizerThoroughFloorMixin:
@@ -192,6 +581,25 @@ class SummarizerThoroughFloorMixin:
                 return thorough
             _covered = len(_cov.get("covered", []) or [])
             _missing = list(_cov.get("missing", []) or [])
+            # V0.4.35 (F1): year-attribution probe on the thorough text AS
+            # RECEIVED from the dedicated expansion call — BEFORE the gap-
+            # fill phase. The V0.4.34 audit found H3 (Stanton 1980 fabricated
+            # year) slipped through the dedicated expansion call which the
+            # year-attribution probe in _grounded_addition_sentences didn't
+            # inspect (the probe lived in the gap-fill path which was skipped
+            # by the V0.05 word-count gate). Running here catches fabricated-
+            # year claims regardless of whether the gap-fill runs. ONLY runs
+            # the year-co-occurrence check (not the keyword probe — too
+            # aggressive for full thorough prose). Content-agnostic (Rule 1 ✓).
+            _all_authors = list(_cov.get("covered", [])) + _missing
+            thorough, _yr_dropped = _year_attribution_probe(thorough, content or "", _all_authors)
+            for _ds in _yr_dropped:
+                self.log(
+                    f"    🧹 V0.4.35: thorough sentence dropped "
+                    f'(year-attribution/dedicated-expansion): "{_ds[:70]}…" '
+                    f"— its cited year doesn't co-occur with the author in the source",
+                    "WARNING",
+                )
             # V18.20.3.13 floor line — recall-floor house style (INFO when
             # met / WARNING when not; missing names listed like the V18.14
             # judge lists them so the operator can act without re-running).
@@ -237,21 +645,30 @@ class SummarizerThoroughFloorMixin:
                     "WARNING",
                 )
             _tf_words = len((thorough or "").split())
-            # V0.05 (rig audit F9b): BUDGET GATE — the 150-300-word append is
+            # V0.05 (rig audit F9b): BUDGET GATE -- the 150-300-word append is
             # skipped when the thorough already meets its SOURCE-SCALED target
             # (``scaled_target_hi`` from length_policy.thorough_target). The
             # V0.04 rig's short chapters were padded past their sources by
             # exactly this append; a summary section never grows beyond its
             # scaled ceiling to chase a name that the bullets already carry.
-            if scaled_target_hi is not None and _tf_words >= int(scaled_target_hi):
-                self.log(
-                    f"    ⏭️  V0.05: Thorough gap-fill skipped — thorough "
-                    f"({_tf_words} words) already meets its source-scaled "
-                    f"target ({scaled_target_hi} words); the missing "
-                    f"contributor(s) are covered by the bullets/recall floor",
-                    "INFO",
-                )
+            # V0.4.37 (F3): coverage-driven engagement. The word-count gate
+            # alone could ship a coverage deficit (a thorough meeting its
+            # word target while still well below the coverage fraction). The
+            # gate now skips ONLY when word-count is met AND coverage is
+            # at/above the engage fraction; below that, the gap-fill runs to
+            # close the coverage gap regardless of word-count. Content-
+            # agnostic (Rule 1): the threshold is a coverage FRACTION, not a
+            # chapter-specific theorist count.
+            _skip, _skip_reason = _v05_gapfill_should_skip(
+                _tf_words, scaled_target_hi, _covered, _total
+            )
+            if _skip:
+                self.log(f"    \u23ed\ufe0f  {_skip_reason}", "INFO")
                 return thorough
+            if _skip_reason:
+                # F3 engage reason (word-count met but coverage below the
+                # engage fraction) -- log the coverage-driven engagement.
+                self.log(f"    \U0001f3af {_skip_reason}", "INFO")
             if _tf_words < 50:
                 # A stub thorough (empty/exec-copy/degenerate) cannot be
                 # safely extended with "continuation" prose — report and
@@ -397,17 +814,84 @@ Chapter content:
                 _addition, _dropped_sents = _grounded_addition_sentences(
                     _addition, content or "", _chunk
                 )
-                for _ds in _dropped_sents:
-                    self.log(
-                        f"    🧹 V0.4.24: gap-fill sentence dropped "
-                        f'(attribution-edge): "{_ds[:70]}…" — its name(s) never '
-                        f"co-occur with the claim's key phrases in the source",
-                        "WARNING",
-                    )
+                # V0.6.9 (operator DECISION 2, tightened): RECOVER dropped
+                # sentences whose authors are in the citation roster AND
+                # genuinely hold an attribution verb somewhere in the
+                # source. The V0.5.15 recovery re-admitted any sentence
+                # whose first five words named a roster author ("the regex
+                # IS the grounding") — the exact rationale the operator
+                # rejected for the ship-time parenthetical veto, and this
+                # block is its sibling (review-2 finding): a
+                # parenthetical-only cited author lands in the roster BY
+                # CONSTRUCTION, so the old recovery re-admitted precisely
+                # the welded-attribution sentences the V0.4.24/V0.4.32
+                # attribution-edge filter had dropped. Content-agnostic
+                # (Rule 1 ✓): uses the runtime citation roster + the
+                # generic attrib-verb grammar, no hardcoded names.
+                _v069_recovered = []
+                if _dropped_sents:
+                    try:
+                        from core.preprocessing.deterministic_analyzer import (
+                            extract_citations as _v069_ec,
+                        )
+
+                        _sa_lower = {
+                            c.get("author", "").lower()
+                            for c in _v069_ec(content or "")
+                            if c.get("author")
+                        }
+                    except Exception:
+                        _sa_lower = set()
+                    for _ds in _dropped_sents:
+                        _ds_recoverable = _v069_recoverable_sentence(_ds, _sa_lower, content or "")
+                        if _ds_recoverable:
+                            _v069_recovered.append(_ds)
+                        else:
+                            self.log(
+                                f"    🧹 V0.4.24: gap-fill sentence dropped "
+                                f'(attribution-edge): "{_ds[:70]}…" — its name(s) never '
+                                f"co-occur with the claim's key phrases in the source",
+                                "WARNING",
+                            )
+                    if _v069_recovered:
+                        _addition = _addition + "\n" + "\n".join(_v069_recovered)
+                        self.log(
+                            f"  ✨ V0.6.9: recovered {len(_v069_recovered)} "
+                            f"gap-fill sentence(s) whose authors are in the "
+                            f"citation roster AND hold an attribution verb in "
+                            f"the source (the tightened V0.5.15 recovery — "
+                            f"roster membership alone no longer counts as "
+                            f"grounding)",
+                            "INFO",
+                        )
                 if len(_addition.split()) < 20:
                     self.log(
                         "    ⚠️ V0.4.24: Thorough gap-fill chunk fully dropped by "
                         "the attribution-edge filter",
+                        "WARNING",
+                    )
+                    continue
+                # V0.4.33 (audit item 1): wire the semantic fact-check
+                # (V0.4.32 item 2's helper — was dead code, never called)
+                # into the production pipeline. Runs AFTER the attribution-
+                # edge check; if the embedder is unhealthy (sandbox), the
+                # degenerate-signal guard fires + the original is returned
+                # unchanged. On the rig, catches fabricated claims with
+                # low embedding similarity to the source.
+                _addition, _sem_dropped = _semantic_ground_addition_sentences(
+                    _addition, content or ""
+                )
+                for _ds in _sem_dropped:
+                    self.log(
+                        f"    🧹 V0.4.33: thorough gap-fill sentence dropped "
+                        f'(semantic fact-check): "{_ds[:70]}…" — embedding '
+                        f"similarity < 0.50 to the source",
+                        "WARNING",
+                    )
+                if len(_addition.split()) < 20:
+                    self.log(
+                        "    ⚠️ V0.4.33: Thorough gap-fill chunk fully dropped "
+                        "by the semantic fact-check filter",
                         "WARNING",
                     )
                     continue

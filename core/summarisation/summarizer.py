@@ -1,19 +1,18 @@
 """
 Two-level summarisation with quality enhancements:
-  - Fast model as primary, heavy model as optional fallback.
+  - ONE model does every LLM task (V0.6.14 single-model order — the
+    fast/heavy dual-model concept is retired).
   - Self‑consistency (optional, disabled by default).
   - Chain‑of‑thought prompting.
   - Coverage guard with auto‑reprompt (limited retries).
   - Map‑Reduce for very large chapters (40k+ tokens).
   - FIX: bullet point extraction fallback from thorough/executive summary.
-  - FIX: Use fast_model as primary, reduce retries, lower timeout.
   - NEW: Academic Rigor mode – temperature=0, self‑review, structured JSON with evidence.
   - NEW: Prompt avoids specific numbers (percentages, dosages, counts) to reduce hallucination.
   - NEW: Smart auto‑context detection based on available VRAM (16k/32k/64k).
   - NEW: Claude (Anthropic) API support via direct API call.
   - NEW: Sprint 3 – Parallel summarisation with VRAM‑aware safeguards.
     * Uses ThreadPoolExecutor for concurrent chapter processing.
-    * If heavy_model is set, max_workers is forced to 1 to prevent OOM.
     * Progress callback reports per‑chapter completion.
   - FIX: Academic Rigor prompt now explicitly instructs model to extract facts, not describe the schema.
   - FIX: `_strip_thinking()` is called unconditionally on all summary strings before saving.
@@ -80,13 +79,17 @@ from core.summarisation.summarizer_init import SummarizerInitMixin
 
 
 def _lp_bullet_cap_fn(source_text: str) -> int | None:
-    """V0.4.23 (user directive): there is NO bullet cap — returns 0.
+    """V0.6.2 (thin-content fix): TWO REGIMES via ``length_policy.bullet_cap``.
 
-    Historically returned ``length_policy.bullet_cap`` (the source-scaled
-    hard cap). Every consumer treats ``None``/``<= 0`` as "no cap"
-    (fail-open) — the 0 now means exactly that, deliberately: bullets can
-    be as long as necessary for full coverage (dedup/consolidation/filler
-    floor are the reducers, never a numeric cap).
+    THIN sources (< 800 words): the source-scaled ADDITIVE budget
+    (bullet_target hi) — bounds gap-fill/resurrection additions only,
+    never primary bullets (the user-reported thin book shipped
+    exec + bullets + thorough above the source, padded with rephrased
+    near-duplicate gap-fill bullets). NORMAL sources: 0 — the V0.4.23
+    no-cap user directive stands ("bullets can be as long as necessary
+    for full coverage"). Every consumer treats ``None``/``<= 0`` as
+    "no cap" (fail-open); the count reducers for primary bullets remain
+    the semantic dedup, consolidation, and the filler floor.
     """
     try:
         return _lp_bullet_cap_mod(_lp_count_source_words_mod(source_text or ""))
@@ -234,11 +237,12 @@ class Summarizer(
         # tests/test_group_b_characterization.py lock the 13 load-bearing
         # decisions (IQ2_S/IQ2_XXS overrides, max_output capping, academic_rigor
         # auto-enable, compact_summaries, overdeliver clamping, model profile,
-        # heavy_model fallback, per-model temperature enforcement, etc.).
+        # per-model temperature enforcement, etc.).
         # MUST come AFTER _init_thermal_guard (which sets self.is_local, self.timeout,
         # self.local_chapter_deadline) and BEFORE _init_max_workers +
-        # _init_map_reduce_and_prompts (which read self.primary_model +
-        # self.heavy_model).
+        # _init_map_reduce_and_prompts (which read self.primary_model).
+        # V0.6.14: the heavy_model fallback decision (one of the original 13)
+        # is retired with the single-model order.
         self._init_quality_params(settings)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -819,7 +823,7 @@ class Summarizer(
             temperature=self.temperature,
             prompt_manager=self.prompt_manager,
             recover_vram=self._recover_vram,
-            call_fast_llm=self._call_fast_llm,
+            call_llm=self._call_llm_with_empty_retry,
             strip_thinking=self._strip_thinking,
             # V18.20.3.4 (RC-1 layer 2, audit v182033): filter the gap-fill
             # bullets through the SAME thinking/self-talk/scar filter the
@@ -853,7 +857,7 @@ class Summarizer(
             temperature=self.temperature,
             prompt_manager=self.prompt_manager,
             recover_vram=self._recover_vram,
-            call_fast_llm=self._call_fast_llm,
+            call_llm=self._call_llm_with_empty_retry,
             strip_thinking=self._strip_thinking,
             # V18.20.3.4 (RC-1 layer 2, audit v182033): same filter as the
             # full scholar-reflection path.
@@ -871,7 +875,14 @@ class Summarizer(
         """
         sv_anti_false_precision_check(heading, text, result, log=self.log)
 
-    def _semantic_dedup_bullets(self, bullets: list[str], threshold: float = 0.85) -> list[str]:
+    def _semantic_dedup_bullets(
+        self,
+        bullets: list[str],
+        threshold: float = 0.85,
+        source_authors: list[str] | None = None,
+        context_text: str = "",
+        source_text: str | None = None,
+    ) -> list[str]:
         """V13.45.5: Semantic dedup — delegates to summary_validator.semantic_dedup_bullets.
 
         V18.7 (Phase 5.2): extracted verbatim to ``summary_validator.semantic_dedup_bullets``.
@@ -887,32 +898,37 @@ class Summarizer(
         layers now apply the same bar. The validator function's own default
         is untouched (its other callers keep their behavior); the shipped
         path is this delegate.
+        V0.5.18: ``source_authors`` / ``context_text`` / ``source_text`` pass
+        through to the validator's author-coverage veto (the V0.5.17 near-dup
+        veto, one removal layer over — the ch.9 audit's Bug #2).
         """
-        return sv_semantic_dedup_bullets(bullets, threshold=threshold, log=self.log)
+        return sv_semantic_dedup_bullets(
+            bullets,
+            threshold=threshold,
+            log=self.log,
+            source_authors=source_authors,
+            context_text=context_text,
+            source_text=source_text,
+        )
 
     def _self_review(self, heading: str, text: str, summary: str) -> str | None:
         """Ask a model to review the summary against the source and flag unsupported claims.
 
         C8 fix: send the FULL source (truncated to the model's context window
         minus the summary), not just text[:8000].
-        C9 fix: use the heavy_model if available (independent review); if no
-        second model is available, skip self-review entirely (same-model
-        self-review has a strong self-consistency bias and rarely catches
-        real hallucinations).
+        V0.6.14 (single-model order): the heavy-model "independent reviewer"
+        branch is retired — THE model reviews its own output. While
+        same-model review has a self-consistency bias, it still catches
+        gross hallucinations and formatting issues. The merge logic (P3-5)
+        ensures the reviewer can only REMOVE unsupported claims, not
+        introduce new ones. The fusion provider's cloud reviewer (site A)
+        is unchanged — that is a provider choice, not a second model
+        configured for generation.
         """
-        # self-review now runs even with a single model (same
-        # model reviewing its own output).  While same-model review has a
-        # self-consistency bias, it still catches gross hallucinations and
-        # formatting issues.  The merge logic (P3-5) ensures the reviewer
-        # can only REMOVE unsupported claims, not introduce new ones.
-        review_model = self.heavy_model if self.heavy_model else self.primary_model
+        review_model = self.primary_model
         if not review_model:
             self.log("    ⏭️ Self‑review skipped (no model available).", "INFO")
             return None
-        if review_model == self.primary_model:
-            self.log(
-                "    ℹ️ Self‑review using same model (no independent reviewer available).", "DEBUG"
-            )
 
         # C8: send full source, truncated to fit the context window
         # Reserve 2000 tokens for the summary + prompt overhead
@@ -961,7 +977,6 @@ class Summarizer(
             text,
             bullets,
             thorough,
-            heavy_model=self.heavy_model,
             primary_model=self.primary_model,
             max_context_tokens=self.request.summarisation_max_context_tokens,
             temperature=self.temperature,
@@ -1351,29 +1366,6 @@ class Summarizer(
         )
         return result
 
-    def _switch_to_fast_model(self):
-        """V16.0.9: Unload the heavy model before loading the fast model.
-
-        Only applies to ``dual_local`` mode — in single modes there's nothing
-        to unload (same model), and in API modes the fast model runs in the
-        cloud (no local VRAM contention).
-        """
-        arch = getattr(self.request, "model_architecture", "single_local") or "single_local"
-        if arch == "dual_local":
-            self._recover_vram(context="switch-to-fast", delay_sec=10.0)
-
-    def _switch_to_heavy_model(self):
-        """V16.0.9: Unload the fast model before loading the heavy model.
-
-        Only applies to ``dual_local`` mode — the heavy model needs the full
-        VRAM budget that the fast model is occupying. The longer 30s delay
-        gives Ollama time to evict the fast model + the heavy model time to
-        load before the next call.
-        """
-        arch = getattr(self.request, "model_architecture", "single_local") or "single_local"
-        if arch == "dual_local":
-            self._recover_vram(context="switch-to-heavy", delay_sec=30.0)
-
     def _consolidate_duplicate_claims(self, bullets: list[str]) -> list[str]:
         """V13.44.0 Idea #5: Dedup consolidation pass.
 
@@ -1650,12 +1642,73 @@ class Summarizer(
                 if not _mr_exec:
                     _mr_exec = _mr_master.split("\n")[0][:2000]
 
+                # V0.5.6 Phase 0.5: source glossary extraction (fused into the
+                # map-reduce master-summary call). The same raw response now
+                # carries BOTH <thorough_summary> AND a <name_glossary> block.
+                # The glossary is parsed (fail-open), persisted to
+                # ``summaries/.glossaries/<slug>.glossary.md``, and cross-
+                # referenced against the regex ``extract_citations`` backstop.
+                # Content-agnostic (Rule 1 ✓): the parser uses generic regex;
+                # the cross-reference compares two runtime-extracted name sets.
+                _mr_source_glossary: dict[str, list] = {
+                    "names": [],
+                    "dates": [],
+                    "terms": [],
+                }
+                try:
+                    from pathlib import Path as _mr_Path
+
+                    from core.summarisation.glossary_parser import (
+                        extract_persist_and_cross_reference_glossary as _mr_epg,
+                    )
+
+                    _mr_regex_authors: set[str] = set()
+                    try:
+                        from core.preprocessing.deterministic_analyzer import (
+                            extract_citations as _mr_extract_citations,
+                        )
+
+                        _mr_src_for_xref = getattr(self, "_source_text", "") or content
+                        _mr_regex_authors = {
+                            c.get("author", "")
+                            for c in _mr_extract_citations(_mr_src_for_xref)
+                            if c.get("author")
+                        }
+                    except Exception as _mr_e_rx:  # noqa: BLE001 — fail-open
+                        logger.debug(
+                            "V0.5.6: extract_citations for map-reduce glossary "
+                            "xref failed (non-fatal — xref skipped): %s: %s",
+                            type(_mr_e_rx).__name__,
+                            _mr_e_rx,
+                        )
+                    _mr_source_glossary = _mr_epg(
+                        raw_stripped,
+                        heading=heading,
+                        output_dir=getattr(self.request, "output_dir", _mr_Path(".")),
+                        run_id=getattr(self, "_run_id", ""),
+                        app_version=getattr(self, "_app_version", ""),
+                        regex_authors=_mr_regex_authors,
+                        log=self.log,
+                    )
+                except Exception as _mr_e_g:  # noqa: BLE001 — fail-open
+                    logger.warning(
+                        "V0.5.6 map-reduce glossary extraction crashed (non-fatal — "
+                        "empty glossary, master summary unaffected): %s: %s",
+                        type(_mr_e_g).__name__,
+                        _mr_e_g,
+                    )
+
                 parsed = {
                     "executive_summary": _mr_exec,
                     "bullet_points": _mr_bullets,
                     "thorough_summary": _mr_master,
                     "key_distinctions": "",
                     "theoretical_tensions": "",
+                    # V0.5.6 Phase 0.5: the source glossary parsed from the
+                    # <name_glossary> block. Flows through to SummaryResult
+                    # for the verification LAYER (coverage ground truth —
+                    # richer than the regex). Empty dict = fail-open.
+                    "source_glossary": _mr_source_glossary,
                     "raw": raw,
                     "model": self.primary_model,
                     "temperature": self.temperature,
@@ -1687,8 +1740,6 @@ class Summarizer(
             _pipeline, _pstate, coverage, parsed, text, tok_in = _pr
 
         (
-            _bp_hi_lp,
-            _bp_lo_lp,
             _inc_exec_lp,
             _inc_kp_lp,
             _inc_thorough_lp,
@@ -1760,8 +1811,6 @@ class Summarizer(
             _inc_kp_lp,
             _src_words_lp,
             _th_hi_lp,
-            _bp_lo_lp,
-            _bp_hi_lp,
         )
         return self._phase_finalize(
             heading,
@@ -1805,22 +1854,14 @@ class Summarizer(
 
         Returns a handle dict with ``prejudge_hook`` / ``scholar_runner`` /
         ``abort`` callables, or None when the lever is not armed (setting
-        off, dual-model architecture — ``call_fast_llm`` SWITCHES models on
-        dual architectures and concurrent switching races —, reflections
+        off — the V0.6.14 single-model order retired the dual-architecture
+        model-switching race the old gate guarded against —, reflections
         text enabled — the speculation runs the gapfill-only variant —, or
         deadline already exceeded). None = the plain sequential pipeline.
         """
         from core.summarisation.stage_overlap import lever_enabled
 
         if not lever_enabled("judge_scholar"):
-            return None
-        _arch = str(getattr(self.request, "model_architecture", "single_local") or "single_local")
-        if _arch.startswith("dual"):
-            self.log(
-                "    ℹ️ Phase 6.2: judge∥scholar speculation skipped "
-                "(dual-model architecture switches models mid-call)",
-                "DEBUG",
-            )
             return None
         try:
             from utils.settings import Settings as _P6Settings

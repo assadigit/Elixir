@@ -3,7 +3,21 @@
 QuickConvertDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, file row, options container, output row, progress,
+status, buttons) to the base and folds its byte-identical closeEvent
+guard away (inherited). The legacy widget names (pdf_edit / out_edit /
+action_btn — pinned by the e2e drive tests) alias the base-built
+file_path_edit / out_path_edit / process_btn; the engine + format rows
+and the hint label fold into _build_options; _pick_input / _on_action
+renamed onto the base hooks the base's Browse/Process buttons already
+call (_pick_file / _on_process). The W-b5 worker launch keeps its
+pinned shape: _do_convert spawns the SimpleWorker (the base's
+_process/_collect_options flow does not fit the converter's pinned
+result-dict contract)."""
 
 from __future__ import annotations
 
@@ -15,20 +29,23 @@ import re
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
+    QComboBox,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
     QWidget,
 )
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
     _show_success_modal,
 )
 
 
-class QuickConvertDialog(QDialog):
+class QuickConvertDialog(BaseServiceDialog):
     """V15.0.0: Document → Markdown — pick a document, pick engine, Convert.
 
     Renamed from "PDF → Markdown" in V15.0.0. Now accepts ALL AnyDoc-
@@ -91,70 +108,61 @@ class QuickConvertDialog(QDialog):
         ".wav",
         ".txt",
         ".md",
+        # V0.6.0 (Tool 4-b): markitdown[all] (a core requirements.txt dep)
+        # fully converts .pptx/.xlsx. Since anydoc was removed from the
+        # requirements (not published on PyPI), these formats hard-failed
+        # on the only shipped engine even though the dialog advertises
+        # them (hint label + input filter) — restored here.
+        ".pptx",
+        ".xlsx",
     }
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("📄 Document → Markdown")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options (the engine/format rows), which
+        # needs nothing pre-set. The base also initializes self._worker
+        # (its closeEvent guards it).
+        super().__init__(
+            controller, "📄 Document → Markdown", parent, accept_files=True, accept_text=False
+        )
+        # V0.6.10 (B17): this dialog's original geometry over the base's
+        # generic 560×480.
         self.setMinimumSize(560, 300)
-        self.setModal(True)
-        # V18.20.4.5 (W-b5/T-b2): the background extraction worker
-        # (SimpleWorker).
-        self._worker: SimpleWorker | None = None
+        # V0.6.10 (B17): the base builds file_path_edit / out_path_edit /
+        # process_btn ("Process"); this dialog's historical attribute names
+        # (pdf_edit / out_edit / action_btn — pinned by the e2e drive tests)
+        # and labels are restored as aliases of the SAME widgets (single
+        # source of truth).
+        self.pdf_edit = self.file_path_edit
+        self.pdf_edit.setPlaceholderText("Pick a document file…")
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText("Choose where to save the file…")
+        self.action_btn = self.process_btn
+        self.action_btn.setText("Convert")
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_convert_progress override
+        # only sets status text) — hide the dead toggle (the transcribe
+        # B17 precedent).
+        self._log_toggle_btn.setVisible(False)
 
-        from PySide6.QtWidgets import (
-            QComboBox as _QCB,
-        )
-        from PySide6.QtWidgets import (
-            QHBoxLayout as _HL,
-        )
-        from PySide6.QtWidgets import (
-            QLabel as _QL,
-        )
-        from PySide6.QtWidgets import (
-            QLineEdit as _QLE,
-        )
-        from PySide6.QtWidgets import (
-            QPushButton as _QPB,
-        )
-        from PySide6.QtWidgets import (
-            QVBoxLayout as _VL,
-        )
-
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("Document → Markdown (Quick)")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        hint = _QL(
+    def _build_options(self, layout: QVBoxLayout) -> None:
+        """V0.6.10 (B17): the converter's option rows — the hint label,
+        the engine dropdown and the output-format dropdown — folded into
+        the base's options container (between the base's file row and its
+        output row; the hint previously sat directly under the title)."""
+        hint = QLabel(
             "Supports PDF, DOCX, DOC, EPUB, PPTX, XLSX, ODT, RTF, CSV … "
             "Choose engine and output format below."
         )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
-        lay.addWidget(hint)
-
-        # Input file picker
-        in_row = _HL()
-        in_row.setSpacing(8)
-        in_row.addWidget(_QL("Document:"))
-        self.pdf_edit = _QLE()  # keep attr name for back-compat with _refresh_output_path
-        self.pdf_edit.setPlaceholderText("Pick a document file…")
-        pdf_browse = _QPB("Browse…")
-        pdf_browse.clicked.connect(self._pick_input)
-        in_row.addWidget(self.pdf_edit, 1)
-        in_row.addWidget(pdf_browse)
-        lay.addLayout(in_row)
+        layout.addWidget(hint)
 
         # V15.0.0: Engine dropdown
-        eng_row = _HL()
+        eng_row = QHBoxLayout()
         eng_row.setSpacing(8)
-        eng_row.addWidget(_QL("Engine:"))
-        self.engine_combo = _QCB()
+        eng_row.addWidget(QLabel("Engine:"))
+        self.engine_combo = QComboBox()
         self.engine_combo.addItem("AnyDoc (default)", "anydoc")
         self.engine_combo.addItem("markitdown (fallback)", "markitdown")
         # If AnyDoc isn't installed, default to markitdown and note it.
@@ -169,13 +177,13 @@ class QuickConvertDialog(QDialog):
         self.engine_combo.currentIndexChanged.connect(self._on_engine_or_format_changed)
         eng_row.addWidget(self.engine_combo)
         eng_row.addStretch()
-        lay.addLayout(eng_row)
+        layout.addLayout(eng_row)
 
         # Output format
-        fmt_row = _HL()
+        fmt_row = QHBoxLayout()
         fmt_row.setSpacing(8)
-        fmt_row.addWidget(_QL("Format:"))
-        self.fmt_combo = _QCB()
+        fmt_row.addWidget(QLabel("Format:"))
+        self.fmt_combo = QComboBox()
         self.fmt_combo.addItem("Default (change in Settings)", "__default__")
         self.fmt_combo.addItem("Markdown (.md)", ".md")
         self.fmt_combo.addItem("Word document (.docx)", ".docx")
@@ -184,52 +192,19 @@ class QuickConvertDialog(QDialog):
         self.fmt_combo.currentIndexChanged.connect(self._on_format_changed)
         fmt_row.addWidget(self.fmt_combo)
         fmt_row.addStretch()
-        lay.addLayout(fmt_row)
+        layout.addLayout(fmt_row)
 
-        # Output file picker
-        out_row = _HL()
-        out_row.setSpacing(8)
-        out_row.addWidget(_QL("Save as:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText("Choose where to save the file…")
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
-
-        # Status
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        lay.addWidget(self.status_label)
-
-        # Buttons
-        btn_row = _HL()
-        btn_row.addStretch()
-        self.again_btn = _QPB("🔄 Try Another File")
-        self.again_btn.setObjectName("Compact")
-        self.again_btn.setVisible(False)
-        self.again_btn.clicked.connect(self._on_try_another)
-        self.action_btn = _QPB("Convert")
-        self.action_btn.setObjectName("Primary")
-        self.action_btn.clicked.connect(self._on_action)
-        btn_row.addWidget(self.again_btn)
-        btn_row.addWidget(self.action_btn)
-        lay.addLayout(btn_row)
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the extraction
-        # worker runs — the "QThread: Destroyed while thread is still
-        # running" abort class. Ask; on "close anyway" detach the worker
-        # so the extraction result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) is now
+    # INHERITED from BaseServiceDialog; the pre-B17 copy was
+    # byte-equivalent and was deleted.
 
     # ── File picking ────────────────────────────────────────────────────
-    def _pick_input(self):
+    def _pick_file(self) -> None:
+        # V0.6.10 (B17): override of the base's input-row Browse hook (was
+        # _pick_input; renamed onto the hook the base's Browse button
+        # already calls) — the converter's document filter + the output
+        # refresh / validation chain. Body unchanged.
         # Accept AnyDoc + markitdown formats in one filter.
         filt = (
             "Documents (*.pdf *.docx *.doc *.epub *.pptx *.ppt *.xlsx *.xls "
@@ -279,8 +254,12 @@ class QuickConvertDialog(QDialog):
         ext = self._resolve_ext()
         self.out_edit.setText(str(p.parent / f"{p.stem}{ext}"))
 
-    def _pick_output(self):
-        ext = self._resolve_ext()
+    def _pick_output(self) -> None:
+        # V0.6.10 (B17): override of the base's output-row Browse hook —
+        # the per-format filter + the input-derived default name (extra
+        # behavior the base's generic suffix picker does not have); the
+        # extension now routes through the _get_output_suffix hook.
+        ext = self._get_output_suffix()
         default_name = self.out_edit.text().strip()
         if not default_name:
             pdf_path = self.pdf_edit.text().strip()
@@ -300,6 +279,20 @@ class QuickConvertDialog(QDialog):
             if not path.endswith(ext):
                 path += ext
             self.out_edit.setText(path)
+
+    def _get_output_suffix(self) -> str:
+        # V0.6.10 (B17): base-class hook — the output extension follows the
+        # Format combo (the quick_services.defaults.pdf_format default when
+        # "__default__" is selected; key shape unchanged).
+        return self._resolve_ext()
+
+    def _get_service_name(self) -> str:
+        # V0.6.10 (B17): base-class identity hook. This dialog persists no
+        # controller settings (grep: zero controller.update_setting /
+        # controller.get_setting calls — the pdf_format default is read
+        # via Settings() with its legacy key shape), so the name is
+        # identity-only.
+        return "quick_convert"
 
     # ── V15.0.0: engine/format validation ───────────────────────────────
     def _selected_engine(self) -> str:
@@ -354,13 +347,19 @@ class QuickConvertDialog(QDialog):
                 return True
 
     # ── Action handlers ─────────────────────────────────────────────────
-    def _on_action(self):
+    def _on_process(self) -> None:
+        # V0.6.10 (B17): the base Process button (aliased as action_btn)
+        # drives the old _on_action behavior — Close accepts the dialog,
+        # otherwise convert. (Renamed onto the base hook; body unchanged.)
         if self.action_btn.text() == "Close":
             self.accept()
             return
         self._do_convert()
 
     def _on_try_another(self):
+        # V0.6.10 (B17): kept override — the base's _on_try_another clears
+        # the generic widgets but knows nothing of this dialog's
+        # Convert-button reset + its own status line.
         self.pdf_edit.clear()
         self.out_edit.clear()
         self.status_label.setText("Ready for the next document — pick a file and click Convert.")
@@ -393,12 +392,12 @@ class QuickConvertDialog(QDialog):
         engine = self._selected_engine()
         if engine == "anydoc" and ext not in self._ANYDOC_EXTS:
             self.status_label.setText(
-                f"❌ AnyDoc does not support {ext} files. Use markitdown instead."
+                f"❌ AnyDoc does not support {ext or 'this'} files. Use markitdown instead."
             )
             return
         if engine == "markitdown" and ext not in self._MARKITDOWN_EXTS:
             self.status_label.setText(
-                f"❌ markitdown does not support {ext} files. Use AnyDoc instead."
+                f"❌ markitdown does not support {ext or 'this'} files. Use AnyDoc instead."
             )
             return
 

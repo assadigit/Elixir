@@ -1,11 +1,10 @@
 """V18.12 (Phase 5 Stage 3, Batch 2.7) — gap_filler characterization tests.
 
 Byte-for-byte stability gate for ``gap_fill_concepts`` extracted from
-``Summarizer._gap_fill_concepts``. Uses mocked ``call_fast_llm`` /
-``prompt_manager`` / ``recover_vram`` / ``switch_to_fast_model`` /
-``set_last_coverage`` and stubs the local imports
-(``analysis_exists``, ``find_analysis_for_heading``, ``check_coverage``,
-``extract_authors_from_analysis``).
+``Summarizer._gap_fill_concepts``. Uses mocked ``call_llm`` /
+``prompt_manager`` / ``recover_vram`` / ``set_last_coverage`` and stubs the
+local imports (``analysis_exists``, ``find_analysis_for_heading``,
+``check_coverage``, ``extract_authors_from_analysis``).
 
 Run: pytest tests/test_gap_filler.py -v
 """
@@ -21,16 +20,6 @@ import pytest
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation.gap_filler import gap_fill_concepts
 
@@ -100,10 +89,9 @@ def _make_deps(
     idx = {"i": 0}
     llm_calls = []
     rvram_calls = []
-    switch_calls = []
     setlc_calls = []
 
-    def call_fast_llm(prompt, max_tokens=None, temperature=None, **kw):
+    def call_llm(prompt, max_tokens=None, temperature=None, **kw):
         i = idx["i"]
         idx["i"] += 1
         llm_calls.append({"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature})
@@ -119,22 +107,17 @@ def _make_deps(
     def strip_thinking(text):
         return text  # identity
 
-    def switch_to_fast_model():
-        switch_calls.append(True)
-
     def set_last_coverage(pct):
         setlc_calls.append(pct)
 
     return {
         "prompt_manager": _FakePromptManager(),
         "recover_vram": recover_vram,
-        "call_fast_llm": call_fast_llm,
+        "call_llm": call_llm,
         "strip_thinking": strip_thinking,
-        "switch_to_fast_model": switch_to_fast_model,
         "set_last_coverage": set_last_coverage,
         "_llm_calls": llm_calls,
         "_rvram_calls": rvram_calls,
-        "_switch_calls": switch_calls,
         "_setlc_calls": setlc_calls,
     }
 
@@ -149,9 +132,8 @@ def _common_kwargs(deps):
         coverage_threshold=0.70,
         prompt_manager=deps["prompt_manager"],
         recover_vram=deps["recover_vram"],
-        call_fast_llm=deps["call_fast_llm"],
+        call_llm=deps["call_llm"],
         strip_thinking=deps["strip_thinking"],
-        switch_to_fast_model=deps["switch_to_fast_model"],
         set_last_coverage=deps["set_last_coverage"],
         log=_CapturingLog(),
     )
@@ -340,21 +322,11 @@ class TestConceptGapFill:
         assert contexts == ["pre-gap-fill", "gap-fill-2", "gap-fill-3"]
         assert all(c["delay_sec"] == 30.0 for c in deps["_rvram_calls"])
 
-    def test_switch_to_fast_model_called_on_first_concept(self):
-        """switch_to_fast_model is called exactly once, on the first gap-fill call."""
-        _stub_analysis_exists(False)
-        content = "Concept alpha here. Concept beta here."
-        deps = _make_deps(llm_responses=["bullet a", "bullet b"])
-        gap_fill_concepts(
-            "Ch",
-            content,
-            ["b1"],
-            ["alpha", "beta"],
-            "exec",
-            "thorough",
-            **{k: v for k, v in _common_kwargs(deps).items()},
-        )
-        assert len(deps["_switch_calls"]) == 1  # only on _gi == 0
+    # V0.6.14 (single-model order): REMOVED 1 test —
+    # test_switch_to_fast_model_called_on_first_concept pinned the V17.1.2
+    # fast-model routing (switch_to_fast_model() on _gi == 0), which the
+    # operator's one-model order retired; the parameter is gone from
+    # gap_fill_concepts and the router itself is deleted.
 
 
 # ── 3. byte-for-byte stability ──────────────────────────────────────────────

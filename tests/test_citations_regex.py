@@ -24,20 +24,11 @@ Run: pytest tests/test_citations_regex.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub tiktoken (not installed in test env) — same pattern as conftest.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = lambda *a, **k: None
-    tk.encoding_for_model = lambda *a, **k: None
-    tk.Encoding = type("_E", (), {})
-    sys.modules["tiktoken"] = tk
 
 from core.preprocessing.citations_regex import APOS, NAME_SEP
 from core.preprocessing.deterministic_analyzer import extract_citations

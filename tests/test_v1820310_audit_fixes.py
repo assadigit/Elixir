@@ -23,19 +23,11 @@ Scope of this version (all approved by the user in the 2026-08-31 session):
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 # Stub the optional heavy deps exactly like tests/test_v18203_incremental_checkpoint.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -129,8 +121,14 @@ class TestF6StampDiagnostic:
 
     def test_converter_uses_parser_not_line_peek(self):
         """Policy pin: the diagnostic block must delegate to the canonical
-        parser — no fixed-line peeking may return."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        parser — no fixed-line peeking may return.
+
+        V0.4.26 (Phase 3 commit 1): the stamp scan moved VERBATIM to
+        conversion/reporting.py (run_diagnostic_summary) — the pin follows
+        the moved body."""
+        src = (ROOT / "core" / "pipeline" / "conversion" / "reporting.py").read_text(
+            encoding="utf-8"
+        )
         # V18.20.4.3 (P2 / G-1 + G-2): the scan now passes the file's full
         # path and the running app version (stale-artifact escalation) —
         # still delegating to the canonical parser, never line-peeking.
@@ -182,10 +180,31 @@ class TestW11KeypointCount:
 
     def test_converter_library_uses_builder_count(self):
         """Policy pin: the library call must prefer the builder's deduped
-        count over the raw bullet sum."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        count over the raw bullet sum.
+
+        V0.4.26 (Phase 3 commit 2): the builder-count capture
+        (``getattr(kp, "final_keypoint_count", None)``) moved VERBATIM to
+        conversion/summary_outputs.py (run_summary_outputs); the
+        ``_kp_final_count`` unpack stays in convert() — union semantics
+        keep the policy pin over both homes.
+        V0.4.26 (Phase 3 commit 3): the library-tracking call itself
+        moved VERBATIM to conversion/finalization.py
+        (run_library_tracking, where the count arrives as the
+        ``kp_final_count`` parameter) — the union grows by that module,
+        same policy asserted.
+        """
+        src = (
+            (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+            + (ROOT / "core" / "pipeline" / "conversion" / "summary_outputs.py").read_text(
+                encoding="utf-8"
+            )
+            + (ROOT / "core" / "pipeline" / "conversion" / "finalization.py").read_text(
+                encoding="utf-8"
+            )
+        )
         assert "final_keypoint_count" in src
         assert "_kp_final_count" in src
+        assert "kp_final_count" in src
 
     def test_builder_exposes_count_attribute(self):
         from core.summarisation import KeypointsBuilder
@@ -213,8 +232,14 @@ class TestF5Visibility:
     def test_models_at_exit_is_info_not_warning(self):
         """Models resident in the Ollama server at exit are a known
         cosmetic class — a WARNING on every clean run masks nothing and
-        makes runs look failed."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        makes runs look failed.
+
+        V0.4.26 (Phase 3 commit 1): the models-at-exit lines moved VERBATIM
+        to conversion/reporting.py (run_diagnostic_summary) — the pin
+        follows the moved body."""
+        src = (ROOT / "core" / "pipeline" / "conversion" / "reporting.py").read_text(
+            encoding="utf-8"
+        )
         assert "Models still in Ollama server memory at exit" in src
         assert "server-managed" in src
         assert "Models still loaded at exit" not in src
@@ -232,7 +257,13 @@ class TestO7CacheVisibility:
         assert "Response cache HIT — LLM call skipped" in src
 
     def test_diagnostic_reports_run_cache_stats(self):
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 1): the cache-stats snapshot stays in
+        # convert() (converter_impl.py); the delta line moved VERBATIM into
+        # run_diagnostic_summary (conversion/reporting.py) — union
+        # semantics keep the pin over both homes.
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8") + (
+            ROOT / "core" / "pipeline" / "conversion" / "reporting.py"
+        ).read_text(encoding="utf-8")
         assert "_cache_stats_start" in src
         assert "Response cache:" in src
         assert "opt-in" in src

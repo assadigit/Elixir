@@ -43,6 +43,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.system.timeouts import CLI_POLL_TIMEOUT_S, CLI_SWEEP_TIMEOUT_S, SUBSECOND_PROBE_TIMEOUT_S
+
 logger = logging.getLogger(__name__)
 
 LogFn = Callable[[str, str], None]
@@ -286,7 +288,7 @@ def detect_gpu_profile_from_system() -> tuple:
                         [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
                         capture_output=True,
                         text=True,
-                        timeout=10,
+                        timeout=CLI_POLL_TIMEOUT_S,
                     )
                     if result.returncode == 0 and result.stdout.strip():
                         _gpu_name = result.stdout.strip().split(", ")[0].strip()
@@ -315,7 +317,7 @@ def detect_gpu_profile_from_system() -> tuple:
             [nvidia_smi, "--query-gpu=name", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=CLI_POLL_TIMEOUT_S,
         )
         if result.returncode == 0 and result.stdout.strip():
             gpu_name = result.stdout.strip().split(", ")[0].strip()
@@ -326,13 +328,12 @@ def detect_gpu_profile_from_system() -> tuple:
 
 
 # ── Backward-compatible module-level constants ────────────────────────────
-# These are used by older code that references GPU_TEMP_WARNING / CRITICAL
-# directly.  They default to the _PROFILE_DEFAULT values.  The
-# HardwareMonitor class uses the per-instance profile (which may differ).
+# GPU_TEMP_WARNING is a legacy module-level default; the HardwareMonitor
+# class uses the per-instance profile (which may differ).  The dead
+# GPU_TEMP_CRITICAL / CPU_SUSTAINED_HIGH_SEC constants (zero refs) were
+# removed in the V0.4.25 Phase-4 dead-code audit.
 GPU_TEMP_WARNING = _PROFILE_DEFAULT.warning_c
-GPU_TEMP_CRITICAL = _PROFILE_DEFAULT.critical_c
 RAM_PCT_WARNING = 90  # % — log a warning (swap/OOM risk)
-CPU_SUSTAINED_HIGH_SEC = 300  # 5 min of >95% CPU before logging info
 
 
 @dataclass
@@ -574,7 +575,7 @@ class HardwareMonitor:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=CLI_POLL_TIMEOUT_S,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return {}
@@ -909,7 +910,7 @@ class HardwareMonitor:
         """Stop the background monitoring thread."""
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=2)
+            self._thread.join(timeout=SUBSECOND_PROBE_TIMEOUT_S)
             self._thread = None
 
     def get_snapshot(self) -> HardwareSnapshot:
@@ -1019,7 +1020,7 @@ def _run_post_completion_command(action: str, cmd: list[str], log: LogFn) -> Non
     import sys
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=CLI_SWEEP_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         # NOT a failure: ``rundll32 powrprof.dll,SetSuspendState`` can block
         # indefinitely while the machine is ALREADY suspending, and killing

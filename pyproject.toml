@@ -35,6 +35,15 @@ dependencies = [
     # V0.16 (Phase 3 / 3.1): OS-keychain storage for API keys (Windows
     # Credential Manager via the keyring library). See core/system/secrets.py.
     "keyring>=25.0.0",
+    # V0.6.5: RTL output shaping — arabic_reshaper + bidi.algorithm
+    # .get_display produce the visual order ReportLab must draw for
+    # Farsi/Arabic PDF text (core/outputs/service_formatters.py; guarded
+    # import degrades to unshaped RTL with a WARNING when absent).
+    # V0.6.8 (audit B6): added HERE too — they had drifted into
+    # requirements.txt only, so 2 of the 3 install surfaces (pyproject +
+    # requirements.lock) lacked them.
+    "arabic-reshaper>=3.0.0",
+    "python-bidi>=0.4.2",
 ]
 
 [project.optional-dependencies]
@@ -118,7 +127,11 @@ include = ["core*", "ui_qt*", "utils*"]
 # V18.20.3.12: py310 → py312 — the codebase uses 3.12-only f-string syntax and the rig runs 3.12.14 (the stale py310 target made ruff flag valid code as syntax errors)
 target-version = "py312"
 line-length = 100
-extend-exclude = ["test_data", "assets", "__pycache__"]
+# V0.6.6 (review-loop): "audit" + "docs/ground_truth" are EVIDENCE
+# artifacts (the AGENTS.md charter: evidence, not code) — ruff ≥0.16
+# formats python code blocks inside markdown, and reformatting evidence
+# would tamper with the audit record. No .py files live in either tree.
+extend-exclude = ["test_data", "assets", "__pycache__", "audit", "docs/ground_truth"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
@@ -239,6 +252,7 @@ markers = [
     "regression: version-anchored regression tests (test_v18_*_*.py)",
     "characterization: byte-for-byte stability gates for extracted modules",
     "gpu: tests requiring a real GPU (currently none — all mocked)",
+    "live_llm: tests making REAL LLM calls through the zai-llamacpp shim (:3031) — deselected for deterministic net-green runs via `-m 'not live_llm'` (the shim may be rate-limited); each class also self-skips when the shim is unreachable",
 ]
 
 [tool.coverage.run]

@@ -70,6 +70,11 @@ import requests as _requests
 from core.llm.context_budget import count_tokens as _count_tokens
 from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import retry_llm_call
+from core.system.timeouts import (
+    CLI_POLL_TIMEOUT_S,
+    HTTP_FETCH_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -452,7 +457,7 @@ class LlamaCppProvider(LLMProvider):
                 resp = sess.get(
                     f"{self.base_url}/models",
                     headers=self._headers(),
-                    timeout=5,
+                    timeout=UI_PROBE_TIMEOUT_S,
                 )
                 if resp.status_code != 200:
                     return False
@@ -464,21 +469,18 @@ class LlamaCppProvider(LLMProvider):
             # safe — it never sends an image. The keywords are generic
             # English words that indicate vision capability, not
             # book-specific terms.
-            _model_lower = (self.model or "").lower()
-            _vision_keywords = (
-                "vision",
-                "vl",
-                "vlm",
-                "mmproj",
-                "multimodal",
-                "llava",
-                "bakllava",
-                "qwen-vl",
-                "gemma-vl",
-                "instruct-vision",
-                "bonsai",
-            )
-            return any(kw in _model_lower for kw in _vision_keywords)
+            #
+            # V0.6.7 (review-loop B4): routes through the model_taxonomy
+            # SSOT (the union of the 3 keyword variants that had drifted
+            # across the tree) — this gate GAINS the ocr/deepseek-ocr/
+            # minicpm/moondream/fuyu/kosmos/florence families it previously
+            # missed (a minicpm-v on llama.cpp silently degraded to the
+            # Tesseract path). A false positive is fail-soft: one failed
+            # image attempt per page, then the OCR service falls through
+            # to Qwen/Paddle/Tesseract (see the model_taxonomy comment).
+            from core.llm.model_taxonomy import is_vision_model
+
+            return is_vision_model(self.model)
         except Exception:
             return False
 
@@ -488,6 +490,7 @@ class LlamaCppProvider(LLMProvider):
         image_bytes: bytes,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> str | None:
         """Send a prompt + image to llama-server (OpenAI-compatible
         multimodal format) and return the text response.
@@ -502,8 +505,14 @@ class LlamaCppProvider(LLMProvider):
         b64_image = _b64.b64encode(image_bytes).decode("utf-8")
         _temp = temperature if temperature is not None else self.temperature
         _max_tok = max_tokens or 4096
+        # V0.4.32 (audit item 8): accept the model= kwarg the vision-OCR
+        # caller passes (was raising 'unexpected keyword argument model';
+        # the V0.4.30/V0.4.31 provider contract didn't expose it). Falls
+        # back to self.model (the V0.4.30-detected served model) when the
+        # caller passes None/empty — matching complete()'s pattern.
+        _model = model or self.model
         payload = {
-            "model": self.model,
+            "model": _model,
             "messages": [
                 {
                     "role": "user",
@@ -702,7 +711,7 @@ def test_llamacpp_connection(
     base = (base_url or "").strip() or "http://127.0.0.1:8080/v1"
 
     # Stage 1 — server reachability + model listing.
-    models = list_llamacpp_models(base, api_key, timeout=10)
+    models = list_llamacpp_models(base, api_key, timeout=CLI_POLL_TIMEOUT_S)
     if not models:
         # Distinguish "server down" from "200 but empty list".
         sess = _no_proxy_session()
@@ -710,7 +719,7 @@ def test_llamacpp_connection(
             resp = sess.get(
                 f"{base.rstrip('/')}/models",
                 headers={"Authorization": f"Bearer {api_key or 'local'}"},
-                timeout=10,
+                timeout=CLI_POLL_TIMEOUT_S,
             )
             if resp.status_code in (401, 403):
                 return False, f"server reachable but rejected the API key (HTTP {resp.status_code})"
@@ -731,10 +740,10 @@ def test_llamacpp_connection(
         model=probe_model,
         base_url=base,
         api_key=api_key,
-        timeout=60,
+        timeout=HTTP_FETCH_TIMEOUT_S,
         log_callback=lambda msg, level="INFO": logs.append(f"{level}: {msg}"),
     )
-    ok = probe.smoke_test(timeout=60, prompt="hi")
+    ok = probe.smoke_test(timeout=HTTP_FETCH_TIMEOUT_S, prompt="hi")
     if ok:
         extra = f" (served: {', '.join(models[:3])})" if models else ""
         return True, f"llama.cpp OK — '{probe_model}' responded{extra}"

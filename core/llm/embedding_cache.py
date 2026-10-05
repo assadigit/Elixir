@@ -415,14 +415,22 @@ class EmbeddingCache:
             self._misses = 0
             self._disk_loads = 0
             self._disk_writes = 0
-        # V18.2.24: matches response_cache.py's clear() pattern (try/except/pass
+        # V18.2.24: matches response_cache.py's clear() pattern (try/except
         # rather than contextlib.suppress, for consistency with the sibling
         # module). ruff SIM105 is intentionally suppressed here.
         if self._persist:
             try:  # noqa: SIM105
                 self._cache_file.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except OSError as _e:
+                # V0.6.8 (audit B9): a failed disk-cache clear was SILENT —
+                # the stale cache survived the "clear" with no trace (the
+                # sibling response_cache.py got the same fix).
+                logger.warning(
+                    "embedding_cache disk clear FAILED — stale cache survives (%s: %s); path=%s",
+                    type(_e).__name__,
+                    _e,
+                    self._cache_file,
+                )
 
     def __len__(self) -> int:
         with self._lock:

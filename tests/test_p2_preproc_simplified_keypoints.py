@@ -3,7 +3,7 @@
 
 Covers (567 stmts, 12% baseline coverage):
 
-  - ``__init__``               — settings wiring, model resolution, swap logic
+  - ``__init__``               — settings wiring, model resolution
   - ``_call_llm`` / ``_call_llm_single`` — provider dispatch
   - ``_call_ollama``           — model_exists guard, payload, timeouts,
                                   empty-response fail-soft, Qwen /no_think
@@ -17,7 +17,12 @@ Covers (567 stmts, 12% baseline coverage):
                                   (D2), ``_translate_batch``
   - ``_build_markdown`` / ``_build_clean_markdown`` / ``_build_docx``
   - ``build``                  — preset skip, aggregation, sequential loop,
-                                  model swap, retry branch, DOCX failure
+                                  retry branch, DOCX failure
+
+V0.6.14 (single-model order): the model-swap tests were REMOVED (10 tests
+— the simplification_model/fast_model resolution pins, the swap
+success/missing/acquire-failure/get_loaded_models pins and the two
+unload-failure pins; the builder now uses summarisation_model always).
 
 Hermeticity:
   - ``Settings`` replaced by a FakeSettings stand-in (group_b pattern).
@@ -100,9 +105,10 @@ class TestInit:
         assert b.timeout == 420
         assert b.max_batch_tokens == 8000
         assert b.max_output_tokens_per_batch == 4096
-        # No simplification model configured → swap flag is the empty string
-        # (falsy) — the expression returns "" rather than a bool.
-        assert not b._needs_model_swap
+        # V0.6.14 (single-model order): the ``_needs_model_swap`` assertion was
+        # REMOVED here — the simplification_model / model-swap machinery is
+        # retired; ``b.model`` (asserted above) is ALWAYS
+        # ``request.summarisation_model`` now.
         assert b._jargon_cache == {}
         assert b._jargon_cache_built is False
 
@@ -135,35 +141,15 @@ class TestInit:
         b = sk.SimplifiedKeypointsBuilder(req)
         assert b.ollama_base_url == "http://localhost:11434"
 
-    def test_model_resolution_simplification_model(self, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        assert b.model == "qwythos:latest"
-        assert b._needs_model_swap is True
-
-    def test_no_swap_when_same_as_summarisation_model(self, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = req.summarisation_model
-        b = sk.SimplifiedKeypointsBuilder(req)
-        assert not b._needs_model_swap
-
-    def test_no_swap_when_same_as_fast_model(self, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.fast_model = "fastmodel:latest"
-        req.simplification_model = "fastmodel:latest"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        assert not b._needs_model_swap
-
-    def test_fast_model_used_when_no_simplification_model(self, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.fast_model = "fastmodel:latest"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        assert b.model == "fastmodel:latest"
+    # V0.6.14 (single-model order): 4 tests REMOVED —
+    # test_model_resolution_simplification_model,
+    # test_no_swap_when_same_as_summarisation_model,
+    # test_no_swap_when_same_as_fast_model and
+    # test_fast_model_used_when_no_simplification_model. All four pinned the
+    # simplification_model/fast_model resolution + ``_needs_model_swap``
+    # machinery, which is retired: ``self.model = request.summarisation_model``
+    # unconditionally (pinned by test_defaults / test_settings_values_wired
+    # above).
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -900,81 +886,16 @@ class TestBuild:
         content = md.read_text(encoding="utf-8")
         assert JARGON_BULLET in content  # fell back to original
 
-    def test_model_swap_success(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", lambda: ["gemma3:12b"])
-        unloaded = []
-        monkeypatch.setattr(
-            b.model_manager, "force_unload", lambda name: unloaded.append(name) or True
-        )
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: name == "qwythos:latest")
-        monkeypatch.setattr(
-            b.model_manager,
-            "acquire_model",
-            lambda name, mtype, skip_vram_check=False: True,
-        )
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        md = b.build([_summary([JARGON_BULLET])], "Book", tmp_path)
-        assert b.model == "qwythos:latest"
-        assert unloaded == ["gemma3:12b", "qwythos:latest"]  # unload before + after
-        assert md is not None
-
-    def test_model_swap_acquire_failure_falls_back(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", lambda: [])
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: True)
-        monkeypatch.setattr(
-            b.model_manager, "acquire_model", lambda name, mtype, skip_vram_check=False: False
-        )
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        md = b.build([_summary([JARGON_BULLET])], "Book", tmp_path)
-        assert b.model == "gemma3:12b"  # fallback
-        assert md is not None
-
-    def test_model_swap_missing_model_falls_back(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", lambda: [])
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: False)
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        logs = []
-        b.log = lambda msg, level="INFO": logs.append((msg, level))
-        assert b.build([_summary([JARGON_BULLET])], "Book", tmp_path) is not None
-        assert b.model == "gemma3:12b"
-        assert any("not found — using fallback" in m for m, _ in logs)
-
-    def test_model_swap_get_loaded_models_error_is_tolerated(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-
-        def boom():
-            raise RuntimeError("ollama down")
-
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", boom)
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: True)
-        monkeypatch.setattr(
-            b.model_manager, "acquire_model", lambda name, mtype, skip_vram_check=False: True
-        )
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        assert b.build([_summary([JARGON_BULLET])], "Book", tmp_path) is not None
+    # V0.6.14 (single-model order): 4 tests REMOVED —
+    # test_model_swap_success, test_model_swap_acquire_failure_falls_back,
+    # test_model_swap_missing_model_falls_back and
+    # test_model_swap_get_loaded_models_error_is_tolerated. All four pinned
+    # the swap-in/acquire/unload branch machinery of ``build`` (the
+    # simplification_model swap), which is retired — the ONE summarisation
+    # model simplifies the keypoints, no load/unload happens. The surviving
+    # ``build`` contract (sequential loop, retry branch, fail-soft) is pinned
+    # by test_success_end_to_end / test_access_violation_retry_branch /
+    # test_non_retryable_exception_branch above.
 
 
 class TestGapClosingBuilder:
@@ -1096,56 +1017,9 @@ class TestGapClosingBuilder:
         assert attempts["n"] == 2  # initial + one retry
         assert JARGON_BULLET in md.read_text(encoding="utf-8")  # kept original
 
-    def test_build_swap_unload_failure_logged(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-
-        def bad_unload(name):
-            raise RuntimeError("unload refused")
-
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", lambda: ["gemma3:12b"])
-        monkeypatch.setattr(b.model_manager, "force_unload", bad_unload)
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: True)
-        monkeypatch.setattr(
-            b.model_manager, "acquire_model", lambda name, mtype, skip_vram_check=False: True
-        )
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        logs = []
-        b.log = lambda msg, level="INFO": logs.append((msg, level))
-        md = b.build([_summary([JARGON_BULLET])], "Book", tmp_path)
-        assert md is not None
-        assert any("Could not unload" in m for m, _ in logs)
-
-    def test_build_final_unload_failure_tolerated(self, builder, tmp_path, monkeypatch):
-        monkeypatch.setattr(sk, "Settings", _FakeSettings)
-        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
-        req.simplification_model = "qwythos:latest"
-        req.summarisation_model = "gemma3:12b"
-        b = sk.SimplifiedKeypointsBuilder(req)
-        b.retries = 0
-        unload_calls = []
-
-        def unload_sometimes(name):
-            unload_calls.append(name)
-            if len(unload_calls) > 1:  # the final after-use unload
-                raise RuntimeError("final unload refused")
-            return True
-
-        # A loaded summarisation model is required for the swap-in unload to
-        # fire (build() only unloads models returned by get_loaded_models);
-        # the second force_unload is the final after-use unload of the
-        # simplification model, whose failure must be tolerated.
-        monkeypatch.setattr(b.model_manager, "get_loaded_models", lambda: ["gemma3:12b"])
-        monkeypatch.setattr(b.model_manager, "force_unload", unload_sometimes)
-        monkeypatch.setattr(b.model_manager, "model_exists", lambda name: True)
-        monkeypatch.setattr(
-            b.model_manager, "acquire_model", lambda name, mtype, skip_vram_check=False: True
-        )
-        monkeypatch.setattr(b, "_call_llm_single", lambda p: JARGON_SIMPLE)
-        assert b.build([_summary([JARGON_BULLET])], "Book", tmp_path) is not None
-        assert len(unload_calls) == 2  # swap-in unload + final unload
-        assert unload_calls == ["gemma3:12b", "qwythos:latest"]
+    # V0.6.14 (single-model order): 2 tests REMOVED —
+    # test_build_swap_unload_failure_logged and
+    # test_build_final_unload_failure_tolerated. Both pinned the swap-in /
+    # final force_unload branches of the simplification-model swap machinery,
+    # which is retired (no load/unload happens in ``build`` anymore — the ONE
+    # summarisation model is already loaded for the pipeline).

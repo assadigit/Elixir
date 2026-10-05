@@ -1,8 +1,12 @@
 # Elixir — Phased Execution Roadmap (Stage 2)
 
+> **STATUS (V0.4.25 audit):** HISTORICAL — fully executed; all 6 phases are complete.
+> The per-phase checklists and execution notes below remain the record of how the
+> gates, baselines, test net, and keychain security were built.
+
 > Derived from [`docs/AUDIT_SWOT_V0.11.md`](AUDIT_SWOT_V0.11.md). Sequencing rule: **gates and baselines before structure; structure before speed; measurement before everything.** No summarization-logic change lands before the accuracy harness exists (Phase 4 precedes any prompt/pipeline touch).
 >
-> Status: **PROPOSED — awaiting owner approval.** Nothing below executes until sign-off.
+> Status: **EXECUTED (all 6 phases complete — see the checklist below and the V0.12 session-wrap changelog entry).**
 
 ---
 

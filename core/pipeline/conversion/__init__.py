@@ -52,5 +52,25 @@ postprocess (delegated) → segment (delegated) → output_save (delegated)
 → summarise (delegated) → outputs (delegated) → validate.  converter.py
 dropped from 2939 (V10.5.0) to ~1463 lines (~50% smaller).
 
-No future modules — the decomposition is complete.
+Current modules (V0.4.26 — Phase 3 de-monolithization of converter_impl.py,
+per the Task 3-plan extraction series):
+- ``visual_features`` — cover screenshots, OCR repair, vision-region
+  cropper, footnotes (V0.4.19; ConverterVisualMixin, VERBATIM moves).
+- ``reporting`` — quality_report.json generation + the end-of-run
+  diagnostic summary (V0.4.26 Phase 3 commit 1: ConverterReportingMixin
+  + ``run_diagnostic_summary``, VERBATIM moves from converter_impl.py;
+  wired via the mixin base + the convert() delegate call).
+- ``summary_outputs`` — the four gated summary outputs (V0.4.26 Phase 3
+  commit 2: ``run_summary_outputs`` + ``SummaryOutputsResult``, VERBATIM
+  moves of the DOCX-report / keypoints / simplified-digest /
+  citation-graph blocks from convert(); wired via the convert() delegate
+  call).
+- ``finalization`` — the finalization responsibility (V0.4.26 Phase 3
+  commit 3: the PURE ``assess_completion`` + ``CompletionAssessment``
+  holding the false-success guards (V18.2.4 / SWOT A15 / V0.02) moved
+  VERBATIM from convert()'s completion block + terminal result
+  expressions — convert() replays the returned status/log lines for
+  byte-identical emission — plus the VERBATIM ``run_screenshots_and_graphs``
+  and ``run_library_tracking`` runners; wired via the convert() delegate
+  calls).
 """

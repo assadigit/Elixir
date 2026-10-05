@@ -8,7 +8,7 @@ text, collecting all verdicts into a merged JSON array.
 
 | Summarizer method (old) | self_review function (new) | self deps |
 |------------------------|---------------------------|-----------|
-| ``_self_review_batched`` | ``self_review_batched``   | ``heavy_model``, ``primary_model``, ``log``, ``request.summarisation_max_context_tokens``, ``prompt_manager``, ``_recover_vram``, ``_call_llm``, ``temperature``, ``_strip_thinking`` |
+| ``_self_review_batched`` | ``self_review_batched``   | ``primary_model``, ``log``, ``request.summarisation_max_context_tokens``, ``prompt_manager``, ``_recover_vram``, ``_call_llm``, ``temperature``, ``_strip_thinking`` |
 
 **V18.6.3 crash mitigation**: Uses EXPLICIT PARAMETERS (not a context object).
 
@@ -54,7 +54,6 @@ def self_review_batched(
     bullets: list,
     thorough: str,
     *,
-    heavy_model: str | None,
     primary_model: str,
     max_context_tokens: int,
     temperature: float,
@@ -93,7 +92,9 @@ def self_review_batched(
     call-site compatibility but is NOT used in the body (kept verbatim).
     """
     log = log or _noop_log
-    review_model = heavy_model if heavy_model else primary_model
+    # V0.6.14 (single-model order): the heavy-model reviewer is retired —
+    # THE model reviews its own output.
+    review_model = primary_model
     if not review_model:
         log("    \u23ed\ufe0f Batched self\u2011review skipped (no model available).", "INFO")
         return None

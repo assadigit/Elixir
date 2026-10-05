@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.4.23",
+  "generated_for_version": "0.5.9",
   "prompts_dir": "prompts/",
-  "file_count": 56,
-  "manifest_sha256": "ee5a61d0ebb3843be7a005f0cf9eccb3f48ac0b0af8ab4c37aae91bdd47c42d9",
+  "file_count": 57,
+  "manifest_sha256": "887f44b504f4f1b9d70e892b7161b6c9a508c8d2975f852bb620be149504eb8c",
   "files": [
     {
       "path": "academic.md",
@@ -17,13 +17,13 @@
     },
     {
       "path": "default.md",
-      "sha256": "18d3ba9e06b19f70d5a1d78f6aaecdb5fff0f554b3be677376bbffcaa0b2d45d",
-      "bytes": 14513
+      "sha256": "b860841a928ea4d5778cc46a0eadc1e57d5a8e69501b269e67f6dcc74b38a782",
+      "bytes": 15657
     },
     {
       "path": "default_lowbit.md",
-      "sha256": "27fe13de7f6412dad54f67b3e559d319f8a3b17161a7c05a3fa437671d6c3afb",
-      "bytes": 9760
+      "sha256": "e48a0b15d771a14b1bc8293422693310088a0bc9b8f97021b508d0ab5f9fbc02",
+      "bytes": 10430
     },
     {
       "path": "evaluation/expert_fact_checker.md",
@@ -197,13 +197,18 @@
     },
     {
       "path": "summarisation/gap_fill_concept.md",
-      "sha256": "8883c4c11c6f07366b473fd06bc470853da1cc5c8fa52eddc61112f110b84ba9",
-      "bytes": 1182
+      "sha256": "2e4bec9ef5a5bcb1f50d4bfd66da598d3a08ff3e7ecd6550ba15302cc3c2e238",
+      "bytes": 1368
     },
     {
       "path": "summarisation/gap_fill_reprompt.md",
-      "sha256": "c0e883c43d0c2ac0bcfc57d2501ada0898df4e16ba7388e254177497a6a32225",
-      "bytes": 1244
+      "sha256": "2b033092950b8d5528decf3c95c4430c874b5175d2f3d02e4188ec3c171674ca",
+      "bytes": 1419
+    },
+    {
+      "path": "summarisation/glossary_extraction.md",
+      "sha256": "1756db07071e4a7721bbb7456482b636ac7426ea61ccde9ba066ba5faaf3e8ae",
+      "bytes": 2752
     },
     {
       "path": "summarisation/grounding_check.md",

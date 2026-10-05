@@ -3,7 +3,20 @@
 PdfDocxCutterDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, file row, options container, output row, progress,
+status, buttons) to the base and folds its byte-identical closeEvent
+guard away (inherited). The legacy widget names (in_edit / out_edit /
+action_btn — pinned by the e2e drive tests) alias the base-built
+file_path_edit / out_path_edit / process_btn; the page-range row folds
+into _build_options; _pick_input / _on_action renamed onto the base
+hooks the base's Browse/Process buttons already call (_pick_file /
+_on_process). The W-b5 worker launch keeps its pinned shape: _do_cut
+spawns the SimpleWorker (the base's _process/_collect_options flow
+does not fit the cutter's pinned result-dict contract)."""
 
 from __future__ import annotations
 
@@ -15,118 +28,84 @@ import logging
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
     QWidget,
 )
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
     _show_success_modal,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class PdfDocxCutterDialog(QDialog):
+class PdfDocxCutterDialog(BaseServiceDialog):
     """V11.30: PDF/DOCX Cutter — extract a range of pages from a PDF or DOCX
     and save the output in the same format.
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("✂ PDF/DOCX Cutter")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options (the page-range row), which
+        # needs nothing pre-set. The base also initializes self._worker
+        # (its closeEvent guards it).
+        super().__init__(
+            controller, "✂ PDF/DOCX Cutter", parent, accept_files=True, accept_text=False
+        )
+        # V0.6.10 (B17): this dialog's original geometry over the base's
+        # generic 560×480.
         self.setMinimumSize(520, 280)
-        self.setModal(True)
-        # V18.20.4.5 (W-b5/T-b2): the background cut worker (SimpleWorker).
-        self._worker: SimpleWorker | None = None
-
-        from PySide6.QtWidgets import (
-            QHBoxLayout as _HL,
-        )
-        from PySide6.QtWidgets import (
-            QLabel as _QL,
-        )
-        from PySide6.QtWidgets import (
-            QLineEdit as _QLE,
-        )
-        from PySide6.QtWidgets import (
-            QPushButton as _QPB,
-        )
-        from PySide6.QtWidgets import (
-            QVBoxLayout as _VL,
-        )
-
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("✂ PDF/DOCX Cutter")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        in_row = _HL()
-        in_row.setSpacing(8)
-        in_row.addWidget(_QL("Input:"))
-        self.in_edit = _QLE()
+        # V0.6.10 (B17): the base builds file_path_edit / out_path_edit /
+        # process_btn ("Process"); this dialog's historical attribute names
+        # (in_edit / out_edit / action_btn — pinned by the e2e drive tests)
+        # and labels are restored as aliases of the SAME widgets (single
+        # source of truth).
+        self.in_edit = self.file_path_edit
         self.in_edit.setPlaceholderText("Pick a .pdf or .docx file…")
-        in_browse = _QPB("Browse…")
-        in_browse.clicked.connect(self._pick_input)
-        in_row.addWidget(self.in_edit, 1)
-        in_row.addWidget(in_browse)
-        lay.addLayout(in_row)
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText("Choose where to save the cut file…")
+        self.action_btn = self.process_btn
+        self.action_btn.setText("Cut")
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_cut_progress override
+        # only sets status text) — hide the dead toggle (the transcribe
+        # B17 precedent).
+        self._log_toggle_btn.setVisible(False)
 
-        range_row = _HL()
+    def _build_options(self, layout: QVBoxLayout) -> None:
+        """V0.6.10 (B17): the cutter's only option row — the page range —
+        folded into the base's options container (between the base's
+        file row and its output row)."""
+        range_row = QHBoxLayout()
         range_row.setSpacing(8)
-        range_row.addWidget(_QL("Pages:"))
-        self.range_edit = _QLE()
+        range_row.addWidget(QLabel("Pages:"))
+        self.range_edit = QLineEdit()
         self.range_edit.setPlaceholderText("e.g. 1-10, 1,3,5, or 'all'")
         self.range_edit.setText("all")
         self.range_edit.setMinimumWidth(200)
         range_row.addWidget(self.range_edit, 1)
-        range_hint = _QL("💡 1-indexed page numbers")
+        range_hint = QLabel("💡 1-indexed page numbers")
         range_hint.setObjectName("Caption")
         range_row.addWidget(range_hint)
-        lay.addLayout(range_row)
+        layout.addLayout(range_row)
 
-        out_row = _HL()
-        out_row.setSpacing(8)
-        out_row.addWidget(_QL("Save as:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText("Choose where to save the cut file…")
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        lay.addLayout(out_row)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) is now
+    # INHERITED from BaseServiceDialog; the pre-B17 copy was
+    # byte-equivalent and was deleted.
 
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        lay.addWidget(self.status_label)
-
-        btn_row = _HL()
-        btn_row.addStretch()
-        self.action_btn = _QPB("Cut")
-        self.action_btn.setObjectName("Primary")
-        self.action_btn.clicked.connect(self._on_action)
-        btn_row.addWidget(self.action_btn)
-        lay.addLayout(btn_row)
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the cut worker
-        # runs — the "QThread: Destroyed while thread is still running"
-        # abort class. Ask; on "close anyway" detach the worker so the
-        # cut result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
-
-    def _pick_input(self):
+    def _pick_file(self) -> None:
+        # V0.6.10 (B17): override of the base's input-row Browse hook (was
+        # _pick_input; renamed onto the hook the base's Browse button
+        # already calls) — the cutter's document filter + the V11.31
+        # {stem}-cut{ext} default output. Body unchanged.
         from pathlib import Path as _P
 
         path, _ = QFileDialog.getOpenFileName(
@@ -138,11 +117,12 @@ class PdfDocxCutterDialog(QDialog):
             # V11.31: default filename = {stem}-cut{ext} in source location.
             self.out_edit.setText(str(p.parent / f"{p.stem}-cut{p.suffix}"))
 
-    def _pick_output(self):
-        from pathlib import Path as _P
-
-        in_path = self.in_edit.text().strip()
-        ext = _P(in_path).suffix if in_path else ".pdf"
+    def _pick_output(self) -> None:
+        # V0.6.10 (B17): override of the base's output-row Browse hook —
+        # the PDF/Word filter follows the INPUT's extension (extra
+        # behavior the base's generic suffix picker does not have); the
+        # extension now routes through the _get_output_suffix hook.
+        ext = self._get_output_suffix()
         filter_str = f"{'PDF' if ext == '.pdf' else 'Word'} (*{ext});;All files (*.*)"
         path, _ = QFileDialog.getSaveFileName(self, "Save cut file as", "", filter_str)
         if path:
@@ -150,7 +130,25 @@ class PdfDocxCutterDialog(QDialog):
                 path += ext
             self.out_edit.setText(path)
 
-    def _on_action(self):
+    def _get_output_suffix(self) -> str:
+        # V0.6.10 (B17): base-class hook — the cut keeps the INPUT's format,
+        # so the suffix is the picked file's extension (.pdf before any
+        # file is picked, as the pre-B17 _pick_output did).
+        from pathlib import Path as _P
+
+        in_path = self.in_edit.text().strip()
+        return _P(in_path).suffix if in_path else ".pdf"
+
+    def _get_service_name(self) -> str:
+        # V0.6.10 (B17): base-class identity hook. This dialog persists no
+        # controller settings (grep: zero controller.update_setting /
+        # controller.get_setting calls), so the name is identity-only.
+        return "pdf_docx_cutter"
+
+    def _on_process(self) -> None:
+        # V0.6.10 (B17): the base Process button (aliased as action_btn)
+        # drives the old _on_action behavior — Close accepts the dialog,
+        # otherwise cut. (Renamed onto the base hook; body unchanged.)
         if self.action_btn.text() == "Close":
             self.accept()
             return
@@ -158,6 +156,12 @@ class PdfDocxCutterDialog(QDialog):
 
     @staticmethod
     def _parse_range(text: str) -> list[int] | None:
+        # V0.6.0 (campaign C1): normalize typographic dashes (en/em/minus)
+        # to ASCII hyphens BEFORE splitting — a range pasted from a PDF/TOC
+        # ("2–4") previously failed every int() parse, returned None, and
+        # the cut silently produced the WHOLE document. Punctuation-class
+        # normalization only (Rule 1 clean).
+        text = text.replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-")
         text = text.strip().lower()
         if not text or text == "all":
             return None
@@ -197,7 +201,16 @@ class PdfDocxCutterDialog(QDialog):
         if not out_path:
             self.status_label.setText("⚠️ Please choose where to save the output.")
             return
-        pages = self._parse_range(self.range_edit.text())
+        range_text = self.range_edit.text().strip()
+        pages = self._parse_range(range_text)
+        # V0.6.0 (campaign C1): a NON-EMPTY, non-"all" range that parses to
+        # None (garbage, "0", "5-") used to silently cut the WHOLE document —
+        # now the user is told and nothing runs. Empty/"all" still means all.
+        if pages is None and range_text and range_text.strip().lower() != "all":
+            self.status_label.setText(
+                "⚠️ Couldn't read that page range — use e.g. 1-10, 1,3,5, or 'all'."
+            )
+            return
         self.action_btn.setEnabled(False)
         self.action_btn.setText("Processing…")
         # V18.20.4.5 (W-b5): the blocking cut (pypdf / python-docx work on
@@ -282,10 +295,19 @@ class PdfDocxCutterDialog(QDialog):
             for page in reader.pages:
                 writer.add_page(page)
         else:
+            added = 0
             for pg in pages:
                 idx = pg - 1
                 if 0 <= idx < len(reader.pages):
                     writer.add_page(reader.pages[idx])
+                    added += 1
+            # V0.6.0 (campaign C2): a range entirely beyond the page count
+            # used to write a 0-page PDF and report success — now it errors
+            # through the standard worker error path (nothing is written).
+            if added == 0:
+                raise ValueError(
+                    f"no pages matched the range (document has {len(reader.pages)} pages)"
+                )
         out_p = _P(out_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         with open(out_p, "wb") as f:
@@ -366,6 +388,13 @@ class PdfDocxCutterDialog(QDialog):
                 idx = pg - 1
                 if 0 <= idx < len(page_groups):
                     selected_groups.append(page_groups[idx])
+            # V0.6.0 (campaign C2): same no-match guard as the PDF path —
+            # an out-of-range DOCX selection errors instead of silently
+            # saving an empty document.
+            if not selected_groups:
+                raise ValueError(
+                    f"no pages matched the range (document has {len(page_groups)} pages)"
+                )
 
         # Copy paragraphs to the new document (preserving formatting).
         for group in selected_groups:

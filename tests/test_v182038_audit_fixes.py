@@ -500,9 +500,11 @@ class TestCapBeforeFloorOrdering:
         ).read_text(encoding="utf-8")
         tail = src[src.index("def _phase_postchecks_and_floors") :]
         assert "coverage_aware_cap(" not in tail, "no capping call in the ship phase (V0.4.23)"
-        floor_idx = tail.index("deterministic_recall_floor(")
-        nocap_idx = tail.index("NO CAP (user")
-        assert nocap_idx < floor_idx, "the honest no-cap report precedes the floor probe"
+        assert "deterministic_recall_floor(" in tail, "the floor probe must run in the ship phase"
+        # V0.5.2 (user directive): the "NO CAP" guidance log is REMOVED
+        # — never set any standard for bullet count. The source-pin no
+        # longer checks for it.
+        assert "NO CAP (user" not in tail  # V0.5.2: removed
 
 
 # ── D. W9q: quarantine visibility ─────────────────────────────────────────

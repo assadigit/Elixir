@@ -8,11 +8,11 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 
 > 🧪 **Previously "MarkItDown Pro"?** You're in the right place — the app was **rebranded to Elixir** in legacy V18.20.4.11. On first launch your `~/.markitdown_pro` directory (settings, cached models, prompts, keychain secrets) is **migrated automatically** to `~/.elixir`. Nothing to do, nothing lost.
 >
-> 🔢 **Versioning reset:** with the rebrand complete, Elixir **dropped the legacy `V18.x` line** and versions on its own: **V0.01 = the final legacy release (V18.20.4.12) repackaged**, then V0.02, V0.03, … See the V0.01 entry in [`CHANGELOG.md`](CHANGELOG.md) for the mapping.
+> 🔢 **Versioning reset:** with the rebrand complete, Elixir **dropped the legacy `V18.x` line** and versions on its own: **V0.01 = the final legacy release (V18.20.4.12) repackaged**, then V0.02, V0.03, … See the V0.01 entry in [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) for the mapping.
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.4.25-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5784%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.4.25-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5812%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -208,8 +208,8 @@ output/
 
 ## 🌐 Translation (EN ↔ FA)
 
-- **NLLB-200-600M** *(default)* — HuggingFace, deterministic NMT, no API cost
-- **TranslateGemma-4B-Q5** *(backup)* — Ollama, context-aware, slower
+- **TranslateGemma-12B** *(default — Ollama)* — context-aware, professional-grade Farsi (default model per [`docs/USER_OLLAMA_MODELS.md`](docs/USER_OLLAMA_MODELS.md))
+- **NLLB-200-600M** *(retired V18.20.4.6+)* — the legacy HuggingFace backend; existing `translation.backend = "nllb"` settings migrate to Ollama automatically on load
 
 Per-output translation selection: choose which outputs (chapter summaries, keypoints, podcast, …) to translate after conversion.
 
@@ -376,7 +376,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.4.23):** `5784 passed / 0 failed / 24 skipped / 0 xpassed in ~209s` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
+**Current gate (Elixir V0.4.25):** `5812 passed / 0 failed / 55 skipped / 0 xpassed in ~238s headless` *(skips = PySide6 GUI tests in headless environments + optional reference artifacts; CI runs the same suite green — lint + format + typecheck + tests + accuracy-eval-gated + pip-audit-gated, ruff pinned; deterministic under random ordering)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 
@@ -432,7 +432,7 @@ Elixir/
 │   └── system/              ← 🛡️ preflight, supervisor, thermal, hardware
 ├── ui_qt/                   🖥️  PySide6 views, wizard steps, components
 ├── prompts/                 ← ✍️ all LLM prompt templates (versioned)
-├── tests/                   ← 🧪 3,000+-test characterization suite
+├── tests/                   ← 🧪 5,800+-test characterization suite
 ├── docs/                    ← 📚 EMBEDDERS, models, evaluation framework
 ├── installer/               ← 📦 Inno Setup script
 └── utils/                   ← 🔧 settings, logging, atomic IO, text quality
@@ -442,9 +442,7 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: Elixir V0.13 — "Green Gates."** Phase 0 of the V0.12 audit roadmap ([`docs/ROADMAP_V0.12.md`](docs/ROADMAP_V0.12.md)): fresh installs repaired (the broken `anydoc`/`kokoro`/`misaki` pins), CI green for the first time (ruff pinned + enforced, 300+ dead-code/bug-pattern findings fixed, repo ruff-formatted), editable install fixed, and the full app import chain verified on a clean environment. The prior release notes are preserved below.
-
-**V0.06 — "Deliverables that honor the contract, the budget, and the reader."** The second llama.cpp rig run exposed what single-layer enforcement misses: the V0.05 flag gates were all generation-side, but the response parser's leftover fallback smuggled unrequested additive-section content into `thorough_summary` (shipped as a junk "Thorough Summary" to a user who unchecked it) — so the contract is now enforced at THREE layers (parse-time discard, result-construction, render-time flags on every renderer: chapter .md, DOCX, book summary). The bullet budget became a HARD CAP at every insertion site (Tier-2 gap-fill, scholar gap-fill, quarantine recovery) plus ship time — the rig shipped 19/18/15/14/12 bullets against 5-7/5-7/6-9/6-9/5-8 targets. Pipeline bookkeeping left the deliverables (quarantine → logs/drops.jsonl only); a deliverable never lists the same content block twice (book "All Key Takeaways" concat, DOCX 2000-char preview + "Global Key Takeaways" page all removed); critique bullets ("X omitted: …", "The summary should…", "…not fully enumerated in the summary…") are detected structurally and dropped at ship time; duplicated quotes/byline echoes are stripped; Tier-3 excerpts are re-validated against the final summary and never open with a heading echo. See the V0.06 changelog entry for the full design notes.
+**Current version: Elixir V0.4.25.** Release history lives in [`CHANGELOG.md`](CHANGELOG.md) (V0.4.x line, detailed); everything older — the V0.20.x audit campaigns, V0.13–V0.19, V0.01–V0.12, and the legacy `V18.x` era — is archived verbatim in [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md), with an era summary in [`Project-History.md`](Project-History.md).
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 
@@ -472,13 +470,13 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 9. ✅ ~~404 handled three ways~~ — **fixed in V18.20.4.12** (shared `model_errors` module, canonical pull hint)
 10. ✅ ~~Hygiene nine-pack~~ — **fixed in V18.20.4.12** (/no_think Qwen-gated, log rotation, Settings.batch(), progress JSON, HF offline scoped, qwythos de-magic + two 404-default bug fixes, engine_cache shutdown hook, atomic output writes, comment de-jargon)
 11. ✅ ~~Migrate cloud API keys to the OS keyring~~ — **fixed in V0.16 (Phase 3)**: `keyring` ships as a core dependency, every credential path (all 11, incl. dual-api fast key, llamacpp token, TTS normalizer, translation, grounding, and the named-provider catalog) routes through `get_secret`/`set_secret`, the `translation.api_key` path-mismatch is reconciled, and CI runs a gated pip-audit over the locked dependency closure
-12. 🏗️ **Orchestrator decomposition round 3** (`run_summarization` 921 lines, `convert` 871)
+12. ✅ ~~Orchestrator decomposition round 3~~ — **done in the V0.4.25 audit session**: `convert()` decomposed 1,054 → 601 lines (−43%) and `core/pipeline/converter_impl.py` 2,175 → 1,577 via three verbatim extractions — `conversion/reporting.py`, `conversion/summary_outputs.py`, `conversion/finalization.py` (commits `e3e7e7f`/`50d9a63`/`7a8e451`, behind the `29b6c58` characterization net). The remaining hot spot is `_summarize_inner` (349 lines in `summarizer.py`).
 13. 🧪 **Real-rig 97-Things re-run** — validate the V18.20.4.10 segmentation fixes end-to-end
 14. ✅ ~~Green CI / fresh installs~~ — **fixed in V0.13 (Phase 0)**: see [`docs/AUDIT_SWOT_V0.11.md`](docs/AUDIT_SWOT_V0.11.md) and the V0.13 changelog entry
 
 ### ⚠️ Known Issues
 
-1. `summarizer.py` is still a large orchestrator (~5,600 lines — it *grew* through V0.07–V0.11; measured in the V0.12 audit) — decomposition is Phase 5 of the roadmap, behind the test net.
+1. `summarizer.py` remains the pipeline's orchestrator hub (1,990 lines as of V0.4.25, down from 5,803 through the V18.x/V0.x extraction campaigns; fan-out 38, fan-in 26 — measured in the V0.4.25 audit session) — further decomposition is roadmap item 12.
 2. `[space/fix]` post-check occasionally splits correct compound words ("thereby" → "the reby"); auto-corrected by `[extra_space/fix]`.
 3. The V18.20.4.9 user-machine pre-chunk stall was environmental (not reproduced in-sandbox); V18.20.4.10 bounds and surfaces it if it recurs.
 4. `PromptContext` + `build_primary_prompt` remain in `prompt_assembly.py` unused (V18.6.3 crash pattern — kept frozen deliberately).
@@ -488,7 +486,8 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 ## 📜 History & Changelog
 
 - 📋 [`CHANGELOG.md`](CHANGELOG.md) — every release, incident, and fix with full evidence
-- 📖 [`Project-History.md`](Project-History.md) — the long-form development story
+- 🗄️ [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) — every pre-V0.4.x entry, verbatim
+- 📖 [`Project-History.md`](Project-History.md) — era summary + pointer; long-form story archived
 - 🧭 [`NEW_SESSION_PROMPT.md`](NEW_SESSION_PROMPT.md) — working agreements for AI-assisted sessions
 
 ---

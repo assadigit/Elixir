@@ -1,0 +1,421 @@
+{
+  "run_id": "20260927-210804-280e133a",
+  "app_version": "0.5.17",
+  "started": "2026-09-27T21:08:04",
+  "chapter_file": "/home/z/elixir/docs/ground_truth/001_1 - IDENTITY AND ITS ORIGINS.md",
+  "heading": "1 - IDENTITY AND ITS ORIGINS",
+  "source_words": 6342,
+  "llamacpp_url": "http://127.0.0.1:3031/v1",
+  "llamacpp_model": "glm-4-plus",
+  "elapsed_sec": 346.9,
+  "summary": {
+    "success": true,
+    "model_used": "glm-4-plus",
+    "executive_summary": "This chapter traces the psychoanalytic evolution of identity, from Tausk's (1919) introduction of the concept to contemporary understandings of its developmental origins. Erikson (1956) revitalized the idea as a \"Janus-faced concept, defining ego identity as both personal sameness and shared character, with adolescence as a critical consolidation period. The chapter argues that identity's roots lie in early mother-infant interactions, where an identity theme is imprinted, and in somatic and developmental processes, including Freud's bodily ego, Mahler's separation-individuation phases, and Jacobson's integration of self-representations. Winnicott's distinction between a true self fostered by maternal empathy and a false self creating a mind-body split further illuminates this formation. Synthesizing these views, Kernberg and Chasseguet-Smirgel link identity to a three-step process and healthy oedipal resolution, while Blos emphasizes adolescent second individuation.\" The chapter concludes that identity is a lifelong development integrating sameness, continuity, authenticity, and social ties, with disturbances manifesting as identity diffusion—a state of contradictory self-images and fractured temporality.",
+    "bullet_points": [
+      "Identity was introduced into psychoanalytic literature by Tausk (1919), emphasizing continuous self-discovery.",
+      "Freud referenced identity only once (1926a), linking \"inner identity\" to shared mental constructions.",
+      "Erikson (1956) defined \"ego identity\" as persistent sameness within oneself and shared essential character with others.",
+      "Erikson identified adolescence as a critical period for identity consolidation.",
+      "Lichtenstein (1961) described identity as \"Janus-faced,\" reflecting tension between personal and social identity.",
+      "Identity disturbance, as framed by Fromm, Lifton, and Lasch, stems from societal alienation and anomie.",
+      "Early mother-infant interactions imprint an \"identity theme on the infant, fostering creativity or destiny neurosis.\"",
+      "Freud viewed identity as somatically rooted, with the ego originating as a \"bodily ego.\"",
+      "Greenacre (1958a) emphasized a continuum from body image to self-image, with opposite-sex genital exposure shaping identity.",
+      "Mahler (1968) outlined \"separation-individuation\" phases, culminating in \"self-constancy\" around age two.",
+      "Jacobson (1964) proposed identity emerges from integrating \"good\" and \"bad\" self and object representations.",
+      "Jacobson highlighted aggression's role in delineating the self.",
+      "Winnicott emphasized maternal empathy as crucial for fostering a \"true self.\"",
+      "Kernberg (1967, 1980b) synthesized identity formation into three steps: introjection, identification, and synthesis.",
+      "Chasseguet-Smirgel (1984) contrasted the \"long path of healthy oedipal resolution with the short path\" of perverse organization.",
+      "The \"long path\" involves ego ideal formation and generational continuity.",
+      "The \"short path\" involves \"forward projection\" of narcissism, bypassing reality.",
+      "Blos (1967) emphasized \"second individuation\" in adolescence, involving emotional disengagement from internalized objects.",
+      "Blos described the biphasic resolution of the Oedipus complex, transforming the negative complex into the ego ideal.",
+      "Identity is a lifelong development integrating self-sameness and temporal continuity.",
+      "Ethnic solidarity is a key component of identity.",
+      "Identity disturbance manifests as identity diffusion, characterized by contradictory self-images.",
+      "Identity diffusion involves fractured temporality, disrupting a coherent sense of self.",
+      "Lichtenstein (1961) described the \"identity principle\" as the drive to maintain self-created identity.",
+      "Lichtenstein (1961) proposed the opposing force of \"metamorphosis,\" the longing to abandon identity.",
+      "Lichtenstein (1963) saw identity and metamorphosis as complementary extremes in human experience.",
+      "Fenichel (1937) stated the \"body image\" is fundamental for the ego's further development.",
+      "Fenichel (1945) noted that many identifications contribute to the formation of every ego.",
+      "Federn (1952) introduced the concept of early \"ego feeling\" as rudimentary self-representations.",
+      "Glover (1950) described \"ego nuclei\" as islets of executive function that fuse to form the ego.",
+      "Spiegel (1959) talked about the \"pooling\" of isolated self-representations for solid identity.",
+      "Greenacre (1958a) emphasized identity involves the relation to others, knowing \"I am different\" and \"I am similar.\"",
+      "Greenacre (1958a,b) highlighted the importance of seeing opposite-sex genitals for identity development.",
+      "Mahler (1968) distinguished the \"psychological birth\" of the infant from its biological birth.",
+      "Mahler (1968) posited \"self constancy\" emerges at the end of the rapprochement subphase around age two.",
+      "Mahler (1975) noted successful separation-individuation and manageable castration anxiety are crucial for gender identity.",
+      "Jacobson (1964) proposed the first intrapsychic structure is a fused self-object representation.",
+      "Jacobson (1964) stated the integration of \"good\" and \"bad\" object representations leads to identity.",
+      "Jacobson (1964) argued loving identifications with parents contribute to the superego and deepen identity.",
+      "Jacobson (1964) saw hostile experiences as furnishing the fuel for developing a sense of identity.",
+      "Winnicott (1949, 1960) emphasized the \"true self\" develops when the mother meets the infant's omnipotence.",
+      "Winnicott (1960) described the \"false self as a compliant persona that protects the true self.\"",
+      "Winnicott (1960) stated the \"true self\" originates from the aliveness of body tissues and functions.",
+      "Winnicott (1960) noted a mind-body split occurs in individuals with a \"false self.\"",
+      "Winnicott (1960) linked the infant's \"going-on-being\" to the future self's temporal continuity.",
+      "Kernberg (1975a) stated differentiation of self from object images depends on maturation and gratification/frustration.",
+      "Kernberg (1976) described the three-step process of identity formation: introjection, identification, and synthesis.",
+      "Kernberg (1976) noted identifications are \"deeper\" in the self-system than introjects and do not feel like a foreign body.",
+      "Kernberg (1980b) suggested middle age involves a renewed recognition of personal myths and acceptance of one's limits.",
+      "Chasseguet-Smirgel (1984) outlined the \"long path\" of oedipal resolution involving ego ideal formation.",
+      "Chasseguet-Smirgel (1984) linked the \"short path\" to a perverse character organization and faulty paternal introjection.",
+      "Blos (1967) noted the ego structure undergoes \"radical alterations\" during the second individuation process.",
+      "Tausk (1919) introduced identity by examining how the child discovers his self, asserting that \"man must, throughout life, constantly find and experience himself anew.\"",
+      "Freud (1923a) viewed the ego as somatically rooted, stating that \"the ego is first and foremost a bodily ego.\"",
+      "Fenichel (1937) proposed that the self-image originates from both inner experience and bodily perception, declaring that \"the image of our self originates from two sources.\"",
+      "Greenacre (1958a,b) emphasized that habitual exposure to opposite-sex genitals shapes identity, noting \"the habitual taking in through vision of the opposite-sex genitals.\"",
+      "Mahler (1968) distinguished the \"psychological birth of the infant, defining it as the beginning in the child of the sense of personhood.\"",
+      "Loewald (1951) highlighted the father's role in protecting against precompetitive libidinal ties, suggesting a stable relationship with the father to protect against threat.",
+      "Meyer (1980) contributed to gender identity by noting constitutional gender-defined differences in the behavior of boys and girls.",
+      "Hartmann: Differentiated between ego and self (1950).",
+      "Eissler: Shared a view subsequently enriched by Blos’s (1962) work.",
+      "Wheelis: Contributed to the sociocultural determinants of personal identity (1958).",
+      "Kovel: Contributed to the sociocultural determinants of personal identity (1981).",
+      "Stoller: Made significant contributions to the area of gender identity consolidation (1968, 1972).",
+      "Galenson and Roiphe: Made significant contributions to the area of gender identity consolidation (1971).",
+      "Loewenstein: Collaborated with Hartmann and Kris on metapsychological works (1946).",
+      "Spitz: Spitz (1957) provided developmental hypotheses on identity formation.",
+      "Klein: Klein (1948) contributed to the integration of works on identity formation.",
+      "Marx: Marx (1867) depicted the individual’s alienation in a society of free enterprise.",
+      "Durkheim: Durkheim (1951) theorized the concept of individual “anomie” resulting from rapid environmental change and social fragmentation.",
+      "Searles: Searles (1960) discussed the longing to abandon the human quality of identity.",
+      "Khan: Khan (1983) provided the developmental basis for authenticity, “corporeality,” and the experience of temporal continuity in the self.",
+      "**Characteristics**: (1) a sustained feeling of selfsameness displaying roughly similar character traits to varied others; (2) temporal continuity in the self-experience; (3) genuineness and authenticity; (4) a realistic body image; (5) a sense of inner solidity and the associated capacity for peaceful solitude; (6) subjective clarity regarding one’s gender; (7) an inner solidarity with an ethnic group’s ideals and a well-internalized conscience.",
+      "**This he sees being accomplished by** — 3 items from the source: (1) the renunciation of the primary love objects (the parents) as sexual objects; (2) the reconciliation of activity and passivity; (3) the resolution of bisexual identifications.",
+      "Lynd: Contributed to the sociocultural determinants of personal identity (1958)."
+    ],
+    "thorough_summary": "The chapter traces the psychoanalytic evolution of identity, from Tausk's (1919) introduction of the concept to contemporary understandings of its developmental origins. Tausk examined how the child discovers his self and asserted that man must, throughout life, constantly find and experience himself anew. Freud, according to Erikson (1958), referred to the concept of identity only once, in his address to B'nai B'rith (Freud 1926a), where he noted an \"inner identity tied to shared mental constructions. This two-sided nature of identity, with intrapsychic and social ramifications, likely contributed to its limited acceptance in subsequent psychoanalytic literature. It was Erikson (1950a, 1956, 1958, 1959) who resurrected the term in his contributions to character formation, defining ego identity\" as both \"persistent sameness within oneself\" and \"a persistent sharing of some kind of essential character with others.\" He emphasized adolescence as a critical period for consolidating one’s identity, a view shared by Eissler (1955) and later enriched by Blos’s (1962) work on the \"second individuation\" of adolescence. Lichtenstein (1961) described this tension as \"Janus-faced, reflecting the paradox between personal self-objectivation and existential awareness. This existential-sociological paradox is further explored by authors like Fromm (1955), Wheelis (1958), Lifton (1971), and Lasch (1978), who frame identity disturbance as stemming from societal alienation and anomie. The developmental origins of personal identity are rooted in early mother-infant interactions. Lichtenstein (1961) posits that the mother imprints an identity theme on the infant, which can either foster creativity or lead to destiny neurosis. Freud's implicit views on identity, though rarely using the term technically, encompass somatic foundations, as seen in his statement that the ego is first and foremost a bodily ego (1923a), and the role of early identifications and the Oedipus complex. Fenichel (1937) elaborated on this, suggesting that the image of our self originates from both direct inner experience and the indirect perception of our bodily self as an object, giving equal importance to somatic foundations and identifications. Greenacre (1958a) emphasized a continuum from body image to self-image, highlighting the role of opposite-sex genital exposure in shaping identity, while Mahler (1968) detailed the separation-individuation\" phases, culminating in \"self-constancy around age two. This process requires the mother to buffer and organize stimuli for the infant, and failures can lead to contradictory self-images and later identity disturbances. Jacobson (1964) expanded on this, proposing that identity emerges from the integration of good\" and \"bad self and object representations, with aggression playing a crucial role in delineating the self. She introduced the concept of self-representations, clarifying the distinction between the self as experienced and the self in reality. Winnicott’s concept of the true self\" versus \"false self underscores the importance of maternal empathy in fostering authenticity, noting that a false self creates a mind-body split, whereas the true self\" arises from the \"aliveness of body tissues.\"\n\nKernberg (1967, 1980b) synthesized these ideas into a three-step identity formation process: introjection, identification, and synthesis. The first step involves internalizing specific attributes of others without full assimilation. The second step, identification, is a more role-oriented internalization that does not feel like a \"foreign body in the self. The third step is the synthesis of childhood identifications into a harmonious gestalt, where individual identifications become depersonified. Kernberg linked identity diffusion to borderline pathology and distinguished it from the adolescent identity crisis. Chasseguet-Smirgel (1984) contrasted the long path of healthy oedipal resolution with the short path leading to perverse organization. The long path involves accepting the reality of chronological lag, forming an ego ideal that enhances delayed gratification and facilitates entrance into a temporal order, and acquiring a sense of filiation and generational continuity. The short path\" involves \"forward projection of narcissism, bypassing the reality of the Oedipus complex, and fusing the ego and ego ideal, which circumvents sublimation and severs filial links. Blos (1967) emphasized the second individuation of adolescence, involving emotional disengagement from internalized objects and radical alterations in ego structure. He described the biphasic resolution of the Oedipus complex, where the negative oedipal complex transforms into the ego ideal, and the consolidation of sexual identity through the renunciation of primary love objects and the resolution of bisexual identifications. The chapter concludes that identity is a lifelong development integrating self-sameness, temporal continuity, authenticity, gender clarity, and ethnic solidarity. Healthy identity requires a coherent sense of past, present, and future, and a realistic view of the self and others. Disturbances manifest as identity diffusion, characterized by contradictory self-images, a fractured sense of temporality, and an inability to synthesize disparate aspects of the self. This condition is central to borderline and narcissistic character disorders, as identified by Jacobson and Kernberg. The various developmental processes—from the somatic bodily ego\" and early mother-infant interactions to the consolidation in adolescence—all contribute to the formation of a stable and authentic identity. The work of these theorists collectively demonstrates that identity is not a static entity but a dynamic synthesis shaped by biological, psychological, and social forces throughout the lifespan.\n\nFedern (1952) proposed the notion of early \"ego feeling,\" akin to rudimentary self-representations, and Glover (1950) introduced \"ego nuclei\"—islets of executive function and object-related awareness that fuse to form a coherent ego. Spiegel (1959) described the \"pooling\" of isolated self-representations as fundamental to solid identity formation. Stoller (1968, 1972), Galenson and Roiphe (1971), and Meyer (1980) made significant contributions to the consolidation of gender identity, particularly regarding the vicissitudes of the phallic-oedipal phase.\nHartmann (1950) differentiated between ego and self, refining the conceptual landscape for identity formation, while Lynd (1958) and Kovel (1981) contributed to the sociocultural determinants of identity, emphasizing the social interface of this inherently dual concept.\nLoewenstein (1946), in collaboration with Hartmann and Kris, contributed to the understanding of primary autonomous functions that underpin identity development, and Spitz (1957) provided empirical observations on the early mother-infant dyad that inform theories of self-object differentiation.\nKlein (1948), while not explicitly focusing on identity, contributed foundational object relations concepts that were later synthesized by others to explain the intrapsychic processes of self and object differentiation, which are central to identity formation.\n\n\nLoewald (1962) expanded on Freud’s concept of the ego as a bodily entity, emphasizing the role of internalized object relations in the formation of a cohesive self, suggesting that the ego emerges through the transformation of early identifications into a more integrated structure.\nKhan (1963) contributed the concept of “corporeality,” highlighting the somatic foundations of identity, arguing that a healthy sense of self requires a deep, personalized connection to bodily sensations and functions, which, when disrupted, can lead to fragmentation and inauthenticity.\nGalenson and Roiphe (1971) focused on the consolidation of sexual identity during adolescence, exploring how the resolution of bisexual identifications and the renunciation of primary love objects are critical for establishing a clear and stable gendered self.\nRoiphe (1971) further examined the interplay between early oedipal conflicts and the development of a cohesive identity, emphasizing the role of defensive mechanisms in managing unresolved tensions.\nKris (1956) introduced the concept of “preconscious mental representation,” which he saw as foundational for the synthesis of disparate self-images, arguing that the ego’s ability to organize and integrate these representations is essential for a unified identity.\nDurkheim (1951) provided a sociological lens, framing identity as rooted in collective consciousness and moral standards, where the individual’s sense of self is shaped by societal norms and the internalization of group values, linking psychological identity to broader cultural and ethical frameworks.\nSearles (1960) explored the paradox of identity, positing that while the self is formed through interactions with others, there is also a fundamental longing to transcend individual boundaries, a tension he termed “metamorphosis,” which he saw as complementary to the formation of identity.\nFinally, Marx (1867) implicitly influenced the discussion through his theories of alienation, which resonate with the chapter’s concerns about identity diffusion, suggesting that in fragmented societies, individuals may experience a disconnection from their authentic selves due to economic and social alienation.",
+    "key_distinctions": "- Ego identity vs. Existential identity\n- True self vs. False self\n- Identity theme vs. Metamorphosis\n- Identity crisis vs. Identity diffusion\n- Introjection vs. Identification\n- The \"long path (normal development) vs. The short path\" (perverse character organization)",
+    "theoretical_tensions": "",
+    "scholar_reflections": "",
+    "source_excerpts": [],
+    "quarantine_appendix": "",
+    "input_tokens": 9030,
+    "output_tokens": 2690,
+    "source_glossary": {
+      "names": [
+        {
+          "name": "Tausk",
+          "year": "1919",
+          "context": "introduced the term identity into psychoanalytic literature, examining how the child discovers their self."
+        },
+        {
+          "name": "Freud",
+          "year": "1921, 1923a, 1923b, 1924, 1925b, 1926a, 1926b",
+          "context": "rarely used the term identity technically but provided implicit views on identity’s genesis, including somatic underpinnings, gender differences, and early identifications."
+        },
+        {
+          "name": "Erikson",
+          "year": "1950a, 1956, 1958, 1959",
+          "context": "resurrected the term identity in character formation, defining ego identity as persistent sameness within oneself and sharing essential character with others."
+        },
+        {
+          "name": "Jacobson",
+          "year": "1953a, 1954a, 1954b, 1957, 1959, 1964",
+          "context": "contributed a developmental framework for identity, emphasizing self-and object representations, fused self-object representations, and the role of aggression in self-delineation."
+        },
+        {
+          "name": "Mahler",
+          "year": "1958a, 1958b, 1968, 1975",
+          "context": "distinguished the psychological birth of the infant, outlining phases of separation-individuation leading to self-constancy and gender identity."
+        },
+        {
+          "name": "Kernberg",
+          "year": "1967, 1976, 1978, 1980b",
+          "context": "emphasized the psychostructural significance of identity diffusion in borderline personality organization, proposing a three-step process of identity formation."
+        },
+        {
+          "name": "Lichtenstein",
+          "year": "1961, 1963",
+          "context": "highlighted the tension between identity as self-objectivation and existential awareness, proposing the identity principle and metamorphosis as opposing forces."
+        },
+        {
+          "name": "Fenichel",
+          "year": "1937, 1945",
+          "context": "suggested the self-image originates from inner experience and bodily perception, emphasizing the body image’s importance for ego development."
+        },
+        {
+          "name": "Federn",
+          "year": "1952",
+          "context": "conceptualized early “ego feeling” as rudimentary self-representations forming the building blocks of identity."
+        },
+        {
+          "name": "Glover",
+          "year": "1950",
+          "context": "introduced the concept of “ego nuclei,” islets of executive function that fuse to form the ego."
+        },
+        {
+          "name": "Spiegel",
+          "year": "1959",
+          "context": "discussed the “pooling” of isolated self-representations as underlying solid identity formation."
+        },
+        {
+          "name": "Greenacre",
+          "year": "1958a, 1958b",
+          "context": "emphasized the importance of opposite-sex genital perception and bisexuality in identity formation, linking it to body image and self-image."
+        },
+        {
+          "name": "Winnicott",
+          "year": "1949, 1960",
+          "context": "provided the developmental basis for authenticity, corporeality, and temporal continuity in the self, distinguishing between true and false selves."
+        },
+        {
+          "name": "Chasseguet-Smirgel",
+          "year": "1983, 1984",
+          "context": "explored ego-ideal formation and perverse character organization, emphasizing the oedipal phase’s role in identity consolidation."
+        },
+        {
+          "name": "Blos",
+          "year": "1962, 1965, 1967, 1972, 1974, 1984",
+          "context": "outlined intrapsychic processes of adolescence, including the second individuation process and consolidation of sexual identity."
+        },
+        {
+          "name": "Fromm",
+          "year": "1955",
+          "context": "contributed to sociocultural determinants of personal identity."
+        },
+        {
+          "name": "Wheelis",
+          "year": "1958",
+          "context": "emphasized the social aspect of identity."
+        },
+        {
+          "name": "Lynd",
+          "year": "1958",
+          "context": "explored identity as a general problem for the present generation."
+        },
+        {
+          "name": "Lifton",
+          "year": "1971",
+          "context": "examined identity in the context of social breakdown."
+        },
+        {
+          "name": "Lasch",
+          "year": "1978",
+          "context": "analyzed identity disturbance in modern society."
+        },
+        {
+          "name": "Kovel",
+          "year": "1981",
+          "context": "contributed to sociological perspectives on identity."
+        },
+        {
+          "name": "Searles",
+          "year": "1960",
+          "context": "discussed the longing to abandon human quality of identity."
+        },
+        {
+          "name": "Stoller",
+          "year": "1968, 1972",
+          "context": "contributed to gender identity consolidation."
+        },
+        {
+          "name": "Galenson and Roiphe",
+          "year": "1971",
+          "context": "explored gender identity development."
+        },
+        {
+          "name": "Meyer",
+          "year": "1980",
+          "context": "contributed to gender identity research."
+        },
+        {
+          "name": "Hartmann",
+          "year": "1948, 1950, 1952, 1955",
+          "context": "differentiated ego and self, influencing Erikson’s later work."
+        },
+        {
+          "name": "Kris",
+          "year": "1946",
+          "context": "collaborated with Hartmann and Loewenstein on ego psychology."
+        },
+        {
+          "name": "Loewenstein",
+          "year": "1946",
+          "context": "contributed to ego psychology and superego formation."
+        },
+        {
+          "name": "Loewald",
+          "year": "1951",
+          "context": "highlighted the father’s role in psychic structuring."
+        },
+        {
+          "name": "Klein",
+          "year": "1948",
+          "context": "influenced Kernberg’s integration of object relations theory."
+        }
+      ],
+      "dates": [
+        {
+          "date": "1919",
+          "context": "Tausk introduced the term identity into psychoanalytic literature."
+        },
+        {
+          "date": "1920s",
+          "context": "Freud rarely used the term identity technically, with only one technical mention in 1926a."
+        },
+        {
+          "date": "1950s",
+          "context": "Erikson resurrected the term identity in character formation; Jacobson and Mahler contributed to object relations and developmental models."
+        },
+        {
+          "date": "1960s",
+          "context": "Kernberg emphasized identity diffusion in borderline personality organization; Blos and Eissler contributed to adolescent identity development."
+        },
+        {
+          "date": "1970s",
+          "context": "Mahler and colleagues published on separation-individuation; Chasseguet-Smirgel explored ego-ideal formation."
+        },
+        {
+          "date": "1980s",
+          "context": "Kernberg consolidated views on identity diffusion and middle-age identity development; Blos expanded on adolescent processes."
+        }
+      ],
+      "terms": [
+        {
+          "term": "identity",
+          "context": "a multifaceted concept involving persistent sameness within oneself, sharing essential character with others, and a sense of individual continuity."
+        },
+        {
+          "term": "ego identity",
+          "context": "Erikson’s term for both selfsameness and sharing essential character with others, later dropping the “ego” prefix."
+        },
+        {
+          "term": "identity diffusion",
+          "context": "a syndrome characterized by poorly synthesized identities and contradictions in self-image, central to borderline and narcissistic disorders."
+        },
+        {
+          "term": "self-constancy",
+          "context": "Mahler’s term for a stable sense of one’s unique and separate personhood, emerging at the end of the rapprochement subphase."
+        },
+        {
+          "term": "identity theme",
+          "context": "Lichtenstein’s concept of an irreversible pattern imprinted by the mother, capable of variations influencing creativity or neurosis."
+        },
+        {
+          "term": "metamorphosis",
+          "context": "Lichtenstein’s term for the longing to abandon human quality of identity, experienced as liberation or ecstasy."
+        },
+        {
+          "term": "false self",
+          "context": "Winnicott’s concept of an inauthentic persona developed when the mother fails to validate the infant’s true self."
+        },
+        {
+          "term": "true self",
+          "context": "Winnicott’s concept of the authentic self emerging from spontaneous gestures and personal ideas when the mother is “good enough.”"
+        },
+        {
+          "term": "second individuation",
+          "context": "Blos’s term for the adolescent process of emotional disengagement from internalized infantile objects, leading to greater autonomy."
+        },
+        {
+          "term": "ego ideal",
+          "context": "Chasseguet-Smirgel’s and Blos’s concept of a cherished personality attribute originating from father attachment and the negative Oedipus complex."
+        },
+        {
+          "term": "anomie",
+          "context": "Durkheim’s concept of individual alienation due to rapid social change and fragmentation."
+        },
+        {
+          "term": "going-on-being",
+          "context": "Winnicott’s term for the infant’s natural tendency to become an integrated unit with temporal continuity."
+        },
+        {
+          "term": "object constancy",
+          "context": "Mahler’s term for the internalization of a sustained, ambivalent object representation during separation-individuation."
+        },
+        {
+          "term": "bisexual identifications",
+          "context": "Greenacre’s and Blos’s concept of early identifications with both sexes, influencing later gender identity."
+        },
+        {
+          "term": "identity crisis",
+          "context": "Blos’s and Kernberg’s term for the adolescent turmoil in consolidating identity, distinct from identity diffusion."
+        },
+        {
+          "term": "perverse character",
+          "context": "Chasseguet-Smirgel’s term for a character organization bypassing the oedipal complex through a “short path.”"
+        }
+      ]
+    },
+    "source_section_map": [
+      {
+        "section_title": "THE CONCEPT OF IDENTITY",
+        "start_line": 26,
+        "end_line": 115,
+        "authors": [
+          "Tausk",
+          "Erikson",
+          "Jacobson",
+          "Hartmann",
+          "Eissler",
+          "Blos",
+          "Kernberg",
+          "Fromm",
+          "Wheelis",
+          "Lynd",
+          "Lifton",
+          "Lasch",
+          "Kovel",
+          "Lichtenstein",
+          "Freud",
+          "Marx",
+          "Durkheim",
+          "Searles"
+        ]
+      },
+      {
+        "section_title": "THE DEVELOPMENTAL ORIGINS OF PERSONAL",
+        "start_line": 115,
+        "end_line": 116,
+        "authors": []
+      },
+      {
+        "section_title": "IDENTITY",
+        "start_line": 116,
+        "end_line": 418,
+        "authors": [
+          "Freud",
+          "Fenichel",
+          "Federn",
+          "Glover",
+          "Spiegel",
+          "Greenacre",
+          "Stoller",
+          "Galenson and Roiphe",
+          "Meyer",
+          "Hartmann",
+          "Loewenstein",
+          "Mahler",
+          "Spitz",
+          "Jacobson",
+          "Winnicott",
+          "Erikson",
+          "Lichtenstein",
+          "Kernberg",
+          "Klein",
+          "Chasseguet-Smirgel",
+          "Blos",
+          "Loewald",
+          "Khan",
+          "Galenson",
+          "Roiphe",
+          "Kris"
+        ]
+      },
+      {
+        "section_title": "CONCLUSION",
+        "start_line": 418,
+        "end_line": 429,
+        "authors": []
+      }
+    ],
+    "reproduced_tables": [],
+    "reproduced_criteria": []
+  }
+}

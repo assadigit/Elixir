@@ -52,33 +52,6 @@ QWEN_TTS_KNOWN_SPEAKERS = [
     "Sohee",  # Warm Korean female voice with rich emotion. Korean.
 ]
 
-# Speaker descriptions for the UI
-QWEN_TTS_SPEAKER_INFO = {
-    "Vivian": ("Female", "Bright, slightly edgy young female voice", "Chinese"),
-    "Serena": ("Female", "Warm, gentle young female voice", "Chinese"),
-    "Uncle_Fu": ("Male", "Seasoned male voice with a low, mellow timbre", "Chinese"),
-    "Dylan": ("Male", "Youthful Beijing male voice, clear natural timbre", "Chinese (Beijing)"),
-    "Eric": ("Male", "Lively Chengdu male voice, slightly husky", "Chinese (Sichuan)"),
-    "Ryan": ("Male", "Dynamic male voice with strong rhythmic drive", "English"),
-    "Aidan": ("Male", "Sunny American male voice with clear midrange", "English"),
-    "Ono_Anna": ("Female", "Playful Japanese female voice, light nimble", "Japanese"),
-    "Sohee": ("Female", "Warm Korean female voice with rich emotion", "Korean"),
-}
-
-# Supported languages (from the model card)
-QWEN_TTS_LANGUAGES = [
-    "English",
-    "Chinese",
-    "Japanese",
-    "Korean",
-    "German",
-    "French",
-    "Russian",
-    "Portuguese",
-    "Spanish",
-    "Italian",
-]
-
 
 class QwenTtsEngine(TTSEngine):
     """V11.38.0: Qwen3-TTS engine for English (and 9 other languages).
@@ -186,6 +159,19 @@ class QwenTtsEngine(TTSEngine):
         env["PYTHONUNBUFFERED"] = "1"
         if sys.platform == "win32":
             env["PYTHONIOENCODING"] = "utf-8"
+
+        # V0.6.18 (W-d2): OFFLINE LOCK — same treatment as VibeVoice.
+        # Qwen3-TTS loads strictly from the local model folder; transformers /
+        # huggingface_hub otherwise silently fetch "missing" helper files from
+        # the HF Hub while loading even a local model directory. The four
+        # flags below force a local-only load: a genuinely-missing file now
+        # raises a named FileNotFoundError instead of succeeding slowly via a
+        # network fetch the operator never asked for. (Mirrors W-d1 in
+        # vibevoice_engine.py.)
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
+        env["HF_DATASETS_OFFLINE"] = "1"
+        env["TOKENIZERS_PARALLELISM"] = "false"
 
         sub = PersistentJsonSubprocess(
             name="Qwen3-TTS", log=self.log, stderr_prefix="[qwen-sub]", stderr_level="DEBUG"

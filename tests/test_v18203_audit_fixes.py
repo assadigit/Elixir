@@ -23,21 +23,13 @@ output audit (``audit/results/AUDIT_V18.20.2.0_001_1_identity.md``):
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18202_system_fixes.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager postchecks→…→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 

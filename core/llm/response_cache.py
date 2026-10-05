@@ -101,11 +101,13 @@ class ResponseCache:
         # surface: an attacker who can control the prompt can already
         # cause cache misses, not incorrect hits — the worst case is a
         # performance degradation, not a correctness/security bug).
-        # V18.2.26 (A13): added the noqa directive on the line above to
-        # silence ruff/bandit security scanners that flag hashlib.md5
-        # without context. (Note: this comment avoids spelling the directive
-        # inline — a literal '# noqa: S324' inside a comment is itself parsed
-        # as an invalid directive by newer ruff.)
+        # V18.2.26 (A13): added the noqa directive on the ``h = hashlib.md5()``
+        # line above to silence ruff/bandit security scanners that flag
+        # hashlib.md5 without context. (Note: this comment deliberately does
+        # NOT spell the directive text verbatim — a literal directive string
+        # inside a comment is itself parsed as an invalid directive by newer
+        # ruff. V0.6.8 (audit B19): the old parenthetical spelled it out and
+        # WAS the invalid-directive warning it was warning about.)
         h.update(str(prompt).encode())
         return h.hexdigest()
 
@@ -242,8 +244,17 @@ class ResponseCache:
         if self._persist:
             try:
                 _CACHE_FILE.unlink(missing_ok=True)
-            except Exception as _e:
-                pass
+            except OSError as _e:
+                # V0.6.8 (audit B9): a failed disk-cache clear was SILENT —
+                # the stale cache survived the "clear" with no trace.
+                # OSError is the narrow family (permissions / FS errors);
+                # a missing file is already handled by missing_ok=True.
+                logger.warning(
+                    "response_cache disk clear FAILED — stale cache survives (%s: %s); path=%s",
+                    type(_e).__name__,
+                    _e,
+                    _CACHE_FILE,
+                )
 
 
 # Phase 6.4 (V0.19): periodic instrumentation interval (lookups between

@@ -21,7 +21,6 @@ Run: pytest tests/test_primary_call.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -29,16 +28,6 @@ import pytest
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation import primary_call as pc_mod
 
@@ -56,6 +45,28 @@ def _reset_gpu_temp_cache():
     pc_mod._gpu_temp_cache["ts"] = 0.0
     yield
     pc_mod._gpu_temp_cache["valid"] = 0.0
+
+
+# V0.5.7 (SEPARATE-CALL): summarize_with_model now ALSO fires a separate
+# glossary-extraction LLM call in all 3 return paths (master-summary-success,
+# structured 5-in-1 fallback, raw 5-in-1 fallback) + stashes the parsed
+# glossary onto the result dict's ``source_glossary`` key + the verification
+# LAYER's module-level side-channel cache. Without this autouse monkeypatch,
+# every primary_call test would invoke ``_extract_glossary_for_call`` → call
+# the mocked ``call_llm_with_empty_retry`` (which returns None/"") → get an
+# empty glossary back → add ``source_glossary: {"names": [], "dates": [],
+# "terms": []}`` to the result dict (breaking every byte-for-byte
+# ``result == {...}`` assertion). The monkeypatch keeps these
+# characterization tests focused on the original primary_call contract —
+# the new V0.5.7 glossary-extraction wiring is exercised by the dedicated
+# test_v057_separate_call.py::TestGlossaryExtractedInBothPaths.
+@pytest.fixture(autouse=True)
+def _noop_glossary_extraction(monkeypatch):
+    """V0.5.7: no-op the glossary extraction in the primary_call
+    characterization tests (the V0.5.7 wiring is tested separately in
+    test_v057_separate_call.py)."""
+    monkeypatch.setattr(pc_mod, "_extract_glossary_for_call", lambda **kwargs: {})
+    yield
 
 
 class _FakeRequest:
@@ -112,11 +123,15 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {"bullet_points": []},
         )
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
         assert result == {
             "bullet_points": ["b1"],
             "raw": "",
             "model": "model-x",
             "temperature": 0.7,
+            "source_glossary": {},
         }
 
     def test_structured_none_retry_empty_returns_none(self, monkeypatch):
@@ -196,7 +211,14 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
+        assert result == {
+            "bullet_points": ["chunked-bullet"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
         assert chunked_calls["n"] == 1
         infos = [m for m, l in logs if l == "INFO"]
         assert any("master-summary" in m for m in infos)
@@ -257,7 +279,14 @@ class TestSummarizeWithModel:
             parse_response=lambda x: {},
         )
         # V0.4: chunked_summarize is ALWAYS called (master-summary default)
-        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
+        assert result == {
+            "bullet_points": ["chunked-bullet"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
         assert chunked_calls["n"] == 1  # chunked called once
 
     def test_max_tokens_from_request_when_none(self, monkeypatch):
@@ -352,7 +381,14 @@ class TestSummarizeWithModel:
             strip_thinking=lambda x: x,
             parse_response=lambda x: {},
         )
-        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
+        assert result == {
+            "bullet_points": ["chunked-bullet"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
         assert chunked_calls["n"] == 1
         # V0.4: the master-summary message fires (not the old V0.20.2 gate message)
         infos = [m for m, l in logs if l == "INFO"]
@@ -385,8 +421,15 @@ class TestSummarizeWithModel:
             parse_response=lambda x: {},
         )
         # V0.4: chunked_summarize IS called (master-summary default)
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
         assert chunked_calls["n"] == 1
-        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        assert result == {
+            "bullet_points": ["chunked-bullet"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }
 
     def test_non_low_bit_model_moderate_input_does_not_chunk_v0202(self, monkeypatch):
         """V0.4: master-summary is ALWAYS called, even for non-low-bit models.
@@ -415,5 +458,12 @@ class TestSummarizeWithModel:
             parse_response=lambda x: {},
         )
         # V0.4: chunked_summarize IS called (master-summary default)
+        # V0.5.7: the autouse _noop_glossary_extraction fixture no-ops
+        # ``_extract_glossary_for_call`` → result carries an empty
+        # ``source_glossary: {}`` key (the new V0.5.7 field).
         assert chunked_calls["n"] == 1
-        assert result == {"bullet_points": ["chunked-bullet"], "from_chunked": True}
+        assert result == {
+            "bullet_points": ["chunked-bullet"],
+            "from_chunked": True,
+            "source_glossary": {},
+        }

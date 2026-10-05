@@ -53,6 +53,11 @@ logger = logging.getLogger(__name__)
 # Backward-compat proxy kept so existing ``monkeypatch.setattr`` calls don't
 # break (but the impl reads/writes state.keep_alive_cache directly).
 from core.summarisation._runtime_state import state as _runtime_state
+from core.system.timeouts import (  # V0.6.10 (B15): the timeout policy leaf
+    LLM_REQUEST_TIMEOUT_S,
+    SLOW_LLM_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,
+)
 
 _keep_alive_cache: str | None = None  # backward-compat proxy (impl uses _runtime_state)
 
@@ -238,7 +243,7 @@ def create_provider(
                 "ollama",
                 configured=settings.get("summarisation.max_context_tokens"),
             ),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             supervisor=supervisor,
@@ -249,26 +254,50 @@ def create_provider(
         # 127.0.0.1:8080/v1, api key "local", 65k context / 12k output).
         # The timeout honours local.http_timeout_sec (the app-wide local
         # backend timeout) instead of the cloud-style 300s.
-        from core.llm.llamacpp_provider import LlamaCppProvider
+        from core.llm.llamacpp_provider import LlamaCppProvider, list_llamacpp_models
         from core.llm.registry import get_registry
+
+        _lc_base = settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+        _lc_key = _get_secret("summarisation.llamacpp_api_key", settings, "local")
+        _configured_model = settings.get("summarisation.llamacpp_model", "")
+
+        # V0.4.30 (multi-backend): detect the ACTUAL served model via
+        # GET /v1/models so a llama-server on a different port serving a
+        # DIFFERENT model (e.g. 8080=Ternary-Bonsai, 8081=Qwen3.8) is
+        # identified + addressed correctly — not by the hardcoded
+        # llamacpp_model setting. Falls back to the configured model if
+        # the server is unreachable or /v1/models is empty.
+        _detected_model = _configured_model
+        try:
+            _served = list_llamacpp_models(_lc_base, _lc_key, timeout=UI_PROBE_TIMEOUT_S)
+            if _served:
+                _detected_model = _served[0]
+                if _detected_model != _configured_model:
+                    log(
+                        f"    🦙 llama.cpp: detected model '{_detected_model}' on "
+                        f"{_lc_base} (configured: '{_configured_model}') — "
+                        f"using the detected.",
+                        "INFO",
+                    )
+        except Exception:
+            pass  # fall back to the configured model
 
         # V0.09 (P5): same registry routing as the ollama branch — the
         # settings value (65k window) stays the ``configured`` override so
         # nothing changes at today's defaults (pinned by
         # tests/test_v004_llamacpp.py::TestFactoryWiring), while the new
         # ``llm.context_window_overrides`` key and the 220,144 local cap
-        # become available (Task 8 decisions #2/#4).
+        # become available (Task 8 decisions #2/#4). V0.4.30: the registry
+        # lookup now uses the DETECTED model (not the configured) so the
+        # context window matches the actual served model.
         return LlamaCppProvider(
-            model=settings.get("summarisation.llamacpp_model", ""),
-            base_url=settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"),
-            # V0.16 (Phase 3 / 3.2): keyring-backed read (local llama-server
-            # deployments with an auth token get it protected too; the
-            # "local" placeholder default is preserved when nothing stored)
-            api_key=_get_secret("summarisation.llamacpp_api_key", settings, "local"),
+            model=_detected_model,
+            base_url=_lc_base,
+            api_key=_lc_key,
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.llamacpp_max_output_tokens", 12288),
             context_tokens=get_registry().get_context_window(
-                settings.get("summarisation.llamacpp_model", ""),
+                _detected_model,
                 "llamacpp",
                 configured=settings.get("summarisation.llamacpp_context_tokens"),
             ),
@@ -286,7 +315,7 @@ def create_provider(
             api_key=_get_secret("summarisation.api_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             label=provider.capitalize(),
@@ -300,7 +329,7 @@ def create_provider(
             api_key=_get_secret("summarisation.freellmapi_key", settings, ""),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=300,
+            timeout=LLM_REQUEST_TIMEOUT_S,
             retries=1,
             log_callback=log,
             label="FreeLLMAPI",
@@ -314,7 +343,7 @@ def create_provider(
             base_url=settings.get("summarisation.claude_base_url", "https://api.anthropic.com/v1"),
             temperature=settings.get("summarisation.temperature", 0.6),
             max_tokens=settings.get("summarisation.max_output_tokens", 4096),
-            timeout=180,
+            timeout=SLOW_LLM_TIMEOUT_S,
             retries=1,
             log_callback=log,
         )

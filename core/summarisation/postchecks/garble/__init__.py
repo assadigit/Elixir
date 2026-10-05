@@ -46,6 +46,11 @@ from core.summarisation.postchecks.garble.fusion import (  # noqa: F401
     _is_legit_fusion_suffix,
     detect_sentence_fusion,
 )
+
+# V0.4.39 (Option A): LLM semantic repair for garbles (mirrors the D3 pattern).
+from core.summarisation.postchecks.garble.garble_repair import (  # noqa: F401
+    repair_garbles_via_llm,
+)
 from core.summarisation.postchecks.garble.lexicon import (  # noqa: F401
     _CAMELCASE_MERGE_RE,
     _COMMON_ENGLISH_WORDS,

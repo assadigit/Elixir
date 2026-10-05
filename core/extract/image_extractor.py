@@ -34,6 +34,23 @@ logger = logging.getLogger(__name__)
 # Classification categories
 CATEGORIES = ["photos", "charts", "tables", "diagrams", "figures"]
 
+# V0.6.0 (4-a/D4): image-file extensions PIL cannot decode. These are still
+# image assets (EPUB covers/charts, Word vector graphics), so the epub/docx
+# extractors copy them through verbatim into the generic fallback category
+# instead of failing per file. Format-property check — content-agnostic.
+_NON_RASTER_IMAGE_EXTS = {".svg", ".emf", ".wmf"}
+
+
+def _save_raw_image(img_data: bytes, output: Path, base_name: str, ext: str, counts: dict) -> None:
+    """Copy a non-raster image asset through verbatim (no re-encode).
+
+    Used by the EPUB/DOCX extractors for formats PIL cannot decode; the
+    original bytes are the only faithful representation.
+    """
+    (output / "figures" / f"{base_name}{ext}").write_bytes(img_data)
+    counts["figures"] += 1
+    counts["total"] += 1
+
 
 def extract_images_from_pdf(
     pdf_path: str,
@@ -89,6 +106,10 @@ def extract_images_from_pdf(
         doc = fitz.open(pdf_path)
     except Exception as e:
         log(f"  ❌ Cannot open PDF: {e}", "ERROR")
+        # V0.6.0 (4-a/D1): an unopenable file must NOT be reported as a
+        # zero-image success — mark the failure so the caller can render it
+        # as an error instead of "✅ 0 images".
+        counts["error"] = f"Cannot open PDF: {e}"
         return counts
 
     total_pages = len(doc)
@@ -554,7 +575,10 @@ def _crop_vector_regions(page, page_idx: int, output: Path, dpi: int, drawings: 
 
             filename = f"page_{page_idx:04d}_vec_{counts[category] + 1:03d}.jpg"
             filepath = output / category / filename
-            Path(filepath).write_bytes(img_data)
+            # V0.6.0 (4-a/D3): save the AUTO-TRIMMED image (same contract as
+            # the embedded-image and smart-crop paths) — writing the raw
+            # pixmap bytes here discarded the V11.76.0 trim entirely.
+            pil_img.save(str(filepath), "JPEG", quality=90)
             counts[category] += 1
         except Exception as _e:
             logger.debug("ignored %s: %s", type(_e).__name__, _e)
@@ -761,6 +785,13 @@ def extract_images_from_epub(
                 progress(pct, f"🖼️ {i + 1}/{total}")
                 try:
                     img_data = zf.read(img_path)
+                    # V0.6.0 (4-a/D4): vector formats PIL cannot decode were
+                    # SELECTED by the filter above but then always dropped
+                    # with a warning — copy them through verbatim instead.
+                    ext = Path(img_path).suffix.lower()
+                    if ext in _NON_RASTER_IMAGE_EXTS:
+                        _save_raw_image(img_data, output, f"epub_{i + 1:04d}", ext, counts)
+                        continue
                     pil_img = Image.open(io.BytesIO(img_data))
                     if pil_img.mode in ("RGBA", "P"):
                         pil_img = pil_img.convert("RGB")
@@ -776,6 +807,8 @@ def extract_images_from_epub(
 
     except Exception as e:
         log(f"  ❌ EPUB error: {e}", "ERROR")
+        # V0.6.0 (4-a/D1): surface the open/zip failure to the caller.
+        counts["error"] = f"Cannot open EPUB: {e}"
 
     log(f"  ✅ EPUB extraction: {counts['total']} images", "INFO")
     return counts
@@ -815,6 +848,13 @@ def extract_images_from_docx(
                 progress(pct, f"🖼️ {i + 1}/{total}")
                 try:
                     img_data = zf.read(media_path)
+                    # V0.6.0 (4-a/D4): word/media can carry vector formats
+                    # PIL cannot decode (svg/emf/wmf) — copy through verbatim
+                    # instead of dropping them with a warning.
+                    ext = Path(media_path).suffix.lower()
+                    if ext in _NON_RASTER_IMAGE_EXTS:
+                        _save_raw_image(img_data, output, f"docx_{i + 1:04d}", ext, counts)
+                        continue
                     pil_img = Image.open(io.BytesIO(img_data))
                     if pil_img.mode in ("RGBA", "P"):
                         pil_img = pil_img.convert("RGB")
@@ -830,6 +870,8 @@ def extract_images_from_docx(
 
     except Exception as e:
         log(f"  ❌ DOCX error: {e}", "ERROR")
+        # V0.6.0 (4-a/D1): surface the open/zip failure to the caller.
+        counts["error"] = f"Cannot open DOCX: {e}"
 
     log(f"  ✅ DOCX extraction: {counts['total']} images", "INFO")
     return counts

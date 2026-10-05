@@ -43,12 +43,14 @@ from controller import Controller
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from core.podcast.audio_generator import generate_podcast_audio
+from core.podcast.cancel_token import CancelToken  # V0.6.29 (W-n1)
 from core.podcast.script_generator import (
     TEMPERATURE_PROFILES,
     TONE_PROFILES,
     ScriptResult,
     generate_podcast_script,
 )
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,9 @@ class PodcastMakerView(QWidget):
         self.controller = controller
         self._script_result: ScriptResult | None = None
         self._worker = None
+        # V0.6.29 (W-n1): the CancelToken for audio generation. Created fresh
+        # each time _on_generate_audio starts; the Stop button calls .cancel().
+        self._cancel_token: CancelToken | None = None
         # V11.37.5: progress signal for thread-safe UI updates
         self._progress_signal = _ProgressSignal()
         self._progress_signal.progress.connect(self._on_progress_signal)
@@ -296,6 +301,15 @@ class PodcastMakerView(QWidget):
         self.gen_audio_btn.clicked.connect(self._on_generate_audio)
         root.addWidget(self.gen_audio_btn)
 
+        # V0.6.29 (W-n1): Stop button — visible only during audio generation.
+        # Calls self._cancel_token.cancel() which flips the flag the audio
+        # generator's line loop checks at each iteration boundary.
+        self.stop_btn = QPushButton("⏹️ Stop")
+        self.stop_btn.setObjectName("Danger")
+        self.stop_btn.setVisible(False)
+        self.stop_btn.clicked.connect(self._on_stop_clicked)
+        root.addWidget(self.stop_btn)
+
         # ── Progress + status ──────────────────────────────────────────
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
@@ -348,31 +362,38 @@ class PodcastMakerView(QWidget):
         return root
 
     def _refresh_models(self) -> None:
-        """V11.37.2: fetch installed models from Ollama /api/tags."""
-        import requests
+        """V11.37.2: fetch installed models from Ollama /api/tags.
 
+        V0.6.8 (audit B5): routed through utils.network.list_ollama_models /
+        is_ollama_reachable (safe_ollama_request → proxy-proof) — was a bare
+        requests.get that broke on machines with HTTP_PROXY set. The non-200
+        "Ollama returned HTTP {status}" message folds into "Could not
+        connect" (the helpers return list/bool, not status codes).
+        """
+        from utils.network import is_ollama_reachable, list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m.get("name", "") for m in resp.json().get("models", [])]
-                if models:
-                    current = self.model_combo.currentText()
-                    self.model_combo.clear()
-                    for m in models:
-                        self.model_combo.addItem(m)
-                    # Restore previous selection if still available
-                    idx = self.model_combo.findText(current)
-                    if idx >= 0:
-                        self.model_combo.setCurrentIndex(idx)
-                    self.status_label.setText(f"✅ Found {len(models)} models")
-                else:
-                    self.status_label.setText("⚠️ No models installed in Ollama")
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
+            # original bare-call latency budget (the helper default is 10).
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
+            if models:
+                current = self.model_combo.currentText()
+                self.model_combo.clear()
+                for m in models:
+                    self.model_combo.addItem(m)
+                # Restore previous selection if still available
+                idx = self.model_combo.findText(current)
+                if idx >= 0:
+                    self.model_combo.setCurrentIndex(idx)
+                self.status_label.setText(f"✅ Found {len(models)} models")
+            elif is_ollama_reachable(ollama_url):
+                self.status_label.setText("⚠️ No models installed in Ollama")
             else:
-                self.status_label.setText(f"⚠️ Ollama returned HTTP {resp.status_code}")
+                self.status_label.setText("⚠️ Could not connect to Ollama")
         except Exception as e:
             self.status_label.setText(f"⚠️ Could not connect to Ollama: {e}")
 
@@ -634,6 +655,9 @@ class PodcastMakerView(QWidget):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 100)
         self.status_label.setText("🎙️ Generating podcast audio...")
+        # V0.6.29 (W-n1): show the Stop button + create a fresh CancelToken.
+        self.stop_btn.setVisible(True)
+        self._cancel_token = CancelToken()
 
         def _work():
             from utils.settings import Settings
@@ -647,15 +671,48 @@ class PodcastMakerView(QWidget):
                 settings=s,
                 log_callback=lambda msg, level="INFO": self._log(msg, level),
                 progress_callback=lambda pct, msg: self._progress(pct, msg),
+                cancel_token=self._cancel_token,  # V0.6.29 (W-n1)
             )
 
         self._worker = _SimpleWorker(_work)
         self._worker.finished.connect(self._on_audio_done)
         self._worker.start()
 
+    def _on_stop_clicked(self) -> None:
+        """V0.6.29 (W-n1): the Stop button handler — calls cancel() on the
+        active CancelToken. The audio generator's line loop checks the token
+        at the top of each iteration and exits at the next boundary (mid-line
+        cancel is NOT supported — orphaning a half-synthesized WAV is worse
+        than waiting one line for the boundary)."""
+        if self._cancel_token is None:
+            return  # no generation in progress
+        self._cancel_token.cancel("user clicked Stop")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("⏹️ Stopping...")
+        self.status_label.setText("⏹️ Cancelling at the next line boundary...")
+
     def _on_audio_done(self, result) -> None:
         self.progress_bar.setVisible(False)
         self.gen_audio_btn.setEnabled(True)
+        # V0.6.29 (W-n1): hide the Stop button + reset its text/enabled state.
+        self.stop_btn.setVisible(False)
+        self.stop_btn.setEnabled(True)
+        self.stop_btn.setText("⏹️ Stop")
+
+        # V0.6.29 (W-n1): if the result is None AND the token was cancelled,
+        # the user clicked Stop. Show a distinct message (not the failure path).
+        if result is None and self._cancel_token is not None and self._cancel_token.cancelled:
+            reason = self._cancel_token.reason or "cancelled"
+            self.status_label.setText(f"⏹️ Podcast generation {reason}. No audio file produced.")
+            QMessageBox.information(
+                self,
+                "⏹️ Generation Cancelled",
+                f"Podcast generation was cancelled ({reason}).\n\n"
+                f"No audio file was produced. Click 'Generate Podcast Audio' to try again.",
+            )
+            self._cancel_token = None
+            return
+        self._cancel_token = None  # clear the token for the next run
 
         # V11.37.4: result might be an exception (from worker thread)
         if isinstance(result, Exception):

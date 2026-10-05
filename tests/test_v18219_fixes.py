@@ -11,34 +11,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import sys
-import types
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    # V18.12.2: use a real encoding-like stub (not MagicMock) so that
-    # utils.token_counter.count_tokens works when this test file runs in the
-    # same session as test_text_utils_ext.py + test_map_reduce.py (which call
-    # count_tokens). The old MagicMock stub returned a mock .encode() whose
-    # len() was a mock, causing AssertionError in downstream tests. This is
-    # the same stub-compat fix applied to test_summarizer.py + test_bullet_
-    # pipeline_golden.py in V18.11.0.
-    class _StubEncoding:
-        def encode(self, text, disallowed_special=()):
-            # Crude word-based token approximation (good enough for the
-            # count_tokens fallback path; the postchecks tests below don't
-            # assert exact token counts, only structural properties).
-            return str(text).split() if text else []
-
-        def decode(self, tokens):
-            return " ".join(tokens) if tokens else ""
-
-    tk.get_encoding = lambda *a, **k: _StubEncoding()
-    tk.encoding_for_model = lambda *a, **k: _StubEncoding()
-    tk.Encoding = _StubEncoding
-    sys.modules["tiktoken"] = tk
-
 import sys as _sys
 from importlib.util import module_from_spec as _mfs
 from importlib.util import spec_from_file_location as _spec

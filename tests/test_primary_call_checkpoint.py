@@ -20,16 +20,7 @@ Run: ``pytest tests/test_primary_call_checkpoint.py -v``
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
 
 from utils.atomic_io import atomic_write_text
 

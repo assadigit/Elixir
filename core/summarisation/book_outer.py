@@ -115,7 +115,6 @@ class SummarizerBookMixin:
     ) -> list[SummaryResult]:
         """
         Summarise multiple chapters in parallel using ThreadPoolExecutor.
-        VRAM‑aware: if heavy_model is set, max_workers is forced to 1.
 
         P1-1: ``cancel_event`` is checked between chapters so cancel
         takes effect quickly, not after every chapter finishes.

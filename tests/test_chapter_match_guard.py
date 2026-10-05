@@ -210,9 +210,15 @@ class TestP0GuardInSource:
         assert "ChapterMatchFailure" in src, (
             "V18.3.1 P0: the ChapterMatchFailure guard is not in summarization.py"
         )
-        assert "not chapter_dicts" in src or "len(chapter_dicts) == 0" in src, (
-            "The guard must check for empty chapter_dicts after filtering"
-        )
+        # V0.6.11 (B14-a) pin evolution: the guard moved VERBATIM into the
+        # _rs_summarize_chapters phase helper (ctx-threaded) — both the
+        # original form and the ctx form are accepted; the contract is
+        # unchanged (fail-closed on an empty match).
+        assert (
+            "not chapter_dicts" in src
+            or "len(chapter_dicts) == 0" in src
+            or "not ctx.chapter_dicts" in src
+        ), "The guard must check for empty chapter_dicts after filtering"
 
     def test_source_captures_available_before_filtering(self):
         """The guard must capture available headings BEFORE the filtering loop."""

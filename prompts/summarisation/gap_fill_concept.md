@@ -20,6 +20,9 @@ Sentences from the chapter that mention this concept:
 - Do: ground the bullet ONLY in the sentences provided — no invented facts.
 - Do: start with a capital letter and end with a period.
 - Do: keep the bullet between 15 and 30 words.
+- Do: when the provided sentences cite multiple authors jointly (e.g.,
+  "AuthorA and AuthorB (Year)"), retain the multi-author attribution
+  form — do not reduce it to a single name.
 - Don't: output a preamble, numbering, quotes, or surrounding text.
 - Don't: prefix the bullet with "- " (the caller adds the prefix).
 - Don't: include thinking process.

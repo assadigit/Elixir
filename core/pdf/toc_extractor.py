@@ -36,6 +36,7 @@ from core.common import (
     is_likely_heading,
 )
 from core.llm import ModelManager, ModelType
+from core.system.timeouts import SHORT_LLM_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 
 # V18.20.4.11 (P3 / O-c5): pooled LLM transport (localhost → no-proxy
@@ -100,9 +101,9 @@ class TocExtractor:
 
         # Adaptive pipeline settings
         self._adaptive_enabled = self._settings.get("advanced.toc_adaptive", True)
-        self._llm_model = self._settings.get(
-            "summarisation.fast_model", self._settings.get("summarisation.model", "llama3.1:8b")
-        )
+        # V0.6.14: the fast_model read is retired — THE summarisation model
+        # labels the TOC headings.
+        self._llm_model = self._settings.get("summarisation.model", "llama3.1:8b")
         # V18.20.4.3 (P2 / W-c9): canonical URL from settings — the
         # hardcoded localhost split behavior on remote-Ollama rigs.
         self._ollama_base_url = self._settings.get_ollama_url()
@@ -210,7 +211,7 @@ class TocExtractor:
                         model_name=model_name,
                         image_max_size=1200,
                         poppler_path=poppler_path,
-                        timeout=180,
+                        timeout=SLOW_LLM_TIMEOUT_S,
                         retries=1,
                     )
                 else:
@@ -358,7 +359,7 @@ class TocExtractor:
             response = session_for_url(self._ollama_base_url).post(
                 f"{self._ollama_base_url}/api/generate",
                 json={"model": self._llm_model, "prompt": prompt, "stream": False},
-                timeout=120,
+                timeout=SHORT_LLM_TIMEOUT_S,
             )
             if response.status_code != 200:
                 return None

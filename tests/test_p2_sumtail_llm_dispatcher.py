@@ -15,7 +15,6 @@ delegate wiring; this file targets the UNCOVERED branches (59 missed lines):
   * ``call_via_llm_provider`` — the openai_compat base_url/api_key
     overrides, the llamacpp endpoint overrides, empty-result fallback,
     and the no-inline-fallback None returns
-  * ``call_fast_ollama`` — the final failure log + None return
 
 Hermetic: no HTTP — ``safe_ollama_request`` / ``session_for_url`` /
 ``create_provider`` / ``OllamaProvider`` are patched; ``retries=0`` keeps
@@ -42,7 +41,6 @@ from core.summarisation.llm_dispatcher import (
     _call_ollama_nonstreaming,
     _call_ollama_streaming,
     call_claude,
-    call_fast_ollama,
     call_ollama,
     call_via_llm_provider,
 )
@@ -415,8 +413,13 @@ class TestCallViaLlmProviderOverrides:
                 **self._base_kwargs(log),
             )
         assert result == "compat response"
-        assert provider._base_url == "http://localhost:8000/v1"
-        assert provider._api_key == "sk-test-123"
+        # V0.6.8 (review-loop follow-up, contract evolution): the overrides
+        # target the PUBLIC attrs now — the old _base_url/_api_key spellings
+        # were no-ops on the REAL OpenAICompatProvider (MagicMock made the
+        # dead assignment look alive here); see tests/test_v068_review_loop_fixes.py
+        # TestLoop3LlmDispatcherSweep.
+        assert provider.base_url == "http://localhost:8000/v1"
+        assert provider.api_key == "sk-test-123"
         assert any("via llm_provider.openai_compat" in m for m, _ in logs)
 
     def test_llamacpp_endpoint_overrides(self):
@@ -513,44 +516,8 @@ class TestCallViaLlmProviderOverrides:
         assert result is None
 
 
-# ── 6. call_fast_ollama: failure path ─────────────────────────────────────
-
-
-class TestCallFastOllamaFailure:
-    def test_exception_logs_and_returns_none(self):
-        log, logs = _collecting_log()
-        with patch.object(
-            llm_dispatcher, "safe_ollama_request", side_effect=ValueError("bad payload")
-        ):
-            result = call_fast_ollama(
-                prompt="p",
-                model="fast-model",
-                temp=0.7,
-                max_tokens=64,
-                ollama_base_url="http://localhost:11434",
-                fast_model_context=8192,
-                log=log,
-            )
-        assert result is None
-        assert any("Fast model call failed: bad payload" in m for m, _ in logs)
-
-    def test_success_returns_text(self):
-        log, _ = _collecting_log()
-        resp = MagicMock()
-        resp.json.return_value = {"response": "quick summary"}
-        with patch.object(llm_dispatcher, "safe_ollama_request", return_value=resp):
-            result = call_fast_ollama(
-                prompt="p",
-                model="fast-model",
-                temp=0.7,
-                max_tokens=64,
-                ollama_base_url="http://localhost:11434",
-                fast_model_context=8192,
-                log=log,
-            )
-        assert result == "quick summary"
-
-
+# ── 6. call_fast_ollama: failure path — REMOVED V0.6.14 (single-model
+#    order): the fast-model Ollama call family is retired (2 tests).
 # ── 7. Streaming call routes through call_ollama with error tracker ────────
 
 

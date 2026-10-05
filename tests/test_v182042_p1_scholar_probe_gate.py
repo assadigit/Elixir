@@ -30,7 +30,6 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
-from types import ModuleType
 from unittest.mock import MagicMock
 
 _project_root = Path(__file__).resolve().parent.parent
@@ -40,17 +39,6 @@ if str(_project_root) not in sys.path:
 # Hermeticity stub (same as test_v18202_system_fixes / test_v182041):
 # markitdown + tiktoken are not installed in this sandbox; the eager
 # core.summarisation import chain pulls them.
-if "markitdown" not in sys.modules:
-    _md = ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
 _SCHOLAR = _project_root / "core" / "summarisation" / "scholar_reflection.py"
 _BCONS = _project_root / "core" / "summarisation" / "bullet_consolidation.py"
 
@@ -69,10 +57,10 @@ class TestScholarProbeGateSourcePins:
         ast.parse(_src(_SCHOLAR))
 
     def test_probe_gate_present_before_llm_call(self):
-        """The probe-gate must run BEFORE the 6144-token call_fast_llm."""
+        """The probe-gate must run BEFORE the 6144-token call_llm."""
         src = _src(_SCHOLAR)
         probe_pos = src.find("_probe_missing = -1")
-        call_pos = src.find("call_fast_llm(prompt, temperature=temperature, max_tokens=6144)")
+        call_pos = src.find("call_llm(prompt, temperature=temperature, max_tokens=6144)")
         assert probe_pos != -1 and call_pos != -1
         assert probe_pos < call_pos, "the probe-gate must run BEFORE the 6144-token LLM call"
 
@@ -122,13 +110,13 @@ class TestScholarProbeGateSourcePins:
 
 
 def _make_call():
-    """A MagicMock call_fast_llm that records invocations + returns a
+    """A MagicMock call_llm that records invocations + returns a
     truncated-looking empty response (the .3.14 shape)."""
     call = MagicMock(return_value="")
     return call
 
 
-def _make_fns(call_fast_llm):
+def _make_fns(call_llm):
     """Build the dependency tuple scholar_reflection expects."""
     pm = MagicMock()
     pm.render_template.return_value = "prompt"
@@ -140,7 +128,7 @@ def _make_fns(call_fast_llm):
         temperature=0.7,
         prompt_manager=pm,
         recover_vram=recover,
-        call_fast_llm=call_fast_llm,
+        call_llm=call_llm,
         strip_thinking=strip,
     )
 

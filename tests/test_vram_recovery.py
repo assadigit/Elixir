@@ -10,19 +10,9 @@ Tests verify:
 
 from __future__ import annotations
 
-import sys
-import types
 from unittest.mock import MagicMock
 
 import pytest
-
-# Stub tiktoken
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = MagicMock(return_value=MagicMock())
-    tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation.summarizer import Summarizer
 
@@ -49,18 +39,26 @@ class TestRecoverVRAM:
         # Should complete without raising
         Summarizer._recover_vram(obj, context="test", delay_sec=0.01)
 
-    def test_recover_vram_logs_recovery(self):
-        """_recover_vram should attempt logging (may be skipped if torch unavailable)."""
+    def test_recover_vram_logs_recovery(self, monkeypatch):
+        """V0.6.6 (review-loop B10): was ``assert True`` — a can't-fail test
+        nominally guarding the V13.44.3 log path. Now pins the delegation:
+        ``_recover_vram`` forwards is_local / delays / context / log_fn to
+        ``core.summarisation.vram.recover_vram`` (whose real log behavior
+        is separately tested by TestA18VramDelay in
+        tests/test_v18202_summarisation_fixes.py)."""
+        import core.summarisation.vram as vram_mod
+
+        calls = []
+
+        def _fake_recover(*, is_local, delay_sec, configured_delay, context, log_fn):
+            calls.append((is_local, delay_sec, configured_delay, context, log_fn))
+
+        monkeypatch.setattr(vram_mod, "recover_vram", _fake_recover)
         obj = self._make_mock_summarizer()
         obj.is_local = True  # V13.44.3: only runs for local
         obj.local_vram_recovery_delay = 0  # use delay_sec param instead
         Summarizer._recover_vram(obj, context="pre-gap-fill", delay_sec=0.01)
-        # The method may or may not call log depending on whether torch/CUDA
-        # is available in the test env. The important thing is it doesn't crash.
-        # If torch IS available and CUDA is not, it should log the "no CUDA" message.
-        # If torch is NOT available, the except block catches it silently.
-        # Either way, the method should complete without raising.
-        assert True  # if we got here, the method didn't crash
+        assert calls == [(True, 0.01, 0, "pre-gap-fill", obj.log)]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

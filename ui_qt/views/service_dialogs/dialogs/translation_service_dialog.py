@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -557,14 +558,16 @@ class TranslationServiceDialog(BaseServiceDialog):
         """
         if not getattr(self, "model_combo", None):
             return
-        import requests as _req
-
+        from utils.network import list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         preferred = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
 
         # Fetch installed models from Ollama.
+        # V0.6.8 (audit B5): routed through utils.network.list_ollama_models
+        # (safe_ollama_request → proxy-proof) — was a bare requests.get
+        # that broke on machines with HTTP_PROXY set.
         ollama_url = (
             s.get("translation.endpoint", "http://localhost:11434/v1")
             or "http://localhost:11434/v1"
@@ -576,9 +579,10 @@ class TranslationServiceDialog(BaseServiceDialog):
 
         models: list[str] = []
         try:
-            r = _req.get(f"{ollama_url}/api/tags", timeout=5)
-            if r.status_code == 200:
-                models = [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
+            # original bare-call latency budget (the helper default is 10).
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 
@@ -613,6 +617,11 @@ class TranslationServiceDialog(BaseServiceDialog):
         else:
             # Ollama unreachable — seed with the preferred default.
             self.model_combo.addItem(preferred + "  (Ollama unreachable)", preferred)
+
+        # V0.6.5: remember the installed list for the active-LLM fallback
+        # resolution in _collect_options (a REAL installed model stays the
+        # user's choice; anything else falls back to the active LLM).
+        self._installed_models = models or []
 
     # ----------------------------------------------------------------
     # Options resolution (runs on the MAIN thread before _process)
@@ -659,6 +668,56 @@ class TranslationServiceDialog(BaseServiceDialog):
                 self._resolved_model = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
         else:
             self._resolved_model = "translategemma-12b-it.Q4_K_M_mradermacher:latest"
+
+        # -- V0.6.5: the active-LLM fallback ---------------------------
+        # The user requirement: "the translation tool should fall back to
+        # the CURRENT ACTIVE LLM (ollama or llama.cpp) when no dedicated
+        # translation model is found." A dedicated model = a
+        # translation-named entry in the combo (translategemma / translate
+        # families). When none is present AND the combo's model isn't a
+        # real installed translation model, route the whole run through
+        # the active provider (summarisation.provider + its model — the
+        # same resolution the Summarizer tool uses), via the engine's
+        # provider-backed llm_complete transport.
+        self._active_llm_fallback = False
+        self._active_llm_info = ""
+        combo_texts = (
+            [self.model_combo.itemText(i).lower() for i in range(self.model_combo.count())]
+            if self.model_combo
+            else []
+        )
+        has_dedicated = any(
+            ("translategemma" in t or "translate" in t) and "unreachable" not in t
+            for t in combo_texts
+        )
+        if not has_dedicated:
+            try:
+                from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+
+                _s = Settings()
+                active_model = (
+                    _s.get("quick_services.defaults.summarize_model", "")
+                    or _s.get("summarisation.model", "")
+                    or RIG_FALLBACK_MODEL
+                )
+                self._active_llm_fallback = True
+                # Model resolution: keep ANY real installed model AND any
+                # model the user TYPED (an editable combo — their pick is
+                # authoritative); only the "unreachable" seeded default or
+                # an empty selection swaps to the ACTIVE LLM's model (the
+                # user requirement).
+                installed = getattr(self, "_installed_models", []) or []
+                current_text = (
+                    (self.model_combo.currentText() or "").strip() if self.model_combo else ""
+                )
+                seeded_or_empty = not current_text or "unreachable" in current_text.lower()
+                if self._resolved_model not in installed and seeded_or_empty:
+                    self._resolved_model = active_model
+                self._active_llm_info = (
+                    f"{_s.get('summarisation.provider', 'ollama')} / {self._resolved_model}"
+                )
+            except Exception:
+                logger.debug("active-llm fallback resolution failed", exc_info=True)
 
         # -- Resolve format (V11.29: removed "__default__" - always a real ext) --
         fmt = self.fmt_combo.currentData() if self.fmt_combo else ".md"
@@ -781,7 +840,14 @@ class TranslationServiceDialog(BaseServiceDialog):
                     results.append(f"❌ {p.name} → {type(e).__name__}: {e}")
 
             elapsed = time.time() - (self._start_time or time.time())
-            self._emit_progress(100, f"✅ All files translated — {self._format_elapsed(elapsed)}")
+            # V0.6.0 (T7): honest final progress — "✅" only when at least
+            # one file actually translated.
+            any_ok = any(r.strip().startswith("✅") for r in results)
+            final_emoji = "✅" if any_ok else "⚠️"
+            self._emit_progress(
+                100,
+                f"{final_emoji} All files processed — {self._format_elapsed(elapsed)}",
+            )
             return "\n".join(results)
 
         self._worker = SimpleWorker(_run_queue)
@@ -790,31 +856,58 @@ class TranslationServiceDialog(BaseServiceDialog):
         # (which calls _save_result and would overwrite the real files with
         # the summary string). Instead, show the summary in the status +
         # result preview + success modal directly.
-        def _on_queue_finished(summary: str):
-            self._reset_ui()
-            self.result_preview.setPlainText(summary)
-            self.result_preview.setVisible(True)
-            self.status_label.setText(summary)
-            self.again_btn.setVisible(True)
-            # V11.30: defer the success modal via QTimer.singleShot(0, ...)
-            # to prevent QTextDocument thread-safety crash.
-            from PySide6.QtCore import QTimer
+        #
+        # V0.6.0 (T9): the slot is a BOUND METHOD of this QObject dialog.
+        # It used to be a plain closure — plain-function slots have no
+        # receiver thread affinity, so Qt executed it DIRECTLY ON THE
+        # WORKER THREAD, where it touched widgets (result_preview's
+        # QTextDocument, status_label) and called QTimer.singleShot from
+        # the wrong thread — the exact "QTextDocument thread-safety
+        # crash" class the V11.30 comments say this code avoids. Bound
+        # methods of a QObject are auto-queued to the main thread.
+        self._queue_out_folder = out_folder
+        self._worker.finished.connect(self._on_queue_finished)
+        self._worker.failed.connect(self._on_error)
+        self._worker.progress.connect(self._on_progress)
+        self._worker.start()
 
+    def _on_queue_finished(self, summary: str) -> None:
+        """V11.29.1 + V0.6.0 (T9): show the multi-file queue summary on the
+        MAIN thread (queued slot — see the wiring note in ``_on_process``).
+        """
+        self._reset_ui()
+        self.result_preview.setPlainText(summary)
+        self.result_preview.setVisible(True)
+        self.status_label.setText(summary)
+        self.again_btn.setVisible(True)
+        # V11.30: defer the success modal via QTimer.singleShot(0, ...)
+        # to prevent QTextDocument thread-safety crash.
+        from PySide6.QtCore import QTimer
+
+        # V0.6.0 (T7): never a success modal on failure — when every
+        # queued file failed (no "✅" line in the summary), warn
+        # instead of announcing "✅ Translation Complete".
+        any_ok = any(line.strip().startswith("✅") for line in summary.splitlines())
+        if any_ok:
             QTimer.singleShot(
                 0,
                 lambda: _show_success_modal(
                     self,
                     "✅ Translation Complete",
                     summary,
-                    file_path=out_folder,
+                    file_path=self._queue_out_folder,
                     on_try_another=self._on_try_another,
                 ),
             )
-
-        self._worker.finished.connect(_on_queue_finished)
-        self._worker.failed.connect(self._on_error)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.start()
+        else:
+            QTimer.singleShot(
+                0,
+                lambda: QMessageBox.warning(
+                    self,
+                    "⚠️ Translation Failed",
+                    summary,
+                ),
+            )
 
     # ----------------------------------------------------------------
     # _process - delegates to TranslationEngine (V11.28, kept in V11.29)
@@ -850,6 +943,43 @@ class TranslationServiceDialog(BaseServiceDialog):
         try:
             from core.translation.translation_engine import ModelNotFoundError, TranslationEngine
 
+            # V0.6.5: the active-LLM fallback transport. When no dedicated
+            # translation model was found (see _collect_options), every
+            # line call rides the ACTIVE provider (ollama / llama.cpp /
+            # OpenAI-compat) through create_provider — the engine's raw
+            # /api/generate transport stays for the dedicated-model path.
+            llm_complete = None
+            if getattr(self, "_active_llm_fallback", False):
+                from core.llm.llm_provider import create_provider
+
+                provider_name = s.get("summarisation.provider", "ollama")
+                try:
+                    provider = create_provider(
+                        provider=provider_name,
+                        settings=s,
+                        log_callback=lambda msg, level="INFO": None,
+                    )
+                    fallback_model = self._resolved_model
+
+                    def _llm_complete(prompt: str) -> str | None:
+                        return provider.complete_streaming(
+                            prompt=prompt,
+                            temperature=0.3,
+                            max_tokens=2048,
+                            model=fallback_model,
+                        )
+
+                    llm_complete = _llm_complete
+                    self._emit_progress(
+                        0,
+                        f"ℹ️ No dedicated translation model — using the active LLM "
+                        f"({self._active_llm_info}).",
+                    )
+                except Exception as e:
+                    logger.warning("active-LLM fallback provider failed: %s", e)
+                    # Provider unreachable → engine tries the raw path and
+                    # surfaces its honest error.
+
             engine = TranslationEngine(
                 ollama_url=ollama_url,
                 model=model,
@@ -859,14 +989,19 @@ class TranslationServiceDialog(BaseServiceDialog):
                 temperature=0.3,
                 progress_callback=self._emit_progress,
                 log_callback=lambda msg, level="INFO": None,
+                llm_complete=llm_complete,
             )
             return engine.translate_text(input_text)
         except ModelNotFoundError as e:
             # V11.29.3: model not installed — return clear error, don't
             # silently copy-paste the original text.
-            return f"❌ {e}"
+            # V0.6.0 (T2): shared.py ``_on_finished`` (V11.31.12 contract)
+            # routes ONLY strings starting with "Error:" to the failure
+            # branch — the old "❌ {e}" / "Translation error: ..." shapes
+            # were written to the output file and reported as ✅ success.
+            return f"Error: {e}"
         except Exception as e:
-            return f"Translation error: {type(e).__name__}: {e}"
+            return f"Error: translation failed — {type(e).__name__}: {e}"
 
     @staticmethod
     def _format_elapsed(seconds: float) -> str:

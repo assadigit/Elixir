@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from core.llm import ModelManager, ModelType
 from core.models import ConversionRequest, Segment
+from core.system.timeouts import SLOW_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -46,7 +47,7 @@ class SemanticSegmenter:
             self.ollama_base_url = Settings().get_ollama_url()
         except Exception:
             self.ollama_base_url = "http://localhost:11434"
-        self.timeout = 180  # 3 minutes
+        self.timeout = SLOW_LLM_TIMEOUT_S  # 3 minutes
 
     def _build_prompt(self, text_sample: str, total_pages: int) -> str:
         return f"""You are an expert document analyst.

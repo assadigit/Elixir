@@ -55,6 +55,7 @@ from core.summarisation.gap_filler import gap_fill_concepts as gf_gap_fill_conce
 from core.summarisation.summary_validator import (
     compute_coverage as sv_compute_coverage,
 )
+from core.system.timeouts import SHORT_LLM_TIMEOUT_S
 
 # V18.2.14 (B4): traceable error-handling helpers — replace silent
 # ``except Exception: pass`` with ``log_swallow()`` so failures leave a
@@ -128,7 +129,11 @@ class SummarizerCoverageMixin:
                         prompt, max_tokens=200, temperature=self.fusion_cloud_temperature
                     )
                 else:
-                    raw = self._call_fast_llm(prompt, max_tokens=200)
+                    # V0.6.14: _call_fast_llm retired — the ONE model handles
+                    # the focused gap-fill call via the primary retry path.
+                    # temperature=1.0 is byte-identical to the old router's
+                    # single-mode forwarding (its default), NOT self.temperature.
+                    raw = self._call_llm_with_empty_retry(prompt, max_tokens=200, temperature=1.0)
                 if not raw:
                     return None
                 raw = self._strip_thinking(raw).strip()
@@ -146,7 +151,7 @@ class SummarizerCoverageMixin:
                 futures = {executor.submit(_fill_one, pair): pair for pair in gap_pairs}
                 for future in concurrent.futures.as_completed(futures):
                     try:
-                        bp = future.result(timeout=120)
+                        bp = future.result(timeout=SHORT_LLM_TIMEOUT_S)
                         if bp:
                             new_bullets.append(bp)
                     except Exception as _e:
@@ -473,9 +478,8 @@ class SummarizerCoverageMixin:
             coverage_threshold=self.coverage_threshold,
             prompt_manager=self.prompt_manager,
             recover_vram=self._recover_vram,
-            call_fast_llm=self._call_fast_llm,
+            call_llm=self._call_llm_with_empty_retry,
             strip_thinking=self._strip_thinking,
-            switch_to_fast_model=self._switch_to_fast_model,
             set_last_coverage=lambda pct: setattr(self, "_last_coverage", pct),
             log=self.log,
         )

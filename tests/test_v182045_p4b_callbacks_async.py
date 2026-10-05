@@ -53,10 +53,9 @@ from __future__ import annotations
 
 import ast
 import sys
-import types
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -69,11 +68,6 @@ if str(_project_root) not in sys.path:
 # in this sandbox; the stub keeps the eager core.pipeline import chain
 # loadable so the controller behavioral tests can construct a REAL
 # Controller).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from utils.settings import Settings  # noqa: E402
 
 _CONTROLLER = _project_root / "controller.py"
@@ -555,7 +549,10 @@ class TestWizardAsyncModelsPins:
         assert "self.refresh_btn.setEnabled(True)" in body
         assert "No models found" in body, "the empty-models information box must survive verbatim"
         assert "ollama pull gemma4-12b:latest" in body
-        for attr in ("summ_combo", "ocr_combo", "fast_combo"):
+        # V0.6.14 (single-model order): "fast_combo" removed from the
+        # tuple — the fast-model picker row is RETIRED from step5 (one
+        # model does every LLM task); the surviving combos keep the pin.
+        for attr in ("summ_combo", "ocr_combo"):
             assert f"self.{attr}.currentData()" in body
         assert "combo.clear()" in body
         assert "combo.addItem" in body
@@ -593,23 +590,10 @@ class TestSectionsAsyncModelsPins:
         src = _src(_HELPERS)
         assert "from ui_qt.components.simple_worker import SimpleWorker" in src
 
-    def test_populate_models_async_helper_shape(self):
-        """The module-level constructor-site helper: fetch on the worker,
-        populate on the main thread, worker ref kept on the combo,
-        fail-soft on error."""
-        body = _func_src(_HELPERS, "_populate_models_async")
-        assert "SimpleWorker(_get_ollama_models, controller)" in body
-        assert "combo._models_worker = worker" in body, (
-            "the combo must hold a Python ref to the worker (QObject GC)"
-        )
-        assert "worker.finished.connect(_apply)" in body
-        assert "worker.failed.connect" in body
-        assert "worker.start()" in body
-        # V0.13: format-wrapped — pin the arg list on its continuation line
-        assert (
-            "combo, models or [], current=current, allow_empty=allow_empty, prefer_ocr=prefer_ocr"
-            in body
-        )
+    # V0.6.14 (single-model order): test_populate_models_async_helper_shape
+    # REMOVED (1 test) — the helper is dead code with the fast-model combo
+    # (its only caller); the shared _refresh_models_async contract is pinned
+    # by test_shared_refresh_helper_contract below.
 
     def test_no_sync_populate_receives_get_ollama_models(self):
         """THE W-b11 core regression pin: no synchronous ``_populate_models``
@@ -676,13 +660,12 @@ class TestSectionsAsyncModelsPins:
 
     def test_ai_local_section_populate_semantics_kept(self):
         body = _func_src(_AI_MODEL_SECTION, "_on_models_loaded", "AiLocalModelSection")
-        for combo in ("summary_combo", "fast_model_combo", "heavy_combo", "simplification_combo"):
-            assert f"self.{combo}" in body
-        assert body.count("allow_empty=True") == 2
+        # V0.6.14 (single-model order): the fast/heavy/simplification
+        # combo pins + their settings keys REMOVED (the rows are RETIRED —
+        # one model does every LLM task); the surviving pin is the ONE
+        # summary combo populated from summarisation.model.
+        assert "self.summary_combo" in body
         assert "summarisation.model" in body
-        assert "summarisation.fast_model" in body
-        assert "summarisation.heavy_model" in body
-        assert "summarisation.simplification_model" in body
 
     def test_defaults_section_populate_semantics_kept(self):
         body = _func_src(_DEFAULTS_SECTION, "_on_models_loaded", "DefaultsSection")
@@ -717,17 +700,23 @@ class TestSectionsAsyncModelsPins:
 
     def test_constructor_time_populates_are_async(self):
         """The blocking constructor-time sites (~337/347/354 + reload
-        ~613/621 in the SWOT) are replaced by _populate_models_async."""
+        ~613/621 in the SWOT) are replaced by the async path.
+
+        V0.6.14 (single-model order): the fast-model combo and its
+        dedicated ``_populate_models_async`` call are RETIRED — the ONE
+        summary combo is populated through ``_refresh_models`` →
+        ``_refresh_models_async`` (the shared helper, pinned in
+        test_three_sections_refresh_via_shared_helper). The W-b11
+        property pinned here survives: NO blocking populate at
+        construction or reload."""
         init = _func_src(_AI_MODEL_SECTION, "__init__", "AiLocalModelSection")
-        # V0.13: format-wrapped — combo + controller on the following line
-        assert (
-            "_populate_models_async(\n            self.fast_model_combo,\n            controller,"
-            in init
+        assert "_populate_models(" not in init, (
+            "constructor must not run a blocking populate (W-b11)"
         )
-        # the fast-combo ↻ refresh click routes through the async helper
-        assert "lambda: _populate_models_async(" in init
+        assert "self._refresh_models()" in init
         reload_src = _func_src(_AI_MODEL_SECTION, "reload", "AiLocalModelSection")
-        assert "_populate_models_async(\n            self.fast_model_combo, c," in reload_src
+        assert "_populate_models(" not in reload_src
+        assert "self._refresh_models()" in reload_src
         # ...and the synchronous shapes are gone everywhere in the package
         src = _sections_all_src()
         assert "lambda: _populate_models(" not in src
@@ -735,10 +724,18 @@ class TestSectionsAsyncModelsPins:
     def test_fetch_models_from_is_widget_free(self):
         """AiLocalModelSection's fetch must be callable on the worker
         thread: the URL is snapshotted on the main thread and the actual
-        fetch takes it as a plain argument (no combo reads)."""
+        fetch takes it as a plain argument (no combo reads).
+
+        V0.6.8 (audit B5, contract evolution): the fetch now routes through
+        the shared proxy-proof transports (list_llamacpp_models for the
+        OpenAI-style LM Studio probe, list_ollama_models for /api/tags)
+        instead of a self-built requests.Session — the old
+        ``assert "requests" in body`` pin was updated to the new transport
+        contract. The widget-free property is unchanged."""
         body = _func_src(_AI_MODEL_SECTION, "_fetch_models_from", "AiLocalModelSection")
         assert "def _fetch_models_from(self, url: str)" in body
-        assert "requests" in body
+        assert "list_llamacpp_models(" in body
+        assert "list_ollama_models(" in body
         assert "self." not in body.replace("def _fetch_models_from(self, url: str)", ""), (
             "_fetch_models_from must not touch any widget (worker-safe)"
         )

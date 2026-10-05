@@ -191,10 +191,26 @@ _BLOCK_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 # Run-in patterns: (style, compiled regex with group: marker).
+#
+# V0.5.20 (the rig-run-2 layout family): the marker may sit at a
+# PARAGRAPH TAIL — ``\((N)\)`` immediately followed by end-of-paragraph
+# or by ONE sentence punctuation char + end (``…, and (4).``) — the
+# V0.5.19.1 full-book run's dangling-marker defect: the extractor's page
+# boundary left the item-(4) marker at the end of a paragraph with a
+# period after it and the item content in the NEXT paragraph; the old
+# ``\)\s``-only shape never matched the marker, so the run-in run stopped
+# at (3) and the shipped guarantee bullet ended ``…, and (4).`` with the
+# content dropped. ``[.,;:]?(?=\s|$)`` accepts: whitespace (the legacy
+# shape), one punctuation char + whitespace (``(4). absence…`` after the
+# V0.5.20 join — the punct is consumed into the match so the item text
+# starts clean), or punctuation/string-end (``…and (4).`` / ``…and (4)``).
+# Mid-text false matches stay impossible-to-matter: a marker only counts
+# inside a consecutive ≥2-marker run (the grouping + style minimums), and
+# a ``(N).`` that chains after (1)(2)(3) IS the list's next item.
 _RUNIN_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("runin_arabic", re.compile(r"\((\d{1,2})\)\s")),
-    ("runin_alpha", re.compile(r"\(([a-z])\)\s")),
-    ("runin_roman", re.compile(r"\(([ivxlc]{1,5})\)\s")),
+    ("runin_arabic", re.compile(r"\((\d{1,2})\)[.,;:]?(?=\s|$)")),
+    ("runin_alpha", re.compile(r"\(([a-z])\)[.,;:]?(?=\s|$)")),
+    ("runin_roman", re.compile(r"\(([ivxlc]{1,5})\)[.,;:]?(?=\s|$)")),
     (
         "ordinal",
         re.compile(
@@ -592,17 +608,30 @@ def _join_split_runin_paragraphs(source_text: str) -> str:
     uncovered items escaped the enumeration guarantee entirely.
 
     This pre-pass joins paragraph A to B when ALL hold:
-      * A's tail after its LAST run-in marker lacks terminal punctuation
-        (the item was cut mid-phrase);
+      * A's tail after its LAST run-in marker is OPEN (V0.5.20: cut
+        mid-phrase OR empty/punctuation-only — the marker awaits its
+        content);
       * A's last run-in marker belongs to a consecutive run of ≥ 2 same-
         style markers (a real list, not a lone ``(1983)`` citation);
-      * B's FIRST run-in marker of the SAME style is exactly the next
-        sequential marker;
-      * B's pre-marker text (the item's continuation) is < 300 chars and
-        B does not open with a block marker or heading.
+      * EITHER B's FIRST run-in marker of the SAME style is exactly the
+        next sequential marker (pre-marker text < 300 chars) — the
+        V0.5.19.1 rule — OR (V0.5.20) B opens lowercase and carries NO
+        same-style marker (the final-item continuation: the list's last
+        item's text continues in B) — see ``_paragraphs_joinable``;
+      * B does not open with a block marker or heading.
+
+    V0.5.20 (page boundaries): when up to 2 PAGE-FURNITURE paragraphs
+    (bare page numbers, short ALL-CAPS running headers —
+    ``core.common.layout_furniture``) sit between A and B, the join looks
+    PAST them (a page boundary in the 397-page full-book extraction
+    inserts exactly these artifact paragraphs between a list and its
+    continuation). The furniture paragraphs stay in the rebuilt text
+    (nothing is dropped); only A and B are merged.
 
     Purely deterministic; joins repeat until stable (a 3-way split joins
-    twice). Never raises — any failure returns the input unchanged.
+    twice), at most 3 joins per paragraph per pass (the V0.5.19
+    inline-list-join bound). Never raises — any failure returns the input
+    unchanged.
     """
     try:
         if not source_text:
@@ -610,6 +639,8 @@ def _join_split_runin_paragraphs(source_text: str) -> str:
         paragraphs = _paragraphs(source_text)
         if len(paragraphs) < 2:
             return source_text
+        from core.common.layout_furniture import is_furniture_paragraph
+
         changed = True
         guard = 0
         while changed and guard < 50:
@@ -619,16 +650,35 @@ def _join_split_runin_paragraphs(source_text: str) -> str:
             i = 0
             while i < len(paragraphs):
                 cur_text, cur_line = paragraphs[i]
-                nxt_text, nxt_line = paragraphs[i + 1] if i + 1 < len(paragraphs) else ("", 0)
-                if nxt_text and _paragraphs_joinable(cur_text, nxt_text):
+                joins = 0
+                while joins < 3:
+                    # the join candidate: the next NON-furniture paragraph,
+                    # looking past up to 2 furniture paragraphs (page
+                    # boundaries — V0.5.20).
+                    j = i + 1
+                    _furniture_seen = 0
+                    while (
+                        j < len(paragraphs)
+                        and _furniture_seen < 2
+                        and is_furniture_paragraph(paragraphs[j][0])
+                    ):
+                        j += 1
+                        _furniture_seen += 1
+                    if j >= len(paragraphs):
+                        break
+                    nxt_text, _nxt_line = paragraphs[j]
+                    if not _paragraphs_joinable(cur_text, nxt_text):
+                        break
+                    # the furniture paragraphs between A and B stay in the
+                    # rebuilt text (in place, before the merged paragraph —
+                    # nothing is dropped); A absorbs B entirely.
+                    out.extend(paragraphs[i + 1 : j])
                     cur_text = cur_text.rstrip() + " " + nxt_text.lstrip()
-                    # absorb B entirely; A+B becomes one paragraph
-                    out.append((cur_text, cur_line))
-                    i += 2
+                    i = j
                     changed = True
-                else:
-                    out.append((cur_text, cur_line))
-                    i += 1
+                    joins += 1
+                out.append((cur_text, cur_line))
+                i += 1
             paragraphs = out
         # rebuild the text with the original leading/trailing structure
         # preserved: paragraphs joined by one blank line, in order.
@@ -637,8 +687,71 @@ def _join_split_runin_paragraphs(source_text: str) -> str:
         return source_text
 
 
+def _runin_tail_open(tail: str) -> bool:
+    """V0.5.20: the open-item predicate for a run-in list's tail (the text
+    after the list's LAST marker).
+
+    OPEN (joinable) shapes:
+      * EMPTY — the marker sits at the paragraph end awaiting its content
+        (``…, and (4)`` at the break; the widened tail-marker pattern now
+        matches it) — the strongest truncation signal there is;
+      * PUNCTUATION-ONLY — ``.`` / ``;`` / ``and``-remnant with no word
+        characters (``…, and (4).`` — the rig-run-2 dangling-marker
+        layout: the extractor's page break left the period attached to
+        the marker and the item content in the next paragraph);
+      * mid-phrase — no sentence-terminal punctuation (the V0.5.19.1
+        ch.9 six-grounds item-(5) comma-tail shape).
+    CLOSED: anything ending in terminal punctuation with word content
+    (a complete item — the list is done).
+    """
+    t = (tail or "").strip()
+    if not t:
+        return True
+    if not re.search(r"\w", t):
+        return True
+    return t[-1] not in ".!?\u201d\u2019"
+
+
 def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
-    """True when paragraph B continues paragraph A's open run-in list."""
+    """True when paragraph B continues paragraph A's open run-in list.
+
+    V0.5.19.1 (the wrapped-continuation family): the next-sequential
+    marker is searched in B's FULL paragraph text, not just its first
+    physical line — a PDF hard-wrap puts the continuation marker on a
+    LATER line of B (the ch.9 six-grounds list: B opens "while the
+    second type shows … two sexes; and (6) …" — (6) sits ~2 wrapped
+    lines in; the first-line-only search never found it, so the join
+    never fired and the guarantee bullet carried 5/6 with item (5)
+    truncated at the break). The pre-marker continuation-length guard
+    (< 300 chars, now measured across the wrapped lines) keeps the
+    new-topic-paragraph rejection.
+
+    V0.5.20 (the marker-sequence-driven form — the rig-run-2
+    layout-independence fix): the join no longer requires a NEXT MARKER
+    in B. Two rules, both driven by the MARKER SEQUENCE + the open-tail
+    predicate (``_runin_tail_open``) instead of paragraph-structure
+    guesses, so they hold across arbitrary line/paragraph/page
+    boundaries:
+
+      (c) the V0.5.19.1 rule — B carries the next-sequential marker of
+          A's style (pre-marker continuation ≤ 300 chars);
+      (d) the FINAL-ITEM continuation — the list's last item is cut
+          mid-phrase (or its marker tail is EMPTY/punctuation-only) and B
+          opens with a LOWERCASE letter and carries NO same-style marker
+          (nothing for rule (c); the lowercase start is the mid-sentence
+          continuation shape). This is the family the V0.5.19.1 run
+          shipped broken: the "Reveals" list's ``…, and (4).`` + the
+          item-(4) content in the next paragraph (the dangling marker),
+          and the DSM-III histrionic criteria item (iv) truncated at
+          "embraces casual" with "acquaintances with excessive ardor, …"
+          on the far side of a blank line. Bounded: joined length
+          ≤ 6000 chars (the V0.5.19 inline-list join bound), paren styles
+          only (ordinal word-markers keep the legacy rule (c) form).
+
+    A same-style marker in B that is NOT next-sequential blocks rule (d)
+    for that style (B opens a new list — gluing it onto A's would corrupt
+    both).
+    """
     try:
         b_first = b_text.split("\n", 1)[0].strip()
         if not b_first or b_first.startswith("#"):
@@ -663,21 +776,35 @@ def _paragraphs_joinable(a_text: str, b_text: str) -> bool:
                     break
             if run_len < 2 or a_last_idx is None:
                 continue
-            # A's item text after the last marker must be cut mid-phrase
-            tail = a_text[a_last.end() :].strip()
-            if not tail or tail[-1] in ".!?\u201d\u2019":
+            # V0.5.20: the open-tail predicate — a mid-phrase cut OR an
+            # empty/punctuation-only marker tail (the dangling-marker
+            # layout) is open; a complete sentence is not.
+            tail = a_text[a_last.end() :]
+            if not _runin_tail_open(tail):
                 continue
-            # B must open with the NEXT sequential marker of the same style
-            b_first_m = pat.search(b_first)
-            if not b_first_m:
+            # Rule (c): B carries the NEXT sequential marker of the same
+            # style (V0.5.19.1: anywhere in B — a PDF hard-wrap may put it
+            # on a later physical line, not just the first).
+            b_first_m = pat.search(b_text)
+            if b_first_m:
+                b_idx = _marker_index(seq, b_first_m.group(1)) if seq else None
+                if b_idx is not None and b_idx == a_last_idx + 1:
+                    # B's pre-marker continuation must be short (an item
+                    # tail, not a new topic paragraph that happens to
+                    # contain (n+1))
+                    pre = b_text[: b_first_m.start()].strip()
+                    if len(pre) <= 300:
+                        return True
+                # a same-style marker that is not next-sequential: B is a
+                # new list/topic — rule (d) must not fire for this style
                 continue
-            b_idx = _marker_index(seq, b_first_m.group(1)) if seq else None
-            if b_idx is None or b_idx != a_last_idx + 1:
+            # Rule (d): the final-item continuation — no marker in B, B
+            # opens lowercase (mid-sentence), bounded join.
+            if style == "ordinal":
                 continue
-            # B's pre-marker continuation must be short (an item tail, not
-            # a new topic paragraph that happens to contain (n+1))
-            pre = b_first[: b_first_m.start()].strip()
-            if len(pre) > 300:
+            if not b_text.lstrip()[:1].islower():
+                continue
+            if len(a_text) + len(b_text) + 1 > 6000:
                 continue
             return True
         return False

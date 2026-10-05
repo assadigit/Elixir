@@ -51,6 +51,28 @@ from utils.token_counter import count_tokens
 logger = get_main_logger()
 
 
+def _v0512_get_glossary(heading: str) -> dict | None:
+    """V0.5.12: retrieve the source glossary from the verification LAYER's
+    module-level side-channel cache (populated by ``_extract_glossary_for_call``
+    in ``primary_call.py`` via ``set_chapter_glossary``).
+
+    The V0.5.11 audit found the glossary was extracted + persisted + cross-
+    referenced by the LAYER, but NOT passed to the gap-fill → the V0.5.6
+    final-check round 4 didn't fire → 9 authors stayed missing. This helper
+    bridges the gap: it reads the glossary from the side-channel so the
+    gap-fill can use it.
+
+    Fail-open: returns None if the side-channel is empty (the gap-fill falls
+    back to the V0.5.10 regex ``extract_citations`` fallback).
+    """
+    try:
+        from core.summarisation.verification_phase import get_chapter_glossary
+
+        return get_chapter_glossary(heading)
+    except Exception:  # noqa: BLE001 — fail-open
+        return None
+
+
 class SummarizerChapterPhasesMixin:
     """Chapter-phase methods for :class:`Summarizer` (see module docstring)."""
 
@@ -164,7 +186,18 @@ class SummarizerChapterPhasesMixin:
             # to catch cross-stage redundancy that rapidfuzz missed.
             try:
                 before_count = len(bullets)
-                bullets = self._semantic_dedup_bullets(bullets)
+                # V0.5.18: the author-coverage veto (source roster + exec/
+                # thorough context + the promotion guard's source text) —
+                # the uniquely-named-author-bullet drop pattern fixed at
+                # THIS removal layer too.
+                from core.summarisation.author_anchor import source_author_surnames
+
+                bullets = self._semantic_dedup_bullets(
+                    bullets,
+                    source_authors=source_author_surnames(content),
+                    context_text="\n".join([exec_sum or "", thorough or ""]),
+                    source_text=content,
+                )
                 after_count = len(bullets)
                 if before_count != after_count:
                     self.log(
@@ -326,11 +359,39 @@ class SummarizerChapterPhasesMixin:
                             _analysis,
                             _det_authors,
                             check_coverage=check_coverage,
-                            call_fast_llm=self._call_fast_llm,
+                            call_llm=self._call_llm_with_empty_retry,
                             temperature=self.temperature,
                             strip_thinking=self._strip_thinking,
                             filter_thinking_bullets=self._filter_thinking_bullets,
                             log=self.log,
+                            # V0.5.12: pass the glossary from the side-channel
+                            # (populated by _extract_glossary_for_call in
+                            # primary_call.py via set_chapter_glossary). This
+                            # enables the V0.5.6 final-check round 4 (the
+                            # glossary-grounded targeted gap-fill) + the V0.5.6
+                            # loosened quote-guard for glossary-sourced authors.
+                            # The V0.5.11 audit found this wiring was MISSING —
+                            # the glossary was extracted + persisted + cross-
+                            # referenced by the LAYER, but NOT passed to the
+                            # gap-fill → the V0.5.6 final-check didn't fire →
+                            # 9 authors stayed missing.
+                            source_glossary=_v0512_get_glossary(heading),
+                            # V0.5.10: pass the analysis-extracted author
+                            # list (the runtime regex extract_citations
+                            # output) as the regex_confirmed_authors for
+                            # the loosened quote-guard FALLBACK. When the
+                            # LLM glossary is unavailable (the V0.5.6→V0.5.9
+                            # audit reality — the glossary call STILL fails
+                            # because the master-summary returns EMPTY), the
+                            # loosened V0.5.6 override never fires. The
+                            # V0.5.10 fallback loosens the veto for REGEX-
+                            # confirmed authors too (the deterministic
+                            # source-roster the LAYER already trusts as the
+                            # V0.5.5 fallback when no glossary is available).
+                            # Content-agnostic (Rule 1 ✓): _det_authors is
+                            # the runtime extract_citations output, no
+                            # hardcoded names.
+                            regex_confirmed_authors=_det_authors,
                         )
 
                     # V17.7: Inject ALL lists from the source as a dedicated
@@ -396,8 +457,6 @@ class SummarizerChapterPhasesMixin:
         _inc_kp_lp,
         _src_words_lp,
         _th_hi_lp,
-        _bp_lo_lp,
-        _bp_hi_lp,
     ):
         # V18.15.9.0: Ensure the source's enumerated conclusions (e.g., the 7
         # characteristics of solid identity) appear as a DISTINCT bullet group.
@@ -452,7 +511,20 @@ class SummarizerChapterPhasesMixin:
         try:
             _before2 = len(bullets)
             _dedup_started = time.time()
-            bullets = self._semantic_dedup_bullets(bullets)
+            # V0.5.18: the author-coverage veto on the post-gap-fill pass —
+            # the ch.9 operator-rig run lost two uniquely-named-author
+            # bullets HERE (round 4 accepted them; this pass dropped them
+            # as sim-twins 95→87). Roster + exec/thorough context + source
+            # text so the veto (and its parenthetical-promotion guard) can
+            # judge the drop.
+            from core.summarisation.author_anchor import source_author_surnames
+
+            bullets = self._semantic_dedup_bullets(
+                bullets,
+                source_authors=source_author_surnames(content),
+                context_text="\n".join([exec_sum or "", thorough or ""]),
+                source_text=content,
+            )
             if len(bullets) != _before2:
                 self.log(
                     f"    🧹 V18.20.3.2: Post-gap-fill semantic dedup: "
@@ -553,18 +625,10 @@ class SummarizerChapterPhasesMixin:
             # User directive: bullets can be as long as necessary for full
             # coverage. The count reducers are the non-skippable semantic
             # dedup + consolidation + the V0.4.23 filler floor — never a
-            # numeric cap. This block now only reports honestly when the
-            # count exceeds the historical guidance range.
-            if _inc_kp_lp and len(bullets) > _bp_hi_lp:
-                self.log(
-                    f"    ℹ️ V0.4.23: {len(bullets)} bullets ship (guidance "
-                    f"floor was {_bp_lo_lp}-{_bp_hi_lp} for a "
-                    f"{_src_words_lp}-word chapter) — NO CAP (user "
-                    f"directive: full coverage; dedup/consolidation are the "
-                    f"reducers, not truncation).",
-                    "INFO",
-                )
-                parsed["bullet_points"] = bullets
+            # numeric cap. V0.5.2 (user directive): the guidance-floor log
+            # line is REMOVED — never set any standard for bullet count.
+            # parsed["bullet_points"] = bullets
+            parsed["bullet_points"] = bullets
 
             # ── V0.06 (rig audit F7-a — GENERAL RULE: Tier-3 excerpts are
             # re-validated against the FINAL summary at ship time) ────────
@@ -999,10 +1063,103 @@ class SummarizerChapterPhasesMixin:
             include_executive_summary=_inc_exec_lp,
             include_thorough_summary=_inc_thorough_lp,
             include_keypoints=_inc_kp_lp,
+            # V0.5.4 (Track B3+B4+C1): the runtime-extracted structured
+            # content from the chapter source — reproduced tables,
+            # reproduced diagnostic criteria, and the author→ALL-CAPS-
+            # section map used by the renderer to group bullets under
+            # the source's section headings. ALL populated from the
+            # deterministic analyzer (no LLM, no hardcoded names —
+            # Rule 1 compliant). The renderer is the consumer; here we
+            # only stamp the result. Empty list (the deterministic
+            # extractor returns [] when no marker is found) = the
+            # renderer emits no extra section (byte-identical to legacy).
+            source_section_map=self._extract_source_section_map(),
+            reproduced_tables=self._extract_reproduced_tables(),
+            reproduced_criteria=self._extract_reproduced_criteria(),
+            # V0.5.6 (Phase 0.5 — source glossary): the runtime-extracted
+            # source roster parsed from the master-summary LLM call's
+            # ``<name_glossary>`` block. Populated by the master-summary
+            # call sites (``_chunked_summarize`` + the map-reduce master-
+            # summary derivation in ``_summarize_inner``) via
+            # ``glossary_parser.extract_persist_and_cross_reference_glossary``
+            # — the parser runs INSIDE the master-summary call (fail-open),
+            # persists to ``summaries/.glossaries/<slug>.glossary.md``, and
+            # cross-references against ``extract_citations``. Empty dict =
+            # fail-open (the LLM didn't emit a ``<name_glossary>`` block;
+            # the verification LAYER falls back to the regex). The
+            # verification LAYER (V056-VERIFICATION-LAYER subagent) reads
+            # this field as the coverage ground truth — richer than the
+            # regex (catches multi-word surnames + provides a 1-sentence
+            # context per name).
+            source_glossary=dict(
+                parsed.get("source_glossary") or _v0512_get_glossary(heading) or {}
+            ),
         )
 
     # ─────────────────────────────────────────────────────────────────────────
     # V10.28.0 (Sprint 1.4): Quarantine recovery pass
+
+    # V0.5.4 (Track B3+B4+C1): thin delegate helpers that extract structured
+    # content from the chapter source via the deterministic analyzer. The
+    # extracted payloads are stamped onto the SummaryResult and consumed by
+    # ``render_summary_markdown``. They NEVER raise: any analyzer exception
+    # is logged at WARNING and the field stays empty (legacy behavior —
+    # the renderer falls back to the byte-identical legacy output). The
+    # delegates live on the Summarizer so the source text is read once per
+    # chapter (the existing ``self._source_text`` populated by
+    # ``_phase_setup_and_gate``) and so test fixtures that bypass the
+    # Summarizer can populate the fields directly without invoking the
+    # analyzer.
+    def _extract_source_section_map(self) -> list:
+        """V0.5.4 (Track C1): author→ALL-CAPS-section map for the renderer."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                map_authors_to_all_caps_sections,
+            )
+
+            return map_authors_to_all_caps_sections(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 C1: source_section_map extraction crashed (non-fatal, "
+                "renderer will fall back to flat list): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
+
+    def _extract_reproduced_tables(self) -> list:
+        """V0.5.4 (Track B3): explicit ``TABLE N-N.`` tables for the renderer."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                extract_structured_tables,
+            )
+
+            return extract_structured_tables(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 B3: reproduced_tables extraction crashed (non-fatal, "
+                "renderer will emit no tables section): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
+
+    def _extract_reproduced_criteria(self) -> list:
+        """V0.5.4 (Track B4): ``a. b. c. d.`` + ``(i) (ii)`` criteria clusters."""
+        try:
+            from core.preprocessing.deterministic_analyzer import (
+                extract_structured_criteria,
+            )
+
+            return extract_structured_criteria(getattr(self, "_source_text", "") or "")
+        except Exception as _e:
+            logger.warning(
+                "V0.5.4 B4: reproduced_criteria extraction crashed (non-fatal, "
+                "renderer will emit no criteria section): %s: %s",
+                type(_e).__name__,
+                _e,
+            )
+            return []
 
     def _phase_setup_and_gate(self, heading, content, book_context):
         """V0.18 (Phase 5.1): moved VERBATIM from _summarize_inner."""
@@ -1351,10 +1508,8 @@ class SummarizerChapterPhasesMixin:
         # When disabled, coverage falls through to 3-Tier + gap-fill +
         # over-delivery, which is deterministic and targeted.
         if (
-            round(coverage, 2) < self.coverage_threshold
-            and not self.heavy_model
-            and self.b3_voting_enabled
-        ):  # V15.1.1: gated
+            round(coverage, 2) < self.coverage_threshold and self.b3_voting_enabled
+        ):  # V15.1.1: gated (V0.6.14: heavy_model gate retired — single model)
             self.log(
                 f"    🔄 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – trying multi-sample voting (B3)…",
                 "INFO",
@@ -1385,48 +1540,9 @@ class SummarizerChapterPhasesMixin:
                 "INFO",
             )
 
-        if coverage < self.coverage_threshold and self.heavy_model:
-            self.log(
-                f"    🔥 Coverage {coverage:.0%} < {self.coverage_threshold:.0%} – using heavy model: {self.heavy_model}",
-                "INFO",
-            )
-            heavy_result = self._summarize_with_model(
-                heading, text, self.heavy_model, self.temperature * 0.5, with_cot=True
-            )
-            if heavy_result:
-                _hbps = [
-                    str(b) if not isinstance(b, str) else b
-                    for b in heavy_result.get("bullet_points", [])
-                    if b
-                ]
-                heavy_combined = f"{heavy_result.get('executive_summary', '')} {' '.join(_hbps)} {heavy_result.get('thorough_summary', '')}"
-                heavy_coverage = self._compute_coverage(content, heavy_combined)
-                self.log(f"    📊 Heavy coverage: {heavy_coverage:.0%}", "INFO")
-                if heavy_coverage > coverage:
-                    merged_bullets = list(heavy_result.get("bullet_points", []))
-                    for bp in result.get("bullet_points", []):
-                        if bp not in merged_bullets:
-                            merged_bullets.append(bp)
-                    result["executive_summary"] = heavy_result.get(
-                        "executive_summary", result.get("executive_summary", "")
-                    )
-                    result["thorough_summary"] = heavy_result.get(
-                        "thorough_summary", result.get("thorough_summary", "")
-                    )
-                    result["bullet_points"] = merged_bullets[: self.max_bullets_per_chapter]
-                    result["model"] = "primary+heavy"
-                    self.log("    ✅ Merged primary + heavy summaries", "INFO")
-                else:
-                    for bp in heavy_result.get("bullet_points", []):
-                        if bp not in result.get("bullet_points", []):
-                            result["bullet_points"].append(bp)
-                    result["bullet_points"] = result["bullet_points"][
-                        : self.max_bullets_per_chapter
-                    ]
-                    result["model"] = "primary+heavy_bullets"
-                    self.log("    ✅ Added unique heavy bullets to primary summary", "INFO")
-            else:
-                self.log("    ⚠️ Heavy model returned no response, keeping primary", "WARNING")
+        # V0.6.14 (single-model order): the heavy-model coverage
+        # fallback block is retired — ONE model; low coverage relies on
+        # gap-fill + over-delivery + the 3-Tier Guarantee below.
 
         # ── V13.32.8: 3-Tier Coverage Guarantee System ──────────────────
         # V15.1.0: Use _effective_target (over-delivery target when enabled,
@@ -1552,9 +1668,6 @@ class SummarizerChapterPhasesMixin:
         # thorough is short RELATIVE TO ITS SCALED TARGET — and never when
         # the user did not request a thorough summary at all (F9a).
         from core.summarisation.length_policy import (
-            bullet_target as _bp_target_lp,
-        )
-        from core.summarisation.length_policy import (
             count_source_words as _csw_lp,
         )
         from core.summarisation.length_policy import (
@@ -1563,7 +1676,6 @@ class SummarizerChapterPhasesMixin:
 
         _src_words_lp = _csw_lp(text)
         _th_lo_lp, _th_hi_lp = _th_target_lp(_src_words_lp)
-        _bp_lo_lp, _bp_hi_lp = _bp_target_lp(_src_words_lp)
         _inc_thorough_lp = bool(getattr(self.request, "include_thorough_summary", True))
         _inc_exec_lp = bool(getattr(self.request, "include_executive_summary", True))
         _inc_kp_lp = bool(getattr(self.request, "include_keypoints", True))
@@ -1676,23 +1788,19 @@ class SummarizerChapterPhasesMixin:
         # V18.15.4.3: Raised threshold 9000 -> 10000 tok (the V18.15.4.0 run hit
         # 9120 tok and the skip didn't fire, pushing past the 2400s deadline).
         # V0.05 (rig audit F9b — GENERAL RULE): the expansion floor/ceiling now
-        # SCALE to the source (length_policy.bullet_target) instead of the
-        # absolute "<30 → ask for 30-50". The V0.04 rig shipped 29-36 bullets
-        # for 321-441-word chapters (one bullet per ~12 source words — the
-        # chapter restated as bullets) because this machinery pushed every
-        # chapter toward 30+. A 340-word chapter's target is ~5-7 bullets; the
-        # expansion call does not fire at all when the primary already met the
-        # SCALED target. Also gated on the user's keypoints selection (F9a).
-        _skip_expansion = not _inc_kp_lp or bool(bullets and len(bullets) >= _bp_lo_lp)
-        if _skip_expansion and _inc_kp_lp:
-            self.log(
-                f"    V0.05: Skipping bullet expansion — {len(bullets or [])} bullets "
-                f"already meet the source-scaled target ({_bp_lo_lp}-{_bp_hi_lp} for "
-                f"a {_src_words_lp}-word chapter; gap-fill will handle missing "
-                f"concepts).",
-                "INFO",
-            )
-        elif not _inc_kp_lp:
+        # V0.5.2 (user directive): NEVER set a max/min/appropriate
+        # standard for the number of bullets. Bullets should be as many
+        # as needed — context-driven, not word-count-driven. A 7405-word
+        # chapter might have 5 or 50 bullets depending on the content.
+        # The V0.05 skip-expansion gate (which skipped bullet expansion
+        # when the count met a source-scaled target) is REMOVED. Bullet
+        # expansion now fires whenever the primary produced bullets +
+        # the user requested keypoints + the deadline allows —
+        # regardless of the count. The count reducers (dedup,
+        # consolidation, filler floor) stay; the count TARGET is gone.
+        # Also gated on the user's keypoints selection (F9a).
+        _skip_expansion = not _inc_kp_lp
+        if _skip_expansion:
             self.log(
                 "    V0.05 (F9a): Keypoints not requested — bullet expansion "
                 "disabled for this chapter.",
@@ -1701,12 +1809,11 @@ class SummarizerChapterPhasesMixin:
         if (
             _inc_kp_lp
             and bullets
-            and len(bullets) < _bp_lo_lp
             and not self._deadline_exceeded("dedicated bullet expansion")
             and not _skip_expansion
         ):
             self.log(
-                f"    ⚠️ Only {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
+                f"    ⚠️ {len(bullets)} bullets — requesting dedicated bullet expansion (full output budget)…",
                 "INFO",
             )
             _bp_raw = self._call_llm_with_empty_retry(
@@ -1809,8 +1916,6 @@ class SummarizerChapterPhasesMixin:
         else:
             self.log(f"    ✅ Final coverage {coverage:.0%}", "INFO")
         return (
-            _bp_hi_lp,
-            _bp_lo_lp,
             _inc_exec_lp,
             _inc_kp_lp,
             _inc_thorough_lp,

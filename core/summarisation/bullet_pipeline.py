@@ -209,17 +209,29 @@ class BulletPipeline:
         # V18.20.2.0 (SWOT-A2): from thresholds.py (was hardcoded 0.5).
         _P22_THRESHOLD = _SEMANTIC_FACT_CHECK_DROP
         # V18.2.30: short-circuit when embedder is unhealthy.
+        # V0.6.8 (audit B10): the guard used to swallow its own failure and
+        # PROCEED (guard can't guard) — an unavailable or crashing health
+        # check now fails SAFE: the phase is skipped (the F4 source-overlap
+        # drop still filters hallucinations without embeddings) and the
+        # failure is logged at WARNING instead of silently passing.
         try:
             from core.llm.model_singletons import is_embedder_healthy
 
-            if not is_embedder_healthy():
-                s.log(
-                    "    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)",
-                    "WARNING",
-                )
-                return
-        except Exception:
-            pass
+            _embedder_healthy = is_embedder_healthy()
+        except Exception as _e:
+            s.log(
+                "    ⏭️  Phase 2.2: embedder health check failed "
+                f"({type(_e).__name__}: {_e}) — skipping semantic fact-check "
+                "(fail-safe: health-check failure treated as unhealthy)",
+                "WARNING",
+            )
+            return
+        if not _embedder_healthy:
+            s.log(
+                "    ⏭️  Phase 2.2: embedder unhealthy — skipping semantic fact-check (would produce false drops on zero-vector similarity, then recovery would resurrect them = churn)",
+                "WARNING",
+            )
+            return
         try:
             from core.summarisation.text_preprocessor import semantic_fact_check
 
@@ -420,10 +432,26 @@ class BulletPipeline:
                 f"    📏 F1: exec={exec_wc}w, thorough={thorough_wc}w (source={_src_words}w; targets exec<={_ehi}w, thorough<={_thi}w)",
                 "DEBUG",
             )
+            # V0.6.2 (user-reported thin-book bug): the bullet words are part
+            # of the honest measurement — the user's defect is the COMBINED
+            # ratio ("exec summary + bullet point + thorough summary risen
+            # above the original source word count"), which the old log line
+            # could not even express. expansion_audit flags the combined
+            # ratio for thin sources (W < 800) at >= 1.0x the source.
+            # getattr: duck-typed callers/tests may carry a state without a
+            # bullets field — the measurement must never crash the stage.
+            _bullet_wc = sum(len(str(b).split()) for b in (getattr(state, "bullets", None) or []))
+            s.log(
+                f"    📏 F1: bullets={_bullet_wc}w — combined sections "
+                f"{exec_wc + _bullet_wc + thorough_wc}w / source {_src_words}w",
+                "DEBUG",
+            )
             # V0.05 honest measurement: the compression-ratio audit the rig
             # run was missing. A summary section in expansion territory is
             # a defect worth a visible WARNING, not a DEBUG line.
-            for _finding in expansion_audit(_src_words, exec_wc, thorough_wc):
+            for _finding in expansion_audit(
+                _src_words, exec_wc, thorough_wc, bullet_words=_bullet_wc
+            ):
                 s.log(f"    ⚠️ F1 ratio: {_finding}", "WARNING")
         except Exception as _e:
             logging.getLogger(__name__).debug("ignored %s: %s", type(_e).__name__, _e)
@@ -732,6 +760,49 @@ class BulletPipeline:
 
         validated: list[str] = []
         rejected = 0
+        # V0.5.16: degenerate-signal guard — the SAME V18.2.30 guard the
+        # main Phase 2.2 stage has (apply_phase22_semantic_fact_check,
+        # above) + thorough_theorist_floor._filter_unverified_additions.
+        # WHY: semantic_fact_check fails CLOSED when the embed model is
+        # unavailable (V18.1 S1: is_grounded=False, best_similarity=0.0,
+        # reason="embed_model_unavailable") — a Degenerate signal, not a
+        # real 0.00 similarity. On an embedder-less rig (no sentence-
+        # transformers, no Ollama embed model — e.g. a llama.cpp-only
+        # box), this rejected EVERY gap-fill bullet at "sim 0.00" while
+        # the deterministic F4 check (which needs no embedder) passed
+        # them — the V0.5.16 ch.1 repeatability run lost all 8 concept
+        # gap-fill bullets this way (56.8% author coverage vs the rig's
+        # 95%). Gap-fill bullets are ADD-CONTENT paths already gated by
+        # F4 (≥25% token overlap) + the loosened quote-guard: when the
+        # embedder is unhealthy, skip the semantic check (rely on F4),
+        # exactly like the main stage does.
+        _embedder_healthy = True
+        # V0.6.8 (review-loop follow-up, B10 class — fresh-eyes finding):
+        # the twin guard used to swallow its own failure and leave
+        # _embedder_healthy = True (fail-OPEN — the same "guard can't
+        # guard" pattern fixed one method earlier). Now fails SAFE: a
+        # crashed/unimportable health check skips the semantic check (F4
+        # still gates every bullet).
+        try:
+            from core.llm.model_singletons import is_embedder_healthy
+
+            _embedder_healthy = is_embedder_healthy()
+        except Exception as _e:
+            _embedder_healthy = False
+            summarizer.log(
+                "    ⏭️  Gap-fill validation: embedder health check failed "
+                f"({type(_e).__name__}: {_e}) — skipping Phase 2.2 "
+                "(fail-safe: F4 source-overlap still gates every bullet)",
+                "WARNING",
+            )
+        else:
+            if not _embedder_healthy:
+                summarizer.log(
+                    "    ⏭️  Gap-fill validation: embedder unhealthy — skipping "
+                    "Phase 2.2 (F4 source-overlap still gates every bullet; a "
+                    "zero-vector similarity would falsely reject them all)",
+                    "WARNING",
+                )
         for bullet in gap_bullets:
             # F4: token overlap check
             # V18.20.2.0 (SWOT-A2): thresholds from thresholds.py (was 0.25).
@@ -747,16 +818,30 @@ class BulletPipeline:
 
             # Phase 2.2: semantic fact-check
             # V18.20.2.0 (SWOT-A2): threshold from thresholds.py (was 0.50).
-            result = semantic_fact_check(bullet, source_text, threshold=_SEMANTIC_FACT_CHECK_DROP)
-            if not result.get("is_grounded", True):
-                summarizer.log(
-                    f"    🚫 Gap-fill bullet rejected (Phase 2.2 sim "
-                    f"{result.get('best_similarity', 0):.2f} < 0.50): "
-                    f"{bullet[:60]}...",
-                    "DEBUG",
+            # V0.5.16: skipped entirely when the embedder is unhealthy (see
+            # the guard above) + per-bullet fail-open on the explicit
+            # "embed_model_unavailable" reason (belt + braces: the health
+            # probe can pass while the model load still fails mid-run).
+            if _embedder_healthy:
+                result = semantic_fact_check(
+                    bullet, source_text, threshold=_SEMANTIC_FACT_CHECK_DROP
                 )
-                rejected += 1
-                continue
+                _unavailable = result.get("reason") == "embed_model_unavailable"
+                if not result.get("is_grounded", True) and not _unavailable:
+                    summarizer.log(
+                        f"    🚫 Gap-fill bullet rejected (Phase 2.2 sim "
+                        f"{result.get('best_similarity', 0):.2f} < 0.50): "
+                        f"{bullet[:60]}...",
+                        "DEBUG",
+                    )
+                    rejected += 1
+                    continue
+                if _unavailable:
+                    summarizer.log(
+                        "    ⏭️  Gap-fill validation: Phase 2.2 unavailable "
+                        "(embed model) — F4 overlap passed, bullet kept",
+                        "DEBUG",
+                    )
 
             validated.append(bullet)
 

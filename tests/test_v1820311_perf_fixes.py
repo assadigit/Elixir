@@ -30,19 +30,11 @@ Scope of this version (all approved by the user in the 2026-08-31 session):
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 # Stub the optional heavy deps exactly like tests/test_v18203_incremental_checkpoint.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 ROOT = Path(__file__).resolve().parent.parent
 
 from core.summarisation.bullet_consolidation import consolidate_bullets  # noqa: E402
@@ -300,13 +292,18 @@ class TestF2DedupThresholdAlignment:
 
     def test_delegate_passes_threshold_through(self):
         """Behavioral: the delegate passes its threshold to the validator
-        (monkeypatch the validator function the delegate binds)."""
+        (monkeypatch the validator function the delegate binds).
+
+        V0.5.18: the delegate also passes the author-coverage veto's
+        kwargs (source_authors / context_text / source_text) — the fake
+        accepts + records them."""
         from core.summarisation import summarizer as sz_mod
 
         captured = {}
 
-        def fake_dedup(bullets, threshold=None, log=None):
+        def fake_dedup(bullets, threshold=None, log=None, **veto_kwargs):
             captured["threshold"] = threshold
+            captured["veto_kwargs"] = veto_kwargs
             return bullets
 
         original = sz_mod.sv_semantic_dedup_bullets
@@ -317,10 +314,17 @@ class TestF2DedupThresholdAlignment:
                 _semantic_dedup_bullets = sz_mod.Summarizer._semantic_dedup_bullets
                 log = staticmethod(lambda msg, level="INFO": None)
 
-            _FakeSumm._semantic_dedup_bullets(_FakeSumm(), ["a bullet"])
+            _FakeSumm._semantic_dedup_bullets(
+                _FakeSumm(),
+                ["a bullet"],
+                source_authors=["Authorone"],
+                context_text="Authorone (1970) wrote.",
+                source_text="Authorone (1970) wrote the framework.",
+            )
         finally:
             sz_mod.sv_semantic_dedup_bullets = original
         assert captured["threshold"] == 0.85
+        assert captured["veto_kwargs"].get("source_authors") == ["Authorone"]
 
 
 # ═════════════════════════════════════════════════════════════════════════════

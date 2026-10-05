@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from functools import lru_cache
 
 from core.preprocessing.citations_regex import APOS as _CIT_APOS
 from core.preprocessing.citations_regex import NAME_SEP as _CIT_NAME_SEP
+from core.summarisation.author_anchor import (
+    STRUCTURAL_LABEL_WORDS as _BOLD_NAME_STRUCTURAL_LABELS,  # noqa: F401 — V0.5.19 alias
+)
+from core.summarisation.author_anchor import author_in_text
 from core.summarisation.postchecks.shared import (  # noqa: F401
     Issue,
     _is_subsequence,
@@ -24,15 +29,160 @@ MAX_YEAR = date.today().year + 1
 
 _SUMMARY_CITATION_RE = re.compile(
     r"([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?"
-    r"(?:" + _CIT_APOS + r"[sS]?)?)"
-    r"\s*\(?(\d{4}[a-z]?)\)?"
+    r"(?:" + _CIT_APOS + r"[sS]?)?"
+    # V0.5.4 (E1): capture multi-author citation forms so the
+    # author-grounding check can verify each surname against the source.
+    # Pre-V0.5.4 the regex required the year IMMEDIATELY after the surname
+    # — so "X et al. (Year)" was SILENTLY SKIPPED (no match) and "X and Y
+    # (Year)" was matched with ONLY the second surname ("Y") captured (the
+    # first surname "X" was invisible to the grounding check). The
+    # AUDIT-V0.5.3-ground-truth found the source cites authors in both
+    # multi-author forms; making the summary-side regex symmetric with
+    # extract_citations' Pattern 1 (which already strips " et al." +
+    # captures "X and Y" via Pattern 5) keeps the two extractors in sync.
+    # Additive: the new groups are OPTIONAL — every prior single-surname
+    # + compound-surname + possessive match is byte-for-byte preserved
+    # (regression-guarded by tests/test_citations_regex.py). The captured
+    # group(1) may now include " et al." / " and Y"; the downstream
+    # `author_clean.split()[0]` stopword filter + `_author_in_source`
+    # casefold lookup handle the multi-word form (rapidfuzz fallback
+    # normalises "X and Y" → "xy" for matching against source "x and y"
+    # or individual "x"/"y" entries). Content-agnostic (Rule 1 ✓): no
+    # book-specific names; "and"/"et al." are generic English citation
+    # connectors.
+    r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)?"
+    r"(?:\s+et\s+al\.?)?"
+    r")"
+    # V0.5.18 (ch.9 audit E2 — a cross-field year slip): the author→year
+    # join now tolerates the markdown/comma shapes the shipped bullets
+    # actually use: "AuthorA et al., 1984", "AuthorB *1987*",
+    # "AuthorC (*1985a*". Pre-V0.5.18 the join was ``\s*\(?\d`` — a comma
+    # or an italic asterisk between author and year made the citation
+    # INVISIBLE to the grounding check (the mis-cited year slipped through
+    # unnamed). Optional, zero-width additions: every previously-matching
+    # shape still matches byte-for-byte.
+    r"[\s,]*(?:\(\s*)?\*?\s*(\d{4}[a-z]?)\)?\*?"
 )
 
 _BOLD_NAME_RE = re.compile(
     r"\*\*([A-Z][a-zA-Z]+(?:" + _CIT_NAME_SEP + r"[A-Z][a-zA-Z]+)?)\*\*\s*:\s*(.{10,})"
 )
 
+# V0.4.38 (F4): common English discourse / publishing section labels that
+# are NOT author names. The bold-name detector flagged "**Conclusions**:"
+# (V0.4.37 conv-log line 743) as "author 'Conclusions' not found in
+# source" — it's a structural section label, not an author attribution.
+# These single-word labels match _BOLD_NAME_RE (multi-word labels like
+# "**Further, it characterizes...**" don't, because the regex requires a
+# single capitalized word or a NAME_SEP-joined pair). Genre-agnostic
+# (Rule 1): these are generic English publishing/discourse section
+# labels, not book-specific terms — the same list applies to a physics
+# textbook, a novel, or a cooking manual.
+#
+# V0.5.19: the canonical copy of this set moved to
+# core.summarisation.author_anchor (STRUCTURAL_LABEL_WORDS) so the
+# glossary-ingestion structural-name filter and this postcheck judge
+# against ONE list; the module-level ``_BOLD_NAME_STRUCTURAL_LABELS``
+# alias is imported above (the existing uses + tests keep the name).
+
 _BARE_YEAR_RE = re.compile(r"\b(1\d{3}|20\d{2}|21\d{2})\b")
+
+# V0.5.19 (check 3b): a scholarly-work prose-year attachment — "a work
+# from 1980" / "a paper in 1984" / "a study of 1910". The year sits in
+# PROSE (no parentheses), so the citation-shaped checks 1/3 cannot see
+# it. Years are restricted to 1800-2099 (a 4-digit COUNT like "a study of
+# 1200 patients" must not read as a year). Generic scholarly-work nouns
+# only (Rule 1); "edition"/"volume" are deliberately EXCLUDED — a
+# manual-edition year is not an author-year and would false-flag.
+_PROSE_WORK_YEAR_RE = re.compile(
+    r"\b(?:works?|papers?|studies|study|articles?|books?|monographs?|publications?|reports?)\s+"
+    r"(?:from|in|of)\s+\*?((?:1[89]\d{2}|20\d{2}))\b\)?"
+)
+
+# V0.5.19: the thin roster-gap-fill bullet shape — "Name: Cited in a
+# work..." / "Name: Authored literature on..." / "Name: Contributed to
+# literature on..." — a one-liner that names a roster author without
+# carrying their contribution. Only the citation-registry verbs trip it;
+# real claims ("AuthorA: Demonstrated ...") do not. Generic shapes
+# (Rule 1).
+_THIN_GAPFILL_BULLET_RE = re.compile(
+    r"^[A-Z][\w'\u2019-]+:\s+(?:Cited in|Authored|Contributed to)\b",
+    re.IGNORECASE,
+)
+
+# V0.5.20: the COLON-LESS variant of the thin roster-gap-fill shape. The
+# V0.5.19.1 rig run #2 (the FULL-BOOK ingestion, run 20260928-155851-011587f0)
+# shipped ~12 thin one-liners UNFLAGGED ("Kretschmer made significant
+# contributions to the description of schizoid personality following
+# Bleuler in 1925." / "Frances (*1980*) contributed to the debate on
+# whether histrionic is a synonym for hysterical personality." / "Nanarello
+# (*1953*) contributed to the description of schizoid personality.") vs
+# 121429's 4/4 flagged (the "Name: Contributed to…" COLON form) — the
+# V0.5.19 detector's shape is colon-form-specific, so the quality signal
+# was run-dependent (model variance moved the SHAPE, not the family).
+#
+# The widened shape: a LEADING NAME (single, "Name and Name" pair, or
+# "et al."), an OPTIONAL year parenthetical ((*1980*) / (1910) /
+# (*1968*, *1971*)), then DIRECTLY one of the citation-registry verb
+# phrases — "made significant contributions to" / "contributed to" /
+# "authored literature on". Real claims do not match: "AuthorN
+# contributed the six-grounds distinction" (contributed + OBJECT, no
+# "to") and "Bleuler described latent schizophrenia" (a content verb)
+# stay unflagged. Bounded to ONE-LINERS (≤ 280 chars) — the evidenced
+# thin bullets are 70-210 chars, while substantive thorough-summary
+# prose that OPENS with the same name+verb shape ("Hoch (*1910*) and
+# Kretschmer (*1925*) contributed to the early characterization … while
+# … further refined …") runs on for paragraphs and must not be flagged.
+_THIN_GAPFILL_SENTENCE_RE = re.compile(
+    r"^[A-Z][\w'\u2019-]+"
+    r"(?:\s+(?:and\s+)?[A-Z][\w'\u2019-]+)?"
+    r"(?:\s+et\s+al\.?)?"
+    r"(?:\s*\(\s*\*?\d{4}\*?[^)]{0,40}\))?"
+    r"\s+(?:made\s+significant\s+contributions\s+to|contributed\s+to|authored\s+literature\s+on)\b",
+    re.IGNORECASE,
+)
+# the colon-less variant's one-liner bound (chars, on the stripped line).
+_THIN_GAPFILL_SENTENCE_MAX = 280
+
+# V0.5.18: the non-name stopword shapes (check 2's inline literal, hoisted
+# to a module constant so the new check 3 shares the exact same guard —
+# "In (1950)" / "His (1986)" are not author citations in EITHER check).
+_STOPWORD_NAME_SHAPES = frozenset(
+    {
+        "in",
+        "by",
+        "the",
+        "a",
+        "an",
+        "as",
+        "at",
+        "to",
+        "of",
+        "and",
+        "or",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "while",
+        "when",
+        "where",
+        "later",
+        "then",
+        "early",
+        # V0.5.2 (TUNING): pronouns falsely matched as author names by the
+        # citation regex (e.g. "His (1986)" in "Volkan: His 1986 insights...").
+        "his",
+        "her",
+        "their",
+        "its",
+        "he",
+        "she",
+        "they",
+        "his,",
+    }
+)
 
 
 def validate_years(
@@ -135,30 +285,7 @@ def validate_years(
                 if garbage_author_reason(author_clean, year, check_year=True):
                     continue
                 # Skip obvious non-names (the regex can catch "In (1950)" etc.)
-                if author_clean.split()[0].lower() in {
-                    "in",
-                    "by",
-                    "the",
-                    "a",
-                    "an",
-                    "as",
-                    "at",
-                    "to",
-                    "of",
-                    "and",
-                    "or",
-                    "for",
-                    "with",
-                    "from",
-                    "that",
-                    "this",
-                    "while",
-                    "when",
-                    "where",
-                    "later",
-                    "then",
-                    "early",
-                }:
+                if author_clean.split()[0].lower() in _STOPWORD_NAME_SHAPES:
                     continue
                 if _author_in_source(author_clean, src_lower):
                     continue
@@ -204,7 +331,270 @@ def validate_years(
                 )
             )
 
+    # --- Check 3 (V0.5.18): author-YEAR consistency -------------------------
+    # The ch.9 audit's E2 slip: a bullet cited "(AuthorA et al., 1984)"
+    # while the source pairs that author with 1986 — 1984 belongs to the
+    # ADJACENT citation for a DIFFERENT author. The author is real (check 2
+    # passes), the year is plausible (check 1 passes) — only the PAIR is
+    # wrong. This check flags a KNOWN source author cited with
+    # a year that is neither in the roster's author→years set NOR
+    # citation-shaped-adjacent to the name in the raw source (the exemption
+    # for years the regex roster missed but the source genuinely pairs with
+    # the name — "Name[non-digits ≤48]year"). Flag-only: the correction is
+    # ambiguous without an LLM (which year is right?), same posture as
+    # checks 1-2. Content-agnostic (Rule 1 ✓): the year sets come from the
+    # runtime extract_citations on source_text.
+    if source_authors and source_text:
+        try:
+            _src_years = _source_author_years(source_text)
+            if _src_years:
+                _seen_pairs: set[tuple[str, str]] = set()
+                for m in _SUMMARY_CITATION_RE.finditer(text):
+                    author = m.group(1).strip()
+                    year = m.group(2)
+                    _clean = re.sub(r"['\u2019]s$", "", author).strip(".,;:")
+                    _clean = re.sub(r"\s+et\s+al\.?$", "", _clean, flags=re.IGNORECASE).strip()
+                    if len(_clean) < 3:
+                        continue
+                    from core.preprocessing.author_garbage import garbage_author_reason
+
+                    if garbage_author_reason(_clean, year, check_year=True):
+                        continue
+                    if _clean.split()[0].lower() in _STOPWORD_NAME_SHAPES:
+                        continue
+                    # The roster's year set for this author (try the full
+                    # cleaned name, then the first token — "X and Y" rosters
+                    # under the first author; particle surnames match full).
+                    _lookup_keys = [_clean.casefold()]
+                    if " " in _clean:
+                        _lookup_keys.append(_clean.split()[0].casefold())
+                    _roster_years: set[str] = set()
+                    for _k in _lookup_keys:
+                        _roster_years |= _src_years.get(_k, set())
+                    if not _roster_years:
+                        continue  # unknown author → check 2's job, not ours
+                    _base_year = year[:4]
+                    if _base_year in _roster_years:
+                        continue
+                    # Citation-shaped exemption: the source pairs the name
+                    # with this year in a form the roster build missed.
+                    # ``[^\d]{0,48}`` keeps the window citation-shaped (an
+                    # intervening DIGIT — e.g. the men-citation's other
+                    # years — blocks a false long-range join).
+                    _exempt = any(
+                        re.search(
+                            re.escape(_k_full) + r"[^\d]{0,48}?" + _base_year,
+                            source_text,
+                            re.IGNORECASE,
+                        )
+                        for _k_full in ([_clean] + ([_clean.split()[0]] if " " in _clean else []))
+                    )
+                    if _exempt:
+                        continue
+                    _pair = (_clean.casefold(), _base_year)
+                    if _pair in _seen_pairs:
+                        continue
+                    _seen_pairs.add(_pair)
+                    snippet = _snippet(text, m.start())
+                    issues.append(
+                        Issue(
+                            detector="year",
+                            severity="flag",
+                            field=field_label,
+                            snippet=snippet,
+                            detail=(
+                                f"author '{_clean}' cited with {year}, but the source "
+                                f"cites this author with {sorted(_roster_years)[:6]} "
+                                f"— possible cross-field year contamination "
+                                f"(V0.5.18 consistency check)"
+                            ),
+                        )
+                    )
+        except Exception as e:  # fail-open
+            issues.append(
+                Issue(
+                    detector="year",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=f"author-year consistency check crashed: {e!r}",
+                )
+            )
+
+    # --- Check 3b (V0.5.19): PROSE-form author-year consistency ----------------
+    # The V0.5.18 ch.9 re-run's thin roster-gap-fill bullet said an author
+    # was "Cited in a work from 1980" — the real year is 1988, but the year
+    # sat in PROSE (no parentheses), so the citation-shaped check 3 could
+    # not see it. This check scans SENTENCES: when a sentence names a KNOWN
+    # roster author AND carries a scholarly-work prose-year attachment
+    # ("a work/paper/study/... from/in/of NNNN"), the year must be in the
+    # roster years of an author named in that sentence, or be
+    # citation-shaped-adjacent in the source. Flag-only (the attribution
+    # can be ambiguous — which named author the year belongs to — so no
+    # deterministic fix; same posture as checks 1-3).
+    if source_authors and source_text:
+        try:
+            _src_years = _source_author_years(source_text)
+            if _src_years:
+                _seen_ppairs: set[tuple[str, str]] = set()
+                # Sentence-scan: split on sentence-final punctuation, keeping
+                # bullet lines intact (a thin bullet is one sentence).
+                for _sent in re.split(r"(?<=[.!?])\s+", text):
+                    if not _sent or len(_sent) > 600:
+                        continue
+                    _prose_years = list(_PROSE_WORK_YEAR_RE.finditer(_sent))
+                    if not _prose_years:
+                        continue
+                    # The roster authors named in this sentence (anchor-based,
+                    # same matcher as the V0.5.18 veto family).
+                    _named = [
+                        a
+                        for a in source_authors
+                        if len(a) >= 3 and author_in_text(a, _sent.lower())
+                    ]
+                    if not _named:
+                        continue  # no known author in the sentence → not our case
+                    for _pm in _prose_years:
+                        _py = _pm.group(1)
+                        _ok = False
+                        for _a in _named:
+                            _keys = [_a.casefold()]
+                            if " " in _a:
+                                _keys.append(_a.split()[0].casefold())
+                            if any(_py in _src_years.get(_k, set()) for _k in _keys):
+                                _ok = True
+                                break
+                        if _ok:
+                            continue
+                        # Citation-shaped exemption: the source pairs one of
+                        # the named authors with this year in a form the
+                        # roster build missed (same exemption as check 3).
+                        _exempt = any(
+                            re.search(
+                                re.escape(_a) + r"[^\d]{0,48}?" + _py,
+                                source_text,
+                                re.IGNORECASE,
+                            )
+                            for _a in _named
+                        )
+                        if _exempt:
+                            continue
+                        _pkey = (_sent[:80].casefold(), _py)
+                        if _pkey in _seen_ppairs:
+                            continue
+                        _seen_ppairs.add(_pkey)
+                        _names_txt = ", ".join(_named[:3])
+                        issues.append(
+                            Issue(
+                                detector="year",
+                                severity="flag",
+                                field=field_label,
+                                snippet=_snippet(_sent, _pm.start()),
+                                detail=(
+                                    f"prose-form year {_py} near author(s) "
+                                    f"'{_names_txt}', but the source cites them "
+                                    f"without {_py} — possible prose-form year "
+                                    f"slip (V0.5.19 check 3b)"
+                                ),
+                            )
+                        )
+        except Exception as e:  # fail-open
+            issues.append(
+                Issue(
+                    detector="year",
+                    severity="flag",
+                    field=field_label,
+                    snippet=text[:60],
+                    detail=f"prose-form year consistency check crashed: {e!r}",
+                )
+            )
+
+    # --- Thin roster-gap-fill bullet flag (V0.5.19; V0.5.20 the colon-less
+    # variant) ------------------------------------------------------------
+    # The V0.5.18 ch.9 re-run shipped two thin one-liners from the roster
+    # gap-fill ("AuthorD: Cited in a work from NNNN regarding X." /
+    # "AuthorE: Authored literature on Y (cites).") — shape-only bullets
+    # that name a roster author without carrying their contribution. The
+    # prose-year check 3b catches the YEAR slips; this flag catches the
+    # SHAPE so the audit sees the quality signal. Advisory-only (Rule 1:
+    # the shape is generic — "Name: Cited/Authored/Contributed ...").
+    # V0.5.20: the same family written COLON-LESS ("Kretschmer made
+    # significant contributions to …" / "Frances (*1980*) contributed to
+    # …") — the rig-run-2 model variance — is now caught too (the
+    # one-liner-bounded _THIN_GAPFILL_SENTENCE_RE).
+    try:
+        _seen_thin: set[str] = set()
+        for _line in text.split("\n"):
+            _l = _line.strip().lstrip("-*• ").strip()
+            _tm = _THIN_GAPFILL_BULLET_RE.match(_l) or (
+                # V0.5.20: the colon-less variant — one-liners only (the
+                # length bound keeps substantive thorough prose that opens
+                # with the same name+verb shape out of the flag).
+                _THIN_GAPFILL_SENTENCE_RE.match(_l)
+                if len(_l) <= _THIN_GAPFILL_SENTENCE_MAX
+                else None
+            )
+            if not _tm:
+                continue
+            if _l.casefold() in _seen_thin:
+                continue
+            _seen_thin.add(_l.casefold())
+            issues.append(
+                Issue(
+                    detector="attribution",
+                    severity="flag",
+                    field=field_label,
+                    snippet=_l[:60],
+                    detail=(
+                        "thin roster-gap-fill bullet shape (citation-only "
+                        "one-liner, no contribution carried) — quality signal "
+                        "for the audit (V0.5.19 colon form / V0.5.20 "
+                        "colon-less form)"
+                    ),
+                )
+            )
+    except Exception as e:  # fail-open
+        issues.append(
+            Issue(
+                detector="attribution",
+                severity="flag",
+                field=field_label,
+                snippet=text[:60],
+                detail=f"thin-bullet shape check crashed: {e!r}",
+            )
+        )
+
     return text, issues
+
+
+# V0.5.18: the cached source author→base-years map for check 3. Built from
+# the runtime ``extract_citations`` on ``source_text``; ``lru_cache`` keeps
+# one entry per distinct source string (validate_years runs per bullet, so
+# without the cache a 90-bullet chapter would re-run the extractor 90×).
+# Keys are the casefolded cleaned author names (multi-word forms included —
+# check 3's lookup tries the full name, then the first token); values are
+# the BASE 4-digit years (letter suffixes stripped — "1924a" and "1924b"
+# are the same year for consistency purposes).
+_SOURCE_AUTHOR_YEARS_CACHE_MAX = 8
+
+
+@lru_cache(maxsize=_SOURCE_AUTHOR_YEARS_CACHE_MAX)
+def _source_author_years(source_text: str) -> dict[str, frozenset[str]]:
+    try:
+        from core.preprocessing.deterministic_analyzer import extract_citations
+
+        out: dict[str, set[str]] = {}
+        for c in extract_citations(source_text):
+            a = (c.get("author") or "").strip()
+            if not a or len(a) < 3:
+                continue
+            key = a.casefold()
+            years = out.setdefault(key, set())
+            for y in re.findall(r"\d{4}", c.get("years") or ""):
+                years.add(y)
+        return {k: frozenset(v) for k, v in out.items()}
+    except Exception:  # noqa: BLE001 — fail-open (empty map ⇒ check 3 no-ops)
+        return {}
 
 
 def _author_in_source(author: str, src_lower: dict[str, str]) -> bool:
@@ -356,7 +746,17 @@ def verify_attribution(
                         best_sim = sim
                         best_src_claim = sent
 
-            if best_src_claim and best_sim < 0.50:
+            # V0.4.37 (F7): the thorough is long-prose paraphrase
+            # territory — a tight paraphrase legitimately scores 40-49%
+            # on token-set overlap while still tracking the source
+            # sentence. Flag only the truly-distant claims (< 40%) on
+            # the thorough; keep 50% for exec/bullets (terse, less
+            # paraphrase latitude). Field-type-based, not content-based
+            # (Rule 1 ✓). The 40-50% rescue band below stays active for
+            # exec/bullets (their threshold is still 0.50); for the
+            # thorough it is unreachable (we only enter when < 0.40).
+            _flag_threshold = 0.40 if field_label == "thorough" else 0.50
+            if best_src_claim and best_sim < _flag_threshold:
                 # V18.20.3.4 (RC-5c, audit v182033): borderline-band
                 # verification. The V18.20.3.3 run produced attribution
                 # flags at 43-49% similarity on CORRECT paraphrases — a
@@ -559,6 +959,12 @@ def verify_bold_name_attribution(
             author = m.group(1).strip()
             claim = m.group(2).strip()
             if len(author) < 3:
+                continue
+            # V0.4.38 (F4): skip common English discourse/publishing
+            # section labels (e.g. "**Conclusions**:") — they're
+            # structural labels, not author attributions. See
+            # _BOLD_NAME_STRUCTURAL_LABELS.
+            if author.casefold() in _BOLD_NAME_STRUCTURAL_LABELS:
                 continue
             key = author.casefold()
             if key in seen:

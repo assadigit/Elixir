@@ -18,9 +18,26 @@ This keeps the model in VRAM across multiple generations.
 """
 
 import json
+import logging
 import os
 import sys
 import traceback
+
+logger = logging.getLogger(__name__)
+
+# V0.6.18 (W-d2): OFFLINE LOCK — set BEFORE any transformers / huggingface_hub
+# symbol is imported (this module is exec'd as its own process; setting the
+# env vars here is the belt-and-suspenders fallback for the case where the
+# operator runs this script directly during debugging, bypassing the engine's
+# env-set spawn). Mirrors W-d1 in _vibevoice_subprocess.py — transformers /
+# huggingface_hub see offline mode from the very first import and never reach
+# for the network while loading the local Qwen3-TTS model folder.
+#
+# V0.6.31 (W-p1): FORCE the flags (not setdefault) — same fix as VibeVoice.
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def main():

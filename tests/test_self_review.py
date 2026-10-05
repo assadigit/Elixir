@@ -11,22 +11,11 @@ from __future__ import annotations
 
 import json as _json
 import sys
-import types
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation.self_review import self_review_batched
 
@@ -86,7 +75,6 @@ def _make_deps(
 
 def _common_kwargs(deps):
     return dict(
-        heavy_model="heavy-model",
         primary_model="primary-model",
         max_context_tokens=32768,
         temperature=0.7,
@@ -103,11 +91,10 @@ def _common_kwargs(deps):
 
 class TestNoModel:
     def test_no_model_returns_none(self):
-        """When both heavy_model and primary_model are None/empty, returns
-        None immediately and logs 'skipped'."""
+        """When primary_model is None/empty, returns None immediately and
+        logs 'skipped'."""
         deps = _make_deps(llm_responses=["SHOULD_NOT_BE_CALLED"])
         kw = _common_kwargs(deps)
-        kw["heavy_model"] = None
         kw["primary_model"] = ""
         cap = kw["log"]
         out = self_review_batched(
@@ -120,21 +107,18 @@ class TestNoModel:
         infos = [m for m, l in cap.calls if l == "INFO"]
         assert any("skipped" in i.lower() for i in infos)
 
-    def test_uses_heavy_model_when_available(self):
-        """When heavy_model is set, it's used as the review model (preferred
-        over primary)."""
-        deps = _make_deps(llm_responses=['[{"verdict": "supported"}]'])
-        kw = _common_kwargs(deps)
-        kw["heavy_model"] = "heavy-27b"
-        kw["primary_model"] = "primary-12b"
-        self_review_batched("Ch", "text", ["b1"], "t", **{k: v for k, v in kw.items()})
-        assert deps["_llm_calls"][0]["model"] == "heavy-27b"
+    # V0.6.14 (single-model order): REMOVED 1 test —
+    # test_uses_heavy_model_when_available pinned the heavy-model reviewer
+    # preference (heavy_model over primary_model); the operator's one-model
+    # order retired the heavy_model parameter from self_review_batched
+    # entirely (review_model is always the primary model).
 
-    def test_falls_back_to_primary_model(self):
-        """When heavy_model is None, primary_model is used."""
+    def test_reviews_with_primary_model(self):
+        """V0.6.14: the ONE model (primary_model) reviews its own output —
+        the review call is made with model=primary_model (no second
+        reviewer model exists)."""
         deps = _make_deps(llm_responses=['[{"verdict": "supported"}]'])
         kw = _common_kwargs(deps)
-        kw["heavy_model"] = None
         kw["primary_model"] = "primary-12b"
         self_review_batched("Ch", "text", ["b1"], "t", **{k: v for k, v in kw.items()})
         assert deps["_llm_calls"][0]["model"] == "primary-12b"

@@ -7,7 +7,9 @@ llm_provider_impl.py 17/62 (73%).
 Hermetic: ``requests`` and ``utils.network.session_for_url`` /
 ``extract_openai_content`` are patched at the SOURCE module (cloud_client
 imports them lazily inside the function, so the source-module attributes are
-what the function sees). No HTTP leaves the process.
+what the function sees); the Claude provider transport is patched at the
+provider module's ``session_for_url`` seam (V0.6.7 review-loop A5: top-level
+import there). No HTTP leaves the process.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -198,6 +200,16 @@ def _claude_response(content) -> requests.Response:
     return _http(200, {"content": content})
 
 
+def _claude_sess_patch(**post_kwargs):
+    """Patch the Claude transport seam (the top-level session_for_url import
+    in core.llm.claude_provider — V0.6.7 review-loop A5) with a mock pooled
+    session; same assertions as the old requests.post patches, redirected to
+    the session's ``.post``."""
+    sess = MagicMock()
+    sess.post = MagicMock(**post_kwargs)
+    return patch("core.llm.claude_provider.session_for_url", return_value=sess), sess
+
+
 @pytest.fixture
 def claude_logs() -> list[tuple[str, str]]:
     return []
@@ -225,67 +237,75 @@ class TestClaudeComplete:
         assert any("API key not set" in m for (_, m) in claude_logs)
 
     def test_success_single_text_block(self, claude, monkeypatch):
-        with patch(
-            "requests.post", return_value=_claude_response([{"type": "text", "text": "  ans  "}])
-        ) as mp:
+        patcher, sess = _claude_sess_patch(
+            return_value=_claude_response([{"type": "text", "text": "  ans  "}])
+        )
+        with patcher:
             assert claude.complete("p") == "ans"
-        kwargs = mp.call_args.kwargs
+        kwargs = sess.post.call_args.kwargs
         assert kwargs["headers"]["x-api-key"] == "sk-ant"
         assert kwargs["headers"]["anthropic-version"] == "2023-06-01"
         assert kwargs["json"]["model"] == "claude-3-5-sonnet-20241022"
         assert kwargs["json"]["max_tokens"] == 4096
-        assert mp.call_args.args[0].endswith("/messages")
+        assert sess.post.call_args.args[0].endswith("/messages")
 
     def test_success_multiple_blocks_joined(self, claude):
-        with patch(
-            "requests.post",
+        patcher, _sess = _claude_sess_patch(
             return_value=_claude_response(
                 [
                     {"type": "text", "text": "part1"},
                     {"type": "other"},
                     {"type": "text", "text": " part2"},
                 ]
-            ),
-        ):
+            )
+        )
+        with patcher:
             assert claude.complete("p") == "part1 part2"
 
     def test_max_tokens_capped_at_8192(self, claude):
-        with patch(
-            "requests.post", return_value=_claude_response([{"type": "text", "text": "x"}])
-        ) as mp:
+        patcher, sess = _claude_sess_patch(
+            return_value=_claude_response([{"type": "text", "text": "x"}])
+        )
+        with patcher:
             claude.complete("p", max_tokens=16000)
-        assert mp.call_args.kwargs["json"]["max_tokens"] == 8192
+        assert sess.post.call_args.kwargs["json"]["max_tokens"] == 8192
 
     def test_overrides_forwarded(self, claude):
-        with patch(
-            "requests.post", return_value=_claude_response([{"type": "text", "text": "x"}])
-        ) as mp:
+        patcher, sess = _claude_sess_patch(
+            return_value=_claude_response([{"type": "text", "text": "x"}])
+        )
+        with patcher:
             claude.complete("p", temperature=0.2, max_tokens=100, model="other")
-        payload = mp.call_args.kwargs["json"]
+        payload = sess.post.call_args.kwargs["json"]
         assert payload["temperature"] == 0.2
         assert payload["max_tokens"] == 100
         assert payload["model"] == "other"
 
     def test_empty_content_retries_then_none(self, claude, claude_logs):
-        with patch("requests.post", return_value=_claude_response([])):
+        patcher, _sess = _claude_sess_patch(return_value=_claude_response([]))
+        with patcher:
             assert claude.complete("p") is None
 
     def test_content_not_list_returns_none(self, claude):
-        with patch("requests.post", return_value=_http(200, {"content": "just a string"})):
+        patcher, _sess = _claude_sess_patch(return_value=_http(200, {"content": "just a string"}))
+        with patcher:
             assert claude.complete("p") is None
 
     def test_http_401_actionable_log(self, claude, claude_logs):
-        with patch("requests.post", return_value=_http(401, {})):
+        patcher, _sess = _claude_sess_patch(return_value=_http(401, {}))
+        with patcher:
             assert claude.complete("p") is None
         assert any("API key invalid or expired" in m for (_, m) in claude_logs)
 
     def test_http_429_rate_limited_log(self, claude, claude_logs):
-        with patch("requests.post", return_value=_http(429, {})):
+        patcher, _sess = _claude_sess_patch(return_value=_http(429, {}))
+        with patcher:
             assert claude.complete("p") is None
         assert any("rate limited" in m for (_, m) in claude_logs)
 
     def test_http_other_status_log(self, claude, claude_logs):
-        with patch("requests.post", return_value=_http(500, {})):
+        patcher, _sess = _claude_sess_patch(return_value=_http(500, {}))
+        with patcher:
             assert claude.complete("p") is None
         assert any("HTTP 500" in m for (_, m) in claude_logs)
 
@@ -293,7 +313,8 @@ class TestClaudeComplete:
         def boom(*a, **k):
             raise requests.exceptions.ConnectionError("refused")
 
-        with patch("requests.post", side_effect=boom):
+        patcher, _sess = _claude_sess_patch(side_effect=boom)
+        with patcher:
             assert claude.complete("p") is None
         assert any("call failed" in m for (_, m) in claude_logs)
 
@@ -304,8 +325,9 @@ class TestClaudeComplete:
             log_callback=lambda msg, level="INFO": claude_logs.append((level, msg)),
         )
         responses = [_http(500, {}), _claude_response([{"type": "text", "text": "ok"}])]
+        patcher, _sess = _claude_sess_patch(side_effect=responses)
         with (
-            patch("requests.post", side_effect=responses),
+            patcher,
             patch("core.llm.retry._HAS_TENACITY", False),
             patch("core.llm.retry.time.sleep"),
         ):

@@ -1,5 +1,8 @@
 # Elixir — SWOT Audit (Stage 1)
 
+> **STATUS (V0.4.25 audit):** HISTORICAL point-in-time SWOT (V0.11 baseline).
+> Superseded by later campaigns; kept as evidence.
+
 > **Audit scope:** full repository at commit `71bbfc2` (V0.11). All findings verified by direct inspection, tool runs, or API queries on 2026-09-19. No speculative findings.
 >
 > **Verification environment:** Python 3.12.14 (Linux sandbox), ruff 0.16.8, mypy (latest), vulture, pytest 9.0.2. Target runtime: Windows 10/11 + Python 3.12 + PySide6 6.11 (per README).

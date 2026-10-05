@@ -668,8 +668,9 @@ def build_vlm_callable_from_request(
     ``detect_vlm_regions`` expects.
 
     Args:
-        request: a ConversionRequest with ``model_architecture``,
-            ``summarisation_model``, and ``primary_ocr_model`` fields.
+        request: a ConversionRequest with ``summarisation_model`` and
+            ``primary_ocr_model`` fields (V0.6.14: ``model_architecture``
+            is retired — the provider comes from settings).
         log: optional ``f(msg, level)`` callback.
 
     Returns:
@@ -681,15 +682,10 @@ def build_vlm_callable_from_request(
         from utils.settings import Settings as _S
 
         settings = _S()
-        arch = getattr(request, "model_architecture", "single_local") or "single_local"
 
-        # Determine the provider name from the architecture (mirror V0.4.1).
-        if arch == "llamacpp":
-            provider_name = "llamacpp"
-        elif arch in ("single_api", "dual_api"):
-            provider_name = settings.get("summarisation.cloud_provider", "openai_compatible")
-        else:
-            provider_name = "ollama"
+        # Determine the provider name (V0.6.14: the canonical provider
+        # setting — model_architecture is retired; mirror V0.4.1's OCR path).
+        provider_name = settings.get("summarisation.provider", "ollama") or "ollama"
 
         # Only local providers (Ollama or llama.cpp) are supported for the
         # vision-region probe (same constraint as V0.4.1's OCR path).

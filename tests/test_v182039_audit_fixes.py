@@ -447,12 +447,14 @@ class TestMentionOnlyPromptBan:
         mention-only prompt template) moved VERBATIM from
         ``Summarizer._summarize_inner`` to ``gap_fill_batch.batch_gap_fill``
         — re-pointed at the new module; the pinned strings are unchanged."""
-        import inspect
+        from pathlib import Path
 
         from core.summarisation import gap_fill_batch as gfb
 
-        src = inspect.getsource(gfb.batch_gap_fill)
-        assert "ANYWHERE in the bullet" in src
+        # V0.6.11 (B14-b) pin evolution: the pinned block moved VERBATIM into
+        # the _gff_* phase helpers (called by batch_gap_fill — the B12
+        # call-site-following precedent); anchoring on the whole module.
+        src = Path(gfb.__file__).read_text(encoding="utf-8")
         assert "possessive construction" in src
         # the synthetic example replaced the book-derived one
         assert "Voss" in src and "Ibarra" in src
@@ -474,8 +476,14 @@ class TestMentionOnlyPromptBan:
 class TestB1ProvenanceAndAffordance:
     def test_diagnostic_prints_stamps(self):
         """The end-of-run diagnostic block must print every summaries/*.md
-        file's generated-by line (or warn about its absence)."""
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        file's generated-by line (or warn about its absence).
+
+        V0.4.26 (Phase 3 commit 1): the diagnostic block moved VERBATIM to
+        core/pipeline/conversion/reporting.py (run_diagnostic_summary) —
+        the pins follow the moved body."""
+        src = (ROOT / "core" / "pipeline" / "conversion" / "reporting.py").read_text(
+            encoding="utf-8"
+        )
         # V18.20.3.10 (F6): the check now delegates to the canonical
         # whole-text parser instead of peeking line 2.
         assert "stamp_diagnostic" in src
@@ -563,7 +571,13 @@ class TestCallTelemetryRegistry:
         assert "done in {" in src  # the ⏱️ per-call INFO line
 
     def test_converter_wires_reset_and_summary(self):
-        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 1): the reset stays in convert()
+        # (converter_impl.py); the summary call moved VERBATIM into
+        # run_diagnostic_summary (conversion/reporting.py) — union
+        # semantics keep the wiring pin over both homes.
+        src = (ROOT / "core" / "pipeline" / "converter_impl.py").read_text(encoding="utf-8") + (
+            ROOT / "core" / "pipeline" / "conversion" / "reporting.py"
+        ).read_text(encoding="utf-8")
         assert "reset_call_telemetry()" in src
         assert "call_telemetry_summary()" in src
 

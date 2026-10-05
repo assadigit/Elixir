@@ -24,6 +24,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+# V18.20.4.12 (W-a10) follow-up: the DEFAULT model tag here was the
+# KNOWN-BAD "…-Q4_K_M:latest" variant that 404s on the rig (the dialog
+# combo already uses RIG_FALLBACK_MODEL; the service default now matches
+# so programmatic callers don't hit the dead tag).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import LONG_RUN_TIMEOUT_S
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +67,7 @@ def extract_audio_from_video(
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=LONG_RUN_TIMEOUT_S,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         if result.returncode != 0:
@@ -209,7 +216,7 @@ def format_transcript_with_timestamps(segments: list) -> str:
 
 def summarize_transcript(
     transcript: str,
-    model: str = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest",
+    model: str = RIG_FALLBACK_MODEL,
     ollama_url: str = "http://localhost:11434",
     log_callback=None,
     progress_callback=None,
@@ -247,18 +254,51 @@ def summarize_transcript(
         from utils.settings import Settings
 
         s = Settings()
+        # V0.6.0 (T2): provider now follows the configured
+        # ``summarisation.provider`` (the app-wide factory pattern, cf. the
+        # Summarization dialog) — it was hardcoded to "ollama", so any rig
+        # configured for another backend got connection-refused here.
+        provider_name = str(s.get("summarisation.provider", "ollama") or "ollama").strip().lower()
+
+        # V0.6.13: the llama.cpp-first local fallback (the operator's
+        # follow-up report: "TRANSCRIBE SERVICE ... FIND[S] LLM ON OLLAMA
+        # ONLY"). A live llama-server takes over the call — the factory's
+        # llamacpp branch speaks OpenAI-compat to it and the DETECTED
+        # served model wins over the dialog's model pick (the V0.4.30
+        # precedent). Cloud selections are never probed; a dead llama.cpp
+        # leaves this path byte-identical to V0.6.12.
+        from core.llm.local_fallback import decide_llamacpp_first
+
+        _lc = decide_llamacpp_first(s, provider_name)
+        if _lc.note:
+            log(f"  🦙 {_lc.note}", "INFO")
+        if _lc.use_llamacpp:
+            provider_name = "llamacpp"
+
         # V13.28.0: Create provider via the factory — gets supervisor + retry
         provider = create_provider(
-            provider="ollama",
+            provider=provider_name,
             settings=s,
             log_callback=lambda msg, level="INFO": log(f"  [LLM] {msg}", level),
         )
-        # Override model + timeout for this specific call (transcripts need 600s)
+        # V0.6.0 (T2): honor the caller's explicit endpoint on the Ollama
+        # path — the factory pins the default localhost:11434, but this
+        # service is always invoked with the endpoint the dialog resolved
+        # from Settings, and the ``ollama_url`` parameter used to be dead.
+        # (V0.6.13: skipped on the llama.cpp takeover — that provider reads
+        # the llamacpp_* block, not the Ollama URL.)
+        if provider_name == "ollama" and ollama_url:
+            _base = str(ollama_url).rstrip("/")
+            if _base and _base != "http://localhost:11434":
+                provider.base_url = _base
+        # Override model + timeout for this specific call (transcripts need 600s).
+        # V0.6.13: on the llama.cpp takeover the DETECTED served model wins
+        # over the dialog's pick.
         result = provider.complete_streaming(
             prompt=prompt,
             temperature=0.3,
             max_tokens=4096,
-            model=model,
+            model=_lc.model if _lc.use_llamacpp else model,
             on_chunk=None,  # no progress display during streaming
         )
 

@@ -973,6 +973,27 @@ class TtsNormalizationSection(QGroupBox):
             # BEFORE the "(failed: …)" placeholder is shown to the user.
             from core.tts.normalizer import TextNormalizer
 
+            # V0.6.13: the llama.cpp-first local fallback (the operator's
+            # report: "TTS ... FIND[S] LLM ON OLLAMA ONLY") — resolved in
+            # the WORKER, never the UI thread (the probe owns a UI-probe
+            # timeout budget). A LOCAL endpoint with a live llama-server
+            # is taken over with the DETECTED served model + bearer key;
+            # dead llama.cpp or a deliberately-remote endpoint tests the
+            # configured snapshot exactly as before. The guard keeps this
+            # fail-soft: a policy failure must never break the
+            # configured-path test.
+            nonlocal endpoint, api_key, model
+            try:
+                from core.llm.local_fallback import decide_llamacpp_first, is_local_url
+                from utils.settings import Settings
+
+                if is_local_url(endpoint):
+                    _d = decide_llamacpp_first(Settings(), "ollama")
+                    if _d.use_llamacpp:
+                        endpoint, api_key, model = _d.base_url, _d.api_key, _d.model
+            except Exception:
+                pass
+
             # Build a normalizer from the snapshotted settings
             norm = TextNormalizer(
                 endpoint=endpoint,

@@ -20,10 +20,12 @@ from dataclasses import dataclass
 from core.summarisation.post_processing import (
     SELF_TALK_PATTERNS,
     classify_scar,
+    ends_in_dangling_enum_marker,
     is_citation_only_fragment,
     is_truncated,
 )
 from core.summarisation.postchecks.attribution import (
+    _name_holds_any_attrib_verb,
     detect_attribution_subject_swap,
     detect_dropped_digit_years,
     detect_parenthetical_promotion,
@@ -147,6 +149,10 @@ def postcheck_bullets(
     # against the ORIGINAL bullet text (before any detector repairs it) so
     # a space/quote repair never breaks the exemption match.
     _guarantee_set = {str(t).strip() for t in (enum_guarantee_texts or []) if t}
+    # V0.4.39 (Option A): lazy Settings for the per-bullet garble LLM-repair
+    # (constructed only if a garble is flagged on a bullet — bounded no-op
+    # otherwise). Mirrors the thorough wiring.
+    _garble_settings = None
     for i, bp in enumerate(bullets or []):
         bp_str = str(bp) if bp else ""
         _enum_guarantee = bp_str.strip() in _guarantee_set
@@ -183,9 +189,19 @@ def postcheck_bullets(
         _, fragment_issues = detect_word_fragment_merge(
             bp_str, label, source_text or "", source_words=_src_words
         )
-        # V0.4.3 (audit D4): sentence-fusion garble (flag-only) — catches
+        # V0.4.3 (audit D4): sentence-fusion garble — catches
         # "praiseity"-class fusions that word_fragment_merge misses.
-        _, fusion_issues = detect_sentence_fusion(
+        # V0.5.4 (Track C2): detect_sentence_fusion now returns
+        # (possibly-rewritten) text + issues. V0.5.10 (Track C4):
+        # CAPTURE the returned text (was `_, fusion_issues = ...` —
+        # the V0.4.3 flag-only discard) so the V0.5.4 rewrite (the
+        # "ego-syntonically personalities" → "ego-syntonic
+        # personalities" grammatical garble) actually propagates to
+        # the shipped bullet AND to subsequent detectors (the dropped-
+        # letter detector + the LLM repair + the author-garble + the
+        # stray-quote repair) so they see the corrected text, not the
+        # garbled original. Issue list is still collected the same way.
+        bp_str, fusion_issues = detect_sentence_fusion(
             bp_str, label, source_text or "", source_words=_src_words
         )
         fragment_issues = (fragment_issues or []) + (fusion_issues or [])
@@ -206,6 +222,27 @@ def postcheck_bullets(
             source_words=_src_words,
             auto_repair=auto_repair_garble,
         )
+        # V0.4.39 (Option A): LLM semantic repair for flagged garbles
+        # (per-bullet). Mirrors the thorough wiring. Fires only when a
+        # garble is flagged on THIS bullet (bounded — no-op on clean
+        # bullets). Content-agnostic (Rule 1 — the prompt is about token
+        # repair; works on any chapter). Fail-open; D3-style guard.
+        _bp_garble_flags = (fragment_issues or []) + (dropped_issues or [])
+        if _bp_garble_flags:
+            if _garble_settings is None:
+                from utils.settings import Settings as _BSettings
+
+                _garble_settings = _BSettings()
+            _bg_model = _garble_settings.get("summarisation.model", "") or _garble_settings.get(
+                "summarisation.primary_model", ""
+            )
+            if _bg_model:
+                from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+                bp_str, _bp_garble_repair = repair_garbles_via_llm(
+                    bp_str, label, source_text or "", _src_words, _garble_settings
+                )
+                report.issues.extend(_bp_garble_repair or [])
         # V0.20.5 (brainstorm D1): cross-check author surnames against the
         # source author list — auto-repair edit-distance-1 garbles (e.g., a
         # dropped letter in a cited author's surname). Content-agnostic: the
@@ -334,6 +371,34 @@ def postcheck_bullets(
                         ),
                     )
                 ]
+        # V0.5.20 (the rig-run-2 dangling marker — audit defect E2): the
+        # TERMINAL-SHAPE LINT. No shipped bullet may end in a bare
+        # enumeration marker (``…, and (4).``): the marker promises an
+        # item whose content was lost to a missed continuation join, and
+        # the pipeline's own "enumerated items N/N" floor is BLIND to
+        # the loss (the missed item never entered the denominator). The
+        # lint makes the loss audit-visible instead of silent. Advisory
+        # (severity=flag): the bullet is NOT dropped — the (1)…(N-1) items
+        # it carries are verbatim source content; the flag names the
+        # defect for the quality report.
+        enum_lint_issues: list = []
+        if bp_str.strip() and ends_in_dangling_enum_marker(bp_str):
+            enum_lint_issues = [
+                Issue(
+                    detector="enumeration",
+                    severity="flag",
+                    field=label,
+                    snippet=bp_str[:60],
+                    detail=(
+                        "terminal-shape lint: bullet ends in a bare "
+                        'enumeration marker ("and (N).") — the marker\'s '
+                        "item content was lost to a missed continuation "
+                        "join (V0.5.20); the enumerated-items floor cannot "
+                        "see this loss (the missed item never entered the "
+                        "denominator)"
+                    ),
+                )
+            ]
         # Collect ALL issues so the report fully accounts for every fix/flag.
         report.issues.extend(leak1)
         report.issues.extend(space1)
@@ -354,6 +419,7 @@ def postcheck_bullets(
         report.issues.extend(pronoun_issues or [])
         report.issues.extend(year_digit_issues or [])
         report.issues.extend(trunc_issues)
+        report.issues.extend(enum_lint_issues)  # V0.5.20 — the terminal-shape lint
         # V18.20.3.2 (audit N1 / P0-2): ship-time self-talk drop. Generation-
         # time filtering (classify_bullets) is the primary gate, but bullets
         # can acquire self-talk later (consolidation merges, gap-fill
@@ -405,22 +471,75 @@ def postcheck_bullets(
             )
             if _promo:
                 _claimed, _real = _promo
-                report.issues.append(
-                    Issue(
-                        detector="parenthetical_promotion",
-                        severity="fix",
-                        field=label,
-                        snippet=bp_str[:60],
-                        detail=(
-                            f"dropped misattributed bullet: '{_claimed}' is "
-                            f"credited with a claim the source attributes to "
-                            f"'{_real}' ('{_claimed}' appears there only as a "
-                            f"citation/list item). Verified via the generation-"
-                            f"time active-subject veto."
-                        ),
-                    )
+                # V0.6.9 (operator DECISION 2, audit Option A "tighten"):
+                # the V0.5.15 "regex-grounded exemption" is TIGHTENED — a
+                # citation-roster name alone no longer counts as grounding.
+                # A parenthetical-only cited author ("… (AuthorC 1983) …")
+                # lands in that roster BY CONSTRUCTION, so the old check
+                # defeated exactly the misattribution drop this veto was
+                # built to enforce (the V0.6.7 audit's documented contract
+                # conflict — 2 red tests). An author now counts as grounded
+                # only when they actually HOLD an attribution verb
+                # somewhere in the source (the detector itself already
+                # guarantees the claimed author holds none within its
+                # matching range — otherwise no promotion would have been
+                # confirmed). Correctly attributed authors — verb held
+                # in some other surname-matching span, or held via a
+                # passive-agent shape whose 80-char look-back window the
+                # detector's per-span scan clipped (the one reachable
+                # divergence between the full-text scan here and escape
+                # (a)'s span scan) — remain rescued as a fallback; a pure
+                # citation-list name does not. This also
+                # restores parity with the generation-time veto
+                # (gap_fill_batch), which never had the exemption and
+                # therefore dropped what this layer kept.
+                # Content-agnostic (Rule 1 ✓): uses the runtime
+                # source_authors roster + the generic attrib-verb grammar
+                # (_name_holds_any_attrib_verb), no hardcoded names.
+                _v069_grounded = bool(
+                    source_authors
+                    and _claimed.lower() in {a.lower() for a in source_authors}
+                    and _name_holds_any_attrib_verb(_claimed, source_text)
                 )
-                continue
+                if _v069_grounded:
+                    report.issues.append(
+                        Issue(
+                            detector="parenthetical_promotion",
+                            severity="flag",
+                            field=label,
+                            snippet=bp_str[:60],
+                            detail=(
+                                f"V0.6.9: bullet for '{_claimed}' flagged as "
+                                f"parenthetical promotion BUT KEPT — the author "
+                                f"is in the citation roster AND genuinely holds "
+                                f"an attribution verb elsewhere in the source "
+                                f"(correctly attributed — the tightened V0.5.15 "
+                                f"exemption; a pure citation-list name no "
+                                f"longer counts as grounding)."
+                            ),
+                        )
+                    )
+                    # DON'T continue — let the bullet through
+                else:
+                    report.issues.append(
+                        Issue(
+                            detector="parenthetical_promotion",
+                            severity="fix",
+                            field=label,
+                            snippet=bp_str[:60],
+                            detail=(
+                                f"dropped misattributed bullet: '{_claimed}' is "
+                                f"credited with a claim the source attributes to "
+                                f"'{_real}' ('{_claimed}' is not grounded — either "
+                                f"absent from the citation roster or appearing "
+                                f"there only as a citation/list item, never "
+                                f"holding an attribution verb; the V0.6.9 "
+                                f"tightened grounding check). Verified "
+                                f"via the generation-time active-subject veto."
+                            ),
+                        )
+                    )
+                    continue
         # V18.20.3.4 (RC-3, audit v182033): ENFORCED truncation drop. The
         # flag was recorded above; a bullet whose claim is cut mid-sentence
         # cannot be verified against the source, so it must not ship. This
@@ -574,13 +693,39 @@ def postcheck_exec(executive_summary: str, ctx: PhaseCtx, report: PostCheckRepor
         exec_str, "exec", source_text or "", source_words=_src_words
     )
     # V0.4.3 (audit D4): sentence-fusion garble.
-    _, exec_fusion = detect_sentence_fusion(
+    # V0.5.10 (Track C4): CAPTURE the returned text (was
+    # `_, exec_fusion = ...` — the V0.4.3 flag-only discard) so the
+    # V0.5.4 (Track C2) rewrite (the "ego-syntonically personalities"
+    # → "ego-syntonic personalities" grammatical garble) actually
+    # propagates to the shipped exec AND to subsequent detectors (the
+    # dropped-letter detector + the LLM repair + the author-garble +
+    # the stray-quote repair) so they see the corrected text, not the
+    # garbled original. Issue list is still collected the same way.
+    exec_str, exec_fusion = detect_sentence_fusion(
         exec_str, "exec", source_text or "", source_words=_src_words
     )
     exec_fragment = (exec_fragment or []) + (exec_fusion or [])
     exec_str, exec_dropped = detect_dropped_letter_garble(
         exec_str, "exec", source_text or "", source_words=_src_words, auto_repair=auto_repair_garble
     )  # V18.20.3.4 (RC-3): capture auto-repairs; V0.03: guarded + default-off
+    # V0.4.39 (Option A): LLM semantic repair for flagged garbles (exec).
+    # Mirrors the thorough wiring. Fires only when a garble is flagged on
+    # the exec (bounded — no-op on clean exec). Content-agnostic (Rule 1).
+    _exec_garble_flags = (exec_fragment or []) + (exec_dropped or [])
+    if _exec_garble_flags:
+        from utils.settings import Settings as _ESettings
+
+        _egs = _ESettings()
+        _eg_model = _egs.get("summarisation.model", "") or _egs.get(
+            "summarisation.primary_model", ""
+        )
+        if _eg_model:
+            from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+            exec_str, _exec_garble_repair = repair_garbles_via_llm(
+                exec_str, "exec", source_text or "", _src_words, _egs
+            )
+            report.issues.extend(_exec_garble_repair or [])
     exec_str, exec_name_garble = detect_and_repair_author_garbles(
         exec_str, "exec", source_authors
     )  # V0.20.5 (brainstorm D1)
@@ -724,7 +869,15 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
     # V0.4.3 (audit D4): sentence-fusion garble — the V0.4.2 NPD thorough
     # shipped two fusions (praiseity, self-developmentstic); this catches
     # them. Flag-only.
-    _, tho_fusion = detect_sentence_fusion(
+    # V0.5.10 (Track C4): CAPTURE the returned text (was `_, tho_fusion
+    # = ...` — the V0.4.3 flag-only discard) so the V0.5.4 (Track C2)
+    # rewrite (the "ego-syntonically personalities" → "ego-syntonic
+    # personalities" grammatical garble) actually propagates to the
+    # shipped thorough AND to subsequent detectors (the dropped-letter
+    # detector + the author-garble + the stray-quote repair + the D3
+    # LLM repair) so they see the corrected text, not the garbled
+    # original. Issue list is still collected the same way.
+    tho_str, tho_fusion = detect_sentence_fusion(
         tho_str, "thorough", source_text or "", source_words=_src_words
     )
     tho_fragment = (tho_fragment or []) + (tho_fusion or [])
@@ -765,6 +918,29 @@ def postcheck_thorough(thorough_summary: str, ctx: PhaseCtx, report: PostCheckRe
                 tho_str, "thorough", source_text or "", _s
             )
             tho_stray_quotes = (tho_stray_quotes or []) + (d3_issues or [])
+    # V0.4.39 (Option A): LLM semantic repair for flagged garbles
+    # (fragment_merge + dropped_letter). Mirrors the V0.4.11/V0.4.13 D3
+    # stray-quote LLM-repair pattern above. General — catches any garble
+    # on any chapter; content-agnostic (Rule 1 — the prompt is about token
+    # repair, not content). Fail-open; D3-style guard (keep the original
+    # if the repair doesn't reduce the garble flag count). Fires only when
+    # the postcheck flagged a garble, so it's bounded (no-op on clean text).
+    _garble_flags = (tho_fragment or []) + (tho_dropped or [])
+    if _garble_flags:
+        from utils.settings import Settings as _GSettings
+
+        _gs = _GSettings()
+        _g_model = _gs.get("summarisation.model", "") or _gs.get("summarisation.primary_model", "")
+        if _g_model:
+            from core.summarisation.postchecks.garble import repair_garbles_via_llm
+
+            tho_str, _garble_repair_issues = repair_garbles_via_llm(
+                tho_str, "thorough", source_text or "", _src_words, _gs
+            )
+            # The pre-repair garble flags (tho_fragment + tho_dropped) stay
+            # as the honest "what was found" record; the repair issues
+            # (fix/flag) document the LLM repair on top. Mirror the D3 path.
+            report.issues.extend(_garble_repair_issues or [])
     # V0.4.23: raw-source verbatim exemption (see validate_years docstring).
     _, tho_year = validate_years(tho_str, "thorough", source_authors, source_text or "")
     # V18.2.17 Fix 7: attribution verification.

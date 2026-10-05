@@ -27,17 +27,6 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-# Stub tiktoken so the import chain works (matches sibling tests).
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
-
 from core.summarisation.structured_llm import call_llm_structured
 
 # V18.20.2.0 (SWOT test-debt): the ``_install_*`` helpers below REPLACE

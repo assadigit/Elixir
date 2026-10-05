@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from core.podcast.cancel_token import CancelToken
 from core.podcast.script_generator import ScriptLine, ScriptResult
 from core.tts.engine import LogFn
 
@@ -29,8 +30,6 @@ SAMPLE_RATE = 24000
 # caused audio distortion on VibeVoice.
 OVERLAP_MIN_MS = 0  # sometimes immediate (interruption)
 OVERLAP_MAX_MS = 300  # max overlap (gentle, won't distort)
-BACKCHANNEL_OVERLAP_MS = 600  # backchannel layered over last 0.6s
-BACKCHANNEL_VOLUME = 0.35  # backchannel at 35% volume (background)
 
 
 def _crossfade_overlap(prev_audio, next_audio, overlap_samples):
@@ -69,174 +68,37 @@ def _crossfade_overlap(prev_audio, next_audio, overlap_samples):
     return np.concatenate([prev_head, mixed, next_tail])
 
 
-def _mix_backchannel(host_audio, backchannel_audio, offset_ms, volume):
-    """V11.63.0: Layer a backchannel ('yeah', 'right') over host_audio.
-
-    The backchannel is placed at offset_ms from the END of host_audio,
-    at reduced volume, creating the "yeah yeah, you're right" effect
-    while the other person is still speaking.
-    """
-    sr = SAMPLE_RATE
-    offset_samples = int(sr * offset_ms / 1000)
-    bc_len = len(backchannel_audio)
-
-    # Where to insert (from the end)
-    insert_pos = len(host_audio) - offset_samples
-    if insert_pos < 0:
-        insert_pos = 0
-
-    # How much of the backchannel fits
-    end_pos = min(insert_pos + bc_len, len(host_audio))
-    actual_bc_len = end_pos - insert_pos
-
-    if actual_bc_len <= 0:
-        return host_audio
-
-    # Mix: host audio stays at full volume, backchannel at reduced volume
-    result = host_audio.copy()
-    bc_segment = backchannel_audio[:actual_bc_len] * volume
-
-    if result.ndim == 1 and bc_segment.ndim == 1:
-        result[insert_pos:end_pos] = result[insert_pos:end_pos] + bc_segment
-    else:
-        result[insert_pos:end_pos] = result[insert_pos:end_pos] + bc_segment[:, None]
-
-    # Prevent clipping
-    max_val = np.max(np.abs(result))
-    if max_val > 0.99:
-        result = result * (0.99 / max_val)
-
-    return result
-
-
-def _apply_mic_variation(audio, rng, intensity=0.12):
-    """V11.64.0: Apply subtle gain variation to simulate head movement.
-
-    Podcasters move their head slightly toward/away from the mic, causing
-    the volume to fluctuate. This applies a slow gain envelope (±intensity)
-    to make the audio feel less static and more "live".
-
-    The envelope is a combination of slow sine waves at different
-    frequencies, ensuring the volume drifts naturally rather than
-    predictably.
-
-    Args:
-        audio: numpy array of audio samples.
-        rng: random.Random instance for deterministic variation.
-        intensity: max gain change (0.12 = ±12% volume variation).
-    """
-    if len(audio) < SAMPLE_RATE // 2:  # skip very short clips (< 0.5s)
-        return audio
-
-    # Generate a slow envelope using multiple sine waves at different
-    # frequencies — this creates a natural-sounding drift.
-    t = np.arange(len(audio), dtype=np.float32) / SAMPLE_RATE
-    # Random frequencies between 0.2-0.8 Hz (very slow, ~1-4s per cycle)
-    freq1 = rng.uniform(0.2, 0.5)
-    freq2 = rng.uniform(0.3, 0.8)
-    freq3 = rng.uniform(0.1, 0.3)
-    # Random phase offsets
-    phase1 = rng.uniform(0, 2 * np.pi)
-    phase2 = rng.uniform(0, 2 * np.pi)
-    phase3 = rng.uniform(0, 2 * np.pi)
-
-    # Combine three sine waves for a natural envelope
-    envelope = (
-        0.5 * np.sin(2 * np.pi * freq1 * t + phase1)
-        + 0.3 * np.sin(2 * np.pi * freq2 * t + phase2)
-        + 0.2 * np.sin(2 * np.pi * freq3 * t + phase3)
-    ) * intensity
-
-    # Center around 1.0 (no net volume change)
-    gain = 1.0 + envelope
-
-    # Apply the gain
-    result = audio * gain[:, None] if audio.ndim > 1 else audio * gain
-
-    # Normalize to prevent clipping
-    max_val = np.max(np.abs(result))
-    if max_val > 0.99:
-        result = result * (0.99 / max_val)
-
-    return result
-
-
-def _boost_exclamations(audio, text, rng):
-    """V11.64.0: Boost volume on exclamatory sentences.
-
-    If the text contains exclamation marks (!), "wow", "what", "awesome",
-    "kidding", etc., we boost the volume of the last portion of the audio
-    to emphasize the excitement. This makes "wooow!" and "that's AWESOME!"
-    sound more energetic.
-
-    Args:
-        audio: numpy array of audio samples.
-        text: the original text (to detect exclamations).
-        rng: random.Random instance.
-    """
-    # Detect exclamatory content
-    exclamation_words = (
-        "wow",
-        "wooow",
-        "whattt",
-        "what",
-        "awesome",
-        "awww",
-        "kidding",
-        "no way",
-        "oh my",
-        "incredible",
-        "amazing",
-        "insane",
-        "crazy",
-        "mind-blowing",
-        "unbelievable",
-    )
-    text_lower = text.lower()
-    has_exclamation = (
-        "!" in text
-        or any(w in text_lower for w in exclamation_words)
-        or text.isupper()  # ALL CAPS = shouting
-    )
-
-    if not has_exclamation or len(audio) < SAMPLE_RATE:
-        return audio
-
-    # Boost the last 30-50% of the audio (where the exclamation usually is)
-    boost_start = rng.uniform(0.5, 0.7)  # start from 50-70% into the audio
-    boost_factor = rng.uniform(1.15, 1.30)  # 15-30% volume boost
-
-    start_sample = int(len(audio) * boost_start)
-    result = audio.copy()
-
-    # Apply a smooth ramp-up to the boost (avoid sudden jumps)
-    ramp_len = min(int(SAMPLE_RATE * 0.1), len(audio) - start_sample)  # 100ms ramp
-    if ramp_len > 0:
-        ramp = np.linspace(1.0, boost_factor, ramp_len, dtype=audio.dtype)
-        if result.ndim > 1:
-            result[start_sample : start_sample + ramp_len] *= ramp[:, None]
-            result[start_sample + ramp_len :] *= boost_factor
-        else:
-            result[start_sample : start_sample + ramp_len] *= ramp
-            result[start_sample + ramp_len :] *= boost_factor
-
-    # Normalize to prevent clipping
-    max_val = np.max(np.abs(result))
-    if max_val > 0.99:
-        result = result * (0.99 / max_val)
-
-    return result
-
-
 def _detect_language(text: str) -> str:
-    """Detect if text is Farsi or English."""
-    import re
+    """Detect if text is Farsi or English.
 
-    arabic_chars = len(re.findall(r"[\u0600-\u06FF\u0750-\u077F]", text))
-    non_space = max(len([c for c in text if not c.isspace()]), 1)
-    if arabic_chars / non_space > 0.2:
-        return "fa"
-    return "en"
+    V0.6.0 (A1): delegates to the canonical ``core.tts.engine.detect_language``
+    — the local copy this replaced matched only the base Arabic block and
+    silently missed the presentation-form blocks (U+FB50–U+FDFF /
+    U+FE70–U+FEFF), so Persian text extracted in presentation forms routed
+    to the English engine branch.
+    """
+    from core.tts.engine import detect_language
+
+    return detect_language(text)
+
+
+def _log_vibevoice_config(vv_path: str, vv_voices: str, log: LogFn) -> None:
+    """V0.6.15: log the VibeVoice config TRUTH (path + existence) before the
+    subprocess spawn — when a podcast fails at the VibeVoice step the
+    operator's report must show whether the paths were valid without a
+    second round-trip."""
+    _vv_path_ok = bool(vv_path) and Path(vv_path).exists()
+    _vv_voices_ok = bool(vv_voices) and Path(vv_voices).is_dir()
+    log(
+        f"  🎙️ VibeVoice model: {vv_path or '(not set)'}"
+        f"{' — OK' if _vv_path_ok else ' — NOT FOUND' if vv_path else ''}",
+        "INFO",
+    )
+    log(
+        f"  🎙️ VibeVoice voices dir: {vv_voices or '(not set)'}"
+        f"{' — OK' if _vv_voices_ok else ' — NOT FOUND' if vv_voices else ''}",
+        "INFO",
+    )
 
 
 def _synthesize_line(
@@ -263,6 +125,7 @@ def _synthesize_line(
             voice_name = voice[len("vibevoice:") :]
             vv_path = settings.get("tts.vibevoice_model_path", "")
             vv_voices = settings.get("tts.vibevoice_voices_dir", "")
+            _log_vibevoice_config(vv_path, vv_voices, log)  # V0.6.15
             if not vv_path:
                 log(
                     "  ❌ VibeVoice model path not set — cannot generate. "
@@ -335,11 +198,22 @@ def generate_podcast_audio(
     settings,
     log_callback: LogFn | None = None,
     progress_callback=None,
+    cancel_token: CancelToken | None = None,
 ) -> Path | None:
     """Generate a podcast audio file from a script.
 
     V11.41.0: Handles vocal cues ([pause], [breath], [laugh], [hmm]) and
     adds conversational overlap between host transitions.
+
+    V0.6.18 (W-d3): ``cancel_token`` — the line-by-line loop checks the
+    token at the top of every iteration. The UI's cancel button calls
+    ``token.cancel()`` from the main thread; the worker sees the flip on
+    the next line and exits cleanly, releasing the temp WAVs and leaving
+    the VibeVoice / Qwen subprocess alive-but-idle for the next run (the
+    subprocess teardown contract is unchanged — only the line loop is
+    new). The returned path is ``None`` on cancellation (no audio file
+    is written); the caller logs "cancelled by user" via the token's
+    ``reason``.
 
     Args:
         script: The ScriptResult from script_generator.
@@ -349,9 +223,11 @@ def generate_podcast_audio(
         settings: Settings instance for TTS config.
         log_callback: Optional logging callback.
         progress_callback: Optional callback(pct: int, msg: str).
+        cancel_token: Optional CancelToken; when its ``cancelled`` flag
+            flips True, the loop exits at the next iteration boundary.
 
     Returns:
-        Path to the output WAV, or None on failure.
+        Path to the output WAV, or None on failure / cancellation.
     """
     from core.podcast.script_generator import strip_vocal_cues
 
@@ -389,6 +265,26 @@ def generate_podcast_audio(
 
     with tempfile.TemporaryDirectory(prefix="podcast_") as tmp:
         for i, line in enumerate(script.lines):
+            # V0.6.18 (W-d3): cancel check at the iteration boundary —
+            # the line loop's only safe exit point. The token's flag is
+            # thread-safe (Lock-guarded); the UI button calls .cancel()
+            # from the main thread, the worker sees it on the NEXT line
+            # (mid-line cancel would orphan a half-synthesized WAV, so
+            # we wait for the boundary). On cancel we exit cleanly: the
+            # temp WAVs are released by the surrounding TemporaryDirectory,
+            # the TTS subprocess is left alive-but-idle, and we return
+            # None — the caller's "success or fail" contract holds.
+            if cancel_token is not None and cancel_token.cancelled:
+                _reason = cancel_token.reason or "cancelled"
+                log(
+                    f"  ⏹️ Podcast generation cancelled at line {i}/{total} "
+                    f"({_reason}). No audio file will be produced.",
+                    "WARNING",
+                )
+                if progress_callback:
+                    progress_callback(0, f"⏹️ Cancelled: {_reason}")
+                return None
+
             # Determine which voice to use
             voice = host_a_voice if line.host == "A" else host_b_voice
 

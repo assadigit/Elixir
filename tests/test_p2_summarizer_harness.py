@@ -65,6 +65,13 @@ MARKER_EXEC_FROM_THOROUGH = "write ONE executive summary"
 MARKER_BULLET_EXPANSION = "produce a comprehensive list of bullet points"
 MARKER_PRIMARY_INLINE = "You are an expert book summariser"
 MARKER_TIER2_GAPFILL = 'Write ONE bullet point (prefixed with "- ")'
+# V0.5.16: the content-judge gap-fill reprompt (prompts/summarisation/
+# gap_fill_reprompt.md). The marker check MUST precede the length-based
+# primary classification — the reprompt embeds the existing bullets and
+# is usually > 6000 chars, so without it the scripted gap reply never
+# fires (the canned XML comes back instead and its <bullet_points> lines
+# get parsed as gap-fill additions).
+MARKER_JUDGE_GAPFILL = "Add 3-7 NEW bullets that cover the missed concepts below."
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -247,12 +254,14 @@ class ScriptedLLM:
         exec_from_thorough: str | None = None,
         bullet_expansion: str | None = None,
         aux_response: str | None = None,
+        judge_gapfill: str | None = None,
     ):
         self.primary_response = primary_response
         self.dedicated_thorough = dedicated_thorough
         self.exec_from_thorough = exec_from_thorough
         self.bullet_expansion = bullet_expansion
         self.aux_response = aux_response
+        self.judge_gapfill = judge_gapfill
         self.responder = responder
         self.calls: list[tuple[str, str | None, float | None, int | None]] = []
 
@@ -264,6 +273,9 @@ class ScriptedLLM:
             return "exec_from_thorough"
         if MARKER_BULLET_EXPANSION in prompt:
             return "bullet_expansion"
+        # V0.5.16: BEFORE the length check (see the marker note above).
+        if MARKER_JUDGE_GAPFILL in prompt:
+            return "judge_gapfill"
         if len(prompt) > 6000 or max_tokens is None:
             return "primary"
         return "aux"
@@ -284,6 +296,15 @@ class ScriptedLLM:
         if self.responder is not None:
             return self.responder(prompt, model, temperature, max_tokens)
         shape = self.classify(prompt, max_tokens)
+        if shape == "judge_gapfill":
+            # V0.5.16: the judge gap-fill reprompt. Default: no bullet
+            # lines ("no additions") — the parsed gap list is empty. Pass
+            # judge_gapfill="- <grounded line>" to script additions.
+            if self.judge_gapfill is not None:
+                return self.judge_gapfill
+            return (
+                "No additions are required. The existing bullets cover all the identified claims."
+            )
         if shape == "dedicated_thorough":
             if self.dedicated_thorough is not None:
                 return self.dedicated_thorough

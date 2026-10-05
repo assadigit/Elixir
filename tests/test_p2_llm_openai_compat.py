@@ -3,16 +3,19 @@
 Characterization tests for :class:`OpenAICompatProvider`. Baseline: 117/129
 statements missed (9%).
 
-Hermetic: ``requests.post`` / ``requests.get`` are patched (the module
-imports ``requests as _requests`` — the shared module object), and the Batch
-API poll loop's ``time.sleep`` is neutralised. No real HTTP ever leaves the
-process.
+Hermetic: the ``complete()`` transport is patched at the provider's
+``session_for_url`` seam (V0.6.7 review-loop A5: complete() routes through
+the pooled session instead of bare ``requests.post``) — assertions are the
+same as the old requests.post patches, redirected to the mock session's
+``.post``. The Batch API path (still ``requests.post`` / ``requests.get``)
+keeps its module-level patches, and the Batch API poll loop's
+``time.sleep`` is neutralised. No real HTTP ever leaves the process.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -33,6 +36,19 @@ def _resp(status: int = 200, payload: dict | None = None, text: str = ""):
 
 def _chat_payload(content: str = "hello answer") -> dict:
     return {"choices": [{"message": {"content": content}}]}
+
+
+def _sess_patch(**post_kwargs):
+    """Patch the provider transport seam with a mock pooled session.
+
+    ``core.llm.openai_compat_provider`` imports ``session_for_url`` at module
+    top (V0.6.7), so the seam is the provider module attribute. The mock
+    session's ``.post`` accepts the same ``return_value=`` / ``side_effect=``
+    kwargs as ``unittest.mock.patch("requests.post", ...)`` did.
+    """
+    sess = MagicMock()
+    sess.post = MagicMock(**post_kwargs)
+    return patch("core.llm.openai_compat_provider.session_for_url", return_value=sess), sess
 
 
 @pytest.fixture
@@ -57,14 +73,16 @@ def provider(logs) -> OpenAICompatProvider:
 
 class TestComplete:
     def test_success_returns_content(self, provider):
-        with patch("requests.post", return_value=_resp(200, _chat_payload("  answer  "))) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload("  answer  ")))
+        with patcher:
             assert provider.complete("prompt") == "answer"
-        assert mp.call_args.kwargs["timeout"] == 30
+        assert sess.post.call_args.kwargs["timeout"] == 30
 
     def test_headers_openrouter_referer(self, provider):
-        with patch("requests.post", return_value=_resp(200, _chat_payload())) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload()))
+        with patcher:
             provider.complete("p")
-        headers = mp.call_args.kwargs["headers"]
+        headers = sess.post.call_args.kwargs["headers"]
         assert headers["Authorization"] == "Bearer sk-test"
         assert headers["HTTP-Referer"] == "https://elixir.local"
         assert headers["X-Title"] == "Elixir"
@@ -77,9 +95,10 @@ class TestComplete:
             retries=0,
             log_callback=lambda msg, level="INFO": logs.append((level, msg)),
         )
-        with patch("requests.post", return_value=_resp(200, _chat_payload())) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload()))
+        with patcher:
             p.complete("p")
-        headers = mp.call_args.kwargs["headers"]
+        headers = sess.post.call_args.kwargs["headers"]
         assert "HTTP-Referer" not in headers
         assert "X-Title" not in headers
 
@@ -91,26 +110,29 @@ class TestComplete:
             retries=0,
             log_callback=lambda msg, level="INFO": logs.append((level, msg)),
         )
-        with patch("requests.post", return_value=_resp(200, _chat_payload())) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload()))
+        with patcher:
             p.complete("p")
-        assert "Authorization" not in mp.call_args.kwargs["headers"]
+        assert "Authorization" not in sess.post.call_args.kwargs["headers"]
 
     def test_payload_overrides(self, provider):
-        with patch("requests.post", return_value=_resp(200, _chat_payload())) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload()))
+        with patcher:
             provider.complete(
                 "p", temperature=0.1, max_tokens=77, model="other-model", json_mode=True
             )
-        payload = mp.call_args.kwargs["json"]
+        payload = sess.post.call_args.kwargs["json"]
         assert payload["model"] == "other-model"
         assert payload["temperature"] == 0.1
         assert payload["max_tokens"] == 77
         assert payload["response_format"] == {"type": "json_object"}
-        assert mp.call_args.args[0].endswith("/chat/completions")
+        assert sess.post.call_args.args[0].endswith("/chat/completions")
 
     def test_defaults_used_when_no_overrides(self, provider):
-        with patch("requests.post", return_value=_resp(200, _chat_payload())) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload()))
+        with patcher:
             provider.complete("p")
-        payload = mp.call_args.kwargs["json"]
+        payload = sess.post.call_args.kwargs["json"]
         assert payload["model"] == "test-model"
         assert payload["temperature"] == 0.6
         assert payload["max_tokens"] == 4096
@@ -119,16 +141,19 @@ class TestComplete:
     def test_empty_response_returns_none_after_retry(self, provider):
         """Empty content → ConnectionError → with retries=0 the single attempt
         exhausts and complete() returns None (the legacy contract)."""
-        with patch("requests.post", return_value=_resp(200, _chat_payload("   "))) as mp:
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload("   ")))
+        with patcher:
             assert provider.complete("p") is None
-        assert mp.call_count == 1
+        assert sess.post.call_count == 1
 
     def test_http_401_returns_none(self, provider):
-        with patch("requests.post", return_value=_resp(401, {"error": "bad key"})):
+        patcher, _sess = _sess_patch(return_value=_resp(401, {"error": "bad key"}))
+        with patcher:
             assert provider.complete("p") is None
 
     def test_http_error_401_logged(self, provider, logs):
-        with patch("requests.post", return_value=_resp(401, {"error": "bad key"})):
+        patcher, _sess = _sess_patch(return_value=_resp(401, {"error": "bad key"}))
+        with patcher:
             assert provider.complete("p") is None
         assert any("call failed" in msg for (_, msg) in logs)
 
@@ -136,7 +161,8 @@ class TestComplete:
         def boom(*a, **k):
             raise requests.exceptions.ConnectionError("refused")
 
-        with patch("requests.post", side_effect=boom):
+        patcher, _sess = _sess_patch(side_effect=boom)
+        with patcher:
             assert provider.complete("p") is None
 
     def test_retryable_error_retried_then_success(self, logs):
@@ -148,15 +174,21 @@ class TestComplete:
             log_callback=lambda msg, level="INFO": logs.append((level, msg)),
         )
         responses = [_resp(429, {}), _resp(200, _chat_payload("second try"))]
+        patcher, _sess = _sess_patch(side_effect=responses)
         with (
-            patch("requests.post", side_effect=responses),
+            patcher,
             patch("core.llm.retry._HAS_TENACITY", False),
             patch("core.llm.retry.time.sleep"),
         ):
             assert p.complete("p") == "second try"
 
     def test_malformed_json_returns_none(self, provider):
-        with patch("requests.post", return_value=_resp(200, {"unexpected": "shape"})):
+        """A 200 with an unexpected body → extract_openai_content "" → the
+        empty-response ConnectionError path → retries=0 exhausts → None.
+        (V0.6.7 A5: previously the deep-index KeyError went straight to the
+        outer except; the shape-safe extract routes it through retry.)"""
+        patcher, _sess = _sess_patch(return_value=_resp(200, {"unexpected": "shape"}))
+        with patcher:
             assert provider.complete("p") is None
 
 
@@ -171,7 +203,8 @@ class TestBatchCompleteParallel:
         def fake_post(url, headers=None, json=None, timeout=None):
             return _resp(200, _chat_payload(f"ans::{json['messages'][0]['content']}"))
 
-        with patch("requests.post", side_effect=fake_post):
+        patcher, _sess = _sess_patch(side_effect=fake_post)
+        with patcher:
             results = provider.batch_complete(["p1", "p2", "p3"])
         assert results == ["ans::p1", "ans::p2", "ans::p3"]
 
@@ -181,7 +214,8 @@ class TestBatchCompleteParallel:
                 raise requests.exceptions.ConnectionError("boom")
             return _resp(200, _chat_payload("ok"))
 
-        with patch("requests.post", side_effect=fake_post):
+        patcher, _sess = _sess_patch(side_effect=fake_post)
+        with patcher:
             results = provider.batch_complete(["p1", "p2", "p3"])
         assert results[0] == "ok"
         assert results[1] is None
@@ -190,15 +224,15 @@ class TestBatchCompleteParallel:
     def test_batch_api_unavailable_falls_back_to_parallel(self, provider, logs):
         """use_batch_api=True with a non-OpenAI base URL → immediate None →
         parallel fallback (the 'Batch API unavailable' log line)."""
-        with (
-            patch("requests.post", return_value=_resp(200, _chat_payload("par"))) as mp,
-        ):
+        patcher, sess = _sess_patch(return_value=_resp(200, _chat_payload("par")))
+        with patcher:
             results = provider.batch_complete(["p1"], use_batch_api=True)
         assert results == ["par"]
-        # Only the parallel call — no /files or /batches upload happened.
+        # Only the parallel call — no /files or /batches upload happened
+        # (the batch path still uses bare requests.post; nothing touched it).
         assert all(
             "/chat/completions" in str(c.args[0]) or "chat" in str(c.args[0])
-            for c in mp.call_args_list
+            for c in sess.post.call_args_list
         )
 
 

@@ -25,6 +25,18 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+# V18.20.4.12 (W-a10) follow-up: the DEFAULT model tag here was the
+# KNOWN-BAD "…-Q4_K_M:latest" variant that 404s on the rig (the
+# PodcastMakerView combo already falls back to RIG_FALLBACK_MODEL; the
+# service default now matches so programmatic callers don't hit the dead
+# tag).
+from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import (
+    API_BATCH_TIMEOUT_S,
+    LLM_REQUEST_TIMEOUT_S,
+    UI_PROBE_TIMEOUT_S,  # V0.6.10 (B15)
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +76,19 @@ class ScriptResult:
         return "\n\n".join(parts)
 
     def to_json(self) -> str:
-        """Render as JSON for editing/saving."""
+        """Render as JSON for editing/saving.
+
+        V0.6.24 (W-j1): the round-trip bug fix. Before V0.6.24, to_json
+        serialized only 4 fields (lines, coverage_pct, bullets_covered,
+        bullets_missing) and DROPPED title, bullets_input, retries,
+        forced_segments, error. The wizard's "Export Script" → "Import
+        Script" round-trip LOST the title (the imported script got a
+        timestamp filename instead of the original), bullets_input (the
+        anti-hallucination audit trail was lost), retries/forced_segments
+        (the script's provenance was lost), and error (any generation
+        error message was lost). The V0.6.23 schema module documents the
+        full expected format; this fix makes to_json match it.
+        """
         return json.dumps(
             {
                 "lines": [
@@ -76,9 +100,14 @@ class ScriptResult:
                     }
                     for ln in self.lines
                 ],
+                "title": self.title,
                 "coverage_pct": self.coverage_pct,
+                "bullets_input": self.bullets_input,
                 "bullets_covered": self.bullets_covered,
                 "bullets_missing": self.bullets_missing,
+                "retries": self.retries,
+                "forced_segments": self.forced_segments,
+                "error": self.error,
             },
             indent=2,
             ensure_ascii=False,
@@ -133,7 +162,16 @@ class ScriptResult:
                 ScriptLine(
                     host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
                     text=text_val,
-                    source_ref=str(obj.get("source_ref", "")).strip().lower(),
+                    # V0.6.25 (W-j2): the source_ref case-preservation fix.
+                    # Before V0.6.25, from_json did .strip().lower() here,
+                    # which SILENTLY LOWERCASED the source_ref on read.
+                    # to_json writes source_ref verbatim, so the round-trip
+                    # through to_json -> from_json mangled mixed-case source
+                    # refs (e.g., "MySource_Chapter3" -> "mysource_chapter3").
+                    # The .lower() was added in the V0.6.0 lint triage
+                    # commit (bf994fa) without a documented reason; no tests
+                    # rely on it. Removing it makes the round-trip lossless.
+                    source_ref=str(obj.get("source_ref", "")).strip(),
                     segment_type=str(obj.get("segment_type", "content")).strip(),
                 )
             )
@@ -143,6 +181,16 @@ class ScriptResult:
             bullets_covered=meta.get("bullets_covered", []),
             bullets_missing=meta.get("bullets_missing", []),
             coverage_pct=meta.get("coverage_pct", 0.0),
+            # V0.6.24 (W-j1): the round-trip bug fix. Before V0.6.24,
+            # from_json DROPPED title, retries, forced_segments, error
+            # (it read bullets_input but to_json didn't serialize it,
+            # so it was lost in the round-trip anyway). Now both sides
+            # handle all 9 fields. The defaults preserve backward-compat
+            # for old JSON files that don't have these fields.
+            title=meta.get("title", ""),
+            retries=meta.get("retries", 0),
+            forced_segments=meta.get("forced_segments", 0),
+            error=meta.get("error"),
         )
 
 
@@ -163,6 +211,17 @@ def extract_bullets(text: str) -> list[str]:
 
     for line in lines:
         stripped = line.strip()
+        # V0.6.0 (P3): markdown headings are STRUCTURE, not content —
+        # ``preprocess_source_text`` prepends its own "# Source Material"
+        # heading, which used to be captured here as a phantom bullet and
+        # fed to the LLM as "[BULLET N] # Source Material" (inflating the
+        # coverage requirement with a non-bullet). Flush the current
+        # bullet and skip the heading line.
+        if re.match(r"^#{1,6}\s+", stripped):
+            if current_bullet:
+                bullets.append(current_bullet.strip())
+                current_bullet = ""
+            continue
         # Markdown bullet or numbered list
         if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+[.)]\s+", stripped):
             if current_bullet:
@@ -765,6 +824,62 @@ def _fix_json_errors(text: str) -> str:
     return text
 
 
+def _clean_json_metadata_from_text(text: str) -> str:
+    """V0.6.30 (W-o1): Strip JSON metadata fragments that leaked into dialogue text.
+
+    When an LLM outputs JSON key-value pairs on separate lines (without
+    ``{...}`` wrappers), the parser's plain-dialogue fallback captures them
+    as dialogue text. The TTS then literally reads ``"host": "A",`` and
+    ``"source_ref": "hook"`` — the operator's report named this exact bug.
+
+    This function detects + cleans JSON metadata fragments:
+
+      1. ``"text": "actual dialogue"``, → EXTRACTS the value (the real
+         dialogue). The LLM put the actual speech inside the ``"text"``
+         field — we recover it.
+      2. ``"host": "A",`` / ``"host": "B",`` → STRIPS entirely (metadata,
+         not dialogue — the host is already captured separately).
+      3. ``"source_ref": "...",`` → STRIPS entirely (metadata).
+      4. ``"segment_type": "...",`` → STRIPS entirely (metadata).
+      5. Any leftover commas / whitespace / empty lines → cleaned up.
+
+    The function is deliberately conservative — it only strips patterns
+    that match the EXACT JSON key names the script format uses (host,
+    text, source_ref, segment_type). Non-JSON text is preserved verbatim.
+    """
+    if not text:
+        return text
+    import re as _re
+
+    # Step 1: Extract the VALUE from "text": "..." (the actual dialogue).
+    # The value may contain escaped quotes (\") which we unescape.
+    # Match: "text": "value"  or  "text": "value",
+    text = _re.sub(
+        r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,?',
+        lambda m: m.group(1).replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t"),
+        text,
+    )
+
+    # Step 2: Strip JSON metadata key-value pairs (host, source_ref,
+    # segment_type) — these are metadata, not dialogue. The host is already
+    # captured separately by the parser; source_ref + segment_type are
+    # inferred from position in _parse_plain_dialogue.
+    text = _re.sub(r'"host"\s*:\s*"[^"]*"\s*,?', "", text)
+    text = _re.sub(r'"source_ref"\s*:\s*"[^"]*"\s*,?', "", text)
+    text = _re.sub(r'"segment_type"\s*:\s*"[^"]*"\s*,?', "", text)
+
+    # Step 3: Clean up leftover commas, whitespace, empty lines.
+    # Remove leading/trailing commas + whitespace on each line.
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip().strip(",").strip()
+        if line:
+            cleaned_lines.append(line)
+    result = "\n".join(cleaned_lines).strip()
+    return result if result else text.strip()
+
+
 def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
     """Parse plain dialogue text as a fallback.
 
@@ -797,6 +912,16 @@ def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
         line_text = m.group(2).strip()
         if not line_text or len(line_text) < 5:
             continue
+
+        # V0.6.30 (W-o1): clean JSON metadata that leaked into the text.
+        # When the LLM outputs "host": "A", / "text": "...", / "source_ref":
+        # "hook", as separate lines, the plain-dialogue regex captures them
+        # as dialogue text. This strips the metadata + extracts the "text"
+        # value as the actual dialogue. Without this, TTS reads "host":
+        # "A", literally — the operator's report named this exact bug.
+        line_text = _clean_json_metadata_from_text(line_text)
+        if not line_text or len(line_text) < 2:
+            continue  # the line was pure JSON metadata — skip it entirely
 
         # V11.37.5: if the captured text is JSON, extract the fields
         if line_text.startswith("{"):
@@ -1212,7 +1337,7 @@ def generate_podcast_script(
     temperature: float = 0.7,
     language: str = "en",
     ollama_url: str = "http://localhost:11434",
-    model: str = "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest",
+    model: str = RIG_FALLBACK_MODEL,
     max_retries: int = 2,
     log_callback=None,
 ) -> ScriptResult:
@@ -1265,17 +1390,79 @@ def generate_podcast_script(
 
     import requests
 
+    # V0.6.13: the llama.cpp-first local fallback (the operator's follow-up
+    # report: "PODCAST ... FIND[S] LLM ON OLLAMA ONLY"). This tool is
+    # Ollama-native (raw /api/generate below), so the policy applies when
+    # its target is LOCAL: a live llama-server takes over — the
+    # OpenAI-compat /chat/completions branch with the DETECTED served model
+    # + bearer key; dead → the configured Ollama path runs byte-identical
+    # to V0.6.12. A deliberately-configured REMOTE ollama_url is never
+    # probed (the same treatment cloud providers get).
+    from core.llm.local_fallback import decide_llamacpp_first, is_local_url
+
     # V18.20.4.11 (P3 / O-c5): pooled transport — every LLM/endpoint call in
     # this module goes through the shared session selected by endpoint
     # locality (localhost → no-proxy pooled, cloud → proxy-trusting pooled).
     # Same timeouts/status handling as before; connection reuse added.
     from utils.network import session_for_url as _session_for_url
 
+    _llamacpp = None
+    if is_local_url(ollama_url):
+        from utils.settings import Settings
+
+        _d = decide_llamacpp_first(Settings(), "ollama")
+        if _d.note:
+            log(f"  🦙 {_d.note}", "INFO")
+        if _d.use_llamacpp:
+            _llamacpp = _d
+            model = _d.model  # the DETECTED served model wins (V0.4.30)
+
+    def _call_llamacpp(prompt_text: str) -> str:
+        """V0.6.13: the llama.cpp takeover — OpenAI-compatible
+        ``{base}/chat/completions`` (non-streaming; the served model +
+        bearer key). The num_predict/num_ctx Ollama options map to
+        max_tokens (llama.cpp fits the window server-side)."""
+        from utils.network import extract_openai_content
+
+        try:
+            resp = _session_for_url(_llamacpp.base_url).post(
+                f"{_llamacpp.base_url}/chat/completions",
+                json={
+                    "model": _llamacpp.model,
+                    "messages": [{"role": "user", "content": prompt_text}],
+                    "temperature": temperature,
+                    "max_tokens": 4096,
+                    "stream": False,
+                },
+                headers={"Authorization": f"Bearer {_llamacpp.api_key}"},
+                timeout=LLM_REQUEST_TIMEOUT_S,
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"Could not connect to llama.cpp at {_llamacpp.base_url}. Is llama-server running?"
+            ) from e
+        if resp.status_code != 200:
+            err = f"HTTP {resp.status_code}"
+            try:
+                _body = resp.json().get("error", "")
+                if isinstance(_body, dict):  # the llama.cpp error shape
+                    _body = _body.get("message", "")
+                if _body:
+                    err += f": {_body}"
+            except Exception as _e:
+                logger.debug("ignored %s: %s", type(_e).__name__, _e)
+            raise RuntimeError(f"llama.cpp error: {err}")
+        return extract_openai_content(resp.json())
+
     def _call_ollama(prompt_text: str) -> str:
-        """Call Ollama and return the response text.
+        """Call the LLM and return the response text.
 
         V11.37.2: better error reporting for 404 (model not found).
+        V0.6.13: the llama.cpp takeover dispatches to _call_llamacpp
+        (the OpenAI-compat branch) instead of the Ollama endpoint.
         """
+        if _llamacpp is not None:
+            return _call_llamacpp(prompt_text)
         try:
             resp = _session_for_url(ollama_url).post(
                 f"{ollama_url}/api/generate",
@@ -1289,7 +1476,7 @@ def generate_podcast_script(
                         "num_ctx": 131072,
                     },
                 },
-                timeout=300,
+                timeout=LLM_REQUEST_TIMEOUT_S,
             )
         except requests.exceptions.ConnectionError as e:
             raise RuntimeError(
@@ -1306,7 +1493,9 @@ def generate_podcast_script(
             # List available models to help the user
             available = []
             try:
-                tags_resp = _session_for_url(ollama_url).get(f"{ollama_url}/api/tags", timeout=5)
+                tags_resp = _session_for_url(ollama_url).get(
+                    f"{ollama_url}/api/tags", timeout=UI_PROBE_TIMEOUT_S
+                )
                 if tags_resp.status_code == 200:
                     available = [m.get("name", "") for m in tags_resp.json().get("models", [])]
             except Exception as _e:
@@ -1437,7 +1626,11 @@ def generate_podcast_script(
     result.lines = _fix_number_formatting(result.lines, log)
 
     # V11.51.0: Generate a short title for the podcast from the script content
-    result.title = _generate_podcast_title(result.lines, ollama_url, model, temperature, log)
+    # V0.6.13: the llama.cpp takeover routes the title call too (same
+    # decision, same served model).
+    result.title = _generate_podcast_title(
+        result.lines, ollama_url, model, temperature, log, llamacpp=_llamacpp
+    )
 
     return result
 
@@ -1497,13 +1690,19 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
     import re as _re
 
     # Mapping of common spelled-out years and numbers
+    # V0.6.0 (P2): the alternation below is LONGEST-FIRST. It used to list
+    # "twenty" before "twenty-two", so the regex stopped at the word
+    # boundary and "two thousand twenty-two" matched only "…twenty" →
+    # rewritten as "2020-two" (a mangled year the TTS reads aloud).
     YEAR_PATTERN = _re.compile(
-        r"\b(two thousand (?:and )?)(twenty|twenty-one|twenty-two|twenty-three|"
-        r"twenty-four|twenty-five|twenty-six|twenty-seven|twenty-eight|twenty-nine|"
-        r"thirty|thirty-one|thirty-two|thirty-three|thirty-four|thirty-five|"
-        r"thirty-six|thirty-seven|thirty-eight|thirty-nine|forty|forty-one|"
-        r"forty-two|forty-three|forty-four|forty-five|forty-six|forty-seven|"
-        r"forty-eight|forty-nine|fifty)\b",
+        r"\b(two thousand (?:and )?)("
+        r"twenty-nine|twenty-eight|twenty-seven|twenty-six|twenty-five|"
+        r"twenty-four|twenty-three|twenty-two|twenty-one|twenty|"
+        r"thirty-nine|thirty-eight|thirty-seven|thirty-six|thirty-five|"
+        r"thirty-four|thirty-three|thirty-two|thirty-one|thirty|"
+        r"forty-nine|forty-eight|forty-seven|forty-six|forty-five|"
+        r"forty-four|forty-three|forty-two|forty-one|forty|"
+        r"fifty)\b",
         _re.IGNORECASE,
     )
 
@@ -1573,7 +1772,12 @@ def _fix_number_formatting(lines: list[ScriptLine], log) -> list[ScriptLine]:
 
 
 def _generate_podcast_title(
-    lines: list[ScriptLine], ollama_url: str, model: str, temperature: float, log
+    lines: list[ScriptLine],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    log,
+    llamacpp=None,
 ) -> str:
     """V11.51.0/V11.53.0/V11.62.0: Ask the LLM for a 3-6 word podcast title.
 
@@ -1582,6 +1786,14 @@ def _generate_podcast_title(
     explicitly forbids <think> tags, (b) if the stripped title is empty,
     extract any text AFTER the </think> tag, (c) retry with a raw format
     prompt if the first attempt fails.
+
+    V0.6.13: ``llamacpp`` (a LlamacppFirstDecision or None — the decision
+    generate_podcast_script already made) routes the title call through
+    the llama.cpp takeover: the OpenAI-compat ``{base}/chat/completions``
+    branch with the DETECTED served model + bearer key (num_predict 50
+    maps to max_tokens). None → the Ollama path, byte-identical to
+    V0.6.12 (the only dead-path delta: the "(title was empty after
+    stripping…)" DEBUG line now requires a non-empty PRE-cleanup title).
     """
     import re
 
@@ -1603,22 +1815,46 @@ def _generate_podcast_title(
         "Title:"
     )
     try:
-        resp = _session_for_url(ollama_url).post(
-            f"{ollama_url}/api/generate",
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
+        # V0.6.13: the llama.cpp takeover routes the title call the same
+        # way generate_podcast_script routed the script calls — the
+        # OpenAI-compat branch with the DETECTED served model + bearer
+        # key. None → the Ollama path, byte-identical to V0.6.12.
+        title = ""
+        if llamacpp is not None:
+            from utils.network import extract_openai_content
+
+            resp = _session_for_url(llamacpp.base_url).post(
+                f"{llamacpp.base_url}/chat/completions",
+                json={
+                    "model": llamacpp.model,
+                    "messages": [{"role": "user", "content": prompt}],
                     "temperature": max(0.3, temperature),
-                    "num_predict": 50,
-                    "num_ctx": 4096,
+                    "max_tokens": 50,
+                    "stream": False,
                 },
-            },
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            title = resp.json().get("response", "").strip()
+                headers={"Authorization": f"Bearer {llamacpp.api_key}"},
+                timeout=API_BATCH_TIMEOUT_S,
+            )
+            if resp.status_code == 200:
+                title = str(extract_openai_content(resp.json()) or "").strip()
+        else:
+            resp = _session_for_url(ollama_url).post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": max(0.3, temperature),
+                        "num_predict": 50,
+                        "num_ctx": 4096,
+                    },
+                },
+                timeout=API_BATCH_TIMEOUT_S,
+            )
+            if resp.status_code == 200:
+                title = resp.json().get("response", "").strip()
+        if title:
             # V11.62.0: extract text AFTER </think> if present
             think_match = re.search(r"</think>\s*(.*)", title, re.DOTALL | re.IGNORECASE)
             if think_match:

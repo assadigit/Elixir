@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 _CRASH_DIR = Path.home() / ".elixir" / "crash_reports"
 _SETTINGS_FILE = Path.home() / ".elixir" / "settings.json"
+_LOG_FILE = Path.home() / ".elixir" / "system.log"
 
 # Keys whose values must be redacted (never appear in the crash bundle).
 # V18.1 (S4): substring match (case-insensitive) so the list catches
@@ -95,6 +96,26 @@ def _redact_settings(settings: dict) -> dict:
         return obj
 
     return _redact(settings)
+
+
+def collect_recent_log_lines(max_lines: int = 200) -> list[str] | None:
+    """The last ``max_lines`` of ~/.elixir/system.log (None if absent/unreadable).
+
+    V0.6.6 (review-loop B3): shared by BOTH crash handlers. main.py has
+    collected these inline since V13.29.0 (P3.8), but the controller's
+    conversion-crash path never passed them — so a crash INSIDE a
+    conversion produced a zip without the recent-log context the
+    V13.29.0 fix existed to provide. One helper, both call sites.
+    """
+    try:
+        if _LOG_FILE.exists():
+            from collections import deque
+
+            with open(_LOG_FILE, encoding="utf-8", errors="replace") as f:
+                return list(deque(f, maxlen=max_lines))
+    except Exception:
+        logger.debug("could not read system.log for crash report", exc_info=True)
+    return None
 
 
 def _get_system_info() -> dict:
@@ -176,4 +197,4 @@ def generate_crash_report(
         return None
 
 
-__all__ = ["generate_crash_report"]
+__all__ = ["generate_crash_report", "collect_recent_log_lines"]

@@ -37,6 +37,10 @@ to any single bullet above 0.50, but 0.42 catches real hallucinations.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # V18.1 (audit O1): threshold scale factor. Read from settings.embedding.threshold_scale.
 # When the embedder model changes, the similarity distribution shifts. This scale
 # multiplies all embedding-cosine thresholds so users can adjust without editing code.
@@ -99,9 +103,7 @@ def _get_threshold_scale() -> float:
 
         _THRESHOLD_SCALE = _auto_scale
         if _auto_scale != 1.0:
-            import logging as _logging
-
-            _logging.getLogger(__name__).info(
+            logger.info(
                 "V18.2.7: Auto-calibrated threshold_scale=%.2f for embedder '%s' "
                 "(drop threshold: %.2f → %.2f)",
                 _auto_scale,
@@ -109,8 +111,17 @@ def _get_threshold_scale() -> float:
                 SEMANTIC_FACT_CHECK_DROP,
                 SEMANTIC_FACT_CHECK_DROP * _auto_scale,
             )
-    except Exception:
-        pass
+    except (ImportError, OSError, ValueError) as _e:
+        # V0.6.8 (audit B11): was `except Exception: pass` — calibration
+        # silently stayed 1.0 with no trace. Narrow family: ImportError
+        # (module chain), OSError (settings file I/O), ValueError (bad
+        # threshold_scale value). Unexpected failures now surface.
+        logger.warning(
+            "embedding threshold auto-calibration failed (%s: %s) — "
+            "threshold_scale stays 1.0 (may mis-drop for this embedder)",
+            type(_e).__name__,
+            _e,
+        )
     return _THRESHOLD_SCALE
 
 

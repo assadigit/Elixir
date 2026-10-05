@@ -79,6 +79,7 @@ from pathlib import Path
 from typing import Any
 
 from core.models import SummaryResult
+from utils.error_trace import log_swallow
 
 logger = logging.getLogger(__name__)
 
@@ -100,17 +101,243 @@ _BARE_YEAR_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 
 _MANIFEST_VERSION = "18.20.3.0"
 
+# V0.4.36 (F3): pattern for detecting section transitions in the thorough —
+# a sentence starting with "Author (Year)" or "Author (*Year*) signals a
+# new topic. Content-agnostic (the pattern is a generic citation format).
+_SECTION_TRANSITION_RE = re.compile(
+    r"(?<=[.!?]\s)(?=[A-Z][a-z]+ (?:\(\*?1[89]\d{2}\*?\)|\(\d{4}\)))"
+)
+
+
+def _render_bullets_grouped_by_section(
+    bullets: list[str],
+    section_map: list[dict],
+) -> str:
+    """V0.5.4 (Track C1): group key-takeaway bullets under the source's
+    ALL-CAPS section headings.
+
+    Each bullet is assigned to the FIRST source section whose author set
+    contains a name that appears (case-insensitive, word-boundary substring)
+    in the bullet text. The mapping is fully runtime-derived (no hardcoded
+    names): the section titles come from the deterministic
+    ``extract_all_caps_sections`` pass on the chapter source, and the
+    author-per-section list comes from the deterministic
+    ``map_authors_to_all_caps_sections`` pass. Both are populated by the
+    Summarizer and stamped onto the SummaryResult's ``source_section_map``
+    field.
+
+    Bullets that do NOT mention any author from any source section are listed
+    at the end under the legacy ``## Key Takeaways`` heading (so the contract
+    a chapter without a section_map delivers — a flat list — is preserved).
+
+    The section order matches the source's ALL-CAPS section order (NOT the
+    bullets' order) so the rendered summary MIRRORS the source's structure —
+    the explicit goal of Track C1.
+
+    Content-agnostic (Rule 1): zero hardcoded section names, zero hardcoded
+    author names — every name and every section title is runtime-derived.
+    """
+    if not section_map or not bullets:
+        return "\n".join(f"- {b}" for b in bullets)
+
+    # Build author→section-title index (first section wins on duplicates).
+    author_to_section: dict[str, str] = {}
+    for sec in section_map:
+        title = sec.get("section_title", "")
+        if not title:
+            continue
+        for author in sec.get("authors", []) or []:
+            if author and author not in author_to_section:
+                author_to_section[author] = title
+
+    # If NO section has any authors, the map is non-informative — fall back
+    # to the legacy flat list (strict improvement: never regresses).
+    if not author_to_section:
+        return "\n".join(f"- {b}" for b in bullets)
+
+    # Assign each bullet to its section (first-author-match wins; bullets
+    # with no matching author go to the ungrouped bucket, in source order).
+    section_bullets: dict[str, list[str]] = {s.get("section_title", ""): [] for s in section_map}
+    ungrouped: list[str] = []
+    # Pre-build case-insensitive regex patterns (one per author) — re.search
+    # is case-sensitive by default, and the bullet text is lowercased while
+    # the author names retain their original (capitalized) case in the map.
+    author_patterns = [
+        (author, re.compile(r"\b" + re.escape(author.lower()) + r"\b"))
+        for author in author_to_section
+    ]
+    for bullet in bullets:
+        bullet_lower = bullet.lower()
+        assigned: str | None = None
+        for author, pat in author_patterns:
+            # word-boundary substring match (case-insensitive) — the
+            # \b anchors prevent short-surname false positives (a 4-letter
+            # name must not match a substring of a longer word) and also
+            # keep a name from matching its derived adjective form (the
+            # "-ian" suffix case).
+            if pat.search(bullet_lower):
+                assigned = author_to_section[author]
+                break
+        if assigned is None:
+            ungrouped.append(bullet)
+        else:
+            section_bullets.setdefault(assigned, []).append(bullet)
+
+    # Render: one ## {section title} group per section WITH bullets (sections
+    # without assigned bullets are omitted — strict-improvement, no empty
+    # headings, per the V0.05 rig F9a rule).
+    out_parts: list[str] = []
+    for sec in section_map:
+        title = sec.get("section_title", "")
+        if not title:
+            continue
+        sec_bs = section_bullets.get(title, [])
+        if not sec_bs:
+            continue
+        out_parts.append(f"## {title}\n\n")
+        for b in sec_bs:
+            out_parts.append(f"- {b}\n")
+        out_parts.append("\n")
+    if ungrouped:
+        # legacy fallback: bullets not assigned to any source section are
+        # rendered under the canonical "## Key Takeaways" heading so a
+        # reader still sees them and so the existing section parser still
+        # finds the section.
+        out_parts.append("## Key Takeaways\n\n")
+        for b in ungrouped:
+            out_parts.append(f"- {b}\n")
+    rendered = "".join(out_parts).rstrip() + "\n"
+    return rendered
+
+
+def _render_reproduced_tables(tables: list[dict]) -> str:
+    """V0.5.4 (Track B3): render the runtime-extracted ``TABLE N-N.``
+    tables verbatim as markdown under a clearly-labelled section.
+
+    Conservative scope (per the V054-TRACK-B3 brief): the table content is
+    reproduced AS-IS from the deterministic extractor's ``content_lines``
+    (the markdown-table rows that follow the ``TABLE N-N.`` marker in the
+    source). No paraphrasing, no LLM rewriting — the goal is faithful
+    reproduction.
+
+    The section heading is labelled "Reproduced Tables (from source)" so a
+    reader / downstream consumer can distinguish reproduced-source tables
+    from summarizer-authored additive-section tables. Each table is
+    preceded by its marker (e.g., ``TABLE 6-1.``) and title (if any) as a
+    bolded label.
+
+    Content-agnostic (Rule 1): the marker + content are runtime-derived
+    from the chapter source; the renderer does not look for any specific
+    table number.
+    """
+    if not tables:
+        return ""
+    parts = ["\n## Reproduced Tables (from source)\n\n"]
+    parts.append(
+        "The following tables are reproduced verbatim from the chapter "
+        "source. They were detected by the deterministic ``TABLE N-N.`` "
+        "marker (no LLM rewriting — the table content is the source's own "
+        "markdown-table rows).\n\n"
+    )
+    for t in tables:
+        marker = t.get("marker", "") or ""
+        title = t.get("title", "") or ""
+        content_lines = t.get("content_lines", []) or []
+        if marker:
+            parts.append(f"**{marker}**")
+            if title:
+                parts.append(f" {title}")
+            parts.append("\n\n")
+        elif title:
+            parts.append(f"**{title}**\n\n")
+        if content_lines:
+            parts.append("\n".join(content_lines).rstrip() + "\n\n")
+    return "".join(parts)
+
+
+def _render_reproduced_criteria(criteria_clusters: list[dict]) -> str:
+    """V0.5.4 (Track B4): render the runtime-extracted ``a. b. c. d.`` +
+    ``(i) (ii) (iii)`` diagnostic-criteria clusters as nested bullet lists.
+
+    Conservative scope (per the V054-TRACK-B4 brief): the criteria are
+    reproduced AS-IS from the deterministic extractor — no paraphrasing, no
+    condensing. Each lettered criterion becomes a top-level bullet
+    (``- **a.** text``), and each Roman sub-item becomes an indented bullet
+    (``  - (i) sub-text``).
+
+    The section heading is labelled "Reproduced Diagnostic Criteria (from
+    source)" so a reader can distinguish reproduced-source criteria from
+    summarizer-authored additive-section content.
+
+    Content-agnostic (Rule 1): the criteria text comes from the chapter
+    source (runtime-detected); the renderer does not look for any specific
+    criteria wording.
+    """
+    if not criteria_clusters:
+        return ""
+    parts = ["\n## Reproduced Diagnostic Criteria (from source)\n\n"]
+    parts.append(
+        "The following diagnostic criteria are reproduced verbatim from the "
+        "chapter source. They were detected by the deterministic "
+        "``a. b. c. d.`` + ``(i) (ii) (iii)`` pattern (no LLM condensing — "
+        "the criteria are the source's own structured list).\n\n"
+    )
+    for cluster in criteria_clusters:
+        items = cluster.get("items", []) or []
+        if not items:
+            continue
+        for it in items:
+            letter = it.get("letter", "")
+            text = it.get("text", "")
+            parts.append(f"- **{letter}.** {text}\n")
+            for marker, sub_text in it.get("sub_items", []) or []:
+                parts.append(f"  - ({marker}) {sub_text}\n")
+        parts.append("\n")
+    return "".join(parts).rstrip() + "\n\n"
+
 
 def _style_years_in_parens(match: re.Match) -> str:
-    """Style every 4-digit year inside one parenthetical group."""
+    """Style every 4-digit year inside one parenthetical group.
+
+    V0.4.26 (audit backlog #5): emit markdown italic emphasis (``*YYYY*``)
+    instead of raw HTML ``<em style="font-size:0.9em">YYYY</em>``. The HTML
+    leaked raw into the markdown output (the V0.4.25 ch.1 audit's HTML-
+    leakage finding) — the DOCX builder does not consume ``format_years``
+    (it has its own run-styling path), so the ``<em>`` was pure markdown-side
+    leakage with no consumer. ``*YYYY*`` is the correct markdown emphasis
+    and renders italic in any compliant markdown viewer (incl. the DOCX
+    builder's markdown-to-runs converter if it parses ``*``).
+    """
     inner = match.group(1)
     if not _BARE_YEAR_RE.search(inner):
         return match.group(0)  # no years — leave untouched
-    return "(" + _BARE_YEAR_RE.sub(r'<em style="font-size:0.9em">\1</em>', inner) + ")"
+    return "(" + _BARE_YEAR_RE.sub(r"*\1*", inner) + ")"
+
+
+def _break_thorough_into_paragraphs(thorough: str) -> str:
+    """V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at
+    section transitions.
+
+    The thorough ships as a single ~4000-word paragraph (6 consecutive
+    audits flagged this). The fix: a deterministic post-processing pass
+    that splits the thorough at sentence boundaries where a new
+    Author (Year) citation signals a section transition. Content-agnostic
+    (the split pattern is a generic English discourse marker: a sentence
+    starting with an Author (Year) citation signals a new section).
+    Rule 1 compliant (no book-specific names or content).
+    """
+    if not thorough or len(thorough) < 500:
+        return thorough  # short thorough — no need to split
+    # Split at sentence boundaries where the next sentence starts with
+    # "AuthorName (Year)" or "AuthorName (*Year*) — the citation pattern.
+    parts = _SECTION_TRANSITION_RE.split(thorough)
+    if len(parts) <= 1:
+        return thorough  # no transitions found — return as-is
+    return "\n\n".join(parts)
 
 
 def format_years(text: str) -> str:
-    """Wrap 4-digit years in parentheses with italic+smaller styling.
+    """Wrap 4-digit years in parentheses with markdown italic emphasis.
 
     Extracted verbatim from the (formerly inline) end-of-loop writer in
     ``conversion/summarization.py`` so the incremental checkpoint writer
@@ -120,10 +347,124 @@ def format_years(text: str) -> str:
     ("(1956)"), multi-year citations ("(1961, 1963)"), and year+letter
     citations ("(1950a, 1956)") — closing the styled/plain inconsistency
     the V18.20.3.1 audit flagged in the shipped Key Takeaways.
+
+    V0.4.26 (audit backlog #5): the styling is now markdown italic
+    (``*YYYY*``) instead of raw HTML ``<em>`` (see
+    ``_style_years_in_parens`` for the rationale + the audit finding).
     """
     if not text:
         return text
     return _YEAR_IN_PARENS_RE.sub(_style_years_in_parens, text)
+
+
+def _final_stray_quote_sweep(text: str, field_label: str) -> str:
+    """V0.4.37 (F6): defense-in-depth final stray-quote sweep at the
+    render boundary (thorough only).
+
+    The postcheck's ``repair_stray_quotes_v2`` (postchecks/garble/
+    quote_repair.py) runs on the thorough while it is still a single
+    very long line; its state-machine D2 can mis-pair ambiguous quotes
+    on a long line and leave an orphan undetected (no ``stray_quote``
+    fix is logged). The V0.4.36 (F3) paragraph-breaking that runs
+    HERE shortens the thorough into ~16 paragraph-lines, making
+    per-line quote-pairing far more reliable. Re-running the sweep
+    AFTER paragraph-breaking + format_years therefore catches orphans
+    the pre-paragraph-break single-line pass missed (the V0.4.36 ch.6
+    audit F6 evidence: a stray ``"`` before a trailing participle
+    survived into the rendered thorough despite the postcheck logging
+    no stray-quote fix on it).
+
+    Strictly content-agnostic (Rule 1 ✓): the detector counts
+    double-quotes per line and removes the orphan on odd-count lines
+    — no hardcoded patterns, names, or content. Strict-improvement:
+    it only removes orphan quotes, never adds or repositions them; on
+    already-clean text it is a no-op (the postcheck's primary fixes
+    still own the structured conversion-log report; this render-time
+    sweep is defense-in-depth and logs its catches at WARNING).
+    """
+    if not text or '"' not in text:
+        return text
+    try:
+        from core.summarisation.postchecks.garble.quote_repair import (
+            repair_stray_quotes_v2,
+        )
+
+        cleaned, issues = repair_stray_quotes_v2(text, field_label)
+        if issues:
+            logger.warning(
+                "V0.4.37 F6 render-sweep: %d stray-quote fix(es) on '%s' "
+                "after paragraph-breaking/format_years (orphans the "
+                "postcheck's single-line pass missed).",
+                len(issues),
+                field_label,
+            )
+        return cleaned
+    except Exception as e:  # pragma: no cover — render must never break
+        logger.warning(
+            "render stray-quote sweep crashed (non-fatal): %s: %s",
+            type(e).__name__,
+            e,
+        )
+        return text
+
+
+def _normalize_self_compounds(text: str, field_label: str) -> str:
+    """V0.4.38 (F5): insert missing hyphens in 'self' + word fusions.
+
+    The V0.4.37 summary shipped 'selfinflation' (bullet line 76) and
+    'selfrighteousness' (bullet line 63) — the model fused 'self' + a
+    noun/adjective without the hyphen. This pass finds words starting
+    with 'self' (>= 4 trailing lowercase chars, no hyphen) where the
+    FULL word is NOT a real English word but the trailing part IS →
+    inserts the hyphen ('selfinflation' → 'self-inflation';
+    'selfrighteousness' → 'self-righteousness'). Real words like
+    'selfless'/'selfish' are in the lexicon → left alone.
+    Content-agnostic (Rule 1): the lexicon is the vendored generic
+    English wordlist; the 'self-' prefix is generic English morphology.
+    Strict-improvement (only adds hyphens; no-op on already-hyphenated
+    or correct text). Logs catches at WARNING (defense-in-depth, like
+    the F6 render-sweep).
+    """
+    if not text or "self" not in text.lower():
+        return text
+    try:
+        import re as _re
+
+        from core.summarisation.postchecks.garble.lexicon import (
+            _load_english_lexicon,
+        )
+
+        _lex = _load_english_lexicon()
+        if not _lex:
+            return text
+        _pattern = _re.compile(r"\bself[a-z]{4,}\b")
+        fixes: list[str] = []
+
+        def _fix(m: _re.Match[str]) -> str:
+            w = m.group(0)
+            tail = w[4:]  # after "self"
+            # only hyphenate if the fused word is NOT real AND the tail IS
+            if w in _lex or tail not in _lex:
+                return w
+            fixes.append(w)
+            return "self-" + tail
+
+        cleaned = _pattern.sub(_fix, text)
+        if fixes:
+            logger.warning(
+                "V0.4.38 F5 render-sweep: %d self-compound hyphen fix(es) on '%s' (%s).",
+                len(fixes),
+                field_label,
+                fixes[:5],
+            )
+        return cleaned
+    except Exception as e:  # pragma: no cover — render must never break
+        logger.warning(
+            "self-compound hyphen normalization crashed (non-fatal): %s: %s",
+            type(e).__name__,
+            e,
+        )
+        return text
 
 
 def render_summary_markdown(summ: SummaryResult) -> str:
@@ -143,11 +484,40 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     COMPLETE sentinel is stamped with the run id. Unstamped (legacy)
     summaries render exactly as before — byte-for-byte.
     """
-    formatted_bullets = [format_years(str(bp)) for bp in summ.bullet_points]
-    bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
+    formatted_bullets = [
+        _normalize_self_compounds(format_years(str(bp)), f"bullet[{i}]")
+        for i, bp in enumerate(summ.bullet_points)
+    ]
+    # V0.5.4 (Track C1 — section breaks mirroring the source): when the
+    # SummaryResult carries a runtime-derived ``source_section_map`` (the
+    # author→ALL-CAPS-section map the Summarizer stamps onto the result),
+    # the bullets are grouped under the source's ALL-CAPS section
+    # headings INSTEAD of the legacy flat ``## Key Takeaways`` list. Empty
+    # section_map (the default for every legacy result + every test fixture
+    # that does not opt in) → legacy flat list → byte-identical to before.
+    _section_map = getattr(summ, "source_section_map", None) or []
+    if _section_map and formatted_bullets:
+        bullets_md = _render_bullets_grouped_by_section(formatted_bullets, _section_map)
+    else:
+        bullets_md = "\n".join(f"- {_fbp}" for _fbp in formatted_bullets)
 
-    exec_formatted = format_years(summ.executive_summary or "")
-    thorough_formatted = format_years(summ.thorough_summary or "")
+    exec_formatted = _normalize_self_compounds(format_years(summ.executive_summary or ""), "exec")
+    # V0.4.36 (F3): break the thorough into MULTIPLE paragraphs at section
+    # transitions. The V0.4.26 backlog item 3 — flagged for 6 consecutive
+    # audits. The thorough ships as a single ~4000-word paragraph, burying
+    # hallucinations in dense prose. The fix: a deterministic post-processing
+    # pass that splits the thorough at sentence boundaries where a new
+    # author/topic is introduced (the "Stanton (1978)..." → new paragraph
+    # pattern). Content-agnostic (the split pattern is a generic English
+    # discourse marker: a sentence starting with an Author (Year) citation
+    # signals a new section transition).
+    thorough_formatted = _normalize_self_compounds(
+        _final_stray_quote_sweep(
+            format_years(_break_thorough_into_paragraphs(summ.thorough_summary or "")),
+            "thorough",
+        ),
+        "thorough",
+    )
 
     kd_md = ""
     if getattr(summ, "key_distinctions", None) and str(summ.key_distinctions).strip():
@@ -246,14 +616,39 @@ def render_summary_markdown(summ: SummaryResult) -> str:
     if _inc_exec_r and (exec_formatted or "").strip():
         _core_chunks.append(f"## Executive Summary\n\n{exec_formatted}\n\n")
     if _inc_kp_r and (bullets_md or "").strip():
-        _core_chunks.append(f"## Key Takeaways\n\n{bullets_md}\n\n")
+        # V0.5.4 (Track C1): when the bullets were grouped under the
+        # source's ALL-CAPS section headings by ``_render_bullets_grouped_by_
+        # section``, the rendered string already opens with a ``## {Section}``
+        # heading — wrapping it under the legacy ``## Key Takeaways``
+        # heading would produce a doubly-nested heading tree (an ugly
+        # "## Key Takeaways" followed by sibling ``## {Section}`` children).
+        # The grouped bullets are emitted as a peer of Executive Summary
+        # and Thorough Summary (no Key Takeaways wrapper); the legacy
+        # flat-list case keeps the ``## Key Takeaways`` wrapper for byte-
+        # identical backward compatibility.
+        if _section_map and formatted_bullets and bullets_md.startswith("## "):
+            _core_chunks.append(f"{bullets_md}\n")
+        else:
+            _core_chunks.append(f"## Key Takeaways\n\n{bullets_md}\n\n")
     if _inc_th_r and (thorough_formatted or "").strip():
         _core_chunks.append(f"## Thorough Summary\n\n{thorough_formatted}\n")
+    # V0.5.4 (Track B3+B4): render the runtime-extracted reproduced tables
+    # and reproduced diagnostic criteria as clearly-labelled appendices,
+    # AFTER the additive sections (key_distinctions / theoretical_tensions /
+    # scholar_reflections / source_excerpts) and BEFORE the provenance
+    # footer. Each is rendered only when the Summarizer stamped a non-empty
+    # list onto the SummaryResult — legacy/empty results render byte-
+    # identical to before.
+    _repro_tables = getattr(summ, "reproduced_tables", None) or []
+    rt_md = _render_reproduced_tables(_repro_tables) if _repro_tables else ""
+    _repro_criteria = getattr(summ, "reproduced_criteria", None) or []
+    rc_md = _render_reproduced_criteria(_repro_criteria) if _repro_criteria else ""
     return (
         f"# Summary: {summ.chapter_heading}\n\n"
         f"{prov_md}"
         f"{''.join(_core_chunks)}"
         f"{kd_md}{tt_md}{sr_md}{se_md}"
+        f"{rt_md}{rc_md}"
         f"{footer_md}"
         f"{complete_sentinel(_run_id)}\n"
     )
@@ -380,24 +775,93 @@ class ChapterCheckpointSaver:
             _stamp = ""
         sf_name = f"{pos:03d}_{safe}{_stamp}_summary.md"
 
-        # 1) canonical summary file (resume-compatible) — write-once
+        # V0.5.2 (FIX-P0-2): the V0.4.40 verification + polish LAYER now
+        # runs BEFORE the checkpoint save (was dead code in the end-of-loop
+        # writer at conversion/summarization.py:1065-1102 because the
+        # file-existence short-circuit at summarization.py:1038-1060
+        # fires `continue` BEFORE the try-block where the LAYER lived —
+        # the V18.20.3.0 checkpoint writes the file mid-run, so the
+        # end-of-loop always sees a COMPLETE-sentinel file and skips).
+        # Re-wiring into the SAME path that writes the checkpoint means
+        # the LAYER runs on every chapter (including checkpointed ones)
+        # and the checkpoint writes the VERIFIED summary.md + DOCX (not
+        # the pre-verification draft). Source = the chapter's own
+        # ``content`` (the chapter dict carries the source directly —
+        # simpler than the end-of-loop ``_source_for_summary`` heading-
+        # match + largest-segment fallback, which is preserved for the
+        # non-checkpointed path (``incremental_chapter_save=False``)).
+        # Fail-open: a crash logs a WARNING and the draft ships (the
+        # layer must never break the write). Content-agnostic (Rule 1).
+        _rendered = render_summary_markdown(summary)
+        _v_source = (chapter or {}).get("content") or ""
+        if _v_source:
+            try:
+                from core.summarisation.verification_phase import (
+                    verify_and_polish_summary,
+                )
+
+                # V0.5.6: pass the SummaryResult's ``source_glossary``
+                # field through to the verification LAYER (the LLM-
+                # generated ``<name_glossary>`` block from the master-
+                # summary call — the LAYER uses it as the coverage
+                # ground truth + the loosened quote-guard membership
+                # test). Fail-open via ``getattr`` when the field
+                # isn't populated yet (the V056-PROMPT-PARSER subagent
+                # adds the field; until then the LAYER falls back to
+                # the V0.5.5 regex behavior).
+                _v_glossary = getattr(summary, "source_glossary", None)
+                _rendered, _v_issues = verify_and_polish_summary(
+                    _rendered,
+                    _v_source,
+                    self._converter.settings,
+                    self._log,
+                    source_glossary=_v_glossary,
+                    chapter_heading=summary.chapter_heading or heading,
+                )
+                # V0.5.1 (BUG fix): LOG the verification issues to the
+                # conversion log (was silently dropped — the audit
+                # couldn't see the date-check + LLM verification output).
+                for _vi in _v_issues or []:
+                    self._log(
+                        f"    ✨ V0.5.1 verification: "
+                        f"[{_vi.detector}/{_vi.severity}] "
+                        f"{_vi.detail[:120]}",
+                        "DEBUG" if _vi.severity == "fix" else "WARNING",
+                    )
+            except Exception as _ve:  # pragma: no cover — layer must never break write
+                self._log(
+                    f"    ⚠️  V0.4.40 verification crashed (non-fatal): {type(_ve).__name__}: {_ve}",
+                    "WARNING",
+                )
+
+        # 1) canonical summary file (resume-compatible) — write-once.
+        #    Writes the VERIFIED markdown (post-V0.5.2 FIX-P0-2 re-wire).
         sf = self._summaries_dir / sf_name
-        wrote_canonical = self._atomic_write_once(sf, render_summary_markdown(summary))
+        wrote_canonical = self._atomic_write_once(sf, _rendered)
         if not wrote_canonical:
             self.skipped_existing += 1
 
-        # 2) dedicated checkpoint folder: md copy + per-chapter DOCX
+        # 2) dedicated checkpoint folder: md copy + per-chapter DOCX.
+        #    The md copy is the VERIFIED markdown (matches the canonical
+        #    file byte-for-byte — both come from the same ``_rendered``).
         chapter_folder = self._chapters_root / f"{pos:03d}_{safe}"
         chapter_folder.mkdir(parents=True, exist_ok=True)
         cp_md = chapter_folder / sf_name
-        self._atomic_write_once(cp_md, render_summary_markdown(summary), quiet=True)
+        self._atomic_write_once(cp_md, _rendered, quiet=True)
 
         docx_path: Path | None = None
         if self._build_docx:
+            # V0.6.6 (review-loop L2-3): the per-chapter DOCX now carries
+            # the SAME run stamp as its sibling .md — an un-stamped name
+            # was shared across runs, so a resumed duplicate-heading
+            # chapter OVERWROTE the completed chapter's DOCX at the same
+            # pos+heading path (fresh-eyes probe: RUN1 marker gone after
+            # RUN2), violating the "completed chapters are never touched"
+            # guarantee. Stamped names coexist per run instead.
             docx_path = self._build_chapter_docx(
                 summary,
                 chapter or {"heading": heading, "content": ""},
-                chapter_folder / f"{pos:03d}_{safe}_summary.docx",
+                chapter_folder / f"{pos:03d}_{safe}{_stamp}_summary.docx",
             )
             if docx_path is not None:
                 self.docx_count += 1
@@ -451,8 +915,22 @@ class ChapterCheckpointSaver:
                             "DEBUG",
                         )
                     return False
-            except OSError:
-                pass  # unreadable → rewrite
+            except OSError as _e:
+                # V0.4.27 (Phase-5 P1 / W3-E1, audit backlog, site 2 of 3):
+                # a transient read error (AV/indexer lock on a COMPLETED
+                # chapter) can't check the sentinel → falls through to
+                # rewrite → can clobber the 'completed chapters are never
+                # touched' guarantee. Control-flow UNCHANGED per Phase-5
+                # P1 (rewrite-on-true-corruption semantics kept — a
+                # genuinely corrupt file must still be rewritten); the
+                # WARNING surfaces the transient-error case for diagnosis.
+                log_swallow(
+                    "checkpoint_read_existing",
+                    _e,
+                    level=logging.WARNING,
+                    detail=f"path={path}",
+                )
+                # unreadable → rewrite (control-flow unchanged)
         atomic_write_text(path, content)
         return True
 
@@ -525,7 +1003,15 @@ class ChapterCheckpointSaver:
 
         manifest = self._load_manifest()
         chapters: dict[str, Any] = manifest.setdefault("chapters", {})
-        chapters[str(pos)] = {
+        # V0.6.6 (review-loop L2-3): keyed by the canonical FILENAME, not
+        # str(pos) — pos is not unique once duplicate headings fall back
+        # to per-run indexes (a fallback idx can equal another chapter's
+        # mapped position; the fresh-eyes probe ended with one manifest
+        # record clobbering another). The canonical md filename is unique
+        # per chapter+run (pos + heading + run stamp) — and it still
+        # merges idempotently: a re-saved chapter rewrites its own record.
+        chapters[canonical_md.name] = {
+            "pos": pos,
             "heading": heading,
             "done_at": datetime.now().isoformat(timespec="seconds"),
             "summary_md": str(canonical_md),
@@ -548,7 +1034,11 @@ class ChapterCheckpointSaver:
             )
 
     def _load_manifest(self) -> dict[str, Any]:
-        """Load the manifest, tolerating absence/corruption (crash safety)."""
+        """Load the manifest, tolerating absence/corruption (crash safety).
+
+        V0.6.8 (audit B8): a corrupt/unreadable manifest now logs at
+        WARNING — it silently returned {} before, invisibly disabling
+        chapter resume (every chapter re-summarized) with no trace."""
         try:
             if self._manifest_path.exists():
                 import json
@@ -556,8 +1046,22 @@ class ChapterCheckpointSaver:
                 data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
-        except Exception:
-            pass
+                logger.warning(
+                    "chapter manifest is valid JSON but not an object (%s) — "
+                    "resume disabled, all chapters will re-summarize; path=%s",
+                    type(data).__name__,
+                    self._manifest_path,
+                )
+        except (OSError, ValueError) as _e:
+            # OSError: unreadable file (AV/indexer lock, permissions);
+            # ValueError: json.JSONDecodeError — a corrupt/partial write.
+            # The narrow, expected failure family; anything else surfaces.
+            log_swallow(
+                "chapter_manifest_load",
+                _e,
+                level=logging.WARNING,
+                detail=f"path={self._manifest_path} (resume disabled — chapters re-summarize)",
+            )
         return {}
 
     def _mark_checkpoint_progress(self) -> None:

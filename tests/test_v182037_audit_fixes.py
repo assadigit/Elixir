@@ -48,26 +48,11 @@ from __future__ import annotations
 import ast
 import re
 import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Stub optional heavy deps (same pattern as test_v18202_system_fixes.py —
-# markitdown/tiktoken are not installed in this sandbox).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
 
 import pytest
 

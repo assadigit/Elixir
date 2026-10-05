@@ -23,6 +23,7 @@ from core.summarisation.postchecks.garble.lexicon import (
     _VERB_STOPWORDS,
     _VOWEL_LESS_LONG_RE,
     _is_legitimate_inflection,
+    _load_english_lexicon,
 )
 from core.summarisation.postchecks.shared import Issue, _snippet
 
@@ -299,12 +300,35 @@ def detect_grammatical_incoherence(
             if len(words) < 5:
                 continue
             first_40 = words[:40]
-            # Check for any finite verb (word >3 chars ending in a verb suffix,
-            # not a stopword).
+            # Check for any finite verb (word >3 chars ending in a verb
+            # suffix, not a stopword). V0.4.37 (F7): also recognize
+            # 3rd-person-singular "-s" verbs (e.g. "masks", "links",
+            # "notes", "posits") — the suffix list above catches
+            # "es"/"ed"/"ing"/... but misses the bare "-s" 3rd-singular
+            # inflection, which false-positived clean academic bullets
+            # where a singular subject takes a "-s" verb (e.g. "the
+            # facade masks the defect"). Content-agnostic (Rule 1): the
+            # lexicon is a generic English wordlist (126k words, no
+            # domain terms); we only treat a "-s" word as a verb when
+            # its singular form is a known English word and not a
+            # function-word stopword. Base-form verbs (e.g. "mask" with
+            # a plural subject) still escape — full recognition needs
+            # POS tagging, deferred (observability-only per the V0.4.36
+            # audit F7).
+            _lex = _load_english_lexicon()
             has_verb = any(
-                len(w) > 3
-                and w.lower() not in _VERB_STOPWORDS
-                and any(w.lower().endswith(e) for e in _VERB_ENDINGS)
+                (
+                    len(w) > 3
+                    and w.lower() not in _VERB_STOPWORDS
+                    and any(w.lower().endswith(e) for e in _VERB_ENDINGS)
+                )
+                or (
+                    len(w) > 4
+                    and w.lower().endswith("s")
+                    and not w.lower().endswith("ss")
+                    and w.lower()[:-1] in _lex
+                    and w.lower()[:-1] not in _VERB_STOPWORDS
+                )
                 for w in first_40
             )
             if not has_verb:
@@ -545,6 +569,15 @@ def detect_word_fragment_merge(
         source_words = set(re.findall(r"\b[a-z]+\b", source_text.lower())) if source_text else set()
     if not text:
         return text, issues
+    # V0.4.38 (F3): consult the English lexicon so real English words
+    # (e.g. "theme" = "them" + "e", where "them" is in the source but
+    # "theme" is not) are not flagged as fragment-merges. Mirrors
+    # detect_sentence_fusion's lexicon check. Content-agnostic (the
+    # lexicon is the vendored generic English wordlist, no domain terms).
+    try:
+        _lex = _load_english_lexicon()
+    except Exception:
+        _lex = set()
     try:
         for m in list(_FRAGMENT_MERGE_RE.finditer(text)):
             # V18.2.19: Check BOTH the left side (group1+group2) AND the
@@ -562,6 +595,12 @@ def detect_word_fragment_merge(
             # "contributions", etc. were flagged. These are valid inflections, NOT
             # dropped sentence boundaries.
             if word in source_words and full not in source_words and len(stray) <= 2:
+                # V0.4.38 (F3): skip if the full word is a real English word
+                # (e.g. "theme" = "them" + "e"). The lexicon check closes the
+                # gap where a source word + a trailing char forms a DIFFERENT
+                # real English word that's just not in THIS source.
+                if _lex and full in _lex:
+                    continue
                 if _is_legitimate_inflection(word, stray):
                     continue  # valid plural/past-tense/adjective — not a fragment merge
                 issues.append(
@@ -588,6 +627,10 @@ def detect_word_fragment_merge(
                     base = right[:-strip_len]
                     stray_right = right[-strip_len:]
                     if base in source_words and right not in source_words:
+                        # V0.4.38 (F3): skip if the full right word is a real
+                        # English word (e.g. "theme" stripped to "them" + "e").
+                        if _lex and right in _lex:
+                            continue
                         # V18.9 (Option B fix): Skip if the stripped suffix is a
                         # legitimate English inflection (plural, past tense, etc.)
                         if _is_legitimate_inflection(base, stray_right):

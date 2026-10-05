@@ -45,25 +45,9 @@ from __future__ import annotations
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
-
-# ── hermetic tiktoken gate (house pattern) ─────────────────────────────────
-if "tiktoken" not in sys.modules:
-    try:
-        import tiktoken  # type: ignore  # noqa: F401
-    except ImportError:
-        _tk = types.ModuleType("tiktoken")
-        _tk.get_encoding = lambda *a, **k: None  # type: ignore[attr-defined]
-        _tk.Encoding = object  # type: ignore[attr-defined]
-        sys.modules["tiktoken"] = _tk
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
 
 from core.models import ConversionRequest, SummaryResult  # noqa: E402
 
@@ -389,17 +373,24 @@ class TestF3NoDoubleListing:
 
 
 class TestF4BulletCap:
-    def test_bullet_cap_removed_for_all_chapters(self):
-        """V0.4.23 (user directive — bullets "can be as long as necessary
-        for full coverage"): there is NO bullet cap, for ANY chapter size.
-        The historical V0.06 caps (14/14/18/18/16 for the rig chapters,
-        40 for normal chapters) are REMOVED — the V0.4.22 ch.4 audit
-        proved the cap displaced coverage-critical bullets; dedup +
-        consolidation + the V0.4.23 filler floor are the only reducers.
+    def test_bullet_cap_is_two_regime(self):
+        """V0.6.2 (user-reported thin-book bug): ``bullet_cap`` is
+        TWO-REGIME. THIN chapters (the rig sizes below, < 800 words): the
+        V0.06 source-scaled ADDITIVE budget is RESTORED (14/14/18/18/16 —
+        the cap bounds Tier-2/scholar gap-fill + resurrection ADDITIONS
+        only, never primary bullets; the user's thin book shipped
+        exec + bullets + thorough ABOVE the source word count, padded
+        with rephrased gap-fill bullets). NORMAL chapters (>= 800 words,
+        e.g. 1000/20000): 0 — the V0.4.23 no-cap user directive stands
+        (the V0.4.22 ch.4 displacement failure that removed the cap was
+        a content-rich chapter; dedup + consolidation + the filler floor
+        remain the reducers there).
         """
         from core.summarisation.length_policy import bullet_cap
 
-        for w in (344, 358, 439, 445, 412, 1000, 20000):
+        for w, expected in ((344, 14), (358, 14), (439, 18), (445, 18), (412, 16)):
+            assert bullet_cap(w) == expected, f"W={w}: expected {expected}"
+        for w in (1000, 20000):
             assert bullet_cap(w) == 0, f"W={w}: expected no cap (0)"
 
     def test_ship_time_budget_no_truncation_source_pin(self):
@@ -411,9 +402,10 @@ class TestF4BulletCap:
         # entirely — the block now reports honestly and never truncates;
         # the same applies to the historical 80-bullet cap.
         s = _strip_comments(_src("core/summarisation/chapter_phases.py"))
-        assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" in s
-        # the no-cap policy: honest reporting, never truncation
-        assert "NO CAP (user" in s
+        # V0.5.2 (user directive): the bullet-count guidance log is
+        # REMOVED — never set any standard for bullet count.
+        assert "if _inc_kp_lp and len(bullets) > _bp_hi_lp:" not in s
+        assert "NO CAP (user" not in s  # V0.5.2: removed
         assert "bullets = list(bullets[:_bp_hi_lp])" not in s, (
             "the ship-time head-cap fallback must be GONE (V0.4.23)"
         )
@@ -493,14 +485,14 @@ class TestF4ScholarCap:
             def render_template(self, name, **kw):
                 return "PROMPT"
 
-        def call_fast_llm(prompt, **kw):
+        def call_llm(prompt, **kw):
             llm_calls.append(prompt)
             return llm_resp
 
         return dict(
             prompt_manager=_PM(),
             recover_vram=lambda context="", delay_sec=0.0, **kw: rvram_calls.append(context),
-            call_fast_llm=call_fast_llm,
+            call_llm=call_llm,
             strip_thinking=lambda t: t,
         )
 

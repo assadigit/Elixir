@@ -15,6 +15,8 @@ from core.llm.llm_provider_impl import LLMProvider
 from core.llm.retry import (
     retry_llm_call,
 )
+from core.system.timeouts import API_BATCH_TIMEOUT_S, HTTP_FETCH_TIMEOUT_S
+from utils.network import extract_openai_content, session_for_url
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +91,21 @@ class OpenAICompatProvider(LLMProvider):
                 f"    ☁️ {self.label} ({_model}) t={_temp:.2f} attempt…",
                 "INFO",
             )
-            resp = _requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+            # V0.6.7 (review-loop A5): pooled transport via session_for_url —
+            # the ONE routing rule (cloud endpoints trust env proxies, localhost
+            # /v1 endpoints like FreeLLMAPI get the proxy-immune session) —
+            # replaces the bare per-call ``_requests.post``: same timeout, same
+            # retries, plus connection reuse. The deep-index choices[0] parse
+            # becomes the shared shape-safe extract_openai_content (same
+            # migration as llm_dispatcher.call_openai_compat in V18.20.4.11):
+            # a malformed/error payload now flows into the SAME empty-response
+            # retry path as an empty-but-valid response (previously it raised
+            # KeyError straight to the outer except → None, skipping retry).
+            resp = session_for_url(url).post(
+                url, headers=headers, json=payload, timeout=self.timeout
+            )
             resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"].strip()
+            text = extract_openai_content(resp.json())
             if not text:
                 # Empty response — raise ConnectionError so the decorator
                 # retries (preserves old "log empty + sleep + retry" behavior).
@@ -233,7 +247,7 @@ class OpenAICompatProvider(LLMProvider):
                     "Authorization": f"Bearer {self.api_key}",
                 },
                 files=files,
-                timeout=30,
+                timeout=API_BATCH_TIMEOUT_S,
             )
             if upload_resp.status_code != 200:
                 self.log(f"  ⚠️ Batch API: file upload failed ({upload_resp.status_code})", "DEBUG")
@@ -249,7 +263,9 @@ class OpenAICompatProvider(LLMProvider):
                 "endpoint": "/v1/chat/completions",
                 "completion_window": "24h",
             }
-            batch_resp = _requests.post(batch_url, headers=headers, json=batch_payload, timeout=30)
+            batch_resp = _requests.post(
+                batch_url, headers=headers, json=batch_payload, timeout=API_BATCH_TIMEOUT_S
+            )
             if batch_resp.status_code != 200:
                 self.log(
                     f"  ⚠️ Batch API: batch creation failed ({batch_resp.status_code})", "DEBUG"
@@ -262,11 +278,17 @@ class OpenAICompatProvider(LLMProvider):
             import time as _time
 
             for _poll in range(60):  # 60 × 10s = 10 min max
+                # V0.4.28 (E6 sync-only guard): this blocks the QThread worker
+                # for 10s per poll (up to 10 min on a live Batch-API). Fine for
+                # the sync model. If async_provider is ever wired (see
+                # docs/ASYNC_PROVIDER_DECISION.md), replace with asyncio.sleep
+                # — under run_async this would block the event loop for the
+                # full 10-min poll (the highest-severity E6 hazard).
                 _time.sleep(10)
                 poll_resp = _requests.get(
                     f"{batch_url}/{batch_id}",
                     headers=headers,
-                    timeout=30,
+                    timeout=API_BATCH_TIMEOUT_S,
                 )
                 if poll_resp.status_code != 200:
                     continue
@@ -283,7 +305,7 @@ class OpenAICompatProvider(LLMProvider):
 
             # 5. Download the results
             dl_url = f"{self.base_url.rstrip('/')}/files/{output_file_id}/content"
-            dl_resp = _requests.get(dl_url, headers=headers, timeout=60)
+            dl_resp = _requests.get(dl_url, headers=headers, timeout=HTTP_FETCH_TIMEOUT_S)
             if dl_resp.status_code != 200:
                 return None
 

@@ -41,6 +41,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+from core.system.timeouts import SLOW_LLM_TIMEOUT_S
 from core.tts.engine import LogFn, TTSEngine
 
 _NEUTTS_MAX_CHARS = 400
@@ -848,7 +849,7 @@ class NeuTTSEngine(TTSEngine):
         self._process.stdin.write(cmd + "\n")
         self._process.stdin.flush()
 
-        msg = self._read_json_line(timeout=180)
+        msg = self._read_json_line(timeout=SLOW_LLM_TIMEOUT_S)
         if msg is None:
             raise RuntimeError("NeuTTS subprocess timed out (180s) — likely CUDA hang")
 

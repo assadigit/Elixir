@@ -41,6 +41,28 @@ from pathlib import Path
 
 import pytest
 
+# V0.5.7 (SEPARATE-CALL): primary_call.summarize_with_model now fires a
+# SEPARATE glossary-extraction LLM call after the master-summary succeeds
+# (the V0.5.6 fused approach overwhelmed the model). In these
+# characterization tests the ScriptedLLM responder is stateful (the
+# ``state["n"]`` counter advances on EVERY call) — the V0.5.7 glossary
+# call would consume a state slot + break the B3 multi-sample voting
+# sequence's expected response order. The autouse fixture no-ops the
+# glossary extraction so the state machine stays deterministic. The V0.5.7
+# wiring is exercised by the dedicated test_v057_separate_call.py.
+import core.summarisation.primary_call as _pc_mod_v057  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _noop_v057_glossary_extraction(monkeypatch):
+    """V0.5.7: no-op the glossary extraction in the p2_summarizer_pipeline
+    characterization tests (the V0.5.7 wiring is tested separately in
+    test_v057_separate_call.py — the responder state machine here would
+    otherwise consume a slot for the glossary call)."""
+    monkeypatch.setattr(_pc_mod_v057, "_extract_glossary_for_call", lambda **kwargs: {})
+    yield
+
+
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -577,83 +599,15 @@ class TestCoverageFallbackLadders:
         assert_logged(logs, "B3 voting disabled")
         assert result.success is True
 
-    def test_heavy_model_better_merges(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-        llm = ScriptedLLM()
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                return _full_response(source)  # heavy is well-grounded
-            return _ungrounded_response()  # primary is thin
-
-        llm.responder = responder
-        llm.install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "using heavy model: other:model")
-        assert_logged(logs, "Merged primary + heavy summaries")
-        assert result.model_used == "primary+heavy"
-        assert result.success is True
-
-    def test_heavy_model_not_better_adds_unique_bullets(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                # heavy is EQUALLY thin (same ~0% coverage) but carries a
-                # DIFFERENT bullet → the not-better branch appends it.
-                return _ungrounded_response().replace(
-                    "Purple telescopes dream about electric cabbage.",
-                    "Marble giraffes negotiate with translucent turnips.",
-                )
-            return _ungrounded_response()
-
-        ScriptedLLM(responder=responder).install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "Added unique heavy bullets to primary summary")
-        # The thin merged summary may subsequently be hard-rejected by the
-        # content judge — either return is valid current behavior; the
-        # ladder branch itself is asserted via the log line above.
-        assert result is not None
-
-    def test_heavy_model_no_response_keeps_primary(self, tmp_path):
-        heading, source = golden_chapter()
-        logs: list[tuple[str, str]] = []
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"coverage_threshold": 0.99, "heavy_model": "other:model"},
-            log_lines=logs,
-        )
-
-        def responder(prompt, model=None, temperature=None, max_tokens=None):
-            if MARKER_TIER2_GAPFILL in prompt:
-                return None
-            if model == "other:model":
-                return None  # heavy model fails
-            return _ungrounded_response()
-
-        ScriptedLLM(responder=responder).install(s)
-        fresh_deadline(s)
-        result = s._summarize_inner(heading, source)
-        assert_logged(logs, "Heavy model returned no response, keeping primary")
-        assert result.model_used != "primary+heavy"
+    # V0.6.14 (single-model order): 3 tests REMOVED —
+    # test_heavy_model_better_merges, test_heavy_model_not_better_adds_unique_bullets
+    # and test_heavy_model_no_response_keeps_primary. All three pinned the
+    # heavy-model coverage fallback in chapter_phases (the "using heavy
+    # model: …" / "Merged primary + heavy summaries" / "Added unique heavy
+    # bullets" / "Heavy model returned no response" ladder + the
+    # model_used == "primary+heavy" outcome), which is retired — ONE model;
+    # low coverage relies on gap-fill + over-delivery + the 3-Tier Guarantee
+    # (pinned by TestCoverageRetryFloor / TestBulletExpansion below).
 
 
 # ── 7. Dedicated bullet expansion ───────────────────────────────────────────
@@ -868,7 +822,11 @@ class TestCrashGuards:
         s = make_summarizer(tmp_path, log_lines=logs)
         ScriptedLLM(primary_response=_full_response(source)).install(s)
 
-        def _dedup(bullets, threshold=0.85):
+        # V0.5.18: the dedup call sites now pass the author-coverage veto's
+        # kwargs (source_authors / context_text / source_text) — the stub
+        # accepts them (the veto itself is characterization-tested directly
+        # in tests/test_v0518_semantic_dedup_veto.py).
+        def _dedup(bullets, threshold=0.85, **_veto_kwargs):
             return list(bullets)[:-1] if len(bullets) > 1 else list(bullets)
 
         s._semantic_dedup_bullets = _dedup  # type: ignore[method-assign]

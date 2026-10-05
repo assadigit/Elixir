@@ -439,7 +439,7 @@ class TestOc10NllbRetired:
         offenders: list[str] = []
         for py in sorted(_project_root.rglob("*.py")):
             rel = py.relative_to(_project_root)
-            if str(rel).startswith("tests/"):
+            if str(rel).startswith(("tests/", ".venv")):
                 continue  # this very test file cites the name in docstrings
             try:
                 tree = ast.parse(_src(py))

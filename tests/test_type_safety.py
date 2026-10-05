@@ -8,18 +8,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import sys
-import types
-from unittest.mock import MagicMock
-
-# Stub tiktoken (not installed in test env)
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = MagicMock(return_value=MagicMock())
-    tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = tk
-
 from core.summarisation.text_preprocessor import repair_hyphenation
 
 # ═══════════════════════════════════════════════════════════════════════════

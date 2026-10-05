@@ -5,8 +5,6 @@ NEW in this version (Sprint 3):
   - Added extract_figure_text: bool = False under advanced.
   - Added vision_model_for_figures: str = "OlmOCR-2-7B:latest" under advanced.
   - Added max_workers: int = 2 under summarisation (for parallel processing).
-  - VRAM-aware defaults: if heavy_model is set, max_workers will be capped at 1
-    (enforced in summarizer, but setting stored here).
 """
 
 import copy
@@ -32,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 # ── V18.20.4.11 (rebrand): user-data directory + one-time migration ─────────
-# The app was renamed Elixir → Elixir; the user-data directory moved
-# ~/.elixir → ~/.elixir. user_data_dir() is the SINGLE choke point:
+# The app was renamed MarkItDown Pro → Elixir; the user-data directory moved
+# ~/.markitdown_pro → ~/.elixir. user_data_dir() is the SINGLE choke point:
 # on first call it migrates the legacy directory (shutil.move — instant on
 # the same filesystem) so settings, cached models, prompts, and secrets all
 # survive the rebrand. Idempotent, thread-safe, and NEVER raises (a failed
@@ -47,7 +45,7 @@ _user_dir_resolved = False
 
 def user_data_dir() -> Path:
     """Return the app's user-data directory (~/.elixir), migrating the
-    legacy ~/.elixir on first call (V18.20.4.11 rebrand)."""
+    legacy ~/.markitdown_pro on first call (V18.20.4.11 rebrand)."""
     global _user_dir_resolved
     new_dir = Path.home() / _USER_DIR_NAME
     if _user_dir_resolved:
@@ -264,32 +262,29 @@ class Settings:
                 # _load). After the first run the flag stays True so a user
                 # who later switches BACK to Ollama is never re-flipped.
                 "llamacpp_activation_done": False,
+                # V0.4.31 (B1 per-conversion dropdown): additional llama.cpp
+                # endpoints (a list of {base_url, api_key, label}). The
+                # wizard's Step-5 endpoint dropdown lists [Primary (the
+                # llamacpp_base_url/llamacpp_api_key above)] + each entry
+                # here, so the user can quick-select between e.g. 8080
+                # (Ternary Bonsai) + 8081 (Qwen) per-conversion. Picking one
+                # populates the URL/key fields; create_provider then detects
+                # the served model (V0.4.30). Default: [] (just Primary).
+                "llamacpp_endpoints": [],
                 # ── Quality controls ──────────────────────────────────────
                 # V10.1.7: default temperature raised 0.2 → 0.6 per user request.
                 # 0.6 works better with Qwythos/Qwen models (0.2 produced empty output).
                 "temperature": 1.0,  # V13.34.0: Gemma 4 recommended temp
                 "self_consistency": False,
-                "heavy_model": "",
-                # V18.20.2.0 (SWOT A28): duplicate ``fast_model`` key removed.
-                # The dict literal used to declare it twice — first
-                # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest", then "" —
-                # and by dict-literal semantics the LAST occurrence silently
-                # won, so the effective default has been "" all along.  The
-                # single remaining declaration below preserves that behavior
-                # (and removes the Qwythos name that 404s on other installs).
-                # ── V16.0.9: 4-mode model architecture ──────────────────────
-                # "single_local" — one LOCAL model does everything (default)
-                # "dual_local"   — local heavy + local fast model (both Ollama)
-                # "single_api"   — one CLOUD API model does everything
-                # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
-                # Legacy "single" accepted (mapped → "single_local").
-                "model_architecture": "single_local",
-                "fast_model": "",  # V17.0.0: fast/small model for simple tasks
-                "fast_model_temperature": 0.1,  # V17.0.0: LFM2.5 recommends 0.1
-                "fast_model_context": 131072,  # V17.0.0: LFM2.5 max 128K context
-                "fast_api_url": "",  # V17.0.0: API URL for dual_api mode
-                "fast_api_key": "",  # V17.0.0: API key for dual_api mode
-                "fast_api_model": "",  # V17.0.0: Model name for dual_api mode
+                # V0.6.14 (single-model order): the fast/heavy dual-model
+                # family is RETIRED — heavy_model, model_architecture (the
+                # 4-mode selector), fast_model, fast_model_temperature,
+                # fast_model_context, fast_api_url/key/model and
+                # simplification_model are no longer schema keys. ONE model
+                # (summarisation.model, reached through summarisation.provider)
+                # does every LLM generation task. The stale keys are stripped
+                # from existing settings.json files at load (see the
+                # retirement block in _load).
                 "coverage_threshold": 85,  # V13.34.0: raised from 50 to 85
                 # V15.1.0: Over-delivery — keep improving coverage past the minimum
                 # threshold toward the target. Default ON, target 92%.
@@ -389,9 +384,9 @@ class Settings:
                 "prompt": "default",
                 # quality_mode: AiQualitySection preset (Balanced/Thorough/Fast).
                 "quality_mode": "Balanced",
-                # simplification_model / simplified_prompt: simplified-keypoints
-                # engine (AiLocalModelSection + simplified_keypoints.py).
-                "simplification_model": "",
+                # simplified_prompt: simplified-keypoints engine
+                # (simplified_keypoints.py). V0.6.14: simplification_model is
+                # RETIRED (single-model order — the digest uses THE model).
                 "simplified_prompt": "",
                 # inject_lists_section: opt-in <lists> additive section
                 # (chapter_phases.py).
@@ -452,6 +447,16 @@ class Settings:
                 # IQ2_XXS HTTP timeout; a legit larger chapter should be
                 # segmented, not map-reduced (see the segmenter fixes).
                 "map_phase_max_seconds": 1800,
+                # V0.6.12: llama.cpp-first local fallback. Any LOCAL LLM
+                # call (Ollama / llama.cpp / LM Studio backend) first
+                # probes the configured llama.cpp server
+                # (summarisation.llamacpp_base_url); if it is up, the call
+                # routes there with its served model — the operator starts
+                # llama-server deliberately, so "it is on" means "use it".
+                # When it is off, the configured backend runs (Ollama, the
+                # always-on default). Cloud providers are never overridden.
+                # false restores the pre-V0.6.12 behavior (no probe).
+                "llamacpp_first": True,
             },
             "source_type": "normal_book",
             "is_academic": False,
@@ -935,25 +940,11 @@ class Settings:
             for key, default_val in [
                 ("temperature", 0.2),
                 ("self_consistency", False),
-                ("heavy_model", ""),
-                # V18.20.2.0 (SWOT A28): duplicate ``fast_model`` entry
-                # removed.  This list used to contain it twice — first
-                # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest", then "".
-                # These entries are belt-and-braces only (the merged dict
-                # ALWAYS has fast_model from ``_defaults()``, so neither
-                # entry ever fired), but the effective default they back
-                # up is "" — the single remaining entry matches it.
-                # V16.0.9: 4-mode model architecture
-                (
-                    "model_architecture",
-                    "single_local",
-                ),  # single_local | dual_local | single_api | dual_api
-                ("fast_model", ""),
-                ("fast_model_temperature", 0.1),
-                ("fast_model_context", 131072),
-                ("fast_api_url", ""),
-                ("fast_api_key", ""),
-                ("fast_api_model", ""),
+                # V0.6.14 (single-model order): the fast/heavy belt-and-braces
+                # entries (heavy_model, model_architecture, fast_model,
+                # fast_model_temperature, fast_model_context, fast_api_url,
+                # fast_api_key, fast_api_model) are RETIRED with their schema
+                # keys — see the V0.6.14 retirement block below.
                 ("coverage_threshold", 50),
                 ("overdeliver_enabled", True),  # V15.1.0
                 ("overdeliver_target", 100),  # V15.1.1: was 92, now 100
@@ -976,9 +967,30 @@ class Settings:
                 if key not in summ:
                     summ[key] = default_val
 
-            # If heavy_model is None or empty, ensure it stays empty
-            if summ.get("heavy_model") is None:
-                summ["heavy_model"] = ""
+            # ── V0.6.14 (single-model order): retire the fast/heavy keys ──
+            # The operator retired the dual-model concept: ONE model does
+            # every LLM generation task. Any of these keys still present in
+            # a user's settings.json are dead — strip them so they don't
+            # linger, re-save, or trip the unknown-key validator forever.
+            _RETIRED_V0614_KEYS = (
+                "fast_model",
+                "fast_model_temperature",
+                "fast_model_context",
+                "fast_api_url",
+                "fast_api_key",
+                "fast_api_model",
+                "heavy_model",
+                "model_architecture",
+                "simplification_model",
+            )
+            for _rk in _RETIRED_V0614_KEYS:
+                if _rk in summ:
+                    del summ[_rk]
+                    logger.info(
+                        "[Settings] V0.6.14: retired the dual-model key "
+                        "'summarisation.%s' (single-model policy)",
+                        _rk,
+                    )
 
             # Ensure PaddleOCR setting exists
             ocr = merged.setdefault("ocr", {})

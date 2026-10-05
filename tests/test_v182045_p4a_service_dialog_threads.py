@@ -132,6 +132,19 @@ def _close_event_src(class_name: str) -> str:
     return _method_src(_class_src(class_name), "closeEvent")
 
 
+# V0.6.10 (B17) pin evolution helper: dialogs that migrated onto
+# BaseServiceDialog fold their byte-identical closeEvent guards into the
+# base class and INHERIT them (the translation precedent: zero local
+# overrides, covered by BaseServiceDialog's single guard). Batch B:
+# Transcribe + Summarization + Packets inherited; OCR kept an override
+# for its TEST worker (self._test_worker) delegating the main-worker
+# guard to the base — the TTS preview-worker pattern.
+def _subclasses_base(cls: str) -> bool:
+    """True when ``class cls(...bases...)`` includes BaseServiceDialog."""
+    m = re.search(rf"^class {re.escape(cls)}\b.*$", _defining_src(cls), re.M)
+    return m is not None and "BaseServiceDialog" in m.group(0)
+
+
 # The four W-b5 dialogs: (class, _do_* action method, _*_work worker body,
 # progress/finished/failed handler basenames).
 W_B5_DIALOGS = [
@@ -176,6 +189,9 @@ T_B2_DIALOGS = [
     "HallucinationAuditDialog",
     "ImageExtractorDialog",
     "TranscribeServiceDialog",
+    # V0.6.5: the Markdown Styler gained the LLM-structuring path — it
+    # now owns a SimpleWorker and carries the T-b2 guard (11 dialogs).
+    "MarkdownStylerDialog",
 ]
 
 
@@ -230,13 +246,18 @@ class TestWb5WorkerSpawns:
 
     def test_worker_initialized_in_init(self):
         # The guard would AttributeError without the __init__ init.
+        # V0.6.10 (B17) pin evolution: a dialog migrated onto
+        # BaseServiceDialog inherits the typed init from the base's
+        # __init__ (shared.py) — either the local line or the base
+        # subclassing satisfies the AttributeError protection.
         for cls in (
             "OcrServiceDialog",
             "SummarizationServiceDialog",
             "QuickConvertDialog",
             "PdfDocxCutterDialog",
         ):
-            assert "self._worker: SimpleWorker | None = None" in _class_src(cls), cls
+            if "self._worker: SimpleWorker | None = None" not in _class_src(cls):
+                assert _subclasses_base(cls), cls
 
     def test_button_disabled_and_progress_visible_before_spawn(self):
         for cls, do, _w, _h in W_B5_DIALOGS:
@@ -480,60 +501,141 @@ class TestTb2CloseEventGuards:
     """Every worker-owning dialog has a closeEvent guard."""
 
     def test_close_event_count(self):
-        # Exactly the 10 worker-owning dialogs (Base + the four W-b5
+        # Exactly the 11 worker-owning dialogs (Base + the four W-b5
         # dialogs + Tts + Packets + Hallucination + ImageExtractor +
-        # Transcribe). MarkdownStylerDialog has no worker → no guard.
-        assert SRC.count("def closeEvent") == len(T_B2_DIALOGS)
-        assert SRC.count("def closeEvent") == 10
+        # Transcribe + the V0.6.5 LLM-path MarkdownStyler).
+        # V0.6.10 (B17) pin evolution: the guards are FOLDING into
+        # BaseServiceDialog as dialogs migrate onto it (was: one own
+        # guard per dialog, count == 11). The count is now COMPUTED —
+        # the base's single guard + every dialog that still defines its
+        # own — and the coverage invariant is pinned structurally:
+        # every worker-owning dialog either defines a guard or inherits
+        # BaseServiceDialog's, and no stray guard exists in the family.
+        base = _class_src("BaseServiceDialog")
+        assert base.count("def closeEvent") == 1
+        own = [cls for cls in T_B2_DIALOGS if "def closeEvent" in _class_src(cls)]
+        inherited = [cls for cls in T_B2_DIALOGS if cls not in own]
+        for cls in inherited:
+            assert _subclasses_base(cls), (
+                f"{cls} has no closeEvent and does not subclass BaseServiceDialog"
+            )
+        # (own includes BaseServiceDialog itself — one guard, no more.)
+        assert SRC.count("def closeEvent") == len(own), (
+            f"stray closeEvent outside the known dialogs: "
+            f"{SRC.count('def closeEvent')} != {len(own)}"
+        )
+        # V0.6.10 (B17) batch B (this migration) — the three dialogs whose
+        # guards folded in (OCR kept its own for the test worker):
+        assert {
+            "TranscribeServiceDialog",
+            "SummarizationServiceDialog",
+            "PacketsToolDialog",
+        } <= set(inherited)
+        # V0.6.10 (B17) batch A (the parallel migration) — the five dialogs
+        # whose byte-identical self._worker guards folded into the base:
+        assert {
+            "MarkdownStylerDialog",
+            "QuickConvertDialog",
+            "PdfDocxCutterDialog",
+            "HallucinationAuditDialog",
+            "ImageExtractorDialog",
+        } <= set(inherited)
 
     def test_every_worker_dialog_has_close_event(self):
+        # V0.6.10 (B17) pin evolution: a migrated dialog's guard may be
+        # INHERITED from BaseServiceDialog instead of defined locally —
+        # either shape satisfies "has a closeEvent guard".
         for cls in T_B2_DIALOGS:
-            assert "def closeEvent" in _class_src(cls), cls
+            cls_src = _class_src(cls)
+            if "def closeEvent" not in cls_src:
+                assert _subclasses_base(cls), (
+                    f"{cls} neither defines closeEvent nor subclasses BaseServiceDialog"
+                )
 
     def test_markdown_styler_has_no_close_event(self):
-        # Deterministic + instant (no worker, self._worker is dead code) —
-        # deliberately untouched by T-b2.
+        # V0.6.5 contract change: the styler gained the LLM-structuring
+        # path (a SimpleWorker) — it now OWNS the T-b2 guard, exactly like
+        # every other worker-owning dialog (was: deterministic-only, no
+        # worker, deliberately untouched by T-b2).
+        # V0.6.10 (B17) batch A pin evolution: the styler migrated onto
+        # BaseServiceDialog — the guard is now the INHERITED base guard
+        # (was: its own byte-equivalent _confirm_close call on the same
+        # self._worker). Worker ownership is still pinned here.
         cls_src = _class_src("MarkdownStylerDialog")
-        assert "def closeEvent" not in cls_src
-        assert "SimpleWorker(" not in cls_src
+        assert cls_src.splitlines()[0] == "class MarkdownStylerDialog(BaseServiceDialog):"
+        assert "def closeEvent" not in cls_src  # inherited — no local copy
+        assert "SimpleWorker(" in cls_src  # the LLM-path worker ownership
 
     def test_each_guard_shape(self):
         # Worker reference + shared confirm guard + event.ignore() on veto
         # + super() delegation. TtsServiceDialog guards its PREVIEW worker
         # first and delegates the main-worker guard to the base class.
+        # V0.6.10 (B17) pin evolution: (a) dialogs whose guard folded into
+        # the base are skipped here — the base's own guard shape is pinned
+        # below and covers them; (b) OcrServiceDialog's override guards its
+        # TEST worker (self._test_worker) and delegates the main-worker
+        # guard to the base (the TTS preview-worker pattern).
         for cls in T_B2_DIALOGS:
+            if "def closeEvent" not in _class_src(cls):
+                continue  # inherited from BaseServiceDialog (pinned below)
             ce = _close_event_src(cls)
             assert "_confirm_close_with_running_worker(self," in ce, f"{cls} guard call"
-            assert "self._worker" in ce or "self._preview_worker" in ce, f"{cls} worker reference"
+            assert (
+                "self._worker" in ce or "self._preview_worker" in ce or "self._test_worker" in ce
+            ), f"{cls} worker reference"
             assert "event.ignore()" in ce, f"{cls} event.ignore()"
             assert "super().closeEvent(event)" in ce, f"{cls} super()"
             assert "V18.20.4.5 (T-b2)" in ce, f"{cls} tag"
+        # The inherited guards all ride on the base's single guard — its
+        # shape is pinned here (guards self._worker + delegates via super).
+        base_ce = _close_event_src("BaseServiceDialog")
+        assert "_confirm_close_with_running_worker(self, self._worker)" in base_ce
+        assert "super().closeEvent(event)" in base_ce
 
     def test_each_guard_cites_the_abort_class(self):
         # Every guard comment explains the old defect class (whitespace-
         # and comment-marker-normalized — comment wrapping is free).
+        # V0.6.10 (B17) pin evolution: dialogs that inherited the base
+        # guard are covered by the BASE's citation (checked once below)
+        # instead of a per-class copy.
         pat = re.compile(
             r"QThread:\s*Destroyed\s*while\s*thread\s*is\s*"
             r"still\s*running"
         )
         for cls in T_B2_DIALOGS:
+            if "def closeEvent" not in _class_src(cls):
+                continue  # inherited — the base citation covers it
             flat = re.sub(r"[\s#]+", " ", _close_event_src(cls))
             assert pat.search(flat), cls
+        flat_base = re.sub(r"[\s#]+", " ", _close_event_src("BaseServiceDialog"))
+        assert pat.search(flat_base), "BaseServiceDialog"
 
     def test_base_service_dialog_single_guard_covers_subclasses(self):
         # ONE guard on the base class; the subclasses (Translation /
         # TTS main worker) inherit it and none of them override
         # closeEvent themselves.
+        # V0.6.10 (B17) pin evolution: batch B joined the family —
+        # Transcribe / Summarization / Packets inherit without
+        # overriding; OCR (like TTS) overrides but must delegate to the
+        # base guard via super().
         base = _class_src("BaseServiceDialog")
         assert base.count("def closeEvent") == 1
-        for cls in ("TranslationServiceDialog", "TtsServiceDialog"):
+        for cls in (
+            "TranslationServiceDialog",
+            "TtsServiceDialog",
+            "OcrServiceDialog",
+            "SummarizationServiceDialog",
+            "PacketsToolDialog",
+            "TranscribeServiceDialog",
+        ):
             sub = _class_src(cls)
             # TtsServiceDialog DOES override — to guard the preview worker
             # first — but must delegate to the base guard via super().
+            # (V0.6.10 B17: so does OcrServiceDialog, for its test worker.)
             if "def closeEvent" in sub:
                 assert "super().closeEvent(event)" in _method_src(sub, "closeEvent")
             else:
-                assert "closeEvent" not in sub
+                assert "def closeEvent" not in sub
 
 
 class TestTb2SharedGuardHelper:

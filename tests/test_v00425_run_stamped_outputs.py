@@ -32,22 +32,14 @@ Contracts tested here:
 from __future__ import annotations
 
 import re
-import sys
 import time
-import types
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 # Stub the optional heavy deps exactly like tests/test_v18203_incremental_checkpoint.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-
 from utils.logging import ConversionLogger  # noqa: E402
 
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")
@@ -330,8 +322,11 @@ class TestStampedChapterSummaryNames:
         import json
 
         manifest = json.loads((root / "checkpoints" / "chapter_manifest.json").read_text())
-        assert "1" in manifest["chapters"]
-        assert rid in manifest["chapters"]["1"].get("summary_md", "")
+        # V0.6.6 contract change (review-loop L2-3): keyed by the canonical
+        # md filename (unique per chapter+run), not str(pos).
+        expected_key = f"001_Chapter_One_v0.4.25_{rid}_summary.md"
+        assert expected_key in manifest["chapters"]
+        assert rid in manifest["chapters"][expected_key].get("summary_md", "")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

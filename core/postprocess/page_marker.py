@@ -1,26 +1,8 @@
-"""Page marker management – insert, preserve, and extract page boundaries."""
+"""Page marker management – extract and update page-boundary markers."""
 
 import re
 
-from utils.logging import get_main_logger
-
-logger = get_main_logger()
-
 PAGE_COMMENT_PATTERN = re.compile(r"<!-- original page (\d+) -->")
-
-
-def insert_page_markers(content_by_page: list[tuple[int, str]]) -> str:
-    """
-    Insert HTML comments at the start of each page's content.
-    Args:
-        content_by_page: list of (page_num, page_text)
-    Returns:
-        Single markdown string with page comments.
-    """
-    parts = []
-    for page_num, text in content_by_page:
-        parts.append(f"<!-- original page {page_num} -->\n{text}")
-    return "\n\n".join(parts)
 
 
 def extract_page_markers(markdown_text: str) -> list[tuple[int, int]]:
@@ -33,19 +15,6 @@ def extract_page_markers(markdown_text: str) -> list[tuple[int, int]]:
         page_num = int(match.group(1))
         markers.append((page_num, match.start()))
     return markers
-
-
-def preserve_markers_during_cleaning(markdown_text: str, cleaned_text: str) -> str:
-    """Re-insert page markers if they were stripped during cleaning."""
-    original_markers = extract_page_markers(markdown_text)
-    if not original_markers:
-        return cleaned_text
-    cleaned_markers = extract_page_markers(cleaned_text)
-    if len(cleaned_markers) == len(original_markers):
-        return cleaned_text
-    logger.warning("Page markers lost during cleaning — re-inserting at start")
-    marker_lines = [f"<!-- original page {p} -->\n" for p, _ in original_markers]
-    return "".join(marker_lines) + cleaned_text
 
 
 def update_page_markers_after_segmentation(

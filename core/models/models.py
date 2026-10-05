@@ -172,6 +172,49 @@ class SummaryResult:
     include_executive_summary: bool = True
     include_thorough_summary: bool = True
     include_keypoints: bool = True
+    # V0.5.4 (Track C1 — section breaks mirroring the source): the
+    # runtime-extracted author→ALL-CAPS-section map for THIS chapter's
+    # source text. Populated by the Summarizer from
+    # ``deterministic_analyzer.map_authors_to_all_caps_sections``. When
+    # non-empty AND bullet_points is non-empty, the markdown renderer
+    # groups the key-takeaway bullets under ``## {Section Title}``
+    # headings (one per source section whose authors appear in any
+    # bullet). Empty = legacy flat list under ``## Key Takeaways``
+    # (backward-compatible: every existing test fixture and legacy
+    # SummaryResult renders byte-identical to before).
+    source_section_map: list = field(default_factory=list)
+    # V0.5.4 (Track B3 — Table N-N reproduction): the runtime-extracted
+    # explicit ``TABLE N-N.`` tables from the chapter source. Populated
+    # by the Summarizer from
+    # ``deterministic_analyzer.extract_structured_tables``. The markdown
+    # renderer reproduces each table's ``content_lines`` verbatim under a
+    # clearly-labelled ``## Reproduced Tables (from source)`` section.
+    # Empty list = no reproduced-tables section (legacy behavior).
+    reproduced_tables: list = field(default_factory=list)
+    # V0.5.4 (Track B4 — DSM-style criteria reproduction): the runtime-
+    # extracted ``a. b. c. d.`` + ``(i) (ii) (iii)`` criteria clusters
+    # from the chapter source. Populated by the Summarizer from
+    # ``deterministic_analyzer.extract_structured_criteria``. The
+    # markdown renderer reproduces each cluster as a nested bullet list
+    # under a clearly-labelled ``## Reproduced Diagnostic Criteria (from
+    # source)`` section. Empty list = no criteria section (legacy
+    # behavior).
+    reproduced_criteria: list = field(default_factory=list)
+    # V0.5.6 (Phase 0.5 — source glossary): the runtime-extracted source
+    # roster parsed from the master-summary LLM call's ``<name_glossary>``
+    # block (3 subsections — names, dates, terms). Populated by the
+    # Summarizer from ``glossary_parser.parse_name_glossary`` on the
+    # Call 1/3 master-summary raw response. Persisted as
+    # ``summaries/.glossaries/<slug>.glossary.md`` (auditable — Rule 4
+    # provenance). Consumed by the verification LAYER as the coverage
+    # ground truth (richer than the regex ``extract_citations`` — the
+    # LLM also catches multi-word surnames + provides a 1-sentence
+    # context per name). The deterministic ``cross_reference_glossary``
+    # backstop keeps the LLM honest (every glossary name is checked
+    # against the regex output). Empty dict = the LLM didn't emit a
+    # ``<name_glossary>`` block (fail-open — never blocks the master
+    # summary; the verification LAYER falls back to the regex).
+    source_glossary: dict = field(default_factory=dict)
 
 
 # ── Conversion Request / Result ───────────────────────────────────────────────
@@ -238,9 +281,11 @@ class ConversionRequest:
     # ── Pre-flight VRAM acknowledgment (V18.20.4.10 / P0-c) ────────────────
     # Set to True ONLY by an interactive user action (the wizard's
     # "Proceed anyway" button on the VRAM-overbudget dialog). The converter
-    # enforces ``local.vram_overbudget_policy``: an overbudget plan without
-    # this acknowledgment fails fast with VramOverbudgetError instead of
-    # warn-and-continue.
+    # enforces ``local.vram_overbudget_policy`` (enforcement restored
+    # V0.6.9): an overbudget plan without this acknowledgment fails fast —
+    # the converter returns the policy's error message as a failed
+    # ConversionResult (the VramOverbudgetError class exists for callers
+    # that prefer exceptions) instead of warn-and-continue.
     vram_overbudget_acknowledged: bool = False
 
     # ── Manual segmentation override ──────────────────────────────────────
@@ -249,36 +294,18 @@ class ConversionRequest:
     # ── Quality Controls ──────────────────────────────────────────────────
     temperature: float = 0.2
     self_consistency: bool = False
-    # V18.20.4.11 (P2): literal → core.llm.model_taxonomy constant
-    # (value unchanged: "gemma3:12b"). NOTE: this field is re-declared (and
-    # shadowed by "" ) at the V16.0.9 model-architecture block below — the
-    # dataclass takes the LATER default; the wiring here preserves the
-    # historical literal for the shadowed declaration, byte-identical.
-    fast_model: str = LEGACY_DEFAULT_MODEL
-    heavy_model: str = ""  # disabled by default
-    # ── V16.0.9: 4-mode model architecture ──────────────────────────────
-    # "single_local" — one LOCAL model (Ollama/LM Studio) does everything
-    # "dual_local"   — heavy local + fast local model (both via Ollama)
-    # "single_api"   — one CLOUD API model does everything
-    # "dual_api"     — fast cheap cloud API + expensive accurate cloud API
-    # Legacy "single" is accepted for backward compat (mapped → "single_local").
-    model_architecture: str = "single_local"
-    fast_model: str = ""  # small/fast LOCAL model for simple tasks
-    fast_model_temperature: float = 0.1  # V16.0.8: LFM2.5 recommends 0.1
-    fast_model_context: int = 131072  # V16.0.8: LFM2.5 max 128K context
-    fast_api_url: str = ""  # API URL for dual_api mode (fast cloud model)
-    fast_api_key: str = ""  # API key for dual_api mode (fast cloud model)
-    fast_api_model: str = ""  # Model name for dual_api mode (fast cloud model)
+    # V0.6.14 (single-model order): the whole fast/heavy dual-model family
+    # is REMOVED — fast_model (incl. the shadowed LEGACY_DEFAULT_MODEL
+    # declaration), heavy_model, model_architecture (the 4-mode selector),
+    # fast_model_temperature, fast_model_context, fast_api_url/key/model,
+    # and simplification_model below. ONE model (summarisation_model,
+    # reached through the provider) does every LLM generation task; OCR /
+    # transcribe / translation / TTS keep their own dedicated models.
     coverage_threshold: float = 0.50  # lowered to 50%
     # V15.1.0: Over-delivery — keep improving coverage past the minimum threshold
     overdeliver_enabled: bool = True  # default ON
     overdeliver_target: float = 1.0  # V15.1.1: 100% (the more the better)
     b3_voting_enabled: bool = False  # V15.1.1: disabled (damages depth)
-
-    # V3.5.0: Separate model for simplified keypoints — enables sequential
-    # model loading (unload summarization model, load simplification model).
-    # If empty, falls back to fast_model or summarisation_model.
-    simplification_model: str = ""
 
     # ── Page range selection ──────────────────────────────────────────────
     page_range_start: int | None = None
@@ -372,64 +399,6 @@ class ConversionRequest:
     @property
     def layout_reorder_enabled(self) -> bool:
         return self.source_type == "academic_paper"
-
-    # V10.21.0 (B2): Nested config views — read-only grouped access to the
-    # 115 flat fields.  Each property returns a frozen dataclass built from
-    # the flat fields.  New code can use `request.ocr.primary_model` instead
-    # of `request.primary_ocr_model`.  Old code keeps working unchanged.
-    @property
-    def ocr(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["ocr"]
-
-    @property
-    def postprocess(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["postprocess"]
-
-    @property
-    def segmentation(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["segmentation"]
-
-    @property
-    def summarization(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["summarization"]
-
-    @property
-    def outputs(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["outputs"]
-
-    @property
-    def quality(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["quality"]
-
-    @property
-    def advanced(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["advanced"]
-
-    @property
-    def selection(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["selection"]
-
-    @property
-    def docx_config(self):
-        from core.models.config_views import build_config_views
-
-        return build_config_views(self)["docx"]
 
     def get_segment_strategy_enum(self) -> SegmentStrategy:
         if isinstance(self.segment_strategy, SegmentStrategy):

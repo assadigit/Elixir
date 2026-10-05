@@ -26,17 +26,6 @@ Run: ``pytest tests/test_exec_thorough_fallback.py -v``
 
 from __future__ import annotations
 
-import sys
-import types
-
-# Minimal heavy-dep stub (tiktoken only)
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = lambda *a, **k: None
-    _tk.encoding_for_model = lambda *a, **k: None
-    _tk.Encoding = type("Encoding", (), {})
-    sys.modules["tiktoken"] = _tk
-
 from core.summarisation.postchecks import run_post_checks
 
 # A thorough that is 100% chain-of-thought (the V18.19.2.0 audit case).

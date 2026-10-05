@@ -21,22 +21,11 @@ Run: pytest tests/test_grounding_check.py -v
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-
-    class _E:
-        pass
-
-    tk.Encoding = _E
-    tk.get_encoding = lambda *a, **k: None
-    sys.modules["tiktoken"] = tk
 
 from core.summarisation.grounding_check import llm_grounding_check
 

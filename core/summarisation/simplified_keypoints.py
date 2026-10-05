@@ -20,7 +20,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
-from core.llm import ModelManager, ModelType
+from core.llm import ModelManager
 from core.llm.retry import retry_llm_call
 from core.models import ConversionRequest, SummaryResult
 
@@ -28,6 +28,7 @@ from core.models import ConversionRequest, SummaryResult
 # shared helper — the directive is a Qwen3 soft-switch; for other models
 # it is prompt pollution.
 from core.summarisation.filter_thinking import qwen_no_think
+from core.system.timeouts import KEYPOINTS_WHOLE_CALL_TIMEOUT_S, SHORT_LLM_TIMEOUT_S
 from utils.logging import get_main_logger
 from utils.network import safe_ollama_request
 from utils.settings import Settings
@@ -95,23 +96,12 @@ class SimplifiedKeypointsBuilder:
         self.llamacpp_model = settings.get("summarisation.llamacpp_model", "")
 
         # Which model to use for simplification:
-        # V3.5.0: If simplification_model is set, use it (sequential model loading).
-        # Otherwise fall back to fast_model or summarisation_model.
-        self.simplification_model = getattr(request, "simplification_model", "") or ""
-        self.model = (
-            self.simplification_model
-            or getattr(request, "fast_model", None)
-            or request.summarisation_model
-        )
-        self.summarisation_model = request.summarisation_model  # for model swap logic
+        # V0.6.14 (single-model order): the simplification_model / fast_model
+        # fallback chain is RETIRED — the ONE summarisation model simplifies
+        # the keypoints (no model swap, no sequential loading machinery).
+        self.model = request.summarisation_model
+        self.summarisation_model = request.summarisation_model
         self.temperature = 0.1  # low temperature for translation
-
-        # V3.5.0: Track whether we need to swap models
-        self._needs_model_swap = (
-            self.simplification_model
-            and self.simplification_model != self.summarisation_model
-            and self.simplification_model != getattr(request, "fast_model", None)
-        )
         # FIX V3.1.5: Reduced batch_size from 15 → 10. The /no_think directive
         # was removed (it caused 41% data loss), so the model now thinks again.
         # Smaller batches compensate for thinking overhead and complete within
@@ -120,7 +110,7 @@ class SimplifiedKeypointsBuilder:
         # FIX V3.1.5: Raised timeout from 300 → 420 to accommodate thinking
         # model overhead (no /no_think directive). 10-item batches with
         # thinking take ~60-80s; 420s gives ample headroom for retries.
-        self.timeout = 420
+        self.timeout = KEYPOINTS_WHOLE_CALL_TIMEOUT_S
         self.retries = 1
 
         # For token counting when batching
@@ -271,7 +261,7 @@ class SimplifiedKeypointsBuilder:
         # V3.2.2: Per-bullet calls (max_predict=512) get 120s timeout.
         # Batch calls get self.timeout (420s). The /no_think path is no longer
         # used but kept for compatibility.
-        actual_timeout = 120 if max_predict and max_predict <= 512 else self.timeout
+        actual_timeout = SHORT_LLM_TIMEOUT_S if max_predict and max_predict <= 512 else self.timeout
 
         @retry_llm_call(max_attempts=self.retries + 1, log_callback=self.log)
         def _do_one_call() -> str:
@@ -321,7 +311,7 @@ class SimplifiedKeypointsBuilder:
             label,
             self.temperature,
             self.max_output_tokens_per_batch,
-            timeout=120,
+            timeout=SHORT_LLM_TIMEOUT_S,
             retries=self.retries,
             provider=self.provider,
             log=self.log,
@@ -373,56 +363,6 @@ class SimplifiedKeypointsBuilder:
         # This scans all 10+ char words ONCE against pyenchant, so subsequent
         # _identify_jargon() calls do O(1) dict lookups instead of enchant.check().
         self._build_jargon_cache(all_bullets)
-
-        # V3.5.0: Sequential model loading — if a separate simplification model
-        # is configured, unload the summarisation model and load the simplification
-        # model. This frees VRAM and enables using a different model (e.g. Qwythos)
-        # that handles translation better than the summarisation model (e.g. Qwen3.5).
-        if self._needs_model_swap and self.provider == "ollama":
-            self.log("  🔄 V3.5.0: Swapping models for simplification phase…", "INFO")
-            # Unload the summarisation model to free VRAM
-            models_to_unload = []
-            try:
-                loaded = self.model_manager.get_loaded_models()
-                for m in loaded:
-                    if m != self.simplification_model:
-                        models_to_unload.append(m)
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-
-            for m in models_to_unload:
-                try:
-                    self.model_manager.force_unload(m)
-                    self.log(f"    🔓 Unloaded '{m}' to free VRAM", "INFO")
-                except Exception as e:
-                    self.log(f"    ⚠️ Could not unload '{m}': {e}", "DEBUG")
-
-            # Load the simplification model
-            if self.model_manager.model_exists(self.simplification_model):
-                self.log(
-                    f"    ⏳ Loading simplification model '{self.simplification_model}'…", "INFO"
-                )
-                loaded_ok = self.model_manager.acquire_model(
-                    self.simplification_model,
-                    ModelType.SUMMARISATION,
-                    skip_vram_check=True,
-                )
-                if loaded_ok:
-                    self.log(
-                        f"    ✅ Simplification model loaded: {self.simplification_model}", "INFO"
-                    )
-                    self.model = self.simplification_model
-                else:
-                    self.log(
-                        "    ⚠️ Failed to load simplification model — using fallback", "WARNING"
-                    )
-                    self.model = self.summarisation_model
-            else:
-                self.log(
-                    f"    ⚠️ Model '{self.simplification_model}' not found — using fallback",
-                    "WARNING",
-                )
-                self.model = self.summarisation_model
 
         # V3.3.3: Sequential processing — no concurrency. Concurrent workers were
         # causing access violation crashes in Ollama. Sequential is slower but
@@ -557,14 +497,6 @@ class SimplifiedKeypointsBuilder:
             self.log(f"  ✅ Simplified keypoints DOCX saved to: {docx_path}", "SUCCESS")
         except Exception as e:
             self.log(f"  ⚠️ Could not save DOCX: {e}", "WARNING")
-
-        # V3.5.0: Unload the simplification model if we swapped it in
-        if self._needs_model_swap and self.provider == "ollama":
-            try:
-                self.model_manager.force_unload(self.simplification_model)
-                self.log("    🔓 Simplification model unloaded after use", "INFO")
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
         return md_path
 

@@ -302,22 +302,14 @@ class WizardView(QDialog):
             _mw = s.get_setting("summarisation.max_workers", 1)
             _temp = s.get_setting("summarisation.temperature", 0.6)
             _model = s.get_setting("summarisation.model", "")
-            _fast = s.get_setting("summarisation.fast_model", "")
             _ocr = s.get_setting("ocr.primary_model", "")
             _source = s.get_setting("source_type", "normal_book")
             _cov = s.get_setting("summarisation.coverage_threshold", 50)
-            _arch = (
-                s.get_setting("summarisation.model_architecture", "single_local") or "single_local"
-            )
-            # Apply to state
+            # Apply to state (V0.6.14: fast_model / model_architecture retired)
             self.state.max_workers = int(_mw)
             self.state.temperature = float(_temp)
-            # V16.0.9: backward-compat — legacy "single" → "single_local"
-            self.state.model_architecture = "single_local" if _arch == "single" else _arch
             if _model:
                 self.state.summarisation_model = _model
-            if _fast:
-                self.state.fast_model = _fast
             if _ocr:
                 self.state.primary_ocr_model = _ocr
                 self.state.fallback_ocr_model = _ocr
@@ -666,8 +658,6 @@ class WizardView(QDialog):
             estimates, peak, total, recommendation = calculate_vram_budget(
                 ocr_model=s.primary_ocr_model,
                 summarization_model=s.summarisation_model,
-                fast_model=s.fast_model,
-                heavy_model=s.heavy_model,
                 translation_backend=s.translation_backend if s.translation_enabled else "",
                 translation_model=s.summarisation_model,  # Ollama translator
                 harakat_model=s.translation_harakat_model if s.translation_enabled else "",
@@ -750,22 +740,34 @@ class WizardView(QDialog):
     # ── V8.1.0: Hardware monitor ─────────────────────────────────────────
 
     def _start_elapsed_timer(self) -> None:
-        """V10.25.0: Start a live elapsed timer shown in Step9Logs."""
-        from PySide6.QtCore import QTime
+        """V10.25.0: Start a live elapsed timer shown in Step9Logs.
+
+        V0.6.2 (user-reported bug): the clock is ``time.monotonic()`` —
+        NOT ``QTime.currentTime()``. ``QTime`` is a time-of-DAY type with
+        no day tracking: a conversion that crossed midnight made
+        ``secsTo`` return a negative in [-86400, 0) — a run started at
+        23:34:45 viewed at 02:00:00 (2h25m15s real) rendered a
+        misleading "-21:34:45"-style negative (the user's ~2h40m book
+        run), and a >24h run wrapped modulo 24h and silently reset. The
+        monotonic clock is negative-impossible and wrap-impossible.
+        """
         from PySide6.QtCore import QTimer as _QTimer
 
-        self._elapsed_start = QTime.currentTime()
+        self._elapsed_start = time.monotonic()
         self._elapsed_timer = _QTimer(self)
         self._elapsed_timer.timeout.connect(self._update_elapsed)
         self._elapsed_timer.start(1000)  # update every 1 second
 
     def _update_elapsed(self) -> None:
-        """Update the elapsed time label."""
-        from PySide6.QtCore import QTime
+        """Update the elapsed time label (monotonic — V0.6.2).
 
+        The clamp at zero is belt-and-braces: a monotonic clock only
+        moves forward, but a formatter must never be able to render a
+        negative duration even under a skewed clock read.
+        """
         if not hasattr(self, "_elapsed_start") or not hasattr(self.step9, "elapsed_label"):
             return
-        elapsed = self._elapsed_start.secsTo(QTime.currentTime())
+        elapsed = max(0, int(time.monotonic() - self._elapsed_start))
         h = elapsed // 3600
         m = (elapsed % 3600) // 60
         s = elapsed % 60
@@ -908,7 +910,6 @@ class WizardView(QDialog):
         # Models
         log.append(f"  Summarization model: {s.summarisation_model or '(default)'}", "INFO")
         log.append(f"  OCR model: {s.primary_ocr_model or '(default)'}", "INFO")
-        log.append(f"  Fast model: {s.fast_model or '(default)'}", "INFO")
         log.append(f"  Workers: {s.max_workers}, Temperature: {s.temperature}", "INFO")
         # Translation
         log.append(f"  Translation enabled: {s.translation_enabled}", "INFO")
@@ -940,8 +941,6 @@ class WizardView(QDialog):
             f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO"
         )
         log.append(f"  Cache: {s.cache_enabled}", "INFO")
-        log.append(f"  Heavy model: {s.heavy_model or '(disabled)'}", "INFO")
-        log.append(f"  Simplification model: {s.simplification_model or '(use fast)'}", "INFO")
         log.append(
             f"  Extract math: {s.extract_math}, Layout analysis: {s.layout_analysis}", "INFO"
         )

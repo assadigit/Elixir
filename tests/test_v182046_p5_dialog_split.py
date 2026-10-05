@@ -178,7 +178,7 @@ class TestExternalImportersCovered:
         found: set[tuple[str, str]] = set()
         for py in sorted(_project_root.rglob("*.py")):
             rel = py.relative_to(_project_root).as_posix()
-            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/", ".git")):
+            if rel.startswith(("ui_qt/views/service_dialogs/dialogs/", ".git", ".venv")):
                 continue
             try:
                 tree = ast.parse(_src(py))
@@ -325,12 +325,56 @@ class TestPerDialogModules:
             assert _top_level_defs(_tree(py)), py.name
 
     def test_dialog_family_close_event_guards_survived(self):
-        # The 10 T-b2 closeEvent guards span the family (p4a pins the
-        # shapes; this pins the family union stayed intact).
+        # The 11 T-b2 closeEvent guards span the family (p4a pins the
+        # shapes; this pins the family union stayed intact). V0.6.5: the
+        # MarkdownStyler joined the family (its LLM path owns a worker).
+        # V0.6.10 (B17) pin evolution: dialogs migrating onto
+        # BaseServiceDialog fold their byte-identical guards into the
+        # base class and INHERIT them (batch B: Transcribe +
+        # Summarization + Packets; OCR keeps an override for its test
+        # worker). The union count is now COMPUTED (base guard + own
+        # guards, was a hardcoded 11) and coverage is pinned
+        # structurally: every dialog either defines a guard or subclasses
+        # BaseServiceDialog (p4a's TestTb2CloseEventGuards pins the rest).
         union = _src(_BASE_DIALOG) + "\n".join(
             _src(_DIALOGS / p) for p in sorted(q.name for q in _DIALOGS.glob("*.py"))
         )
-        assert union.count("def closeEvent") == 10
+        assert _src(_BASE_DIALOG).count("def closeEvent") == 0  # pure facade
+        own: list[str] = []
+        inherited: list[str] = []
+        for cls, fname in _DIALOG_TO_FILE.items():
+            node = _top_level_defs(_tree(_DIALOGS / fname))[cls]
+            has_guard = any(
+                isinstance(n, ast.FunctionDef) and n.name == "closeEvent" for n in node.body
+            )
+            if has_guard:
+                own.append(cls)
+            else:
+                bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
+                assert "BaseServiceDialog" in bases, (
+                    f"{cls} defines no closeEvent and does not subclass BaseServiceDialog"
+                )
+                inherited.append(cls)
+        assert union.count("def closeEvent") == 1 + len(own), (
+            f"stray closeEvent outside BaseServiceDialog + the dialogs: "
+            f"{union.count('def closeEvent')} != {1 + len(own)}"
+        )
+        # V0.6.10 (B17) batch B (this migration) — the three dialogs whose
+        # guards folded in (OCR kept its own for the test worker):
+        assert {
+            "TranscribeServiceDialog",
+            "SummarizationServiceDialog",
+            "PacketsToolDialog",
+        } <= set(inherited)
+        # V0.6.10 (B17) batch A (the parallel migration) — the five dialogs
+        # whose byte-identical self._worker guards folded into the base:
+        assert {
+            "MarkdownStylerDialog",
+            "QuickConvertDialog",
+            "PdfDocxCutterDialog",
+            "HallucinationAuditDialog",
+            "ImageExtractorDialog",
+        } <= set(inherited)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -372,36 +416,107 @@ def _pre_split_source() -> str:
 
 
 class TestVerbatimMove:
-    # V18.20.4.9 (BK1 / W-b17) — the ONLY sanctioned MarkdownStylerDialog
-    # drift since the O-b2 split: its two str(e)-only except blocks gained
-    # the traceback-at-WARNING log line before the user-visible message
-    # (the SWOT W-b17 crash-visibility class). Both substitutions are
-    # guarded (the OLD text is asserted present in the reference first,
-    # so any additional drift still fails), per the P6 test_v182047
-    # evolution pattern.
-    _STYLER_SUBS = {
-        "_on_process": [
-            (
-                "        except Exception as e:\n"
-                '            self.status_label.setText(f"❌ Error: {e}")\n',
-                "        except Exception as e:\n"
-                "            # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE the\n"
-                "            # status + user box (was str(e)-only — zero diagnostics).\n"
-                '            logger.warning("markdown styling failed", exc_info=True)\n'
-                '            self.status_label.setText(f"❌ Error: {e}")\n',
-            )
-        ],
-        "_on_save": [
-            (
-                "            except Exception as e:\n"
-                '                QMessageBox.critical(self, "Save failed", str(e))',
-                "            except Exception as e:\n"
-                "                # V18.20.4.9 (W-b17): the traceback reaches the log BEFORE\n"
-                "                # the user box (was str(e)-only — zero diagnostics).\n"
-                '                logger.warning("styled markdown save failed", exc_info=True)\n'
-                '                QMessageBox.critical(self, "Save failed", str(e))',
-            )
-        ],
+    # V18.20.4.9 (BK1 / W-b17) — the sanctioned MarkdownStylerDialog drift
+    # since the O-b2 split: its two str(e)-only except blocks gained the
+    # traceback-at-WARNING log line before the user-visible message (the
+    # SWOT W-b17 crash-visibility class). The W-b17 markers must SURVIVE
+    # the B17 migration (asserted below); the full method + ordering pin
+    # lives in tests/test_v182049_bk1_ui_threading.py
+    # ::TestWb17TracebackBeforeBox (same markers + exc_info BEFORE the
+    # user-visible message, per except block) — the stronger guard since
+    # B17 restructured the styler's class body.
+    #
+    # V0.6.10 (B17) pin evolution: the batch-A and batch-B dialogs
+    # migrated onto BaseServiceDialog (the tts/translation precedent) —
+    # their __init__ was restructured (super() + widget aliases + the
+    # _build_options fold-in), their byte-identical closeEvent guards
+    # were DELETED (inherited from the base), and QuickConvert/
+    # PdfDocxCutter/OCR renamed their entry points onto the base hook
+    # names (_pick_input → _pick_file, _on_action → _on_process,
+    # _pick_output_folder → _pick_output). Body byte-identity therefore
+    # no longer applies to those nine classes; a strict METHOD-NAME census
+    # still applies (nothing may be lost beyond the documented deletions
+    # and renames, nothing smuggled in beyond the documented base-hook
+    # overrides/helpers), and every OTHER class stays byte-identical to
+    # the V18.20.4.5 reference. The restructured dialogs' behavior is
+    # pinned by the e2e drive suites (test_v0600_tool_*_e2e.py,
+    # test_v065_rtl_styler_translation.py, test_v0600_internal_tabs_e2e.py)
+    # and the W-b5 worker-body pins (test_v182045_p4a).
+    #
+    # V0.6.10 (B17) batch-B follow-up (found in the 6-b review): the four
+    # batch-B dialogs were migrated in the SAME uncommitted tree but were
+    # missing from this census — on any machine with the V18.20.4.5
+    # reference zip (the operator's rig; this sandbox skips the class)
+    # test_every_class_body_byte_identical went RED for them. The entries
+    # below are verified against the HEAD 31be4eb class bodies (which the
+    # O-b2 split moved byte-identically, so HEAD == the zip reference).
+    _B17_MIGRATED = {
+        "MarkdownStylerDialog": {
+            "renames": {},
+            "deleted": ("closeEvent",),  # inherited from the base
+            "added": ("_build_options", "_hide_base_output_row", "_get_service_name"),
+        },
+        "QuickConvertDialog": {
+            "renames": {"_pick_input": "_pick_file", "_on_action": "_on_process"},
+            "deleted": ("closeEvent",),
+            "added": ("_build_options", "_get_output_suffix", "_get_service_name"),
+        },
+        "PdfDocxCutterDialog": {
+            "renames": {"_pick_input": "_pick_file", "_on_action": "_on_process"},
+            "deleted": ("closeEvent",),
+            "added": ("_build_options", "_get_output_suffix", "_get_service_name"),
+        },
+        "ImageExtractorDialog": {
+            "renames": {},
+            # _emit_progress was byte-equivalent to the base's — deleted,
+            # inherited.
+            "deleted": ("closeEvent", "_emit_progress"),
+            "added": ("_build_options", "_get_service_name"),
+        },
+        "HallucinationAuditDialog": {
+            "renames": {},
+            "deleted": ("closeEvent",),
+            "added": (
+                "_build_options",
+                "_hide_base_output_row",
+                "_on_process",  # delegates the base Process button to _on_audit
+                "_get_service_name",
+            ),
+        },
+        # V0.6.10 (B17) batch B — the four dialogs of THIS migration,
+        # same census semantics (deletions are byte-equivalent base
+        # methods now inherited; renames move onto the base hook names;
+        # OCR kept its closeEvent override for the V0.4.8 TEST worker,
+        # delegating the main-worker guard to the base — the TTS
+        # preview-worker pattern):
+        "TranscribeServiceDialog": {
+            "renames": {},
+            # closeEvent + _emit_progress were byte-equivalent to the
+            # base's — deleted, inherited.
+            "deleted": ("closeEvent", "_emit_progress"),
+            "added": ("_build_options",),
+        },
+        "SummarizationServiceDialog": {
+            "renames": {},
+            # _get_input_text: the base's tab-aware version is
+            # behaviorally equivalent (paste text on tab 0; "" on the
+            # queue tab — the removed single-file page leaves
+            # file_path_edit empty).
+            "deleted": ("closeEvent", "_get_input_text"),
+            "added": ("_build_options", "_on_process"),
+        },
+        "OcrServiceDialog": {
+            "renames": {"_pick_output_folder": "_pick_output"},
+            "deleted": (),  # closeEvent KEPT — guards the test worker
+            "added": ("_build_options", "_on_process"),
+        },
+        "PacketsToolDialog": {
+            "renames": {},
+            # closeEvent + _toggle_live_log were byte-equivalent to the
+            # base's — deleted, inherited.
+            "deleted": ("closeEvent", "_toggle_live_log"),
+            "added": ("_build_options", "_on_process"),
+        },
     }
 
     def test_every_class_body_byte_identical(self):
@@ -414,41 +529,33 @@ class TestVerbatimMove:
             new_node = _top_level_defs(_tree(_DIALOGS / fname))[cls]
             expected = ast.get_source_segment(pre, pre_defs[cls]) or ""
             actual = ast.get_source_segment(new_src, new_node) or ""
-            if cls == "MarkdownStylerDialog":
-                # W-b17 evolution: reconstruct the expected body from the
-                # reference with the two guarded substitutions.
-                cls_tree = ast.parse(expected)
-                styler = cls_tree.body[0]
-                assert isinstance(styler, ast.ClassDef)
+            if cls in self._B17_MIGRATED:
+                # B17: subclass header + strict method-name census instead
+                # of body byte-identity (see the _B17_MIGRATED doc above).
+                spec = self._B17_MIGRATED[cls]
+                assert actual.splitlines()[0] == f"class {cls}(BaseServiceDialog):", cls
                 old_methods = {
-                    n.name: ast.get_source_segment(expected, n) or ""
-                    for n in styler.body
+                    n.name
+                    for n in ast.parse(expected).body[0].body
                     if isinstance(n, ast.FunctionDef)
                 }
-                new_tree = ast.parse(actual)
-                new_styler = new_tree.body[0]
                 new_methods = {
-                    n.name: ast.get_source_segment(actual, n) or ""
-                    for n in new_styler.body
-                    if isinstance(n, ast.FunctionDef)
+                    n.name for n in ast.parse(actual).body[0].body if isinstance(n, ast.FunctionDef)
                 }
-                assert set(new_methods) == set(old_methods), (
-                    "no MarkdownStylerDialog method may be added/deleted beyond the W-b17 evolution"
+                want = (
+                    (old_methods - set(spec["deleted"]) - set(spec["renames"]))
+                    | set(spec["renames"].values())
+                    | set(spec["added"])
                 )
-                for name, new_body in new_methods.items():
-                    exp = old_methods[name]
-                    for old_frag, new_frag in self._STYLER_SUBS.get(name, []):
-                        assert old_frag in exp, (
-                            f"guarded anchor missing in the reference "
-                            f"({name}) — drift beyond the documented "
-                            "W-b17 evolution"
-                        )
-                        exp = exp.replace(old_frag, new_frag, 1)
-                    assert new_body == exp, (
-                        f"MarkdownStylerDialog.{name} drifted beyond the "
-                        "documented W-b17 evolution (byte-identity is still "
-                        "enforced for every other method)"
-                    )
+                assert new_methods == want, (
+                    f"{cls}: B17 method census drifted; expected {sorted(want)}, "
+                    f"got {sorted(new_methods)}"
+                )
+                if cls == "MarkdownStylerDialog":
+                    # W-b17: the two traceback-log markers survive the B17
+                    # migration verbatim (ordering pinned by test_v182049).
+                    assert 'logger.warning("markdown styling failed", exc_info=True)' in actual
+                    assert 'logger.warning("styled markdown save failed", exc_info=True)' in actual
                 continue
             assert expected == actual, f"{cls} body changed"
 

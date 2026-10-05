@@ -2,9 +2,14 @@
 
 Tests verify:
 1. OCR + Summarization (sequential phases) → peak is MAX, not SUM
-2. Summarization + Fast model (same phase) → peak is SUM of both
-3. Translation (separate phase) doesn't add to summarization peak
-4. The user's exact scenario (OlmOCR 6.4 + Gemma4-12B 9.3 = 9.3 peak, not 15.7)
+2. Translation (separate phase) doesn't add to summarization peak
+3. The user's exact scenario (OlmOCR 6.4 + Gemma4-12B 9.3 = 9.3 peak, not 15.7)
+
+V0.6.14 (single-model order): the "Summarization + Fast model (same
+Phase 2) → peak is SUM of both" scenario is RETIRED —
+calculate_vram_budget no longer takes fast_model/heavy_model params and
+emits no Fast/Simplification or Heavy estimates (ONE model,
+summarisation_model, does every LLM task; nothing else shares its phase).
 """
 
 from __future__ import annotations
@@ -40,19 +45,12 @@ class TestPhaseBasedVRAM:
         # Should NOT be overbudget
         assert "OVERBUDGET" not in rec, f"Should not be overbudget: {rec}"
 
-    def test_summarization_plus_fast_model_sums(self):
-        """Summarization + Fast model (same Phase 2) → peak should include both."""
-        estimates, peak, total, rec = calculate_vram_budget(
-            ocr_model="",
-            summarization_model="gemma4-12b:latest",  # ~9.3 GB
-            fast_model="qwen2.5:7b",  # ~5 GB — different model, same phase
-            max_workers=1,
-        )
-        # Peak should be at least 9.3 (summarization alone)
-        assert peak >= 9.0, f"Peak {peak:.1f} should include summarization model"
-        # Fast model is in the same phase, so it adds to the peak
-        # (model swap: both may be loaded briefly during the swap)
-        assert peak > 9.3, f"Peak {peak:.1f} should include fast model (same phase)"
+    # V0.6.14 (single-model order): 1 test REMOVED —
+    # test_summarization_plus_fast_model_sums pinned the fast_model param
+    # of calculate_vram_budget (a second model summed into the Phase-2
+    # peak during the model swap). The dual-model concept is retired:
+    # there is no fast_model param and no same-phase second model to sum,
+    # so the scenario it pinned cannot exist anymore.
 
     def test_translation_separate_phase(self):
         """Translation (Phase 3) doesn't add to summarization (Phase 2) peak."""

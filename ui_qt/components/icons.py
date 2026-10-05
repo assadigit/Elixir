@@ -334,13 +334,3 @@ def pixmap_with_png_fallback(
     # Fall back to SVG — use svg_fallback if provided, else use name
     svg_name = svg_fallback if svg_fallback else name
     return pixmap(svg_name, color, size)
-
-
-def icon_with_png_fallback(
-    name: str,
-    color: str = "#E8EAED",
-    size: int = 64,
-    svg_fallback: str | None = None,
-) -> QIcon:
-    """Return an icon for ``name``: PNG if available, else SVG."""
-    return QIcon(pixmap_with_png_fallback(name, color, size, svg_fallback))

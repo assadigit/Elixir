@@ -1,0 +1,60 @@
+{
+  "run_id": "20260927-210804-280e133a",
+  "heading": "1 - IDENTITY AND ITS ORIGINS",
+  "roster_size": 37,
+  "covered": 37,
+  "coverage_pct": 100.0,
+  "missing_authors": [],
+  "glossary_names": 30,
+  "xref": {
+    "confirmed": [
+      "Blos",
+      "Chasseguet-Smirgel",
+      "Erikson",
+      "Federn",
+      "Fenichel",
+      "Freud",
+      "Fromm",
+      "Galenson and Roiphe",
+      "Glover",
+      "Greenacre",
+      "Hartmann",
+      "Jacobson",
+      "Kernberg",
+      "Klein",
+      "Kovel",
+      "Kris",
+      "Lasch",
+      "Lichtenstein",
+      "Lifton",
+      "Loewald",
+      "Loewenstein",
+      "Lynd",
+      "Mahler",
+      "Meyer",
+      "Searles",
+      "Spiegel",
+      "Stoller",
+      "Tausk",
+      "Wheelis",
+      "Winnicott"
+    ],
+    "llm_only": [],
+    "regex_only": [
+      "Durkheim",
+      "Eissler",
+      "Galenson",
+      "Khan",
+      "Marx",
+      "Roiphe",
+      "Spitz"
+    ]
+  },
+  "hallucination_candidates": [],
+  "bullets": 75,
+  "benchmark_ch6_v0515": {
+    "covered": 70,
+    "roster": 74,
+    "pct": 94.6
+  }
+}

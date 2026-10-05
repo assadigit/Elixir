@@ -48,18 +48,6 @@ if str(_project_root) not in sys.path:
 # Stub the optional heavy deps exactly like tests/test_conversion_modules.py
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager controller→pipeline→core.pdf import chain loadable).
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = types.ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════
@@ -645,7 +633,10 @@ class TestA15CancelSkipsDownstreamPhases:
             patch(
                 "core.pipeline.conversion.summarization.run_summarization", return_value=summ_ns
             ) as spies["summarization"],
-            patch("core.pipeline.converter_impl.DocxBuilder") as spies["docx"],
+            # V0.4.26 (Phase 3 commit 2): the DOCX build block moved VERBATIM
+            # to conversion/summary_outputs.py — the patch target follows
+            # the moved body (same repoint discipline as the delegate spies).
+            patch("core.pipeline.conversion.summary_outputs.DocxBuilder") as spies["docx"],
             patch("core.summarisation.KeypointsBuilder") as spies["keypoints"],
             patch("core.summarisation.SimplifiedKeypointsBuilder") as spies["simplified"],
             patch(
@@ -764,6 +755,13 @@ class TestA15CancelSkipsDownstreamPhases:
         VERBATIM to conversion/visual_features.py (_run_footnote_extraction)
         — its gate pin follows the moved body, so the scan now reads BOTH
         files (union semantics, same property asserted).
+        V0.4.26 (Phase 3 commit 2): the DOCX/keypoints/simplified-digest/
+        citation-graph blocks moved VERBATIM to
+        conversion/summary_outputs.py — their four gate pins follow the
+        moved bodies (union grows by that module, same semantics).
+        V0.4.26 (Phase 3 commit 3): ditto for the finalization module —
+        the screenshots/graphs + library-tracking blocks (and the
+        "Cancelled by user" result plumbing) moved there.
         """
         src = (_project_root / "core" / "pipeline" / "converter_impl.py").read_text(
             encoding="utf-8"
@@ -775,6 +773,16 @@ class TestA15CancelSkipsDownstreamPhases:
         src += (
             _project_root / "core" / "pipeline" / "conversion" / "visual_features.py"
         ).read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 2): ditto for the summary-outputs runner.
+        src += (
+            _project_root / "core" / "pipeline" / "conversion" / "summary_outputs.py"
+        ).read_text(encoding="utf-8")
+        # V0.4.26 (Phase 3 commit 3): ditto for the finalization module
+        # (the screenshots/graphs + library-tracking runners + the
+        # "Cancelled by user" result plumbing live there now).
+        src += (_project_root / "core" / "pipeline" / "conversion" / "finalization.py").read_text(
+            encoding="utf-8"
+        )
         gates = [
             "DOCX build",
             "keypoints build",
@@ -807,7 +815,14 @@ class TestA15CancelSkipsDownstreamPhases:
 
 
 class TestA28SettingsFastModel:
-    """V18.20.2.0 (SWOT A28): exactly one fast_model key per location."""
+    """V18.20.2.0 (SWOT A28): exactly one key per dict/ensure-list
+    location (the original defect was duplicate ``fast_model`` keys).
+
+    V0.6.14 (single-model order): 1 test DELETED
+    (test_effective_fast_model_default_unchanged — it pinned the
+    ``summarisation.fast_model`` default ""; the settings key is
+    RETIRED with the fast model, one model does every LLM task). The
+    two AST duplicate-key guards survive unchanged."""
 
     def test_no_duplicate_dict_keys_anywhere_in_settings(self):
         """AST guard: no dict literal in settings.py repeats a string key."""
@@ -848,13 +863,10 @@ class TestA28SettingsFastModel:
                         dups.append((node.lineno, v))
         assert dups == [], f"duplicate ensure-list entries remain: {dups}"
 
-    def test_effective_fast_model_default_unchanged(self):
-        """Behavioral: the effective default stays "" (the value that was
-        silently winning by dict-literal semantics pre-dedupe)."""
-        from utils.settings import Settings
-
-        defaults = Settings._defaults()
-        assert defaults["summarisation"]["fast_model"] == ""
+    # V0.6.14 (single-model order): test_effective_fast_model_default_
+    # unchanged DELETED here — it pinned defaults["summarisation"]
+    # ["fast_model"] == ""; the settings key is RETIRED (the 1-test
+    # removal named in the class docstring above).
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -907,35 +919,12 @@ class TestA30AtomicWrites:
         assert cfg.exists()
         data = json.loads(cfg.read_text(encoding="utf-8"))
         assert data["input_path"].endswith("book.pdf")
-        assert data["fast_model"] == request.fast_model
+        # V0.6.14 (single-model order): the fast_model payload pin replaced
+        # with the surviving summarisation_model row — the request field is
+        # retired (one model does every LLM task); the atomic-write contract
+        # under test is unchanged.
+        assert data["summarisation_model"] == request.summarisation_model
         assert _tmp_artifacts(tmp_path) == [], "no .tmp leftovers"
-
-    def test_chapter_manifest_atomic_identical_payload(self, tmp_path):
-        from core.obs.conversion_manifest import write_chapter_manifest
-
-        p = write_chapter_manifest(
-            output_dir=tmp_path,
-            chapter_index=1,
-            chapter_total=2,
-            chapter_heading="1 - TEST",
-            model="test:latest",
-            num_ctx=26758,
-            coverage=0.89,
-            phases_ran=["primary"],
-            leak_guard_fires=0,
-            post_check_fixes=1,
-            post_check_flags=0,
-            duration_seconds=123.4,
-            bullet_count=7,
-            exec_summary_chars=500,
-            hallucinations=0,
-        )
-        assert p.exists()
-        data = json.loads(p.read_text(encoding="utf-8"))
-        assert data["model"] == "test:latest"
-        assert data["num_ctx"] == 26758
-        assert data["duration_minutes"] == 2.06
-        assert _tmp_artifacts(tmp_path) == []
 
     def test_quality_report_atomic(self, tmp_path):
         from core.models import Segment, SummaryResult

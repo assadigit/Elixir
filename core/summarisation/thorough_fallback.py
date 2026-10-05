@@ -2,7 +2,7 @@
 
 Extracted verbatim from ``Summarizer._call_dedicated_thorough_with_fallback``
 (god-class decomposition Stage 3). Hardens the dedicated thorough summary path
-with 3 LLM attempts (normal → directive nudge → greedy temperature 0.0) and a
+with 3 LLM attempts (normal → directive nudge → retry) and a
 deterministic synthetic fallback built from the exec summary + bullets.
 
 **Extraction map**:
@@ -61,14 +61,21 @@ def call_dedicated_thorough_with_fallback(
     max_output_tokens: int,
     primary_model: str,
     temperature: float,
+    temperature_multiplier: float = 0.5,
     strip_thinking: StripThinkingFn,
     call_llm: CallLlmFn,
     deadline_exceeded: DeadlineExceededFn,
     synthetic_fallback_count: int,
     log: LogCallback | None = None,
 ) -> tuple[str | None, int]:
-    """V18.2.44 (Next Step #6): Dedicated thorough call with 3 attempts + a
+    """V18.2.44 (Next Step #6): Dedicated thorough call with 4 attempts + a
     deterministic non-empty fallback.
+
+    V0.4.38 (F2): added a 4th attempt — a quantified length-directive
+    re-prompt that fires when the model is persistently short (best
+    non-empty but < min_words) after attempts 1-3. See the V0.4.37 ch.6
+    audit's F2 item (the model returned <800 words on all 3 prior
+    attempts → a 31/74 = 42% coverage-deficient thorough).
 
     Extracted verbatim from ``Summarizer._call_dedicated_thorough_with_fallback``.
     Returns ``(thorough_text, new_synthetic_fallback_count)`` — the caller
@@ -86,15 +93,15 @@ def call_dedicated_thorough_with_fallback(
       - Attempt 1: the normal dedicated prompt (via call_llm).
       - Attempt 2 (if #1 empty/short): retry with a terse directive nudge +
         a 3s VRAM-reload delay (the model may have been evicted).
-      - Attempt 3 (if #2 empty/short): retry at temperature 0.0 (greedy
+      - Attempt 3 (if #2 empty/short): retry at the user's temperature
         decoding — maximally deterministic, least likely to wander into an
         empty generation).
-      - If ALL 3 fail OR the winner is still < ``min_words``: synthesize a
-        deterministic thorough from ``exec_sum`` + the bullets (joined as
-        flowing prose). This is material the model ALREADY produced and
-        the user already saw — it is guaranteed non-empty and guaranteed
-        on-topic, so it is strictly better than the V18.2.43 silent
-        ``thorough = exec_sum`` fallback (which dropped ALL bullets).
+      - Attempt 4 (V0.4.38 F2, if #1-#3 all non-empty but < min_words):
+        retry with a quantified length directive ("previous was N words,
+        need >= M") — a stronger nudge than attempt 2's generic one.
+      - If ALL 4 fail OR the winner is still < ``min_words``: return the
+        best-effort winner (non-empty); synthesize the exec+bullets
+        fallback ONLY on total failure (best=None).
 
     Returns the best thorough text found (stripped of thinking), or the
     synthetic fallback. NEVER returns None when ``exec_sum`` or ``bullets``
@@ -105,6 +112,16 @@ def call_dedicated_thorough_with_fallback(
     # synthetic-fallback branch; returned to the caller for re-assignment.
     fallback_count = synthetic_fallback_count
     _max_tok = min(max_output_tokens or 8192, 8192)
+
+    # V0.5.4 (F2): the `* 0.5` multiplier on all 4 attempts is now a
+    # CONFIGURABLE parameter (default 0.5, the historical behavior). The
+    # owner can set `thorough.temperature_multiplier = 1.0` in settings for
+    # the FULL configured temperature (e.g., 0.7 instead of 0.35). This
+    # resolves the V0.5.3 ambiguity documented in the FIX-P3-6 TODO:
+    # the user's directive "models MUST only run with a fixed Temperature"
+    # was ambiguous — now it's explicit. The multiplier is applied to all
+    # 4 attempts (1, 2, 3, 4) for consistency.
+    _t = temperature * temperature_multiplier
 
     def _parse_thorough(raw: str | None) -> str | None:
         if not raw:
@@ -139,7 +156,7 @@ def call_dedicated_thorough_with_fallback(
         raw1 = call_llm(
             qwen_no_think(prompt, primary_model),
             model=primary_model,
-            temperature=temperature * 0.5,
+            temperature=_t,
             max_tokens=_max_tok,
         )
     except Exception as _e1:
@@ -180,7 +197,7 @@ def call_dedicated_thorough_with_fallback(
             raw2 = call_llm(
                 prompt + _nudge,
                 model=primary_model,
-                temperature=temperature * 0.5,
+                temperature=_t,
                 max_tokens=_max_tok,
             )
         except Exception as _e2:
@@ -199,16 +216,29 @@ def call_dedicated_thorough_with_fallback(
             if best_words >= min_words:
                 return best, fallback_count
 
-    # ── Attempt 3: greedy decoding (temperature 0.0) — most deterministic. ──
+    # ── Attempt 3 (V0.5.2 fix): retry at the user's configured temperature
+    # (was temperature 0.0 — greedy; the user's directive: "models MUST
+    # only run with a fixed Temperature, nothing else is allowed" — so
+    # Attempt 3 now uses the same temperature as Attempts 1+2 instead
+    # of 0.0 greedy decoding). ──
+    # TODO (owner-confirmation, FIX-P3-6 / AUDIT-V0.5.2): the
+    # `temperature * 0.5` multiplier on ALL 4 attempts (here at L220,
+    # also L148 / L189 / L268) means the EFFECTIVE temperature is HALF
+    # the configured value (0.35 if the configured value is 0.7). This
+    # is pre-existing (not a V0.5.2 regression) and consistent across
+    # all attempts. The user's directive "models MUST only run with a
+    # fixed Temperature" is ambiguous: it could mean (a) the FULL
+    # configured value (0.7 — in which case the `* 0.5` should be
+    # REMOVED on all 4 attempts), or (b) just "not 0.0 / not random"
+    # (in which case the current `* 0.5` is fine). Pending owner
+    # confirmation — DO NOT change the code until confirmed.
     if deadline_exceeded("dedicated thorough (attempt 3)"):
         log("    \u23f1\ufe0f Skipping thorough attempt 3 (chapter deadline exceeded)", "DEBUG")
     else:
-        log(
-            "    \u26a0\ufe0f Attempt 2 empty/short — retrying at temperature 0.0 (greedy)", "DEBUG"
-        )
+        log("    \u26a0\ufe0f Attempt 2 empty/short — retrying (attempt 3/3)", "DEBUG")
         raw3 = None
         try:
-            raw3 = call_llm(prompt, model=primary_model, temperature=0.0, max_tokens=_max_tok)
+            raw3 = call_llm(prompt, model=primary_model, temperature=_t, max_tokens=_max_tok)
         except Exception as _e3:
             log(
                 f"    \u26a0\ufe0f Attempt 3/3 dedicated thorough crashed "
@@ -223,11 +253,69 @@ def call_dedicated_thorough_with_fallback(
                 best, best_words = t3, _w3
                 log(f"    \U0001f4d6 Attempt 3/3: dedicated thorough = {_w3} words", "INFO")
 
+    # ── Attempt 4 (V0.4.38 F2): a stronger, QUANTIFIED length directive. ──
+    # The V0.4.37 ch.6 audit found the model can produce a short (non-empty
+    # but < min_words) thorough on ALL 3 prior attempts (best=793 < 800) —
+    # the helper returned the short best-effort + only logged a WARNING,
+    # leaving a coverage-deficient thorough (31/74 = 42%). The 4th attempt
+    # re-prompts with the ACTUAL shortfall (the model's best word count +
+    # the minimum), a stronger quantified length directive than the
+    # generic attempt-2 nudge. Genre-agnostic (about LENGTH, not content —
+    # Rule 1). Only fires when the model is persistently short (best non-
+    # empty but < min_words) and the deadline allows.
+    if (
+        best
+        and 0 < best_words < min_words
+        and not deadline_exceeded("dedicated thorough (attempt 4 length-directive)")
+    ):
+        _length_nudge = (
+            "\n\nYour previous response was only "
+            f"{best_words} words — below the {min_words}-word minimum for this "
+            "thorough summary. Write the FULL thorough summary of AT LEAST "
+            f"{min_words} words now. Cover every named contributor, framework, "
+            "and example in the source. Do not stop early. /no_think"
+        )
+        log(
+            f"    \U0001f4cf V0.4.38 F2: attempt 4 — re-prompting with a "
+            f"quantified length directive (best was {best_words} < {min_words} "
+            f"min words)",
+            "DEBUG",
+        )
+        try:
+            raw4 = call_llm(
+                prompt + _length_nudge,
+                model=primary_model,
+                temperature=_t,
+                max_tokens=_max_tok,
+            )
+        except Exception as _e4:
+            log(
+                f"    \u26a0\ufe0f Attempt 4/4 dedicated thorough crashed "
+                f"({type(_e4).__name__}: {_e4}) \u2014 keeping best-effort",
+                "WARNING",
+            )
+            logger.warning(
+                "dedicated thorough attempt 4 crashed: %s: %s",
+                type(_e4).__name__,
+                _e4,
+            )
+        else:
+            t4 = _parse_thorough(raw4)
+            if t4:
+                _w4 = len(t4.split())
+                if _w4 > best_words:
+                    best, best_words = t4, _w4
+                    log(
+                        f"    \U0001f4d6 Attempt 4/4: dedicated thorough = {_w4} "
+                        f"words (length-directive recovered)",
+                        "INFO",
+                    )
+
     # ── If we got ANYTHING usable (even < min_words), return it. ──
     if best and best_words > 0:
         if best_words < min_words:
             log(
-                f"    \u2139\ufe0f All 3 thorough attempts returned < {min_words} words "
+                f"    \u2139\ufe0f All 4 thorough attempts returned < {min_words} words "
                 f"(best={best_words}) — keeping best-effort result",
                 "WARNING",
             )

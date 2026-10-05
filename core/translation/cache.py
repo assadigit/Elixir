@@ -89,7 +89,10 @@ def get_cached_translation(
         if data.get("text_preview", "")[:100] != text[:100]:
             return None
         return data
-    except OSError:
+    except (OSError, ValueError):
+        # V0.6.0 (T6): a corrupted/truncated cache file (json.JSONDecodeError
+        # is a ValueError) must degrade to a cache miss — it used to crash
+        # the chunk translation.
         return None
 
 
@@ -164,28 +167,3 @@ def _evict_if_needed(max_entries: int = MAX_CACHE_ENTRIES) -> int:
     if evicted > 0:
         logger.debug("Translation cache FIFO: evicted %d entries (cap=%d)", evicted, max_entries)
     return evicted
-
-
-def clear_cache() -> int:
-    """Clear all cached translations. Returns the number of files deleted."""
-    count = 0
-    if _CACHE_DIR.exists():
-        for f in _CACHE_DIR.glob("*.json"):
-            try:
-                f.unlink()
-                count += 1
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-    return count
-
-
-def get_cache_stats() -> dict:
-    """Get cache statistics (file count, total size)."""
-    if not _CACHE_DIR.exists():
-        return {"count": 0, "size_mb": 0.0}
-    files = list(_CACHE_DIR.glob("*.json"))
-    total_size = sum(f.stat().st_size for f in files)
-    return {
-        "count": len(files),
-        "size_mb": round(total_size / (1024 * 1024), 2),
-    }

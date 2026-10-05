@@ -100,8 +100,6 @@ def log_conversion_settings(
         estimates, peak, total, rec = calculate_vram_budget(
             ocr_model=r.primary_ocr_model if r.use_llm_ocr else "",
             summarization_model=r.summarisation_model,
-            fast_model=r.fast_model,
-            heavy_model=r.heavy_model or "",
             translation_backend=settings.get("translation.backend", "")
             if settings.get("translation.enabled")
             else "",
@@ -153,7 +151,6 @@ def log_conversion_settings(
     # ── Summarization ─────────────────────────────────────────────────
     log(f"  Generate summaries: {r.generate_summaries}", "INFO")
     log(f"  Model: {r.summarisation_model}", "INFO")
-    log(f"  Fast model: {r.fast_model}, Heavy model: {r.heavy_model or '(disabled)'}", "INFO")
     log(f"  Workers (requested): {r.max_workers}, Temperature: {r.temperature}", "INFO")
     # temperature=0 warning (models need min ~0.6)
     if r.temperature < 0.1:

@@ -50,7 +50,9 @@ from typing import Any
 # LAZY into convert() to break the controller→pipeline→converter→
 # core.summarisation→summarizer→postchecks circular import. Summarizer was a
 # dead import here (summarization delegates to conversion.summarization).
-from core.docx.builder import DocxBuilder
+# V0.4.26 (Phase 3 commit 2): the eager DocxBuilder import moved with the
+# DOCX build block to core/pipeline/conversion/summary_outputs.py (its new
+# module home; core.docx.builder is a leaf — no cycle).
 from core.models import (
     ConversionRequest,
     ConversionResult,
@@ -74,6 +76,12 @@ from core.pdf import (
 # phase-module extraction). Imported here so ``Converter`` can inherit it;
 # extraction.py has no core.pipeline imports, so no import cycle.
 from core.pipeline.conversion.extraction import ConverterExtractionMixin
+
+# V0.4.26 (Phase 3 de-monolithization, commit 1): the reporting mixin
+# (quality_report.json generation — _generate_quality_report) moved
+# VERBATIM to the conversion package; imported here so ``Converter`` can
+# inherit it.  Leaf module — no core.pipeline imports, no cycle.
+from core.pipeline.conversion.reporting import ConverterReportingMixin
 
 # V0.4.19 (de-monolithization): the visual-feature mixin (cover
 # screenshots, OCR repair, vision-region cropper, footnotes) moved
@@ -135,7 +143,7 @@ def compute_pages_processed(
     return total_pages
 
 
-class Converter(ConverterExtractionMixin, ConverterVisualMixin):
+class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReportingMixin):
     def __init__(
         self,
         request: ConversionRequest,
@@ -419,6 +427,19 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
         failure of the check itself is fail-open with a DEBUG line — the
         budget calculator must never block a conversion it cannot compute
         (unchanged V7.1.0 semantics).
+
+        V0.6.9 (operator DECISION 1, audit Option A "restore"):
+        enforcement RESTORED. The V0.5.14 hotfix (a0b711c) had made this
+        check NON-BLOCKING (nvidia-smi informational probe + unconditional
+        proceed) — which silently silenced the policy for every
+        non-interactive start path (queue / service dialogs / scripted
+        runs) and left the registered setting a placebo, with 12 red
+        characterization tests failing at HEAD (the V0.6.7 audit's
+        BLOCKER). The operator's chosen cost model: an estimator error
+        (e.g. a special-quant 27B estimated at 12.9 GB vs 7.6 GB actual)
+        now costs ONE "Proceed anyway" click in the wizard — the button
+        already exists and stamps the acknowledgment honored below; a
+        genuine overbudget is stopped before any work is done.
         """
         try:
             from core.vram_calculator import calculate_vram_budget, get_total_vram
@@ -427,11 +448,10 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             _total_vram = get_total_vram()
             if not _total_vram:
                 return None  # no GPU detected (CPU-only rig) — nothing to enforce
+            # V0.6.14: fast_model/heavy_model args retired (single-model order)
             estimates, peak, total, _rec = calculate_vram_budget(
                 ocr_model=r.primary_ocr_model if r.use_llm_ocr else "",
                 summarization_model=r.summarisation_model,
-                fast_model=r.fast_model,
-                heavy_model=r.heavy_model or "",
                 translation_backend=(
                     self.settings.get("translation.backend", "")
                     if self.settings.get("translation.enabled")
@@ -445,6 +465,14 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             )
             if peak <= _total_vram:
                 return None  # fits — nothing to enforce
+            # V0.6.9: enforcement restored (operator DECISION 1 — see the
+            # docstring for the full V0.5.14 history). The V0.5.14
+            # non-blocking block (nvidia-smi GPU-wide free-VRAM probe +
+            # unconditional proceed) is REVERTED: an estimator false
+            # positive costs one wizard "Proceed anyway" click, not a
+            # silenced policy. The wizard's interactive ask
+            # (wizard_view._check_vram_budget) was never touched by the
+            # hotfix — only this converter-side re-check was.
             policy = str(self.settings.get("local.vram_overbudget_policy", "ask")).strip().lower()
             if policy == "proceed":
                 self._log(
@@ -581,162 +609,10 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
 
         return valid_pages if valid_pages else None
 
-    def _generate_quality_report(self, segments, summaries) -> None:
-        """V3.4.0 H1: Generate a quality_report.json with quantitative metrics.
-
-        Collects metrics throughout the pipeline and saves them as JSON for
-        tracking quality trends across versions and identifying bottlenecks.
-        """
-        from datetime import datetime
-
-        # Collect metrics
-        report = {
-            "version": "3.4.0",
-            "timestamp": datetime.now().isoformat(),
-            "book_title": self.request.input_path.stem.replace("_", " ").title(),
-            "chapters": [],
-            "totals": {
-                "chapters_summarized": len(summaries),
-                "total_bullets": 0,
-                "total_concepts": 0,
-                "avg_coverage": 0.0,
-                "successful_summaries": 0,
-                "failed_summaries": 0,
-            },
-        }
-
-        total_coverage = 0.0
-        total_bullets = 0
-        total_concepts = 0
-
-        for i, summ in enumerate(summaries, 1):
-            chapter_data = {
-                "chapter_index": i,
-                "heading": summ.chapter_heading[:80],
-                "success": summ.success,
-                "bullet_count": len(summ.bullet_points) if summ.bullet_points else 0,
-                "model_used": summ.model_used or "unknown",
-                "input_tokens": summ.input_tokens,
-                "output_tokens": summ.output_tokens,
-                # V18.20.3.5: the deterministic recall-floor numbers measured
-                # on the FINAL set (theorist recall + enumerated-conclusion
-                # recall). Regex-measured — the honest complement to the
-                # LLM judge's claim-recall (which overstates content recall
-                # for long sources).
-                "recall_floor": getattr(summ, "recall_floor", None) or {},
-            }
-
-            # Try to extract concepts for this chapter
-            try:
-                from core.summarisation.text_preprocessor import DeterministicPreprocessor
-
-                pp = DeterministicPreprocessor()
-                if i <= len(segments):
-                    concepts = pp.extract_concepts(segments[i - 1].content)
-                    # Also extract academic terms
-                    try:
-                        from core.summarisation.text_preprocessor import extract_all_concepts
-
-                        concepts = extract_all_concepts(segments[i - 1].content)
-                    except Exception as _e:
-                        logger.debug("ignored %s: %s", type(_e).__name__, _e)
-                    chapter_data["concept_count"] = len(concepts)
-                    chapter_data["concepts"] = concepts
-                    total_concepts += len(concepts)
-
-                    # Check concept coverage
-                    all_summary = f"{summ.executive_summary} {' '.join(summ.bullet_points or [])} {summ.thorough_summary}".lower()
-                    covered = [c for c in concepts if c.lower() in all_summary]
-                    chapter_data["concepts_covered"] = len(covered)
-                    chapter_data["concepts_uncovered"] = len(concepts) - len(covered)
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-
-            # Compute coverage
-            try:
-                if i <= len(segments):
-                    content = segments[i - 1].content
-                    combined = f"{summ.executive_summary} {' '.join(summ.bullet_points or [])} {summ.thorough_summary}"
-                    # Quick coverage estimate
-                    from core.summarisation.text_preprocessor import extract_ngram_keywords
-
-                    keywords = extract_ngram_keywords(content, n=18)
-                    if keywords:
-                        found = sum(1 for k in keywords if k in combined.lower())
-                        chapter_data["coverage"] = found / len(keywords)
-                        total_coverage += chapter_data["coverage"]
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-
-            total_bullets += chapter_data["bullet_count"]
-            # Fix 4: a chapter with 0 bullets AND < 100 input_tokens
-            # is a hallucinated essay (empty input → LLM fabricated content).
-            # Mark as failed, not success.
-            if (
-                summ.success
-                and chapter_data["bullet_count"] == 0
-                and chapter_data["input_tokens"] < 100
-            ):
-                chapter_data["success"] = False
-                chapter_data["error"] = "Empty input — summary likely hallucinated"
-                self._log(
-                    f"  ⚠️ Quality report: Chapter {i} '{summ.chapter_heading[:40]}' "
-                    f"has 0 bullets + {chapter_data['input_tokens']} input tokens — "
-                    f"marking as FAILED (hallucination risk)",
-                    "WARNING",
-                )
-                report["totals"]["successful_summaries"] = (
-                    report["totals"].get("successful_summaries", 0) - 1
-                    if not summ.success
-                    else report["totals"].get("successful_summaries", 0)
-                )
-                report["totals"]["failed_summaries"] = (
-                    report["totals"].get("failed_summaries", 0) + 1
-                )
-            elif summ.success:
-                report["totals"]["successful_summaries"] += 1
-            else:
-                report["totals"]["failed_summaries"] += 1
-
-            report["chapters"].append(chapter_data)
-
-        # Compute averages
-        if summaries:
-            report["totals"]["avg_coverage"] = total_coverage / len(summaries)
-        report["totals"]["total_bullets"] = total_bullets
-        report["totals"]["total_concepts"] = total_concepts
-        # V18.20.3.5 (audit v182034): aggregate the deterministic recall
-        # floor across chapters — the end-of-conversion diagnostic prints
-        # THESE numbers (the old block read non-existent keys
-        # 'coverage_percent'/'avg_similarity' and always printed "?").
-        try:
-            _rf_chapters = [(c.get("recall_floor") or {}) for c in report["chapters"]]
-            _t_total = sum(int(r.get("theorists_total", 0)) for r in _rf_chapters)
-            _t_cov = sum(int(r.get("theorists_covered", 0)) for r in _rf_chapters)
-            _c_total = sum(int(r.get("conclusion_items_total", 0)) for r in _rf_chapters)
-            _c_cov = sum(int(r.get("conclusion_items_covered", 0)) for r in _rf_chapters)
-            report["totals"]["recall_floor"] = {
-                "theorists_covered": _t_cov,
-                "theorists_total": _t_total,
-                "theorists_pct": round(_t_cov / _t_total, 4) if _t_total else None,
-                "conclusion_items_covered": _c_cov,
-                "conclusion_items_total": _c_total,
-                "conclusion_items_pct": round(_c_cov / _c_total, 4) if _c_total else None,
-            }
-        except Exception as _rf_agg_e:  # pragma: no cover — report must build
-            logger.debug("recall-floor aggregation failed: %s", _rf_agg_e)
-
-        # Save
-        report_path = self.paths.quality_report
-        # V18.20.2.0 (SWOT A30): atomic write — a crash mid-write previously
-        # left a truncated quality_report.json that broke the A/B comparison
-        # reader and the diagnostic summary.  atomic_write_json creates the
-        # parent dir (replaces the lazy mkdir) and serializes identically
-        # (indent=2, ensure_ascii=False).
-        from utils.atomic_io import atomic_write_json
-
-        atomic_write_json(report_path, report, indent=2, ensure_ascii=False)
-        self._log(f"  📊 Quality report → {report_path}", "INFO")
+    # V0.4.26 (Phase 3 de-monolithization, commit 1): _generate_quality_report
+    # (quality_report.json generation) moved VERBATIM to core/pipeline/
+    # conversion/reporting.py (ConverterReportingMixin) — the convert() call
+    # site below resolves through the MRO unchanged.
 
     # V0.4.19 (de-monolithization): _extract_covers (cover + selected-chapter
     # screenshots) moved VERBATIM to core/pipeline/conversion/
@@ -1422,120 +1298,35 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             if len(summaries) > 1:
                 summaries = self._cross_chapter_dedup(summaries)
 
-            # ── Step 10: DOCX ────────────────────────────────────────────────
-            docx_path = None
-            if self.request.generate_docx and not self._cancel_requested("DOCX build"):
-                self._update_status("Building DOCX report…")
-                self._log(f"  ⏱️ DOCX phase starting | [{_elapsed()}]", "INFO")
-                builder = DocxBuilder(self.request, log_callback=self._log)
-                if builder.build_report(
-                    summaries,
-                    [{"heading": s.heading, "content": s.content} for s in segments],
-                    self.request.input_path,
-                    self.docx_path,
-                ):
-                    docx_path = self.docx_path
+            # ── Step 10: Summary outputs (V0.4.26 Phase 3, commit 2) ─────
+            # The four gated-output blocks (DOCX report build, keypoints
+            # files, simplified keypoints digest, citation graph — 128
+            # inline lines) moved VERBATIM to ``run_summary_outputs`` in
+            # core.pipeline.conversion.summary_outputs.  The runner returns
+            # a SummaryOutputsResult; convert() unpacks the two locals
+            # later code reads (``docx_path`` → ConversionResult,
+            # ``_kp_final_count`` → library tracking); the keypoints paths
+            # stay on the result object (convert() never read them after
+            # the build logs).  ``_elapsed`` is threaded as a parameter
+            # named exactly like the convert() closure (the reporting.py
+            # discipline), so the moved DOCX log line ``[{_elapsed()}]``
+            # is byte-identical.  ORDER NOTE: the citation-graph block
+            # previously ran AFTER the output-studio block below; inside
+            # the runner it follows the simplified digest directly (no
+            # data dependency either way — documented in summary_outputs.py).
+            from core.pipeline.conversion.summary_outputs import (
+                run_summary_outputs as _run_summary_outputs,
+            )
 
-            # ── Keypoints (always when summaries exist) ───────────────────────
-            keypoints_md_path = None
-            keypoints_docx_path = None
-            # V18.20.3.10 (W11): the DEDUPED keypoint count from the builder —
-            # the library must record the number that actually shipped in
-            # the keypoints file (36), not the raw bullet count (41).
-            _kp_final_count = None
-            if summaries and not self._cancel_requested("keypoints build"):
-                self._update_status("Building Keypoints files…")
-                # V18.19.2.0 (Debt D4): lazy import breaks the converter→core.summarisation
-                # eager import cycle. KeypointsBuilder is only needed when summaries exist.
-                from core.summarisation import KeypointsBuilder
-
-                kp = KeypointsBuilder(log_callback=self._log)
-                # Pass segments + concepts for J1 ordering, K1 confidence,
-                # K2 source excerpts, H2 page traceability
-                all_concepts = []
-                try:
-                    from core.summarisation.text_preprocessor import DeterministicPreprocessor
-
-                    pp = DeterministicPreprocessor()
-                    for seg in segments:
-                        all_concepts.extend(pp.extract_concepts(seg.content))
-                except Exception as _e:
-                    logger.debug("ignored %s: %s", type(_e).__name__, _e)
-                keypoints_md_path, keypoints_docx_path = kp.build(
-                    summaries,
-                    book_title=self.request.input_path.stem,
-                    output_dir=self.paths.keypoints_dir,
-                    segments=segments,
-                    concepts=all_concepts,
-                    judge_results=getattr(self, "_judge_results", None),
-                )
-                # V18.20.3.10 (W11): capture the deduped count for the
-                # library record (falls back to the raw sum below when the
-                # builder didn't run or predates the attribute).
-                _kp_final_count = getattr(kp, "final_keypoint_count", None)
-                if keypoints_md_path:
-                    self._log(f"📌 Keypoints MD  → {keypoints_md_path}", "SUCCESS")
-                if keypoints_docx_path:
-                    self._log(f"📌 Keypoints DOCX → {keypoints_docx_path}", "SUCCESS")
-
-            # ── NEW: Sprint 2 – Simplified Keypoints Digest ──────────────────
-            # Robust error handling — if simplification model fails to
-            # load or any error occurs, gracefully skip simplification instead
-            # of crashing the entire pipeline. The keypoints (already generated)
-            # are preserved. The user gets a clear warning instead of a crash.
-            if (
-                self.request.simplified_keypoints_enabled
-                and summaries
-                and not self._cancel_requested("simplified keypoints")
-            ):
-                self._update_status("Generating Simplified Keypoints Digest…")
-                self._log("  📌 Generating simplified keypoints (jargon‑free digest)…", "INFO")
-                try:
-                    # V18.19.2.0 (Debt D4): lazy import breaks the eager import cycle.
-                    from core.summarisation import SimplifiedKeypointsBuilder
-
-                    builder = SimplifiedKeypointsBuilder(
-                        request=self.request,
-                        log_callback=self._log,
-                    )
-                    output_path = builder.build(
-                        summaries=summaries,
-                        book_title=book_title,
-                        output_dir=self.paths.keypoints_dir,
-                    )
-                    if output_path:
-                        self._log(f"  ✅ Simplified keypoints saved to: {output_path}", "SUCCESS")
-                except (OSError, ConnectionError, TimeoutError) as e:
-                    # Model load failure, Ollama connection error, timeout
-                    self._log(f"  ⚠️ Simplification skipped (model unavailable): {e}", "WARNING")
-                    self._log(
-                        "  ℹ️ Keypoints and summaries are still available without simplification.",
-                        "INFO",
-                    )
-                except Exception as e:
-                    # Any other error — don't crash the pipeline
-                    error_msg = str(e).lower()
-                    if any(
-                        kw in error_msg
-                        for kw in (
-                            "model",
-                            "load",
-                            "ollama",
-                            "connection",
-                            "timeout",
-                            "memory",
-                            "vram",
-                        )
-                    ):
-                        self._log(
-                            f"  ⚠️ Simplification skipped (infrastructure error): {e}", "WARNING"
-                        )
-                        self._log(
-                            "  ℹ️ Keypoints and summaries are still available without simplification.",
-                            "INFO",
-                        )
-                    else:
-                        self._log(f"  ❌ Failed to generate simplified keypoints: {e}", "WARNING")
+            _summary_outputs = _run_summary_outputs(
+                converter=self,
+                segments=segments,
+                summaries=summaries,
+                book_title=book_title,
+                _elapsed=_elapsed,
+            )
+            docx_path = _summary_outputs.docx_path
+            _kp_final_count = _summary_outputs.kp_final_count
 
             # ── A4: Glossary Extraction ──────────────────────────────────
             # REMOVED in Glossary feature removed — dictionary-based
@@ -1579,24 +1370,6 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
                     )
                 )
 
-            # V10.21.0: Citation graph — extract [N] citations and build graph
-            if not self._cancel_requested("citation graph"):
-                try:
-                    from core.outputs.citation_graph import generate_citation_graph
-
-                    if hasattr(self, "temp_markdown_path") and self.temp_markdown_path.exists():
-                        _raw_md = self.temp_markdown_path.read_text(encoding="utf-8")
-                        generate_citation_graph(
-                            summaries=summaries,
-                            segments=segments,
-                            raw_markdown=_raw_md,
-                            book_title=book_title,
-                            output_dir=self.paths.logs_dir.parent,
-                            log_callback=self._log,
-                        )
-                except Exception as e:
-                    self._record_partial_failure("Citation graph", e)
-
             # ── Validation ───────────────────────────────────────────────────
             warnings = []
             # Suppress page-count mismatch warning when chapter selection is
@@ -1622,94 +1395,31 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
 
             self._update_progress(1.0)
 
-            # V18.2.4: Check if summarization actually produced any content.
-            # Previously the pipeline reported "✅ Conversion complete" even
-            # when ALL chapters failed (model returned empty). Now: if no
-            # summaries have content, report failure.
-            _valid_summaries = [
-                s
-                for s in summaries
-                if s
-                and getattr(s, "success", True)
-                and (s.executive_summary or s.bullet_points or s.thorough_summary)
-            ]
-            _failed_count = len(summaries) - len(_valid_summaries) if summaries else 0
-            _all_failed = summaries and len(_valid_summaries) == 0
+            # ── Completion assessment (V0.4.26 Phase 3, commit 3) ────────
+            # The false-success guard logic (V18.2.4 all-chapters-failed,
+            # V18.20.2.0/SWOT A15 cancel-aware status, V0.02 zero-summaries
+            # hard-fail-or-warning, partial-failure counting) moved VERBATIM
+            # to the PURE function ``assess_completion`` in
+            # core.pipeline.conversion.finalization — no converter state:
+            # every input is an explicit parameter (the V18.6.3
+            # explicit-parameters convention).  The decision no longer emits
+            # inline; it returns the status message + an ordered
+            # ``log_lines`` list, and convert() replays them HERE — status
+            # first, then the log lines in order, at the exact position the
+            # inline block used to occupy, so the emitted output is
+            # byte-identical.
+            from core.pipeline.conversion.finalization import assess_completion
 
-            # V18.20.2.0 (SWOT A15): cancel-aware completion status.  A run
-            # cancelled mid/after summarization previously logged
-            # "✅ Conversion complete." and returned success=True even though
-            # every downstream phase had (or should have) been skipped.
-            _cancelled = self.cancel_event.is_set()
-
-            # V0.02 (false-success RCA): ZERO chapters entered summarization.
-            # The V18.2.4 guard above requires ``summaries`` to be non-empty —
-            # when every segment is filtered out BEFORE the summarizer (the
-            # real incident: the user's selected chapters were merged into a
-            # 'Preface' segment, the front-matter skip dropped it),
-            # ``summaries == []`` sailed past it into "✅ Conversion complete."
-            # with empty outputs. With an explicit chapter selection that is a
-            # hard failure (the user asked for specific chapters and got
-            # nothing); without one it stays a success (markdown/DOCX are
-            # still produced) but is announced with a loud WARNING instead
-            # of silence.
-            _zero_summaries = (
-                not summaries and bool(self.request.generate_summaries) and not _cancelled
+            _assessment = assess_completion(
+                summaries,
+                generate_summaries=self.request.generate_summaries,
+                selected_chapters=self.request.selected_chapters,
+                cancel_event=self.cancel_event,
             )
-            _selection_active = bool(self.request.selected_chapters)
-            if _all_failed:
-                self._update_status("Conversion FAILED — all chapters returned empty")
-                self._log("❌ Conversion FAILED: all chapters returned empty responses.", "ERROR")
-                self._log(
-                    f"   {_failed_count} chapter(s) failed — model produced no content. "
-                    f"Likely causes: model not installed, VRAM insufficient, or quantization "
-                    f"too aggressive for the prompt complexity. "
-                    f"Try: ollama pull <model>, or switch to a less aggressive quant (IQ2_M "
-                    f"instead of IQ2_XXS), or raise temperature to 1.0.",
-                    "ERROR",
-                )
-            elif _zero_summaries and _selection_active:
-                self._update_status("Conversion FAILED — no selected chapters summarized")
-                self._log(
-                    f"❌ Conversion FAILED: none of the {len(self.request.selected_chapters)} "
-                    f"selected chapter(s) produced a summary — the selection "
-                    f"matched no summarizable section (every surviving segment "
-                    f"was skipped as front/reference matter). No summary "
-                    f"outputs were written.",
-                    "ERROR",
-                )
-                self._log(
-                    "   Try: re-open the chapter selector and re-pick chapters "
-                    "(per-chapter author/annotation bookmarks are no longer "
-                    "listed), or convert the whole book.",
-                    "ERROR",
-                )
-            elif _zero_summaries:
-                self._update_status("Conversion completed!")
-                self._log("✅ Conversion complete.", "SUCCESS")
-                self._log(
-                    "   ⚠️ Zero sections were summarized — every segment was "
-                    "skipped as front/reference matter while summaries were "
-                    "requested. Markdown/DOCX outputs were still written; if "
-                    "you expected chapter summaries, disable the content "
-                    "filter or select chapters explicitly.",
-                    "WARNING",
-                )
-            elif _cancelled:
-                self._update_status("Conversion cancelled")
-                self._log(
-                    "⏹️ Conversion cancelled — partial summaries saved; downstream phases skipped.",
-                    "WARNING",
-                )
-            else:
-                self._update_status("Conversion completed!")
-                self._log("✅ Conversion complete.", "SUCCESS")
-                if _failed_count > 0:
-                    self._log(
-                        f"   ⚠️ {_failed_count} chapter(s) failed (empty response) — "
-                        f"{len(_valid_summaries)} succeeded.",
-                        "WARNING",
-                    )
+            if _assessment.status_message is not None:
+                self._update_status(_assessment.status_message)
+            for _level, _message in _assessment.log_lines:
+                self._log(_message, _level)
 
             # Output generation summary — show what succeeded/failed
             # Only show outputs that were actually requested + generated
@@ -1768,214 +1478,29 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             if _ts:
                 _ts.log_report()
 
-            # End-of-conversion diagnostic summary — captures the
-            # final state (counts, timings, output paths, warnings) so the
-            # user can paste this block when reporting issues.  This is the
-            # "gimmicks/nuances/micro-mistakes" snapshot the user asked for.
-            # version header now reads from VERSION file (was stale
-            # "V7.5.1" hardcoded).
-            self._log("", "INFO")
-            self._log(
-                f"━━━ Elixir v{self._get_app_version()} Conversion Diagnostic Summary ━━━", "INFO"
+            # ── End-of-conversion diagnostic summary (V0.4.26 Phase 3,
+            # commit 1) — the 208-line inline block (header, counts,
+            # coverage + recall floor from the quality report, warnings,
+            # output paths, provenance stamps, LLM-call telemetry,
+            # response-cache delta, models-at-exit state) moved VERBATIM to
+            # ``run_diagnostic_summary`` in core.pipeline.conversion.reporting.
+            # The block only READS the threaded convert() locals; the raw
+            # ``_t_start`` timer start is passed directly (the block computes
+            # a numeric wall-time share, not the ``_elapsed()`` string — the
+            # same explicit-threading discipline as run_summarization's
+            # ``elapsed_fn``).
+            from core.pipeline.conversion.reporting import run_diagnostic_summary
+
+            run_diagnostic_summary(
+                self,
+                book_title=book_title,
+                total_pages=total_pages,
+                _pages_processed=_pages_processed,
+                segments=segments,
+                summaries=summaries,
+                warnings=warnings,
+                _t_start=_t_start,
             )
-            self._log(f"  Book: {book_title}", "INFO")
-            self._log(f"  Total pages: {total_pages}", "INFO")
-            # V18.20.3.6: when a chapter selection / page range limited the
-            # run, say so right next to the book total — the completion
-            # modal reports the same number (previously it showed the whole
-            # book's total for a single-chapter run, e.g. "397" for 18).
-            if _pages_processed != total_pages:
-                self._log(
-                    f"  Pages processed: {_pages_processed} "
-                    f"(selection active — {_pages_processed} of {total_pages} pages)",
-                    "INFO",
-                )
-            self._log(
-                f"  Segments: {len(segments)} "
-                f"(chapters: {len([s for s in segments if s.segment_type == 'chapter'])}, "
-                f"chunks: {len([s for s in segments if s.segment_type == 'chunk'])})",
-                "INFO",
-            )
-            self._log(f"  Summaries generated: {len(summaries) if summaries else 0}", "INFO")
-            if summaries:
-                ok = sum(1 for s in summaries if s.success)
-                failed = len(summaries) - ok
-                total_bullets = sum(len(s.bullet_points) for s in summaries)
-                self._log(
-                    f"    Success: {ok}, Failed: {failed}, Total bullets: {total_bullets}", "INFO"
-                )
-                # Coverage stats from the quality report if available
-                try:
-                    import json as _json
-
-                    qr = self.paths.quality_report
-                    if qr.exists():
-                        report = _json.loads(qr.read_text(encoding="utf-8"))
-                        totals = report.get("totals", {})
-                        # V18.20.3.5 (audit v182034): the old line read
-                        # 'coverage_percent'/'avg_similarity' — keys that
-                        # _generate_quality_report NEVER writes — so every
-                        # run printed "Coverage: ?%, avg similarity: ?".
-                        # Read the real keys, plus the deterministic
-                        # recall floor (regex-measured on the final set).
-                        _cov_val = totals.get("avg_coverage")
-                        _cov_str = f"{_cov_val:.0%}" if isinstance(_cov_val, (int, float)) else "?"
-                        self._log(f"    Coverage: {_cov_str}", "INFO")
-                        _rf = totals.get("recall_floor") or {}
-                        if _rf.get("theorists_total"):
-                            self._log(
-                                f"    Recall floor (deterministic, final set): "
-                                f"theorists {_rf.get('theorists_covered', 0)}/"
-                                f"{_rf['theorists_total']}"
-                                + (
-                                    f" ({_rf['theorists_pct']:.0%})"
-                                    if _rf.get("theorists_pct") is not None
-                                    else ""
-                                )
-                                + f", conclusion items "
-                                f"{_rf.get('conclusion_items_covered', 0)}/"
-                                f"{_rf.get('conclusion_items_total', 0)}"
-                                + (
-                                    f" ({_rf['conclusion_items_pct']:.0%})"
-                                    if _rf.get("conclusion_items_pct") is not None
-                                    else ""
-                                ),
-                                "INFO",
-                            )
-                except Exception as _e:
-                    logger.debug("ignored %s: %s", type(_e).__name__, _e)
-            self._log(f"  Warnings: {len(warnings)}", "INFO")
-            for w in warnings:
-                self._log(f"    ⚠️ {w}", "WARNING")
-            self._log(f"  Output dir: {self.output_dir}", "INFO")
-            self._log(f"  Log file: {self.conv_logger.log_path}", "INFO")
-            self._log(f"  Diagnostic JSONL: {self.conv_logger.diagnostic_path}", "INFO")
-            # V18.20.3.9 (Phase 2 / B1, V18.20.3.8 rig audit F1): print each
-            # written summary file's provenance stamp INSIDE the diagnostic
-            # block. The generated-by comment in every summaries/*.md written
-            # since V18.20.3.7 names the exact app version + run_id that
-            # produced the file — with the stamps in the log, any file the
-            # user later uploads is self-verifying against THIS log, and a
-            # pre-V18.20.3.7 stale artifact is visible in seconds instead of
-            # after a full four-pillar audit (the stale-file class hit four
-            # consecutive rig-audit uploads).
-            # V18.20.3.10 (rig audit F6): the stamp is located with the
-            # canonical whole-text parser (provenance.stamp_diagnostic), NOT
-            # by peeking line 2 — chapter files stamp line 3 (title/blank/
-            # stamp) and book files stamp line 1, so the old line-2 peek
-            # false-flagged every fresh file as unstamped on the .3.9 run.
-            try:
-                _summ_root = self.paths.summaries_dir
-                if _summ_root.exists():
-                    _mds = sorted(_summ_root.rglob("*.md"))
-                    if _mds:
-                        self._log(f"  Summary files ({len(_mds)}):", "INFO")
-                        from core.system.provenance import (
-                            get_app_version as _get_app_ver,
-                        )
-                        from core.system.provenance import (
-                            stamp_diagnostic,
-                        )
-
-                        # V18.20.4.3 (P2 / G-1 + G-2, the F8 follow-up):
-                        # (a) each line now carries the file's FULL PATH —
-                        # the user had only file NAMES before, and with
-                        # identically-named outputs across per-version
-                        # folders the log never said WHICH file to
-                        # upload; (b) the running app version is passed
-                        # in so a stamp from a DIFFERENT version (a
-                        # stale artifact sitting in this folder) is
-                        # escalated to a WARNING naming it as not-this-
-                        # run's-output — the class that burned three
-                        # rig-audit uploads.
-                        _app_ver = _get_app_ver()
-                        for _sf in _mds:
-                            try:
-                                _text = _sf.read_text(encoding="utf-8", errors="replace")
-                            except Exception:
-                                _text = ""
-                            _level, _msg = stamp_diagnostic(
-                                str(_sf), _text, current_version=_app_ver
-                            )
-                            self._log(f"    {_msg}", _level)
-            except Exception as _e:
-                logger.debug("provenance stamp scan ignored: %s", _e)
-            # V18.20.3.9 (Phase 3.a / C1): LLM-call telemetry table — the
-            # measured per-call data (registry filled by the provider layer
-            # on every completed call) replaces estimate-driven perf
-            # statements. Total + truncated + the slowest calls give the
-            # Phase 3.b cap-right-sizing work its numbers directly from
-            # the run (no more log-timestamp archaeology).
-            try:
-                from core.llm.call_meta import call_telemetry_summary
-
-                _tel = call_telemetry_summary()
-                if _tel.get("calls"):
-                    _run_s = _time_mod.time() - _t_start
-                    self._log(
-                        f"  LLM calls: {_tel['calls']} — "
-                        f"{_tel['total_s']:.0f}s total "
-                        f"({_tel['total_s'] / _run_s * 100:.0f}% of run wall-time), "
-                        f"truncated {_tel['truncated']}",
-                        "INFO",
-                    )
-                    for _rank, _c in enumerate(_tel["slowest"], 1):
-                        self._log(
-                            f"    {_rank}. {_c['model']} — "
-                            f"{_c['duration_s']:.0f}s "
-                            f"(in {_c['prompt_tokens']}, "
-                            f"out {_c['output_tokens']}, "
-                            f"done={_c['done_reason']})",
-                            "INFO",
-                        )
-            except Exception as _e:
-                logger.debug("telemetry summary ignored: %s", _e)
-            # V18.20.3.10 (O7): the opt-in response cache's effect made
-            # VISIBLE — hits skip LLM calls entirely (the .3.9 audit's O7:
-            # "audit iteration loop" payoff line). Only printed when the
-            # run actually consulted the cache (cache is opt-in, default
-            # off, so most runs see nothing here).
-            try:
-                from core.llm.response_cache import response_cache
-
-                _st = response_cache.stats()
-                _start = getattr(self, "_cache_stats_start", None) or {}
-                _d_hits = _st.get("hits", 0) - _start.get("hits", 0)
-                _d_miss = _st.get("misses", 0) - _start.get("misses", 0)
-                if _d_hits or _d_miss:
-                    self._log(
-                        f"  Response cache: {_d_hits} hit(s) / {_d_miss} "
-                        f"miss(es) this run — {_st.get('size', 0)} entries "
-                        f"persisted on disk (opt-in; hits skip the LLM call)",
-                        "INFO",
-                    )
-            except Exception as _e:
-                logger.debug("response cache stats ignored: %s", _e)
-            # Final VRAM state (helps diagnose "did models unload?")
-            # V18.20.3.10 (F5, .3.8 rig audit): models resident in the
-            # Ollama server at exit are a KNOWN COSMETIC class, not an app
-            # failure — the server manages its own keep-alive/eviction, and
-            # staying loaded speeds up the NEXT conversion. Downgraded
-            # WARNING→INFO with the explanation so clean runs no longer end
-            # on a scary line that masked nothing (rig runs .3.7-.3.9 all
-            # ended on it).
-            try:
-                from core.llm import ModelManager
-
-                mm = ModelManager()
-                loaded = mm.get_loaded_models()
-                if loaded:
-                    self._log(
-                        f"  Models still in Ollama server memory at exit: "
-                        f"{list(loaded.keys())} — normal (server-managed "
-                        f"keep-alive; speeds up the next run)",
-                        "INFO",
-                    )
-                else:
-                    self._log("  Models loaded at exit: (none — all unloaded)", "INFO")
-            except Exception as _e:
-                logger.debug("ignored %s: %s", type(_e).__name__, _e)
-            self._log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "INFO")
 
             # RAG indexing REMOVED entirely.  The app now only PRODUCES
             # RAG-friendly output (YAML frontmatter, clean markdown, JSONL
@@ -1983,57 +1508,21 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             # RAG-friendly output formatting (postprocess) is unaffected.
             self._log("  ⏭️ RAG indexing removed — app produces RAG-friendly output only", "DEBUG")
 
-            # Screenshots + graphs — now opt-in (default OFF)
-            # Previously captured 174 screenshots automatically, adding 10+ minutes.
-            # Now only runs if the user explicitly enabled it.
-            # V18.20.2.0 (SWOT A15): cancel gate — screenshots are opt-in but
-            # run 10+ minutes when enabled; a cancelled run must not start them.
-            if self.settings.get("outputs_optin.screenshots", False) and not self._cancel_requested(
-                "screenshots/graphs"
-            ):
-                try:
-                    from core.pdf.table_graph_extractor import TableGraphExtractor
+            # Screenshots + graphs (V0.4.26 Phase 3, commit 3): the opt-in
+            # block moved VERBATIM to ``run_screenshots_and_graphs`` in
+            # core.pipeline.conversion.finalization (self→converter; the
+            # ``_derive_page_ranges_from_toc`` helper STAYS on the class —
+            # the runner reaches it through the converter).
+            from core.pipeline.conversion.finalization import (
+                run_screenshots_and_graphs as _run_screenshots,
+            )
 
-                    extractor = TableGraphExtractor(log_callback=self._log)
-                    # screenshots now respect ALL page-selection
-                    # mechanisms — page range, manual_segments, AND selected_chapters.
-                    # Previously only manual_segments was checked, so screenshots
-                    # captured ALL pages even when chapter selection was active.
-                    page_list = list(range(1, total_pages + 1))
-                    # 1. Apply page range
-                    if self.request.page_range_start or self.request.page_range_end:
-                        _start = self.request.page_range_start or 1
-                        _end = self.request.page_range_end or total_pages
-                        page_list = [p for p in page_list if _start <= p <= _end]
-                    # 2. Apply manual_segments (chapter selector page ranges)
-                    if self.request.manual_segments:
-                        seg_pages = set()
-                        for start, end in self.request.manual_segments:
-                            for p in range(max(1, start), min(total_pages + 1, end + 1)):
-                                seg_pages.add(p)
-                        page_list = [p for p in page_list if p in seg_pages]
-                    # 3. Apply selected_chapters (derived page ranges from TOC)
-                    elif self.request.selected_chapters:
-                        toc_page_set = self._derive_page_ranges_from_toc(
-                            toc_entries, self.request.selected_chapters, total_pages
-                        )
-                        if toc_page_set:
-                            page_list = [p for p in page_list if p in toc_page_set]
-                    result = extractor.extract(
-                        self.request.input_path,
-                        self.output_dir,
-                        page_list,
-                        book_title=book_title,
-                    )
-                    if result["table_count"] > 0 or result["graph_count"] > 0:
-                        self._log(
-                            f"  📊 Tables: {result['table_count']}, Graphs: {result['graph_count']} → tables.md + graphs.md",
-                            "INFO",
-                        )
-                except Exception as e:
-                    self._record_partial_failure("Table/graph extraction", e)
-            else:
-                self._log("  ⏭️ Screenshots/graphs skipped (opt-in, disabled)", "DEBUG")
+            _run_screenshots(
+                self,
+                book_title=book_title,
+                total_pages=total_pages,
+                toc_entries=toc_entries,
+            )
 
             # ── V0.4.3: Vision-Region Cropper (default ON) ───────────────────
             # V0.4.19 (de-monolithization): this block moved VERBATIM to
@@ -2048,62 +1537,22 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
             # book_title threaded as a parameter.
             self._run_footnote_extraction(book_title)
 
-            # Library tracking — add book to library
-            # V18.20.2.0 (SWOT A15): cancel gate — a cancelled run must not
-            # register the partial book in the library.
-            if not self._cancel_requested("library tracking"):
-                try:
-                    from core.pipeline.library_manager import LibraryManager
+            # Library tracking (V0.4.26 Phase 3, commit 3): the block moved
+            # VERBATIM to ``run_library_tracking`` in
+            # core.pipeline.conversion.finalization (self→converter; the
+            # convert() local ``_kp_final_count`` is threaded as the
+            # ``kp_final_count`` parameter).
+            from core.pipeline.conversion.finalization import (
+                run_library_tracking as _run_library_tracking,
+            )
 
-                    # V18.20.4.1 (P0 / W-a2): the coverage stat stored in
-                    # library.json is the MEASURED number from
-                    # quality_report.json ("totals.avg_coverage" — the same
-                    # source the end-of-conversion diagnostic reads). The
-                    # literal 0.92 placeholder shipped with EVERY book
-                    # since V3.9.0 ("will be updated from quality report" —
-                    # never was), and library stats averaged the
-                    # fabrication — a contradiction of the honesty
-                    # machinery's own standard. When the report is missing,
-                    # unreadable, or non-numeric, we store None and
-                    # library_manager omits the field (honest "unknown",
-                    # never a fabricated value).
-                    _cov_lib: float | None = None
-                    try:
-                        import json as _json_lib
-
-                        _qr_lib = self.paths.quality_report
-                        if _qr_lib.exists():
-                            _cov_val_lib = (
-                                _json_lib.loads(_qr_lib.read_text(encoding="utf-8"))
-                                .get("totals", {})
-                                .get("avg_coverage")
-                            )
-                            if isinstance(_cov_val_lib, (int, float)):
-                                _cov_lib = float(_cov_val_lib)
-                    except Exception as _e:
-                        logger.debug("ignored %s: %s", type(_e).__name__, _e)
-                    lib = LibraryManager(log_callback=self._log)
-                    lib.add_book(
-                        title=book_title,
-                        source_file=self.request.input_path.name,
-                        chapters_processed=len(summaries) if summaries else 0,
-                        total_chapters=len(segments) if segments else 0,
-                        concepts_extracted=sum(len(s.bullet_points) for s in summaries)
-                        if summaries
-                        else 0,
-                        # V18.20.3.10 (W11): the DEDUPED count that shipped in
-                        # the keypoints file (was the raw bullet sum — the
-                        # 41-vs-36 mismatch, .3.7 SWOT W11).
-                        keypoints_count=(
-                            _kp_final_count
-                            if _kp_final_count is not None
-                            else (sum(len(s.bullet_points) for s in summaries) if summaries else 0)
-                        ),
-                        coverage=_cov_lib,
-                        output_dir=str(self.output_dir),
-                    )
-                except Exception as e:
-                    self._record_partial_failure("Library tracking", e)
+            _run_library_tracking(
+                self,
+                book_title=book_title,
+                summaries=summaries,
+                segments=segments,
+                kp_final_count=_kp_final_count,
+            )
 
             # V10.34.0 (Sprint 6.10): Merge partial failures into warnings
             # so they surface in the success modal.
@@ -2114,40 +1563,13 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin):
                 _all_warnings.extend(f"  • {pf}" for pf in _pf)
 
             return ConversionResult(
-                # V18.20.2.0 (SWOT A15): a cancelled run reports through the
-                # SAME plumbing as the existing early-exit gates
-                # (extraction.py:389, segmentation.py:214,
-                # summarization.py:94): success=False +
-                # error_msg="Cancelled by user".  ConversionResult has no
-                # dedicated cancelled field, so no new plumbing is invented.
-                # V0.02 (false-success RCA): an explicit chapter selection
-                # that summarized NOTHING is also a failure — the old
-                # ``(not _all_failed if summaries else True)`` treated an
-                # empty ``summaries`` list as unconditionally successful.
-                success=(
-                    (not _all_failed if summaries else True)
-                    and not _cancelled
-                    and not (_zero_summaries and _selection_active)
-                ),
-                error_msg=(
-                    "Cancelled by user"
-                    if _cancelled
-                    else (
-                        "All chapters returned empty responses — model may not be installed, "
-                        "VRAM insufficient, or quantization too aggressive. "
-                        "Try: ollama pull <model>, use IQ2_M instead of IQ2_XXS, "
-                        "or raise temperature to 1.0."
-                    )
-                    if _all_failed
-                    else (
-                        f"None of the {len(self.request.selected_chapters)} selected chapter(s) "
-                        f"were summarized — the selection matched no summarizable section. "
-                        f"Re-pick chapters in the selector (per-chapter author bookmarks "
-                        f"are no longer listed) or convert the whole book."
-                        if (_zero_summaries and _selection_active)
-                        else None
-                    )
-                ),
+                # V0.4.26 (Phase 3 commit 3): success/error_msg come from
+                # the pure ``assess_completion`` call above — the
+                # false-success guards (V18.2.4 / SWOT A15 / V0.02) and
+                # their explanatory comments moved VERBATIM into
+                # finalization.assess_completion's return.
+                success=_assessment.success,
+                error_msg=_assessment.error_msg,
                 full_markdown_path=self.full_markdown_path,
                 chapters_folder=self.chapters_folder if self.chapters_folder.exists() else None,
                 chunks_folder=self.chunks_folder if self.chunks_folder.exists() else None,

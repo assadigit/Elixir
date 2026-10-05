@@ -14,7 +14,7 @@ deliberate, reviewed copy that fails loudly if the two drift.
 Covers ≥15 field mappings:
   - input_path / output_dir (Path conversion)
   - generate_summaries / include_*_summary / include_keypoints
-  - summarisation_model / fast_model / heavy_model
+  - summarisation_model  (V0.6.14: fast/heavy/simplification rows retired)
   - temperature / coverage_threshold (with /100.0 conversion)
   - max_workers
   - segment_strategy / token_limit_per_segment / enable_semantic_segmentation
@@ -23,7 +23,6 @@ Covers ≥15 field mappings:
   - conservative_drops (V10.28.0)
   - all 15 output_* flags (V10.29.0 registry alignment)
   - compact_summaries
-  - simplification_model
   - docx_* (author, include_toc)
   - post-processing (clean_markdown, token_saver, etc.)
   - extract_tables / extract_math / layout_analysis
@@ -160,15 +159,11 @@ class _StubController:
         ("max_workers", "max_workers", "summarisation.max_workers", 2, None),
         ("temperature", "temperature", "summarisation.temperature", 0.2, None),
         ("self_consistency", "self_consistency", "summarisation.self_consistency", False, None),
-        ("fast_model", "fast_model", "summarisation.fast_model", "gemma3:12b", None),
-        ("heavy_model", "heavy_model", "summarisation.heavy_model", "", None),
-        (
-            "simplification_model",
-            "simplification_model",
-            "summarisation.simplification_model",
-            "",
-            None,
-        ),
+        # V0.6.14 (single-model order): the fast_model / heavy_model /
+        # simplification_model rows are REMOVED from the real
+        # controller._REQUEST_FIELD_MAP (mirrored here) — the dual-model
+        # concept is retired; ONE model (summarisation_model via the
+        # provider) does every LLM task.
         ("extract_tables", "extract_tables", "advanced.extract_tables", False, None),
         ("extract_math", "extract_math", "advanced.extract_math", False, None),
         ("layout_analysis", "layout_analysis", "advanced.layout_analysis", False, None),
@@ -316,13 +311,11 @@ class TestSummarisationMapping:
         )
         assert req.summarisation_model == "qwythos-9b:latest"
 
-    def test_fast_model_mapped(self, controller):
-        req = controller.build_request_from_ui(_minimal_ui_data(fast_model="gemma2:9b"))
-        assert req.fast_model == "gemma2:9b"
-
-    def test_heavy_model_mapped(self, controller):
-        req = controller.build_request_from_ui(_minimal_ui_data(heavy_model="qwen:32b"))
-        assert req.heavy_model == "qwen:32b"
+    # V0.6.14 (single-model order): 3 tests REMOVED —
+    # test_fast_model_mapped, test_heavy_model_mapped and
+    # test_simplification_model_mapped pinned ConversionRequest fields that
+    # no longer exist (the dual-model concept is retired; summarisation_model
+    # is the ONE model for every LLM task).
 
     def test_temperature_mapped(self, controller):
         req = controller.build_request_from_ui(_minimal_ui_data(temperature=0.7))
@@ -341,10 +334,6 @@ class TestSummarisationMapping:
     def test_max_workers_mapped(self, controller):
         req = controller.build_request_from_ui(_minimal_ui_data(max_workers=3))
         assert req.max_workers == 3
-
-    def test_simplification_model_mapped(self, controller):
-        req = controller.build_request_from_ui(_minimal_ui_data(simplification_model="qwen:7b"))
-        assert req.simplification_model == "qwen:7b"
 
 
 # ── 3. Conservative drops (V10.28.0) ────────────────────────────────────────

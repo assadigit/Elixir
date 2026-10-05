@@ -1,5 +1,8 @@
 # Feasibility: Vision-Driven PDF Region Cropping
 
+> **STATUS (V0.4.25 audit):** HISTORICAL feasibility study — implemented and
+> shipped in V0.4.3.
+
 **Question (user):** "Model has vision — when model sees a chart/diagram/picture or any
 imagery (everything that is not pure text, tables etc.), can it crop the PDF
 and screenshot that? For example, model finds a table, takes a cropped snapshot

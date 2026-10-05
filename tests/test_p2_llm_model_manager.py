@@ -555,11 +555,6 @@ class TestPhaseBoundaryUnloading:
         fresh_manager._loaded_models = {"a": 1}
         assert fresh_manager.unload_all_ollama() == 0
 
-    def test_unload_for_translation_nllb_unloads_everything(self, fresh_manager, monkeypatch):
-        _patch_net(monkeypatch)
-        fresh_manager._loaded_models = {"sum": 1, "ocr": 1}
-        assert fresh_manager.unload_for_translation("nllb", translation_model="x") == 2
-
     def test_unload_for_translation_ollama_keeps_translator(self, fresh_manager, monkeypatch):
         _patch_net(monkeypatch)
         fresh_manager._loaded_models = {"sum": 1, "translator": 1}

@@ -3,11 +3,14 @@
 ``_call_llm`` provider dispatch (claude / freellmapi / openrouter-family /
 llamacpp / ollama) + the opt-in response cache, the V18.15.6.0 error-tracker
 contract, the per-backend delegates (``_call_ollama``, streaming /
-nonstreaming, openai-compat, claude, fast-ollama), the fusion-cloud ladder
+nonstreaming, openai-compat, claude), the fusion-cloud ladder
 (``_call_cloud``), the empty-retry wrapper (Qwen3 ``/no_think`` + the
 always-retry contract), the structured-JSON delegate, ``_parse_universal``,
-the B3 cloud judge, the model-profile delegates and the fast/heavy model
-switches.
+the B3 cloud judge and the model-profile delegates.
+
+V0.6.14 (single-model order): the fast-ollama delegate + the fast/heavy
+model-switch tests were REMOVED here (8 tests — the retired dual-model
+contract); the single-model transport surface above is unchanged.
 
 Every network boundary is monkeypatched at the module-import seam the
 production code itself uses (``ld_call_*`` imported into
@@ -321,19 +324,10 @@ class TestBackendDelegates:
         assert seen["kwargs"]["claude_api_key"] == s.claude_api_key
         assert seen["kwargs"]["claude_model"] == s.claude_model
 
-    def test_fast_ollama_delegate_passes_instance_state(self, tmp_path, monkeypatch):
-        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
-
-        seen: dict = {}
-
-        def _fake(prompt, model, temp, max_tokens, **kwargs):
-            seen.update(prompt=prompt, model=model, temp=temp, max_tokens=max_tokens, kwargs=kwargs)
-            return "fast reply"
-
-        monkeypatch.setattr(lt_mod, "ld_call_fast_ollama", _fake)
-        s = make_summarizer(tmp_path)
-        assert s._call_fast_ollama("p", "m", 0.1, 200) == "fast reply"
-        assert seen["kwargs"]["fast_model_context"] == s.request.fast_model_context
+    # V0.6.14 (single-model order): test_fast_ollama_delegate_passes_instance_state
+    # REMOVED (1 test) — it pinned Summarizer._call_fast_ollama + the
+    # ld_call_fast_ollama seam + the fast_model_context request field, all
+    # retired with the fast-model delegate.
 
     def test_call_via_llm_provider_passes_callbacks(self, tmp_path, monkeypatch):
         import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
@@ -528,87 +522,13 @@ class TestStructuredAndJudgeDelegates:
         assert best_thorough is samples[0]  # thorough judge answered "1"
 
 
-# ── Fast/heavy model switches + fast-LLM delegate ───────────────────────────
-
-
-class TestModelSwitches:
-    def test_switch_to_fast_model_recovers_vram_only_in_dual_local(self, tmp_path):
-        s = make_summarizer(tmp_path, request_fields={"model_architecture": "dual_local"})
-        recovered: list[str] = []
-        s._recover_vram = lambda context="", delay_sec=0.0: recovered.append(context)  # type: ignore[method-assign]
-        s._switch_to_fast_model()
-        assert recovered == ["switch-to-fast"]
-
-    def test_switch_to_fast_model_noop_in_single_local(self, tmp_path):
-        s = make_summarizer(tmp_path)  # single_local default
-        recovered: list[str] = []
-        s._recover_vram = lambda context="", delay_sec=0.0: recovered.append(context)  # type: ignore[method-assign]
-        s._switch_to_fast_model()
-        assert recovered == []
-
-    def test_switch_to_heavy_model_recovers_vram_only_in_dual_local(self, tmp_path):
-        s = make_summarizer(tmp_path, request_fields={"model_architecture": "dual_local"})
-        recovered: list[str] = []
-        s._recover_vram = lambda context="", delay_sec=0.0: recovered.append(context)  # type: ignore[method-assign]
-        s._switch_to_heavy_model()
-        assert recovered == ["switch-to-heavy"]
-
-    def test_switch_to_heavy_model_noop_in_api_mode(self, tmp_path):
-        s = make_summarizer(tmp_path, request_fields={"model_architecture": "single_api"})
-        recovered: list[str] = []
-        s._recover_vram = lambda context="", delay_sec=0.0: recovered.append(context)  # type: ignore[method-assign]
-        s._switch_to_heavy_model()
-        assert recovered == []
-
-    def test_call_fast_llm_single_local_routes_via_call_llm(self, tmp_path):
-        s = make_summarizer(tmp_path)  # single_local, fast_model default
-        seen: list[str] = []
-        s._call_llm_with_empty_retry = lambda prompt, **k: seen.append(prompt) or "fast local reply"  # type: ignore[method-assign]
-        out = s._call_fast_llm("quick prompt", max_tokens=100)
-        assert out == "fast local reply"
-        assert seen == ["quick prompt"]
-
-    def test_call_fast_llm_dual_local_uses_fast_ollama(self, tmp_path, monkeypatch):
-        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
-
-        s = make_summarizer(
-            tmp_path,
-            request_fields={"model_architecture": "dual_local", "fast_model": "fast-model-y"},
-        )
-        seen: dict = {}
-
-        def _fake(prompt, model, temp, max_tokens, **kwargs):
-            seen.update(prompt=prompt, model=model)
-            return "fast dual reply"
-
-        monkeypatch.setattr(lt_mod, "ld_call_fast_ollama", _fake)
-        out = s._call_fast_llm("quick prompt", max_tokens=100)
-        assert out == "fast dual reply"
-        assert seen["model"] == "fast-model-y"
-
-    def test_call_fast_llm_api_mode_uses_openai_compat(self, tmp_path, monkeypatch):
-        import core.summarisation.llm_transport as lt_mod  # V0.18 (Phase 5.1, step 7): ld_* seams moved
-
-        s = make_summarizer(
-            tmp_path,
-            request_fields={
-                "model_architecture": "dual_api",
-                "fast_api_url": "http://fast/v1",
-                "fast_api_key": "fk",
-                "fast_api_model": "fast-cloud",
-            },
-        )
-        seen: dict = {}
-
-        def _fake(prompt, base_url, api_key, model, label, temp, max_tokens, **kwargs):
-            seen.update(prompt=prompt, base_url=base_url, model=model)
-            return "fast api reply"
-
-        monkeypatch.setattr(lt_mod, "ld_call_openai_compat", _fake)
-        out = s._call_fast_llm("quick prompt", max_tokens=100)
-        assert out == "fast api reply"
-        assert seen["base_url"] == "http://fast/v1"
-        assert seen["model"] == "fast-cloud"
+# V0.6.14 (single-model order): the TestModelSwitches class was REMOVED
+# (7 tests: the two _switch_to_fast_model VRAM-recovery/noop pins, the two
+# _switch_to_heavy_model pins, and the three _call_fast_llm routing pins
+# single-local/dual-local/dual-api). Their whole purpose was the retired
+# fast/heavy dual-model contract — _switch_to_fast_model, _switch_to_heavy_model
+# and _call_fast_llm no longer exist, and there is no second model to route
+# to. The surviving transport seams are covered by the classes above.
 
 
 # ── _call_dedicated_thorough_with_fallback passthrough ──────────────────────

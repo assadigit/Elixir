@@ -143,6 +143,7 @@ class TranslationEngine:
         temperature: float = 0.3,
         progress_callback: ProgressFn | None = None,
         log_callback: LogFn | None = None,
+        llm_complete: Callable[[str], str | None] | None = None,
     ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
         if self.ollama_url.endswith("/v1"):
@@ -155,6 +156,13 @@ class TranslationEngine:
         self.temperature = temperature
         self._progress = progress_callback or (lambda pct, msg: None)
         self._log = log_callback or (lambda msg, level="INFO": None)
+        # V0.6.5: provider-backed transport — when set, every line call
+        # goes through this callable (``prompt -> text | None``) instead
+        # of the raw Ollama /api/generate POST. The dialog injects it for
+        # the "no dedicated translation model → use the ACTIVE LLM"
+        # fallback (the user requirement: works with ollama OR llama.cpp
+        # — the provider factory speaks both transports).
+        self._llm_complete = llm_complete
         # V11.29: dynamic consistency memory — learns term translations
         # as they appear, then enforces them for the rest of the document.
         # Key = source-language term (lowercase), Value = first translation.
@@ -170,13 +178,18 @@ class TranslationEngine:
         """
         self._start_time = time.time()
         lines = text.split("\n")
+        # V0.6.0 (T5): YAML front-matter pass-through is bounded by the
+        # LEADING --- block, not by a line-count heuristic (see
+        # _frontmatter_end). A prose "Note: ..." line inside the first 20
+        # lines used to skip translation entirely.
+        fm_end = self._frontmatter_end(lines)
         non_empty = sum(1 for line in lines if line.strip())
         translated_lines: list[str] = []
         done = 0
 
         for i, line in enumerate(lines):
             try:
-                result = self._translate_line(line, line_idx=i)
+                result = self._translate_line(line, line_idx=i, in_frontmatter=i < fm_end)
             except ModelNotFoundError:
                 # V11.29.3: bail immediately — no point retrying every line.
                 raise
@@ -241,7 +254,20 @@ class TranslationEngine:
 
     # ── Core line translation ────────────────────────────────────────
 
-    def _translate_line(self, line: str, line_idx: int = 0) -> str:
+    @staticmethod
+    def _frontmatter_end(lines: list[str]) -> int:
+        """V0.6.0 (T5): index one past the closing ``---`` of a LEADING
+        YAML front-matter block, or 0 when the text does not start with
+        one (an unterminated ``---`` is not a front-matter block).
+        """
+        if not lines or lines[0].strip() != "---":
+            return 0
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return i + 1
+        return 0
+
+    def _translate_line(self, line: str, line_idx: int = 0, in_frontmatter: bool = False) -> str:
         """Translate a single line with retry logic.
 
         Returns the translated line, or the original line if all retries fail.
@@ -256,9 +282,11 @@ class TranslationEngine:
         if stripped in ("---", "***", "___"):
             return line
 
-        # Pass-through: YAML front-matter key-value lines (first 20 lines).
+        # Pass-through: YAML front-matter key-value lines — ONLY inside a
+        # leading --- block (V0.6.0/T5: the old ``line_idx < 20`` heuristic
+        # silently skipped any prose line shaped like "Note: ...").
         if (
-            line_idx < 20
+            in_frontmatter
             and re.match(r"^[\w\-]+:\s", stripped)
             and not stripped.startswith(("-", "#", ">"))
         ):
@@ -294,6 +322,12 @@ class TranslationEngine:
             except requests.exceptions.Timeout:
                 self._log(f"  ⚠️ Line {line_idx + 1}: timeout on attempt {attempt + 1}", "WARNING")
                 continue
+            except ModelNotFoundError:
+                # V0.6.0 (T1): a 404 is permanent — bail the whole document
+                # (the caller + the dialog surface a clear error) instead of
+                # retrying 3× per line and silently returning the original
+                # text as the "translation".
+                raise
             except Exception as e:
                 self._log(
                     f"  ⚠️ Line {line_idx + 1}: {type(e).__name__}: {e} on attempt {attempt + 1}",
@@ -377,12 +411,25 @@ class TranslationEngine:
     # ── Ollama API call ──────────────────────────────────────────────
 
     def _call_ollama(self, prompt: str) -> str | None:
-        """Call Ollama /api/generate and return the response text.
+        """Call the LLM and return the response text.
 
-        Raises ``ModelNotFoundError`` on HTTP 404 (model not installed) so
-        the caller can bail immediately instead of silently falling back
-        to the original text for every line.
+        V0.6.5: when a provider-backed ``llm_complete`` callable was
+        injected, it REPLACES the raw Ollama /api/generate transport (the
+        active-LLM fallback path — llama.cpp / OpenAI-compat backends
+        don't speak the Ollama protocol). A None return feeds the same
+        retry machinery as a transport failure on the raw path.
+
+        Raises ``ModelNotFoundError`` on HTTP 404 (model not installed)
+        on the raw path so the caller can bail immediately instead of
+        silently falling back to the original text for every line.
         """
+        if self._llm_complete is not None:
+            try:
+                return self._llm_complete(prompt)
+            except Exception as e:
+                self._log(f"  Active-LLM transport error: {e}", "ERROR")
+                return None
+
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -443,6 +490,12 @@ class TranslationEngine:
         for pat in _ECHO_PATTERNS:
             text = re.sub(pat, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
 
+        # 2.5 V0.6.0 (T3): line-count verification — this engine translates
+        # LINE BY LINE, so one input line must yield ONE output line (the
+        # module contract). A model reply with embedded newlines used to
+        # silently inflate the output's line/paragraph structure.
+        text = re.sub(r"\s*\n\s*", " ", text).strip()
+
         # 3. Detect refusals.
         for phrase in _REFUSAL_PATTERNS:
             if phrase in text:
@@ -472,13 +525,19 @@ class TranslationEngine:
             bullet = orig_stripped[0]
             return f"{prefix}{bullet} {trans_stripped}"
 
-        # Heading markers: #, ##, ###
-        if orig_stripped.startswith("#") and not trans_stripped.startswith("#"):
+        # Heading markers: #, ##, ### — restore the ORIGINAL level even
+        # when the model emits a different one (V0.6.0/T4: live-observed an
+        # H1 line translated as H2 — the marker survives but the level
+        # drifts, corrupting the document's heading hierarchy).
+        if orig_stripped.startswith("#"):
             heading_match = re.match(r"^(#{1,6})\s", orig_stripped)
             if heading_match:
                 prefix = original[: len(original) - len(orig_stripped)]
                 hashes = heading_match.group(1)
-                return f"{prefix}{hashes} {trans_stripped}"
+                # Drop whatever heading marker the model emitted (if any)
+                # and re-add the original level.
+                body = re.sub(r"^#{1,6}\s*", "", trans_stripped).strip()
+                return f"{prefix}{hashes} {body}"
 
         # Blockquote: >
         if orig_stripped.startswith(">") and not trans_stripped.startswith(">"):
@@ -576,49 +635,53 @@ class TranslationEngine:
         for m in re.finditer(r"(?<=[\s,;:(])\b([A-Z][a-z]{2,15})\b(?!\s+[A-Z])", text):
             word = m.group(1)
             # Filter out common sentence-start words.
+            # V0.6.0 (T8): the tuple was Title-case while the comparison
+            # lowercases the word — the filter never matched, so generic
+            # function words ("The", "This", ...) polluted the term
+            # memory as fake "key terms".
             if word.lower() not in (
-                "The",
-                "This",
-                "That",
-                "These",
-                "Those",
-                "Most",
-                "Many",
-                "Some",
-                "Every",
-                "Each",
-                "He",
-                "She",
-                "It",
-                "We",
-                "They",
-                "You",
-                "His",
-                "Her",
-                "Its",
-                "Our",
-                "Their",
-                "A",
-                "An",
-                "In",
-                "On",
-                "At",
-                "By",
-                "For",
-                "But",
-                "And",
-                "Or",
-                "Not",
-                "If",
-                "When",
-                "While",
-                "Finally",
-                "First",
-                "Second",
-                "Modern",
-                "Historical",
-                "Central",
-                "True",
+                "the",
+                "this",
+                "that",
+                "these",
+                "those",
+                "most",
+                "many",
+                "some",
+                "every",
+                "each",
+                "he",
+                "she",
+                "it",
+                "we",
+                "they",
+                "you",
+                "his",
+                "her",
+                "its",
+                "our",
+                "their",
+                "a",
+                "an",
+                "in",
+                "on",
+                "at",
+                "by",
+                "for",
+                "but",
+                "and",
+                "or",
+                "not",
+                "if",
+                "when",
+                "while",
+                "finally",
+                "first",
+                "second",
+                "modern",
+                "historical",
+                "central",
+                "true",
             ):
                 terms.append(word)
 

@@ -3,7 +3,22 @@
 ImageExtractorDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ delegates the common
+skeleton (title, options container, output row, progress, status,
+buttons) to the base and folds its byte-identical closeEvent guard +
+_emit_progress helper away (inherited). The multi-file batch list is
+the dialog's input UI, so ``accept_files=False, accept_text=False``
+(the base builds no standard input row); the file-queue and option
+rows fold into _build_options. The out_edit legacy name aliases the
+base-built out_path_edit (a FOLDER — the _pick_output override keeps
+the directory picker); the determinate 0-100 progress bar and the
+"🖼️ Extract Images" button label are restored over the base defaults.
+The W-b5 worker launch keeps its pinned shape: _on_process spawns the
+SimpleWorker (the base's _process/_collect_options flow does not fit
+the multi-file batch contract)."""
 
 from __future__ import annotations
 
@@ -16,16 +31,23 @@ from pathlib import Path
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
+    QCheckBox,
     QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
     QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
     QWidget,
 )
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +58,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 
 
-class ImageExtractorDialog(QDialog):
+class ImageExtractorDialog(BaseServiceDialog):
     """V11.72.0: Image Extractor — extract all images/charts/tables from books.
 
     Supports PDF (primary), EPUB, and DOCX.
@@ -58,115 +80,81 @@ class ImageExtractorDialog(QDialog):
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("🖼️ Image Extractor")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options (the file-queue + option rows),
+        # which needs nothing pre-set; _files is the batch list _add_files
+        # appends to. The base also initializes self._worker (its
+        # closeEvent guards it).
+        self._files: list = []
+        super().__init__(
+            controller, "🖼️ Image Extractor", parent, accept_files=False, accept_text=False
+        )
+        # V0.6.10 (B17): this dialog's original geometry over the base's
+        # generic 560×480, plus its determinate 0-100 progress bar (the
+        # base's is indeterminate).
         self.setMinimumSize(700, 600)
-        self.setModal(True)
-        self._worker = None
-        self._files = []
+        self.progress_bar.setRange(0, 100)
+        # V0.6.10 (B17): the base builds out_path_edit / process_btn with
+        # its own labels; this dialog's historical attribute name
+        # (out_edit — pinned by the e2e drive tests) and labels are
+        # restored as aliases of the SAME widgets (single source of
+        # truth).
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText("Choose where to save extracted images…")
+        self.process_btn.setText("🖼️ Extract Images")
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_progress override only
+        # sets status text) — hide the dead toggle (the transcribe B17
+        # precedent).
+        self._log_toggle_btn.setVisible(False)
 
-        from PySide6.QtWidgets import (
-            QCheckBox as _QChB,
-        )
-        from PySide6.QtWidgets import (
-            QGroupBox as _QGB,
-        )
-        from PySide6.QtWidgets import (
-            QHBoxLayout as _HL,
-        )
-        from PySide6.QtWidgets import (
-            QLabel as _QL,
-        )
-        from PySide6.QtWidgets import (
-            QLineEdit as _QLE,
-        )
-        from PySide6.QtWidgets import (
-            QListWidget as _QLW,
-        )
-        from PySide6.QtWidgets import (
-            QProgressBar as _QPB2,
-        )
-        from PySide6.QtWidgets import (
-            QPushButton as _QPB,
-        )
-        from PySide6.QtWidgets import (
-            QSpinBox as _QSB,
-        )
-        from PySide6.QtWidgets import (
-            QVBoxLayout as _VL,
-        )
-
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("🖼️ Image Extractor")
-        title.setObjectName("H2")
-        lay.addWidget(title)
-
-        desc = _QL(
-            "Extract all images, charts, tables, and diagrams from "
-            "PDF/EPUB/DOCX books. Output organized by type with "
-            "page numbers in filenames."
-        )
-        desc.setObjectName("Caption")
-        desc.setWordWrap(True)
-        lay.addWidget(desc)
-
+    def _build_options(self, layout: QVBoxLayout) -> None:
+        """V0.6.10 (B17): the extractor's custom blocks — the multi-file
+        batch list (the dialog's input UI; the reason accept_files=False,
+        accept_text=False) and the page-range/full-pages/cropped/DPI
+        options — folded into the base's options container. The old
+        numbered group titles lost their "2. Output folder" sibling to
+        the base's output row, so the numbering is gone too."""
         # ── Input files ───────────────────────────────────────────────
-        input_group = _QGB("1. Input files (PDF / EPUB / DOCX):")
-        input_lay = _VL(input_group)
-        self.file_list = _QLW()
+        input_group = QGroupBox("Input files (PDF / EPUB / DOCX):")
+        input_lay = QVBoxLayout(input_group)
+        self.file_list = QListWidget()
         self.file_list.setMinimumHeight(80)
         self.file_list.setMaximumHeight(120)
-        file_btn_row = _HL()
-        add_btn = _QPB("➕ Add Files…")
+        file_btn_row = QHBoxLayout()
+        add_btn = QPushButton("➕ Add Files…")
         add_btn.clicked.connect(self._add_files)
-        rm_btn = _QPB("➖ Remove")
+        rm_btn = QPushButton("➖ Remove")
         rm_btn.clicked.connect(self._remove_file)
         file_btn_row.addWidget(add_btn)
         file_btn_row.addWidget(rm_btn)
         file_btn_row.addStretch()
-        hint = _QL("Add multiple files for batch processing")
+        hint = QLabel("Add multiple files for batch processing")
         hint.setObjectName("Caption")
         file_btn_row.addWidget(hint)
         input_lay.addWidget(self.file_list)
         input_lay.addLayout(file_btn_row)
-        lay.addWidget(input_group)
-
-        # ── Output folder ─────────────────────────────────────────────
-        out_group = _QGB("2. Output folder:")
-        out_lay = _VL(out_group)
-        out_row = _HL()
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText("Choose where to save extracted images…")
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        out_lay.addLayout(out_row)
-        lay.addWidget(out_group)
+        layout.addWidget(input_group)
 
         # ── Options ───────────────────────────────────────────────────
-        opt_group = _QGB("3. Options:")
-        opt_lay = _VL(opt_group)
+        opt_group = QGroupBox("Options:")
+        opt_lay = QVBoxLayout(opt_group)
 
         # Page range
-        range_row = _HL()
-        range_row.addWidget(_QL("Page range:"))
-        self.cb_all_pages = _QChB("All pages")
+        range_row = QHBoxLayout()
+        range_row.addWidget(QLabel("Page range:"))
+        self.cb_all_pages = QCheckBox("All pages")
         self.cb_all_pages.setChecked(True)
         self.cb_all_pages.stateChanged.connect(self._on_range_changed)
         range_row.addWidget(self.cb_all_pages)
-        range_row.addWidget(_QL("From:"))
-        self.spin_from = _QSB()
+        range_row.addWidget(QLabel("From:"))
+        self.spin_from = QSpinBox()
         self.spin_from.setMinimum(1)
         self.spin_from.setMaximum(99999)
         self.spin_from.setEnabled(False)
         range_row.addWidget(self.spin_from)
-        range_row.addWidget(_QL("To:"))
-        self.spin_to = _QSB()
+        range_row.addWidget(QLabel("To:"))
+        self.spin_to = QSpinBox()
         self.spin_to.setMinimum(1)
         self.spin_to.setMaximum(99999)
         self.spin_to.setEnabled(False)
@@ -175,59 +163,35 @@ class ImageExtractorDialog(QDialog):
         opt_lay.addLayout(range_row)
 
         # Checkboxes
-        self.cb_full_pages = _QChB("Extract full page renders (raw page as JPEG)")
+        self.cb_full_pages = QCheckBox("Extract full page renders (raw page as JPEG)")
         self.cb_full_pages.setChecked(True)
         opt_lay.addWidget(self.cb_full_pages)
 
-        self.cb_cropped = _QChB("Detect and crop image regions (vector graphics)")
+        self.cb_cropped = QCheckBox("Detect and crop image regions (vector graphics)")
         self.cb_cropped.setChecked(True)
         opt_lay.addWidget(self.cb_cropped)
 
         # DPI
-        dpi_row = _HL()
-        dpi_row.addWidget(_QL("Render DPI:"))
-        self.spin_dpi = _QSB()
+        dpi_row = QHBoxLayout()
+        dpi_row.addWidget(QLabel("Render DPI:"))
+        self.spin_dpi = QSpinBox()
         self.spin_dpi.setMinimum(72)
         self.spin_dpi.setMaximum(600)
         self.spin_dpi.setValue(150)  # V11.74.0: 150 = faster, still good quality
         dpi_row.addWidget(self.spin_dpi)
-        dpi_row.addWidget(_QL("(200 = good balance, 300 = high quality)"))
+        dpi_row.addWidget(QLabel("(200 = good balance, 300 = high quality)"))
         dpi_lbl = dpi_row.itemAt(2).widget()
         dpi_lbl.setObjectName("Caption")
         dpi_row.addStretch()
         opt_lay.addLayout(dpi_row)
 
-        lay.addWidget(opt_group)
+        layout.addWidget(opt_group)
 
-        # ── Process button ────────────────────────────────────────────
-        self.process_btn = _QPB("🖼️ Extract Images")
-        self.process_btn.setObjectName("Primary")
-        self.process_btn.clicked.connect(self._on_process)
-        lay.addWidget(self.process_btn)
-
-        # ── Progress ──────────────────────────────────────────────────
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setFixedHeight(6)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        lay.addWidget(self.status_label)
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the image-
-        # extraction SimpleWorker runs — the "QThread: Destroyed while
-        # thread is still running" abort class. Ask; on "close anyway"
-        # detach the worker so the batch's result is discarded, not
-        # crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) and the
+    # _emit_progress worker helper (byte-equivalent modulo docstring) are
+    # now INHERITED from BaseServiceDialog; the pre-B17 copies were
+    # deleted.
 
     def _add_files(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -247,12 +211,24 @@ class ImageExtractorDialog(QDialog):
             self._files.pop(row)
             self.file_list.takeItem(row)
 
-    def _pick_output(self):
+    def _pick_output(self) -> None:
+        # V0.6.10 (B17): override of the base's output-row Browse hook —
+        # a DIRECTORY picker (the extractor writes a per-book folder
+        # tree, not one file; the base's getSaveFileName + suffix append
+        # never applied here). Body unchanged.
         folder = QFileDialog.getExistingDirectory(
             self, "Choose output folder for extracted images", ""
         )
         if folder:
             self.out_edit.setText(folder)
+
+    def _get_service_name(self) -> str:
+        # V0.6.10 (B17): base-class identity hook. This dialog persists no
+        # controller settings (grep: zero controller.update_setting /
+        # controller.get_setting calls), so the name is identity-only.
+        # (_get_output_suffix is deliberately NOT implemented: the output
+        # is a folder tree, not a suffixed file.)
+        return "image_extractor"
 
     def _on_range_changed(self):
         all_pages = self.cb_all_pages.isChecked()
@@ -260,6 +236,11 @@ class ImageExtractorDialog(QDialog):
         self.spin_to.setEnabled(not all_pages)
 
     def _on_process(self):
+        # V0.6.10 (B17): kept override — the base's _on_process validates a
+        # generic text/file input and spawns SimpleWorker(self._process, …);
+        # this dialog's contract is the multi-file batch queue, the output
+        # FOLDER, the inverted-range guard and its own completion pair
+        # (no base-equivalent flow). Body unchanged.
         if not self._files:
             QMessageBox.warning(self, "No files", "Please add at least one file.")
             return
@@ -268,15 +249,28 @@ class ImageExtractorDialog(QDialog):
             QMessageBox.warning(self, "No output", "Please choose an output folder.")
             return
 
+        # V0.6.0 (4-a/D2): an inverted page range (From > To — the two
+        # spin boxes are independent) used to fall through to the service,
+        # which processes an EMPTY page range and reports "✅ 0 images".
+        # Refuse the impossible range up front (no worker spawned).
+        page_range = None
+        if not self.cb_all_pages.isChecked():
+            range_from = self.spin_from.value()
+            range_to = self.spin_to.value()
+            if range_from > range_to:
+                QMessageBox.warning(
+                    self,
+                    "Invalid page range",
+                    "The 'From' page must not be greater than the 'To' page.",
+                )
+                return
+            page_range = (range_from, range_to)
+
         self.process_btn.setEnabled(False)
         self.process_btn.setText("⏳ Extracting...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.status_label.setText("🖼️ Starting extraction...")
-
-        page_range = None
-        if not self.cb_all_pages.isChecked():
-            page_range = (self.spin_from.value(), self.spin_to.value())
 
         options = {
             "files": list(self._files),
@@ -357,6 +351,12 @@ class ImageExtractorDialog(QDialog):
                     results.append(f"❌ {file_stem}: unsupported format ({ext})")
                     continue
 
+                # V0.6.0 (4-a/D1): a file the service could not open at all
+                # must land as a ❌ line, not as "✅ 0 images".
+                if counts.get("error"):
+                    results.append(f"❌ {file_stem}: {counts['error']}")
+                    continue
+
                 results.append(
                     f"✅ {file_stem}: {counts['total']} images "
                     f"(photos: {counts['photos']}, charts: {counts['charts']}, "
@@ -368,16 +368,11 @@ class ImageExtractorDialog(QDialog):
 
         return results
 
-    def _emit_progress(self, pct: int, msg: str):
-        """Emit progress to the worker signal."""
-        worker = getattr(self, "_worker", None)
-        if worker is not None:
-            try:
-                worker.progress.emit(pct, msg)
-            except Exception:
-                logger.debug("best-effort op failed", exc_info=True)
-
     def _on_progress(self, pct: int, msg: str):
+        # V0.6.10 (B17): kept override — the base's _on_progress wraps the
+        # status text in HTML + appends to the live log; this dialog's
+        # contract (pinned by the e2e drive tests) is plain-text status
+        # and a determinate 0-100 bar. Body unchanged.
         if pct >= 0:
             self.progress_bar.setValue(pct)
         self.status_label.setText(msg)
@@ -401,13 +396,22 @@ class ImageExtractorDialog(QDialog):
 
         if results:
             summary = "\n".join(results)
-            self.status_label.setText(f"✅ Done!\n{summary}")
-            # Success modal
+            # V0.6.0 (4-a/D1): the status prefix + modal must reflect
+            # per-file failures — "✅ Done!" for an all-failed batch was a
+            # failure disguised as success.
+            failures = sum(1 for r in results if r.startswith("❌"))
             out_folder = self.out_edit.text().strip()
-            QMessageBox.information(
-                self,
-                "✅ Extraction Complete",
-                f"Image extraction complete!\n\n{summary}\n\nOutput: {out_folder}",
-            )
+            if failures and failures == len(results):
+                self.status_label.setText(f"❌ Extraction failed\n{summary}")
+                QMessageBox.critical(self, "❌ Extraction Failed", summary)
+            else:
+                prefix = "⚠️" if failures else "✅"
+                self.status_label.setText(f"{prefix} Done!\n{summary}")
+                # Success modal
+                QMessageBox.information(
+                    self,
+                    "✅ Extraction Complete",
+                    f"Image extraction complete!\n\n{summary}\n\nOutput: {out_folder}",
+                )
         else:
             self.status_label.setText("⚠️ No images extracted")

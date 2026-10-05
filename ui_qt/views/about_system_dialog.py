@@ -222,9 +222,12 @@ class AboutSystemDialog(QDialog):
         )
         models = deps.get("models", []) or []
         if models:
-            vision_kw = ("vl", "vision", "deepseek-ocr", "llava", "bakllava", "ocr", "olmo")
-            vision = [m for m in models if any(k in m.lower() for k in vision_kw)]
-            text = [m for m in models if not any(k in m.lower() for k in vision_kw)]
+            # V0.6.7 (review-loop B4): the vision/text split routes through
+            # the model_taxonomy SSOT (was a local copy of the keyword list).
+            from core.llm.model_taxonomy import is_vision_model
+
+            vision = [m for m in models if is_vision_model(m)]
+            text = [m for m in models if not is_vision_model(m)]
             if vision:
                 lines.append("  🔍 Vision / OCR models:")
                 for m in vision:

@@ -10,18 +10,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import sys
-import types
-from unittest.mock import MagicMock
-
-# Stub tiktoken
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = MagicMock(return_value=MagicMock())
-    tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = tk
-
 # Load postchecks directly from file (bypass package __init__)
 import sys as _sys
 from importlib.util import module_from_spec as _mfs

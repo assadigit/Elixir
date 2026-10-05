@@ -251,7 +251,6 @@ def integration_setup(tmp_path):
         # Set minimal required settings
         settings.set("summarisation.provider", "ollama")
         settings.set("summarisation.model", "mock-model:latest")
-        settings.set("summarisation.fast_model", "mock-model:latest")
         settings.set("summarisation.max_context_tokens", 65536)
         settings.set("summarisation.max_output_tokens", 4096)
         settings.set("summarisation.resume_enabled", False)
@@ -273,7 +272,6 @@ def integration_setup(tmp_path):
             output_dir=str(output_dir),
             source_type="normal_book",
             summarisation_model="mock-model:latest",
-            fast_model="mock-model:latest",
             generate_summaries=True,
             include_keypoints=True,
             output_briefing=True,

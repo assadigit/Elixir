@@ -326,6 +326,49 @@ class TestFactoryWiring:
             assert p.output_cap == 12288
             assert p.api_key == "local"
 
+    def test_create_provider_llamacpp_detects_served_model(self, tmp_path):
+        """V0.4.30 (multi-backend): create_provider queries /v1/models + uses
+        the ACTUAL served model, not the hardcoded ``llamacpp_model`` setting
+        — so a llama-server on a different port serving a different model
+        (e.g. 8080=Ternary-Bonsai, 8081=Qwen3.8) is identified + addressed
+        correctly. Falls back to the configured model if /v1/models is empty.
+        """
+        from tests.mock_llamacpp_server import MockLlamaCppServer
+
+        # Server serves Qwen, but settings are configured for Ternary-Bonsai.
+        srv = MockLlamaCppServer(models=["Qwen3.8-27B-Instruct"]).start()
+        try:
+            with _hermetic_settings(tmp_path):
+                from utils.settings import Settings
+
+                s = Settings()
+                s.set("summarisation.llamacpp_base_url", srv.base_url)
+                s.set(
+                    "summarisation.llamacpp_model",
+                    "Ternary-Bonsai-2-27B-Instruct-Vision",  # configured ≠ served
+                )
+                s.set("summarisation.llamacpp_context_tokens", 65536)
+                s.set("summarisation.llamacpp_max_output_tokens", 12288)
+
+                from core.llm.llm_provider import create_provider
+
+                p = create_provider("llamacpp", s)
+                # The DETECTED model wins over the configured.
+                assert p.model == "Qwen3.8-27B-Instruct"
+
+                # Fallback: a server serving NOTHING → use the configured model.
+                srv_empty = MockLlamaCppServer(models=[]).start()
+                try:
+                    s.set("summarisation.llamacpp_base_url", srv_empty.base_url)
+                    p2 = create_provider("llamacpp", s)
+                    assert (
+                        p2.model == "Ternary-Bonsai-2-27B-Instruct-Vision"
+                    )  # the configured fallback
+                finally:
+                    srv_empty.stop()
+        finally:
+            srv.stop()
+
     def test_reexport_surface(self):
         from core.llm import llm_provider
         from core.llm.llamacpp_provider import LlamaCppProvider as _Direct
@@ -702,3 +745,64 @@ class TestTernaryVramClass:
 
         name, _ = _parse_quantization("model-27b-tn23")
         assert name == "tn23"
+
+
+class TestLlamaCppEndpointDropdown:
+    """V0.4.31 (B1): the build_llamacpp_endpoint_options helper that builds
+    the wizard's endpoint-dropdown options (Primary + llamacpp_endpoints)."""
+
+    def test_primary_only_when_no_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options("http://127.0.0.1:8080/v1", "local", [])
+        assert len(opts) == 1
+        assert opts[0] == {
+            "label": "Primary",
+            "base_url": "http://127.0.0.1:8080/v1",
+            "api_key": "local",
+        }
+
+    def test_primary_plus_configured_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options(
+            "http://127.0.0.1:8080/v1",
+            "local",
+            [
+                {
+                    "base_url": "http://127.0.0.1:8081/v1",
+                    "api_key": "local",
+                    "label": "Qwen 8081",
+                },
+                {
+                    "base_url": "http://127.0.0.1:8082/v1",
+                    "api_key": "secret",
+                    "label": "Third",
+                },
+            ],
+        )
+        assert len(opts) == 3
+        assert opts[0]["label"] == "Primary"
+        assert opts[1] == {
+            "label": "Qwen 8081",
+            "base_url": "http://127.0.0.1:8081/v1",
+            "api_key": "local",
+        }
+        assert opts[2]["api_key"] == "secret"
+
+    def test_skips_empty_and_malformed_endpoints(self):
+        from ui_qt.components.llamacpp_config import build_llamacpp_endpoint_options
+
+        opts = build_llamacpp_endpoint_options(
+            "http://127.0.0.1:8080/v1",
+            "local",
+            [
+                {"base_url": "", "label": "empty"},  # skipped (empty url)
+                "not-a-dict",  # skipped (not a dict)
+                {"base_url": "   ", "label": "whitespace"},  # skipped (whitespace)
+                {"base_url": "http://127.0.0.1:8081/v1"},  # kept (label defaults to url)
+            ],
+        )
+        assert len(opts) == 2  # Primary + the one valid endpoint
+        assert opts[1]["label"] == "http://127.0.0.1:8081/v1"  # label defaults to url
+        assert opts[1]["api_key"] == "local"  # api_key defaults to "local"

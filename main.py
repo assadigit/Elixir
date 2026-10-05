@@ -51,7 +51,9 @@ try:
 except Exception:
     pass
 if _pycache_deleted > 0:
-    print(f"[V18.2.37] Deleted {_pycache_deleted} stale __pycache__ directory(ies).")
+    # V0.6.8 (audit B19): the stale "V18.2.37" version tag removed — the
+    # label lied about the running version; "Elixir" is version-neutral.
+    print(f"[Elixir] Deleted {_pycache_deleted} stale __pycache__ directory(ies).")
 
 # V13.33.1 note: PYTHONDONTWRITEBYTECODE above is the whole stale-pyc strategy.
 
@@ -123,11 +125,6 @@ except Exception:
     pass
 
 
-def get_startup_cuda_probe() -> dict:  # Expose the probe for the UI to read.
-    """Return the early torch CUDA probe result (run before PySide6)."""
-    return dict(_TORCH_CUDA_PROBE)
-
-
 # V18.20.4.9 (T-b4): the old ``Qt.AA_EnableHighDpiScaling = True`` line here
 # was a dead assignment (zero readers) — Qt 6 enables high-DPI scaling
 # automatically, so nothing needs to be set before QApplication.
@@ -140,7 +137,9 @@ if PROJECT_ROOT not in sys.path:
 
 
 def _check_dependencies() -> list[str]:
-    """Return a list of missing critical packages."""
+    """Return missing critical packages. V0.4.29: find_spec (presence-check, no import) replaces __import__ — the eager markitdown import was a multi-min startup hang."""
+    import importlib.util
+
     missing = []
     critical = {
         "PySide6": "PySide6>=6.6",
@@ -152,9 +151,7 @@ def _check_dependencies() -> list[str]:
         "docx": "python-docx>=1.1.0",
     }
     for module, pkg in critical.items():
-        try:
-            __import__(module)
-        except ImportError:
+        if importlib.util.find_spec(module) is None:
             missing.append(pkg)
     return missing
 
@@ -210,25 +207,16 @@ def _install_excepthook() -> None:
         # passed, so recent_log.txt was never written).
         _crash_path = None
         try:
-            from core.system.crash_report import generate_crash_report
+            # V0.6.6 (review-loop B3): the inline last-200-lines collector
+            # moved into crash_report.collect_recent_log_lines — shared with
+            # the controller's crash path, which had drifted (V13.29.0 gave
+            # main.py the recent-log context but not the conversion path).
+            from core.system.crash_report import (
+                collect_recent_log_lines,
+                generate_crash_report,
+            )
 
-            # V13.29.0: Collect the last 200 lines of system.log
-            _extra_lines = None
-            try:
-                from pathlib import Path as _P
-
-                _log_file = _P.home() / ".elixir" / "system.log"
-                if _log_file.exists():
-                    # Read last 200 lines efficiently (don't load whole file)
-                    with open(_log_file, encoding="utf-8", errors="replace") as _f:
-                        from collections import deque
-
-                        _lines = deque(_f, maxlen=200)
-                    _extra_lines = list(_lines)
-            except Exception as _e:
-                logger.debug(
-                    "could not read system.log for crash report: %s: %s", type(_e).__name__, _e
-                )
+            _extra_lines = collect_recent_log_lines()
 
             _crash_path = generate_crash_report(
                 exc_type,

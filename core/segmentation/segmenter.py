@@ -1407,7 +1407,6 @@ class Segmenter:
         heading: str,
         markdown_text: str,
         start_pos: int = 0,
-        fuzzy_threshold: float = 0.85,
         page_markers: list[tuple[int, int]] | None = None,
         suggested_page: int | None = None,
     ) -> tuple[int | None, str | None, float, str]:
@@ -1419,6 +1418,11 @@ class Segmenter:
         - If page_markers and suggested_page are given, search within a window.
 
         Returns (line_number, matched_text, confidence, match_method)
+
+        V0.6.8 (audit B19): the ``fuzzy_threshold`` parameter was REMOVED —
+        it was dead (every caller passed the same 0.85 default and the
+        body hardcodes the progressive ladder [0.85, 0.75, 0.65]); the
+        vulture dead-code sweep flagged it.
         """
         heading_stripped = heading.strip()
         if not heading_stripped:
@@ -1587,7 +1591,6 @@ class Segmenter:
                 heading,
                 markdown_text,
                 start_pos=last_pos,
-                fuzzy_threshold=0.85,
                 page_markers=page_markers,
                 suggested_page=toc_page if toc_page > 0 else None,
             )
@@ -1650,7 +1653,6 @@ class Segmenter:
                     next_heading,
                     markdown_text,
                     start_pos=last_pos,
-                    fuzzy_threshold=0.85,
                     page_markers=page_markers,
                     suggested_page=next_toc_page if next_toc_page > 0 else None,
                 )

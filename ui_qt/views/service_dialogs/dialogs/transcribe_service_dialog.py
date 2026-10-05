@@ -3,7 +3,16 @@
 TranscribeServiceDialog moved VERBATIM from
 ui_qt/views/service_dialogs/base_dialog.py — only this module's
 top-of-file imports differ. ui_qt.views.service_dialogs.base_dialog
-re-exports it (back-compat facade)."""
+re-exports it (back-compat facade).
+
+V0.6.10 (B17): the dialog migrated onto the shared BaseServiceDialog
+(the tts/translation precedent) — __init__ now delegates the common
+skeleton (title, file row, options container, output row, progress,
+status, buttons) to the base and folds its copies of the base-provided
+closeEvent guard + _emit_progress away; the media file picker, the
+FOLDER output picker, the custom worker flow and the plain-text
+progress handler stay as overrides (behavior the base does not
+provide)."""
 
 from __future__ import annotations
 
@@ -16,9 +25,9 @@ from pathlib import Path
 # "QPlainTextEdit is not defined" / "QTableWidget is not defined" errors.
 from PySide6.QtWidgets import *  # noqa: F401,F403 — intentional wildcard
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QMessageBox,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -27,9 +36,10 @@ from controller import Controller
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
-    _confirm_close_with_running_worker,
+    BaseServiceDialog,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +50,7 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 
 
-class TranscribeServiceDialog(QDialog):
+class TranscribeServiceDialog(BaseServiceDialog):
     """V11.78.0: Transcribe Service — video/audio → text + Obsidian summary.
 
     Pipeline:
@@ -54,21 +64,46 @@ class TranscribeServiceDialog(QDialog):
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.controller = controller
-        self.setWindowTitle("🎙️ Transcribe Service")
+        # V0.6.10 (B17): dialog-specific state FIRST — the base __init__
+        # calls _build_ui → _build_options, which needs llm_combo etc. to
+        # attach to (the documented BaseServiceDialog subclassing recipe).
+        # The base also initializes self._worker (its closeEvent guards it).
+        super().__init__(
+            controller, "🎙️ Transcribe Service", parent, accept_files=True, accept_text=False
+        )
+        # V0.6.10 (B17): this dialog's original geometry + plain progress
+        # semantics (determinate 0-100 bar) — the base defaults differ.
         self.setMinimumSize(750, 650)
-        self.setModal(True)
-        self._worker = None
+        self.progress_bar.setRange(0, 100)
+        # V0.6.10 (B17): the base builds file_path_edit / out_path_edit and
+        # wires the process button to _on_process with the label "Process";
+        # this dialog's historical attribute names (file_edit / out_edit —
+        # pinned by the e2e drive tests) and button label are restored as
+        # aliases of the SAME widgets (single source of truth).
+        self.file_edit = self.file_path_edit
+        self.file_edit.setPlaceholderText(
+            "Pick a video (.mp4, .mkv, .avi) or audio (.mp3, .wav, .m4a) file…"
+        )
+        self.out_edit = self.out_path_edit
+        self.out_edit.setPlaceholderText("Choose output folder…")
+        self.process_btn.setText("🎙️ Transcribe")
+        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
+        # dialog never streams log lines (its _on_progress override only
+        # sets status text) — hide the dead toggle.
+        self._log_toggle_btn.setVisible(False)
 
+        # Refresh models (same position as the pre-B17 __init__ tail).
+        self._refresh_models()
+
+    def _build_options(self, layout: QVBoxLayout) -> None:
+        """V0.6.10 (B17): the transcription-specific option rows, folded
+        into the base's options container (the base already built the
+        description-style title + the file row + the output row)."""
         from PySide6.QtWidgets import (
             QCheckBox as _QChB,
         )
         from PySide6.QtWidgets import (
             QComboBox as _QCB,
-        )
-        from PySide6.QtWidgets import (
-            QGroupBox as _QGB,
         )
         from PySide6.QtWidgets import (
             QHBoxLayout as _HL,
@@ -77,25 +112,8 @@ class TranscribeServiceDialog(QDialog):
             QLabel as _QL,
         )
         from PySide6.QtWidgets import (
-            QLineEdit as _QLE,
-        )
-        from PySide6.QtWidgets import (
-            QProgressBar as _QPB2,
-        )
-        from PySide6.QtWidgets import (
             QPushButton as _QPB,
         )
-        from PySide6.QtWidgets import (
-            QVBoxLayout as _VL,
-        )
-
-        lay = _VL(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-
-        title = _QL("🎙️ Transcribe Service")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         desc = _QL(
             "Import a video or audio file → get a raw transcript + "
@@ -104,27 +122,9 @@ class TranscribeServiceDialog(QDialog):
         )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
-        lay.addWidget(desc)
-
-        # ── Input file ────────────────────────────────────────────────
-        input_group = _QGB("1. Input file (video or audio):")
-        input_lay = _VL(input_group)
-        file_row = _HL()
-        self.file_edit = _QLE()
-        self.file_edit.setPlaceholderText(
-            "Pick a video (.mp4, .mkv, .avi) or audio (.mp3, .wav, .m4a) file…"
-        )
-        file_btn = _QPB("Browse…")
-        file_btn.clicked.connect(self._pick_file)
-        file_row.addWidget(self.file_edit, 1)
-        file_row.addWidget(file_btn)
-        input_lay.addLayout(file_row)
-        lay.addWidget(input_group)
+        layout.addWidget(desc)
 
         # ── Options ───────────────────────────────────────────────────
-        opt_group = _QGB("2. Options:")
-        opt_lay = _VL(opt_group)
-
         # Whisper model
         model_row = _HL()
         model_row.addWidget(_QL("Whisper model:"))
@@ -136,7 +136,7 @@ class TranscribeServiceDialog(QDialog):
         self.whisper_combo.addItem("large-v3 (best accuracy — slow)", "large-v3")
         model_row.addWidget(self.whisper_combo)
         model_row.addStretch()
-        opt_lay.addLayout(model_row)
+        layout.addLayout(model_row)
 
         # LLM model for summary
         llm_row = _HL()
@@ -153,39 +153,18 @@ class TranscribeServiceDialog(QDialog):
         self.refresh_btn.setToolTip("Refresh Ollama models")
         self.refresh_btn.clicked.connect(self._refresh_models)
         llm_row.addWidget(self.refresh_btn)
-        opt_lay.addLayout(llm_row)
+        layout.addLayout(llm_row)
 
         # Checkboxes
         self.cb_raw = _QChB("Save raw transcript (with timestamps)")
         self.cb_raw.setChecked(True)
-        opt_lay.addWidget(self.cb_raw)
+        layout.addWidget(self.cb_raw)
 
         self.cb_summary = _QChB("Generate Obsidian summary (requires Ollama)")
         self.cb_summary.setChecked(True)
-        opt_lay.addWidget(self.cb_summary)
-
-        lay.addWidget(opt_group)
-
-        # ── Output ────────────────────────────────────────────────────
-        out_group = _QGB("3. Output:")
-        out_lay = _VL(out_group)
-        out_row = _HL()
-        out_row.addWidget(_QL("Save to:"))
-        self.out_edit = _QLE()
-        self.out_edit.setPlaceholderText("Choose output folder…")
-        out_browse = _QPB("Browse…")
-        out_browse.clicked.connect(self._pick_output)
-        out_row.addWidget(self.out_edit, 1)
-        out_row.addWidget(out_browse)
-        out_lay.addLayout(out_row)
-        lay.addWidget(out_group)
+        layout.addWidget(self.cb_summary)
 
         # ── Process button ────────────────────────────────────────────
-        self.process_btn = _QPB("🎙️ Transcribe")
-        self.process_btn.setObjectName("Primary")
-        self.process_btn.clicked.connect(self._on_process)
-        lay.addWidget(self.process_btn)
-
         # V13.31.0 (#7): Live Transcribe sub-tool
         live_row = _HL()
         live_row.addStretch()
@@ -197,58 +176,44 @@ class TranscribeServiceDialog(QDialog):
         )
         self.live_btn.clicked.connect(self._open_live_transcribe)
         live_row.addWidget(self.live_btn)
-        lay.addLayout(live_row)
+        layout.addLayout(live_row)
 
-        # ── Progress ──────────────────────────────────────────────────
-        self.progress_bar = _QPB2()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setFixedHeight(6)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setVisible(False)
-        lay.addWidget(self.progress_bar)
-
-        self.status_label = _QL("")
-        self.status_label.setObjectName("Caption")
-        self.status_label.setWordWrap(True)
-        lay.addWidget(self.status_label)
-
-        # Refresh models
-        self._refresh_models()
-
-    def closeEvent(self, event) -> None:
-        # V18.20.4.5 (T-b2): guard against closing while the transcription
-        # SimpleWorker runs — the "QThread: Destroyed while thread is still
-        # running" abort class. Ask; on "close anyway" detach the worker
-        # so the pipeline's result is discarded, not crashed on.
-        if not _confirm_close_with_running_worker(self, self._worker):
-            event.ignore()
-            return
-        super().closeEvent(event)
+    # V0.6.10 (B17): the closeEvent guard (identical to the base's —
+    # _confirm_close_with_running_worker(self, self._worker)) and
+    # _emit_progress are now INHERITED from BaseServiceDialog; the
+    # pre-B17 copies were byte-equivalent and were deleted.
 
     def _refresh_models(self):
-        """Fetch installed Ollama models."""
-        import requests
+        """Fetch installed Ollama models.
 
+        V0.6.8 (audit B5): routed through utils.network.list_ollama_models
+        (safe_ollama_request → proxy-proof) — was a bare requests.get that
+        broke on machines with HTTP_PROXY set.
+        """
+        from utils.network import list_ollama_models
         from utils.settings import Settings
 
         s = Settings()
         ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
         try:
-            resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m.get("name", "") for m in resp.json().get("models", [])]
-                if models:
-                    current = self.llm_combo.currentText()
-                    self.llm_combo.clear()
-                    for m in models:
-                        self.llm_combo.addItem(m)
-                    idx = self.llm_combo.findText(current)
-                    if idx >= 0:
-                        self.llm_combo.setCurrentIndex(idx)
+            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
+            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
+            # original bare-call latency budget (the helper default is 10).
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
+            if models:
+                current = self.llm_combo.currentText()
+                self.llm_combo.clear()
+                for m in models:
+                    self.llm_combo.addItem(m)
+                idx = self.llm_combo.findText(current)
+                if idx >= 0:
+                    self.llm_combo.setCurrentIndex(idx)
         except Exception:
             logger.debug("best-effort op failed", exc_info=True)
 
     def _pick_file(self):
+        # V0.6.10 (B17): override — the base's generic single-file picker
+        # has no media filter; this one pins the video/audio families.
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Pick video or audio file",
@@ -262,6 +227,10 @@ class TranscribeServiceDialog(QDialog):
             self.file_edit.setText(path)
 
     def _pick_output(self):
+        # V0.6.10 (B17): override — transcription outputs are a FOLDER
+        # (raw transcript + summary side by side), not a single file; the
+        # base's file-save _pick_output does not fit (the OCR precedent
+        # for folder-picking overrides).
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder", "")
         if folder:
             self.out_edit.setText(folder)
@@ -274,6 +243,11 @@ class TranscribeServiceDialog(QDialog):
         dlg.exec()
 
     def _on_process(self):
+        # V0.6.10 (B17): kept override — the base's _on_process validates a
+        # generic text/file input and spawns SimpleWorker(self._process, …);
+        # this dialog's contract is a media-file existence check, its own
+        # options dict, button-label swap (⏳ Transcribing…) and the
+        # _on_done/_on_failed completion pair (no base-equivalent flow).
         filepath = self.file_edit.text().strip()
         if not filepath or not Path(filepath).exists():
             QMessageBox.warning(self, "No file", "Please pick a valid video or audio file.")
@@ -330,7 +304,15 @@ class TranscribeServiceDialog(QDialog):
         is_video = ext in (".mp4", ".mkv", ".avi", ".mov", ".webm")
 
         s = Settings()
-        ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
+        # V0.6.0 (T2): resolve the endpoint through the canonical
+        # ``get_ollama_url()`` (5-key priority, settings.py) instead of the
+        # single legacy ``summarisation.ollama_url`` key — the value is
+        # forwarded to ``summarize_transcript``, which now honors it.
+        ollama_url = (
+            s.get_ollama_url()
+            if hasattr(s, "get_ollama_url")
+            else s.get("summarisation.ollama_url", "http://localhost:11434")
+        )
 
         results = {"raw_path": None, "summary_path": None, "error": None}
 
@@ -402,15 +384,11 @@ class TranscribeServiceDialog(QDialog):
         self._emit_progress(100, "✅ Done!")
         return results
 
-    def _emit_progress(self, pct: int, msg: str):
-        worker = getattr(self, "_worker", None)
-        if worker is not None:
-            try:
-                worker.progress.emit(pct, msg)
-            except Exception:
-                logger.debug("best-effort op failed", exc_info=True)
-
     def _on_progress(self, pct: int, msg: str):
+        # V0.6.10 (B17): kept override — the base's _on_progress wraps the
+        # status text in HTML + appends to the live log; this dialog's
+        # contract (pinned by the e2e drive tests) is plain-text status
+        # and a determinate 0-100 bar.
         if pct >= 0:
             self.progress_bar.setValue(pct)
         self.status_label.setText(msg)

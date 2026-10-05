@@ -35,6 +35,43 @@ from ui_qt.components.icons import icon
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.theme import theme_manager
 
+
+def _regenerable_keys() -> frozenset[str]:
+    """Output keys ``controller.regenerate_output`` can regenerate.
+
+    Single source of truth: the registry's regenerate map (the controller
+    refuses anything not in it — controller.py ``_REGENERATE_MAP``).  The
+    three former inline literals in this module had drifted apart: the
+    Complete-All visibility check listed 17 keys while the row-button and
+    batch-action sets listed 9 — a missing output the controller CAN
+    regenerate showed no 🔄 button, and Complete All no-op'd behind a
+    "Nothing to regenerate" info box while its button was visible.
+    """
+    try:
+        from core.outputs.registry import get_regenerate_map
+
+        return frozenset(get_regenerate_map())
+    except Exception:  # registry unavailable — conservative core set
+        return frozenset(
+            {
+                "briefing",
+                "podcast_script",
+                "packets",
+                "flashcards",
+                "obsidian",
+                "study_guide",
+                "social",
+                "mindmap",
+                "podcast_audio",
+            }
+        )
+
+
+# Regenerable output keys — shared by the row 🔄 buttons (:_build_result_row),
+# the Complete-All visibility check (:_render_results) and the Complete-All
+# batch action (:_complete_all_requested).
+_REGENERABLE_KEYS = _regenerable_keys()
+
 # Status → (icon, color_name, label)
 _STATUS_META = {
     "generated": ("✅", "success", "Generated"),
@@ -229,25 +266,6 @@ class OutputScannerView(QWidget):
             # missing/failed outputs (not just "requested" ones) because the
             # scanner's requested/not_requested detection is unreliable for
             # output_studio types (the settings file may not have those flags).
-            _REGENERABLE_KEYS = {
-                "briefing",
-                "podcast_script",
-                "packets",
-                "flashcards",
-                "obsidian",
-                "study_guide",
-                "social",
-                "mindmap",
-                "podcast_audio",
-                "evidence_map",
-                "qa",
-                "glossary",
-                "patterns",
-                "cheatsheet",
-                "skill",
-                "epub",
-                "quote_bank",  # V10.35.0
-            }
             _has_actionable = any(
                 res.status in ("missing", "failed") and res.key in _REGENERABLE_KEYS
                 for res in r.results
@@ -340,18 +358,8 @@ class OutputScannerView(QWidget):
         lay.addWidget(badge)
 
         # V7.9.0: Regenerate button for missing/failed regenerable outputs
-        _REGENERABLE = {
-            "briefing",
-            "podcast_script",
-            "packets",
-            "flashcards",
-            "obsidian",
-            "study_guide",
-            "social",
-            "mindmap",
-            "podcast_audio",
-        }
-        if res.key in _REGENERABLE and res.status in ("missing", "failed", "skipped"):
+        # (the shared module-level set — see _regenerable_keys).
+        if res.key in _REGENERABLE_KEYS and res.status in ("missing", "failed", "skipped"):
             regen_btn = QPushButton("🔄")
             regen_btn.setObjectName("Compact")
             regen_btn.setCursor(Qt.PointingHandCursor)
@@ -374,17 +382,9 @@ class OutputScannerView(QWidget):
         if not self._report or not self._selected_folder:
             return
 
-        _REGENERABLE = {
-            "briefing",
-            "podcast_script",
-            "packets",
-            "flashcards",
-            "obsidian",
-            "study_guide",
-            "social",
-            "mindmap",
-            "podcast_audio",
-        }
+        # All missing/failed regenerable outputs (the shared module-level
+        # set — see _regenerable_keys).
+        #
         # Collect all missing/failed outputs that are regenerable.
         # V9.4.1 fix: don't filter by "not_requested" — the scanner's
         # requested detection is unreliable. Include ALL missing/failed
@@ -394,7 +394,7 @@ class OutputScannerView(QWidget):
         to_regen = [
             res.key
             for res in self._report.results
-            if res.status in ("missing", "failed") and res.key in _REGENERABLE
+            if res.status in ("missing", "failed") and res.key in _REGENERABLE_KEYS
         ]
 
         if not to_regen:

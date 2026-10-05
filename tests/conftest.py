@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 # ── V18.20.2.0 (SWOT test-infra): hermetic tiktoken gate ────────────────────
-# 51 test files carry a copy-pasted ``if "tiktoken" not in sys.modules:`` stub
-# block. Whichever file is collected FIRST installs ITS variant (some are
-# MagicMock encoders) even when the REAL tiktoken is installed — poisoning
+# (V0.6.10 / B16 history) 51→78 test files HAD carried a copy-pasted
+# ``if "tiktoken" not in sys.modules:`` stub block — the count comments here
+# had drifted to 51/36 while the reality was 78/37 (the AUDIT_SWOT W7
+# lying-docs find; 79/38 at sweep time — this session's new
+# test_v0610_wave5_godfunction_decomp.py had added one of each). The V0.6.10
+# sweep REMOVED all 109 inert per-file blocks (87 files) — this gate is now
+# the ONLY installer. Whichever file was collected FIRST used to install ITS
+# variant (some were MagicMock encoders) even when the REAL tiktoken was
+# installed — poisoning
 # ``utils.token_counter`` lazy ``_ENCODER`` init for the entire session
 # (root cause of the order-dependent failures in test_map_reduce /
 # test_primary_call / test_text_utils_ext). conftest is imported by pytest
@@ -41,6 +47,31 @@ if "tiktoken" not in sys.modules:
         sys.modules["tiktoken"] = _tk
         del _TkEnc
 
+# ── V0.6.0 (campaign 4-b, test-infra): hermetic markitdown gate ────────────
+# (V0.6.10 / B16) 36→37 test files HAD carried a copy-pasted
+# ``if "markitdown" not in sys.modules:`` stub block — removed by the V0.6.10
+# sweep; this gate is the only installer. The exact tiktoken-poisoning class
+# conftest fixed above (V18.20.2.0):
+# Whichever file was collected FIRST used to install ITS fake MarkItDown even
+# when the REAL markitdown was installed (a core requirements.txt dep) — real
+# conversions then failed session-wide, order-dependently (observed live during
+# the V0.6.0
+# tools campaign: the doc-to-md e2e suite passed alone and failed when a
+# stubbing file was collected first). Pinning the real package here (one
+# functional stub when absent) makes every guarded stub a no-op.
+if "markitdown" not in sys.modules:
+    try:
+        _md_real = _ilu.find_spec("markitdown") is not None
+    except Exception:  # pragma: no cover - defensive
+        _md_real = False
+    if _md_real:
+        import markitdown  # noqa: F401  — pin the real package before stubs can shadow it
+    else:  # pragma: no cover - only on envs without markitdown
+        _md = _types.ModuleType("markitdown")
+        _md.MarkItDown = lambda *a, **k: None
+        sys.modules["markitdown"] = _md
+        del _md
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -69,6 +100,27 @@ if "utils.token_counter" not in sys.modules:
         _tc_pin.count_tokens("warmup")  # force lazy _ENCODER init NOW
     except Exception:  # pragma: no cover - defensive
         pass
+
+
+# ── V0.6.6 (review-loop B1): session-wide _runtime_state reset ─────────
+# The V18.20.1.0 (D3) refactor moved the shared summarisation singletons
+# onto core.summarisation._runtime_state.state, but the reset fixture
+# lived ONLY in tests/test_runtime_state.py — file-scoped. Other files'
+# fixtures (test_golden_freeze / test_group_b_characterization /
+# test_p2_summarizer_harness) still snapshot/restore the DEAD module-
+# level proxies, so a run that polluted the state (e.g. golden_freeze's
+# warned_embedding_disabled=True) leaked it into every LATER file —
+# the same cross-file poisoning class as the Settings._test_override
+# leak (proven live: golden_freeze + a state-asserting victim → 1
+# failed). Resetting here, autouse for EVERY test, makes the whole
+# class impossible regardless of which file pollutes.
+@pytest.fixture(autouse=True)
+def _reset_runtime_state():
+    from core.summarisation._runtime_state import state
+
+    state.reset()
+    yield
+    state.reset()
 
 
 @pytest.fixture

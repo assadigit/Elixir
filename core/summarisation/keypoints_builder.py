@@ -142,9 +142,19 @@ class KeypointsBuilder:
         seen_norms: list = []
         seen_embeddings: list = []  # for C3 embedding dedup
         unique_bullets = []
+        # V0.5.20: (original all_bullets index, bullet) pairs for the kept
+        # set — the author-coverage veto re-inserts rescued bullets at
+        # their ORIGINAL positions (order preserved, the V0.5.18 veto's
+        # ``keep_indices = sorted(...)`` semantics).
+        _kept_with_pos: list[tuple[int, str]] = []
+        # V0.5.20: every dropped bullet (original index + text) — the
+        # deferred veto's candidate list (the same V0.5.18 deferral: the
+        # survivor text is the COMPLETE kept set, not the prefix seen so
+        # far).
+        _dropped_with_pos: list[tuple[int, str]] = []
         dedup_dropped = 0
         dropped_details: list = []  # V13.26.0: for audit logging
-        for bp in all_bullets:
+        for _orig_i, bp in enumerate(all_bullets):
             if not bp or len(bp.strip()) < 2:
                 continue
             # Normalize: lowercase, collapse whitespace, keep digits and %, $, /
@@ -155,6 +165,7 @@ class KeypointsBuilder:
             if norm in seen_norms:
                 dedup_dropped += 1
                 dropped_details.append(f"  🗑️ '{bp[:60]}...' (exact match)")
+                _dropped_with_pos.append((_orig_i, bp))
                 continue
 
             # V3.3.0 C3: Embedding-based dedup (if available)
@@ -181,6 +192,7 @@ class KeypointsBuilder:
                 if is_dup:
                     dedup_dropped += 1
                     dropped_details.append(f"  🗑️ '{bp[:60]}...' (embedding sim > 0.85)")
+                    _dropped_with_pos.append((_orig_i, bp))
                     continue
                 seen_embeddings.append(bp_embedding)
             elif _has_rf:
@@ -197,10 +209,100 @@ class KeypointsBuilder:
                 if is_dup:
                     dedup_dropped += 1
                     dropped_details.append(f"  🗑️ '{bp[:60]}...' (rapidfuzz >= 75%)")
+                    _dropped_with_pos.append((_orig_i, bp))
                     continue
 
             seen_norms.append(norm)
             unique_bullets.append(bp)
+            _kept_with_pos.append((_orig_i, bp))
+
+        # ── V0.5.20: the author-coverage veto (the keypoints un-rescue) ────
+        # The V0.5.19.1 rig run #2 (the FULL-BOOK ingestion, run
+        # 20260928-155851-011587f0): the V0.5.18 SUMMARY-layer semantic-dedup
+        # veto fired LIVE for the first time ("KEPT bullet (sim-twin) —
+        # uniquely covers source author(s) Kallman, Widiger") — and then the
+        # KEYPOINTS embedding dedup (one output layer over, this loop)
+        # removed the EXACT two bullets the veto had just rescued
+        # ("Keypoints dedup: removed 2 duplicates, 76 → 74" — the log names
+        # them verbatim): this call site had no veto, so the .Keypoints.md
+        # output silently lost the only bullets covering those authors —
+        # the same uniquely-named-author-blind removal pattern (the V0.5.16
+        # ch.1 loss family), one layer deeper.
+        # The fix mirrors the V0.5.18 veto exactly (the same roster via
+        # ``source_author_surnames`` over the run's segments, the same
+        # boundary-safe ``author_in_text`` anchor, the same deferred
+        # complete-kept-set judgment, the same parenthetical-promotion
+        # refinement — a confirmed misattribution is not rescuable).
+        # Fail-open: any veto error keeps the greedy result (the veto must
+        # never widen a drop). No segments → no roster → inert (fail-open).
+        _veto_rescued = 0
+        if _dropped_with_pos and segments:
+            try:
+                from core.summarisation.author_anchor import (
+                    author_in_text,
+                    source_author_surnames,
+                )
+
+                _kp_source_text = " ".join(str(getattr(s, "content", "") or "") for s in segments)
+                _kp_roster = source_author_surnames(_kp_source_text)
+                if _kp_roster:
+                    _kept_text = "\n".join(b for _, b in _kept_with_pos).lower()
+                    for _idx, _bp in _dropped_with_pos:
+                        _b = str(_bp)
+                        _rescue_authors = [
+                            _a
+                            for _a in _kp_roster
+                            if author_in_text(_a, _b.lower()) and not author_in_text(_a, _kept_text)
+                        ]
+                        if not _rescue_authors:
+                            continue
+                        # the V0.5.17/V0.5.18 refinement: a CONFIRMED
+                        # parenthetical promotion is NOT rescuable (the twin
+                        # duplicates kept content under the wrong author's
+                        # name — negative value).
+                        _is_promotion = False
+                        try:
+                            from core.summarisation.postcheck_detectors import (
+                                detect_parenthetical_promotion,
+                            )
+
+                            _is_promotion = (
+                                detect_parenthetical_promotion(_b, _kp_source_text, _kp_roster)
+                                is not None
+                            )
+                        except Exception:
+                            _is_promotion = False  # fail-open
+                        if _is_promotion:
+                            continue
+                        _kept_with_pos.append((_idx, _b))
+                        _kept_text += "\n" + _b.lower()
+                        _veto_rescued += 1
+                        dropped_details.append(
+                            f"  🛡️ V0.5.20 keypoints-dedup veto: KEPT '{_b[:60]}…' "
+                            f"(dup) — uniquely covers source author(s) "
+                            f"{', '.join(_rescue_authors[:3])} absent from the "
+                            f"rest of the keypoints"
+                        )
+                        self.log(
+                            f"  🛡️ V0.5.20 keypoints-dedup veto: KEPT duplicate "
+                            f"bullet — uniquely covers source author(s) "
+                            f"{', '.join(_rescue_authors[:3])} absent from the "
+                            f"rest of the keypoints",
+                            "INFO",
+                        )
+            except Exception as _veto_e:  # noqa: BLE001 — fail-open
+                self.log(
+                    f"  ⚠️ V0.5.20 keypoints-dedup veto crashed (non-fatal): {_veto_e}",
+                    "WARNING",
+                )
+        if _veto_rescued:
+            # order preserved: the rescued bullets re-enter at their
+            # ORIGINAL positions (the V0.5.18 ``sorted(keep_indices)``).
+            _kept_with_pos.sort(key=lambda t: t[0])
+            dedup_dropped -= (
+                _veto_rescued  # the net removal count (the log must not contradict the file)
+            )
+        unique_bullets = [b for _, b in _kept_with_pos]
 
         if dedup_dropped > 0:
             # V13.26.0 (P1.6): Log at INFO (was DEBUG) + list dropped bullets

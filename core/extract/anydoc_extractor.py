@@ -87,6 +87,12 @@ MARKITDOWN_EXTENSIONS = frozenset(
         ".wav",
         ".txt",
         ".md",
+        # V0.6.0 (Tool 4-b): markitdown[all] converts .pptx/.xlsx; added so
+        # the fallback engine covers them now that anydoc is not shippable
+        # (removed from requirements.txt — not published on PyPI). Must
+        # stay in sync with QuickConvertDialog._MARKITDOWN_EXTS.
+        ".pptx",
+        ".xlsx",
     }
 )
 
@@ -172,7 +178,7 @@ def _is_malformed_pdf_error(exc: BaseException) -> bool:
 
     We look at both the exception class name and its message for the
     typical markers: ``MalformedError``, ``xref``, ``trailer``,
-    ``parseerror``, ``syntax``, ``eof``.
+    ``parseerror``, ``syntax``, ``eof``, ``stream has ended``.
     """
     name = type(exc).__name__.lower()
     msg = str(exc).lower()
@@ -186,6 +192,11 @@ def _is_malformed_pdf_error(exc: BaseException) -> bool:
         "eof",
         "unexpected eof",
         "invalid pdf",
+        # V0.6.0 (Tool 4-b): pypdf>=4 raises ``PdfStreamError: Stream has
+        # ended unexpectedly`` for truncated PDFs — the most common
+        # malformed-PDF shape, previously missed (the repair path never
+        # fired for it). Generic library error shape, not content-bound.
+        "stream has ended",
     )
     blob = f"{name} {msg}"
     return any(kw in blob for kw in keywords)

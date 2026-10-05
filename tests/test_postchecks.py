@@ -15,18 +15,6 @@ garbled tokens the IQ2_XXS quant produced. These tests verify each is caught.
 
 from __future__ import annotations
 
-import sys
-import types
-from unittest.mock import MagicMock
-
-# Stub tiktoken (not installed in test env) — same pattern as conftest.
-if "tiktoken" not in sys.modules:
-    tk = types.ModuleType("tiktoken")
-    tk.get_encoding = MagicMock(return_value=MagicMock())
-    tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = tk
-
 from core.summarisation.postchecks import (
     Issue,
     PostCheckReport,

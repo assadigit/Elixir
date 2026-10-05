@@ -74,15 +74,13 @@ class WizardState:
     # V10.35.0: New outputs
     outputs_epub: bool = False  # V10.35.0: EPUB output
     outputs_quote_bank: bool = False  # V10.35.0: Quote bank
-    # Step 5: Models
+    # Step 5: Models (V0.6.14: single-model order — fast_model and
+    # model_architecture retired; ONE model + provider choice remain)
     summarisation_model: str = ""
     primary_ocr_model: str = ""
     fallback_ocr_model: str = ""
-    fast_model: str = ""
     max_workers: int = 1  # V10.1.10: was 2 — VRAM safety default
     temperature: float = 1.0  # V13.34.0: Gemma 4 recommended  # V10.1.10: was 0.2 — fine-tuner minimum for Qwythos/gemma
-    # V16.0.9: 4-mode model architecture
-    model_architecture: str = "single_local"  # single_local | dual_local | single_api | dual_api
     # Step 6: Translation
     translation_enabled: bool = False
     # V13.31.0 (#13): default backend is now "ollama" (was "nllb").
@@ -118,9 +116,8 @@ class WizardState:
     # Step 7b: Fine-tuning — DOCX (2)
     docx_author: str = "Elixir"
     docx_include_toc: bool = True
-    # Step 7b: Fine-tuning — Quality controls (4)
+    # Step 7b: Fine-tuning — Quality controls (V0.6.14: heavy_model retired)
     self_consistency: bool = False
-    heavy_model: str = ""
     coverage_threshold: int = 85  # V13.34.0
     resume_enabled: bool = True  # V7.7.0: skip chapters with valid summaries on disk
     post_completion_action: str = "none"  # V8.1.0: "none"/"quit"/"sleep"/"hibernate"/"shutdown"
@@ -129,7 +126,6 @@ class WizardState:
     max_context_tokens: int = 32768  # V13.34.0: 32k local
     max_output_tokens: int = 8192  # V13.34.0
     cache_enabled: bool = False
-    simplification_model: str = ""
     # Step 7b: Fine-tuning — Advanced doc handling (2)
     extract_math: bool = False
     layout_analysis: bool = False
@@ -165,11 +161,8 @@ class WizardState:
             "summarisation_model": self.summarisation_model,
             "primary_ocr_model": self.primary_ocr_model,
             "fallback_ocr_model": self.fallback_ocr_model,
-            "fast_model": self.fast_model,
             "max_workers": self.max_workers,
             "temperature": self.temperature,
-            # V16.0.9: 4-mode model architecture (per-conversion override)
-            "model_architecture": self.model_architecture,
             "include_executive_summary": self.include_executive_summary,
             "include_thorough_summary": self.include_thorough_summary,
             "include_keypoints": self.include_keypoints,
@@ -218,7 +211,6 @@ class WizardState:
             "docx_include_toc": self.docx_include_toc,
             # Step 7b: Fine-tuning — Quality controls
             "self_consistency": self.self_consistency,
-            "heavy_model": self.heavy_model,
             "coverage_threshold": self.coverage_threshold,
             "resume_enabled": self.resume_enabled,
             "enable_content_filter": self.enable_content_filter,
@@ -226,7 +218,6 @@ class WizardState:
             "summarisation_max_context_tokens": self.max_context_tokens,
             "summarisation_max_output_tokens": self.max_output_tokens,
             "summarisation_cache_enabled": self.cache_enabled,
-            "simplification_model": self.simplification_model,
             # Step 7b: Fine-tuning — Advanced doc handling
             "extract_math": self.extract_math,
             "layout_analysis": self.layout_analysis,

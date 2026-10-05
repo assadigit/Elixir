@@ -36,8 +36,6 @@ import ast
 import os
 import sys
 from pathlib import Path
-from types import ModuleType
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -49,22 +47,16 @@ if str(_project_root) not in sys.path:
 # does (markitdown is not installed in this sandbox; the stub keeps the
 # eager core.pipeline import chain loadable for the library_manager
 # behavioral tests).
-if "markitdown" not in sys.modules:
-    _md = ModuleType("markitdown")
-    _md.MarkItDown = MagicMock()
-    sys.modules["markitdown"] = _md
-if "tiktoken" not in sys.modules:
-    _tk = ModuleType("tiktoken")
-    _tk.get_encoding = MagicMock(return_value=MagicMock())
-    _tk.encoding_for_model = MagicMock(return_value=MagicMock())
-    _tk.Encoding = MagicMock
-    sys.modules["tiktoken"] = _tk
-
 _APP = _project_root / "ui_qt" / "app.py"
 _CONVERT_VIEW = _project_root / "ui_qt" / "views" / "convert_view.py"
 _WIZARD = _project_root / "ui_qt" / "views" / "wizard_view.py"
 _BRIDGE = _project_root / "ui_qt" / "controller_bridge.py"
 _CONVERTER = _project_root / "core" / "pipeline" / "converter_impl.py"
+# V0.4.26 (Phase 3 commit 3): the library-tracking block (the W-a2
+# measured-coverage read) moved VERBATIM to run_library_tracking in
+# core/pipeline/conversion/finalization.py — the W-a2 pins read the UNION
+# of both files (the established repoint discipline).
+_FINALIZATION = _project_root / "core" / "pipeline" / "conversion" / "finalization.py"
 _LIBRARY = _project_root / "core" / "pipeline" / "library_manager.py"
 
 
@@ -229,17 +221,27 @@ class TestWb13LegacyMinefieldDeleted:
 
 class TestWa2MeasuredCoverage:
     def test_no_placeholder_092(self):
-        src = _strip_comments(_src(_CONVERTER))
+        # V0.4.26 (Phase 3 commit 3): union read — the block moved, so the
+        # absence pins must cover its new home too (same intent, wider net).
+        src = _strip_comments(_src(_CONVERTER)) + "\n" + _strip_comments(_src(_FINALIZATION))
         assert "coverage=0.92" not in src, "the fabricated 0.92 placeholder must be gone (W-a2)"
         assert "Placeholder — will be updated" not in src
 
     def test_library_call_reads_measured_coverage(self):
         """The add_book call passes the value read from the quality
         report's totals.avg_coverage (same source the diagnostic reads)."""
-        src = _strip_comments(_src(_CONVERTER))
+        # V0.4.26 (Phase 3 commit 3): the block moved VERBATIM to
+        # run_library_tracking in conversion/finalization.py (the last
+        # function in that module) — union read + the block's own tail
+        # (the partial-failure handler) as the end bound; same asserted
+        # content (the established repoint discipline).
+        src = _strip_comments(_src(_CONVERTER)) + "\n" + _strip_comments(_src(_FINALIZATION))
         lib_start = src.find('"library tracking"')
         assert lib_start != -1
-        block = src[lib_start : src.find("return ConversionResult", lib_start)]
+        _lib_tail = '_record_partial_failure("Library tracking", e)'
+        lib_end = src.find(_lib_tail, lib_start)
+        assert lib_end != -1
+        block = src[lib_start : lib_end + len(_lib_tail)]
         assert "coverage=_cov_lib" in block
         assert 'get("totals", {})' in block
         assert 'get("avg_coverage")' in block

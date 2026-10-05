@@ -32,9 +32,6 @@ control flow):
 like the failed ``PromptContext``). This matches the proven Phase 4 + Batch A
 pattern.
 
-**Phase 5.3**: ``call_fast_ollama`` is also extracted here, migrated from
-inline ``for attempt in range(2)`` to ``@retry_llm_call`` decorator.
-
 Characterization tests: ``tests/test_llm_dispatcher.py`` verifies the
 delegate wiring and that the functions accept the expected params.
 """
@@ -48,6 +45,7 @@ from typing import Any
 import requests as _requests
 
 from core.llm.retry import retry_llm_call
+from core.system.timeouts import SLOW_LLM_TIMEOUT_S
 from utils.network import extract_openai_content, safe_ollama_request, session_for_url
 
 logger = logging.getLogger(__name__)
@@ -135,8 +133,11 @@ def call_ollama(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, "_model"):
-            provider._model = model
+        # V0.6.8 (review-loop follow-up, B4 class): public attr — the
+        # "_model" guard was always False (OllamaProvider exposes
+        # self.model); masked because model= is also passed per-call.
+        if hasattr(provider, "model"):
+            provider.model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s,
         # but we need 600s for Gemma 4 12B (takes 5+ min per call)
         if hasattr(provider, "timeout"):
@@ -561,7 +562,9 @@ def call_claude(
             "INFO",
         )
         # V18.20.4.11 (P3 / O-c5): pooled session (see call_openai_compat).
-        resp = session_for_url(url).post(url, headers=headers, json=payload, timeout=180)
+        resp = session_for_url(url).post(
+            url, headers=headers, json=payload, timeout=SLOW_LLM_TIMEOUT_S
+        )
         resp.raise_for_status()  # → HTTPError for 401/429/5xx
         data = resp.json()
         # Claude returns content as a list of text blocks
@@ -650,25 +653,33 @@ def call_via_llm_provider(
             supervisor=supervisor,
         )
         # Override the model (create_provider uses settings default)
-        if hasattr(provider, "_model"):
-            provider._model = model
+        # V0.6.8 (review-loop follow-up, B4 class): public attr — the
+        # "_model" guard was always False; masked because model= is also
+        # passed per-call.
+        if hasattr(provider, "model"):
+            provider.model = model
         # V13.44.3: Override the timeout — create_provider hardcodes 300s
         if hasattr(provider, "timeout"):
             provider.timeout = timeout
-        # Apply cloud-specific settings (base_url, api_key) for openai_compat
+        # Apply cloud-specific settings (base_url, api_key) for openai_compat.
+        # V0.6.8 (review-loop follow-up, B4 class — fresh-eyes finding): the
+        # underscore-prefixed assignments below were NO-OPS against
+        # OpenAICompatProvider's PUBLIC attrs (self.base_url/self.api_key),
+        # so an explicit per-call endpoint/key override (e.g. the
+        # Summarizer's freellmapi_url vs the settings' primary cloud URL)
+        # was silently dropped and the call kept hitting the settings
+        # endpoint. The V0.04-era deferral (CHANGELOG_ARCHIVE "known
+        # follow-ups") is now closed: the overrides apply for real.
         if provider_type == "openai_compat" and base_url:
-            provider._base_url = base_url
+            provider.base_url = base_url
         if provider_type == "openai_compat" and api_key:
-            provider._api_key = api_key
+            provider.api_key = api_key
         # V0.04: llama.cpp — apply the endpoint overrides through the REAL
-        # attribute names (LlamaCppProvider exposes base_url/api_key, not
-        # the underscore-prefixed names the openai_compat branch targets —
-        # that legacy branch is inert dead code and is left untouched; see
-        # the known-follow-ups note in CHANGELOG V0.04). The Summarizer
-        # passes the same values create_provider already read from the
-        # llamacpp_* settings, so this is a no-op in practice — it exists
-        # so an explicit per-call endpoint override can never be silently
-        # dropped for the new backend.
+        # attribute names (LlamaCppProvider exposes base_url/api_key). The
+        # Summarizer passes the same values create_provider already read
+        # from the llamacpp_* settings, so this is a no-op in practice — it
+        # exists so an explicit per-call endpoint override can never be
+        # silently dropped for the new backend.
         if provider_type == "llamacpp":
             if base_url and hasattr(provider, "base_url"):
                 provider.base_url = base_url.rstrip("/")
@@ -707,74 +718,9 @@ def call_via_llm_provider(
     return None
 
 
-# ── call_fast_ollama (Phase 5.3: migrated from inline for-loop to @retry_llm_call) ──
-
-
-def call_fast_ollama(
-    prompt: str,
-    model: str,
-    temp: float,
-    max_tokens: int,
-    *,
-    ollama_base_url: str,
-    fast_model_context: int,
-    log: LogCallback | None = None,
-) -> str | None:
-    """V17.0.0: Call fast model via Ollama with configurable 128K context.
-
-    V18.8 (Phase 5.3): Migrated from inline ``for attempt in range(2)``
-    loop with ``time.sleep(2)`` to the consolidated ``@retry_llm_call``
-    decorator. This was the LAST holdout — all other call sites were
-    migrated in V18.2.21.
-
-    The migration preserves:
-    - 2 attempts (max_attempts=retries+1=2 with retries=1)
-    - Empty-response → retryable (ConnectionError)
-    - Timeout → retryable (was retried in the old inline loop; now
-      the decorator classifies it as retryable too)
-    - 120s timeout (was hardcoded in the inline loop; preserved here)
-    """
-    _log = log or _noop_log
-
-    ctx = fast_model_context or 131072
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        # V18.2.37e: override the Modelfile's system prompt
-        "system": "",
-        # V18.2.20 (P7 follow-up): -1 = "all available GPU layers"
-        # (was 99 — see _call_ollama_nonstreaming above for rationale).
-        # V18.2.42: presence_penalty removed — let Modelfile decide.
-        "options": {
-            "temperature": temp,
-            "num_predict": max_tokens,
-            "num_ctx": ctx,
-            "num_gpu": -1,
-        },
-    }
-    url = f"{ollama_base_url}/api/generate"
-
-    @retry_llm_call(max_attempts=2, log_callback=_log)
-    def _do_one_call() -> str:
-        _log(f"    🤖 {model} (t={temp:.2f}, ctx={ctx // 1024}K) attempt…", "INFO")
-        resp = safe_ollama_request("POST", url, json=payload, timeout=120)
-        text = resp.json().get("response", "").strip()
-        if not text:
-            raise _requests.exceptions.ConnectionError("empty response from fast model")
-        return text
-
-    try:
-        return _do_one_call()
-    except Exception as e:
-        _log(f"    ⚠️ Fast model call failed: {e}", "WARNING")
-        return None
-
-
 __all__ = [
     "call_ollama",
     "call_openai_compat",
     "call_claude",
     "call_via_llm_provider",
-    "call_fast_ollama",
 ]

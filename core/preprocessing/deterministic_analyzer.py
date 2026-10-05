@@ -33,6 +33,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from core.common.heading_utils import segment_filename_slug
+from core.common.layout_furniture import is_page_furniture_line as _is_page_furniture_line
 
 logger = logging.getLogger(__name__)
 
@@ -283,15 +284,470 @@ def extract_all_caps_sections(md_text: str) -> list[dict]:
     return sections
 
 
+# V0.5.4 (Track B3): generic structured-table marker + content extractor.
+# Academic / clinical textbooks mark tables with "TABLE N-N." (digits + dash)
+# followed by a title line and the markdown-table body (lines starting with
+# ``|``). Conservative scope (per task V054-TRACK-B3): ONLY reproduce tables
+# explicitly marked ``TABLE N-N.`` — implicit prose tables are not detected.
+# Content-agnostic (Rule 1 ✓): the regex matches ANY digit-dash-digit marker,
+# no book-specific table numbers are hardcoded.
+_TABLE_MARKER_RE = re.compile(
+    r"^[ \t]*(TABLE\s+\d+[-\u2013]\d+\.?)\s*(.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_MD_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def extract_structured_tables(md_text: str) -> list[dict]:
+    """V0.5.4 (Track B3): extract tables explicitly marked ``TABLE N-N.``.
+
+    Conservative scope (per the V054-TRACK-B3 brief): only tables whose marker
+    matches the generic ``TABLE <digits>-<digits>`` shape are reproduced.
+    Implicit tables (prose formatted as columns) are NOT detected — the
+    explicit-marker contract keeps the reproduction honest (a wrong-shape
+    extraction would inject noise).
+
+    Each table is returned as::
+
+        {
+            "marker": "TABLE 6-1.",            # the bare marker as it appears
+            "title": "<marker's trailing title>",  # marker's trailing title (or "")
+            "content_lines": ["| ... |", ...], # the markdown-table rows
+            "start_line": int,                 # 1-based marker line
+            "end_line": int,                   # 1-based line of last row
+        }
+
+    Returns an empty list when no explicit markers are found (the legacy
+    behaviour — the renderer falls back to no-table output).
+    """
+    if not md_text:
+        return []
+    lines = md_text.split("\n")
+    tables: list[dict] = []
+    for m in _TABLE_MARKER_RE.finditer(md_text):
+        # locate the marker's 1-based line number
+        start_line = md_text.count("\n", 0, m.start()) + 1
+        # group 1 = the bare "TABLE N-N." marker; group 2 = the trailing
+        # title text (everything after the marker on the same line).
+        marker = (m.group(1) or "").strip()
+        title = (m.group(2) or "").strip()
+        # collect contiguous markdown-table rows that follow the marker line.
+        content_lines: list[str] = []
+        cursor = start_line  # 1-based
+        while cursor < len(lines):
+            raw = lines[cursor]
+            if _MD_TABLE_ROW_RE.match(raw):
+                content_lines.append(raw.rstrip())
+                cursor += 1
+                continue
+            # tolerate a single blank line directly under the marker before
+            # the first row (PDF extraction sometimes inserts a blank)
+            if not content_lines and not raw.strip():
+                cursor += 1
+                continue
+            break
+        # require at least one header + one separator + one data row, otherwise
+        # this is a marker without a real table body — skip it.
+        if len(content_lines) < 2:
+            continue
+        end_line = start_line + (len(content_lines) - 1)
+        tables.append(
+            {
+                "marker": marker,
+                "title": title,
+                "content_lines": content_lines,
+                "start_line": start_line,
+                "end_line": end_line,
+            }
+        )
+    return tables
+
+
+# V0.5.4 (Track B4): generic structured-diagnostic-criteria extractor.
+# Clinical / regulatory documents number criteria with ``a. b. c. d.`` (lower
+# Latin letters) and sub-items with ``(i) (ii) (iii)`` (lower Roman numerals
+# in parens). Conservative scope: only reproduce lettered lists WITH Roman
+# sub-items — prose-only criteria are not reproduced.
+# Content-agnostic (Rule 1 ✓): the regex matches the generic shape, no
+# book-specific criteria content is hardcoded.
+_CRITERION_LETTER_RE = re.compile(
+    r"^\s*([a-z])\.\s+(.+)$",
+)
+_CRITERION_ROMAN_SUBITEM_RE = re.compile(
+    r"^\s*\(([ivx]+)\)\s+(.+)$",
+)
+
+# V0.5.19: the Roman-numeral sequence machinery for the criteria
+# continuation rules — value lookup for the "sequence-extending embedded
+# marker" split (rule 4) + the reverse map for the sub-item name.
+_ROMAN_ITEM_VALUES = {
+    "i": 1,
+    "ii": 2,
+    "iii": 3,
+    "iv": 4,
+    "v": 5,
+    "vi": 6,
+    "vii": 7,
+    "viii": 8,
+    "ix": 9,
+    "x": 10,
+}
+_ROMAN_VALUE_NAMES = {v: k for k, v in _ROMAN_ITEM_VALUES.items()}
+
+
+def _split_embedded_roman_segments(
+    line: str, last_roman_value: int
+) -> list[tuple[str, int, str]] | None:
+    """V0.5.19 (criteria rule 4): split a prose line at EMBEDDED,
+    sequence-extending ``(roman)`` markers.
+
+    The PDF hard-wrap family: a wrapped sub-item tail and the NEXT
+    sub-item's text land on ONE physical line — "…even if superficially
+    warm and charming. (ii) egocentric, self-indulgent, …". The split
+    fires ONLY when the embedded marker EXTENDS the active sub-item
+    sequence (value == last + 1) — a random ``(iv)`` mention in
+    discussion prose never matches the expected value, so the line stays
+    prose (no false split).
+
+    Returns ``[("tail", 0, "<pre-marker text>"), ("item", 2, "<text>"),
+    …]`` or None when no sequence-extending marker is embedded.
+    """
+    expected = last_roman_value + 1
+    cuts: list[tuple[re.Match, int]] = []
+    for mm in re.finditer(r"\(([ivx]+)\)", line):
+        rv = _ROMAN_ITEM_VALUES.get(mm.group(1))
+        if rv is not None and rv == expected:
+            cuts.append((mm, rv))
+            expected += 1
+    if not cuts:
+        return None
+    out: list[tuple[str, int, str]] = []
+    tail = line[: cuts[0][0].start()].strip().strip(",;")
+    if tail:
+        out.append(("tail", 0, tail))
+    for idx, (mm, rv) in enumerate(cuts):
+        end = cuts[idx + 1][0].start() if idx + 1 < len(cuts) else len(line)
+        txt = line[mm.end() : end].strip().strip(",;")
+        if txt:
+            out.append(("item", rv, txt))
+    return out
+
+
+def extract_structured_criteria(md_text: str) -> list[dict]:
+    """V0.5.4 (Track B4): extract ``a. b. c. d.`` + ``(i) (ii)`` criteria.
+
+    Conservative scope (per the V054-TRACK-B4 brief): only reproduce lists whose
+    items are lettered ``a.`` ``b.`` ``c.`` ``d.`` AND have parenthesized Roman
+    sub-items ``(i) (ii) (iii)``. The combination (lettered parent + Roman
+    sub-items) is the standard DSM-style diagnostic-criteria shape; bare prose
+    or numbered-only lists are not reproduced.
+
+    Returns a list of criteria clusters. Each cluster is the contiguous run of
+    lettered items + their Roman sub-items found before a sustained prose break
+    (a prose line that does NOT immediately follow a letter or sub-item — the
+    signal that the document has moved on to discussion prose). One cluster per
+    DSM-style block. Each cluster is::
+
+        {
+            "items": [
+                {
+                    "letter": "a",
+                    "text": "Pervasive, unwarranted ...",
+                    "sub_items": [("i", "expectation of trickery ..."), ...],
+                },
+                ...
+            ],
+            "start_line": int,
+        }
+
+    Returns an empty list when no lettered+Roman pattern is found.
+
+    Boundary heuristic: a single blank line between ``a.`` and ``(i)`` is NOT a
+    cluster boundary (PDF→MD extraction often wraps the letter on its own line
+    with a blank line before the sub-items). The cluster terminates only when a
+    non-letter, non-Roman, non-blank prose line appears AND the previous
+    non-blank line was itself prose (a sustained prose passage, not a one-line
+    continuation of the previous letter's text).
+    """
+    if not md_text:
+        return []
+    lines = md_text.split("\n")
+    clusters: list[dict] = []
+    current_items: list[dict] = []
+    current_letter: str | None = None
+    current_text: str = ""
+    current_subs: list[tuple[str, str]] = []
+    cluster_start: int | None = None
+    # True when the previous non-blank line was a letter marker or a Roman
+    # sub-item — i.e., the cluster is still "active" and a following prose
+    # line is a continuation, not a cluster-terminating prose break.
+    last_was_marker = False
+
+    def _flush_letter():
+        nonlocal current_letter, current_text, current_subs
+        if current_letter is not None:
+            current_items.append(
+                {
+                    "letter": current_letter,
+                    "text": current_text.strip(),
+                    "sub_items": list(current_subs),
+                }
+            )
+        current_letter = None
+        current_text = ""
+        current_subs = []
+
+    def _flush_cluster():
+        nonlocal current_items, cluster_start
+        _flush_letter()
+        if current_items and cluster_start is not None:
+            clusters.append(
+                {
+                    "items": current_items,
+                    "start_line": cluster_start,
+                }
+            )
+        current_items = []
+        cluster_start = None
+
+    # V0.5.19 (criteria continuation rules — the "Reproduced Criteria"
+    # garble family): the ch.9 V0.5.18 re-run shipped a garbled criteria
+    # section because PDF hard-wraps slice sub-item text across lines and
+    # paragraph breaks. Four rules fix the family (all shape-based,
+    # Rule 1 ✓):
+    #   1. a prose line that CONTINUES the pending text must start
+    #      LOWERCASE (a mid-sentence wrap); an UPPERCASE-start prose line
+    #      after a marker is a NEW paragraph (discussion prose) and CLOSES
+    #      the cluster — the old code glued it into the letter's text.
+    #   2. a continuation after a SUB-ITEM marker appends to the LAST
+    #      SUB-ITEM (the old code appended it to the parent letter's
+    #      text — the "(i) ... even if\n\nsuperficially warm and
+    #      charming." truncation family).
+    #   3. multi-paragraph continuations: a lowercase line may also
+    #      continue when the PREVIOUS non-blank line was itself a
+    #      lowercase continuation (the "not associated with\npanic
+    #      attacks" family).
+    #   4. an EMBEDDED sequence-extending ``(roman)`` marker mid-line
+    #      splits the line: the pre-marker tail continues the pending
+    #      sub-item, the post-marker text starts the next sub-item (the
+    #      "charming. (ii) egocentric, ..." family).
+    # Plus a duplicate-tail guard (the PDF double-print family — a
+    # repeated final word as its own line) and continuation length caps.
+    last_roman_value = 0
+    last_was_lower_prose = False
+
+    def _append_continuation(txt: str) -> None:
+        """Append a continuation line to the pending target: the LAST
+        SUB-ITEM when the last marker was a sub-item, else the letter
+        text (V0.5.19 rule 2). Duplicate-tail guarded + length capped."""
+        nonlocal current_text, current_subs
+        t = txt.strip().strip(",;")
+        if not t:
+            return
+        if current_subs and last_roman_value > 0:
+            _m0, _t0 = current_subs[-1]
+            if _t0.rstrip().lower().endswith(t.lower()):
+                return  # duplicate-tail PDF artifact — already the tail
+            current_subs[-1] = (_m0, (_t0 + " " + t).strip()[:1000])
+        else:
+            if current_text.rstrip().lower().endswith(t.lower()):
+                return
+            current_text = (current_text + " " + t).strip()[:1000]
+
+    for i, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+        m_let = _CRITERION_LETTER_RE.match(raw)
+        m_rom = _CRITERION_ROMAN_SUBITEM_RE.match(raw)
+        if m_let:
+            if cluster_start is None:
+                cluster_start = i
+            _flush_letter()
+            current_letter = m_let.group(1)
+            current_text = m_let.group(2).strip()
+            current_subs = []
+            last_was_marker = True
+            last_was_lower_prose = False
+            last_roman_value = 0
+        elif m_rom:
+            # require an active letter (sub-items under a parent) —
+            # otherwise this is a stray Roman list, not a criterion cluster.
+            if current_letter is None:
+                continue
+            current_subs.append((m_rom.group(1), m_rom.group(2).strip()))
+            last_was_marker = True
+            last_was_lower_prose = False
+            last_roman_value = _ROMAN_ITEM_VALUES.get(m_rom.group(1), 0)
+        elif stripped == "":
+            # blank line: do NOT terminate the cluster (PDF→MD extraction
+            # often wraps letters and sub-items on separate lines with a
+            # blank in between). Just skip — the next letter/sub-item or
+            # prose will decide the cluster's fate.
+            continue
+        elif _is_page_furniture_line(stripped):
+            # V0.5.20 (the full-book ingestion, run 20260928-155851-011587f0
+            # — audit E7): a PAGE BOUNDARY inserts furniture lines (a bare
+            # page number "224", a short ALL-CAPS running header) into the
+            # extracted text. Both shapes start upper/digit — the V0.5.19
+            # rule-1 prose test read them as discussion prose and CLOSED
+            # the cluster mid-list, so every sub-item after the page break
+            # arrived with no parent letter and was skipped (the reproduced
+            # schizotypal criteria blocks shipped prefix-truncated: DSM-III
+            # (i)-(v) of (i)-(viii), DSM-III-R (i)-(iii) of (i)-(ix)).
+            # Furniture lines are never item content — skip them exactly
+            # like blank lines: the cluster stays open, the next
+            # letter/sub-item/prose line decides its fate.
+            continue
+        else:
+            # prose line — V0.5.19: first try the embedded-marker split
+            # (rule 4), then the lowercase-continuation test (rules 1-3).
+            _split = _split_embedded_roman_segments(stripped, last_roman_value)
+            if _split is not None and current_letter is not None:
+                for _kind, _rv, _txt in _split:
+                    if _kind == "tail":
+                        _append_continuation(_txt)
+                    else:
+                        current_subs.append((_ROMAN_VALUE_NAMES[_rv], _txt[:1000]))
+                        last_roman_value = _rv
+                last_was_marker = True
+                last_was_lower_prose = False
+                continue
+            _starts_lower = stripped[:1].islower()
+            if (
+                current_letter is not None
+                and _starts_lower
+                and (last_was_marker or last_was_lower_prose)
+                and len(stripped) <= 400
+            ):
+                # a mid-sentence continuation of the pending item text.
+                _append_continuation(stripped)
+                last_was_marker = False
+                last_was_lower_prose = True
+            else:
+                # NOT a continuation — an uppercase-start prose line (a
+                # new paragraph / discussion prose) or a detached line:
+                # close the cluster if one is active.
+                if cluster_start is not None:
+                    _flush_cluster()
+                last_was_marker = False
+                last_was_lower_prose = False
+    if cluster_start is not None:
+        _flush_cluster()
+    # Final conservative gate: a cluster must have at least one lettered
+    # item WITH at least one Roman sub-item (the DSM-style shape contract).
+    return [
+        {
+            "items": [
+                it
+                for it in c["items"]
+                if it.get("sub_items")  # only items that have Roman sub-items
+            ],
+            "start_line": c["start_line"],
+        }
+        for c in clusters
+        if any(it.get("sub_items") for it in c["items"])
+    ]
+
+
+# V0.5.4 (Track C1): generic author→ALL-CAPS-section mapping.
+# Used by the renderer to group key-takeaway bullets under the source's
+# ALL-CAPS section headings. Each section's text range is the line interval
+# from the section's ALL-CAPS title line to the next ALL-CAPS title line (or
+# EOF). Within each interval the existing citation regex extracts authors;
+# the union of those authors is the section's author set.
+# Content-agnostic (Rule 1 ✓): section boundaries come from the runtime
+# extract_all_caps_sections call (generic ALL-CAPS shape); authors come from
+# the runtime extract_citations call (generic citation shape). No book-
+# specific section names or author names are hardcoded.
+def map_authors_to_all_caps_sections(md_text: str) -> list[dict]:
+    """V0.5.4 (Track C1): map cited authors to their ALL-CAPS section.
+
+    For each ALL-CAPS section detected by :func:`extract_all_caps_sections`,
+    extract the author-year citations in that section's line interval and
+    return the section title + the unique authors (in first-appearance order).
+
+    Returns::
+
+        [
+            {
+                "section_title": "DESCRIPTIVE STUDIES",
+                "start_line": int,
+                "end_line": int,            # exclusive (next section's line)
+                "authors": ["<cited-author-1>", "<cited-author-2>", ...],
+            },
+            ...
+        ]
+
+    Sections with no citations get an empty ``authors`` list (the renderer
+    leaves their bullets ungrouped — strict improvement, never a regression).
+    """
+    if not md_text:
+        return []
+    sections = extract_all_caps_sections(md_text)
+    if not sections:
+        return []
+    lines = md_text.split("\n")
+    section_line_starts = [s["line"] for s in sections]
+    out: list[dict] = []
+    for idx, sec in enumerate(sections):
+        start = sec["line"]
+        end = section_line_starts[idx + 1] if idx + 1 < len(section_line_starts) else len(lines) + 1
+        # the title line itself is part of the section but rarely carries a
+        # citation; slice [start-1 : end-1] (0-based) covers (start .. end-1)
+        chunk = "\n".join(lines[start - 1 : end - 1])
+        # extract_citations returns deduped authors; preserve first-appearance
+        # order for deterministic output across runs.
+        cites = extract_citations(chunk)
+        seen: set[str] = set()
+        authors: list[str] = []
+        for c in cites:
+            a = c.get("author", "")
+            if a and a not in seen:
+                seen.add(a)
+                authors.append(a)
+        out.append(
+            {
+                "section_title": sec["title"],
+                "start_line": start,
+                "end_line": end,
+                "authors": authors,
+            }
+        )
+    return out
+
+
 # V0.4.23 (audit V0.4.22, backlog #1): module-level garbage ledger —
 # populated by the most recent extract_citations call so the analysis
 # report (run_deterministic_analysis) can print the honest filtered line
 # without changing the extractor's return contract.
 _LAST_GARBAGE_DROPPED: list[tuple[str, str]] = []
 
+# V0.5.7 (audit V0.5.6, the "Maj sey" garble fix): the closed class of
+# space-separated surname particles that can appear BEFORE the capitalized
+# token of a multi-word surname (van der Waerden / de la Cruz / von Braun).
+# V0.5.6's regex had a buggy ``\s+[a-z]{1,4}`` AFTER the capitalized token
+# which matched ANY 1-4 letter lowercase word (so OCR-garble "Maj sey 1302"
+# was extracted as a 14th-century theorist). The V0.5.7 fix REMOVES the
+# after-token group + adds this BEFORE-token restricted-particle prefix
+# instead. Content-agnostic (Rule 1 ✓): the list is the closed class of
+# generic Romance/Germanic/Arabic surname particles — no book content.
+# Source: ``_ALLOWED_SOLID_PREFIXES`` in ``author_garbage.py`` (the
+# solid-prefix mirror of the same closed class).
+_CIT_PARTICLES = (
+    r"(?:van|von|de|del|di|da|du|la|le|les|den|der|ter|ten|"
+    r"ben|abu|ibn|al|el|st|lo)\s+"
+)
+
+# V0.5.7: the negative-lookbehind-anchored particle prefix group —
+# ``(?<!\w)`` ensures the particle starts at a word boundary (so a
+# capitalized token like "Maj" is NOT consumed as a particle fragment of
+# "aj Sey" — the V0.5.6 bug surfaced when the regex backtracked into the
+# interior of a capitalized token). Quantifier ``*`` accepts 0 particles
+# (single-token surname) up to 2+ (van der Waerden has 2 particles).
+_CIT_PARTICLE_PREFIX = r"(?<!\w)(?:" + _CIT_PARTICLES + r")*"
+
 
 def extract_citations(md_text: str) -> list[dict]:
-    """Extract author-year citations. V17.8: Much more robust regex.
+    r"""Extract author-year citations. V17.8: Much more robust regex.
 
     Handles ALL common academic citation styles:
     1. Author (Year) — standard APA/Chicago
@@ -305,6 +761,35 @@ def extract_citations(md_text: str) -> list[dict]:
     9. Author's concept of X (Year) — mid-sentence possessive
     10. Multi-word surnames (AuthorA, van der Waerden)
 
+    V0.5.7 (audit V0.5.6, the "Maj sey" name-extraction garble fix):
+    the V0.5.6 regex captured OCR-garble lines like ``Maj sey 1302`` as
+    a 14th-century theorist because of a buggy ``\s+[a-z]{1,4}`` group
+    AFTER the capitalized surname token — the group matched ANY 1-4
+    letter lowercase word, so the V0.5.6 conv log wasted 4 gap-fill
+    rounds trying to attribute a bullet to "Maj sey" before the
+    V18.20.3.4 attribution veto gave up. The fix:
+    - REMOVES the ``\s+[a-z]{1,4}`` after-token group (the garble's
+      root cause — the particle handling is now done by the BEFORE-token
+      ``_CIT_PARTICLE_PREFIX`` group).
+    - ADDS ``_CIT_PARTICLE_PREFIX`` BEFORE the capitalized surname token,
+      restricted to the closed class of Romance/Germanic/Arabic surname
+      particles (van / von / de / del / di / da / du / la / le / les /
+      den / der / ter / ten / ben / abu / ibn / al / el / st / lo) — so
+      multi-word particle-prefix surnames (``van der Waerden (1927)``)
+      are now captured as ONE token (was: only "Waerden" — the particle
+      prefix was lost).
+    - EXTENDS the hyphenated-surname group from ``[-\u2013][A-Z]`` (which
+      required the second part to be Capitalized, so ``Maj-sey`` with a
+      lowercase second part was silently skipped) to the shared
+      ``NAME_SEP[a-zA-Z]+`` class — so hyphenated surnames with a
+      lowercase second part are captured as ONE token (the V0.5.4
+      ``_SUMMARY_CITATION_RE`` in attribution.py already required
+      Capitalized second part via NAME_SEP; the V0.5.7 source-side
+      extractor is now consistent with that summary-side mirror's
+      NAME_SEP usage, but additionally allows lowercase second parts
+      because real-world hyphenated surnames use lowercase second parts
+      in Latin script).
+
     Content-agnostic: no chapter-specific terms.
     """
     citations = []
@@ -316,7 +801,12 @@ def extract_citations(md_text: str) -> list[dict]:
     _garbage_dropped: list[tuple[str, str]] = []
     # V18.15.5.1 (DEBT-08): shared Unicode-aware apostrophe + dash classes.
     # Used by _add (possessive strip) + all 4 citation patterns below.
+    # V0.5.7 (audit V0.5.6): NAME_SEP also imported — the V0.5.7 fix
+    # unifies the source-side extractor's hyphenated-surname handling with
+    # the summary-side ``_SUMMARY_CITATION_RE`` in attribution.py (which
+    # already used NAME_SEP via the V18.15.5.1 DEBT-08 fix).
     from core.preprocessing.citations_regex import APOS as _APOS
+    from core.preprocessing.citations_regex import NAME_SEP as _NAME_SEP
 
     def _add(author, years, cite_type):
         """Deduplicate and add a citation."""
@@ -365,25 +855,38 @@ def extract_citations(md_text: str) -> list[dict]:
 
     # Pattern 1: Author['s] (Year) or (Year, Year, ...)
     # Handles: "AuthorI (1956)", "AuthorAC's (1952)", "AuthorL's (1964)"
-    # Also handles: "AuthorA (1984)", "van der Berg (2020)"
+    # Also handles: "AuthorA (1984)", "van der Waerden (1927)" (V0.5.7)
     # V18.15.3.5: Handle curly apostrophes (U+2019) in addition to straight '.
     # PDF extraction often produces curly apostrophes: "Federn's (1952)" —
     # the old regex only matched straight ', missing these citations.
     # V18.15.5.1 (DEBT-08): _APOS imported at function top (shared class
     # adds U+2018 left single quote for completeness).
+    # V0.5.7 (audit V0.5.6, "Maj sey" garble fix): the old regex had a buggy
+    # ``(?:\s+[a-z]{1,4})?`` group AFTER ``[A-Z][a-zA-Z]+`` that matched ANY
+    # 1-4 letter lowercase word — so OCR-garble "Maj sey 1302" was extracted
+    # as a 14th-century theorist. Removed; the BEFORE-token
+    # ``_CIT_PARTICLE_PREFIX`` (restricted to the closed particle class —
+    # van/von/de/der/etc.) now handles multi-word surnames correctly. Also
+    # extended the hyphenated-surname group from ``[-\u2013][A-Z]`` (which
+    # required Capitalized second part — so "Maj-sey" with lowercase second
+    # part was silently skipped) to ``NAME_SEP[a-zA-Z]+`` (allows lowercase
+    # second part — unified with the V18.15.5.1 NAME_SEP class).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
+        r"(" + _CIT_PARTICLE_PREFIX + r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?"
-        r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?)?"
+        r"(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?)?"
         r"(?:\s+et\s+al\.?)?)"
-        r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*)\)",
+        r"\s*\(([0-9]{4}[a-z]?(?:,\s*[0-9]{4}[a-z]?)*(?:\s*,\s*[a-z])*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical")
 
     # Pattern 2: Author['s] Year (without parens) — e.g., "AuthorZ 1926a", "AuthorAA's 1950"
+    # V0.5.7: same fix as Pattern 1 (drop buggy ``\s+[a-z]{1,4}`` AFTER group,
+    # add ``_CIT_PARTICLE_PREFIX`` BEFORE group, extend hyphenated group to
+    # ``NAME_SEP[a-zA-Z]+`` for lowercase-second-part surnames).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:\s+[a-z]{1,4})?(?:[-\u2013][A-Z][a-zA-Z]+)?"
+        r"(" + _CIT_PARTICLE_PREFIX + r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
         r"(?:" + _APOS + r"[sS]?)?)"
         r"\s+([0-9]{4}[a-z]?)\b",
         md_text,
@@ -392,17 +895,31 @@ def extract_citations(md_text: str) -> list[dict]:
 
     # Pattern 3: (Author, Year) — parenthetical full citation
     # e.g., "(AuthorZ, 1923a)", "(AuthorL, 1964; AuthorD, 1967)"
+    # V0.5.7: extend hyphenated-surname group to ``NAME_SEP[a-zA-Z]+`` (was
+    # ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note). No particle-prefix needed inside parens —
+    # the open-paren already provides the word boundary that the
+    # ``(?<!\w)`` lookbehind would enforce.
     for match in re.finditer(
-        r"\(([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+)?"
-        r"(?:\s+et\s+al\.?)?),?\s*([0-9]{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+,?\s*[0-9]{4}[a-z]?)*)\)",
+        r"\(([A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?(?:\s+(?:and|&)\s+[A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?)?"
+        r"(?:\s+et\s+al\.?)?),?\s*([0-9]{4}[a-z]?(?:;\s*[A-Z][a-zA-Z]+(?:"
+        + _NAME_SEP
+        + r"[a-zA-Z]+)?,?\s*[0-9]{4}[a-z]?)*)\)",
         md_text,
     ):
         _add(match.group(1), match.group(2), "parenthetical_full")
 
     # Pattern 4: Author, Year (comma-separated, no parens)
     # e.g., "AuthorI, 1956" or "as noted by AuthorL, 1964,"
+    # V0.5.7: extend hyphenated-surname group to ``NAME_SEP[a-zA-Z]+`` (was
+    # ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note).
     for match in re.finditer(
-        r"([A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?),\s*([0-9]{4}[a-z]?)\b", md_text
+        r"([A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?),\s*([0-9]{4}[a-z]?)\b", md_text
     ):
         _add(match.group(1), match.group(2), "comma_separated")
 
@@ -418,7 +935,12 @@ def extract_citations(md_text: str) -> list[dict]:
     # EVERY name in the enumeration with the shared year. Additive only:
     # existing matches are unaffected (the `seen` dedup keys on
     # author|years, and each split surname is a new key).
-    _NAME = r"[A-Z][a-zA-Z]+(?:[-\u2013][A-Z][a-zA-Z]+)?"
+    # V0.5.7: extend the multi-author per-name pattern to ``NAME_SEP[a-zA-Z]+``
+    # (was ``[-\u2013][A-Z]`` which required Capitalized second part — see
+    # Pattern 1's V0.5.7 note). This makes ``"Maj-sey, Tobak (1984)"`` correctly
+    # yield 2 surnames ("Maj-sey" + "Tobak") instead of pre-V0.5.7's 0-match
+    # (the lowercase second part "sey" failed the old ``[A-Z]`` requirement).
+    _NAME = r"[A-Z][a-zA-Z]+(?:" + _NAME_SEP + r"[a-zA-Z]+)?"
     # Two shapes, either of which must be followed by "(Year)":
     #   (a) comma list, optional trailing "and C":  "A, B, C" / "A, B, and C"
     #   (b) plain "and"/"&" pair (no comma):        "A and B" / "A & B"
@@ -468,6 +990,39 @@ def extract_citations(md_text: str) -> list[dict]:
             continue
         for _nm in _name_list:
             _add(_nm, _years, "multi_author")
+
+    # Pattern 6 (V0.5.18, ch.9 audit MEDIUM): PARENTHETICAL CITATION RUNS —
+    # a comma/semicolon enumeration of ``Name[ et al.] year[, year...]``
+    # items inside ONE paren pair, with the years NOT in their own parens:
+    #   ``(A et al. 1968, 1975, B et al. 1968, 1971, C et al. 1974)``
+    #   ``(A 1980, B et al. 1980, C et al. 1988)``
+    #   ``(A et al. 1968, 1975)``  (single item)
+    # Patterns 1-5 all require the years in their OWN parens (``A et al.
+    # (1968)``) or a single name before a bare year (``A 1968``) — the run
+    # shape therefore captured only what another pattern happened to hit,
+    # so co-cited authors vanished from the deterministic roster (the
+    # ch.9 audit found a three-name run that yielded ONE name — the two
+    # co-cited authors were absent from the roster every author-coverage
+    # veto judges against). Each item is added with ITS years. Additive:
+    # existing ``author|years`` keys are deduped by ``_add``; single-item
+    # shapes overlap Pattern 2 harmlessly.
+    # FP guards: names must start capitalized (so "(see A 1970)" and "(cf.
+    # A 1970)" never match) and ``_add``'s existing stopword/garbage
+    # filters ("In"/"By"/... — "(In 1965)" is not a citation) apply
+    # unchanged. Content-agnostic (Rule 1 ✓): pure citation grammar.
+    _RUN_NAME = _NAME + r"(?:\s+et\s+al\.?)?" + r"(?:" + _APOS + r"[sS]?)?"
+    _RUN_ITEM = (
+        r"(" + _RUN_NAME + r")"
+        r"\s+"
+        r"([0-9]{4}[a-z]?(?:\s*,\s*[0-9]{4}[a-z]?)*(?:\s*,\s*[a-z])*)"
+    )
+    for match in re.finditer(
+        r"\((" + _RUN_ITEM + r"(?:\s*[,;]\s*" + _RUN_ITEM + r"*)*)\)",
+        md_text,
+    ):
+        _run = match.group(1)
+        for _item in re.finditer(_RUN_ITEM, _run):
+            _add(_item.group(1), _item.group(2), "citation_run")
 
     # V0.4.23: expose the garbage ledger (module-level, deduped,
     # order-preserving) for the analysis report's honest line.
@@ -707,6 +1262,42 @@ def extract_inline_lists(md_text: str, headings: list[dict]) -> list[dict]:
                 current_para = []
     if current_para:
         paragraphs.append((" ".join(current_para), last_heading, len(lines) - len(current_para)))
+
+    # V0.5.19 (paragraph-break join — the numbered-list continuation family):
+    # a PDF hard-wrap can split a numbered list item mid-sentence across a
+    # paragraph break (the ch.9 audit's 6-ground list captured 5/6 with
+    # item (5) truncated — the continuation paragraph "while … ; and (6) …"
+    # was never attached). A list paragraph joins its successor when:
+    #   - it carries ≥2 inline numbered markers (either `` (N) `` shape),
+    #   - it does NOT end with sentence-final punctuation (period/question/
+    #     exclamation/colon, after stripping trailing quotes/brackets),
+    #   - the successor starts with a LOWERCASE letter (a mid-sentence
+    #     continuation — a new discourse paragraph starts uppercase), and
+    #   - the joined text stays ≤ 6000 chars + at most 3 joins (bounded).
+    # All shape-based (Rule 1 ✓) — no book content involved.
+    _v0519_joined: list[tuple[str, str, int]] = []
+    _pi = 0
+    while _pi < len(paragraphs):
+        _ptxt, _phead, _pline = paragraphs[_pi]
+        _joins = 0
+        while _joins < 3 and _pi + 1 < len(paragraphs):
+            _ntxt, _nhead, _nline = paragraphs[_pi + 1]
+            if _nhead != _phead:
+                break  # a heading boundary never joins
+            if len(re.findall(r"\(\d{1,2}\)|(?<!\d)\d{1,2}\)", _ptxt)) < 2:
+                break  # not a numbered-list paragraph
+            if _ptxt.rstrip("\"'\u201d\u2019)]").rstrip()[-1:] in ".?!:":
+                break  # the paragraph is sentence-complete
+            if not _ntxt[:1].islower():
+                break  # the successor is not a mid-sentence continuation
+            if len(_ptxt) + len(_ntxt) + 1 > 6000:
+                break  # bounded join
+            _ptxt = _ptxt + " " + _ntxt
+            _pi += 1
+            _joins += 1
+        _v0519_joined.append((_ptxt, _phead, _pline))
+        _pi += 1
+    paragraphs = _v0519_joined
 
     for para_text, para_heading, para_line in paragraphs:
         # Pattern 1: (1) item (2) item — parenthetical numbered

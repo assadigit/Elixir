@@ -565,11 +565,17 @@ class TestIsEmbedderHealthy:
 
     def test_iq2_check_exception_is_swallowed(self, monkeypatch):
         """A broken Settings during the IQ2_XXS check must not crash the
-        health probe — it falls back to a plain lazy load."""
+        health probe — it falls back to a plain lazy load.
+
+        V0.6.8 (audit B11, contract evolution): the broken Settings now
+        raises OSError — the realistic settings-read failure family the
+        narrowed except still absorbs (with a WARNING). The old
+        RuntimeError variant moved to
+        test_iq2_check_unexpected_exception_surfaces."""
         import utils.network as net
 
         def broken_settings():
-            raise RuntimeError("no settings")
+            raise OSError("settings file unreadable")
 
         monkeypatch.setattr("utils.settings.Settings", broken_settings)
         monkeypatch.setattr(
@@ -578,6 +584,26 @@ class TestIsEmbedderHealthy:
             lambda *a, **k: types.SimpleNamespace(json=lambda: {"embeddings": [[0.5] * 64]}),
         )
         assert ms.is_embedder_healthy() is True  # default model loads fine
+
+    def test_iq2_check_unexpected_exception_surfaces(self, monkeypatch):
+        """V0.6.8 (audit B11): the low-bit-quant check's swallow is
+        NARROWED — an exception outside (ImportError/OSError/ValueError)
+        now propagates out of the probe instead of being silently
+        absorbed (the CPU force-off silently not happening). The probe's
+        callers guard it (bullet_pipeline's B10 guard fails safe)."""
+        import utils.network as net
+
+        def bug_settings():
+            raise RuntimeError("a code bug, not a settings failure")
+
+        monkeypatch.setattr("utils.settings.Settings", bug_settings)
+        monkeypatch.setattr(
+            net,
+            "safe_ollama_request",
+            lambda *a, **k: types.SimpleNamespace(json=lambda: {"embeddings": [[0.5] * 64]}),
+        )
+        with pytest.raises(RuntimeError, match="a code bug"):
+            ms.is_embedder_healthy()
 
 
 # ── get_spacy_nlp ───────────────────────────────────────────────────────────

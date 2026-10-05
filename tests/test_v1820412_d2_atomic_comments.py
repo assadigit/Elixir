@@ -36,7 +36,6 @@ import ast
 import importlib
 import py_compile
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -48,11 +47,6 @@ if str(_project_root) not in sys.path:
 # ── Hermetic stub (before any core.pipeline import) ────────────────────────
 # markitdown is imported at module level by core.pdf.adaptive_toc, which
 # sits in the core.pipeline.conversion.output_save import chain.
-if "markitdown" not in sys.modules:
-    _md = types.ModuleType("markitdown")
-    _md.MarkItDown = type("MarkItDown", (), {})
-    sys.modules["markitdown"] = _md
-
 # ── The 15 FIX-1 owned files (packets/generator.py was done separately) ────
 _OWNED_FILES = [
     "core/outputs/podcast_generator.py",

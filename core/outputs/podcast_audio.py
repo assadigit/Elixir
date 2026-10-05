@@ -160,15 +160,18 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         self.log(f"  🎙️ Synthesizing {len(segments)} segments via TTS…", "INFO")
 
         # Load TTS settings
+        # V0.6.8 (audit B18): the Windows-path defaults are single-sourced
+        # in the Settings defaults registry (utils/settings.py:791-793) —
+        # Settings._load() deep-merges the defaults under the user data, so
+        # these keys ALWAYS resolve without inline fallbacks. The re-declared
+        # literals here could silently drift from the registry (the audit's
+        # W5 duplication); they are gone. The "" fallbacks keep the type
+        # contract if the registry ever drops a key — the TTS layer's
+        # missing-binary handling takes over from there.
         from utils.settings import Settings
 
         s = Settings()
-        piper_binary = Path(
-            s.get(
-                "tts.piper_binary",
-                r"C:\piper_windows_amd64\piper\piper.exe",
-            )
-        )
+        piper_binary = Path(s.get("tts.piper_binary", ""))
         piper_voices_dir = piper_binary.parent / "voices"
         host_a_voice = s.get("tts.host_a_voice", "")
         host_b_voice = s.get("tts.host_b_voice", "")
@@ -176,14 +179,8 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         fa_voice = s.get("tts.fa_voice", "fa_IR-amir-medium")
         speed = float(s.get("tts.speed", 1.0))
         en_engine = s.get("tts.en_engine", "neutts")
-        neutts_gguf = s.get(
-            "tts.neutts_gguf_path",
-            r"G:\Program Files\neutts-air\models\neutts-air-Q8_0.gguf",
-        )
-        neutts_project = s.get(
-            "tts.neutts_project_path",
-            r"G:\Program Files\neutts-air",
-        )
+        neutts_gguf = s.get("tts.neutts_gguf_path", "")
+        neutts_project = s.get("tts.neutts_project_path", "")
 
         # Resolve voices (same logic as before — ensures A ≠ B)
         host_a_voice, host_b_voice = self._resolve_host_voices(
