@@ -948,6 +948,41 @@ def main():
                         )
                         model = model.to("cuda")
 
+                    # V0.6.34 (W-r1): move the DPM solver's tensors to GPU.
+                    # The V0.6.17 scheduler meta-init guard built the scheduler
+                    # on CPU (to avoid the meta-tensor crash). But without this
+                    # move, every DPM solver step does CPU computation → the
+                    # operator's report: "it was still running 4token per second
+                    # instead of using GPU power" — even though the model params
+                    # WERE on GPU. The scheduler's sigmas/betas/timesteps are
+                    # plain tensors (not nn.Parameters), so model.to("cuda")
+                    # does NOT move them. This explicit move does.
+                    try:
+                        scheduler = getattr(model, "noise_scheduler", None) or getattr(
+                            model.model, "noise_scheduler", None
+                        )
+                        if scheduler is not None:
+                            for attr_name in dir(scheduler):
+                                try:
+                                    attr_val = getattr(scheduler, attr_name)
+                                    if torch.is_tensor(attr_val) and attr_val.device.type == "cpu":
+                                        setattr(scheduler, attr_name, attr_val.to("cuda"))
+                                except Exception:
+                                    continue
+                            safe_print(
+                                "[SUBPROCESS] DPM scheduler tensors moved to GPU "
+                                "(was on CPU from the V0.6.17 meta-init guard)",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                    except Exception:
+                        safe_print(
+                            "[SUBPROCESS] (could not move scheduler to GPU — "
+                            "generation may be slow)",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
                 safe_print(json.dumps({"status": "ready", "device": device}))
 
             except Exception as e:
