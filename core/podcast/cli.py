@@ -214,6 +214,41 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diff(args: argparse.Namespace) -> int:
+    """V0.6.21 (W-g2): the diff subcommand — compare two script JSONs
+    (e.g., the generated version vs the operator's hand-edits). Shows
+    what was added / deleted / modified, with word-level diffs within
+    modified lines. Exits 0 on success (even if there are changes), 2
+    on file/parse error."""
+    from core.podcast.script_diff import (
+        diff_scripts,
+        format_diff_for_display,
+        summarize_diff,
+    )
+
+    path_a = Path(args.script_a)
+    path_b = Path(args.script_b)
+    if not path_a.exists():
+        print(f"❌ Script A file not found: {path_a}", file=sys.stderr)
+        return 2
+    if not path_b.exists():
+        print(f"❌ Script B file not found: {path_b}", file=sys.stderr)
+        return 2
+    try:
+        script_a = _load_script_json(path_a)
+        script_b = _load_script_json(path_b)
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"❌ Failed to parse script JSON: {e}", file=sys.stderr)
+        return 2
+
+    diff = diff_scripts(script_a, script_b)
+    if args.summary_only:
+        print(summarize_diff(diff))
+    else:
+        print(format_diff_for_display(diff, log=_log_to_stdout, context=args.context))
+    return 0
+
+
 def _cmd_generate(args: argparse.Namespace) -> int:
     """The generate subcommand — validate, then generate audio."""
     from core.podcast.audio_generator import generate_podcast_audio
@@ -324,10 +359,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m core.podcast.cli",
         description=(
-            "V0.6.20 (W-f2): headless podcast CLI. Validates a script JSON, "
-            "computes statistics, then generates audio without launching the "
-            "Qt wizard. Ctrl-C cancels at the next line boundary "
-            "(V0.6.18 CancelToken)."
+            "V0.6.21 (W-g2): headless podcast CLI. Validates, computes statistics, "
+            "diffs two scripts, and generates audio without launching the Qt wizard. "
+            "Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -403,6 +437,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output as JSON (for piping to other tools).",
     )
     p_stats.set_defaults(func=_cmd_stats)
+
+    # V0.6.21 (W-g2): diff — compare two script JSONs (e.g., the generated
+    # version vs the operator's hand-edits). Shows what was added / deleted /
+    # modified, with word-level diffs within modified lines.
+    p_diff = sub.add_parser(
+        "diff",
+        help="Diff two script JSONs (added / deleted / modified lines + word-level changes).",
+    )
+    p_diff.add_argument(
+        "--script-a",
+        required=True,
+        help="Path to the BEFORE script JSON (e.g., the generated version).",
+    )
+    p_diff.add_argument(
+        "--script-b",
+        required=True,
+        help="Path to the AFTER script JSON (e.g., the operator's hand-edits).",
+    )
+    p_diff.add_argument(
+        "--context",
+        type=int,
+        default=2,
+        help="Lines of context around each change (0 = changes only; default 2 = git style).",
+    )
+    p_diff.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the one-line summary (e.g., '3 added, 1 deleted, 2 modified').",
+    )
+    p_diff.set_defaults(func=_cmd_diff)
 
     return parser
 
