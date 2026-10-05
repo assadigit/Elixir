@@ -76,7 +76,19 @@ class ScriptResult:
         return "\n\n".join(parts)
 
     def to_json(self) -> str:
-        """Render as JSON for editing/saving."""
+        """Render as JSON for editing/saving.
+
+        V0.6.24 (W-j1): the round-trip bug fix. Before V0.6.24, to_json
+        serialized only 4 fields (lines, coverage_pct, bullets_covered,
+        bullets_missing) and DROPPED title, bullets_input, retries,
+        forced_segments, error. The wizard's "Export Script" → "Import
+        Script" round-trip LOST the title (the imported script got a
+        timestamp filename instead of the original), bullets_input (the
+        anti-hallucination audit trail was lost), retries/forced_segments
+        (the script's provenance was lost), and error (any generation
+        error message was lost). The V0.6.23 schema module documents the
+        full expected format; this fix makes to_json match it.
+        """
         return json.dumps(
             {
                 "lines": [
@@ -88,9 +100,14 @@ class ScriptResult:
                     }
                     for ln in self.lines
                 ],
+                "title": self.title,
                 "coverage_pct": self.coverage_pct,
+                "bullets_input": self.bullets_input,
                 "bullets_covered": self.bullets_covered,
                 "bullets_missing": self.bullets_missing,
+                "retries": self.retries,
+                "forced_segments": self.forced_segments,
+                "error": self.error,
             },
             indent=2,
             ensure_ascii=False,
@@ -155,6 +172,16 @@ class ScriptResult:
             bullets_covered=meta.get("bullets_covered", []),
             bullets_missing=meta.get("bullets_missing", []),
             coverage_pct=meta.get("coverage_pct", 0.0),
+            # V0.6.24 (W-j1): the round-trip bug fix. Before V0.6.24,
+            # from_json DROPPED title, retries, forced_segments, error
+            # (it read bullets_input but to_json didn't serialize it,
+            # so it was lost in the round-trip anyway). Now both sides
+            # handle all 9 fields. The defaults preserve backward-compat
+            # for old JSON files that don't have these fields.
+            title=meta.get("title", ""),
+            retries=meta.get("retries", 0),
+            forced_segments=meta.get("forced_segments", 0),
+            error=meta.get("error"),
         )
 
 
