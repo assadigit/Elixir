@@ -298,6 +298,43 @@ def _cmd_templates(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_schema(args: argparse.Namespace) -> int:
+    """V0.6.23 (W-i2): the schema subcommand — print the script JSON
+    schema, or validate a script JSON file against it. Without
+    --validate, prints the human-readable schema doc. With --validate
+    <FILE>, loads + validates the file; exits 0 if valid, 1 if there
+    are ERROR-level issues, 2 on file/parse error."""
+    from core.podcast.script_schema import (
+        format_issues_for_display,
+        format_schema_for_display,
+        validate_script_file,
+    )
+
+    if args.validate is None:
+        # Print the schema doc.
+        print(format_schema_for_display(log=_log_to_stdout))
+        return 0
+
+    path = Path(args.validate)
+    if not path.exists():
+        print(f"❌ File not found: {path}", file=sys.stderr)
+        return 2
+
+    result = validate_script_file(path)
+    print(format_issues_for_display(result, log=_log_to_stdout))
+    if not result.ok:
+        print(
+            f"\n❌ {len(result.errors)} schema error(s) — fix them before generating.",
+            file=sys.stderr,
+        )
+        return 1
+    if result.warnings:
+        print(f"\n⚠️ {len(result.warnings)} warning(s) (non-fatal).")
+    else:
+        print("\n✅ Valid — the file matches the expected schema.")
+    return 0
+
+
 def _cmd_generate(args: argparse.Namespace) -> int:
     """The generate subcommand — validate, then generate audio."""
     from core.podcast.audio_generator import generate_podcast_audio
@@ -408,9 +445,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m core.podcast.cli",
         description=(
-            "V0.6.22 (W-h2): headless podcast CLI. Validates, computes statistics, "
-            "diffs scripts, lists templates, and generates audio without launching "
-            "the Qt wizard. Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
+            "V0.6.23 (W-i2): headless podcast CLI. Validates, computes statistics, "
+            "diffs scripts, lists templates, prints/validates the JSON schema, "
+            "and generates audio without launching the Qt wizard. Ctrl-C cancels "
+            "at the next line boundary (V0.6.18 CancelToken)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -535,6 +573,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output JSON path (required with --name). The template's ScriptResult is written here.",
     )
     p_tmpl.set_defaults(func=_cmd_templates)
+
+    # V0.6.23 (W-i2): schema — print the script JSON schema, or validate a
+    # script JSON file against it. Catches malformed JSON (bad host values,
+    # missing required fields, wrong types) BEFORE feeding it to `generate`.
+    p_schema = sub.add_parser(
+        "schema",
+        help="Print the script JSON schema, or validate a script JSON file against it.",
+    )
+    p_schema.add_argument(
+        "--validate",
+        default=None,
+        help="Path to a script JSON file to validate (without this flag, prints the schema).",
+    )
+    p_schema.set_defaults(func=_cmd_schema)
 
     return parser
 
