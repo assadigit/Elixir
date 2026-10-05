@@ -33,8 +33,16 @@ logger = logging.getLogger(__name__)
 # (the values are UNCHANGED from the old inline literals; no cap changes).
 # The shared base makes both timeouts REAL: a silent-but-alive child can
 # no longer block a readline() past the deadline.
+#
+# V0.6.31 (W-p2): increase the per-LINE timeout from 600s to 3600s (1 hour)
+# for CPU generation. At 4 it/s on CPU, one line takes ~8192/4 = 2048s ≈ 34
+# minutes. The V0.6.18 600s (10-minute) timeout killed the generation before
+# ONE LINE finished — the operator's log showed "timed out (600s)" at 32%
+# (step 2588/8192) after 10 minutes of generation. On GPU (CUDA) the
+# generation is ~100x faster (~400 it/s, ~20s per line) so 3600s is still
+# generous. The timeout is a SAFETY NET, not a performance target.
 VIBEVOICE_LOAD_TIMEOUT_S = 300  # was the inline `300` in _ensure_model
-VIBEVOICE_LINE_TIMEOUT_S = 600  # was the inline `600` in synthesize
+VIBEVOICE_LINE_TIMEOUT_S = 3600  # V0.6.31: was 600 — too short for CPU (4 it/s = 34 min/line)
 
 # V0.6.15: free-VRAM pre-flight floor. The model is ~2.6 GB on VRAM plus
 # activations; below this the load usually dies on CUDA OOM — most often
@@ -319,15 +327,17 @@ class VibeVoiceEngine(TTSEngine):
             if status == "loading":
                 _load_dev = msg.get("device", "?")
                 self.log(f"  🔄 Model loading (device: {_load_dev})...", "INFO")
-                # V0.6.15: a CPU load is the 600 s per-line timeout in slow
-                # motion — name it while the user can still cancel instead
-                # of waiting an hour for line 1 to die.
+                # V0.6.15/V0.6.31: a CPU load means the per-line timeout (now
+                # 3600s) is the safety net — name it while the user can still
+                # cancel instead of waiting for line 1 to die.
                 if _load_dev == "cpu":
                     self.log(
                         "  ⚠️ VibeVoice is loading on CPU — generation is "
-                        "~100x slower and each line will likely hit the "
-                        "600s timeout. Check the GPU/torch install "
-                        "(details: ~/.elixir/gpu_probe.log).",
+                        "~100x slower. Each line takes ~34 min at 4 it/s; "
+                        f"the {VIBEVOICE_LINE_TIMEOUT_S}s per-line timeout "
+                        "is the safety net. To fix: reinstall torch with CUDA "
+                        "(pip install torch --index-url "
+                        "https://download.pytorch.org/whl/cu126).",
                         "WARNING",
                     )
             elif status == "ready":
@@ -510,7 +520,7 @@ class VibeVoiceEngine(TTSEngine):
                     self._kill_subprocess(f"timeout ({VIBEVOICE_LINE_TIMEOUT_S}s)")
                     # V11.57.0: RAISE — don't return None.
                     raise RuntimeError(
-                        "VibeVoice subprocess timed out (600s). Podcast failed — "
+                        f"VibeVoice subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s). Podcast failed — "
                         "no retry (to avoid the reloading death spiral)."
                     )
                 msg = self._sub.read_json(min(remaining, 5.0))

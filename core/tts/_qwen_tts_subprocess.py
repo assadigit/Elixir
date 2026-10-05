@@ -32,10 +32,12 @@ logger = logging.getLogger(__name__)
 # env-set spawn). Mirrors W-d1 in _vibevoice_subprocess.py — transformers /
 # huggingface_hub see offline mode from the very first import and never reach
 # for the network while loading the local Qwen3-TTS model folder.
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+#
+# V0.6.31 (W-p1): FORCE the flags (not setdefault) — same fix as VibeVoice.
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def main():

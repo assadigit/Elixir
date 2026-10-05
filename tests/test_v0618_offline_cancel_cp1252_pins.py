@@ -67,7 +67,8 @@ _QWEN_SUBPROC = _project_root / "core" / "tts" / "_qwen_tts_subprocess.py"
 #         env["HF_HUB_OFFLINE"] = "1"
 #   - the SUBPROCESS modules set at module top via SETDEFAULT (so the
 #     operator's own shell env isn't clobbered on direct-launch debug):
-#         os.environ.setdefault("HF_HUB_OFFLINE", "1")
+#         os.environ["HF_HUB_OFFLINE"] = "1"
+# (V0.6.31: changed from setdefault to = to FORCE the flag)
 # A single constant can't express both, so they're split. The four
 # (name, value) tuples drive BOTH parametrize decorators.
 _OFFLINE_FLAG_KV = (
@@ -97,15 +98,16 @@ def test_v0618_vibevoice_engine_sets_offline_env(name: str, val: str) -> None:
 
 @pytest.mark.parametrize("name,val", _OFFLINE_FLAG_KV, ids=[k[0] for k in _OFFLINE_FLAG_KV])
 def test_v0618_vibevoice_subprocess_sets_offline_env_at_module_top(name: str, val: str) -> None:
-    """The VibeVoice subprocess sets the four offline flags at MODULE
-    TOP via os.environ.setdefault — the belt-and-suspenders path for
-    direct-launch debugging. setdefault (not =) so the operator's own
-    HF_HUB_OFFLINE in their shell isn't clobbered."""
-    expected = f'os.environ.setdefault("{name}", "{val}")'
+    """The VibeVoice subprocess sets the four offline flags at MODULE TOP.
+    V0.6.31: changed from os.environ.setdefault() to os.environ[...] = ... to
+    FORCE the flag (setdefault doesn't override an existing empty-string env
+    var — the operator's 'it still seemingly loads vibevoice from huggingface'
+    report showed this gap)."""
+    expected = f'os.environ["{name}"] = "{val}"'
     assert expected in _src(_VIBEVOICE_SUBPROC), (
-        f"VibeVoice subprocess missing offline env setdefault: {expected!r} "
+        f"VibeVoice subprocess missing offline env assignment: {expected!r} "
         f"(the module-top block in core/tts/_vibevoice_subprocess.py must "
-        f"setdefault all four flags before any transformers import)"
+        f"assign all four flags before any transformers import)"
     )
 
 
@@ -121,10 +123,11 @@ def test_v0618_qwen_engine_sets_offline_env(name: str, val: str) -> None:
 
 @pytest.mark.parametrize("name,val", _OFFLINE_FLAG_KV, ids=[k[0] for k in _OFFLINE_FLAG_KV])
 def test_v0618_qwen_subprocess_sets_offline_env_at_module_top(name: str, val: str) -> None:
-    """The Qwen3-TTS subprocess mirrors the VibeVoice module-top guard."""
-    expected = f'os.environ.setdefault("{name}", "{val}")'
+    """The Qwen3-TTS subprocess mirrors the VibeVoice module-top guard.
+    V0.6.31: changed from setdefault to = (same fix as VibeVoice)."""
+    expected = f'os.environ["{name}"] = "{val}"'
     assert expected in _src(_QWEN_SUBPROC), (
-        f"Qwen3-TTS subprocess missing os.environ.setdefault({name!r}, {val!r}) at module top"
+        f'Qwen3-TTS subprocess missing os.environ["{name}"] = "{val}" at module top'
     )
 
 

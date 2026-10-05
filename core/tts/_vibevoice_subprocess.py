@@ -33,10 +33,18 @@ logger = logging.getLogger(__name__)
 # vibevoice_engine.py's _ensure_model; both routes end at the same place:
 # transformers / huggingface_hub see offline mode from the very first import
 # and never reach for the network while loading the local model folder.
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+#
+# V0.6.31 (W-p1): FORCE the flags (not setdefault). The V0.6.18 version used
+# setdefault, which only sets if the key is ABSENT. If the operator's system
+# has HF_HUB_OFFLINE= (empty string) or HF_HUB_OFFLINE=0, setdefault won't
+# override it — the subprocess would still contact HuggingFace. The operator's
+# report ("it still seemingly loads vibevoice from huggingface instead of
+# locally") named this exact gap. Using = (assignment) instead of setdefault
+# FORCES the value regardless of what the operator's env has.
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # V11.53.0: Force UTF-8 mode on Windows so print() doesn't crash on Unicode.
 if sys.platform == "win32":
@@ -833,6 +841,18 @@ def main():
                 cuda_ok = _SUBPROCESS_CUDA_OK
                 # Also check the live value for diagnostic logging
                 live_cuda = torch.cuda.is_available()
+                # V0.6.31 (W-p3): log the offline-mode status so the operator
+                # can VERIFY the lock is active. The operator's report ("it
+                # still seemingly loads vibevoice from huggingface instead of
+                # locally") was about visibility — they couldn't tell if the
+                # offline flags were actually applied. This log line makes it
+                # explicit.
+                safe_print(
+                    f"[SUBPROCESS] OFFLINE MODE: "
+                    f"HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE', '(unset)')} "
+                    f"TRANSFORMERS_OFFLINE={os.environ.get('TRANSFORMERS_OFFLINE', '(unset)')}",
+                    file=sys.stderr,
+                )
                 safe_print(
                     f"[SUBPROCESS] CUDA cached (early): {_SUBPROCESS_CUDA_OK}", file=sys.stderr
                 )
