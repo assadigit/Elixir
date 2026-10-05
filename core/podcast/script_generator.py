@@ -824,6 +824,62 @@ def _fix_json_errors(text: str) -> str:
     return text
 
 
+def _clean_json_metadata_from_text(text: str) -> str:
+    """V0.6.30 (W-o1): Strip JSON metadata fragments that leaked into dialogue text.
+
+    When an LLM outputs JSON key-value pairs on separate lines (without
+    ``{...}`` wrappers), the parser's plain-dialogue fallback captures them
+    as dialogue text. The TTS then literally reads ``"host": "A",`` and
+    ``"source_ref": "hook"`` — the operator's report named this exact bug.
+
+    This function detects + cleans JSON metadata fragments:
+
+      1. ``"text": "actual dialogue"``, → EXTRACTS the value (the real
+         dialogue). The LLM put the actual speech inside the ``"text"``
+         field — we recover it.
+      2. ``"host": "A",`` / ``"host": "B",`` → STRIPS entirely (metadata,
+         not dialogue — the host is already captured separately).
+      3. ``"source_ref": "...",`` → STRIPS entirely (metadata).
+      4. ``"segment_type": "...",`` → STRIPS entirely (metadata).
+      5. Any leftover commas / whitespace / empty lines → cleaned up.
+
+    The function is deliberately conservative — it only strips patterns
+    that match the EXACT JSON key names the script format uses (host,
+    text, source_ref, segment_type). Non-JSON text is preserved verbatim.
+    """
+    if not text:
+        return text
+    import re as _re
+
+    # Step 1: Extract the VALUE from "text": "..." (the actual dialogue).
+    # The value may contain escaped quotes (\") which we unescape.
+    # Match: "text": "value"  or  "text": "value",
+    text = _re.sub(
+        r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,?',
+        lambda m: m.group(1).replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t"),
+        text,
+    )
+
+    # Step 2: Strip JSON metadata key-value pairs (host, source_ref,
+    # segment_type) — these are metadata, not dialogue. The host is already
+    # captured separately by the parser; source_ref + segment_type are
+    # inferred from position in _parse_plain_dialogue.
+    text = _re.sub(r'"host"\s*:\s*"[^"]*"\s*,?', "", text)
+    text = _re.sub(r'"source_ref"\s*:\s*"[^"]*"\s*,?', "", text)
+    text = _re.sub(r'"segment_type"\s*:\s*"[^"]*"\s*,?', "", text)
+
+    # Step 3: Clean up leftover commas, whitespace, empty lines.
+    # Remove leading/trailing commas + whitespace on each line.
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip().strip(",").strip()
+        if line:
+            cleaned_lines.append(line)
+    result = "\n".join(cleaned_lines).strip()
+    return result if result else text.strip()
+
+
 def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
     """Parse plain dialogue text as a fallback.
 
@@ -856,6 +912,16 @@ def _parse_plain_dialogue(text: str) -> list[ScriptLine]:
         line_text = m.group(2).strip()
         if not line_text or len(line_text) < 5:
             continue
+
+        # V0.6.30 (W-o1): clean JSON metadata that leaked into the text.
+        # When the LLM outputs "host": "A", / "text": "...", / "source_ref":
+        # "hook", as separate lines, the plain-dialogue regex captures them
+        # as dialogue text. This strips the metadata + extracts the "text"
+        # value as the actual dialogue. Without this, TTS reads "host":
+        # "A", literally — the operator's report named this exact bug.
+        line_text = _clean_json_metadata_from_text(line_text)
+        if not line_text or len(line_text) < 2:
+            continue  # the line was pure JSON metadata — skip it entirely
 
         # V11.37.5: if the captured text is JSON, extract the fields
         if line_text.startswith("{"):
