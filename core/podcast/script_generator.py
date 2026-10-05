@@ -162,7 +162,16 @@ class ScriptResult:
                 ScriptLine(
                     host=str(obj.get("host", "A")).strip().upper()[:1] or "A",
                     text=text_val,
-                    source_ref=str(obj.get("source_ref", "")).strip().lower(),
+                    # V0.6.25 (W-j2): the source_ref case-preservation fix.
+                    # Before V0.6.25, from_json did .strip().lower() here,
+                    # which SILENTLY LOWERCASED the source_ref on read.
+                    # to_json writes source_ref verbatim, so the round-trip
+                    # through to_json -> from_json mangled mixed-case source
+                    # refs (e.g., "MySource_Chapter3" -> "mysource_chapter3").
+                    # The .lower() was added in the V0.6.0 lint triage
+                    # commit (bf994fa) without a documented reason; no tests
+                    # rely on it. Removing it makes the round-trip lossless.
+                    source_ref=str(obj.get("source_ref", "")).strip(),
                     segment_type=str(obj.get("segment_type", "content")).strip(),
                 )
             )
