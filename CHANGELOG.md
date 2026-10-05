@@ -31,6 +31,29 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.22 — the script-templates + templates-CLI batch: the operator can now start from a pre-built template (lecture / conversational / Q&A / interview / summary / deep-dive) instead of a blank script — 29 new pins / 0 regressions (225 P total in this sandbox)
+
+> **The trigger:** the V0.6.21 worklog noted "the pure-Python feature work is now genuinely exhausted" but named the **script template system** as a remaining lower-value feature. The cron's [Mandatory] "add more features and functionality" requirement still applies. This release builds the template system — a real feature for the wizard's future "New from template" button + a new CLI `templates` subcommand that writes a template JSON the operator can edit + import.
+>
+> **Layer 1 — the SCRIPT TEMPLATES module (W-h1, NEW `core/podcast/script_templates.py`):** pure-Python (no PySide6/torch) module with 6 pre-built templates covering the common podcast formats:
+>
+>   1. `lecture_intro` — 3-line lecture (1 host): intro / content / conclusion.
+>   2. `conversational_intro` — 3-line conversational (2 hosts): intro / response / conclusion.
+>   3. `qa_format` — 4-line Q&A: A asks / B answers / A follows up / B answers.
+>   4. `interview` — 5-line interview: A intro / B question / A answer / B follow-up / A conclusion.
+>   5. `summary_only` — 1-line lecture (just a summary; good for very short content).
+>   6. `deep_dive` — 6-line conversational deep-dive: intro / 4-line back-and-forth / conclusion.
+>
+>   Each template is a `ScriptTemplate` dataclass with `name` / `description` / `mode` (lecture or conversational) / `script` (a `ScriptResult` with placeholder text) / `estimated_lines`. The placeholder text uses `[BRACKETED_HINTS]` so the operator sees at a glance which fields need filling. Every template's first line is tagged `segment_type="intro"` and last line `segment_type="conclusion"` (the script_generator contract the V0.6.19 validator expects). Every template passes the V0.6.19 validator with zero errors (pinned by a test). `get_template(name)` returns a FRESH ScriptResult (new ScriptLine objects) so the caller can mutate it without affecting the registry.
+>
+> **Layer 2 — the CLI templates subcommand (W-h2, `core/podcast/cli.py`):** a new `templates` subcommand joins the V0.6.19 `validate`/`generate`/`info` + V0.6.20 `stats` + V0.6.21 `diff` sextet. `python -m core.podcast.cli templates` lists all 6 templates with name / line count / mode / description. `python -m core.podcast.cli templates --name lecture_intro --out new.json` writes the template's ScriptResult to a JSON file the operator can edit + re-import (or feed to `generate --script new.json`). Exits 0 on success, 1 if the template name is unknown (lists the available names), 2 on argument/file error.
+>
+> **The pins (1 new test file, 29 tests):** `tests/test_v0622_script_templates_pins.py` — Layer 1 (19 template-module tests): registry has 6 templates, list_templates in registration order, each template's line count + mode (parametrized over all 6), unknown name raises KeyError, get_template returns fresh (not registry reference), all templates have `[BRACKETED_HINTS]` placeholder text, all have valid host values (A/B), lecture templates have no Host B, conversational templates have both hosts, multi-line templates have intro+conclusion segments, all have nonempty titles, all 6 templates PASS the V0.6.19 validator (integration contract), format_templates_for_display has header + log callback. Layer 2 (8 CLI tests): list mode prints all 6, write mode creates valid JSON (loadable by the CLI's own loader), write mode stdout message, unknown name exits 1, --name without --out exits 2, all 6 templates can be written + re-loaded (smoke test), `templates` appears in --help, `templates --help` lists --name + --out. Layer 3 (2 integration tests): template → validate passes; template → stats produces valid JSON stats. All 29 tests are pure-Python.
+>
+> **Verification (this sandbox — Linux, Python 3.12.14, no PySide6 / no torch):** new file 29 P / 0 F (1.17s). Combined V0.6.18+V0.6.19+V0.6.20+V0.6.21+V0.6.22: 179 P / 0 F. Broader regression sweep: **225 P / 0 F total, zero regressions**. ruff check + ruff format --check clean on all 3 touched files. No iterations needed — the tests passed on the first run (the template system is simpler than the diff/stats modules).
+>
+> **Unverified here (rig-only):** the wizard UI doesn't yet have a "New from template" button (the wiring would be a dropdown + a button in the Script view + ~5 lines calling `get_template(name)`; requires Qt rendering to verify). The CLI's `templates` subcommand is fully pinned end-to-end, including the integration tests (template → validate, template → stats).
+
 ## V0.6.21 — the script-diff + diff-CLI batch: the operator can now see exactly what they edited between the generated script and their hand-edits — line-level adds/deletes/modifies + word-level diffs within modified lines, git-diff-style — 31 new pins / 0 regressions (245 P total in this sandbox)
 
 > **The trigger:** the V0.6.20 worklog's "Unresolved" section named the script diff/patch utility as the most valuable remaining pure-Python feature. The wizard has "Export Script" + "Import Script" buttons so the operator can save/load the edited version, but no DIFF — once the operator edited the script, the original generated version was GONE, no way to see what they changed, no way to compare against the anti-hallucination contract. This release fills that gap with a new diff module + a new CLI `diff` subcommand, per the cron's [Mandatory] "add more features and functionality" requirement.
