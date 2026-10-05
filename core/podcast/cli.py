@@ -335,6 +335,62 @@ def _cmd_schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    """V0.6.26 (W-k2): the export subcommand — export a script to SRT /
+    HTML / Markdown. Without --format, lists all available formats.
+    With --format + --out, writes the exported string to a file.
+    With --format but no --out, prints to stdout. Exits 0 on success,
+    1 if the format is unknown, 2 on file/argument error."""
+    from core.podcast.script_export import (
+        EXPORT_FORMATS,
+        export,
+        format_formats_for_display,
+    )
+
+    if args.format is None:
+        # List mode — print all available formats.
+        print(format_formats_for_display(log=_log_to_stdout))
+        return 0
+
+    if args.format not in EXPORT_FORMATS:
+        print(
+            f"❌ Unknown format: {args.format!r}. Available: "
+            f"{', '.join(sorted(EXPORT_FORMATS.keys()))}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    script_path = Path(args.script)
+    if not script_path.exists():
+        print(f"❌ Script file not found: {script_path}", file=sys.stderr)
+        return 2
+    try:
+        script = _load_script_json(script_path)
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"❌ Failed to parse script JSON: {e}", file=sys.stderr)
+        return 2
+
+    output = export(script, args.format, wpm=args.wpm)
+
+    if args.out is None:
+        # Print to stdout.
+        print(output, flush=True)
+        return 0
+
+    out_path = Path(args.out)
+    try:
+        out_path.write_text(output, encoding="utf-8")
+    except OSError as e:
+        print(f"❌ Failed to write {out_path}: {e}", file=sys.stderr)
+        return 2
+
+    print(
+        f"✅ Exported {args.format!r} ({len(script.lines)} lines) to {out_path} "
+        f"({len(output):,} bytes)."
+    )
+    return 0
+
+
 def _cmd_generate(args: argparse.Namespace) -> int:
     """The generate subcommand — validate, then generate audio."""
     from core.podcast.audio_generator import generate_podcast_audio
@@ -445,10 +501,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m core.podcast.cli",
         description=(
-            "V0.6.23 (W-i2): headless podcast CLI. Validates, computes statistics, "
+            "V0.6.26 (W-k2): headless podcast CLI. Validates, computes statistics, "
             "diffs scripts, lists templates, prints/validates the JSON schema, "
-            "and generates audio without launching the Qt wizard. Ctrl-C cancels "
-            "at the next line boundary (V0.6.18 CancelToken)."
+            "exports to SRT/HTML/Markdown, and generates audio without launching "
+            "the Qt wizard. Ctrl-C cancels at the next line boundary (V0.6.18 CancelToken)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -587,6 +643,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a script JSON file to validate (without this flag, prints the schema).",
     )
     p_schema.set_defaults(func=_cmd_schema)
+
+    # V0.6.26 (W-k2): export — export a script to SRT / HTML / Markdown.
+    # The operator can produce subtitles for the podcast audio, an HTML
+    # transcript for a blog post, or a Markdown page for show notes.
+    p_export = sub.add_parser(
+        "export",
+        help="Export a script to SRT subtitles, HTML, or Markdown.",
+    )
+    p_export.add_argument(
+        "--script",
+        required=True,
+        help="Path to the script JSON file to export.",
+    )
+    p_export.add_argument(
+        "--format",
+        default=None,
+        help="Export format (srt / html / markdown). Without this flag, lists all formats.",
+    )
+    p_export.add_argument(
+        "--out",
+        default=None,
+        help="Output file path (required with --format). Without --out, prints to stdout.",
+    )
+    p_export.add_argument(
+        "--wpm",
+        type=int,
+        default=None,
+        help="Override WPM for SRT timestamps (default: 150 EN / 130 FA, auto-detected).",
+    )
+    p_export.set_defaults(func=_cmd_export)
 
     return parser
 
