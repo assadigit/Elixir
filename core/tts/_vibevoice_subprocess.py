@@ -957,11 +957,25 @@ def main():
                     # WERE on GPU. The scheduler's sigmas/betas/timesteps are
                     # plain tensors (not nn.Parameters), so model.to("cuda")
                     # does NOT move them. This explicit move does.
+                    #
+                    # V0.6.35 (W-r2): ALSO patch set_timesteps to handle the
+                    # GPU→numpy crash. The VibeVoice dpm_solver.py:355 calls
+                    # `.numpy()` on a tensor that's now on GPU:
+                    #   last_timestep = ((self.config.num_train_timesteps -
+                    #       clipped_idx).numpy()).item()
+                    # This crashes with "can't convert cuda:0 device type
+                    # tensor to numpy". The fix: wrap set_timesteps to
+                    # temporarily move scheduler tensors to CPU for the
+                    # .numpy() call, then move them back to GPU for the
+                    # fast DPM solver steps. This keeps the 4990 it/s speed
+                    # (the operator's log confirmed this speed on GPU)
+                    # AND fixes the crash.
                     try:
                         scheduler = getattr(model, "noise_scheduler", None) or getattr(
                             model.model, "noise_scheduler", None
                         )
                         if scheduler is not None:
+                            # Move all CPU tensors to GPU.
                             for attr_name in dir(scheduler):
                                 try:
                                     attr_val = getattr(scheduler, attr_name)
@@ -969,9 +983,52 @@ def main():
                                         setattr(scheduler, attr_name, attr_val.to("cuda"))
                                 except Exception:
                                     continue
+
+                            # V0.6.35: patch set_timesteps to handle the
+                            # GPU→numpy crash. The original method creates
+                            # timesteps/sigmas from the config and calls
+                            # .numpy() on intermediate tensors. Our wrapper
+                            # temporarily moves the scheduler's tensors to
+                            # CPU before the original call, then moves them
+                            # back to GPU after — so .numpy() works AND the
+                            # DPM solver steps run on GPU.
+                            _orig_set_timesteps = scheduler.set_timesteps
+                            if not getattr(_orig_set_timesteps, "_vv_gpu_safe", False):
+
+                                def _gpu_safe_set_timesteps(*args, _sched=scheduler, **kwargs):
+                                    # Move scheduler tensors to CPU for the
+                                    # .numpy() calls inside the original.
+                                    _moved = {}
+                                    for attr_name in dir(scheduler):  # noqa: B023
+                                        try:
+                                            attr_val = getattr(scheduler, attr_name)  # noqa: B023
+                                            if (
+                                                torch.is_tensor(attr_val)
+                                                and attr_val.device.type == "cuda"
+                                            ):
+                                                _moved[attr_name] = attr_val
+                                                setattr(_sched, attr_name, attr_val.cpu())
+                                        except Exception:
+                                            continue
+                                    try:
+                                        result = _orig_set_timesteps(*args, **kwargs)  # noqa: B023
+                                    finally:
+                                        # Move them back to GPU for the DPM
+                                        # solver steps (the fast path).
+                                        for attr_name, val in _moved.items():
+                                            try:
+                                                setattr(scheduler, attr_name, val.to("cuda"))  # noqa: B023
+                                            except Exception:
+                                                continue
+                                    return result
+
+                                _gpu_safe_set_timesteps._vv_gpu_safe = True
+                                scheduler.set_timesteps = _gpu_safe_set_timesteps
+
                             safe_print(
                                 "[SUBPROCESS] DPM scheduler tensors moved to GPU "
-                                "(was on CPU from the V0.6.17 meta-init guard)",
+                                "+ set_timesteps patched for GPU→numpy safety "
+                                "(V0.6.34 speed fix + V0.6.35 crash fix)",
                                 file=sys.stderr,
                                 flush=True,
                             )
