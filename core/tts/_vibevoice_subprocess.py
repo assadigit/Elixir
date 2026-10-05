@@ -996,9 +996,8 @@ def main():
                             if not getattr(_orig_set_timesteps, "_vv_gpu_safe", False):
 
                                 def _gpu_safe_set_timesteps(*args, _sched=scheduler, **kwargs):
-                                    # Move scheduler tensors to CPU for the
-                                    # .numpy() calls inside the original.
-                                    _moved = {}
+                                    # Move ALL scheduler tensors to CPU before the call
+                                    # so .numpy() works inside the original.
                                     for attr_name in dir(scheduler):  # noqa: B023
                                         try:
                                             attr_val = getattr(scheduler, attr_name)  # noqa: B023
@@ -1006,20 +1005,28 @@ def main():
                                                 torch.is_tensor(attr_val)
                                                 and attr_val.device.type == "cuda"
                                             ):
-                                                _moved[attr_name] = attr_val
                                                 setattr(_sched, attr_name, attr_val.cpu())
                                         except Exception:
                                             continue
-                                    try:
-                                        result = _orig_set_timesteps(*args, **kwargs)  # noqa: B023
-                                    finally:
-                                        # Move them back to GPU for the DPM
-                                        # solver steps (the fast path).
-                                        for attr_name, val in _moved.items():
-                                            try:
-                                                setattr(scheduler, attr_name, val.to("cuda"))  # noqa: B023
-                                            except Exception:
-                                                continue
+                                    # Call the original — it creates NEW sigmas/
+                                    # timesteps on CPU (correct values + correct size).
+                                    result = _orig_set_timesteps(*args, **kwargs)  # noqa: B023
+                                    # Move ALL scheduler tensors to GPU AFTER the call
+                                    # — these are the NEW sigmas/timesteps that
+                                    # set_timesteps just created (NOT the old ones
+                                    # from before the call). V0.6.36: the V0.6.35
+                                    # version saved+restored the OLD tensors, which
+                                    # overwrote the new ones → IndexError.
+                                    for attr_name in dir(scheduler):  # noqa: B023
+                                        try:
+                                            attr_val = getattr(scheduler, attr_name)  # noqa: B023
+                                            if (
+                                                torch.is_tensor(attr_val)
+                                                and attr_val.device.type == "cpu"
+                                            ):
+                                                setattr(_sched, attr_name, attr_val.to("cuda"))
+                                        except Exception:
+                                            continue
                                     return result
 
                                 _gpu_safe_set_timesteps._vv_gpu_safe = True
