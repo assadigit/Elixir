@@ -263,6 +263,27 @@ class VibeVoiceEngine(TTSEngine):
 
         env["PATH"] = os.pathsep.join(_clean_path_parts)
 
+        # V0.6.18 (W-d1): OFFLINE LOCK — the model loads strictly from the
+        # local folder the operator pointed at. transformers / huggingface_hub
+        # otherwise silently fetch "missing" helper files (tokenizers,
+        # generation_config.json, added_tokens.json, ...) from the HF Hub
+        # while loading even a local model directory — which is the
+        # HuggingFace contact the operator asked about. These four flags
+        # turn that silent fetch into a clean, named local-only load:
+        #
+        #   HF_HUB_OFFLINE=1           — huggingface_hub never touches the network
+        #   TRANSFORMERS_OFFLINE=1     — transformers skips its online lookups
+        #   HF_DATASETS_OFFLINE=1      — datasets (pulled by some schedulers) stays local
+        #   TOKENIZERS_PARALLELISM=false — silence the parallelism warning noise
+        #
+        # If a file is genuinely missing from the local folder, the load now
+        # fails fast with a named FileNotFoundError naming the file, instead
+        # of succeeding slowly via a network fetch the operator never asked for.
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
+        env["HF_DATASETS_OFFLINE"] = "1"
+        env["TOKENIZERS_PARALLELISM"] = "false"
+
         # V18.20.4.4 (O-c2): spawn via the shared base — REAL timeouts and
         # the neutts quit→wait→kill teardown contract written once. The
         # clean-env logic above is untouched.

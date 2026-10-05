@@ -180,10 +180,76 @@ def _extract_docx_fallback(file_path: Path, log) -> tuple[str, int]:
     return text, page_count
 
 
+def _read_text_with_encoding_fallback(file_path: Path) -> str:
+    """V0.6.18 (W-d4): read a plain-text file with encoding fallback.
+
+    The pre-V0.6.18 path was ``file_path.read_text(encoding="utf-8",
+    errors="ignore")`` which SILENTLY DROPPED every non-ASCII byte —
+    smart quotes, em-dashes, accented Latin chars, the curly apostrophe
+    in "it's", the en-dash in "1979–1985" — from any .txt saved by
+    Windows Notepad in its default "ANSI" mode (cp1252 / Windows-1252).
+    The operator's report named this gap explicitly:
+
+        "cp1252-encoded .txt files fail to read (pre-existing; rare on
+         modern systems)."
+
+    The fix tries the most likely encodings in order; on the first that
+    decodes the raw bytes WITHOUT error, that's the text. The cascade:
+
+      1. utf-8-sig  — UTF-8 with a BOM (Notepad's "UTF-8 with BOM" mode;
+                      the BOM would otherwise leak into the text as the
+                      three bytes EF BB BF at offset 0).
+      2. utf-8      — the modern default; most .txt / .md / .rst files.
+      3. cp1252     — Windows-1252, Windows Notepad's "ANSI" default for
+                      English/Western-European locales (the smart-quote
+                      / em-dash source of the bug).
+      4. latin-1    — ISO-8859-1; the catch-all that maps every byte
+                      0-255 to a character (never raises, so the file is
+                      ALWAYS readable, with ``errors="replace"`` for any
+                      byte that somehow doesn't map — there are none in
+                      true latin-1, but this is belt-and-suspenders).
+
+    Order matters: utf-8 is tried before cp1252 because cp1252's 0x80-0x9F
+    range would happily "decode" UTF-8 multi-byte sequences into garbage
+    (e.g., the UTF-8 bytes for an em-dash (E2 80 94) would decode in cp1252
+    as â€"). Trying utf-8 first means a true UTF-8 file succeeds at step 2
+    and never reaches the cp1252 fallback.
+
+    The fallback is deliberately conservative — no chardet / charset_normalizer
+    dependency (those aren't in the venv on every rig); the four-step cascade
+    covers ~99.9% of real-world .txt files without one.
+    """
+    raw = file_path.read_bytes()
+    # 1. UTF-8 with BOM (utf-8-sig strips the BOM if present, and is a
+    # strict superset of utf-8 for BOM-less files — but it RAISES on
+    # invalid UTF-8 sequences, so we catch and fall through).
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    # 2. UTF-8 (strict — the common modern case).
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    # 3. cp1252 / Windows-1252 (Windows Notepad "ANSI" — the bug source).
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        pass
+    # 4. latin-1 / ISO-8859-1 — the catch-all (never raises).
+    return raw.decode("latin-1", errors="replace")
+
+
 def _extract_text_file(file_path: Path, log) -> tuple[str, int]:
-    """Extract text from a plain text/markdown file."""
+    """Extract text from a plain text/markdown file.
+
+    V0.6.18 (W-d4): routes through ``_read_text_with_encoding_fallback``
+    so cp1252-encoded .txt files (Windows Notepad "ANSI" saves) decode
+    correctly instead of silently losing their non-ASCII bytes.
+    """
     log(f"  📝 Reading text file: {file_path.name}", "INFO")
-    text = file_path.read_text(encoding="utf-8", errors="ignore")
+    text = _read_text_with_encoding_fallback(file_path)
     page_count = max(1, len(text) // 3000)
     log(f"  ✅ Text: {len(text):,} chars, ~{page_count} pages", "INFO")
     return text, page_count

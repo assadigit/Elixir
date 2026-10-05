@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from core.podcast.cancel_token import CancelToken
 from core.podcast.script_generator import ScriptLine, ScriptResult
 from core.tts.engine import LogFn
 
@@ -197,11 +198,22 @@ def generate_podcast_audio(
     settings,
     log_callback: LogFn | None = None,
     progress_callback=None,
+    cancel_token: CancelToken | None = None,
 ) -> Path | None:
     """Generate a podcast audio file from a script.
 
     V11.41.0: Handles vocal cues ([pause], [breath], [laugh], [hmm]) and
     adds conversational overlap between host transitions.
+
+    V0.6.18 (W-d3): ``cancel_token`` — the line-by-line loop checks the
+    token at the top of every iteration. The UI's cancel button calls
+    ``token.cancel()`` from the main thread; the worker sees the flip on
+    the next line and exits cleanly, releasing the temp WAVs and leaving
+    the VibeVoice / Qwen subprocess alive-but-idle for the next run (the
+    subprocess teardown contract is unchanged — only the line loop is
+    new). The returned path is ``None`` on cancellation (no audio file
+    is written); the caller logs "cancelled by user" via the token's
+    ``reason``.
 
     Args:
         script: The ScriptResult from script_generator.
@@ -211,9 +223,11 @@ def generate_podcast_audio(
         settings: Settings instance for TTS config.
         log_callback: Optional logging callback.
         progress_callback: Optional callback(pct: int, msg: str).
+        cancel_token: Optional CancelToken; when its ``cancelled`` flag
+            flips True, the loop exits at the next iteration boundary.
 
     Returns:
-        Path to the output WAV, or None on failure.
+        Path to the output WAV, or None on failure / cancellation.
     """
     from core.podcast.script_generator import strip_vocal_cues
 
@@ -251,6 +265,26 @@ def generate_podcast_audio(
 
     with tempfile.TemporaryDirectory(prefix="podcast_") as tmp:
         for i, line in enumerate(script.lines):
+            # V0.6.18 (W-d3): cancel check at the iteration boundary —
+            # the line loop's only safe exit point. The token's flag is
+            # thread-safe (Lock-guarded); the UI button calls .cancel()
+            # from the main thread, the worker sees it on the NEXT line
+            # (mid-line cancel would orphan a half-synthesized WAV, so
+            # we wait for the boundary). On cancel we exit cleanly: the
+            # temp WAVs are released by the surrounding TemporaryDirectory,
+            # the TTS subprocess is left alive-but-idle, and we return
+            # None — the caller's "success or fail" contract holds.
+            if cancel_token is not None and cancel_token.cancelled:
+                _reason = cancel_token.reason or "cancelled"
+                log(
+                    f"  ⏹️ Podcast generation cancelled at line {i}/{total} "
+                    f"({_reason}). No audio file will be produced.",
+                    "WARNING",
+                )
+                if progress_callback:
+                    progress_callback(0, f"⏹️ Cancelled: {_reason}")
+                return None
+
             # Determine which voice to use
             voice = host_a_voice if line.host == "A" else host_b_voice
 

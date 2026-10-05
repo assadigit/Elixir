@@ -160,6 +160,19 @@ class QwenTtsEngine(TTSEngine):
         if sys.platform == "win32":
             env["PYTHONIOENCODING"] = "utf-8"
 
+        # V0.6.18 (W-d2): OFFLINE LOCK — same treatment as VibeVoice.
+        # Qwen3-TTS loads strictly from the local model folder; transformers /
+        # huggingface_hub otherwise silently fetch "missing" helper files from
+        # the HF Hub while loading even a local model directory. The four
+        # flags below force a local-only load: a genuinely-missing file now
+        # raises a named FileNotFoundError instead of succeeding slowly via a
+        # network fetch the operator never asked for. (Mirrors W-d1 in
+        # vibevoice_engine.py.)
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
+        env["HF_DATASETS_OFFLINE"] = "1"
+        env["TOKENIZERS_PARALLELISM"] = "false"
+
         sub = PersistentJsonSubprocess(
             name="Qwen3-TTS", log=self.log, stderr_prefix="[qwen-sub]", stderr_level="DEBUG"
         )
