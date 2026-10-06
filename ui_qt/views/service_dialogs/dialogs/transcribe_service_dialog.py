@@ -125,7 +125,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         layout.addWidget(desc)
 
         # ── Options ───────────────────────────────────────────────────
-        # Whisper model
+        # V0.6.39 (W-s1): Whisper model — auto-detect + custom-path browse.
+        # The combo shows the standard faster-whisper model sizes, PLUS any
+        # locally-downloaded models found via auto-detection. A "Browse"
+        # button lets the operator pinpoint a custom model folder on disk.
         model_row = _HL()
         model_row.addWidget(_QL("Whisper model:"))
         self.whisper_combo = _QCB()
@@ -135,22 +138,27 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.whisper_combo.addItem("medium (high accuracy)", "medium")
         self.whisper_combo.addItem("large-v3 (best accuracy — slow)", "large-v3")
         model_row.addWidget(self.whisper_combo)
+        # V0.6.39: Browse button for custom whisper model path.
+        self.whisper_browse_btn = _QPB("📁")
+        self.whisper_browse_btn.setToolTip("Browse for a custom Whisper model folder on disk")
+        self.whisper_browse_btn.clicked.connect(self._browse_whisper_model)
+        model_row.addWidget(self.whisper_browse_btn)
         model_row.addStretch()
         layout.addLayout(model_row)
 
-        # LLM model for summary
+        # V0.6.39 (W-s2): LLM model — auto-detect BOTH Ollama and llama.cpp.
+        # The label changed from "Summary model (Ollama):" to
+        # "Summary model:" because the backend auto-detects which LLM
+        # is running (the decide_llamacpp_first policy). The refresh
+        # button now probes BOTH backends.
         llm_row = _HL()
-        llm_row.addWidget(_QL("Summary model (Ollama):"))
+        llm_row.addWidget(_QL("Summary model:"))
         self.llm_combo = _QCB()
         self.llm_combo.setEditable(True)
-        # V18.20.4.12 (W-a10): was the NON-empero variant
-        # "Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M:latest" — a KNOWN-BAD tag
-        # that 404s on the rig; RIG_FALLBACK_MODEL is the working tag
-        # (the combo refreshes from /api/tags when Ollama answers).
         self.llm_combo.addItem(RIG_FALLBACK_MODEL)
         llm_row.addWidget(self.llm_combo, 1)
         self.refresh_btn = _QPB("🔄")
-        self.refresh_btn.setToolTip("Refresh Ollama models")
+        self.refresh_btn.setToolTip("Refresh LLM models (auto-detects Ollama + llama.cpp)")
         self.refresh_btn.clicked.connect(self._refresh_models)
         llm_row.addWidget(self.refresh_btn)
         layout.addLayout(llm_row)
@@ -183,8 +191,32 @@ class TranscribeServiceDialog(BaseServiceDialog):
     # _emit_progress are now INHERITED from BaseServiceDialog; the
     # pre-B17 copies were byte-equivalent and were deleted.
 
+    def _browse_whisper_model(self):
+        """V0.6.39 (W-s1): Browse for a custom Whisper model folder on disk.
+
+        faster-whisper models are directories containing model.bin +
+        config.json + tokenizer files. The operator may have them in a
+        non-standard location. This lets them pick the folder; the path
+        becomes the whisper_combo's currentData (used as model_size
+        when it's a path, not a known size name).
+        """
+        folder = QFileDialog.getExistingDirectory(
+            self, "Pick Whisper model folder", "",
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if folder:
+            # Add the custom path to the combo (if not already there).
+            display = f"📁 {Path(folder).name} (custom path)"
+            idx = self.whisper_combo.findData(folder)
+            if idx < 0:
+                self.whisper_combo.addItem(display, folder)
+                idx = self.whisper_combo.count() - 1
+            self.whisper_combo.setCurrentIndex(idx)
+
     def _refresh_models(self):
-        """Fetch installed Ollama models.
+        """V0.6.39 (W-s2): Fetch LLM models — auto-detect BOTH Ollama
+        and llama.cpp. The backend already uses decide_llamacpp_first
+        to route; the UI now reflects this by probing BOTH.
 
         V0.6.8 (audit B5): routed through utils.network.list_ollama_models
         (safe_ollama_request → proxy-proof) — was a bare requests.get that
@@ -194,22 +226,58 @@ class TranscribeServiceDialog(BaseServiceDialog):
         from utils.settings import Settings
 
         s = Settings()
-        ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
+        current = self.llm_combo.currentText()
+        self.llm_combo.clear()
+        found_any = False
+
+        # ── Probe llama.cpp first (the decide_llamacpp_first policy
+        # prefers it when it's running). ──
         try:
-            # V0.6.8 (review-loop follow-up; V0.6.11 wave 8: the named constant): the
-            # UI_PROBE_TIMEOUT_S (5 s) budget preserves the
-            # original bare-call latency budget (the helper default is 10).
-            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
-            if models:
-                current = self.llm_combo.currentText()
-                self.llm_combo.clear()
+            from core.llm.local_fallback import decide_llamacpp_first
+
+            _decision = decide_llamacpp_first(s, "ollama")
+            if _decision.use_llamacpp:
+                # llama.cpp is running — list its models.
+                from core.llm.llamacpp_provider import list_llamacpp_models
+
+                base = _decision.base_url
+                api_key = _decision.api_key
+                models = list_llamacpp_models(base, api_key)
                 for m in models:
-                    self.llm_combo.addItem(m)
-                idx = self.llm_combo.findText(current)
-                if idx >= 0:
-                    self.llm_combo.setCurrentIndex(idx)
+                    self.llm_combo.addItem(f"🦙 {m} (llama.cpp)")
+                    found_any = True
+                if found_any:
+                    self.status_label.setText(
+                        f"🦙 llama.cpp detected at {base} (model '{_decision.model}')"
+                    )
         except Exception:
-            logger.debug("best-effort op failed", exc_info=True)
+            logger.debug("best-effort llama.cpp probe failed", exc_info=True)
+
+        # ── Probe Ollama (the always-on default). ──
+        try:
+            ollama_url = s.get("summarisation.ollama_url", "http://localhost:11434")
+            models = [m for m in list_ollama_models(ollama_url, timeout=UI_PROBE_TIMEOUT_S) if m]
+            for m in models:
+                # Don't duplicate if llama.cpp already listed it.
+                display = f"🦙 {m} (Ollama)"
+                if self.llm_combo.findText(display) < 0:
+                    self.llm_combo.addItem(display)
+                    found_any = True
+            if models and not found_any:
+                self.status_label.setText(f"🦙 Ollama detected at {ollama_url}")
+        except Exception:
+            logger.debug("best-effort Ollama probe failed", exc_info=True)
+
+        # Fallback: if nothing was found, add the rig fallback model.
+        if not found_any:
+            self.llm_combo.addItem(RIG_FALLBACK_MODEL)
+
+        # Restore the previously selected model if still present.
+        idx = self.llm_combo.findText(current)
+        if idx >= 0:
+            self.llm_combo.setCurrentIndex(idx)
+        elif self.llm_combo.count() > 0:
+            self.llm_combo.setCurrentIndex(0)
 
     def _pick_file(self):
         # V0.6.10 (B17): override — the base's generic single-file picker
