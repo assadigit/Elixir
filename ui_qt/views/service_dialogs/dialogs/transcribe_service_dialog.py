@@ -125,6 +125,18 @@ class TranscribeServiceDialog(BaseServiceDialog):
         layout.addWidget(desc)
 
         # ── Options ───────────────────────────────────────────────────
+        # V0.6.40 (W-t2): Engine selector — faster-whisper (default) or
+        # transcribe.cpp (Vulkan GPU, Whisper large-v3 GGUF).
+        engine_row = _HL()
+        engine_row.addWidget(_QL("Engine:"))
+        self.engine_combo = _QCB()
+        self.engine_combo.addItem("faster-whisper (CTranslate2)", "faster_whisper")
+        self.engine_combo.addItem("transcribe.cpp (Vulkan GPU)", "transcribe_cpp")
+        self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        engine_row.addWidget(self.engine_combo)
+        engine_row.addStretch()
+        layout.addLayout(engine_row)
+
         # V0.6.39 (W-s1): Whisper model — auto-detect + custom-path browse.
         # The combo shows the standard faster-whisper model sizes, PLUS any
         # locally-downloaded models found via auto-detection. A "Browse"
@@ -190,6 +202,22 @@ class TranscribeServiceDialog(BaseServiceDialog):
     # _confirm_close_with_running_worker(self, self._worker)) and
     # _emit_progress are now INHERITED from BaseServiceDialog; the
     # pre-B17 copies were byte-equivalent and were deleted.
+
+    def _on_engine_changed(self):
+        """V0.6.40 (W-t2): toggle the Whisper model row visibility based on
+        the selected engine. transcribe.cpp uses its own model (set in
+        the CONFIGURATION block), so the faster-whisper model combo +
+        browse button are hidden when transcribe.cpp is selected."""
+        engine = self.engine_combo.currentData()
+        is_faster_whisper = engine == "faster_whisper"
+        # Show/hide the whisper model row (combo + browse button).
+        self.whisper_combo.setVisible(is_faster_whisper)
+        self.whisper_browse_btn.setVisible(is_faster_whisper)
+        # Update the checkbox label.
+        if is_faster_whisper:
+            self.cb_summary.setText("Generate Obsidian summary (requires Ollama)")
+        else:
+            self.cb_summary.setText("Generate Obsidian summary (requires Ollama)")
 
     def _browse_whisper_model(self):
         """V0.6.39 (W-s1): Browse for a custom Whisper model folder on disk.
@@ -334,6 +362,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         options = {
             "filepath": filepath,
             "output_folder": out_folder,
+            "engine": self.engine_combo.currentData(),
             "whisper_model": self.whisper_combo.currentData(),
             "llm_model": self.llm_combo.currentText().strip(),
             "save_raw": self.cb_raw.isChecked(),
@@ -398,14 +427,26 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 return results
             audio_path = temp_audio
 
-        # Step 2: Transcribe
-        self._emit_progress(10, f"🎙️ Loading whisper model '{whisper_model}'...")
-        transcribe_result = transcribe_audio(
-            audio_path,
-            model_size=whisper_model,
-            log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-            progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
-        )
+        # Step 2: Transcribe (V0.6.40: dispatch to selected engine)
+        engine = options.get("engine", "faster_whisper")
+        if engine == "transcribe_cpp":
+            self._emit_progress(10, "🎙️ Transcribing with transcribe.cpp (Vulkan GPU)...")
+            from core.transcribe.transcribe_cpp_engine import transcribe_with_cpp
+
+            transcribe_result = transcribe_with_cpp(
+                audio_path,
+                language=None,
+                log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
+                progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
+            )
+        else:
+            self._emit_progress(10, f"🎙️ Loading whisper model '{whisper_model}'...")
+            transcribe_result = transcribe_audio(
+                audio_path,
+                model_size=whisper_model,
+                log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
+                progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
+            )
 
         if "error" in transcribe_result:
             results["error"] = transcribe_result["error"]
