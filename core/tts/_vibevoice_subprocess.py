@@ -1198,17 +1198,36 @@ def main():
 
                 safe_print(json.dumps({"status": "generating", "text_len": len(text)}), flush=True)
 
-                # Generate (V11.40.1: use cfg_scale from command for emotion control)
+                # V0.6.38 (W-r5): wrap the ENTIRE model.generate() call with
+                # torch.device("cuda") context. The V0.6.37 fix only wrapped
+                # the DPM solver's step() — but the model's generate() creates
+                # the eps/t/speech tensors BEFORE calling step(), and those
+                # default to CPU. The step() wrapper was too narrow.
+                # Wrapping the whole generate() call makes ALL tensor creation
+                # (inside generate, sample_speech_tokens, the model forward pass,
+                # AND the DPM step) default to GPU.
                 t0 = _time.time()
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=None,
-                    cfg_scale=cfg_scale,
-                    tokenizer=processor.tokenizer,
-                    generation_config={"do_sample": False},
-                    verbose=False,
-                    all_prefilled_outputs=cached_prompt,
-                )
+                if cuda_ok:
+                    with torch.device("cuda"):
+                        outputs = model.generate(
+                            **inputs,
+                            max_new_tokens=None,
+                            cfg_scale=cfg_scale,
+                            tokenizer=processor.tokenizer,
+                            generation_config={"do_sample": False},
+                            verbose=False,
+                            all_prefilled_outputs=cached_prompt,
+                        )
+                else:
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=None,
+                        cfg_scale=cfg_scale,
+                        tokenizer=processor.tokenizer,
+                        generation_config={"do_sample": False},
+                        verbose=False,
+                        all_prefilled_outputs=cached_prompt,
+                    )
                 gen_time = _time.time() - t0
                 safe_print(
                     f"[SUBPROCESS] model.generate() done in {gen_time:.1f}s",
