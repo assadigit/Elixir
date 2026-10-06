@@ -134,6 +134,13 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.engine_combo.addItem("transcribe.cpp (Vulkan GPU)", "transcribe_cpp")
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         engine_row.addWidget(self.engine_combo)
+        # V0.6.41: model browse button for transcribe.cpp (lets the owner
+        # pick the GGUF model file — not just a hardcoded path).
+        self.cpp_model_browse_btn = _QPB("📁 Model")
+        self.cpp_model_browse_btn.setToolTip("Browse for the transcribe.cpp Whisper model file (.gguf/.bin)")
+        self.cpp_model_browse_btn.clicked.connect(self._browse_cpp_model)
+        self.cpp_model_browse_btn.setVisible(False)  # hidden until transcribe.cpp is selected
+        engine_row.addWidget(self.cpp_model_browse_btn)
         engine_row.addStretch()
         layout.addLayout(engine_row)
 
@@ -167,7 +174,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         llm_row.addWidget(_QL("Summary model:"))
         self.llm_combo = _QCB()
         self.llm_combo.setEditable(True)
-        self.llm_combo.addItem(RIG_FALLBACK_MODEL)
+        # V0.6.41: DON'T pre-fill with RIG_FALLBACK_MODEL — it's a hardcoded
+        # model name that may not exist on the operator's machine. Leave
+        # empty; _refresh_models() (called at the end of __init__) will
+        # auto-detect whatever is actually running.
         llm_row.addWidget(self.llm_combo, 1)
         self.refresh_btn = _QPB("🔄")
         self.refresh_btn.setToolTip("Refresh LLM models (auto-detects Ollama + llama.cpp)")
@@ -206,18 +216,35 @@ class TranscribeServiceDialog(BaseServiceDialog):
     def _on_engine_changed(self):
         """V0.6.40 (W-t2): toggle the Whisper model row visibility based on
         the selected engine. transcribe.cpp uses its own model (set in
-        the CONFIGURATION block), so the faster-whisper model combo +
-        browse button are hidden when transcribe.cpp is selected."""
+        the CONFIGURATION block or picked via the 📁 Model button), so
+        the faster-whisper model combo + browse button are hidden when
+        transcribe.cpp is selected."""
         engine = self.engine_combo.currentData()
         is_faster_whisper = engine == "faster_whisper"
         # Show/hide the whisper model row (combo + browse button).
         self.whisper_combo.setVisible(is_faster_whisper)
         self.whisper_browse_btn.setVisible(is_faster_whisper)
-        # Update the checkbox label.
-        if is_faster_whisper:
-            self.cb_summary.setText("Generate Obsidian summary (requires Ollama)")
-        else:
-            self.cb_summary.setText("Generate Obsidian summary (requires Ollama)")
+        # Show/hide the transcribe.cpp model browse button.
+        self.cpp_model_browse_btn.setVisible(not is_faster_whisper)
+
+    def _browse_cpp_model(self):
+        """V0.6.41: Browse for the transcribe.cpp Whisper model file
+        (.gguf or .bin). The selected path is saved to the app's settings
+        (transcribe.transcribe_cpp_model) so the engine picks it up."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Pick transcribe.cpp Whisper model file",
+            "",
+            "Model files (*.gguf *.bin *.pt);;All files (*.*)",
+        )
+        if path:
+            from utils.settings import Settings
+
+            s = Settings()
+            s.set("transcribe.transcribe_cpp_model", path)
+            self.status_label.setText(
+                f"✅ Model set: {Path(path).name} (saved to settings)"
+            )
 
     def _browse_whisper_model(self):
         """V0.6.39 (W-s1): Browse for a custom Whisper model folder on disk.
@@ -296,9 +323,15 @@ class TranscribeServiceDialog(BaseServiceDialog):
         except Exception:
             logger.debug("best-effort Ollama probe failed", exc_info=True)
 
-        # Fallback: if nothing was found, add the rig fallback model.
+        # V0.6.41: DON'T fallback to RIG_FALLBACK_MODEL — it's a hardcoded
+        # model name that may not exist on the operator's machine. Leave
+        # the combo empty so the operator can type a model name manually
+        # or start their LLM and click 🔄.
         if not found_any:
-            self.llm_combo.addItem(RIG_FALLBACK_MODEL)
+            self.llm_combo.addItem("")
+            self.status_label.setText(
+                "⚠️ No LLM detected. Start Ollama or llama-server, then click 🔄."
+            )
 
         # Restore the previously selected model if still present.
         idx = self.llm_combo.findText(current)
