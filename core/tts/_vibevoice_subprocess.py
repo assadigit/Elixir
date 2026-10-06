@@ -1032,10 +1032,31 @@ def main():
                                 _gpu_safe_set_timesteps._vv_gpu_safe = True
                                 scheduler.set_timesteps = _gpu_safe_set_timesteps
 
+                            # V0.6.37 (W-r4): wrap the DPM solver's step()
+                            # method with torch.device("cuda") context.
+                            # The step() function creates intermediate tensors
+                            # (e.g., in dpm_solver_first_order_update) via
+                            # torch.tensor()/torch.zeros() etc. — these
+                            # default to CPU. The FIRST step runs on GPU
+                            # (5020 it/s) but intermediate CPU tensors
+                            # pull subsequent steps to CPU (5 it/s).
+                            # Wrapping step() with the GPU device context
+                            # makes ALL intermediate tensor creation default
+                            # to GPU → consistent 5000+ it/s.
+                            _orig_step = scheduler.step
+                            if not getattr(_orig_step, "_vv_gpu_step", False):
+
+                                def _gpu_step(*args, _sched=scheduler, **kwargs):
+                                    with torch.device("cuda"):
+                                        return _orig_step(*args, **kwargs)
+
+                                _gpu_step._vv_gpu_step = True
+                                scheduler.step = _gpu_step
+
                             safe_print(
-                                "[SUBPROCESS] DPM scheduler tensors moved to GPU "
-                                "+ set_timesteps patched for GPU→numpy safety "
-                                "(V0.6.34 speed fix + V0.6.35 crash fix)",
+                                "[SUBPROCESS] DPM scheduler on GPU: tensors moved "
+                                "+ set_timesteps patched + step() wrapped with "
+                                "torch.device('cuda') (V0.6.34+35+36+37)",
                                 file=sys.stderr,
                                 flush=True,
                             )
