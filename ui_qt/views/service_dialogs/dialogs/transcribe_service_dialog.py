@@ -504,7 +504,15 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
             )
 
-        # V0.6.53: log how much text was extracted
+        # V0.6.54: fix the NameError introduced in V0.6.53 — the variable was
+        # renamed to ``_extracted_text`` for the log line but the summarize
+        # calls below still referenced the old ``_transcript_text`` name,
+        # raising ``NameError: name '_transcript_text' is not defined`` the
+        # moment Step 4 (Summarize) ran — so the raw transcript was saved
+        # (Step 3) but no summary / tutorial ever appeared. Single source of
+        # truth: ``_extracted_text`` holds the plain-text transcript that
+        # gets forwarded to the LLM (and the timestamped ``raw_text`` is only
+        # used for the saved raw-transcript file).
         _extracted_text = transcribe_result.get("text", "")
         _extracted_segs = len(transcribe_result.get("segments", []))
         self._emit_progress(-1, f"[INFO] Extracted {len(_extracted_text)} chars, {_extracted_segs} segments, language={transcribe_result.get('language', 'None')}")
@@ -531,7 +539,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         if save_summary:
             self._emit_progress(92, "📝 Summarizing with LLM...")
             summary = summarize_transcript(
-                _transcript_text,
+                _extracted_text,
                 model=llm_model,
                 ollama_url=ollama_url,
                 log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
@@ -548,7 +556,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         if save_tutorial:
             self._emit_progress(95, "Generating tutorial guide with LLM...")
             tutorial = summarize_transcript(
-                _transcript_text,
+                _extracted_text,
                 model=llm_model,
                 ollama_url=ollama_url,
                 log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
