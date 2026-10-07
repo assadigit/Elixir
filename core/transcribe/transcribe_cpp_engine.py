@@ -117,40 +117,45 @@ _gpu_lock = threading.Lock()
 
 # Regex for timestamp lines like "[00:00:00.000 --> 00:00:05.000] Hello world"
 _TIMESTAMP_RE = re.compile(
-    r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(.*)"
+    r"\[\s*(\d+(?:\.\d+)?)\s*->\s*(\d+(?:\.\d+)?)\s*\]\s*(.*)"
 )
 
 
 def _parse_timestamp(ts: str) -> float:
-    """Convert 'HH:MM:SS.mmm' to seconds."""
-    parts = ts.split(":")
-    return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    """Convert a timestamp string to seconds.
+
+    Handles two formats:
+    1. 'HH:MM:SS.mmm' (the old expected format)
+    2. '123.45' (seconds as a float -- the REAL transcribe.cpp format)
+    """
+    if ":" in ts:
+        parts = ts.split(":")
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    return float(ts)
 
 
 def _parse_transcribe_cpp_output(stdout: str, stderr: str):
     """Parse transcribe-cli.exe output.
 
-    V0.6.46: SIMPLIFIED parser. The V0.6.40 parser was too aggressive
-    with filters -- it skipped lines that looked like info but were
-    actually transcript text (the operator's report: 'output was empty
-    inside' even though the CLI succeeded). The new approach: capture
-    EVERYTHING except progress bars + a few known info prefixes.
+    V0.6.52: rewritten to match the REAL CLI output format (verified
+    from the operator's paste). The CLI prints:
 
-    Known info prefixes that are stripped:
-      backend:, realtime:, language:, model:, system_info:
+    1. Info lines: audio:, samples:, duration:, sample rate, model:,
+       backend:, name:, license:, max audio:, run:
+    2. A single 'text:' line with the FULL transcript
+    3. A 'detected-language:' line
+    4. A 'segments: NNN' count line
+    5. Timestamped segment lines: '[ 0.00 ->    4.06] text'
 
-    Progress bar patterns that are skipped:
-      lines with %, |, block chars, or "it/s" or "s/it"
-      lines that are pure numbers
-
-    Everything else is transcript text.
+    The parser extracts: text (from the 'text:' line), language (from
+    'detected-language:'), segments (from the timestamped lines),
+    and backend (from 'backend:').
     """
     text_parts = []
     segments = []
     language = None
     backend = None
 
-    # Combine stdout + stderr (the CLI may print to either).
     all_lines = (stdout + "\n" + stderr).splitlines()
 
     for line in all_lines:
@@ -158,67 +163,49 @@ def _parse_transcribe_cpp_output(stdout: str, stderr: str):
         if not line_stripped:
             continue
 
-        # -- Extract known info fields --------------------------------
         lower = line_stripped.lower()
 
-        # backend: Vulkan
+        # -- Extract backend --
         if lower.startswith("backend:"):
             backend = line_stripped.split(":", 1)[1].strip()
             continue
 
-        # language: english (or farsi, etc.)
-        if lower.startswith("language:"):
+        # -- Extract detected language --
+        if lower.startswith("detected-language:"):
             language = line_stripped.split(":", 1)[1].strip()
             continue
 
-        # Skip known info prefixes (NOT transcript text).
-        if lower.startswith(("realtime:", "model:", "system_info:", "system info:")):
+        # -- Extract the FULL transcript text (single 'text:' line) --
+        if lower.startswith("text:"):
+            text_parts.append(line_stripped.split(":", 1)[1].strip())
             continue
 
-        # -- Skip progress bars --------------------------------------
-        # tqdm progress bars contain %, |, block chars, or it/s
-        if "%" in line_stripped and ("it/s" in line_stripped or "s/it" in line_stripped):
-            continue
-        if "it/s" in line_stripped or "s/it" in line_stripped:
-            continue
-        # Block characters from tqdm/progress
-        if any(ch in line_stripped for ch in ("\u2588", "\u2589", "\u258a", "\u258b", "\u258c", "\u258d", "\u258e", "\u258f", "\u2591", "\u2592", "\u2593")):
-            continue
-        # Lines that are ONLY progress bar characters
-        stripped_of_bars = line_stripped.replace("|", "").replace("-", "").replace(" ", "")
-        if not stripped_of_bars or stripped_of_bars.isdigit():
-            continue
-
-        # -- Check for timestamped segments --------------------------
-        # [00:00:00.000 --> 00:00:05.000] Hello world
+        # -- Extract timestamped segments --
+        # Format: '[   0.00 ->    4.06] There are three main things...'
         ts_match = _TIMESTAMP_RE.match(line_stripped)
         if ts_match:
             start_ts = _parse_timestamp(ts_match.group(1))
             end_ts = _parse_timestamp(ts_match.group(2))
             seg_text = ts_match.group(3).strip()
             segments.append({"start": start_ts, "end": end_ts, "text": seg_text})
-            text_parts.append(seg_text)
             continue
 
-        # -- Strip "text:" prefix if present -------------------------
-        if lower.startswith("text:"):
-            seg_text = line_stripped.split(":", 1)[1].strip()
-            text_parts.append(seg_text)
+        # -- Skip known info lines --
+        if lower.startswith((
+            "audio:", "samples:", "duration:", "sample rate",
+            "model:", "name:", "license:", "max audio:",
+            "run:", "realtime:", "system_info:", "system info:",
+            "segments:",
+        )):
             continue
 
-        # -- Everything else IS transcript text -----------------------
-        # V0.6.46: don't skip lines that start with "loading:", "processing:"
-        # etc -- the CLI might print the transcript text after these prefixes.
-        # Only skip if the line is CLEARLY not transcript (has a colon AND
-        # a known info keyword before the colon AND is short).
-        if ":" in line_stripped and len(line_stripped) < 80:
-            prefix = line_stripped.split(":")[0].lower().strip()
-            if prefix in ("loading", "warming", "processing", "device", "gpu", "system", "init"):
-                continue
+        # -- Skip progress bars --
+        if "%" in line_stripped and ("it/s" in line_stripped or "s/it" in line_stripped):
+            continue
+        if "it/s" in line_stripped or "s/it" in line_stripped:
+            continue
 
-        text_parts.append(line_stripped)
-
-    text = "\n".join(text_parts).strip()
+    text = " ".join(text_parts).strip()
     return {
         "text": text,
         "segments": segments,
