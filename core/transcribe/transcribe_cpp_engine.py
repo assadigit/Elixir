@@ -9,11 +9,17 @@ It follows the same pattern as the existing faster-whisper engine
 takes an audio file + options and returns a result dict with text,
 segments, language, and duration.
 
-The transcribe.cpp tool uses a Whisper large-v3 GGUF model with the
-Vulkan GPU backend (NVIDIA RTX 3060). It accepts only 16 kHz mono
-WAV input -- other formats must be converted first with ffmpeg (the
-existing extract_audio_from_video function already produces 16 kHz
-mono WAV, so it's reused).
+The transcribe.cpp tool (github.com/handy-computer/transcribe.cpp) runs
+GGUF STT models on the ggml runtime with auto-selected backends:
+whatever compute backends were compiled INTO the exe (Vulkan requires
+cmake -DTRANSCRIBE_VULKAN=ON; a plain build is CPU-only) are picked by
+its default 'auto' backend — the CLI prints the verdict in its
+'backend:' line. V0.6.57 surfaces that reality: a --list-devices
+pre-flight before the model load, live nvidia-smi GPU lines during the
+run, and a loud warning when the backend turns out to be CPU. It
+accepts only 16 kHz mono WAV input -- other formats must be converted
+first with ffmpeg (the existing extract_audio_from_video function
+already produces 16 kHz mono WAV, so it's reused).
 
 ===========================================================================
 CONFIGURATION BLOCK - VERIFY THESE PATHS MATCH YOUR RIG.
@@ -80,7 +86,15 @@ import sys
 import tempfile
 import threading
 import time
+import wave
 from pathlib import Path
+
+from core.transcribe.gpu_probe import (
+    format_devices_line,
+    format_gpu_line,
+    probe_cli_devices,
+    probe_gpu_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +115,13 @@ DEFAULT_LANGUAGE = None
 
 # Timeout for the CLI (seconds). Long videos can take minutes.
 DEFAULT_TIMEOUT_S = 3600  # 1 hour -- generous for long videos
+
+# V0.6.57: while the CLI runs, ask the GPU (nvidia-smi) how busy it is
+# every 30s and log the answer -- "GPU: 96% util, 3.3 GB VRAM used"
+# between heartbeats is the live CPU-vs-GPU evidence the operator
+# asked for ("Why model is working on cpu?"). Rising VRAM during model
+# load is proof of progress even at 0% util.
+GPU_PROBE_INTERVAL_S = 30.0
 
 # Temp folder for the 16 kHz mono WAV. None = system temp.
 DEFAULT_TEMP_DIR = None
@@ -152,6 +173,7 @@ def _stream_cli_output(
     *,
     deadline_ts: float | None = None,
     echo_prefix: str = "[whisper]",
+    gpu_probe_interval_s: float | None = None,
 ):
     """Pump a live CLI subprocess's stdout/stderr into ``log``/``progress``.
 
@@ -221,6 +243,14 @@ def _stream_cli_output(
         t.start()
 
     timed_out = False
+    # V0.6.57: the optional GPU liveness probe (None = off -- every
+    # V0.6.56 call site and test stays exactly as it was). The probe
+    # rides THIS loop because it already polls the process every 0.5s
+    # in the worker thread; a nvidia-smi call here can never block the
+    # UI thread, and its log line reaches the dialog through the same
+    # thread-safe log callback the reader threads use.
+    probe_on = gpu_probe_interval_s is not None
+    next_probe_ts = (time.monotonic() + gpu_probe_interval_s) if probe_on else None
     while True:
         try:
             proc.wait(timeout=0.5)
@@ -237,6 +267,27 @@ def _stream_cli_output(
                 except Exception:
                     logger.debug("best-effort post-kill wait failed", exc_info=True)
                 break
+            if probe_on and next_probe_ts is not None and time.monotonic() >= next_probe_ts:
+                try:
+                    state = probe_gpu_state()
+                    if state is None:
+                        # No nvidia-smi / not NVIDIA / wedged driver -- say
+                        # so ONCE and stop asking (never spam, never crash).
+                        log(f"  [GPU] {format_gpu_line(None)}", "INFO")
+                        probe_on = False
+                        next_probe_ts = None
+                    else:
+                        log(f"  [GPU] {format_gpu_line(state)}", "INFO")
+                        next_probe_ts = time.monotonic() + gpu_probe_interval_s
+                except Exception:
+                    # A raising probe must never kill the run it watches.
+                    logger.debug("gpu probe failed", exc_info=True)
+                    try:
+                        log(f"  [GPU] {format_gpu_line(None)}", "INFO")
+                    except Exception:
+                        logger.debug("best-effort gpu line failed", exc_info=True)
+                    probe_on = False
+                    next_probe_ts = None
 
     for t in threads:
         t.join(timeout=5)
@@ -508,6 +559,87 @@ def _convert_to_wav16k(input_path: Path, log, progress):
 # ============================================================================
 
 
+def _fmt_bytes(num_bytes: int) -> str:
+    """Human-readable byte size (model files land in the GB range)."""
+    gb = num_bytes / (1024 ** 3)
+    if gb >= 1.0:
+        return f"{gb:.1f} GB"
+    mb = num_bytes / (1024 ** 2)
+    if mb >= 1.0:
+        return f"{mb:.1f} MB"
+    return f"{max(0, num_bytes // 1024)} KB"
+
+
+def _fmt_mmss(seconds: float) -> str:
+    s = max(0, int(seconds))
+    return f"{s // 60:02d}:{s % 60:02d}"
+
+
+def _wav_duration_s(wav_path) -> float | None:
+    """Best-effort duration of a PCM WAV (stdlib ``wave`` -- the engine's
+    temp file is exactly that). Non-WAV / garbage -> None (the caller
+    just skips the line)."""
+    try:
+        with wave.open(str(wav_path), "rb") as w:
+            rate = w.getframerate() or 16000
+            return w.getnframes() / float(rate)
+    except Exception:
+        return None
+
+
+def _format_run_config_lines(model_path, wav_path, cmd) -> list[str]:
+    """V0.6.57: the pre-run config block for the live log.
+
+    The operator's "why is it on CPU?" could not be answered from the
+    log because neither the model ACTUALLY loading (the #1 silent-time
+    cost -- the 3 GB GGUF reloads on every run) nor the exact command
+    (the manual-repro ground truth against the owner's transcribe.bat)
+    was on record. These three lines fix that:
+
+      [MODEL] which GGUF (name + size)
+      [AUDIO] how much audio is being transcribed (sets the wait
+              expectation -- 15 minutes of audio is NEVER a 1-minute
+              run, whatever the old anecdote says)
+      [CMD]   the full command line to reproduce by hand
+    """
+    lines: list[str] = []
+    name = Path(model_path).name
+    try:
+        size = Path(model_path).stat().st_size
+        lines.append(f"  [MODEL] {name} ({_fmt_bytes(size)}) - the model file reloads on every run")
+    except OSError:
+        lines.append(f"  [MODEL] {name} - the model file reloads on every run")
+    dur = _wav_duration_s(wav_path)
+    if dur:
+        lines.append(f"  [AUDIO] {_fmt_mmss(dur)} of audio to transcribe")
+    lines.append("  [CMD] " + " ".join(str(c) for c in cmd))
+    return lines
+
+
+def _backend_is_cpu(backend) -> bool:
+    """True when the CLI's own ``backend:`` line says it computed on CPU."""
+    return "cpu" in str(backend or "").lower()
+
+
+_CPU_BACKEND_WARNING = (
+    "  [WARN] Backend used CPU, not the Vulkan GPU - transcription on CPU "
+    "is many times slower (a weak CPU can turn a minutes-long run into "
+    "hours). The CLI said so itself in its 'backend:' line. Fix: rebuild "
+    "transcribe-cli.exe with -DTRANSCRIBE_VULKAN=ON (needs the Vulkan SDK; "
+    "see docs/build-windows.md in the transcribe.cpp repo) or check the "
+    "GPU driver, then run a short clip to verify."
+)
+
+_NO_GPU_DEVICE_WARNING = (
+    "  [WARN] This transcribe-cli.exe has NO GPU backend compiled in - it "
+    "will compute on the CPU (many times slower on a weak CPU). A plain "
+    "'cmake -B build' on Windows builds CPU-ONLY. Fix: rebuild with Vulkan "
+    "- 'cmake -B build -DTRANSCRIBE_VULKAN=ON' (needs the Vulkan SDK; see "
+    "docs/build-windows.md in the transcribe.cpp repo) - or switch the "
+    "engine to faster-whisper in the dialog."
+)
+
+
 def transcribe_with_cpp(
     audio_path: str,
     language: str | None = None,
@@ -607,6 +739,31 @@ def transcribe_with_cpp(
 
     cmd.append(wav_to_transcribe)
 
+    # -- V0.6.57 pre-flight: which backends does THIS exe actually have? --
+    # The "(Vulkan GPU)" label was an ASSUMPTION since V0.6.40: the CLI
+    # computes on whatever backends were compiled INTO the binary (upstream
+    # handy-computer/transcribe.cpp: a plain 'cmake -B build' on Windows is
+    # CPU-ONLY; Vulkan needs -DTRANSCRIBE_VULKAN=ON), and its default
+    # 'auto' backend silently picks CPU when no GPU is registered.
+    # --list-devices settles it in seconds, BEFORE the 3 GB model loads.
+    devices = probe_cli_devices(exe_path)
+    gpu_label = "(Vulkan GPU)"  # the historical assumption, kept when unverifiable
+    if devices is not None:
+        if devices.get("gpu"):
+            log(f"  [DEVICES] {format_devices_line(devices)}", "INFO")
+            _kind = str(devices["gpu"].get("kind") or "GPU")
+            gpu_label = f"({_kind})"
+        else:
+            log(f"  [DEVICES] {format_devices_line(devices)}", "WARNING")
+            log(_NO_GPU_DEVICE_WARNING, "WARNING")
+            gpu_label = "(CPU ONLY - no GPU device in this exe)"
+    else:
+        log(f"  [DEVICES] {format_devices_line(None)}", "INFO")
+
+    # -- V0.6.57: run-config on record BEFORE the run ------------------
+    for _cfg_line in _format_run_config_lines(model_path, wav_to_transcribe, cmd):
+        log(_cfg_line, "INFO")
+
     # -- Run the CLI (GPU-guarded, STREAMING) --------------------------
     # V0.6.56: the old subprocess.run(capture_output=True) trapped ALL
     # CLI output in memory for the whole transcription — between
@@ -616,8 +773,8 @@ def transcribe_with_cpp(
     # via Popen and _stream_cli_output pumps stdout/stderr line by
     # line into log_callback (each transcribed line is visible as it
     # happens) and maps percent lines onto the progress bar.
-    log("  [RUN] Running transcribe.cpp (Vulkan GPU)...", "INFO")
-    progress(20, "Transcribing with transcribe.cpp (Vulkan GPU)...")
+    log(f"  [RUN] Running transcribe.cpp {gpu_label}...", "INFO")
+    progress(20, f"Transcribing with transcribe.cpp {gpu_label}...")
     t0 = time.time()
 
     try:
@@ -634,6 +791,7 @@ def transcribe_with_cpp(
                     log,
                     progress,
                     deadline_ts=time.monotonic() + DEFAULT_TIMEOUT_S,
+                    gpu_probe_interval_s=GPU_PROBE_INTERVAL_S,
                 )
             except Exception:
                 # The streamer itself exploded after Popen — kill the CLI
@@ -712,6 +870,11 @@ def transcribe_with_cpp(
     # Log the backend (GPU verification).
     if parsed["backend"]:
         log(f"  [OK] Backend: {parsed['backend']}", "INFO")
+        # V0.6.57: the CLI knows which device it computed on and just
+        # told us. "backend: CPU" on a GPU rig IS the slow run explained
+        # -- say it plainly instead of leaving the operator to guess.
+        if _backend_is_cpu(parsed["backend"]):
+            log(_CPU_BACKEND_WARNING, "WARNING")
     if parsed["language"]:
         log(f"  [OK] Language: {parsed['language']}", "INFO")
 

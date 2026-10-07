@@ -57,6 +57,7 @@ def format_heartbeat_line(
     last_update_ts: float,
     now_ts: float,
     last_msg: str,
+    engine: str | None = None,
 ) -> str:
     """Build the ``⏱`` heartbeat line for the live log.
 
@@ -68,7 +69,12 @@ def format_heartbeat_line(
 
     The parenthesized hint appears only when the silence gap exceeds
     :data:`SILENCE_HINT_AFTER_S` — a 15s gap between normal updates
-    would be noise, not signal.
+    would be noise, not signal. ``engine`` (V0.6.57) picks the RIGHT
+    hint: transcribe.cpp runs explain the CLI's end-only printing and
+    point at the live [GPU] lines (the "LLM on CPU" text was actively
+    misleading on a raw-transcript-only run — the operator read "on
+    CPU" as a whisper-on-CPU verdict); everything else keeps the V0.6.56
+    LLM hint verbatim.
     """
     elapsed = max(0.0, now_ts - run_started_ts)
     gap = max(0.0, now_ts - last_update_ts)
@@ -82,10 +88,19 @@ def format_heartbeat_line(
     if last:
         line += f": {last}"
     if gap >= SILENCE_HINT_AFTER_S:
-        line += (
-            " — engine silent (whisper model load / LLM on CPU can take "
-            "minutes; 🔌 Test checks the LLM, kill + retry if it never advances)"
-        )
+        if engine and "transcribe" in str(engine).lower():
+            line += (
+                " — engine silent (this CLI prints its whole summary only at "
+                "the END: model load + full transcription are quiet — watch the "
+                "[GPU] lines: rising VRAM = model loading, high util = working, "
+                "flat 0% for minutes = CPU/fallback; kill + retry if it never "
+                "advances)"
+            )
+        else:
+            line += (
+                " — engine silent (whisper model load / LLM on CPU can take "
+                "minutes; 🔌 Test checks the LLM, kill + retry if it never advances)"
+            )
     return line
 
 

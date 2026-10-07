@@ -111,6 +111,12 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self._heartbeat_timer.timeout.connect(self._on_heartbeat)
         self._run_started_ts = 0.0
         self._last_update_ts = 0.0
+        # V0.6.57: the engine id of the CURRENT run ("transcribe_cpp" /
+        # "faster_whisper") — the heartbeat hint is engine-aware, so a
+        # silent transcribe.cpp run explains end-only printing + the [GPU]
+        # lines instead of the LLM-on-CPU text (which misled the operator
+        # on a raw-transcript-only run).
+        self._run_engine = None
         self._last_status_msg = ""
         self._llm_chunk_counter = 0
 
@@ -581,6 +587,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self._run_started_ts = time.time()
         self._last_update_ts = self._run_started_ts
         self._last_status_msg = "starting"
+        # V0.6.57: capture the engine BEFORE the worker exists (the
+        # heartbeat needs it 15s into the run; the combo is also about
+        # to be irrelevant mid-run).
+        self._run_engine = self.engine_combo.currentData()
         self._llm_chunk_counter = 0
         self._heartbeat_timer.start()
 
@@ -867,6 +877,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 last_update_ts=self._last_update_ts,
                 now_ts=time.time(),
                 last_msg=self._last_status_msg,
+                engine=self._run_engine,
             )
         )
 
