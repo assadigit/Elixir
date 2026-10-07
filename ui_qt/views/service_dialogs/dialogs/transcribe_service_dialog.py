@@ -132,8 +132,14 @@ class TranscribeServiceDialog(BaseServiceDialog):
         engine_row = _HL()
         engine_row.addWidget(_QL("Engine:"))
         self.engine_combo = _QCB()
-        self.engine_combo.addItem("faster-whisper (CTranslate2)", "faster_whisper")
+        # V0.6.55 (P1): the combo order FLIPPED — transcribe.cpp is the
+        # DEFAULT selection, matching the service default (V0.6.42's
+        # decision: "transcribe.cpp is now the DEFAULT engine inside
+        # transcribe_audio()") and the operator's Vulkan rig. The dialog
+        # had silently kept faster-whisper first — dialog default and
+        # service default disagreed.
         self.engine_combo.addItem("transcribe.cpp (Vulkan GPU)", "transcribe_cpp")
+        self.engine_combo.addItem("faster-whisper (CTranslate2)", "faster_whisper")
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         engine_row.addWidget(self.engine_combo)
         # V0.6.41: model browse button for transcribe.cpp (lets the owner
@@ -141,8 +147,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.cpp_model_browse_btn = _QPB("📁 Model")
         self.cpp_model_browse_btn.setToolTip("Browse for the transcribe.cpp Whisper model file (.gguf/.bin)")
         self.cpp_model_browse_btn.clicked.connect(self._browse_cpp_model)
-        self.cpp_model_browse_btn.setVisible(False)  # hidden until transcribe.cpp is selected
-        engine_row.addWidget(self.cpp_model_browse_btn)
+        engine_row.addWidget(self.cpp_model_browse_btn)  # V0.6.55: visible — the default engine now
         engine_row.addStretch()
         layout.addLayout(engine_row)
 
@@ -167,6 +172,18 @@ class TranscribeServiceDialog(BaseServiceDialog):
         model_row.addStretch()
         layout.addLayout(model_row)
 
+        # V0.6.55 (Task 9 review BLOCKER fix): apply the initial visibility
+        # for the DEFAULT selection (transcribe.cpp → the whisper model row
+        # hidden) — the _on_engine_changed slot only fires on index CHANGE,
+        # so the first paint needs the explicit call. The call MUST stay
+        # BELOW the whisper_combo / whisper_browse_btn creation (the slot
+        # touches both): calling it from the engine-row block crashed the
+        # dialog's construction with AttributeError (the exact
+        # V0.6.53-NameError failure class the redesign was meant to kill —
+        # caught by the fresh-eyes review because this sandbox has no
+        # PySide6 and the AST pins only checked the call EXISTS, not WHERE).
+        self._on_engine_changed()
+
         # V0.6.39 (W-s2): LLM model — auto-detect BOTH Ollama and llama.cpp.
         # The label changed from "Summary model (Ollama):" to
         # "Summary model:" because the backend auto-detects which LLM
@@ -185,6 +202,21 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.refresh_btn.setToolTip("Refresh LLM models (auto-detects Ollama + llama.cpp)")
         self.refresh_btn.clicked.connect(self._refresh_models)
         llm_row.addWidget(self.refresh_btn)
+        # V0.6.55 (P1c): the one-click LLM health check — resolves the
+        # backend (llama.cpp port auto-detection 8080/8000/9931), probes
+        # a real tiny generation, and measures its speed: a CPU fallback
+        # (the n_gpu_layers GPU-fit failure) is reported with the
+        # actionable restart hint instead of surfacing later as a
+        # 30-minute frozen "Summarizing..." label.
+        self.llm_test_btn = _QPB("\U0001f50c Test")
+        self.llm_test_btn.setToolTip(
+            "Test the LLM connection: detects the backend (llama.cpp ports "
+            "8080/8000/9931 are auto-probed + Ollama), checks that it "
+            "responds, and measures generation speed \u2014 warns about the "
+            "VRAM/CPU fallback that makes summaries 10-30x slower."
+        )
+        self.llm_test_btn.clicked.connect(self._on_test_llm)
+        llm_row.addWidget(self.llm_test_btn)
         layout.addLayout(llm_row)
 
         # Checkboxes
@@ -247,6 +279,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         )
         self.llm_combo.setVisible(needs_llm)
         self.refresh_btn.setVisible(needs_llm)
+        # V0.6.55 (P1c): the Test button follows the same rule — it
+        # checks the backend those outputs depend on.
+        if hasattr(self, "llm_test_btn"):
+            self.llm_test_btn.setVisible(needs_llm)
 
     def _browse_cpp_model(self):
         """V0.6.41: Browse for the transcribe.cpp Whisper model file
@@ -392,6 +428,78 @@ class TranscribeServiceDialog(BaseServiceDialog):
         dlg = LiveTranscribeDialog(self)
         dlg.exec()
 
+    # ── V0.6.55 (P1c): the one-click LLM health check ──────────────────
+
+    def _on_test_llm(self):
+        """The 🔌 Test button: run check_llm_for_transcribe on a WORKER
+        thread (the probe blocks for seconds — the V0.6.54 pattern of
+        never blocking the UI thread) and render the result when it
+        lands. The check resolves the backend (llama.cpp ports
+        8080/8000/9931 auto-probed + Ollama), probes a tiny REAL
+        generation, and measures its speed — the n_gpu_layers CPU
+        fallback shows up here with its fix instead of as a 30-minute
+        frozen summary later."""
+        self.llm_test_btn.setEnabled(False)
+        self.status_label.setText("🔌 Testing LLM connection...")
+
+        def _work():
+            from core.transcribe.llm_check import check_llm_for_transcribe
+            from utils.settings import Settings
+
+            s = Settings()
+            ollama_url = (
+                s.get_ollama_url()
+                if hasattr(s, "get_ollama_url")
+                else s.get("summarisation.ollama_url", "http://localhost:11434")
+            )
+            return check_llm_for_transcribe(s, ollama_url=ollama_url)
+
+        # A SEPARATE worker handle: the transcription worker may be
+        # running (the closeEvent guards self._worker); the probe must
+        # not disturb it, and auto-deletes after finishing.
+        self._llm_test_worker = SimpleWorker(_work)
+        self._llm_test_worker.finished.connect(self._on_test_llm_done)
+        self._llm_test_worker.failed.connect(self._on_test_llm_failed)
+        self._llm_test_worker.start()
+
+    def _on_test_llm_done(self, result: dict):
+        """Render the health check: persist an auto-detected port (the
+        operator is told, one click fixes every future run), then show
+        the verdict — healthy (info box) / CPU-fallback suspicion
+        (warning — the n_gpu_layers guidance) / unreachable (critical)."""
+        self.llm_test_btn.setEnabled(True)
+        if not isinstance(result, dict):
+            self.status_label.setText("🔌 LLM test: unexpected result")
+            return
+
+        if result.get("save_url"):
+            try:
+                from utils.settings import Settings
+
+                Settings().set("summarisation.llamacpp_base_url", result["save_url"])
+            except Exception:
+                logger.debug("best-effort settings save failed", exc_info=True)
+
+        first_line = result.get("message", "").splitlines()[0] if result.get("message") else ""
+        self.status_label.setText(f"🔌 {first_line}")
+
+        level = result.get("level", "info")
+        if level == "slow-cpu-fallback-suspected":
+            QMessageBox.warning(
+                self, "⚠️ LLM Responds — but VERY Slowly", result.get("message", "")
+            )
+        elif not result.get("ok"):
+            QMessageBox.critical(self, "❌ LLM Unreachable", result.get("message", ""))
+        else:
+            QMessageBox.information(self, "✅ LLM OK", result.get("message", ""))
+
+    def _on_test_llm_failed(self, error_msg):
+        """The worker itself exploded (never expected — the check never
+        raises) — still re-enable the button and show the reason."""
+        self.llm_test_btn.setEnabled(True)
+        self.status_label.setText(f"❌ LLM test failed: {error_msg}")
+        QMessageBox.warning(self, "⚠️ LLM Test Failed", str(error_msg))
+
     def _on_process(self):
         # V0.6.10 (B17): kept override — the base's _on_process validates a
         # generic text/file input and spawns SimpleWorker(self._process, …);
@@ -439,6 +547,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             extract_audio_from_video,
             format_transcript_with_timestamps,
             summarize_transcript,
+            summarize_transcript_combined,
             transcribe_audio,
         )
         from utils.settings import Settings
@@ -483,8 +592,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 return results
             audio_path = temp_audio
 
-        # Step 2: Transcribe (V0.6.40: dispatch to selected engine)
-        engine = options.get("engine", "faster_whisper")
+        # Step 2: Transcribe (V0.6.40: dispatch to selected engine; V0.6.55:
+        # the fallback default follows the service's V0.6.42 decision —
+        # transcribe_cpp, the Vulkan engine the rig actually uses).
+        engine = options.get("engine", "transcribe_cpp")
         if engine == "transcribe_cpp":
             self._emit_progress(10, "🎙️ Transcribing with transcribe.cpp (Vulkan GPU)...")
             from core.transcribe.transcribe_cpp_engine import transcribe_with_cpp
@@ -535,41 +646,102 @@ class TranscribeServiceDialog(BaseServiceDialog):
             )
             results["raw_path"] = str(raw_path)
 
-        # Step 4: Summarize (core concepts + key takeaways)
-        if save_summary:
-            self._emit_progress(92, "📝 Summarizing with LLM...")
-            summary = summarize_transcript(
-                _extracted_text,
-                model=llm_model,
-                ollama_url=ollama_url,
-                log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-                progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
-            )
-            if not summary.startswith("Error:"):
-                summary_path = out_folder / f"{file_stem}_summary.md"
-                summary_path.write_text(summary, encoding="utf-8")
-                results["summary_path"] = str(summary_path)
-            else:
-                results["error"] = summary  # summary error (non-fatal)
+        # Step 4+5: the LLM outputs (V0.6.55 redesign of the old
+        # sequential Step 4 summary → Step 5 tutorial two-round-trip):
+        # - BOTH outputs requested → ONE combined round trip (P3); a
+        #   failed split falls back to the separate tutorial call
+        #   (correctness over speed — the service signals it).
+        # - on_chunk streams the growing generation to the status label
+        #   (P4) — no more frozen "Summarizing..." for 10+ minutes.
+        # - failures raise the structured TranscribeError family (P5)
+        #   and land in results["error"] as stage + message + fix.
+        from core.transcribe.errors import TranscribeError, TranscribePipelineError
 
-        # Step 5: Tutorial guide (educational / tips & tricks)
-        if save_tutorial:
-            self._emit_progress(95, "Generating tutorial guide with LLM...")
-            tutorial = summarize_transcript(
-                _extracted_text,
-                model=llm_model,
-                ollama_url=ollama_url,
-                log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
-                progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
-                output_type="tutorial",
+        summary_text = None
+        tutorial_text = None
+
+        _log = lambda msg, level="INFO": self._emit_progress(-1, msg)  # noqa: E731
+        _prog = lambda pct, msg: self._emit_progress(pct, msg)  # noqa: E731
+        _on_chunk = lambda partial: self._emit_progress(  # noqa: E731
+            -1, f"📝 LLM is writing… {len(partial):,} chars so far"
+        )
+
+        try:
+            if save_summary and save_tutorial:
+                self._emit_progress(92, "📝 Generating notes + tutorial (one LLM call)...")
+                combined = summarize_transcript_combined(
+                    _extracted_text,
+                    model=llm_model,
+                    ollama_url=ollama_url,
+                    log_callback=_log,
+                    progress_callback=_prog,
+                    on_chunk=_on_chunk,
+                )
+                summary_text = combined["summary"]
+                tutorial_text = combined["tutorial"]
+                if not combined["split_ok"]:
+                    # The model ignored the split marker — generate the
+                    # tutorial separately (the pre-V0.6.55 behavior, now
+                    # only the CORRECTNESS net instead of the default).
+                    self._emit_progress(
+                        95, "📚 Split failed — generating the tutorial separately..."
+                    )
+                    tutorial_text = summarize_transcript(
+                        _extracted_text,
+                        model=llm_model,
+                        ollama_url=ollama_url,
+                        log_callback=_log,
+                        progress_callback=_prog,
+                        output_type="tutorial",
+                        on_chunk=_on_chunk,
+                    )
+            elif save_summary:
+                self._emit_progress(92, "📝 Summarizing with LLM...")
+                summary_text = summarize_transcript(
+                    _extracted_text,
+                    model=llm_model,
+                    ollama_url=ollama_url,
+                    log_callback=_log,
+                    progress_callback=_prog,
+                    on_chunk=_on_chunk,
+                )
+            elif save_tutorial:
+                self._emit_progress(92, "📚 Generating tutorial guide with LLM...")
+                tutorial_text = summarize_transcript(
+                    _extracted_text,
+                    model=llm_model,
+                    ollama_url=ollama_url,
+                    log_callback=_log,
+                    progress_callback=_prog,
+                    output_type="tutorial",
+                    on_chunk=_on_chunk,
+                )
+        except TranscribeError as e:
+            # P5: structured failure — stage + message + fix, rendered
+            # friendly; non-fatal when the raw transcript is already
+            # saved (the V0.6.54 completion-dialog contract).
+            results["error"] = str(e)
+            return results
+        except Exception as e:  # noqa: BLE001 — the V0.6.53 NameError class of surprise
+            logger.exception("Transcribe pipeline: unexpected error in the LLM step")
+            results["error"] = str(
+                TranscribePipelineError(
+                    f"Unexpected internal error while generating the LLM output: {e}"
+                )
             )
-            if not tutorial.startswith("Error:"):
-                tutorial_path = out_folder / f"{file_stem}_tutorial.md"
-                tutorial_path.write_text(tutorial, encoding="utf-8")
-                results["tutorial_path"] = str(tutorial_path)
-            else:
-                if not results.get("error"):
-                    results["error"] = tutorial
+            return results
+
+        if summary_text:
+            self._emit_progress(94, "💾 Saving summary...")
+            summary_path = out_folder / f"{file_stem}_summary.md"
+            summary_path.write_text(summary_text, encoding="utf-8")
+            results["summary_path"] = str(summary_path)
+
+        if tutorial_text:
+            self._emit_progress(97, "📚 Saving tutorial guide...")
+            tutorial_path = out_folder / f"{file_stem}_tutorial.md"
+            tutorial_path.write_text(tutorial_text, encoding="utf-8")
+            results["tutorial_path"] = str(tutorial_path)
 
         # Clean up temp audio
         if is_video and Path(audio_path).exists():

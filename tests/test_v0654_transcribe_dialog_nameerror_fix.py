@@ -115,64 +115,90 @@ class TestV0654NameErrorFix:
 
 
 class TestV0654SummarizeCallSites:
-    """The two ``summarize_transcript`` calls MUST pass the transcript
-    text — the plain-text local, not the timestamped ``raw_text`` (which
-    is only defined inside the ``if save_raw`` branch and would itself
-    be a NameError when raw saving is off)."""
+    """The summarize call sites MUST pass the transcript text — the
+    plain-text local, not the timestamped ``raw_text`` (which is only
+    defined inside the ``if save_raw`` branch and would itself be a
+    NameError when raw saving is off).
+
+    V0.6.55 CONTRACT CHANGE, documented: the dialog was redesigned —
+    the old "exactly 2 sequential summarize_transcript call sites
+    (Step 4 summary + Step 5 tutorial)" became 1 combined call
+    (``summarize_transcript_combined`` — the P3 single round trip) + 3
+    single calls (the split-failure tutorial fallback, the
+    summary-only branch, the tutorial-only branch). The load-bearing
+    V0.6.54 guarantee — every call passes ``_extracted_text`` — is
+    PRESERVED and now covers all 4 sites (the V0.6.55 file pins the
+    structure; this file pins the NameError guard).
+    """
 
     def _summarize_calls(self, tree: ast.Module) -> list[ast.Call]:
-        """Every ``summarize_transcript(...)`` call expression in the module."""
+        """Every ``summarize_transcript(...)`` / combined call in the module."""
         calls: list[ast.Call] = []
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
-                and node.func.id == "summarize_transcript"
+                and node.func.id in ("summarize_transcript", "summarize_transcript_combined")
             ):
                 calls.append(node)
         return calls
 
-    def test_there_are_two_summarize_calls(self, _source_tree):
-        """Step 4 (summary) + Step 5 (tutorial) — exactly two call sites."""
+    def test_there_are_four_llm_call_sites(self, _source_tree):
+        """V0.6.55: 1 combined + 3 single (the split-fallback tutorial,
+        summary-only, tutorial-only) — was 2 before the redesign."""
         calls = self._summarize_calls(_source_tree)
-        assert len(calls) == 2, (
-            f"expected 2 summarize_transcript call sites (summary + tutorial), "
-            f"found {len(calls)}"
+        assert len(calls) == 4, (
+            f"expected 4 LLM call sites (1 combined + 3 single), found {len(calls)}"
         )
+        kinds = [c.func.id for c in calls]
+        assert kinds.count("summarize_transcript_combined") == 1
+        assert kinds.count("summarize_transcript") == 3
 
-    def test_both_calls_pass_extracted_text_as_first_arg(self, _source_tree):
-        """Both call sites MUST pass ``_extracted_text`` (the plain-text
-        local) as the first positional argument — the V0.6.54 fix."""
+    def test_every_call_passes_extracted_text_as_first_arg(self, _source_tree):
+        """Every call site MUST pass ``_extracted_text`` (the plain-text
+        local) as the first positional argument — the V0.6.54 fix,
+        extended to the V0.6.55 combined call."""
         calls = self._summarize_calls(_source_tree)
         for i, call in enumerate(calls, start=1):
             assert call.args, (
-                f"summarize_transcript call #{i} has no positional args — "
+                f"LLM call #{i} has no positional args — "
                 "the transcript text isn't being passed"
             )
             first = call.args[0]
             assert isinstance(first, ast.Name) and first.id == "_extracted_text", (
-                f"summarize_transcript call #{i} (line {call.lineno}) passes "
+                f"{call.func.id} call #{i} (line {call.lineno}) passes "
                 f"{ast.dump(first)} as its first arg — must be the "
                 "`_extracted_text` Name"
             )
 
-    def test_tutorial_call_sets_output_type_tutorial(self, _source_tree):
-        """The second summarize_transcript call (the tutorial guide)
-        MUST pass ``output_type='tutorial'`` so the prompt manager picks
-        the tutorial template, not the notes template."""
-        calls = self._summarize_calls(_source_tree)
-        assert len(calls) >= 2
-        tutorial_call = calls[1]
-        kw = {kw.arg: kw.value for kw in tutorial_call.keywords if kw.arg}
-        assert "output_type" in kw, (
-            "the tutorial summarize_transcript call has no output_type kwarg "
-            "— it would generate a summary, not a tutorial"
+    def test_tutorial_calls_set_output_type_tutorial(self, _source_tree):
+        """The single-call tutorial sites MUST pass
+        ``output_type='tutorial'`` so the prompt manager picks the
+        tutorial template — the V0.6.43 contract preserved."""
+        calls = [
+            c
+            for c in self._summarize_calls(_source_tree)
+            if c.func.id == "summarize_transcript"
+        ]
+        tutorial_calls = [
+            c
+            for c in calls
+            if any(
+                k.arg == "output_type"
+                and isinstance(k.value, ast.Constant)
+                and k.value.value == "tutorial"
+                for k in c.keywords
+            )
+        ]
+        # 2 tutorial sites: the split-failure fallback + the
+        # tutorial-only branch (V0.6.55 shape).
+        assert len(tutorial_calls) == 2, (
+            f"expected 2 tutorial output_type sites, found {len(tutorial_calls)}"
         )
-        val = kw["output_type"]
-        assert isinstance(val, ast.Constant) and val.value == "tutorial", (
-            "the tutorial summarize_transcript call's output_type MUST be "
-            "the literal 'tutorial'"
-        )
+        # and the remaining single call is the summary (no output_type —
+        # the default) or explicitly 'summary'
+        non_tutorial = [c for c in calls if c not in tutorial_calls]
+        assert len(non_tutorial) == 1
 
 
 class TestV0654ResultsDictContract:

@@ -116,22 +116,112 @@ _gpu_lock = threading.Lock()
 # ============================================================================
 
 # Regex for timestamp lines like "[00:00:00.000 --> 00:00:05.000] Hello world"
+# V0.6.55 (P6): the timestamp body accepts the three observed dialects
+# (bare seconds "12.34", two-part "MM:SS.mmm", three-part
+# "HH:MM:SS.mmm") and BOTH arrow styles ("->" the transcribe.cpp
+# dialect, "-->" the whisper.cpp dialect — the V0.6.52 regex only
+# matched single-arrow bare-seconds and silently dropped everything
+# else).
 _TIMESTAMP_RE = re.compile(
-    r"\[\s*(\d+(?:\.\d+)?)\s*->\s*(\d+(?:\.\d+)?)\s*\]\s*(.*)"
+    r"\[\s*(\d+(?::\d+(?::\d+)?)?(?:\.\d+)?)\s*-{1,2}>\s*"
+    r"(\d+(?::\d+(?::\d+)?)?(?:\.\d+)?)\s*\]\s*(.*)"
+)
+
+# V0.6.55 (P6): progress-bar lines that carry a percentage bar but no
+# it/s marker (the transcribe.cpp style "12%|████| 00:12<00:34").
+_PROGRESS_BAR_RE = re.compile(r"^\s*\d{1,3}%\s*\|")
+
+# V0.6.55 (P6): the info-line prefixes that STOP a text continuation
+# block (everything the CLI prefixes its metadata with, both dialects).
+_INFO_PREFIXES = (
+    "audio:", "samples:", "duration:", "sample rate", "model:",
+    "name:", "license:", "max audio:", "run:", "realtime:",
+    "system_info:", "system info:", "segments:", "backend:",
+    "detected-language:", "detected language:", "text:",
 )
 
 
 def _parse_timestamp(ts: str) -> float:
     """Convert a timestamp string to seconds.
 
-    Handles two formats:
-    1. 'HH:MM:SS.mmm' (the old expected format)
-    2. '123.45' (seconds as a float -- the REAL transcribe.cpp format)
+    Handles the observed formats (V0.6.55: also the 2-part form):
+    1. 'HH:MM:SS.mmm' (the whisper.cpp form)
+    2. 'MM:SS.mmm' (the two-part form)
+    3. '123.45' (seconds as a float -- the transcribe.cpp form)
     """
     if ":" in ts:
         parts = ts.split(":")
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        # Degenerate (1 part with a colon?) — treat as seconds.
+        return float(parts[0])
     return float(ts)
+
+
+def _parse_one_cli_line(line, in_text_block, text_parts, segments):
+    """V0.6.55 (P6, Task 9 review refactor): parse ONE CLI output line.
+
+    Mutates ``text_parts`` / ``segments`` in place; returns the line's
+    findings as ``{"language": str | None, "backend": str | None,
+    "in_text_block": bool}`` so the caller can fold the metadata and
+    carry the continuation-block state across lines (never across
+    streams).
+    """
+    line_stripped = line.strip()
+    if not line_stripped:
+        return {"language": None, "backend": None, "in_text_block": in_text_block}
+
+    lower = line_stripped.lower()
+
+    # -- Extract backend --
+    if lower.startswith("backend:"):
+        backend = line_stripped.split(":", 1)[1].strip()
+        return {"language": None, "backend": backend, "in_text_block": False}
+
+    # -- Extract detected language (both spellings) --
+    if lower.startswith(("detected-language:", "detected language:")):
+        language = line_stripped.split(":", 1)[1].strip()
+        return {"language": language, "backend": None, "in_text_block": False}
+
+    # -- Extract the FULL transcript text (single 'text:' line,
+    #    V0.6.55: possibly wrapped onto continuation lines) --
+    if lower.startswith("text:"):
+        text_parts.append(line_stripped.split(":", 1)[1].strip())
+        return {"language": None, "backend": None, "in_text_block": True}
+
+    # -- Extract timestamped segments --
+    # Format: '[   0.00 ->    4.06] There are three main things...'
+    # (or '[00:00:00.000 --> 00:00:05.000] ...' -- the whisper.cpp
+    # dialect, V0.6.55)
+    ts_match = _TIMESTAMP_RE.match(line_stripped)
+    if ts_match:
+        start_ts = _parse_timestamp(ts_match.group(1))
+        end_ts = _parse_timestamp(ts_match.group(2))
+        seg_text = ts_match.group(3).strip()
+        segments.append({"start": start_ts, "end": end_ts, "text": seg_text})
+        return {"language": None, "backend": None, "in_text_block": False}
+
+    # -- Skip known info lines (they also END a text block) --
+    if lower.startswith(_INFO_PREFIXES[:-1]):  # every prefix except 'text:'
+        return {"language": None, "backend": None, "in_text_block": False}
+
+    # -- Skip progress bars (it/s, s/it, or a percent bar) --
+    if "%" in line_stripped and ("it/s" in line_stripped or "s/it" in line_stripped):
+        return {"language": None, "backend": None, "in_text_block": in_text_block}
+    if "it/s" in line_stripped or "s/it" in line_stripped:
+        return {"language": None, "backend": None, "in_text_block": in_text_block}
+    if _PROGRESS_BAR_RE.match(line_stripped):
+        return {"language": None, "backend": None, "in_text_block": in_text_block}
+
+    # -- V0.6.55 (P6): continuation of a wrapped 'text:' block --
+    if in_text_block:
+        text_parts.append(line_stripped)
+        return {"language": None, "backend": None, "in_text_block": True}
+    # (Anything else -- noise we do not recognize -- is dropped, the
+    # pre-V0.6.55 behavior.)
+    return {"language": None, "backend": None, "in_text_block": in_text_block}
 
 
 def _parse_transcribe_cpp_output(stdout: str, stderr: str):
@@ -147,65 +237,58 @@ def _parse_transcribe_cpp_output(stdout: str, stderr: str):
     4. A 'segments: NNN' count line
     5. Timestamped segment lines: '[ 0.00 ->    4.06] text'
 
-    The parser extracts: text (from the 'text:' line), language (from
-    'detected-language:'), segments (from the timestamped lines),
-    and backend (from 'backend:').
+    V0.6.55 (P6) -- the edge-case hardening (each was a silent DROP):
+      - 'detected language:' (space variant) recognized alongside the
+        hyphen form;
+      - BOTH arrow dialects ('->' and '-->') and ALL THREE timestamp
+        forms (seconds / MM:SS.mmm / HH:MM:SS.mmm) parse as segments;
+      - lines WRAPPING a long 'text:' value (no prefix) continue the
+        text block until an info prefix / timestamp line ends it;
+      - an output with ONLY timestamped segments (no 'text:' line)
+        builds its text by joining the segment texts (instead of
+        falling to the raw-stdout fallback with the info lines);
+      - a UTF-8 BOM on the first line is stripped;
+      - progress bars with a percent bar but no it/s marker are
+        skipped.
+
+    Task 9 review fix: stdout and stderr are parsed as SEPARATE
+    streams. The old ``stdout + "\n" + stderr`` concatenation let a
+    stdout ending in a ``text:`` block swallow every unrecognized
+    STDERR line (model-load chatter, warnings) into the transcript.
+    Metadata (backend, language) and segments still come from either
+    stream (the V0.6.52 contract); the text continuation block can
+    never cross the stream boundary.
     """
-    text_parts = []
+    text_parts: list[str] = []
     segments = []
     language = None
     backend = None
 
-    all_lines = (stdout + "\n" + stderr).splitlines()
+    # V0.6.55 (P6): a UTF-8 BOM on the first line would poison the
+    # first prefix match -- strip it before splitting.
+    stdout_clean = (stdout or "").lstrip("\ufeff")
+    stderr_clean = (stderr or "").lstrip("\ufeff")
 
-    for line in all_lines:
-        line_stripped = line.strip()
-        if not line_stripped:
-            continue
+    for stream_lines in (stdout_clean.splitlines(), stderr_clean.splitlines()):
+        in_text_block = False  # a text block never crosses streams
+        for line in stream_lines:
+            parsed = _parse_one_cli_line(line, in_text_block, text_parts, segments)
+            if parsed["language"] is not None:
+                language = parsed["language"]
+            if parsed["backend"] is not None:
+                backend = parsed["backend"]
+            in_text_block = parsed["in_text_block"]
 
-        lower = line_stripped.lower()
+    if text_parts:
+        text = " ".join(p for p in text_parts if p).strip()
+    elif segments:
+        # V0.6.55 (P6): no 'text:' line but segments exist -- the
+        # transcript is the joined segment texts (NOT the raw-stdout
+        # fallback, which drags info lines along).
+        text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
+    else:
+        text = ""
 
-        # -- Extract backend --
-        if lower.startswith("backend:"):
-            backend = line_stripped.split(":", 1)[1].strip()
-            continue
-
-        # -- Extract detected language --
-        if lower.startswith("detected-language:"):
-            language = line_stripped.split(":", 1)[1].strip()
-            continue
-
-        # -- Extract the FULL transcript text (single 'text:' line) --
-        if lower.startswith("text:"):
-            text_parts.append(line_stripped.split(":", 1)[1].strip())
-            continue
-
-        # -- Extract timestamped segments --
-        # Format: '[   0.00 ->    4.06] There are three main things...'
-        ts_match = _TIMESTAMP_RE.match(line_stripped)
-        if ts_match:
-            start_ts = _parse_timestamp(ts_match.group(1))
-            end_ts = _parse_timestamp(ts_match.group(2))
-            seg_text = ts_match.group(3).strip()
-            segments.append({"start": start_ts, "end": end_ts, "text": seg_text})
-            continue
-
-        # -- Skip known info lines --
-        if lower.startswith((
-            "audio:", "samples:", "duration:", "sample rate",
-            "model:", "name:", "license:", "max audio:",
-            "run:", "realtime:", "system_info:", "system info:",
-            "segments:",
-        )):
-            continue
-
-        # -- Skip progress bars --
-        if "%" in line_stripped and ("it/s" in line_stripped or "s/it" in line_stripped):
-            continue
-        if "it/s" in line_stripped or "s/it" in line_stripped:
-            continue
-
-    text = " ".join(text_parts).strip()
     return {
         "text": text,
         "segments": segments,
@@ -214,6 +297,7 @@ def _parse_transcribe_cpp_output(stdout: str, stderr: str):
         "raw_stdout": stdout,
         "raw_stderr": stderr,
     }
+
 
 # THE ENGINE -- one function, callable from the app.
 # ============================================================================

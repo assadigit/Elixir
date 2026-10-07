@@ -64,6 +64,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import requests as _requests
 
@@ -77,6 +78,22 @@ from core.system.timeouts import (
 )
 
 logger = logging.getLogger(__name__)
+
+# V0.6.55 (P1b): monotonic-clock indirection — tests monkeypatch THIS
+# name to drive deterministic generation-speed measurements.
+_monotonic = time.monotonic
+
+# V0.6.55 (P1b): CPU-fallback detection constants. llama-server that
+# failed to fit its model in VRAM (the n_gpu_layers=99 GPU-fit warning
+# on a 27B model) still LISTENS and still answers — just 10-30x slower
+# (a 27B on CPU generates ~1-2 tok/s, the LLAMACPP_MIN_TOKENS_PER_SEC
+# floor; a 12 GB GPU runs the same quant at 20-100+ tok/s). 5.0 sits
+# clearly between the two regimes.
+LLAMACPP_SLOW_TOKS_PER_SEC = 5.0
+# The probe's generation budget: enough tokens to measure a rate, cheap
+# enough for a button click (~1-2 s on GPU, ~10 s on the CPU fallback —
+# which is itself the diagnostic).
+LLAMACPP_PROBE_TOKENS = 16
 
 # Conservative generation-rate floor (tok/s) used ONLY by the non-streaming
 # fallback to derive a wall-clock timeout from the output budget. Dense 27B
@@ -95,6 +112,105 @@ LLAMACPP_MIN_OUTPUT_TOKENS = 256
 # multi-million-token windows with RoPE scaling; 1M is a sane app-side cap
 # that comfortably admits 65k/128k/200k-class models).
 LLAMACPP_MAX_CONTEXT_TOKENS = 1_048_576
+
+
+# ── V0.6.55 (P1b): generation-speed measurement (CPU-fallback detection) ──
+
+
+@dataclass(frozen=True)
+class GenerationProbeResult:
+    """The outcome of a timed tiny generation against a llama-server.
+
+    ``ok`` False only when the server could not be reached / errored —
+    a SLOW-but-successful generation is ok=True with the
+    ``slow-cpu-fallback-suspected`` verdict (the server answered; the
+    speed is the finding).
+    """
+
+    ok: bool
+    model: str
+    base_url: str
+    tokens: int
+    elapsed_s: float
+    tps: float
+    verdict: str
+    message: str
+
+
+def classify_generation_speed(tps: float) -> str:
+    """Map a measured tokens/second to a verdict.
+
+    ``healthy`` (>= LLAMACPP_SLOW_TOKS_PER_SEC) — GPU-class speed.
+    ``slow-cpu-fallback-suspected`` (< threshold but > 0) — the model
+    almost certainly did not fit in VRAM at server startup and
+    llama-server silently fell back to CPU.
+    ``unknown`` (<= 0) — no usable measurement.
+    """
+    if tps <= 0:
+        return "unknown"
+    if tps < LLAMACPP_SLOW_TOKS_PER_SEC:
+        return "slow-cpu-fallback-suspected"
+    return "healthy"
+
+
+def compute_generation_tps(
+    samples: list[tuple[float, int]],
+    final_chars: int,
+    elapsed_s: float,
+) -> float:
+    """Tokens/second from the on_chunk sample timeline.
+
+    With >= 2 samples the window is FIRST → LAST sample (excludes
+    connection + prompt-eval latency, so a cold first token does not
+    poison the rate). With 0-1 samples (a generation fast enough to fit
+    inside the 0.5 s chunk-throttle) the whole-call elapsed is the
+    conservative fallback. Tokens are estimated at 4 chars/token — the
+    probe prompt is plain English, close enough for the 5 tok/s regime
+    gap. Never divides by zero; returns 0.0 instead.
+    """
+    if len(samples) >= 2:
+        t0, c0 = samples[0]
+        t1, c1 = samples[-1]
+        span = t1 - t0
+        if span > 0:
+            return max(0.0, (c1 - c0) / 4.0 / span)
+        return 0.0
+    if elapsed_s > 0:
+        return max(0.0, final_chars / 4.0 / elapsed_s)
+    return 0.0
+
+
+def build_generation_probe_message(
+    verdict: str,
+    tps: float,
+    model: str,
+    base_url: str,
+    detail: str,
+) -> str:
+    """The user-facing wording for a probe result (pure — the dialog
+    and the test button both render this)."""
+    if verdict == "healthy":
+        return (
+            f"llama.cpp OK — '{model}' at {base_url} generated "
+            f"~{tps:.1f} tokens/s (GPU-class speed)."
+        )
+    if verdict == "slow-cpu-fallback-suspected":
+        return (
+            f"llama.cpp responded but generated only ~{tps:.1f} tokens/s "
+            f"(model '{model}' at {base_url}).\n\n"
+            f"This almost always means the model did NOT fit in VRAM when "
+            f"llama-server started (the n_gpu_layers GPU-fit warning — e.g. "
+            f"-ngl 99 layers of a 27B model on a smaller card) and the "
+            f"server silently fell back to CPU. A 27B model on CPU makes a "
+            f"30-second summary take 30+ minutes.\n\n"
+            f"FIX: restart llama-server with a lower --n-gpu-layers value "
+            f"(e.g. -ngl 40), or use a smaller quantization of the model."
+        )
+    # unreachable / unknown
+    base = f"llama.cpp at {base_url} could not be probed"
+    if detail:
+        return f"{base}: {detail}"
+    return base
 
 
 def _no_proxy_session() -> _requests.Session:
@@ -758,4 +874,109 @@ def test_llamacpp_connection(
         False,
         f"server up (models: {', '.join(models[:3])}) but model "
         f"'{probe_model}' failed to respond{detail}",
+    )
+
+
+def probe_llamacpp_generation(
+    base_url: str,
+    api_key: str = "local",
+    model: str = "",
+    max_tokens: int | None = None,
+    timeout: int | None = None,
+    log_callback: Callable[[str, str], None] | None = None,
+) -> GenerationProbeResult:
+    """V0.6.55 (P1b): a timed tiny generation — the CPU-fallback detector.
+
+    WHY a generation probe (not just GET /v1/models): llama-server that
+    failed to fit its model in VRAM (the ``n_gpu_layers`` GPU-fit
+    warning) still LISTENS and still answers /v1/models — the failure
+    is only visible in the GENERATION RATE. This probe runs
+    ``LLAMACPP_PROBE_TOKENS`` tokens through the REAL streaming path
+    (``_chat_streaming`` — the same transport the summary uses), times
+    the chunk stream, and classifies the speed. Below
+    ``LLAMACPP_SLOW_TOKS_PER_SEC`` the verdict is
+    ``slow-cpu-fallback-suspected`` and the message tells the operator
+    to restart llama-server with a lower ``--n-gpu-layers`` — the
+    actionable version of a console warning the app can never read.
+
+    Never raises — failures come back as ``ok=False`` results (the
+    transcribe dialog's Test button renders ``message`` directly).
+    """
+    _tokens = int(max_tokens) if max_tokens else LLAMACPP_PROBE_TOKENS
+    _to = int(timeout) if timeout is not None else HTTP_FETCH_TIMEOUT_S
+    _model = (model or "").strip()
+    logs: list[str] = []
+
+    def _log(msg: str, level: str = "INFO") -> None:
+        logs.append(msg)
+        if log_callback:
+            try:
+                log_callback(msg, level)
+            except Exception:
+                pass  # a UI callback must never kill the probe
+
+    provider = LlamaCppProvider(
+        model=_model,
+        base_url=base_url,
+        api_key=api_key,
+        max_tokens=_tokens,
+        timeout=_to,
+        log_callback=_log,
+    )
+    payload: dict = {
+        "model": _model,
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Reply with one short sentence about the sky. "
+                    "Keep it under twenty words."
+                ),
+            }
+        ],
+        "max_tokens": _tokens,
+        "temperature": 0.0,
+        "stream": True,
+    }
+    samples: list[tuple[float, int]] = []
+
+    def _on_chunk(partial: str) -> None:
+        samples.append((_monotonic(), len(partial)))
+
+    t0 = _monotonic()
+    try:
+        text = provider._chat_streaming(payload, _on_chunk, timeout=_to)
+    except Exception as e:  # noqa: BLE001 — the probe never raises (the button contract)
+        detail = f"{type(e).__name__}: {e}"
+        return GenerationProbeResult(
+            ok=False,
+            model=_model,
+            base_url=base_url,
+            tokens=0,
+            elapsed_s=0.0,
+            tps=0.0,
+            verdict="unreachable",
+            message=build_generation_probe_message(
+                "unreachable", 0.0, _model, base_url, detail
+            ),
+        )
+    elapsed = max(0.0, _monotonic() - t0)
+    final_chars = len(text or "")
+    tokens = int(final_chars / 4)
+    tps = compute_generation_tps(samples, final_chars, elapsed)
+    verdict = classify_generation_speed(tps)
+    _log(
+        f"    🦙 generation probe: {tps:.1f} tok/s "
+        f"({final_chars} chars / {elapsed:.1f}s) → {verdict}",
+        "DEBUG",
+    )
+    return GenerationProbeResult(
+        ok=True,
+        model=_model,
+        base_url=base_url,
+        tokens=tokens,
+        elapsed_s=elapsed,
+        tps=tps,
+        verdict=verdict,
+        message=build_generation_probe_message(verdict, tps, _model, base_url, ""),
     )

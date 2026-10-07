@@ -247,7 +247,14 @@ class TestDecideLlamacppFirst:
 
     def test_unknown_and_blank_providers_are_local(self, monkeypatch):
         """Garbage/blank provider names get the LOCAL treatment (probe,
-        fallback) — matching create_provider's default-to-ollama."""
+        fallback) — matching create_provider's default-to-ollama.
+
+        V0.6.55 (P1a) CONTRACT CHANGE, documented: the all-dead probe
+        count moved 1 → 3 (the default 8080 + the auto-detection
+        alternates 8000 + 9931). The pin is updated to the NEW exact
+        count — still strict, the alternates list is pinned separately
+        in test_v0655_llamacpp_port_autodetect.py.
+        """
         from core.llm import local_fallback
 
         for provider in ("banana", "", "  ", "LMSTUDIO"):
@@ -255,14 +262,25 @@ class TestDecideLlamacppFirst:
             spy = _ProbeSpy(models=[])
             decision, _ = self._decide(monkeypatch, provider, spy=spy)
             assert decision.use_llamacpp is False, provider
-            assert len(spy.calls) == 1, provider
+            assert len(spy.calls) == 3, provider  # 8080 + 8000 + 9931 (V0.6.55)
 
     def test_defaults_when_no_llamacpp_settings(self, monkeypatch):
         """Absent llamacpp_* keys → the production defaults: the 8080 URL,
-        the 'local' key, the 5 s UI-probe budget."""
+        the 'local' key, the 5 s UI-probe budget.
+
+        V0.6.55 (P1a) CONTRACT CHANGE, documented: all-dead now probes
+        the well-known shifting ports (8080 → 8000 → 9931) before giving
+        up — the operator's rig runs llama-server on :8000 (the V0.6.54
+        CHANGELOG "configuration, not code" trap). The pin is updated to
+        the NEW exact probe sequence.
+        """
         spy = _ProbeSpy(models=[])
         self._decide(monkeypatch, "ollama", spy=spy)
-        assert spy.calls == [("http://127.0.0.1:8080/v1", "local", 5)]
+        assert spy.calls == [
+            ("http://127.0.0.1:8080/v1", "local", 5),
+            ("http://127.0.0.1:8000/v1", "local", 5),
+            ("http://127.0.0.1:9931/v1", "local", 5),
+        ]
 
 
 # ═════════════════════════════════════════════════════════════════════════════

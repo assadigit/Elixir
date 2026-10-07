@@ -7,6 +7,21 @@ intent): Ollama is the always-on default (auto-start); llama.cpp
 Every raw-request LOCAL call site (Packets of Knowledge, the
 new-output riders) therefore asks this module BEFORE dispatching.
 
+V0.6.55 (P1a — the transcribe-tool redesign): llama.cpp's default PORT
+keeps shifting. The app default is 8080; the operator's rig runs
+``llama-server`` on **8000** (llama.cpp's current default — its console
+prints "server default port will be changed to :9931 in a future
+release"), and 9931 is the announced future default. A hard-coded
+8080 probe therefore concludes "llama.cpp not reachable" on a rig
+where llama.cpp IS the deliberately-started backend — the V0.6.54
+CHANGELOG's flagged configuration trap. The fix: when the configured
+base URL is the UNMODIFIED app default, the well-known alternates
+(8000, then 9931) are probed too — first LIVE port wins, both here
+(``decide_llamacpp_first`` / ``resolve_llamacpp_base_url``) and in
+``create_provider``'s llamacpp branch (via the same helper). An
+EXPLICIT operator-configured URL is never second-guessed (the V0.6.12
+deliberate-choice contract is unchanged).
+
 V0.6.13 extends the wired sites (the operator's follow-up report:
 "tts, TRANSCRIBE SERVICE AND PODCAST HAVE SAME PROBLEM, THEY FIND
 LLM ON OLLAMA ONLY"): the transcribe summary
@@ -54,6 +69,18 @@ from core.system.timeouts import UI_PROBE_TIMEOUT_S
 # The llama.cpp default (single source: the wizard mixin's
 # LLAMACPP_DEFAULT_URL and the settings.py defaults block).
 LLAMACPP_DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
+
+# V0.6.55 (P1a): llama.cpp's shifting default PORTS, probe order:
+#   8000 — llama.cpp's CURRENT default (the operator's rig runs it here;
+#          the V0.6.54 CHANGELOG "configuration, not code" note)
+#   9931 — the ANNOUNCED future default (llama-server's console notice)
+# NOT listed: 8080 — that is LLAMACPP_DEFAULT_BASE_URL itself and is
+# always probed FIRST (a live default keeps byte-identical V0.6.12
+# behavior; the alternates only fire when the default is DEAD).
+LLAMACPP_ALT_BASE_URLS = (
+    "http://127.0.0.1:8000/v1",
+    "http://127.0.0.1:9931/v1",
+)
 
 # Providers that are deliberate NON-local choices — never probed, never
 # overridden (single source with create_provider's dispatch set,
@@ -152,6 +179,65 @@ def _probe_llamacpp(base_url: str, api_key: str) -> list[str]:
     return models
 
 
+def _configured_base_url(settings: Any) -> str:
+    """The configured llama.cpp base URL, stripped + defaulted.
+
+    Shared by ``resolve_llamacpp_base_url`` and ``decide_llamacpp_first``
+    so both read EXACTLY the same value (single source).
+    """
+    base = str(
+        settings.get("summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_BASE_URL)
+        or LLAMACPP_DEFAULT_BASE_URL
+    ).strip()
+    return base or LLAMACPP_DEFAULT_BASE_URL
+
+
+def _probe_candidates(base: str, api_key: str) -> list[tuple[str, list[str]]]:
+    """Probe the base URL first; if it is the UNMODIFIED app default and
+    it is dead, probe the well-known alternates in order.
+
+    Returns the probed (url, served_models) pairs in probe order — the
+    caller picks the first live one (or acts on the all-dead list).
+    Never raises; a probe that explodes counts as dead (the
+    ``_probe_llamacpp`` contract).
+    """
+    probed: list[tuple[str, list[str]]] = [(base, _probe_llamacpp(base, api_key))]
+    if base == LLAMACPP_DEFAULT_BASE_URL and not probed[0][1]:
+        for alt in LLAMACPP_ALT_BASE_URLS:
+            served = _probe_llamacpp(alt, api_key)
+            probed.append((alt, served))
+            if served:
+                break  # first live wins — no over-probing
+    return probed
+
+
+def resolve_llamacpp_base_url(settings: Any, api_key: str | None = None) -> str:
+    """V0.6.55 (P1a): the single source for "which llama.cpp URL to talk to".
+
+    - An EXPLICIT operator-configured URL is returned as-is (never
+      probed here — a deliberate choice, the V0.6.12 contract).
+    - The unmodified default setting: the first LIVE well-known port
+      (8080 first, then 8000, then 9931). All dead → the default
+      (byte-identical to pre-V0.6.55 callers).
+
+    Consumed by ``create_provider``'s llamacpp branch so every
+    factory-built provider follows the auto-detection (not just the
+    routing decision). The probe cache bounds the cost: one pass per
+    30s TTL window per (url, key).
+    """
+    base = _configured_base_url(settings)
+    if base != LLAMACPP_DEFAULT_BASE_URL:
+        return base
+    if api_key is None:
+        from core.system.secrets import get_secret
+
+        api_key = str(get_secret("summarisation.llamacpp_api_key", settings, "local") or "local")
+    for url, served in _probe_candidates(base, api_key):
+        if served:
+            return url
+    return base
+
+
 def decide_llamacpp_first(
     settings: Any,
     requested_provider: str,
@@ -174,26 +260,40 @@ def decide_llamacpp_first(
     if not policy_on:
         return _PASSTHROUGH
 
-    base = str(
-        settings.get("summarisation.llamacpp_base_url", LLAMACPP_DEFAULT_BASE_URL)
-        or LLAMACPP_DEFAULT_BASE_URL
-    ).strip()
-    if not base:
-        base = LLAMACPP_DEFAULT_BASE_URL
-
     from core.system.secrets import get_secret
 
     api_key = str(get_secret("summarisation.llamacpp_api_key", settings, "local") or "local")
 
-    served = _probe_llamacpp(base, api_key)
-    if not served:
+    # V0.6.55 (P1a): the default port may be dead while llama.cpp lives
+    # on a shifting default (8000 today, 9931 announced). Explicit
+    # operator URLs are still probed alone (deliberate choice, V0.6.12).
+    base = _configured_base_url(settings)
+    probed = _probe_candidates(base, api_key)
+    live = [(url, served) for url, served in probed if served]
+    if not live:
+        probed_urls = ", ".join(url for url, _ in probed)
         return LlamacppFirstDecision(
             use_llamacpp=False,
             base_url="",
             model="",
             api_key="",
-            note=f"llama.cpp not reachable at {base} — using the configured backend",
+            note=(
+                f"llama.cpp not reachable at {base}"
+                + (
+                    f" (probed {probed_urls} — auto-detection)"
+                    if len(probed) > 1
+                    else ""
+                )
+                + " — using the configured backend"
+            ),
         )
+    base, served = live[0]
+    auto = (
+        f" (port auto-detected — configured default "
+        f"{LLAMACPP_DEFAULT_BASE_URL} was not reachable)"
+        if len(probed) > 1 and base != LLAMACPP_DEFAULT_BASE_URL
+        else ""
+    )
 
     # V0.4.30 factory precedent: the DETECTED served model wins over the
     # configured name (a llama-server at this URL serving a different
@@ -206,5 +306,5 @@ def decide_llamacpp_first(
         base_url=base,
         model=model,
         api_key=api_key,
-        note=f"llama.cpp detected at {base} (model '{model}'){extra} — routing to it",
+        note=f"llama.cpp detected at {base} (model '{model}'){auto}{extra} — routing to it",
     )

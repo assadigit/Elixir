@@ -20,18 +20,157 @@ CPU: falls back automatically (slower but works)
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
 
-# V18.20.4.12 (W-a10) follow-up: the DEFAULT model tag here was the
-# KNOWN-BAD "…-Q4_K_M:latest" variant that 404s on the rig (the dialog
-# combo already uses RIG_FALLBACK_MODEL; the service default now matches
-# so programmatic callers don't hit the dead tag).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
 from core.system.timeouts import LONG_RUN_TIMEOUT_S
+from core.transcribe.errors import (
+    LLMConnectionError,
+    LLMEmptyResponseError,
+    LLMGenerationError,
+)
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════
+# V0.6.55 (P2): the transcript PROMPT budget — replaces the silent
+# ``transcript[:8000]`` amputation. 24k prompt tokens + 12k output cap +
+# 512 margin fits the default 65k llama.cpp window with room to spare;
+# a 15-min video (~20k chars ≈ 5k tokens) passes WHOLE. Only an absurd
+# wall (3h+ lecture) trips the cut — and then it is a LOUD,
+# sentence-boundary cut with an explicit marker (see
+# fit_transcript_to_budget).
+# ═══════════════════════════════════════════════════════════════════════
+TRANSCRIPT_PROMPT_TOKEN_BUDGET = 24_000
+
+# Task 9 review fix: the truncation marker's own tokens are RESERVED in
+# the fit search — the old code cut the body to exactly the budget and
+# then appended the ~150-char marker ON TOP of it (24,036 tokens for a
+# 24,000 budget — measured by the fresh-eyes review). A 64-token
+# reserve comfortably covers the marker at any realistic count.
+_TRANSCRIPT_MARKER_TOKEN_RESERVE = 64
+
+# The truncation marker appended when the budget trips (the model AND
+# the operator both get to see that the tail was dropped).
+_TRANSCRIPT_MARKER_LABEL = "[... transcript truncated"
+
+# V0.6.55 (P3): the combined-output split marker. The prompt instructs
+# the model to emit EXACTLY ``<<<ELIXIR-TRANSCRIBE-SPLIT>>>`` between
+# the notes document and the tutorial document; the splitter tolerates
+# the predictable drift (case, 1-6 angle brackets, underscores/hyphens/
+# spaces, a stray code fence around it) and prefers a marker that
+# stands on its OWN line (the contract line) over an inline mention
+# inside a sentence (body text).
+_MARKER_CORE = r"ELIXIR[-_ ]?TRANSCRIBE[-_ ]?SPLIT"
+_COMBINED_SPLIT_OWN_LINE_RE = re.compile(
+    rf"^[ \t]*<{{1,6}}\s*{_MARKER_CORE}\s*>{{1,6}}[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_COMBINED_SPLIT_ANYWHERE_RE = re.compile(
+    rf"<{{1,6}}\s*{_MARKER_CORE}\s*>{{1,6}}",
+    re.IGNORECASE,
+)
+
+
+def _count_prompt_tokens(text: str) -> int:
+    """Best-available token count for the budget math.
+
+    Deferred import: core.llm.context_budget → utils.token_counter →
+    tiktoken (with a words*4//3 fallback when tiktoken is absent — the
+    hermetic-test gate). Never raises.
+    """
+    try:
+        from core.llm.context_budget import count_tokens
+
+        return int(count_tokens(text))
+    except Exception:
+        return max(1, len(text.split()) * 4 // 3)
+
+
+def fit_transcript_to_budget(transcript: str, max_tokens: int | None = None) -> dict:
+    """V0.6.55 (P2): fit the transcript into the LLM prompt budget.
+
+    - Fits (the 15-min-video case) → the FULL text, ``truncated`` False.
+    - Over budget → the cut lands on a sentence/paragraph boundary
+      (word boundary as the last resort — a punctuation-free AND
+      whitespace-free wall in the 400-char snap window can still
+      hard-cut, the honest boundary of the heuristic), and an explicit
+      marker naming the used/total counts is appended so the cut is
+      visible to the model and the operator. The marker's tokens are
+      RESERVED in the fit search (body + marker never exceed the
+      budget).
+
+    Returns ``{"text": str, "truncated": bool, "chars_used": int,
+    "chars_total": int}`` — never raises (empty input is a valid,
+    untruncated empty fit).
+    """
+    text = transcript or ""
+    total_chars = len(text)
+    budget = int(max_tokens) if max_tokens else TRANSCRIPT_PROMPT_TOKEN_BUDGET
+    if budget <= 0 or not text:
+        return {
+            "text": text,
+            "truncated": False,
+            "chars_used": total_chars,
+            "chars_total": total_chars,
+        }
+    if _count_prompt_tokens(text) <= budget:
+        return {
+            "text": text,
+            "truncated": False,
+            "chars_used": total_chars,
+            "chars_total": total_chars,
+        }
+
+    # Task 9 review fix: the fit search targets the budget MINUS the
+    # marker's own tokens, so body + marker never exceeds the budget.
+    body_budget = max(1, budget - _TRANSCRIPT_MARKER_TOKEN_RESERVE)
+
+    # Over budget: find the largest prefix whose token count fits.
+    # Binary search on the char cut (each probe is a token count — the
+    # token-counter cache does not help across probes, but log2(n)
+    # probes of an O(n) count is fine for a one-shot pipeline step).
+    lo, hi = 0, total_chars  # lo fits, hi does not (hi == total over)
+    while lo < hi - 1:
+        mid = (lo + hi) // 2
+        if _count_prompt_tokens(text[:mid]) <= body_budget:
+            lo = mid
+        else:
+            hi = mid
+    cut = lo
+
+    # Snap the cut BACK to a sentence boundary (or a word boundary as
+    # the last resort) — never mid-word.
+    window = text[max(0, cut - 400) : cut]
+    best = -1
+    for punct in (". ", ".\n", "! ", "? ", "\n\n"):
+        idx = window.rfind(punct)
+        if idx > best:
+            best = idx
+    if best >= 0:
+        cut = max(0, cut - 400) + best + 1
+    else:
+        # no sentence boundary in the window — fall back to whitespace
+        ws = window.rfind(" ")
+        if ws >= 0:
+            cut = max(0, cut - 400) + ws
+
+    body = text[:cut].rstrip()
+    used = len(body)
+    marker = (
+        f"\n\n{_TRANSCRIPT_MARKER_LABEL}: {used:,} of {total_chars:,} characters "
+        f"were passed to the model — the remaining tail was cut at the "
+        f"context budget to fit the prompt ...]"
+    )
+    return {
+        "text": body + marker,
+        "truncated": True,
+        "chars_used": used,
+        "chars_total": total_chars,
+    }
 
 
 def extract_audio_from_video(
@@ -262,22 +401,41 @@ def summarize_transcript(
     log_callback=None,
     progress_callback=None,
     output_type: str = "summary",
+    on_chunk=None,
+    prompt_token_budget: int | None = None,
 ) -> str:
-    """Summarize transcript into Obsidian-friendly markdown using Ollama.
+    """Summarize transcript into Obsidian-friendly markdown using the LLM.
 
-    V13.28.0 (P2.10): Now delegates to ``llm_provider.create_provider()`` +
-    ``complete_streaming()`` instead of direct ``requests.post``. Gets:
-    - OllamaSupervisor crash recovery (auto-restart after 3 failures)
-    - Retry with backoff
-    - Proxy-proof HTTP (safe_ollama_request pattern)
-    - <think> block stripping (via response_parser)
+    V13.28.0 (P2.10): delegates to ``llm_provider.create_provider()`` +
+    ``complete_streaming()`` -- supervisor crash recovery, retry with
+    backoff, proxy-proof HTTP, thinking-block stripping.
 
-    Returns the summarized markdown, or an error string.
+    V0.6.55 (the transcribe-tool redesign):
+    - P2: the prompt is rendered with ``fit_transcript_to_budget`` --
+      the WHOLE transcript reaches the LLM when it fits (the old
+      ``[:8000]`` slice amputated ~half of a 15-min video's text);
+      an over-budget wall gets a LOUD sentence-boundary cut + marker.
+    - P4: ``on_chunk`` is forwarded to the provider's streaming path
+      so the UI can show the generation growing (a frozen status
+      label for 10+ minutes was the rig's reported symptom).
+    - P5: failures RAISE the structured ``TranscribeError`` family
+      (LLMConnectionError / LLMEmptyResponseError /
+      LLMGenerationError) instead of returning ``"Error: ..."`` strings --
+      the dialog renders ``str(err)`` (stage + message + fix).
+
+    Returns the summarized markdown. Raises TranscribeError subclasses.
     """
     log = log_callback or (lambda msg, level="INFO": None)
     progress = progress_callback or (lambda pct, msg: None)
 
-    import re
+    fitted = fit_transcript_to_budget(transcript, max_tokens=prompt_token_budget)
+    if fitted["truncated"]:
+        log(
+            f"  \u26a0\ufe0f Transcript truncated for the prompt budget: "
+            f"{fitted['chars_used']:,} of {fitted['chars_total']:,} chars kept "
+            f"(the cut is marked in the prompt).",
+            "WARNING",
+        )
 
     from core.summarisation.prompt_manager import PromptManager
 
@@ -286,94 +444,251 @@ def summarize_transcript(
     if output_type == "tutorial":
         prompt = _pm.render_template(
             "transcribe/transcript_tutorial",
-            transcript=transcript[:8000],
+            transcript=fitted["text"],
         )
         log("  Generating tutorial/educational guide...", "INFO")
         progress(92, "Generating tutorial guide with LLM...")
     else:
         prompt = _pm.render_template(
             "transcribe/transcript_notes",
-            transcript=transcript[:8000],
+            transcript=fitted["text"],
         )
         log("  Summarizing transcript (core concepts + key takeaways)...", "INFO")
         progress(92, "Summarizing with LLM...")
 
-    log(f"  📝 Summarizing transcript with {model}...", "INFO")
-    progress(92, "Summarizing with LLM...")
+    result = _complete_transcribe_prompt(
+        prompt=prompt,
+        model=model,
+        ollama_url=ollama_url,
+        log=log,
+        on_chunk=on_chunk,
+    )
+    log(f"  \u2705 Summary complete: {len(result)} chars", "INFO")
+    return result
+
+
+def summarize_transcript_combined(
+    transcript: str,
+    model: str = RIG_FALLBACK_MODEL,
+    ollama_url: str = "http://localhost:11434",
+    log_callback=None,
+    progress_callback=None,
+    on_chunk=None,
+    prompt_token_budget: int | None = None,
+) -> dict:
+    """V0.6.55 (P3): BOTH outputs -- notes AND tutorial -- in ONE LLM round trip.
+
+    The two-output flow used to run two sequential full generations on
+    the same transcript (2x the wall-clock on a dense 27B at 2-6 tok/s
+    -- the rig's reported 10+ minute waits). The combined prompt
+    (``transcribe/transcript_combined``) asks the model to emit both
+    documents separated by ``<<<ELIXIR-TRANSCRIBE-SPLIT>>>``; the
+    response is split with ``split_combined_output``.
+
+    Returns ``{"summary": str, "tutorial": str | None, "split_ok":
+    bool, "combined": True}`` -- on ``split_ok`` False the RAW response
+    is returned as ``summary`` with ``tutorial=None`` and the CALLER
+    falls back to a separate tutorial call (correctness is never
+    sacrificed to save a round trip). Raises TranscribeError subclasses
+    on LLM failures (same contract as ``summarize_transcript``).
+    """
+    log = log_callback or (lambda msg, level="INFO": None)
+    progress = progress_callback or (lambda pct, msg: None)
+
+    fitted = fit_transcript_to_budget(transcript, max_tokens=prompt_token_budget)
+    if fitted["truncated"]:
+        log(
+            f"  \u26a0\ufe0f Transcript truncated for the prompt budget: "
+            f"{fitted['chars_used']:,} of {fitted['chars_total']:,} chars kept.",
+            "WARNING",
+        )
+
+    from core.summarisation.prompt_manager import PromptManager
+
+    _pm = PromptManager()
+    prompt = _pm.render_template(
+        "transcribe/transcript_combined",
+        transcript=fitted["text"],
+    )
+    log("  Generating combined notes + tutorial (one LLM call)...", "INFO")
+    progress(92, "Summarizing with LLM (notes + tutorial in one call)...")
+
+    raw = _complete_transcribe_prompt(
+        prompt=prompt,
+        model=model,
+        ollama_url=ollama_url,
+        log=log,
+        on_chunk=on_chunk,
+    )
+    parts = split_combined_output(raw)
+    if parts["ok"]:
+        log(
+            "  \u2705 Combined output split cleanly "
+            f"(notes {len(parts['summary'])} chars, tutorial {len(parts['tutorial'])} chars)",
+            "INFO",
+        )
+        return {
+            "summary": parts["summary"],
+            "tutorial": parts["tutorial"],
+            "split_ok": True,
+            "combined": True,
+        }
+    log(
+        "  \u26a0\ufe0f Combined output did not contain the split marker -- "
+        "falling back to a separate tutorial call.",
+        "WARNING",
+    )
+    return {
+        "summary": raw,
+        "tutorial": None,
+        "split_ok": False,
+        "combined": True,
+    }
+
+
+def split_combined_output(text: str) -> dict:
+    """V0.6.55 (P3): split a combined notes+tutorial response on the marker.
+
+    Tolerates the predictable model drift: case, extra angle brackets,
+    underscores/hyphens/spaces inside the marker name, and a stray code
+    fence wrapping either document. ``{"ok": bool, "summary": str | None,
+    "tutorial": str | None}`` -- ok requires BOTH sides non-empty.
+    """
+    if not text or not text.strip():
+        return {"ok": False, "summary": None, "tutorial": None}
+    # Prefer a marker on its OWN line (the contract line); an inline
+    # mention inside a sentence is body text, not the split.
+    match = _COMBINED_SPLIT_OWN_LINE_RE.search(text) or _COMBINED_SPLIT_ANYWHERE_RE.search(text)
+    if not match:
+        return {"ok": False, "summary": None, "tutorial": None}
+
+    def _strip_fences(s: str) -> str:
+        s = re.sub(r"^```(?:markdown|md)?\s*\n", "", s.strip())
+        s = re.sub(r"\n```\s*$", "", s)
+        return s.strip()
+
+    summary = _strip_fences(text[: match.start()])
+    tutorial = _strip_fences(text[match.end() :])
+    return {
+        "ok": bool(summary) and bool(tutorial),
+        "summary": summary or None,
+        "tutorial": tutorial or None,
+    }
+
+
+def _complete_transcribe_prompt(
+    prompt: str,
+    model: str,
+    ollama_url: str,
+    log,
+    on_chunk=None,
+) -> str:
+    """The shared LLM-call seam for BOTH ``summarize_transcript`` and
+    ``summarize_transcript_combined``: routing (the V0.6.13
+    llama.cpp-first policy + the V0.6.55 port auto-detection via the
+    factory), the provider call with streaming (P4), and the V0.6.55
+    structured-error mapping (P5). Returns the cleaned markdown;
+    raises LLMConnectionError / LLMEmptyResponseError /
+    LLMGenerationError.
+    """
+    from core.summarisation.response_parser import strip_thinking
+
+    log(f"  \U0001f4dd Summarizing with {model}...", "INFO")
 
     try:
         from core.llm.llm_provider import create_provider
-        from core.summarisation.response_parser import strip_thinking
         from utils.settings import Settings
 
         s = Settings()
-        # V0.6.0 (T2): provider now follows the configured
-        # ``summarisation.provider`` (the app-wide factory pattern, cf. the
-        # Summarization dialog) — it was hardcoded to "ollama", so any rig
-        # configured for another backend got connection-refused here.
+        # V0.6.0 (T2): provider follows the configured
+        # ``summarisation.provider`` (the app-wide factory pattern).
         provider_name = str(s.get("summarisation.provider", "ollama") or "ollama").strip().lower()
 
-        # V0.6.13: the llama.cpp-first local fallback (the operator's
-        # follow-up report: "TRANSCRIBE SERVICE ... FIND[S] LLM ON OLLAMA
-        # ONLY"). A live llama-server takes over the call — the factory's
-        # llamacpp branch speaks OpenAI-compat to it and the DETECTED
-        # served model wins over the dialog's model pick (the V0.4.30
-        # precedent). Cloud selections are never probed; a dead llama.cpp
-        # leaves this path byte-identical to V0.6.12.
+        # V0.6.13: the llama.cpp-first local fallback -- a live
+        # llama-server takes over the call (the factory's llamacpp
+        # branch speaks OpenAI-compat to it; the DETECTED served model
+        # wins over the dialog's model pick -- the V0.4.30 precedent).
+        # V0.6.55 (P1a): the factory resolves the base URL through the
+        # port auto-detector, so the takeover works when llama-server
+        # lives on :8000 (the rig) without any manual settings edit.
         from core.llm.local_fallback import decide_llamacpp_first
 
         _lc = decide_llamacpp_first(s, provider_name)
         if _lc.note:
-            log(f"  🦙 {_lc.note}", "INFO")
+            log(f"  \U0001f999 {_lc.note}", "INFO")
         if _lc.use_llamacpp:
             provider_name = "llamacpp"
 
-        # V13.28.0: Create provider via the factory — gets supervisor + retry
+        # V13.28.0: the factory -- supervisor + retry for free.
         provider = create_provider(
             provider=provider_name,
             settings=s,
             log_callback=lambda msg, level="INFO": log(f"  [LLM] {msg}", level),
         )
         # V0.6.0 (T2): honor the caller's explicit endpoint on the Ollama
-        # path — the factory pins the default localhost:11434, but this
-        # service is always invoked with the endpoint the dialog resolved
-        # from Settings, and the ``ollama_url`` parameter used to be dead.
-        # (V0.6.13: skipped on the llama.cpp takeover — that provider reads
-        # the llamacpp_* block, not the Ollama URL.)
+        # path (the factory pins the default localhost:11434, but this
+        # service is always invoked with the dialog-resolved endpoint).
         if provider_name == "ollama" and ollama_url:
             _base = str(ollama_url).rstrip("/")
             if _base and _base != "http://localhost:11434":
                 provider.base_url = _base
-        # Override model + timeout for this specific call (transcripts need 600s).
-        # V0.6.13: on the llama.cpp takeover the DETECTED served model wins
-        # over the dialog's pick.
+        # V0.6.55 (P4): the caller's on_chunk rides the streaming call --
+        # the UI shows the generation growing instead of a frozen label.
         result = provider.complete_streaming(
             prompt=prompt,
             temperature=0.3,
             max_tokens=4096,
             model=_lc.model if _lc.use_llamacpp else model,
-            on_chunk=None,  # no progress display during streaming
+            on_chunk=on_chunk,
         )
 
+        # Task 9 review fix: the REAL providers (LlamaCppProvider /
+        # OllamaProvider) swallow their transport failures and return
+        # None after the retry policy gives up -- they do not raise.
+        # A None result is therefore a CONNECTION-CLASS failure (the
+        # backend is down / unreachable), NOT an empty generation; the
+        # old fall-through reported it as LLMEmptyResponseError with
+        # the misleading "model too small" hint.
+        if result is None:
+            raise LLMConnectionError(
+                "The LLM backend did not return a response after retries "
+                "(the provider gave up -- the backend is likely down or "
+                "unreachable).",
+                hint=(
+                    "Start your LLM (llama-server or `ollama serve`) and "
+                    "verify with the \U0001f50c Test button."
+                ),
+            )
+
         if not result or not result.strip():
-            return "Error: LLM returned empty response."
+            raise LLMEmptyResponseError(
+                "The LLM returned an empty response for the transcript summary."
+            )
 
-        # Strip <think> tags (response_parser also does this, but do it here
-        # for consistency with the old behavior)
+        # Strip <think> blocks + code fences (both public callers get the
+        # same cleaning).
         result = strip_thinking(result)
-        # Strip code fences
-        result = re.sub(r"^```(?:markdown)?\s*\n", "", result)
+        result = re.sub(r"^```(?:markdown|md)?\s*\n", "", result)
         result = re.sub(r"\n```\s*$", "", result)
-
-        log(f"  ✅ Summary complete: {len(result)} chars", "INFO")
         return result.strip()
 
+    except (LLMConnectionError, LLMEmptyResponseError, LLMGenerationError):
+        raise  # P5: structured errors pass through untouched
     except Exception as e:
-        # V13.28.0: The provider handles Timeout/ConnectionError internally
-        # with retry + supervisor. If we get here, all retries failed.
+        # V13.28.0: the provider handles Timeout/ConnectionError
+        # internally with retry + supervisor; landing here means all
+        # retries failed -- map to the structured family (P5).
         err_type = type(e).__name__
         if "Timeout" in err_type or "timeout" in str(e).lower():
-            return "Error: LLM request timed out after retries."
+            raise LLMConnectionError(
+                "LLM request timed out after retries.",
+                hint=(
+                    "Check with the \U0001f50c Test button -- a very slow "
+                    "generation (CPU fallback) can also trip the timeout."
+                ),
+            ) from e
         if "Connection" in err_type or "connect" in str(e).lower():
-            return "Error: Cannot connect to Ollama. Is it running? (ollama serve)"
-        return f"Error: {e}"
+            raise LLMConnectionError(
+                f"Cannot connect to the LLM backend ({e}).",
+            ) from e
+        raise LLMGenerationError(f"LLM call failed: {e}") from e

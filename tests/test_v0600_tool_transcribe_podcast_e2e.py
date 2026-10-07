@@ -675,20 +675,37 @@ class TestFormatTranscript:
 
 class TestTranscribeAudioContract:
     def test_engine_absent_returns_clear_error(self):
-        """The card's headline contract on a rig without faster-whisper:
-        a parseable error dict, not an exception."""
+        """The card's headline contract: a parseable error dict, not an
+        exception.
+
+        V0.6.55 STALE-PIN REFRESH, documented: this pin asserted the
+        PRE-V0.6.42 default engine (faster-whisper + its pip-install
+        error). Since V0.6.42 the DEFAULT engine is transcribe.cpp — on
+        a machine without the CLI binary the error names the exe path
+        (the V0.6.40/V0.6.47 contract). The pin now pins the CURRENT
+        default-engine contract; the faster-whisper dispatch path is
+        pinned EXPLICITLY (engine="faster_whisper") by the next test.
+        """
         from core.transcribe.transcribe_service import transcribe_audio
 
         out = transcribe_audio("whatever.wav")
         assert "error" in out
-        assert "faster-whisper" in out["error"]
-        assert "pip install faster-whisper" in out["error"]
+        assert "transcribe-cli.exe" in out["error"], out["error"]
+        assert "Settings" in out["error"] or "path" in out["error"].lower()
 
     @pytest.mark.skipif(not _faster_whisper_absent(), reason="faster_whisper installed (rig)")
     def test_faked_engine_dispatch_full_result(self, monkeypatch):
         """Dispatch logic against a hermetic fake ``faster_whisper`` module:
         device resolution (torch absent → cpu), segment iteration, progress
-        callbacks, and the result dict shape."""
+        callbacks, and the result dict shape.
+
+        V0.6.55 STALE-PIN REFRESH, documented: the call now passes
+        engine="faster_whisper" EXPLICITLY — the test's original intent
+        (pin the faked faster-whisper dispatch path) was silently
+        broken by V0.6.42's default-engine flip to transcribe_cpp (the
+        default now returns the transcribe-cli.exe-not-found error
+        instead of dispatching to the faked module).
+        """
         import types
         from types import SimpleNamespace
 
@@ -717,6 +734,7 @@ class TestTranscribeAudioContract:
         out = transcribe_audio(
             "in.wav",
             model_size="small",
+            engine="faster_whisper",  # V0.6.55: explicit — the default is transcribe_cpp since V0.6.42
             log_callback=lambda msg, level="INFO": None,
             progress_callback=lambda pct, msg: progress.append((pct, msg)),
         )
@@ -832,12 +850,20 @@ class TestSummarizeTranscriptPlumbing:
         out = summarize_transcript("text", model="m")
         assert out.startswith("# Notes") and "```" not in out
 
-    def test_empty_response_becomes_error_string(self, monkeypatch):
+    def test_empty_response_raises_structured_error(self, monkeypatch):
+        """V0.6.55 STALE-PIN REFRESH, documented: the empty-LLM-response
+        failure contract changed from the ``"Error: ..."`` STRING return
+        (which the dialog had to prefix-match) to the structured
+        ``LLMEmptyResponseError`` (P5 — stage + message + fix, caught by
+        the dialog's ``except TranscribeError``). The pin now asserts the
+        RAISE (the old string contract cannot return)."""
+        from core.transcribe.errors import LLMEmptyResponseError
+
         self._install_fake_factory(monkeypatch, response="   ")
         from core.transcribe.transcribe_service import summarize_transcript
 
-        out = summarize_transcript("text", model="m")
-        assert out.startswith("Error:")
+        with pytest.raises(LLMEmptyResponseError):
+            summarize_transcript("text", model="m")
 
 
 # ── Layer 2: faked-engine dialog service E2E (real files written) ───────────

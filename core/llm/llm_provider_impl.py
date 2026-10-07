@@ -255,10 +255,20 @@ def create_provider(
         # The timeout honours local.http_timeout_sec (the app-wide local
         # backend timeout) instead of the cloud-style 300s.
         from core.llm.llamacpp_provider import LlamaCppProvider, list_llamacpp_models
+        from core.llm.local_fallback import resolve_llamacpp_base_url
         from core.llm.registry import get_registry
 
-        _lc_base = settings.get("summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1")
+        # V0.6.55 (P1a): the base URL goes through the port auto-detector
+        # (lazy import — local_fallback imports llamacpp_provider, which
+        # imports THIS module; a module-level import would be a cycle).
+        # An explicit operator URL passes through unchanged; the
+        # unmodified default probes the well-known shifting ports
+        # (8080 → 8000 → 9931) so a factory-built provider actually TALKS
+        # to the llama-server the operator started, instead of routing
+        # decisions detecting :8000 while the provider keeps dialing a
+        # dead :8080.
         _lc_key = _get_secret("summarisation.llamacpp_api_key", settings, "local")
+        _lc_base = resolve_llamacpp_base_url(settings, _lc_key)
         _configured_model = settings.get("summarisation.llamacpp_model", "")
 
         # V0.4.30 (multi-backend): detect the ACTUAL served model via
