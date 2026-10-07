@@ -128,7 +128,106 @@ def _parse_timestamp(ts: str) -> float:
 
 
 def _parse_transcribe_cpp_output(stdout: str, stderr: str):
-    """Parse the transcribe-cli.exe output into text, language, segments, backend.
+    """Parse transcribe-cli.exe output.
+
+    V0.6.46: SIMPLIFIED parser. The V0.6.40 parser was too aggressive
+    with filters — it skipped lines that looked like info but were
+    actually transcript text (the operator's report: 'output was empty
+    inside' even though the CLI succeeded). The new approach: capture
+    EVERYTHING except progress bars + a few known info prefixes.
+
+    Known info prefixes that are stripped:
+      backend:, realtime:, language:, model:, system_info:
+
+    Progress bar patterns that are skipped:
+      lines with %, |, block chars, or "it/s" or "s/it"
+      lines that are pure numbers
+
+    Everything else is transcript text.
+    """
+    text_parts = []
+    segments = []
+    language = None
+    backend = None
+
+    # Combine stdout + stderr (the CLI may print to either).
+    all_lines = (stdout + "\n" + stderr).splitlines()
+
+    for line in all_lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+
+        # ── Extract known info fields ────────────────────────────────
+        lower = line_stripped.lower()
+
+        # backend: Vulkan
+        if lower.startswith("backend:"):
+            backend = line_stripped.split(":", 1)[1].strip()
+            continue
+
+        # language: english (or farsi, etc.)
+        if lower.startswith("language:"):
+            language = line_stripped.split(":", 1)[1].strip()
+            continue
+
+        # Skip known info prefixes (NOT transcript text).
+        if lower.startswith(("realtime:", "model:", "system_info:", "system info:")):
+            continue
+
+        # ── Skip progress bars ──────────────────────────────────────
+        # tqdm progress bars contain %, |, block chars, or it/s
+        if "%" in line_stripped and ("it/s" in line_stripped or "s/it" in line_stripped):
+            continue
+        if "it/s" in line_stripped or "s/it" in line_stripped:
+            continue
+        # Block characters from tqdm/progress
+        if any(ch in line_stripped for ch in ("\u2588", "\u2589", "\u258a", "\u258b", "\u258c", "\u258d", "\u258e", "\u258f", "\u2591", "\u2592", "\u2593")):
+            continue
+        # Lines that are ONLY progress bar characters
+        stripped_of_bars = line_stripped.replace("|", "").replace("-", "").replace(" ", "")
+        if not stripped_of_bars or stripped_of_bars.isdigit():
+            continue
+
+        # ── Check for timestamped segments ──────────────────────────
+        # [00:00:00.000 --> 00:00:05.000] Hello world
+        ts_match = _TIMESTAMP_RE.match(line_stripped)
+        if ts_match:
+            start_ts = _parse_timestamp(ts_match.group(1))
+            end_ts = _parse_timestamp(ts_match.group(2))
+            seg_text = ts_match.group(3).strip()
+            segments.append({"start": start_ts, "end": end_ts, "text": seg_text})
+            text_parts.append(seg_text)
+            continue
+
+        # ── Strip "text:" prefix if present ─────────────────────────
+        if lower.startswith("text:"):
+            seg_text = line_stripped.split(":", 1)[1].strip()
+            text_parts.append(seg_text)
+            continue
+
+        # ── Everything else IS transcript text ───────────────────────
+        # V0.6.46: don't skip lines that start with "loading:", "processing:"
+        # etc — the CLI might print the transcript text after these prefixes.
+        # Only skip if the line is CLEARLY not transcript (has a colon AND
+        # a known info keyword before the colon AND is short).
+        if ":" in line_stripped and len(line_stripped) < 80:
+            prefix = line_stripped.split(":")[0].lower().strip()
+            if prefix in ("loading", "warming", "processing", "device", "gpu", "system", "init"):
+                continue
+
+        text_parts.append(line_stripped)
+
+    text = "\n".join(text_parts).strip()
+    return {
+        "text": text,
+        "segments": segments,
+        "language": language,
+        "backend": backend,
+        "raw_stdout": stdout,
+        "raw_stderr": stderr,
+    }
+
 
     The parser handles multiple possible output formats:
     1. Lines starting with "text:" → transcript text (one per segment)
@@ -402,6 +501,19 @@ def transcribe_with_cpp(
 
     # ── Parse the output ─────────────────────────────────────────────
     parsed = _parse_transcribe_cpp_output(stdout_text, stderr_text)
+
+    # V0.6.46: dump the raw CLI output to a file for debugging.
+    # The file is saved next to the input file as <name>_raw_output.txt
+    # so the owner can see exactly what transcribe-cli.exe printed.
+    try:
+        raw_dump_path = Path(audio_path).with_suffix(".raw_output.txt")
+        raw_dump_path.write_text(
+            f"=== STDOUT ===\n{stdout_text}\n\n=== STDERR ===\n{stderr_text}\n",
+            encoding="utf-8",
+        )
+        log(f"  📋 Raw CLI output saved to: {raw_dump_path.name}", "DEBUG")
+    except Exception:
+        pass
 
     # Log the backend (GPU verification).
     if parsed["backend"]:
