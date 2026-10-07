@@ -431,6 +431,31 @@ def transcribe_with_cpp(
     # -- Parse the output ---------------------------------------------
     parsed = _parse_transcribe_cpp_output(stdout_text, stderr_text)
 
+    # V0.6.51: FALLBACK -- if the parser extracted zero text, the CLI
+    # output format doesn't match what the parser expects. In that case,
+    # just use the raw stdout as the transcript text (minus progress bars).
+    # This guarantees the text is never empty if the CLI produced output.
+    if not parsed["text"] and stdout_text.strip():
+        # Strip obvious progress bar lines from the raw stdout.
+        raw_lines = []
+        for raw_line in stdout_text.splitlines():
+            raw_stripped = raw_line.strip()
+            if not raw_stripped:
+                continue
+            # Skip pure progress bars.
+            if "%" in raw_stripped and ("it/s" in raw_stripped or "s/it" in raw_stripped):
+                continue
+            if "it/s" in raw_stripped or "s/it" in raw_stripped:
+                continue
+            # Skip info lines.
+            lower = raw_stripped.lower()
+            if lower.startswith(("backend:", "realtime:", "model:", "system_info:", "system info:")):
+                continue
+            raw_lines.append(raw_stripped)
+        if raw_lines:
+            parsed["text"] = "\n".join(raw_lines)
+            log(f"  [FALLBACK] Parser extracted 0 text, using raw stdout ({len(raw_lines)} lines)", "WARNING")
+
     # V0.6.46: dump the raw CLI output to a file for debugging.
     # The file is saved next to the input file as <name>_raw_output.txt
     # so the owner can see exactly what transcribe-cli.exe printed.
