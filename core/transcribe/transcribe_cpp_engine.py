@@ -369,12 +369,21 @@ def transcribe_with_cpp(
         }
 
     # ── Validate: model exists ───────────────────────────────────────
+    # V0.6.47: if the saved setting points to a non-existent file, try
+    # the default before erroring (a stale setting from an old version
+    # might point to ggml-large-v3.bin which was renamed).
     if not Path(model_path).exists():
-        return {
-            "error": (
-                f"Whisper model file not found at: {model_path}\n"
-                f"Check the path in Settings → Transcribe → transcribe.cpp model.\n"
-                f"The model is a ~3 GB GGUF file (e.g., ggml-large-v3.bin)."
+        # Try the default model path.
+        if model_path != DEFAULT_TRANSCRIBE_CPP_MODEL and Path(DEFAULT_TRANSCRIBE_CPP_MODEL).exists():
+            model_path = DEFAULT_TRANSCRIBE_CPP_MODEL
+        else:
+            return {
+                "error": (
+                f"Whisper model file not found at: {model_path}\n\n"
+                f"FIX: In the Transcribe Service dialog, select 'transcribe.cpp' "
+                f"as the engine, then click the 'Model' button to browse "
+                f"for your .gguf model file.\n"
+                f"Your model is at: C:\\transcribe.cpp\\models\\whisper-large-v3-Q8_0.gguf"
             )
         }
 
