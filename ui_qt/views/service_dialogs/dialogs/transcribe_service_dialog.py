@@ -451,7 +451,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             else s.get("summarisation.ollama_url", "http://localhost:11434")
         )
 
-        results = {"raw_path": None, "summary_path": None, "error": None}
+        results = {"raw_path": None, "summary_path": None, "tutorial_path": None, "error": None}
 
         # Step 1: Extract audio if video
         audio_path = filepath
@@ -588,6 +588,8 @@ class TranscribeServiceDialog(BaseServiceDialog):
             parts.append(f"📄 Raw transcript: {Path(results['raw_path']).name}")
         if results.get("summary_path"):
             parts.append(f"📝 Summary: {Path(results['summary_path']).name}")
+        if results.get("tutorial_path"):
+            parts.append(f"📚 Tutorial guide: {Path(results['tutorial_path']).name}")
         if results.get("error"):
             parts.append(f"⚠️ Summary error: {results['error']}")
 
