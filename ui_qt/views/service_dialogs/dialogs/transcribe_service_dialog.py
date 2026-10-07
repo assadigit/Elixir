@@ -186,13 +186,18 @@ class TranscribeServiceDialog(BaseServiceDialog):
         layout.addLayout(llm_row)
 
         # Checkboxes
-        self.cb_raw = _QChB("Save raw transcript (with timestamps)")
+        self.cb_raw = _QChB("Raw transcript (with timestamps)")
         self.cb_raw.setChecked(True)
         layout.addWidget(self.cb_raw)
 
-        self.cb_summary = _QChB("Generate Obsidian summary (requires Ollama)")
+        self.cb_summary = _QChB("Summary (core concepts + key takeaways)")
         self.cb_summary.setChecked(True)
         layout.addWidget(self.cb_summary)
+
+        # V0.6.43: third output — tutorial/educational guide.
+        self.cb_tutorial = _QChB("Tutorial guide (educational / tips & tricks)")
+        self.cb_tutorial.setChecked(False)
+        layout.addWidget(self.cb_tutorial)
 
         # ── Process button ────────────────────────────────────────────
         # V13.31.0 (#7): Live Transcribe sub-tool
@@ -400,6 +405,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             "llm_model": self.llm_combo.currentText().strip(),
             "save_raw": self.cb_raw.isChecked(),
             "save_summary": self.cb_summary.isChecked(),
+            "save_tutorial": self.cb_tutorial.isChecked() if hasattr(self, "cb_tutorial") else False,
         }
 
         def _work():
@@ -428,6 +434,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         llm_model = options["llm_model"]
         save_raw = options["save_raw"]
         save_summary = options["save_summary"]
+        save_tutorial = options.get("save_tutorial", False)
 
         file_stem = Path(filepath).stem
         ext = Path(filepath).suffix.lower()
@@ -499,7 +506,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             )
             results["raw_path"] = str(raw_path)
 
-        # Step 4: Summarize
+        # Step 4: Summarize (core concepts + key takeaways)
         if save_summary:
             self._emit_progress(92, "📝 Summarizing with LLM...")
             summary = summarize_transcript(
@@ -515,6 +522,25 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 results["summary_path"] = str(summary_path)
             else:
                 results["error"] = summary  # summary error (non-fatal)
+
+        # Step 5: Tutorial guide (educational / tips & tricks)
+        if save_tutorial:
+            self._emit_progress(95, "Generating tutorial guide with LLM...")
+            tutorial = summarize_transcript(
+                transcribe_result["text"],
+                model=llm_model,
+                ollama_url=ollama_url,
+                log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
+                progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
+                output_type="tutorial",
+            )
+            if not tutorial.startswith("Error:"):
+                tutorial_path = out_folder / f"{file_stem}_tutorial.md"
+                tutorial_path.write_text(tutorial, encoding="utf-8")
+                results["tutorial_path"] = str(tutorial_path)
+            else:
+                if not results.get("error"):
+                    results["error"] = tutorial
 
         # Clean up temp audio
         if is_video and Path(audio_path).exists():

@@ -261,6 +261,7 @@ def summarize_transcript(
     ollama_url: str = "http://localhost:11434",
     log_callback=None,
     progress_callback=None,
+    output_type: str = "summary",
 ) -> str:
     """Summarize transcript into Obsidian-friendly markdown using Ollama.
 
@@ -281,10 +282,21 @@ def summarize_transcript(
     from core.summarisation.prompt_manager import PromptManager
 
     _pm = PromptManager()
-    prompt = _pm.render_template(
-        "transcribe/transcript_notes",
-        transcript=transcript[:8000],
-    )
+    # V0.6.43: select the prompt template based on output_type.
+    if output_type == "tutorial":
+        prompt = _pm.render_template(
+            "transcribe/transcript_tutorial",
+            transcript=transcript[:8000],
+        )
+        log("  Generating tutorial/educational guide...", "INFO")
+        progress(92, "Generating tutorial guide with LLM...")
+    else:
+        prompt = _pm.render_template(
+            "transcribe/transcript_notes",
+            transcript=transcript[:8000],
+        )
+        log("  Summarizing transcript (core concepts + key takeaways)...", "INFO")
+        progress(92, "Summarizing with LLM...")
 
     log(f"  📝 Summarizing transcript with {model}...", "INFO")
     progress(92, "Summarizing with LLM...")
