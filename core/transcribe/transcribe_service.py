@@ -94,17 +94,26 @@ def transcribe_audio(
     language: str = "auto",
     log_callback=None,
     progress_callback=None,
+    engine: str = "transcribe_cpp",
 ) -> dict:
-    """Transcribe audio file using faster-whisper.
+    """Transcribe audio file.
+
+    V0.6.42: the DEFAULT engine is now transcribe.cpp (Vulkan GPU,
+    Whisper large-v3 GGUF). The old faster-whisper engine is still
+    available — pass engine="faster_whisper" or set the
+    ``transcribe.engine`` setting to "faster_whisper".
 
     Args:
         audio_path: Path to the audio file (WAV, MP3, etc.)
-        model_size: "tiny", "base", "small", "medium", "large-v3"
-        device: "auto", "cuda", or "cpu"
-        compute_type: "auto", "int8", "float16", "float32"
+        model_size: faster-whisper only: "tiny", "base", "small",
+            "medium", "large-v3" (ignored by transcribe.cpp)
+        device: faster-whisper only: "auto", "cuda", or "cpu"
+        compute_type: faster-whisper only: "auto", "int8", etc.
         language: "auto" for auto-detection, or "en", "fa", etc.
         log_callback: Optional callable(msg, level)
         progress_callback: Optional callable(pct, msg)
+        engine: "transcribe_cpp" (default — Vulkan GPU) or
+            "faster_whisper" (CTranslate2, the old engine)
 
     Returns:
         {
@@ -116,6 +125,38 @@ def transcribe_audio(
     """
     log = log_callback or (lambda msg, level="INFO": None)
     progress = progress_callback or (lambda pct, msg: None)
+
+    # V0.6.42: resolve the engine from settings if not explicitly passed.
+    if engine == "transcribe_cpp":
+        # Check if the setting overrides to faster_whisper.
+        try:
+            from utils.settings import Settings
+
+            s = Settings()
+            engine = s.get("transcribe.engine", "transcribe_cpp")
+        except Exception:
+            pass  # keep the default
+
+    # ── V0.6.42: dispatch to transcribe.cpp ──────────────────────────
+    if engine == "transcribe_cpp":
+        log("  🎙️ Using transcribe.cpp (Vulkan GPU, Whisper large-v3 GGUF)", "INFO")
+        progress(5, "Transcribing with transcribe.cpp (Vulkan GPU)...")
+        try:
+            from core.transcribe.transcribe_cpp_engine import transcribe_with_cpp
+
+            return transcribe_with_cpp(
+                audio_path=audio_path,
+                language=None if language == "auto" else language,
+                log_callback=log_callback,
+                progress_callback=progress_callback,
+            )
+        except ImportError:
+            return {"error": "transcribe.cpp engine module not found."}
+        except Exception as e:
+            return {"error": f"transcribe.cpp engine error: {e}"}
+
+    # ── Old engine: faster-whisper (kept for fallback) ───────────────
+    log(f"  🎙️ Using faster-whisper (model={model_size})", "INFO")
 
     # Resolve device
     if device == "auto":

@@ -16,21 +16,26 @@ existing extract_audio_from_video function already produces 16 kHz
 mono WAV, so it's reused).
 
 ═══════════════════════════════════════════════════════════════════════════
-CONFIGURATION BLOCK — the owner should check these paths match his rig.
-═══════════════════════════════════════════════════════════════════════════
+CONFIGURATION BLOCK - VERIFY THESE PATHS MATCH YOUR RIG.
+
+IMPORTANT: The model path below is a GUESS. The real path is in the
+owner's transcribe.bat file (the MODEL= line). To find it:
+  1. Open C:\\transcribe.cpp\\transcribe.bat in Notepad
+  2. Find the line that starts with 'set MODEL=' or 'MODEL='
+  3. Copy that path here OR use the Model button in the Transcribe
+     Service dialog (it saves to settings and overrides this default).
 
 These values can be overridden via the app's settings system:
-  - transcribe.transcribe_cpp_exe   → path to transcribe-cli.exe
-  - transcribe.transcribe_cpp_model → path to the Whisper GGUF model file
-  - transcribe.transcribe_cpp_lang  → default language (None = auto-detect)
+  - transcribe.transcribe_cpp_exe   -> path to transcribe-cli.exe
+  - transcribe.transcribe_cpp_model -> path to the Whisper GGUF model file
+  - transcribe.transcribe_cpp_lang  -> default language (None = auto-detect)
+  - transcribe.engine              -> 'transcribe_cpp' (default) or 'faster_whisper'
 
-If the settings are not set, the defaults below are used. Adjust them
-to match your installation.
+If the settings are not set, the defaults below are used.
 
-DEFAULT PATHS (from the owner's verified rig — adjust if different):
+DEFAULT PATHS (VERIFY AGAINST YOUR transcribe.bat):
   EXE:   C:\\transcribe.cpp\\build\\bin\\Release\\transcribe-cli.exe
-  MODEL: C:\\transcribe.cpp\\models\\ggml-large-v3.bin
-         (the owner's transcribe.bat has the exact path — check it)
+  MODEL: C:\\transcribe.cpp\\models\\ggml-large-v3.bin  (GUESS - CHECK transcribe.bat!)
   FFMPEG:  on PATH (no explicit path needed)
 
 ═══════════════════════════════════════════════════════════════════════════
