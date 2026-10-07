@@ -111,6 +111,141 @@ DEFAULT_TEMP_DIR = None
 
 _gpu_lock = threading.Lock()
 
+
+# ============================================================================
+# V0.6.56 — STREAMING CLI RUNNER. The old subprocess.run(capture_output=True)
+# trapped ALL CLI output in memory for the whole transcription: between
+# progress(20) and progress(100) the pipeline was completely silent, which is
+# exactly the 10-minute "frozen or progressing?" freeze the operator hit on a
+# 15-minute video. _stream_cli_output pumps the CLI's stdout/stderr line by
+# line into log_callback while it runs (each transcribed line is visible as
+# it happens) and maps percent lines to progress_callback.
+# ============================================================================
+
+# Percent-line classification (V0.6.56, Task 14 review SHOULD-FIX 1):
+# a line moves the progress bar ONLY if it is progress-bar-shaped —
+# "### 42%", "### 42% | 120/300 …" — or a whisper progress callback
+# ("… progress = 42%"). A transcript line like "text: I am 100% sure"
+# contains a percent but is NOT a progress line: it must be echoed,
+# never mapped (the old naive regex moved the bar BACKWARD on such
+# lines: 48 → 90 → 55).
+_PCT_BAR_RE = re.compile(r"^#{1,3}\s*(\d{1,3})\s*%")
+_PCT_CALLBACK_RE = re.compile(r"progress\s*=?\s*(\d{1,3})\s*%", re.IGNORECASE)
+
+
+def _match_percent_line(line: str):
+    """Return the int percent if ``line`` is a progress-bar/callback
+    line, else None (transcript text mentioning percents is NOT one)."""
+    m = _PCT_BAR_RE.match(line)
+    if m:
+        return int(m.group(1))
+    m = _PCT_CALLBACK_RE.search(line)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def _stream_cli_output(
+    proc,
+    log,
+    progress,
+    *,
+    deadline_ts: float | None = None,
+    echo_prefix: str = "[whisper]",
+):
+    """Pump a live CLI subprocess's stdout/stderr into ``log``/``progress``.
+
+    Two daemon reader threads (one per stream) so BOTH streams stream
+    concurrently on Windows (``select()`` does not work on pipes there).
+    The main loop waits on the process with a 0.5 s poll so the
+    ``deadline_ts`` (MONOTONIC seconds, ``time.monotonic()`` — the
+    V0.6.55 llamacpp-provider precedent; an NTP clock step must not
+    extend a hung CLI run) is enforced even
+    when the CLI produces no output at all: on expiry the process is
+    KILLED and ``timed_out=True`` comes back.
+
+    Echo contract (what the operator sees in the live log):
+      - every stdout/stderr line, prefixed ``"  [whisper] ..."`` so CLI
+        lines are distinguishable from [LLM]/[CONVERT] lines;
+      - ``\\r`` spinner frames collapse to the LATEST frame (the log
+        shows the current percent, not the animation);
+      - a PROGRESS-BAR-SHAPED line (see _match_percent_line) is echoed
+        + mapped to ``progress(20+pct*0.7)`` ONLY when the integer
+        percent CHANGES (spinner spam dedup); transcript lines that
+        merely CONTAIN a percent are echoed but never mapped.
+
+    Returns ``(stdout_text, stderr_text, returncode, timed_out)``. The
+    accumulated text is BYTE-FAITHFUL to what ``capture_output=True``
+    produced (the P6 parser's input is unchanged — the ECHO path
+    collapses spinner frames, the ACCUMULATION never does).
+    """
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    state = {"pct": -1}
+
+    def _pump(stream, parts) -> None:
+        if stream is None:
+            return
+        try:
+            for raw in stream:
+                if isinstance(raw, (bytes, bytearray)):
+                    chunk = raw.decode("utf-8", errors="replace")
+                else:
+                    chunk = str(raw)
+                parts.append(chunk)
+                visible = chunk.split("\r")[-1].rstrip("\n").strip()
+                if not visible:
+                    continue
+                try:
+                    pct = _match_percent_line(visible)
+                    if pct is not None:
+                        if pct == state["pct"]:
+                            continue  # spinner frame / repeated percent — dedup
+                        state["pct"] = pct
+                        log(f"  {echo_prefix} {visible}", "INFO")
+                        progress(20 + int(pct * 0.7), f"Transcribing with transcribe.cpp… {pct}%")
+                        continue
+                    log(f"  {echo_prefix} {visible}", "INFO")
+                except Exception:
+                    # A raising callback must never truncate the stream —
+                    # the accumulated text is the parser's input.
+                    logger.debug("best-effort echo failed", exc_info=True)
+        except Exception:
+            logger.debug("stream pump ended (stream closed)", exc_info=True)
+
+    threads = [
+        threading.Thread(target=_pump, args=(proc.stdout, stdout_parts), daemon=True),
+        threading.Thread(target=_pump, args=(proc.stderr, stderr_parts), daemon=True),
+    ]
+    for t in threads:
+        t.start()
+
+    timed_out = False
+    while True:
+        try:
+            proc.wait(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            if deadline_ts is not None and time.monotonic() > deadline_ts:
+                timed_out = True
+                try:
+                    proc.kill()
+                except Exception:
+                    logger.debug("best-effort kill failed", exc_info=True)
+                try:
+                    proc.wait()
+                except Exception:
+                    logger.debug("best-effort post-kill wait failed", exc_info=True)
+                break
+
+    for t in threads:
+        t.join(timeout=5)
+
+    returncode = proc.returncode
+    if returncode is None:
+        returncode = -1
+    return "".join(stdout_parts), "".join(stderr_parts), returncode, timed_out
+
 # ============================================================================
 # PARSER -- extract text, language, segments, and backend from the CLI output.
 # ============================================================================
@@ -299,6 +434,76 @@ def _parse_transcribe_cpp_output(stdout: str, stderr: str):
     }
 
 
+def _convert_to_wav16k(input_path: Path, log, progress):
+    """V0.6.56: the ffmpeg 16 kHz mono WAV conversion, extracted from
+    transcribe_with_cpp (every log line, progress number and error
+    string is verbatim — only its home moved).
+
+    Returns ``(wav_to_transcribe, temp_wav_path)`` on success (the temp
+    path is a PATH STRING — the old code kept the NamedTemporaryFile
+    object in ``temp_wav`` and later handed the OBJECT to
+    ``_cleanup_temp``, whose ``Path(temp_path)`` raised TypeError into
+    the best-effort except — the temp WAVs were never actually deleted;
+    the string path actually deletes them now), or an ``{"error": …}``
+    dict on failure (the legacy strings, verbatim).
+    """
+    log("  [CONVERT] Converting to 16 kHz mono WAV with ffmpeg...", "INFO")
+    progress(5, "Converting audio format...")
+    temp_wav = tempfile.NamedTemporaryFile(
+        suffix=".wav",
+        delete=False,
+        dir=DEFAULT_TEMP_DIR,
+        prefix="transcribe_cpp_",
+    )
+    temp_wav.close()
+    temp_wav_path = temp_wav.name
+
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        str(input_path),
+        "-vn",  # no video
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "16000",  # 16 kHz
+        "-ac",
+        "1",  # mono
+        temp_wav_path,
+    ]
+    try:
+        result = subprocess.run(
+            ffmpeg_cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+        if result.returncode != 0:
+            _cleanup_temp(temp_wav_path)
+            return {
+                "error": (
+                    f"ffmpeg failed to convert the audio file.\n"
+                    f"ffmpeg error: {result.stderr[:500]}\n"
+                    f"Make sure ffmpeg is installed and on PATH."
+                )
+            }
+        log("  [OK] Audio converted to 16 kHz mono WAV", "INFO")
+        return temp_wav_path, temp_wav_path
+    except FileNotFoundError:
+        _cleanup_temp(temp_wav_path)
+        return {"error": "ffmpeg not found. Install ffmpeg and add it to PATH."}
+    except subprocess.TimeoutExpired:
+        _cleanup_temp(temp_wav_path)
+        return {"error": "ffmpeg timed out (300s) while converting the audio."}
+    except Exception as e:
+        _cleanup_temp(temp_wav_path)
+        return {"error": f"ffmpeg conversion error: {e}"}
+
+
 # THE ENGINE -- one function, callable from the app.
 # ============================================================================
 
@@ -379,73 +584,16 @@ def transcribe_with_cpp(
         }
 
     # -- Convert to 16 kHz mono WAV (if not already) -----------------
+    # V0.6.56: the ffmpeg conversion moved to its own helper so
+    # transcribe_with_cpp contains NO subprocess.run call — the whisper
+    # CLI call is Popen+streamed (see _stream_cli_output), and keeping
+    # the ffmpeg run out of the function keeps that contract absolute.
     input_path = Path(audio_path)
-    temp_wav = None
-    wav_to_transcribe = str(input_path)
-
-    # Check if the input is already a 16 kHz mono WAV.
-    needs_conversion = True
-    if input_path.suffix.lower() == ".wav":
-        # Could already be 16 kHz mono -- but we can't verify easily,
-        # so always convert to be safe (the conversion is fast).
-        pass
-
-    if needs_conversion:
-        log("  [CONVERT] Converting to 16 kHz mono WAV with ffmpeg...", "INFO")
-        progress(5, "Converting audio format...")
-        temp_wav = tempfile.NamedTemporaryFile(
-            suffix=".wav",
-            delete=False,
-            dir=DEFAULT_TEMP_DIR,
-            prefix="transcribe_cpp_",
-        )
-        temp_wav.close()
-        temp_wav_path = temp_wav.name
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-loglevel",
-            "error",
-            "-i",
-            str(input_path),
-            "-vn",  # no video
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "16000",  # 16 kHz
-            "-ac",
-            "1",  # mono
-            temp_wav_path,
-        ]
-        try:
-            result = subprocess.run(
-                ffmpeg_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-            )
-            if result.returncode != 0:
-                _cleanup_temp(temp_wav_path)
-                return {
-                    "error": (
-                        f"ffmpeg failed to convert the audio file.\n"
-                        f"ffmpeg error: {result.stderr[:500]}\n"
-                        f"Make sure ffmpeg is installed and on PATH."
-                    )
-                }
-            wav_to_transcribe = temp_wav_path
-            log("  [OK] Audio converted to 16 kHz mono WAV", "INFO")
-        except FileNotFoundError:
-            _cleanup_temp(temp_wav_path)
-            return {"error": "ffmpeg not found. Install ffmpeg and add it to PATH."}
-        except subprocess.TimeoutExpired:
-            _cleanup_temp(temp_wav_path)
-            return {"error": "ffmpeg timed out (300s) while converting the audio."}
-        except Exception as e:
-            _cleanup_temp(temp_wav_path)
-            return {"error": f"ffmpeg conversion error: {e}"}
+    converted = _convert_to_wav16k(input_path, log, progress)
+    if isinstance(converted, dict):
+        # an {"error": ...} — the legacy strings, verbatim.
+        return converted
+    wav_to_transcribe, temp_wav = converted
 
     # -- Build the CLI command ----------------------------------------
     cmd = [exe_path, "-m", model_path]
@@ -459,42 +607,63 @@ def transcribe_with_cpp(
 
     cmd.append(wav_to_transcribe)
 
-    # -- Run the CLI (GPU-guarded) ------------------------------------
+    # -- Run the CLI (GPU-guarded, STREAMING) --------------------------
+    # V0.6.56: the old subprocess.run(capture_output=True) trapped ALL
+    # CLI output in memory for the whole transcription — between
+    # progress(20) and progress(100) the pipeline was completely
+    # silent, which is exactly the 10-minute "frozen or progressing?"
+    # freeze the operator hit on a 15-minute video. The CLI now runs
+    # via Popen and _stream_cli_output pumps stdout/stderr line by
+    # line into log_callback (each transcribed line is visible as it
+    # happens) and maps percent lines onto the progress bar.
     log("  [RUN] Running transcribe.cpp (Vulkan GPU)...", "INFO")
     progress(20, "Transcribing with transcribe.cpp (Vulkan GPU)...")
     t0 = time.time()
 
     try:
         with _gpu_lock:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=False,  # capture as bytes for UTF-8 safety
-                timeout=DEFAULT_TIMEOUT_S,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
-    except subprocess.TimeoutExpired:
-        _cleanup_temp(temp_wav)
-        return {"error": f"transcribe-cli.exe timed out ({DEFAULT_TIMEOUT_S}s). The file may be too long."}
-    except Exception as e:
+            try:
+                stdout_text, stderr_text, returncode, timed_out = _stream_cli_output(
+                    proc,
+                    log,
+                    progress,
+                    deadline_ts=time.monotonic() + DEFAULT_TIMEOUT_S,
+                )
+            except Exception:
+                # The streamer itself exploded after Popen — kill the CLI
+                # or it leaks, holding the GPU + filling a pipe nobody
+                # drains; the outer handler renders the error.
+                try:
+                    proc.kill()
+                except Exception:
+                    logger.debug("best-effort kill after streamer failure failed", exc_info=True)
+                raise
+    except Exception as e:  # noqa: BLE001 — Popen failure (exe missing, etc.)
         _cleanup_temp(temp_wav)
         return {"error": f"Failed to run transcribe-cli.exe: {e}"}
 
     elapsed = time.time() - t0
 
-    # -- Decode stdout/stderr as UTF-8 (explicit, NOT Windows default) --
-    # The brief: "read stdout as bytes, decode as UTF-8 explicitly"
-    stdout_text = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-    stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+    if timed_out:
+        # The same legacy contract as subprocess.run(timeout=…) raising
+        # TimeoutExpired — the exact string operators/triage know.
+        _cleanup_temp(temp_wav)
+        return {"error": f"transcribe-cli.exe timed out ({DEFAULT_TIMEOUT_S}s). The file may be too long."}
 
     # -- Check exit code ----------------------------------------------
-    if result.returncode != 0:
+    if returncode != 0:
         # Extract the last 10 lines of stderr for the error message.
         last_lines = "\n".join(stderr_text.splitlines()[-10:])
         _cleanup_temp(temp_wav)
         return {
             "error": (
-                f"transcribe-cli.exe failed (exit code {result.returncode}).\n"
+                f"transcribe-cli.exe failed (exit code {returncode}).\n"
                 f"Last output:\n{last_lines}"
             )
         }

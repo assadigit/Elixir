@@ -17,6 +17,7 @@ provide)."""
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 # V13.20.1: Master fix — import ALL QtWidgets so subagent edits that use
@@ -30,12 +31,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtCore import QTimer
 
 from controller import Controller
 
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
 from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+# V0.6.56: the live-log heartbeat cadence (core.transcribe.pipeline_log
+# is a Qt-free stdlib-only leaf — no import cycle).
+from core.transcribe.pipeline_log import HEARTBEAT_INTERVAL_MS
 from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
@@ -43,6 +48,12 @@ from ui_qt.views.service_dialogs.dialogs.shared import (
 )
 
 logger = logging.getLogger(__name__)
+
+# V0.6.56: the single source of the LLM streaming status prefix — used
+# by _do_transcribe's on_chunk lambda AND _on_progress's log sampler so
+# the two can never drift apart (a drifted prefix would re-flood the
+# live log with per-chunk lines).
+_LLM_CHUNK_PREFIX = "📝 LLM is writing"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -87,10 +98,21 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.out_edit = self.out_path_edit
         self.out_edit.setPlaceholderText("Choose output folder…")
         self.process_btn.setText("🎙️ Transcribe")
-        # V0.6.10 (B17): the base's live-log toggle + panel exist but this
-        # dialog never streams log lines (its _on_progress override only
-        # sets status text) — hide the dead toggle.
-        self._log_toggle_btn.setVisible(False)
+        # V0.6.56: the base's live-log toggle + panel are now this tool's
+        # INTERNAL LOG CONTAINER (the house pattern — the packets tool
+        # precedent). The operator ran a real video and waited 10 minutes
+        # with no way to tell FROZEN from PROGRESSING; now the toggle stays
+        # visible, every pipeline message lands in the log (see
+        # _on_progress), and the heartbeat timer below keeps proving the
+        # app is alive even while the engine is silent (whisper model
+        # load / an LLM that fell back to CPU).
+        self._heartbeat_timer = QTimer(self)
+        self._heartbeat_timer.setInterval(HEARTBEAT_INTERVAL_MS)
+        self._heartbeat_timer.timeout.connect(self._on_heartbeat)
+        self._run_started_ts = 0.0
+        self._last_update_ts = 0.0
+        self._last_status_msg = ""
+        self._llm_chunk_counter = 0
 
         # Refresh models (same position as the pre-B17 __init__ tail).
         self._refresh_models()
@@ -441,6 +463,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
         frozen summary later."""
         self.llm_test_btn.setEnabled(False)
         self.status_label.setText("🔌 Testing LLM connection...")
+        # V0.6.56: the test also lands in the live log so the tool's
+        # running record shows what was checked and when.
+        self._append_live_log("🔌 Testing LLM connection...")
 
         def _work():
             from core.transcribe.llm_check import check_llm_for_transcribe
@@ -482,6 +507,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
         first_line = result.get("message", "").splitlines()[0] if result.get("message") else ""
         self.status_label.setText(f"🔌 {first_line}")
+        # V0.6.56: the verdict is part of the running record (the dialog
+        # box disappears; the log line stays for the paste-back).
+        self._append_live_log(f"🔌 LLM test: {first_line}")
 
         level = result.get("level", "info")
         if level == "slow-cpu-fallback-suspected":
@@ -520,6 +548,41 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.status_label.setText("🎙️ Starting transcription...")
+
+        # V0.6.56: the internal log container — clear it, auto-open it
+        # (the packets-tool precedent: the operator should never have to
+        # FIND the log while a run is in flight), log the run header so
+        # the configuration is on record, and start the heartbeat BEFORE
+        # the worker exists so the whole worker lifetime is covered.
+        from core.transcribe.pipeline_log import format_run_header
+
+        self.live_log.clear()
+        if not self._log_toggle_btn.isChecked():
+            self._log_toggle_btn.setChecked(True)
+            self._toggle_live_log(True)
+        for _header_line in format_run_header(
+            filepath=filepath,
+            engine=self.engine_combo.currentText(),
+            # The whisper_combo holds the FASTER-WHISPER model size —
+            # meaningless for the transcribe.cpp engine (which uses its
+            # own GGUF path); don't log a misleading model line.
+            whisper_model=self.whisper_combo.currentData()
+            if self.engine_combo.currentData() == "faster_whisper"
+            else None,
+            llm_model=self.llm_combo.currentText().strip(),
+            save_raw=self.cb_raw.isChecked(),
+            save_summary=self.cb_summary.isChecked(),
+            save_tutorial=self.cb_tutorial.isChecked()
+            if hasattr(self, "cb_tutorial")
+            else False,
+        ):
+            self._append_live_log(_header_line)
+        self._append_live_log("🎙️ Starting transcription...")
+        self._run_started_ts = time.time()
+        self._last_update_ts = self._run_started_ts
+        self._last_status_msg = "starting"
+        self._llm_chunk_counter = 0
+        self._heartbeat_timer.start()
 
         options = {
             "filepath": filepath,
@@ -663,7 +726,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         _log = lambda msg, level="INFO": self._emit_progress(-1, msg)  # noqa: E731
         _prog = lambda pct, msg: self._emit_progress(pct, msg)  # noqa: E731
         _on_chunk = lambda partial: self._emit_progress(  # noqa: E731
-            -1, f"📝 LLM is writing… {len(partial):,} chars so far"
+            -1, f"{_LLM_CHUNK_PREFIX}… {len(partial):,} chars so far"
         )
 
         try:
@@ -758,11 +821,57 @@ class TranscribeServiceDialog(BaseServiceDialog):
         # status text in HTML + appends to the live log; this dialog's
         # contract (pinned by the e2e drive tests) is plain-text status
         # and a determinate 0-100 bar.
+        # V0.6.56: every pipeline message ALSO lands in the live log —
+        # the internal log container answers "frozen or progressing?"
+        # from the timestamps — and resets the heartbeat gap clock.
+        # (The streaming "📝 LLM is writing" lines are sampled every
+        # 10th in the LOG — the status label still updates on every
+        # chunk — so a long generation doesn't bury the real events.)
         if pct >= 0:
             self.progress_bar.setValue(pct)
         self.status_label.setText(msg)
+        if msg.startswith(_LLM_CHUNK_PREFIX):
+            self._llm_chunk_counter += 1
+            if self._llm_chunk_counter % 10 == 1:
+                self._append_live_log(msg)
+        else:
+            self._append_live_log(msg)
+        self._last_update_ts = time.time()
+        self._last_status_msg = msg
+
+    def _on_heartbeat(self):
+        """V0.6.56: the 15s heartbeat — while a run is alive, prove the
+        app is responsive and MEASURE the engine's silence: the line
+        carries the elapsed time plus how long since the last pipeline
+        update, so "frozen" (heartbeats only, the gap keeps growing) is
+        distinguishable from "progressing" (pipeline lines keep landing
+        between heartbeats). Diagnostic only — it never touches the
+        pinned plain-status-label contract."""
+        # V0.6.56 (Task 14 review BLOCKER fix): the liveness check goes
+        # through the house _worker_is_running helper (shared.py) —
+        # SimpleWorker is a BaseWorker=QObject whose API is is_running(),
+        # NOT QThread.isRunning(); calling isRunning() here raised
+        # AttributeError 15s into every run (the exact V0.6.55
+        # construction-order BLOCKER class — invisible in a no-Qt sandbox).
+        from ui_qt.views.service_dialogs.dialogs.shared import _worker_is_running
+
+        worker = getattr(self, "_worker", None)
+        if not _worker_is_running(worker):
+            self._heartbeat_timer.stop()
+            return
+        from core.transcribe.pipeline_log import format_heartbeat_line
+
+        self._append_live_log(
+            format_heartbeat_line(
+                run_started_ts=self._run_started_ts,
+                last_update_ts=self._last_update_ts,
+                now_ts=time.time(),
+                last_msg=self._last_status_msg,
+            )
+        )
 
     def _on_failed(self, error_msg):
+        self._heartbeat_timer.stop()
         self.progress_bar.setVisible(False)
         self.process_btn.setEnabled(True)
         self.process_btn.setText("🎙️ Transcribe")
@@ -770,6 +879,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         QMessageBox.critical(self, "❌ Transcription Failed", error_msg)
 
     def _on_done(self, results):
+        self._heartbeat_timer.stop()
         self.progress_bar.setVisible(False)
         self.progress_bar.setValue(100)
         self.process_btn.setEnabled(True)
