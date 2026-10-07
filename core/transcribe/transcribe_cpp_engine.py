@@ -16,7 +16,14 @@ cmake -DTRANSCRIBE_VULKAN=ON; a plain build is CPU-only) are picked by
 its default 'auto' backend — the CLI prints the verdict in its
 'backend:' line. V0.6.57 surfaces that reality: a --list-devices
 pre-flight before the model load, live nvidia-smi GPU lines during the
-run, and a loud warning when the backend turns out to be CPU. It
+run, and a loud warning when the backend turns out to be CPU. V0.6.58
+adds the SPEED contract: a [PARITY] line computing the app-vs-transcribe.bat
+command equality (the operator's bat runs the SAME command -- both are
+'transcribe-cli.exe -m <model> <wav>' with zero extra flags), [SPEED]
+lines carrying the last completed run's measured throughput forward
+(the CLI's own 'realtime:' figure + the wall clock, persisted in the
+speed ledger), and the upstream's whisper-large-v3-turbo recommendation
+when a run measures slow on the GPU. It
 accepts only 16 kHz mono WAV input -- other formats must be converted
 first with ffmpeg (the existing extract_audio_from_video function
 already produces 16 kHz mono WAV, so it's reused).
@@ -94,6 +101,17 @@ from core.transcribe.gpu_probe import (
     format_gpu_line,
     probe_cli_devices,
     probe_gpu_state,
+)
+from core.transcribe.speed_ledger import (
+    SLOW_MODEL_HINT,
+    entry_realtime,
+    format_done_line,
+    format_speed_line,
+    last_entry,
+    load_ledger,
+    parse_realtime_line,
+    record_run,
+    should_suggest_turbo,
 )
 
 logger = logging.getLogger(__name__)
@@ -616,6 +634,53 @@ def _format_run_config_lines(model_path, wav_path, cmd) -> list[str]:
     return lines
 
 
+def _load_last_speed_entry(model_path) -> dict | None:
+    """V0.6.58: the ledger lookup, wrapped best-effort (a missing /
+    corrupt ledger is a missing [SPEED] line, never a failed run)."""
+    try:
+        return last_entry(load_ledger(), Path(model_path).name)
+    except Exception:
+        return None
+
+
+def _format_speed_and_parity_lines(model_path, wav_path, cmd, last_entry=None, audio_s=None):
+    """V0.6.58: the pre-run speed contract + the transcribe.bat parity
+    proof (log-ready lines, "  [TAG] ..." form).
+
+    The operator's benchmark is the uploaded transcribe.bat ("dragging
+    video to this bat file transcribe it under 1 minute"). The bat
+    runs exactly ``"%CLI%" -m "%MODEL%" "%WAV%"`` -- and the app's
+    command is the same shape. [PARITY] COMPUTES the equality (list
+    comparison, not an eyeball claim) so the log states what is now
+    provable: when the commands match, any speed difference vs the
+    bat cannot be the command line. [SPEED] carries the LAST
+    completed run's measured throughput for THIS model (the speed
+    ledger) plus the wait it predicts for THIS audio -- requires
+    data; before the first completed run there is no line at all.
+    """
+    lines: list[str] = []
+    cmd_s = [str(c) for c in cmd]
+    bat_form = [cmd_s[0], "-m", str(model_path), str(wav_path)]
+    if cmd_s == bat_form:
+        lines.append(
+            "  [PARITY] byte-identical to your transcribe.bat command "
+            "(same exe, same model, same WAV, no app-added flags) — any "
+            "speed difference vs the bat is NOT the command line"
+        )
+    else:
+        extras = cmd_s[3:-1] if len(cmd_s) > 4 else []
+        extras_s = " ".join(extras) if extras else "(same flags, different order)"
+        lines.append(
+            f"  [PARITY] app command = transcribe.bat + {extras_s} — a "
+            f"language hint costs one decode pass, not minutes"
+        )
+    if last_entry:
+        if audio_s is None:
+            audio_s = _wav_duration_s(wav_path)
+        lines.append(f"  [SPEED] {format_speed_line(last_entry, audio_s)}")
+    return lines
+
+
 def _backend_is_cpu(backend) -> bool:
     """True when the CLI's own ``backend:`` line says it computed on CPU."""
     return "cpu" in str(backend or "").lower()
@@ -764,6 +829,24 @@ def transcribe_with_cpp(
     for _cfg_line in _format_run_config_lines(model_path, wav_to_transcribe, cmd):
         log(_cfg_line, "INFO")
 
+    # -- V0.6.58: the speed contract BEFORE the wait --------------------
+    # [PARITY] computes the app-vs-bat command comparison so the byte
+    # equality is on record (not eyeballed against the bat's line 25);
+    # [SPEED] carries the last completed run's measured throughput
+    # forward so this wait has a number attached before it starts. A
+    # slow prior figure also earns the upstream's own faster-model
+    # recommendation, up front, where the operator is staring at the
+    # log anyway.
+    audio_s = _wav_duration_s(wav_to_transcribe)
+    _last_speed = _load_last_speed_entry(model_path)
+    for _speed_line in _format_speed_and_parity_lines(
+        model_path, wav_to_transcribe, cmd, _last_speed, audio_s=audio_s
+    ):
+        log(_speed_line, "INFO")
+    _prev_throughput = entry_realtime(_last_speed)
+    if _prev_throughput and should_suggest_turbo(Path(model_path).name, _prev_throughput):
+        log(f"  [SPEED] {SLOW_MODEL_HINT}", "WARNING")
+
     # -- Run the CLI (GPU-guarded, STREAMING) --------------------------
     # V0.6.56: the old subprocess.run(capture_output=True) trapped ALL
     # CLI output in memory for the whole transcription — between
@@ -899,6 +982,42 @@ def transcribe_with_cpp(
         result_dict["raw_stderr"] = parsed["raw_stderr"]
 
     log(f"  [OK] Transcribed in {elapsed:.1f}s ({len(parsed['text'])} chars)", "INFO")
+
+    # -- V0.6.58: close the speed loop ----------------------------------
+    # Parse the CLI's own 'realtime:' figure and log the wall-clock
+    # ratio beside it (the wall includes the per-run model reload; the
+    # CLI's figure is compute-only -- printing both says where the
+    # time went). Persist both in the speed ledger so the NEXT run
+    # opens with an expectation instead of a silent wait, and let a
+    # slow figure earn the upstream's turbo recommendation. Best-
+    # effort throughout: the ledger must never fail a transcription.
+    try:
+        _rt_info = parse_realtime_line(stdout_text)
+        _rt_x = _rt_info["realtime_x"] if _rt_info else None
+        if _rt_x or (audio_s and elapsed > 0):
+            log(f"  [SPEED] {format_done_line(elapsed, audio_s, _rt_x)}", "INFO")
+        _throughput = _rt_x or (audio_s / elapsed if (audio_s and elapsed > 0) else 0.0)
+        # First run of this model on this rig: the ledger had no entry,
+        # so the pre-run hint could not fire -- earn it HERE, where the
+        # operator is staring at the finished-but-slow log. Later runs
+        # get the hint up front (from the ledger) instead.
+        if (
+            _throughput
+            and _last_speed is None
+            and should_suggest_turbo(Path(model_path).name, _throughput)
+        ):
+            log(f"  [SPEED] {SLOW_MODEL_HINT}", "WARNING")
+        record_run(
+            model=Path(model_path).name,
+            realtime_x=_rt_x,
+            audio_s=audio_s,
+            elapsed_s=elapsed,
+            compute_ms=_rt_info["compute_ms"] if _rt_info else None,
+            backend=parsed.get("backend"),
+        )
+    except Exception:
+        logger.debug("speed-ledger record failed (best-effort)", exc_info=True)
+
     progress(100, "Transcription complete")
     return result_dict
 
