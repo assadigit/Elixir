@@ -504,6 +504,11 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 progress_callback=lambda pct, msg: self._emit_progress(pct, msg),
             )
 
+        # V0.6.53: log how much text was extracted
+        _extracted_text = transcribe_result.get("text", "")
+        _extracted_segs = len(transcribe_result.get("segments", []))
+        self._emit_progress(-1, f"[INFO] Extracted {len(_extracted_text)} chars, {_extracted_segs} segments, language={transcribe_result.get('language', 'None')}")
+
         if "error" in transcribe_result:
             results["error"] = transcribe_result["error"]
             return results
@@ -526,7 +531,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         if save_summary:
             self._emit_progress(92, "📝 Summarizing with LLM...")
             summary = summarize_transcript(
-                transcribe_result["text"],
+                _transcript_text,
                 model=llm_model,
                 ollama_url=ollama_url,
                 log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
@@ -543,7 +548,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         if save_tutorial:
             self._emit_progress(95, "Generating tutorial guide with LLM...")
             tutorial = summarize_transcript(
-                transcribe_result["text"],
+                _transcript_text,
                 model=llm_model,
                 ollama_url=ollama_url,
                 log_callback=lambda msg, level="INFO": self._emit_progress(-1, msg),
