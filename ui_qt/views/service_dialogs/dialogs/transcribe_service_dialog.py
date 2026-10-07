@@ -94,6 +94,8 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
         # Refresh models (same position as the pre-B17 __init__ tail).
         self._refresh_models()
+        # V0.6.45: set initial visibility of the summary model combo.
+        self._on_output_check_changed()
 
     def _build_options(self, layout: QVBoxLayout) -> None:
         """V0.6.10 (B17): the transcription-specific option rows, folded
@@ -118,7 +120,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         desc = _QL(
             "Import a video or audio file → get a raw transcript + "
             "an Obsidian-friendly summarized version. Uses "
-            "faster-whisper (GPU-accelerated) for transcription."
+            "transcribe.cpp (Vulkan GPU) or faster-whisper."
         )
         desc.setObjectName("Caption")
         desc.setWordWrap(True)
@@ -188,15 +190,18 @@ class TranscribeServiceDialog(BaseServiceDialog):
         # Checkboxes
         self.cb_raw = _QChB("Raw transcript (with timestamps)")
         self.cb_raw.setChecked(True)
+        self.cb_raw.stateChanged.connect(self._on_output_check_changed)
         layout.addWidget(self.cb_raw)
 
         self.cb_summary = _QChB("Summary (core concepts + key takeaways)")
         self.cb_summary.setChecked(True)
+        self.cb_summary.stateChanged.connect(self._on_output_check_changed)
         layout.addWidget(self.cb_summary)
 
         # V0.6.43: third output — tutorial/educational guide.
         self.cb_tutorial = _QChB("Tutorial guide (educational / tips & tricks)")
         self.cb_tutorial.setChecked(False)
+        self.cb_tutorial.stateChanged.connect(self._on_output_check_changed)
         layout.addWidget(self.cb_tutorial)
 
         # ── Process button ────────────────────────────────────────────
@@ -231,6 +236,17 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.whisper_browse_btn.setVisible(is_faster_whisper)
         # Show/hide the transcribe.cpp model browse button.
         self.cpp_model_browse_btn.setVisible(not is_faster_whisper)
+
+    def _on_output_check_changed(self):
+        """V0.6.45: hide the Summary model combo + refresh button when
+        the user only wants the raw transcript (no summary or tutorial).
+        The LLM model is only used for summary + tutorial — showing it
+        when neither is checked is confusing."""
+        needs_llm = self.cb_summary.isChecked() or (
+            hasattr(self, "cb_tutorial") and self.cb_tutorial.isChecked()
+        )
+        self.llm_combo.setVisible(needs_llm)
+        self.refresh_btn.setVisible(needs_llm)
 
     def _browse_cpp_model(self):
         """V0.6.41: Browse for the transcribe.cpp Whisper model file

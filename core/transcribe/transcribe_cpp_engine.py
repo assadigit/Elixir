@@ -94,7 +94,7 @@ DEFAULT_TRANSCRIBE_CPP_EXE = r"C:\transcribe.cpp\build\bin\Release\transcribe-cl
 
 # Path to the Whisper GGUF model file (about 3 GB for F16).
 # CHECK YOUR transcribe.bat FOR THE EXACT PATH — do not invent one.
-DEFAULT_TRANSCRIBE_CPP_MODEL = r"C:\transcribe.cpp\models\ggml-large-v3.bin"
+DEFAULT_TRANSCRIBE_CPP_MODEL = r"C:\transcribe.cpp\models\whisper-large-v3-Q8_0.gguf"
 
 # Default language: None = auto-detect, "en" = English, "fa" = Farsi.
 DEFAULT_LANGUAGE = None
