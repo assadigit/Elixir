@@ -96,12 +96,14 @@ import time
 import wave
 from pathlib import Path
 
+from core.transcribe import model_catalog as mc
 from core.transcribe.gpu_probe import (
     format_devices_line,
     format_gpu_line,
     probe_cli_devices,
     probe_gpu_state,
 )
+from core.transcribe.model_catalog import format_model_line
 from core.transcribe.speed_ledger import (
     SLOW_MODEL_HINT,
     entry_realtime,
@@ -113,6 +115,10 @@ from core.transcribe.speed_ledger import (
     record_run,
     should_suggest_turbo,
 )
+
+# V0.6.59: the catalog import above (model_catalog / format_model_line)
+# is the model decision — verify the selected .gguf from its own
+# header; scan the disk when the saved path goes stale.
 
 logger = logging.getLogger(__name__)
 
@@ -605,7 +611,7 @@ def _wav_duration_s(wav_path) -> float | None:
         return None
 
 
-def _format_run_config_lines(model_path, wav_path, cmd) -> list[str]:
+def _format_run_config_lines(model_path, wav_path, cmd, model_info=None) -> list[str]:
     """V0.6.57: the pre-run config block for the live log.
 
     The operator's "why is it on CPU?" could not be answered from the
@@ -614,19 +620,30 @@ def _format_run_config_lines(model_path, wav_path, cmd) -> list[str]:
     (the manual-repro ground truth against the owner's transcribe.bat)
     was on record. These three lines fix that:
 
-      [MODEL] which GGUF (name + size)
+      [MODEL] which GGUF (name + size; V0.6.59: plus what the file's
+              own header PROVED — Whisper Large v3 / 1.5B / Q8_0 —
+              when the catalog described it)
       [AUDIO] how much audio is being transcribed (sets the wait
               expectation -- 15 minutes of audio is NEVER a 1-minute
               run, whatever the old anecdote says)
       [CMD]   the full command line to reproduce by hand
     """
     lines: list[str] = []
-    name = Path(model_path).name
-    try:
-        size = Path(model_path).stat().st_size
-        lines.append(f"  [MODEL] {name} ({_fmt_bytes(size)}) - the model file reloads on every run")
-    except OSError:
-        lines.append(f"  [MODEL] {name} - the model file reloads on every run")
+    model_line = None
+    if model_info is not None:
+        try:
+            model_line = format_model_line(model_info)
+        except Exception:
+            model_line = None
+    if model_line:
+        lines.append(model_line)
+    else:
+        name = Path(model_path).name
+        try:
+            size = Path(model_path).stat().st_size
+            lines.append(f"  [MODEL] {name} ({_fmt_bytes(size)}) - the model file reloads on every run")
+        except OSError:
+            lines.append(f"  [MODEL] {name} - the model file reloads on every run")
     dur = _wav_duration_s(wav_path)
     if dur:
         lines.append(f"  [AUDIO] {_fmt_mmss(dur)} of audio to transcribe")
@@ -705,6 +722,45 @@ _NO_GPU_DEVICE_WARNING = (
 )
 
 
+def _settings_get(key, default=None):
+    """V0.6.59: the settings read as a module-level indirection.
+
+    Monkeypatchable in tests (the house pattern — the wrapper test swaps
+    this for a dict) and best-effort in production: a settings system
+    that cannot even load yields the default, never an exception.
+    """
+    try:
+        from utils.settings import Settings
+
+        return Settings().get(key, default)
+    except Exception:
+        return default
+
+
+def _resolve_cpp_model(log) -> dict:
+    """V0.6.59: the model decision, delegated to the catalog.
+
+    Composes the search dirs from the real settings surface (the CLI
+    exe's folder, the saved model's folder, C:\\transcribe.cpp\\models,
+    ~/Downloads), forwards to mc.resolve_model, and surfaces its log
+    lines. Returns the catalog's dict verbatim ({"path", "source",
+    "persist", "info", "log_lines"} or {"error", ...}).
+    """
+    saved = _settings_get("transcribe.transcribe_cpp_model", DEFAULT_TRANSCRIBE_CPP_MODEL)
+    exe = _settings_get("transcribe.transcribe_cpp_exe", DEFAULT_TRANSCRIBE_CPP_EXE)
+    try:
+        dirs = mc.model_search_dirs(exe_path=exe, saved_model=saved)
+    except Exception:
+        dirs = []
+    resolved = mc.resolve_model(saved, search_dirs=dirs)
+    try:
+        for line in resolved.get("log_lines", []):
+            log(line, "INFO")
+    except Exception:
+        pass
+    return resolved
+
+
 def transcribe_with_cpp(
     audio_path: str,
     language: str | None = None,
@@ -742,14 +798,12 @@ def transcribe_with_cpp(
 
         s = Settings()
         exe_path = s.get("transcribe.transcribe_cpp_exe", DEFAULT_TRANSCRIBE_CPP_EXE)
-        model_path = s.get("transcribe.transcribe_cpp_model", DEFAULT_TRANSCRIBE_CPP_MODEL)
         if language is None:
             language = s.get("transcribe.transcribe_cpp_lang", None)
             if language == "auto" or language == "":
                 language = None
     except Exception:
         exe_path = DEFAULT_TRANSCRIBE_CPP_EXE
-        model_path = DEFAULT_TRANSCRIBE_CPP_MODEL
 
     # -- Validate: CLI exists -----------------------------------------
     if not Path(exe_path).exists():
@@ -761,24 +815,30 @@ def transcribe_with_cpp(
             )
         }
 
-    # -- Validate: model exists ---------------------------------------
-    # V0.6.47: if the saved setting points to a non-existent file, try
-    # the default before erroring (a stale setting from an old version
-    # might point to ggml-large-v3.bin which was renamed).
-    if not Path(model_path).exists():
-        # Try the default model path.
-        if model_path != DEFAULT_TRANSCRIBE_CPP_MODEL and Path(DEFAULT_TRANSCRIBE_CPP_MODEL).exists():
-            model_path = DEFAULT_TRANSCRIBE_CPP_MODEL
-        else:
-            return {
-                "error": (
-                f"Whisper model file not found at: {model_path}\n\n"
-                f"FIX: In the Transcribe Service dialog, select 'transcribe.cpp' "
-                f"as the engine, then click the 'Model' button to browse "
-                f"for your .gguf model file.\n"
-                f"Your model is at: C:\\transcribe.cpp\\models\\whisper-large-v3-Q8_0.gguf"
-            )
-        }
+    # -- Resolve + verify: the model (V0.6.59 — the catalog) ----------
+    # The old block trusted the setting blindly and silently fell back
+    # to the one hardcoded default when the path went stale (V0.6.47).
+    # The operator's request — "I already downloaded whisper large v3
+    # from handy computer, so I just select the gguf model" — is now
+    # the catalog's job: the selected GGUF is VERIFIED from the file's
+    # own header BEFORE the CLI launches (a llama GGUF or a legacy
+    # ggml-*.bin picked by mistake fails in seconds with the fix, not
+    # minutes into the run), and a missing model triggers a disk scan
+    # that auto-picks (and persists) the best Whisper GGUF found.
+    resolved = _resolve_cpp_model(log)
+    if "error" in resolved:
+        return {"error": resolved["error"]}
+    model_path = resolved["path"]
+    model_info = resolved.get("info") or None
+    if resolved.get("persist"):
+        # The scan picked this — persist it so the next run is stable.
+        try:
+            from utils.settings import Settings
+
+            s = Settings()
+            s.set("transcribe.transcribe_cpp_model", model_path)
+        except Exception:
+            pass
 
     # -- Convert to 16 kHz mono WAV (if not already) -----------------
     # V0.6.56: the ffmpeg conversion moved to its own helper so
@@ -826,7 +886,7 @@ def transcribe_with_cpp(
         log(f"  [DEVICES] {format_devices_line(None)}", "INFO")
 
     # -- V0.6.57: run-config on record BEFORE the run ------------------
-    for _cfg_line in _format_run_config_lines(model_path, wav_to_transcribe, cmd):
+    for _cfg_line in _format_run_config_lines(model_path, wav_to_transcribe, cmd, model_info=model_info):
         log(_cfg_line, "INFO")
 
     # -- V0.6.58: the speed contract BEFORE the wait --------------------

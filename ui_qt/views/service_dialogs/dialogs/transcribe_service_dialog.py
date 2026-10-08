@@ -122,6 +122,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
         # Refresh models (same position as the pre-B17 __init__ tail).
         self._refresh_models()
+        # V0.6.59: populate the GGUF model combo from the catalog's disk
+        # scan (after _build_options created the combo — the V0.6.55
+        # construction-order rule).
+        self._refresh_cpp_models()
         # V0.6.45: set initial visibility of the summary model combo.
         self._on_output_check_changed()
 
@@ -170,21 +174,49 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.engine_combo.addItem("faster-whisper (CTranslate2)", "faster_whisper")
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         engine_row.addWidget(self.engine_combo)
-        # V0.6.41: model browse button for transcribe.cpp (lets the owner
-        # pick the GGUF model file — not just a hardcoded path).
-        self.cpp_model_browse_btn = _QPB("📁 Model")
-        self.cpp_model_browse_btn.setToolTip("Browse for the transcribe.cpp Whisper model file (.gguf/.bin)")
-        self.cpp_model_browse_btn.clicked.connect(self._browse_cpp_model)
-        engine_row.addWidget(self.cpp_model_browse_btn)  # V0.6.55: visible — the default engine now
         engine_row.addStretch()
         layout.addLayout(engine_row)
+
+        # V0.6.59: the GGUF model row — "I already downloaded whisper
+        # large v3 from handy computer, so I just select the gguf model".
+        # The combo lists every Whisper .gguf the catalog finds on disk
+        # (the CLI exe's folder, C:\transcribe.cpp\models, the saved
+        # model's folder, ~/Downloads — where a browser download lands)
+        # with name · quant · size · header-verification, so picking the
+        # downloaded model is ONE CLICK, not a browse. The 🔄 button
+        # rescans; the 📁 Model button (V0.6.41, moved here from the
+        # engine row) stays for one-off paths and refreshes the combo.
+        cpp_model_row = _HL()
+        cpp_model_row.addWidget(_QL("GGUF model:"))
+        self.cpp_model_combo = _QCB()
+        self.cpp_model_combo.setToolTip(
+            "Whisper .gguf files found on disk (name · quant · size · header-verified).\n"
+            "Selecting one saves it — the engine re-verifies the file before every run.\n"
+            "Models: huggingface.co/handy-computer (e.g. whisper-large-v3-Q8_0.gguf)"
+        )
+        self.cpp_model_combo.currentIndexChanged.connect(self._on_cpp_model_selected)
+        cpp_model_row.addWidget(self.cpp_model_combo, 1)
+        self.cpp_model_refresh_btn = _QPB("🔄")
+        self.cpp_model_refresh_btn.setToolTip("Rescan disk for Whisper .gguf models")
+        self.cpp_model_refresh_btn.clicked.connect(self._refresh_cpp_models)
+        cpp_model_row.addWidget(self.cpp_model_refresh_btn)
+        self.cpp_model_browse_btn = _QPB("📁 Model")
+        self.cpp_model_browse_btn.setToolTip("Browse for a Whisper .gguf model file")
+        self.cpp_model_browse_btn.clicked.connect(self._browse_cpp_model)
+        cpp_model_row.addWidget(self.cpp_model_browse_btn)
+        cpp_model_row.addStretch()
+        _cpp_row_widget = QWidget()
+        _cpp_row_widget.setLayout(cpp_model_row)
+        layout.addWidget(_cpp_row_widget)
+        self.cpp_model_row = _cpp_row_widget
 
         # V0.6.39 (W-s1): Whisper model — auto-detect + custom-path browse.
         # The combo shows the standard faster-whisper model sizes, PLUS any
         # locally-downloaded models found via auto-detection. A "Browse"
         # button lets the operator pinpoint a custom model folder on disk.
         model_row = _HL()
-        model_row.addWidget(_QL("Whisper model:"))
+        self.whisper_model_label = _QL("Whisper model:")
+        model_row.addWidget(self.whisper_model_label)
         self.whisper_combo = _QCB()
         self.whisper_combo.addItem("small (recommended — good balance)", "small")
         self.whisper_combo.addItem("tiny (fastest — quick drafts)", "tiny")
@@ -210,6 +242,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
         # V0.6.53-NameError failure class the redesign was meant to kill —
         # caught by the fresh-eyes review because this sandbox has no
         # PySide6 and the AST pins only checked the call EXISTS, not WHERE).
+        # V0.6.59: the same now holds for cpp_model_combo / cpp_model_row /
+        # cpp_model_browse_btn — every widget the slot touches is created
+        # above this line (the extended pin enforces it).
         self._on_engine_changed()
 
         # V0.6.39 (W-s2): LLM model — auto-detect BOTH Ollama and llama.cpp.
@@ -284,18 +319,19 @@ class TranscribeServiceDialog(BaseServiceDialog):
     # pre-B17 copies were byte-equivalent and were deleted.
 
     def _on_engine_changed(self):
-        """V0.6.40 (W-t2): toggle the Whisper model row visibility based on
-        the selected engine. transcribe.cpp uses its own model (set in
-        the CONFIGURATION block or picked via the 📁 Model button), so
-        the faster-whisper model combo + browse button are hidden when
-        transcribe.cpp is selected."""
+        """V0.6.40 (W-t2) + V0.6.59: toggle the model rows based on the
+        selected engine. transcribe.cpp gets the GGUF model row (combo +
+        rescan + browse); faster-whisper gets its model-size row. The
+        faster-whisper row's LABEL is now hidden too (it used to stay
+        visible with hidden widgets — a dangling label)."""
         engine = self.engine_combo.currentData()
         is_faster_whisper = engine == "faster_whisper"
-        # Show/hide the whisper model row (combo + browse button).
+        # Show/hide the faster-whisper model row (label + combo + browse).
+        self.whisper_model_label.setVisible(is_faster_whisper)
         self.whisper_combo.setVisible(is_faster_whisper)
         self.whisper_browse_btn.setVisible(is_faster_whisper)
-        # Show/hide the transcribe.cpp model browse button.
-        self.cpp_model_browse_btn.setVisible(not is_faster_whisper)
+        # Show/hide the transcribe.cpp GGUF model row (whole container).
+        self.cpp_model_row.setVisible(not is_faster_whisper)
 
     def _on_output_check_changed(self):
         """V0.6.45: hide the Summary model combo + refresh button when
@@ -314,13 +350,17 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
     def _browse_cpp_model(self):
         """V0.6.41: Browse for the transcribe.cpp Whisper model file
-        (.gguf or .bin). The selected path is saved to the app's settings
-        (transcribe.transcribe_cpp_model) so the engine picks it up."""
+        (.gguf). The selected path is saved to the app's settings
+        (transcribe.transcribe_cpp_model) so the engine picks it up.
+        V0.6.59: the filter puts .gguf first (transcribe-cli.exe loads
+        GGUF — a legacy ggml-*.bin picked through the old *.pt-including
+        filter died minutes into the run), and the GGUF combo is
+        refreshed so the picked model shows up selected + verified."""
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Pick transcribe.cpp Whisper model file",
             "",
-            "Model files (*.gguf *.bin *.pt);;All files (*.*)",
+            "Whisper GGUF models (*.gguf);;Legacy ggml models (*.bin);;All files (*.*)",
         )
         if path:
             from utils.settings import Settings
@@ -330,6 +370,106 @@ class TranscribeServiceDialog(BaseServiceDialog):
             self.status_label.setText(
                 f"✅ Model set: {Path(path).name} (saved to settings)"
             )
+            self._refresh_cpp_models()
+
+    def _on_cpp_model_selected(self, index: int):
+        """V0.6.59: picking a GGUF from the combo saves it — the
+        "just select the gguf model" flow. The engine re-verifies the
+        file's header before every run, so a wrong pick fails in
+        seconds with the fix, not minutes into the run."""
+        path = self.cpp_model_combo.currentData() if index >= 0 else None
+        if not path:
+            return
+        try:
+            from utils.settings import Settings
+
+            s = Settings()
+            s.set("transcribe.transcribe_cpp_model", str(path))
+            self.status_label.setText(
+                f"✅ Model set: {Path(path).name} (saved to settings)"
+            )
+        except Exception:
+            self.status_label.setText(
+                f"⚠️ Model selected: {Path(path).name} (could not save setting)"
+            )
+
+    def _refresh_cpp_models(self):
+        """V0.6.59: repopulate the GGUF combo from disk — the catalog's
+        scan (the CLI exe's folder + its models/, C:\transcribe.cpp\
+        models, the saved model's folder, ~/Downloads). Every entry
+        shows name · quant · size · header-verification; the saved
+        setting (even if outside the scan dirs) is listed first and
+        selected. Best-effort everywhere: a settings/scan failure
+        leaves the combo empty, never crashes the dialog."""
+        self.cpp_model_combo.blockSignals(True)
+        self.cpp_model_combo.clear()
+        # V0.6.59 review fix: settings values are coerced to str — a
+        # corrupt setting (int/list/dict) must never raise in Path(...)
+        # at dialog open (the V0.6.53/55 construction-crash class).
+        current = None
+        exe = None
+        try:
+            from utils.settings import Settings
+
+            s = Settings()
+            _cur = s.get("transcribe.transcribe_cpp_model", None)
+            _exe = s.get("transcribe.transcribe_cpp_exe", None)
+            current = str(_cur) if _cur else None
+            exe = str(_exe) if _exe else None
+        except Exception:
+            pass
+        items: list[tuple[str, str]] = []
+        if current and Path(current).exists():  # current is str-coerced above
+            try:
+                from core.transcribe.model_catalog import (
+                    describe_model_file,
+                    format_model_display,
+                )
+
+                items.append((format_model_display(describe_model_file(current)), str(current)))
+            except Exception:
+                items.append((f"{Path(current).name} (saved setting)", str(current)))
+        try:
+            from core.transcribe import model_catalog
+            from core.transcribe.transcribe_cpp_engine import DEFAULT_TRANSCRIBE_CPP_EXE
+
+            found = model_catalog.scan_model_dirs(
+                model_catalog.model_search_dirs(
+                    exe_path=exe or DEFAULT_TRANSCRIBE_CPP_EXE, saved_model=current
+                )
+            )
+            known = {p for _, p in items}
+            for info in found:
+                if info["path"] not in known:
+                    items.append((model_catalog.format_model_display(info), info["path"]))
+                    known.add(info["path"])
+        except Exception:
+            pass
+        select = -1
+        for display, path in items:
+            self.cpp_model_combo.addItem(display, path)
+            if current and path == str(current):
+                select = self.cpp_model_combo.count() - 1
+        if select < 0 and items:
+            select = 0
+        if select >= 0:
+            self.cpp_model_combo.setCurrentIndex(select)
+        elif not items:
+            self.cpp_model_combo.addItem(
+                "(no Whisper .gguf found — 📁 Model to browse)", None
+            )
+        self.cpp_model_combo.blockSignals(False)
+
+    def _cpp_model_display(self) -> str | None:
+        """V0.6.59: the selected GGUF's file name for the run header.
+        The V0.6.57 gap: transcribe.cpp runs logged NO model line (the
+        whisper_combo's size is meaningless for the GGUF engine) — now
+        the header carries the actual selected model file."""
+        idx = self.cpp_model_combo.currentIndex()
+        if idx < 0:
+            return None
+        path = self.cpp_model_combo.itemData(idx)
+        return Path(path).name if path else None
 
     def _browse_whisper_model(self):
         """V0.6.39 (W-s1): Browse for a custom Whisper model folder on disk.
@@ -569,12 +709,13 @@ class TranscribeServiceDialog(BaseServiceDialog):
         for _header_line in format_run_header(
             filepath=filepath,
             engine=self.engine_combo.currentText(),
-            # The whisper_combo holds the FASTER-WHISPER model size —
-            # meaningless for the transcribe.cpp engine (which uses its
-            # own GGUF path); don't log a misleading model line.
+            # The whisper_combo holds the FASTER-WHISPER model size;
+            # the transcribe.cpp engine gets the SELECTED GGUF's file
+            # name instead (V0.6.59 — closing the V0.6.57 gap where cpp
+            # runs logged no model line at all).
             whisper_model=self.whisper_combo.currentData()
             if self.engine_combo.currentData() == "faster_whisper"
-            else None,
+            else self._cpp_model_display(),
             llm_model=self.llm_combo.currentText().strip(),
             save_raw=self.cb_raw.isChecked(),
             save_summary=self.cb_summary.isChecked(),
