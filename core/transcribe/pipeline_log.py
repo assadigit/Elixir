@@ -113,11 +113,15 @@ def format_run_header(
     save_raw: bool,
     save_summary: bool,
     save_tutorial: bool,
+    save_srt: bool = False,
+    save_vtt: bool = False,
 ) -> list[str]:
     """The run-start log lines: what is about to happen, to what file.
 
     Returns a list (not one blob) so the dialog appends each line with
-    its own timestamp — the live log stays line-addressable.
+    its own timestamp — the live log stays line-addressable. The
+    V0.6.62 subtitle flags default OFF (pre-V0.6.62 callers are
+    unchanged — no subtitle line for them).
     """
     lines: list[str] = []
     p = Path(filepath)
@@ -135,6 +139,12 @@ def format_run_header(
     needs_llm = save_summary or save_tutorial
     if needs_llm:
         lines.append(f"🤖 LLM: {llm_model or '(auto-detected)'}")
+
+    # V0.6.62: the subtitle deliverables get their own line — they are
+    # the video-side output, not another markdown file.
+    sub_kinds = [k for k, on in (("SRT", save_srt), ("VTT", save_vtt)) if on]
+    if sub_kinds:
+        lines.append(f"🎬 Subtitles: {' + '.join(sub_kinds)}")
 
     outputs = []
     if save_raw:

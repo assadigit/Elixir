@@ -917,6 +917,7 @@ class TestDoTranscribeEndToEnd:
         opts = {
             "filepath": str(src),
             "output_folder": str(out_dir),
+            "engine": "faster_whisper",  # V0.6.62: explicit (the V0.6.55 stale-pin lesson) — the default is transcribe_cpp
             "whisper_model": "tiny",
             "llm_model": "model-a",
             "save_raw": True,
@@ -938,6 +939,47 @@ class TestDoTranscribeEndToEnd:
         assert capture["summarize"][2] == "http://127.0.0.1:9"
         app.processEvents()
 
+    def test_subtitle_export_flow_writes_srt_and_vtt(self, tmp_path, monkeypatch):
+        """V0.6.62: the subtitle deliverables — the engine's timestamped
+        segments become <stem>.srt + <stem>.vtt beside the transcript.
+        The stub returns segments [{"start": 0.0, "end": 2.0, ...}], so
+        the SRT must carry exactly one comma-timestamped cue and the
+        VTT the WEBVTT header + one dot-timestamped cue. engine is
+        passed EXPLICITLY (the V0.6.55 stale-pin lesson: the default
+        is transcribe_cpp since V0.6.42)."""
+        self._stub_seam(monkeypatch)
+        self._install_settings_for_dialog()
+        dlg, app = self._make_dialog()
+        src = _build_wav(tmp_path)
+        out_dir = tmp_path / "out_sub"
+        opts = {
+            "filepath": str(src),
+            "output_folder": str(out_dir),
+            "engine": "faster_whisper",  # explicit — hits the stubbed transcribe_audio
+            "whisper_model": "tiny",
+            "llm_model": "model-a",
+            "save_raw": False,
+            "save_summary": False,
+            "save_srt": True,
+            "save_vtt": True,
+        }
+        results = dlg._do_transcribe(opts)
+        assert results["error"] is None
+        srt = out_dir / "sample.srt"
+        vtt = out_dir / "sample.vtt"
+        assert results["srt_path"] == str(srt) and results["vtt_path"] == str(vtt)
+        assert srt.exists() and vtt.exists()
+        srt_body = srt.read_text(encoding="utf-8")
+        vtt_body = vtt.read_text(encoding="utf-8")
+        assert srt_body == "1\n00:00:00,000 --> 00:00:02,000\nhello world\n"
+        assert vtt_body == "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello world\n"
+        assert results["subtitle_cues"] == 1
+        # V0.6.62 review finding 7: the flow is subtitle-ONLY — no
+        # transcript/summary files may appear either.
+        assert not (out_dir / "sample_transcript.md").exists()
+        assert not (out_dir / "sample_summary.md").exists()
+        app.processEvents()
+
     def _install_settings_for_dialog(self):
         return _install_settings(
             {"summarisation.ollama_url": "http://127.0.0.1:9", "summarisation.provider": "ollama"}
@@ -951,6 +993,7 @@ class TestDoTranscribeEndToEnd:
         opts = {
             "filepath": str(src),
             "output_folder": str(tmp_path / "o2"),
+            "engine": "faster_whisper",  # V0.6.62: explicit (the V0.6.55 stale-pin lesson)
             "whisper_model": "tiny",
             "llm_model": "model-a",
             "save_raw": True,
@@ -975,6 +1018,7 @@ class TestDoTranscribeEndToEnd:
         opts = {
             "filepath": str(_build_wav(tmp_path)),
             "output_folder": str(tmp_path / "o3"),
+            "engine": "faster_whisper",  # V0.6.62: explicit (the V0.6.55 stale-pin lesson)
             "whisper_model": "tiny",
             "llm_model": "model-a",
             "save_raw": True,

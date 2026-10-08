@@ -320,6 +320,35 @@ class TestV0655DialogErrorHandling:
     def test_the_error_results_key_still_carries_the_four_key_contract(self, tree):
         """The V0.6.44 results dict contract (raw_path / summary_path /
         tutorial_path / error) is unchanged — the completion dialog and
-        the e2e pins depend on it."""
-        src = _DIALOG.read_text(encoding="utf-8")
-        assert '"raw_path": None, "summary_path": None, "tutorial_path": None, "error": None' in src
+        the e2e pins depend on it.
+
+        V0.6.62 STALE-PIN REFRESH, documented: the pin matched the
+        dict's OLD single-line source literal; the results dict is
+        now multi-line and EXTENDED (srt_path / vtt_path /
+        subtitle_cues — the subtitle deliverables). The four V0.6.44
+        keys still init to None; the structural check below pins the
+        whole key set (old four + new three) instead of a formatting
+        accident."""
+        method = _method(tree, "_do_transcribe")
+        init_dicts = [
+            n
+            for n in ast.walk(method)
+            if isinstance(n, ast.Dict)
+            and any(
+                isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys
+            )
+        ]
+        assert init_dicts, "the results init dict must exist in _do_transcribe"
+        keys = {k.value for k in init_dicts[0].keys if isinstance(k, ast.Constant)}
+        assert {"raw_path", "summary_path", "tutorial_path", "error"} <= keys
+        assert {"srt_path", "vtt_path", "subtitle_cues"} <= keys
+        # The four V0.6.44 keys must init to None (the "not written"
+        # sentinel); subtitle_cues is a COUNTER and inits to 0.
+        sentinel = {
+            k.value: v
+            for k, v in zip(init_dicts[0].keys, init_dicts[0].values, strict=True)
+            if isinstance(k, ast.Constant) and k.value != "subtitle_cues"
+        }
+        assert all(
+            isinstance(v, ast.Constant) and v.value is None for v in sentinel.values()
+        ), "every non-counter results key must init to None"

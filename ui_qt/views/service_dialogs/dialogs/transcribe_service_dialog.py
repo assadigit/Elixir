@@ -16,6 +16,7 @@ provide)."""
 
 from __future__ import annotations
 
+import html
 import logging
 import time
 from pathlib import Path
@@ -323,6 +324,32 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.cb_tutorial.setChecked(False)
         self.cb_tutorial.stateChanged.connect(self._on_output_check_changed)
         layout.addWidget(self.cb_tutorial)
+
+        # V0.6.62: the subtitle deliverables — the video-side output the
+        # engine's timestamped segments unlock. SRT is the universal
+        # format (default ON, the natural companion of the raw
+        # transcript); WebVTT is the web/<track> opt-in. One compact row
+        # (with a stretch) so the pair reads as a pair.
+        sub_row = _HL()
+        self.cb_srt = _QChB("🎬 Subtitles (.srt)")
+        self.cb_srt.setChecked(True)
+        self.cb_srt.setToolTip(
+            "Write <video-name>.srt next to the transcript — the universal "
+            "subtitle format. Load it in VLC/PotPlayer, import it in any "
+            "editor (Premiere/DaVinci), or upload it to YouTube: the cues "
+            "come straight from the engine's own timestamps."
+        )
+        sub_row.addWidget(self.cb_srt)
+        self.cb_vtt = _QChB(".vtt (web)")
+        self.cb_vtt.setChecked(False)
+        self.cb_vtt.setToolTip(
+            "Also write a .vtt (WebVTT) file — the HTML5 <track> subtitle "
+            "format used by web players. Turn this on when the subtitles "
+            "are headed for a website."
+        )
+        sub_row.addWidget(self.cb_vtt)
+        sub_row.addStretch()
+        layout.addLayout(sub_row)
 
         # ── Process button ────────────────────────────────────────────
         # V13.31.0 (#7): Live Transcribe sub-tool
@@ -879,6 +906,8 @@ class TranscribeServiceDialog(BaseServiceDialog):
             save_tutorial=self.cb_tutorial.isChecked()
             if hasattr(self, "cb_tutorial")
             else False,
+            save_srt=self.cb_srt.isChecked() if hasattr(self, "cb_srt") else False,
+            save_vtt=self.cb_vtt.isChecked() if hasattr(self, "cb_vtt") else False,
         ):
             self._append_live_log(_header_line)
         self._append_live_log("🎙️ Starting transcription...")
@@ -901,6 +930,8 @@ class TranscribeServiceDialog(BaseServiceDialog):
             "save_raw": self.cb_raw.isChecked(),
             "save_summary": self.cb_summary.isChecked(),
             "save_tutorial": self.cb_tutorial.isChecked() if hasattr(self, "cb_tutorial") else False,
+            "save_srt": self.cb_srt.isChecked() if hasattr(self, "cb_srt") else False,
+            "save_vtt": self.cb_vtt.isChecked() if hasattr(self, "cb_vtt") else False,
         }
 
         def _work():
@@ -947,7 +978,16 @@ class TranscribeServiceDialog(BaseServiceDialog):
             else s.get("summarisation.ollama_url", "http://localhost:11434")
         )
 
-        results = {"raw_path": None, "summary_path": None, "tutorial_path": None, "error": None}
+        results = {
+            "raw_path": None,
+            "summary_path": None,
+            "tutorial_path": None,
+            "srt_path": None,
+            "vtt_path": None,
+            "subtitle_cues": 0,
+            "subtitle_error": None,
+            "error": None,
+        }
 
         # Step 1: Extract audio if video
         audio_path = filepath
@@ -1016,6 +1056,44 @@ class TranscribeServiceDialog(BaseServiceDialog):
                 encoding="utf-8",
             )
             results["raw_path"] = str(raw_path)
+
+        # V0.6.62: Step 3b — the subtitle deliverables (SRT/VTT) from
+        # the engine's own timestamped segments. Written BEFORE the LLM
+        # steps (the V0.6.54 raw-transcript contract extended: an LLM
+        # failure must never cost the subtitles). No segments (the
+        # segments-as-text fallback) → honest skip, no broken file.
+        save_srt = options.get("save_srt", False)
+        save_vtt = options.get("save_vtt", False)
+        if save_srt or save_vtt:
+            segs = transcribe_result.get("segments") or []
+            if segs:
+                from core.transcribe.subtitle_export import write_subtitle_files
+
+                self._emit_progress(91, "🎬 Writing subtitles...")
+                sub = write_subtitle_files(
+                    segs, out_folder, file_stem, want_srt=save_srt, want_vtt=save_vtt
+                )
+                results["srt_path"] = sub.get("srt_path")
+                results["vtt_path"] = sub.get("vtt_path")
+                results["subtitle_cues"] = sub.get("cues", 0)
+                if sub.get("error"):
+                    results["subtitle_error"] = sub["error"]
+                    self._emit_progress(-1, f"⚠️ {sub['error']}")
+                else:
+                    _sub_names = ", ".join(
+                        Path(p).name
+                        for p in (sub.get("srt_path"), sub.get("vtt_path"))
+                        if p
+                    )
+                    self._emit_progress(
+                        -1, f"[INFO] Subtitles: {sub['cues']} cues → {_sub_names}"
+                    )
+            else:
+                self._emit_progress(
+                    -1,
+                    "⚠️ No timestamped segments in the engine output — "
+                    "subtitles skipped",
+                )
 
         # Step 4+5: the LLM outputs (V0.6.55 redesign of the old
         # sequential Step 4 summary → Step 5 tutorial two-round-trip):
@@ -1198,7 +1276,15 @@ class TranscribeServiceDialog(BaseServiceDialog):
             self.status_label.setText(f"❌ Error: {results}")
             return
 
-        if results.get("error") and not results.get("raw_path"):
+        # V0.6.62: the early-critical branch now honors EVERY on-disk
+        # deliverable (raw transcript OR subtitles) — the V0.6.54
+        # contract extended: with save_raw off + 🎬 on (a natural combo
+        # now that subtitles exist), an LLM failure must show the
+        # completion box listing the .srt/.vtt that DID land, with the
+        # error as a ⚠️ row — not a bare “❌ Failed” that hides them.
+        if results.get("error") and not any(
+            results.get(k) for k in ("raw_path", "srt_path", "vtt_path")
+        ):
             self.status_label.setText(f"❌ {results['error']}")
             QMessageBox.critical(self, "❌ Failed", results["error"])
             return
@@ -1206,18 +1292,74 @@ class TranscribeServiceDialog(BaseServiceDialog):
         parts = []
         if results.get("raw_path"):
             parts.append(f"📄 Raw transcript: {Path(results['raw_path']).name}")
+        if results.get("srt_path"):
+            parts.append(f"🎬 Subtitles (SRT): {Path(results['srt_path']).name}")
+        if results.get("vtt_path"):
+            parts.append(f"🎬 Subtitles (VTT): {Path(results['vtt_path']).name}")
         if results.get("summary_path"):
             parts.append(f"📝 Summary: {Path(results['summary_path']).name}")
         if results.get("tutorial_path"):
             parts.append(f"📚 Tutorial guide: {Path(results['tutorial_path']).name}")
         if results.get("error"):
             parts.append(f"⚠️ Summary error: {results['error']}")
+        if results.get("subtitle_error"):
+            parts.append(f"⚠️ Subtitles: {results['subtitle_error']}")
 
         summary_text = "\n".join(parts)
         self.status_label.setText(f"✅ Done!\n{summary_text}")
 
+        # V0.6.62: the completion box is now RICH TEXT — a proper files
+        # table (icon + bold name + per-file description; the subtitle
+        # rows carry the cue count) instead of a bare name list. The
+        # call SHAPE is unchanged (QMessageBox.information + the
+        # "Transcription Complete" title) so the rig e2e message-recorder
+        # contract is preserved; Qt auto-detects the HTML.
+        rows = []
+        if results.get("raw_path"):
+            rows.append(("📄", results["raw_path"], "Transcript with timestamps"))
+        _cues = results.get("subtitle_cues") or 0
+        if results.get("srt_path"):
+            rows.append(
+                ("🎬", results["srt_path"], f"Subtitles — SRT · {_cues} cues")
+            )
+        if results.get("vtt_path"):
+            rows.append(
+                ("🎬", results["vtt_path"], f"Subtitles — WebVTT · {_cues} cues")
+            )
+        if results.get("summary_path"):
+            rows.append(("📝", results["summary_path"], "Summary (core concepts + takeaways)"))
+        if results.get("tutorial_path"):
+            rows.append(("📚", results["tutorial_path"], "Tutorial guide"))
+        trs = "".join(
+            f'<tr><td style="padding:3px 10px 3px 0;">{icon}</td>'
+            f'<td style="padding:3px 14px 3px 0;"><b>{html.escape(Path(p).name)}</b></td>'
+            f'<td style="padding:3px 0;color:#999;"><i>{desc}</i></td></tr>'
+            for icon, p, desc in rows
+        )
+        files_html = (
+            f'<table cellspacing="0">{trs}</table>'
+            if rows
+            else "<i>(no output files were written)</i>"
+        )
+        error_html = (
+            f'<p><b>⚠️ Summary error:</b> {html.escape(str(results["error"]))}</p>'
+            if results.get("error")
+            else ""
+        )
+        sub_error_html = (
+            f'<p><b>⚠️ Subtitles:</b> {html.escape(str(results["subtitle_error"]))}</p>'
+            if results.get("subtitle_error")
+            else ""
+        )
         QMessageBox.information(
             self,
             "✅ Transcription Complete",
-            f"Transcription complete!\n\n{summary_text}\n\nOutput: {self.out_edit.text()}",
+            f'<div style="font-size:13px;">'
+            f"<p><b>Transcription complete!</b></p>"
+            f"{files_html}"
+            f"{error_html}"
+            f"{sub_error_html}"
+            f'<p style="color:#999;"><b>Output:</b> '
+            f"{html.escape(self.out_edit.text())}</p>"
+            f"</div>",
         )
