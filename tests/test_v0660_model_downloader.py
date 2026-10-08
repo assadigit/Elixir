@@ -129,7 +129,12 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
         rng = self.headers.get("Range") or ""
         range_ok = not getattr(self.server, "ignore_range", False)  # type: ignore[attr-defined]
         if_range = self.headers.get("If-Range")
-        if range_ok and if_range is not None and if_range != etag:
+        if (
+            range_ok
+            and if_range is not None
+            and if_range != etag
+            and not getattr(self.server, "ignore_if_range", False)  # type: ignore[attr-defined]
+        ):
             range_ok = False  # the remote changed: full-body restart
         if (
             range_ok
@@ -178,6 +183,7 @@ class _Server:
         self.httpd.files = files or {}
         self.httpd.requests = []
         self.httpd.ignore_range = False
+        self.httpd.ignore_if_range = False  # V0.6.61: the xet-CDN mode (serves 206 despite a stale If-Range -- probed live)
         self.httpd.lie_extra = 0
         self.httpd.etag = '"etag-v1"'
         self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -888,15 +894,24 @@ class TestTranscribeDialogIntegration:
         assert "_refresh_cpp_models" in handler
 
     def test_empty_combo_placeholder_offers_the_download(self, dialog_tree):
-        refresh = ast.unparse(_method(dialog_tree, "_refresh_cpp_models"))
-        assert "(no Whisper" in refresh
-        assert "Get models" in refresh
+        # V0.6.61: the populate moved to the finished-slot
+        # _on_cpp_models_scanned (the off-thread scan) — the pin
+        # follows the contract, deliberately.
+        populate = ast.unparse(_method(dialog_tree, "_on_cpp_models_scanned"))
+        assert "(no Whisper" in populate
+        assert "Get models" in populate
 
     def test_combo_entries_carry_details_tooltips(self, dialog_tree):
+        # V0.6.61: the tooltips are BUILT where the items are built
+        # (the scan closure inside _refresh_cpp_models — on the worker
+        # thread, from the header the scan already read) and APPLIED
+        # where the combo is populated (_on_cpp_models_scanned — the
+        # off-thread scan moved the populate; the pin follows).
         refresh = ast.unparse(_method(dialog_tree, "_refresh_cpp_models"))
-        assert "setItemData" in refresh
-        assert "ToolTipRole" in refresh
         assert "format_model_tooltip" in refresh
+        populate = ast.unparse(_method(dialog_tree, "_on_cpp_models_scanned"))
+        assert "setItemData" in populate
+        assert "ToolTipRole" in populate
 
 
 class TestModelDownloadDialogIntegration:

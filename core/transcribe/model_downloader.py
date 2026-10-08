@@ -46,6 +46,7 @@ thread).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 import urllib.error
@@ -113,6 +114,12 @@ class DownloadSpec:
     size_hint: int
     recommended: bool = False
     note: str = ""
+    #: The PUBLISHED sha256 (the HF API's lfs.sha256 -- the content
+    #: hash; the mechanism was proven live against whisper-tiny-
+    #: Q4_K_M.gguf: downloaded in full, its sha256 matched the API
+    #: value byte-for-byte). download() verifies the stream against
+    #: it when given -- a corrupted file can never be installed.
+    sha256: str | None = None
 
     def url(self) -> str:
         return hf_url(self.repo, self.filename)
@@ -159,6 +166,7 @@ DOWNLOAD_CATALOG: list[DownloadSpec] = [
             "than large-v3 with near-identical accuracy on most audio "
             "(the V0.6.58 speed ledger's pick)."
         ),
+        sha256="977b5db4e004349dffd1ab9caa10ba5aaba3fc3edd3ba72cadb84328a3203e36",
     ),
     DownloadSpec(
         key="large-v3-turbo-Q8_0",
@@ -169,6 +177,7 @@ DOWNLOAD_CATALOG: list[DownloadSpec] = [
         params="809M",
         size_hint=886_381_760,
         note="Turbo at higher fidelity — noticeably sharper on noisy audio.",
+        sha256="b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183",
     ),
     DownloadSpec(
         key="large-v3-turbo-F16",
@@ -179,6 +188,7 @@ DOWNLOAD_CATALOG: list[DownloadSpec] = [
         params="809M",
         size_hint=1_625_935_520,
         note="Turbo, unquantized (fp16) — maximum turbo fidelity, largest turbo file.",
+        sha256="e1d0144e9afc9f479d9e51fc92c7dea9dc36059655eeb3819f16ad2de779046a",
     ),
     DownloadSpec(
         key="large-v3-Q5_K_M",
@@ -192,6 +202,7 @@ DOWNLOAD_CATALOG: list[DownloadSpec] = [
             "Maximum accuracy (the full 1.5B model) — slower than "
             "turbo; the reference Whisper large-v3."
         ),
+        sha256="6053d0fd69a0fd48b8fea5ea7a52b9e0cde389343566fa30e453a1b2b258dc38",
     ),
     DownloadSpec(
         key="large-v3-Q8_0",
@@ -205,6 +216,7 @@ DOWNLOAD_CATALOG: list[DownloadSpec] = [
             "Maximum accuracy + fidelity — the engine's documented "
             "default model (C:\\transcribe.cpp\\models)."
         ),
+        sha256="2fa1a5f179f8a511a53e2108db270aa4af3ce08cd976af4180e2854666bb4ba3",
     ),
 ]
 
@@ -316,6 +328,54 @@ def _url_filename(url: str) -> str:
     return name
 
 
+def _hash_file(
+    path: Path,
+    hasher,
+    chunk_bytes: int = 1024 * 1024,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[str | None, bool]:
+    """Chunked-hashed sha256 of a local file (worker-thread helper:
+    NEVER slurp a 1.6 GB model). Returns (digest, cancelled): digest
+    is None on any IO problem; cancelled=True when should_cancel fired
+    mid-read (the caller keeps the .part — it is still good bytes)."""
+    try:
+        with open(path, "rb") as fh:
+            while True:
+                if should_cancel is not None and should_cancel():
+                    return None, True
+                b = fh.read(chunk_bytes)
+                if not b:
+                    break
+                hasher.update(b)
+        return hasher.hexdigest(), False
+    except OSError:
+        return None, False
+
+
+def _sha_fail(expected: str, got: str, part: Path, size: int = 0, resumed_from: int = 0) -> dict:
+    """The sha256 mismatch verdict: the bytes are WRONG (corrupted in
+    flight, or the source is lying) -- resuming them would reproduce
+    the same wrong bytes, so they are DELETED, and the error names
+    both hashes so the paste-back settles it."""
+    try:
+        part.unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        part.with_name(part.name + ".etag").unlink(missing_ok=True)
+    except OSError:
+        pass
+    return _fail(
+        f"sha256 mismatch — the downloaded bytes do not match what "
+        f"Hugging Face published (expected {expected}, got {got}); "
+        f"the wrong bytes were deleted — retry the download",
+        part=None,
+        size=size,
+        resumed_from=resumed_from,
+        sha256_ok=False,
+    )
+
+
 def download(
     url: str,
     dest_dir,
@@ -326,11 +386,12 @@ def download(
     resume: bool = True,
     chunk_bytes: int = CHUNK_BYTES,
     timeout: float = DOWNLOAD_TIMEOUT_S,
+    expected_sha256: str | None = None,
 ) -> dict:
     """Stream ``url`` into ``dest_dir/filename`` with resume, progress
     and cancel. Never raises; the verdict is the returned dict:
 
-      ok=True          -> {"path", "size", "resumed_from", ...}
+      ok=True          -> {"path", "size", "resumed_from", "sha256_ok", ...}
       cancelled=True    -> .part kept for a later resume
       ok=False + error -> honest text; .part kept when it holds bytes
 
@@ -340,6 +401,14 @@ def download(
     into place ATOMICALLY (os.replace) -- a model is never half-visible
     under its real name -- and a final size sanity check catches a
     short read (server lied or connection died mid-body).
+
+    V0.6.61 -- the sha256 contract: when ``expected_sha256`` is given
+    (the catalog's PUBLISHED hash -- the HF API's lfs.sha256, the
+    content hash, mechanism proven live), the stream is hashed
+    incrementally (the resume path hashes the .part prefix first,
+    chunked, never slurped) and a mismatch DELETES the wrong bytes:
+    a corrupted file -- valid GGUF header, right size, garbage tensor
+    data -- can never be installed under its real name.
     """
     dest = Path(dest_dir)
     final = dest / (Path(filename).name if filename else _url_filename(url))
@@ -412,6 +481,33 @@ def download(
                 pass
             t0 = time.monotonic()
             done = start
+            # V0.6.61: the incremental hasher. The .part prefix (a
+            # resume) is hashed from disk FIRST -- chunked, on this
+            # worker thread, never slurped -- so the guarantee covers
+            # the WHOLE file, prefix + freshly streamed bytes.
+            hasher = hashlib.sha256() if expected_sha256 else None
+            if hasher is not None and start > 0:
+                # V0.6.61 review fix: the prefix hash honors should_cancel
+                # too (a 1.6 GB prefix read must never ignore the 🔄/✖
+                # button for seconds); a cancel keeps the .part.
+                prefix_digest, prefix_cancelled = _hash_file(
+                    part, hasher, chunk_bytes, should_cancel
+                )
+                if prefix_cancelled:
+                    return {
+                        "ok": False,
+                        "cancelled": True,
+                        "path": None,
+                        "part_path": str(part),
+                        "size": start,
+                        "resumed_from": start,
+                        "sha256_ok": None,
+                        "error": None,
+                    }
+                if prefix_digest is None:
+                    return _fail(
+                        f"cannot read {part.name} to hash the resume prefix"
+                    )
             # initial callback (0% / resumed state) then per-chunk
             _safe_cb(on_progress, _progress_dict(done, total, start, t0, final))
             cancelled = False
@@ -424,6 +520,8 @@ def download(
                     if not chunk:
                         break
                     fh.write(chunk)
+                    if hasher is not None:
+                        hasher.update(chunk)
                     done += len(chunk)
                     if time.monotonic() - t0 >= _MIN_PROGRESS_CB_S:
                         _safe_cb(
@@ -437,6 +535,7 @@ def download(
                     "part_path": str(part),
                     "size": done,
                     "resumed_from": start,
+                    "sha256_ok": None,
                     "error": None,
                 }
             actual = part.stat().st_size
@@ -448,7 +547,17 @@ def download(
                     part=part,
                     size=actual,
                     resumed_from=start,
+                    sha256_ok=None,
                 )
+            if hasher is not None:
+                got = hasher.hexdigest()
+                if got != expected_sha256:
+                    return _sha_fail(
+                        expected_sha256, got, part, size=actual, resumed_from=start
+                    )
+                sha256_ok = True
+            else:
+                sha256_ok = None
             os.replace(part, final)  # atomic: complete or absent, never partial
             try:
                 sidecar.unlink(missing_ok=True)  # the resume bookkeeping goes with it
@@ -465,6 +574,7 @@ def download(
                 "part_path": None,
                 "size": actual,
                 "resumed_from": start,
+                "sha256_ok": sha256_ok,
                 "error": None,
             }
     except urllib.error.HTTPError as e:
@@ -485,22 +595,59 @@ def download(
             except OSError:
                 part_size = None
             if pr["ok"] and pr["size"] is not None and part_size == pr["size"]:
+                # V0.6.61: the sha gate applies HERE too — a
+                # complete-size .part with wrong bytes is deleted, not
+                # renamed into place (the recovery must not bypass the
+                # contract).
+                if expected_sha256:
+                    # V0.6.61 review fix: cancel is honored here too (a
+                    # 1.6 GB hash read must never ignore the ✖ button);
+                    # the .part is kept — it is still good bytes.
+                    got, hash_cancelled = _hash_file(
+                        part, hashlib.sha256(), chunk_bytes, should_cancel
+                    )
+                    if hash_cancelled:
+                        return {
+                            "ok": False,
+                            "cancelled": True,
+                            "path": None,
+                            "part_path": str(part),
+                            "size": part_size or 0,
+                            "resumed_from": 0,
+                            "sha256_ok": None,
+                            "error": None,
+                        }
+                    if got is None or got != expected_sha256:
+                        return _sha_fail(
+                            expected_sha256, got or "<unreadable>", part,
+                            size=part_size or 0,
+                        )
                 try:
                     os.replace(part, final)
-                    sidecar.unlink(missing_ok=True)
-                    return {
-                        "ok": True,
-                        "cancelled": False,
-                        "path": str(final),
-                        "part_path": None,
-                        "size": part_size or 0,
-                        "resumed_from": 0,
-                        "error": None,
-                        "recovered": "already-complete",
-                    }
                 except OSError as rename_err:
                     return _fail(f"cannot finalize completed download: {rename_err}", part=part)
+                # V0.6.61 review fix: the bookkeeping unlink is SEPARATE
+                # from the rename's try — a failing unlink after a
+                # successful rename must not report ok=False while the
+                # final file IS installed.
+                try:
+                    sidecar.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return {
+                    "ok": True,
+                    "cancelled": False,
+                    "path": str(final),
+                    "part_path": None,
+                    "size": part_size or 0,
+                    "resumed_from": 0,
+                    "sha256_ok": bool(expected_sha256) or None,
+                    "error": None,
+                    "recovered": "already-complete",
+                }
             # the remote changed: restart once from zero (no Range can 416)
+            # V0.6.61: the hash is FORWARDED (the restart's bytes must
+            # still prove out against the published sha256).
             return download(
                 url,
                 dest_dir,
@@ -510,6 +657,7 @@ def download(
                 resume=False,
                 chunk_bytes=chunk_bytes,
                 timeout=timeout,
+                expected_sha256=expected_sha256,
             )
         return _fail(f"HTTP {e.code} {e.reason}", part=part)
     except Exception as e:  # noqa: BLE001 -- best-effort, never raises

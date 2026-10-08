@@ -255,6 +255,10 @@ class ModelDownloadDialog(QDialog):
                 int(p["pct"] or 0), md.format_progress_line(p)
             ),
             should_cancel=lambda: self._cancel_flag,
+            # V0.6.61: the PUBLISHED sha256 — the downloaded stream is
+            # hashed incrementally and a mismatch deletes the wrong
+            # bytes (a corrupted file can never be installed).
+            expected_sha256=getattr(spec, "sha256", None),
         )
         if not res["ok"]:
             return {"spec": spec.key, "phase": "download", **res}
@@ -363,13 +367,19 @@ class ModelDownloadDialog(QDialog):
                 "(the source may have been republished) — the GGUF header "
                 "verified it is a Whisper model."
             )
+        # V0.6.61: the sha256 verdict is part of the running record —
+        # byte-identical to what Hugging Face published, or honestly
+        # not checked (an old .part resumed before hashes existed).
+        sha_note = "\nsha256: verified — byte-identical to the published file."
+        if result.get("sha256_ok") is None:
+            sha_note = "\nsha256: not checked (no published hash available)."
         QMessageBox.information(
             self,
             "✅ Model ready",
             (
                 f"{Path(path).name} downloaded and verified from its own "
                 f"GGUF header (architecture: "
-                f"{info.get('architecture') or 'whisper'}).{size_note}\n\n"
+                f"{info.get('architecture') or 'whisper'}).{sha_note}{size_note}\n\n"
                 "It is selected in the 'GGUF model' dropdown."
             ),
         )

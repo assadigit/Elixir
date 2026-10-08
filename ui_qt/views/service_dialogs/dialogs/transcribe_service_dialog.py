@@ -119,6 +119,16 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self._run_engine = None
         self._last_status_msg = ""
         self._llm_chunk_counter = 0
+        # V0.6.61: the GGUF-scan worker handle + PLAIN-PYTHON flags.
+        # Deliberately NOT the worker's is_running(): a deleteLater'd
+        # SimpleWorker wrapper must never be touched again (PySide6
+        # raises RuntimeError on the deleted C++ object -- the second
+        # 🔄 click would crash); plain bools have no Qt lifetime. The
+        # pending flag carries a refresh that arrived mid-scan (the
+        # browse-during-scan race) and re-dispatches it on landing.
+        self._cpp_scan_worker = None
+        self._cpp_scan_running = False
+        self._cpp_scan_pending = False
 
         # Refresh models (same position as the pre-B17 __init__ tail).
         self._refresh_models()
@@ -411,80 +421,128 @@ class TranscribeServiceDialog(BaseServiceDialog):
     def _refresh_cpp_models(self):
         """V0.6.59: repopulate the GGUF combo from disk — the catalog's
         scan (the CLI exe's folder + its models/, C:\transcribe.cpp\
-        models, the saved model's folder, ~/Downloads). Every entry
-        shows name · quant · size · header-verification; the saved
-        setting (even if outside the scan dirs) is listed first and
-        selected. Best-effort everywhere: a settings/scan failure
-        leaves the combo empty, never crashes the dialog."""
+        models, the saved model's folder, ~/Downloads). V0.6.61: the
+        scan now runs OFF THE UI THREAD on a SimpleWorker (the
+        V0.6.59 residual risk — a crafted GGUF could cost ~0.5s of
+        UI-thread parse per file — is closed); the combo shows a
+        scanning placeholder and populates in _on_cpp_models_scanned
+        when the result lands. A refresh requested mid-scan is
+        REMEMBERED (the pending flag) and re-dispatched when the
+        in-flight scan lands — the browse-during-scan race can no
+        longer swallow a freshly picked model. Best-effort everywhere:
+        a scan failure leaves an honest retryable placeholder, never
+        crashes the dialog."""
+        if self._cpp_scan_running:
+            # A scan is in flight (e.g. the dialog-open scan is still
+            # walking a big Downloads dir): remember this request —
+            # the landed scan re-dispatches it with the fresh settings.
+            self._cpp_scan_pending = True
+            return
+        self._cpp_scan_running = True
+        # the scanning placeholder: added with signals blocked so it
+        # can never fire _on_cpp_model_selected (a placeholder save)
         self.cpp_model_combo.blockSignals(True)
         self.cpp_model_combo.clear()
-        # V0.6.59 review fix: settings values are coerced to str — a
-        # corrupt setting (int/list/dict) must never raise in Path(...)
-        # at dialog open (the V0.6.53/55 construction-crash class).
-        current = None
-        exe = None
-        try:
-            from utils.settings import Settings
+        self.cpp_model_combo.addItem("(scanning for Whisper .gguf models…)", None)
+        self.cpp_model_combo.blockSignals(False)
 
-            s = Settings()
-            _cur = s.get("transcribe.transcribe_cpp_model", None)
-            _exe = s.get("transcribe.transcribe_cpp_exe", None)
-            current = str(_cur) if _cur else None
-            exe = str(_exe) if _exe else None
-        except Exception:
-            pass
-        items: list[tuple[str, str, str]] = []
-        if current and Path(current).exists():  # current is str-coerced above
+        def _scan_work():
+            # Runs ON the worker thread: settings read + disk walk +
+            # GGUF header reads ONLY — no widget access, no dialog
+            # state (thread safety; AST-pinned: no "self." in here).
+            # The V0.6.59 review fix is preserved: settings values are
+            # str-coerced — a corrupt setting must never raise here.
+            current = None
+            exe = None
             try:
-                from core.transcribe.model_catalog import (
-                    describe_model_file,
-                    format_model_display,
-                    format_model_tooltip,
-                )
+                from utils.settings import Settings
 
-                _info = describe_model_file(current)
-                items.append(
-                    (
-                        format_model_display(_info),
-                        str(current),
-                        format_model_tooltip(_info),
-                    )
-                )
+                s = Settings()
+                _cur = s.get("transcribe.transcribe_cpp_model", None)
+                _exe = s.get("transcribe.transcribe_cpp_exe", None)
+                current = str(_cur) if _cur else None
+                exe = str(_exe) if _exe else None
             except Exception:
-                items.append(
-                    (
-                        f"{Path(current).name} (saved setting)",
-                        str(current),
-                        f"{Path(current).name} (saved setting)\nFile: {current}",
+                pass
+            items: list[tuple[str, str, str]] = []
+            if current and Path(current).exists():
+                try:
+                    from core.transcribe.model_catalog import (
+                        describe_model_file,
+                        format_model_display,
+                        format_model_tooltip,
                     )
-                )
-        try:
-            from core.transcribe import model_catalog
-            from core.transcribe.transcribe_cpp_engine import DEFAULT_TRANSCRIBE_CPP_EXE
 
-            found = model_catalog.scan_model_dirs(
-                model_catalog.model_search_dirs(
-                    exe_path=exe or DEFAULT_TRANSCRIBE_CPP_EXE, saved_model=current
-                )
-            )
-            known = {p for _, p, _ in items}
-            for info in found:
-                if info["path"] not in known:
+                    _info = describe_model_file(current)
                     items.append(
                         (
-                            model_catalog.format_model_display(info),
-                            info["path"],
-                            model_catalog.format_model_tooltip(info),
+                            format_model_display(_info),
+                            str(current),
+                            format_model_tooltip(_info),
                         )
                     )
-                    known.add(info["path"])
-        except Exception:
-            pass
+                except Exception:
+                    items.append(
+                        (
+                            f"{Path(current).name} (saved setting)",
+                            str(current),
+                            f"{Path(current).name} (saved setting)\nFile: {current}",
+                        )
+                    )
+            try:
+                from core.transcribe import model_catalog
+                from core.transcribe.transcribe_cpp_engine import (
+                    DEFAULT_TRANSCRIBE_CPP_EXE,
+                )
+
+                found = model_catalog.scan_model_dirs(
+                    model_catalog.model_search_dirs(
+                        exe_path=exe or DEFAULT_TRANSCRIBE_CPP_EXE, saved_model=current
+                    )
+                )
+                known = {p for _, p, _ in items}
+                for info in found:
+                    if info["path"] not in known:
+                        items.append(
+                            (
+                                model_catalog.format_model_display(info),
+                                info["path"],
+                                model_catalog.format_model_tooltip(info),
+                            )
+                        )
+                        known.add(info["path"])
+            except Exception:
+                pass
+            return {"items": items, "current": current}
+
+        worker = SimpleWorker(_scan_work)
+        self._cpp_scan_worker = worker
+        worker.finished.connect(self._on_cpp_models_scanned)
+        worker.failed.connect(self._on_cpp_models_scan_failed)
+        worker.start()
+
+    def _on_cpp_models_scanned(self, result: dict):
+        """V0.6.61: the scan result lands (main thread, via the
+        worker's finished signal): populate the combo — the V0.6.59
+        contract unchanged (saved setting listed first and selected,
+        blockSignals around every mutation, the empty placeholder
+        offering the download, per-item detail tooltips from
+        V0.6.60)."""
+        self._cpp_scan_running = False
+        if not isinstance(result, dict):
+            self._on_cpp_models_scan_failed("unexpected scan result")
+            return
+        items = [
+            (str(d), str(p), str(t)) for d, p, t in (result.get("items") or [])
+        ]
+        current = result.get("current")
+        self.cpp_model_combo.blockSignals(True)
+        self.cpp_model_combo.clear()
         select = -1
         for display, path, tooltip in items:
             self.cpp_model_combo.addItem(display, path)
             # V0.6.60: every entry carries the catalog's full facts as
-            # its tooltip -- what the file's OWN header proved (name /
+            # its tooltip — what the file's OWN header proved (name /
             # params / quant / size / path), not just the one-liner.
             self.cpp_model_combo.setItemData(
                 self.cpp_model_combo.count() - 1,
@@ -501,6 +559,24 @@ class TranscribeServiceDialog(BaseServiceDialog):
             self.cpp_model_combo.addItem(
                 "(no Whisper .gguf found — ⬇ Get models, or 📁 Model to browse)", None
             )
+        self.cpp_model_combo.blockSignals(False)
+        # A refresh arrived while this scan was in flight (the
+        # browse-during-scan race): re-dispatch it now that the flag
+        # is clear — the new scan sees the NEWLY saved setting.
+        if self._cpp_scan_pending:
+            self._cpp_scan_pending = False
+            self._refresh_cpp_models()
+
+    def _on_cpp_models_scan_failed(self, error_msg):
+        """V0.6.61: the worker machinery itself failed (never expected
+        — the scan closure is best-effort throughout). The flag is
+        RELEASED (a stuck 'scanning…' placeholder would brick the 🔄
+        button) and an honest retryable placeholder is left behind."""
+        self._cpp_scan_running = False
+        self._cpp_scan_pending = False
+        self.cpp_model_combo.blockSignals(True)
+        self.cpp_model_combo.clear()
+        self.cpp_model_combo.addItem("(scan failed — 🔄 to retry)", None)
         self.cpp_model_combo.blockSignals(False)
 
     def _cpp_model_display(self) -> str | None:
