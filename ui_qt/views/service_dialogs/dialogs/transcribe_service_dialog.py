@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 
 from controller import Controller
 
@@ -200,6 +200,21 @@ class TranscribeServiceDialog(BaseServiceDialog):
         self.cpp_model_refresh_btn.setToolTip("Rescan disk for Whisper .gguf models")
         self.cpp_model_refresh_btn.clicked.connect(self._refresh_cpp_models)
         cpp_model_row.addWidget(self.cpp_model_refresh_btn)
+        # V0.6.60: the downloader -- when the model is NOT on disk yet,
+        # "⬇ Get models" closes the loop inside the app: the curated
+        # handy-computer catalog (live-verified), progress + resume,
+        # GGUF-header verification, auto-select on arrival. The
+        # placeholder text in _refresh_cpp_models points here when the
+        # disk has no model at all.
+        self.cpp_model_download_btn = _QPB("⬇ Get models")
+        self.cpp_model_download_btn.setObjectName("Compact")
+        self.cpp_model_download_btn.setToolTip(
+            "Download a Whisper GGUF model (handy-computer's Hugging Face "
+            "repos) — with progress + resume; the downloaded file is "
+            "verified from its own GGUF header and selected automatically"
+        )
+        self.cpp_model_download_btn.clicked.connect(self._open_model_downloader)
+        cpp_model_row.addWidget(self.cpp_model_download_btn)
         self.cpp_model_browse_btn = _QPB("📁 Model")
         self.cpp_model_browse_btn.setToolTip("Browse for a Whisper .gguf model file")
         self.cpp_model_browse_btn.clicked.connect(self._browse_cpp_model)
@@ -418,17 +433,31 @@ class TranscribeServiceDialog(BaseServiceDialog):
             exe = str(_exe) if _exe else None
         except Exception:
             pass
-        items: list[tuple[str, str]] = []
+        items: list[tuple[str, str, str]] = []
         if current and Path(current).exists():  # current is str-coerced above
             try:
                 from core.transcribe.model_catalog import (
                     describe_model_file,
                     format_model_display,
+                    format_model_tooltip,
                 )
 
-                items.append((format_model_display(describe_model_file(current)), str(current)))
+                _info = describe_model_file(current)
+                items.append(
+                    (
+                        format_model_display(_info),
+                        str(current),
+                        format_model_tooltip(_info),
+                    )
+                )
             except Exception:
-                items.append((f"{Path(current).name} (saved setting)", str(current)))
+                items.append(
+                    (
+                        f"{Path(current).name} (saved setting)",
+                        str(current),
+                        f"{Path(current).name} (saved setting)\nFile: {current}",
+                    )
+                )
         try:
             from core.transcribe import model_catalog
             from core.transcribe.transcribe_cpp_engine import DEFAULT_TRANSCRIBE_CPP_EXE
@@ -438,16 +467,30 @@ class TranscribeServiceDialog(BaseServiceDialog):
                     exe_path=exe or DEFAULT_TRANSCRIBE_CPP_EXE, saved_model=current
                 )
             )
-            known = {p for _, p in items}
+            known = {p for _, p, _ in items}
             for info in found:
                 if info["path"] not in known:
-                    items.append((model_catalog.format_model_display(info), info["path"]))
+                    items.append(
+                        (
+                            model_catalog.format_model_display(info),
+                            info["path"],
+                            model_catalog.format_model_tooltip(info),
+                        )
+                    )
                     known.add(info["path"])
         except Exception:
             pass
         select = -1
-        for display, path in items:
+        for display, path, tooltip in items:
             self.cpp_model_combo.addItem(display, path)
+            # V0.6.60: every entry carries the catalog's full facts as
+            # its tooltip -- what the file's OWN header proved (name /
+            # params / quant / size / path), not just the one-liner.
+            self.cpp_model_combo.setItemData(
+                self.cpp_model_combo.count() - 1,
+                tooltip,
+                Qt.ItemDataRole.ToolTipRole,
+            )
             if current and path == str(current):
                 select = self.cpp_model_combo.count() - 1
         if select < 0 and items:
@@ -456,7 +499,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             self.cpp_model_combo.setCurrentIndex(select)
         elif not items:
             self.cpp_model_combo.addItem(
-                "(no Whisper .gguf found — 📁 Model to browse)", None
+                "(no Whisper .gguf found — ⬇ Get models, or 📁 Model to browse)", None
             )
         self.cpp_model_combo.blockSignals(False)
 
@@ -470,6 +513,44 @@ class TranscribeServiceDialog(BaseServiceDialog):
             return None
         path = self.cpp_model_combo.itemData(idx)
         return Path(path).name if path else None
+
+    # ── V0.6.60: the model downloader entry point ─────────────────────
+
+    def _open_model_downloader(self):
+        """V0.6.60: open the Get-models dialog (the curated
+        handy-computer catalog, progress + resume, GGUF-header
+        verification). A successful download calls back into
+        _on_model_installed, which saves the setting + selects the
+        file in the GGUF combo -- the download → selected one-flow."""
+        from ui_qt.views.service_dialogs.model_download_dialog import (
+            ModelDownloadDialog,
+        )
+
+        dlg = ModelDownloadDialog(self, on_installed=self._on_model_installed)
+        dlg.exec()
+
+    def _on_model_installed(self, path: str):
+        """V0.6.60: a model came out of the downloader: save the
+        setting (the 'download → selected' one-click flow), refresh the
+        combo (it lists the saved entry first and selects it), and put
+        the event in the live log (the running record)."""
+        try:
+            from utils.settings import Settings
+
+            Settings().set("transcribe.transcribe_cpp_model", str(path))
+        except Exception:
+            logger.debug("best-effort settings save failed", exc_info=True)
+        try:
+            self._refresh_cpp_models()
+        except Exception:
+            logger.debug("best-effort combo refresh failed", exc_info=True)
+        self.status_label.setText(
+            f"✅ Model downloaded: {Path(path).name} (selected)"
+        )
+        try:
+            self._append_live_log(f"⬇ Model downloaded: {Path(path).name} (selected)")
+        except Exception:
+            pass
 
     def _browse_whisper_model(self):
         """V0.6.39 (W-s1): Browse for a custom Whisper model folder on disk.

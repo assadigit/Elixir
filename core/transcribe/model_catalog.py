@@ -410,6 +410,39 @@ def format_model_line(info: dict) -> str:
     return f"  [MODEL] {name} ({size}) - not a GGUF{tail}"
 
 
+def format_model_tooltip(info: dict) -> str:
+    """The GGUF combo's per-item tooltip (dialog-facing, V0.6.60):
+    everything the catalog knows about ONE file, one fact per line --
+    what the file's OWN header proved, vs. what was only guessed from
+    its name. Qt-free so the behavior is hermetically pinnable."""
+    lines: list[str] = [format_model_display(info)]
+    if info.get("path"):
+        lines.append(f"File: {info['path']}")
+    if info.get("size_bytes"):
+        lines.append(f"Size: {info['size_text']} ({info['size_bytes']:,} bytes)")
+    if info.get("meta_name"):
+        lines.append(f"Model: {info['meta_name']}")
+    if info.get("size_label"):
+        lines.append(f"Parameters: {info['size_label']}")
+    if info.get("quant"):
+        lines.append(f"Quantization: {info['quant']}")
+    if info.get("language"):
+        lines.append(f"Language: {info['language']} (English-only variant)")
+    if info.get("architecture"):
+        lines.append(f"Architecture: {info['architecture']} (read from the GGUF header)")
+    if info.get("gguf_version"):
+        lines.append(f"GGUF version: {info['gguf_version']}")
+    if info.get("family"):
+        lines.append(f"Family: {info['family']}")
+    if info.get("verified"):
+        lines.append("✓ header-verified — the engine re-checks this file before every run")
+    elif info.get("legacy_ggml"):
+        lines.append("⚠ legacy ggml .bin — transcribe-cli.exe loads .gguf")
+    elif info.get("is_gguf"):
+        lines.append("? header not parsable — the CLI is the final authority")
+    return "\n".join(lines)
+
+
 # ── Scanning: what "just select the gguf" selects FROM ──────────────────────
 
 #: The rig's documented layout (the engine's DEFAULT model path — the
