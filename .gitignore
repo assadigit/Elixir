@@ -38,6 +38,13 @@ output/
 gpu_probe.log
 crash_reports/
 
+# 📦 Windows installer build (build_installer.py)
+build_pyinstaller/
+dist_app/
+dist_installer/
+build_installer.log
+selftest_report.txt
+
 # 🔐 Local secrets — never commit
 .env
 *.local.json

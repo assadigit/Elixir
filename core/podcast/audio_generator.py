@@ -15,12 +15,13 @@ from pathlib import Path
 
 import numpy as np
 
-# V0.6.63: soundfile is the optional [tts] extra — the module must stay
-# importable without it (the packaged app bundles the core pipeline only;
-# generation raises a clear message at its entry when it is needed).
 try:
     import soundfile as sf
-except ImportError:
+except ImportError:  # V0.6.63 (packaging bug fix): soundfile is an
+    # OPTIONAL [tts] extra — the module-level unguarded import made every
+    # core install crash on the Podcast tool (and on merely importing this
+    # module) with ModuleNotFoundError. Degrade gracefully instead: the
+    # audio-generation entry point raises a clear, actionable error.
     sf = None
 
 from core.podcast.cancel_token import CancelToken
@@ -31,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 SILENCE_MS = 150  # silence between same-host lines
 SAMPLE_RATE = 24000
+
+
+def _require_soundfile():
+    """Return the soundfile module, or raise a friendly error."""
+    if sf is None:
+        raise RuntimeError(
+            "Podcast audio needs the 'soundfile' package, which is an optional "
+            "extra. Install it with:  pip install soundfile   (or "
+            'pip install ".[tts]" for the full TTS stack)'
+        )
+    return sf
+
 
 # V11.63.0/V11.65.0: Conversational overlap settings
 # V11.65.0: reduced max overlap from 800ms to 300ms — large overlaps
@@ -244,15 +257,9 @@ def generate_podcast_audio(
         log("  ❌ No script lines to synthesize", "ERROR")
         return None
 
-    # V0.6.63: friendly fail when the optional soundfile extra is absent
-    # (the packaged app bundles the core pipeline — the podcast SCRIPT
-    # output works without it; only the audio file needs this package).
-    if sf is None:
-        raise RuntimeError(
-            "Podcast audio export needs the optional 'soundfile' package "
-            '(run: pip install ".[tts]"). The podcast script output works '
-            "without it — only the audio file needs this package."
-        )
+    # V0.6.63: fail fast with the friendly message when the optional
+    # soundfile extra is missing (see the guarded import above).
+    _require_soundfile()
 
     log(f"  🎙️ Generating audio for {total} lines...", "INFO")
 

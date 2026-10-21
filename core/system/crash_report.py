@@ -29,12 +29,12 @@ import traceback
 import zipfile
 from pathlib import Path
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
-# V0.6.63: user-data paths via the user_data_dir() choke point (frozen
-# installs resolve to %LOCALAPPDATA%\Elixir).
-from utils.settings import user_data_dir  # late import: crash paths stay local
-
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
 _CRASH_DIR = user_data_dir() / "crash_reports"
 _SETTINGS_FILE = user_data_dir() / "settings.json"
 _LOG_FILE = user_data_dir() / "system.log"

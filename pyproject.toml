@@ -119,7 +119,7 @@ version = {file = "VERSION"}
 # in a flat-layout: ['core', 'ui_qt', 'assets', 'config', 'prompts', …]"),
 # which broke `pip install -e .` and the Makefile `install` target.
 [tool.setuptools]
-py-modules = ["controller"]
+py-modules = ["controller", "app_paths"]
 [tool.setuptools.packages.find]
 include = ["core*", "ui_qt*", "utils*"]
 

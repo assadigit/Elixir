@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 from core.tts._json_subprocess import PersistentJsonSubprocess
@@ -178,10 +179,22 @@ class VibeVoiceEngine(TTSEngine):
         if self._loaded:
             return
 
+        # PACKAGING (build_installer.py): the engine runs a Python helper
+        # script as ``[sys.executable, script]`` — in the installed build
+        # sys.executable is Elixir.exe, so spawning would relaunch the app.
+        # VibeVoice also needs torch/transformers, which the installer does
+        # not bundle. Fail soft with a clear message instead (the TTS layer
+        # catches this and shows it in the app window).
+        if getattr(sys, "frozen", False):
+            raise RuntimeError(
+                "VibeVoice is not available in the installed (packaged) version "
+                "of Elixir — it needs the Python source installation with torch. "
+                "Use the Kokoro or Piper voices instead."
+            )
+
         if not self._model_path:
             raise ValueError("VibeVoice model path not set")
 
-        import sys
         import time
 
         # V0.6.63: the subprocess engines need a real Python interpreter —

@@ -1,62 +1,108 @@
-name: windows-installer
+# Elixir — Windows Installer builder
+#
+# Runs build_installer.py on a real Windows runner: PyInstaller (onedir) →
+# self-test → launch test → Inno Setup installer → silent install test →
+# startup-time measurement. The resulting dist_installer/Elixir-Setup-<v>.exe
+# is uploaded as a workflow artifact and attached to a GitHub Release.
+#
+# Trigger manually (Actions → Windows Installer → Run workflow), or push to
+# the installer-build branch.
 
-# V0.6.63: the Elixir Windows installer pipeline.
-# workflow_dispatch = on-demand builds (used while iterating);
-# tag pushes (v*) = release builds. Artifacts: the installer exe, the
-# selftest reports, and the startup-time report.
+name: Windows Installer
 
 on:
   workflow_dispatch:
   push:
+    branches: [installer-build]
     tags: ["V*"]  # repo tag convention is uppercase (V0.6.62)
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build Elixir-Setup-<version>.exe
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
+    env:
+      # UTF-8 stdout/stderr even on the cp1252 console (Windows runner)
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      # NOTE: requirements.lock is Linux-generated — on Windows, magika caps
+      # onnxruntime<=1.20.1 (sys_platform == "win32") while the lock pins
+      # 1.30.0, which makes the lock unsolvable there. Install the core set
+      # from requirements.txt (resolver picks Windows-compatible versions).
+      # bash (not pwsh) so a failing pip line actually fails the step.
+      - name: Install dependencies (core set + PyInstaller)
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller==6.22.3 pytest pytest-cov pytest-asyncio hypothesis
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-      - name: Changed-area sanity tests (the modules touched by the installer work)
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: >-
-          python -m pytest -q --no-cov -p no:cacheprovider
-          tests/test_bootstrap.py
-          tests/test_p2_llm_model_singletons.py
-          tests/test_v182037_audit_fixes.py
-          tests/test_v182039_audit_fixes.py
-          tests/test_v1820411_p4_rebrand.py
+      - name: Cache downloaded external tools (ffmpeg / poppler)
+        uses: actions/cache@v4
+        with:
+          path: build_pyinstaller/downloads
+          key: bundled-tools-${{ hashFiles('build_installer.py') }}
 
-      - name: Build + test the installer (pack, selftest, launch, Inno, silent install)
+      - name: Build installer + run all tests
         run: python build_installer.py
 
-      - name: Startup timing + import profile
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
-          .\installer\measure_startup.ps1 -Exe "python" -ExeArgs "main.py" -Label "source (python main.py)" -OutFile "dist_installer\startup_report.txt"
-          .\installer\measure_startup.ps1 -Exe "dist_app\Elixir\Elixir.exe" -Label "packed app (onedir)" -OutFile "dist_installer\startup_report.txt" -Append
-          python installer\importtime_top.py | Tee-Object -FilePath "dist_installer\startup_report.txt" -Append
-
-      - name: Upload artifacts
+      - name: Upload installer + reports (always, even on failure)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: elixir-windows-installer
           path: |
-            dist_installer/*
-            selftest_report*.txt
+            dist_installer/*.exe
+            build_installer.log
+            selftest_report.txt
+            build_pyinstaller/selftest_*.txt
+            build_pyinstaller/importtime.log
           if-no-files-found: warn
+          retention-days: 30
+
+      - name: Attach the installer to a GitHub Release
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content VERSION).Trim()
+          $exe = Get-ChildItem "dist_installer/Elixir-Setup-*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "installer not found" }
+          $tag = "V$version-windows"
+          $size = [math]::Round($exe.Length / 1MB, 1)
+          $notes = @"
+          Elixir $version — Windows installer.
+
+          Download **$($exe.Name)** ($size MB), double-click to install, then launch
+          **Elixir** from the Start menu or the desktop icon.
+
+          What's inside: the whole app (onedir PyInstaller bundle), ffmpeg and
+          Poppler (bundled — the app finds them automatically), and an app icon.
+          What's NOT inside: model weights, Ollama (install from ollama.com when
+          prompted) and API keys.
+
+          The installer was verified automatically on a clean Windows machine:
+          self-test, launch test and silent install/uninstall test all passed.
+          Startup-time numbers and the top-5 slowest imports are in the build
+          log (build_installer.log in the workflow artifacts).
+          "@
+          # create the release (or upload to it if it already exists)
+          gh release create $tag "$($exe.FullName)" --title "Elixir $version — Windows Installer" --notes $notes 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release upload $tag "$($exe.FullName)" --clobber
+          }

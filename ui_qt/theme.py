@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtGui import QColor, QFontDatabase, QPalette
@@ -199,9 +200,7 @@ def load_inter(app: QApplication) -> list[str]:
     empty if the font files aren't installed yet — the stylesheet then
     transparently falls back to Segoe UI Variable / Segoe UI).
     """
-    from app_paths import resource_path  # V0.6.63: frozen bundle / repo root
-
-    fonts_dir = resource_path("assets", "fonts")
+    fonts_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
     families: list[str] = []
     if not fonts_dir.is_dir():
         return families
@@ -780,8 +779,9 @@ class ThemeManager:
     """
 
     def __init__(self) -> None:
-        # V0.6.63: theme state via the user_data_dir() choke point.
-        from utils.settings import user_data_dir  # lazy: no import cycle
+        # PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen,
+        # ~/.elixir from source (unchanged).
+        from utils.settings import user_data_dir
 
         self.settings_file = user_data_dir() / "ui_theme.json"
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)

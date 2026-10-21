@@ -20,10 +20,10 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QSoundEffect
 
-# V0.6.63: sounds live under the user_data_dir() choke point (frozen →
-# %LOCALAPPDATA%\Elixir).
-from utils.settings import user_data_dir  # late import: anchor-local
+from utils.settings import user_data_dir
 
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir\sounds when frozen,
+# ~/.elixir/sounds from source (unchanged).
 _SOUNDS_DIR = user_data_dir() / "sounds"
 
 

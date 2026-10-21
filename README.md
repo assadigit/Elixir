@@ -81,38 +81,33 @@ python main.py
 > ℹ️ Optional feature groups (TTS audio, EPUB/Anki formats, RAG, grounding)
 > are opt-in extras since V0.13 — see the header of `requirements.txt`.
 
----
+### 📦 Building the Windows installer (one command)
 
-## 📦 How to build the Windows installer (V0.6.63+)
-
-One command, on a Windows machine with Python 3.12:
+On a Windows 10/11 machine with Python 3.12 and the repo checked out:
 
 ```bash
-pip install -r requirements.txt pyinstaller==6.22.3
 python build_installer.py
 ```
 
-The script does everything else itself: packs the app with PyInstaller
-`(onedir, fast startup)`, runs the packaged app's `--selftest` (imports every
-module + loads every bundled data file), launch-tests it, builds the
-installer with Inno Setup (`auto-installed via winget` if missing), and
-silent-install-tests the result. When every step is green you get
+That single command packs the app with PyInstaller (onedir, for fast startup),
+verifies it (self-test → launch test → silent install test), and produces
+**`dist_installer\Elixir-Setup-<version>.exe`** — a double-click installer
+(Inno Setup, auto-installed via winget if missing). The builder also bundles
+the small external tools whose licences allow it (ffmpeg, poppler); model
+weights, Ollama and API keys are never bundled. If the packed app closes
+right after starting, run `python build_installer.py --debug` to see the
+crash text. Everything is logged to `build_installer.log`.
 
-```text
-dist_installer\Elixir-Setup-<version>.exe
-```
-
-— a double-click, no-admin (per-user) installer. The GitHub Actions workflow
-`.github/workflows/windows-installer.yml` runs the exact same pipeline on
-`windows-latest` and uploads the installer as an artifact.
-
-The installed app keeps its data in `%LOCALAPPDATA%\Elixir` (never inside
-the install folder); an existing `~/.elixir` from a source checkout is
-copied over automatically on first launch. Ollama / Tesseract / Poppler
-remain external (the installer offers the Ollama download on setup); the
-VibeVoice / Qwen3-TTS engines need a Python environment and are
-source-only by design — the installed app says so clearly if you try them
-(Kokoro / Piper / NeuTTS in-process work normally).
+The installed app keeps its settings in `%LOCALAPPDATA%\Elixir` (never writes
+inside the install folder); running `python main.py` from source keeps using
+`~/.elixir` exactly as before, and an existing `~/.elixir` is copied over
+automatically on the installed app's first launch. The installer bundles
+ffmpeg + Poppler (licence-permitted); Ollama, Tesseract and model weights
+stay external. The VibeVoice / Qwen3-TTS engines need the Python source
+install — the installed app says so clearly if you try them (Kokoro /
+Piper TTS work normally). A CI workflow
+(`.github/workflows/windows-installer.yml`) builds the same installer on
+GitHub's Windows runners.
 
 ---
 

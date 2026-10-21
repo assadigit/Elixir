@@ -57,18 +57,20 @@ from pathlib import Path
 from typing import Any
 
 
-# V0.6.63: stdlib-only user-data root — crash modules must not import app
-# code (TestCrashVisibilityStdlibOnly pins it; the arm runs before any
-# heavy import). Mirrors app_paths: frozen → %LOCALAPPDATA%\Elixir,
-# source → ~/.elixir.
-def _user_data_root() -> Path:
-    if getattr(sys, "frozen", False):
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(local) / "Elixir"
+def _user_data_dir() -> Path:
+    """PACKAGING (build_installer.py): %LOCALAPPDATA%\\Elixir when frozen on
+    Windows, else the historical ~/.elixir. Inlined on purpose — this module
+    must stay STDLIB-ONLY (it is armed before any heavy/app import; the
+    V18.20.3.9 audit pins that contract). Mirrors app_paths.default_user_data_dir.
+    """
+    if getattr(sys, "frozen", False) and os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "Elixir"
     return Path.home() / ".elixir"
 
 
-_HOME_DIR = _user_data_root()
+# PACKAGING: user-data location via _user_data_dir() — %LOCALAPPDATA%\Elixir
+# when frozen (installed build), ~/.elixir from source — unchanged for source.
+_HOME_DIR = _user_data_dir()
 FAULTHANDLER_LOG = _HOME_DIR / "faulthandler.log"
 THREAD_CRASH_LOG = _HOME_DIR / "thread_crash.log"
 

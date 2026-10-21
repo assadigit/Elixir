@@ -18,7 +18,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from app_paths import is_frozen, user_data_path
 from utils.atomic_io import atomic_write_json
 from utils.settings_schema import (
     resolve_env_vars_with_warnings,
@@ -38,67 +37,102 @@ logger = logging.getLogger(__name__)
 # survive the rebrand. Idempotent, thread-safe, and NEVER raises (a failed
 # migration logs a WARNING and the app starts with fresh settings — the
 # legacy directory is left untouched, so nothing is lost).
+#
+# PACKAGING (build_installer.py): when the app runs frozen (installed via
+# the Elixir installer), user data lives in %LOCALAPPDATA%\Elixir — the
+# standard per-user application-data location — instead of ~/.elixir. The
+# first frozen launch carries over the small config files (settings.json,
+# profiles, …) from a previous source install so nothing is lost; big
+# caches/models are NOT copied. Running from source keeps the historical
+# ~/.elixir location and behavior, byte for byte.
 _USER_DIR_NAME = ".elixir"
 _LEGACY_USER_DIR_NAME = ".markitdown_pro"  # pre-rebrand name — migration source (do NOT rename)
+# Small, cheap-to-copy items carried from ~/.elixir (or ~/.markitdown_pro)
+# into %LOCALAPPDATA%\Elixir on the FIRST frozen launch. Deliberately
+# excludes models/ and the prompt mirror (re-synced from the bundle) and
+# multi-GB caches.
+_FROZEN_CARRYOVER_ITEMS = (
+    "settings.json",
+    "ui_theme.json",
+    "window_geometry.json",
+    "library.json",
+    "profiles",
+    "translation_cache",
+    "response_cache.jsonl",
+)
 _user_dir_lock = threading.Lock()
 _user_dir_resolved = False
 
 
-def _adopt_source_user_data(frozen_dir: Path) -> None:
-    """V0.6.63: one-time, best-effort seed of the frozen user-data dir.
-
-    When Elixir runs as the installed app (Elixir.exe) with an existing
-    ``~/.elixir`` from a source checkout on the same machine, that data is
-    COPIED into ``%LOCALAPPDATA%\\Elixir`` so settings, cached models and
-    the prompts mirror survive the switch to the installed app. Copy, not
-    move: the source checkout keeps its own ``~/.elixir`` and ``python
-    main.py`` behaves exactly as before. Never raises — on failure the
-    installed app starts with fresh data.
-    """
-    source = Path.home() / _USER_DIR_NAME
-    if frozen_dir.exists() or not source.exists():
-        return
+def _frozen_user_data_dir() -> Path:
+    """User-data location: %LOCALAPPDATA%\\Elixir when frozen on Windows,
+    else the historical ~/.elixir (see app_paths.default_user_data_dir)."""
     try:
-        shutil.copytree(source, frozen_dir, dirs_exist_ok=True)
-        logger.info(
-            "Elixir install: copied user data %s → %s (the source folder is "
-            "untouched — settings, cached models and prompts are preserved)",
-            source,
-            frozen_dir,
-        )
-    except Exception:
-        logger.warning(
-            "Elixir install: could not copy user data %s → %s — starting "
-            "fresh (the source folder is untouched)",
-            source,
-            frozen_dir,
-            exc_info=True,
-        )
+        from app_paths import default_user_data_dir
+
+        return default_user_data_dir()
+    except Exception:  # pragma: no cover — app_paths must be importable
+        return Path.home() / _USER_DIR_NAME
+
+
+def _carry_over_legacy_user_data(target: Path) -> None:
+    """First frozen launch: copy small config files from the legacy source
+    directory (~/.elixir preferred, ~/.markitdown_pro as a fallback) into
+    ``target``. Best-effort — a failure logs a WARNING and continues with a
+    fresh directory. The legacy directory itself is left untouched."""
+    home = Path.home()
+    for legacy_name in (_USER_DIR_NAME, _LEGACY_USER_DIR_NAME):
+        legacy = home / legacy_name
+        if not legacy.is_dir():
+            continue
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            copied: list[str] = []
+            for item in _FROZEN_CARRYOVER_ITEMS:
+                src = legacy / item
+                dst = target / item
+                if not src.exists() or dst.exists():
+                    continue
+                if src.is_dir():
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+                copied.append(item)
+            if copied:
+                logger.info(
+                    "Packaged first launch: carried %d item(s) (%s) from %s to %s — "
+                    "big caches/models are not copied",
+                    len(copied),
+                    ", ".join(copied),
+                    legacy,
+                    target,
+                )
+        except Exception:
+            logger.warning(
+                "Packaged first launch: carry-over %s → %s failed — starting fresh",
+                legacy,
+                target,
+                exc_info=True,
+            )
+        return  # only the first existing legacy dir is considered
 
 
 def user_data_dir() -> Path:
-    """Return the app's user-data directory, migrating older locations on
-    first call.
+    """Return the app's user-data directory.
 
-    - Source checkout: ``~/.elixir`` (V18.20.4.11 rebrand — migrates the
-      legacy ``~/.markitdown_pro``).
-    - Frozen install (Elixir.exe, V0.6.63): ``%LOCALAPPDATA%\\Elixir`` —
-      nothing is ever written inside the install folder. An existing
-      ``~/.elixir`` is adopted once via copy (see ``_adopt_source_user_data``).
+    Running from source → ``~/.elixir`` (migrating the legacy
+    ``~/.markitdown_pro`` on first call — V18.20.4.11 rebrand). Frozen
+    (installed) build on Windows → ``%LOCALAPPDATA%\\Elixir`` (with a
+    one-time carry-over of the small config files from ``~/.elixir``).
     """
     global _user_dir_resolved
-    if is_frozen():
-        new_dir = user_data_path()
-    else:
-        new_dir = Path.home() / _USER_DIR_NAME
+    new_dir = _frozen_user_data_dir()
     if _user_dir_resolved:
         return new_dir
     with _user_dir_lock:
         if _user_dir_resolved:
             return new_dir
-        if is_frozen():
-            _adopt_source_user_data(new_dir)
-        else:
+        if new_dir == Path.home() / _USER_DIR_NAME:
             legacy = Path.home() / _LEGACY_USER_DIR_NAME
             try:
                 if not new_dir.exists() and legacy.exists():
@@ -117,6 +151,10 @@ def user_data_dir() -> Path:
                     new_dir,
                     exc_info=True,
                 )
+        else:
+            # Frozen install: bring over small config files once.
+            if not new_dir.exists():
+                _carry_over_legacy_user_data(new_dir)
         _user_dir_resolved = True
     return new_dir
 

@@ -35,12 +35,12 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
-# V0.6.63: cache dir via the user_data_dir() choke point (frozen →
-# %LOCALAPPDATA%\Elixir).
-from utils.settings import user_data_dir  # late import: anchor-local
-
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
 _CACHE_DIR = user_data_dir() / "translation_cache"
 
 #: V10.33.0 (Sprint 5.4): Maximum number of cache entries (FIFO eviction).

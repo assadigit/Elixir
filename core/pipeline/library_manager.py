@@ -11,12 +11,12 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
-# V0.6.63: library state via the user_data_dir() choke point (frozen →
-# %LOCALAPPDATA%\Elixir).
-from utils.settings import user_data_dir  # late import: anchor-local
-
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
 _LIBRARY_FILE = user_data_dir() / "library.json"
 
 

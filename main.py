@@ -5,7 +5,11 @@ import logging
 logger = logging.getLogger(__name__)
 """Elixir — entry point.
 
-Launches the PySide6 UI (``ui_qt``). Run: python main.py
+Launches the PySide6 UI (``ui_qt``).
+
+Run::
+
+    python main.py
 """
 
 import os
@@ -13,51 +17,37 @@ import shutil
 import sys
 from pathlib import Path as _P  # V18.2.22: module-level for Bootstrap call
 
-# V0.6.63: --selftest <report_file> — packaged-build smoke test (core/system/selftest.py).
-if "--selftest" in sys.argv:
-    from core.system.selftest import run_selftest
-
-    raise SystemExit(run_selftest(sys.argv))
-
 from utils.settings import (
     user_data_dir,  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
 )
 
-# V18.2.37 (CRITICAL fix): ensure new .py files are loaded, not stale .pyc.
-# On Windows, deleting __pycache__ while the process is running can crash
-# (PermissionError on locked .pyc files). Instead of deleting, we:
-# 1. Set PYTHONDONTWRITEBYTECODE so Python won't create NEW .pyc files
-# 2. Delete __pycache__ with ignore_errors=True (best-effort, never crashes)
-# 3. If deletion fails (locked files), Python will still load the .py
-#    because we also check the .py mtime vs .pyc mtime
-#
-# The V18.2.36 conversion log proved stale .pyc was the root cause: the
-# V18.2.35 lazy-load fix and V18.2.36 CPU-force fix were in the .py files
-# but NOT in the .pyc cache — Python loaded the old .pyc and the fixes
-# silently didn't fire.
+# PACKAGING (build_installer.py): frozen-runtime preparation — when running
+# as the installed Elixir.exe it (a) prepends the bundled tools folder
+# (ffmpeg, poppler, …) to PATH so the app finds them in the bundle first,
+# and (b) replaces the None stdout/stderr a windowed PyInstaller build has
+# with real sinks so print()/tracebacks never crash silently. From source
+# it is a no-op and NOTHING below changes behavior.
+try:
+    from app_paths import setup_frozen_environment
+
+    setup_frozen_environment()
+except Exception as _e:
+    print(f"[Elixir] frozen-environment setup skipped: {type(_e).__name__}: {_e}")
+
+# V18.2.37 (CRITICAL fix): a stale .pyc from a previous version can shadow
+# new .py code (the V18.2.36 conversion log proved it) — so bytecode writing
+# is disabled and stale __pycache__ dirs are removed at startup. PACKAGING:
+# skipped in a frozen build (no .py/.pyc ship on disk; the walk wastes time).
 _APP_DIR = _P(__file__).resolve().parent
+_FROZEN = bool(getattr(sys, "frozen", False))
 
 # Set this BEFORE any imports so Python doesn't write new .pyc files
 # that could be stale. This ensures every import recompiles from .py.
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
-# Best-effort pycache cleanup — never crashes (ignore_errors=True + try/except)
-# V0.6.63: skipped when frozen (no __pycache__ in the PyInstaller bundle).
-_pycache_deleted = 0
-if not getattr(sys, "frozen", False):
-    try:
-        for _pc in _APP_DIR.rglob("__pycache__"):
-            try:
-                shutil.rmtree(_pc, ignore_errors=True)
-                _pycache_deleted += 1
-            except Exception:
-                pass
-    except Exception:
-        pass
-if _pycache_deleted > 0:
-    # V0.6.8 (audit B19): the stale "V18.2.37" version tag removed — the
-    # label lied about the running version; "Elixir" is version-neutral.
-    print(f"[Elixir] Deleted {_pycache_deleted} stale __pycache__ directory(ies).")
+if not _FROZEN:
+    for _pc in _APP_DIR.rglob("__pycache__"):
+        shutil.rmtree(_pc, ignore_errors=True)
 
 # V13.33.1 note: PYTHONDONTWRITEBYTECODE above is the whole stale-pyc strategy.
 
@@ -278,6 +268,15 @@ def _install_excepthook() -> None:
 
 
 if __name__ == "__main__":
+    # PACKAGING: self-test mode — ``Elixir.exe --selftest <report_file>``
+    # imports every app module + data files, never opens a window, exits 0
+    # only on a clean pass (see utils/selftest.py). No flag → normal launch.
+    from utils.selftest import maybe_run_cli
+
+    _rc = maybe_run_cli(sys.argv)
+    if _rc is not None:
+        sys.exit(_rc)
+
     missing = _check_dependencies()
     if missing:
         _show_missing_deps_error(missing)
@@ -305,10 +304,15 @@ if __name__ == "__main__":
     except Exception as _e:
         logger.debug("bootstrap skipped: %s: %s", type(_e).__name__, _e)
 
-    from utils.token_counter import seed_offline_encoding_cache  # V0.6.63: frozen offline cache
-
-    seed_offline_encoding_cache()
-
     from ui_qt.app import run
+
+    # V0.6.63: frozen installs seed tiktoken's encoding cache from the
+    # bundled copy (exact token counts, no network). No-op from source.
+    try:
+        from utils.token_counter import seed_offline_encoding_cache
+
+        seed_offline_encoding_cache()
+    except Exception:
+        logger.debug("offline encoding cache seed skipped", exc_info=True)
 
     run()

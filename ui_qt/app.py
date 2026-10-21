@@ -46,13 +46,14 @@ from ui_qt.views.quarantine_view import QuarantineView
 from ui_qt.views.queue_view import QueueView
 from ui_qt.views.validate_dialog import ValidateDialog
 from utils.geometry import restored_geometry_is_visible
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
 
-# V0.6.63: window geometry via the user_data_dir() choke point.
-from utils.settings import user_data_dir  # late import: anchor-local
-
+# PACKAGING (build_installer.py): resolved via user_data_dir() so the frozen
+# (installed) build reads/writes %LOCALAPPDATA%\Elixir\window_geometry.json
+# instead of ~/.elixir (source behavior unchanged).
 _GEOMETRY_FILE = user_data_dir() / "window_geometry.json"
 
 
@@ -622,12 +623,10 @@ class ElixirWindow(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════
     @staticmethod
     def _app_version() -> str:
-        try:
-            # V0.6.63: app_paths resolves the repo root from source and the
-            # PyInstaller bundle dir when frozen.
-            from app_paths import resource_path
+        from pathlib import Path
 
-            vf = resource_path("VERSION")
+        try:
+            vf = Path(__file__).resolve().parent.parent / "VERSION"
             if vf.exists():
                 return vf.read_text().strip() or "1.0.0"
         except Exception:
@@ -867,6 +866,20 @@ def run() -> None:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Elixir")
     app.setOrganizationName("Elixir")
+
+    # PACKAGING: give the window/taskbar the bundled app icon (assets/elixir.ico)
+    # when present. Best-effort — from source it simply picks up the committed
+    # icon; nothing changes when the file is absent.
+    try:
+        from app_paths import bundled_icon_path
+
+        _icon_path = bundled_icon_path()
+        if _icon_path is not None:
+            from PySide6.QtGui import QIcon
+
+            app.setWindowIcon(QIcon(str(_icon_path)))
+    except Exception:
+        logger.debug("window icon not applied", exc_info=True)
 
     # V18.1 (B6): enforce single-instance — launching twice can corrupt the
     # same output dir / Ollama model state. Must come AFTER QApplication is
