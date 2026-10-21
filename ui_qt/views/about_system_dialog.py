@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
@@ -174,7 +173,9 @@ class AboutSystemDialog(QDialog):
     @staticmethod
     def _app_version() -> str:
         try:
-            vf = Path(__file__).resolve().parent.parent.parent / "VERSION"
+            from app_paths import resource_path  # V0.6.63: bundle-aware
+
+            vf = resource_path("VERSION")
             if vf.exists():
                 return vf.read_text().strip() or "1.0.0"
         except Exception:

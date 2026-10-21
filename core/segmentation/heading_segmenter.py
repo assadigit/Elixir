@@ -10,7 +10,6 @@ FIXES in this version:
 import json
 import re
 from collections.abc import Callable
-from pathlib import Path
 
 from core.models import ConversionRequest, Segment
 from utils.logging import get_main_logger
@@ -85,7 +84,9 @@ class HeadingSegmenter:
     def _load_patterns_from_json(self) -> list[str]:
         patterns = []
         try:
-            json_path = Path(__file__).parent.parent.parent / "utils" / "patterns.json"
+            from app_paths import resource_path  # V0.6.63: bundle-aware
+
+            json_path = resource_path("utils", "patterns.json")
             if json_path.exists():
                 with open(json_path, encoding="utf-8") as f:
                     data = json.load(f)

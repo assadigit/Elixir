@@ -141,7 +141,12 @@ def default_ledger_path() -> Path:
 
         return user_data_dir() / LEDGER_FILE_NAME
     except Exception:
-        return Path.home() / ".elixir" / LEDGER_FILE_NAME
+        # V0.6.63: the settings choke point failed — fall back to the
+        # dependency-free app_paths primitive (frozen-aware), not a raw
+        # Path.home() that would miss %LOCALAPPDATA% in the installed app.
+        from app_paths import user_data_path
+
+        return user_data_path() / LEDGER_FILE_NAME
 
 
 def load_ledger(path=None) -> dict:

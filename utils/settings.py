@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from app_paths import is_frozen, user_data_path
 from utils.atomic_io import atomic_write_json
 from utils.settings_schema import (
     resolve_env_vars_with_warnings,
@@ -43,34 +44,79 @@ _user_dir_lock = threading.Lock()
 _user_dir_resolved = False
 
 
+def _adopt_source_user_data(frozen_dir: Path) -> None:
+    """V0.6.63: one-time, best-effort seed of the frozen user-data dir.
+
+    When Elixir runs as the installed app (Elixir.exe) with an existing
+    ``~/.elixir`` from a source checkout on the same machine, that data is
+    COPIED into ``%LOCALAPPDATA%\\Elixir`` so settings, cached models and
+    the prompts mirror survive the switch to the installed app. Copy, not
+    move: the source checkout keeps its own ``~/.elixir`` and ``python
+    main.py`` behaves exactly as before. Never raises — on failure the
+    installed app starts with fresh data.
+    """
+    source = Path.home() / _USER_DIR_NAME
+    if frozen_dir.exists() or not source.exists():
+        return
+    try:
+        shutil.copytree(source, frozen_dir, dirs_exist_ok=True)
+        logger.info(
+            "Elixir install: copied user data %s → %s (the source folder is "
+            "untouched — settings, cached models and prompts are preserved)",
+            source,
+            frozen_dir,
+        )
+    except Exception:
+        logger.warning(
+            "Elixir install: could not copy user data %s → %s — starting "
+            "fresh (the source folder is untouched)",
+            source,
+            frozen_dir,
+            exc_info=True,
+        )
+
+
 def user_data_dir() -> Path:
-    """Return the app's user-data directory (~/.elixir), migrating the
-    legacy ~/.markitdown_pro on first call (V18.20.4.11 rebrand)."""
+    """Return the app's user-data directory, migrating older locations on
+    first call.
+
+    - Source checkout: ``~/.elixir`` (V18.20.4.11 rebrand — migrates the
+      legacy ``~/.markitdown_pro``).
+    - Frozen install (Elixir.exe, V0.6.63): ``%LOCALAPPDATA%\\Elixir`` —
+      nothing is ever written inside the install folder. An existing
+      ``~/.elixir`` is adopted once via copy (see ``_adopt_source_user_data``).
+    """
     global _user_dir_resolved
-    new_dir = Path.home() / _USER_DIR_NAME
+    if is_frozen():
+        new_dir = user_data_path()
+    else:
+        new_dir = Path.home() / _USER_DIR_NAME
     if _user_dir_resolved:
         return new_dir
     with _user_dir_lock:
         if _user_dir_resolved:
             return new_dir
-        legacy = Path.home() / _LEGACY_USER_DIR_NAME
-        try:
-            if not new_dir.exists() and legacy.exists():
-                shutil.move(str(legacy), str(new_dir))
-                logger.info(
-                    "Elixir rebrand: migrated user data %s → %s (settings, "
-                    "models, caches, prompts preserved)",
+        if is_frozen():
+            _adopt_source_user_data(new_dir)
+        else:
+            legacy = Path.home() / _LEGACY_USER_DIR_NAME
+            try:
+                if not new_dir.exists() and legacy.exists():
+                    shutil.move(str(legacy), str(new_dir))
+                    logger.info(
+                        "Elixir rebrand: migrated user data %s → %s (settings, "
+                        "models, caches, prompts preserved)",
+                        legacy,
+                        new_dir,
+                    )
+            except Exception:
+                logger.warning(
+                    "Elixir rebrand: user-data migration %s → %s failed — "
+                    "starting fresh (legacy directory left untouched)",
                     legacy,
                     new_dir,
+                    exc_info=True,
                 )
-        except Exception:
-            logger.warning(
-                "Elixir rebrand: user-data migration %s → %s failed — "
-                "starting fresh (legacy directory left untouched)",
-                legacy,
-                new_dir,
-                exc_info=True,
-            )
         _user_dir_resolved = True
     return new_dir
 

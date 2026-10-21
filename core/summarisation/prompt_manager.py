@@ -44,14 +44,21 @@ _logged_versions: set = set()
 
 # Built-in presets shipped with the app — resolve from multiple candidate
 # locations to handle different install layouts (dev, PyInstaller bundle, etc.)
+# V0.6.63: the first candidate is app_paths.resource_path — the repo root
+# from source, the PyInstaller bundle dir when frozen (build_installer.py
+# bundles prompts/ at the bundle root). The legacy anchors stay as fallbacks.
+from app_paths import resource_path  # late: keeps the anchor local
+from utils.settings import user_data_dir  # late: the user-data choke point
+
 _BUILTIN_CANDIDATES = [
+    resource_path("prompts"),  # V0.6.63: frozen bundle / repo root via app_paths
     Path(__file__).resolve().parent.parent / "prompts",  # core/summarisation/../../prompts
     Path(__file__).resolve().parent.parent.parent / "prompts",  # one more level up
     Path.cwd() / "prompts",  # current working directory
 ]
 _BUILTIN_DIR = next((p for p in _BUILTIN_CANDIDATES if p.exists()), _BUILTIN_CANDIDATES[0])
 # User-customised prompts live here (copied from builtins on first run)
-_USER_DIR = Path.home() / ".elixir" / "prompts"
+_USER_DIR = user_data_dir() / "prompts"
 
 _DEFAULT_PROMPT_NAME = "default"
 

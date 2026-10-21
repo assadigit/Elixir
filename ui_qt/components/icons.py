@@ -259,8 +259,10 @@ def icon_for_mode(name: str, is_dark: bool, size: int = 20) -> QIcon:
 
 
 def _project_root() -> Path:
-    """Return the project root directory (where main.py lives)."""
-    return Path(__file__).resolve().parent.parent.parent
+    """Return the project root directory (repo root / PyInstaller bundle)."""
+    from app_paths import bundle_dir  # V0.6.63: bundle-aware
+
+    return bundle_dir()
 
 
 def _assets_dir() -> Path:

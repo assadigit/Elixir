@@ -2,6 +2,8 @@
 
 import hashlib
 import logging
+import os
+import sys
 from collections import OrderedDict
 
 import tiktoken
@@ -15,6 +17,34 @@ _ENCODER: tiktoken.Encoding | None = None
 # count_tokens). Capped at 500 entries with FIFO eviction.
 _TOKEN_COUNTER_CACHE: "OrderedDict[str, int]" = OrderedDict()
 _TOKEN_CACHE_MAX = 500
+
+
+def seed_offline_encoding_cache() -> None:
+    """V0.6.63: seed tiktoken's encoding cache from the bundled copy.
+
+    Frozen installs only (no-op from source): copies the vendored
+    cl100k_base blob from ``assets/tiktoken/`` into
+    ``<user_data>/tiktoken_cache`` and points ``DATA_GYM_CACHE_DIR`` there,
+    so token counting is exact with no network on first use. Best-effort —
+    never raises (the word-count approximation remains the fallback).
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        import shutil
+
+        from app_paths import resource_path
+        from utils.settings import user_data_dir
+
+        cache_dir = user_data_dir() / "tiktoken_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for blob in resource_path("assets", "tiktoken").glob("*.tiktoken"):
+            dest = cache_dir / blob.name
+            if not dest.exists():
+                shutil.copy2(blob, dest)
+        os.environ.setdefault("DATA_GYM_CACHE_DIR", str(cache_dir))
+    except Exception:  # noqa: BLE001 — best-effort by contract
+        logger.debug("offline encoding cache seed skipped", exc_info=True)
 
 
 def _get_encoder() -> tiktoken.Encoding | None:

@@ -10,11 +10,14 @@ import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_LIBRARY_FILE = Path.home() / ".elixir" / "library.json"
+# V0.6.63: library state via the user_data_dir() choke point (frozen →
+# %LOCALAPPDATA%\Elixir).
+from utils.settings import user_data_dir  # late import: anchor-local
+
+_LIBRARY_FILE = user_data_dir() / "library.json"
 
 
 class LibraryManager:

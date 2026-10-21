@@ -745,10 +745,11 @@ def _build_glossary_extraction_prompt(source_text: str) -> str:
     (the caller treats empty as "skip the call" — never raises).
     """
     try:
-        # Resolve the prompt path relative to the project root (the parent
-        # of the ``core/`` package — two levels up from this module file).
-        _project_root = Path(__file__).resolve().parent.parent.parent
-        prompt_path = _project_root / _GLOSSARY_EXTRACTION_PROMPT_REL
+        # V0.6.63: app_paths resolves the repo root from source and the
+        # PyInstaller bundle dir when frozen.
+        from app_paths import resource_path  # late: anchor-local
+
+        prompt_path = resource_path(*_GLOSSARY_EXTRACTION_PROMPT_REL.parts)
         template = prompt_path.read_text(encoding="utf-8")
     except Exception as _e:  # noqa: BLE001 — fail-open
         logger.warning(

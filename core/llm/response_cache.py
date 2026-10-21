@@ -31,11 +31,14 @@ import json
 import logging
 import threading
 from collections import OrderedDict
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_CACHE_FILE = Path.home() / ".elixir" / "response_cache.jsonl"
+# V0.6.63: routed through the user_data_dir() choke point (frozen installs
+# write under %LOCALAPPDATA%\Elixir, never the install folder).
+from utils.settings import user_data_dir  # late import: anchor-local
+
+_CACHE_FILE = user_data_dir() / "response_cache.jsonl"
 
 
 class ResponseCache:

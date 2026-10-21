@@ -56,7 +56,19 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-_HOME_DIR = Path.home() / ".elixir"
+
+# V0.6.63: stdlib-only user-data root — crash modules must not import app
+# code (TestCrashVisibilityStdlibOnly pins it; the arm runs before any
+# heavy import). Mirrors app_paths: frozen → %LOCALAPPDATA%\Elixir,
+# source → ~/.elixir.
+def _user_data_root() -> Path:
+    if getattr(sys, "frozen", False):
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "Elixir"
+    return Path.home() / ".elixir"
+
+
+_HOME_DIR = _user_data_root()
 FAULTHANDLER_LOG = _HOME_DIR / "faulthandler.log"
 THREAD_CRASH_LOG = _HOME_DIR / "thread_crash.log"
 

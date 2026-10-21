@@ -62,9 +62,11 @@ OutputFormat = Literal[".md", ".docx", ".pdf"]
 # Segoe UI) have no Arabic glyphs on most hosts — that was the earlier
 # black-squares report.
 
-# Repo root (core/outputs/service_formatters.py → two parents up).
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_FONT_DIR = _REPO_ROOT / "assets" / "fonts"
+# V0.6.63: fonts via app_paths — the repo's assets/ from source, the
+# PyInstaller bundle dir when frozen (build_installer.py bundles assets/).
+from app_paths import resource_path  # late: anchor-local
+
+_FONT_DIR = resource_path("assets", "fonts")
 
 
 def _vazirmatn_font_url(weight: str = "Regular") -> str | None:

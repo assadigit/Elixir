@@ -44,7 +44,9 @@ PERSIAN_VITS_MODELS = [
 
 def _default_model_dir() -> Path:
     """Where to cache downloaded Persian VITS models."""
-    return Path.home() / ".elixir" / "persian_vits_models"
+    from utils.settings import user_data_dir  # lazy: leaf stays app-free
+
+    return user_data_dir() / "persian_vits_models"
 
 
 class PersianVitsEngine(TTSEngine):

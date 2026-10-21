@@ -27,7 +27,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path.home() / ".elixir" / "profiles"
+# V0.6.63: profiles live under the user_data_dir() choke point (frozen →
+# %LOCALAPPDATA%\Elixir).
+from utils.settings import user_data_dir  # late import: anchor-local
+
+_PROFILES_DIR = user_data_dir() / "profiles"
 
 
 def _ensure_dir() -> Path:

@@ -184,6 +184,17 @@ class VibeVoiceEngine(TTSEngine):
         import sys
         import time
 
+        # V0.6.63: the subprocess engines need a real Python interpreter —
+        # in the frozen app sys.executable IS Elixir.exe (spawning it would
+        # just re-launch the app, which the single-instance lock immediately
+        # exits). Fail fast with a clear message instead of a 300s timeout.
+        if getattr(sys, "frozen", False):
+            raise RuntimeError(
+                "VibeVoice TTS is not available in the installed app: it needs a "
+                "Python environment with torch (run Elixir from source to use "
+                "it). The Kokoro and Piper voices work in the installed app."
+            )
+
         self._preflight_vram()  # V0.6.15: the free-VRAM warning, fail-soft
 
         script_path = str(Path(__file__).parent / "_vibevoice_subprocess.py")

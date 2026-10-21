@@ -54,7 +54,17 @@ from ui_qt.settings.widgets import make_form
 logger = logging.getLogger(__name__)
 
 # Where cached voice sample WAVs are stored (generated on first preview).
-_SAMPLES_DIR = Path(__file__).resolve().parents[3] / "config" / "voice_samples"
+# V0.6.63: fixes the off-by-one parents[3] anchor (it resolved one level
+# ABOVE the repo, so the shipped config/voice_samples was never found);
+# frozen installs keep writable samples in user data — the bundled config/
+# is read-only.
+from app_paths import is_frozen, resource_path
+from utils.settings import user_data_dir
+
+if is_frozen():
+    _SAMPLES_DIR = user_data_dir() / "voice_samples"
+else:
+    _SAMPLES_DIR = resource_path("config", "voice_samples")
 
 
 # ── Section 1: Voices ─────────────────────────────────────────────────────

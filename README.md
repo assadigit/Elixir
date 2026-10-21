@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.4.25-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5812%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.6.63-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-5812%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -80,6 +80,39 @@ python main.py
 
 > ℹ️ Optional feature groups (TTS audio, EPUB/Anki formats, RAG, grounding)
 > are opt-in extras since V0.13 — see the header of `requirements.txt`.
+
+---
+
+## 📦 How to build the Windows installer (V0.6.63+)
+
+One command, on a Windows machine with Python 3.12:
+
+```bash
+pip install -r requirements.txt pyinstaller==6.22.3
+python build_installer.py
+```
+
+The script does everything else itself: packs the app with PyInstaller
+`(onedir, fast startup)`, runs the packaged app's `--selftest` (imports every
+module + loads every bundled data file), launch-tests it, builds the
+installer with Inno Setup (`auto-installed via winget` if missing), and
+silent-install-tests the result. When every step is green you get
+
+```text
+dist_installer\Elixir-Setup-<version>.exe
+```
+
+— a double-click, no-admin (per-user) installer. The GitHub Actions workflow
+`.github/workflows/windows-installer.yml` runs the exact same pipeline on
+`windows-latest` and uploads the installer as an artifact.
+
+The installed app keeps its data in `%LOCALAPPDATA%\Elixir` (never inside
+the install folder); an existing `~/.elixir` from a source checkout is
+copied over automatically on first launch. Ollama / Tesseract / Poppler
+remain external (the installer offers the Ollama download on setup); the
+VibeVoice / Qwen3-TTS engines need a Python environment and are
+source-only by design — the installed app says so clearly if you try them
+(Kokoro / Piper / NeuTTS in-process work normally).
 
 ---
 

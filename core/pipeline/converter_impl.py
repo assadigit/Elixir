@@ -290,11 +290,11 @@ class Converter(ConverterExtractionMixin, ConverterVisualMixin, ConverterReporti
         be read (should never happen in a shipped build).
         """
         try:
-            from pathlib import Path
+            # V0.6.63: app_paths resolves the repo root from source and
+            # the PyInstaller bundle dir when frozen.
+            from app_paths import resource_path
 
-            # The VERSION file lives at the project root, two levels up
-            # from core/pipeline/converter.py → ../VERSION
-            vpath = Path(__file__).resolve().parent.parent.parent / "VERSION"
+            vpath = resource_path("VERSION")
             if vpath.exists():
                 return vpath.read_text(encoding="utf-8").strip() or "unknown"
         except Exception as _e:

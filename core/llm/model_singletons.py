@@ -271,7 +271,17 @@ def get_embed_model(model_name: str = "") -> Any | None:
         # (Slash-separated repo ids like ``org/model`` would map to
         # ``org--model`` to stay a single directory, but the default model
         # has no slash so this is a no-op for it.)
-        _model_dir = Path.home() / ".elixir" / "models" / model_name.replace("/", "--")
+        # V0.6.63: frozen installs keep models under %LOCALAPPDATA%\Elixir
+        # (app_paths); from source this stays ~/.elixir via the module-level
+        # Path symbol — the Path.home monkeypatch contract pinned by
+        # tests/test_p2_llm_model_singletons.py depends on it.
+        from app_paths import is_frozen
+        from utils.settings import user_data_dir
+
+        if is_frozen():
+            _model_dir = user_data_dir() / "models" / model_name.replace("/", "--")
+        else:
+            _model_dir = Path.home() / ".elixir" / "models" / model_name.replace("/", "--")
         _is_saved = (_model_dir / "config.json").exists() or (
             _model_dir / "model_config.json"
         ).exists()

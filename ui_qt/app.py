@@ -50,7 +50,10 @@ from utils.geometry import restored_geometry_is_visible
 logger = logging.getLogger(__name__)
 
 
-_GEOMETRY_FILE = Path.home() / ".elixir" / "window_geometry.json"
+# V0.6.63: window geometry via the user_data_dir() choke point.
+from utils.settings import user_data_dir  # late import: anchor-local
+
+_GEOMETRY_FILE = user_data_dir() / "window_geometry.json"
 
 
 class ElixirWindow(QMainWindow):
@@ -619,10 +622,12 @@ class ElixirWindow(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════
     @staticmethod
     def _app_version() -> str:
-        from pathlib import Path
-
         try:
-            vf = Path(__file__).resolve().parent.parent / "VERSION"
+            # V0.6.63: app_paths resolves the repo root from source and the
+            # PyInstaller bundle dir when frozen.
+            from app_paths import resource_path
+
+            vf = resource_path("VERSION")
             if vf.exists():
                 return vf.read_text().strip() or "1.0.0"
         except Exception:

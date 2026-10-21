@@ -464,13 +464,17 @@ def _load_english_lexicon() -> set:
     if _ENGLISH_LEXICON is None:
         try:
             import gzip as _gzip
-            from pathlib import Path as _Path
 
             # V0.4.19 (de-monolithization): this module moved one level
             # deeper (postchecks/garble/lexicon.py), so the vendored
             # lexicon is anchored one parent higher — the data file
             # itself did not move (postchecks/data/english_lexicon.txt.gz).
-            _p = _Path(__file__).parent.parent / "data" / "english_lexicon.txt.gz"
+            # V0.6.63: app_paths keeps that working in the PyInstaller bundle.
+            from app_paths import resource_path
+
+            _p = resource_path(
+                "core", "summarisation", "postchecks", "data", "english_lexicon.txt.gz"
+            )
             _ENGLISH_LEXICON = set(_gzip.decompress(_p.read_bytes()).decode("ascii").split())
         except Exception:  # fail-open — a missing lexicon must not crash postchecks
             _ENGLISH_LEXICON = set()

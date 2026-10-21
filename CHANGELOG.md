@@ -31,6 +31,129 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.63 — "double-click to install": the Windows installer — PyInstaller onedir + Inno Setup in one command (`python build_installer.py`), the frozen-aware path layer (`app_paths.py` → `%LOCALAPPDATA%\Elixir`, never the install folder), a `--selftest` that imports every module and loads every bundled data file, offline-exact token counting, and two latent bug fixes (the `parents[3]` config anchors, the unguarded `soundfile` import) — plus a module-gap audit that caught 12 dynamically-imported modules PyInstaller would have silently dropped (including `postchecks.orchestrator` — a guaranteed conversion crash in any naive bundle)
+
+### The gap this closes
+
+Elixir only ever ran from source: `python main.py` on a rigged-up
+development machine. The one thing a non-technical Windows user needs —
+double-click an installer, get the app — did not exist. The repo's old
+`installer/Elixir.iss` was a V13.26.0-era relic: `AppVersion=0.4.25`
+hand-edited and stale, **no `AppId`** (upgrades would never find the
+previous install), `OutputBaseFilename=Elixir_Setup_V0.06`, and build
+instructions embedded as comments referencing a `dist\` layout no script
+produced. There was no build script, no bundling, no test loop, and the
+codebase had **zero frozen-awareness**: ~20 runtime sites hardcoded
+`Path.home() / ".elixir"`, every resource read anchored on `__file__`, and
+three TTS engines that spawn `sys.executable` as a Python interpreter —
+which, inside a PyInstaller build, is `Elixir.exe` itself.
+
+### The release — five pieces
+
+1. **THE PATH LAYER (`app_paths.py` + the choke-point sweep):**
+   `resource_path()` resolves read-only bundled data against
+   `sys._MEIPASS` when frozen and the repo root from source;
+   `user_data_path()` resolves user data to `%LOCALAPPDATA%\Elixir` when
+   frozen and `~/.elixir` from source. `utils.settings.user_data_dir()`
+   (the single choke point) delegates to it and gained a one-time,
+   **copy**-based adoption of an existing `~/.elixir` — the source
+   checkout on the same machine keeps working, byte-for-byte unchanged.
+   The ~20 hardcoded `~/.elixir` sites now route through the choke point
+   (settings, logs, crash reports, caches, models, prompts mirror,
+   geometry, theme, sounds); the resource readers (VERSION ×4, prompts,
+   Vazirmatn fonts, icons, `patterns.json`, the garble lexicon,
+   `chapter_keywords.md`) resolve via `resource_path()`. A frozen install
+   never writes inside its install folder.
+
+2. **THE SELF-TEST (`core/system/selftest.py` + the `main.py` hook):**
+   `Elixir.exe --selftest <report>` imports EVERY module of the app
+   (package walk over `core`/`utils`/`ui_qt` + `controller`, with a
+   walk-error hook so a broken package `__init__` is recorded instead of
+   silently skipping its subtree), loads every bundled data file
+   (prompts tree, fonts, icons, lexicon, patterns, VERSION, the tiktoken
+   encoding), imports the critical third-party set, and writes **one
+   line per failure** — exit code 0 only when nothing failed. It runs
+   before the torch import / crash-arm / gpu-probe and opens no window.
+
+3. **THE BUILD (`build_installer.py` + `installer/Elixir.iss` refresh +
+   `installer/make_icon.py`):** one command runs the whole pipeline —
+   PyInstaller `--onedir --windowed` (fast startup, no console flash) →
+   `--selftest` against the packed exe → launch test (alive after 20s) →
+   Inno Setup compile (winget auto-installs it when missing) → silent
+   install + installed-app selftest + silent uninstall. The `.iss` now
+   takes the version as an `/D` define (the VERSION file stays the single
+   source of truth), carries a stable `AppId`, installs per-user
+   (`PrivilegesRequired=lowest`, `{autopf}` → no UAC), ships the
+   generated `elixir.ico`, and pre-creates `%LOCALAPPDATA%\Elixir`.
+   `--debug` builds a console exe so a startup crash prints its
+   traceback. The GitHub Actions workflow
+   (`.github/workflows/windows-installer.yml`) runs the identical
+   pipeline on `windows-latest` and uploads the installer + reports as
+   artifacts, plus the startup-time measurement
+   (`installer/measure_startup.ps1` + `importtime_top.py`).
+
+4. **OFFLINE-EXACT TOKEN COUNTING:** tiktoken downloads its `cl100k_base`
+   encoding from the network on first use — the last thing a freshly
+   installed offline app should do. The encoding blob (1.68 MB, cache-key
+   named) is now vendored at `assets/tiktoken/`, and frozen installs seed
+   `DATA_GYM_CACHE_DIR` from it (`utils.token_counter.
+   seed_offline_encoding_cache()`); source behavior is unchanged.
+
+5. **TWO LATENT BUG FIXES + THE FROZEN GUARDS:** (a)
+   `voice_manager.py` and `tts_page.py` anchored `config/tts_voices` /
+   `config/voice_samples` via `parents[3]` — one level ABOVE the repo
+   (verified by path arithmetic), so the shipped `config/voice_samples`
+   was never found and the app **wrote outside the project** at
+   `<repo-parent>/config/…`; the anchors are fixed and frozen installs
+   keep both dirs in user data. (b) `core/podcast/audio_generator.py`
+   imported `soundfile` unguarded at module level (the optional `[tts]`
+   extra — the module was unimportable without it; now guarded with a
+   friendly message at the generation entry). (c) The VibeVoice /
+   Qwen3-TTS subprocess engines and NeuTTS-subprocess mode can never work
+   inside a frozen app (`sys.executable` IS `Elixir.exe` — spawning it
+   re-launches the app and the single-instance lock exits it) — they now
+   fail fast with a clear in-app message pointing at Kokoro / Piper /
+   in-process NeuTTS instead of hanging into a multi-minute timeout.
+
+### The module-gap audit (the catch that justified the whole selftest)
+
+The in-bundle import walk can only see collected modules — a module
+PyInstaller never collected is invisible to it. Diffing the source-walk
+module list against the frozen bundle's PYZ found **17 modules missing**:
+12 of them runtime-reachable only via dynamic imports and now pinned as
+`--hidden-import` in `build_installer.py` — including
+`core.summarisation.postchecks.orchestrator` and `postchecks.field_phases`
+(**every conversion** loads these; a naive bundle crashes mid-conversion
+while the import-walk stays green) plus `async_provider`,
+`conversion_context`, the six `core.podcast.script_*` modules,
+`quarantine_analytics`, and `translation.glossary_analytics`. The
+remaining 5 are excluded **by design**: the three `*.cli` entry points
+and the two TTS subprocess scripts (frozen-guarded off). The Linux
+dry-run bundle now matches the source walk exactly modulo those 5.
+
+### Test path
+
+- **Source-mode selftest:** 375 modules imported, 73 data files loaded,
+  20 third-party imports — 0 failures (Python 3.12, headless).
+- **Frozen Linux dry-run** (same spec/args as Windows, minus Inno):
+  370 modules / 73 data files / 20 third-party — **0 failures**;
+  launch test green (windowed app stayed alive 20s, offscreen);
+  bundle module-gap = exactly the 5 by-design exclusions.
+- **Full suite vs pristine HEAD in the identical environment:**
+  57 local failures with this change vs 74 at HEAD — **0 new failures,
+  20 fixed**; every remaining failure was verified failing at HEAD too
+  (prompt-manifest drift shipped by V0.6.62, TTS/ffmpeg/kokoro
+  environment-dependent e2e tests, the eval gate, encoding pins).
+  The 42 `test_p2_llm_model_singletons` errors introduced mid-session
+  (a lint autofix removed the monkeypatched `Path` symbol) were fixed
+  by restoring the module-level import with a frozen-aware dual path.
+- **Lint:** clean under the pinned `ruff==0.16.8` for every file this
+  release touches (`ruff check` + `ruff format --check`). Six
+  pre-existing findings in the V0.6.5x transcribe-sprint files (2 check,
+  4 format) are documented, not touched — not this release's family.
+- **main.py stays thin:** 313 lines (the `< 320` de-monolithization pin
+  holds; the tiktoken seeding lives in `utils/token_counter.py`).
+
 ## V0.6.62 — "and now put it back in the video": the subtitle export (SRT + WebVTT) — the engine's timestamped segments become the one deliverable video tools actually consume — `<video-name>.srt` (VLC, every editor, YouTube) and `.vtt` (HTML5/web players) written beside the transcript, with a rich-text completion dialog (a proper files table: icon + bold name + per-file description, the subtitle rows carrying the cue count) — 62 new pins / 556 P affected sweep / 0 regressions
 
 ## The gap this closes

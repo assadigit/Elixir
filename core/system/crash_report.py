@@ -31,9 +31,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_CRASH_DIR = Path.home() / ".elixir" / "crash_reports"
-_SETTINGS_FILE = Path.home() / ".elixir" / "settings.json"
-_LOG_FILE = Path.home() / ".elixir" / "system.log"
+# V0.6.63: user-data paths via the user_data_dir() choke point (frozen
+# installs resolve to %LOCALAPPDATA%\Elixir).
+from utils.settings import user_data_dir  # late import: crash paths stay local
+
+_CRASH_DIR = user_data_dir() / "crash_reports"
+_SETTINGS_FILE = user_data_dir() / "settings.json"
+_LOG_FILE = user_data_dir() / "system.log"
 
 # Keys whose values must be redacted (never appear in the crash bundle).
 # V18.1 (S4): substring match (case-insensitive) so the list catches

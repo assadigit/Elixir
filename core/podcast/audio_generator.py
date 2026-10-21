@@ -14,7 +14,14 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
+
+# V0.6.63: soundfile is the optional [tts] extra — the module must stay
+# importable without it (the packaged app bundles the core pipeline only;
+# generation raises a clear message at its entry when it is needed).
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
 
 from core.podcast.cancel_token import CancelToken
 from core.podcast.script_generator import ScriptLine, ScriptResult
@@ -236,6 +243,16 @@ def generate_podcast_audio(
     if total == 0:
         log("  ❌ No script lines to synthesize", "ERROR")
         return None
+
+    # V0.6.63: friendly fail when the optional soundfile extra is absent
+    # (the packaged app bundles the core pipeline — the podcast SCRIPT
+    # output works without it; only the audio file needs this package).
+    if sf is None:
+        raise RuntimeError(
+            "Podcast audio export needs the optional 'soundfile' package "
+            '(run: pip install ".[tts]"). The podcast script output works '
+            "without it — only the audio file needs this package."
+        )
 
     log(f"  🎙️ Generating audio for {total} lines...", "INFO")
 

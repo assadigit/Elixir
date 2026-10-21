@@ -130,7 +130,11 @@ def get_structured_logger(name: str = "Elixir") -> logging.Logger:
 
 # ── Main logger setup ──────────────────────────────────────────────────────
 def setup_main_logger() -> logging.Logger:
-    log_dir = Path.home() / ".elixir"
+    # V0.6.63: logs live under the user_data_dir() choke point (frozen
+    # installs → %LOCALAPPDATA%\Elixir, never the install folder).
+    from utils.settings import user_data_dir  # lazy: never import-cycle
+
+    log_dir = user_data_dir()
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "system.log"
     structured_log_file = log_dir / "structured.jsonl"

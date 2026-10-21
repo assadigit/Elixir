@@ -361,7 +361,11 @@ class NeuTTSEngine(TTSEngine):
         import sys as _sys
 
         current_python = Path(_sys.executable)
-        if current_python.exists():
+        # V0.6.63: in the frozen app sys.executable IS Elixir.exe — spawning
+        # it as the NeuTTS worker would just re-launch the app. Keep the
+        # project venv's interpreter instead (subprocess mode then works iff
+        # the venv exists; otherwise _ensure_process raises a clear error).
+        if current_python.exists() and not getattr(_sys, "frozen", False):
             self._venv_python = current_python
             self.log(f"  ℹ️ Interpreter: {current_python.name}", "DEBUG")
 
@@ -635,7 +639,12 @@ class NeuTTSEngine(TTSEngine):
             return
 
         if not self._venv_python.exists():
-            raise FileNotFoundError(f"NeuTTS Python interpreter not found: {self._venv_python}")
+            raise FileNotFoundError(
+                f"NeuTTS Python interpreter not found: {self._venv_python}. "
+                "Subprocess mode needs the NeuTTS project venv — switch off "
+                "'NeuTTS subprocess mode' in Settings → TTS to use the "
+                "in-process mode (no interpreter needed)."
+            )
 
         bb_dev, cd_dev = self._resolve_devices_now()
         self.log("  🔄 Starting NeuTTS persistent subprocess…", "INFO")

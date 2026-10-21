@@ -32,11 +32,20 @@ from pathlib import Path
 
 from core.tts.engine import LogFn
 
-# Where reference voices are stored (project-relative).
+# Where reference voices are stored.
+# V0.6.63: fixes the off-by-one parents[3] anchor (it resolved one level
+# ABOVE the repo — the intended config/tts_voices was never found); frozen
+# installs keep voices in user data (the bundled config/ is read-only).
 
 logger = logging.getLogger(__name__)
 
-_VOICES_DIR = Path(__file__).resolve().parents[3] / "config" / "tts_voices"
+from app_paths import is_frozen, resource_path  # late: anchor-local
+from utils.settings import user_data_dir  # late: the user-data choke point
+
+if is_frozen():
+    _VOICES_DIR = user_data_dir() / "tts_voices"
+else:
+    _VOICES_DIR = resource_path("config", "tts_voices")
 
 
 # Preset voices shipped with the app. Each entry is (name, description).

@@ -6,6 +6,12 @@ __pycache__/
 build/
 dist/
 
+# V0.6.63: the Windows installer build (build_installer.py)
+build_pyinstaller/
+dist_app/
+dist_installer/
+selftest_report*.txt
+
 # local audit venv
 .venv/
 

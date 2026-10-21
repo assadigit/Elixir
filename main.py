@@ -5,17 +5,19 @@ import logging
 logger = logging.getLogger(__name__)
 """Elixir — entry point.
 
-Launches the PySide6 UI (``ui_qt``).
-
-Run::
-
-    python main.py
+Launches the PySide6 UI (``ui_qt``). Run: python main.py
 """
 
 import os
 import shutil
 import sys
 from pathlib import Path as _P  # V18.2.22: module-level for Bootstrap call
+
+# V0.6.63: --selftest <report_file> — packaged-build smoke test (core/system/selftest.py).
+if "--selftest" in sys.argv:
+    from core.system.selftest import run_selftest
+
+    raise SystemExit(run_selftest(sys.argv))
 
 from utils.settings import (
     user_data_dir,  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
@@ -40,16 +42,18 @@ _APP_DIR = _P(__file__).resolve().parent
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 # Best-effort pycache cleanup — never crashes (ignore_errors=True + try/except)
+# V0.6.63: skipped when frozen (no __pycache__ in the PyInstaller bundle).
 _pycache_deleted = 0
-try:
-    for _pc in _APP_DIR.rglob("__pycache__"):
-        try:
-            shutil.rmtree(_pc, ignore_errors=True)
-            _pycache_deleted += 1
-        except Exception:
-            pass
-except Exception:
-    pass
+if not getattr(sys, "frozen", False):
+    try:
+        for _pc in _APP_DIR.rglob("__pycache__"):
+            try:
+                shutil.rmtree(_pc, ignore_errors=True)
+                _pycache_deleted += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
 if _pycache_deleted > 0:
     # V0.6.8 (audit B19): the stale "V18.2.37" version tag removed — the
     # label lied about the running version; "Elixir" is version-neutral.
@@ -300,6 +304,10 @@ if __name__ == "__main__":
         Bootstrap(user_data_dir(), app_dir=_P(__file__).resolve().parent).run()
     except Exception as _e:
         logger.debug("bootstrap skipped: %s: %s", type(_e).__name__, _e)
+
+    from utils.token_counter import seed_offline_encoding_cache  # V0.6.63: frozen offline cache
+
+    seed_offline_encoding_cache()
 
     from ui_qt.app import run
 
