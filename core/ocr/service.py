@@ -238,6 +238,18 @@ class OCRService:
         Returns the directory path (for use as poppler_path in pdf2image),
         or None if not found.
         """
+        # PACKAGING (build_installer.py): a poppler copy bundled with the
+        # installed app wins over everything else — the installer ships it
+        # in <install>\Elixir\_internal\tools\ so OCR works out of the box.
+        try:
+            from app_paths import find_bundled_tool
+
+            bundled = find_bundled_tool("pdftoppm.exe")
+            if bundled is not None:
+                return str(bundled.parent)
+        except Exception:
+            pass
+
         if platform.system() != "Windows":
             # On Linux/macOS poppler is normally on PATH — return "" (use default)
             return ""

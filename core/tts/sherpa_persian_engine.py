@@ -30,6 +30,7 @@ from pathlib import Path
 from urllib.request import urlretrieve
 
 from core.tts.engine import LogFn, TTSEngine
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,8 @@ _ESPEAK_NG_DATA_SUBDIR = "espeak-ng-data"
 
 def _default_model_dir() -> Path:
     """Where to cache downloaded sherpa-onnx models."""
-    return Path.home() / ".elixir" / "sherpa_persian_models"
+    # PACKAGING: %LOCALAPPDATA%\Elixir when frozen, ~/.elixir from source.
+    return user_data_dir() / "sherpa_persian_models"
 
 
 def _download_and_extract(url: str, dest_dir: Path, log) -> Path:

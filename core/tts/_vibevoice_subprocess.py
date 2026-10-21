@@ -23,6 +23,8 @@ import sys
 import traceback
 from pathlib import Path
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
 # V0.6.18 (W-d1): OFFLINE LOCK — set BEFORE any transformers / huggingface_hub
@@ -150,7 +152,7 @@ else:
 try:
     import datetime as _dt
 
-    _probe_log = Path.home() / ".elixir" / "gpu_probe.log"
+    _probe_log = user_data_dir() / "gpu_probe.log"
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     with open(_probe_log, "a", encoding="utf-8") as _f:
         _f.write(f"\n{'=' * 60}\n")

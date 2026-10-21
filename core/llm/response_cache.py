@@ -31,11 +31,14 @@ import json
 import logging
 import threading
 from collections import OrderedDict
-from pathlib import Path
+
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
-_CACHE_FILE = Path.home() / ".elixir" / "response_cache.jsonl"
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
+_CACHE_FILE = user_data_dir() / "response_cache.jsonl"
 
 
 class ResponseCache:

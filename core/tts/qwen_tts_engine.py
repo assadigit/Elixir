@@ -22,6 +22,7 @@ Settings:
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from core.tts._json_subprocess import PersistentJsonSubprocess
@@ -138,6 +139,19 @@ class QwenTtsEngine(TTSEngine):
         if self._model is not None:
             return  # subprocess already running
 
+        # PACKAGING (build_installer.py): the engine runs a Python helper
+        # script as ``[sys.executable, script]`` — in the installed build
+        # sys.executable is Elixir.exe, so spawning would relaunch the app.
+        # Qwen3-TTS also needs torch/transformers, which the installer does
+        # not bundle. Fail soft with a clear message instead (the TTS layer
+        # catches this and shows it in the app window).
+        if getattr(sys, "frozen", False):
+            raise RuntimeError(
+                "Qwen3-TTS is not available in the installed (packaged) version "
+                "of Elixir — it needs the Python source installation with torch. "
+                "Use the Kokoro or Piper voices instead."
+            )
+
         if not self._model_path:
             raise ValueError(
                 "Qwen3-TTS model path not set. Configure it in "
@@ -149,7 +163,6 @@ class QwenTtsEngine(TTSEngine):
             raise FileNotFoundError(f"Qwen3-TTS model folder not found: {model_dir}")
 
         import os
-        import sys
 
         script_path = str(Path(__file__).parent / "_qwen_tts_subprocess.py")
         self.log("  🔄 Starting Qwen3-TTS persistent subprocess...", "INFO")

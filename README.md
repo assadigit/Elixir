@@ -81,6 +81,28 @@ python main.py
 > ℹ️ Optional feature groups (TTS audio, EPUB/Anki formats, RAG, grounding)
 > are opt-in extras since V0.13 — see the header of `requirements.txt`.
 
+### 📦 Building the Windows installer (one command)
+
+On a Windows 10/11 machine with Python 3.12 and the repo checked out:
+
+```bash
+python build_installer.py
+```
+
+That single command packs the app with PyInstaller (onedir, for fast startup),
+verifies it (self-test → launch test → silent install test), and produces
+**`dist_installer\Elixir-Setup-<version>.exe`** — a double-click installer
+(Inno Setup, auto-installed via winget if missing). The builder also bundles
+the small external tools whose licences allow it (ffmpeg, poppler); model
+weights, Ollama and API keys are never bundled. If the packed app closes
+right after starting, run `python build_installer.py --debug` to see the
+crash text. Everything is logged to `build_installer.log`.
+
+The installed app keeps its settings in `%LOCALAPPDATA%\Elixir` (never writes
+inside the install folder); running `python main.py` from source keeps using
+`~/.elixir` exactly as before. A CI workflow (`.github/workflows/windows-installer.yml`)
+can build the same installer on GitHub's Windows runners.
+
 ---
 
 ## 🧠 How It Works

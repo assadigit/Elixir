@@ -270,10 +270,30 @@ class OutputKeywordsSection(QGroupBox):
 
         # Resolve the keywords file path. Stored in settings so the user
         # can point to a custom file; defaults to the shipped one.
+        import sys
         from pathlib import Path
 
-        project_root = Path(__file__).resolve().parents[3]
-        default_path = project_root / self._DEFAULT_KEYWORDS_FILE
+        if getattr(sys, "frozen", False):
+            # PACKAGING: the shipped default inside the install folder is
+            # READ-ONLY. Copy it once to the user-data dir (the copy the
+            # user actually edits); never write inside the install folder.
+            import shutil
+
+            from utils.settings import user_data_dir
+
+            default_path = user_data_dir() / "config" / "chapter_keywords.md"
+            if not default_path.exists():
+                default_path.parent.mkdir(parents=True, exist_ok=True)
+                from app_paths import resource_path
+
+                bundled = resource_path("config") / "chapter_keywords.md"
+                if bundled.exists():
+                    shutil.copy2(bundled, default_path)
+                else:
+                    self._write_default_file(default_path)
+        else:
+            project_root = Path(__file__).resolve().parents[3]
+            default_path = project_root / self._DEFAULT_KEYWORDS_FILE
         stored = controller.get_setting("segmentation.keywords_file", "")
         self._keywords_file = Path(stored) if stored else default_path
 

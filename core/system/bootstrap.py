@@ -146,7 +146,14 @@ class Bootstrap:
         crashes). Now it runs after all imports are complete, deleting stale
         .pyc files from previous versions so new code is always used after
         extracting a new zip.
+
+        PACKAGING: skipped in a frozen build — there are no .py/.pyc files
+        on disk, and walking the whole install folder wastes startup time.
         """
+        import sys as _sys
+
+        if getattr(_sys, "frozen", False):
+            return
         if not self.app_dir.exists():
             raise BootstrapError(f"app_dir does not exist: {self.app_dir}")
         deleted = 0

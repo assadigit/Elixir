@@ -15,7 +15,6 @@ resolves exactly as before.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from core.llm import ModelManager
@@ -345,7 +344,10 @@ class SummarizerInitMixin:
         Has filesystem side effects (mkdir for cache_dir + load_prompt for prompt bank).
         """
         # Cache for Map-Reduce mini-summaries (resumable)
-        self.cache_dir = Path.home() / ".elixir" / "summary_cache"
+        # PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen.
+        from utils.settings import user_data_dir
+
+        self.cache_dir = user_data_dir() / "summary_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # Map-Reduce parameters
         self.MAP_CHUNK_TOKENS = 4000

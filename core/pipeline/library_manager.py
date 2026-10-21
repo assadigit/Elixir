@@ -10,11 +10,14 @@ import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
+
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
-_LIBRARY_FILE = Path.home() / ".elixir" / "library.json"
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
+_LIBRARY_FILE = user_data_dir() / "library.json"
 
 
 class LibraryManager:

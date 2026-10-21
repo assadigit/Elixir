@@ -48,8 +48,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from pathlib import Path
 from typing import Any
+
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +272,7 @@ def get_embed_model(model_name: str = "") -> Any | None:
         # (Slash-separated repo ids like ``org/model`` would map to
         # ``org--model`` to stay a single directory, but the default model
         # has no slash so this is a no-op for it.)
-        _model_dir = Path.home() / ".elixir" / "models" / model_name.replace("/", "--")
+        _model_dir = user_data_dir() / "models" / model_name.replace("/", "--")
         _is_saved = (_model_dir / "config.json").exists() or (
             _model_dir / "model_config.json"
         ).exists()

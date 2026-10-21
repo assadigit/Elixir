@@ -17,6 +17,7 @@ All settings persist under the ``tts.*`` namespace via the existing
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -54,7 +55,16 @@ from ui_qt.settings.widgets import make_form
 logger = logging.getLogger(__name__)
 
 # Where cached voice sample WAVs are stored (generated on first preview).
-_SAMPLES_DIR = Path(__file__).resolve().parents[3] / "config" / "voice_samples"
+# PACKAGING (build_installer.py): when frozen (installed build), the samples
+# are USER data and live in %LOCALAPPDATA%\Elixir\config\voice_samples — the
+# install folder is read-only. Running from source keeps the historical
+# project-relative location, byte-for-byte unchanged.
+if getattr(sys, "frozen", False):
+    from utils.settings import user_data_dir
+
+    _SAMPLES_DIR = user_data_dir() / "config" / "voice_samples"
+else:
+    _SAMPLES_DIR = Path(__file__).resolve().parents[3] / "config" / "voice_samples"
 
 
 # ── Section 1: Voices ─────────────────────────────────────────────────────

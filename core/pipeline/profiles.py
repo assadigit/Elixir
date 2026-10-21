@@ -25,9 +25,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path.home() / ".elixir" / "profiles"
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
+_PROFILES_DIR = user_data_dir() / "profiles"
 
 
 def _ensure_dir() -> Path:

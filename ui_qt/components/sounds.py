@@ -20,7 +20,11 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QSoundEffect
 
-_SOUNDS_DIR = Path.home() / ".elixir" / "sounds"
+from utils.settings import user_data_dir
+
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir\sounds when frozen,
+# ~/.elixir/sounds from source (unchanged).
+_SOUNDS_DIR = user_data_dir() / "sounds"
 
 
 def _synth_chime(path: Path, notes=(523.25, 659.25, 783.99), note_ms=180, sr=44100) -> None:

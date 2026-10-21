@@ -779,7 +779,11 @@ class ThemeManager:
     """
 
     def __init__(self) -> None:
-        self.settings_file = Path.home() / ".elixir" / "ui_theme.json"
+        # PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen,
+        # ~/.elixir from source (unchanged).
+        from utils.settings import user_data_dir
+
+        self.settings_file = user_data_dir() / "ui_theme.json"
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)
         self._mode: str = self._load_mode()
         self._app: QApplication | None = None

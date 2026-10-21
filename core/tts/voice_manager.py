@@ -28,15 +28,28 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 from core.tts.engine import LogFn
 
-# Where reference voices are stored (project-relative).
-
 logger = logging.getLogger(__name__)
 
-_VOICES_DIR = Path(__file__).resolve().parents[3] / "config" / "tts_voices"
+
+# PACKAGING (build_installer.py): when frozen (installed build), reference
+# voices are USER data and live in %LOCALAPPDATA%\Elixir\config\tts_voices —
+# the install folder is read-only. Running from source keeps the historical
+# project-relative location (which resolves one level above the repo root),
+# byte-for-byte unchanged.
+def _default_voices_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        from utils.settings import user_data_dir
+
+        return user_data_dir() / "config" / "tts_voices"
+    return Path(__file__).resolve().parents[3] / "config" / "tts_voices"
+
+
+_VOICES_DIR = _default_voices_dir()
 
 
 # Preset voices shipped with the app. Each entry is (name, description).

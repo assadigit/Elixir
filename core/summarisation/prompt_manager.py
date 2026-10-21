@@ -24,6 +24,8 @@ import logging
 import re
 from pathlib import Path
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
 # V18.5 (Phase 3, Task 3.5): YAML front-matter pattern for prompt versioning.
@@ -50,8 +52,10 @@ _BUILTIN_CANDIDATES = [
     Path.cwd() / "prompts",  # current working directory
 ]
 _BUILTIN_DIR = next((p for p in _BUILTIN_CANDIDATES if p.exists()), _BUILTIN_CANDIDATES[0])
-# User-customised prompts live here (copied from builtins on first run)
-_USER_DIR = Path.home() / ".elixir" / "prompts"
+# User-customised prompts live here (copied from builtins on first run).
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir\prompts when frozen
+# (installed build), ~/.elixir/prompts from source — behavior unchanged.
+_USER_DIR = user_data_dir() / "prompts"
 
 _DEFAULT_PROMPT_NAME = "default"
 

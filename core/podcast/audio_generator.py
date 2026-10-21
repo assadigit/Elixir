@@ -14,7 +14,15 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
+
+try:
+    import soundfile as sf
+except ImportError:  # V0.6.63 (packaging bug fix): soundfile is an
+    # OPTIONAL [tts] extra — the module-level unguarded import made every
+    # core install crash on the Podcast tool (and on merely importing this
+    # module) with ModuleNotFoundError. Degrade gracefully instead: the
+    # audio-generation entry point raises a clear, actionable error.
+    sf = None
 
 from core.podcast.cancel_token import CancelToken
 from core.podcast.script_generator import ScriptLine, ScriptResult
@@ -24,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 SILENCE_MS = 150  # silence between same-host lines
 SAMPLE_RATE = 24000
+
+
+def _require_soundfile():
+    """Return the soundfile module, or raise a friendly error."""
+    if sf is None:
+        raise RuntimeError(
+            "Podcast audio needs the 'soundfile' package, which is an optional "
+            "extra. Install it with:  pip install soundfile   (or "
+            'pip install ".[tts]" for the full TTS stack)'
+        )
+    return sf
+
 
 # V11.63.0/V11.65.0: Conversational overlap settings
 # V11.65.0: reduced max overlap from 800ms to 300ms — large overlaps
@@ -236,6 +256,10 @@ def generate_podcast_audio(
     if total == 0:
         log("  ❌ No script lines to synthesize", "ERROR")
         return None
+
+    # V0.6.63: fail fast with the friendly message when the optional
+    # soundfile extra is missing (see the guarded import above).
+    _require_soundfile()
 
     log(f"  🎙️ Generating audio for {total} lines...", "INFO")
 

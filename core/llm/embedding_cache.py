@@ -59,10 +59,14 @@ from typing import Any
 
 import numpy as np
 
+from utils.settings import user_data_dir
+
 logger = logging.getLogger(__name__)
 
 # V18.2.24: disk persistence location -- matches response_cache.py convention.
-_CACHE_FILE = Path.home() / ".elixir" / "embed_cache.jsonl"
+# PACKAGING: user_data_dir() → %LOCALAPPDATA%\Elixir when frozen (installed
+# build), ~/.elixir from source — behavior unchanged for source runs.
+_CACHE_FILE = user_data_dir() / "embed_cache.jsonl"
 
 # V18.2.24: default FIFO cap. 5000 entries x ~1.5KB = ~7.5MB in memory.
 # Embeddings are deterministic given (text, model), so the same vector never

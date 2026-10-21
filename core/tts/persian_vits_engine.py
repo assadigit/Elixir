@@ -24,6 +24,7 @@ import logging
 from pathlib import Path
 
 from core.tts.engine import LogFn, TTSEngine
+from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,8 @@ PERSIAN_VITS_MODELS = [
 
 def _default_model_dir() -> Path:
     """Where to cache downloaded Persian VITS models."""
-    return Path.home() / ".elixir" / "persian_vits_models"
+    # PACKAGING: %LOCALAPPDATA%\Elixir when frozen, ~/.elixir from source.
+    return user_data_dir() / "persian_vits_models"
 
 
 class PersianVitsEngine(TTSEngine):
