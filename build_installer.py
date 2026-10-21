@@ -490,7 +490,15 @@ def write_spec(build_dir: Path, tools_dir: Path | None) -> Path:
     datas.append((str((build_dir / "_selftest_manifest.json").resolve()), "."))
 
     datas_repr = ",\n        ".join(f"({json.dumps(src)}, {json.dumps(dst)})" for src, dst in datas)
-    hidden = ",\n        ".join(json.dumps(h) for h in HIDDEN_IMPORTS)
+
+    # COLLECT-ALL-MODULES strategy: PyInstaller's static analysis misses
+    # modules that are loaded dynamically (importlib plugin loaders,
+    # subprocess helper scripts, optional dev CLIs). Bundling EVERY app
+    # module as a hidden import is cheap (pure Python) and makes the frozen
+    # app a complete drop-in for the source tree — the packed self-test
+    # then verifies exactly that.
+    all_hidden = sorted({*HIDDEN_IMPORTS, *walk_app_modules()})
+    hidden = ",\n        ".join(json.dumps(h) for h in all_hidden)
 
     icon_arg = f", icon={json.dumps(pyi(ICON_FILE))}" if (ROOT / ICON_FILE).is_file() else ""
 
