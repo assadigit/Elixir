@@ -696,16 +696,6 @@ def launch_test(exe: Path, label: str, timeout: int = 150) -> bool:
     return "RESULT=WINDOW_SHOWN" in out
 
 
-def _parse_importtime(stderr_file: Path) -> list[tuple[int, str]]:
-    imports: list[tuple[int, str]] = []
-    if stderr_file.exists():
-        for line in stderr_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            m = re.match(r"import time:\s+(\d+) \|\s+\d+ \| (\s*)(\S+)", line)
-            if m:
-                imports.append((int(m.group(1)), m.group(3)))
-    return imports
-
-
 def measure_startup(exe: Path, label: str, args: str = "", work_dir: str = "") -> str:
     """Measure double-click -> main-window-visible. Returns the ps result line."""
     out = _run_launch_ps(str(exe), args=args, work_dir=work_dir, timeout=180)
@@ -713,20 +703,40 @@ def measure_startup(exe: Path, label: str, args: str = "", work_dir: str = "") -
     return out
 
 
-def measure_startup_importtime() -> tuple[str, list[tuple[int, str]]]:
-    """`python -X importtime main.py` -> (result line, top-5 slowest imports)."""
+def profile_importtime() -> list[tuple[int, str]]:
+    """Run `python -X importtime main.py` for ~20 s, kill it once startup
+    imports are long done, and parse the top slowest imports (self-time).
+
+    Pure-Python capture (no PowerShell redirect quirks): the app is allowed
+    to reach its window; imports complete in the first seconds, then the
+    process is killed and the captured stderr is parsed.
+    """
     stderr_file = ROOT / BUILD_DIR / "importtime.log"
     stderr_file.unlink(missing_ok=True)
-    out = _run_launch_ps(
-        sys.executable,
-        args=f'-X importtime "{ENTRY_SCRIPT}"',
-        work_dir=str(ROOT),
-        timeout=180,
-        stderr_file=str(stderr_file),
-    )
-    log(f"[timing:source] {out}")
-    top = sorted(_parse_importtime(stderr_file), key=lambda t: -t[0])[:5]
-    return out, top
+    time.sleep(2)  # let the previous launch's single-instance lock settle
+    with open(stderr_file, "wb") as err:
+        proc = subprocess.Popen(
+            [sys.executable, "-X", "importtime", ENTRY_SCRIPT],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=err,
+        )
+        try:
+            proc.wait(timeout=25)  # if it exits early (crash), still parse
+        except subprocess.TimeoutExpired:
+            pass  # still running with its window up — imports are done
+        finally:
+            try:
+                proc.kill()
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+    imports: list[tuple[int, str]] = []
+    for line in stderr_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"import time:\s+(\d+) \|\s+\d+ \| (\s*)(\S+)", line)
+        if m:
+            imports.append((int(m.group(1)), m.group(3)))
+    return sorted(imports, key=lambda t: -t[0])[:5]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1130,10 +1140,13 @@ def main() -> None:
 
     # Phase 6 — source startup timing + import profile
     if not args.fast:
-        log("[timing] source run: python -X importtime main.py ...")
-        src_out, top_imports = measure_startup_importtime()
-        results["source_startup"] = src_out
-        results["top_imports"] = [f"{name} — {us / 1000:.0f} ms" for us, name in top_imports]
+        log("[timing] source run: python main.py (window poll) ...")
+        results["source_startup"] = measure_startup(
+            sys.executable, "source", args=ENTRY_SCRIPT, work_dir=str(ROOT)
+        )
+        log("[timing] source run: python -X importtime main.py (import profile) ...")
+        top_imports = profile_importtime()
+        results["top_imports"] = [f"{name}: {us / 1000:.0f} ms" for us, name in top_imports]
 
     # ── summary ───────────────────────────────────────────────────────────
     log("")
