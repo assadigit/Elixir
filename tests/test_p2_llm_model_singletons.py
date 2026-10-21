@@ -82,12 +82,12 @@ def _isolated_singletons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     )
     _FakeSentenceTransformer.instances.clear()
 
-    class _TmpHomePath(Path):
-        @classmethod
-        def home(cls) -> Path:
-            return tmp_path
-
-    monkeypatch.setattr(ms, "Path", _TmpHomePath)
+    # V0.6.63 (installer work): the model dir moved from ``Path.home()/.elixir``
+    # (resolved inside this module) to ``utils.settings.user_data_dir()`` —
+    # patch THAT for hermeticity (the resolution now lives in utils.settings;
+    # patching ms.Path no longer isolates anything and the module no longer
+    # imports Path). Same hermetic-home contract, new choke point.
+    monkeypatch.setattr(ms, "user_data_dir", lambda: tmp_path / ".elixir")
     monkeypatch.setattr(ms, "_FORCE_CPU_EMBEDDER", False)
     # Hermetic net guard: any test that DOESN'T patch safe_ollama_request
     # itself fails loudly instead of dialing localhost:11434.

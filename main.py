@@ -22,11 +22,9 @@ from utils.settings import (
 )
 
 # PACKAGING (build_installer.py): frozen-runtime preparation — when running
-# as the installed Elixir.exe it (a) prepends the bundled tools folder
-# (ffmpeg, poppler, …) to PATH so the app finds them in the bundle first,
-# and (b) replaces the None stdout/stderr a windowed PyInstaller build has
-# with real sinks so print()/tracebacks never crash silently. From source
-# it is a no-op and NOTHING below changes behavior.
+# as installed Elixir.exe, prepend the bundled tools (ffmpeg, poppler) to
+# PATH and give the windowed build real stdout/stderr sinks. From source
+# this is a no-op and NOTHING below changes behavior.
 try:
     from app_paths import setup_frozen_environment
 
@@ -46,10 +44,13 @@ _FROZEN = bool(getattr(sys, "frozen", False))
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 if not _FROZEN:
+    _deleted = 0
     for _pc in _APP_DIR.rglob("__pycache__"):
         shutil.rmtree(_pc, ignore_errors=True)
-
-# V13.33.1 note: PYTHONDONTWRITEBYTECODE above is the whole stale-pyc strategy.
+        _deleted += 1
+    if _deleted:
+        # V0.6.8 (audit B19): version-neutral label (was a lying "V18.2.37").
+        print(f"[Elixir] Deleted {_deleted} stale __pycache__ directory(ies).")
 
 # V5.4.4: Suppress HuggingFace symlink warning on Windows
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
