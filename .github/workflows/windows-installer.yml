@@ -27,6 +27,9 @@ jobs:
     name: Build Elixir-Setup-<version>.exe
     runs-on: windows-latest
     timeout-minutes: 150
+    env:
+      # UTF-8 stdout/stderr even on the cp1252 console (Windows runner)
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 

@@ -113,7 +113,7 @@ INSTALLER_BASENAME = "Elixir-Setup-{version}"
 LOG_FILE = "build_installer.log"
 SELFTEST_REPORT = "selftest_report.txt"
 
-# How Inno Setup is auto-installed when missing (winget → choco → direct).
+# How Inno Setup is auto-installed when missing (winget -> choco -> direct).
 INNO_SETUP_WINGET_ID = "JRSoftware.InnoSetup"
 INNO_SETUP_CHOCO_ID = "innosetup"
 INNO_SETUP_DIRECT_URL = "https://jrsoftware.org/download.php/is.exe"
@@ -127,7 +127,13 @@ LOG_LINES: list[str] = []
 
 
 def log(msg: str = "") -> None:
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        # cp1252 console (Windows) can't encode some chars (arrows, check
+        # marks) — degrade to ASCII instead of crashing the build over a
+        # log line.
+        print(msg.encode("ascii", "backslashreplace").decode("ascii"), flush=True)
     LOG_LINES.append(msg)
     try:
         (ROOT / LOG_FILE).write_text("\n".join(LOG_LINES) + "\n", encoding="utf-8")
@@ -193,7 +199,7 @@ def ensure_build_deps() -> None:
         if importlib_util_find_spec(mod) is None:
             missing.append(mod)
     if missing:
-        pkgs = {"PyInstaller": "pyinstaller", "PIL": "pillow"}  # module → pip name
+        pkgs = {"PyInstaller": "pyinstaller", "PIL": "pillow"}  # module -> pip name
         log(f"[preflight] installing missing build deps: {missing}")
         run(
             [
@@ -251,10 +257,10 @@ def generate_icon(out_path: Path) -> None:
     S = 1024  # master size
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
-    # ── rounded-square tile with a vertical teal→emerald gradient ──────────
+    # ── rounded-square tile with a vertical teal->emerald gradient ──────────
     top = Image.new("RGBA", (S, S), (13, 148, 136, 255))  # teal-600
     bottom = Image.new("RGBA", (S, S), (6, 78, 59, 255))  # emerald-900
-    grad = Image.linear_gradient("L").resize((S, S))  # 0 top → 255 bottom
+    grad = Image.linear_gradient("L").resize((S, S))  # 0 top -> 255 bottom
     tile = Image.composite(bottom, top, grad)
     mask = Image.new("L", (S, S), 0)
     d = ImageDraw.Draw(mask)
@@ -458,7 +464,7 @@ def write_manifest(build_dir: Path) -> Path:
     manifest = build_dir / "_selftest_manifest.json"
     modules = walk_app_modules()
     manifest.write_text(json.dumps({"modules": modules}, indent=1), encoding="utf-8")
-    log(f"[manifest] {len(modules)} modules → {manifest}")
+    log(f"[manifest] {len(modules)} modules -> {manifest}")
     return manifest
 
 
@@ -693,14 +699,14 @@ def _parse_importtime(stderr_file: Path) -> list[tuple[int, str]]:
 
 
 def measure_startup(exe: Path, label: str, args: str = "", work_dir: str = "") -> str:
-    """Measure double-click → main-window-visible. Returns the ps result line."""
+    """Measure double-click -> main-window-visible. Returns the ps result line."""
     out = _run_launch_ps(str(exe), args=args, work_dir=work_dir, timeout=180)
     log(f"[timing:{label}] {out}")
     return out
 
 
 def measure_startup_importtime() -> tuple[str, list[tuple[int, str]]]:
-    """`python -X importtime main.py` → (result line, top-5 slowest imports)."""
+    """`python -X importtime main.py` -> (result line, top-5 slowest imports)."""
     stderr_file = ROOT / BUILD_DIR / "importtime.log"
     stderr_file.unlink(missing_ok=True)
     out = _run_launch_ps(
@@ -898,12 +904,12 @@ def build_installer(version: str, tool_licenses: list[str]) -> Path:
         iss = iss.replace("SetupIconFile=\n", "")
     iss_path = ROOT / BUILD_DIR / "Elixir.iss"
     iss_path.write_text(iss, encoding="utf-8")
-    log(f"[inno] script → {iss_path}")
+    log(f"[inno] script -> {iss_path}")
     run([iscc, str(iss_path)], timeout=3600)
     out = dist_installer / f"{INSTALLER_BASENAME.format(version=version)}.exe"
     if not out.is_file():
         die(f"Inno Setup finished but {out} was not produced")
-    log(f"[inno] OK → {out} ({out.stat().st_size / 1e6:.1f} MB)")
+    log(f"[inno] OK -> {out} ({out.stat().st_size / 1e6:.1f} MB)")
     return out
 
 
