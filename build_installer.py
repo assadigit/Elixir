@@ -838,6 +838,22 @@ var
 begin
   Result := True;
 
+  // INTERACTIVE-ONLY PROMPTS: WizardSilent() is True for /SILENT and
+  // /VERYSILENT installs. A plain MsgBox() is NOT suppressed by
+  // /SUPPRESSMSGBOXES and would block a silent install forever — so the
+  // prompts and tool checks are skipped entirely in silent mode.
+  if WizardSilent() then
+  begin
+    UserConfigDir := ExpandConstant('{{localappdata}}') + '\\{app}';
+    if not DirExists(UserConfigDir) then
+    begin
+      CreateDir(UserConfigDir);
+      CreateDir(UserConfigDir + '\\prompts');
+      CreateDir(UserConfigDir + '\\crash_reports');
+    end;
+    exit;
+  end;
+
   // ── Ollama (required for local LLM summarisation) ──────────────────────
   OllamaFound := RegKeyExists(HKLM, 'SOFTWARE\\Ollama') or
                  RegKeyExists(HKCU, 'SOFTWARE\\Ollama');
@@ -931,7 +947,18 @@ def silent_install_test(installer: Path, version: str) -> dict:
     results: dict[str, object] = {}
     kill_running_app()
     log(f"[install-test] running {installer.name} /VERYSILENT ...")
-    run([str(installer), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=1200)
+    try:
+        run([str(installer), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=900)
+    except subprocess.TimeoutExpired:
+        # e.g. a [Code] MsgBox blocking a silent install — kill the stuck
+        # installer and fail with an actionable message.
+        subprocess.run(["taskkill", "/F", "/IM", installer.name], capture_output=True)
+        die(
+            "silent install did not finish within 15 minutes — most likely a "
+            "message box in the Inno [Code] section blocking it (custom "
+            "MsgBox calls are NOT suppressed by /SUPPRESSMSGBOXES; guard "
+            "them with WizardSilent())"
+        )
 
     localapp = os.environ.get("LOCALAPPDATA", "")
     installed = Path(localapp) / "Programs" / APP_NAME / f"{APP_NAME}.exe"
