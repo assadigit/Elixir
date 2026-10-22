@@ -65,11 +65,12 @@ which, inside a PyInstaller build, is `Elixir.exe` itself.
    `chapter_keywords.md`) resolve via `resource_path()`. A frozen install
    never writes inside its install folder.
 
-2. **THE SELF-TEST (`core/system/selftest.py` + the `main.py` hook):**
+2. **THE SELF-TEST (`utils/selftest.py` + the `main.py` hook):**
    `Elixir.exe --selftest <report>` imports EVERY module of the app
-   (package walk over `core`/`utils`/`ui_qt` + `controller`, with a
-   walk-error hook so a broken package `__init__` is recorded instead of
-   silently skipping its subtree), loads every bundled data file
+   (package walk over `core`/`utils`/`ui_qt` + `controller` +
+   `app_paths`, with a walk-error hook so a broken package `__init__`
+   is recorded instead of silently
+   skipping its subtree), loads every bundled data file
    (prompts tree, fonts, icons, lexicon, patterns, VERSION, the tiktoken
    encoding), imports the critical third-party set, and writes **one
    line per failure** — exit code 0 only when nothing failed. It runs
@@ -127,31 +128,39 @@ module list against the frozen bundle's PYZ found **17 modules missing**:
 while the import-walk stays green) plus `async_provider`,
 `conversion_context`, the six `core.podcast.script_*` modules,
 `quarantine_analytics`, and `translation.glossary_analytics`. The
-remaining 5 are excluded **by design**: the three `*.cli` entry points
-and the two TTS subprocess scripts (frozen-guarded off). The Linux
-dry-run bundle now matches the source walk exactly modulo those 5.
+remaining 5 (the three `*.cli` entry points and the two TTS subprocess
+scripts — harmless to import, they only act when run as scripts) are
+covered too: the shipped **collect-all** strategy (commit `025bbbd`)
+bundles EVERY app module the self-test walks as a hidden import, so the
+definitive Windows bundle matches the source walk exactly — the packed
+self-test imports all 376 and passes.
 
 ### Test path
 
-- **Source-mode selftest:** 375 modules imported, 73 data files loaded,
-  20 third-party imports — 0 failures (Python 3.12, headless).
-- **Frozen Linux dry-run** (same spec/args as Windows, minus Inno):
-  370 modules / 73 data files / 20 third-party — **0 failures**;
-  launch test green (windowed app stayed alive 20s, offscreen);
-  bundle module-gap = exactly the 5 by-design exclusions.
+- **Source-mode selftest:** 376 modules imported (the walk includes
+  `app_paths`), 73 data files loaded, 20 third-party imports —
+  0 failures (Python 3.12, headless).
+- **The definitive Windows build from HEAD** (the shipped artifact,
+  built and verified on real `windows-latest` runners): packed
+  selftest — all 376 modules + data files, **0 failures**; packed
+  launch test green; silent install → installed-app selftest →
+  installed launch → silent uninstall, **all pass**. Startup: 231 ms
+  to the main window on first launch (244 ms warm; `python main.py`
+  from source: 291 ms).
 - **Full suite vs pristine HEAD in the identical environment:**
-  57 local failures with this change vs 74 at HEAD — **0 new failures,
-  20 fixed**; every remaining failure was verified failing at HEAD too
+  56 local failures with this change vs 75 at HEAD — **0 new failures,
+  19 fixed**; every remaining failure was verified failing at HEAD too
   (prompt-manifest drift shipped by V0.6.62, TTS/ffmpeg/kokoro
   environment-dependent e2e tests, the eval gate, encoding pins).
   The 42 `test_p2_llm_model_singletons` errors introduced mid-session
   (a lint autofix removed the monkeypatched `Path` symbol) were fixed
-  by restoring the module-level import with a frozen-aware dual path.
+  by adapting the hermetic fixture to the `user_data_dir` choke point
+  (it now patches `ms.user_data_dir`).
 - **Lint:** clean under the pinned `ruff==0.16.8` for every file this
   release touches (`ruff check` + `ruff format --check`). Six
   pre-existing findings in the V0.6.5x transcribe-sprint files (2 check,
   4 format) are documented, not touched — not this release's family.
-- **main.py stays thin:** 313 lines (the `< 320` de-monolithization pin
+- **main.py stays thin:** 319 lines (the `< 320` de-monolithization pin
   holds; the tiktoken seeding lives in `utils/token_counter.py`).
 
 ## V0.6.62 — "and now put it back in the video": the subtitle export (SRT + WebVTT) — the engine's timestamped segments become the one deliverable video tools actually consume — `<video-name>.srt` (VLC, every editor, YouTube) and `.vtt` (HTML5/web players) written beside the transcript, with a rich-text completion dialog (a proper files table: icon + bold name + per-file description, the subtitle rows carrying the cue count) — 62 new pins / 556 P affected sweep / 0 regressions
