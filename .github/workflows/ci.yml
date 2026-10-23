@@ -127,10 +127,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          # pymupdf is TEST-ONLY (V0.15): the pdf suites build real in-memory
-          # PDFs with fitz to exercise the real extraction code. The app keeps
-          # it optional — requirements.txt is intentionally unchanged.
+          # V0.6.64 (CI-green campaign): install the PINNED core closure from
+          # requirements.lock instead of the unpinned requirements.txt — the
+          # same drift hazard the recovery recipe documents (an unpinned
+          # fresh install resolves mammoth 1.13.0 / markitdown 0.1.9 /
+          # PySide6 6.12.0 and drifted the CI pytest job into 54 failures +
+          # 25 errors that were never code regressions). The lock is the
+          # verified environment.
+          pip install -r requirements.lock
+          # Test-only tools (NOT app dependencies): the pytest stack +
+          # pymupdf (V0.15: the pdf suites build real in-memory PDFs with
+          # fitz to exercise the real extraction code. The app keeps it
+          # optional — requirements.txt is intentionally unchanged).
           pip install pytest pytest-cov pytest-asyncio "hypothesis>=6.100.0" "pymupdf>=1.24.0"
 
       - name: Run pytest with coverage

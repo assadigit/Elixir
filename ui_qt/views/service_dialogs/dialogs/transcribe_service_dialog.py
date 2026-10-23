@@ -21,6 +21,8 @@ import logging
 import time
 from pathlib import Path
 
+from PySide6.QtCore import Qt, QTimer
+
 # V13.20.1: Master fix — import ALL QtWidgets so subagent edits that use
 # any widget class (QTableWidget, QSpinBox, QRadioButton, QCheckBox, etc.)
 # never hit NameError. This is the root-cause fix for the recurring
@@ -32,17 +34,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Qt, QTimer
 
 from controller import Controller
 
 # V18.20.4.12 (W-a10): single source of truth for the rig-tuned fallback
 # model (core.llm.model_taxonomy is a leaf module — stdlib-only, no cycle).
-from core.llm.model_taxonomy import RIG_FALLBACK_MODEL
+from core.system.timeouts import UI_PROBE_TIMEOUT_S
+
 # V0.6.56: the live-log heartbeat cadence (core.transcribe.pipeline_log
 # is a Qt-free stdlib-only leaf — no import cycle).
 from core.transcribe.pipeline_log import HEARTBEAT_INTERVAL_MS
-from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
@@ -419,9 +420,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
             s = Settings()
             s.set("transcribe.transcribe_cpp_model", path)
-            self.status_label.setText(
-                f"✅ Model set: {Path(path).name} (saved to settings)"
-            )
+            self.status_label.setText(f"✅ Model set: {Path(path).name} (saved to settings)")
             self._refresh_cpp_models()
 
     def _on_cpp_model_selected(self, index: int):
@@ -437,9 +436,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
             s = Settings()
             s.set("transcribe.transcribe_cpp_model", str(path))
-            self.status_label.setText(
-                f"✅ Model set: {Path(path).name} (saved to settings)"
-            )
+            self.status_label.setText(f"✅ Model set: {Path(path).name} (saved to settings)")
         except Exception:
             self.status_label.setText(
                 f"⚠️ Model selected: {Path(path).name} (could not save setting)"
@@ -559,9 +556,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         if not isinstance(result, dict):
             self._on_cpp_models_scan_failed("unexpected scan result")
             return
-        items = [
-            (str(d), str(p), str(t)) for d, p, t in (result.get("items") or [])
-        ]
+        items = [(str(d), str(p), str(t)) for d, p, t in (result.get("items") or [])]
         current = result.get("current")
         self.cpp_model_combo.blockSignals(True)
         self.cpp_model_combo.clear()
@@ -647,9 +642,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             self._refresh_cpp_models()
         except Exception:
             logger.debug("best-effort combo refresh failed", exc_info=True)
-        self.status_label.setText(
-            f"✅ Model downloaded: {Path(path).name} (selected)"
-        )
+        self.status_label.setText(f"✅ Model downloaded: {Path(path).name} (selected)")
         try:
             self._append_live_log(f"⬇ Model downloaded: {Path(path).name} (selected)")
         except Exception:
@@ -665,7 +658,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
         when it's a path, not a known size name).
         """
         folder = QFileDialog.getExistingDirectory(
-            self, "Pick Whisper model folder", "",
+            self,
+            "Pick Whisper model folder",
+            "",
             QFileDialog.Option.ShowDirsOnly,
         )
         if folder:
@@ -843,9 +838,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
 
         level = result.get("level", "info")
         if level == "slow-cpu-fallback-suspected":
-            QMessageBox.warning(
-                self, "⚠️ LLM Responds — but VERY Slowly", result.get("message", "")
-            )
+            QMessageBox.warning(self, "⚠️ LLM Responds — but VERY Slowly", result.get("message", ""))
         elif not result.get("ok"):
             QMessageBox.critical(self, "❌ LLM Unreachable", result.get("message", ""))
         else:
@@ -903,9 +896,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             llm_model=self.llm_combo.currentText().strip(),
             save_raw=self.cb_raw.isChecked(),
             save_summary=self.cb_summary.isChecked(),
-            save_tutorial=self.cb_tutorial.isChecked()
-            if hasattr(self, "cb_tutorial")
-            else False,
+            save_tutorial=self.cb_tutorial.isChecked() if hasattr(self, "cb_tutorial") else False,
             save_srt=self.cb_srt.isChecked() if hasattr(self, "cb_srt") else False,
             save_vtt=self.cb_vtt.isChecked() if hasattr(self, "cb_vtt") else False,
         ):
@@ -929,7 +920,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
             "llm_model": self.llm_combo.currentText().strip(),
             "save_raw": self.cb_raw.isChecked(),
             "save_summary": self.cb_summary.isChecked(),
-            "save_tutorial": self.cb_tutorial.isChecked() if hasattr(self, "cb_tutorial") else False,
+            "save_tutorial": self.cb_tutorial.isChecked()
+            if hasattr(self, "cb_tutorial")
+            else False,
             "save_srt": self.cb_srt.isChecked() if hasattr(self, "cb_srt") else False,
             "save_vtt": self.cb_vtt.isChecked() if hasattr(self, "cb_vtt") else False,
         }
@@ -1037,7 +1030,10 @@ class TranscribeServiceDialog(BaseServiceDialog):
         # used for the saved raw-transcript file).
         _extracted_text = transcribe_result.get("text", "")
         _extracted_segs = len(transcribe_result.get("segments", []))
-        self._emit_progress(-1, f"[INFO] Extracted {len(_extracted_text)} chars, {_extracted_segs} segments, language={transcribe_result.get('language', 'None')}")
+        self._emit_progress(
+            -1,
+            f"[INFO] Extracted {len(_extracted_text)} chars, {_extracted_segs} segments, language={transcribe_result.get('language', 'None')}",
+        )
 
         if "error" in transcribe_result:
             results["error"] = transcribe_result["error"]
@@ -1081,18 +1077,13 @@ class TranscribeServiceDialog(BaseServiceDialog):
                     self._emit_progress(-1, f"⚠️ {sub['error']}")
                 else:
                     _sub_names = ", ".join(
-                        Path(p).name
-                        for p in (sub.get("srt_path"), sub.get("vtt_path"))
-                        if p
+                        Path(p).name for p in (sub.get("srt_path"), sub.get("vtt_path")) if p
                     )
-                    self._emit_progress(
-                        -1, f"[INFO] Subtitles: {sub['cues']} cues → {_sub_names}"
-                    )
+                    self._emit_progress(-1, f"[INFO] Subtitles: {sub['cues']} cues → {_sub_names}")
             else:
                 self._emit_progress(
                     -1,
-                    "⚠️ No timestamped segments in the engine output — "
-                    "subtitles skipped",
+                    "⚠️ No timestamped segments in the engine output — subtitles skipped",
                 )
 
         # Step 4+5: the LLM outputs (V0.6.55 redesign of the old
@@ -1319,13 +1310,9 @@ class TranscribeServiceDialog(BaseServiceDialog):
             rows.append(("📄", results["raw_path"], "Transcript with timestamps"))
         _cues = results.get("subtitle_cues") or 0
         if results.get("srt_path"):
-            rows.append(
-                ("🎬", results["srt_path"], f"Subtitles — SRT · {_cues} cues")
-            )
+            rows.append(("🎬", results["srt_path"], f"Subtitles — SRT · {_cues} cues"))
         if results.get("vtt_path"):
-            rows.append(
-                ("🎬", results["vtt_path"], f"Subtitles — WebVTT · {_cues} cues")
-            )
+            rows.append(("🎬", results["vtt_path"], f"Subtitles — WebVTT · {_cues} cues"))
         if results.get("summary_path"):
             rows.append(("📝", results["summary_path"], "Summary (core concepts + takeaways)"))
         if results.get("tutorial_path"):
@@ -1342,12 +1329,12 @@ class TranscribeServiceDialog(BaseServiceDialog):
             else "<i>(no output files were written)</i>"
         )
         error_html = (
-            f'<p><b>⚠️ Summary error:</b> {html.escape(str(results["error"]))}</p>'
+            f"<p><b>⚠️ Summary error:</b> {html.escape(str(results['error']))}</p>"
             if results.get("error")
             else ""
         )
         sub_error_html = (
-            f'<p><b>⚠️ Subtitles:</b> {html.escape(str(results["subtitle_error"]))}</p>'
+            f"<p><b>⚠️ Subtitles:</b> {html.escape(str(results['subtitle_error']))}</p>"
             if results.get("subtitle_error")
             else ""
         )

@@ -206,9 +206,7 @@ class ModelDownloadDialog(QDialog):
                 f"{spec.filename} is already in the destination folder:\n"
                 f"{target}\n\nUse it, or re-download it?"
             )
-            use_btn = box.addButton(
-                "Use the existing file", QMessageBox.ButtonRole.AcceptRole
-            )
+            use_btn = box.addButton("Use the existing file", QMessageBox.ButtonRole.AcceptRole)
             redl_btn = box.addButton("Re-download", QMessageBox.ButtonRole.ResetRole)
             box.addButton(QMessageBox.StandardButton.Cancel)
             box.exec()

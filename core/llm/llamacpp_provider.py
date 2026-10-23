@@ -929,8 +929,7 @@ def probe_llamacpp_generation(
             {
                 "role": "user",
                 "content": (
-                    "Reply with one short sentence about the sky. "
-                    "Keep it under twenty words."
+                    "Reply with one short sentence about the sky. Keep it under twenty words."
                 ),
             }
         ],
@@ -956,9 +955,7 @@ def probe_llamacpp_generation(
             elapsed_s=0.0,
             tps=0.0,
             verdict="unreachable",
-            message=build_generation_probe_message(
-                "unreachable", 0.0, _model, base_url, detail
-            ),
+            message=build_generation_probe_message("unreachable", 0.0, _model, base_url, detail),
         )
     elapsed = max(0.0, _monotonic() - t0)
     final_chars = len(text or "")

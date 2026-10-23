@@ -43,9 +43,9 @@ def _fmt_mmss(seconds: float) -> str:
 
 def _fmt_size(num_bytes: int) -> str:
     if num_bytes >= 1024 * 1024 * 1024:
-        return f"{num_bytes / (1024 ** 3):.1f} GB"
+        return f"{num_bytes / (1024**3):.1f} GB"
     if num_bytes >= 1024 * 1024:
-        return f"{num_bytes / (1024 ** 2):.1f} MB"
+        return f"{num_bytes / (1024**2):.1f} MB"
     if num_bytes >= 1024:
         return f"{num_bytes / 1024:.1f} KB"
     return f"{num_bytes} B"
@@ -81,10 +81,7 @@ def format_heartbeat_line(
     last = (last_msg or "").strip().replace("\n", " ")
     if len(last) > 80:
         last = last[:77] + "..."
-    line = (
-        f"⏱ still working — {_fmt_mmss(elapsed)} elapsed, "
-        f"last pipeline update {int(gap)}s ago"
-    )
+    line = f"⏱ still working — {_fmt_mmss(elapsed)} elapsed, last pipeline update {int(gap)}s ago"
     if last:
         line += f": {last}"
     if gap >= SILENCE_HINT_AFTER_S:

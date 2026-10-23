@@ -112,7 +112,9 @@ class _FakeProc:
     TimeoutExpired (the poll loop keeps polling) until kill() is called.
     """
 
-    def __init__(self, stdout: bytes, stderr: bytes = b"", returncode: int = 0, *, hangs: bool = False):
+    def __init__(
+        self, stdout: bytes, stderr: bytes = b"", returncode: int = 0, *, hangs: bool = False
+    ):
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
         self.returncode = returncode
@@ -178,8 +180,8 @@ class TestStreamCliOutput:
         _, _, _, _, _, progressed = _stream(_FakeProc(stdout))
         pcts = sorted(p for p, _ in progressed)
         assert 20 in pcts
-        assert 55 in pcts          # 20 + int(50 * 0.7)
-        assert 90 in pcts          # 20 + int(100 * 0.7)
+        assert 55 in pcts  # 20 + int(50 * 0.7)
+        assert 90 in pcts  # 20 + int(100 * 0.7)
         assert all(20 <= p <= 90 for p, _ in progressed)
 
     def test_progress_callback_percent_lines_map_too(self):
@@ -252,8 +254,7 @@ class TestEngineWiring:
             and c.func.value.id == "subprocess"
         ]
         assert not run_calls, (
-            "capture_output=True traps stdout for the whole run — the "
-            "10-minute silent freeze"
+            "capture_output=True traps stdout for the whole run — the 10-minute silent freeze"
         )
 
     def test_timeout_error_string_contract_survives(self):
@@ -273,7 +274,7 @@ class TestHeartbeatLine:
         now = 1000.0
         line = format_heartbeat_line(
             run_started_ts=now - 195.0,  # 3m15s in
-            last_update_ts=now - 45.0,   # 45s silent
+            last_update_ts=now - 45.0,  # 45s silent
             now_ts=now,
             last_msg="🎙️ Transcribing with transcribe.cpp (Vulkan GPU)...",
         )

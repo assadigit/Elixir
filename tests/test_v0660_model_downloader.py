@@ -81,9 +81,7 @@ _DIALOG = (
     / "dialogs"
     / "transcribe_service_dialog.py"
 )
-_DL_DIALOG = (
-    _project_root / "ui_qt" / "views" / "service_dialogs" / "model_download_dialog.py"
-)
+_DL_DIALOG = _project_root / "ui_qt" / "views" / "service_dialogs" / "model_download_dialog.py"
 _CATALOG_LEAF = _project_root / "core" / "transcribe" / "model_catalog.py"
 _DOWNLOADER_LEAF = _project_root / "core" / "transcribe" / "model_downloader.py"
 
@@ -136,11 +134,7 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
             and not getattr(self.server, "ignore_if_range", False)  # type: ignore[attr-defined]
         ):
             range_ok = False  # the remote changed: full-body restart
-        if (
-            range_ok
-            and rng.startswith("bytes=")
-            and rng.endswith("-")
-        ):
+        if range_ok and rng.startswith("bytes=") and rng.endswith("-"):
             try:
                 start = int(rng[6:-1])
             except ValueError:
@@ -156,9 +150,7 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
         declared = len(body) + getattr(self.server, "lie_extra", 0)  # type: ignore[attr-defined]
         if start > 0:
             self.send_response(206)
-            self.send_header(
-                "Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}"
-            )
+            self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
         else:
             self.send_response(200)
         self.send_header("Accept-Ranges", "bytes")
@@ -183,7 +175,9 @@ class _Server:
         self.httpd.files = files or {}
         self.httpd.requests = []
         self.httpd.ignore_range = False
-        self.httpd.ignore_if_range = False  # V0.6.61: the xet-CDN mode (serves 206 despite a stale If-Range -- probed live)
+        self.httpd.ignore_if_range = (
+            False  # V0.6.61: the xet-CDN mode (serves 206 despite a stale If-Range -- probed live)
+        )
         self.httpd.lie_extra = 0
         self.httpd.etag = '"etag-v1"'
         self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -433,9 +427,7 @@ class TestDownload:
         assert first["cancelled"] is True
         srv.requests.clear()
         # 2. resume: the server must see the Range header, answer 206
-        second = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        second = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert second["ok"] is True
         assert second["resumed_from"] == 256 * 1024
         gets = [r for r in srv.requests if r["method"] == "GET"]
@@ -483,9 +475,7 @@ class TestDownload:
         srv.requests.clear()
         # 3. resume: If-Range mismatches -> the server answers a
         # full-body 200 -> a clean restart, NEVER a mixed file
-        second = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        second = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert second["ok"] is True
         assert second["resumed_from"] == 0
         final = (dest / "model.gguf").read_bytes()
@@ -501,9 +491,7 @@ class TestDownload:
         dest.mkdir()
         (dest / "model.gguf.part").write_bytes(data[:100_000])  # no sidecar
         srv.requests.clear()
-        res = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is True
         assert res["resumed_from"] == 0
         gets = [r for r in srv.requests if r["method"] == "GET"]
@@ -541,9 +529,7 @@ class TestDownload:
         # is what triggers the 416)
         tiny = b"GGUF" + b"\x00" * 96  # 100 bytes
         srv.httpd.files["model.gguf"] = tiny
-        res = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is True
         assert res["resumed_from"] == 0
         assert (dest / "model.gguf").read_bytes() == tiny
@@ -560,9 +546,7 @@ class TestDownload:
         (dest / "model.gguf.part").write_bytes(data)
         (dest / "model.gguf.part.etag").write_text('"etag-v1"', encoding="utf-8")
         srv.requests.clear()
-        res = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is True
         assert res.get("recovered") == "already-complete"
         assert res["size"] == len(data)
@@ -586,9 +570,7 @@ class TestDownload:
         (dest / "model.gguf.part.etag").write_text('"etag-v1"', encoding="utf-8")
         srv.httpd.ignore_range = True
         srv.requests.clear()
-        res = md.download(
-            srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), dest, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is True
         assert res["resumed_from"] == 0  # a 200 means: no resume happened
         gets = [r for r in srv.requests if r["method"] == "GET"]
@@ -637,17 +619,13 @@ class TestDownload:
         def _bad_cb(p: dict) -> None:
             raise RuntimeError("a broken UI hook must not corrupt the file")
 
-        res = md.download(
-            srv.url("model.gguf"), tmp_path, on_progress=_bad_cb, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), tmp_path, on_progress=_bad_cb, timeout=10)
         assert res["ok"] is True
 
     def test_declared_size_lie_is_caught_and_part_kept_for_resume(self, srv, tmp_path):
         _make_remote_whisper(srv, "model.gguf", 600_000)
         srv.httpd.lie_extra = 5000  # server declares 5000 bytes more than it sends
-        res = md.download(
-            srv.url("model.gguf"), tmp_path, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), tmp_path, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is False
         assert res["cancelled"] is False
         # the honest error + the .part kept for a later resume
@@ -810,21 +788,40 @@ class TestFormatHelpers:
 
     def test_model_tooltip_names_the_en_variant(self):
         info = {
-            "path": "/x/whisper-medium.en.gguf", "name": "whisper-medium.en.gguf",
-            "size_bytes": 10, "size_text": "10 B", "family": "medium",
-            "quant": None, "language": "en", "legacy_ggml": False,
-            "is_gguf": True, "verified": True, "architecture": "whisper",
-            "meta_name": None, "size_label": None, "gguf_version": None,
+            "path": "/x/whisper-medium.en.gguf",
+            "name": "whisper-medium.en.gguf",
+            "size_bytes": 10,
+            "size_text": "10 B",
+            "family": "medium",
+            "quant": None,
+            "language": "en",
+            "legacy_ggml": False,
+            "is_gguf": True,
+            "verified": True,
+            "architecture": "whisper",
+            "meta_name": None,
+            "size_label": None,
+            "gguf_version": None,
         }
         tip = mc.format_model_tooltip(info)
         assert "Language: en" in tip
 
     def test_model_tooltip_is_honest_about_unparsable_headers(self):
         info = {
-            "path": "/x/y.gguf", "name": "y.gguf", "size_bytes": 5, "size_text": "5 B",
-            "family": None, "quant": None, "language": None, "legacy_ggml": False,
-            "is_gguf": True, "verified": False, "architecture": None,
-            "meta_name": None, "size_label": None, "gguf_version": None,
+            "path": "/x/y.gguf",
+            "name": "y.gguf",
+            "size_bytes": 5,
+            "size_text": "5 B",
+            "family": None,
+            "quant": None,
+            "language": None,
+            "legacy_ggml": False,
+            "is_gguf": True,
+            "verified": False,
+            "architecture": None,
+            "meta_name": None,
+            "size_label": None,
+            "gguf_version": None,
         }
         tip = mc.format_model_tooltip(info)
         assert "not parsable" in tip
@@ -881,9 +878,7 @@ class TestTranscribeDialogIntegration:
         assert "cpp_model_download_btn" in body
         assert "_open_model_downloader" in body  # the .clicked.connect target
 
-    def test_open_model_downloader_launches_the_dialog_with_the_callback(
-        self, dialog_tree
-    ):
+    def test_open_model_downloader_launches_the_dialog_with_the_callback(self, dialog_tree):
         handler = ast.unparse(_method(dialog_tree, "_open_model_downloader"))
         assert "ModelDownloadDialog" in handler
         assert "on_installed" in handler
@@ -927,9 +922,7 @@ class TestModelDownloadDialogIntegration:
         return ast.parse(src)  # raises on a syntax error
 
     def test_class_shape_and_title(self, tree, src):
-        classes = [
-            n.name for n in tree.body if isinstance(n, ast.ClassDef)
-        ]
+        classes = [n.name for n in tree.body if isinstance(n, ast.ClassDef)]
         assert "ModelDownloadDialog" in classes
         assert "QDialog" in src
         assert "Whisper" in src  # the window title names the model family
@@ -951,7 +944,7 @@ class TestModelDownloadDialogIntegration:
     def test_on_installed_receives_the_downloaded_path(self, tree, src):
         assert "on_installed" in src
         # the success path hands the path to the callback
-        assert 'self._on_installed' in src
+        assert "self._on_installed" in src
 
     def test_open_folder_affordance(self, src):
         assert "QDesktopServices" in src

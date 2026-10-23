@@ -126,7 +126,9 @@ def _enc_val(t: int, v) -> bytes:
     raise ValueError(f"builder has no type {t}")
 
 
-def build_gguf(path: Path, kvs: list[tuple[str, int, object]], version=3, tensor_count=1261) -> Path:
+def build_gguf(
+    path: Path, kvs: list[tuple[str, int, object]], version=3, tensor_count=1261
+) -> Path:
     """Write a structurally-valid GGUF: magic, version, tensor count,
     kv count, then the ordered metadata KVs."""
     body = b""
@@ -143,7 +145,9 @@ def build_gguf(path: Path, kvs: list[tuple[str, int, object]], version=3, tensor
     return path
 
 
-def build_whisper_gguf(path: Path, name="Whisper Large v3", size_label="1.5B", arch="whisper") -> Path:
+def build_whisper_gguf(
+    path: Path, name="Whisper Large v3", size_label="1.5B", arch="whisper"
+) -> Path:
     """The REAL handy-computer header shape (field order + types as
     range-verified against whisper-large-v3-Q5_K_M.gguf)."""
     return build_gguf(
@@ -235,7 +239,11 @@ class TestReadGgufHeader:
         loop forever or read the disk dry -- the cap stops it cold."""
         f = tmp_path / "corrupt.gguf"
         f.write_bytes(
-            b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 2**40) + b"x" * 64
+            b"GGUF"
+            + struct.pack("<I", 3)
+            + struct.pack("<Q", 0)
+            + struct.pack("<Q", 2**40)
+            + b"x" * 64
         )
         assert mc.read_gguf_header(f) is None
 
@@ -349,7 +357,9 @@ class TestValidateWhisperModel:
         """A GGUF whose metadata can't be walked (exotic conversion)
         must NOT block the run -- the CLI is the final authority."""
         f = tmp_path / "weird.gguf"
-        f.write_bytes(b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 99) + b"j")
+        f.write_bytes(
+            b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 99) + b"j"
+        )
         ok, info, problem = mc.validate_whisper_model(f)
         assert ok is True  # proceed...
         assert info["verified"] is False  # ...but honestly labeled
@@ -415,7 +425,9 @@ class TestScanModelDirs:
             build_whisper_gguf(d / n)
         found = mc.scan_model_dirs([str(d)])
         names = [Path(f["path"]).name for f in found]
-        assert names.index("whisper-large-v3-turbo-Q8_0.gguf") < names.index("whisper-large-v2-Q8_0.gguf")
+        assert names.index("whisper-large-v3-turbo-Q8_0.gguf") < names.index(
+            "whisper-large-v2-Q8_0.gguf"
+        )
 
     def test_scan_describes_each_find(self, tmp_path):
         d = tmp_path / "m"
@@ -548,7 +560,9 @@ class TestResolveModel:
 
     def test_unparsable_metadata_proceeds_with_a_warning_line(self, tmp_path):
         f = tmp_path / "weird.gguf"
-        f.write_bytes(b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 99) + b"j")
+        f.write_bytes(
+            b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 99) + b"j"
+        )
         out = mc.resolve_model(str(f), extra_scan_dirs=[])
         assert "error" not in out
         assert out["info"]["verified"] is False
@@ -595,8 +609,10 @@ class TestResolveModel:
         h = mc.read_gguf_header(f)
         assert h["metadata"]["general.architecture"] == "whisper"
         assert isinstance(h["metadata"]["tokenizer.ggml.tokens"], str)
-        assert "60,000" in h["metadata"]["tokenizer.ggml.tokens"] or "60000" in h["metadata"]["tokenizer.ggml.tokens"]
-
+        assert (
+            "60,000" in h["metadata"]["tokenizer.ggml.tokens"]
+            or "60000" in h["metadata"]["tokenizer.ggml.tokens"]
+        )
 
     def test_resolution_never_raises(self, tmp_path):
         """The catalog is best-effort everywhere: garbage in, dicts out."""
@@ -658,10 +674,9 @@ class TestEngineIntegration:
         # name + dir must agree (PureWindowsPath: the pin holds on both
         # POSIX test rigs and the Windows rig itself)
         assert PureWindowsPath(DEFAULT_TRANSCRIBE_CPP_MODEL).name == mc.DEFAULT_MODEL_NAME
-        assert (
-            str(PureWindowsPath(DEFAULT_TRANSCRIBE_CPP_MODEL).parent).replace("\\", "/")
-            == mc.DEFAULT_MODELS_DIR.replace("\\", "/")
-        )
+        assert str(PureWindowsPath(DEFAULT_TRANSCRIBE_CPP_MODEL).parent).replace(
+            "\\", "/"
+        ) == mc.DEFAULT_MODELS_DIR.replace("\\", "/")
 
     def test_engine_source_pins(self):
         src = _ENGINE.read_text(encoding="utf-8")
@@ -719,10 +734,14 @@ class TestEngineResolveWrapper:
             }
 
         monkeypatch.setattr(eng.mc, "resolve_model", fake_resolve)
-        monkeypatch.setattr(eng, "_settings_get", lambda key, default=None: {
-            "transcribe.transcribe_cpp_exe": str(exe_dir / "transcribe-cli.exe"),
-            "transcribe.transcribe_cpp_model": str(tmp_path / "ghost.gguf"),
-        }.get(key, default))
+        monkeypatch.setattr(
+            eng,
+            "_settings_get",
+            lambda key, default=None: {
+                "transcribe.transcribe_cpp_exe": str(exe_dir / "transcribe-cli.exe"),
+                "transcribe.transcribe_cpp_model": str(tmp_path / "ghost.gguf"),
+            }.get(key, default),
+        )
 
         logged = []
         out = eng._resolve_cpp_model(log=lambda m, l="INFO": logged.append(m))
@@ -732,10 +751,15 @@ class TestEngineResolveWrapper:
         assert any("[MODEL-SCAN]" in ln for ln in logged)
 
 
-
 def _make_plain_gguf(tmp_path) -> Path:
     f = tmp_path / "plain.gguf"
-    f.write_bytes(b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0) + struct.pack("<Q", 1) + b"\x01\x00\x00\x00")
+    f.write_bytes(
+        b"GGUF"
+        + struct.pack("<I", 3)
+        + struct.pack("<Q", 0)
+        + struct.pack("<Q", 1)
+        + b"\x01\x00\x00\x00"
+    )
     return f
 
 
@@ -787,7 +811,8 @@ class TestDialogIntegration:
         construction-order AttributeError class V0.6.53 died of)."""
         build = _method(dialog_tree, "_build_options")
         call_lines = [
-            n.lineno for n in ast.walk(build)
+            n.lineno
+            for n in ast.walk(build)
             if isinstance(n, (ast.Expr, ast.Assign))
             and isinstance(getattr(n, "value", None), ast.Call)
             and isinstance(n.value.func, ast.Attribute)
@@ -797,7 +822,8 @@ class TestDialogIntegration:
         first_call = min(call_lines)
         for widget in ("cpp_model_combo", "cpp_model_browse_btn", "whisper_combo"):
             assign_lines = [
-                n.lineno for n in ast.walk(build)
+                n.lineno
+                for n in ast.walk(build)
                 if isinstance(n, ast.Assign)
                 and isinstance(n.targets[0], ast.Attribute)
                 and n.targets[0].attr == widget

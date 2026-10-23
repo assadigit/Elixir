@@ -49,15 +49,11 @@ def _letter_e(draw: ImageDraw.ImageDraw, size: int) -> None:
     gap = (w - spine - 3 * bar_h) / 2.0
     x0 = m
     # Spine (full height)
-    draw.rounded_rectangle(
-        [x0, m, x0 + spine, size - m], radius=bar_h / 2, fill=FG
-    )
+    draw.rounded_rectangle([x0, m, x0 + spine, size - m], radius=bar_h / 2, fill=FG)
     # Top, middle, bottom bars
     ys = [m, m + bar_h + gap, size - m - bar_h]
     for y in ys:
-        draw.rounded_rectangle(
-            [x0, y, m + w, y + bar_h], radius=bar_h / 2, fill=FG
-        )
+        draw.rounded_rectangle([x0, y, m + w, y + bar_h], radius=bar_h / 2, fill=FG)
 
 
 def build() -> Image.Image:

@@ -58,9 +58,9 @@ def check_llm_for_transcribe(settings, ollama_url: str | None = None, log_callba
     """
     log = log_callback or (lambda msg, level="INFO": None)
 
-    provider_name = str(
-        settings.get("summarisation.provider", "ollama") or "ollama"
-    ).strip().lower()
+    provider_name = (
+        str(settings.get("summarisation.provider", "ollama") or "ollama").strip().lower()
+    )
 
     # Deferred import (the house pattern): tests monkeypatch the seam at
     # its module home, and the call-time import picks the fake up.
@@ -108,15 +108,9 @@ def check_llm_for_transcribe(settings, ollama_url: str | None = None, log_callba
     # No live llama.cpp — the configured backend runs (the V0.6.12
     # policy: Ollama is the always-on default).
     if provider_name == "ollama":
-        from utils.settings import Settings
-
         url = (
             ollama_url
-            or (
-                settings.get_ollama_url()
-                if hasattr(settings, "get_ollama_url")
-                else None
-            )
+            or (settings.get_ollama_url() if hasattr(settings, "get_ollama_url") else None)
             or settings.get("summarisation.ollama_url", "http://localhost:11434")
         )
         try:

@@ -185,9 +185,7 @@ class TestV0655TestButton:
         SimpleWorker whose callable calls check_llm_for_transcribe."""
         src = _DIALOG.read_text(encoding="utf-8")
         method = _method(tree, "_on_test_llm")
-        msrc = ast.get_source_segment(
-            _DIALOG.read_text(encoding="utf-8"), method
-        ) or ""
+        msrc = ast.get_source_segment(_DIALOG.read_text(encoding="utf-8"), method) or ""
         assert "SimpleWorker" in msrc, "the check must run via SimpleWorker"
         assert "check_llm_for_transcribe" in msrc
         assert ".start()" in msrc
@@ -233,12 +231,12 @@ class TestV0655CombinedDialogWiring:
             if (
                 isinstance(test, ast.BoolOp)
                 and isinstance(test.op, ast.And)
-                and {getattr(v, "id", None) for v in test.values} == {"save_summary", "save_tutorial"}
+                and {getattr(v, "id", None) for v in test.values}
+                == {"save_summary", "save_tutorial"}
             ):
                 body_calls = _summarize_calls(node)
                 if any(
-                    isinstance(c.func, ast.Name)
-                    and c.func.id == "summarize_transcript_combined"
+                    isinstance(c.func, ast.Name) and c.func.id == "summarize_transcript_combined"
                     for c in body_calls
                 ):
                     found = True
@@ -252,7 +250,9 @@ class TestV0655CombinedDialogWiring:
         assert "split_ok" in src
         # the fallback tutorial call keeps output_type="tutorial"
         tutorial_calls = [
-            c for c in _summarize_calls(method) if c.func.id == "summarize_transcript"
+            c
+            for c in _summarize_calls(method)
+            if c.func.id == "summarize_transcript"
             and any(
                 k.arg == "output_type"
                 and isinstance(k.value, ast.Constant)
@@ -300,10 +300,7 @@ class TestV0655DialogErrorHandling:
         family renders as results['error'] (stage + message + fix)."""
         method = _method(tree, "_do_transcribe")
         handlers = [
-            h.type
-            for node in ast.walk(method)
-            if isinstance(node, ast.Try)
-            for h in node.handlers
+            h.type for node in ast.walk(method) if isinstance(node, ast.Try) for h in node.handlers
         ]
         names = {getattr(t, "id", getattr(t, "attr", None)) for t in handlers}
         assert "TranscribeError" in names, f"handlers: {names}"
@@ -334,9 +331,7 @@ class TestV0655DialogErrorHandling:
             n
             for n in ast.walk(method)
             if isinstance(n, ast.Dict)
-            and any(
-                isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys
-            )
+            and any(isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys)
         ]
         assert init_dicts, "the results init dict must exist in _do_transcribe"
         keys = {k.value for k in init_dicts[0].keys if isinstance(k, ast.Constant)}
@@ -349,6 +344,6 @@ class TestV0655DialogErrorHandling:
             for k, v in zip(init_dicts[0].keys, init_dicts[0].values, strict=True)
             if isinstance(k, ast.Constant) and k.value != "subtitle_cues"
         }
-        assert all(
-            isinstance(v, ast.Constant) and v.value is None for v in sentinel.values()
-        ), "every non-counter results key must init to None"
+        assert all(isinstance(v, ast.Constant) and v.value is None for v in sentinel.values()), (
+            "every non-counter results key must init to None"
+        )

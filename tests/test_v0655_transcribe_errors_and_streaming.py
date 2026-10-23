@@ -48,7 +48,6 @@ from core.transcribe.errors import (  # noqa: E402
 )
 from core.transcribe.transcribe_service import summarize_transcript  # noqa: E402
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # Layer 1 — the TranscribeError family (P5)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -154,15 +153,15 @@ class _ServiceHarness:
         class _FakeProvider:
             base_url = "http://localhost:11434"
 
-            def complete_streaming(self, prompt, temperature=None, max_tokens=None, model=None, on_chunk=None):
+            def complete_streaming(
+                self, prompt, temperature=None, max_tokens=None, model=None, on_chunk=None
+            ):
                 captured["on_chunk"] = on_chunk
                 if provider_exc is not None:
                     raise provider_exc
                 return result
 
-        monkeypatch.setattr(
-            lp, "create_provider", lambda *a, **k: _FakeProvider()
-        )
+        monkeypatch.setattr(lp, "create_provider", lambda *a, **k: _FakeProvider())
 
     def run(self, **kwargs):
         return summarize_transcript(

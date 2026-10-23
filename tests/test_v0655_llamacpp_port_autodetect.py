@@ -190,7 +190,6 @@ class TestV0655ResolveBaseUrl:
         """The 30s probe cache (V0.6.12) also covers the alternates: a
         second resolution within TTL does NOT re-probe (the packets
         generator resolves 5+ times per run)."""
-        from core.llm import local_fallback
         from core.llm.local_fallback import resolve_llamacpp_base_url
 
         spy = _install_spy(monkeypatch, {_ALT_8000: ["m"]})
@@ -315,9 +314,9 @@ class TestV0655FactoryWiring:
         detects :8000 while the PROVIDER still talks to the stale
         settings URL :8080 (the detection would be a no-op for every
         factory-built provider)."""
-        factory_src = (
-            _project_root / "core" / "llm" / "llm_provider_impl.py"
-        ).read_text(encoding="utf-8")
+        factory_src = (_project_root / "core" / "llm" / "llm_provider_impl.py").read_text(
+            encoding="utf-8"
+        )
         # The lazy-import + call must both be present in the llamacpp branch.
         assert "resolve_llamacpp_base_url" in factory_src, (
             "create_provider's llamacpp branch must call "
@@ -327,7 +326,7 @@ class TestV0655FactoryWiring:
         # And the OLD direct settings read must be gone from the branch
         # (the single-source rule: one resolver, not two competing reads).
         llamacpp_branch = factory_src.split('elif provider == "llamacpp":', 1)[1].split(
-            'elif provider ==', 1
+            "elif provider ==", 1
         )[0]
         assert 'settings.get("summarisation.llamacpp_base_url"' not in llamacpp_branch, (
             "the llamacpp branch must not keep a second, competing base-URL "

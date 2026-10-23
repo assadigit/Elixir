@@ -79,9 +79,7 @@ _DIALOG = (
     / "dialogs"
     / "transcribe_service_dialog.py"
 )
-_DL_DIALOG = (
-    _project_root / "ui_qt" / "views" / "service_dialogs" / "model_download_dialog.py"
-)
+_DL_DIALOG = _project_root / "ui_qt" / "views" / "service_dialogs" / "model_download_dialog.py"
 
 from core.transcribe import model_downloader as md  # noqa: E402
 
@@ -156,22 +154,24 @@ class TestOffThreadScan:
         refresh = _method(dialog_tree, "_refresh_cpp_models")
         assert "SimpleWorker" in ast.unparse(refresh)
         closure = next(
-            (n for n in ast.walk(refresh)
-             if isinstance(n, ast.FunctionDef) and n.name != "_refresh_cpp_models"),
+            (
+                n
+                for n in ast.walk(refresh)
+                if isinstance(n, ast.FunctionDef) and n.name != "_refresh_cpp_models"
+            ),
             None,
         )
         assert closure is not None, "the scan closure is missing"
         closure_src = ast.unparse(closure)
         for catalog_call in ("scan_model_dirs", "describe_model_file", "model_search_dirs"):
-            assert catalog_call in closure_src, (
-                f"{catalog_call} must run inside the worker closure"
-            )
+            assert catalog_call in closure_src, f"{catalog_call} must run inside the worker closure"
         # and NOT outside it: AST-identity filtering (string surgery on
         # unparse output is formatting-fragile) -- every call to the
         # catalog must live INSIDE the closure's subtree.
         closure_node_ids = {id(n) for n in ast.walk(closure)}
         outside_calls = [
-            n.lineno for n in ast.walk(refresh)
+            n.lineno
+            for n in ast.walk(refresh)
             if id(n) not in closure_node_ids
             and isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
@@ -191,7 +191,8 @@ class TestOffThreadScan:
         not a module-level import."""
         refresh = _method(dialog_tree, "_refresh_cpp_models")
         closures = [
-            n for n in ast.walk(refresh)
+            n
+            for n in ast.walk(refresh)
             if isinstance(n, ast.FunctionDef) and n.name != "_refresh_cpp_models"
         ]
         assert closures, "the scan closure is missing from _refresh_cpp_models"
@@ -204,15 +205,13 @@ class TestOffThreadScan:
         module_imports |= {
             n.targets[0].id
             for n in dialog_tree.body
-            if isinstance(n, ast.Assign)
-            and isinstance(n.targets[0], ast.Name)
+            if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
         }
         import builtins
+
         for closure in closures:
             body = ast.unparse(closure)
-            assert "self." not in body, (
-                f"the worker closure {closure.name!r} touches dialog state"
-            )
+            assert "self." not in body, f"the worker closure {closure.name!r} touches dialog state"
             loads, stores, args = set(), set(), set()
             for n in ast.walk(closure):
                 if isinstance(n, ast.Name):
@@ -235,8 +234,10 @@ class TestOffThreadScan:
         target -- a read anywhere (an is_running() guard in some
         future method) reintroduces the deleted-wrapper crash."""
         bad_reads = [
-            n.lineno for n in ast.walk(dialog_tree)
-            if isinstance(n, ast.Attribute) and n.attr == "_cpp_scan_worker"
+            n.lineno
+            for n in ast.walk(dialog_tree)
+            if isinstance(n, ast.Attribute)
+            and n.attr == "_cpp_scan_worker"
             and not isinstance(n.ctx, ast.Store)
         ]
         assert not bad_reads, (
@@ -259,8 +260,7 @@ class TestOffThreadScan:
         refresh = ast.unparse(_method(dialog_tree, "_refresh_cpp_models"))
         assert "_cpp_scan_running" in refresh
         assert "is_running()" not in refresh, (
-            "the scan guard must not call is_running() on a possibly-"
-            "deleteLater'd worker object"
+            "the scan guard must not call is_running() on a possibly-deleteLater'd worker object"
         )
 
     def test_flags_initialized_before_the_first_scan(self, dialog_tree):
@@ -270,7 +270,8 @@ class TestOffThreadScan:
         dialog died of in V0.6.53/55."""
         init = _method(dialog_tree, "__init__")
         calls = [
-            n.lineno for n in ast.walk(init)
+            n.lineno
+            for n in ast.walk(init)
             if isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and n.func.attr == "_refresh_cpp_models"
@@ -279,7 +280,8 @@ class TestOffThreadScan:
         first_call = min(calls)
         for flag in ("_cpp_scan_running", "_cpp_scan_pending"):
             assigns = [
-                n.lineno for n in ast.walk(init)
+                n.lineno
+                for n in ast.walk(init)
                 if isinstance(n, ast.Assign)
                 and isinstance(n.targets[0], ast.Attribute)
                 and n.targets[0].attr == flag
@@ -297,8 +299,13 @@ class TestOffThreadScan:
         _on_cpp_models_scanned."""
         populate = ast.unparse(_method(dialog_tree, "_on_cpp_models_scanned"))
         for needle in (
-            "addItem", "setItemData", "ToolTipRole", "setCurrentIndex",
-            "blockSignals", "(no Whisper", "Get models",
+            "addItem",
+            "setItemData",
+            "ToolTipRole",
+            "setCurrentIndex",
+            "blockSignals",
+            "(no Whisper",
+            "Get models",
         ):
             assert needle in populate, f"{needle!r} missing from _on_cpp_models_scanned"
         # and the worker's finished signal is wired to it
@@ -393,9 +400,7 @@ class TestSha256Download:
 
     def test_no_expected_hash_leaves_it_unchecked_and_honest(self, srv, tmp_path):
         _make_remote_whisper(srv, "model.gguf", 600_000)
-        res = md.download(
-            srv.url("model.gguf"), tmp_path, chunk_bytes=256 * 1024, timeout=10
-        )
+        res = md.download(srv.url("model.gguf"), tmp_path, chunk_bytes=256 * 1024, timeout=10)
         assert res["ok"] is True
         assert res["sha256_ok"] is None  # not checked, honestly
 
@@ -509,9 +514,7 @@ class TestSha256Download:
         assert not (dest / "model.gguf.part").exists()
         assert not (dest / "model.gguf.part.etag").exists()
 
-    def test_a_cdnc_like_server_that_ignores_if_range_is_caught_by_the_hash(
-        self, srv, tmp_path
-    ):
+    def test_a_cdnc_like_server_that_ignores_if_range_is_caught_by_the_hash(self, srv, tmp_path):
         """THE LIVE-DISCOVERED behavior, pinned: Hugging Face's xet CDN
         serves 206 even when If-Range STALE-matches (probed live this
         session: Range bytes=1000- + a bogus If-Range -> 206, not 200).
@@ -603,9 +606,9 @@ class TestCatalogHashes:
     def test_every_entry_carries_a_wellformed_sha256(self):
         for spec in md.DOWNLOAD_CATALOG:
             assert spec.sha256, f"{spec.key} has no sha256"
-            assert len(spec.sha256) == 64 and all(
-                c in "0123456789abcdef" for c in spec.sha256
-            ), f"{spec.key}: not a 64-hex sha256"
+            assert len(spec.sha256) == 64 and all(c in "0123456789abcdef" for c in spec.sha256), (
+                f"{spec.key}: not a 64-hex sha256"
+            )
 
     def test_the_hashes_are_the_live_verified_values(self):
         """Pinned to the HF API state verified LIVE this session (and

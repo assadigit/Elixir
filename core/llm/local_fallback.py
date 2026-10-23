@@ -279,18 +279,13 @@ def decide_llamacpp_first(
             api_key="",
             note=(
                 f"llama.cpp not reachable at {base}"
-                + (
-                    f" (probed {probed_urls} — auto-detection)"
-                    if len(probed) > 1
-                    else ""
-                )
+                + (f" (probed {probed_urls} — auto-detection)" if len(probed) > 1 else "")
                 + " — using the configured backend"
             ),
         )
     base, served = live[0]
     auto = (
-        f" (port auto-detected — configured default "
-        f"{LLAMACPP_DEFAULT_BASE_URL} was not reachable)"
+        f" (port auto-detected — configured default {LLAMACPP_DEFAULT_BASE_URL} was not reachable)"
         if len(probed) > 1 and base != LLAMACPP_DEFAULT_BASE_URL
         else ""
     )

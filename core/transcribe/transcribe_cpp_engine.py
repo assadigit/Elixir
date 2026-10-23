@@ -86,7 +86,6 @@ output capture" mode is available by setting capture_raw=True.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -321,6 +320,7 @@ def _stream_cli_output(
         returncode = -1
     return "".join(stdout_parts), "".join(stderr_parts), returncode, timed_out
 
+
 # ============================================================================
 # PARSER -- extract text, language, segments, and backend from the CLI output.
 # ============================================================================
@@ -344,10 +344,23 @@ _PROGRESS_BAR_RE = re.compile(r"^\s*\d{1,3}%\s*\|")
 # V0.6.55 (P6): the info-line prefixes that STOP a text continuation
 # block (everything the CLI prefixes its metadata with, both dialects).
 _INFO_PREFIXES = (
-    "audio:", "samples:", "duration:", "sample rate", "model:",
-    "name:", "license:", "max audio:", "run:", "realtime:",
-    "system_info:", "system info:", "segments:", "backend:",
-    "detected-language:", "detected language:", "text:",
+    "audio:",
+    "samples:",
+    "duration:",
+    "sample rate",
+    "model:",
+    "name:",
+    "license:",
+    "max audio:",
+    "run:",
+    "realtime:",
+    "system_info:",
+    "system info:",
+    "segments:",
+    "backend:",
+    "detected-language:",
+    "detected language:",
+    "text:",
 )
 
 
@@ -524,14 +537,16 @@ def _convert_to_wav16k(input_path: Path, log, progress):
     """
     log("  [CONVERT] Converting to 16 kHz mono WAV with ffmpeg...", "INFO")
     progress(5, "Converting audio format...")
-    temp_wav = tempfile.NamedTemporaryFile(
+    # V0.6.64 (lint SIM115): the with-form closes the handle at block exit
+    # — byte-identical to the old create+close pair (delete=False keeps
+    # the file on disk for ffmpeg to write into).
+    with tempfile.NamedTemporaryFile(
         suffix=".wav",
         delete=False,
         dir=DEFAULT_TEMP_DIR,
         prefix="transcribe_cpp_",
-    )
-    temp_wav.close()
-    temp_wav_path = temp_wav.name
+    ) as temp_wav:
+        temp_wav_path = temp_wav.name
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -585,10 +600,10 @@ def _convert_to_wav16k(input_path: Path, log, progress):
 
 def _fmt_bytes(num_bytes: int) -> str:
     """Human-readable byte size (model files land in the GB range)."""
-    gb = num_bytes / (1024 ** 3)
+    gb = num_bytes / (1024**3)
     if gb >= 1.0:
         return f"{gb:.1f} GB"
-    mb = num_bytes / (1024 ** 2)
+    mb = num_bytes / (1024**2)
     if mb >= 1.0:
         return f"{mb:.1f} MB"
     return f"{max(0, num_bytes // 1024)} KB"
@@ -641,7 +656,9 @@ def _format_run_config_lines(model_path, wav_path, cmd, model_info=None) -> list
         name = Path(model_path).name
         try:
             size = Path(model_path).stat().st_size
-            lines.append(f"  [MODEL] {name} ({_fmt_bytes(size)}) - the model file reloads on every run")
+            lines.append(
+                f"  [MODEL] {name} ({_fmt_bytes(size)}) - the model file reloads on every run"
+            )
         except OSError:
             lines.append(f"  [MODEL] {name} - the model file reloads on every run")
     dur = _wav_duration_s(wav_path)
@@ -886,7 +903,9 @@ def transcribe_with_cpp(
         log(f"  [DEVICES] {format_devices_line(None)}", "INFO")
 
     # -- V0.6.57: run-config on record BEFORE the run ------------------
-    for _cfg_line in _format_run_config_lines(model_path, wav_to_transcribe, cmd, model_info=model_info):
+    for _cfg_line in _format_run_config_lines(
+        model_path, wav_to_transcribe, cmd, model_info=model_info
+    ):
         log(_cfg_line, "INFO")
 
     # -- V0.6.58: the speed contract BEFORE the wait --------------------
@@ -955,7 +974,9 @@ def transcribe_with_cpp(
         # The same legacy contract as subprocess.run(timeout=…) raising
         # TimeoutExpired — the exact string operators/triage know.
         _cleanup_temp(temp_wav)
-        return {"error": f"transcribe-cli.exe timed out ({DEFAULT_TIMEOUT_S}s). The file may be too long."}
+        return {
+            "error": f"transcribe-cli.exe timed out ({DEFAULT_TIMEOUT_S}s). The file may be too long."
+        }
 
     # -- Check exit code ----------------------------------------------
     if returncode != 0:
@@ -964,8 +985,7 @@ def transcribe_with_cpp(
         _cleanup_temp(temp_wav)
         return {
             "error": (
-                f"transcribe-cli.exe failed (exit code {returncode}).\n"
-                f"Last output:\n{last_lines}"
+                f"transcribe-cli.exe failed (exit code {returncode}).\nLast output:\n{last_lines}"
             )
         }
 
@@ -990,12 +1010,17 @@ def transcribe_with_cpp(
                 continue
             # Skip info lines.
             lower = raw_stripped.lower()
-            if lower.startswith(("backend:", "realtime:", "model:", "system_info:", "system info:")):
+            if lower.startswith(
+                ("backend:", "realtime:", "model:", "system_info:", "system info:")
+            ):
                 continue
             raw_lines.append(raw_stripped)
         if raw_lines:
             parsed["text"] = "\n".join(raw_lines)
-            log(f"  [FALLBACK] Parser extracted 0 text, using raw stdout ({len(raw_lines)} lines)", "WARNING")
+            log(
+                f"  [FALLBACK] Parser extracted 0 text, using raw stdout ({len(raw_lines)} lines)",
+                "WARNING",
+            )
 
     # V0.6.46: dump the raw CLI output to a file for debugging.
     # The file is saved next to the input file as <name>_raw_output.txt

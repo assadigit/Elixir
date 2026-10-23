@@ -65,7 +65,7 @@ _FIXED_TYPE_SIZES = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 
 #: the reader never slurps a 3 GB model.
 MAX_METADATA_BYTES = 4 * 1024 * 1024
 
-_MAX_KVS = 1024            # whisper-large-v3 ships 68; >1k = corrupt
+_MAX_KVS = 1024  # whisper-large-v3 ships 68; >1k = corrupt
 #: Sanity cap on any ONE array's item count (the byte cap above is the
 #: real bound; this keeps a corrupt count field from spinning).
 _MAX_ARRAY_ITEMS = 1_000_000
@@ -254,7 +254,7 @@ def parse_model_filename(filename: str | Path) -> dict:
             break
     if prefix is None:
         return out
-    rest = stem[len(prefix):]
+    rest = stem[len(prefix) :]
     legacy = prefix.startswith("ggml")
     tokens = rest.split("-") if "-" in rest else [rest]
     family_tokens: list[str] = []
@@ -262,7 +262,9 @@ def parse_model_filename(filename: str | Path) -> dict:
     for tok in tokens:
         if _QUANT_RE.fullmatch(tok.lower()):
             q = tok.upper()
-            quant = "F16" if q == "F16" else ("F32" if q == "F32" else ("BF16" if q == "BF16" else q))
+            quant = (
+                "F16" if q == "F16" else ("F32" if q == "F32" else ("BF16" if q == "BF16" else q))
+            )
             break  # everything after the quant token is variant noise
         family_tokens.append(tok)
     family = "-".join(family_tokens) if family_tokens else None
@@ -399,8 +401,7 @@ def format_model_line(info: dict) -> str:
         return f"  [MODEL] {name} ({size}) - " + " · ".join(parts) + tail
     if info.get("legacy_ggml"):
         return (
-            f"  [MODEL] {name} ({size}) - legacy ggml .bin "
-            f"(transcribe-cli.exe loads .gguf){tail}"
+            f"  [MODEL] {name} ({size}) - legacy ggml .bin (transcribe-cli.exe loads .gguf){tail}"
         )
     if info.get("is_gguf"):
         return (
@@ -605,10 +606,10 @@ _NOT_GGUF_TEMPLATE = (
 def validate_whisper_model(path) -> tuple[bool, dict | None, str | None]:
     """The fail-fast gate. Returns (ok, info, problem).
 
-      ok=True, problem=None     -> run it (info.verified says whether the
-                                   header PROVED it is whisper)
-      ok=False, problem=str     -> a hard, actionable error (seconds,
-                                   not minutes into a run)
+    ok=True, problem=None     -> run it (info.verified says whether the
+                                 header PROVED it is whisper)
+    ok=False, problem=str     -> a hard, actionable error (seconds,
+                                 not minutes into a run)
     """
     p = Path(path)
     try:

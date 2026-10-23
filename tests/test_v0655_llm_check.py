@@ -70,20 +70,20 @@ class _ProbeResult:  # mirrors GenerationProbeResult
 @pytest.fixture()
 def _env(monkeypatch):
     """Patch the three seams llm_check consults; capture the inputs."""
-    from core.llm import local_fallback
     import core.llm.llamacpp_provider as lp
+    from core.llm import local_fallback
 
     state = {
         "decision": _Decision(False, "", "", "", ""),
         "probe_calls": [],
-        "probe_result": _ProbeResult(True, "m", "u", 16, 1.0, 30.0, "healthy", "llama.cpp OK — fast"),
+        "probe_result": _ProbeResult(
+            True, "m", "u", 16, 1.0, 30.0, "healthy", "llama.cpp OK — fast"
+        ),
         "ollama_calls": [],
         "ollama_models": ["ollama-model-a", "ollama-model-b"],
     }
 
-    monkeypatch.setattr(
-        local_fallback, "decide_llamacpp_first", lambda s, p: state["decision"]
-    )
+    monkeypatch.setattr(local_fallback, "decide_llamacpp_first", lambda s, p: state["decision"])
     monkeypatch.setattr(
         lp,
         "probe_llamacpp_generation",
@@ -110,7 +110,10 @@ from core.transcribe.llm_check import check_llm_for_transcribe  # noqa: E402
 class TestV0655LlmCheckLlamacppPath:
     def test_healthy_gpu_backend_reports_ok(self, _env):
         _env["decision"] = _Decision(
-            True, "http://127.0.0.1:8000/v1", "Ternary-Bonsai-2-27B", "local",
+            True,
+            "http://127.0.0.1:8000/v1",
+            "Ternary-Bonsai-2-27B",
+            "local",
             "llama.cpp detected at http://127.0.0.1:8000/v1 — routing to it",
         )
         out = check_llm_for_transcribe(_Settings())
@@ -123,7 +126,9 @@ class TestV0655LlmCheckLlamacppPath:
         # the decision note rides along (the operator sees WHY it routed)
         assert "8000" in out["message"]
         # the probe was pointed at the DETECTED url + model
-        assert _env["probe_calls"] == [("http://127.0.0.1:8000/v1", "local", "Ternary-Bonsai-2-27B")]
+        assert _env["probe_calls"] == [
+            ("http://127.0.0.1:8000/v1", "local", "Ternary-Bonsai-2-27B")
+        ]
 
     def test_slow_cpu_fallback_carries_the_n_gpu_layers_guidance(self, _env):
         """THE P1 REQUIREMENT: the GPU-fit failure (server fell back to
@@ -133,7 +138,12 @@ class TestV0655LlmCheckLlamacppPath:
             True, "http://127.0.0.1:8000/v1", "Ternary-Bonsai-2-27B", "local", "note"
         )
         _env["probe_result"] = _ProbeResult(
-            True, "Ternary-Bonsai-2-27B", "u", 16, 10.0, 1.5,
+            True,
+            "Ternary-Bonsai-2-27B",
+            "u",
+            16,
+            10.0,
+            1.5,
             "slow-cpu-fallback-suspected",
             "llama.cpp responded but generated only ~1.5 tokens/s ... "
             "restart llama-server with a lower --n-gpu-layers value",
@@ -148,7 +158,13 @@ class TestV0655LlmCheckLlamacppPath:
     def test_unreachable_llamacpp_is_ok_false_with_reason(self, _env):
         _env["decision"] = _Decision(True, "http://127.0.0.1:8000/v1", "m", "local", "note")
         _env["probe_result"] = _ProbeResult(
-            False, "m", "u", 0, 0.0, 0.0, "unreachable",
+            False,
+            "m",
+            "u",
+            0,
+            0.0,
+            0.0,
+            "unreachable",
             "llama.cpp at http://127.0.0.1:8000/v1 could not be probed: ConnectionError",
         )
         out = check_llm_for_transcribe(_Settings())
@@ -175,9 +191,7 @@ class TestV0655LlmCheckLlamacppPath:
         assert out2["save_url"] is None
 
     def test_default_port_live_never_offers_save(self, _env):
-        _env["decision"] = _Decision(
-            True, "http://127.0.0.1:8080/v1", "m", "local", "note"
-        )
+        _env["decision"] = _Decision(True, "http://127.0.0.1:8080/v1", "m", "local", "note")
         out = check_llm_for_transcribe(_Settings({}))
         assert out["save_url"] is None
 
@@ -187,9 +201,7 @@ class TestV0655LlmCheckOllamaPath:
         _env["decision"] = _Decision(
             False, "", "", "", "llama.cpp not reachable — using the configured backend"
         )
-        out = check_llm_for_transcribe(
-            _Settings({}), ollama_url="http://localhost:11434"
-        )
+        out = check_llm_for_transcribe(_Settings({}), ollama_url="http://localhost:11434")
         assert out["ok"] is True
         assert out["backend"] == "ollama"
         assert out["model"] == "ollama-model-a"
@@ -226,9 +238,7 @@ class TestV0655LlmCheckOllamaPath:
 class TestV0655LlmCheckCloudPath:
     def test_cloud_selection_is_honestly_not_probed(self, _env):
         _env["decision"] = _Decision(False, "", "", "", "")
-        out = check_llm_for_transcribe(
-            _Settings({"summarisation.provider": "openrouter"})
-        )
+        out = check_llm_for_transcribe(_Settings({"summarisation.provider": "openrouter"}))
         assert out["ok"] is True
         assert out["level"] == "info"
         assert out["backend"] == "openrouter"

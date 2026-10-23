@@ -79,11 +79,7 @@ class TestV0655SplitCombinedOutput:
             assert out["tutorial"] == "tutorial body"
 
     def test_code_fences_around_either_document_are_stripped(self):
-        text = (
-            "```markdown\n# Notes\n- a\n```\n\n"
-            f"{_MARKER}\n\n"
-            "```markdown\n# Tutorial\n1. b\n```"
-        )
+        text = f"```markdown\n# Notes\n- a\n```\n\n{_MARKER}\n\n```markdown\n# Tutorial\n1. b\n```"
         out = split_combined_output(text)
         assert out["ok"] is True
         assert out["summary"] == "# Notes\n- a"
@@ -265,8 +261,8 @@ class TestV0655CombinedWiring:
         """P5 interplay: the combined path raises the same structured
         errors as the single-output path."""
         import core.llm.llm_provider as lp
-        from utils.settings import Settings
         from core.transcribe.errors import LLMConnectionError
+        from utils.settings import Settings
 
         class _S:
             def get(self, key, default=None):

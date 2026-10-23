@@ -47,7 +47,14 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-_DIALOG = _project_root / "ui_qt" / "views" / "service_dialogs" / "dialogs" / "transcribe_service_dialog.py"
+_DIALOG = (
+    _project_root
+    / "ui_qt"
+    / "views"
+    / "service_dialogs"
+    / "dialogs"
+    / "transcribe_service_dialog.py"
+)
 
 
 @pytest.fixture(scope="module")
@@ -104,8 +111,7 @@ class TestV0654NameErrorFix:
         first_assign = next((ln for ln, is_store in events if is_store), None)
         first_load = next((ln for ln, is_store in events if not is_store), None)
         assert first_assign is not None, (
-            "`_extracted_text` is read but never assigned — a read-only "
-            "NameError by another name"
+            "`_extracted_text` is read but never assigned — a read-only NameError by another name"
         )
         if first_load is not None:
             assert first_assign <= first_load, (
@@ -161,8 +167,7 @@ class TestV0654SummarizeCallSites:
         calls = self._summarize_calls(_source_tree)
         for i, call in enumerate(calls, start=1):
             assert call.args, (
-                f"LLM call #{i} has no positional args — "
-                "the transcript text isn't being passed"
+                f"LLM call #{i} has no positional args — the transcript text isn't being passed"
             )
             first = call.args[0]
             assert isinstance(first, ast.Name) and first.id == "_extracted_text", (
@@ -176,9 +181,7 @@ class TestV0654SummarizeCallSites:
         ``output_type='tutorial'`` so the prompt manager picks the
         tutorial template — the V0.6.43 contract preserved."""
         calls = [
-            c
-            for c in self._summarize_calls(_source_tree)
-            if c.func.id == "summarize_transcript"
+            c for c in self._summarize_calls(_source_tree) if c.func.id == "summarize_transcript"
         ]
         tutorial_calls = [
             c
@@ -227,6 +230,7 @@ class TestV0654ResultsDictContract:
 
 # ── the compile-level guarantee ──────────────────────────────────────────────
 
+
 class TestV0654ModuleCompiles:
     """The dialog source MUST parse cleanly — a SyntaxError would prevent
     the module from importing, taking the whole Transcribe Service down
@@ -249,6 +253,5 @@ class TestV0654ModuleCompiles:
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 method_names.append(node.name)
         assert "_do_transcribe" in method_names, (
-            "the `_do_transcribe` method is missing — the worker would call "
-            "a non-existent method"
+            "the `_do_transcribe` method is missing — the worker would call a non-existent method"
         )

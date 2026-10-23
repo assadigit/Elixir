@@ -75,7 +75,14 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 _ENGINE = _project_root / "core" / "transcribe" / "transcribe_cpp_engine.py"
-_DIALOG = _project_root / "ui_qt" / "views" / "service_dialogs" / "dialogs" / "transcribe_service_dialog.py"
+_DIALOG = (
+    _project_root
+    / "ui_qt"
+    / "views"
+    / "service_dialogs"
+    / "dialogs"
+    / "transcribe_service_dialog.py"
+)
 _PROBE = _project_root / "core" / "transcribe" / "gpu_probe.py"
 
 
@@ -409,7 +416,9 @@ class _FakeProc:
     """The Popen surface _stream_cli_output touches (V0.6.56 harness,
     copied so this file stays standalone)."""
 
-    def __init__(self, stdout: bytes, stderr: bytes = b"", returncode: int = 0, *, hangs: bool = False):
+    def __init__(
+        self, stdout: bytes, stderr: bytes = b"", returncode: int = 0, *, hangs: bool = False
+    ):
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
         self.returncode = returncode
@@ -545,7 +554,9 @@ class TestRunConfigLines:
         model.write_bytes(b"x" * (3 * 1024 * 1024 * 1024 // 10))  # 0.3 GB
         wav = tmp_path / "in.wav"
         wav.write_bytes(b"x")
-        lines = _format_run_config_lines(str(model), str(wav), ["transcribe-cli.exe", "-m", str(model)])
+        lines = _format_run_config_lines(
+            str(model), str(wav), ["transcribe-cli.exe", "-m", str(model)]
+        )
         joined = "\n".join(lines)
         assert "[MODEL]" in joined
         assert "whisper-large-v3-Q8_0.gguf" in joined

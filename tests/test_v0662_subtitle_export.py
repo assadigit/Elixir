@@ -490,7 +490,10 @@ class TestSubtitleStats:
         from core.transcribe.subtitle_export import subtitle_stats
 
         stats = subtitle_stats(
-            [{"start": 50.0, "end": 60.0, "text": "late but first"}, {"start": 0.0, "end": 5.0, "text": "early"}]
+            [
+                {"start": 50.0, "end": 60.0, "text": "late but first"},
+                {"start": 0.0, "end": 5.0, "text": "early"},
+            ]
         )
         assert stats == {"cues": 2, "end": 60.0}
 
@@ -606,9 +609,7 @@ class TestDialogOptionsAndRunHeader:
             n
             for n in ast.walk(run)
             if isinstance(n, ast.Dict)
-            and any(
-                isinstance(k, ast.Constant) and k.value == "save_raw" for k in n.keys
-            )
+            and any(isinstance(k, ast.Constant) and k.value == "save_raw" for k in n.keys)
         ]
         assert opts_dicts, "the options dict must exist in _on_process"
         keys = {k.value for k in opts_dicts[0].keys if isinstance(k, ast.Constant)}
@@ -660,14 +661,10 @@ class TestDialogRunWiring:
             n
             for n in ast.walk(run)
             if isinstance(n, ast.Dict)
-            and any(
-                isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys
-            )
+            and any(isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys)
         ]
         assert results_dicts, "the results init dict must exist"
-        keys = {
-            k.value for k in results_dicts[0].keys if isinstance(k, ast.Constant)
-        }
+        keys = {k.value for k in results_dicts[0].keys if isinstance(k, ast.Constant)}
         assert "srt_path" in keys and "vtt_path" in keys
 
     def test_no_segments_skips_with_an_honest_message(self):
@@ -693,9 +690,7 @@ class TestDialogRunWiring:
             n
             for n in ast.walk(run)
             if isinstance(n, ast.Dict)
-            and any(
-                isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys
-            )
+            and any(isinstance(k, ast.Constant) and k.value == "raw_path" for k in n.keys)
         ]
         assert init_dicts
         val = {
@@ -704,7 +699,9 @@ class TestDialogRunWiring:
             if isinstance(k, ast.Constant) and k.value == "subtitle_cues"
         }
         assert val == {"subtitle_cues": ast.Constant(value=0)} or (
-            "subtitle_cues" in val and isinstance(val["subtitle_cues"], ast.Constant) and val["subtitle_cues"].value == 0
+            "subtitle_cues" in val
+            and isinstance(val["subtitle_cues"], ast.Constant)
+            and val["subtitle_cues"].value == 0
         ), "subtitle_cues must init to the constant 0"
 
 

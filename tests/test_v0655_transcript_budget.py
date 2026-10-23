@@ -32,8 +32,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -42,7 +40,6 @@ from core.transcribe.transcribe_service import (  # noqa: E402
     TRANSCRIPT_PROMPT_TOKEN_BUDGET,
     fit_transcript_to_budget,
 )
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Layer 1 — the pure budget fit

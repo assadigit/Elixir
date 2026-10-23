@@ -16,9 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-_LINE = re.compile(
-    r"^import time:\s+(\d+)\s+\|\s+(\d+)\s+\|\s+(\S+)$"
-)
+_LINE = re.compile(r"^import time:\s+(\d+)\s+\|\s+(\d+)\s+\|\s+(\S+)$")
 
 
 def main() -> None:

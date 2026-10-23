@@ -43,7 +43,6 @@ if str(_project_root) not in sys.path:
 
 from core.llm import llamacpp_provider as _lp  # noqa: E402 — path bootstrap above
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 # Layer 1 — classification (pure)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -58,10 +57,7 @@ class TestV0655ClassifySpeed:
         assert _lp.LLAMACPP_SLOW_TOKS_PER_SEC == 5.0
 
     def test_below_threshold_is_cpu_fallback_suspected(self):
-        assert (
-            _lp.classify_generation_speed(1.5)
-            == "slow-cpu-fallback-suspected"
-        )
+        assert _lp.classify_generation_speed(1.5) == "slow-cpu-fallback-suspected"
         assert _lp.classify_generation_speed(4.9) == "slow-cpu-fallback-suspected"
 
     def test_at_and_above_threshold_is_healthy(self):
@@ -247,9 +243,7 @@ class TestV0655ProbeGeneration:
 
         monkeypatch.setattr(_lp.LlamaCppProvider, "_chat_streaming", _boom)
         monkeypatch.setattr(_lp, "_monotonic", clock)
-        result = _lp.probe_llamacpp_generation(
-            "http://127.0.0.1:8000/v1", "local", "m"
-        )
+        result = _lp.probe_llamacpp_generation("http://127.0.0.1:8000/v1", "local", "m")
         assert result.ok is False
         assert result.verdict == "unreachable"
         assert "refused" in result.message
@@ -259,9 +253,7 @@ class TestV0655ProbeGeneration:
         generation, not a 1-token smoke ping — the rate needs tokens)
         with stream=True and the caller's model."""
         clock = _FakeClock()
-        fake = _FakeStreaming(
-            script=[(0.1, 32)], text="z" * 32, clock=clock
-        )
+        fake = _FakeStreaming(script=[(0.1, 32)], text="z" * 32, clock=clock)
         _install(monkeypatch, fake, clock)
         _lp.probe_llamacpp_generation("http://127.0.0.1:8000/v1", "local", "model-x")
         payload = fake.payloads[0]
@@ -280,7 +272,11 @@ class TestV0655ProbeGeneration:
         fake = _FakeStreaming(script=[(0.1, 32)], text="z" * 32, clock=clock)
         _install(monkeypatch, fake, clock)
         result = _lp.probe_llamacpp_generation("http://u/v1", "local", "m")
-        with pytest.raises(Exception):
+        # V0.6.64 (lint B017): the specific frozen-dataclass error, not a
+        # blind Exception assert.
+        import dataclasses
+
+        with pytest.raises(dataclasses.FrozenInstanceError):
             result.tps = 99.0  # frozen dataclass — no accidental mutation
 
 

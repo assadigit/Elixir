@@ -226,7 +226,9 @@ def parse_list_devices_output(text: str) -> dict | None:
     return {"device_count": header, "devices": blocks, "gpu": gpu}
 
 
-def probe_cli_devices(exe_path, runner=None, timeout_s: float = LIST_DEVICES_TIMEOUT_S) -> dict | None:
+def probe_cli_devices(
+    exe_path, runner=None, timeout_s: float = LIST_DEVICES_TIMEOUT_S
+) -> dict | None:
     """Run ``<exe> --list-devices`` and parse the report, best-effort.
 
     Same contract as :func:`probe_gpu_state`: ``None`` means "cannot

@@ -254,8 +254,8 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> dict:
             except (TypeError, ValueError):
                 out["size"] = None
             out["accepts_ranges"] = (
-                (resp.headers.get("Accept-Ranges") or "").strip().lower() == "bytes"
-            )
+                resp.headers.get("Accept-Ranges") or ""
+            ).strip().lower() == "bytes"
             out["ok"] = 200 <= int(getattr(resp, "status", 200) or 200) < 300
             if not out["ok"]:
                 out["error"] = f"HTTP {out['status']}"
@@ -270,9 +270,7 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> dict:
 # ── download ─────────────────────────────────────────────────────────────────
 
 
-def _progress_dict(
-    done: int, total: int | None, resumed_from: int, t0: float, path: Path
-) -> dict:
+def _progress_dict(done: int, total: int | None, resumed_from: int, t0: float, path: Path) -> dict:
     elapsed = max(1e-9, time.monotonic() - t0)
     moved = max(0, done - resumed_from)
     speed = moved / elapsed if moved > 0 else 0.0
@@ -505,9 +503,7 @@ def download(
                         "error": None,
                     }
                 if prefix_digest is None:
-                    return _fail(
-                        f"cannot read {part.name} to hash the resume prefix"
-                    )
+                    return _fail(f"cannot read {part.name} to hash the resume prefix")
             # initial callback (0% / resumed state) then per-chunk
             _safe_cb(on_progress, _progress_dict(done, total, start, t0, final))
             cancelled = False
@@ -524,9 +520,7 @@ def download(
                         hasher.update(chunk)
                     done += len(chunk)
                     if time.monotonic() - t0 >= _MIN_PROGRESS_CB_S:
-                        _safe_cb(
-                            on_progress, _progress_dict(done, total, start, t0, final)
-                        )
+                        _safe_cb(on_progress, _progress_dict(done, total, start, t0, final))
             if cancelled:
                 return {
                     "ok": False,
@@ -552,9 +546,7 @@ def download(
             if hasher is not None:
                 got = hasher.hexdigest()
                 if got != expected_sha256:
-                    return _sha_fail(
-                        expected_sha256, got, part, size=actual, resumed_from=start
-                    )
+                    return _sha_fail(expected_sha256, got, part, size=actual, resumed_from=start)
                 sha256_ok = True
             else:
                 sha256_ok = None
@@ -619,7 +611,9 @@ def download(
                         }
                     if got is None or got != expected_sha256:
                         return _sha_fail(
-                            expected_sha256, got or "<unreadable>", part,
+                            expected_sha256,
+                            got or "<unreadable>",
+                            part,
                             size=part_size or 0,
                         )
                 try:

@@ -44,7 +44,6 @@ from core.transcribe.transcribe_cpp_engine import (  # noqa: E402
     _parse_transcribe_cpp_output,
 )
 
-
 # ── the V0.6.52 REAL format (regression floor) ─────────────────────────────
 
 
@@ -71,9 +70,7 @@ system_info: n_threads = 4
 class TestV0655RealFormatRegression:
     def test_v0652_format_still_parses(self):
         out = _parse_transcribe_cpp_output(_REAL_FORMAT, "")
-        assert out["text"] == (
-            "There are three main things to consider when transcription works."
-        )
+        assert out["text"] == ("There are three main things to consider when transcription works.")
         assert out["language"] == "en"
         assert out["backend"] == "Vulkan"
         assert len(out["segments"]) == 2
@@ -106,16 +103,12 @@ class TestV0655WhisperCppStyleTimestamps:
         assert out["segments"][1]["end"] == pytest.approx(9.5)
 
     def test_mm_ss_mmm_two_part_timestamps_parse(self):
-        out = _parse_transcribe_cpp_output(
-            "[00:01.500 --> 00:04.250] a two part stamp\n", ""
-        )
+        out = _parse_transcribe_cpp_output("[00:01.500 --> 00:04.250] a two part stamp\n", "")
         assert out["segments"][0]["start"] == pytest.approx(1.5)
         assert out["segments"][0]["end"] == pytest.approx(4.25)
 
     def test_hh_mm_ss_mmm_values_convert_to_seconds(self):
-        out = _parse_transcribe_cpp_output(
-            "[00:01:02.500 --> 00:01:07.000] one minute seven\n", ""
-        )
+        out = _parse_transcribe_cpp_output("[00:01:02.500 --> 00:01:07.000] one minute seven\n", "")
         assert out["segments"][0]["start"] == pytest.approx(62.5)
         assert out["segments"][0]["end"] == pytest.approx(67.0)
 
@@ -152,9 +145,7 @@ class TestV0655TextContinuation:
         """A segment line after a wrapped text block is a SEGMENT, not
         more text."""
         out = _parse_transcribe_cpp_output(
-            "text: wrapped head\n"
-            "wrapped tail\n"
-            "[ 0.00 -> 2.00] first segment\n",
+            "text: wrapped head\nwrapped tail\n[ 0.00 -> 2.00] first segment\n",
             "",
         )
         assert "wrapped tail" in out["text"]
