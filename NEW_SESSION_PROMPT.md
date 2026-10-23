@@ -77,12 +77,15 @@ entries — verify before acting, don't trust this list blindly):
 5. **Standing flags (rig tasks, not sandbox-fixable):** the
    `requirements.lock` full clean-install regen (on Windows); the rig
    checklist below.
-6. **Lint debt (documented, cosmetic):** 6 pre-existing findings in the
-   V0.6.5x transcribe-sprint files (2 check, 4 format).
-7. **README badges are stale (cosmetic):** the tests badge says 5812
-   passed / 0 failed; the V0.6.63 Linux-sandbox suite is 8,538 passing /
-   56 pre-existing environment failures. Update only with a number you
-   can show a run for.
+6. **Lint debt (documented, cosmetic — count corrected 2026-10-23):**
+   15 check findings + 26 format-drift files, ALL in the V0.6.5x/6x
+   transcribe-sprint family (the earlier "6 findings" note was an
+   undercount; the B023 finding sits in the OFF-LIMITS TTS compat file
+   core/tts/_vibevoice_subprocess.py — leave it).
+7. **README tests badge — updated 2026-10-23** to the shown run
+   (8598 passed / 16 failed / 25 skipped, lock-aligned sandbox env,
+   `-p no:ddtrace`, ~272s); keep it current with each release's shown
+   run.
 8. **Next feature work** — my direction (the V0.6.61 stage summary
    pointed at "the NEXT tool or the broader app").
 
@@ -90,8 +93,10 @@ entries — verify before acting, don't trust this list blindly):
 
 ```
 PROJECT_FOLDER        = /home/z/elixir
-PYTHON_TEST_COMMAND   = /home/z/.venv/bin/python -m pytest tests/ -q -p no:randomly -m "not live_llm" --no-cov
-                        (with the two env vars below; full suite ≈ 5 min)
+PYTHON_TEST_COMMAND   = /home/z/.venv/bin/python -m pytest tests/ -q -p no:randomly -p no:ddtrace -m "not live_llm" --no-cov
+                        (with the two env vars below; full suite ≈ 5 min; -p no:ddtrace = the
+                        sandbox's ddtrace pytest plugin segfaults threaded e2e tests under
+                        load — see the env section)
 LINT_COMMAND          = /home/z/.venv/bin/python -m ruff check <touched files>
 FORMAT_COMMAND        = /home/z/.venv/bin/python -m ruff format --check <touched files>
 TYPE_CHECK_COMMAND    = skip (the project doesn't run mypy/pyright)
@@ -131,10 +136,24 @@ session and the recovery recipe is proven:
   (scrub the token from the URL after the push, or push with the token
   URL one-off). Verify `git log --oneline -3` matches the last release.
 - venv `/home/z/.venv`: Python 3.12 is alive but the toolchain gets
-  WIPED. Reinstall: PySide6 Essentials+Addons, pytest, pytest-cov/
+  WIPED (PARTIALLY — a mid-session reset kept mammoth/pytest/pymupdf
+  but wiped 13 others; verify per package with `python -c "import X"`).
+  Reinstall: PySide6 Essentials+Addons, pytest, pytest-cov/
   asyncio/randomly, hypothesis, ruff 0.16.8, radon, vulture, tiktoken,
   tenacity, rapidfuzz, arabic-reshaper, python-bidi, wordninja,
-  pytesseract, PyYAML, genanki, ebooklib.
+  pytesseract, PyYAML, genanki, ebooklib, langextract (the selftest
+  checks it). **Pin the core doc/Qt chain from `requirements.lock`**
+  (2026-10-23: at least mammoth==1.11.0 markitdown==0.1.7
+  PySide6==6.11.2) — an unpinned fresh install drifts from the
+  verified set.
+- **The sandbox's `ddtrace` pytest plugin (monitoring tooling, NOT
+  project code) intermittently SEGFAULTS threaded e2e tests under
+  full-suite load** — 2026-10-23: 3 of 4 full runs with it loaded died
+  at exit 139 (always ~58–60% progress, always a worker thread:
+  docx-e2e once, packets-generator twice); both `-p no:ddtrace` runs
+  completed clean at 8,598/16. It is in PYTHON_TEST_COMMAND now. If a
+  full-suite segfault appears anyway, read the crash log's thread dump
+  before suspecting project code.
 - `/home/z/.local-lib` is GONE after a reset. Rebuild:
   `apt-get download libegl1 libegl-mesa0 libglvnd0 libglx0` then
   `dpkg-deb -x` each into `/home/z/.local-lib/`.
@@ -149,21 +168,32 @@ session and the recovery recipe is proven:
   judged on the rig. Ask me for screenshots/paste-backs when a visual
   question cannot be answered offscreen, and say so honestly.
 
-## THE BASELINE YOU INHERIT (V0.6.63, measured)
+## THE BASELINE YOU INHERIT (V0.6.63, re-measured 2026-10-23)
 
-- **Full suite (Linux sandbox, offscreen Qt):** 8,538 passing / 56
-  failed / vs pristine-HEAD baseline 75 failed — **0 regressions, 19
-  pre-existing fixed**. Every remaining failure was verified failing at
-  HEAD too (prompt-manifest drift shipped by V0.6.62, TTS/ffmpeg/kokoro
-  environment-dependent e2e tests, the eval gate, encoding pins).
-  **Any NEW failure is a regression** — decompose it, fix it, and say
-  what broke. First re-establish this number after the venv reinstall
-  before believing anything else.
+- **Full suite (Linux sandbox, offscreen Qt, lock-aligned env,
+  `-p no:ddtrace`): 8,598 passing / 16 failed / 25 skipped in ~272s**
+  — re-measured 2026-10-23 at the same pristine V0.6.63 HEAD
+  (`39d9554`), on two different sandbox containers (same numbers both
+  times). The historical V0.6.63 number was 8,538/56 in the unpinned
+  environment: aligning the core doc/Qt chain to requirements.lock
+  resolved 40 environment-dependent failures and un-skipped ~20
+  tests. The 16 remaining failures are the documented pre-existing
+  families (TTS/ffmpeg/vibevoice e2e ×12, eval gate ×2, prompt-manifest
+  drift shipped by V0.6.62 ×1, source pin ×1); the 4 non-TTS ones fail
+  identically solo. **Any NEW failure beyond these 16 is a regression**
+  — decompose it, fix it, and say what broke. First re-establish this
+  number after the venv reinstall before believing anything else.
 - **Source-mode selftest:** 376 modules, 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
-  /tmp/selftest_report.txt` after recovery; exit 0 = clean).
-- ruff 0.16.8 clean (check + format) on every file V0.6.63 touches;
-  6 pre-existing findings elsewhere (documented above).
+  /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract
+  must be installed or the selftest FAILS on it as a runtime package).
+- ruff 0.16.8 (repo-wide, re-measured 2026-10-23): 15 check findings +
+  26 format-drift files, ALL in the V0.6.5x/6x transcribe-sprint
+  family (the earlier "6 findings elsewhere" note was an undercount —
+  item 6 above). Within the V0.6.63-touched set: 1 check finding
+  (core/tts/_vibevoice_subprocess.py:1053 B023 — OFF-LIMITS compat
+  file) + 2 installer files needing format (importtime_top.py,
+  make_icon.py).
 - **The shipped installer's Windows verification** (for reference, not
   re-runnable here): packed selftest 376/376, packed launch, silent
   install → installed selftest → installed launch → silent uninstall —
