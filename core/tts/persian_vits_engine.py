@@ -1,8 +1,7 @@
 """V11.34.0: Persian VITS TTS engine — high-quality local Farsi TTS.
 
 Uses the Coqui TTS library to load VITS models trained specifically for
-Persian/Farsi. These models are MUCH better than Piper's robotic Farsi
-voices.
+Persian/Farsi — much better than generic espeak-ng-based Farsi voices.
 
 Supported models (all on HuggingFace):
   - ``karim23657/persian-tts-female-GPTInformal-Persian-vits`` (best, female)
@@ -53,7 +52,7 @@ class PersianVitsEngine(TTSEngine):
     """V11.34.0: High-quality Persian TTS via VITS models.
 
     Uses the Coqui TTS ``Synthesizer`` to load VITS models trained on
-    Persian datasets. These produce far better Farsi speech than Piper.
+    Persian datasets — far better Farsi speech than generic engines.
 
     The model is downloaded from HuggingFace on first use (~100-200 MB)
     and cached locally for subsequent runs.

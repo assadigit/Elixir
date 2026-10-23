@@ -864,11 +864,14 @@ class Settings:
             "tts": {
                 "en_engine": "neutts",
                 "en_voice": "af_heart",
-                "fa_voice": "fa_IR-amir-medium",
+                # V0.6.64: the Piper default voice id ("fa_IR-amir-medium") is
+                # gone with the Piper engine — empty = use the Coqui speaker
+                # (CoquiTTSEngine falls back to its configured speaker).
+                "fa_voice": "",
                 "host_a_voice": "",
                 "host_b_voice": "",
                 "speed": 1.0,
-                "piper_binary": r"C:\piper_windows_amd64\piper\piper.exe",
+                # V0.6.64: "piper_binary" removed with the Piper engine.
                 "neutts_gguf_path": r"G:\Program Files\neutts-air\models\neutts-air-Q8_0.gguf",
                 "neutts_project_path": r"G:\Program Files\neutts-air",
                 # V11.32.0: NeuTTS device configuration.
@@ -893,19 +896,21 @@ class Settings:
                 "normalize_api_key": "",
                 "normalize_context_mode": "sentence",
                 # V0.4.19: normalize_endpoint / normalize_prompt_{en,fa} read by
-                # core/tts/normalizer.py + written by tts_page.py; fa_host_*
-                # read by core/pipeline/conversion/output_runner.py — all
-                # were missing from the schema (validator warnings).
+                # core/tts/normalizer.py + written by tts_page.py (V0.6.64:
+                # the fa_host_* keys were Piper voice ids and are GONE — see
+                # the removal note below). All were missing from the schema
+                # once (validator warnings).
                 "normalize_endpoint": "http://localhost:11434/v1",
                 "normalize_prompt_en": "",
                 "normalize_prompt_fa": "",
-                "fa_host_a_voice": "fa_IR-amir-medium",
-                "fa_host_b_voice": "fa_IR-amir-medium",
+                # V0.6.64: fa_host_* removed — they were Piper voice ids read
+                # only by the TTS diagnostics, never by synthesis.
                 "australian_enabled": False,
                 "australian_reference_wav": "",
                 "australian_reference_text": "",
-                # V10.36.0: Coqui XTTS v2
-                "fa_engine": "piper",
+                # V10.36.0: Coqui XTTS v2 (V0.6.64: fa_engine is GONE with
+                # the Piper engine — Persian always routes to Coqui in the
+                # legacy router; the modern TTS tool uses Kokoro/Sherpa).
                 "coqui_model": "tts_models/multilingual/multi-dataset/xtts_v2",
                 "coqui_speaker": "Ana",
                 "coqui_voice_sample": "",
@@ -1179,7 +1184,6 @@ class Settings:
                 ("australian_reference_wav", ""),
                 ("australian_reference_text", ""),
                 # V10.36.0: Coqui XTTS v2 settings (Better Persian TTS)
-                ("fa_engine", "piper"),  # "piper" or "coqui"
                 ("coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
                 ("coqui_speaker", "Ana"),
                 ("coqui_voice_sample", ""),
@@ -1192,6 +1196,16 @@ class Settings:
             ]:
                 if key not in tts:
                     tts[key] = default_val
+
+            # ── V0.6.64: drop the dead Piper TTS keys from older settings ──
+            # The Piper engine was removed entirely (user decision,
+            # remaining-surface item 4). Pop the dead keys so the validator
+            # stops warning about them, and reset a stale Piper voice id in
+            # fa_voice ("fa_IR-*") to the empty Coqui-speaker default.
+            for _dead_key in ("piper_binary", "fa_engine", "fa_host_a_voice", "fa_host_b_voice"):
+                tts.pop(_dead_key, None)
+            if str(tts.get("fa_voice", "")).startswith("fa_IR-"):
+                tts["fa_voice"] = ""
 
             # ── V0.4.6: Ensure podcast.* keys exist ─────────────────────────
             # Read by core/outputs/podcast_generator.py + ui_qt/settings/

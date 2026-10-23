@@ -1,20 +1,20 @@
 """V4.2.0: Text-to-Speech engine abstraction.
 
-Two backends behind one interface:
+One interface, two backends (V0.6.64: the Piper binary engine was removed —
+user decision, remaining-surface item 4):
 
 * :class:`KokoroEngine` — English via the Kokoro Python API (generator that
   yields ``(graphemes, phonemes, audio)`` per chunk). Best open-weight EN TTS.
-* :class:`PiperEngine` — Persian via the Piper **binary** (``piper.exe`` on
-  Windows) called through :mod:`subprocess`. The Python ``piper_phonemize``
-  package has no Windows wheels, so the pre-compiled binary — which bundles
-  espeak-ng with full Persian voice data — is the robust path on Windows.
+* :class:`CoquiTTSEngine` — V10.36.0 multilingual neural TTS (XTTS v2, voice
+  cloning) — the Persian route of this legacy router. The modern TTS tool
+  and the podcast generator route Farsi through Kokoro / Sherpa instead.
 
 Language auto-routing: :func:`detect_language` inspects the Unicode script
 of the text and returns ``"fa"`` for Persian (Arabic-script) text, ``"en"``
 otherwise. :class:`TTSEngine.synthesize` routes to the right backend
 automatically based on the detected language and the configured voices.
 
-Both backends return a path to a 16-bit mono ``.wav`` file, so callers
+Both backends return a path to a ``.wav`` file, so callers
 (:class:`core.outputs.podcast_audio.PodcastAudioGenerator`) can stitch
 segments with :mod:`pydub` without caring which engine produced them.
 """
@@ -23,8 +23,6 @@ from __future__ import annotations
 
 import logging
 import re
-import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -49,14 +47,6 @@ if TYPE_CHECKING:
 #   \uFE70-\uFEFF  Arabic Presentation Forms-B
 
 logger = logging.getLogger(__name__)
-
-# V18.20.4.4 (W-c8): bound on a single Piper synth call. Piper is fast
-# (~0.1x realtime on CPU) but a wedged piper.exe (driver stall, locked
-# model file) would otherwise block the TTS thread indefinitely.
-# subprocess.run() kills the child when the timeout expires; the
-# TimeoutExpired is converted to the house RuntimeError shape so
-# TTSEngine.synthesize stays fail-soft (last_error + return None).
-PIPER_SYNTH_TIMEOUT_S = 120
 
 _ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]")
 
@@ -262,107 +252,15 @@ class KokoroEngine(TTSEngine):
         sf.write(str(out_path), audio, 24000)
 
 
-# ── Piper (Persian) via binary ─────────────────────────────────────────────
-
-
-class PiperEngine(TTSEngine):
-    """Persian TTS via the Piper binary (``piper.exe`` on Windows).
-
-    The Python ``piper_phonemize`` package has no Windows wheels, so we call
-    the pre-compiled binary which bundles espeak-ng with full Persian voice
-    data. Text is written to a temp UTF-8 file and piped via stdin.
-
-    Speed control: Piper uses ``--length_scale`` (default 1.0; higher =
-    slower, lower = faster). We invert the Kokoro-style ``speed`` param so
-    the UI's single slider behaves consistently across both engines:
-    ``length_scale = 1.0 / speed``.
-    """
-
-    def __init__(
-        self,
-        binary_path: Path,
-        voices_dir: Path,
-        log_callback: LogFn | None = None,
-    ) -> None:
-        super().__init__(log_callback)
-        self.binary_path = Path(binary_path)
-        self.voices_dir = Path(voices_dir)
-
-    def _ensure_voice(self, voice: str) -> Path:
-        """Download (if needed) and return the .onnx model path."""
-        from core.tts.voices import ensure_piper_voice
-
-        onnx_path, _json_path = ensure_piper_voice(voice, self.voices_dir, log_callback=self.log)
-        return onnx_path
-
-    def _synthesize(
-        self,
-        text: str,
-        out_path: Path,
-        voice: str | None,
-        speed: float,
-    ) -> None:
-        from core.tts.voices import PIPER_FA_DEFAULT
-
-        if not self.binary_path.exists():
-            raise FileNotFoundError(
-                f"Piper binary not found: {self.binary_path}. "
-                "Set the correct path in Settings → TTS."
-            )
-        voice = voice or PIPER_FA_DEFAULT
-        model_path = self._ensure_voice(voice)
-        # length_scale: 1.0 = normal. speed=1.5 → length_scale≈0.67 (faster).
-        length_scale = 1.0 / max(float(speed), 0.1)
-
-        # Build the command. Piper reads text from stdin and writes the WAV
-        # to --output_file. We pass --quiet to suppress the log lines that
-        # would otherwise pollute stderr.
-        cmd = [
-            str(self.binary_path),
-            "--model",
-            str(model_path),
-            "--output_file",
-            str(out_path),
-            "--length-scale",
-            f"{length_scale:.3f}",
-        ]
-        # On Windows, subprocess needs the text as bytes with UTF-8 encoding
-        # and creationflags to hide the console window.
-        kwargs = {
-            "input": text,
-            "capture_output": True,
-            "text": True,
-            "encoding": "utf-8",
-            # V18.20.4.4 (W-c8): no timeout meant a wedged piper.exe blocked
-            # the TTS thread forever (subprocess.run kills the child on
-            # expiry).
-            "timeout": PIPER_SYNTH_TIMEOUT_S,
-        }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-        self.log(f"  🎙️ Piper: synth {len(text)} chars with {voice}…", "DEBUG")
-        try:
-            proc = subprocess.run(cmd, **kwargs)
-        except subprocess.TimeoutExpired as e:
-            # V18.20.4.4 (W-c8): subprocess.run already killed the child;
-            # surface a clear, fail-soft error.
-            raise RuntimeError(
-                f"Piper timed out after {PIPER_SYNTH_TIMEOUT_S}s (wedged binary? voice={voice})"
-            ) from e
-        if proc.returncode != 0:
-            err = (proc.stderr or "").strip()
-            raise RuntimeError(f"Piper exited {proc.returncode}: {err[:300]}")
-
-
 # ── Router ─────────────────────────────────────────────────────────────────
 
 
 class CoquiTTSEngine(TTSEngine):
     """V10.36.0: Coqui XTTS v2 — multilingual neural TTS with voice cloning.
 
-    Supports Persian natively (unlike Piper's robotic voices). Uses the
-    ``TTS`` library (pip install TTS). The model is ~1.8 GB and loads
-    lazily on first use.
+    Supports Persian natively (V0.6.64: the only Persian route in this
+    legacy router since the Piper removal). Uses the ``TTS`` library
+    (pip install TTS). The model is ~1.8 GB and loads lazily on first use.
 
     Requires a GPU for good speed (~2x realtime on RTX 3060). Falls back
     to CPU if CUDA is unavailable (much slower).
@@ -472,8 +370,8 @@ class TTSRouter:
     V4.5.0: Supports three engines:
     * **English** → NeuTTS-Air (primary, voice-cloning) OR Kokoro (alternative,
       preset voices). Selected via the ``en_engine`` parameter.
-    * **Persian** → Piper (binary subprocess).
-    V10.36.0: **Persian** → Coqui XTTS v2 (if configured), falls back to Piper.
+    * **Persian** → Coqui XTTS v2 (V10.36.0; V0.6.64: the only Persian
+      route — the Piper binary engine was removed entirely).
 
     All engines are lazy-loaded on first use to keep startup fast. Callers
     pass the script language explicitly (detected once per line by the
@@ -482,12 +380,9 @@ class TTSRouter:
 
     def __init__(
         self,
-        piper_binary: Path,
-        piper_voices_dir: Path,
         en_engine: str = "neutts",
         neutts_gguf_path: Path | None = None,
         neutts_project_path: Path | None = None,
-        fa_engine: str = "piper",  # V10.36.0: "piper" or "coqui"
         coqui_model: str = "tts_models/multilingual/multi-dataset/xtts_v2",
         coqui_speaker: str = "Ana",
         coqui_voice_sample: str = "",
@@ -495,16 +390,11 @@ class TTSRouter:
     ) -> None:
         self.log = log_callback or (lambda msg, level="INFO": None)
         self._kokoro: KokoroEngine | None = None
-        self._piper: PiperEngine | None = None
         self._neutts: NeuTTSEngine | None = None
         self._coqui: CoquiTTSEngine | None = None
-        self._piper_binary = piper_binary
-        self._piper_voices_dir = piper_voices_dir
         self._en_engine = en_engine  # "neutts" or "kokoro"
         self._neutts_gguf_path = neutts_gguf_path
         self._neutts_project_path = neutts_project_path
-        # V10.36.0: Coqui XTTS v2 for Persian
-        self._fa_engine = fa_engine  # "piper" or "coqui"
         self._coqui_model = coqui_model
         self._coqui_speaker = coqui_speaker
         self._coqui_voice_sample = coqui_voice_sample
@@ -514,16 +404,6 @@ class TTSRouter:
         if self._kokoro is None:
             self._kokoro = KokoroEngine(log_callback=self.log)
         return self._kokoro
-
-    @property
-    def piper(self) -> PiperEngine:
-        if self._piper is None:
-            self._piper = PiperEngine(
-                self._piper_binary,
-                self._piper_voices_dir,
-                log_callback=self.log,
-            )
-        return self._piper
 
     @property
     def coqui(self) -> CoquiTTSEngine:
@@ -571,16 +451,15 @@ class TTSRouter:
             return self.kokoro
 
     def persian_engine(self) -> TTSEngine:
-        """V10.36.0: Return the configured Persian engine (Coqui or Piper)."""
-        if self._fa_engine == "coqui":
-            try:
-                return self.coqui
-            except Exception as e:
-                self.log(
-                    f"  ⚠️ Coqui TTS unavailable ({e}), falling back to Piper",
-                    "WARNING",
-                )
-        return self.piper
+        """Return the Persian engine — Coqui XTTS v2.
+
+        V10.36.0 made Coqui the quality route with a Piper fallback;
+        V0.6.64 removed Piper entirely, so Coqui is the only Persian engine
+        in this legacy router. Construction is cheap (the ~1.8 GB model
+        loads lazily on first use); synthesis failures stay fail-soft
+        (``TTSEngine.synthesize`` → ``last_error`` + ``None``).
+        """
+        return self.coqui
 
     def synthesize(
         self,
@@ -596,23 +475,18 @@ class TTSRouter:
         engine is NeuTTS, route to Kokoro for that segment. This handles
         the "distinct voices" case where Host B uses a Kokoro voice while
         Host A uses NeuTTS.
-        V10.36.0: Persian routes to Coqui XTTS v2 (if configured) instead
-        of Piper, for much better quality.
+        V10.36.0: Persian routes to Coqui XTTS v2 (V0.6.64: Coqui only —
+        the Piper fallback is gone with the engine).
         """
-        from core.tts.voices import KOKORO_VOICES, PIPER_FA_VOICES
+        from core.tts.voices import KOKORO_VOICES
 
         kokoro_ids = {v[0] for v in KOKORO_VOICES}
-        piper_ids = {v[0] for v in PIPER_FA_VOICES}
 
         if language == "fa":
-            # V10.36.0: Try Coqui first, fall back to Piper
             engine = self.persian_engine()
         elif voice and voice in kokoro_ids:
             # Voice is a Kokoro preset — use Kokoro even if engine is NeuTTS
             engine = self.kokoro
-        elif voice and voice in piper_ids:
-            # Voice is a Piper voice — use Piper
-            engine = self.piper
         else:
             engine = self.english_engine()
         return engine.synthesize(text, out_path, voice, speed)

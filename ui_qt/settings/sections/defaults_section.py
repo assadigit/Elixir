@@ -114,7 +114,7 @@ class DefaultsSection(QGroupBox):
 
         self.tts_engine_combo = QComboBox()
         self.tts_engine_combo.addItem("Default (use tts.en_engine)", "")
-        self.tts_engine_combo.addItem("Piper", "piper")
+        # V0.6.64: the "Piper" entry is gone with the Piper engine.
         self.tts_engine_combo.addItem("NeuTTS", "neutts")
         self.tts_engine_combo.addItem("Coqui XTTS v2", "coqui")
         f.addRow("Default engine", self.tts_engine_combo)

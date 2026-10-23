@@ -88,7 +88,7 @@ OUTPUT_PLAN: list[tuple[str, str, str, str, str]] = [
     (
         "output_tts",
         "Generating Podcast Audio (TTS)…",
-        "🎙️ Generating podcast audio (TTS: EN→Kokoro, FA→Piper)…",
+        "🎙️ Generating podcast audio (TTS: EN→Kokoro, FA→Coqui XTTS v2)…",
         "PodcastAudioGenerator",
         "podcast_dir",
     ),
@@ -178,11 +178,11 @@ def _log_tts_diagnostics(
 
     _s = Settings()
     log(f"    EN engine: {_s.get('tts.en_engine', 'neutts')}", "INFO")
-    log(f"    Piper binary: {_s.get('tts.piper_binary', '(not set)')}", "INFO")
+    # V0.6.64: the Piper binary + fa_host_* (Piper voice id) diagnostics are
+    # gone with the Piper engine.
     log(f"    Host A voice: {_s.get('tts.host_a_voice', 'dave')}", "INFO")
     log(f"    Host B voice: {_s.get('tts.host_b_voice', 'jo')}", "INFO")
-    log(f"    FA Host A voice: {_s.get('tts.fa_host_a_voice', 'fa_IR-amir-medium')}", "INFO")
-    log(f"    FA Host B voice: {_s.get('tts.fa_host_b_voice', 'fa_IR-amir-medium')}", "INFO")
+    log(f"    FA voice (Coqui speaker): {_s.get('tts.fa_voice', '') or '(Coqui default)'}", "INFO")
     log(f"    Speed: {_s.get('tts.speed', 1.0)}", "INFO")
     log(f"    Normalize: {_s.get('tts.normalize_enabled', True)}", "INFO")
     log(f"    NeuTTS GGUF: {_s.get('tts.neutts_gguf_path', '(not set)')}", "INFO")

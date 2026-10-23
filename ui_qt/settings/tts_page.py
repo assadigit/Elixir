@@ -1,10 +1,12 @@
 """V4.3.0: TTS settings page — a top-level head group in Settings.
 
 Tab order (Voices first, per user request):
-  1. **Voices** — Kokoro English voice selector, Piper Persian voice
-     selector, and per-host (Host A / Host B) voice selectors.
-  2. **Engines** — Piper binary path picker + live connectivity
-     indicators (green/red circles) for both Kokoro and Piper.
+  1. **Voices** — Kokoro English voice selector and per-host (Host A /
+     Host B) voice selectors. (V0.6.64: the Piper Persian voice selector is
+     gone with the Piper engine; Persian preview uses Coqui XTTS v2.)
+  2. **Engines** — NeuTTS paths + live connectivity indicators (green/red
+     circles) for Kokoro and NeuTTS. (V0.6.64: the Piper binary picker is
+     gone with the engine.)
   3. **Speed** — 0.5×–2.0× slider.
   4. **Preview** — "Test voice" button that plays a cached sample WAV
      in-app (via QSound) — no external media player. Samples are
@@ -43,10 +45,7 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from core.tts.voices import (
     KOKORO_DEFAULT_HOST_A,
-    PIPER_FA_DEFAULT,
-    PIPER_FA_VOICES,
     kokoro_voice_groups,
-    piper_voice_label,
 )
 from ui_qt.components.file_picker_row import FilePickerRow
 from ui_qt.components.simple_worker import SimpleWorker
@@ -103,13 +102,11 @@ class TtsVoicesSection(QGroupBox):
         self._populate_en_voices()
         f.addRow("English voice", self.en_combo)
 
-        # ── Piper Persian voice ──────────────────────────────────────────
-        self.fa_combo = QComboBox()
-        for vid, _repo, _sub in PIPER_FA_VOICES:
-            self.fa_combo.addItem(piper_voice_label(vid), vid)
-        fa_current = controller.get_setting("tts.fa_voice", PIPER_FA_DEFAULT)
-        self._select_combo_by_data(self.fa_combo, fa_current)
-        f.addRow("Persian voice (Piper)", self.fa_combo)
+        # V0.6.64: the Piper Persian voice selector was removed with the
+        # Piper engine. Persian preview/audio routes to Coqui XTTS v2 (its
+        # model + speaker are configured in the Coqui section below); the
+        # optional per-book Coqui speaker override is the ``tts.fa_voice``
+        # setting (empty = the configured Coqui speaker).
 
         # ── Host A / Host B voices ───────────────────────────────────────
         self.host_a_combo = self._build_combined_voice_combo()
@@ -306,7 +303,7 @@ class TtsVoicesSection(QGroupBox):
                 self._populate_en_voices()
 
     def _build_combined_voice_combo(self) -> QComboBox:
-        """A combo listing ALL voices: NeuTTS reference + Kokoro + Piper."""
+        """A combo listing ALL voices: NeuTTS reference + Kokoro."""
         combo = QComboBox()
         combo.addItem("(use per-language default)", "")
 
@@ -322,9 +319,7 @@ class TtsVoicesSection(QGroupBox):
             for vid, _lang, _gender, desc in voices:
                 combo.addItem(f"EN · {vid} — {desc}", vid)
 
-        # Piper Persian voices
-        for vid, _repo, _sub in PIPER_FA_VOICES:
-            combo.addItem(f"FA · {piper_voice_label(vid)}", vid)
+        # V0.6.64: the Piper Persian voices are gone with the engine.
         return combo
 
     @staticmethod
@@ -343,7 +338,9 @@ class TtsVoicesSection(QGroupBox):
         c = self.controller
         c.update_setting("tts.en_engine", self.en_engine_combo.currentData() or "neutts")
         c.update_setting("tts.en_voice", self.en_combo.currentData() or "")
-        c.update_setting("tts.fa_voice", self.fa_combo.currentData() or "")
+        # V0.6.64: tts.fa_voice is no longer written here — the Piper voice
+        # selector is gone. The Coqui speaker (or a manual settings.json
+        # override) drives Persian synthesis.
         c.update_setting("tts.host_a_voice", self.host_a_combo.currentData() or "")
         c.update_setting("tts.host_b_voice", self.host_b_combo.currentData() or "")
 
@@ -354,7 +351,6 @@ class TtsVoicesSection(QGroupBox):
         if idx >= 0:
             self.en_engine_combo.setCurrentIndex(idx)
         self._populate_en_voices()
-        self._select_combo_by_data(self.fa_combo, c.get_setting("tts.fa_voice", PIPER_FA_DEFAULT))
         self._select_combo_by_data(self.host_a_combo, c.get_setting("tts.host_a_voice", ""))
         self._select_combo_by_data(self.host_b_combo, c.get_setting("tts.host_b_voice", ""))
         self._refresh_ref_voices_list()
@@ -364,10 +360,11 @@ class TtsVoicesSection(QGroupBox):
 
 
 class TtsEnginesSection(QGroupBox):
-    """Engine paths + live connectivity circles for all three engines.
+    """Engine paths + live connectivity circles.
 
     V4.5.0: Adds NeuTTS-Air (GGUF) config: GGUF model path + project path.
-    Connectivity indicators now show three engines: NeuTTS, Kokoro, Piper.
+    Connectivity indicators for NeuTTS and Kokoro (V0.6.64: the Piper
+    indicator is gone with the engine).
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
@@ -462,26 +459,10 @@ class TtsEnginesSection(QGroupBox):
         )
         f.addRow("", self.neutts_subprocess_cb)
 
-        # ── Piper binary path ─────────────────────────────────────────────
-        f.addRow("", QLabel(""))  # spacer
-        piper_label = QLabel("Piper (Persian)")
-        piper_label.setObjectName("SectionTitle")
-        f.addRow("", piper_label)
-
-        self.piper_picker = FilePickerRow(
-            label="Piper binary",
-            mode="file",
-            placeholder="C:\\piper_windows_amd64\\piper\\piper.exe",
-            filter="Piper executable (piper.exe);;All files (*)",
-        )
-        self.piper_picker.set_path(
-            controller.get_setting(
-                "tts.piper_binary",
-                r"C:\piper_windows_amd64\piper\piper.exe",
-            )
-        )
-        self.piper_picker.path_changed.connect(self._recheck)
-        f.addRow(self.piper_picker)
+        # V0.6.64: the Piper binary picker was removed with the Piper engine
+        # (user decision, remaining-surface item 4 — "Remove piper entirely").
+        # Persian TTS: Coqui XTTS v2 (configured in the Coqui section) or the
+        # modern Kokoro/Sherpa routes — no binary path needed.
 
         # ── Connectivity indicators ──────────────────────────────────────
         f.addRow("", QLabel(""))  # spacer
@@ -510,15 +491,6 @@ class TtsEnginesSection(QGroupBox):
 
         conn_row.addSpacing(16)
 
-        # Piper indicator
-        self.piper_dot = QLabel("●")
-        self.piper_dot.setFixedSize(20, 20)
-        self.piper_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.piper_dot.setStyleSheet("font-size: 20px; color: #999;")
-        conn_row.addWidget(self.piper_dot)
-        self.piper_label = QLabel("Piper")
-        conn_row.addWidget(self.piper_label)
-
         conn_row.addStretch()
 
         self.recheck_btn = QPushButton("Recheck")
@@ -530,7 +502,8 @@ class TtsEnginesSection(QGroupBox):
         kokoro_hint = QLabel(
             "NeuTTS-Air: set the GGUF model path + project folder (where the "
             "neutts package lives). Kokoro: Python package, no path needed "
-            "(model downloads on first use). Piper: standalone binary for Persian."
+            "(model downloads on first use). Persian: Coqui XTTS v2 — "
+            "configure it in the Coqui section (V0.6.64: Piper removed)."
         )
         kokoro_hint.setObjectName("Caption")
         kokoro_hint.setWordWrap(True)
@@ -551,7 +524,7 @@ class TtsEnginesSection(QGroupBox):
         ``import kokoro`` — that can take SECONDS on first probe (it
         imports torch) and used to run on the UI thread from
         ``__init__``/``reload``/path-change handlers. It now runs on a
-        SimpleWorker; the fast NeuTTS/Piper path checks stay synchronous
+        SimpleWorker; the fast NeuTTS path checks stay synchronous
         (plain ``Path.exists``). The worker ref lives on
         ``self._kokoro_worker`` and the dot/label update happens on the
         main thread (``finished`` marshals there).
@@ -571,14 +544,6 @@ class TtsEnginesSection(QGroupBox):
 
         # Kokoro: try to import (async — see docstring, W-b8)
         self._check_kokoro_async()
-
-        # Piper: check binary exists
-        piper_path = self.piper_picker.path()
-        piper_ok = piper_path is not None and piper_path.exists()
-        self._set_dot(self.piper_dot, piper_ok)
-        self.piper_label.setText(
-            f"Piper (Persian) — {'connected' if piper_ok else 'binary not found'}"
-        )
 
     @staticmethod
     def _probe_kokoro() -> bool:
@@ -626,10 +591,10 @@ class TtsEnginesSection(QGroupBox):
         c = self.controller
         gguf = self.neutts_gguf_picker.path()
         proj = self.neutts_project_picker.path()
-        piper = self.piper_picker.path()
         c.update_setting("tts.neutts_gguf_path", str(gguf) if gguf else "")
         c.update_setting("tts.neutts_project_path", str(proj) if proj else "")
-        c.update_setting("tts.piper_binary", str(piper) if piper else "")
+        # V0.6.64: tts.piper_binary is no longer written — the Piper binary
+        # picker is gone with the engine.
         # V11.32.0: device prefs.
         c.update_setting(
             "tts.neutts_backbone_device", self.neutts_backbone_combo.currentData() or "cuda"
@@ -651,12 +616,7 @@ class TtsEnginesSection(QGroupBox):
                 r"G:\Program Files\neutts-air",
             )
         )
-        self.piper_picker.set_path(
-            c.get_setting(
-                "tts.piper_binary",
-                r"C:\piper_windows_amd64\piper\piper.exe",
-            )
-        )
+        # V0.6.64: no Piper picker to restore — the engine is gone.
         # V11.32.0: restore device selections.
         bb = c.get_setting("tts.neutts_backbone_device", "cuda")
         idx = self.neutts_backbone_combo.findData(bb)
@@ -677,8 +637,9 @@ class TtsCoquiSection(QGroupBox):
     """V10.37.0: Coqui XTTS v2 settings — better Persian TTS.
 
     Coqui XTTS v2 is a multilingual neural TTS with voice cloning.
-    Supports Persian natively (unlike Piper's robotic voices).
-    Requires: pip install TTS (+ torch for GPU).
+    Supports Persian natively. Requires: pip install TTS (+ torch for GPU).
+    V0.6.64: Coqui is the ONLY Persian engine of the legacy router — the
+    Piper alternative was removed entirely (user decision).
     """
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
@@ -686,14 +647,8 @@ class TtsCoquiSection(QGroupBox):
         self.controller = controller
         f = make_form()
 
-        # Persian engine selector
-        self.fa_engine_combo = QComboBox()
-        self.fa_engine_combo.addItem("Piper (lightweight, robotic)", "piper")
-        self.fa_engine_combo.addItem("Coqui XTTS v2 (neural, natural)", "coqui")
-        _fa_idx = self.fa_engine_combo.findData(controller.get_setting("tts.fa_engine", "piper"))
-        if _fa_idx >= 0:
-            self.fa_engine_combo.setCurrentIndex(_fa_idx)
-        f.addRow("Persian engine", self.fa_engine_combo)
+        # V0.6.64: the Persian engine selector (Piper vs Coqui) was removed
+        # with the Piper engine — Persian always routes to Coqui here.
 
         # Coqui model name
         self.coqui_model_edit = QLineEdit(
@@ -730,7 +685,9 @@ class TtsCoquiSection(QGroupBox):
 
     def save(self) -> None:
         c = self.controller
-        c.update_setting("tts.fa_engine", self.fa_engine_combo.currentData() or "piper")
+        # V0.6.64: tts.fa_engine is no longer written — Persian always uses
+        # Coqui in the legacy router (the Piper option is gone with the
+        # engine).
         c.update_setting("tts.coqui_model", self.coqui_model_edit.text().strip())
         c.update_setting("tts.coqui_speaker", self.coqui_speaker_edit.text().strip())
         sample = self.coqui_sample_picker.path()
@@ -738,9 +695,6 @@ class TtsCoquiSection(QGroupBox):
 
     def reload(self) -> None:
         c = self.controller
-        idx = self.fa_engine_combo.findData(c.get_setting("tts.fa_engine", "piper"))
-        if idx >= 0:
-            self.fa_engine_combo.setCurrentIndex(idx)
         self.coqui_model_edit.setText(
             c.get_setting("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2")
         )
@@ -774,8 +728,8 @@ class TtsSpeedSection(QGroupBox):
         f.addRow("Speed", row)
 
         hint = QLabel(
-            "1.0× = natural speed. Higher = faster (Piper uses a shorter "
-            "length scale; Kokoro uses a higher speed factor). Applies to "
+            "1.0× = natural speed. Higher = faster (Kokoro uses a higher "
+            "speed factor; Coqui clamps to 0.5–2.0×). Applies to "
             "both English and Persian synthesis."
         )
         hint.setObjectName("Caption")
@@ -1103,8 +1057,9 @@ class TtsPreviewSection(QGroupBox):
     instantly inside the app via QMediaPlayer (no external player, no
     file generation). A "Regenerate" button forces a fresh sample.
 
-    The cache key is the voice ID, so each of the 16 Kokoro voices and 3
-    Piper voices gets its own cached sample after first preview.
+    The cache key is the voice ID, so each of the 16 Kokoro voices gets its
+    own cached sample after first preview (V0.6.64: the 3 Piper voices are
+    gone with the engine; the Persian preview uses one Coqui sample).
     """
 
     _SAMPLES = {
@@ -1179,7 +1134,9 @@ class TtsPreviewSection(QGroupBox):
     def _current_voice_name(self, lang: str) -> str:
         c = self.controller
         if lang == "fa":
-            return c.get_setting("tts.fa_voice", PIPER_FA_DEFAULT)
+            # V0.6.64: the Piper default is gone — empty fa_voice means the
+            # Coqui speaker; use a stable cache key for the sample WAV.
+            return c.get_setting("tts.fa_voice", "") or "coqui"
         # English: depends on the selected engine
         en_engine = c.get_setting("tts.en_engine", "neutts")
         if en_engine == "kokoro":
@@ -1233,10 +1190,14 @@ class TtsPreviewSection(QGroupBox):
                 "tts.neutts_project_path",
                 r"G:\Program Files\neutts-air",
             ),
-            "piper_binary": c.get_setting(
-                "tts.piper_binary",
-                r"C:\piper_windows_amd64\piper\piper.exe",
+            # V0.6.64: the Persian preview rides Coqui XTTS v2 (the Piper
+            # binary snapshot is gone with the engine).
+            "coqui_model": c.get_setting(
+                "tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"
             ),
+            "coqui_speaker": c.get_setting("tts.coqui_speaker", "Ana"),
+            "coqui_voice_sample": c.get_setting("tts.coqui_voice_sample", ""),
+            "fa_voice": c.get_setting("tts.fa_voice", ""),
         }
 
     def _generate_sample(
@@ -1276,15 +1237,22 @@ class TtsPreviewSection(QGroupBox):
             ok = eng.synthesize(text, out_path, voice, speed)
             error = eng.last_error if not ok else None
         else:
-            from core.tts.engine import PiperEngine
+            # V0.6.64: Persian preview rides Coqui XTTS v2 (Piper removed).
+            # The voice string is the Coqui speaker name (empty → the
+            # configured speaker); an explicit fa_voice overrides it.
+            from core.tts.engine import CoquiTTSEngine
 
-            piper_bin = Path(cfg["piper_binary"])
-            eng = PiperEngine(
-                piper_bin,
-                piper_bin.parent / "voices",
+            speaker = cfg.get("fa_voice") or cfg["coqui_speaker"]
+            voice_sample = (
+                Path(cfg["coqui_voice_sample"]) if cfg.get("coqui_voice_sample") else None
+            )
+            eng = CoquiTTSEngine(
+                model_name=cfg["coqui_model"],
+                speaker=speaker,
+                voice_sample_path=voice_sample,
                 log_callback=lambda m, lvl="INFO": None,
             )
-            ok = eng.synthesize(text, out_path, voice, speed)
+            ok = eng.synthesize(text, out_path, speaker, speed)
             error = eng.last_error if not ok else None
 
         if ok and out_path.exists():
@@ -1371,10 +1339,11 @@ class TtsPreviewSection(QGroupBox):
                 f"Could not generate audio with voice '{voice}'.\n\n"
                 f"Error: {error}\n\n"
                 f"Language: {lang}\n"
-                f"Engine: {'Kokoro' if lang == 'en' else 'Piper'}\n\n"
+                f"Engine: {'Kokoro/NeuTTS' if lang == 'en' else 'Coqui XTTS v2'}\n\n"
                 "For Kokoro: ensure it's installed (pip install kokoro) "
                 "and the model can load.\n"
-                "For Piper: ensure the binary path is correct (Engines tab).",
+                "For Coqui (Persian): pip install TTS — the model downloads "
+                "on first use (see the Coqui section).",
             )
             self._on_lang_changed(0)
             return

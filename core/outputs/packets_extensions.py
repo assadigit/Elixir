@@ -8,7 +8,8 @@ Extends the V7.3.0 Packets of Knowledge with three new output formats:
 
 2. **Per-packet TTS audio** — generates a short spoken audio clip for each
    packet (the TL;DR + Q&A), so the user can listen to key concepts.
-   Uses the existing TTS router (NeuTTS/Kokoro for EN, Piper for FA).
+   Uses the existing TTS router (NeuTTS/Kokoro for EN, Coqui for FA —
+   V0.6.64: the Piper Persian engine was removed entirely).
 
 3. **Lecture format** — rewrites the packets as a continuous lecture
    narrative (one host, educational tone), distinct from the 2-host
@@ -286,18 +287,14 @@ class PacketsAudioGenerator(OutputGeneratorBase):
         s = Settings()
         from core.tts.engine import TTSRouter
 
-        piper_binary = Path(s.get("tts.piper_binary", ""))
         en_engine = s.get("tts.en_engine", "neutts")
         neutts_gguf = s.get("tts.neutts_gguf_path", "")
         neutts_project = s.get("tts.neutts_project_path", "")
 
         router = TTSRouter(
-            piper_binary=piper_binary if piper_binary else None,
-            piper_voices_dir=piper_binary.parent / "voices" if piper_binary else None,
             en_engine=en_engine,
             neutts_gguf_path=Path(neutts_gguf) if neutts_gguf else None,
             neutts_project_path=Path(neutts_project) if neutts_project else None,
-            fa_engine=s.get("tts.fa_engine", "piper"),  # V10.37.0
             coqui_model=s.get("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
             coqui_speaker=s.get("tts.coqui_speaker", "Ana"),
             coqui_voice_sample=s.get("tts.coqui_voice_sample", ""),

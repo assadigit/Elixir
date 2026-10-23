@@ -2,7 +2,8 @@
 
 Uses the persistent engine cache so models load ONCE and stay in VRAM.
 - English: NeuTTS (primary) + Kokoro (fallback)
-- Farsi: Sherpa Persian (primary) + Piper (fallback)
+- Farsi: Kokoro (V11.44.0 default; V0.6.64: the Piper fallback that this
+  docstring once advertised was removed with the Piper engine)
 
 Generates per-line audio, then stitches with 150ms silence between lines.
 """

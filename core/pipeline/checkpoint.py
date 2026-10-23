@@ -21,7 +21,7 @@ The checkpoint file (.checkpoint.json) lives in the output directory::
             "briefing": {"status": "done", "elapsed_s": 47.0},
             "podcast_script": {"status": "done", "scripts": 1, "elapsed_s": 188.0},
             "flashcards": {"status": "done", "cards": 41, "elapsed_s": 45.0},
-            "podcast_audio": {"status": "failed", "error": "Piper binary not found", "elapsed_s": 0.5},
+            "podcast_audio": {"status": "failed", "error": "Coqui TTS model unavailable", "elapsed_s": 0.5},
             "obsidian": {"status": "skipped"},
             "study_guide": {"status": "skipped"},
             "social": {"status": "skipped"},

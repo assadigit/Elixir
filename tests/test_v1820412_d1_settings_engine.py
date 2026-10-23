@@ -636,7 +636,9 @@ class TestWc12EngineCacheSourcePins:
         assert "def get_sherpa_engine(" in src
         assert "def get_vibevoice_engine(" in src
         assert "def get_kokoro_engine(" in src
-        assert "def get_piper_engine(" in src
+        # V0.6.64: get_piper_engine was REMOVED with the Piper engine —
+        # the pin inverts into a removal pin.
+        assert "def get_piper_engine(" not in src
         assert "def cached_engine_count()" in src
 
     def test_docstring_documents_the_w_c12_contract(self):

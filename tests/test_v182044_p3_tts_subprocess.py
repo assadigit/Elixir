@@ -22,7 +22,9 @@ lifecycle fixes and the new shared base:
 * W-c8 — piper ``subprocess.run`` had no timeout; a wedged piper.exe
   blocked the TTS thread indefinitely. Fix: ``PIPER_SYNTH_TIMEOUT_S``
   bound + TimeoutExpired → RuntimeError (fail-soft through
-  ``TTSEngine.synthesize``).
+  ``TTSEngine.synthesize``). (V0.6.64: the Piper engine + its timeout
+  machinery were REMOVED entirely — user decision, remaining-surface
+  item 4; the W-c8 pins below became removal pins.)
 
 Tests are pure-Python / hermetic: fake Popen objects (real reader
 threads + queues, no real model/GPU/packages) + source pins on the
@@ -271,20 +273,12 @@ class TestSourcePins:
         assert "self._sub = None" in method
         assert "self._model = None" in method
 
-    def test_w_c8_piper_timeout_in_kwargs(self):
-        """W-c8: piper subprocess.run call carries a timeout bound."""
-        assert "PIPER_SYNTH_TIMEOUT_S = 120" in ENGINE_SRC
-        kw_idx = ENGINE_SRC.find('"timeout": PIPER_SYNTH_TIMEOUT_S')
-        run_idx = ENGINE_SRC.find("proc = subprocess.run(cmd, **kwargs)")
-        assert kw_idx != -1, "piper kwargs must include the timeout"
-        assert run_idx != -1
-        assert kw_idx < run_idx, "timeout must be set before the run call"
-
-    def test_w_c8_piper_timeout_expired_converted(self):
-        # V0.13 (B904 fix): the handler now captures the exception
-        # (`as e`) so the RuntimeError chains with `from e`.
-        assert "except subprocess.TimeoutExpired as e:" in ENGINE_SRC
-        assert "Piper timed out after" in ENGINE_SRC
+    def test_w_c8_piper_engine_removed_v0664(self):
+        """V0.6.64: the Piper engine (and its W-c8 timeout machinery) were
+        removed entirely — the source pins invert into removal pins so the
+        engine cannot silently reappear."""
+        assert "PIPER_SYNTH_TIMEOUT_S" not in ENGINE_SRC
+        assert "class PiperEngine" not in ENGINE_SRC
 
     def test_neutts_deliberately_not_ported(self):
         """Scope note: neutts keeps its own battle-tested path (its
@@ -683,64 +677,6 @@ class TestVibeVoiceWc2:
         assert "Verified: ok.wav" in logs.joined()
 
 
-# ── Behavioral: W-c8 (piper) ───────────────────────────────────────────────
-
-
-class TestPiperWc8:
-    def _engine(self, tmp_path):
-        from core.tts.engine import PiperEngine
-
-        binary = tmp_path / "piper.exe"
-        binary.write_bytes(b"fake")
-        logs = _LogCollector()
-        return PiperEngine(binary_path=binary, voices_dir=tmp_path, log_callback=logs)
-
-    def test_timeout_kwarg_is_passed(self, tmp_path, monkeypatch):
-        engine = self._engine(tmp_path)
-        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
-
-        captured: dict = {}
-
-        def fake_run(cmd, **kwargs):
-            captured.update(kwargs)
-            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-        with pytest.raises(RuntimeError, match="timed out after 120s"):
-            engine._synthesize("سلام", tmp_path / "out.wav", "fa_FA", 1.0)
-        assert captured.get("timeout") == 120, "piper subprocess.run must be bounded (W-c8)"
-
-    def test_timeout_is_fail_soft_through_synthesize(self, tmp_path, monkeypatch):
-        """The house fail-soft contract: synthesize() returns None and
-        records last_error (the TTS thread never sees a raw exception)."""
-        engine = self._engine(tmp_path)
-        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
-
-        def fake_run(cmd, **kwargs):
-            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
-        result = engine.synthesize("سلام", tmp_path / "out.wav", "fa_FA", 1.0)
-        assert result is None
-        assert engine.last_error and "timed out" in engine.last_error
-
-    def test_successful_run_is_unchanged(self, tmp_path, monkeypatch):
-        engine = self._engine(tmp_path)
-        monkeypatch.setattr(engine, "_ensure_voice", lambda voice: tmp_path / "v.onnx")
-        out = tmp_path / "out.wav"
-        # Write a >44-byte "wav" so the base-class size check passes.
-        out.write_bytes(b"WAV" * 64)
-
-        class _FakeCompleted:
-            returncode = 0
-            stderr = ""
-
-        monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: _FakeCompleted())
-        result = engine.synthesize("سلام", out, "fa_FA", 1.0)
-        assert result == out
-        assert engine.last_error is None
-
-    def test_piper_timeout_constant_value(self):
-        from core.tts.engine import PIPER_SYNTH_TIMEOUT_S
-
-        assert PIPER_SYNTH_TIMEOUT_S == 120
+# V0.6.64: the behavioral TestPiperWc8 class (4 tests) was REMOVED with
+# the Piper engine — the binary-subprocess path is gone (user decision,
+# remaining-surface item 4: "Remove piper entirely").

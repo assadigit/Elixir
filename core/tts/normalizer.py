@@ -8,8 +8,8 @@ Pre-processes text before synthesis to improve pronunciation:
   expands abbreviations, AND adds harakat (اعراب‌گذاری) — fatha (َ),
   damma (ُ), kasra (ِ), sukun (ْ), shadda (ّ) — to disambiguate
   pronunciation. This is critical for Persian because the script omits
-  short vowels; without harakat the TTS engine (espeak-ng inside Piper)
-  must guess, and it guesses wrong often.
+  short vowels; without harakat the TTS engine must guess, and it
+  guesses wrong often.
 
 The normalizer calls an OpenAI-compatible endpoint (Ollama's
 ``/v1/chat/completions``, OpenRouter, OpenAI, any compatible API). It's

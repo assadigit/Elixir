@@ -82,10 +82,11 @@ structured = ["pydantic>=2.5.0"]
 # kokoro/misaki max on PyPI is 0.7.x — the old >=0.9.0 pins could never resolve.
 tts = [
     "kokoro>=0.7.0",        # English TTS engine
-    "huggingface_hub>=0.23.0",  # Piper voice downloads (core/tts/voices.py)
+    "huggingface_hub>=0.23.0",  # model downloads (VibeVoice/Qwen3-TTS/Persian-VITS engines)
     "misaki[en]>=0.7.0",    # Kokoro's English phonemizer frontend
     "soundfile>=0.12.0",    # writes Kokoro's numpy output to .wav
-    "piper-tts>=1.4.0",     # Farsi TTS (ONNX models)
+    # V0.6.64: piper-tts removed with the Piper engine (user decision,
+    # remaining-surface item 4).
     "pydub>=0.25.1",        # audio segment stitching
     "scipy>=1.11.0",        # VibeVoice 24kHz→48kHz upsampling
 ]

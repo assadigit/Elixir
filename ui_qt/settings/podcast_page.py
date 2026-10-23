@@ -24,9 +24,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.tts.voices import (
-    PIPER_FA_VOICES,
     kokoro_voice_groups,
-    piper_voice_label,
 )
 from ui_qt.settings.widgets import make_form
 
@@ -88,7 +86,7 @@ class PodcastFormatSection(QGroupBox):
 
     @staticmethod
     def _populate_voices(combo: QComboBox) -> None:
-        """Fill a combo with all available voices (NeuTTS + Kokoro + Piper)."""
+        """Fill a combo with all available voices (NeuTTS + Kokoro)."""
         combo.addItem("dave — Male, warm (NeuTTS preset)", "dave")
         combo.addItem("jo — Female, friendly (NeuTTS preset)", "jo")
         combo.addItem("greta — Female, authoritative (NeuTTS preset)", "greta")
@@ -103,8 +101,7 @@ class PodcastFormatSection(QGroupBox):
         for _group_label, voices in kokoro_voice_groups():
             for vid, _lang, _gender, desc in voices:
                 combo.addItem(f"Kokoro · {vid} — {desc}", vid)
-        for vid, _repo, _sub in PIPER_FA_VOICES:
-            combo.addItem(f"Piper · {piper_voice_label(vid)}", vid)
+        # V0.6.64: the Piper Persian voices are gone with the engine.
 
     @staticmethod
     def _select(combo: QComboBox, data: str) -> None:
@@ -264,7 +261,7 @@ class PodcastStyleSection(QGroupBox):
         self.fillers_cb.setToolTip(
             "Adds natural conversational fillers to make the podcast sound like "
             "a real human conversation. Works best with NeuTTS (LLM-based engine). "
-            "Kokoro/Piper may pronounce fillers less naturally."
+            "Kokoro may pronounce fillers less naturally."
         )
         f.addRow("", self.fillers_cb)
 

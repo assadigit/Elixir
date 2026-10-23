@@ -277,7 +277,7 @@ OUTPUT_REGISTRY: list[OutputSpec] = [
     OutputSpec(
         key="tts",
         label="Podcast Audio (TTS — optional, needs script)",
-        subtitle="Spoken audio: EN→NeuTTS, FA→Piper. Generate script first.",
+        subtitle="Spoken audio: EN→NeuTTS/Kokoro, FA→Coqui XTTS v2. Generate script first.",
         icon_name="mic",
         default=False,
         setting_key="outputs.tts",

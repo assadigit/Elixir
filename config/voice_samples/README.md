@@ -8,7 +8,8 @@ play instantly from this cache.
 ## Files
 - `af_heart.wav` — Kokoro English voice "af_heart"
 - `am_michael.wav` — Kokoro English voice "am_michael"
-- `fa_IR-amir-medium.wav` — Piper Persian voice "amir"
+- `coqui.wav` — the Persian preview sample (Coqui XTTS v2; V0.6.64: the
+  Piper voices are gone with the engine)
 - ... (one file per voice, generated on first preview)
 
 ## Management

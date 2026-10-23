@@ -6,7 +6,7 @@
 # runtime dependencies. Optional feature groups moved to pyproject.toml
 # extras — install them on demand with, e.g.:
 #
-#   pip install ".[tts]"        # 🎙️ podcast audio (Kokoro/Piper TTS stack)
+#   pip install ".[tts]"        # 🎙️ podcast audio (Kokoro TTS stack; V0.6.64: Piper removed)
 #   pip install ".[grounding]"  # 🔬 langextract verbatim grounding (Layer 8)
 #   pip install ".[formats]"    # 📚 EPUB input, Anki export, docling, pikepdf
 #   pip install ".[rag]"        # 🧠 RAG queries + spaCy NER

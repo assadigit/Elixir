@@ -189,7 +189,7 @@ class VibeVoiceEngine(TTSEngine):
             raise RuntimeError(
                 "VibeVoice is not available in the installed (packaged) version "
                 "of Elixir — it needs the Python source installation with torch. "
-                "Use the Kokoro or Piper voices instead."
+                "Use the Kokoro voices instead."
             )
 
         if not self._model_path:
@@ -205,7 +205,7 @@ class VibeVoiceEngine(TTSEngine):
             raise RuntimeError(
                 "VibeVoice TTS is not available in the installed app: it needs a "
                 "Python environment with torch (run Elixir from source to use "
-                "it). The Kokoro and Piper voices work in the installed app."
+                "it). The Kokoro voices work in the installed app."
             )
 
         self._preflight_vram()  # V0.6.15: the free-VRAM warning, fail-soft

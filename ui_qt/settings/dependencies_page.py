@@ -7,8 +7,9 @@ dashboard runs all checks on load and on "Recheck" button click.
 
 Categories:
   1. **Core Libraries** — PySide6, torch, transformers, numpy, etc.
-  2. **TTS Engines** — Kokoro, NeuTTS-Air, Piper, misaki, llama-cpp
-  3. **System Binaries** — Ollama, Piper binary, ffmpeg, Tesseract, Poppler
+  2. **TTS Engines** — Kokoro, NeuTTS-Air, misaki, llama-cpp (V0.6.64:
+     Piper removed)
+  3. **System Binaries** — Ollama, ffmpeg, Tesseract, Poppler
   4. **Optional** — pyenchant, detectron2, camelot, pymupdf
 
 Each row: [pulsing circle] [name] [status text] [version/path]
@@ -218,7 +219,7 @@ class DependenciesSection(QGroupBox):
         ROOT CAUSE OF THE SETTINGS CRASH (pre-V0.4.7):
         ``check_all()`` does 17 ``importlib.import_module()`` calls
         (torch, transformers, sentence-transformers, chromadb, langchain,
-        spacy, etc.) + 5 subprocess calls (ollama, piper, ffmpeg,
+        spacy, etc.) + 4 subprocess calls (ollama, ffmpeg,
         tesseract, poppler) + 2 HTTP calls to Ollama. On a typical
         Windows rig, torch alone is 3-5s, transformers 2-3s, spacy 1-2s,
         chromadb 2-3s — total can be 30+ seconds of UI-thread blocking.

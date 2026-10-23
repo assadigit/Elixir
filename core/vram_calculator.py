@@ -267,7 +267,7 @@ _KNOWN_ESTIMATES = {
     # TTS — these are not LLMs, use fixed estimates
     "neutts": (1.5, "TTS"),
     "kokoro": (0.5, "TTS"),
-    "piper": (0.1, "TTS"),
+    # V0.6.64: "piper" (0.1 GB) removed with the Piper engine.
 }
 
 

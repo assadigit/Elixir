@@ -503,7 +503,7 @@ class TtsServiceDialog(BaseServiceDialog):
         """V11.33.0: populate the voice combo based on the selected language.
 
         English → NeuTTS reference voices (from VoiceManager) + Kokoro voices.
-        Farsi → Piper voices + Coqui speakers.
+        Farsi → Kokoro voices (V11.44.0 default).
         Auto → a mix.
         """
         if not self.voice_combo:

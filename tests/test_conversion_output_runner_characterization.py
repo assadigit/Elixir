@@ -545,16 +545,18 @@ class TestTtsDiagnosticsCall:
             update_status=lambda s: None,
         )
         info_msgs = [m for m, l in logs if l == "INFO"]
-        # The 12 TTS-diagnostic INFO logs.
+        # The 10 TTS-diagnostic INFO logs (V0.6.64: the Piper binary +
+        # fa_host_* logs are gone with the Piper engine; the FA voice line
+        # now reports the Coqui speaker).
         assert any("🎙️ TTS Audio Generation Details:" in m for m in info_msgs)
         assert any(m.strip().startswith("TTS enabled:") for m in info_msgs)
         assert any(m.strip().startswith("EN engine:") for m in info_msgs)
-        assert any(m.strip().startswith("Piper binary:") for m in info_msgs)
+        assert any(m.strip().startswith("FA voice (Coqui speaker):") for m in info_msgs)
         assert any(m.strip().startswith("Speed:") for m in info_msgs)
 
     def test_log_tts_diagnostics_function_directly(self):
         """_log_tts_diagnostics is also a public function — pin its
-        12-INFO-log behavior directly (no run_output_studio needed)."""
+        10-INFO-log behavior directly (no run_output_studio needed)."""
         logs = []
         _log_tts_diagnostics(
             log=lambda m, l: logs.append((m, l)),
@@ -562,8 +564,9 @@ class TestTtsDiagnosticsCall:
             book_title="MyBook",
         )
         info_msgs = [m for m, l in logs if l == "INFO"]
-        # Empirically: 12 INFO logs (the header + 11 settings).
-        assert len(info_msgs) == 12
+        # Empirically: 10 INFO logs (the header + 9 settings — V0.6.64
+        # dropped the Piper-binary + fa_host-* lines with the engine).
+        assert len(info_msgs) == 10
         assert info_msgs[0] == "  🎙️ TTS Audio Generation Details:"
         assert info_msgs[1] == "    TTS enabled: True"
 
@@ -952,7 +955,9 @@ class TestSourcePinLogLiterals:
         assert "  🎙️ TTS Audio Generation Details:" in skeletons
         assert "    TTS enabled: True" in skeletons
         assert "    EN engine: " in skeletons
-        assert "    Piper binary: " in skeletons
+        # V0.6.64: the Piper-binary line is gone with the engine; the FA
+        # line reports the Coqui speaker.
+        assert "    FA voice (Coqui speaker): " in skeletons
         assert "    Speed: " in skeletons
 
     def test_output_studio_module_unavailable_info_skeleton(self):

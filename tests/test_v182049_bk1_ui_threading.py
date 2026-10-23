@@ -251,7 +251,9 @@ class TestWb8PreviewSampleOffload:
         # the engine branches read the snapshot, not the controller.
         assert 'en_engine = cfg["en_engine"]' in body
         assert 'gguf = Path(cfg["neutts_gguf"])' in body
-        assert 'piper_bin = Path(cfg["piper_binary"])' in body
+        # V0.6.64: the Persian branch reads the Coqui snapshot (the Piper
+        # binary snapshot line is gone with the engine).
+        assert 'speaker = cfg.get("fa_voice") or cfg["coqui_speaker"]' in body
         assert "self.controller.get_setting" not in body
 
     def test_finished_handler_preserves_old_box_and_reenables(self):

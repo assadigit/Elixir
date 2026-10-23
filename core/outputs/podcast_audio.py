@@ -17,7 +17,7 @@ New flow:
 
 Dependencies (unchanged):
     kokoro, misaki[en], soundfile          → English TTS (fallback)
-    piper-tts, piper binary on disk        → Persian TTS
+    TTS (Coqui XTTS v2)                    → Persian TTS (V0.6.64: Piper removed)
     pydub, ffmpeg (optional, for mp3)      → audio stitching
 """
 
@@ -171,12 +171,13 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         from utils.settings import Settings
 
         s = Settings()
-        piper_binary = Path(s.get("tts.piper_binary", ""))
-        piper_voices_dir = piper_binary.parent / "voices"
         host_a_voice = s.get("tts.host_a_voice", "")
         host_b_voice = s.get("tts.host_b_voice", "")
         en_voice = s.get("tts.en_voice", "af_heart")
-        fa_voice = s.get("tts.fa_voice", "fa_IR-amir-medium")
+        # V0.6.64: the Piper default voice id is gone with the engine — the
+        # empty default means "use the Coqui speaker" (CoquiTTSEngine falls
+        # back to its configured speaker when the voice string is empty).
+        fa_voice = s.get("tts.fa_voice", "")
         speed = float(s.get("tts.speed", 1.0))
         en_engine = s.get("tts.en_engine", "neutts")
         neutts_gguf = s.get("tts.neutts_gguf_path", "")
@@ -194,12 +195,9 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         )
 
         router = TTSRouter(
-            piper_binary=piper_binary,
-            piper_voices_dir=piper_voices_dir,
             en_engine=en_engine,
             neutts_gguf_path=Path(neutts_gguf) if neutts_gguf else None,
             neutts_project_path=Path(neutts_project) if neutts_project else None,
-            fa_engine=s.get("tts.fa_engine", "piper"),  # V10.37.0
             coqui_model=s.get("tts.coqui_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
             coqui_speaker=s.get("tts.coqui_speaker", "Ana"),
             coqui_voice_sample=s.get("tts.coqui_voice_sample", ""),
@@ -388,23 +386,22 @@ class PodcastAudioGenerator(OutputGeneratorBase):
         en_engine: str,
     ) -> str:
         """Pick the right voice for a speaker given the detected language."""
-        from core.tts.voices import KOKORO_VOICES, PIPER_FA_VOICES
+        from core.tts.voices import KOKORO_VOICES
 
         kokoro_ids = {v[0] for v in KOKORO_VOICES}
-        piper_ids = {v[0] for v in PIPER_FA_VOICES}
         host_voice = host_a if speaker == "A" else host_b
 
         if lang == "fa":
-            if host_voice in piper_ids:
-                return host_voice
-            return fa_voice or "fa_IR-amir-medium"
+            # V0.6.64: Persian routes to Coqui XTTS v2 — the voice string is
+            # the Coqui speaker name (empty = the configured coqui_speaker).
+            return fa_voice
         # English
         if en_engine == "kokoro":
             if host_voice in kokoro_ids:
                 return host_voice
             return en_voice or "af_heart"
         # NeuTTS
-        if host_voice and host_voice not in kokoro_ids and host_voice not in piper_ids:
+        if host_voice and host_voice not in kokoro_ids:
             return host_voice
         return "dave"
 

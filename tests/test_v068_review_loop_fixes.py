@@ -519,7 +519,11 @@ class TestB18WindowsPathsSingleSourced:
         src = (REPO / "utils/settings.py").read_text(encoding="utf-8")
         assert '"neutts_gguf_path": r"G:\\Program Files\\neutts-air' in src
         assert '"neutts_project_path": r"G:\\Program Files\\neutts-air"' in src
-        assert '"piper_binary": r"C:\\piper_windows_amd64' in src
+        # V0.6.64: the piper_binary DEFAULT is REMOVED with the Piper
+        # engine — the single-source pin inverts into a removal pin. (The
+        # string still appears in the V0.6.64 stale-key cleanup migration +
+        # comments — the dict-key declaration form is what must be gone.)
+        assert '"piper_binary":' not in src, "the piper_binary default must stay removed (V0.6.64)"
 
 
 # ── Review-loop follow-ups (Loop 3 — the fresh-eyes reviewer's findings) ────

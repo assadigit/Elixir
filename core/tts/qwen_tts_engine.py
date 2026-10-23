@@ -149,7 +149,7 @@ class QwenTtsEngine(TTSEngine):
             raise RuntimeError(
                 "Qwen3-TTS is not available in the installed (packaged) version "
                 "of Elixir — it needs the Python source installation with torch. "
-                "Use the Kokoro or Piper voices instead."
+                "Use the Kokoro voices instead."
             )
 
         if not self._model_path:
@@ -171,7 +171,7 @@ class QwenTtsEngine(TTSEngine):
             raise RuntimeError(
                 "Qwen3-TTS is not available in the installed app: it needs a "
                 "Python environment with torch (run Elixir from source to use "
-                "it). The Kokoro and Piper voices work in the installed app."
+                "it). The Kokoro voices work in the installed app."
             )
 
         script_path = str(Path(__file__).parent / "_qwen_tts_subprocess.py")

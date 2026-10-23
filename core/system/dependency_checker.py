@@ -129,18 +129,19 @@ class DetailedDependencyChecker:
             results.append(self._check_import(name, import_name, "core"))
 
         # TTS packages
+        # V0.6.64: "Piper TTS" (the `piper` import check) removed with the
+        # Piper engine — user decision, remaining-surface item 4.
         for name, import_name in [
             ("Kokoro", "kokoro"),
             ("Misaki (phonemizer)", "misaki"),
-            ("Piper TTS", "piper"),
             ("llama-cpp-python", "llama_cpp"),
             ("phonemizer-fork", "phonemizer"),
         ]:
             results.append(self._check_import(name, import_name, "tts"))
 
-        # System binaries
+        # System binaries (V0.6.64: the Piper binary check is gone with the
+        # engine — Tesseract stays per the user's decision)
         results.append(self._check_ollama())
-        results.append(self._check_piper_binary())
         results.append(self._check_ffmpeg())
         results.append(self._check_tesseract())
         results.append(self._check_poppler())
@@ -236,29 +237,6 @@ class DetailedDependencyChecker:
             category="binary",
             ok=False,
             status_text="not running (start: ollama serve)",
-        )
-
-    def _check_piper_binary(self) -> DependencyStatus:
-        """Check if the Piper binary exists."""
-        path = self._get_setting(
-            "tts.piper_binary",
-            r"C:\piper_windows_amd64\piper\piper.exe",
-        )
-        p = Path(path)
-        if p.exists():
-            return DependencyStatus(
-                name="Piper binary (Persian TTS)",
-                category="binary",
-                ok=True,
-                status_text="found",
-                path=str(p),
-            )
-        return DependencyStatus(
-            name="Piper binary (Persian TTS)",
-            category="binary",
-            ok=False,
-            status_text="not found",
-            path=str(p),
         )
 
     def _check_ffmpeg(self) -> DependencyStatus:

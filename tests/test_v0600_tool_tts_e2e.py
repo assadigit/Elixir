@@ -12,8 +12,9 @@ Inventory + trace (evidence-first):
   preview worker :655, engine dispatch ``_process`` :951-1088 — the seam
   the dialog calls core is ``from core.tts.engine_cache import
   get_kokoro_engine / get_vibevoice_engine`` INSIDE ``_process``).
-- Service: ``core/tts/`` — engine.py (TTSEngine base + Kokoro/Piper/
-  Coqui + TTSRouter + detect_language), engine_cache.py (persistent
+- Service: ``core/tts/`` — engine.py (TTSEngine base + Kokoro/Coqui +
+  TTSRouter + detect_language; V0.6.64: the Piper engine removed),
+  engine_cache.py (persistent
   singletons), voices.py + voice_manager.py (catalogs), normalizer.py
   (LLM text normalization + deterministic Persian number fallback),
   neutts/qwen/vibevoice/sherpa/persian_vits engines (GPU/external).
@@ -24,8 +25,9 @@ Inventory + trace (evidence-first):
   :65, ``_concat_wavs`` :414, ``_resolve_host_voices`` :343).
 
 Sandbox capability map (live-probed):
-- torch/kokoro/qwen_tts/sherpa_onnx/TTS/piper_binary — ABSENT → all
-  neural engines are CONTRACT-level here (rig-checklist items).
+- torch/kokoro/qwen_tts/sherpa_onnx/TTS — ABSENT → all
+  neural engines are CONTRACT-level here (rig-checklist items)
+  (V0.6.64: the Piper binary engine was removed entirely).
 - soundfile + numpy + pydub + ffmpeg + huggingface_hub — PRESENT → the
   WAV assembly, concat and WAV→MP3 conversion run LIVE.
 - The LLM shim on :3031 — PRESENT → the TextNormalizer's OpenAI-
@@ -35,8 +37,7 @@ Layers (house UI-test pattern, cf. test_v0600_tool_cutter_e2e.py):
 1. Pure characterization: detect_language, normalizer (numbers, sentence
    split, cache/fallback/disable), voices catalogs, VoiceManager, the
    engine_cache keying, TTSRouter's engine-selection matrix.
-2. Service-level: LIVE Piper subprocess run through a fake piper binary
-   (real subprocess.run + real WAV), LIVE Kokoro synthesize with faked
+2. Service-level: LIVE Kokoro synthesize with faked
    torch/kokoro modules (real soundfile write), LIVE normalizer round-
    trip through the :3031 shim, contracts for the GPU engines (qwen/
    vibevoice/sherpa), and the podcast audio assembly with the TTS
@@ -461,55 +462,20 @@ class TestVoicesCatalog:
         assert kokoro_voice_label("af_heart") == "af_heart — warm, empathetic"
         assert kokoro_voice_label("not_a_voice") == "not_a_voice"
 
-    def test_piper_catalog(self):
-        from core.tts.voices import PIPER_FA_DEFAULT, piper_voice_label, piper_voice_repo
+    def test_piper_catalog_removed_v0664(self):
+        """V0.6.64: the Piper engine was removed entirely (user decision,
+        remaining-surface item 4) — the catalog + helpers are GONE from
+        core.tts.voices. Pin the removal so it cannot silently reappear."""
+        import core.tts.voices as voices_mod
 
-        assert piper_voice_repo("fa_IR-amir-medium") == (
-            "rhasspy/piper-voices",
-            "fa/fa_IR/amir/medium/fa_IR-amir-medium",
-        )
-        assert piper_voice_repo("unknown-voice") is None
-        assert PIPER_FA_DEFAULT == "fa_IR-amir-medium"
-        assert "amir" in piper_voice_label("fa_IR-amir-medium")
-
-    def test_ensure_piper_voice_uses_local_cache_no_network(self, tmp_path):
-        from core.tts.voices import ensure_piper_voice
-
-        onnx = tmp_path / "fa_IR-amir-medium.onnx"
-        jsn = tmp_path / "fa_IR-amir-medium.onnx.json"
-        onnx.write_bytes(b"model-bytes")
-        jsn.write_bytes(b"json-bytes")
-        got_onnx, got_json = ensure_piper_voice("fa_IR-amir-medium", tmp_path)
-        assert got_onnx == onnx and got_json == jsn
-
-    def test_ensure_piper_voice_unknown_raises(self, tmp_path):
-        from core.tts.voices import ensure_piper_voice
-
-        with pytest.raises(ValueError, match="Unknown Piper voice"):
-            ensure_piper_voice("nope", tmp_path)
-
-    def test_ensure_piper_voice_downloads_via_hf_hub(self, tmp_path, monkeypatch):
-        """First-use download path — hf_hub_download stubbed (NO network)."""
-        import huggingface_hub
-
-        downloads: list[tuple[str, str]] = []
-        src_dir = tmp_path / "hf"
-        src_dir.mkdir()
-
-        def fake_hf_download(repo_id, filename):
-            downloads.append((repo_id, filename))
-            p = src_dir / filename.replace("/", "_")
-            p.write_bytes(b"dl")
-            return str(p)
-
-        monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_hf_download)
-        from core.tts.voices import ensure_piper_voice
-
-        out_dir = tmp_path / "voices"
-        got_onnx, got_json = ensure_piper_voice("fa_IR-gyro-medium", out_dir)
-        assert got_onnx.exists() and got_json.exists()
-        assert [d[0] for d in downloads] == ["rhasspy/piper-voices"] * 2
-        assert downloads[0][1].endswith(".onnx") and downloads[1][1].endswith(".onnx.json")
+        for gone in (
+            "PIPER_FA_VOICES",
+            "PIPER_FA_DEFAULT",
+            "piper_voice_label",
+            "piper_voice_repo",
+            "ensure_piper_voice",
+        ):
+            assert not hasattr(voices_mod, gone), f"{gone} should be removed (V0.6.64)"
 
 
 class TestVoiceManager:
@@ -597,15 +563,11 @@ class TestEngineCacheKeying:
         assert len(created) == 1
         assert ec.cached_engine_count() >= 1
 
-    def test_piper_keyed_by_binary_path(self, tmp_path):
+    def test_piper_engine_cache_removed_v0664(self):
+        """V0.6.64: get_piper_engine is GONE with the Piper engine."""
         from core.tts import engine_cache as ec
 
-        b1, b2 = tmp_path / "piper1.exe", tmp_path / "piper2.exe"
-        e1 = ec.get_piper_engine(b1, tmp_path / "v")
-        e2 = ec.get_piper_engine(b2, tmp_path / "v")
-        e1b = ec.get_piper_engine(b1, tmp_path / "v")
-        assert e1 is not e2
-        assert e1 is e1b
+        assert not hasattr(ec, "get_piper_engine")
 
     def test_vibevoice_keyed_by_model_path(self):
         from core.tts import engine_cache as ec
@@ -628,24 +590,31 @@ class TestTTSRouterMatrix:
     def _router(self, **kw):
         from core.tts.engine import TTSRouter
 
-        base = dict(
-            piper_binary=Path("/nonexistent/piper"),
-            piper_voices_dir=Path("/nonexistent/voices"),
-        )
-        base.update(kw)
-        return TTSRouter(**base)
+        # V0.6.64: piper_binary/piper_voices_dir/fa_engine kwargs are GONE
+        # with the Piper engine — the plain router has no path params.
+        return TTSRouter(**kw)
 
-    def test_fa_routes_to_piper_by_default(self):
-        from core.tts.engine import PiperEngine
-
-        r = self._router()
-        assert isinstance(r.persian_engine(), PiperEngine)
-
-    def test_fa_coqui_config_routes_to_coqui(self):
+    def test_fa_routes_to_coqui_v0664(self):
+        """V0.6.64: Coqui XTTS v2 is the ONLY Persian engine of the legacy
+        router (the Piper binary engine + the fa_engine selector were
+        removed entirely — user decision, remaining-surface item 4)."""
+        import core.tts.engine as engine_mod
         from core.tts.engine import CoquiTTSEngine
 
-        r = self._router(fa_engine="coqui")
+        assert not hasattr(engine_mod, "PiperEngine"), "PiperEngine must be gone (V0.6.64)"
+        r = self._router()
         assert isinstance(r.persian_engine(), CoquiTTSEngine)
+
+    def test_router_has_no_piper_params_v0664(self):
+        """The piper_binary/piper_voices_dir/fa_engine constructor params
+        are gone with the engine — the signature must not accept them."""
+        import inspect
+
+        from core.tts.engine import TTSRouter
+
+        params = inspect.signature(TTSRouter.__init__).parameters
+        for gone in ("piper_binary", "piper_voices_dir", "fa_engine"):
+            assert gone not in params, f"TTSRouter still takes {gone} (V0.6.64)"
 
     def test_en_engine_kokoro(self):
         from core.tts.engine import KokoroEngine
@@ -664,45 +633,22 @@ class TestTTSRouterMatrix:
 
     def test_voice_overrides_engine_choice(self, monkeypatch, tmp_path):
         """V4.7.13: a Kokoro preset voice routes to Kokoro even when the
-        configured English engine is NeuTTS; a Piper voice routes to Piper."""
-        from core.tts.engine import KokoroEngine, PiperEngine
+        configured English engine is NeuTTS (V0.6.64: the Piper-voice
+        override branch is gone with the engine — fa voices route via
+        persian_engine())."""
+        from core.tts.engine import KokoroEngine
 
         r = self._router(en_engine="neutts")
         monkeypatch.setattr(KokoroEngine, "_synthesize", _fake_kokoro_synthesize)
-        monkeypatch.setattr(PiperEngine, "_synthesize", _fake_piper_synthesize)
         out = tmp_path / "a.wav"
         assert r.synthesize("hello", out, "en", "af_heart", 1.0) == out
         assert out.exists()
-        # voice in piper_ids -> the Piper engine is used for an EN line
-        out2 = tmp_path / "b.wav"
-        assert r.synthesize("hello", out2, "en", "fa_IR-amir-medium", 1.0) == out2
-        assert TTSRouterMatrix_last.get("piper") == "fa_IR-amir-medium"
 
 
 # shared fake _synthesize implementations (monkeypatched onto real classes)
 def _fake_kokoro_synthesize(self, text, out_path, voice, speed) -> None:
     self.last_voice = voice
     _write_tiny_wav(Path(out_path), 0.1)
-
-
-def _fake_piper_synthesize(self, text, out_path, voice, speed) -> None:
-    TTSRouterMatrix_last["piper"] = voice
-    _write_tiny_wav(Path(out_path), 0.1)
-
-
-TTSRouterMatrix_last: dict = {}
-
-
-@pytest.fixture(autouse=True)
-def _reset_router_recorder():
-    TTSRouterMatrix_last.clear()
-    yield
-    TTSRouterMatrix_last.clear()
-
-
-@pytest.fixture
-def router_recorder():
-    return TTSRouterMatrix_last
 
 
 class TestTTSEngineBaseContract:
@@ -749,116 +695,9 @@ class TestTTSEngineBaseContract:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-_FAKE_PIPER = """#!{python}
-import json
-import os
-import sys
-import wave
-
-args = sys.argv[1:]
-out = args[args.index("--output_file") + 1]
-stdin_text = sys.stdin.read()
-rec = os.environ.get("FAKE_PIPER_REC")
-if rec:
-    with open(rec, "w", encoding="utf-8") as f:
-        json.dump({{"argv": args, "stdin": stdin_text}}, f)
-mode = os.environ.get("FAKE_PIPER_MODE", "ok")
-if mode == "fail":
-    sys.stderr.write("fake piper exploded\\n")
-    sys.exit(3)
-nframes = int(os.environ.get("FAKE_PIPER_FRAMES", "4800"))
-with wave.open(out, "wb") as w:
-    w.setnchannels(1)
-    w.setsampwidth(2)
-    w.setframerate(22050)
-    w.writeframes(b"\\x00\\x01" * nframes)
-sys.exit(0)
-"""
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="fake piper binary needs a POSIX shebang")
-class TestPiperEngineLiveSubprocess:
-    """engine.py:268 — the REAL subprocess path against a fake piper binary."""
-
-    @pytest.fixture()
-    def piper(self, tmp_path, monkeypatch):
-        binpath = tmp_path / "fake_piper"
-        binpath.write_text(_FAKE_PIPER.format(python=sys.executable))
-        binpath.chmod(0o755)
-        voices_dir = tmp_path / "voices"
-        voices_dir.mkdir()
-        # pre-cached voice pair so ensure_piper_voice never touches the net
-        (voices_dir / "fa_IR-amir-medium.onnx").write_bytes(b"onnx")
-        (voices_dir / "fa_IR-amir-medium.onnx.json").write_bytes(b"json")
-        from core.tts.engine import PiperEngine
-
-        return PiperEngine(binpath, voices_dir), tmp_path, monkeypatch
-
-    def test_real_subprocess_writes_wav_and_exact_command(self, piper):
-        engine, tmp, monkeypatch = piper
-        rec = tmp / "rec.json"
-        monkeypatch.setenv("FAKE_PIPER_REC", str(rec))
-        out = tmp / "out.wav"
-        result = engine.synthesize("سلام دنیا", out, "fa_IR-amir-medium", 1.0)
-        assert result == out and out.stat().st_size > 44
-        import json
-
-        got = json.loads(rec.read_text(encoding="utf-8"))
-        # the fake binary records sys.argv[1:] (its own path is argv[0])
-        assert got["argv"] == [
-            "--model",
-            str(tmp / "voices" / "fa_IR-amir-medium.onnx"),
-            "--output_file",
-            str(out),
-            "--length-scale",
-            "1.000",
-        ]
-        assert got["stdin"] == "سلام دنیا"
-
-    def test_speed_inverts_length_scale(self, piper):
-        engine, tmp, monkeypatch = piper
-        rec = tmp / "rec2.json"
-        monkeypatch.setenv("FAKE_PIPER_REC", str(rec))
-        engine.synthesize("text", tmp / "fast.wav", "fa_IR-amir-medium", 1.5)
-        import json
-
-        got = json.loads(rec.read_text(encoding="utf-8"))
-        assert got["argv"][-2] == "--length-scale"
-        assert got["argv"][-1] == "0.667"
-
-    def test_default_voice_resolved_when_none(self, piper):
-        engine, tmp, monkeypatch = piper
-        rec = tmp / "rec3.json"
-        monkeypatch.setenv("FAKE_PIPER_REC", str(rec))
-        engine.synthesize("text", tmp / "def.wav", None, 1.0)
-        import json
-
-        got = json.loads(rec.read_text(encoding="utf-8"))
-        # argv[0] is "--model"; the default voice resolved to amir's onnx
-        assert got["argv"][1].endswith("fa_IR-amir-medium.onnx")
-
-    def test_nonzero_exit_fail_soft_with_stderr(self, piper):
-        engine, tmp, monkeypatch = piper
-        monkeypatch.setenv("FAKE_PIPER_MODE", "fail")
-        result = engine.synthesize("text", tmp / "fail.wav", "fa_IR-amir-medium", 1.0)
-        assert result is None
-        assert "Piper exited 3" in (engine.last_error or "")
-        assert "fake piper exploded" in (engine.last_error or "")
-
-    def test_header_only_output_fail_soft(self, piper):
-        engine, tmp, monkeypatch = piper
-        monkeypatch.setenv("FAKE_PIPER_FRAMES", "0")
-        result = engine.synthesize("text", tmp / "empty.wav", "fa_IR-amir-medium", 1.0)
-        assert result is None
-        assert engine.last_error == "produced empty audio file"
-
-    def test_missing_binary_fail_soft(self, tmp_path):
-        from core.tts.engine import PiperEngine
-
-        engine = PiperEngine(tmp_path / "nope.exe", tmp_path / "v")
-        result = engine.synthesize("text", tmp_path / "o.wav", "fa_IR-amir-medium", 1.0)
-        assert result is None
-        assert "Piper binary not found" in (engine.last_error or "")
+# V0.6.64: _FAKE_PIPER + TestPiperEngineLiveSubprocess (6 tests) were
+# REMOVED with the Piper engine — the binary-subprocess path is gone
+# (user decision, remaining-surface item 4: "Remove piper entirely").
 
 
 class TestKokoroEngineLiveWithFakedPipeline:
@@ -1020,7 +859,7 @@ class TestGpuEngineContracts:
     def test_neutts_router_needs_paths(self):
         from core.tts.engine import TTSRouter
 
-        r = TTSRouter(piper_binary=Path("/p"), piper_voices_dir=Path("/v"), en_engine="neutts")
+        r = TTSRouter(en_engine="neutts")
         with pytest.raises(RuntimeError, match="NeuTTS paths not configured"):
             _ = r.neutts
 
@@ -1400,13 +1239,11 @@ class TestPodcastAudioHelpers:
 
     def test_resolve_voice_matrix(self):
         gen = self._gen()
-        # fa: host voice valid piper -> used; else fa_voice default
-        assert gen._resolve_voice("A", "fa", "fa_IR-amir-medium", "x", "en", "fa", "kokoro") == (
-            "fa_IR-amir-medium"
-        )
-        assert gen._resolve_voice("B", "fa", "not-a-voice", "x", "en", "", "kokoro") == (
-            "fa_IR-amir-medium"
-        )
+        # V0.6.64: fa routes to Coqui — the voice string is the Coqui speaker
+        # (fa_voice passed through verbatim; empty = the configured speaker;
+        # the English host voices are IGNORED for fa lines)
+        assert gen._resolve_voice("A", "fa", "af_heart", "x", "en", "Ana", "kokoro") == "Ana"
+        assert gen._resolve_voice("B", "fa", "not-a-voice", "x", "en", "", "kokoro") == ""
         # en + kokoro engine: host voice if kokoro preset else en_voice
         assert gen._resolve_voice("A", "en", "af_heart", "x", "bf_alice", "fa", "kokoro") == (
             "af_heart"

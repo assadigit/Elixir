@@ -1,18 +1,20 @@
 """V4.2.0 + V4.4.0 + V4.5.0 + V11.34.0: TTS engines, voice catalogs, normalizer, voice manager.
 
 Public API:
-    TTSEngine, KokoroEngine, PiperEngine, NeuTTSEngine, PersianVitsEngine, TTSRouter, detect_language
-    KOKORO_VOICES, PIPER_FA_VOICES, ensure_piper_voice
+    TTSEngine, KokoroEngine, NeuTTSEngine, PersianVitsEngine, TTSRouter, detect_language
+    KOKORO_VOICES
     TextNormalizer, create_normalizer_from_settings (V4.4.0)
     VoiceManager (V4.5.0 — reference voice management for NeuTTS cloning)
     PersianVitsEngine (V11.34.0 — high-quality local Farsi TTS)
+
+V0.6.64: PiperEngine + the Piper voice catalog were REMOVED with the
+Piper engine (user decision, remaining-surface item 4).
 """
 
 import logging
 
 from core.tts.engine import (
     KokoroEngine,
-    PiperEngine,
     TTSEngine,
     TTSRouter,
     detect_language,
@@ -31,12 +33,8 @@ from core.tts.voices import (
     KOKORO_DEFAULT_HOST_A,
     KOKORO_DEFAULT_HOST_B,
     KOKORO_VOICES,
-    PIPER_FA_DEFAULT,
-    PIPER_FA_VOICES,
-    ensure_piper_voice,
     kokoro_voice_groups,
     kokoro_voice_label,
-    piper_voice_label,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +42,6 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "TTSEngine",
     "KokoroEngine",
-    "PiperEngine",
     "NeuTTSEngine",
     "QwenTtsEngine",
     "QWEN_TTS_KNOWN_SPEAKERS",
@@ -57,14 +54,10 @@ __all__ = [
     "TTSRouter",
     "detect_language",
     "KOKORO_VOICES",
-    "PIPER_FA_VOICES",
-    "PIPER_FA_DEFAULT",
     "KOKORO_DEFAULT_HOST_A",
     "KOKORO_DEFAULT_HOST_B",
-    "ensure_piper_voice",
     "kokoro_voice_groups",
     "kokoro_voice_label",
-    "piper_voice_label",
     "TextNormalizer",
     "create_normalizer_from_settings",
     "VoiceManager",

@@ -138,26 +138,6 @@ def get_kokoro_engine(
     return _engines[key]
 
 
-def get_piper_engine(
-    piper_binary: Path,
-    piper_voices_dir: Path | None,
-    log_callback: LogFn | None = None,
-) -> object:
-    """Get or create a persistent PiperEngine."""
-    key = f"piper:{piper_binary}"
-    if key not in _engines:
-        from core.tts.engine import PiperEngine
-
-        engine = PiperEngine(
-            piper_binary,
-            piper_voices_dir,
-            log_callback=log_callback or (lambda msg, level="INFO": None),
-        )
-        _engines[key] = engine
-        logger.info("Piper engine cached")
-    return _engines[key]
-
-
 def clear_cache() -> None:
     """Clear all cached engines (frees VRAM).
 
