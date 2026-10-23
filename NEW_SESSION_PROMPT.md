@@ -12,7 +12,8 @@ ran it in this session and can show what you ran.
 
 **Elixir** — a PySide6 desktop app + local LLM (llama.cpp / Ollama) that
 summarizes books, at `https://github.com/assadigit/elixir`, branch
-**`main`**, version **V0.6.63** (the Windows-installer release). Purely
+**`main`**, version **V0.6.64** (the Piper-removal release: the Piper TTS
+engine is gone entirely — user decision; Tesseract unchanged). Purely
 Python — any Next.js sandbox at `/home/z/my-project` is disposable
 tooling, NOT part of the project. **Read `AGENTS.md` first** — its 6
 rules are non-negotiable (Rule 1 content-agnostic, Rule 2 evidence-first,
@@ -69,23 +70,33 @@ entries — verify before acting, don't trust this list blindly):
    `assadigit/elixir-installer-build` in the GitHub UI (Settings →
    Danger Zone) once the billing fix makes it redundant — the token
    lacks the `delete_repo` scope, so the API cannot do it.
-4. **Optional bundling polish.** Tesseract (classic OCR engine) is NOT
-   bundled — it shows a friendly message when missing; candidates:
-   bundle it (check the licence, ~50 MB) or give it the Ollama-style
-   download-link flow. Piper TTS engine availability in the installer
-   is the same question. Decide with me; smallest change wins.
+4. **Optional bundling polish — RESOLVED 2026-10-23 (V0.6.64).** The
+   user decided: **"Remove piper entirely. keep tesseract."** Piper TTS
+   (engine, voice catalog, binary check, settings keys, UI, tests,
+   piper-tts extra) is GONE as of V0.6.64; Tesseract stays as-is (NOT
+   bundled — friendly message when missing). Do not re-raise; the
+   removal pins live in tests/test_v0600_tool_tts_e2e.py +
+   test_v182044_p3_tts_subprocess.py.
 5. **Standing flags (rig tasks, not sandbox-fixable):** the
    `requirements.lock` full clean-install regen (on Windows); the rig
    checklist below.
-6. **Lint debt (documented, cosmetic — count corrected 2026-10-23):**
-   15 check findings + 26 format-drift files, ALL in the V0.6.5x/6x
-   transcribe-sprint family (the earlier "6 findings" note was an
-   undercount; the B023 finding sits in the OFF-LIMITS TTS compat file
-   core/tts/_vibevoice_subprocess.py — leave it).
-7. **README tests badge — updated 2026-10-23** to the shown run
-   (8598 passed / 16 failed / 25 skipped, lock-aligned sandbox env,
-   `-p no:ddtrace`, ~272s); keep it current with each release's shown
-   run.
+6. **Lint debt — CLEANED 2026-10-23 (V0.6.64, CI-green campaign):** 14
+   of the 15 transcribe-sprint findings fixed + all 26 format-drift
+   files formatted. ONE finding remains BY INSTRUCTION:
+   core/tts/_vibevoice_subprocess.py:1053 B023 sits in the OFF-LIMITS
+   TTS compat file — leave it (CI lint stays red by exactly that 1
+   finding unless the user approves a noqa or a fix in the compat
+   layer).
+7. **README tests badge — updated 2026-10-23 (V0.6.64)** to the shown run
+   (8584 passed / 16 failed / 25 skipped, post-Piper-removal, lock-aligned
+   sandbox env, `-p no:ddtrace`, ~273s); keep it current with each
+   release's shown run. The CI pytest job now installs
+   `requirements.lock` (the pinned core closure) instead of unpinned
+   requirements.txt — the V0.6.64 drift fix; CI's remaining red jobs:
+   lint (the 1 off-limits B023), pytest (the environment-dependent
+   families above), pip-audit (unwaived known vulns in the lock pins —
+   needs a USER decision: upgrade the pins vs document waivers in
+   requirements.audit-waivers).
 8. **Next feature work** — my direction (the V0.6.61 stage summary
    pointed at "the NEXT tool or the broader app").
 
@@ -168,32 +179,35 @@ session and the recovery recipe is proven:
   judged on the rig. Ask me for screenshots/paste-backs when a visual
   question cannot be answered offscreen, and say so honestly.
 
-## THE BASELINE YOU INHERIT (V0.6.63, re-measured 2026-10-23)
+## THE BASELINE YOU INHERIT (V0.6.64, measured 2026-10-23 post-Piper-removal)
 
 - **Full suite (Linux sandbox, offscreen Qt, lock-aligned env,
-  `-p no:ddtrace`): 8,598 passing / 16 failed / 25 skipped in ~272s**
-  — re-measured 2026-10-23 at the same pristine V0.6.63 HEAD
-  (`39d9554`), on two different sandbox containers (same numbers both
-  times). The historical V0.6.63 number was 8,538/56 in the unpinned
-  environment: aligning the core doc/Qt chain to requirements.lock
-  resolved 40 environment-dependent failures and un-skipped ~20
-  tests. The 16 remaining failures are the documented pre-existing
-  families (TTS/ffmpeg/vibevoice e2e ×12, eval gate ×2, prompt-manifest
-  drift shipped by V0.6.62 ×1, source pin ×1); the 4 non-TTS ones fail
-  identically solo. **Any NEW failure beyond these 16 is a regression**
-  — decompose it, fix it, and say what broke. First re-establish this
-  number after the venv reinstall before believing anything else.
+  `-p no:ddtrace`): 8,584 passing / 16 failed / 25 skipped in ~273s**
+  — measured at the V0.6.64 working tree after the Piper removal. The
+  -14 vs V0.6.63's 8,598 is EXACTLY the Piper engine's own tests
+  removed with the engine (12 in test_v0600_tool_tts_e2e.py incl. the
+  6-test TestPiperEngineLiveSubprocess class, 5 in
+  test_v182044_p3_tts_subprocess.py incl. the 4-test TestPiperWc8
+  class — replaced by 3 removal pins; collection: 8,655 → 8,641
+  total). **The 16 failures are the SAME documented pre-existing
+  families as V0.6.63** (TTS/ffmpeg/vibevoice e2e ×12, eval gate ×2,
+  prompt-manifest drift shipped by V0.6.62 ×1, source pin ×1; three of
+  the vibevoice ones are stale 600s-timeout pins vs the V0.6.31 3600s
+  raise — verified failing identically at the pre-removal HEAD).
+  **Any NEW failure beyond these 16 is a regression** — decompose it,
+  fix it, and say what broke. First re-establish this number after the
+  venv reinstall before believing anything else.
 - **Source-mode selftest:** 376 modules, 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract
   must be installed or the selftest FAILS on it as a runtime package).
-- ruff 0.16.8 (repo-wide, re-measured 2026-10-23): 15 check findings +
-  26 format-drift files, ALL in the V0.6.5x/6x transcribe-sprint
-  family (the earlier "6 findings elsewhere" note was an undercount —
-  item 6 above). Within the V0.6.63-touched set: 1 check finding
-  (core/tts/_vibevoice_subprocess.py:1053 B023 — OFF-LIMITS compat
-  file) + 2 installer files needing format (importtime_top.py,
-  make_icon.py).
+- ruff 0.16.8 (repo-wide, re-measured 2026-10-23 post-V0.6.64-cleanup):
+  **1 check finding (the OFF-LIMITS B023 in
+  core/tts/_vibevoice_subprocess.py:1053 — item 6 above) + 0
+  format-drift files**. Was 15 + 26 before the V0.6.64 CI-green
+  campaign (14 findings fixed + 26 files formatted; the fixes include
+  two manual ones: SIM115 with-form in transcribe_cpp_engine.py and a
+  B017 specific-exception pin in test_v0655_llamacpp_generation_probe).
 - **The shipped installer's Windows verification** (for reference, not
   re-runnable here): packed selftest 376/376, packed launch, silent
   install → installed selftest → installed launch → silent uninstall —

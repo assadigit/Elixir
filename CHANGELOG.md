@@ -31,6 +31,92 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.64 — "remove piper entirely, keep tesseract": the Piper TTS engine is REMOVED — the binary-subprocess Persian engine, its voice catalog + HuggingFace downloader, the settings keys (+ a migration that pops them from older settings.json), the UI pickers, the dependency checks, the piper-tts extra, and its 14 tests (3 removal pins guard the tomb) — the legacy router's Persian route is now Coqui XTTS v2 only, the modern Kokoro/Sherpa paths never used Piper · plus the CI-green cleanup: 14/15 lint findings fixed + 26 format files formatted (the 15th is the OFF-LIMITS vibevoice-compat B023, left by instruction) + the CI test job now installs requirements.lock instead of unpinned requirements.txt — 8,584 P / 16 F (the same 16 documented pre-existing failures)
+
+> **The decision (owner, verbatim):** "Remove piper entirely. keep
+> tesseract." — remaining-surface item 4 (the Tesseract/Piper bundling
+> question) is CLOSED: Piper is deleted from the application, not
+> bundled and not given a download flow; Tesseract stays as-is (not
+> bundled, friendly message when missing). "if there is CL-cleanup
+> campaign do it" → the CI-green cleanup below.
+>
+> **Why this is safe:** Piper was the LEGACY Persian engine (a
+> `piper.exe` subprocess — `piper_phonemize` has no Windows wheels),
+> wired through the V4.x-era `TTSRouter` used by the intro-podcast and
+> packets-audio legacy paths. The modern TTS tool routes Farsi to
+> Kokoro (V11.44.0 default) and Sherpa (`sherpa:` voice prefix); the
+> modern podcast generator routes Farsi to Kokoro (its docstring has
+> said "Removed … Piper" since V11.40.0). After V0.6.64 the legacy
+> router's Persian route is Coqui XTTS v2 — already the quality-first
+> choice (`fa_engine: coqui`) since V10.36.0; its synthesis failures
+> stay fail-soft (`TTSEngine.synthesize` → `last_error` + `None`).
+>
+> **The removal (24 runtime files + 6 test files + 4 doc/manifest
+> files):** `core/tts/engine.py` loses `PiperEngine`,
+> `PIPER_SYNTH_TIMEOUT_S` (W-c8), the router's `piper` property /
+> `_piper*` fields, and the `piper_binary`/`piper_voices_dir`/
+> `fa_engine` constructor params; `voices.py` loses `PIPER_FA_VOICES` /
+> `PIPER_FA_DEFAULT` / `piper_voice_label` / `piper_voice_repo` /
+> `ensure_piper_voice` (`huggingface_hub` STAYS — VibeVoice/Qwen3-TTS/
+> Persian-VITS need it); `engine_cache.py` loses `get_piper_engine`
+> (zero runtime callers); `__init__.py` the exports;
+> `utils/settings.py` the `tts.piper_binary`/`tts.fa_engine`/
+> `tts.fa_host_{a,b}_voice` defaults (fa_voice's default → `""` =
+> Coqui speaker) + a V0.6.64 migration that POPS the dead keys from
+> older settings.json and resets a stale `fa_IR-*` voice id (no more
+> "Unknown setting" warnings); `dependency_checker.py` the `piper`
+> import check + binary probe (Tesseract untouched);
+> `vram_calculator.py` the 0.1 GB entry; `tts_page.py` the Persian
+> voice combo / Piper binary picker + connectivity dot / Piper-Coqui
+> engine selector (the Persian PREVIEW now rides Coqui — a
+> model/speaker/voice-sample snapshot replaces the old binary
+> snapshot); `podcast_page.py` + `defaults_section.py` + the qwen/
+> vibevoice "Kokoro or Piper" messages + the pipeline/registry
+> subtitles + `pyproject.toml`'s `[tts]` extra accordingly. KEPT
+> deliberately: the Sherpa engine's `vits-piper-*` model names —
+> literal sherpa-onnx model-file URLs, a different runtime.
+>
+> **The test accounting (keep the count visible):** 8,655 → 8,641
+> collected (12 removed in `test_v0600_tool_tts_e2e.py` incl. the
+> 6-test `TestPiperEngineLiveSubprocess`, 5 in
+> `test_v182044_p3_tts_subprocess.py` incl. the 4-test `TestPiperWc8`;
+> 3 NEW removal pins: `test_piper_catalog_removed_v0664`,
+> `test_piper_engine_cache_removed_v0664`,
+> `test_w_c8_piper_engine_removed_v0664` + the inverted source pins in
+> test_v068/test_v1820412/test_conversion_output_runner — the pins
+> assert the engine cannot silently reappear). Full suite **8,584 P /
+> 16 F / 25 S in 4:33** — the 16 are the SAME documented pre-existing
+> families (verified: three of the vibevoice-pin failures — stale
+> 600s-timeout pins vs the V0.6.31 3600s raise — fail identically on
+> the stashed pre-change HEAD). Selftest 376/376, exit 0.
+>
+> **The CI-green cleanup:** (1) Lint debt — 14 of 15 findings fixed
+> (12 auto: unused imports + unsorted blocks; 2 manual: the SIM115
+> `with`-form for `transcribe_cpp_engine.py`'s temp WAV, behavior-
+> identical since `delete=False` keeps the file, and the B017 blind
+> `Exception` assert in `test_v0655_llamacpp_generation_probe.py` →
+> the specific `dataclasses.FrozenInstanceError`) + all 26 format-
+> drift files formatted → **ruff: 15→1 finding, 26→0 format** (the 1
+> is the OFF-LIMITS B023 in `core/tts/_vibevoice_subprocess.py:1053` —
+> "leave it" per the standing instruction; CI lint stays red by
+> exactly that finding until the owner approves a noqa or a fix inside
+> the compat layer). (2) CI drift-proofing — the CI test job installs
+> the pinned `requirements.lock` core closure instead of unpinned
+> `requirements.txt` (the same drift the recovery recipe documents:
+> unpinned resolves mammoth 1.13.0/markitdown 0.1.9/PySide6 6.12.0;
+> CI's pytest job had 54 F + 25 E that were never code regressions).
+> NOT done, owner decision needed: pip-audit still fails on 7 lock
+> pins with known vulns (aiohttp 3.14.3→3.14.4, certifi→2026.10.19,
+> multidict 6.9.0→6.9.1, opentelemetry-api 1.44.0→1.45.1, pillow
+> 12.3.0→13.0.0 (~35 findings, a MAJOR bump), pyjwt 2.14.0→2.15.0,
+> pypdf 6.19.0→6.21.1 — enumerated from the CI run's pip-audit-report
+> artifact) — upgrading pins changes the verified environment.
+>
+> **Docs:** README (badge + gate line → the V0.6.64 run; the 9
+> current-state Piper mentions), NEW_SESSION_PROMPT (item 4 CLOSED
+> with the decision; item 6 lint state; the V0.6.64 baseline section),
+> config/voice_samples/README.md, requirements.txt's extras comment.
+
 ## V0.6.63 — "double-click to install": the Windows installer — PyInstaller onedir + Inno Setup in one command (`python build_installer.py`), the frozen-aware path layer (`app_paths.py` → `%LOCALAPPDATA%\Elixir`, never the install folder), a `--selftest` that imports every module and loads every bundled data file, offline-exact token counting, and two latent bug fixes (the `parents[3]` config anchors, the unguarded `soundfile` import) — plus a module-gap audit that caught 12 dynamically-imported modules PyInstaller would have silently dropped (including `postchecks.orchestrator` — a guaranteed conversion crash in any naive bundle)
 
 ### The gap this closes

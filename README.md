@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.6.63-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8598%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.6.64-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8584%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -21,7 +21,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 - 🔒 **Local-first & private** — runs 100% offline with Ollama. Your books never leave your machine unless *you* choose a cloud provider.
 - 🛡️ **Anti-hallucination engine** — 8 defensive layers (deterministic + LLM-based) verify every bullet against the source before it ships.
 - 📦 **19 output types** from one conversion — from a one-page executive briefing to a full Obsidian knowledge base.
-- 🎙️ **Podcast-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS for English, Piper for Farsi).
+- 🎙️ **Podcast-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS/Kokoro for English, Coqui XTTS v2 for Farsi; V0.6.64: Piper removed).
 - 🌐 **Bilingual** — full English ↔ Farsi translation pipeline (NLLB-200 or TranslateGemma).
 - 🖥️ **VRAM-aware** — estimates context windows and VRAM budgets from your actual GPU, and (as of V18.20.4.10) **fails fast** instead of warn-and-continue when a model won't fit.
 - 🧪 **5,400+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it, including 124 Hypothesis property tests.
@@ -43,7 +43,6 @@ pip install -r requirements.txt
 | 🔍 **Tesseract OCR** | Fallback OCR (+ Persian `fas` pack) | [UB-Mannheim builds](https://github.com/UB-Mannheim/tesseract/wiki) → install to `C:\Program Files\Tesseract-OCR` |
 | 📄 **Poppler** | PDF page rendering | [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases) |
 | 🦙 **Ollama** | Local LLM server | [ollama.com](https://ollama.com) |
-| 🔊 **Piper** *(optional)* | Farsi TTS | [piper](https://github.com/rhasspy/piper) → extract to `C:\piper_windows_amd64\piper\` |
 | 🗣️ **NeuTTS-Air GGUF** *(optional)* | English TTS | place `.gguf` in `G:\Program Files\neutts-air\models\` |
 | 🧪 **langextract** *(optional)* | Scientific Evidence Map output | `pip install langextract` |
 
@@ -64,7 +63,6 @@ After first launch, open `~/.elixir/settings.json`:
   "paths": {
     "tesseract": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
     "poppler":   "C:\\poppler-24.08.0\\Library\\bin",
-    "piper":     "C:\\piper_windows_amd64\\piper\\piper.exe",
     "neutts_gguf": "G:\\Program Files\\neutts-air\\models\\neutts-air-Q8_0.gguf"
   }
 }
@@ -104,8 +102,8 @@ inside the install folder); running `python main.py` from source keeps using
 automatically on the installed app's first launch. The installer bundles
 ffmpeg + Poppler (licence-permitted); Ollama, Tesseract and model weights
 stay external. The VibeVoice / Qwen3-TTS engines need the Python source
-install — the installed app says so clearly if you try them (Kokoro /
-Piper TTS work normally). A CI workflow
+install — the installed app says so clearly if you try them (Kokoro
+TTS works normally). A CI workflow
 (`.github/workflows/windows-installer.yml`) builds the same installer on
 GitHub's Windows runners.
 
@@ -154,7 +152,7 @@ PDF / EPUB / DOCX / TXT / HTML
    🌐 Translation (EN ↔ FA, NLLB-200 or TranslateGemma)  [optional]
           │
           ▼
-   🔊 TTS audio (NeuTTS / Piper)  [optional]
+   🔊 TTS audio (NeuTTS / Kokoro)  [optional]
 ```
 
 ---
@@ -182,7 +180,7 @@ PDF / EPUB / DOCX / TXT / HTML
 | 📖 Study Guide | Objectives, glossary, Q&A, self-check | ⬜ off |
 | 📱 Social Media Pack | X thread + LinkedIn + hashtags | ⬜ off |
 | 🕸️ Mind Map | Mermaid mindmap + outline (deterministic, no LLM) | ⬜ off |
-| 🎧 Podcast Audio | TTS audio (EN → NeuTTS, FA → Piper) | ⬜ off |
+| 🎧 Podcast Audio | TTS audio (EN → NeuTTS/Kokoro, FA → Coqui XTTS v2) | ⬜ off |
 | 🧪 Scientific Evidence Map | Interactive HTML with langextract verbatim grounding | ⬜ off |
 | ❓ Q&A Study Questions | Self-test questions + answers per chapter | ⬜ off |
 | 📚 Glossary | All terms + definitions extracted from the book | ⬜ off |
@@ -352,7 +350,7 @@ Settings file: `~/.elixir/settings.json`
 | `summarisation.parallel_stages_max_workers` | `4` | Concurrency bound for every lever (clamp 1–8) |
 | `queue.max_parallel_books` | `2` | **V0.19 (Phase 6.3)** — cross-book queue workers, CLOUD providers only (clamp 1–4; local always sequential) |
 | `translation.backend` | `nllb` | `nllb` / `translategemma` |
-| `paths.*` | *(system paths)* | tesseract, poppler, piper, neutts_gguf |
+| `paths.*` | *(system paths)* | tesseract, poppler, neutts_gguf |
 | `outputs.*` (15 keys) | varies | Output Studio toggles |
 
 ---
@@ -366,7 +364,7 @@ Settings file: `~/.elixir/settings.json`
 | 📷 OCR | OlmOCR-2-7B / Qwen3-VL via Ollama, PaddleOCR, Tesseract |
 | 🧠 Summarisation | Ollama 9B (Qwythos-9B) or cloud APIs |
 | 🌐 Translation | NLLB-200-600M (HuggingFace), TranslateGemma-4B (Ollama) |
-| 🔊 TTS | NeuTTS-Air (Ollama GGUF), Piper |
+| 🔊 TTS | NeuTTS-Air (Ollama GGUF), Coqui XTTS v2 |
 | 📝 DOCX | python-docx |
 | 🔢 Tokens | tiktoken |
 | 🌍 HTTP | requests (proxy-proof) |
@@ -404,7 +402,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.6.63, re-measured 2026-10-23):** `8598 passed / 16 failed / 25 skipped in ~272s headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment; the 16 failures are documented pre-existing families — TTS/ffmpeg/vibevoice environment-dependent e2e ×12, eval gate ×2, prompt-manifest drift ×1, source pin ×1 — all reproducible solo; any NEW failure is a regression)*
+**Current gate (Elixir V0.6.64, measured 2026-10-23 post-Piper-removal):** `8584 passed / 16 failed / 25 skipped in ~273s headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment; -14 vs V0.6.63 = the Piper engine's own tests removed with the engine — V0.6.64, user decision; the 16 failures are the SAME documented pre-existing families — TTS/ffmpeg/vibevoice environment-dependent e2e ×12, eval gate ×2, prompt-manifest drift ×1, source pin ×1 — all reproducible solo; any NEW failure is a regression)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 
@@ -452,7 +450,7 @@ Elixir/
 │   ├── summarisation/       ← 🧠 the 8-layer pipeline + map-reduce
 │   ├── llm/                 ← 🤖 providers, dispatcher, cache, retry, taxonomy
 │   ├── translation/         ← 🌐 EN↔FA engines + glossary + validator
-│   ├── tts/                 ← 🔊 NeuTTS / Piper / Qwen / VibeVoice engines
+│   ├── tts/                 ← 🔊 NeuTTS / Kokoro / Coqui / Qwen / VibeVoice engines
 │   ├── ocr/                 ← 📷 OCR cascade + prescan
 │   ├── outputs/             ← 📦 all 19 output generators + registry
 │   ├── pipeline/            ← ⚙️ converter, checkpoints, token estimator
