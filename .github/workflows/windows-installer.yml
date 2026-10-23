@@ -75,7 +75,13 @@ jobs:
           retention-days: 30
 
       - name: Attach the installer to a GitHub Release
-        if: success()
+        # 2026-10-23 guard: a workflow_dispatch run at an existing VERSION
+        # falls into the `gh release upload --clobber` fallback and would
+        # REPLACE the verified release asset (caught live — the dispatched
+        # run was cancelled mid-build). Dispatch runs build + test + upload
+        # artifacts only; tag pushes (the designed release path) attach as
+        # before.
+        if: success() && github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
