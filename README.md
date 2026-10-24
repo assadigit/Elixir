@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.6.64-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8584%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.6.65-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8613%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -402,7 +402,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.6.64, measured 2026-10-23 post-Piper-removal):** `8584 passed / 16 failed / 25 skipped in ~273s headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment; -14 vs V0.6.63 = the Piper engine's own tests removed with the engine — V0.6.64, user decision; the 16 failures are the SAME documented pre-existing families — TTS/ffmpeg/vibevoice environment-dependent e2e ×12, eval gate ×2, prompt-manifest drift ×1, source pin ×1 — all reproducible solo; any NEW failure is a regression)*
+**Current gate (Elixir V0.6.65, measured 2026-10-24, the launcher-guard release):** `8613 passed / 16 failed / 25 skipped in ~269s headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment + the toolchain set ebooklib/genanki/radon/vulture; -p no:ddtrace; +29 collected vs V0.6.64 = the new launcher-guard/protocol/splash pins, all green; the 16 failures are the SAME documented pre-existing families — TTS/ffmpeg/vibevoice environment-dependent e2e, eval gate ×2, prompt-manifest drift ×1, stale vibevoice pins — verified identical on the stashed pre-change HEAD; any NEW failure is a regression)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 

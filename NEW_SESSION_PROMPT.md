@@ -87,10 +87,11 @@ entries — verify before acting, don't trust this list blindly):
    TTS compat file — leave it (CI lint stays red by exactly that 1
    finding unless the user approves a noqa or a fix in the compat
    layer).
-7. **README tests badge — updated 2026-10-23 (V0.6.64)** to the shown run
-   (8584 passed / 16 failed / 25 skipped, post-Piper-removal, lock-aligned
-   sandbox env, `-p no:ddtrace`, ~273s); keep it current with each
-   release's shown run. The CI pytest job now installs
+7. **README tests badge — updated 2026-10-24 (V0.6.65)** to the shown run
+   (8613 passed / 16 failed / 25 skipped, launcher-guard release,
+   lock-aligned sandbox env + ebooklib/genanki/radon/vulture,
+   `-p no:ddtrace`, ~269s); keep it current with each release's shown
+   run. The CI pytest job now installs
    `requirements.lock` (the pinned core closure) instead of unpinned
    requirements.txt — the V0.6.64 drift fix; CI's remaining red jobs:
    lint (the 1 off-limits B023), pytest (the environment-dependent
@@ -182,8 +183,8 @@ session and the recovery recipe is proven:
 ## THE BASELINE YOU INHERIT (V0.6.64, measured 2026-10-23 post-Piper-removal)
 
 - **Full suite (Linux sandbox, offscreen Qt, lock-aligned env,
-  `-p no:ddtrace`): 8,584 passing / 16 failed / 25 skipped in ~273s**
-  — measured at the V0.6.64 working tree after the Piper removal. The
+  `-p no:ddtrace`): 8,613 passing / 16 failed / 25 skipped in ~269s**
+  — measured at the V0.6.65 working tree (launcher-guard release). The
   -14 vs V0.6.63's 8,598 is EXACTLY the Piper engine's own tests
   removed with the engine (12 in test_v0600_tool_tts_e2e.py incl. the
   6-test TestPiperEngineLiveSubprocess class, 5 in
@@ -197,7 +198,25 @@ session and the recovery recipe is proven:
   **Any NEW failure beyond these 16 is a regression** — decompose it,
   fix it, and say what broke. First re-establish this number after the
   venv reinstall before believing anything else.
-- **Source-mode selftest:** 376 modules, 73 data files, 20 third-party
+- **V0.6.64 field report → V0.6.65 (the launcher-guard release):** the
+  user's first real-machine install of Elixir-Setup-0.6.64.exe "didn't
+  open at all" (both CI builds green incl. the window-appears launch
+  test → machine-specific + invisible in a windowed build). Fixed in
+  V0.6.65: `core/system/launcher_guard.py` (stdlib-only, never-raise —
+  armed as the FIRST statement of main.py; the import-order contract is
+  AST-pinned by test_v0665_launcher_guard.py, keep it that way) writes
+  `%LOCALAPPDATA%\Elixir\startup.log` (step timeline) +
+  `startup_crash.log` and shows a Qt-free native error box; the V18.1
+  single-instance FOCUS protocol is actually wired now (ACK +
+  zombie-takeover after 2.5 s — the server side was NEVER connected
+  before, a second double-click exited silently); a `_StartupSplash`
+  gives instant liveness; `precheck_qt_platform_plugin` catches the
+  AV-stripped qwindows.dll case. User-data report files on Windows:
+  `%LOCALAPPDATA%\Elixir\{startup.log, startup_crash.log,
+  faulthandler.log, console.log}` — ask for those FIRST on any
+  future "it doesn't open" report. Paid code signing remains the
+  owner-level fix for AV false positives on the unsigned installer.
+- **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract
   must be installed or the selftest FAILS on it as a runtime package).

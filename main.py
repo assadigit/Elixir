@@ -17,6 +17,39 @@ import shutil
 import sys
 from pathlib import Path as _P  # V18.2.22: module-level for Bootstrap call
 
+# V0.6.65: launcher guard FIRST — armed before every other project import so
+# an import-time/startup failure leaves %LOCALAPPDATA%\Elixir\startup.log +
+# startup_crash.log and a visible (Qt-free) error box instead of the silent
+# no-window death a windowed build produces (the V0.6.64 field report:
+# "installed … doesn't open at all"). See core/system/launcher_guard.py.
+try:
+    from core.system.launcher_guard import (
+        install as _install_launcher_guard,
+    )
+    from core.system.launcher_guard import (
+        precheck_qt_platform_plugin as _precheck_qt_plugin,
+    )
+    from core.system.launcher_guard import (
+        startup_step as _startup_step,
+    )
+
+    _install_launcher_guard()
+except Exception as _e:  # noqa: BLE001 — the guard must never block boot
+
+    def _install_launcher_guard(*_a, **_k) -> None:  # type: ignore[misc]
+        pass
+
+    def _startup_step(_name: str) -> None:  # type: ignore[misc]
+        pass
+
+    def _precheck_qt_plugin() -> bool:  # type: ignore[misc]
+        return True
+
+    try:
+        print(f"[Elixir] launcher guard unavailable: {type(_e).__name__}: {_e}")
+    except Exception:
+        pass
+
 from utils.settings import (
     user_data_dir,  # V18.20.4.11 rebrand: migrates the legacy user dir → ~/.elixir
 )
@@ -227,7 +260,18 @@ def _install_excepthook() -> None:
             from PySide6.QtWidgets import QApplication, QMessageBox
 
             app = QApplication.instance()
-            if app is not None:
+            if app is None:
+                # V0.6.65: a crash BEFORE QApplication exists (the first
+                # steps of ui_qt.app.run — QApplication/lock/theme) showed
+                # nothing at all in a windowed build. Hand it to the
+                # launcher guard: startup_crash.log + a Qt-free native box.
+                try:
+                    from core.system.launcher_guard import report_fatal
+
+                    report_fatal(tb_text)
+                except Exception:
+                    logger.debug("launcher-guard fallback failed", exc_info=True)
+            else:
                 msg = QMessageBox()
                 msg.setIcon(QMessageBox.Critical)
                 # V0.4.4: detect the numpy 2.x ABI mismatch at runtime (it
@@ -278,9 +322,13 @@ if __name__ == "__main__":
     if _rc is not None:
         sys.exit(_rc)
 
+    _startup_step("selftest dispatch passed — normal launch")
+
     missing = _check_dependencies()
     if missing:
         _show_missing_deps_error(missing)
+
+    _startup_step("dependency + numpy ABI checks")
 
     # V0.4.4: numpy 2.x ABI mismatch probe (torch/pandas/onnxruntime/
     # scipy/cv2) — catches every ABI error shape early. V0.4.22: fatal
@@ -292,6 +340,8 @@ if __name__ == "__main__":
     check_numpy_abi_compatibility()
 
     _install_excepthook()
+
+    _startup_step("bootstrap (settings migration, prompts, keyring)")
 
     # V18.2.22 (Phase 2.1): Bootstrap extracted from inline to
     # core.system.bootstrap.Bootstrap — each step is now independently
@@ -316,4 +366,13 @@ if __name__ == "__main__":
     except Exception:
         logger.debug("offline encoding cache seed skipped", exc_info=True)
 
+    # V0.6.65: a missing qwindows.dll (the classic antivirus-stripped
+    # bundle) means a hard qFatal inside Qt — completely silent in a
+    # windowed build. Check BEFORE the Qt import so the user gets an
+    # actionable message instead of a dead double-click.
+    _startup_step("Qt platform plugin precheck")
+    if not _precheck_qt_plugin():
+        sys.exit(1)
+
+    _startup_step("Qt UI launch")
     run()

@@ -31,6 +31,76 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.65 — "it doesn't open at all": the first real-machine install report, answered — startup can no longer die silently (a launcher guard that catches pre-window crashes into `startup.log` + `startup_crash.log` + a Qt-free native error box), the single-instance FOCUS protocol is actually wired now (it was never connected: a second double-click exited silently while the first window never came forward — plus a zombie-takeover path so a hung first instance can't lock you out forever), an instant "Elixir is starting…" splash so a slow first launch (cold disk, antivirus scanning every DLL) no longer looks like a dead app, and a `qwindows.dll` precheck that turns the classic antivirus-stripped-bundle failure into an actionable message — 8,613 P / 16 F (the same 16 documented pre-existing failures; +29 collected, all green)
+
+**The report:** "I've installed the app, it got installed on my windows,
+but it doesnt open at all" — first-ever install of
+`Elixir-Setup-0.6.64.exe` on a real Windows machine, with BOTH CI builds
+of that release green (including a real window-appears launch test).
+The failure was machine-specific, and a windowed (no-console) build
+makes every pre-window death invisible.
+
+**Found by reading the startup path end-to-end:**
+
+1. **The V18.1 single-instance FOCUS protocol was never wired** — the
+   second launch wrote `FOCUS` into a pipe nobody read and exited; the
+   first window never came forward. With a first launch still starting
+   or hung, every later double-click did nothing, by design.
+2. **Pre-window crashes were unreportable** — the first project import,
+   the torch probe, the dependency checks, and the first steps of
+   `ui_qt.app.run` (including `QApplication` construction) all ran
+   before any excepthook existed; the app's own hook showed a dialog
+   only once a QApplication existed.
+3. **No liveness feedback** — a slow first launch (cold disk, antivirus
+   scanning each bundled DLL) looked exactly like a dead one, and every
+   extra double-click made it worse via (1).
+4. **The AV signature** — a stripped `qwindows.dll` kills Qt with an
+   uncatchable `qFatal`; nothing pre-checked for it.
+
+**The fixes (one commit):**
+
+- `core/system/launcher_guard.py` (NEW, stdlib-only, never-raise):
+  armed as the FIRST statement of `main.py`. `%LOCALAPPDATA%\\Elixir\\
+  startup.log` records a timestamped step timeline; a `sys.excepthook`
+  writes full tracebacks to `startup_crash.log` (+ a beside-exe copy)
+  and shows a **Qt-free native `MessageBoxTimeoutW` error box** (90 s
+  auto-close) in plain words. `main.py`'s excepthook also gained the
+  missing pre-QApplication branch (it now routes to the guard).
+- **The lock protocol, implemented:** the primary answers `FOCUS` by
+  raising its window and replying `OK`; the second launch exits quietly
+  on ACK, and **takes the lock over after 2.5 s of silence** (a
+  hung/zombie primary can no longer lock the user out forever — the
+  old code exited silently forever).
+- **`_StartupSplash`** ("◆ Elixir is starting…"): shown the moment the
+  lock is acquired, closed when the window appears; best-effort, can
+  never block startup.
+- **`precheck_qt_platform_plugin`:** verifies `qwindows.dll` exists in
+  the bundle before the Qt import; missing → the plain-words antivirus
+  message (Protection history → restore → exclusion → reinstall)
+  instead of a dead click.
+
+**Verified:** offscreen end-to-end — first instance: splash → window →
+alive with the full `startup.log` timeline; second instance while the
+first runs: FOCUS → ACK → exit 0 in 3.7 s, no takeover warning; full
+suite **8,613 / 16 / 25** (same 16 IDs as V0.6.64; every suspicious
+failure verified identical on the stashed pre-change HEAD); source
+selftest **377/377** (the new module joins the walk); ruff repo-wide
+unchanged (1 = the OFF-LIMITS B023, left by instruction). New pins:
+`tests/test_v0665_launcher_guard.py` (29 tests: the stdlib-only
+contract AST-scanned, no-import-side-effects, install/timeline/crash
+report/hook chaining, the dll-finder layouts, source pins on every
+wiring point); the two `main.py` thin-file pins bumped 320 → 400
+(374 lines; +55 of guard wiring, justification commented in both
+tests).
+
+**Known tradeoffs:** a healthy-but-busy primary (>2.5 s event-loop
+stall, e.g. mid-conversion) can be taken over → two windows briefly
+coexist (logged loudly; strictly better than the silent-exit status
+quo). The real fix for AV stripping is paid code signing — the owner's
+decision. Windows-only paths verified by faked-frozen unit tests here;
+the next installer CI run exercises them on a real Windows box.
+
+
 ## V0.6.64 — "remove piper entirely, keep tesseract": the Piper TTS engine is REMOVED — the binary-subprocess Persian engine, its voice catalog + HuggingFace downloader, the settings keys (+ a migration that pops them from older settings.json), the UI pickers, the dependency checks, the piper-tts extra, and its 14 tests (3 removal pins guard the tomb) — the legacy router's Persian route is now Coqui XTTS v2 only, the modern Kokoro/Sherpa paths never used Piper · plus the CI-green cleanup: 14/15 lint findings fixed + 26 format files formatted (the 15th is the OFF-LIMITS vibevoice-compat B023, left by instruction) + the CI test job now installs requirements.lock instead of unpinned requirements.txt — 8,584 P / 16 F (the same 16 documented pre-existing failures)
 
 > **The decision (owner, verbatim):** "Remove piper entirely. keep

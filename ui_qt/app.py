@@ -814,15 +814,62 @@ class ElixirWindow(QMainWindow):
 _INSTANCE_KEY = "elixir_single_instance_v18"
 _lock_server = None
 _lock_socket = None
+# V0.6.65: the primary instance's main window, set by run() before exec().
+# The lock server's FOCUS handler raises THIS window when a second launch
+# asks for attention — the V18.1 protocol promised that, but the server
+# side was never wired: a second double-click wrote FOCUS into a pipe
+# nobody read and exited silently. On a machine where the FIRST launch was
+# still starting (or hung), every later click did nothing at all — one
+# face of the V0.6.64 "installed … doesn't open" field report.
+_primary_window = None
+
+
+def _on_lock_connection() -> None:
+    """V0.6.65: primary side of the single-instance protocol.
+
+    Answers ``FOCUS`` by raising the main window, then replies ``OK`` so
+    the second instance can tell a live primary from a zombie (see
+    ``_acquire_single_instance_lock``). Best-effort — never raises.
+    """
+    if _lock_server is None:
+        return
+    try:
+        sock = _lock_server.nextPendingConnection()
+        if sock is None:
+            return
+        try:
+            if sock.waitForReadyRead(300):
+                if b"FOCUS" in bytes(sock.readAll()) and _primary_window is not None:
+                    _primary_window.showNormal()
+                    _primary_window.raise_()
+                    _primary_window.activateWindow()
+            sock.write(b"OK")
+            sock.flush()
+            sock.waitForBytesWritten(500)
+        finally:
+            sock.disconnectFromServer()
+    except Exception:
+        logger.debug("single-instance FOCUS handling failed", exc_info=True)
 
 
 def _acquire_single_instance_lock(app) -> bool:
     """Try to become the sole running instance.
 
-    Returns True if this process should continue starting the GUI. Returns
-    False (and ``sys.exit(0)``s) if another instance is already running —
-    in that case we send a ``FOCUS`` message so the existing window can
-    bring itself to the front.
+    Returns True if this process should continue starting the GUI; exits
+    the process when a live primary instance ACKs.
+
+    Protocol (V0.6.65 — the V18.1 docstring promised the first half but
+    the server side was never wired, so second launches exited silently
+    and the primary never came forward):
+
+    * connect to the existing server → send ``FOCUS`` → wait up to 2.5 s
+      for ``OK``.  ACK received → the primary just raised its window;
+      exit quietly.
+    * NO ACK → the primary is a hung/zombie process whose event loop
+      cannot answer — exiting here is exactly how "the app stopped
+      opening" becomes permanent.  Instead, take the name over:
+      remove the stale server, listen ourselves, keep starting.
+    * No server at all → the normal first launch: listen and continue.
 
     Implemented with a Qt ``QLocalServer``/``QLocalSocket`` pair so we
     don't add a platform-specific dep (named pipes / fcntl / win32 mutex).
@@ -844,22 +891,80 @@ def _acquire_single_instance_lock(app) -> bool:
     global _lock_server, _lock_socket
     _lock_socket = QLocalSocket()
     _lock_socket.connectToServer(_INSTANCE_KEY)
-    if _lock_socket.waitForConnected(200):
-        # Another instance is running — ask it to focus, then exit.
+    if _lock_socket.waitForConnected(300):
+        # A primary exists — ask it to focus, then wait for its ACK.
         _lock_socket.write(b"FOCUS")
         _lock_socket.flush()
         _lock_socket.waitForBytesWritten(500)
-        sys.exit(0)
-    # No existing instance — start the server so future launches detect us.
+        acked = False
+        if _lock_socket.waitForReadyRead(2500):
+            acked = b"OK" in bytes(_lock_socket.readAll())
+        if acked:
+            sys.exit(0)  # the primary just raised its window
+        logger.warning(
+            "single-instance primary did not answer FOCUS within 2.5 s — "
+            "taking over the instance lock (the previous instance is hung "
+            "or still starting); two windows may briefly coexist"
+        )
+    # No live primary (or a zombie one) — own the name so future launches
+    # detect us, and answer FOCUS for them.
     QLocalServer.removeServer(_INSTANCE_KEY)
     _lock_server = QLocalServer()
-    _lock_server.listen(_INSTANCE_KEY)
+    _lock_server.newConnection.connect(_on_lock_connection)  # V0.6.65
+    if not _lock_server.listen(_INSTANCE_KEY):
+        # Name held by something we could not remove — never trap the user
+        # out of their app; run unguarded (same degradation as the
+        # QtNetwork-missing path above).
+        logger.warning("single-instance lock could not listen (%s)", _lock_server.errorString())
     return True
+
+
+class _StartupSplash(QLabel):
+    """V0.6.65: a tiny always-on-top "Elixir is starting…" label.
+
+    Shown the moment the single-instance lock is acquired and closed when
+    the main window appears, so a slow first launch (cold disk, antivirus
+    scanning every bundled DLL as it loads) shows liveness instead of a
+    silent desktop — the other face of the V0.6.64 "doesn't open at all"
+    field report (the app WAS starting; it just took long enough to look
+    dead, and every extra double-click made it worse via the broken
+    single-instance path). Deliberately dependency-free (plain QLabel,
+    fixed palette, no theme imports) and best-effort — constructed inside
+    run()'s try/except so a splash failure can never block startup.
+    """
+
+    def __init__(self, app) -> None:
+        super().__init__("◆  Elixir is starting…")
+        self._app = app
+        self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet(
+            "QLabel { background: #23242b; color: #eceef4; "
+            "border: 1px solid #3a3d47; border-radius: 10px; "
+            "padding: 20px 36px; font-size: 14px; }"
+        )
+        self.adjustSize()
+        screen = app.primaryScreen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            self.move(
+                geo.center().x() - self.width() // 2,
+                geo.center().y() - self.height() // 2,
+            )
+        self.show()
+        app.processEvents()
+
+    def message(self, text: str) -> None:
+        """Update the splash text (painted immediately)."""
+        self.setText(f"◆  {text}")
+        self._app.processEvents()
 
 
 def run() -> None:
     """Create the QApplication, apply the theme, and show the main window."""
     import sys
+
+    global _primary_window
 
     from PySide6.QtWidgets import QApplication
 
@@ -895,7 +1000,21 @@ def run() -> None:
     # message box the process will ever show.
     install_modal_button_fit(app)
 
+    # V0.6.65: instant "starting…" feedback (see _StartupSplash). Placed
+    # AFTER the single-instance lock so a blocked second launch never
+    # flashes a splash of its own.
+    splash = None
+    try:
+        splash = _StartupSplash(app)
+    except Exception:
+        logger.debug("startup splash unavailable", exc_info=True)
+
     controller = Controller()
+    if splash is not None:
+        splash.message("Loading interface…")
     window = ElixirWindow(controller)
+    _primary_window = window  # V0.6.65: the lock server raises this on FOCUS
     window.show()
+    if splash is not None:
+        splash.close()
     sys.exit(app.exec())
