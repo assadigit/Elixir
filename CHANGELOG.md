@@ -31,6 +31,57 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.66 — the second "doesn't open" report, answered: the Windows installer no longer rides unpinned package drift (V0.6.65 shipped the exact PySide6 6.12.0 / mammoth 1.13.0 / markitdown 0.1.9 combination documented to segfault — the CI runner tolerated it, the first real machine did not), refuses Windows < 10 instead of installing a never-launching app, force-replaces a hung old Elixir.exe during upgrades (the in-use-file trap), and gains a one-double-click "Elixir - Collect Diagnostics" Start-menu tool — 8,624 P / 16 F (the same 16 documented pre-existing failures; +11 collected, all green)
+
+**The report:** "I've installed the latest version on my windows, it
+didn't open … it goes silently fail. it shows app and everything in the
+search and start menu but doesnt open." — the second real-machine
+report, one day after V0.6.65's launcher guard made every Python-level
+startup failure visible. **Silent again meant the death was below the
+guard's reach — or the build itself was different from what was
+verified.**
+
+**Found by forensics on the released artifacts** (downloaded
+`Elixir-Setup-0.6.65.exe` + the CI job logs):
+
+1. **The Windows build floated.** The installer workflow installed
+   *unpinned* `requirements.txt` (a stale comment claimed the Linux
+   lock was unsolvable on Windows — disproven by the very run it
+   documented). The 2026-10-24 build silently resolved **PySide6
+   6.12.0 + mammoth 1.13.0 + markitdown 0.1.9** — the exact trio that
+   deterministically segfaulted the Linux suite in the documented
+   lock-alignment incident. The freshly-imaged CI runner happened to
+   tolerate that stack (launch tests green); the user's machine did
+   not. Same hazard as the Linux incident, one platform over.
+2. **Windows 7/8.1 installed fine and could never launch** (no
+   `MinVersion` in the Inno template; Python 3.12 requires Windows
+   10+ — the bootloader dies before any of our code or logs exist).
+3. **The in-use-file trap:** a hung previous `Elixir.exe` blocks the
+   upgrade's exe replacement; the Start-menu shortcut keeps launching
+   the OLD build until reboot.
+
+**The fixes:** `requirements.windows.lock` (the pinned closure — the
+full green runner resolution with the trio downgraded to the globally
+verified 6.11.2 / 1.11.0 / 0.1.7; the header documents the
+regeneration rule) installed by the workflow + `pyinstaller==6.22.3`
+pinned; `MinVersion=10.0` + `CloseApplications=force` in the Inno
+template; and `packaging/collect_diagnostics.cmd` + Start-menu
+shortcut — one double-click gathers the app's startup logs, Windows
+version, running processes, Defender threat history, and install-dir
+integrity (`qwindows.dll`, `python312.dll`, VC runtime DLLs) into a
+Desktop folder a non-technical user can attach. 11 new guard tests
+(`tests/test_v0666_windows_lock.py`) pin all of it: the lock's exact
+pins + forbidden versions + all-exact-pin rule, the workflow's install
+source, the ISS hardening lines, and the collector's contract. Runtime
+code is untouched (the V0.6.65 guard already logs the Windows version
+in `startup.log`'s environment summary).
+
+**Verified:** full suite **8,624 passed / 16 failed / 25 skipped in
+4:34** — the SAME 16 documented pre-existing failures (verified by
+family against the V0.6.65 baseline; one known-flaky e2e flickers in
+and out of the set, all inside the documented families), **+11
+collected = the new guard tests, all green**. Runtime code untouched.
+
 ## V0.6.65 — "it doesn't open at all": the first real-machine install report, answered — startup can no longer die silently (a launcher guard that catches pre-window crashes into `startup.log` + `startup_crash.log` + a Qt-free native error box), the single-instance FOCUS protocol is actually wired now (it was never connected: a second double-click exited silently while the first window never came forward — plus a zombie-takeover path so a hung first instance can't lock you out forever), an instant "Elixir is starting…" splash so a slow first launch (cold disk, antivirus scanning every DLL) no longer looks like a dead app, and a `qwindows.dll` precheck that turns the classic antivirus-stripped-bundle failure into an actionable message — 8,613 P / 16 F (the same 16 documented pre-existing failures; +29 collected, all green)
 
 **The report:** "I've installed the app, it got installed on my windows,

@@ -814,6 +814,17 @@ WizardStyle=modern
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=lowest
+; V0.6.66 (second "doesn't open" field report): Python 3.12 requires
+; Windows 10+ — on anything older the installer used to install fine and
+; the app then died SILENTLY at every launch (the bootloader cannot load
+; python312.dll on Win 7/8.1). Refuse to install there instead, with a
+; clear message.
+MinVersion=10.0
+; V0.6.66: a hung Elixir.exe from a previous install keeps the old exe
+; open — without this, Inno cannot replace it and the Start-menu shortcut
+; keeps launching the OLD (possibly broken) build until the next reboot
+; (the in-use-file trap; Restart Manager force-closes it instead).
+CloseApplications=force
 UninstallDisplayIcon={{app}}\\{app}.exe
 SetupIconFile={icon}
 ChangesAssociations=no
@@ -826,9 +837,14 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 
 [Files]
 Source: "{{#SourceRoot}}\\{dist_app}\\{app}\\*"; DestDir: "{{app}}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; V0.6.66: the Start-menu diagnostics collector (see its header comment
+; — turns any future "doesn't open" report into evidence a non-technical
+; user can attach in one double-click).
+Source: "{{#SourceRoot}}\\packaging\\collect_diagnostics.cmd"; DestDir: "{{app}}"; Flags: ignoreversion
 
 [Icons]
 Name: "{{group}}\\{app}"; Filename: "{{app}}\\{app}.exe"
+Name: "{{group}}\\Elixir - Collect Diagnostics"; Filename: "{{app}}\\collect_diagnostics.cmd"; WorkingDir: "{{app}}"
 Name: "{{group}}\\Uninstall {app}"; Filename: "{{uninstallexe}}"
 Name: "{{autodesktop}}\\{app}"; Filename: "{{app}}\\{app}.exe"; Tasks: desktopicon
 

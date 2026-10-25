@@ -1,0 +1,147 @@
+# requirements.windows.lock — the pinned closure for the WINDOWS installer
+# build (.github/workflows/windows-installer.yml → build_installer.py).
+#
+# WHY THIS FILE EXISTS (V0.6.66, the second "doesn't open" field report):
+#   The Windows workflow used to install requirements.txt UNPINNED, so every
+#   installer build rode whatever versions pip resolved that morning. The
+#   V0.6.65 installer (built 2026-10-24) silently picked up PySide6 6.12.0 +
+#   mammoth 1.13.0 + markitdown 0.1.9 — the EXACT combination that
+#   deterministically SEGFAULTED the test suite on Linux (documented in
+#   NEW_SESSION_PROMPT's recovery recipe: the lock-alignment incident).
+#   The clean CI runner happened to tolerate that stack (launch tests
+#   green), but the first real consumer machine did not: "installed …
+#   doesn't open at all", silently. Same hazard as the Linux incident,
+#   one platform over.
+#
+# WHAT IS PINNED HERE:
+#   Everything pip resolved on the 2026-10-24 windows-latest runner EXCEPT
+#   the three documented-dangerous packages, which are downgraded to the
+#   globally verified versions (the same ones requirements.lock proves on
+#   Linux — suite 8,613/16/25 at V0.6.65):
+#     PySide6 / PySide6_Addons / PySide6_Essentials / shiboken6  6.12.0 → 6.11.2
+#     mammoth                                                     1.13.0 → 1.11.0
+#     markitdown                                                  0.1.9  → 0.1.7
+#   (PySide6_Pdf / PySide6_WebEngine are NOT pinned: they are transitive
+#   deps of PySide6_Addons==6.11.2 and resolve with it.)
+#
+# REGENERATION RULE (keep it verbatim in future regenerations):
+#   1. `pip install -r requirements.txt` on windows-latest, capture the
+#      "Successfully installed …" line.
+#   2. Pin that resolved set HERE.
+#   3. Downgrade the three documented-dangerous pins to the verified
+#      versions above (update them only when a NEW verified baseline
+#      exists on BOTH platforms).
+#   4. The packed selftest + launch test in build_installer.py is the
+#      gate that proves the chosen set actually starts on Windows.
+#
+# NOTE: pyinstaller is NOT pinned here (it is build tooling, not app
+# runtime); the workflow pins it separately (pyinstaller==6.22.3 — the
+# version that built the verified V0.6.65 bundle).
+
+Pillow==13.0.0
+PyJWT==2.15.1
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+PyYAML==6.0.3
+XlsxWriter==3.3.0
+absl-py==2.5.1
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
+annotated-types==0.8.0
+anyio==4.15.1
+arabic-reshaper==3.0.1
+async_timeout==5.0.1
+attrs==26.1.0
+azure-ai-contentunderstanding==1.2.0b3
+azure-ai-documentintelligence==1.0.2
+azure-core==1.41.0
+azure-identity==1.26.0
+beautifulsoup4==4.15.0
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+cobble==0.1.4
+cryptography==50.0.2
+defusedxml==0.7.1
+distro==1.9.0
+et-xmlfile==2.0.0
+exceptiongroup==1.3.1
+flatbuffers==25.12.19
+frozenlist==1.8.0
+google-api-core==2.43.0
+google-auth==2.62.0
+google-cloud-core==2.8.0
+google-cloud-storage==3.17.1
+google-crc32c==1.9.0
+google-genai==2.33.0
+google-resumable-media==2.11.0
+googleapis-common-protos==1.76.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+isodate==0.7.2
+jaraco.classes==3.1.0
+jaraco.context==6.1.0
+jaraco.functools==4.6.0
+keyring==25.7.0
+langextract==1.7.1
+lxml==6.1.3
+magika==1.0.3
+mammoth==1.11.0
+markdownify==1.2.3
+markitdown==0.1.7
+ml-collections==1.1.0
+more-itertools==11.2.0
+msal==1.39.0
+msal-extensions==1.3.1
+multidict==7.1.0
+numpy==1.26.4
+olefile==0.47
+onnxruntime==1.31.0
+openpyxl==3.1.5
+opentelemetry-api==1.45.1
+pandas==3.0.6
+pdf2image==1.17.0
+pdfminer.six==20260107
+pdfplumber==0.11.10
+propcache==0.5.4
+proto-plus==1.29.0
+protobuf==7.36.2
+pyasn1==0.6.4
+pyasn1-modules==0.4.2
+pycparser==3.12
+pydantic==2.14.1
+pydantic-core==2.50.1
+pydub==0.25.1
+pypdf==6.21.2
+pypdfium2==5.14.0
+pytesseract==0.3.13
+python-bidi==0.6.12
+python-dateutil==3.0.0
+python-docx==1.2.0
+python-dotenv==1.2.4
+python-pptx==1.0.2
+pywin32-ctypes==0.2.3
+rapidfuzz==3.14.6
+regex==2026.9.29
+requests==2.34.2
+shiboken6==6.11.2
+six==1.17.0
+sniffio==1.3.1
+soupsieve==3.0.4
+speechrecognition==3.17.0
+tenacity==9.1.4
+tiktoken==0.14.0
+tqdm==4.70.1
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2026.5
+urllib3==2.8.0
+websockets==17.3
+wordninja==2.0.0
+xlrd==2.0.2
+yarl==1.25.1
+youtube-transcript-api==1.2.4

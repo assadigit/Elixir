@@ -87,17 +87,17 @@ entries — verify before acting, don't trust this list blindly):
    TTS compat file — leave it (CI lint stays red by exactly that 1
    finding unless the user approves a noqa or a fix in the compat
    layer).
-7. **README tests badge — updated 2026-10-24 (V0.6.65)** to the shown run
-   (8613 passed / 16 failed / 25 skipped, launcher-guard release,
+7. **README tests badge — updated 2026-10-25 (V0.6.66)** to the shown run
+   (8624 passed / 16 failed / 25 skipped, windows-pin-lock release,
    lock-aligned sandbox env + ebooklib/genanki/radon/vulture,
-   `-p no:ddtrace`, ~269s); keep it current with each release's shown
-   run. The CI pytest job now installs
-   `requirements.lock` (the pinned core closure) instead of unpinned
-   requirements.txt — the V0.6.64 drift fix; CI's remaining red jobs:
-   lint (the 1 off-limits B023), pytest (the environment-dependent
-   families above), pip-audit (unwaived known vulns in the lock pins —
-   needs a USER decision: upgrade the pins vs document waivers in
-   requirements.audit-waivers).
+   `-p no:ddtrace`, ~275s); keep it current with each release's shown
+   run. The CI pytest job installs `requirements.lock` (Linux) AND the
+   Windows installer workflow installs `requirements.windows.lock`
+   (the V0.6.66 drift fix — see the field-report section below); CI's
+   remaining red jobs: lint (the 1 off-limits B023), pytest (the
+   environment-dependent families above), pip-audit (unwaived known
+   vulns in the lock pins — needs a USER decision: upgrade the pins vs
+   document waivers in requirements.audit-waivers).
 8. **Next feature work** — my direction (the V0.6.61 stage summary
    pointed at "the NEXT tool or the broader app").
 
@@ -180,24 +180,21 @@ session and the recovery recipe is proven:
   judged on the rig. Ask me for screenshots/paste-backs when a visual
   question cannot be answered offscreen, and say so honestly.
 
-## THE BASELINE YOU INHERIT (V0.6.64, measured 2026-10-23 post-Piper-removal)
+## THE BASELINE YOU INHERIT (V0.6.66, measured 2026-10-25, the windows-pin-lock release)
 
 - **Full suite (Linux sandbox, offscreen Qt, lock-aligned env,
-  `-p no:ddtrace`): 8,613 passing / 16 failed / 25 skipped in ~269s**
-  — measured at the V0.6.65 working tree (launcher-guard release). The
-  -14 vs V0.6.63's 8,598 is EXACTLY the Piper engine's own tests
-  removed with the engine (12 in test_v0600_tool_tts_e2e.py incl. the
-  6-test TestPiperEngineLiveSubprocess class, 5 in
-  test_v182044_p3_tts_subprocess.py incl. the 4-test TestPiperWc8
-  class — replaced by 3 removal pins; collection: 8,655 → 8,641
-  total). **The 16 failures are the SAME documented pre-existing
-  families as V0.6.63** (TTS/ffmpeg/vibevoice e2e ×12, eval gate ×2,
-  prompt-manifest drift shipped by V0.6.62 ×1, source pin ×1; three of
-  the vibevoice ones are stale 600s-timeout pins vs the V0.6.31 3600s
-  raise — verified failing identically at the pre-removal HEAD).
-  **Any NEW failure beyond these 16 is a regression** — decompose it,
-  fix it, and say what broke. First re-establish this number after the
-  venv reinstall before believing anything else.
+  `-p no:ddtrace`): 8,624 passing / 16 failed / 25 skipped in ~275s**
+  — measured at the V0.6.66 working tree. The +11 vs V0.6.65's 8,613 is
+  EXACTLY the new windows-lock/installer-hardening guard pins
+  (tests/test_v0666_windows_lock.py — runtime code untouched). **The 16
+  failures are the SAME documented pre-existing families as V0.6.63 →
+  V0.6.65** (TTS/ffmpeg/vibevoice e2e, eval gate ×2, prompt-manifest
+  drift ×1, stale vibevoice/timeout source pins; one known-flaky e2e
+  flickers in and out of the set between runs — all inside the
+  documented families). **Any NEW failure beyond these 16 is a
+  regression** — decompose it, fix it, and say what broke. First
+  re-establish this number after the venv reinstall before believing
+  anything else.
 - **V0.6.64 field report → V0.6.65 (the launcher-guard release):** the
   user's first real-machine install of Elixir-Setup-0.6.64.exe "didn't
   open at all" (both CI builds green incl. the window-appears launch
@@ -216,6 +213,31 @@ session and the recovery recipe is proven:
   faulthandler.log, console.log}` — ask for those FIRST on any
   future "it doesn't open" report. Paid code signing remains the
   owner-level fix for AV false positives on the unsigned installer.
+- **V0.6.65 field report → V0.6.66 (the windows-pin-lock release):**
+  the user's SECOND real-machine report — "installed the latest
+  version … it goes silently fail … shows app and everything in the
+  search and start menu but doesnt open" — one day after V0.6.65's
+  guard made every Python-level failure visible. Silent BELOW the
+  guard = the build inputs or the OS. Found by artifact forensics
+  (downloaded Elixir-Setup-0.6.65.exe + the CI job logs): the Windows
+  workflow installed UNPINNED requirements.txt (a stale comment
+  claimed the Linux lock was unsolvable on Windows — false) and the
+  2026-10-24 build silently rode **PySide6 6.12.0 + mammoth 1.13.0 +
+  markitdown 0.1.9** — the exact documented-segfault trio from the
+  Linux lock-alignment incident; the clean CI runner tolerated it, the
+  user's machine did not. Fixes: `requirements.windows.lock` (pinned
+  closure, trio downgraded to the verified 6.11.2/1.11.0/0.1.7,
+  regeneration rule in its header) + `pyinstaller==6.22.3` pinned in
+  the workflow; `MinVersion=10.0` (Python 3.12 needs Win10+ — refuse
+  install instead of a never-launching app) + `CloseApplications=force`
+  (the in-use-file trap: a hung old Elixir.exe blocked exe replacement,
+  shortcut kept launching the OLD build) in the Inno template; and the
+  Start-menu "Elixir - Collect Diagnostics" tool
+  (packaging/collect_diagnostics.cmd) — one double-click gathers the
+  startup logs, Windows version, Defender threat history, and
+  install-dir integrity into Desktop\Elixir-diagnostics for the user to
+  attach. Guarded by tests/test_v0666_windows_lock.py (11 tests). On
+  the NEXT "doesn't open" report: ask for the Diagnostics folder FIRST.
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract

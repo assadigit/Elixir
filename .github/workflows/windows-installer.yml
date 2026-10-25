@@ -39,17 +39,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      # NOTE: requirements.lock is Linux-generated — on Windows, magika caps
-      # onnxruntime<=1.20.1 (sys_platform == "win32") while the lock pins
-      # 1.30.0, which makes the lock unsolvable there. Install the core set
-      # from requirements.txt (resolver picks Windows-compatible versions).
+      # V0.6.66: the Windows build installs the PINNED closure from
+      # requirements.windows.lock (generated from the 2026-10-24 runner
+      # resolution with the three documented-dangerous packages
+      # downgraded to the globally verified versions — PySide6 6.11.2 /
+      # mammoth 1.11.0 / markitdown 0.1.7). The V0.6.65 installer rode
+      # the unpinned requirements.txt and silently picked up PySide6
+      # 6.12.0 + mammoth 1.13.0 + markitdown 0.1.9 — the exact
+      # combination documented to SEGFAULT on Linux — and the first
+      # real consumer machine then hit "installed … doesn't open at
+      # all". Never float the Windows build again; the lock file's
+      # header documents the regeneration rule. (The old note about
+      # magika/onnxruntime making the Linux requirements.lock
+      # unsolvable on Windows is obsolete: today's resolution shows
+      # magika 1.0.3 + onnxruntime 1.31.0 coexist fine, and the
+      # windows lock pins exactly that green set.)
       # bash (not pwsh) so a failing pip line actually fails the step.
-      - name: Install dependencies (core set + PyInstaller)
+      - name: Install dependencies (pinned windows lock + PyInstaller)
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install -r requirements.windows.lock
+          pip install pyinstaller==6.22.3
 
       - name: Cache downloaded external tools (ffmpeg / poppler)
         uses: actions/cache@v4
