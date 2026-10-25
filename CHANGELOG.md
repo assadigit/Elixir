@@ -31,7 +31,7 @@
 >    information invented; the commits remain the authoritative record.
 
 
-## V0.6.67 — the diagnostics finally arrived and the verdict is in: the app was RUNNING THE WHOLE TIME — an invisible (off-screen) window plus a single-instance protocol that trusted any ACK made every launch look dead; now the window is guaranteed on-screen after every show, the FOCUS protocol is honest (an off-screen primary loses the lock instead of swallowing every later double-click), the CI launch gate demands a *visible on-screen* window (not just a handle), and the diagnostics tool collects the geometry + screen evidence it was missing
+## V0.6.67 — the diagnostics arrived, the strengthened launch gate refused to rubber-stamp the runner's window, and the trail led to THE root cause: the selftest's import-time QT_QPA_PLATFORM=offscreen poisoned EVERY normal launch since V0.6.63 — the app ran headless on every user's machine (started, logged, answered FOCUS, could never show a window). Fixed, plus the geometry/protocol hardening found on the way (off-screen rescue, honest FOCUS acks, visible-on-screen CI gate, richer diagnostics)
 
 **The report:** "Installed new version, but still didn't run, however
 this time we have diagnostics" — with `Elixir-diagnostics.zip` attached
@@ -53,15 +53,24 @@ was collected 20:05:14):
   window), and `sys.exit(0)`'d. `SystemExit` bypasses `sys.excepthook`,
   so no crash log, no error box — the exact signature of every
   "second click does nothing".
-- Net: **the app "never opens" while a perfectly healthy invisible
-  window runs the whole time.** The restore-time off-screen check
-  existed (T-b5) but was SKIPPED for maximized restores (a window saved
-  as "maximized on monitor #2" maximizes onto a detached monitor
-  forever), and nothing re-validated the window's position after
-  `show()`. `showNormal()`/`raise_()` cannot rescue a window stranded
-  off-screen — so even the FOCUS path kept it invisible.
-- CI stayed green because the launch test only checked
-  `MainWindowHandle != 0` — **an off-screen window passes that**.
+- THE TRUE ROOT CAUSE (found on the CI runner, one layer deeper):
+  **`utils/selftest.py` set `QT_QPA_PLATFORM=offscreen` AT IMPORT TIME,
+  and `main.py` imports that module on EVERY launch** (to dispatch
+  `--selftest`) — so every normal launch since the V0.6.63 installer
+  work ran the whole GUI on Qt's OFFSCREEN platform: started perfectly,
+  logged every step, answered the single-instance FOCUS protocol — and
+  could never show a window, on ANY machine. Every Windows release
+  V0.6.63 → V0.6.66 shipped headless; the user's three reports were
+  this bug wearing three different masks. How it finally surfaced: the
+  strengthened launch gate refused to pass the runner's never-actually-
+  visible window — the old gate had been rubber-stamping
+  `MainWindowHandle != 0` (an offscreen-platform window still has an
+  HWND) since V0.6.63.
+- The geometry analysis above remains real-but-SECONDARY hardening: the
+  maximized-restore check gap and the FOCUS-trusts-any-ACK hole were
+  genuine bugs (fixed below) — but the user's window was never going to
+  appear regardless of geometry, because it was rendering to Qt's
+  offscreen surface.
 - Windows 10 Enterprise 22H2 (build 19045) — fully supported; install
   integrity PRESENT across the board; no Defender evidence in the zip
   (the PowerShell steps had silently produced no files — now they
@@ -70,7 +79,22 @@ was collected 20:05:14):
 **The fixes (evidence → fix, all test-pinned in
 `tests/test_v0667_window_visibility.py`):**
 
-1. **`utils/geometry.sanitize_restore_plan` (new, pure):** the restore
+1. **THE ROOT CAUSE — the selftest env poisoning:** the offscreen
+   platform now belongs to the selftest process ONLY — set inside
+   `maybe_run_cli`'s dispatch path and at the top of `run_selftest`
+   (before its first PySide6 import, preserving the selftest's
+   no-window guarantee), never at module import time. A normal launch
+   keeps the real platform (qwindows). Two behavioral tests (subprocess
+   import-clean + dispatch-sets-offscreen) + a source pin keep it that
+   way forever. Along the way the CI gate itself was taught PS-5.1-safe
+   interop: the first strengthened gate measured garbage (rect zeros,
+   visible empty — PS-side `[ref]`-on-out-struct + bool marshaling);
+   all Win32 calls now live inside the C# (`Visible`/`RectOf`
+   wrappers), every interop failure is loud in the result line, and
+   every launch test dumps the runner's app startup.log tail into the
+   build log (which is exactly the evidence that unmasked the
+   redirected-launch invocation and, ultimately, the poisoning).
+3. **`utils/geometry.sanitize_restore_plan` (new, pure):** the restore
    decision in one Qt-free function — maximized restores are validated
    like normal ones, every unvalidated/absent position degrades to
    "center on the primary screen", and the plan carries a `rejected`
@@ -86,28 +110,28 @@ was collected 20:05:14):
    DPI shift, default placement), exec() is only entered with a window
    that is actually on a screen — and it is raised + activated on
    launch.
-3. **The honest-ACK FOCUS protocol (`utils/single_instance.py`, new):**
+4. **The honest-ACK FOCUS protocol (`utils/single_instance.py`, new):**
    the primary replies `OK-VISIBLE` / `OK-INVISIBLE` after its
    self-heal; a second launch only defers to a primary that can PROVE
    visibility — an off-screen primary loses the lock and the new
    instance shows its own force-onscreen window. Cross-version safe:
    both new replies contain the legacy `OK` substring, and a legacy
    `OK` reply is still honored (old behavior is the floor).
-4. **Save-side hardening:** `_save_geometry` never persists minimized
+5. **Save-side hardening:** `_save_geometry` never persists minimized
    coordinates (Windows reports −32000) and saves the NORMAL geometry
    when maximized, so an invisible state can no longer re-save itself
    forever.
-5. **Startup evidence upgrades:** `window shown — frame=… screens=N`
+6. **Startup evidence upgrades:** `window shown — frame=… screens=N`
    and `event loop finished (rc=…)` steps in startup.log (any future
    "it closed itself" report now shows the exec() boundary), and the
    gpu_probe write no longer NameError-truncates when torch isn't
    bundled (the Windows build) — every probe entry now says so
    explicitly instead of ending after 3 header lines.
-6. **CI launch gate:** WINDOW_SHOWN now means `IsWindowVisible` AND
+7. **CI launch gate:** WINDOW_SHOWN now means `IsWindowVisible` AND
    ≥ 10,000 px² of the window inside a real monitor's bounds
    (WINDOW_HIDDEN / WINDOW_OFFSCREEN are explicit failures) — the
    gap that let this bug class through green is closed.
-7. **Diagnostics collector:** collects `window_geometry.json`, a
+8. **Diagnostics collector:** collects `window_geometry.json`, a
    screen inventory (monitors/video controllers/DPI), notes
    PowerShell availability, and every PowerShell step leaves a trace
    file even when blocked (the 2026-10-25 report's Defender and

@@ -33,9 +33,20 @@ import time
 import traceback
 from pathlib import Path
 
-# Must be set BEFORE PySide6 is imported anywhere: guarantees no window can
-# ever appear, even if an imported module constructs a widget.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# V0.6.67b — THE root-cause fix of the "installed … doesn't open" saga.
+# This module used to run, AT IMPORT TIME:
+#
+#     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+#
+# and main.py imports this module on EVERY launch (to dispatch --selftest),
+# so EVERY NORMAL LAUNCH since V0.6.63 ran the whole GUI on Qt's OFFSCREEN
+# platform: the app started perfectly, logged every startup step, answered
+# the single-instance FOCUS protocol — and could never show a window, on
+# ANY machine. Every Windows release V0.6.63 → V0.6.66 shipped headless
+# (three field reports of "installed … doesn't open"). The env is now set
+# INSIDE run_selftest — before its first PySide6 import, so the selftest's
+# no-window guarantee is preserved — and a normal launch keeps its real
+# platform. Pinned by tests/test_v0667_window_visibility.py.
 
 # Third-party packages the app loads BY NAME at runtime (dynamic imports,
 # plugin loaders, presence probes). A missing spec means the bundle is
@@ -237,6 +248,11 @@ def run_selftest(report_file: str | Path = "selftest_report.txt") -> int:
     Writes one line per failure to ``report_file`` plus a summary; prints
     progress to stdout. Never opens a window, never starts the Qt event loop.
     """
+    # V0.6.67b: the offscreen platform is a property of THE SELFTEST RUN —
+    # set it here (before the first PySide6 import below), never at module
+    # import time (see the module note: that poisoned every normal launch
+    # since V0.6.63 into a headless GUI).
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     started = time.perf_counter()
     root = _repo_root()
     fail: list[str] = []
@@ -318,6 +334,13 @@ def maybe_run_cli(argv: list[str]) -> int | None:
     ``__main__`` block — the first thing it does, before any window."""
     if "--selftest" not in argv:
         return None
+    # V0.6.67b: the offscreen platform belongs to THE SELFTEST PROCESS
+    # ONLY — set at dispatch time (never at module import time: main.py
+    # imports this module on every launch, and the old import-time
+    # setdefault ran every release V0.6.63 → V0.6.66 headless — the
+    # "installed … doesn't open" saga). run_selftest re-asserts it for
+    # direct callers.
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     idx = argv.index("--selftest")
     report = (
         argv[idx + 1]

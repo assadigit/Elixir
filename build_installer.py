@@ -740,42 +740,39 @@ def _run_launch_ps(
 
 def launch_test(exe: Path, label: str, timeout: int = 150) -> bool:
     """Launch the app and wait for its main window to become VISIBLE and
-    ON-SCREEN (the V0.6.67 gate — a window handle alone proved nothing:
-    the field report's app sat in exec() with an off-screen window while
-    this test's ancestor was green).
+    ON-SCREEN (the V0.6.67 gate — a window handle alone proved nothing: the
+    field report's app sat in exec() with an off-screen window while this
+    test's ancestor was green).
 
-    V0.6.67a: also captures the launch's stderr AND prints the tail of the
-    app's own startup.log (the runner's %LOCALAPPDATA% Elixir startup.log)
-    into the build log — the "window shown — frame=…" step inside it is
-    the app-side proof of what the launch actually did, so a failed gate
-    is diagnosed in one read instead of a blind retry.
+    V0.6.67a learned the hard way NOT to change the proven invocation: the
+    one run with ``-RedirectStandardError`` never even armed the launcher
+    guard (the launch process produced ZERO startup.log lines while the
+    selftest of the same build wrote all of them seconds earlier) — so the
+    launch keeps the exact V0.6.66-proven ``Start-Process`` shape, and the
+    app-side evidence comes from dumping the runner's %LOCALAPPDATA% Elixir
+    startup.log tail into the build log after every launch (the guard's
+    step timeline, incl. V0.6.67's "window shown — frame=…" line) — a
+    failed gate is a one-read diagnosis.
     """
     log(f"[launch:{label}] starting {exe} ...")
-    stderr_file = ROOT / BUILD_DIR / f"launch_stderr_{label}.txt"
-    out = _run_launch_ps(str(exe), timeout=timeout, stderr_file=str(stderr_file))
+    out = _run_launch_ps(str(exe), timeout=timeout)
     log(f"[launch:{label}] {out}")
-    _dump_launch_evidence(label, stderr_file)
+    _dump_launch_evidence(label)
     return "RESULT=WINDOW_SHOWN" in out
 
 
-def _dump_launch_evidence(label: str, stderr_file: Path) -> None:
+def _dump_launch_evidence(label: str) -> None:
     """V0.6.67a: after a launch test, surface the app-side evidence in the
-    build log — the stderr the app wrote (best-effort; the windowed build's
-    sinks may leave it empty) and the tail of %LOCALAPPDATA%\\Elixir\\
-    startup.log (the guard's step timeline, incl. the V0.6.67 "window shown
-    — frame=… screens=…" line). Never raises."""
-    try:
-        if stderr_file.exists():
-            text = stderr_file.read_text(encoding="utf-8", errors="replace").strip()
-            if text:
-                log(f"[launch:{label}] stderr tail: {text[-800:]}")
-    except Exception:
-        pass
+    build log — the tail of the runner's %LOCALAPPDATA% Elixir startup.log
+    (the guard's step timeline: every launch process writes a header +
+    steps; a launch that contributed NO lines never reached Python at all —
+    exactly what unmasked the poisoned-launch invocation above). Never
+    raises."""
     try:
         startup_log = Path.home() / "AppData" / "Local" / "Elixir" / "startup.log"
         if startup_log.exists():
             lines = startup_log.read_text(encoding="utf-8", errors="replace").splitlines()
-            tail = [ln for ln in lines if ln.strip()][-14:]
+            tail = [ln for ln in lines if ln.strip()][-30:]
             log(f"[launch:{label}] app startup.log tail ({len(lines)} lines):")
             for ln in tail:
                 log(f"    {ln}")

@@ -33,9 +33,21 @@ The V0.6.67 fixes pinned by this file:
 3. ``ui_qt.app`` wiring — the post-show rescue, the save-side hardening
    (never persist minimized/maximized-phantom geometry), the honest reply,
    and the ``window shown`` / ``event loop finished`` startup.log steps.
-4. ``build_installer.py`` — WINDOW_SHOWN now means visible AND on-screen.
+4. ``build_installer.py`` — WINDOW_SHOWN now means visible AND on-screen
+   (marshal-safe in-C# Win32 wrappers — the PS-side ``[ref]``/bool probe
+   measured garbage on PS 5.1), and every launch test dumps the runner's
+   app startup.log tail into the build log.
 5. ``collect_diagnostics.cmd`` — collects window_geometry.json + screen
    inventory + DPI; every PowerShell step leaves a file even when blocked.
+6. **THE ROOT CAUSE (found on the CI runner by the strengthened gate):
+   ``utils/selftest.py`` used to set ``QT_QPA_PLATFORM=offscreen`` at
+   IMPORT time — and main.py imports that module on EVERY launch to
+   dispatch ``--selftest`` — so every release V0.6.63 → V0.6.66 ran the
+   GUI headless: the app started, logged every step, answered FOCUS, and
+   could never show a window, on ANY machine (the three "installed …
+   doesn't open" field reports). The env now lives inside
+   ``run_selftest``; the selftest's no-window guarantee is preserved and
+   normal launches keep the real platform.
 """
 
 from __future__ import annotations
@@ -50,6 +62,84 @@ _DIAG_CMD = (_project_root / "packaging" / "collect_diagnostics.cmd").read_text(
 
 # One 1080p primary with a taskbar (available height 1040) + one secondary.
 SCREENS = [(0, 0, 1920, 1040), (1920, 0, 1280, 1024)]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# FIX 0 — THE ROOT CAUSE: the selftest's offscreen env poisoning
+# (utils/selftest.py used to set QT_QPA_PLATFORM=offscreen at IMPORT time;
+# main.py imports that module on every launch → every release V0.6.63 →
+# V0.6.66 ran the GUI headless: "installed … doesn't open", three times)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestSelftestEnvPoisoning:
+    def test_importing_selftest_does_not_touch_qt_platform(self):
+        """The V0.6.63 → V0.6.66 headless bug: importing utils.selftest
+        (which main.py does on EVERY launch to dispatch --selftest) used
+        to set QT_QPA_PLATFORM=offscreen process-wide — no real window
+        could ever appear, on any machine. Verified in a SUBPROCESS (the
+        poison was process-global; an in-process import can't prove the
+        absence)."""
+        import subprocess
+        import sys
+
+        code = (
+            "import os\n"
+            "assert 'QT_QPA_PLATFORM' not in os.environ, 'poisoned at import'\n"
+            "import utils.selftest  # noqa: F401 — must be side-effect-free\n"
+            "assert 'QT_QPA_PLATFORM' not in os.environ, 'poisoned at import'\n"
+            "print('IMPORT_CLEAN')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=str(_project_root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert "IMPORT_CLEAN" in proc.stdout, proc.stdout + proc.stderr
+
+    def test_selftest_dispatch_still_goes_offscreen(self, monkeypatch):
+        """The no-window guarantee of the SELFTEST itself is preserved:
+        maybe_run_cli sets the offscreen platform when (and only when)
+        --selftest is actually dispatched."""
+        import os
+
+        import utils.selftest as st
+
+        monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+        # a normal launch: no flag → returns None, env untouched
+        assert st.maybe_run_cli(["Elixir.exe"]) is None
+        assert "QT_QPA_PLATFORM" not in os.environ
+        # a selftest dispatch: env set BEFORE run_selftest imports Qt
+        seen: dict[str, object] = {}
+
+        def _fake_run_selftest(report_file):
+            seen["env"] = os.environ.get("QT_QPA_PLATFORM")
+            seen["report"] = str(report_file)
+            return 0
+
+        monkeypatch.setattr(st, "run_selftest", _fake_run_selftest)
+        rc = st.maybe_run_cli(["Elixir.exe", "--selftest", "r.txt"])
+        assert rc == 0
+        assert seen["env"] == "offscreen"
+        assert seen["report"] == "r.txt"
+
+    def test_offscreen_setdefault_never_at_module_level(self):
+        """Source pin: the setdefault must never return to module level
+        (the regression that shipped five headless releases). The REAL
+        occurrences are indented (inside maybe_run_cli / run_selftest);
+        a module-level one would start at column 0."""
+        import re
+
+        st_src = (_project_root / "utils" / "selftest.py").read_text(encoding="utf-8")
+        indented = re.findall(r'^\s+os\.environ\.setdefault\("QT_QPA_PLATFORM"', st_src, re.M)
+        assert len(indented) >= 2, "the selftest paths must keep their offscreen sets"
+        at_module_level = re.findall(r'^os\.environ\.setdefault\("QT_QPA_PLATFORM"', st_src, re.M)
+        assert not at_module_level, (
+            "QT_QPA_PLATFORM must never be set at module import time — that "
+            "poisoned every normal launch V0.6.63 → V0.6.66 into a headless GUI"
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -273,6 +273,37 @@ session and the recovery recipe is proven:
   monitor/DPI inventory and every PowerShell step leaves a trace file.
   On the NEXT report: the zip now contains the geometry + screens —
   read window_geometry.json and screens.txt FIRST.
+
+  **V0.6.67 POST-SCRIPT — THE ACTUAL ROOT CAUSE (found while shipping
+  V0.6.67, one layer deeper than the geometry story above):** the
+  strengthened launch gate refused the CI runner's window (WINDOW_HIDDEN
+  with a real rect measurement after the PS-interop fix), and the
+  runner's startup.log dump showed the launch never armed the guard
+  while the selftest of the same build wrote all its lines — which led
+  to the real find: utils/selftest.py had set
+  QT_QPA_PLATFORM=offscreen AT IMPORT TIME, and main.py imports that
+  module on EVERY launch (to dispatch --selftest) → EVERY normal launch
+  since the V0.6.63 installer commit (c0ee1da) ran the GUI on the
+  OFFSCREEN platform: started, logged, answered FOCUS, could NEVER show
+  a window — on ANY machine. All three user reports were this one bug.
+  The geometry work above remains as real secondary hardening (the
+  maximized-restore hole and the trust-any-ACK protocol hole were
+  genuine), but the user's window was rendering to an offscreen
+  surface. Fixed in 2c606e6..HEAD: the offscreen env is set ONLY in
+  maybe_run_cli's dispatch path + run_selftest (never at import),
+  pinned by TestSelftestEnvPoisoning (subprocess import-clean +
+  dispatch-sets-offscreen + source pin). Also learned shipping it:
+  (a) PS 5.1 P/Invoke from PS code ([ref] on out-struct + bool return)
+  measured garbage — ALL Win32 interop must live inside the Add-Type
+  C# (Visible/RectOf wrappers) with try/catch detail in the result
+  line; (b) the launch test must keep the EXACT V0.6.66-proven
+  Start-Process shape — the one experiment with -RedirectStandardError
+  produced a launch that never even armed the guard (zero startup.log
+  lines); (c) every launch test now dumps the runner's app
+  startup.log tail into the build log — the one-read diagnosis that
+  unmasked everything. LESSON FOR THE NEXT SESSION: a green gate that
+  checks less than the user needs ("a handle exists" vs "a window is
+  visible on a screen") can hide a total failure for five releases.
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract
