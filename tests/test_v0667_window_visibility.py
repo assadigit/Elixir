@@ -80,6 +80,7 @@ class TestSelftestEnvPoisoning:
         could ever appear, on any machine. Verified in a SUBPROCESS (the
         poison was process-global; an in-process import can't prove the
         absence)."""
+        import os
         import subprocess
         import sys
 
@@ -90,12 +91,17 @@ class TestSelftestEnvPoisoning:
             "assert 'QT_QPA_PLATFORM' not in os.environ, 'poisoned at import'\n"
             "print('IMPORT_CLEAN')\n"
         )
+        # Hermetic: the pytest session itself may carry QT_QPA_PLATFORM=offscreen
+        # (Qt e2e tests set it process-wide and alphabetical collection runs
+        # them first) — scrub it so the subprocess starts provably clean.
+        env = {k: v for k, v in os.environ.items() if k != "QT_QPA_PLATFORM"}
         proc = subprocess.run(
             [sys.executable, "-c", code],
             cwd=str(_project_root),
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         assert "IMPORT_CLEAN" in proc.stdout, proc.stdout + proc.stderr
 
