@@ -324,14 +324,19 @@ class TestSingleInstanceWiring:
         assert "_primary_window.activateWindow()" in _APP_SRC
 
     def test_ack_protocol_present(self):
-        assert 'b"OK" in bytes(_lock_socket.readAll())' in _APP_SRC
+        # V0.6.67: the raw b"OK" substring test evolved into the honest-ACK
+        # protocol (utils/single_instance.py): the reply is parsed by
+        # focus_ack_indicates_visible so an OK-INVISIBLE primary loses the
+        # lock instead of swallowing the second launch.
+        assert "focus_ack_indicates_visible(reply)" in _APP_SRC
         assert "waitForReadyRead(2500)" in _APP_SRC
 
     def test_zombie_takeover_not_silent_exit(self):
         # the old code sys.exit(0)'d unconditionally after writing FOCUS;
-        # the takeover branch must exist between write and exit
-        exit_pos = _APP_SRC.find("sys.exit(0)  # the primary just raised its window")
-        ack_pos = _APP_SRC.find("if acked:")
+        # the takeover branch must exist between write and exit.
+        # V0.6.67: the exit is further gated on a VISIBLE ack.
+        exit_pos = _APP_SRC.find("sys.exit(0)  # the primary raised a window that is on a screen")
+        ack_pos = _APP_SRC.find("if focus_ack_indicates_visible(reply):")
         assert 0 < ack_pos < exit_pos
 
     def test_run_registers_primary_window(self):

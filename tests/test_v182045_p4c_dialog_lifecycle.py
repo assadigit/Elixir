@@ -268,15 +268,18 @@ class TestAppPins:
             )
 
     def test_restore_geometry_validates_against_screens(self):
+        # V0.6.67: the validation moved into the pure
+        # utils.geometry.sanitize_restore_plan (unit-tested in
+        # test_v0667_window_visibility.py); _restore_geometry applies the
+        # plan.  The T-b5 contract survives: restored geometry IS validated
+        # against the CURRENT screens, and — the V0.6.67 fix — maximized
+        # restores are validated too (the old code skipped them, which is
+        # how a window could maximize onto a detached monitor forever).
         body = _method_body(_src(_APP), "_restore_geometry")
-        assert "restored_geometry_is_visible(" in body, (
-            "_restore_geometry must validate the restored geometry (T-b5)"
+        assert "sanitize_restore_plan(" in body, (
+            "_restore_geometry must apply the validated restore plan (T-b5 → V0.6.67)"
         )
-        # Screens come from QApplication.screens() availableGeometry.
-        assert "QApplication.screens()" in body
-        assert "availableGeometry()" in body
-        # A maximized restore is always visible — the check is skipped.
-        assert 'if not data.get("maximized")' in body
+        assert "_screens_rects(QApplication.instance())" in body
 
     def test_offscreen_fallback_resizes_and_warns(self):
         body = _method_body(_src(_APP), "_restore_geometry")
@@ -287,12 +290,16 @@ class TestAppPins:
         # The warning message is split across two string literals in the
         # source — pin the contiguous fragment.
         assert "visible on any screen" in body
-        # Centered on the primary screen, never off its top-left corner.
-        assert "QApplication.primaryScreen()" in body
+        # Centered on the primary screen, never off its top-left corner
+        # (V0.6.67: via _center_on_primary).
+        assert "_center_on_primary" in body
 
     def test_geometry_helper_imported(self):
         assert "from utils.geometry import restored_geometry_is_visible" in _src(_APP), (
             "app.py must import the Qt-free geometry helper (T-b5)"
+        )
+        assert "sanitize_restore_plan" in _src(_APP), (
+            "app.py must import the V0.6.67 restore-plan helper"
         )
         # The helper itself stays Qt-free (importable on the headless rig —
         # its docstring MENTIONS PySide6, so pin the absence of imports).

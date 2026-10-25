@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.6.66-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8624%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.6.67-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8654%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -402,7 +402,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.6.66, measured 2026-10-25, the windows-pin-lock release):** `8624 passed / 16 failed / 25 skipped in ~275s headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment + the toolchain set ebooklib/genanki/radon/vulture; -p no:ddtrace; +11 collected vs V0.6.65 = the new windows-lock/installer-hardening guard pins, all green — runtime code untouched; the 16 failures are the SAME documented pre-existing families — TTS/ffmpeg/vibevoice environment-dependent e2e, eval gate ×2, prompt-manifest drift ×1, stale vibevoice pins — verified by family against the V0.6.65 baseline; any NEW failure is a regression)*
+**Current gate (Elixir V0.6.67, measured 2026-10-25, the window-visibility release):** `8654 passed / 16 failed headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment + the toolchain set ebooklib/genanki/radon/vulture; -p no:ddtrace; +30 collected vs V0.6.66 = the new window-visibility guard pins in tests/test_v0667_window_visibility.py, all green — the off-screen-window fixes (restore-plan validation incl. maximized, post-show on-screen guarantee, honest-ACK single-instance protocol); the 16 failures are the SAME documented pre-existing families — vibevoice ×5, ffmpeg/transcribe-dialog e2e ×5, eval gate ×2, prompt-manifest ×1, stale timeout pins ×3 — verified by family against the V0.6.66 baseline; any NEW failure is a regression)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 

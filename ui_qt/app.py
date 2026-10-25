@@ -45,8 +45,9 @@ from ui_qt.views.output_scanner_view import OutputScannerView
 from ui_qt.views.quarantine_view import QuarantineView
 from ui_qt.views.queue_view import QueueView
 from ui_qt.views.validate_dialog import ValidateDialog
-from utils.geometry import restored_geometry_is_visible
+from utils.geometry import restored_geometry_is_visible, sanitize_restore_plan
 from utils.settings import user_data_dir
+from utils.single_instance import focus_ack_indicates_visible, primary_reply
 
 logger = logging.getLogger(__name__)
 
@@ -637,64 +638,75 @@ class ElixirWindow(QMainWindow):
     # Geometry persistence
     # ══════════════════════════════════════════════════════════════════════
     def _restore_geometry(self) -> None:
+        # V0.6.67: the off-screen decision logic lives in the pure
+        # utils.geometry.sanitize_restore_plan (unit-testable, Qt-free).
+        # Two fixes over V18.20.4.5: (1) the visibility validation now
+        # applies to MAXIMIZED restores too — the old code skipped it, so a
+        # window saved as "maximized on monitor #2" maximized onto a
+        # detached monitor and stayed invisible forever; (2) whenever there
+        # is no validated saved position the window is CENTERED on the
+        # primary screen instead of trusting Qt's default placement.
+        from PySide6.QtWidgets import QApplication
+
         try:
+            data = {}
             if _GEOMETRY_FILE.exists():
                 with open(_GEOMETRY_FILE) as f:
                     data = json.load(f)
-                # V13.31.0 (#3): 20% smaller default — was 760x540, now 608x432
-                w = min(data.get("w", 608), 900)
-                h = min(data.get("h", 432), 620)
-                self.resize(w, h)
-                if data.get("x") is not None and data.get("y") is not None:
-                    self.move(data["x"], data["y"])
-                    # V18.20.4.5 (T-b5): a monitor change since the last
-                    # run can leave the restored position fully off-screen
-                    # — the app looks "dead on launch". Validate the
-                    # restored window against every screen; on failure fall
-                    # back to the default size centered on the primary
-                    # screen. (A maximized restore is always visible —
-                    # showMaximized below — so the check is skipped.)
-                    if not data.get("maximized"):
-                        from PySide6.QtWidgets import QApplication
-
-                        screens = [
-                            (
-                                scr.availableGeometry().x(),
-                                scr.availableGeometry().y(),
-                                scr.availableGeometry().width(),
-                                scr.availableGeometry().height(),
-                            )
-                            for scr in QApplication.screens()
-                        ]
-                        if not restored_geometry_is_visible(data["x"], data["y"], w, h, screens):
-                            logger.warning(
-                                "restored window geometry (%s,%s %sx%s) is not "
-                                "visible on any screen — resetting to default",
-                                data["x"],
-                                data["y"],
-                                w,
-                                h,
-                            )
-                            primary = QApplication.primaryScreen().availableGeometry()
-                            self.resize(608, 432)
-                            self.move(
-                                primary.x() + max(0, (primary.width() - 608) // 2),
-                                primary.y() + max(0, (primary.height() - 432) // 2),
-                            )
-                if data.get("maximized"):
-                    self.showMaximized()
-            else:
-                self.resize(608, 432)
+            plan = sanitize_restore_plan(data, _screens_rects(QApplication.instance()))
+            if plan["rejected"] and "x" in data:  # T-b5's warning, kept alive
+                logger.warning(
+                    "restored window geometry (%s,%s %sx%s) is not "
+                    "visible on any screen — resetting to default",
+                    data.get("x"),
+                    data.get("y"),
+                    plan["w"],
+                    plan["h"],
+                )
+            self.resize(plan["w"], plan["h"])
+            if plan["move_to"] is not None:
+                self.move(*plan["move_to"])
+            elif plan["center_default"]:
+                self._center_on_primary(plan["w"], plan["h"])
+            if plan["maximized"]:
+                self.showMaximized()
         except Exception:
             self.resize(608, 432)
+            self._center_on_primary(608, 432)
+
+    def _center_on_primary(self, w: int, h: int) -> None:
+        """V0.6.67: deterministic default placement — centered on the
+        primary screen's work area (the screen with the taskbar, i.e. the
+        one the user is looking at). Best-effort."""
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is None or app.primaryScreen() is None:
+                return
+            primary = app.primaryScreen().availableGeometry()
+            self.move(
+                primary.x() + max(0, (primary.width() - w) // 2),
+                primary.y() + max(0, (primary.height() - h) // 2),
+            )
+        except Exception:
+            logger.debug("default centering failed", exc_info=True)
 
     def _save_geometry(self) -> None:
+        # V0.6.67: never persist minimized coordinates (Windows reports
+        # -32000 for a minimized window — restoring them next launch puts
+        # the window off-screen), and save the NORMAL geometry when
+        # maximized so the restore target is the window's remembered
+        # on-screen rect, not the current maximized position.
         try:
+            if self.isMinimized():
+                return  # keep the previous (good) file
+            geo = self.normalGeometry() if self.isMaximized() else self.frameGeometry()
             data = {
                 "w": self.width(),
                 "h": self.height(),
-                "x": self.x(),
-                "y": self.y(),
+                "x": geo.x(),
+                "y": geo.y(),
                 "maximized": self.isMaximized(),
             }
             with open(_GEOMETRY_FILE, "w") as f:
@@ -824,12 +836,116 @@ _lock_socket = None
 _primary_window = None
 
 
+def _step(name: str) -> None:
+    """V0.6.67: startup.log visibility from the UI layer (the launcher
+    guard's step log — best-effort, never raises, no-op in tests that never
+    armed the guard)."""
+    try:
+        from core.system.launcher_guard import startup_step
+
+        startup_step(name)
+    except Exception:
+        pass
+
+
+def _screens_rects(app) -> list[tuple[int, int, int, int]]:
+    """The CURRENT attached screens as (x, y, w, h) available-geometry
+    tuples (taskbar-free work areas). Empty when app/Qt is unavailable —
+    every consumer degrades fail-safe (centered default / rescue off)."""
+    try:
+        if app is None:
+            return []
+        return [
+            (
+                scr.availableGeometry().x(),
+                scr.availableGeometry().y(),
+                scr.availableGeometry().width(),
+                scr.availableGeometry().height(),
+            )
+            for scr in app.screens()
+        ]
+    except Exception:
+        return []
+
+
+def _window_is_onscreen(window) -> bool:
+    """V0.6.67: True when the window's FRAME overlaps any attached screen
+    by at least 100×100 px (a window grazing an edge is still effectively
+    invisible)."""
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        frame = window.frameGeometry()
+        return restored_geometry_is_visible(
+            frame.x(),
+            frame.y(),
+            frame.width(),
+            frame.height(),
+            _screens_rects(QApplication.instance()),
+            min_overlap_area=100 * 100,
+        )
+    except Exception:
+        return False  # fail-safe: report not-visible so callers act
+
+
+def _ensure_window_onscreen(window) -> bool:
+    """V0.6.67 — THE POST-SHOW GUARANTEE: a window stranded off-screen
+    (restored onto a detached monitor, DPI-shifted, whatever the cause) is
+    moved to the center of the PRIMARY screen's work area, preserving its
+    maximized state.  Returns True when a rescue move was performed.
+
+    Field evidence (2026-10-25 diagnostics): the first launch reached
+    exec() with a shown-but-invisible window and every later double-click
+    deferred to it via the FOCUS protocol — "the app doesn't open" while a
+    healthy invisible window ran.  Whatever put the window off-screen, this
+    check runs on the FINAL, post-show position and is therefore
+    cause-agnostic.  Best-effort — never raises."""
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None or window is None:
+            return False
+        frame = window.frameGeometry()
+        if restored_geometry_is_visible(
+            frame.x(),
+            frame.y(),
+            frame.width(),
+            frame.height(),
+            _screens_rects(app),
+            min_overlap_area=100 * 100,
+        ):
+            return False
+        logger.warning(
+            "main window is off-screen (frame %s, screens %s) — moving it onto the primary screen",
+            frame.getRect(),
+            _screens_rects(app),
+        )
+        was_maximized = window.isMaximized()
+        if was_maximized:
+            window.showNormal()  # un-maximize from the phantom screen first
+        primary = app.primaryScreen().availableGeometry()
+        window.move(
+            primary.center().x() - window.width() // 2,
+            primary.center().y() - window.height() // 2,
+        )
+        if was_maximized:
+            window.showMaximized()  # re-maximize on the (real) primary screen
+        return True
+    except Exception:
+        logger.debug("on-screen rescue failed", exc_info=True)
+        return False
+
+
 def _on_lock_connection() -> None:
     """V0.6.65: primary side of the single-instance protocol.
 
-    Answers ``FOCUS`` by raising the main window, then replies ``OK`` so
-    the second instance can tell a live primary from a zombie (see
-    ``_acquire_single_instance_lock``). Best-effort — never raises.
+    Answers ``FOCUS`` by raising the main window, then replies — V0.6.67:
+    HONESTLY — whether its window is actually on a visible screen AFTER a
+    self-heal attempt, so a stranded-off-screen primary can no longer
+    swallow every later double-click (the 2026-10-25 field report: the
+    primary ACKed, raised an invisible window, and the second instance
+    exited into nothing). Best-effort — never raises.
     """
     if _lock_server is None:
         return
@@ -840,10 +956,17 @@ def _on_lock_connection() -> None:
         try:
             if sock.waitForReadyRead(300):
                 if b"FOCUS" in bytes(sock.readAll()) and _primary_window is not None:
-                    _primary_window.showNormal()
+                    # V0.6.67: heal FIRST — never raise an invisible window.
+                    _ensure_window_onscreen(_primary_window)
+                    if _primary_window.isMinimized():
+                        _primary_window.showNormal()
                     _primary_window.raise_()
                     _primary_window.activateWindow()
-            sock.write(b"OK")
+                    sock.write(primary_reply(_window_is_onscreen(_primary_window)))
+                else:
+                    sock.write(b"OK")  # no window yet (still starting) — legacy reply
+            else:
+                sock.write(b"OK")
             sock.flush()
             sock.waitForBytesWritten(500)
         finally:
@@ -858,17 +981,18 @@ def _acquire_single_instance_lock(app) -> bool:
     Returns True if this process should continue starting the GUI; exits
     the process when a live primary instance ACKs.
 
-    Protocol (V0.6.65 — the V18.1 docstring promised the first half but
-    the server side was never wired, so second launches exited silently
-    and the primary never came forward):
+    Protocol (V0.6.67 — the honest-ACK release):
 
     * connect to the existing server → send ``FOCUS`` → wait up to 2.5 s
-      for ``OK``.  ACK received → the primary just raised its window;
-      exit quietly.
-    * NO ACK → the primary is a hung/zombie process whose event loop
-      cannot answer — exiting here is exactly how "the app stopped
-      opening" becomes permanent.  Instead, take the name over:
-      remove the stale server, listen ourselves, keep starting.
+      for the reply.  ``OK-VISIBLE`` (or the legacy ``OK``) → the primary
+      raised a window that is ON a screen; exit quietly.
+      ``OK-INVISIBLE`` → the primary answered but its window is stranded
+      off-screen even after its self-heal — exiting here is exactly how
+      "the app stopped opening" becomes permanent (the 2026-10-25 field
+      report).  Take the name over and keep starting; our own window is
+      force-checked on-screen after show().
+    * NO reply → the primary is a hung/zombie process whose event loop
+      cannot answer — same takeover as before (V0.6.65).
     * No server at all → the normal first launch: listen and continue.
 
     Implemented with a Qt ``QLocalServer``/``QLocalSocket`` pair so we
@@ -892,20 +1016,22 @@ def _acquire_single_instance_lock(app) -> bool:
     _lock_socket = QLocalSocket()
     _lock_socket.connectToServer(_INSTANCE_KEY)
     if _lock_socket.waitForConnected(300):
-        # A primary exists — ask it to focus, then wait for its ACK.
+        # A primary exists — ask it to focus, then wait for its reply.
         _lock_socket.write(b"FOCUS")
         _lock_socket.flush()
         _lock_socket.waitForBytesWritten(500)
-        acked = False
+        reply = b""
         if _lock_socket.waitForReadyRead(2500):
-            acked = b"OK" in bytes(_lock_socket.readAll())
-        if acked:
-            sys.exit(0)  # the primary just raised its window
+            reply = bytes(_lock_socket.readAll())
+        if focus_ack_indicates_visible(reply):
+            _step("focus handed to the running instance — exiting")
+            sys.exit(0)  # the primary raised a window that is on a screen
         logger.warning(
-            "single-instance primary did not answer FOCUS within 2.5 s — "
-            "taking over the instance lock (the previous instance is hung "
-            "or still starting); two windows may briefly coexist"
+            "single-instance primary replied %r (no visible window) — "
+            "taking over the instance lock; two windows may briefly coexist",
+            reply or b"(no reply)",
         )
+        _step(f"primary did not present a visible window ({reply!r}) — taking over")
     # No live primary (or a zombie one) — own the name so future launches
     # detect us, and answer FOCUS for them.
     QLocalServer.removeServer(_INSTANCE_KEY)
@@ -1015,6 +1141,21 @@ def run() -> None:
     window = ElixirWindow(controller)
     _primary_window = window  # V0.6.65: the lock server raises this on FOCUS
     window.show()
+    # V0.6.67 — the post-show guarantee: whatever put the window off-screen
+    # (a restored geometry aimed at a detached monitor, a DPI shift, Qt
+    # default placement), exec() is only entered with a window that is
+    # actually ON a screen — and it comes to the front on launch.
+    _ensure_window_onscreen(window)
+    window.raise_()
+    window.activateWindow()
+    _step(
+        f"window shown — frame={window.frameGeometry().getRect()} screens={len(_screens_rects(app))}"
+    )
     if splash is not None:
         splash.close()
-    sys.exit(app.exec())
+    rc = app.exec()
+    # V0.6.67: any future "the app closed itself" report now shows whether
+    # the event loop exited cleanly (and with what code) vs the process
+    # dying inside it — the boundary used to be invisible in startup.log.
+    _step(f"event loop finished (rc={rc})")
+    sys.exit(rc)

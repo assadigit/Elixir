@@ -616,6 +616,22 @@ param(
     [int]$TimeoutSec = 150,
     [string]$StderrFile = ""
 )
+# V0.6.67: WINDOW_SHOWN now means VISIBLE + ON-SCREEN (>= 100x100 px of the
+# window inside a real monitor's bounds), not merely "a window handle
+# exists" — the field report proved a launched app can sit in exec() with
+# an off-screen window: the old check was green while the user saw nothing.
+$ErrorActionPreference = "Continue"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class ElixWin32 {
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+}
+"@
 if (-not $WorkDir) { $WorkDir = Split-Path -Parent $Exe }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($StderrFile) {
@@ -627,18 +643,35 @@ if ($StderrFile) {
 }
 $result = "NO_WINDOW_TIMEOUT"
 $windowMs = -1
+$detail = ""
 while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
     Start-Sleep -Milliseconds 150
     try { $p.Refresh() } catch {}
     if ($p.HasExited) { $result = "EXITED code=$($p.ExitCode)"; break }
     if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
-        $result = "WINDOW_SHOWN"
-        $windowMs = [math]::Round($sw.Elapsed.TotalMilliseconds)
-        break
+        $h = $p.MainWindowHandle
+        $r = New-Object ElixWin32+RECT
+        [void][ElixWin32]::GetWindowRect($h, [ref]$r)
+        $rectTxt = "rect=($($r.Left),$($r.Top),$($r.Right),$($r.Bottom))"
+        $area = 0
+        foreach ($s in [System.Windows.Forms.Screen]::AllScreens) {
+            $b = $s.Bounds
+            $ow = [Math]::Max(0, [Math]::Min($r.Right, $b.Right) - [Math]::Max($r.Left, $b.Left))
+            $oh = [Math]::Max(0, [Math]::Min($r.Bottom, $b.Bottom) - [Math]::Max($r.Top, $b.Top))
+            if ($ow * $oh -gt $area) { $area = $ow * $oh }
+        }
+        $vis = [ElixWin32]::IsWindowVisible($h)
+        $detail = "$rectTxt visible=$vis onscreenArea=$area screens=$([System.Windows.Forms.Screen]::AllScreens.Count)"
+        if ($vis -and $area -ge 10000) {
+            $result = "WINDOW_SHOWN"
+            $windowMs = [math]::Round($sw.Elapsed.TotalMilliseconds)
+            break
+        }
+        if (-not $vis) { $result = "WINDOW_HIDDEN" }
+        elseif ($area -lt 10000) { $result = "WINDOW_OFFSCREEN" }
     }
 }
-if ($result -eq "WINDOW_SHOWN") { Write-Output "RESULT=$result ms=$windowMs" }
-else { Write-Output "RESULT=$result ms=$([math]::Round($sw.Elapsed.TotalMilliseconds))" }
+Write-Output "RESULT=$result ms=$([math]::Round($sw.Elapsed.TotalMilliseconds)) $detail"
 try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
 Start-Sleep -Seconds 2
 """

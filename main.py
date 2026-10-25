@@ -130,6 +130,11 @@ except Exception as _e:
     _TORCH_CUDA_PROBE["error"] = f"{type(_e).__name__}: {_e}"
 
 # Write the probe result to a startup log (best-effort).
+# V0.6.67: torch is NOT bundled in the Windows build — the old block
+# referenced `_torch_early` directly, so on Windows the very first
+# `_f.write` after "Python:" raised NameError (caught by this try) and
+# gpu_probe.log ended up as 3 header lines with no probe payload at all —
+# misleading in the field diagnostics (looks like a broken probe).
 try:
     import datetime as _dt
 
@@ -138,16 +143,20 @@ try:
     )  # earliest disk touch → runs the rebrand migration
     _probe_log.parent.mkdir(parents=True, exist_ok=True)
     rotate_log_if_large(_probe_log)  # V18.20.4.12 (W-c14): rotate before append — never raises
+    _t = sys.modules.get("torch")  # None when torch isn't bundled (Windows)
     with open(_probe_log, "a", encoding="utf-8") as _f:
         _f.write(f"\n{'=' * 60}\n")
         _f.write(f"{_dt.datetime.now().isoformat()}\n")
         _f.write(f"Python: {sys.executable}\n")
-        _f.write(f"torch: {getattr(_torch_early, '__version__', 'NOT INSTALLED')}\n")
-        _f.write(f"torch.version.cuda: {_TORCH_CUDA_PROBE['cuda_tag']!r}\n")
-        _f.write(f"cuda.is_available(): {_TORCH_CUDA_PROBE['available']}\n")
-        _f.write(f"device_name: {_TORCH_CUDA_PROBE['device_name']}\n")
-        if _TORCH_CUDA_PROBE["error"]:
-            _f.write(f"probe_error: {_TORCH_CUDA_PROBE['error']}\n")
+        _f.write(f"torch: {getattr(_t, '__version__', 'NOT INSTALLED')}\n")
+        if _t is not None:
+            _f.write(f"torch.version.cuda: {_TORCH_CUDA_PROBE['cuda_tag']!r}\n")
+            _f.write(f"cuda.is_available(): {_TORCH_CUDA_PROBE['available']}\n")
+            _f.write(f"device_name: {_TORCH_CUDA_PROBE['device_name']}\n")
+            if _TORCH_CUDA_PROBE["error"]:
+                _f.write(f"probe_error: {_TORCH_CUDA_PROBE['error']}\n")
+        else:
+            _f.write("torch not bundled in this build (expected on Windows) — CUDA probe skipped\n")
         _f.write("(probe ran BEFORE PySide6 import)\n")
 except Exception:
     pass

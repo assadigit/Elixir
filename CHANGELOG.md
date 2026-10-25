@@ -31,6 +31,109 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.67 — the diagnostics finally arrived and the verdict is in: the app was RUNNING THE WHOLE TIME — an invisible (off-screen) window plus a single-instance protocol that trusted any ACK made every launch look dead; now the window is guaranteed on-screen after every show, the FOCUS protocol is honest (an off-screen primary loses the lock instead of swallowing every later double-click), the CI launch gate demands a *visible on-screen* window (not just a handle), and the diagnostics tool collects the geometry + screen evidence it was missing
+
+**The report:** "Installed new version, but still didn't run, however
+this time we have diagnostics" — with `Elixir-diagnostics.zip` attached
+(the V0.6.66 Collect Diagnostics investment paying off: the first
+real-machine evidence in the whole saga).
+
+**The verdict from the evidence** (startup.log's per-step elapsed-ms
+suffixes de-interleaved the concurrent launches; elixir-processes.txt
+was collected 20:05:14):
+
+- Every single launch completed the whole logged startup through
+  "Qt UI launch" — nothing crashed, nothing hung in the import chain.
+- The FIRST launch of the session (pid 4336) was **still alive** at
+  collection time: sitting in `exec()` with a **window the user could
+  not see** (161 MB, healthy event loop).
+- The two later launches were gone, with zero crash artifacts — they
+  connected to the first instance's single-instance server, sent FOCUS,
+  got ACKed (the invisible primary obligingly raised its invisible
+  window), and `sys.exit(0)`'d. `SystemExit` bypasses `sys.excepthook`,
+  so no crash log, no error box — the exact signature of every
+  "second click does nothing".
+- Net: **the app "never opens" while a perfectly healthy invisible
+  window runs the whole time.** The restore-time off-screen check
+  existed (T-b5) but was SKIPPED for maximized restores (a window saved
+  as "maximized on monitor #2" maximizes onto a detached monitor
+  forever), and nothing re-validated the window's position after
+  `show()`. `showNormal()`/`raise_()` cannot rescue a window stranded
+  off-screen — so even the FOCUS path kept it invisible.
+- CI stayed green because the launch test only checked
+  `MainWindowHandle != 0` — **an off-screen window passes that**.
+- Windows 10 Enterprise 22H2 (build 19045) — fully supported; install
+  integrity PRESENT across the board; no Defender evidence in the zip
+  (the PowerShell steps had silently produced no files — now they
+  always leave a trace).
+
+**The fixes (evidence → fix, all test-pinned in
+`tests/test_v0667_window_visibility.py`):**
+
+1. **`utils/geometry.sanitize_restore_plan` (new, pure):** the restore
+   decision in one Qt-free function — maximized restores are validated
+   like normal ones, every unvalidated/absent position degrades to
+   "center on the primary screen", and the plan carries a `rejected`
+   flag so the T-b5 warning survives. `_restore_geometry` now applies
+   the plan; first-ever launches center deterministically instead of
+   trusting Qt's default placement.
+2. **`_ensure_window_onscreen` (ui_qt/app.py) — the post-show
+   guarantee:** after `window.show()` (and again when answering FOCUS),
+   the FINAL frame geometry is checked against the current screens
+   (≥ 100×100 px overlap); a stranded window is moved to the primary
+   screen's work-area center, preserving its maximized state. Cause-
+   agnostic: whatever puts the window off-screen (detached monitor,
+   DPI shift, default placement), exec() is only entered with a window
+   that is actually on a screen — and it is raised + activated on
+   launch.
+3. **The honest-ACK FOCUS protocol (`utils/single_instance.py`, new):**
+   the primary replies `OK-VISIBLE` / `OK-INVISIBLE` after its
+   self-heal; a second launch only defers to a primary that can PROVE
+   visibility — an off-screen primary loses the lock and the new
+   instance shows its own force-onscreen window. Cross-version safe:
+   both new replies contain the legacy `OK` substring, and a legacy
+   `OK` reply is still honored (old behavior is the floor).
+4. **Save-side hardening:** `_save_geometry` never persists minimized
+   coordinates (Windows reports −32000) and saves the NORMAL geometry
+   when maximized, so an invisible state can no longer re-save itself
+   forever.
+5. **Startup evidence upgrades:** `window shown — frame=… screens=N`
+   and `event loop finished (rc=…)` steps in startup.log (any future
+   "it closed itself" report now shows the exec() boundary), and the
+   gpu_probe write no longer NameError-truncates when torch isn't
+   bundled (the Windows build) — every probe entry now says so
+   explicitly instead of ending after 3 header lines.
+6. **CI launch gate:** WINDOW_SHOWN now means `IsWindowVisible` AND
+   ≥ 10,000 px² of the window inside a real monitor's bounds
+   (WINDOW_HIDDEN / WINDOW_OFFSCREEN are explicit failures) — the
+   gap that let this bug class through green is closed.
+7. **Diagnostics collector:** collects `window_geometry.json`, a
+   screen inventory (monitors/video controllers/DPI), notes
+   PowerShell availability, and every PowerShell step leaves a trace
+   file even when blocked (the 2026-10-25 report's Defender and
+   disk-space files were silently absent).
+
+**Verification:** 161/161 in the affected families (launcher guard,
+windows lock, dialog lifecycle, bootstrap, settings engine, + the 30
+new V0.6.67 tests); full suite **8,654 P / 16 F** — the 16 are
+EXACTLY the documented pre-existing families (eval gate ×2,
+prompt-manifest ×1, vibevoice ×5, ffmpeg/transcribe-dialog e2e ×5,
+timeout source pins ×3), and 8,654 = the 8,624 baseline + 30 new
+tests, all green; ruff: only the off-limits B023 + 0 format drift;
+selftest PASS exit 0; headless Qt smoke: a window moved to (5000,
+5000) is detected, moved to the primary screen's center, and reported
+on-screen. (One suite run hit the documented flaky sandbox segfault
+in the transcribe e2e — reproduced on the PRISTINE V0.6.66 tree, i.e.
+pre-existing machine flake, not this change; the file runs clean and
+in-family on retry.)
+
+**If it still doesn't open after V0.6.67:** run
+**Elixir - Collect Diagnostics** again — the zip now contains the
+geometry + screen inventory that would have named this bug instantly,
+plus the new `window shown` startup step says exactly where the window
+landed.
+
+
 ## V0.6.66 — the second "doesn't open" report, answered: the Windows installer no longer rides unpinned package drift (V0.6.65 shipped the exact PySide6 6.12.0 / mammoth 1.13.0 / markitdown 0.1.9 combination documented to segfault — the CI runner tolerated it, the first real machine did not), refuses Windows < 10 instead of installing a never-launching app, force-replaces a hung old Elixir.exe during upgrades (the in-use-file trap), and gains a one-double-click "Elixir - Collect Diagnostics" Start-menu tool — 8,624 P / 16 F (the same 16 documented pre-existing failures; +11 collected, all green)
 
 **The report:** "I've installed the latest version on my windows, it

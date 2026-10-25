@@ -180,19 +180,21 @@ session and the recovery recipe is proven:
   judged on the rig. Ask me for screenshots/paste-backs when a visual
   question cannot be answered offscreen, and say so honestly.
 
-## THE BASELINE YOU INHERIT (V0.6.66, measured 2026-10-25, the windows-pin-lock release)
+## THE BASELINE YOU INHERIT (V0.6.67, measured 2026-10-25, the window-visibility release)
 
 - **Full suite (Linux sandbox, offscreen Qt, lock-aligned env,
-  `-p no:ddtrace`): 8,624 passing / 16 failed / 25 skipped in ~275s**
-  — measured at the V0.6.66 working tree. The +11 vs V0.6.65's 8,613 is
-  EXACTLY the new windows-lock/installer-hardening guard pins
-  (tests/test_v0666_windows_lock.py — runtime code untouched). **The 16
-  failures are the SAME documented pre-existing families as V0.6.63 →
-  V0.6.65** (TTS/ffmpeg/vibevoice e2e, eval gate ×2, prompt-manifest
-  drift ×1, stale vibevoice/timeout source pins; one known-flaky e2e
-  flickers in and out of the set between runs — all inside the
-  documented families). **Any NEW failure beyond these 16 is a
-  regression** — decompose it, fix it, and say what broke. First
+  `-p no:ddtrace`): 8,654 passing / 16 failed** — measured at the
+  V0.6.67 working tree in four file-chunks (the machine state ran the
+  suite at ~3× the documented pace; skip counts drift with chunking —
+  trust P/F, not S). The +30 vs V0.6.66's 8,624 is EXACTLY the new
+  window-visibility guard pins (tests/test_v0667_window_visibility.py).
+  **The 16 failures are the SAME documented pre-existing families as
+  V0.6.63 → V0.6.66** (eval gate ×2, prompt-manifest ×1, vibevoice ×5,
+  ffmpeg/transcribe-dialog e2e ×5, stale vibevoice/timeout source pins
+  ×3; the transcribe e2e can also SEGFAULT the run — the documented
+  flaky sandbox family, reproduced on the pristine V0.6.66 tree, runs
+  clean and in-family on retry). **Any NEW failure beyond these 16 is
+  a regression** — decompose it, fix it, and say what broke. First
   re-establish this number after the venv reinstall before believing
   anything else.
 - **V0.6.64 field report → V0.6.65 (the launcher-guard release):** the
@@ -238,6 +240,39 @@ session and the recovery recipe is proven:
   install-dir integrity into Desktop\Elixir-diagnostics for the user to
   attach. Guarded by tests/test_v0666_windows_lock.py (11 tests). On
   the NEXT "doesn't open" report: ask for the Diagnostics folder FIRST.
+- **V0.6.66 field report → V0.6.67 (the window-visibility release):**
+  the user's THIRD real-machine report — "Installed new version, but
+  still didn't run, however this time we have diagnostics" — WITH the
+  Elixir-diagnostics.zip attached (the V0.6.66 tool's first dividend).
+  **The verdict: the app was RUNNING THE WHOLE TIME.** startup.log's
+  per-step elapsed-ms suffixes de-interleaved the concurrent launches;
+  elixir-processes.txt (collected 20:05:14) showed the session's FIRST
+  launch still alive in exec() with a window the user could not see,
+  while the later launches had FOCUS-ACKed to it and exited(0)
+  silently (SystemExit bypasses sys.excepthook — no crash log, no
+  box). Root cause: the restore-time off-screen check was SKIPPED for
+  maximized restores, nothing re-validated the window position AFTER
+  show(), and showNormal()/raise_() cannot rescue an off-screen window
+  — so the FOCUS protocol kept deferring to an invisible primary.
+  CI stayed green because the launch test only checked
+  MainWindowHandle != 0 (an off-screen window passes). Fixes (all
+  pinned by tests/test_v0667_window_visibility.py, 30 tests):
+  utils/geometry.sanitize_restore_plan (pure restore decision —
+  maximized validated too, unvalidated positions center on the
+  primary screen); _ensure_window_onscreen in ui_qt/app.py (the
+  post-show guarantee, also run when answering FOCUS so an invisible
+  primary self-heals); utils/single_instance.py (honest-ACK protocol:
+  OK-VISIBLE/OK-INVISIBLE — an off-screen primary LOSES the lock;
+  cross-version safe via the legacy-OK substring); _save_geometry
+  never persists minimized (-32000)/maximized-phantom geometry;
+  `window shown — frame=…` + `event loop finished (rc=…)` startup
+  steps; gpu_probe no longer NameError-truncates when torch isn't
+  bundled (Windows); the CI launch gate now demands IsWindowVisible +
+  >=10,000 px² on-screen (WINDOW_HIDDEN/WINDOW_OFFSCREEN are explicit
+  failures); collect_diagnostics.cmd gathers window_geometry.json +
+  monitor/DPI inventory and every PowerShell step leaves a trace file.
+  On the NEXT report: the zip now contains the geometry + screens —
+  read window_geometry.json and screens.txt FIRST.
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract
