@@ -620,18 +620,34 @@ param(
 # window inside a real monitor's bounds), not merely "a window handle
 # exists" — the field report proved a launched app can sit in exec() with
 # an off-screen window: the old check was green while the user saw nothing.
+# V0.6.67a: ALL Win32 interop lives INSIDE the C# (Add-Type) exposing only
+# bool / int[] wrappers — the first run of this gate on a PS 5.1 runner
+# produced rect=(0,0,0,0) visible=(empty) for 150 s: PS-side [ref] on an
+# out-struct param + bool marshaling measured garbage. Every interop call
+# is try/caught and lands in $detail, so a broken check is LOUD, never a
+# silent false negative.
 $ErrorActionPreference = "Continue"
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -TypeDefinition @"
+$detail = ""
+$probeError = ""
+try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class ElixWin32 {
-    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [StructLayout(LayoutKind.Sequential)]
-    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, ref RECT rect);
+    public static bool Visible(IntPtr hWnd) { return IsWindowVisible(hWnd); }
+    public static int[] RectOf(IntPtr hWnd) {
+        RECT r = new RECT();
+        GetWindowRect(hWnd, ref r);
+        return new int[] { r.Left, r.Top, r.Right, r.Bottom };
+    }
 }
 "@
+} catch { $probeError = "addtype: $($_.Exception.Message)" }
 if (-not $WorkDir) { $WorkDir = Split-Path -Parent $Exe }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($StderrFile) {
@@ -643,25 +659,26 @@ if ($StderrFile) {
 }
 $result = "NO_WINDOW_TIMEOUT"
 $windowMs = -1
-$detail = ""
 while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
     Start-Sleep -Milliseconds 150
     try { $p.Refresh() } catch {}
     if ($p.HasExited) { $result = "EXITED code=$($p.ExitCode)"; break }
     if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
         $h = $p.MainWindowHandle
-        $r = New-Object ElixWin32+RECT
-        [void][ElixWin32]::GetWindowRect($h, [ref]$r)
-        $rectTxt = "rect=($($r.Left),$($r.Top),$($r.Right),$($r.Bottom))"
+        $rect = @()
+        $vis = $false
+        try { $rect = [ElixWin32]::RectOf($h) } catch { if (-not $probeError) { $probeError = "rect: $($_.Exception.Message)" } }
+        try { $vis = [ElixWin32]::Visible($h) } catch { if (-not $probeError) { $probeError = "vis: $($_.Exception.Message)" } }
         $area = 0
-        foreach ($s in [System.Windows.Forms.Screen]::AllScreens) {
-            $b = $s.Bounds
-            $ow = [Math]::Max(0, [Math]::Min($r.Right, $b.Right) - [Math]::Max($r.Left, $b.Left))
-            $oh = [Math]::Max(0, [Math]::Min($r.Bottom, $b.Bottom) - [Math]::Max($r.Top, $b.Top))
-            if ($ow * $oh -gt $area) { $area = $ow * $oh }
+        if ($rect.Count -eq 4) {
+            foreach ($s in [System.Windows.Forms.Screen]::AllScreens) {
+                $b = $s.Bounds
+                $ow = [Math]::Max(0, [Math]::Min($rect[2], $b.Right) - [Math]::Max($rect[0], $b.Left))
+                $oh = [Math]::Max(0, [Math]::Min($rect[3], $b.Bottom) - [Math]::Max($rect[1], $b.Top))
+                if ($ow * $oh -gt $area) { $area = $ow * $oh }
+            }
         }
-        $vis = [ElixWin32]::IsWindowVisible($h)
-        $detail = "$rectTxt visible=$vis onscreenArea=$area screens=$([System.Windows.Forms.Screen]::AllScreens.Count)"
+        $detail = "title='$($p.MainWindowTitle)' rect=($($rect -join ',')) visible=$vis onscreenArea=$area screens=$([System.Windows.Forms.Screen]::AllScreens.Count) $probeError"
         if ($vis -and $area -ge 10000) {
             $result = "WINDOW_SHOWN"
             $windowMs = [math]::Round($sw.Elapsed.TotalMilliseconds)
@@ -722,11 +739,48 @@ def _run_launch_ps(
 
 
 def launch_test(exe: Path, label: str, timeout: int = 150) -> bool:
-    """Launch the app and wait for its main window to become visible."""
+    """Launch the app and wait for its main window to become VISIBLE and
+    ON-SCREEN (the V0.6.67 gate — a window handle alone proved nothing:
+    the field report's app sat in exec() with an off-screen window while
+    this test's ancestor was green).
+
+    V0.6.67a: also captures the launch's stderr AND prints the tail of the
+    app's own startup.log (the runner's %LOCALAPPDATA% Elixir startup.log)
+    into the build log — the "window shown — frame=…" step inside it is
+    the app-side proof of what the launch actually did, so a failed gate
+    is diagnosed in one read instead of a blind retry.
+    """
     log(f"[launch:{label}] starting {exe} ...")
-    out = _run_launch_ps(str(exe), timeout=timeout)
+    stderr_file = ROOT / BUILD_DIR / f"launch_stderr_{label}.txt"
+    out = _run_launch_ps(str(exe), timeout=timeout, stderr_file=str(stderr_file))
     log(f"[launch:{label}] {out}")
+    _dump_launch_evidence(label, stderr_file)
     return "RESULT=WINDOW_SHOWN" in out
+
+
+def _dump_launch_evidence(label: str, stderr_file: Path) -> None:
+    """V0.6.67a: after a launch test, surface the app-side evidence in the
+    build log — the stderr the app wrote (best-effort; the windowed build's
+    sinks may leave it empty) and the tail of %LOCALAPPDATA%\\Elixir\\
+    startup.log (the guard's step timeline, incl. the V0.6.67 "window shown
+    — frame=… screens=…" line). Never raises."""
+    try:
+        if stderr_file.exists():
+            text = stderr_file.read_text(encoding="utf-8", errors="replace").strip()
+            if text:
+                log(f"[launch:{label}] stderr tail: {text[-800:]}")
+    except Exception:
+        pass
+    try:
+        startup_log = Path.home() / "AppData" / "Local" / "Elixir" / "startup.log"
+        if startup_log.exists():
+            lines = startup_log.read_text(encoding="utf-8", errors="replace").splitlines()
+            tail = [ln for ln in lines if ln.strip()][-14:]
+            log(f"[launch:{label}] app startup.log tail ({len(lines)} lines):")
+            for ln in tail:
+                log(f"    {ln}")
+    except Exception:
+        pass
 
 
 def measure_startup(exe: Path, label: str, args: str = "", work_dir: str = "") -> str:
