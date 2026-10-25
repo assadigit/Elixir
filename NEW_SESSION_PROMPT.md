@@ -304,6 +304,18 @@ session and the recovery recipe is proven:
   unmasked everything. LESSON FOR THE NEXT SESSION: a green gate that
   checks less than the user needs ("a handle exists" vs "a window is
   visible on a screen") can hide a total failure for five releases.
+  (d) The runner's FIRST no-arg execution of a fresh unsigned exe can
+  be held pre-Python (Defender/SAC reputation — zero startup.log
+  lines, the process alive, a transient no-title handle) —
+  build_installer.py's launch_probe (python-parent no-arg launch held
+  15 s BEFORE the gate) absorbs the hold and doubles as the
+  app-healthy-vs-launch-path isolation experiment; it stays in the
+  build permanently. SHIPPED at 2d7260b: both tag runs green with
+  WINDOW_SHOWN measured on real visible windows (title='Elixir',
+  onscreenArea=12505) and the runner's startup.log showing
+  qwindows.dll + "window shown — frame=(208,144,608,463) screens=1";
+  Elixir-Setup-0.6.67.exe (235.4 MB) attached to V0.6.67-windows =
+  the Latest release.
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract

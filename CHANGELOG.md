@@ -149,7 +149,22 @@ selftest PASS exit 0; headless Qt smoke: a window moved to (5000,
 on-screen. (One suite run hit the documented flaky sandbox segfault
 in the transcribe e2e — reproduced on the PRISTINE V0.6.66 tree, i.e.
 pre-existing machine flake, not this change; the file runs clean and
-in-family on retry.)
+in-family on retry.) **Shipped-tag verification (run 32 at `2d7260b`,
+green):** probe + packed launch `WINDOW_SHOWN ms=2333 title='Elixir'
+visible=True onscreenArea=12505`, installed launch `WINDOW_SHOWN
+ms=2288`, and the app's own startup.log on the runner shows
+`qt platform plugin ok: …qwindows.dll` → `window shown — frame=(208,
+144, 608, 463) screens=1` — the REAL Windows platform, a real visible
+window, on both the probe's and the gate's instances. Shipping this
+took three build iterations, each taught something now pinned: PS 5.1
+P/Invoke must live inside the C# (marshal-safe wrappers — the PS-side
+probe measured garbage), the launch invocation must keep the
+V0.6.66-proven Start-Process shape (the -RedirectStandardError
+experiment produced a launch that never armed the guard), and the
+first no-arg execution of the fresh unsigned exe on a runner can be
+held pre-Python ( Defender/SAC reputation) — the launch probe (a
+python-parent no-arg launch held 15 s before the gate) absorbs that
+hold and doubles as the isolation experiment.
 
 **If it still doesn't open after V0.6.67:** run
 **Elixir - Collect Diagnostics** again — the zip now contains the
