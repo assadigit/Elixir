@@ -62,8 +62,12 @@ verified.**
 
 **The fixes:** `requirements.windows.lock` (the pinned closure — the
 full green runner resolution with the trio downgraded to the globally
-verified 6.11.2 / 1.11.0 / 0.1.7; the header documents the
-regeneration rule) installed by the workflow + `pyinstaller==6.22.3`
+verified 6.11.2 / 1.11.0 / 0.1.7, plus the three transitive pins that
+follow the markitdown 0.1.7 downgrade — magika 0.6.3 / onnxruntime
+1.20.1 (magika's win32 marker caps it there — the true origin of the
+old "unsolvable" note) / youtube-transcript-api 1.0.3, all mirroring
+requirements.lock; the header documents the regeneration rule)
+installed by the workflow + `pyinstaller==6.22.3`
 pinned; `MinVersion=10.0` + `CloseApplications=force` in the Inno
 template; and `packaging/collect_diagnostics.cmd` + Start-menu
 shortcut — one double-click gathers the app's startup logs, Windows
