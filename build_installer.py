@@ -650,11 +650,21 @@ public class ElixWin32 {
 } catch { $probeError = "addtype: $($_.Exception.Message)" }
 if (-not $WorkDir) { $WorkDir = Split-Path -Parent $Exe }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-if ($StderrFile) {
+# V0.6.67c: never pass an EMPTY -ArgumentList (the old shape passed one
+# empty-string argument to a no-arg launch) and capture process forensics
+# on failure (id/path/start time + the WMI command line) so a launch that
+# never reaches Python is diagnosed from the log alone.
+if ($StderrFile -and $Args) {
     $p = Start-Process -FilePath $Exe -ArgumentList $Args -PassThru `
         -WorkingDirectory $WorkDir -RedirectStandardError $StderrFile
-} else {
+} elseif ($Args) {
     $p = Start-Process -FilePath $Exe -ArgumentList $Args -PassThru `
+        -WorkingDirectory $WorkDir
+} elseif ($StderrFile) {
+    $p = Start-Process -FilePath $Exe -PassThru `
+        -WorkingDirectory $WorkDir -RedirectStandardError $StderrFile
+} else {
+    $p = Start-Process -FilePath $Exe -PassThru `
         -WorkingDirectory $WorkDir
 }
 $result = "NO_WINDOW_TIMEOUT"
@@ -687,6 +697,12 @@ while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         if (-not $vis) { $result = "WINDOW_HIDDEN" }
         elseif ($area -lt 10000) { $result = "WINDOW_OFFSCREEN" }
     }
+}
+if ($result -ne "WINDOW_SHOWN") {
+    try {
+        $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue).CommandLine
+        $detail = "$detail procId=$($p.Id) cmdline='$cl'"
+    } catch {}
 }
 Write-Output "RESULT=$result ms=$([math]::Round($sw.Elapsed.TotalMilliseconds)) $detail"
 try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
@@ -748,7 +764,7 @@ def launch_test(exe: Path, label: str, timeout: int = 150) -> bool:
     one run with ``-RedirectStandardError`` never even armed the launcher
     guard (the launch process produced ZERO startup.log lines while the
     selftest of the same build wrote all of them seconds earlier) — so the
-    launch keeps the exact V0.6.66-proven ``Start-Process`` shape, and the
+    launch keeps the V0.6.66-proven ``Start-Process`` shape, and the
     app-side evidence comes from dumping the runner's %LOCALAPPDATA% Elixir
     startup.log tail into the build log after every launch (the guard's
     step timeline, incl. V0.6.67's "window shown — frame=…" line) — a
@@ -759,6 +775,46 @@ def launch_test(exe: Path, label: str, timeout: int = 150) -> bool:
     log(f"[launch:{label}] {out}")
     _dump_launch_evidence(label)
     return "RESULT=WINDOW_SHOWN" in out
+
+
+def launch_probe(exe: Path, label: str = "probe", hold_s: float = 15.0) -> None:
+    """V0.6.67c — THE ISOLATION EXPERIMENT: launch the exe with NO ARGS
+    directly from Python (a plain CreateProcess parent — the same parent
+    the passing selftest uses), hold it for ``hold_s`` seconds, kill it,
+    and dump the app's startup.log.
+
+    Why this exists: on the CI runner the PowerShell ``Start-Process``
+    launch of the SAME exe that had just passed its selftest produced
+    ZERO startup.log lines (the guard — the first project code to run —
+    never armed), twice, with the V0.6.66-proven invocation shape. This
+    probe splits the hypothesis space in one run: guard lines here →
+    the exe's no-arg launch is healthy and the Start-Process path is the
+    problem; still zero lines → the no-arg path of the exe itself is
+    broken (bisect main.py). Never raises, never fails the build — it
+    only produces evidence."""
+    import subprocess
+    import time as _time
+
+    log(f"[probe:{label}] Popen no-args from python, holding {hold_s}s ...")
+    try:
+        proc = subprocess.Popen(
+            [str(exe)],
+            cwd=str(exe.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        log(f"[probe:{label}] Popen failed: {exc}")
+        return
+    _time.sleep(hold_s)
+    alive = proc.poll() is None
+    log(f"[probe:{label}] alive after {hold_s}s: {alive} (rc={proc.returncode})")
+    try:
+        proc.kill()
+        proc.wait(timeout=10)
+    except Exception:
+        pass
+    _dump_launch_evidence(f"probe-{label}")
 
 
 def _dump_launch_evidence(label: str) -> None:
@@ -1225,6 +1281,7 @@ def main() -> None:
                 die("packed self-test failed — run with --debug to see the crash text")
             test_results["packed_selftest"] = "PASS"
         if LAUNCH_TEST_ENABLED:
+            launch_probe(packed_exe, "packed")
             if not launch_test(packed_exe, "packed"):
                 die("packed launch test failed — run with --debug to see the crash text")
             test_results["packed_launch"] = "PASS"
