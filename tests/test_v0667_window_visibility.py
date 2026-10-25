@@ -197,7 +197,7 @@ class TestSanitizeRestorePlan:
     def test_no_position_centers(self):
         from utils.geometry import sanitize_restore_plan
 
-        plan = sanitize_restore_plan({"w": 608, "h": 432}, SCREENS)
+        plan = sanitize_restore_plan({"w": 700, "h": 500}, SCREENS)
         assert plan["move_to"] is None
         assert plan["center_default"] is True
 
@@ -205,9 +205,39 @@ class TestSanitizeRestorePlan:
         from utils.geometry import sanitize_restore_plan
 
         plan = sanitize_restore_plan({"w": 10000, "h": 10000, "x": 10, "y": 10}, SCREENS)
-        assert plan["w"] == 900 and plan["h"] == 620
+        assert plan["w"] == 1600 and plan["h"] == 1000
         plan = sanitize_restore_plan({}, SCREENS)
-        assert plan["w"] == 608 and plan["h"] == 432
+        assert plan["w"] == 760 and plan["h"] == 540
+
+    def test_legacy_compact_default_migrates_to_the_original(self):
+        """V0.6.68: a saved geometry of EXACTLY the compact-era default
+        (608x432) is the fingerprint of "opened, never resized" — every
+        V0.6.63–67 install saved it on close, and the 2026-10-26 field
+        report showed those machines re-opening compact forever. The
+        unstamped fingerprint migrates to the restored original 760x540
+        (position still honored — only the size is a non-choice)."""
+        from utils.geometry import sanitize_restore_plan
+
+        plan = sanitize_restore_plan({"w": 608, "h": 432, "x": 10, "y": 10}, SCREENS)
+        assert (plan["w"], plan["h"]) == (760, 540)
+        assert plan["move_to"] == (10, 10)
+
+    def test_stamped_compact_size_is_a_deliberate_choice(self):
+        """The schema stamp (v=2, written by every V0.6.68+ save) makes the
+        migration one-shot: a deliberate hand-resize back to 608x432 is a
+        real preference and persists."""
+        from utils.geometry import sanitize_restore_plan
+
+        plan = sanitize_restore_plan({"w": 608, "h": 432, "x": 10, "y": 10, "v": 2}, SCREENS)
+        assert (plan["w"], plan["h"]) == (608, 432)
+
+    def test_resized_size_near_the_compact_default_survives(self):
+        """Only the EXACT never-resized fingerprint migrates — a user who
+        chose some other small size keeps it."""
+        from utils.geometry import sanitize_restore_plan
+
+        plan = sanitize_restore_plan({"w": 620, "h": 440, "x": 10, "y": 10}, SCREENS)
+        assert (plan["w"], plan["h"]) == (620, 440)
 
     def test_no_screens_fails_safe_to_centered(self):
         from utils.geometry import sanitize_restore_plan
@@ -220,7 +250,7 @@ class TestSanitizeRestorePlan:
         from utils.geometry import sanitize_restore_plan
 
         plan = sanitize_restore_plan({"w": "junk", "h": None, "x": "x", "y": 3.5}, SCREENS)
-        assert plan["w"] == 608 and plan["h"] == 432
+        assert plan["w"] == 760 and plan["h"] == 540
         assert plan["move_to"] is None
         assert plan["center_default"] is True
 
@@ -317,14 +347,19 @@ class TestAppWiring:
         assert "_center_on_primary" in _APP_SRC
 
     def test_geometry_module_constants_mirror_app(self):
-        """The pure module's defaults must not drift from the UI's."""
+        """The pure module's defaults must not drift from the UI's — V0.6.68
+        goes further: the UI imports the constants, so drift is impossible;
+        the pin guards the wiring (and the restored original dimension)."""
         import re
 
         from utils import geometry as geom
 
-        assert (geom.DEFAULT_W, geom.DEFAULT_H) == (608, 432)
-        assert (geom.MAX_W, geom.MAX_H) == (900, 620)
-        assert bool(re.search(r"resize\(608, 432\)", _APP_SRC))
+        assert (geom.DEFAULT_W, geom.DEFAULT_H) == (760, 540)
+        assert (geom.MAX_W, geom.MAX_H) == (1600, 1000)
+        assert (geom.LEGACY_COMPACT_W, geom.LEGACY_COMPACT_H) == (608, 432)
+        assert geom.GEOMETRY_SCHEMA_VERSION == 2
+        assert bool(re.search(r"resize\(DEFAULT_W, DEFAULT_H\)", _APP_SRC))
+        assert '"v": GEOMETRY_SCHEMA_VERSION' in _APP_SRC
 
 
 # ═════════════════════════════════════════════════════════════════════════════

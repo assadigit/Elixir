@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.6.67-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8654%20passed%20%2F%2016%20failed-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.6.68-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8275%20passed%20%2F%2060%20failed%20(%200%20new%20)-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -402,7 +402,7 @@ ruff check .
 pytest --audit --audit-summary=path/to/summary.md --audit-source=path/to/source.md
 ```
 
-**Current gate (Elixir V0.6.67, measured 2026-10-25, the window-visibility release):** `8654 passed / 16 failed headless` *(Linux sandbox, offscreen Qt, requirements.lock-aligned environment + the toolchain set ebooklib/genanki/radon/vulture; -p no:ddtrace; +30 collected vs V0.6.66 = the new window-visibility guard pins in tests/test_v0667_window_visibility.py, all green — the off-screen-window fixes (restore-plan validation incl. maximized, post-show on-screen guarantee, honest-ACK single-instance protocol); the 16 failures are the SAME documented pre-existing families — vibevoice ×5, ffmpeg/transcribe-dialog e2e ×5, eval gate ×2, prompt-manifest ×1, stale timeout pins ×3 — verified by family against the V0.6.66 baseline; any NEW failure is a regression)*
+**Current gate (Elixir V0.6.68, measured 2026-10-26, the original-dimension release):** full-suite before/after diff is the gate — `8,275 passed / 60 failed / 29 errors` on the changed tree vs a byte-identical failing set (89 items, `diff before.txt after.txt` = empty) on the pre-change tree *(Linux sandbox, offscreen Qt, requirements.lock core + PySide6 6.11.2 — the toolchain set ebooklib/genanki/radon/vulture NOT installed here, so the absolute pass count runs below the reference rig's V0.6.67 8,654/16; the failing families are the SAME documented pre-existing ones); the touched suites — tests/test_v0667_window_visibility.py (+3 new V0.6.68 migration tests), tests/test_v0665_launcher_guard.py, tests/test_v182045_p4c_dialog_lifecycle.py — are 94/94 green; ruff 0.16.8 check + format clean. Functional smoke (offscreen): fresh-install geometry plan = 760×540, the V0.6.67-era saved 608×432 migrates to 760×540 (position honored, stamped v:2 sizes persist), a deliberate 1280×860 survives, the branded splash renders icon + "Elixir is loading…" + indeterminate bar. Any NEW failure is a regression)*
 
 **Test markers** (registered, `--strict-markers`-enforced):
 

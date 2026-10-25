@@ -56,8 +56,28 @@ def restored_geometry_is_visible(
 # FINAL position after show(). The plan below closes the first hole; the
 # post-show rescue in ui_qt/app.py closes the second.
 
-DEFAULT_W, DEFAULT_H = 608, 432  # V13.31.0 (#3) defaults (mirrors app.py)
-MAX_W, MAX_H = 900, 620  # V13.31.0 clamp ceilings (mirrors app.py)
+# V0.6.68: the compact-era defaults are RETIRED. The V13.31.0 "20% smaller"
+# change (760x540 → 608x432, "more compact per user request") met every
+# fresh install half a decade later: a new machine has no saved geometry,
+# so the installed app opened at 608x432 — the 2026-10-26 field report
+# ("not in the original container size … very compact and small … it has
+# scroll"). The ORIGINAL pre-V13.31.0 dimension is restored, and the
+# compact-era clamp ceilings rose with it — a deliberately resized
+# 1000x700 window used to be silently scaled back down to 900x620 on every
+# restart, the other face of "you scaled down the dimensions".
+DEFAULT_W, DEFAULT_H = 760, 540  # V0.6.68 — the ORIGINAL pre-V13.31.0 default, restored
+MAX_W, MAX_H = 1600, 1000  # V0.6.68 — was 900x620 (the compact-era ceiling)
+
+# V0.6.68 migration: a saved geometry of EXACTLY the compact-era default is
+# the fingerprint of "opened, never resized" — every V0.6.63–67 install
+# saved it on close, so without a migration those machines would keep
+# re-opening compact forever (the reporter's own window_geometry.json
+# included). A legacy unstamped file at that exact size is treated as "no
+# preference" and receives the restored 760x540 default; once a V0.6.68+
+# save stamps GEOMETRY_SCHEMA_VERSION the choice is final — a deliberate
+# hand-resize back to 608x432 persists from then on.
+LEGACY_COMPACT_W, LEGACY_COMPACT_H = 608, 432
+GEOMETRY_SCHEMA_VERSION = 2
 
 
 def sanitize_restore_plan(
@@ -70,7 +90,10 @@ def sanitize_restore_plan(
     OS. Returns a plan dict:
 
     * ``w`` / ``h`` — the clamped size to ``resize()`` to (never trusts a
-      saved size above the V13.31.0 ceilings; missing keys → the defaults).
+      saved size above the ceilings; missing keys → the defaults). V0.6.68:
+      an UNSTAMPED save at exactly the compact-era default (608x432) also
+      falls back to the defaults — the never-resized fingerprint migration
+      (see LEGACY_COMPACT_W above).
     * ``move_to`` — the saved (x, y) to ``move()`` to, or None when there
       is no saved position or the saved position is not on any CURRENT
       screen.  V0.6.67: the same validation now applies to MAXIMIZED
@@ -95,6 +118,13 @@ def sanitize_restore_plan(
         w = min(int(data.get("w", DEFAULT_W) or DEFAULT_W), MAX_W)
         h = min(int(data.get("h", DEFAULT_H) or DEFAULT_H), MAX_H)
     except (TypeError, ValueError):
+        w, h = DEFAULT_W, DEFAULT_H
+    if data.get("v") != GEOMETRY_SCHEMA_VERSION and (w, h) == (
+        LEGACY_COMPACT_W,
+        LEGACY_COMPACT_H,
+    ):
+        # V0.6.68: the never-resized fingerprint (see the module note) —
+        # deliver the restored original default to compact-era installs.
         w, h = DEFAULT_W, DEFAULT_H
     maximized = bool(data.get("maximized"))
     move_to: tuple[int, int] | None = None

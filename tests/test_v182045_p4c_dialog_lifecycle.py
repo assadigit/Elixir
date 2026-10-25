@@ -283,8 +283,11 @@ class TestAppPins:
 
     def test_offscreen_fallback_resizes_and_warns(self):
         body = _method_body(_src(_APP), "_restore_geometry")
-        assert "self.resize(608, 432)" in body, (
-            "the off-screen fallback must reset the default 608x432 size (T-b5)"
+        # V0.6.68: the fallback resizes to the geometry module's constants
+        # (760x540 — the restored original default; equality pinned in
+        # test_v0667_window_visibility.py's constants-mirror test).
+        assert "self.resize(DEFAULT_W, DEFAULT_H)" in body, (
+            "the off-screen fallback must reset the default size (T-b5)"
         )
         assert "logger.warning(" in body
         # The warning message is split across two string literals in the
@@ -295,7 +298,11 @@ class TestAppPins:
         assert "_center_on_primary" in body
 
     def test_geometry_helper_imported(self):
-        assert "from utils.geometry import restored_geometry_is_visible" in _src(_APP), (
+        assert "from utils.geometry import (" in _src(_APP), (
+            "app.py must import the Qt-free geometry helpers (T-b5; V0.6.68 — "
+            "the import is parenthesized and now also carries DEFAULT_W/H)"
+        )
+        assert "restored_geometry_is_visible" in _src(_APP), (
             "app.py must import the Qt-free geometry helper (T-b5)"
         )
         assert "sanitize_restore_plan" in _src(_APP), (

@@ -316,6 +316,26 @@ session and the recovery recipe is proven:
   qwindows.dll + "window shown — frame=(208,144,608,463) screens=1";
   Elixir-Setup-0.6.67.exe (235.4 MB) attached to V0.6.67-windows =
   the Latest release.
+- **V0.6.67 field report → V0.6.68 (the original-dimension release):**
+  "The app finally run, but not in the original container size. it's
+  very compact and small … it says Loading interface, instead it must
+  show APp's icon and see Elixir is loading…" — the launch fix
+  CONFIRMED WORKING on the real machine; the two remaining complaints
+  were both pre-packaging-era source debts the fresh install exposed:
+  (a) the V13.31.0 "20% smaller" default (760x540 → 608x432) — every
+  fresh install opened compact with scrollbars (running from source
+  never showed it: the source machine had years of saved geometry);
+  (b) the V0.6.65 emergency splash was a plain text label that flipped
+  to the technical "Loading interface…" stage name. SHIPPED: the
+  ORIGINAL 760x540 default restored (utils.geometry DEFAULT_W/H, now
+  imported by app.py as the single source of truth), MAX restore
+  ceiling 900x620 → 1600x1000 (deliberately large windows no longer
+  scale back down on restart), the never-resized-fingerprint migration
+  (an UNSTAMPED saved 608x432 — what every V0.6.63–67 install saved on
+  close — migrates to 760x540; _save_geometry stamps v:2 so the
+  migration is one-shot and a deliberate hand-resize persists), and the
+  branded splash (app icon from assets/elixir.png + constant "Elixir
+  is loading…" label + indeterminate progress bar; message() → pump()).
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract

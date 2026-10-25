@@ -31,6 +31,72 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.68 — the app finally RUNS, and the very first thing it shows is two old debts: the window opens at the compact-era 608x432 (the "V13.31.0: 20% smaller" default — not the original container size, and scrollbars come with it), and the startup splash says "Loading interface" instead of the app's icon + "Elixir is loading…". Both fixed: the ORIGINAL 760x540 default restored (with a never-resized-fingerprint migration so compact-era installs actually receive it), the restore ceiling raised, and the splash rebranded.
+
+**The report:** "The app finally run, but not in the original container
+size. it's very compact and small. check the original dimension of app,
+I think in the process of compiling you scaled down the dimension so it
+has scroll etc. also it says Loading interface, instead it must show
+APp's icon and see Elixir is loading…" — the V0.6.67 root-cause fix
+confirmed working on the real machine; two cosmetic debts inherited
+from the pre-packaging era now visible for the first time.
+
+**What the evidence says (no compile-time scaling exists — the story is
+two defaults from the source era):**
+
+- **The window size was shrunk in the SOURCE, not by the compiler.**
+  `ui_qt/app.py`'s own comment documents it: "V13.31.0 (#3): 20%
+  smaller default — was **760x540**, now **608x432**. More compact per
+  user request" (the legacy MarkItDown Pro era). A fresh install has no
+  saved `window_geometry.json`, so every new user met the compact
+  default — running from source never showed it because the source
+  machine had years of saved geometry. The "compile scaled it down"
+  theory was reasonable but wrong; the packaging merely EXPOSED the
+  compact default by starting the geometry file from scratch.
+- The same era also left a **900x620 restore ceiling**
+  (`utils/geometry.py` MAX_W/MAX_H): a user who deliberately resized
+  larger got silently scaled back down on every restart — the other
+  face of "you scaled down the dimensions".
+- One trap specific to this report: the user HAD already run V0.6.67,
+  so their machine saved `w: 608, h: 432` on close — restoring the
+  default alone would change nothing for them (and every other
+  V0.6.63–67 install): the saved compact size would restore forever.
+- The splash was a V0.6.65 emergency measure: a plain
+  `QLabel("◆ Elixir is starting…")` that later flipped to a technical
+  stage name ("Loading interface…") — never the brand, never the icon.
+
+**The fixes (all test-pinned in `tests/test_v0667_window_visibility.py`
++ `tests/test_v0665_launcher_guard.py`):**
+
+- **The ORIGINAL dimension restored** — `utils.geometry`
+  `DEFAULT_W/DEFAULT_H` = **760x540** (the pre-V13.31.0 size, now the
+  single source of truth: `ui_qt/app.py` imports the constants instead
+  of hardcoding them). The 560x400 minimum keeps small screens usable.
+- **The restore ceiling raised** — `MAX_W/MAX_H` 900x620 → **1600x1000**:
+  a deliberately large window is no longer scaled back down on restart.
+- **The never-resized-fingerprint migration** — an UNSTAMPED saved
+  geometry of exactly 608x432 (what every V0.6.63–67 install saved on
+  close) is treated as "no size preference" and migrates to the restored
+  760x540 default. `_save_geometry` now stamps `v: 2`
+  (GEOMETRY_SCHEMA_VERSION), which makes the migration one-shot: a
+  deliberate hand-resize back to 608x432 is a real preference from then
+  on and persists. Position handling is untouched (a valid saved
+  position is still honored).
+- **The splash rebranded** — `_StartupSplash` is now a real splash card:
+  the **app icon** (`assets/elixir.png`, `.ico` fallback — the same
+  assets the installer bundles), a constant **"Elixir is loading…"**
+  label (the technical "Loading interface" stage name is gone), and an
+  indeterminate progress bar for animated liveness. Still dependency-
+  free (fixed palette, no theme imports) and best-effort (constructed
+  inside run()'s try/except — a splash failure can never block
+  startup); the V0.6.65 repaint hook survives as the text-less
+  `pump()`.
+- CI launch-gate note: the gate demands visible + ≥100x100 px on-screen
+  — the larger centered default only increases the measured overlap, so
+  the Windows build's launch test passes unchanged.
+
+
+
 ## V0.6.67 — the diagnostics arrived, the strengthened launch gate refused to rubber-stamp the runner's window, and the trail led to THE root cause: the selftest's import-time QT_QPA_PLATFORM=offscreen poisoned EVERY normal launch since V0.6.63 — the app ran headless on every user's machine (started, logged, answered FOCUS, could never show a window). Fixed, plus the geometry/protocol hardening found on the way (off-screen rescue, honest FOCUS acks, visible-on-screen CI gate, richer diagnostics)
 
 **The report:** "Installed new version, but still didn't run, however

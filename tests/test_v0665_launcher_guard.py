@@ -27,7 +27,7 @@ FIX 2 (the broken single-instance protocol): the V18.1 lock sent
   ``OK`` ACK) and a zombie-takeover path (no ACK within 2.5 s → the
   second launch takes the lock over instead of exiting forever).
 FIX 3 (liveness + the AV signature): a ``_StartupSplash`` label shows
-  "Elixir is starting…" the moment the lock is acquired, so a slow first
+  "Elixir is loading…" the moment the lock is acquired, so a slow first
   launch (cold disk / antivirus scanning every DLL) no longer looks like
   a dead app; and ``precheck_qt_platform_plugin`` turns the one
   AV-stripped-bundle failure Python can see pre-emptively (missing
@@ -345,7 +345,7 @@ class TestSingleInstanceWiring:
 
 class TestStartupSplashWiring:
     def test_splash_class_exists(self):
-        assert "class _StartupSplash(QLabel):" in _APP_SRC
+        assert "class _StartupSplash(QWidget):" in _APP_SRC
 
     def test_splash_is_best_effort(self):
         splash_try = _APP_SRC.find("splash = _StartupSplash(app)")

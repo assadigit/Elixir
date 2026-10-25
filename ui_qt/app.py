@@ -45,7 +45,13 @@ from ui_qt.views.output_scanner_view import OutputScannerView
 from ui_qt.views.quarantine_view import QuarantineView
 from ui_qt.views.queue_view import QueueView
 from ui_qt.views.validate_dialog import ValidateDialog
-from utils.geometry import restored_geometry_is_visible, sanitize_restore_plan
+from utils.geometry import (
+    DEFAULT_H,
+    DEFAULT_W,
+    GEOMETRY_SCHEMA_VERSION,
+    restored_geometry_is_visible,
+    sanitize_restore_plan,
+)
 from utils.settings import user_data_dir
 from utils.single_instance import focus_ack_indicates_visible, primary_reply
 
@@ -65,8 +71,14 @@ class ElixirWindow(QMainWindow):
         super().__init__()
         self.controller = controller
         self.setWindowTitle(f"Elixir  ·  v{self._app_version()}")
-        # V13.31.0 (#3): 20% smaller default — was 760x540, now 608x432.
-        # More compact per user request.
+        # V0.6.68: the ORIGINAL container size is back. V13.31.0 had shrunk
+        # the default 20% ("was 760x540, now 608x432 — more compact"), and
+        # the 2026-10-26 field report landed on exactly that: a fresh
+        # install has no saved geometry, so every new user met the compact
+        # default — "not in the original container size … very compact and
+        # small … it has scroll". The 760x540 default (and the 1600x1000
+        # restore ceiling) live in utils.geometry — the single source of
+        # truth; this 560x400 minimum only keeps small screens usable.
         self.setMinimumSize(560, 400)
         self._restore_geometry()
 
@@ -671,8 +683,8 @@ class ElixirWindow(QMainWindow):
             if plan["maximized"]:
                 self.showMaximized()
         except Exception:
-            self.resize(608, 432)
-            self._center_on_primary(608, 432)
+            self.resize(DEFAULT_W, DEFAULT_H)
+            self._center_on_primary(DEFAULT_W, DEFAULT_H)
 
     def _center_on_primary(self, w: int, h: int) -> None:
         """V0.6.67: deterministic default placement — centered on the
@@ -708,6 +720,12 @@ class ElixirWindow(QMainWindow):
                 "x": geo.x(),
                 "y": geo.y(),
                 "maximized": self.isMaximized(),
+                # V0.6.68: the schema stamp marks this save as POST-migration —
+                # a deliberate hand-resize to the old compact default is a real
+                # preference from now on (unstamped saves at exactly 608x432
+                # were "never resized" and receive the restored 760x540 default;
+                # see utils.geometry's LEGACY_COMPACT_W note).
+                "v": GEOMETRY_SCHEMA_VERSION,
             }
             with open(_GEOMETRY_FILE, "w") as f:
                 json.dump(data, f)
@@ -1045,8 +1063,8 @@ def _acquire_single_instance_lock(app) -> bool:
     return True
 
 
-class _StartupSplash(QLabel):
-    """V0.6.65: a tiny always-on-top "Elixir is starting…" label.
+class _StartupSplash(QWidget):
+    """V0.6.65: instant liveness feedback while the app builds.
 
     Shown the moment the single-instance lock is acquired and closed when
     the main window appears, so a slow first launch (cold disk, antivirus
@@ -1054,21 +1072,56 @@ class _StartupSplash(QLabel):
     silent desktop — the other face of the V0.6.64 "doesn't open at all"
     field report (the app WAS starting; it just took long enough to look
     dead, and every extra double-click made it worse via the broken
-    single-instance path). Deliberately dependency-free (plain QLabel,
-    fixed palette, no theme imports) and best-effort — constructed inside
-    run()'s try/except so a splash failure can never block startup.
+    single-instance path). V0.6.68: the plain "◆ Elixir is starting…"
+    text label became the branded splash the 2026-10-26 field report
+    asked for — the app icon, a constant "Elixir is loading…" label (no
+    technical stage names like "Loading interface"), and an indeterminate
+    progress bar. Still deliberately dependency-free (plain widgets,
+    fixed palette, no theme imports — the theme is applied only moments
+    later) and best-effort — constructed inside run()'s try/except so a
+    splash failure can never block startup.
     """
 
+    _TEXT = "Elixir is loading…"
+
     def __init__(self, app) -> None:
-        super().__init__("◆  Elixir is starting…")
+        from PySide6.QtWidgets import QProgressBar
+
+        super().__init__(None)
         self._app = app
         self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAlignment(Qt.AlignCenter)
+        self.setObjectName("StartupSplash")
         self.setStyleSheet(
-            "QLabel { background: #23242b; color: #eceef4; "
-            "border: 1px solid #3a3d47; border-radius: 10px; "
-            "padding: 20px 36px; font-size: 14px; }"
+            "#StartupSplash { background: #23242b; "
+            "border: 1px solid #3a3d47; border-radius: 14px; } "
+            "QLabel { background: transparent; }"
         )
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(40, 30, 40, 26)
+        lay.setSpacing(14)
+
+        icon_label = QLabel()
+        logo = self._icon_pixmap(76)
+        if logo is not None:
+            icon_label.setPixmap(logo)
+            lay.addWidget(icon_label, 0, Qt.AlignHCenter)
+
+        text = QLabel(self._TEXT)
+        text.setAlignment(Qt.AlignCenter)
+        text.setStyleSheet("color: #eceef4; font-size: 15px; font-weight: 600;")
+        lay.addWidget(text, 0, Qt.AlignHCenter)
+        self._text = text  # handle for tests/pinning (the label itself never changes)
+
+        bar = QProgressBar()
+        bar.setRange(0, 0)  # indeterminate — animated liveness while the UI builds
+        bar.setTextVisible(False)
+        bar.setFixedSize(230, 4)
+        bar.setStyleSheet(
+            "QProgressBar { background: #3a3d47; border: none; border-radius: 2px; } "
+            "QProgressBar::chunk { background: #d8aa78; border-radius: 2px; }"
+        )
+        lay.addWidget(bar, 0, Qt.AlignHCenter)
+
         self.adjustSize()
         screen = app.primaryScreen()
         if screen is not None:
@@ -1080,10 +1133,32 @@ class _StartupSplash(QLabel):
         self.show()
         app.processEvents()
 
-    def message(self, text: str) -> None:
-        """Update the splash text (painted immediately)."""
-        self.setText(f"◆  {text}")
+    def pump(self) -> None:
+        """Process events now — keeps the indeterminate bar animating while
+        the main window is constructed (no event loop is running yet; the
+        V0.6.65 ``message()`` repaint hook survives as this text-less pump
+        because the label deliberately never changes)."""
         self._app.processEvents()
+
+    @staticmethod
+    def _icon_pixmap(size: int):
+        """The app icon (``assets/elixir.png``, ``.ico`` as fallback) scaled
+        to ``size``, or None — an omitted icon must never block the splash.
+        Best-effort by contract (called inside run()'s try/except anyway)."""
+        try:
+            from PySide6.QtGui import QPixmap
+
+            from app_paths import bundled_icon_path, resource_path
+
+            for candidate in (resource_path("assets", "elixir.png"), bundled_icon_path()):
+                if candidate is None:
+                    continue
+                pm = QPixmap(str(candidate))
+                if not pm.isNull():
+                    return pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        except Exception:
+            return None
+        return None
 
 
 def run() -> None:
@@ -1137,7 +1212,8 @@ def run() -> None:
 
     controller = Controller()
     if splash is not None:
-        splash.message("Loading interface…")
+        splash.pump()  # V0.6.68: repaint/keep the bar animating — the label
+        # stays the branded "Elixir is loading…" (no technical stage names)
     window = ElixirWindow(controller)
     _primary_window = window  # V0.6.65: the lock server raises this on FOCUS
     window.show()
