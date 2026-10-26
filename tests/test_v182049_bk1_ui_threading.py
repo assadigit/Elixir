@@ -437,15 +437,24 @@ class TestWb18rWizardTestButtons:
 
 
 class TestWb18rOllamaCheck:
-    """app.py's non-blocking Ollama reachability check."""
+    """app.py's local-LLM liveness poll.
+
+    V0.6.69 evolution: the startup "Ollama not running" warning dialog
+    (a one-shot SimpleWorker reachability check) became the live status
+    lights + their repeating poll loop. The W-b18 worker contract
+    carries over UNCHANGED — every spawn keeps a ref (GC hazard) and
+    wires ``failed`` — with one semantic change: the handler logs
+    QUIETLY (a probe repeating every few seconds must never spam the
+    log the way the old one-shot check's logger.warning could not)."""
 
     def test_worker_ref_and_failed_wiring(self):
-        body = _strip_comments(_method(_APP, "ElixirWindow", "_warn_ollama"))
-        assert "self._ollama_check_worker = w" in body
-        assert "w.failed.connect(self._on_ollama_check_failed)" in body
-        assert "w.start()" in body
-        handler = _strip_comments(_method(_APP, "ElixirWindow", "_on_ollama_check_failed"))
-        assert "logger.warning" in handler
+        body = _strip_comments(_method(_APP, "ElixirWindow", "_setup_llm_lights_monitoring"))
+        assert "self._llm_probe_worker = worker" in body
+        assert "worker.failed.connect(self._on_llm_probe_failed)" in body
+        assert "worker.start()" in body
+        handler = _strip_comments(_method(_APP, "ElixirWindow", "_on_llm_probe_failed"))
+        assert "logger.debug" in handler
+        assert "logger.warning" not in handler  # V0.6.69: repeating → quiet
 
     def test_no_bare_spawn_remains(self):
         src = _strip_comments(_src(_APP))

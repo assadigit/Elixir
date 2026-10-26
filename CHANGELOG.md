@@ -31,6 +31,74 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.69 — the startup "Ollama not running" error dialog is RETIRED, replaced by live status lights that actively watch every locally-famous LLM client (Ollama, llama.cpp, LM Studio) and go green the moment one answers.
+
+**The report (the V0.6.68 follow-up):** "do not show the error of ollama
+when app loads. instead show a green light that shows whether ollama or
+any other locally famous LLM client is on or not, it must actively look
+for ollama or llama.cpp server as they're online and show a green light
+for them on ui instead" — the pre-V0.6.65-era startup check popped a
+modal **"Ollama not running"** QMessageBox at every load on rigs where
+Ollama wasn't up, before the user had done anything at all.
+
+**What the evidence says (the old design was structurally wrong for a
+status question):**
+
+- The old path (`_warn_ollama`, the V18.20.4.9 W-b18-hardened one-shot)
+  checked ONCE at startup and nagged with a modal when Ollama was down —
+  an error for a state that is not an error (a rig running llama.cpp or
+  LM Studio saw it too whenever the settings said Ollama), and blind to
+  everything that happened after: start Ollama ten seconds later and the
+  dialog's "will not work until Ollama is started" stayed wrong forever.
+- "Is a local server up?" is a STATUS question — the answer changes while
+  the app runs, so it needs a live indicator and a repeating probe, not a
+  one-shot modal.
+
+**The fixes (all test-pinned in `tests/test_v0669_local_llm_lights.py`,
+45 tests):**
+
+- **The dialog is gone** — `_warn_ollama` / `_show_ollama_warning` /
+  `_on_ollama_check_failed` deleted from `ui_qt/app.py` (pinned absent).
+  A missing local server is a state to SHOW, never a load-time error.
+- **Live lights in the top bar** (`ui_qt/components/llm_lights.py`) — one
+  chip per locally-famous client Elixir already speaks: **Ollama**
+  (`:11434`), **llama.cpp server** (the V0.6.55 port ladder 8080 → 8000
+  → 9931), **LM Studio** (`:1234`). Green = answered the last probe,
+  gray = not running, amber = the first probe still in flight. Rich
+  tooltips carry the verdict + endpoint (+ the probed port ladder when
+  offline); an aggregate tooltip on the compact dot lists every client.
+- **It actively looks** — a QTimer poll every 5 s
+  (`LLM_LIGHTS_POLL_INTERVAL_S`) probes off a `SimpleWorker`, applies the
+  verdict on the main thread, skips a tick when the previous probe is
+  still in flight, and survives a raising probe (fail-soft, last verdict
+  kept, log-DEBUG only — a repeating probe must never spam). Start
+  Ollama mid-session → its light goes green within seconds.
+- **Fresh by design** (`core/system/local_llm_monitor.py`, Qt-free) — the
+  probe layer calls the transport helpers DIRECTLY and deliberately does
+  NOT use `local_fallback._probe_llamacpp` (its 30 s TTL bounds ROUTING
+  cost; a status light must see a mid-session server on the NEXT tick).
+  Endpoints are snapshotted on the MAIN thread (`snapshot_endpoints`);
+  the worker only ever holds the frozen spec. Every probe runs on the
+  2 s subsecond budget; every client guard never raises.
+- **The top bar never clips** — the lights are width-adaptive with a
+  measured budget (the bar's own `minimumSizeHint` with the lights
+  hidden): dot+name per client on wide windows, dots-only at the 760px
+  default, one aggregate dot on tiny ones. Offscreen-smoke-measured:
+  full ≥ ~1100 px, dots ≥ ~725 px, mini below.
+- **The W-b18 worker contract carries over** — the poll's worker keeps a
+  ref + wires `failed` (evolved pins in `tests/test_v182049_bk1_ui_threading.py`).
+
+**Verification (offscreen, PySide6 6.11.2):** the REAL `ElixirWindow`
+built headless — first poll tick painted all three verdicts; the
+styleSheet audit proved the exact palette colors (success/secondary) per
+chip in BOTH themes; the adaptive ladder measured at 560/608 → mini,
+760/900 → dots, 1100/1400 → full; the pixel-cluster audit found exactly
+two #94B088 dot clusters (the online chips) and VLM confirmed three
+cleanly-spaced chips, labels correct, nothing clipped; `closeEvent`
+stops the poll (proven by the Qt-6.8+ `quit()`-delivers-close-events
+behavior, of all things); theme toggle re-paints in place.
+
+
 ## V0.6.68 — the app finally RUNS, and the very first thing it shows is two old debts: the window opens at the compact-era 608x432 (the "V13.31.0: 20% smaller" default — not the original container size, and scrollbars come with it), and the startup splash says "Loading interface" instead of the app's icon + "Elixir is loading…". Both fixed: the ORIGINAL 760x540 default restored (with a never-resized-fingerprint migration so compact-era installs actually receive it), the restore ceiling raised, and the splash rebranded.
 
 **The report:** "The app finally run, but not in the original container

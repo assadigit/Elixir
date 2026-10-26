@@ -336,6 +336,31 @@ session and the recovery recipe is proven:
   migration is one-shot and a deliberate hand-resize persists), and the
   branded splash (app icon from assets/elixir.png + constant "Elixir
   is loading…" label + indeterminate progress bar; message() → pump()).
+- **V0.6.68 follow-up → V0.6.69 (the live local-LLM lights):** "do not
+  show the error of ollama when app loads. instead show a green light
+  that shows whether ollama or any other locally famous LLM client is
+  on or not, it must actively look for ollama or llama.cpp server as
+  they're online and show a green light for them on ui instead" — the
+  startup "Ollama not running" QMessageBox (the _warn_ollama trio) is
+  DELETED, replaced by: core/system/local_llm_monitor.py (Qt-free probe
+  layer — snapshot_endpoints on the MAIN thread, pure never-raise
+  probes for Ollama :11434, llama.cpp on the V0.6.55 port ladder
+  8080→8000→9931, LM Studio :1234; FRESH — deliberately NOT
+  local_fallback._probe_llamacpp whose 30 s TTL would delay a
+  mid-session server; its own llamacpp prober is named
+  _probe_llamacpp_client to avoid the collision), ui_qt/components/
+  llm_lights.py (LocalLLMLights — one chip per client, green/gray/
+  amber, rich tooltips, width-adaptive full→dots→mini ladder), and the
+  ElixirWindow poll loop (QTimer LLM_LIGHTS_POLL_INTERVAL_S=5 s +
+  SimpleWorker; skips overlapping ticks; failed probes are log-DEBUG,
+  never warn-spam; closeEvent stops the timer; theme toggle re-paints;
+  resize adapts against the MEASURED top-bar minimumSizeHint).
+  Offscreen-smoke-verified (styleSheet color audit both themes, pixel
+  clusters, adaptive ladder 560/608→mini, 760/900→dots, 1100+→full,
+  VLM confirmed no clipping). Tests: tests/test_v0669_local_llm_lights.py
+  NEW (45) + the W-b18 pins in test_v182049_bk1_ui_threading.py EVOLVED
+  to the new wiring (the old method is gone; spawn-ref+failed contract
+  carries over, handler now logger.debug).
 - **Source-mode selftest:** 377 modules (V0.6.65: +core/system/launcher_guard), 73 data files, 20 third-party
   imports — 0 failures (`/home/z/.venv/bin/python main.py --selftest
   /tmp/selftest_report.txt` after recovery; exit 0 = clean; langextract

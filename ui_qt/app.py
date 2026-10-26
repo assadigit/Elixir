@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.icons import icon, load_brand_logo
+from ui_qt.components.llm_lights import build_status_lights
 from ui_qt.components.modal_button_fit import install_modal_button_fit
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings import SettingsDialog
@@ -97,8 +98,15 @@ class ElixirWindow(QMainWindow):
         # enable window-wide drag-and-drop
         self.setAcceptDrops(True)
 
-        # non-blocking Ollama reachability check
-        self._warn_ollama()
+        # V0.6.69: the live local-LLM status lights + their poll loop —
+        # this REPLACES the removed startup "Ollama not running" warning
+        # dialog (a missing local server is a state to show, never a
+        # load-time error to nag with; the 2026-10-26 field report).
+        self._llm_poll_timer = None
+        self._llm_probe_worker = None
+        self._llm_endpoints_snapshot = None
+        self._topbar_static_min = None
+        self._setup_llm_lights_monitoring()
 
     # ══════════════════════════════════════════════════════════════════════
     # Top bar
@@ -130,6 +138,17 @@ class ElixirWindow(QMainWindow):
         lay.addWidget(subtitle)
 
         lay.addStretch()
+
+        # V0.6.69: live local-LLM status lights — one per locally-famous
+        # client (Ollama, llama.cpp, LM Studio): green = answered the last
+        # probe, gray = offline, amber = still checking. Re-probed every
+        # few seconds for the whole session (see
+        # _setup_llm_lights_monitoring) — the polite replacement for the
+        # old startup "Ollama not running" error dialog.
+        self.llm_lights, _ = build_status_lights()
+        if self.llm_lights is not None:
+            lay.addWidget(self.llm_lights)
+            lay.addSpacing(8)
 
         # V5.3.2: Process Wizard CTA — prominent button in top bar
         self.wizard_btn = QPushButton("✨  Process Wizard")
@@ -177,6 +196,7 @@ class ElixirWindow(QMainWindow):
         lay.addWidget(self.settings_btn)
 
         self._refresh_top_bar_icons()
+        self._top_bar = bar  # V0.6.69: the lights' budget measures against it
         return bar
 
     def _refresh_top_bar_icons(self) -> None:
@@ -186,6 +206,9 @@ class ElixirWindow(QMainWindow):
         # V13.31.0 (#12): info icon instead of sliders-horizontal
         self.about_btn.setIcon(icon("info", p.text_primary, 16))
         self.settings_btn.setIcon(icon("settings", p.text_primary, 16))
+        # V0.6.69: the lights re-paint from the CURRENT palette
+        if getattr(self, "llm_lights", None) is not None:
+            self.llm_lights.refresh_theme()
 
     def _toggle_theme(self) -> None:
         theme_manager.toggle()
@@ -483,89 +506,128 @@ class ElixirWindow(QMainWindow):
         self.convert_view.apply_ui_preferences()
         self._settings_dialog = None
 
-    def _warn_ollama(self) -> None:
-        """Non-blocking Ollama reachability check.
+    # ══════════════════════════════════════════════════════════════════════
+    # V0.6.69 — live local-LLM status lights (the poll loop)
+    # ══════════════════════════════════════════════════════════════════════
+    def _setup_llm_lights_monitoring(self) -> None:
+        """Actively watch for locally-running LLM servers (Ollama,
+        llama.cpp, LM Studio) and paint the verdict on the top-bar lights.
 
-        V18.20.4.9 (W-b18 remainder): the worker's ``failed`` signal is now
-        connected (fail-soft log) and the ref is kept on self — an
-        unconnected ``failed`` meant a raising check died invisibly with
-        the QObject GC'd mid-run.
+        Replaces the pre-V0.6.69 startup path — a background
+        ``is_ollama_reachable`` check that popped a modal "Ollama not
+        running" QMessageBox at load. The 2026-10-26 field report retired
+        that design: a missing local server is an ordinary state to SHOW
+        (a gray light), not an error to raise before the user has done
+        anything, and the lights must notice a server STARTED mid-session
+        (green on the next tick). The loop:
 
-        V0.4.29 (startup-fix): only fire when Ollama is actually needed by
-        the configured backends. A llama.cpp / openrouter / openai user
-        (whose LLM does NOT use Ollama) previously got a spurious 'Ollama not
-        running — summarisation will not work' warning at every startup.
-        Now: skip unless ``summarisation.provider == 'ollama'`` (the LLM
-        needs it) OR OCR is on the Ollama path (``ocr.use_llm`` True AND no
-        alternative OCR configured — unlimited_ocr / deepseek_ocr2 /
-        paddleocr). The warning message is also made accurate (only names
-        what actually needs Ollama).
+        * every ``LLM_LIGHTS_POLL_INTERVAL_S`` seconds: snapshot the
+          endpoints on THIS (main) thread, then hand a SimpleWorker the
+          frozen spec — the probe layer never touches settings off-thread
+          and never raises;
+        * the probes are loopback GETs with the 2 s subsecond budget (a
+          dead port answers instantly) and deliberately bypass the
+          routing layer's 30 s probe cache — a status light must be FRESH;
+        * verdicts are applied on the main thread via the worker's queued
+          ``finished`` signal; a probe that EXPLODES is log-debug only
+          (the lights keep the last known state — no dialog, ever).
         """
+        if getattr(self, "llm_lights", None) is None:
+            return  # the widget failed to build — no lights, no polling
         try:
-            _provider = self.controller.get_setting("summarisation.provider", "llamacpp")
-            _ocr_use_llm = self.controller.get_setting("ocr.use_llm", True)
-            _ocr_alt = bool(
-                self.controller.get_setting("ocr.unlimited_ocr_path", "")
-                or self.controller.get_setting("ocr.deepseek_ocr2_path", "")
-                or self.controller.get_setting("ocr.use_paddleocr", False)
-            )
-            _llm_needs_ollama = _provider == "ollama"
-            _ocr_needs_ollama = _ocr_use_llm and not _ocr_alt
-            if not (_llm_needs_ollama or _ocr_needs_ollama):
-                return  # neither backend needs Ollama — no warning
-            # Stash what needs Ollama so the warning message is accurate
-            # (read by _show_ollama_warning on the main thread via QueuedConnection).
-            self._ollama_needed_for = (
-                "LLM OCR and summarisation"
-                if (_llm_needs_ollama and _ocr_needs_ollama)
-                else "OCR"
-                if _ocr_needs_ollama
-                else "summarisation"
+            from PySide6.QtCore import QTimer
+
+            from core.system.local_llm_monitor import (
+                LLM_LIGHTS_POLL_INTERVAL_S,
+                probe_local_llm_clients,
+                snapshot_endpoints,
             )
         except Exception:
-            logger.debug(
-                "ollama-need check failed; falling through to the reachability probe", exc_info=True
-            )
-            self._ollama_needed_for = "LLM OCR and summarisation"
+            logger.warning("local-LLM lights monitoring unavailable", exc_info=True)
+            return
 
-        def _check():
+        def _probe():
+            # Worker thread — the frozen snapshot + pure probes only.
+            return probe_local_llm_clients(self._llm_endpoints_snapshot)
+
+        def _tick() -> None:
+            prev = self._llm_probe_worker
+            if prev is not None:
+                try:
+                    if prev.is_running():
+                        return  # previous probe still in flight — skip
+                except RuntimeError:
+                    pass  # the finished worker was auto-deleted — replace
+                self._llm_probe_worker = None
             try:
-                from utils.network import is_ollama_reachable
-
-                if not is_ollama_reachable():
-                    from PySide6.QtCore import QMetaObject
-                    from PySide6.QtCore import Qt as _Qt
-
-                    QMetaObject.invokeMethod(
-                        self, "_show_ollama_warning", _Qt.ConnectionType.QueuedConnection
-                    )
+                # Main-thread read of the configured endpoints (DESIGN
+                # RULE 2 in core.system.local_llm_monitor).
+                self._llm_endpoints_snapshot = snapshot_endpoints(self.controller.settings)
             except Exception:
-                logger.debug("UI op failed", exc_info=True)
+                logger.debug("llm-lights endpoint snapshot failed", exc_info=True)
+                return
+            worker = SimpleWorker(_probe)
+            self._llm_probe_worker = worker  # Python ref (GC hazard)
+            worker.finished.connect(self._on_llm_probe_finished)
+            worker.failed.connect(self._on_llm_probe_failed)
+            worker.start()
 
-        w = SimpleWorker(_check)
-        self._ollama_check_worker = w  # Python ref (GC hazard)
-        w.failed.connect(self._on_ollama_check_failed)
-        w.start()
+        timer = QTimer(self)
+        timer.setInterval(LLM_LIGHTS_POLL_INTERVAL_S * 1000)
+        timer.timeout.connect(_tick)
+        self._llm_poll_timer = timer
+        timer.start()
+        _tick()  # first verdict immediately — the splash is barely closed
 
-    def _on_ollama_check_failed(self, error: str) -> None:
-        """W-b18 remainder: fail-soft — the startup check itself raised.
-        No button lives on this path, so this is log-only."""
-        logger.warning("Ollama reachability check failed: %s", error)
+    @Slot(object)
+    def _on_llm_probe_finished(self, statuses) -> None:
+        self._llm_probe_worker = None
+        lights = getattr(self, "llm_lights", None)
+        if lights is not None and statuses:
+            lights.apply_statuses(statuses)
 
-    @Slot()
-    def _show_ollama_warning(self) -> None:
-        from PySide6.QtWidgets import QMessageBox
+    @Slot(str)
+    def _on_llm_probe_failed(self, error: str) -> None:
+        """Fail-soft (the W-b18 lesson, kept): keep the last painted
+        verdict, log QUIETLY — a dead probe repeating every few seconds
+        must never spam the log the way a warning would."""
+        self._llm_probe_worker = None
+        logger.debug("local-LLM liveness probe failed: %s", error)
 
-        # V0.4.29: accurate message — only name what actually needs Ollama
-        # (set by _warn_ollama before invoking this slot).
-        _what = getattr(self, "_ollama_needed_for", "LLM OCR and summarisation")
-        QMessageBox.warning(
-            self,
-            "Ollama not running",
-            f"Ollama does not appear to be running on localhost:11434.\n\n"
-            f"{_what} will not work until Ollama is started.\n"
-            f"Start Ollama, then try your conversion.",
-        )
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._adapt_llm_lights()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        # V0.6.69: at first real paint the fonts/QSS are polished, so THIS
+        # is the moment to (re)measure what the top bar needs without the
+        # lights — the pre-show estimate can be off by the QSS font sizes.
+        self._topbar_static_min = None
+        self._adapt_llm_lights()
+
+    def _adapt_llm_lights(self) -> None:
+        """Hand the lights whatever width the top bar can spare; the
+        widget picks the richest mode that fits (names → dots → one dot).
+        Measured, not guessed: ``_topbar_static_min`` is the bar's own
+        minimumSizeHint with the lights hidden."""
+        lights = getattr(self, "llm_lights", None)
+        if lights is None:
+            return
+        try:
+            if self._topbar_static_min is None:
+                bar = getattr(self, "_top_bar", None)
+                if bar is None:
+                    return
+                lights.setVisible(False)
+                try:
+                    self._topbar_static_min = bar.minimumSizeHint().width()
+                finally:
+                    lights.setVisible(True)
+            # 22 px cushion: the layout spacing around the lights group.
+            lights.set_budget(self.width() - (self._topbar_static_min or 700) - 22)
+        except Exception:
+            logger.debug("llm-lights adapt failed", exc_info=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # Drag-and-drop — dropped PDFs go to the Queue view (any tab)
@@ -772,6 +834,14 @@ class ElixirWindow(QMainWindow):
         except Exception:
             logger.debug("settings save on close failed", exc_info=True)
         self._save_geometry()
+        # V0.6.69: stop the local-LLM liveness poll loop — no probes after
+        # the window is gone (an in-flight worker's queued verdict simply
+        # lands on a dead receiver and is discarded by Qt).
+        try:
+            if getattr(self, "_llm_poll_timer", None) is not None:
+                self._llm_poll_timer.stop()
+        except Exception:
+            pass
         # V18.20.4.12 (W-c12): release cached TTS engines (subprocesses +
         # VRAM) before process teardown. Never-raise: shutdown must not be
         # blocked by a stuck engine (engines have their own quit→wait→kill
