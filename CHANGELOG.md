@@ -31,6 +31,27 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.74 — format fix for the V0.6.73 edit region + the pre-existing 15-file format drift is now a documented M4 item instead of a hidden CI failure
+
+V0.6.73's edit left one blank line that `ruff format` removes — fixed
+(the B023 region now passes both `ruff check` and `ruff format
+--check`; the tts source-pin tests show the same 2 pre-existing
+timeout-pin failures as the baseline, IDs unchanged).
+
+**Unmasked by V0.6.73:** CI's Lint job runs `ruff check` **then**
+`ruff format --check`. The B023 error had been failing the first step
+all day, so the second gate never ran. With B023 fixed, the format
+gate revealed **15 more files with pre-existing format drift**
+(`ui_qt/views/home_view.py`, `ui_qt/components/icons.py`, several
+settings/wizard files, and three test files — including
+`test_m2_dashboard.py` itself). NOT batch-reformatted in this session:
+three of the drift files are source-pin test files, and the drift is
+f-string line-joining that can break exact-match pins — that reformat
+belongs in M4 behind the full regression harness, not as M3 churn.
+Recorded here so the CI Lint job's remaining red is documented and
+expected, not mysterious.
+
+
 ## V0.6.73 — CI's ruff gate is green again: the one pre-existing B023 (a closure over the loop-reassigned scheduler step) is bound as a default argument, exactly the pattern the neighbouring wrapper already used
 
 `core/tts/_vibevoice_subprocess.py`'s GPU scheduler patch defined

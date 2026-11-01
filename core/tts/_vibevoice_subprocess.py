@@ -1047,7 +1047,6 @@ def main():
                             # to GPU → consistent 5000+ it/s.
                             _orig_step = scheduler.step
                             if not getattr(_orig_step, "_vv_gpu_step", False):
-
                                 # V0.6.73: _step bound as a default arg for
                                 # the same reason as _sched above — B023: a
                                 # closure over the loop-reassigned
