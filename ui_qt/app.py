@@ -1,17 +1,28 @@
-"""Main application window — slim top bar + single focused conversion screen.
+"""Main application window — slim top bar + fixed sidebar + stacked pages.
 
-  ┌──────────────────────────────────────────────────────────────┐
-  │  ◆ Elixir ·  PDF → Markdown + Summaries     [🧰][⚙]  │  top bar
-  ├──────────────────────────────────────────────────────────────┤
-  │                                                              │
-  │            ( ConvertView — the two flows + CTA )             │  scrollable
-  │                                                              │
-  └──────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  ◆ Elixir ·  PDF → Markdown + Summaries        ●  [📚 Merge][🌙][ℹ][⚙] │ top bar
+  ├──────────────┬───────────────────────────────────────────────────────┤
+  │ ▤ Home       │                                                       │
+  │ PROCESSING   │        ( stacked page — Home / Queue / Scanner /      │
+  │ ▤ ▤ ▤       │          Bullet Audit / Hallucination / Convert )     │
+  │ UTILITIES    │                                                       │
+  │ ▤ ▤ ▤ ▤ ▤   │                                                       │
+  │ AUDIO        │                                                       │
+  │ ▤ ▤ ▤       │                                                       │
+  │ ──────────── │                                                       │
+  │ ⚙ Settings   │                                                       │
+  │ ℹ About      │                                                       │
+  └──────────────┴───────────────────────────────────────────────────────┘
 
-The gear button opens the VLC-style :class:`SettingsDialog`.  The toolbox
-button opens the Tools menu (Validate summaries…).  Closing the window while
-a conversion is running asks for confirmation first.  Window size + position
-persist between launches.
+M2 (UI/UX redesign): the fixed compact left rail is the primary nav (spec
+§5); the experimental four are unlisted (decision Q2 — reachable via About
+& System + DnD → Queue); the header is reduced to brand + subtitle + the
+ONE aggregate LLM dot (decision Q3, mini-locked) + Merge + theme/about/
+settings (decision Q7 — the wizard button is gone; the home hero owns the
+conversion entry).  The gear button opens the VLC-style :class:`SettingsDialog`.
+Closing the window while a conversion is running asks for confirmation
+first.  Window size + position persist between launches.
 """
 
 from __future__ import annotations
@@ -105,7 +116,7 @@ class ElixirWindow(QMainWindow):
         self._llm_poll_timer = None
         self._llm_probe_worker = None
         self._llm_endpoints_snapshot = None
-        self._topbar_static_min = None
+        self._llm_last_statuses: list | None = None
         self._setup_llm_lights_monitoring()
 
     # ══════════════════════════════════════════════════════════════════════
@@ -150,16 +161,18 @@ class ElixirWindow(QMainWindow):
             lay.addWidget(self.llm_lights)
             lay.addSpacing(8)
 
-        # V5.3.2: Process Wizard CTA — prominent button in top bar
-        self.wizard_btn = QPushButton("✨  Process Wizard")
-        self.wizard_btn.setObjectName("Primary")
-        self.wizard_btn.setCursor(Qt.PointingHandCursor)
-        self.wizard_btn.setToolTip("Open the guided step-by-step conversion wizard")
-        self.wizard_btn.clicked.connect(self._open_wizard)
-        lay.addWidget(self.wizard_btn)
+        # V5.3.2 → M2 (decision Q7): the top-bar "✨ Process Wizard" button
+        # is REMOVED — the home view's hero CTA ("Start Conversion") owns
+        # the primary entry now; both landed in this milestone so the entry
+        # never gaps. _open_wizard stays (the hero CTA + the unlisted
+        # convert page's Full Conversion card both route through it).
 
-        # V13.31.0 (#10): Merge Books moved to header as a compact link
-        # (was a prominent Secondary button — too cluttered with 3 buttons)
+        # V13.31.0 (#10): Merge Books stays as a header compact link — a
+        # documented M2 decision: it is a real, functional cross-output
+        # action (folder-picker flow over past conversion outputs, not a
+        # tool dialog), it keeps the W-b12 worker threading pins green
+        # unchanged, and the header is already decluttered by the wizard
+        # button's removal. (A Quick Tools tile was the alternative.)
         self.merge_btn = QPushButton("📚  Merge")
         self.merge_btn.setObjectName("Compact")
         self.merge_btn.setCursor(Qt.PointingHandCursor)
@@ -674,34 +687,22 @@ class ElixirWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
-        # V0.6.69: at first real paint the fonts/QSS are polished, so THIS
-        # is the moment to (re)measure what the top bar needs without the
-        # lights — the pre-show estimate can be off by the QSS font sizes.
-        self._topbar_static_min = None
+        # V0.6.69 → M2: re-assert the header lights' MINI lock at first real
+        # paint (fonts/QSS are polished by then — harmless no-op if already
+        # locked; decision Q3).
         self._adapt_llm_lights()
 
     def _adapt_llm_lights(self) -> None:
-        """Hand the lights whatever width the top bar can spare; the
-        widget picks the richest mode that fits (names → dots → one dot).
-        Measured, not guessed: ``_topbar_static_min`` is the bar's own
-        minimumSizeHint with the lights hidden."""
+        """M2 (decision Q3): the header keeps ONE compact aggregate dot —
+        the lights are LOCKED to the widget's existing MINI mode (the
+        width-adaptive full→dots→mini ladder is retired with it; the full
+        per-client lights + tooltips live in the About & System dialog,
+        fed by the same poll loop). Kept as the resize/show hook so the
+        lock is re-asserted after the pre-show measure (a no-op)."""
         lights = getattr(self, "llm_lights", None)
         if lights is None:
             return
-        try:
-            if self._topbar_static_min is None:
-                bar = getattr(self, "_top_bar", None)
-                if bar is None:
-                    return
-                lights.setVisible(False)
-                try:
-                    self._topbar_static_min = bar.minimumSizeHint().width()
-                finally:
-                    lights.setVisible(True)
-            # 22 px cushion: the layout spacing around the lights group.
-            lights.set_budget(self.width() - (self._topbar_static_min or 700) - 22)
-        except Exception:
-            logger.debug("llm-lights adapt failed", exc_info=True)
+        lights.set_budget(0)  # 0 px budget → the ladder's floor: MODE_MINI
 
     # ══════════════════════════════════════════════════════════════════════
     # Drag-and-drop — dropped PDFs go to the Queue view (any tab)
