@@ -295,6 +295,15 @@ def _qss(p: Palette) -> str:
         border: 1px solid {p.border};
         border-radius: {RADIUS.lg}px;
     }}
+    /* V0.6.75 (the reference comparison): the hero's own tinted container —
+       the mockup's warm band sitting one step above the page ground. The
+       hero illustration is flattened against THIS fill (home_view's
+       _flattened_hero_pixmap — the two must stay in sync). */
+    QFrame#HeroCard {{
+        background-color: {p.bg_elevated};
+        border: 1px solid {p.border};
+        border-radius: {RADIUS.xl}px;
+    }}
     QFrame#StepBadge {{
         background-color: {p.accent};
         color: {p.text_on_accent};
@@ -365,6 +374,11 @@ def _qss(p: Palette) -> str:
     QLabel#Hero {{
         font-size: {FONT.hero}px; font-weight: {WEIGHT.semibold};
         color: {p.text_primary};
+    }}
+    QLabel#Eyebrow {{
+        font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
+        color: {p.text_secondary};
+        letter-spacing: 1.4px;
     }}
     QLabel#Support {{
         font-size: {FONT.body_lg}px; font-weight: {WEIGHT.regular};
@@ -437,13 +451,16 @@ def _qss(p: Palette) -> str:
     }}
 
     /* M2-ready hero CTA — the single dominant dashboard action
-       (dashboard-facing type scale; larger than the dialog Primary). */
+       (dashboard-facing type scale; larger than the dialog Primary).
+       V0.6.75: the approved reference mockup's pill — 18 px on the
+       ~37 px-tall button is a full capsule (Qt QSS does NOT clamp an
+       oversized radius like 999 px to a pill; it renders nearly square). */
     QPushButton#HeroPrimary {{
         background-color: {p.accent};
         color: {p.text_on_accent};
         border: none;
-        border-radius: {RADIUS.md}px;
-        padding: 10px 22px;
+        border-radius: 18px;
+        padding: 10px 24px;
         font-size: {FONT.tool}px; font-weight: {WEIGHT.semibold};
         outline: none;
     }}

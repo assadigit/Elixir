@@ -17,23 +17,30 @@ column count reflows with the available width (spec §6 "grid reflows
 with available width"): 4 columns wide, 3 at mid widths, 2 on narrow
 windows — the thresholds are re-checked on every resize.
 
-The hero is an editorial split (spec §6): heading + supporting copy + ONE
-``QPushButton#HeroPrimary`` "Start Conversion" on the left, the supplied
-hero illustration (decision Q5 — ``assets/hero_books_quill.png``) at
-reduced size on the right. The illustration's soft alpha halo is
-FLATTENED against the hero surface colour (composited, never pasted onto
-a different ground), the visual hides at narrow widths (spec §7
-"simplify or remove it at narrow widths"), and the final judgement
-happens on the user's Windows QA (decision Q5 — if it reads poorly on
-the real background there, the spec allows omitting it: do NOT force it).
+The hero is an editorial split (spec §6): an eyebrow, heading + supporting
+copy + ONE ``QPushButton#HeroPrimary`` "Start Conversion" on the left,
+the supplied hero illustration (decision Q5 — ``assets/hero_books_quill.png``)
+filling the right ~45%. The illustration's soft alpha halo is FLATTENED
+against the hero card's tinted fill (composited, never pasted onto a
+different ground). V0.6.75 (the reference comparison): the visual is sized as a
+FRACTION of the available width and hides only below the 500 px floor that
+only the minimum-size window hits — the old fixed 200/260 px buckets with a
+760 px hide cutoff left the user's ≈660 px content run text-only, which
+read as "the asset isn't implemented".
 
-COPY (spec §6 + §1, verified against real capabilities — nothing invented):
+COPY (spec §6 + the approved reference mockup, verified against real
+capabilities — nothing invented):
 
-  purpose   "Knowledge, distilled into clarity."               (spec §1)
+  eyebrow   "WELCOME TO ELIXIR"                          (reference hero)
   heading   "Turn documents into clear, structured knowledge." (spec §6)
-  support   "Transform books, articles, and documents into useful
-             summaries and structured outputs."                (spec §6)
+  support   "Books, articles and documents — summarized, organized
+             and ready for you to explore."               (reference hero)
   CTA       "Start Conversion"       (spec §6 + user decision Q7)
+
+The spec §1 brand line ("Knowledge, distilled into clarity.") lives in
+the sidebar-bottom brand card since V0.6.71 — the standalone purpose
+line that used to sit above the hero was retired in V0.6.75 so the hero
+opens with the reference's eyebrow instead (no duplicated brand line).
 
 The CTA opens the SAME modal WizardView the removed header button used:
 this view only EMITS ``start_requested`` and ``ElixirWindow`` connects it
@@ -61,27 +68,25 @@ from ui_qt.components.dashboard_primitives import QuickToolCard, SectionLabel
 from ui_qt.theme import theme_manager
 from ui_qt.views.tool_dashboard import TOOL_CARDS
 
-# Hero illustration budget (decision Q5: reduced size — "keep it ≤ ~260 px
-# wide"; the source is 632×330, so it always scales down).
-_HERO_IMAGE_MAX_W = 260
+# Hero illustration budget (V0.6.75, the reference comparison): the
+# visual earns the mockup's editorial split — ~45% of the hero interior —
+# scaling with the view between a compact floor and the source width
+# (632 px, so it only ever scales DOWN).
+_HERO_IMAGE_FRACTION = 0.45
+_HERO_IMAGE_MIN_W = 180
+_HERO_IMAGE_MAX_W = 430
 
-# The mid-width size bucket (V0.6.71 / M3 QA): at content widths between
-# the hide threshold and _HERO_IMAGE_WIDE_W the illustration shrinks to
-# this instead of vanishing, so the text column keeps its room.
-_HERO_IMAGE_MID_W = 200
+# The budget moves in 20 px steps so a resize drag recomposites on step
+# crossings only, not per pixel (the pixmap cache keys on the step).
+_HERO_IMAGE_STEP = 20
 
 # Below this CONTENT width the illustration hides (spec §7 narrow-width
-# rule) — aligned with the Quick Tools 3-column threshold (_GRID_3_MIN_W):
-# any window that comfortably fits a 3-column tool grid also keeps the
-# hero visual. (V0.6.71 / M3 QA: the old 900 px cutoff left the whole
-# 760–899 px band — the user's actual Windows run — with NO visual at
-# all, which read as "the asset isn't implemented".) The 560 px minimum
-# window ≈ 330 px of content (hidden — the text column keeps its room).
-_HERO_IMAGE_MIN_VIEW_W = 760
-
-# At/above this content width the illustration is full-size (260 px);
-# between the hide threshold and here it uses the mid size above.
-_HERO_IMAGE_WIDE_W = 900
+# rule). V0.6.75: ONLY the 560 px minimum window's ≈330 px content band
+# lands here — the old 760 px cutoff hid the visual across the user's
+# actual ≈890 px Windows run (≈660 px of content after the sidebar),
+# which read as "the asset isn't implemented" (the user report that
+# triggered this fix).
+_HERO_IMAGE_MIN_VIEW_W = 500
 
 # Quick Tools — the M1 Lucide glyph for each tool (spec §7: one outline
 # family; the emoji strings from TOOL_CARDS are display-only legacy and
@@ -139,8 +144,9 @@ def _tool_meta() -> dict[str, tuple[str, str]]:
 
 
 class HomeView(QWidget):
-    """The M2 landing page: purpose line + the Full Conversion hero
-    (+ the Quick Tools grid, added by the grid commit)."""
+    """The M2 landing page: the Full Conversion hero + the Quick Tools
+    grid (V0.6.75: the hero opens the page — the standalone purpose line
+    is retired; the brand line lives in the sidebar brand card)."""
 
     start_requested = Signal()
     tool_clicked = Signal(str)
@@ -155,15 +161,13 @@ class HomeView(QWidget):
         root.setContentsMargins(24, 18, 24, 10)
         root.setSpacing(14)
 
-        # 1 — the purpose line (spec §6 hierarchy; the spec §1 brand line).
-        purpose = QLabel("Knowledge, distilled into clarity.")
-        purpose.setObjectName("Support")
-        root.addWidget(purpose)
-
-        # 2 — the Full Conversion hero (the single dominant action).
+        # 1 — the Full Conversion hero (the single dominant action) —
+        # V0.6.75: the reference mockup opens the page with it; the old
+        # standalone purpose line is retired (the spec §1 brand line
+        # already lives in the sidebar-bottom brand card, V0.6.71).
         root.addWidget(self._build_hero())
 
-        # 3 — the Quick Tools section (secondary tools only — the hero is
+        # 2 — the Quick Tools section (secondary tools only — the hero is
         # never duplicated as a tile; spec §6 / decision Q7).
         root.addLayout(self._build_quick_tools())
 
@@ -175,12 +179,14 @@ class HomeView(QWidget):
     def _build_hero(self) -> QFrame:
         """Editorial split: text + CTA left, illustration right (spec §6).
 
-        A calm surface with subtle separation from the page background —
-        the existing ``QFrame#Card`` QSS rule (surface fill + hairline
-        border + soft radius), no shadow.
+        V0.6.75 (the reference comparison): the hero sits in its own
+        TINTED container — ``QFrame#HeroCard``, the mockup's warm band one
+        step above the page ground (not the plain ``QFrame#Card`` surface)
+        — with the text column opening on the mockup's eyebrow, the
+        reference support line, and the play-glyph pill CTA.
         """
         hero = QFrame()
-        hero.setObjectName("Card")
+        hero.setObjectName("HeroCard")
         lay = QHBoxLayout(hero)
         lay.setContentsMargins(28, 24, 28, 24)
         lay.setSpacing(24)
@@ -188,14 +194,19 @@ class HomeView(QWidget):
         text_col = QVBoxLayout()
         text_col.setSpacing(10)
 
+        # The reference hero's eyebrow (V0.6.75) — small, tracked-out,
+        # sitting above the heading (QLabel#Eyebrow QSS rule).
+        eyebrow = QLabel("WELCOME TO ELIXIR")
+        eyebrow.setObjectName("Eyebrow")
+        text_col.addWidget(eyebrow)
+
         heading = QLabel("Turn documents into clear, structured knowledge.")
         heading.setObjectName("Hero")
         heading.setWordWrap(True)
         text_col.addWidget(heading)
 
         support = QLabel(
-            "Transform books, articles, and documents into useful "
-            "summaries and structured outputs."
+            "Books, articles and documents — summarized, organized and ready for you to explore."
         )
         support.setObjectName("Support")
         support.setWordWrap(True)
@@ -210,6 +221,7 @@ class HomeView(QWidget):
         self.cta_btn.setObjectName("HeroPrimary")
         self.cta_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cta_btn.setToolTip("Open the guided step-by-step conversion wizard")
+        self._set_cta_icon()
         self.cta_btn.clicked.connect(self.start_requested.emit)
         text_col.addWidget(self.cta_btn, 0, Qt.AlignmentFlag.AlignLeft)
         text_col.addStretch()
@@ -217,8 +229,16 @@ class HomeView(QWidget):
         lay.addLayout(text_col, 1)
 
         # The illustration (decision Q5) — flattened against the surface,
-        # hidden at narrow widths (spec §7).
+        # proportionally sized, hidden only below the narrow-width floor.
         self._hero_visual = QLabel()
+        # V0.6.75 deadlock escape: a QLabel's content-derived minimum IS
+        # its pixmap size, so without an explicit tiny minimum the visual
+        # inflates the layout's minimum — the window then cannot shrink to
+        # the width that would shrink the pixmap (measured: layout min 357
+        # → 78 with this line; the label still takes its pixmap size when
+        # the room exists). Without it the 560 px minimum window is
+        # unreachable and even the 760×540 default geometry self-expands.
+        self._hero_visual.setMinimumSize(1, 1)
         self._hero_visual.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
@@ -227,16 +247,29 @@ class HomeView(QWidget):
 
         return hero
 
+    # ── the hero CTA glyph (V0.6.75, the reference comparison) ───────────
+    def _set_cta_icon(self) -> None:
+        """The reference CTA's play glyph, tinted to sit on the accent
+        fill — re-tinted on theme refresh (the on-accent colour flips
+        between the modes)."""
+        from PySide6.QtCore import QSize
+
+        from ui_qt.components.icons import icon
+
+        self.cta_btn.setIconSize(QSize(15, 15))
+        self.cta_btn.setIcon(icon("play", theme_manager.palette.text_on_accent, 15))
+
     # ── the hero illustration (decision Q5) ──────────────────────────────
     def _flattened_hero_pixmap(self, max_w: int):
         """The supplied illustration scaled to ≤ ``max_w`` px wide with its
-        alpha flattened onto the CURRENT hero surface colour.
+        alpha flattened onto the CURRENT hero card colour.
 
         The asset is 632×330 RGBA with a soft halo quarter (the M1
         inspection): pasting it straight onto a different ground would
-        leave a pale rectangle. Compositing against the exact surface
-        token keeps the halo invisible in BOTH themes — and is why
-        ``refresh_theme`` re-runs this instead of caching one pixmap.
+        leave a pale rectangle. Compositing against the exact ``QFrame#
+        HeroCard`` fill (``palette.bg_elevated`` — MUST stay in sync with
+        the QSS rule) keeps the halo invisible in BOTH themes — and is
+        why ``refresh_theme`` re-runs this instead of caching one pixmap.
         """
         from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 
@@ -249,7 +282,7 @@ class HomeView(QWidget):
         w = min(max_w, src.width())
         h = max(1, round(src.height() * w / src.width()))
         flat = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
-        flat.fill(QColor(theme_manager.palette.bg_surface))
+        flat.fill(QColor(theme_manager.palette.bg_elevated))
         painter = QPainter(flat)
         painter.drawPixmap(
             0,
@@ -265,18 +298,24 @@ class HomeView(QWidget):
         return QPixmap.fromImage(flat)
 
     def _apply_hero_pixmap(self) -> None:
-        """(Re)composite the illustration at the size bucket the current
-        width supports, then apply the narrow-width hide rule.
+        """(Re)composite the illustration at the width the current view
+        supports, then apply the narrow-width hide rule.
 
-        V0.6.71 (M3 QA): full 260 px at wide widths, 200 px at mid widths —
-        the old binary hide-at-900 left the 3-column-grid band with no
-        visual at all, which read on the user's Windows run as "the asset
-        isn't implemented". The pixmap is cached per (bucket, surface) so
-        a resize drag only recomposites on bucket or theme crossings.
+        V0.6.75 (the reference comparison): the budget is PROPORTIONAL —
+        ~45% of the view, clamped to 180–430 px — so the visual renders at
+        every realistic width. The old fixed 200/260 px buckets plus the
+        760 px hide cutoff left the user's ≈660 px content run with a
+        text-only hero (the "you didn't use hero_books_quill.png"
+        report). The pixmap stays cached per (budget step, card tint) so a
+        resize drag only recomposites on step or theme crossings.
         """
-        budget = _HERO_IMAGE_MAX_W if self.width() >= _HERO_IMAGE_WIDE_W else _HERO_IMAGE_MID_W
-        key = (budget, theme_manager.palette.bg_surface)
+        budget = self._hero_image_budget()
+        key = (budget, theme_manager.palette.bg_elevated)
         if key != self._hero_pm_key:
+            if budget == 0:
+                self._hero_pm_key = ("hidden",)
+                self._hero_visual.setVisible(False)
+                return
             pm = self._flattened_hero_pixmap(budget)
             if pm is None:
                 self._hero_pm_key = ("missing",)
@@ -284,7 +323,19 @@ class HomeView(QWidget):
                 return
             self._hero_visual.setPixmap(pm)
             self._hero_pm_key = key
-        self._hero_visual.setVisible(self.width() >= _HERO_IMAGE_MIN_VIEW_W)
+        self._hero_visual.setVisible(budget > 0)
+
+    def _hero_image_budget(self) -> int:
+        """Illustration width for the current view width: ~45% of the view
+        clamped to [_HERO_IMAGE_MIN_W, _HERO_IMAGE_MAX_W] in 20 px steps;
+        0 below the hide floor (spec §7 narrow-width rule)."""
+        if self.width() < _HERO_IMAGE_MIN_VIEW_W:
+            return 0
+        raw = min(
+            _HERO_IMAGE_MAX_W,
+            max(_HERO_IMAGE_MIN_W, round(self.width() * _HERO_IMAGE_FRACTION)),
+        )
+        return raw // _HERO_IMAGE_STEP * _HERO_IMAGE_STEP
 
     # ══════════════════════════════════════════════════════════════════════
     # The Quick Tools grid (spec §6: compact, consistent, reflowing)
@@ -358,9 +409,11 @@ class HomeView(QWidget):
     # ══════════════════════════════════════════════════════════════════════
     def refresh_theme(self) -> None:
         """Re-apply theme-dependent bits: the hero illustration must be
-        re-flattened against the new surface colour; the Quick Tool cards
-        re-tint (all other chrome is QSS-driven and re-polishes globally)."""
+        re-flattened against the new surface colour and the CTA glyph
+        re-tinted; the Quick Tool cards re-tint (all other chrome is
+        QSS-driven and re-polishes globally)."""
         self._apply_hero_pixmap()
+        self._set_cta_icon()
         for card in self._quick_cards:
             card.refresh_theme()
 

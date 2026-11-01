@@ -31,6 +31,58 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.75 — the hero matches the approved reference: hero_books_quill.png renders at EVERY realistic window width (~45% of the hero), replacing the fixed 200/260 px buckets that hid it below 760 px of content
+
+The user's side-by-side (the reference mockup
+`508782d6-4b80-48be-9046-d081ce258b75.png` vs the V0.6.72 Windows run):
+the reference's hero is a two-column editorial split — "WELCOME TO
+ELIXIR" eyebrow, heading, support line, pill CTA, and the
+books/inkwell/quill still-life filling the right ~half — against our
+text-only hero. The asset WAS wired (V0.6.71) but the sizing rule meant
+the user's ≈890 px window (≈660 px of content after the sidebar) never
+crossed the 760 px hide threshold: the visual existed only above it, at
+≤260 px — roughly half the reference's proportion. The V0.6.72 evidence
+matrix never covered that width band, which is how the gap survived
+three asset-themed versions.
+
+- `home_view`: the illustration budget is now PROPORTIONAL — ~45% of
+  the view width, clamped to 180–430 px in 20 px steps (recompositing on
+  step crossings only), hidden solely below a 500 px content floor that
+  only the 560×400 minimum window hits. At the user's width it renders
+  ≈300 px wide.
+- `home_view` + `theme`: the reference hero's anatomy — the
+  "WELCOME TO ELIXIR" eyebrow (new `QLabel#Eyebrow` rule), the reference
+  support line ("Books, articles and documents — summarized, organized
+  and ready for you to explore."), the mockup's play glyph on the CTA,
+  the pill (`border-radius: 18px` — measured: Qt QSS does NOT clamp an
+  oversized 999 px radius to a pill, it renders nearly square), and the
+  tinted `QFrame#HeroCard` container the illustration now flattens
+  against (`bg_elevated`, in sync with the QSS rule).
+- The standalone purpose line above the hero is retired: the spec §1
+  brand line already lives in the sidebar-bottom brand card (V0.6.71),
+  and the reference hero opens with the eyebrow instead.
+- **The deadlock escape** (found by the 560-cell of the new evidence
+  set): a QLabel's content-derived layout minimum IS its pixmap size, so
+  a proportional pixmap inflates the window's minimum above the width
+  that would shrink it — the 560 px minimum window became unreachable
+  and the 760×540 default geometry self-expanded.
+  `setMinimumSize(1, 1)` on the visual drops the layout minimum
+  357 → 78 px while the label still takes its pixmap size when the room
+  exists (760×540 requested → 760 px kept, hero visible at 240 px).
+
+Evidence: `docs/screenshots/v0.6.75/` — the six-cell matrix at the
+widths that matter for this fix (894×645 = the user's window,
+1536×1024 = the reference width, 560×400 = the spec §7 hide case), both
+themes, hero pixmap widths + unique-colour counts per cell, plus a VLM
+pass against the reference (PASS: illustration prominent, eyebrow +
+pill + tinted container + sidebar brand card all present, no blocking
+defects). Structural pins green: `tests/test_m2_dashboard.py` +
+`tests/test_m1_theme_tokens.py` — 48 passed (the 5 Qt-instantiating
+theme tests included, via a local libEGL extraction). No installer
+built in this session; the next `V0.6.75-windows` tag cut triggers
+`Elixir-Setup-0.6.75.exe`.
+
+
 ## V0.6.74 — format fix for the V0.6.73 edit region + the pre-existing 15-file format drift is now a documented M4 item instead of a hidden CI failure
 
 V0.6.73's edit left one blank line that `ruff format` removes — fixed
