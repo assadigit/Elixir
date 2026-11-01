@@ -312,6 +312,15 @@ def _qss(p: Palette) -> str:
         border: none;
         border-bottom: 1px solid {p.border};
     }}
+    /* M2 (UI/UX redesign): the fixed left nav rail — spec §5 "compact and
+       fixed, always visible". A surface-toned rail with a hairline right
+       edge (light: white rail on the ivory ground; dark: raised panel on
+       the charcoal ground) — quiet separation, no shadow. */
+    QFrame#SidebarRail {{
+        background-color: {p.bg_surface};
+        border: none;
+        border-right: 1px solid {p.border};
+    }}
 
     /* Scrollable content surfaces */
     QScrollArea {{

@@ -214,6 +214,9 @@ class ElixirWindow(QMainWindow):
         theme_manager.toggle()
         self._refresh_top_bar_icons()
         self.convert_view.refresh_theme()
+        # M2: the fixed rail's nav items re-tint from the current palette.
+        if hasattr(self, "sidebar"):
+            self.sidebar.refresh_theme()
         if hasattr(self, "queue_view"):
             self.queue_view.refresh_theme()
         if hasattr(self, "output_scanner_view"):
@@ -340,84 +343,71 @@ class ElixirWindow(QMainWindow):
     # Content
     # ══════════════════════════════════════════════════════════════════════
     def _build_content(self) -> QWidget:
-        # V13.31.0: Tab bar redesigned:
-        # - Removed Podcast Maker tab (now opens as modal from tool dashboard)
-        # - Added Hallucination Audit tab (was only accessible from tool cards)
-        # - Removed tools menu (moved to About button in header)
-        from PySide6.QtWidgets import QTabWidget
+        # M2 (UI/UX redesign): the north QTabWidget is RETIRED — the shell is
+        # now a fixed compact LEFT sidebar (spec §5; user decision Q1 — the
+        # Audio group is IN) + a QStackedWidget content area. All five former
+        # tab pages are kept in the stack, code intact; the experimental four
+        # (Queue / Output Scanner / Bullet Audit / Hallucination Audit) are
+        # simply UNLISTED from primary navigation (decision Q2 — hiding ≠
+        # removing; they stay reachable via the navigation facade, DnD →
+        # Queue, and the About & System "Experimental tools…" section).
+        # V13.31.0 history: Podcast Maker tab removed (modal from the
+        # dashboard); Hallucination Audit tab added; tools menu → About.
+        from PySide6.QtWidgets import QHBoxLayout, QStackedWidget
 
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setObjectName("MainTabs")
-        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        from ui_qt.components.sidebar import Sidebar
 
-        p = theme_manager.palette
+        self.content_stack = QStackedWidget()
+        self.content_stack.setObjectName("MainStack")
+        self._page_index: dict[str, int] = {}
+        self._page_active: list[str | None] = []  # stack index → sidebar key
 
-        # Tab 1: Convert (primary page — tool dashboard)
-        convert_scroll = QScrollArea()
-        convert_scroll.setWidgetResizable(True)
-        convert_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        convert_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        convert_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        def _add_page(key: str, page: QWidget, active_key: str | None = None) -> None:
+            """Register a stack page under ``key`` (facade lookups) and note
+            which sidebar item (if any) shows as active while it is shown."""
+            self._page_index[key] = self.content_stack.addWidget(page)
+            self._page_active.append(active_key)
+
+        def _wrap_scroll(view: QWidget) -> QScrollArea:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            scroll.setWidget(view)
+            return scroll
+
+        # Page: Convert (the legacy tool-dashboard page — kept intact: it
+        # hosts the controller bridge + progress panel + completion
+        # handling. Until the M2 home view lands, it IS the landing page,
+        # so the sidebar's Home item routes here.)
         self.convert_view = ConvertView(self.controller)
-        convert_scroll.setWidget(self.convert_view)
-        self.tab_widget.addTab(convert_scroll, icon("rocket", p.text_secondary, 16), "Convert")
+        _add_page("convert", _wrap_scroll(self.convert_view), active_key="home")
 
-        # Tab 2: Queue (batch processing)
-        queue_scroll = QScrollArea()
-        queue_scroll.setWidgetResizable(True)
-        queue_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        queue_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        queue_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Page: Queue (batch processing — unlisted, decision Q2)
         self.queue_view = QueueView(self.controller)
-        queue_scroll.setWidget(self.queue_view)
-        self.tab_widget.addTab(queue_scroll, icon("list-checks", p.text_secondary, 16), "Queue")
+        _add_page("queue", _wrap_scroll(self.queue_view))
 
-        # V13.31.0 (#6): Podcast Maker tab REMOVED — now opens as modal dialog
-        # from the tool dashboard, consistent with all other tools.
-
-        # Tab 3: Output Scanner (audit a book's output folder)
-        scanner_scroll = QScrollArea()
-        scanner_scroll.setWidgetResizable(True)
-        scanner_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scanner_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scanner_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Page: Output Scanner (unlisted, decision Q2)
         self.output_scanner_view = OutputScannerView(self.controller)
-        scanner_scroll.setWidget(self.output_scanner_view)
-        self.tab_widget.addTab(scanner_scroll, icon("scan", p.text_secondary, 16), "Output Scanner")
+        _add_page("output_scanner", _wrap_scroll(self.output_scanner_view))
 
-        # Tab 4: Bullet Audit (quarantine — dropped-bullet audit & restore)
-        quarantine_scroll = QScrollArea()
-        quarantine_scroll.setWidgetResizable(True)
-        quarantine_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        quarantine_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        quarantine_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Page: Bullet Audit (quarantine — dropped-bullet audit & restore;
+        # unlisted, decision Q2)
         self.quarantine_view = QuarantineView(self.controller)
-        quarantine_scroll.setWidget(self.quarantine_view)
-        self.tab_widget.addTab(
-            quarantine_scroll, icon("alert-triangle", p.text_secondary, 16), "Bullet Audit"
-        )
+        _add_page("quarantine", _wrap_scroll(self.quarantine_view))
 
-        # Tab 5: Hallucination Audit (V13.31.0 #1 — new tab per user request)
-        # A lightweight wrapper around the HallucinationAuditDialog content,
-        # embedded as a tab instead of a modal.
-        hallucination_scroll = QScrollArea()
-        hallucination_scroll.setWidgetResizable(True)
-        hallucination_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        hallucination_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        hallucination_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # Create a simple widget with the hallucination audit UI
-        from PySide6.QtWidgets import QLabel as _QL
-        from PySide6.QtWidgets import QPushButton as _QPB
-        from PySide6.QtWidgets import QVBoxLayout as _VL
-
+        # Page: Hallucination Audit (V13.31.0 #1 — a lightweight launcher
+        # wrapper around the HallucinationAuditDialog, kept verbatim;
+        # unlisted, decision Q2)
         hallucination_widget = QWidget()
-        h_lay = _VL(hallucination_widget)
+        h_lay = QVBoxLayout(hallucination_widget)
         h_lay.setContentsMargins(20, 16, 20, 16)
         h_lay.setSpacing(10)
-        h_title = _QL("🛡️ Hallucination Audit")
+        h_title = QLabel("🛡️ Hallucination Audit")
         h_title.setObjectName("H2")
         h_lay.addWidget(h_title)
-        h_desc = _QL(
+        h_desc = QLabel(
             "Check bullets against source text using 4 signals: verbatim match, "
             "semantic similarity, content-word overlap, and number/quote verification.\n\n"
             "Paste source text and bullets below, then click Audit."
@@ -425,27 +415,70 @@ class ElixirWindow(QMainWindow):
         h_desc.setObjectName("Caption")
         h_desc.setWordWrap(True)
         h_lay.addWidget(h_desc)
-        h_btn = _QPB("🛡️ Open Hallucination Audit Dialog")
+        h_btn = QPushButton("🛡️ Open Hallucination Audit Dialog")
         h_btn.setObjectName("Primary")
         h_btn.clicked.connect(lambda: self._open_hallucination_audit())
         h_lay.addWidget(h_btn)
         h_lay.addStretch()
-        hallucination_scroll.setWidget(hallucination_widget)
-        self.tab_widget.addTab(
-            hallucination_scroll, icon("shield", p.text_secondary, 16), "Hallucination Audit"
-        )
+        _add_page("hallucination_audit", _wrap_scroll(hallucination_widget))
 
-        # Refresh views when their tab is switched to
-        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+        # The fixed rail (spec §5): emits navigate(key); the window routes.
+        self.sidebar = Sidebar()
+        self.sidebar.navigate.connect(self._on_sidebar_navigate)
 
-        return self.tab_widget
+        lay = QHBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self.sidebar)
+        lay.addWidget(self.content_stack, 1)
 
-    def _on_tab_changed(self, idx: int):
-        """V4.3.0: Refresh the Queue view's count badge when its tab opens.
-        V7.4.0: RAG refresh removed (tab deleted).
-        V10.28.0: Quarantine auto-reloads its drops.jsonl when opened.
-        V13.31.0: Podcast Maker tab removed."""
-        widget = self.tab_widget.widget(idx)
+        shell = QWidget()
+        shell.setLayout(lay)
+
+        # Page-switch hooks — the _on_tab_changed equivalents must keep
+        # firing (queue badge refresh, quarantine auto-reload).
+        self.content_stack.currentChanged.connect(self._on_page_changed)
+        return shell
+
+    # ── M2 navigation: sidebar routing + the stacked-page facade ─────────
+
+    def _on_sidebar_navigate(self, key: str) -> None:
+        """Route a sidebar click. The window owns routing (the sidebar only
+        emits): Settings/About stay dialogs, pages switch through the
+        facade, and every tool key dispatches through the EXISTING
+        ``convert_view._on_tool_clicked`` routing (no re-implementation)."""
+        if key == "settings":
+            self._open_settings()
+            return
+        if key == "about":
+            self._open_about_system()
+            return
+        if key in self._page_index:
+            self.switch_to_page(key)
+            return
+        self.convert_view._on_tool_clicked(key)
+
+    def switch_to_page(self, key: str) -> bool:
+        """The M2 navigation facade — the QStackedWidget successor of the
+        old north-tab walk (``convert_view._switch_to_tab`` calls this).
+        Returns True when the switch happened; the per-page open hooks
+        (queue badge refresh, quarantine auto-reload) fire through
+        ``_on_page_changed`` on the stack's ``currentChanged``."""
+        idx = self._page_index.get(key)
+        if idx is None:
+            logger.debug("navigation facade: unknown page key %r", key)
+            return False
+        self.content_stack.setCurrentIndex(idx)
+        return True
+
+    def _on_page_changed(self, idx: int) -> None:
+        """The ``QTabWidget.currentChanged`` equivalent (V4.3.0: queue badge
+        refresh; V10.28.0: quarantine auto-reload) + the sidebar's active
+        destination (spec §5 "restrained green for the active
+        destination")."""
+        if 0 <= idx < len(self._page_active):
+            self.sidebar.set_active(self._page_active[idx])
+        widget = self.content_stack.widget(idx)
         if widget is None:
             return
         # Convert / Queue / Output Scanner are wrapped in QScrollArea — unwrap.
@@ -668,6 +701,11 @@ class ElixirWindow(QMainWindow):
         # overlay advertised the feature. The queue accepts PDFs (adds them
         # as queued books); anything else falls through to ignore().
         if self.queue_view.handle_dropped_files(paths):
+            # M2 (decision Q2): the dropped books land in the queue AND the
+            # Queue page opens — with the page unlisted from primary
+            # navigation, the page switch is the drop's visible effect (the
+            # old north tab bar at least kept the Queue tab in sight).
+            self.switch_to_page("queue")
             event.acceptProposedAction()
             return
         event.ignore()

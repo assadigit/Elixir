@@ -24,7 +24,9 @@ tests/test_v182048_p6_icon_cache.py / test_v0669_local_llm_lights.py):
      ``theme.py`` (the icon-signature neutral fallbacks in ``icons.py`` are
      the documented exception).
   7. Inter is bundled: 4 TTFs + OFL license in ``assets/fonts/``.
-  8. The M2 primitives exist and stay UNWIRED (no view imports them).
+  8. The M2 primitives exist and (since the M2 wiring commits) are
+     composed ONLY by the M2 dashboard surfaces — the fixed sidebar
+     (``sidebar.py``) and the home view (``home_view.py``).
 
 Qt-behaviour pins (``TestQtBehaviour``) run only where ``PySide6.QtGui``
 imports cleanly (the user's Windows machine); the headless recon sandbox
@@ -312,12 +314,22 @@ class TestDeHardcodeCensus:
         assert "#eceef4" not in code and "#3a3d47" not in code
         assert "theme_manager.palette" in code  # splash + overlay follow tokens
 
-    def test_tab_flash_uses_accent(self):
+    def test_navigation_facade_preserved_flash_dropped(self):
+        """M2: the north tab bar is retired; the M1 tab-flash (amber →
+        accent de-hardcode) went with it — the flash is DROPPED (the
+        full-content-area page switch replaces a 24 px tab-label
+        highlight; documented M2 decision). What must survive: the
+        ``_switch_to_tab`` public helper name + the window-side
+        ``switch_to_page`` facade, and zero colour literals."""
         code = _strip_comments(
             _src(_project_root / "ui_qt" / "views" / "convert_view.py")
         )
+        assert "def _switch_to_tab(self, tab_name: str) -> None:" in code
         assert "#D8AA78" not in code
-        assert "theme_manager.palette.accent" in code
+        assert "QColor" not in code, "the tab-flash paint must not survive the facade"
+        assert "switch_to_page" in code, "the facade must route to the window"
+        app_code = _strip_comments(_src(_project_root / "ui_qt" / "app.py"))
+        assert "def switch_to_page(self, key: str)" in app_code
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -353,7 +365,7 @@ class TestInterBundling:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 8. M2 primitives exist, unwired
+# 8. M2 primitives exist, wired by the dashboard surfaces
 # ════════════════════════════════════════════════════════════════════════════
 
 
@@ -364,14 +376,24 @@ class TestM2Primitives:
             assert f"class {cls}" in code
         assert '"SectionLabel", "SidebarNavItem", "QuickToolCard"' in code
 
-    def test_primitives_are_not_wired_into_any_view(self):
-        """M1 changes no dashboard layout — nothing imports them yet."""
+    def test_primitives_are_wired_by_the_m2_dashboard_surfaces(self):
+        """M2's first move (the M1 handoff contract): the fixed sidebar is
+        built ON the primitives. The M1-era inverse pin ("nothing imports
+        them") was rewritten with the M2 sidebar commit — the primitives
+        now MUST be composed, and only by M2 dashboard surfaces (sidebar
+        + home view), never by dialogs or unrelated views."""
+        sidebar = _project_root / "ui_qt" / "components" / "sidebar.py"
+        code = _strip_comments(_src(sidebar))
+        assert (
+            "from ui_qt.components.dashboard_primitives import SectionLabel, SidebarNavItem" in code
+        ), "the fixed sidebar must compose the M1 primitives"
+        allowed = {"dashboard_primitives.py", "sidebar.py", "home_view.py"}
         for p in (_project_root / "ui_qt").rglob("*.py"):
-            if p.name == "dashboard_primitives.py":
+            if p.name in allowed:
                 continue
             src = p.read_text(encoding="utf-8")
             assert "dashboard_primitives" not in src, (
-                f"{p} imports the M2 primitives (M1 scope violation)"
+                f"{p} imports the M2 primitives outside the dashboard surfaces"
             )
 
     def test_primitives_use_tokens_not_literals(self):

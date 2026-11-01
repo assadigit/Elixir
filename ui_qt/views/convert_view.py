@@ -252,44 +252,40 @@ class ConvertView(QWidget):
             self.log_viewer.append(f"Unknown tool: {tool_key}", "WARNING")
 
     def _switch_to_tab(self, tab_name: str) -> None:
-        """Switch to a tab by name — finds the parent QTabWidget."""
-        # V11.36.2: map tool keys to actual attribute names.
-        attr_map = {
-            "podcast_maker": "podcast_maker_view",
-            "output_scanner": "output_scanner_view",
-            "queue": "queue_view",
-            "batch_queue": "queue_view",
+        """Switch to a page by name — the M2 navigation facade.
+
+        V11.36.2 named this helper and mapped tool keys to tab attributes;
+        M2 keeps the public name + semantics and swaps the backing: the
+        north QTabWidget is gone, and the window owns a QStackedWidget +
+        a page index (``ElixirWindow.switch_to_page``). We walk the parent
+        chain to the window exactly like before.
+
+        The M1 tab-flash highlight (1.5 s accent-coloured tab label) is
+        DROPPED with the tab bar — a documented M2 decision: switching a
+        stacked page swaps the entire content area, so the destination is
+        unmissable without a flash, and the hidden pages' entry points
+        live in the About & System "Experimental tools…" section
+        (decision Q2) rather than behind a flashed tab.
+        """
+        key_map = {
+            "output_scanner": "output_scanner",
+            "queue": "queue",
+            "batch_queue": "queue",
+            "quarantine": "quarantine",
+            "hallucination_audit": "hallucination_audit",
+            "convert": "convert",
+            "home": "home",
         }
-        attr_name = attr_map.get(tab_name, tab_name)
+        key = key_map.get(tab_name, tab_name)
         parent = self.parent()
         while parent is not None:
-            if hasattr(parent, "tab_widget"):
-                # Find the tab by widget attribute name
-                tw = parent.tab_widget
-                for i in range(tw.count()):
-                    widget = tw.widget(i)
-                    inner = widget.widget() if hasattr(widget, "widget") else widget
-                    if hasattr(parent, attr_name) and inner is getattr(parent, attr_name):
-                        tw.setCurrentIndex(i)
-                        # Briefly highlight the tab (Q17: instant + highlight)
-                        # M1 de-hardcode: old amber literal → the active accent token.
-                        tw.tabBar().setTabTextColor(
-                            i,
-                            __import__("PySide6.QtGui", fromlist=["QColor"]).QColor(
-                                theme_manager.palette.accent
-                            ),
-                        )
-                        from PySide6.QtCore import QTimer
-
-                        def _reset_color(idx=i, tw=tw):
-                            tw.tabBar().setTabTextColor(
-                                idx, __import__("PySide6.QtGui", fromlist=["QColor"]).QColor()
-                            )
-
-                        QTimer.singleShot(1500, _reset_color)
-                        return
+            nav = getattr(parent, "switch_to_page", None)
+            if nav is not None:
+                if nav(key):
+                    return
+                break  # found the window, but the key has no page — warn below
             parent = parent.parent()
-        self.log_viewer.append(f"Could not find tab: {tab_name}", "WARNING")
+        self.log_viewer.append(f"Could not find page: {tab_name}", "WARNING")
 
     def _open_wizard(self) -> None:
         """Launch the Process Wizard."""
