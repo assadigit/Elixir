@@ -26,14 +26,19 @@ literals — the M1 zero-literal census covers this file).
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
+    QLabel,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from ui_qt.components.dashboard_primitives import SectionLabel, SidebarNavItem
+from ui_qt.components.icons import icon
+from ui_qt.theme import RADIUS, theme_manager
 
 # The fixed rail width (spec §5 "compact and fixed"; QA budget 200–220 px).
 SIDEBAR_WIDTH = 210
@@ -90,6 +95,184 @@ def nav_keys() -> list[str]:
         keys.extend(key for key, _icon, _label in items)
     keys.extend(key for key, _icon, _label in NAV_FOOTER)
     return keys
+
+
+# Below this rail height the brand card hides (spec §7 narrow-width rule:
+# a 560×400 window keeps the nav + footer, drops the decorative moment).
+_BRAND_MIN_RAIL_H = 520
+
+
+class SidebarBrandCard(QFrame):
+    """The approved reference's sidebar-bottom brand moment (M3 asset
+    audit): a compact card — leaf glyph + the brand line — over the
+    supplied ``assets/botanical_landscape.png`` misty-hills panorama.
+
+    The landscape ships with a baked cream canvas (the package's
+    ASSET_GUIDE flags it as an *optional* motif), so it is never pasted
+    raw: it is composited onto the current card surface and muted with a
+    surface scrim, which keeps it a quiet watermark in light theme and a
+    dusk landscape in dark theme (token-only — the M1 zero-literal
+    census covers this file).  If the asset is absent (thin bundles) the
+    art hides and the card degrades to the text-only brand line.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("Card")
+        self._pm_key: tuple | None = None
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 10, 0, 0)
+        root.setSpacing(0)
+
+        # ── leaf glyph + the two-line brand text ──────────────────────
+        row = QHBoxLayout()
+        row.setContentsMargins(12, 0, 12, 0)
+        row.setSpacing(6)
+        self._leaf = QLabel()
+        self._leaf.setFixedSize(14, 14)
+        row.addWidget(self._leaf, 0, Qt.AlignmentFlag.AlignTop)
+
+        text = QVBoxLayout()
+        text.setSpacing(0)
+        line1 = QLabel("Knowledge,")
+        line1.setObjectName("H3")
+        text.addWidget(line1)
+        self._line2 = QLabel("distilled into clarity.")
+        text.addWidget(self._line2)
+        row.addLayout(text, 1)
+        root.addLayout(row)
+
+        # ── the misty-hills panorama — full-bleed: spans the card width
+        # and sits flush on the card's bottom edge (the approved
+        # reference anchors the art to the card bottom, clipped by the
+        # rounded corners).  The composite fades its top into the
+        # surface so there is never a hard pasted-edge line.
+        self._art = QLabel()
+        self._art.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter)
+        art_wrap = QVBoxLayout()
+        art_wrap.setContentsMargins(0, 6, 0, 0)
+        art_wrap.addWidget(self._art)
+        root.addLayout(art_wrap)
+
+        self._apply_art()
+        self._apply_text_style()
+
+    # ── theming ───────────────────────────────────────────────────────────
+    def refresh_theme(self) -> None:
+        """Re-tint the glyph and re-composite the art (theme toggle hook)."""
+        self._pm_key = None  # force a rebuild against the new surface
+        self._apply_art()
+        self._apply_text_style()
+
+    def _apply_text_style(self) -> None:
+        """Glyph tint + the secondary line colour (token-driven)."""
+        from ui_qt.theme import FONT, WEIGHT
+
+        p = theme_manager.palette
+        self._leaf.setPixmap(icon("leaf", p.accent, 14).pixmap(14, 14))
+        self._line2.setStyleSheet(
+            f"font-size: {FONT.body}px; font-weight: {WEIGHT.regular};"
+            f"color: {p.text_secondary}; background: transparent;"
+        )
+
+    def _apply_art(self) -> None:
+        """Composite the landscape as a full-bleed bottom strip.
+
+        Same contract as the hero's ``_flattened_hero_pixmap`` (flatten
+        onto the surface token) plus two integration steps the raw asset
+        needs (its cream canvas is baked in — the package ASSET_GUIDE
+        flags it as an optional motif, never paste it raw):
+
+        1. a surface scrim mutes the canvas toward the card surface
+           (light: a quiet watermark; dark: a dusk landscape);
+        2. the strip's TOP fades into the surface over its upper 40%
+           (alpha gradient) — no hard pasted-edge line — and the BOTTOM
+           corners clip to the card radius so the art cannot poke out
+           of the rounded card.
+
+        Cached per (width, surface, scrim) key — a theme toggle or rail
+        resize rebuilds it, nothing else does.
+        """
+        from app_paths import bundle_dir
+
+        p = theme_manager.palette
+        scrim = 0.45 if not p.is_dark else 0.55
+        w = self._art.width() or max(1, self.width() - 2)
+        key = (w, p.bg_surface, scrim)
+        if key == self._pm_key:
+            return
+        self._pm_key = key
+
+        src_path = bundle_dir() / "assets" / "botanical_landscape.png"
+        src = QPixmap(str(src_path)) if src_path.exists() else QPixmap()
+        if src.isNull():  # asset absent (thin bundles) → text-only card
+            self._art.hide()
+            self._art.clear()
+            return
+        scaled_h = max(1, round(src.height() * w / src.width()))
+        scaled = src.scaled(
+            w,
+            scaled_h,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        # Keep the strip compact: crop from the TOP (the fade erases the
+        # crop line) so the hills' lower band fills the strip.
+        strip_h = min(scaled_h, 96)
+        flat = QImage(w, strip_h, QImage.Format.Format_ARGB32_Premultiplied)
+        flat.fill(QColor(p.bg_surface))
+        painter = QPainter(flat)
+        painter.drawPixmap(0, 0, scaled, 0, scaled_h - strip_h, w, strip_h)
+        scrim_color = QColor(p.bg_surface)
+        scrim_color.setAlphaF(scrim)
+        painter.fillRect(0, 0, w, strip_h, scrim_color)
+        painter.end()
+
+        # Top fade: multiply the flattened strip by a vertical alpha
+        # ramp (transparent at the top → opaque at 40% down) so the art
+        # emerges out of the card surface instead of starting at a line.
+        fade = QImage(w, strip_h, QImage.Format.Format_ARGB32_Premultiplied)
+        fade.fill(QColor(0, 0, 0, 0))
+        from PySide6.QtGui import QLinearGradient
+
+        grad = QLinearGradient(0, 0, 0, strip_h)
+        grad.setColorAt(0.0, QColor(0, 0, 0, 0))
+        grad.setColorAt(0.4, QColor(0, 0, 0, 255))
+        grad.setColorAt(1.0, QColor(0, 0, 0, 255))
+        fp = QPainter(fade)
+        fp.fillRect(0, 0, w, strip_h, grad)
+        fp.end()
+        fp = QPainter(flat)
+        fp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        fp.drawImage(0, 0, fade)
+        fp.end()
+
+        # Bottom-corner clip at the card radius (top is faded, not cut).
+        clip = QPainterPath()
+        r = float(RADIUS.lg)
+        clip.moveTo(0, 0)
+        clip.lineTo(w, 0)
+        clip.lineTo(w, strip_h - r)
+        clip.quadTo(w, strip_h, w - r, strip_h)
+        clip.lineTo(r, strip_h)
+        clip.quadTo(0, strip_h, 0, strip_h - r)
+        clip.closeSubpath()
+        out = QPixmap(w, strip_h)
+        out.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(out)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setClipPath(clip)
+        painter.drawImage(0, 0, flat)
+        painter.end()
+
+        self._art.setPixmap(out)
+        self._art.show()
+
+    # ── geometry ─────────────────────────────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        self._apply_art()
 
 
 class Sidebar(QFrame):
@@ -158,6 +341,25 @@ class Sidebar(QFrame):
             footer.addWidget(item)
         root.addLayout(footer)
 
+        # ── the brand moment (approved reference, sidebar bottom) ─────
+        # M3 asset audit: hills panorama + leaf + the brand line.  Lives
+        # BELOW the pinned footer exactly as in the approved dashboard
+        # reference; hides on short rails (see resizeEvent).
+        brand_wrap = QVBoxLayout()
+        brand_wrap.setContentsMargins(10, 8, 10, 0)
+        self._brand = SidebarBrandCard()
+        brand_wrap.addWidget(self._brand)
+        root.addLayout(brand_wrap)
+
+    # ── geometry ─────────────────────────────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """Spec §7 narrow-height rule: below _BRAND_MIN_RAIL_H the nav
+        and pinned footer keep their space; the decorative brand card
+        hides (it never displaces navigation)."""
+        super().resizeEvent(event)
+        if hasattr(self, "_brand"):
+            self._brand.setVisible(self.height() >= _BRAND_MIN_RAIL_H)
+
     # ── state ───────────────────────────────────────────────────────────
     def set_active(self, key: str | None) -> None:
         """Mark ``key`` as the current destination (None clears all)."""
@@ -169,7 +371,19 @@ class Sidebar(QFrame):
         """Re-apply theme-dependent styles (theme toggle hook)."""
         for item in self._items.values():
             item.refresh_theme()
+        # M3 asset audit: the brand card re-composites its panorama and
+        # re-tints the leaf glyph against the new surface tokens.
+        if hasattr(self, "_brand"):
+            self._brand.refresh_theme()
         # SectionLabel + the rail chrome are QSS-driven — nothing to redo.
 
 
-__all__ = ["Sidebar", "NAV_GROUPS", "NAV_FOOTER", "EXPERIMENTAL_KEYS", "SIDEBAR_WIDTH", "nav_keys"]
+__all__ = [
+    "Sidebar",
+    "SidebarBrandCard",
+    "NAV_GROUPS",
+    "NAV_FOOTER",
+    "EXPERIMENTAL_KEYS",
+    "SIDEBAR_WIDTH",
+    "nav_keys",
+]
