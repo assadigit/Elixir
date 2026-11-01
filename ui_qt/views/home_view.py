@@ -267,7 +267,7 @@ class HomeView(QWidget):
         The asset is 632×330 RGBA with a soft halo quarter (the M1
         inspection): pasting it straight onto a different ground would
         leave a pale rectangle. Compositing against the exact ``QFrame#
-        HeroCard`` fill (``palette.bg_elevated`` — MUST stay in sync with
+        HeroCard`` fill (``palette.bg_hero`` — MUST stay in sync with
         the QSS rule) keeps the halo invisible in BOTH themes — and is
         why ``refresh_theme`` re-runs this instead of caching one pixmap.
         """
@@ -282,7 +282,7 @@ class HomeView(QWidget):
         w = min(max_w, src.width())
         h = max(1, round(src.height() * w / src.width()))
         flat = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
-        flat.fill(QColor(theme_manager.palette.bg_elevated))
+        flat.fill(QColor(theme_manager.palette.bg_hero))
         painter = QPainter(flat)
         painter.drawPixmap(
             0,
@@ -310,7 +310,7 @@ class HomeView(QWidget):
         resize drag only recomposites on step or theme crossings.
         """
         budget = self._hero_image_budget()
-        key = (budget, theme_manager.palette.bg_elevated)
+        key = (budget, theme_manager.palette.bg_hero)
         if key != self._hero_pm_key:
             if budget == 0:
                 self._hero_pm_key = ("hidden",)

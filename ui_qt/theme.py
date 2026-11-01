@@ -80,18 +80,25 @@ FONT = _ns(
     h1=18,  # hero / dialog titles
     display=22,  # splash / numbers
     # ── M1 dashboard-facing additions (spec §4 ranges) ──────────────────
-    body_lg=13,  # dashboard body / supporting copy (spec 13–14)
-    tool=14,  # quick-tool card titles (spec 14–15)
-    sidebar=12,  # sidebar nav labels, medium weight (spec 12–13)
-    section=17,  # dashboard section headings (spec 16–18)
-    hero=28,  # hero heading (spec 26–30)
+    # V0.6.76 (visual-fidelity pass): retuned to the PIXEL MEASUREMENTS of
+    # the approved reference (1536×1024) — eyebrow cap ~11px, headline
+    # ascender ~30px over two ~46px lines, support ~20px ascender 17px,
+    # section heading cap ~16px, card titles ~15px, nav labels ~13px.
+    eyebrow=13,  # hero eyebrow (tracked uppercase, reference cap ~11px)
+    body_lg=20,  # dashboard body / hero support copy (reference ascender 17px)
+    tool=15,  # quick-tool card titles (reference ~15px semibold)
+    tool_desc=12.5,  # quick-tool card descriptions (reference ~12px)
+    sidebar=13,  # sidebar nav labels, medium weight (reference ~13px)
+    section=20,  # dashboard section headings ("Quick Tools", cap ~16px)
+    hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
+    brand=22,  # sidebar "Elixir" wordmark (reference band ~45px)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
 WEIGHT = _ns(regular=400, medium=500, semibold=600, bold=700)
 
 # Corner radii
-RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10)
+RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10, nav=10, card=14, hero=16, shell=18)
 
 # The deliberately theme-independent "code editor" surface (VS Code-like
 # dark panel for live logs / script previews — dark in BOTH themes by
@@ -118,11 +125,18 @@ class Palette:
     is_dark: bool
 
     # surfaces
-    bg_window: str  # outermost app background
+    bg_window: str  # outermost app background (the canvas right of the sidebar)
     bg_surface: str  # cards / panels
     bg_elevated: str  # hover / popups / raised elements
     bg_input: str  # line-edits, combos, text areas
     bg_input_hover: str
+    # V0.6.76 (visual-fidelity pass): the reference's per-zone warm grounds —
+    # the approved dashboard paints the sidebar, header strip, and hero in
+    # three subtly different warm tones over the canvas.
+    bg_sidebar: str  # the fixed nav rail
+    bg_header: str  # the top bar + the bottom status strip
+    bg_hero: str  # the hero panel's warm cream band
+    bg_backdrop: str  # the desktop-like ground behind the floating shell
 
     # lines
     border: str  # hairline 1px
@@ -140,6 +154,7 @@ class Palette:
     accent_pressed: str
     accent_soft: str  # subtle fill behind selected items (spec accent-subtle)
     icon: str  # default monochrome icon tint (spec `icon` token, M1)
+    sage: str  # the reference's muted sage — card icons / decor / status dot
 
     # semantics (muted, not garish)
     success: str
@@ -154,22 +169,27 @@ class Palette:
 DARK = Palette(
     name="dark",
     is_dark=True,
-    bg_window="#20231F",  # warm forest-tinted charcoal (spec background)
-    bg_surface="#292D28",  # card surface (spec surface)
-    bg_elevated="#30362F",  # hover / popups (spec surface-subtle)
-    bg_input="#1B1E1A",  # recessed input wells (darker than window)
-    bg_input_hover="#242822",
-    border="#3B423A",  # sage-tinted hairline (spec border)
+    bg_window="#1F231E",  # warm forest-tinted charcoal (spec background)
+    bg_surface="#2A2E27",  # card surface (spec surface)
+    bg_elevated="#31362E",  # hover / popups (spec surface-subtle)
+    bg_input="#191D18",  # recessed input wells (darker than window)
+    bg_input_hover="#232822",
+    bg_sidebar="#242820",  # the rail — one step warmer than the canvas
+    bg_header="#232720",  # the top bar / status strip
+    bg_hero="#272B24",  # the hero's dusk band
+    bg_backdrop="#161A15",  # the dimmed ground behind the shell
+    border="#3A4139",  # sage-tinted hairline (spec border)
     border_strong="#5C6B5E",  # mid sage — focus / selected outlines
     text_primary="#ECEEE8",  # warm ivory (spec text-primary)
     text_secondary="#A8AEA3",  # sage-gray supporting text (spec text-secondary)
     text_muted="#7A8175",  # dim sage-gray
     text_on_accent="#1E231E",  # charcoal text on the sage accent
-    accent="#91AD91",  # muted sage green (spec accent)
-    accent_hover="#A4BDA2",  # spec accent-hover
+    accent="#8FA98F",  # muted sage green (spec accent)
+    accent_hover="#9DB69B",  # spec accent-hover
     accent_pressed="#7E997C",  # derived: one step deeper than accent
-    accent_soft="#354238",  # quiet accent backgrounds (spec accent-subtle)
+    accent_soft="#333B30",  # quiet accent backgrounds (spec accent-subtle)
     icon="#B3BBAF",  # default icon tint (spec icon)
+    sage="#9DB49B",  # card icons / status dot (light-mode #53624B's dark twin)
     success="#A9C178",  # yellow-leaning sage (distinct from the sage accent)
     warning="#D8BC66",  # warm gold
     error="#DC9484",  # warm terracotta-red
@@ -178,25 +198,35 @@ DARK = Palette(
 
 # M1 (UI/UX redesign): the approved spec §3 light palette — warm ivory
 # ground, white surfaces, deep forest-green accent, charcoal-olive text.
+# V0.6.76 (visual-fidelity pass): every value re-measured against the
+# approved dashboard reference PNG at 1536×1024 (canvas #FAF7F2 sampled at
+# (500,700); sidebar #F5F2ED at (250,460); header #FBF8F3 at (800,60);
+# hero #F5F0E6 at (500,300); cards #FCFAF5; the Home pill fill #DEDFD6;
+# the CTA fill ~#313C31 averaged over its body; card icon strokes #53624B).
 LIGHT = Palette(
     name="light",
     is_dark=False,
-    bg_window="#F6F5F0",  # warm ivory (spec background)
-    bg_surface="#FFFFFF",  # pure white cards (spec surface)
-    bg_elevated="#EFEEE7",  # hover / popups (spec surface-subtle)
+    bg_window="#FAF7F2",  # warm ivory canvas (reference main ground)
+    bg_surface="#FCFAF5",  # near-white cream cards (reference card fill)
+    bg_elevated="#F1EFE7",  # hover / popups (one step warmer than canvas)
     bg_input="#FFFFFF",  # white inputs (border-separated)
     bg_input_hover="#F7F8F3",  # barely-there green-tinted hover
-    border="#E2E1D9",  # warm hairline (spec border)
+    bg_sidebar="#F5F2ED",  # the rail's warm ivory (reference x∈[22,287])
+    bg_header="#FBF8F3",  # the top bar / status strip cream
+    bg_hero="#F5F0E6",  # the hero's warm cream band (reference fill)
+    bg_backdrop="#EFECE5",  # the reference's desktop ground (warm grey)
+    border="#E8E4DA",  # warm hairline (reference card borders)
     border_strong="#8FA08D",  # mid sage — focus / selected outlines
-    text_primary="#252923",  # deep charcoal-olive (spec text-primary)
-    text_secondary="#70756D",  # sage-gray supporting text (spec text-secondary)
+    text_primary="#1D2423",  # deep charcoal-ink (reference headline)
+    text_secondary="#59615F",  # sage-gray supporting text
     text_muted="#9CA196",  # light sage-gray
     text_on_accent="#FFFFFF",  # white text on the deep forest accent
-    accent="#3F634D",  # muted forest green (spec accent)
-    accent_hover="#34543F",  # spec accent-hover
-    accent_pressed="#2C4736",  # derived: one step deeper than hover
-    accent_soft="#E6EDE6",  # quiet accent backgrounds (spec accent-subtle)
-    icon="#626A60",  # default icon tint (spec icon)
+    accent="#313C31",  # deep forest (reference CTA fill, measured)
+    accent_hover="#2A352B",  # one step deeper on hover
+    accent_pressed="#242F25",  # pressed depth
+    accent_soft="#DEDFD6",  # the Home pill's pale sage (measured fill)
+    icon="#4A524C",  # dark sage-charcoal icons (reference nav strokes)
+    sage="#53624B",  # card icons / status dot (reference card glyph tint)
     success="#6F9462",  # muted yellow-green sage (distinct from the forest accent)
     warning="#C99A3E",  # warm gold
     error="#BD664F",  # warm terracotta-red
@@ -298,11 +328,52 @@ def _qss(p: Palette) -> str:
     /* V0.6.75 (the reference comparison): the hero's own tinted container —
        the mockup's warm band sitting one step above the page ground. The
        hero illustration is flattened against THIS fill (home_view's
-       _flattened_hero_pixmap — the two must stay in sync). */
+       _flattened_hero_pixmap — the two must stay in sync).
+       V0.6.76 (visual-fidelity pass): the dedicated ``bg_hero`` token + the
+       reference's ~16 px corner radius. */
     QFrame#HeroCard {{
-        background-color: {p.bg_elevated};
+        background-color: {p.bg_hero};
         border: 1px solid {p.border};
-        border-radius: {RADIUS.xl}px;
+        border-radius: {RADIUS.hero}px;
+    }}
+    /* V0.6.76 (visual-fidelity pass): the unified floating application
+       shell — the reference's softly elevated surface with rounded outer
+       corners (18 px measured) living on a ~21 px backdrop margin. */
+    QFrame#AppShell {{
+        background-color: {p.bg_window};
+        border: 1px solid {p.border};
+        border-radius: {RADIUS.shell}px;
+    }}
+    QWidget#WindowBackdrop {{
+        background-color: {p.bg_backdrop};
+        border: none;
+    }}
+    /* The reference's Quick Tool cards — near-white cream, warm hairline,
+       ~14 px radius, no shadow. */
+    QFrame#QuickToolCard {{
+        background-color: {p.bg_surface};
+        border: 1px solid {p.border};
+        border-radius: {RADIUS.card}px;
+    }}
+    /* The ninth card — the deep forest feature card ("Full Conversion
+       Wizard"), light type on the accent ground. */
+    QFrame#FeatureToolCard {{
+        background-color: {p.accent};
+        border: 1px solid {p.accent};
+        border-radius: {RADIUS.card}px;
+        color: {p.text_on_accent};
+    }}
+    /* The persistent bottom status strip (reference ~56 px, full inner
+       width, hairline top border, cream surface). */
+    QFrame#StatusStrip {{
+        background-color: {p.bg_header};
+        border: none;
+        border-top: 1px solid {p.border};
+    }}
+    QFrame#SidebarBrandCard {{
+        background-color: {p.bg_surface};
+        border: 1px solid {p.border};
+        border-radius: {RADIUS.card}px;
     }}
     QFrame#StepBadge {{
         background-color: {p.accent};
@@ -317,18 +388,21 @@ def _qss(p: Palette) -> str:
         max-height: 1px; min-height: 1px;
     }}
     QFrame#TopBar {{
-        background-color: {p.bg_window};
+        background-color: {p.bg_header};
         border: none;
-        border-bottom: 1px solid {p.border};
+        border-top-left-radius: {RADIUS.shell}px;
+        border-top-right-radius: {RADIUS.shell}px;
     }}
     /* M2 (UI/UX redesign): the fixed left nav rail — spec §5 "compact and
-       fixed, always visible". A surface-toned rail with a hairline right
-       edge (light: white rail on the ivory ground; dark: raised panel on
-       the charcoal ground) — quiet separation, no shadow. */
+       fixed, always visible". V0.6.76 (visual-fidelity pass): the
+       reference's warm ivory rail (``bg_sidebar``), hairline right edge,
+       and the shell's rounded TOP-LEFT corner (the rail owns that corner
+       of the floating shell; the status strip owns the bottom two). */
     QFrame#SidebarRail {{
-        background-color: {p.bg_surface};
+        background-color: {p.bg_sidebar};
         border: none;
         border-right: 1px solid {p.border};
+        border-top-left-radius: {RADIUS.shell}px;
     }}
 
     /* Scrollable content surfaces */
@@ -369,16 +443,17 @@ def _qss(p: Palette) -> str:
         font-size: {FONT.caption}px; color: {p.accent}; font-weight: {WEIGHT.medium};
     }}
 
-    /* M2-ready dashboard-facing labels (spec §4 type scale; no existing
-       view uses these object names yet — the M2 hero/sidebar/grid will). */
+    /* M2-ready dashboard-facing labels (spec §4 type scale). V0.6.76
+       (visual-fidelity pass): sizes retuned to the reference measurements
+       — hero 41 px semibold, support 20 px, section 20 px, tool 15 px. */
     QLabel#Hero {{
         font-size: {FONT.hero}px; font-weight: {WEIGHT.semibold};
         color: {p.text_primary};
     }}
     QLabel#Eyebrow {{
-        font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
-        color: {p.text_secondary};
-        letter-spacing: 1.4px;
+        font-size: {FONT.eyebrow}px; font-weight: {WEIGHT.semibold};
+        color: {p.sage};
+        letter-spacing: 1.6px;
     }}
     QLabel#Support {{
         font-size: {FONT.body_lg}px; font-weight: {WEIGHT.regular};
@@ -392,6 +467,10 @@ def _qss(p: Palette) -> str:
         font-size: {FONT.tool}px; font-weight: {WEIGHT.medium};
         color: {p.text_primary};
     }}
+    QLabel#ToolDesc {{
+        font-size: {FONT.tool_desc}px; font-weight: {WEIGHT.regular};
+        color: {p.text_muted};
+    }}
     QLabel#SidebarLabel {{
         font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
         color: {p.text_secondary};
@@ -400,6 +479,11 @@ def _qss(p: Palette) -> str:
         font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
         color: {p.text_muted};
         letter-spacing: 0.8px;
+    }}
+    QLabel#BrandWord {{
+        font-size: {FONT.brand}px; font-weight: {WEIGHT.semibold};
+        color: {p.text_primary};
+        letter-spacing: 0.2px;
     }}
 
     /* ════════════════════════════════════════════════════════════════════
@@ -452,16 +536,16 @@ def _qss(p: Palette) -> str:
 
     /* M2-ready hero CTA — the single dominant dashboard action
        (dashboard-facing type scale; larger than the dialog Primary).
-       V0.6.75: the approved reference mockup's pill — 18 px on the
-       ~37 px-tall button is a full capsule (Qt QSS does NOT clamp an
-       oversized radius like 999 px to a pill; it renders nearly square). */
+       V0.6.76 (visual-fidelity pass): the reference's measured capsule —
+       ~258×57 px with a ~28 px radius (a true pill at this height),
+       16 px label, generous horizontal padding. */
     QPushButton#HeroPrimary {{
         background-color: {p.accent};
         color: {p.text_on_accent};
         border: none;
-        border-radius: 18px;
-        padding: 10px 24px;
-        font-size: {FONT.tool}px; font-weight: {WEIGHT.semibold};
+        border-radius: 28px;
+        padding: 14px 26px;
+        font-size: 16px; font-weight: {WEIGHT.semibold};
         outline: none;
     }}
     QPushButton#HeroPrimary:hover {{
@@ -473,6 +557,102 @@ def _qss(p: Palette) -> str:
     QPushButton#HeroPrimary:disabled {{
         background-color: {p.bg_input};
         color: {p.text_muted};
+    }}
+
+    /* V0.6.76 (visual-fidelity pass): the top bar's backend status pill —
+       the reference's compact capsule (green dot + "Ollama" + chevron),
+       a barely-lighter fill on the header cream with a hairline border. */
+    QPushButton#BackendPill {{
+        background-color: {p.bg_surface};
+        color: {p.text_primary};
+        border: 1px solid {p.border};
+        border-radius: 18px;
+        padding: 6px 14px;
+        font-size: {FONT.body_lg}px; font-weight: {WEIGHT.medium};
+        outline: none;
+    }}
+    QPushButton#BackendPill:hover {{
+        border-color: {p.border_strong};
+        background-color: {p.bg_elevated};
+    }}
+
+    /* V0.6.76: the frameless shell's window controls — quiet glyph buttons
+       at the reference's ~54 px pitch; the close hover gets the standard
+       warm red affordance. */
+    QPushButton#WinCtrl {{
+        background-color: transparent;
+        color: {p.text_secondary};
+        border: none;
+        border-radius: {RADIUS.sm}px;
+        min-width: 34px; min-height: 30px;
+        max-width: 34px; max-height: 30px;
+        font-size: {FONT.body}px;
+        outline: none;
+    }}
+    QPushButton#WinCtrl:hover {{
+        background-color: {p.bg_elevated};
+        color: {p.text_primary};
+    }}
+    QPushButton#WinCtrl:pressed {{
+        background-color: {p.bg_input};
+    }}
+    QPushButton#CloseBtn {{
+        background-color: transparent;
+        color: {p.text_secondary};
+        border: none;
+        border-radius: {RADIUS.sm}px;
+        min-width: 34px; min-height: 30px;
+        max-width: 34px; max-height: 30px;
+        font-size: {FONT.body}px;
+        outline: none;
+    }}
+    QPushButton#CloseBtn:hover {{
+        background-color: {p.error};
+        color: {p.text_on_accent};
+    }}
+    QPushButton#CloseBtn:pressed {{
+        background-color: {p.error};
+        color: {p.text_on_accent};
+    }}
+
+    /* V0.6.76: the status strip's theme selector + the Quick Tools
+       "View all tools →" action — quiet text buttons. */
+    QPushButton#StatusThemeBtn {{
+        background-color: transparent;
+        color: {p.text_secondary};
+        border: none;
+        border-radius: {RADIUS.sm}px;
+        padding: 6px 10px;
+        font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
+        outline: none;
+    }}
+    QPushButton#StatusThemeBtn:hover {{
+        background-color: {p.bg_elevated};
+        color: {p.text_primary};
+    }}
+    QPushButton#ViewAllLink {{
+        background-color: transparent;
+        color: {p.text_secondary};
+        border: none;
+        padding: 4px 6px;
+        font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
+        outline: none;
+    }}
+    QPushButton#ViewAllLink:hover {{
+        color: {p.accent};
+    }}
+    /* V0.6.76: the sidebar nav rows — the reference's ~37 px rows with a
+       10 px radius and the pale-sage active pill. */
+    QWidget#SidebarNavItem {{
+        background: transparent;
+        border: none;
+        border-radius: {RADIUS.nav}px;
+    }}
+    QWidget#SidebarNavItem:hover {{
+        background: {rgba(p.text_primary, 0.05)};
+    }}
+    QWidget#SidebarNavItem[active="true"] {{
+        background: {p.accent_soft};
     }}
 
     /* Secondary — outline */

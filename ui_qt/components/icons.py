@@ -213,6 +213,15 @@ ICONS: dict[str, str] = {
         '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>'
         '<path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>'
     ),
+    # V0.6.76 (visual-fidelity pass): the frameless shell's window controls
+    # + the hero CTA's arrow affordance (Lucide, same 24×24 stroke family).
+    "minus": ('<path d="M5 12h14"/>'),
+    "square": ('<rect width="18" height="18" x="3" y="3" rx="2"/>'),
+    "restore": (
+        '<rect width="8" height="8" x="8" y="8" rx="1"/>'
+        '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
+    ),
+    "arrow-right": ('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'),
 }
 
 

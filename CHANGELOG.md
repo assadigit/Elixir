@@ -31,6 +31,45 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.76 — visual-fidelity pass 1/N: the theme foundation re-measured against the approved reference (per-zone warm grounds, the reference's measured type scale + radii, new shell/pill/status/card QSS rules, window-control glyphs)
+
+The ELIXIR_VISUAL_FIDELITY_CORRECTION_SPEC (this session's brief) sets a
+99% perceived-similarity target against
+`reference/approved_dashboard_visual_reference.png` (1536x1024) inside
+`ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip`. Before any layout moves, the
+token layer is re-pinned to PIXEL MEASUREMENTS taken from that reference
+(sample points documented beside each value):
+
+- Palette (light): canvas #FAF7F2, cards #FCFAF5, hairlines #E8E4DA,
+  headline ink #1D2423, secondary #59615F, CTA forest #313C31, the Home
+  pill's pale sage #DEDFD6, card-icon sage #53624B. Four new zone tokens
+  (`bg_sidebar` #F5F2ED, `bg_header` #FBF8F3, `bg_hero` #F5F0E6,
+  `bg_backdrop`) reproduce the reference's per-zone warm grounds; the
+  hero illustration now flattens against `bg_hero`.
+- Type scale (dashboard-facing keys only; the frozen dialog scale is
+  untouched): hero 28 -> 41 px (measured ascender ~30 px over two ~46 px
+  lines), support 13 -> 20, section 17 -> 20, tool 14 -> 15,
+  sidebar 12 -> 13, + eyebrow 13 / tool_desc 12.5 / brand 22.
+- Radii: + nav 10 (the Home pill), card 14, hero 16, shell 18.
+- New QSS rules for the structure that lands next: `QFrame#AppShell`
+  (the floating rounded shell), `QWidget#WindowBackdrop`,
+  `QFrame#QuickToolCard` + `#FeatureToolCard` (the 9th dark card),
+  `QFrame#StatusStrip`, `QFrame#SidebarBrandCard`, the backend pill,
+  the window controls (with the red close hover), the status theme
+  selector, the "View all tools" link, and the reference's nav-row
+  treatment (37 px rows, 10 px radius, pale-sage active pill).
+- Icons: + `minus` / `square` / `restore` / `arrow-right` (Lucide
+  fragments) for the frameless window controls and the hero CTA's arrow
+  affordance.
+- The hero CTA grows to the reference's measured capsule (~258x57 px,
+  28 px radius, 16 px label).
+
+Tests: `test_m1_theme_tokens.py` re-pinned to the measured values (the
+field-set pin extended additively; the dialog-scale pin unchanged);
+43 passed / 5 Qt-dependent skips locally, `ruff check` green. No layout
+changed in this commit — the shell/sidebar/topbar/status restructure is
+the next version.
+
 ## V0.6.75 — the hero matches the approved reference: hero_books_quill.png renders at EVERY realistic window width (~45% of the hero), replacing the fixed 200/260 px buckets that hid it below 760 px of content
 
 The user's side-by-side (the reference mockup

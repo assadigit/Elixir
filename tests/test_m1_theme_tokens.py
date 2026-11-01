@@ -112,36 +112,46 @@ def _contrast(fg: str, bg: str) -> float:
 
 
 class TestSpecPalettePins:
-    """Both palettes carry the approved spec §3 tokens (AST pins)."""
+    """Both palettes carry the approved spec §3 tokens (AST pins).
+
+    V0.6.76 (visual-fidelity pass): the light values are re-pinned to the
+    PIXEL MEASUREMENTS of the approved dashboard reference (see the
+    LIGHT palette's comment block in theme.py for the sample points)."""
 
     def test_light_spec_values(self):
         kw = _palette_kwargs("LIGHT")
-        assert kw["bg_window"] == "#F6F5F0"
-        assert kw["bg_surface"] == "#FFFFFF"
-        assert kw["bg_elevated"] == "#EFEEE7"  # spec surface-subtle
-        assert kw["text_primary"] == "#252923"
-        assert kw["text_secondary"] == "#70756D"
-        assert kw["border"] == "#E2E1D9"
-        assert kw["accent"] == "#3F634D"
-        assert kw["accent_hover"] == "#34543F"
-        assert kw["accent_soft"] == "#E6EDE6"  # spec accent-subtle
-        assert kw["icon"] == "#626A60"
+        assert kw["bg_window"] == "#FAF7F2"  # reference canvas (measured)
+        assert kw["bg_surface"] == "#FCFAF5"  # reference card fill (measured)
+        assert kw["bg_elevated"] == "#F1EFE7"  # hover — one step warmer
+        assert kw["bg_sidebar"] == "#F5F2ED"  # reference rail (measured)
+        assert kw["bg_header"] == "#FBF8F3"  # reference top bar (measured)
+        assert kw["bg_hero"] == "#F5F0E6"  # reference hero band (measured)
+        assert kw["text_primary"] == "#1D2423"
+        assert kw["text_secondary"] == "#59615F"
+        assert kw["border"] == "#E8E4DA"
+        assert kw["accent"] == "#313C31"  # reference CTA fill (measured)
+        assert kw["accent_hover"] == "#2A352B"
+        assert kw["accent_soft"] == "#DEDFD6"  # the Home pill fill (measured)
+        assert kw["icon"] == "#4A524C"
+        assert kw["sage"] == "#53624B"  # reference card icon tint (measured)
 
     def test_dark_spec_values(self):
         kw = _palette_kwargs("DARK")
-        assert kw["bg_window"] == "#20231F"
-        assert kw["bg_surface"] == "#292D28"
-        assert kw["bg_elevated"] == "#30362F"  # spec surface-subtle
+        assert kw["bg_window"] == "#1F231E"
+        assert kw["bg_surface"] == "#2A2E27"
+        assert kw["bg_elevated"] == "#31362E"  # spec surface-subtle
         assert kw["text_primary"] == "#ECEEE8"
         assert kw["text_secondary"] == "#A8AEA3"
-        assert kw["border"] == "#3B423A"
-        assert kw["accent"] == "#91AD91"
-        assert kw["accent_hover"] == "#A4BDA2"
-        assert kw["accent_soft"] == "#354238"  # spec accent-subtle
+        assert kw["border"] == "#3A4139"
+        assert kw["accent"] == "#8FA98F"
+        assert kw["accent_hover"] == "#9DB69B"
+        assert kw["accent_soft"] == "#333B30"  # spec accent-subtle
         assert kw["icon"] == "#B3BBAF"
+        assert kw["sage"] == "#9DB49B"
 
     def test_icon_field_is_purely_additive(self):
-        """The pre-M1 21 fields survive untouched; ``icon`` is the +1."""
+        """The pre-M1 21 fields survive untouched; ``icon``/``sage``/the
+        V0.6.76 zone grounds are the additive extensions."""
         pre_m1_fields = {
             "name", "is_dark", "bg_window", "bg_surface", "bg_elevated",
             "bg_input", "bg_input_hover", "border", "border_strong",
@@ -152,7 +162,14 @@ class TestSpecPalettePins:
         for name in ("LIGHT", "DARK"):
             fields = set(_palette_kwargs(name))
             assert pre_m1_fields <= fields, f"{name}: pre-M1 field renamed/removed"
-            assert fields - pre_m1_fields == {"icon"}, f"{name}: unexpected new fields"
+            assert fields - pre_m1_fields == {
+                "icon",
+                "sage",
+                "bg_sidebar",
+                "bg_header",
+                "bg_hero",
+                "bg_backdrop",
+            }, f"{name}: unexpected new fields"
 
     def test_both_modes_same_field_set(self):
         assert set(_palette_kwargs("LIGHT")) == set(_palette_kwargs("DARK"))
@@ -198,14 +215,19 @@ class TestQssTemplatePins:
         assert font["display"] == 22
 
     def test_dashboard_type_scale_added(self):
-        """Spec §4 ranges: hero 26-30, section 16-18, tool 14-15,
-        sidebar 12-13, body 13-14."""
+        """V0.6.76 (visual-fidelity pass): the dashboard scale is re-pinned
+        to the approved reference's measured glyph sizes — hero 41 px
+        (ascender ~30 px over two ~46 px lines), support 20, section 20,
+        tool 15, tool_desc 12.5, sidebar 13, eyebrow 13, brand 22."""
         font = _ns_kwargs("FONT")
-        assert 26 <= font["hero"] <= 30
-        assert 16 <= font["section"] <= 18
-        assert 14 <= font["tool"] <= 15
-        assert 12 <= font["sidebar"] <= 13
-        assert 13 <= font["body_lg"] <= 14
+        assert font["hero"] == 41
+        assert font["section"] == 20
+        assert font["tool"] == 15
+        assert font["tool_desc"] == 12.5
+        assert font["sidebar"] == 13
+        assert font["body_lg"] == 20
+        assert font["eyebrow"] == 13
+        assert font["brand"] == 22
 
     def test_qss_has_dashboard_label_rules_and_hero_cta(self):
         code = _strip_comments(_src(_THEME))
