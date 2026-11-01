@@ -162,3 +162,44 @@ Release whose body is the version's release notes. The procedure:
 
 Skipping the release breaks the user's contract for the version —
 treat it as part of the release gate, not a follow-up.
+
+---
+
+## Rule 7 — Commit and push incrementally; never batch to session end (V0.6.69)
+
+> **The user directive:** "From now on you must commit and push
+> incrementally so nothing gets lost mid-session."
+
+Work is durable only once it is on `origin/main`. A session can end
+abruptly at any moment — context exhaustion, sandbox loss, crash — and
+anything left in the working tree or in local-only commits is work the
+user can lose. (Added after a milestone session ran out of context
+mid-stream with nothing pushed: the repo sat at the M1 close while the
+session's in-chat state was lost.)
+
+### What this means in practice
+
+1. **One unit of work → one commit → one push, immediately.** Follow
+   Rule 2's cadence (one finding family → one conventional commit), and
+   run `git push origin main` right after each commit — before starting
+   the next unit. Never accumulate local commits; never defer pushes to
+   a "session close" batch.
+
+2. **Commits and pushes only — this does not unlock publishing.** Tags,
+   GitHub Releases, and zips stay gated by Rules 5 and 6 (a release is
+   VERSION bump + tag + push + Release + zip, on the user's explicit
+   authorization). Mid-milestone pushes of `main` are now REQUIRED;
+   mid-milestone publishing is not.
+
+3. **This rule supersedes session prompts.** Any "no push this session"
+   line in a rolling/session prompt is overridden by this rule — write
+   the next session prompt to match.
+
+4. **Push failures are reported, never silent.** If a push fails
+   (auth, network), say so at once, retry, and do not keep building on
+   top of unpushed commits without telling the user.
+
+5. **A green WIP commit beats a lost session.** If a unit of work
+   cannot be finished before a session might end, commit the partial
+   state with a `wip:` prefix and push it — Rule 3's green gate still
+   applies.
