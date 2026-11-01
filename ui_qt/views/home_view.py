@@ -65,11 +65,23 @@ from ui_qt.views.tool_dashboard import TOOL_CARDS
 # wide"; the source is 632×330, so it always scales down).
 _HERO_IMAGE_MAX_W = 260
 
+# The mid-width size bucket (V0.6.71 / M3 QA): at content widths between
+# the hide threshold and _HERO_IMAGE_WIDE_W the illustration shrinks to
+# this instead of vanishing, so the text column keeps its room.
+_HERO_IMAGE_MID_W = 200
+
 # Below this CONTENT width the illustration hides (spec §7 narrow-width
-# rule): a 1280 px window − the 210 px rail ≈ 1030 px of content (shown,
-# comfortably); the 560 px minimum window ≈ 330 px of content (hidden —
-# the text column keeps its room).
-_HERO_IMAGE_MIN_VIEW_W = 900
+# rule) — aligned with the Quick Tools 3-column threshold (_GRID_3_MIN_W):
+# any window that comfortably fits a 3-column tool grid also keeps the
+# hero visual. (V0.6.71 / M3 QA: the old 900 px cutoff left the whole
+# 760–899 px band — the user's actual Windows run — with NO visual at
+# all, which read as "the asset isn't implemented".) The 560 px minimum
+# window ≈ 330 px of content (hidden — the text column keeps its room).
+_HERO_IMAGE_MIN_VIEW_W = 760
+
+# At/above this content width the illustration is full-size (260 px);
+# between the hide threshold and here it uses the mid size above.
+_HERO_IMAGE_WIDE_W = 900
 
 # Quick Tools — the M1 Lucide glyph for each tool (spec §7: one outline
 # family; the emoji strings from TOOL_CARDS are display-only legacy and
@@ -135,6 +147,9 @@ class HomeView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        # Pixmap cache key (bucket, surface) — see _apply_hero_pixmap.
+        self._hero_pm_key: tuple | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 18, 24, 10)
@@ -250,11 +265,25 @@ class HomeView(QWidget):
         return QPixmap.fromImage(flat)
 
     def _apply_hero_pixmap(self) -> None:
-        pm = self._flattened_hero_pixmap(_HERO_IMAGE_MAX_W)
-        if pm is None:
-            self._hero_visual.setVisible(False)
-            return
-        self._hero_visual.setPixmap(pm)
+        """(Re)composite the illustration at the size bucket the current
+        width supports, then apply the narrow-width hide rule.
+
+        V0.6.71 (M3 QA): full 260 px at wide widths, 200 px at mid widths —
+        the old binary hide-at-900 left the 3-column-grid band with no
+        visual at all, which read on the user's Windows run as "the asset
+        isn't implemented". The pixmap is cached per (bucket, surface) so
+        a resize drag only recomposites on bucket or theme crossings.
+        """
+        budget = _HERO_IMAGE_MAX_W if self.width() >= _HERO_IMAGE_WIDE_W else _HERO_IMAGE_MID_W
+        key = (budget, theme_manager.palette.bg_surface)
+        if key != self._hero_pm_key:
+            pm = self._flattened_hero_pixmap(budget)
+            if pm is None:
+                self._hero_pm_key = ("missing",)
+                self._hero_visual.setVisible(False)
+                return
+            self._hero_visual.setPixmap(pm)
+            self._hero_pm_key = key
         self._hero_visual.setVisible(self.width() >= _HERO_IMAGE_MIN_VIEW_W)
 
     # ══════════════════════════════════════════════════════════════════════
@@ -318,9 +347,9 @@ class HomeView(QWidget):
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
         # Spec §7: the illustration yields at narrow widths so the hero
-        # text keeps its room; spec §6: the grid reflows with width.
-        if self._hero_visual.pixmap() is not None:
-            self._hero_visual.setVisible(self.width() >= _HERO_IMAGE_MIN_VIEW_W)
+        # text keeps its room (re-compositing when the size bucket
+        # changes); spec §6: the grid reflows with width.
+        self._apply_hero_pixmap()
         self._relayout_quick_grid()
 
     # ══════════════════════════════════════════════════════════════════════
