@@ -1,14 +1,19 @@
-"""Centralised theme system for the PySide6 UI — "Editorial Quiet" v2.
+"""Centralised theme system for the PySide6 UI — "Quiet Grove" (UI/UX redesign).
 
-V7.4.0 overhaul.  Design language:
-  - Graphite/ivory neutrals (never pure black) + a single warm terracotta-amber
-    accent evoking paper, ink, and a cozy reading room.
-  - **Inter** as the primary typeface (bundled in ``assets/fonts/`` if present),
-    falling back to the best Windows-native stack (Segoe UI Variable → Segoe UI).
+M1 of the approved UI/UX redesign.  Design language:
+  - Warm ivory / charcoal neutrals (never pure black) + a single muted
+    **forest-green** accent with sage support — paper, ink, and a quiet
+    reading room (per ELIXIR_FINAL_DASHBOARD_DESIGN_SPEC §3).
+  - **Inter** as the primary typeface — bundled in ``assets/fonts/`` since M1
+    (4 static weights, OFL), falling back to the best Windows-native stack
+    (Segoe UI Variable → Segoe UI).
   - A single source of truth: the ``SPACE`` / ``FONT`` / ``RADIUS`` / ``WEIGHT``
     token scales.  Views import these instead of hard-coding magic numbers so
     the whole app stays visually consistent.
-  - Compact density: 4px spacing grid, 11px body, hairline borders, 5-8px radii.
+  - Compact density for dialogs (4px spacing grid, 11px body, hairline
+    borders, 5-8px radii — user decision Q6) plus a larger dashboard-facing
+    type scale (``FONT.hero/section/tool/sidebar/body_lg``) for the M2
+    hero / sidebar / quick-tool grid.
 
 The ThemeManager owns the palette, generates the complete QSS for the active
 mode (dark/light), persists the choice to
@@ -59,17 +64,27 @@ SPACE = _ns(
     section=(12, 8, 12, 8),  # inside a step/section
 )
 
-# Font sizes (px).  Inter renders crisply at 11px; Segoe UI fallback is fine too.
+# Font sizes (px).  Two scales, deliberately (user decision Q6):
+#   • Dialog scale (unchanged, compact): Inter renders crisply at 11px;
+#     Segoe UI fallback is fine too.  Wizard/settings/dialogs keep this.
+#   • Dashboard scale (M1 additions, spec §4): hero/section/tool/sidebar/
+#     body_lg feed the M2 hero, sidebar, and quick-tool grid.
 FONT = _ns(
     micro=9,  # badges, counters — use rarely
     caption=10,  # hints, secondary captions
-    body=11,  # default body text
+    body=11,  # default body text (dialogs)
     body_strong=11,
     subhead=12,  # small section labels
     h3=13,  # card titles, group headings
     h2=15,  # page titles
     h1=18,  # hero / dialog titles
     display=22,  # splash / numbers
+    # ── M1 dashboard-facing additions (spec §4 ranges) ──────────────────
+    body_lg=13,  # dashboard body / supporting copy (spec 13–14)
+    tool=14,  # quick-tool card titles (spec 14–15)
+    sidebar=12,  # sidebar nav labels, medium weight (spec 12–13)
+    section=17,  # dashboard section headings (spec 16–18)
+    hero=28,  # hero heading (spec 26–30)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
@@ -77,6 +92,12 @@ WEIGHT = _ns(regular=400, medium=500, semibold=600, bold=700)
 
 # Corner radii
 RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10)
+
+# The deliberately theme-independent "code editor" surface (VS Code-like
+# dark panel for live logs / script previews — dark in BOTH themes by
+# design, so log text reads as terminal output, not app content).
+# Centralised here (M1) so views carry zero hardcoded colours.
+CODE_EDITOR = _ns(bg="#1E1E1E", text="#D4D4D4", border="#3C3C3C")
 
 # The canonical font-family stack.  Inter first (if loaded), then the best
 # Windows-native face, then cross-platform fallbacks.  Monospace for logs.
@@ -113,11 +134,12 @@ class Palette:
     text_muted: str
     text_on_accent: str
 
-    # accent (terracotta-amber)
+    # accent (muted forest green — light mode; sage — dark mode)
     accent: str
     accent_hover: str
     accent_pressed: str
-    accent_soft: str  # subtle fill behind selected items
+    accent_soft: str  # subtle fill behind selected items (spec accent-subtle)
+    icon: str  # default monochrome icon tint (spec `icon` token, M1)
 
     # semantics (muted, not garish)
     success: str
@@ -126,59 +148,74 @@ class Palette:
     info: str
 
 
-# V7.4.0: polished dark mode — brighter text_secondary + accent for contrast;
-# warmer elevated surfaces so cards read clearly against the window bg.
+# M1 (UI/UX redesign): the approved spec §3 dark palette — forest-tinted
+# charcoal grounds, sage accent (brighter for dark-mode contrast), and the
+# same ivory-first hierarchy as light mode (no global inversion).
 DARK = Palette(
     name="dark",
     is_dark=True,
-    bg_window="#191512",  # warm near-black charcoal-brown
-    bg_surface="#241E18",  # warm dark brown card
-    bg_elevated="#2E271F",  # lighter warm brown for hover/popups
-    bg_input="#15110D",  # near-black warm input
-    bg_input_hover="#1F1914",
-    border="#3A3128",  # warm taupe hairline
-    border_strong="#D4A574",  # warm amber strong border
-    text_primary="#F5EDE0",  # warm cream (bumped for contrast)
-    text_secondary="#CBBFA9",  # brighter beige for readability
-    text_muted="#8A7D6E",  # warm taupe-gray
-    text_on_accent="#1A1612",  # dark text on amber accent
-    accent="#D8AA78",  # warm amber (brightened for dark mode pop)
-    accent_hover="#E6BC8A",
-    accent_pressed="#C09060",
-    accent_soft="rgba(216, 170, 120, 0.16)",
-    success="#94B088",  # muted sage green
+    bg_window="#20231F",  # warm forest-tinted charcoal (spec background)
+    bg_surface="#292D28",  # card surface (spec surface)
+    bg_elevated="#30362F",  # hover / popups (spec surface-subtle)
+    bg_input="#1B1E1A",  # recessed input wells (darker than window)
+    bg_input_hover="#242822",
+    border="#3B423A",  # sage-tinted hairline (spec border)
+    border_strong="#5C6B5E",  # mid sage — focus / selected outlines
+    text_primary="#ECEEE8",  # warm ivory (spec text-primary)
+    text_secondary="#A8AEA3",  # sage-gray supporting text (spec text-secondary)
+    text_muted="#7A8175",  # dim sage-gray
+    text_on_accent="#1E231E",  # charcoal text on the sage accent
+    accent="#91AD91",  # muted sage green (spec accent)
+    accent_hover="#A4BDA2",  # spec accent-hover
+    accent_pressed="#7E997C",  # derived: one step deeper than accent
+    accent_soft="#354238",  # quiet accent backgrounds (spec accent-subtle)
+    icon="#B3BBAF",  # default icon tint (spec icon)
+    success="#A9C178",  # yellow-leaning sage (distinct from the sage accent)
     warning="#D8BC66",  # warm gold
     error="#DC9484",  # warm terracotta-red
     info="#A294B8",  # muted mauve
 )
 
-# V7.4.0: polished light mode — pure white surfaces for crisper card separation,
-# deeper text_primary for contrast, richer terracotta accent.
+# M1 (UI/UX redesign): the approved spec §3 light palette — warm ivory
+# ground, white surfaces, deep forest-green accent, charcoal-olive text.
 LIGHT = Palette(
     name="light",
     is_dark=False,
-    bg_window="#F7F3EC",  # warm ivory (slightly cooler for contrast)
-    bg_surface="#FFFFFF",  # pure white cards — crisp separation
-    bg_elevated="#F2EADF",  # warm cream hover
-    bg_input="#FFFFFF",  # white inputs
-    bg_input_hover="#FBF6EE",
-    border="#E6DECF",  # warm taupe hairline
-    border_strong="#C8805A",  # terracotta strong border
-    text_primary="#2A211B",  # deeper warm brown for contrast
-    text_secondary="#6B5B4F",  # warm brown
-    text_muted="#9A8B7D",  # warm taupe-gray
-    text_on_accent="#FFFFFF",
-    accent="#B8704A",  # richer terracotta
-    accent_hover="#A6623E",
-    accent_pressed="#8F5332",
-    accent_soft="rgba(184, 112, 74, 0.12)",
-    success="#6F9462",  # muted sage green
+    bg_window="#F6F5F0",  # warm ivory (spec background)
+    bg_surface="#FFFFFF",  # pure white cards (spec surface)
+    bg_elevated="#EFEEE7",  # hover / popups (spec surface-subtle)
+    bg_input="#FFFFFF",  # white inputs (border-separated)
+    bg_input_hover="#F7F8F3",  # barely-there green-tinted hover
+    border="#E2E1D9",  # warm hairline (spec border)
+    border_strong="#8FA08D",  # mid sage — focus / selected outlines
+    text_primary="#252923",  # deep charcoal-olive (spec text-primary)
+    text_secondary="#70756D",  # sage-gray supporting text (spec text-secondary)
+    text_muted="#9CA196",  # light sage-gray
+    text_on_accent="#FFFFFF",  # white text on the deep forest accent
+    accent="#3F634D",  # muted forest green (spec accent)
+    accent_hover="#34543F",  # spec accent-hover
+    accent_pressed="#2C4736",  # derived: one step deeper than hover
+    accent_soft="#E6EDE6",  # quiet accent backgrounds (spec accent-subtle)
+    icon="#626A60",  # default icon tint (spec icon)
+    success="#6F9462",  # muted yellow-green sage (distinct from the forest accent)
     warning="#C99A3E",  # warm gold
     error="#BD664F",  # warm terracotta-red
     info="#7E6E94",  # muted mauve
 )
 
 PALETTES = {"dark": DARK, "light": LIGHT}
+
+
+def rgba(hex_color: str, alpha: float) -> str:
+    """Derive a QSS/HTML ``rgba()`` string from a palette hex token.
+
+    M1 de-hardcode helper: views/banner styles that need a translucent wash
+    of a SEMANTIC colour (success/error/warning/info tints, drop overlays)
+    call this instead of hand-writing rgb triplets, so the tint always tracks
+    the active palette.
+    """
+    c = QColor(hex_color)
+    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha:g})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -314,6 +351,34 @@ def _qss(p: Palette) -> str:
         font-size: {FONT.caption}px; color: {p.accent}; font-weight: {WEIGHT.medium};
     }}
 
+    /* M2-ready dashboard-facing labels (spec §4 type scale; no existing
+       view uses these object names yet — the M2 hero/sidebar/grid will). */
+    QLabel#Hero {{
+        font-size: {FONT.hero}px; font-weight: {WEIGHT.semibold};
+        color: {p.text_primary};
+    }}
+    QLabel#Support {{
+        font-size: {FONT.body_lg}px; font-weight: {WEIGHT.regular};
+        color: {p.text_secondary};
+    }}
+    QLabel#SectionHead {{
+        font-size: {FONT.section}px; font-weight: {WEIGHT.semibold};
+        color: {p.text_primary};
+    }}
+    QLabel#ToolTitle {{
+        font-size: {FONT.tool}px; font-weight: {WEIGHT.medium};
+        color: {p.text_primary};
+    }}
+    QLabel#SidebarLabel {{
+        font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
+        color: {p.text_secondary};
+    }}
+    QLabel#SidebarGroup {{
+        font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
+        color: {p.text_muted};
+        letter-spacing: 0.8px;
+    }}
+
     /* ════════════════════════════════════════════════════════════════════
        Buttons
        ════════════════════════════════════════════════════════════════════ */
@@ -338,7 +403,7 @@ def _qss(p: Palette) -> str:
         border-color: {p.border};
     }}
 
-    /* Primary CTA — terracotta */
+    /* Primary CTA — muted forest green (light) / sage (dark) */
     QPushButton#Primary {{
         background-color: {p.accent};
         color: {p.text_on_accent};
@@ -358,6 +423,28 @@ def _qss(p: Palette) -> str:
         background-color: {p.accent_pressed};
     }}
     QPushButton#Primary:disabled {{
+        background-color: {p.bg_input};
+        color: {p.text_muted};
+    }}
+
+    /* M2-ready hero CTA — the single dominant dashboard action
+       (dashboard-facing type scale; larger than the dialog Primary). */
+    QPushButton#HeroPrimary {{
+        background-color: {p.accent};
+        color: {p.text_on_accent};
+        border: none;
+        border-radius: {RADIUS.md}px;
+        padding: 10px 22px;
+        font-size: {FONT.tool}px; font-weight: {WEIGHT.semibold};
+        outline: none;
+    }}
+    QPushButton#HeroPrimary:hover {{
+        background-color: {p.accent_hover};
+    }}
+    QPushButton#HeroPrimary:pressed {{
+        background-color: {p.accent_pressed};
+    }}
+    QPushButton#HeroPrimary:disabled {{
         background-color: {p.bg_input};
         color: {p.text_muted};
     }}
@@ -409,7 +496,7 @@ def _qss(p: Palette) -> str:
         padding: 5px 11px;
     }}
     QPushButton#Danger:hover {{
-        background-color: rgba(189, 102, 79, 0.12);
+        background-color: {rgba(p.error, 0.12)};
         border-color: {p.error};
     }}
 
