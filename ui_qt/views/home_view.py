@@ -3,7 +3,19 @@
 Spec §6 dashboard composition:
 1. a concise purpose line,
 2. the Full Conversion hero (the single dominant action), and
-3. the Quick Tools grid of secondary tools (added by the grid commit).
+3. the Quick Tools grid of secondary tools, grouped Processing /
+   Utilities / Audio (user decision Q1 — the Audio group is IN) with
+   ``SectionLabel`` group headers.
+
+The Quick Tools grid is fed from the EXISTING ``TOOL_CARDS`` data (the
+single source of truth for keys / exact user-facing titles / one-line
+descriptions), dropping the ``full_conversion`` entry — no duplicate
+hero tile (spec §6) — and mapping the legacy PROCESS/TRANSFORM/EXTRACT
+categories onto the M2 IA groups. The emoji card icons are swapped for
+the M1 Lucide glyph names (spec §7: one outline family, no emoji). The
+column count reflows with the available width (spec §6 "grid reflows
+with available width"): 4 columns wide, 3 at mid widths, 2 on narrow
+windows — the thresholds are re-checked on every resize.
 
 The hero is an editorial split (spec §6): heading + supporting copy + ONE
 ``QPushButton#HeroPrimary`` "Start Conversion" on the left, the supplied
@@ -37,6 +49,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -44,7 +57,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_qt.components.dashboard_primitives import QuickToolCard, SectionLabel
 from ui_qt.theme import theme_manager
+from ui_qt.views.tool_dashboard import TOOL_CARDS
 
 # Hero illustration budget (decision Q5: reduced size — "keep it ≤ ~260 px
 # wide"; the source is 632×330, so it always scales down).
@@ -56,12 +71,59 @@ _HERO_IMAGE_MAX_W = 260
 # the text column keeps its room).
 _HERO_IMAGE_MIN_VIEW_W = 900
 
+# Quick Tools — the M1 Lucide glyph for each tool (spec §7: one outline
+# family; the emoji strings from TOOL_CARDS are display-only legacy and
+# are NOT consumed here). Key order follows the locked M2 IA (Q1).
+_QUICK_ICON: dict[str, str] = {
+    "summarization": "sigma",
+    "pdf_to_markdown": "file-text",
+    "translation": "globe",
+    "markdown_styler": "sparkles",
+    "packets_tool": "layers",
+    "ocr_service": "scan",
+    "pdf_docx_cutter": "scissors",
+    "image_extractor": "image",
+    "tts_service": "audio-lines",
+    "podcast_maker": "mic",
+    "transcribe": "headphones",
+}
+
+# The M2 IA groups (decision Q1): legacy PROCESS/TRANSFORM/EXTRACT map
+# onto Processing / Utilities; AUDIO stays Audio. full_conversion is
+# deliberately ABSENT (the hero owns it — no duplicate tile, spec §6).
+_QUICK_GROUPS: list[tuple[str, tuple[str, ...]]] = [
+    ("Processing", ("summarization", "pdf_to_markdown", "translation")),
+    (
+        "Utilities",
+        (
+            "markdown_styler",
+            "packets_tool",
+            "ocr_service",
+            "pdf_docx_cutter",
+            "image_extractor",
+        ),
+    ),
+    ("Audio", ("tts_service", "podcast_maker", "transcribe")),
+]
+
+# Reflow thresholds (spec §6): 4 columns on wide windows, 3 at mid
+# widths, 2 on narrow ones (the 560 px minimum window leaves ≈330 px of
+# content after the rail — 2 compact columns fit there).
+_GRID_4_MIN_W = 1200
+_GRID_3_MIN_W = 760
+
 
 def _project_root() -> Path:
     """The repo root / PyInstaller bundle (the house icons.py pattern)."""
     from app_paths import bundle_dir  # V0.6.63: bundle-aware
 
     return bundle_dir()
+
+
+def _tool_meta() -> dict[str, tuple[str, str]]:
+    """key → (exact user-facing title, one-line description) from the
+    existing TOOL_CARDS data — titles are never re-typed here."""
+    return {key: (title, subtitle) for key, title, subtitle, _i, _c, _p in TOOL_CARDS}
 
 
 class HomeView(QWidget):
@@ -86,8 +148,10 @@ class HomeView(QWidget):
         # 2 — the Full Conversion hero (the single dominant action).
         root.addWidget(self._build_hero())
 
-        # 3 — the Quick Tools grid lands with the grid commit (the hero is
-        # never duplicated as a tile there — spec §6 / decision Q7).
+        # 3 — the Quick Tools section (secondary tools only — the hero is
+        # never duplicated as a tile; spec §6 / decision Q7).
+        root.addLayout(self._build_quick_tools())
+
         root.addStretch()
 
     # ══════════════════════════════════════════════════════════════════════
@@ -193,13 +257,71 @@ class HomeView(QWidget):
         self._hero_visual.setPixmap(pm)
         self._hero_visual.setVisible(self.width() >= _HERO_IMAGE_MIN_VIEW_W)
 
+    # ══════════════════════════════════════════════════════════════════════
+    # The Quick Tools grid (spec §6: compact, consistent, reflowing)
+    # ══════════════════════════════════════════════════════════════════════
+    def _build_quick_tools(self) -> QVBoxLayout:
+        """The Quick Tools section: a "Quick Tools" section heading, then
+        per-group ``SectionLabel`` headers + ``QuickToolCard`` rows fed
+        from TOOL_CARDS (minus full_conversion), reflowing with width."""
+        section = QVBoxLayout()
+        section.setSpacing(10)
+
+        head = QLabel("Quick Tools")
+        head.setObjectName("SectionHead")
+        section.addWidget(head)
+
+        self._quick_cards: list[QuickToolCard] = []
+        self._quick_headers: list[SectionLabel] = []
+        self._quick_grid = QGridLayout()
+        self._quick_grid.setSpacing(10)
+        self._grid_cols = 0  # forces the first _relayout to lay everything out
+        meta = _tool_meta()
+        for group_label, keys in _QUICK_GROUPS:
+            self._quick_headers.append(SectionLabel(group_label))
+            for key in keys:
+                title, subtitle = meta[key]
+                card = QuickToolCard(
+                    key, title, description=subtitle, icon_name=_QUICK_ICON[key]
+                )
+                card.clicked.connect(self.tool_clicked.emit)
+                self._quick_cards.append(card)
+        section.addLayout(self._quick_grid)
+        self._relayout_quick_grid()
+        return section
+
+    def _relayout_quick_grid(self) -> None:
+        """(Re)place the group headers + cards into the grid at the column
+        count the current width supports. Headers and cards are persistent
+        widgets — they are re-added, never rebuilt (click routing + focus
+        live on the card, so a reflow loses nothing)."""
+        width = max(self.width(), 1)
+        cols = 4 if width >= _GRID_4_MIN_W else (3 if width >= _GRID_3_MIN_W else 2)
+        if cols == self._grid_cols:
+            return
+        self._grid_cols = cols
+        while self._quick_grid.count():
+            self._quick_grid.takeAt(0)  # items only — the widgets survive
+        row = 0
+        cards = {card.key: card for card in self._quick_cards}
+        for header, (_group_label, keys) in zip(
+            self._quick_headers, _QUICK_GROUPS, strict=True
+        ):
+            self._quick_grid.addWidget(header, row, 0, 1, cols)
+            row += 1
+            for i, key in enumerate(keys):
+                self._quick_grid.addWidget(cards[key], row + i // cols, i % cols)
+            row += (len(keys) + cols - 1) // cols
+        for c in range(cols):
+            self._quick_grid.setColumnStretch(c, 1)
+
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
         # Spec §7: the illustration yields at narrow widths so the hero
-        # text keeps its room (the pixmap itself is only re-derived on
-        # theme changes — this just shows/hides).
+        # text keeps its room; spec §6: the grid reflows with width.
         if self._hero_visual.pixmap() is not None:
             self._hero_visual.setVisible(self.width() >= _HERO_IMAGE_MIN_VIEW_W)
+        self._relayout_quick_grid()
 
     # ══════════════════════════════════════════════════════════════════════
     # Theme refresh (the M0 §6 gap list — the M2 surfaces join the
@@ -207,9 +329,11 @@ class HomeView(QWidget):
     # ══════════════════════════════════════════════════════════════════════
     def refresh_theme(self) -> None:
         """Re-apply theme-dependent bits: the hero illustration must be
-        re-flattened against the new surface colour (all other chrome is
-        QSS-driven and re-polishes globally)."""
+        re-flattened against the new surface colour; the Quick Tool cards
+        re-tint (all other chrome is QSS-driven and re-polishes globally)."""
         self._apply_hero_pixmap()
+        for card in self._quick_cards:
+            card.refresh_theme()
 
 
 __all__ = ["HomeView"]
