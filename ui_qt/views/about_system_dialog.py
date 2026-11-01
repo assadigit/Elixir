@@ -1,10 +1,25 @@
-"""About & System dialog — diagnostics surface reachable from the Tools menu.
+"""About & System dialog — diagnostics surface reachable from the header
+info button / the sidebar's About item.
 
 Shows: app version, OS/Python, all library dependencies (✅/❌), Ollama
 connection + every installed model with 🔍/📝 badges, and Tesseract/Poppler
 paths with auto-detect + Browse.  This replaces the old "System" settings
 tab — it's read-mostly diagnostics, not a setting, so it lives here rather
 than cluttering the settings dialog.
+
+M2 additions (UI/UX redesign, decisions Q2 + Q3):
+  • the "Experimental tools…" section — the four destinations that left
+    primary navigation when the fixed-sidebar dashboard shipped (Queue,
+    Output Scanner, Bullet Audit, Hallucination Audit) stay fully
+    functional and reachable from here via the window's navigation
+    facade (they remain reachable through their existing routes too:
+    drop-a-PDF → Queue, Packets output → Hallucination Audit).
+    Hidden ≠ removed.
+  • the FULL local-LLM lights (Ollama / llama.cpp / LM Studio, per-client
+    dots + names + tooltips) — the header keeps ONE aggregate dot and the
+    details live here. The window's poll loop feeds both sinks; opening
+    the dialog shows the latest verdict immediately (the window hands
+    over its last snapshot).
 """
 
 from __future__ import annotations
@@ -30,6 +45,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.icons import icon
+from ui_qt.components.llm_lights import build_status_lights
 from ui_qt.settings.widgets import make_form
 from ui_qt.theme import theme_manager
 
@@ -82,8 +98,25 @@ class _DepScanThread(QThread):
         self.done.emit(deps)
 
 
+# M2 (decision Q2): the four destinations that left primary navigation.
+# Labels are the EXACT former tab labels; blurbs are the existing
+# user-facing descriptions (nothing invented). Clicking a row closes the
+# dialog and switches the window's stack via the navigation facade.
+_EXPERIMENTAL_TOOLS: tuple[tuple[str, str, str, str], ...] = (
+    ("queue", "list-checks", "Queue", "Batch processing of multiple PDFs"),
+    ("output_scanner", "scan", "Output Scanner", "Audit a book's output folder"),
+    ("quarantine", "alert-triangle", "Bullet Audit", "Dropped-bullet audit & restore"),
+    ("hallucination_audit", "shield", "Hallucination Audit", "Check bullets against source text"),
+)
+
+
 class AboutSystemDialog(QDialog):
     """Modal About + System diagnostics dialog."""
+
+    # M2 (decision Q2): emitted with a page key when the user opens one of
+    # the hidden experimental destinations — the window connects this to
+    # its switch_to_page facade (the dialog never touches the stack).
+    open_page = Signal(str)
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -106,6 +139,57 @@ class AboutSystemDialog(QDialog):
         al.addWidget(QLabel("All processing happens on your machine — no API costs."))
         al.addWidget(QLabel("GUI: PySide6 (Qt 6)."))
         root.addWidget(about)
+
+        # ── Local LLM servers (M2, decision Q3 — the full lights) ──
+        llm_gb = QGroupBox("Local LLM servers")
+        ll = QVBoxLayout(llm_gb)
+        ll.setSpacing(4)
+        self.llm_lights, _lights_err = build_status_lights()
+        if self.llm_lights is not None:
+            # The dialog has room — always the richest mode (dot + name per
+            # client, verdict + endpoint in the tooltips). The header keeps
+            # its single aggregate dot (decision Q3).
+            self.llm_lights.set_budget(1000)
+            ll.addWidget(self.llm_lights)
+            cap = QLabel(
+                "Live status of locally-running LLM clients — the header dot "
+                "summarises these; re-checked every few seconds."
+            )
+        else:
+            cap = QLabel("Status lights unavailable in this build.")
+        cap.setObjectName("Caption")
+        cap.setWordWrap(True)
+        ll.addWidget(cap)
+        root.addWidget(llm_gb)
+
+        # ── Experimental tools (M2, decision Q2 — the fallback) ──
+        exp_gb = QGroupBox("Experimental tools")
+        el = QVBoxLayout(exp_gb)
+        el.setSpacing(6)
+        exp_note = QLabel(
+            "Working views that left the main navigation — Queue also opens "
+            "whenever you drop a PDF anywhere in the window."
+        )
+        exp_note.setObjectName("Caption")
+        exp_note.setWordWrap(True)
+        el.addWidget(exp_note)
+        p = theme_manager.palette
+        for page_key, glyph, label, blurb in _EXPERIMENTAL_TOOLS:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+            glyph_lbl = QLabel()
+            glyph_lbl.setPixmap(icon(glyph, p.icon, 16).pixmap(16, 16))
+            row.addWidget(glyph_lbl)
+            row.addWidget(QLabel(f"<b>{label}</b> — {blurb}"), 1)
+            open_btn = QPushButton("Open")
+            open_btn.setObjectName("Compact")
+            open_btn.clicked.connect(
+                lambda checked=False, k=page_key: self._open_experimental(k)
+            )
+            row.addWidget(open_btn)
+            el.addLayout(row)
+        root.addWidget(exp_gb)
 
         # ── System paths ────────────────────────────────────────────────
         paths_gb = QGroupBox("System paths")
@@ -170,6 +254,21 @@ class AboutSystemDialog(QDialog):
 
         # save paths on close
         self._scan()
+
+    # ── M2: the experimental-tools fallback (decision Q2) ──────────────
+    def _open_experimental(self, page_key: str) -> None:
+        """Close this dialog, then hand the page key to the window's
+        navigation facade (the switch must not land behind a modal)."""
+        self.accept()
+        self.open_page.emit(page_key)
+
+    # ── M2: the full-lights sink (decision Q3) ─────────────────────────
+    def apply_llm_statuses(self, statuses) -> None:
+        """Render the latest poll verdict on the full lights (the window's
+        poll loop calls this while the dialog is open; the header's
+        aggregate dot is fed in parallel)."""
+        if self.llm_lights is not None and statuses:
+            self.llm_lights.apply_statuses(statuses)
 
     @staticmethod
     def _app_version() -> str:

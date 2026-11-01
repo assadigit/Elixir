@@ -532,9 +532,18 @@ class ElixirWindow(QMainWindow):
         from ui_qt.views.about_system_dialog import AboutSystemDialog
 
         dlg = AboutSystemDialog(self.controller, self)
-        # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
+        # M2 (decision Q2): the dialog's "Experimental tools…" rows route
+        # through the navigation facade; the full LLM lights (decision Q3)
+        # start from the latest poll snapshot and then ride the poll loop
+        # (see _on_llm_probe_finished — both sinks are fed in parallel).
+        dlg.open_page.connect(self.switch_to_page)
+        last = getattr(self, "_llm_last_statuses", None)
+        if last:
+            dlg.apply_llm_statuses(last)
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+        self._about_dialog = dlg
         dlg.exec()
+        self._about_dialog = None
 
     def _open_validate(self) -> None:
         dlg = ValidateDialog(self.controller, self)
@@ -633,9 +642,23 @@ class ElixirWindow(QMainWindow):
     @Slot(object)
     def _on_llm_probe_finished(self, statuses) -> None:
         self._llm_probe_worker = None
+        # M2 (decision Q3): cache the latest verdict so the About & System
+        # dialog can show it IMMEDIATELY on open (its full lights would
+        # otherwise wait for the next poll tick).
+        self._llm_last_statuses = list(statuses) if statuses else []
         lights = getattr(self, "llm_lights", None)
         if lights is not None and statuses:
             lights.apply_statuses(statuses)
+        # M2 (decision Q3): the About & System dialog's full lights are the
+        # second sink of this same poll loop — feed it while the dialog is
+        # alive (W-b9 WA_DeleteOnClose: the C++ object may already be gone,
+        # so the apply is RuntimeError-guarded like the merge-worker ref).
+        dlg = getattr(self, "_about_dialog", None)
+        if dlg is not None and statuses:
+            try:
+                dlg.apply_llm_statuses(statuses)
+            except RuntimeError:
+                self._about_dialog = None  # deleted wrapper — drop the ref
 
     @Slot(str)
     def _on_llm_probe_failed(self, error: str) -> None:
