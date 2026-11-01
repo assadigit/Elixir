@@ -87,11 +87,11 @@ FONT = _ns(
     eyebrow=14,  # hero eyebrow (tracked uppercase, reference cap ~11px)
     body_lg=22,  # dashboard body / hero support copy (reference ascender 17px)
     tool=15,  # quick-tool card titles (reference ~15px semibold)
-    tool_desc=12.5,  # quick-tool card descriptions (reference ~12px)
+    tool_desc=11.5,  # quick-tool card descriptions (reference ~11.5px)
     sidebar=13,  # sidebar nav labels, medium weight (reference ~13px)
     section=20,  # dashboard section headings ("Quick Tools", cap ~16px)
     hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
-    brand=32,  # sidebar "Elixir" wordmark (reference ink ~32px)
+    brand=44,  # sidebar "Elixir" wordmark (reference ascender ~39px)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)

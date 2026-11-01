@@ -172,6 +172,9 @@ class _ArrowAffordance(QLabel):
         p = theme_manager.palette
         featured = getattr(self, "_featured", False)
         disc = QColor(p.text_on_accent) if featured else QColor(p.bg_elevated)
+        if featured:
+            # the reference's disc is a SOFT ivory, not stark white
+            disc.setAlpha(216)
         glyph = QColor(p.accent if featured else p.text_secondary)
         pm = QPixmap(_ARROW_CIRCLE, _ARROW_CIRCLE)
         pm.fill(Qt.GlobalColor.transparent)
@@ -239,9 +242,12 @@ class QuickToolCard(QFrame):
         self._arrow = _ArrowAffordance()
         self._arrow.set_featured(featured)
 
+        # V0.6.80: the reference's card insets — the glyph sits ~32 px in
+        # from the card's left edge, ~10 px to the title, ~26 px of air
+        # before the arrow disc at the right.
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(16)
+        lay.setContentsMargins(28, 16, 20, 16)
+        lay.setSpacing(10)
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(_ICON_SIZE_TOOL, _ICON_SIZE_TOOL)

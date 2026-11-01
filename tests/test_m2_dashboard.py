@@ -253,7 +253,12 @@ class TestHero:
         truth)."""
         cards = _module_const(_HOME, "_QUICK_CARDS")
         for key, title, _desc, _icon, _feat in cards:
-            assert title == "", f"{key}: title must come from TOOL_CARDS, not be re-typed"
+            if key == "full_conversion":
+                # the reference's ninth-card label (the sidebar keeps the
+                # shorter TOOL_CARDS title)
+                assert title == "Full Conversion Wizard"
+            else:
+                assert title == "", f"{key}: title must come from TOOL_CARDS, not be re-typed"
             assert key in _TOOL_TITLES, f"{key} is not a TOOL_CARDS tool"
 
 

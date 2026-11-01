@@ -106,8 +106,11 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
     ("ocr_service", "", "Extract text from images and scanned documents.", "scan", False),
     ("pdf_docx_cutter", "", "Split large files into smaller chunks.", "scissors", False),
     ("image_extractor", "", "Extract images from PDF and documents.", "image", False),
-    ("markdown_styler", "", "Beautify and structure your Markdown files.", "sparkles", False),
-    ("full_conversion", "", "Transform books, documents and content into clear knowledge.", "wand", True),
+    ("markdown_styler", "", "Beautify and structure your Markdown files.", "pencil", False),
+    # The reference's ninth card is labelled "Full Conversion Wizard" (the
+    # sidebar entry keeps the shorter "Full Conversion") — the same wizard,
+    # explicitly named as one on the card.
+    ("full_conversion", "Full Conversion Wizard", "Transform books, documents and content into clear knowledge.", "wand", True),
 ]
 
 # Reflow thresholds (spec §6/P2): the reference's three columns at wide
@@ -278,12 +281,16 @@ class HomeView(QWidget):
         # reference's quill tip reaches the hero's top band and the books
         # sit on the landscape curve) — only the TEXT column carries the
         # hero's top inset; the visual runs to the panel's bottom edge.
+        # V0.6.80: the panel-level inset is minimal — the still-life runs
+        # nearly the panel's full height (the reference's ink spans
+        # ~92% of it); the TEXT column carries its own top inset below.
         lay = QHBoxLayout(hero)
-        lay.setContentsMargins(12, 37, 10, 0)
+        lay.setContentsMargins(12, 6, 10, 0)
         lay.setSpacing(18)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(0)
+        text_col.addSpacing(28)
 
         # The reference hero's eyebrow — small, tracked-out, sage.
         eyebrow = QLabel("WELCOME TO ELIXIR")
@@ -475,9 +482,9 @@ class HomeView(QWidget):
         # live height, which the pixmap itself would inflate (a feedback
         # loop: taller card → bigger budget → taller pixmap → …).
         target_h = max(230, min(340, round(self.width() * 0.29)))
-        inner_h = target_h - 32
+        inner_h = target_h - 8
         if inner_h < 110:
-            inner_h = 198  # pre-first-layout fallback (230 - 32)
+            inner_h = 222  # pre-first-layout fallback (230 - 8)
         by_h = round(inner_h * 504 / 318)  # the ink-crop's aspect
         by_w = round(self.width() * 0.55)
         raw = max(120, min(by_h, by_w))
@@ -549,8 +556,14 @@ class HomeView(QWidget):
             self._quick_grid.addWidget(card, i // cols, i % cols)
         for c in range(cols):
             self._quick_grid.setColumnStretch(c, 1)
-        for r in range((len(self._quick_cards) + cols - 1) // cols):
-            self._quick_grid.setRowMinimumHeight(r, 120)
+        rows = (len(self._quick_cards) + cols - 1) // cols
+        for r in range(self._quick_grid.rowCount()):
+            # Retired rows (a reflow from more columns to fewer leaves
+            # empty rows behind — QGridLayout cannot delete them) MUST
+            # drop their minimums again, or the stale 120 px floors
+            # inflate the page's minimum ~240 px past the scroll
+            # viewport (the V0.6.80 scrollbar catch).
+            self._quick_grid.setRowMinimumHeight(r, 120 if r < rows else 0)
             self._quick_grid.setRowStretch(r, 0)
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
@@ -559,8 +572,13 @@ class HomeView(QWidget):
         # (~29% of the content width — 340 px at the 1180 px reference
         # content run), clamped 230–340 so narrow windows still breathe.
         hero_h = max(240, min(340, round(self.width() * 0.29)))
-        if getattr(self, "_hero", None) is not None and self._hero.minimumHeight() != hero_h:
-            self._hero.setMinimumHeight(hero_h)
+        if getattr(self, "_hero", None) is not None and getattr(self, "_hero_h", None) != hero_h:
+            self._hero_h = hero_h
+            # FIXED, not just minimum: the hero's layout sizeHint (the
+            # wordWrap labels' preferred heights) otherwise inflates the
+            # whole page past the scroll viewport — the reference viewport
+            # shows the full dashboard with NO scrollbar.
+            self._hero.setFixedHeight(hero_h)
         # V0.6.79 (spec P2): at narrow content runs the hero's typography
         # scales DOWN with the width (never below 55% — the hierarchy is
         # preserved; a 41 px headline cannot fit a 217 px column, which

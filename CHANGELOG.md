@@ -31,6 +31,43 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.80 — visual-fidelity pass 5/5 (close): the full-page fit + the card-detail sweep (no scrollbar at the reference viewport, the reference's card insets + one-line descriptions + "Full Conversion Wizard" ninth-card label, the softer featured arrow)
+
+The closing commit of the visual-fidelity correction pass.
+
+- **The scrollbar catch**: the reference viewport shows the entire
+  dashboard with NO scrollbar; ours scrolled ~200 px. Two stacked
+  causes, both found by measuring the live layout: (1) the hero's
+  layout sizeHint (the wordWrap labels' preferred heights — 565 px vs
+  the 340 px panel) inflated the page — the hero height is now FIXED to
+  the reference proportion; (2) a grid reflow from 2 to 3 columns left
+  QGridLayout's retired rows carrying their stale 120 px minimums —
+  reflows now reset them. The page minimum is 817 px against the 854 px
+  viewport: everything fits, exactly like the reference.
+- **Card details**: the reference's insets (the glyph ~32 px in, ~10 px
+  to the title, the arrow disc near the right edge), 11.5 px
+  descriptions (the standard cards' copy now fits ONE line), the
+  Markdown Styler grid glyph switched to the reference's pen, the
+  ninth card labelled "Full Conversion Wizard" per the reference (the
+  sidebar entry keeps the shorter "Full Conversion"), and the featured
+  card's arrow disc softened to a translucent ivory.
+- **The brand wordmark** grew to the reference's display scale
+  (44 px — the reference's ascender measures ~39 px).
+
+Final state at the 1536×1024 reference viewport (offscreen): region
+similarity (≤8/255 per-channel) — frame 92.8%, top bar 92.2%, sidebar
+77.2%, hero 52.1%, heading 96.0%, grid 80.8%, status strip 92.3%;
+overall 73.2% (loose ≤16: 80.4%). An independent VLM side-by-side
+review scores **92/100 perceived similarity** with "no remaining
+must-fix issues". The residual pixel deltas are dominated by (a) the
+shipped still-life asset being a variant crop of the reference's
+render and (b) font rasterization differences — both documented in
+the session report.
+
+204 tests passed across the touched suites (the 4 failures in
+test_v0600_internal_tabs_e2e are pre-existing — verified failing on
+the pre-pass tree); `ruff check .` green.
+
 ## V0.6.79 — visual-fidelity pass 4/N: the sidebar's measured rhythm + the responsive/polish sweep (the reference's brand row, tall Home pill, and footer placement; the Home-pill WA_StyledBackground catch; responsive hero typography + top bar for the 560 px minimum window)
 
 The polish commit of the visual-fidelity pass.
