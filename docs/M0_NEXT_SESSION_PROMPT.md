@@ -29,8 +29,9 @@
 4. `ui_qt/components/dashboard_primitives.py` — `SectionLabel`,
    `SidebarNavItem`, `QuickToolCard` (built in M1, deliberately UNWIRED —
    wiring them in is M2's first move).
-5. `AGENTS.md` — the 6 standing rules (content-agnostic, evidence-first,
-   net-green, provenance, zip-per-release, release-per-version).
+5. `AGENTS.md` — the 7 standing rules (content-agnostic, evidence-first,
+   net-green, provenance, zip-per-release, release-per-version,
+   commit-and-push-incrementally — Rule 7, added at V0.6.69).
 6. Key shell files: `ui_qt/app.py` (`_build_top_bar()` ~L114–200,
    `_build_content()` ~L342–441, `_setup_llm_lights_monitoring()`),
    `ui_qt/views/convert_view.py` (`_switch_to_tab`, card routing),
@@ -44,7 +45,8 @@ Conversion hero, compact Quick Tools grid, decluttered header,
 experimental destinations hidden from primary nav (code intact). The
 10-step Wizard itself is OUT OF SCOPE (later milestone). At the END of
 M2: bump `VERSION` → `0.6.70` + `CHANGELOG.md` `## V0.6.70` heading (no
-tag, no push, no GitHub Release **in that session** — the 2026-11-01
+tag, no GitHub Release, no zip **in that session** — commits still get
+pushed incrementally per AGENTS.md Rule 7; the 2026-11-01
 `V0.6.70-M1` pre-release was separately user-authorized; publishing
 V0.6.70 proper stays M4/user-authorized, per AGENTS.md Rule 6 and
 decision Q8).
@@ -171,8 +173,9 @@ decision Q8).
    `CHANGELOG.md` gains the `## V0.6.70` heading (convert the M1
    "Unreleased" section into it or append a new section — keep both
    records), `release_notes/V0.6.70.md` MAY be drafted but is NOT
-   published. NO tag, NO push, NO GitHub Release, NO zip — those are
-   M4/user-authorized only.
+   published. NO tag, NO GitHub Release, NO zip — those are
+   M4/user-authorized only. (Commits themselves DO get pushed
+   incrementally, per AGENTS.md Rule 7.)
 9. **Validation:** `ruff check core/ utils/ ui_qt/ tests/` (only the 1
    pre-existing B023); full suite vs the **M1 reference baseline: 8,374
    passed / 28 failed / 29 errors / 380 skipped / 7 xfailed** — zero NEW
@@ -198,7 +201,8 @@ decision Q8).
 - Experimental four: absent from primary nav, present via About&System
   "Experimental tools…", DnD→Queue unchanged, all code paths intact.
 - Both themes correct on every new surface; refresh-on-toggle covers them.
-- `VERSION` = 0.6.70 + changelog entry; no tag/push/release.
+- `VERSION` = 0.6.70 + changelog entry; no tag/release (commits pushed
+  per AGENTS.md Rule 7).
 - Suite no worse than the M1 baseline; ruff clean (minus the pre-existing
   B023); new M2 pins green.
 
@@ -211,8 +215,9 @@ decision Q8).
 - Introduce new pip dependencies, mock data, fake statuses, recent-jobs,
   presets, or onboarding flows.
 - Fix the 5 pre-existing failures, the ruff B023, or unrelated modules.
-- Reset/rebase/force-push; tag; publish a Release; push without explicit
-  authorization in that session.
+- Reset/rebase/force-push; tag; publish a Release; zip. (Plain pushes
+  of `main` are no longer session-gated — AGENTS.md Rule 7 REQUIRES
+  commit-and-push after every unit of work.)
 
 ## Required process
 
@@ -223,7 +228,8 @@ decision Q8).
    About & System fallback`, `ui: reduce the header to brand + aggregate
    dot + essentials`, `test: pin the M2 dashboard structure`, `chore:
    bump VERSION to 0.6.70 for the dashboard milestone`) — tests before
-   committing; diff review each time.
+   committing; diff review each time; PUSH every commit immediately
+   (AGENTS.md Rule 7: nothing sits unpushed mid-session).
 3. End with the full end-of-session report per `SESSION_WORKFLOW.md` and
    REPLACE this file's content with the Session 4 (M3 polish + regression)
    prompt, including the QA matrix results, the new baseline numbers, and
