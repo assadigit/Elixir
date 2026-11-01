@@ -383,6 +383,9 @@ class ElixirWindow(QMainWindow):
         # so the sidebar's Home item routes here.)
         self.convert_view = ConvertView(self.controller)
         _add_page("convert", _wrap_scroll(self.convert_view), active_key="home")
+        # Build-1 bridge: "home" aliases the convert page (the real home
+        # view arrives with the hero commit and takes the key over).
+        self._page_index["home"] = self._page_index["convert"]
 
         # Page: Queue (batch processing — unlisted, decision Q2)
         self.queue_view = QueueView(self.controller)
