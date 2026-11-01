@@ -1,9 +1,27 @@
-"""M2 (UI/UX redesign): the fixed compact left sidebar — the primary nav.
+"""M2 (UI/UX redesign): the fixed left sidebar — the primary nav.
 
-Built entirely on the M1 dashboard primitives (``SectionLabel`` +
-``SidebarNavItem`` from ``dashboard_primitives.py``): a data-driven nav
-rail (``NAV_GROUPS`` + ``NAV_FOOTER``) inside a fixed, always-visible
-~210 px rail (spec §5; user decision Q1 — the Audio group is IN).
+V0.6.77 (visual-fidelity pass): the sidebar is re-measured against the
+approved dashboard reference (1536×1024) —
+
+  • width 265 px (17.3% of the reference window; the rail had been 210),
+  • the BRAND ROW at the top (leaf emblem + "Elixir" wordmark) — the
+    brand moved out of the top bar into the rail exactly as the
+    reference draws it,
+  • Home with the pale-sage selected pill,
+  • ONE "TOOLS" group label above the nine core tools (Full Conversion
+    first, then Summarization, Document → Markdown, Translation,
+    Markdown Styler, Packets of Knowledge, OCR Service, PDF/DOCX Cutter,
+    Image Extractor order per the reference),
+  • a divider, then Settings and About,
+  • the tagline card (leaf + "Knowledge, distilled into clarity." over
+    the muted landscape artwork) anchored at the bottom.
+
+The AUDIO group (TTS / Podcast Maker / Transcribe) left the primary
+navigation — the reference rail carries only the nine core tools. The
+tools themselves are untouched: they stay reachable via the Quick Tools
+"View all tools →" page (the legacy tool dashboard carries every tool)
+AND via About & System's "More tools & actions" rows. ``AUDIO_KEYS``
+pins that relocation.
 
 Navigation ROUTING is intentionally NOT implemented here, exactly like
 the primitives' own contract: items emit ``navigate(key)`` and
@@ -12,11 +30,10 @@ dispatch via the existing ``convert_view`` tool-key dispatch, or one of
 the two dialogs).
 
 The experimental destinations (decision Q2 — Queue, Output Scanner,
-Bullet Audit, Hallucination Audit) are deliberately ABSENT from
+Bullet Audit, Hallucination Audit) remain deliberately ABSENT from
 ``NAV_GROUPS`` / ``NAV_FOOTER``; they stay reachable via the About &
 System "Experimental tools…" fallback and their existing routing.
-``EXPERIMENTAL_KEYS`` is the pin anchor for that absence (the views and
-their code are intact — hidden, not removed).
+``EXPERIMENTAL_KEYS`` is the pin anchor for that absence.
 
 Styling: the rail chrome is the ``QFrame#SidebarRail`` QSS rule in
 ``theme.py``; every item/group label is token-driven (no colour
@@ -40,8 +57,11 @@ from ui_qt.components.dashboard_primitives import SectionLabel, SidebarNavItem
 from ui_qt.components.icons import icon
 from ui_qt.theme import RADIUS, theme_manager
 
-# The fixed rail width (spec §5 "compact and fixed"; QA budget 200–220 px).
-SIDEBAR_WIDTH = 210
+# The fixed rail width — V0.6.77: re-measured from the approved reference
+# (the shell starts at x=22, the rail/content boundary lands at x≈287 →
+# 265 px; the old 210 px QA budget left the rail too narrow for the
+# reference's rhythm and pushed the content start left of the target).
+SIDEBAR_WIDTH = 265
 
 # ── Navigation data (the single source of truth for the sidebar IA) ─────────
 # Group label ``None`` = ungrouped items (Home at the top; Settings/About in
@@ -50,29 +70,17 @@ SIDEBAR_WIDTH = 210
 NAV_GROUPS: list[tuple[str | None, list[tuple[str, str, str]]]] = [
     (None, [("home", "home", "Home")]),
     (
-        "Processing",
+        "Tools",
         [
+            ("full_conversion", "zap", "Full Conversion"),
             ("summarization", "sigma", "Summarization"),
             ("pdf_to_markdown", "file-text", "Document → Markdown"),
             ("translation", "globe", "Translation"),
-        ],
-    ),
-    (
-        "Utilities",
-        [
             ("markdown_styler", "sparkles", "Markdown Styler"),
             ("packets_tool", "layers", "Packets of Knowledge"),
             ("ocr_service", "scan", "OCR Service"),
             ("pdf_docx_cutter", "scissors", "PDF/DOCX Cutter"),
             ("image_extractor", "image", "Image Extractor"),
-        ],
-    ),
-    (
-        "Audio",
-        [
-            ("tts_service", "audio-lines", "TTS Service"),
-            ("podcast_maker", "mic", "Podcast Maker"),
-            ("transcribe", "headphones", "Transcribe Service"),
         ],
     ),
 ]
@@ -82,6 +90,12 @@ NAV_FOOTER: list[tuple[str, str, str]] = [
     ("settings", "settings", "Settings"),
     ("about", "info", "About"),
 ]
+
+# V0.6.77 (visual-fidelity pass): the Audio group left the primary rail —
+# the approved reference's sidebar carries only the nine core tools. The
+# tools are NOT deleted: the convert page ("View all tools →") and the
+# About & System "More tools & actions" rows both route to them.
+AUDIO_KEYS = ("tts_service", "podcast_maker", "transcribe")
 
 # Decision Q2: these destinations NEVER appear in the sidebar nav data.
 # (Their views + routing stay intact behind About & System.)
@@ -118,25 +132,25 @@ class SidebarBrandCard(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("Card")
+        self.setObjectName("SidebarBrandCard")
         self._pm_key: tuple | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 10, 0, 0)
+        root.setContentsMargins(0, 12, 0, 0)
         root.setSpacing(0)
 
         # ── leaf glyph + the two-line brand text ──────────────────────
         row = QHBoxLayout()
-        row.setContentsMargins(12, 0, 12, 0)
-        row.setSpacing(6)
+        row.setContentsMargins(14, 0, 14, 0)
+        row.setSpacing(8)
         self._leaf = QLabel()
-        self._leaf.setFixedSize(14, 14)
+        self._leaf.setFixedSize(16, 16)
         row.addWidget(self._leaf, 0, Qt.AlignmentFlag.AlignTop)
 
         text = QVBoxLayout()
         text.setSpacing(0)
         line1 = QLabel("Knowledge,")
-        line1.setObjectName("H3")
+        line1.setObjectName("ToolTitle")
         text.addWidget(line1)
         self._line2 = QLabel("distilled into clarity.")
         text.addWidget(self._line2)
@@ -151,7 +165,7 @@ class SidebarBrandCard(QFrame):
         self._art = QLabel()
         self._art.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter)
         art_wrap = QVBoxLayout()
-        art_wrap.setContentsMargins(0, 6, 0, 0)
+        art_wrap.setContentsMargins(0, 8, 0, 0)
         art_wrap.addWidget(self._art)
         root.addLayout(art_wrap)
 
@@ -170,9 +184,9 @@ class SidebarBrandCard(QFrame):
         from ui_qt.theme import FONT, WEIGHT
 
         p = theme_manager.palette
-        self._leaf.setPixmap(icon("leaf", p.accent, 14).pixmap(14, 14))
+        self._leaf.setPixmap(icon("leaf", p.sage, 16).pixmap(16, 16))
         self._line2.setStyleSheet(
-            f"font-size: {FONT.body}px; font-weight: {WEIGHT.regular};"
+            f"font-size: {FONT.sidebar}px; font-weight: {WEIGHT.regular};"
             f"color: {p.text_secondary}; background: transparent;"
         )
 
@@ -217,9 +231,10 @@ class SidebarBrandCard(QFrame):
             Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        # Keep the strip compact: crop from the TOP (the fade erases the
-        # crop line) so the hills' lower band fills the strip.
-        strip_h = min(scaled_h, 96)
+        # Keep the strip compact (V0.6.77: the reference card's art band
+        # is ~50 px of the ~126 px card): crop from the TOP (the fade
+        # erases the crop line) so the hills' lower band fills the strip.
+        strip_h = min(scaled_h, 72)
         flat = QImage(w, strip_h, QImage.Format.Format_ARGB32_Premultiplied)
         flat.fill(QColor(p.bg_surface))
         painter = QPainter(flat)
@@ -250,7 +265,7 @@ class SidebarBrandCard(QFrame):
 
         # Bottom-corner clip at the card radius (top is faded, not cut).
         clip = QPainterPath()
-        r = float(RADIUS.lg)
+        r = float(RADIUS.card)
         clip.moveTo(0, 0)
         clip.lineTo(w, 0)
         clip.lineTo(w, strip_h - r)
@@ -276,13 +291,14 @@ class SidebarBrandCard(QFrame):
 
 
 class Sidebar(QFrame):
-    """The fixed compact left rail: icons + labels, grouped, always visible.
+    """The fixed left rail: the reference's brand row + grouped nav +
+    footer + bottom tagline card, always visible.
 
     Emits ``navigate(key)`` on click (routing belongs to the window) and
-    tracks the active destination via ``set_active`` (the restrained
-    accent treatment from the primitives).  The grouped list scrolls
-    vertically at short window heights; the Settings/About footer stays
-    pinned below it.
+    tracks the active destination via ``set_active`` (the pale-sage
+    active pill).  The grouped list scrolls vertically at short window
+    heights; the Settings/About footer and the tagline card stay pinned
+    below it.
     """
 
     navigate = Signal(str)
@@ -295,17 +311,32 @@ class Sidebar(QFrame):
         self._items: dict[str, SidebarNavItem] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 10, 0, 10)
-        root.setSpacing(6)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ── the brand row (V0.6.77: the reference's leaf + wordmark,
+        #    moved out of the top bar into the rail) ──────────────────
+        brand_row = QWidget()
+        bl = QHBoxLayout(brand_row)
+        bl.setContentsMargins(18, 26, 16, 12)
+        bl.setSpacing(10)
+        self._brand_leaf = QLabel()
+        self._brand_leaf.setFixedSize(26, 26)
+        bl.addWidget(self._brand_leaf, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._brand_word = QLabel("Elixir")
+        self._brand_word.setObjectName("BrandWord")
+        bl.addWidget(self._brand_word, 0, Qt.AlignmentFlag.AlignVCenter)
+        bl.addStretch(1)
+        root.addWidget(brand_row)
 
         # ── scrollable grouped nav ────────────────────────────────────
         nav_host = QWidget()
         nav = QVBoxLayout(nav_host)
-        nav.setContentsMargins(10, 0, 10, 0)
+        nav.setContentsMargins(16, 2, 16, 10)
         nav.setSpacing(2)
         for group_label, items in NAV_GROUPS:
             if group_label is not None:
-                nav.addSpacing(8)
+                nav.addSpacing(16)
                 nav.addWidget(SectionLabel(group_label))
             for key, icon_name, label in items:
                 item = SidebarNavItem(icon_name, label)
@@ -327,12 +358,15 @@ class Sidebar(QFrame):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll, 1)
 
-        # ── pinned footer (Settings / About) ──────────────────────────
+        # ── divider + pinned footer (Settings / About) ────────────────
+        divider_wrap = QVBoxLayout()
+        divider_wrap.setContentsMargins(16, 10, 16, 0)
         divider = QFrame()
         divider.setObjectName("Divider")
-        root.addWidget(divider)
+        divider_wrap.addWidget(divider)
+        root.addLayout(divider_wrap)
         footer = QVBoxLayout()
-        footer.setContentsMargins(10, 0, 10, 0)
+        footer.setContentsMargins(16, 8, 16, 2)
         footer.setSpacing(2)
         for key, icon_name, label in NAV_FOOTER:
             item = SidebarNavItem(icon_name, label)
@@ -346,10 +380,12 @@ class Sidebar(QFrame):
         # BELOW the pinned footer exactly as in the approved dashboard
         # reference; hides on short rails (see resizeEvent).
         brand_wrap = QVBoxLayout()
-        brand_wrap.setContentsMargins(10, 8, 10, 0)
+        brand_wrap.setContentsMargins(16, 8, 16, 12)
         self._brand = SidebarBrandCard()
         brand_wrap.addWidget(self._brand)
         root.addLayout(brand_wrap)
+
+        self._apply_brand_tints()
 
     # ── geometry ─────────────────────────────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
@@ -367,10 +403,16 @@ class Sidebar(QFrame):
             item.set_active(k == key)
 
     # ── theme ───────────────────────────────────────────────────────────
+    def _apply_brand_tints(self) -> None:
+        """The brand row's leaf tint (token-driven)."""
+        p = theme_manager.palette
+        self._brand_leaf.setPixmap(icon("leaf", p.accent, 26).pixmap(26, 26))
+
     def refresh_theme(self) -> None:
         """Re-apply theme-dependent styles (theme toggle hook)."""
         for item in self._items.values():
             item.refresh_theme()
+        self._apply_brand_tints()
         # M3 asset audit: the brand card re-composites its panorama and
         # re-tints the leaf glyph against the new surface tokens.
         if hasattr(self, "_brand"):
@@ -383,6 +425,7 @@ __all__ = [
     "SidebarBrandCard",
     "NAV_GROUPS",
     "NAV_FOOTER",
+    "AUDIO_KEYS",
     "EXPERIMENTAL_KEYS",
     "SIDEBAR_WIDTH",
     "nav_keys",

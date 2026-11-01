@@ -460,8 +460,11 @@ class TestV0669AppSourcePins:
             assert absent not in _APP_SRC, absent
 
     def test_lights_are_built_into_the_top_bar(self):
-        assert "self.llm_lights, _ = build_status_lights()" in _APP_SRC
-        assert "lay.addWidget(self.llm_lights)" in _APP_SRC
+        """V0.6.77 (visual-fidelity pass): the top bar's sink is the
+        reference's backend PILL (dot + name + chevron) — the per-client
+        lights live only in the About & System dialog."""
+        assert 'setObjectName("BackendPill")' in _APP_SRC
+        assert "lay.addWidget(self.backend_pill)" in _APP_SRC
 
     def test_the_poll_loop_is_wired_and_ticks_immediately(self):
         assert "self._setup_llm_lights_monitoring()" in _APP_SRC
@@ -483,7 +486,9 @@ class TestV0669AppSourcePins:
     def test_verdicts_apply_on_the_main_thread_fail_soft(self):
         assert "@Slot(object)" in _APP_SRC
         assert "def _on_llm_probe_finished" in _APP_SRC
-        assert "lights.apply_statuses(statuses)" in _APP_SRC
+        # V0.6.77: the verdict paints the backend pill (fail-soft — the
+        # pill keeps its last state when a probe explodes)
+        assert "self._refresh_backend_pill()" in _APP_SRC
         # the failed probe is QUIET — a repeating probe must never spam
         # the log (the old path used logger.warning)
         assert 'logger.debug("local-LLM liveness probe failed: %s", error)' in _APP_SRC
@@ -492,17 +497,13 @@ class TestV0669AppSourcePins:
         assert "self._llm_poll_timer.stop()" in _APP_SRC
 
     def test_resize_adapts_and_theme_toggles_repaint(self):
-        """M2 evolution (decision Q3): the hooks survive, the ADAPTATION is
-        retired — the header lights are LOCKED to the existing MINI mode
-        (one aggregate dot) and the full per-client lights live in the
-        About & System dialog. The V0.6.69 measured-budget ladder
-        (bar.minimumSizeHint with lights hidden) was removed WITH the
-        lock; this pin was rewritten at M2 to pin the lock."""
+        """V0.6.77 (visual-fidelity pass): the M2 mini-lock ladder is
+        retired WITH the backend pill (the pill has no width modes). The
+        surviving contract: the pill repaints on theme toggle and on
+        first show."""
         assert "def resizeEvent(self, event) -> None:" in _APP_SRC
-        assert "def _adapt_llm_lights(self) -> None:" in _APP_SRC
-        assert "self.llm_lights.refresh_theme()" in _APP_SRC
-        # the M2 mini lock: a 0 px budget forces the ladder's floor
-        assert "lights.set_budget(0)" in _APP_SRC
+        assert "_refresh_top_bar_icons" in _APP_SRC  # theme toggle repaints the pill
+        assert "self._refresh_backend_pill()" in _APP_SRC
 
     def test_budget_cushion_and_fallback(self):
         """M2 evolution (decision Q3): the V0.6.69 measured-static-min

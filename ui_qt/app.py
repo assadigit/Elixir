@@ -32,8 +32,16 @@ import logging
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QSize, Qt, Slot
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QIcon,
+    QPainter,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -47,8 +55,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
-from ui_qt.components.icons import icon, load_brand_logo
-from ui_qt.components.llm_lights import build_status_lights
+from ui_qt.components.icons import icon
 from ui_qt.components.modal_button_fit import install_modal_button_fit
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings import SettingsDialog
@@ -95,17 +102,88 @@ class ElixirWindow(QMainWindow):
         self.setMinimumSize(560, 400)
         self._restore_geometry()
 
+        # V0.6.77 (visual-fidelity pass): the reference presents ELIXIR as
+        # one unified, softly elevated surface — rounded outer corners,
+        # a subtle border/shadow, integrated top chrome, and working
+        # min/max/close controls in the top bar's right end. The native
+        # frame goes frameless; the backdrop + AppShell reproduce the
+        # mockup's ~21 px floating margin (0 when maximized — see
+        # _apply_chrome_state). Drag = the top bar; resize = the window's
+        # edges via the native system resize (startSystemResize), so Snap
+        # layouts and DPI behaviour stay the platform's own.
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
         self._settings_dialog: SettingsDialog | None = None
         self._validate_dialog: ValidateDialog | None = None
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QVBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        # V0.6.69/V0.6.77: the poll-loop state — initialised BEFORE the UI
+        # builds (the backend pill paints from the cached verdict during
+        # shell construction, before the first probe lands).
+        self._llm_poll_timer = None
+        self._llm_probe_worker = None
+        self._llm_endpoints_snapshot = None
+        self._llm_last_statuses: list | None = None
 
-        root.addWidget(self._build_top_bar())
-        root.addWidget(self._build_content(), 1)
+        # ── the floating shell (V0.6.77) ───────────────────────────
+        # backdrop (the desktop-like ground) → AppShell (the rounded
+        # surface) → [sidebar | topbar+content] / status strip.
+        backdrop = QFrame()
+        backdrop.setObjectName("WindowBackdrop")
+        self._backdrop = backdrop
+        self._backdrop_lay = QVBoxLayout(backdrop)
+        self._backdrop_lay.setContentsMargins(21, 21, 21, 21)
+        self._backdrop_lay.setSpacing(0)
+
+        self._shell = QFrame()
+        self._shell.setObjectName("AppShell")
+        from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+        self._shell_shadow = QGraphicsDropShadowEffect(self)
+        self._shell_shadow.setBlurRadius(34)
+        self._shell_shadow.setOffset(0, 9)
+        # The drop shadow derives from the palette's backdrop token — the
+        # reference's measured density (darkest ~#AFAFAA at the shell's
+        # bottom edge on a #F2EFE8 ground ⇒ a ~17% luminance wash at ~35%
+        # opacity, offset down, blurred) — token-driven in both themes.
+        _bd = QColor(theme_manager.palette.bg_backdrop)
+        _sh = QColor(
+            max(0, _bd.red() * 17 // 100),
+            max(0, _bd.green() * 17 // 100),
+            max(0, _bd.blue() * 17 // 100),
+        )
+        _sh.setAlpha(88)
+        self._shell_shadow.setColor(_sh)
+        self._shell.setGraphicsEffect(self._shell_shadow)
+        shell_lay = QVBoxLayout(self._shell)
+        shell_lay.setContentsMargins(1, 1, 1, 1)  # keep children off the hairline
+        shell_lay.setSpacing(0)
+
+        # The reference's body grid: the fixed sidebar on the left, the
+        # top bar + stacked pages in the right column (the bar belongs to
+        # the content area, NOT the full window width).
+        self._build_content()  # creates self.sidebar + self.content_stack
+        body = QWidget()
+        body_lay = QHBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(0)
+        body_lay.addWidget(self.sidebar)
+        body_col = QVBoxLayout()
+        body_col.setContentsMargins(0, 0, 0, 0)
+        body_col.setSpacing(0)
+        body_col.addWidget(self._build_top_bar())
+        body_col.addWidget(self.content_stack, 1)
+        body_lay.addLayout(body_col, 1)
+        shell_lay.addWidget(body, 1)
+        shell_lay.addWidget(self._build_status_strip())
+        self._backdrop_lay.addWidget(self._shell)
+
+        self.setCentralWidget(backdrop)
 
         # enable window-wide drag-and-drop
         self.setAcceptDrops(True)
@@ -114,126 +192,187 @@ class ElixirWindow(QMainWindow):
         # this REPLACES the removed startup "Ollama not running" warning
         # dialog (a missing local server is a state to show, never a
         # load-time error to nag with; the 2026-10-26 field report).
-        self._llm_poll_timer = None
-        self._llm_probe_worker = None
-        self._llm_endpoints_snapshot = None
-        self._llm_last_statuses: list | None = None
+        # V0.6.77: the top bar now carries the reference's backend pill
+        # (dot + name + chevron) fed by the same loop; the full per-client
+        # lights live on in the About & System dialog.
         self._setup_llm_lights_monitoring()
+
+        # V0.6.77: the frameless chrome interactions — drag the top bar,
+        # double-click it to maximise/restore, grab the backdrop edges to
+        # resize (native system operations; children keep their clicks).
+        self._top_bar.installEventFilter(self)
+        self._backdrop.installEventFilter(self)
+
+        self._apply_chrome_state()
 
     # ══════════════════════════════════════════════════════════════════════
     # Top bar
     # ══════════════════════════════════════════════════════════════════════
     def _build_top_bar(self) -> QWidget:
-        # V0.6.71 (M3 finding F2): QFrame, not QWidget — the QSS rule is
-        # QFrame#TopBar, and a plain QWidget never matches it (and ignores
-        # app-stylesheet backgrounds without WA_StyledBackground anyway).
-        # The mismatch left the bar on the platform-default light grey in
-        # BOTH themes, so in dark mode the near-white text_primary toolbar
-        # icons (theme / info / settings) rendered light-on-light —
-        # invisible on the user's Windows dark-mode run.
+        """The reference's top bar — chrome over the MAIN CONTENT ONLY.
+
+        V0.6.77 (visual-fidelity pass): the brand moved into the sidebar
+        (the reference's leaf + wordmark row); the top bar's left ~60% is
+        intentionally empty in the reference, with the controls clustered
+        right: the backend status pill, the labelled Settings action, a
+        subtle divider, the theme toggle, then the frameless window
+        controls (min / max-restore / close). The old header brand +
+        subtitle, Merge link, LLM lights and about button are all retired
+        from this bar (Merge + the audio tools live on in About & System;
+        the pill summarises the lights; About sits in the sidebar).
+
+        The empty bar area doubles as the window drag region (press to
+        startSystemMove; double-click toggles maximise).
+        """
         bar = QFrame()
         bar.setObjectName("TopBar")
-        bar.setFixedHeight(48)  # V13.31.0: was 38 — more breathing room per user request
+        bar.setFixedHeight(68)
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(20, 0, 14, 0)  # V13.31.0: wider margins
-        lay.setSpacing(10)  # V13.31.0: more spacing between elements
+        lay.setContentsMargins(18, 0, 10, 0)
+        lay.setSpacing(0)
 
-        # brand mark + title — V4.7.25: PNG logo with SVG fallback
-        p = theme_manager.palette
-        brand = QLabel()
-        logo_pm = load_brand_logo(height=22)
-        if logo_pm is not None:
-            brand.setPixmap(logo_pm)
-        else:
-            brand.setPixmap(icon("book", p.accent, 18).pixmap(18, 18))
-        lay.addWidget(brand)
+        # The reference's empty left stretch — and the drag region.
+        lay.addStretch(1)
 
-        title = QLabel("Elixir")
-        title.setObjectName("H3")  # V7.4.0: H2→H3 for compact top bar
-        lay.addWidget(title)
+        # ── the backend status pill (green dot + name + chevron) ──────
+        # V0.6.77: replaces the per-client LLM lights (those live on in
+        # About & System, fed by the same poll loop). The pill names the
+        # CONFIGURED backend (ai.backend) and its dot mirrors that
+        # client's probe verdict; the tooltip carries every client.
+        self.backend_pill = QPushButton("Ollama")
+        self.backend_pill.setObjectName("BackendPill")
+        self.backend_pill.setCursor(Qt.PointingHandCursor)
+        self.backend_pill.setToolTip(
+            "Local LLM backend — opens Settings \u2192 AI \u2192 Local Model.\n"
+            "(Status re-checked every few seconds; all clients listed in "
+            "About & System.)"
+        )
+        self.backend_pill.clicked.connect(self._open_settings)
+        lay.addWidget(self.backend_pill)
+        lay.addSpacing(28)
 
-        subtitle = QLabel("·  PDF → Markdown + Summaries")
-        subtitle.setObjectName("Caption")
-        lay.addWidget(subtitle)
+        # ── the labelled Settings action (gear + word) ────────────────
+        self.settings_btn = QPushButton("Settings")
+        self.settings_btn.setObjectName("TopBarAction")
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        self.settings_btn.setToolTip("Open settings")
+        self.settings_btn.clicked.connect(self._open_settings)
+        lay.addWidget(self.settings_btn)
+        lay.addSpacing(22)
 
-        lay.addStretch()
+        # ── the subtle divider ────────────────────────────────────────
+        divider = QFrame()
+        divider.setObjectName("VDivider")
+        divider.setFixedHeight(36)
+        lay.addWidget(divider)
+        lay.addSpacing(22)
 
-        # V0.6.69: live local-LLM status lights — one per locally-famous
-        # client (Ollama, llama.cpp, LM Studio): green = answered the last
-        # probe, gray = offline, amber = still checking. Re-probed every
-        # few seconds for the whole session (see
-        # _setup_llm_lights_monitoring) — the polite replacement for the
-        # old startup "Ollama not running" error dialog.
-        self.llm_lights, _ = build_status_lights()
-        if self.llm_lights is not None:
-            lay.addWidget(self.llm_lights)
-            lay.addSpacing(8)
-
-        # V5.3.2 → M2 (decision Q7): the top-bar "✨ Process Wizard" button
-        # is REMOVED — the home view's hero CTA ("Start Conversion") owns
-        # the primary entry now; both landed in this milestone so the entry
-        # never gaps. _open_wizard stays (the hero CTA + the unlisted
-        # convert page's Full Conversion card both route through it).
-
-        # V13.31.0 (#10): Merge Books stays as a header compact link — a
-        # documented M2 decision: it is a real, functional cross-output
-        # action (folder-picker flow over past conversion outputs, not a
-        # tool dialog), it keeps the W-b12 worker threading pins green
-        # unchanged, and the header is already decluttered by the wizard
-        # button's removal. (A Quick Tools tile was the alternative.)
-        self.merge_btn = QPushButton("📚  Merge")
-        self.merge_btn.setObjectName("Compact")
-        self.merge_btn.setCursor(Qt.PointingHandCursor)
-        self.merge_btn.setToolTip("Merge summaries + keypoints from multiple book conversions")
-        self.merge_btn.clicked.connect(self._open_merge_dialog)
-        lay.addWidget(self.merge_btn)
-
-        # V13.31.0 (#9): Quick Convert removed per user request
-
-        # theme toggle (sun/moon)
+        # ── the theme toggle (moon in light, sun in dark) ─────────────
         self.theme_btn = QPushButton()
         self.theme_btn.setObjectName("IconBtn")
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.setToolTip("Toggle dark / light theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
         lay.addWidget(self.theme_btn)
+        lay.addSpacing(16)
 
-        # V13.31.0 (#12): Changed from "tools" (sliders icon) to "info" icon
-        # The sliders-horizontal icon looked like volume controls. Now uses
-        # an info icon — opens the About & System dialog.
-        self.about_btn = QPushButton()
-        self.about_btn.setObjectName("IconBtn")
-        self.about_btn.setCursor(Qt.PointingHandCursor)
-        self.about_btn.setToolTip("About & System Info")
-        self.about_btn.clicked.connect(self._open_about_system)
-        lay.addWidget(self.about_btn)
+        # ── the frameless window controls (V0.6.77) ───────────────────
+        # Real controls, not decoration: min/max-restore/close with the
+        # reference's ~54 px pitch; the close hover gets the standard red.
+        self.min_btn = QPushButton()
+        self.min_btn.setObjectName("WinCtrl")
+        self.min_btn.setCursor(Qt.PointingHandCursor)
+        self.min_btn.setToolTip("Minimize")
+        self.min_btn.clicked.connect(self.showMinimized)
+        lay.addWidget(self.min_btn)
 
-        # settings gear
-        self.settings_btn = QPushButton()
-        self.settings_btn.setObjectName("IconBtn")
-        self.settings_btn.setCursor(Qt.PointingHandCursor)
-        self.settings_btn.setToolTip("Settings")
-        self.settings_btn.clicked.connect(self._open_settings)
-        lay.addWidget(self.settings_btn)
+        self.max_btn = QPushButton()
+        self.max_btn.setObjectName("WinCtrl")
+        self.max_btn.setCursor(Qt.PointingHandCursor)
+        self.max_btn.setToolTip("Maximize / restore")
+        self.max_btn.clicked.connect(self._toggle_maximize)
+        lay.addWidget(self.max_btn)
+
+        self.close_btn = QPushButton()
+        self.close_btn.setObjectName("CloseBtn")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setToolTip("Close")
+        self.close_btn.clicked.connect(self.close)
+        lay.addWidget(self.close_btn)
 
         self._refresh_top_bar_icons()
-        self._top_bar = bar  # V0.6.69: the lights' budget measures against it
+        self._top_bar = bar
         return bar
+
+    # ── the backend pill's verdict (V0.6.77) ──────────────────────────
+    _PILL_CLIENT_FOR_BACKEND = {
+        "Ollama": "ollama",
+        "llama.cpp server": "llamacpp",
+        "LM Studio": "lmstudio",
+    }
+
+    def _backend_pill_name(self) -> str:
+        """The configured local backend's display name (settings-driven)."""
+        try:
+            return str(self.controller.get_setting("ai.backend", "Ollama"))
+        except Exception:
+            return "Ollama"
+
+    def _refresh_backend_pill(self) -> None:
+        """Dot colour + label from the CURRENT poll verdict + settings."""
+        p = theme_manager.palette
+        name = self._backend_pill_name()
+        client = self._PILL_CLIENT_FOR_BACKEND.get(name)
+        online = False
+        if self._llm_last_statuses:
+            for st in self._llm_last_statuses:
+                if getattr(st, "key", None) == client and getattr(st, "online", False):
+                    online = True
+                    break
+        # The dot: sage-green when the configured client answered the last
+        # probe, muted grey otherwise (a state to show, never an error).
+        dot = QColor(p.sage if online else p.text_muted)
+        pm = QPixmap(14, 14)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(dot)
+        painter.drawEllipse(3, 3, 8, 8)
+        painter.end()
+        self.backend_pill.setIconSize(QSize(14, 14))
+        self.backend_pill.setIcon(QIcon(pm))
+        self.backend_pill.setText(name if client else "Local LLM")
+        tip = [f"Backend: {name} — {'running' if online else 'not running'}."]
+        if self._llm_last_statuses:
+            tip.append("All clients: " + "; ".join(
+                f"{getattr(s, 'name', s)} {'\u2713' if getattr(s, 'online', False) else '\u2717'}"
+                for s in self._llm_last_statuses
+            ))
+        tip.append("Click to open Settings \u2192 AI \u2192 Local Model.")
+        self.backend_pill.setToolTip("\n".join(tip))
 
     def _refresh_top_bar_icons(self) -> None:
         p = theme_manager.palette
         # sun icon in dark mode (click → light), moon in light mode (click → dark)
-        self.theme_btn.setIcon(icon("sun" if p.is_dark else "moon", p.text_primary, 16))
-        # V13.31.0 (#12): info icon instead of sliders-horizontal
-        self.about_btn.setIcon(icon("info", p.text_primary, 16))
-        self.settings_btn.setIcon(icon("settings", p.text_primary, 16))
-        # V0.6.69: the lights re-paint from the CURRENT palette
-        if getattr(self, "llm_lights", None) is not None:
-            self.llm_lights.refresh_theme()
+        self.theme_btn.setIcon(icon("sun" if p.is_dark else "moon", p.text_primary, 17))
+        self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
+        self.min_btn.setIcon(icon("minus", p.text_secondary, 15))
+        self.max_btn.setIcon(
+            icon(
+                "restore" if self.isMaximized() else "square",
+                p.text_secondary,
+                13,
+            )
+        )
+        self.close_btn.setIcon(icon("x", p.text_secondary, 15))
+        if hasattr(self, "backend_pill"):
+            self._refresh_backend_pill()
 
     def _toggle_theme(self) -> None:
         theme_manager.toggle()
         self._refresh_top_bar_icons()
+        self._refresh_status_strip()
         self.convert_view.refresh_theme()
         # M2: the home view re-flattens the hero illustration against the
         # new surface colour; the fixed rail's nav items re-tint.
@@ -252,14 +391,199 @@ class ElixirWindow(QMainWindow):
         # that is never assigned anywhere (the hallucination audit opens
         # from convert_view, not the main window).
 
+    # ══════════════════════════════════════════════════════════════════════
+    # The bottom status strip (V0.6.77, visual-fidelity pass)
+    # ══════════════════════════════════════════════════════════════════════
+    def _build_status_strip(self) -> QWidget:
+        """The reference's thin persistent strip across the whole inner
+        shell: a sage status dot + the live status word on the left; a
+        divider, the sun/moon glyph, the theme name and a chevron on the
+        right. The theme control is REAL (a menu with Light / Dark); the
+        status word tracks the wizard's conversion lifecycle.
+        """
+        strip = QFrame()
+        strip.setObjectName("StatusStrip")
+        strip.setFixedHeight(56)
+        self._status_strip = strip
+        lay = QHBoxLayout(strip)
+        lay.setContentsMargins(24, 0, 20, 0)
+        lay.setSpacing(8)
+
+        self._status_dot = QLabel()
+        self._status_dot.setFixedSize(14, 14)
+        lay.addWidget(self._status_dot)
+
+        self._status_label = QLabel("Ready")
+        self._status_label.setObjectName("SidebarLabel")
+        lay.addWidget(self._status_label)
+        lay.addStretch(1)
+
+        divider = QFrame()
+        divider.setObjectName("VDivider")
+        divider.setFixedHeight(24)
+        lay.addWidget(divider)
+        lay.addSpacing(10)
+
+        self._status_theme_btn = QPushButton("Light Theme")
+        self._status_theme_btn.setObjectName("StatusThemeBtn")
+        self._status_theme_btn.setCursor(Qt.PointingHandCursor)
+        self._status_theme_btn.setToolTip("Switch between the light and dark themes")
+        self._status_theme_btn.clicked.connect(self._show_theme_menu)
+        lay.addWidget(self._status_theme_btn)
+
+        self._refresh_status_strip()
+        return strip
+
+    def _refresh_status_strip(self) -> None:
+        """Re-paint the dot + theme control from the CURRENT palette."""
+        p = theme_manager.palette
+        if not hasattr(self, "_status_dot"):
+            return
+
+        pm = QPixmap(14, 14)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(p.sage))
+        painter.drawEllipse(3, 3, 8, 8)
+        painter.end()
+        self._status_dot.setPixmap(pm)
+        glyph = "sun" if not p.is_dark else "moon"
+        label = "Light Theme" if not p.is_dark else "Dark Theme"
+        self._status_theme_btn.setText(label + "  \u25be")  # the reference's dropdown chevron
+        self._status_theme_btn.setIcon(icon(glyph, p.text_secondary, 14))
+        self._status_theme_btn.setIconSize(QSize(14, 14))
+
+    def _show_theme_menu(self) -> None:
+        """The theme selector's Light / Dark menu (the chevron's promise)."""
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.setObjectName("StatusThemeMenu")
+        light = menu.addAction("Light Theme")
+        dark = menu.addAction("Dark Theme")
+        current = theme_manager.mode
+        light.setChecked(current == "light")
+        dark.setChecked(current == "dark")
+        light.setCheckable(True)
+        dark.setCheckable(True)
+        chosen = menu.exec(self._status_theme_btn.mapToGlobal(self._status_theme_btn.rect().bottomLeft()))
+        if chosen is light and current != "light" or chosen is dark and current != "dark":
+            self._toggle_theme()
+
+    def set_status(self, text: str, busy: bool = False) -> None:
+        """The real status surface — the wizard's conversion lifecycle
+        (and any future worker) drives this; never a hardcoded 'Ready'."""
+        if hasattr(self, "_status_label"):
+            self._status_label.setText(text)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Frameless-window chrome (V0.6.77)
+    # ══════════════════════════════════════════════════════════════════════
+    _RESIZE_EDGE_PX = 10  # the grab band around the true window edges
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _apply_chrome_state(self) -> None:
+        """Floating-when-normal, edge-to-edge-when-maximized: the ~21 px
+        backdrop margin + the shell's rounded corners + shadow exist only
+        in the windowed state (the standard frameless convention — a
+        maximized surface must own the work area, square corners, no
+        gap). The QSS `[maximized=true]` variants zero the radii."""
+        maximized = self.isMaximized()
+        m = 0 if maximized else 21
+        self._backdrop_lay.setContentsMargins(m, m, m, m)
+        self._shell_shadow.setEnabled(not maximized)
+        for w in (self._shell, self.sidebar, self._top_bar):
+            w.setProperty("maximized", maximized)
+            w.style().unpolish(w)
+            w.style().polish(w)
+        strip = getattr(self, "_status_strip", None)
+        if strip is not None:
+            strip.setProperty("maximized", maximized)
+            strip.style().unpolish(strip)
+            strip.style().polish(strip)
+        if hasattr(self, "max_btn"):
+            self._refresh_top_bar_icons()
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+        super().changeEvent(event)
+        from PySide6.QtCore import QEvent
+
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._apply_chrome_state()
+
+    # ── drag + edge-resize (native system operations) ─────────────────
+    def _start_system_move(self) -> None:
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.startSystemMove()
+
+    def _edge_at(self, pos) -> Qt.Edge:
+        """The resize edge under a window-relative point (None-safe)."""
+        from PySide6.QtCore import QPoint
+
+        assert isinstance(pos, QPoint)
+        band = self._RESIZE_EDGE_PX
+        edges = Qt.Edge(0)
+        if self.isMaximized():
+            return Qt.Edge(0)
+        if pos.x() <= band:
+            edges |= Qt.Edge.LeftEdge
+        if pos.x() >= self.width() - band:
+            edges |= Qt.Edge.RightEdge
+        if pos.y() <= band:
+            edges |= Qt.Edge.TopEdge
+        if pos.y() >= self.height() - band:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def _start_system_resize(self, edges) -> None:
+        handle = self.windowHandle()
+        if handle is not None and int(edges) != 0:
+            handle.startSystemResize(edges)
+
+    def _cursor_for_edges(self, edges) -> Qt.CursorShape:
+        from PySide6.QtCore import QEvent  # noqa: F401
+
+        combo = int(edges)
+        table = {
+            int(Qt.Edge.LeftEdge): Qt.CursorShape.SizeHorCursor,
+            int(Qt.Edge.RightEdge): Qt.CursorShape.SizeHorCursor,
+            int(Qt.Edge.TopEdge): Qt.CursorShape.SizeVerCursor,
+            int(Qt.Edge.BottomEdge): Qt.CursorShape.SizeVerCursor,
+            int(Qt.Edge.LeftEdge | Qt.Edge.TopEdge): Qt.CursorShape.SizeFDiagCursor,
+            int(Qt.Edge.RightEdge | Qt.Edge.BottomEdge): Qt.CursorShape.SizeFDiagCursor,
+            int(Qt.Edge.RightEdge | Qt.Edge.TopEdge): Qt.CursorShape.SizeBDiagCursor,
+            int(Qt.Edge.LeftEdge | Qt.Edge.BottomEdge): Qt.CursorShape.SizeBDiagCursor,
+        }
+        return table.get(combo, Qt.CursorShape.ArrowCursor)
+
     def _open_wizard(self) -> None:
-        """V5.3.2: Open the Process Wizard as a modal dialog."""
+        """V5.3.2: Open the Process Wizard as a modal dialog.
+
+        V0.6.77: the wizard's conversion lifecycle now drives the status
+        strip (Converting… / Ready) — the strip never shows a hardcoded
+        'Ready' while a run is in flight."""
         from ui_qt.views.wizard_view import WizardView
 
         dlg = WizardView(self.controller, self)
+        try:
+            dlg.conversion_started.connect(lambda: self.set_status("Converting…"))
+            dlg.conversion_complete.connect(
+                lambda _r: self.set_status("Conversion finished — Ready")
+            )
+        except Exception:
+            logger.debug("wizard status wiring unavailable", exc_info=True)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
         dlg.exec()
+        self.set_status("Ready")
 
     def _open_merge_dialog(self) -> None:
         """V10.21.0: Open the multi-PDF merge dialog.
@@ -316,7 +640,9 @@ class ElixirWindow(QMainWindow):
         if in_flight:
             return  # a merge is already in flight — don't stack workers
 
-        self.merge_btn.setEnabled(False)
+        btn = getattr(self, "merge_btn", None)
+        if btn is not None:
+            btn.setEnabled(False)
         # The finished handler quotes the book count in its box.
         self._merge_book_dirs = book_dirs
 
@@ -340,7 +666,9 @@ class ElixirWindow(QMainWindow):
 
     def _on_merge_finished(self, result) -> None:
         """W-b12: main-thread handler — re-enable + the identical boxes."""
-        self.merge_btn.setEnabled(True)
+        btn = getattr(self, "merge_btn", None)
+        if btn is not None:
+            btn.setEnabled(True)
         from PySide6.QtWidgets import QMessageBox
 
         book_dirs = self._merge_book_dirs
@@ -355,7 +683,9 @@ class ElixirWindow(QMainWindow):
         """W-b12/W-b18: a raising merge must never leave the button stuck
         disabled — re-enable + the existing error box (same title/text
         shape; the diagnostics went to the log via the W-b17 wrapper)."""
-        self.merge_btn.setEnabled(True)
+        btn = getattr(self, "merge_btn", None)
+        if btn is not None:
+            btn.setEnabled(True)
         from PySide6.QtWidgets import QMessageBox
 
         QMessageBox.critical(self, "Merge error", error)
@@ -377,7 +707,7 @@ class ElixirWindow(QMainWindow):
         # Queue, and the About & System "Experimental tools…" section).
         # V13.31.0 history: Podcast Maker tab removed (modal from the
         # dashboard); Hallucination Audit tab added; tools menu → About.
-        from PySide6.QtWidgets import QHBoxLayout, QStackedWidget
+        from PySide6.QtWidgets import QStackedWidget
 
         from ui_qt.components.sidebar import Sidebar
 
@@ -462,22 +792,19 @@ class ElixirWindow(QMainWindow):
         _add_page("hallucination_audit", _wrap_scroll(hallucination_widget))
 
         # The fixed rail (spec §5): emits navigate(key); the window routes.
+        # V0.6.77: the rail no longer wraps the stack itself — __init__'s
+        # shell grid places it beside the top-bar+content column and the
+        # status strip spans the full inner width below both.
         self.sidebar = Sidebar()
         self.sidebar.navigate.connect(self._on_sidebar_navigate)
-
-        lay = QHBoxLayout()
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        lay.addWidget(self.sidebar)
-        lay.addWidget(self.content_stack, 1)
-
-        shell = QWidget()
-        shell.setLayout(lay)
 
         # Page-switch hooks — the _on_tab_changed equivalents must keep
         # firing (queue badge refresh, quarantine auto-reload).
         self.content_stack.currentChanged.connect(self._on_page_changed)
-        return shell
+        # V0.6.77: the initial page (home) never fires currentChanged —
+        # paint the reference's pale-sage Home pill explicitly.
+        self.sidebar.set_active("home")
+        return None
 
     # ── M2 navigation: sidebar routing + the stacked-page facade ─────────
 
@@ -558,6 +885,11 @@ class ElixirWindow(QMainWindow):
         # start from the latest poll snapshot and then ride the poll loop
         # (see _on_llm_probe_finished — both sinks are fed in parallel).
         dlg.open_page.connect(self.switch_to_page)
+        # V0.6.77: the header Merge link retired with the reference top
+        # bar — About & System is its new home (an existing status
+        # surface), alongside the audio tools that left the sidebar.
+        if hasattr(dlg, "open_tool"):
+            dlg.open_tool.connect(self._on_about_tool_requested)
         last = getattr(self, "_llm_last_statuses", None)
         if last:
             dlg.apply_llm_statuses(last)
@@ -566,6 +898,14 @@ class ElixirWindow(QMainWindow):
         self._about_dialog = dlg
         dlg.exec()
         self._about_dialog = None
+
+    def _on_about_tool_requested(self, key: str) -> None:
+        """Route the About & System 'more tools' rows: the window-owned
+        merge flow, else the EXISTING convert_view tool dispatch."""
+        if key == "merge":
+            self._open_merge_dialog()
+            return
+        self.convert_view._on_tool_clicked(key)
 
     def _open_validate(self) -> None:
         dlg = ValidateDialog(self.controller, self)
@@ -614,8 +954,9 @@ class ElixirWindow(QMainWindow):
           ``finished`` signal; a probe that EXPLODES is log-debug only
           (the lights keep the last known state — no dialog, ever).
         """
-        if getattr(self, "llm_lights", None) is None:
-            return  # the widget failed to build — no lights, no polling
+        # V0.6.77: the top bar's backend pill is the primary sink (the
+        # per-client lights live on in the About & System dialog) — the
+        # pill is built unconditionally, so the poll always runs.
         try:
             from PySide6.QtCore import QTimer
 
@@ -668,9 +1009,8 @@ class ElixirWindow(QMainWindow):
         # dialog can show it IMMEDIATELY on open (its full lights would
         # otherwise wait for the next poll tick).
         self._llm_last_statuses = list(statuses) if statuses else []
-        lights = getattr(self, "llm_lights", None)
-        if lights is not None and statuses:
-            lights.apply_statuses(statuses)
+        if hasattr(self, "backend_pill"):
+            self._refresh_backend_pill()
         # M2 (decision Q3): the About & System dialog's full lights are the
         # second sink of this same poll loop — feed it while the dialog is
         # alive (W-b9 WA_DeleteOnClose: the C++ object may already be gone,
@@ -692,26 +1032,46 @@ class ElixirWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self._adapt_llm_lights()
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
-        # V0.6.69 → M2: re-assert the header lights' MINI lock at first real
-        # paint (fonts/QSS are polished by then — harmless no-op if already
-        # locked; decision Q3).
-        self._adapt_llm_lights()
+        # V0.6.77: the pill's first verdict paints as soon as the QSS has
+        # been polished (harmless no-op if the poll already fed it).
+        if hasattr(self, "backend_pill"):
+            self._refresh_backend_pill()
 
-    def _adapt_llm_lights(self) -> None:
-        """M2 (decision Q3): the header keeps ONE compact aggregate dot —
-        the lights are LOCKED to the widget's existing MINI mode (the
-        width-adaptive full→dots→mini ladder is retired with it; the full
-        per-client lights + tooltips live in the About & System dialog,
-        fed by the same poll loop). Kept as the resize/show hook so the
-        lock is re-asserted after the pre-show measure (a no-op)."""
-        lights = getattr(self, "llm_lights", None)
-        if lights is None:
-            return
-        lights.set_budget(0)  # 0 px budget → the ladder's floor: MODE_MINI
+    def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
+        """V0.6.77 frameless chrome: the top bar drags (and double-click
+        maximises); the backdrop's edges resize. Everything else — every
+        child button, the content, the scroll areas — keeps its events."""
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QMouseEvent
+
+        try:
+            if obj is getattr(self, "_top_bar", None):
+                if event.type() == QEvent.Type.MouseButtonDblClick:
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        self._toggle_maximize()
+                        return True
+                elif event.type() == QEvent.Type.MouseButtonPress:
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        self._start_system_move()
+                        return True
+            elif obj is getattr(self, "_backdrop", None) and isinstance(event, QMouseEvent):
+                if event.type() == QEvent.Type.MouseButtonPress:
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        edges = self._edge_at(event.position().toPoint())
+                        if int(edges) != 0:
+                            self._start_system_resize(edges)
+                            return True
+                        self._start_system_move()
+                        return True
+                elif event.type() == QEvent.Type.MouseMove:
+                    edges = self._edge_at(event.position().toPoint())
+                    self._backdrop.setCursor(self._cursor_for_edges(edges))
+        except Exception:
+            logger.debug("frameless chrome event filter failed", exc_info=True)
+        return super().eventFilter(obj, event)
 
     # ══════════════════════════════════════════════════════════════════════
     # Drag-and-drop — dropped PDFs go to the Queue view (any tab)

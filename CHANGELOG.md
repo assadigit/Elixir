@@ -31,6 +31,52 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.77 — visual-fidelity pass 2/N: the reference's floating shell + sidebar IA + top-bar chrome + status strip land (frameless rounded window with working controls, 265 px rail with brand row + nine tools, the pill/Settings/divider/moon/min-max-close bar, the Ready/Light-Theme strip)
+
+The structure commit of the visual-fidelity correction pass. The window
+is now the approved reference's unified, softly elevated surface:
+
+- **Frameless floating shell**: rounded 18 px corners on a ~21 px
+  backdrop margin with a token-derived drop shadow; working minimize /
+  maximize-restore / close controls in the top bar's right end; drag by
+  the top bar; edge/corner resize via native ``startSystemResize``;
+  double-click the bar to maximize; maximized state collapses the
+  margins + radii + shadow (QSS ``[maximized=true]`` variants).
+- **Sidebar (265 px, 17.3%)**: the brand row (leaf emblem + "Elixir"
+  wordmark) moves INTO the rail per the reference; Home carries the
+  pale-sage pill; ONE "TOOLS" group holds the nine core tools in the
+  reference order (Full Conversion first); divider; Settings/About;
+  the tagline card stays anchored at the bottom. The Audio group left
+  the primary rail — the tools are NOT deleted (Quick Tools "View all
+  tools →" + About & System's new "More tools & actions" rows both
+  route to them; ``AUDIO_KEYS`` pins the relocation).
+- **Top bar (68 px, over the content only)**: right-clustered backend
+  pill (green dot + the configured backend's name + chevron, fed by
+  the existing poll loop, click → Settings), labelled Settings action,
+  subtle divider, theme toggle, then the window controls. The old
+  brand/subtitle/Merge link/LLM lights/About button are retired from
+  the bar (About lives in the sidebar; the lights live in About &
+  System; Merge moved to About & System — flow unchanged, W-b12
+  threading pins still green).
+- **Status strip (56 px, full inner width)**: sage dot + a REAL status
+  word (the wizard's conversion lifecycle drives "Converting… / Ready",
+  never a hardcoded Ready) on the left; divider + sun/moon + theme
+  name + chevron on the right, opening a working Light/Dark menu.
+
+Offscreen 1536×1024 QA: sidebar boundary lands at x=287 (reference
+287), shell edges x=22/y=22 (reference 22/23), status strip top y=946
+(reference 947), top-bar control clusters within ~8 px of the reference
+positions. Region similarity vs the reference (≤8/255 tolerance):
+frame 92.8%, top bar 92.0%, status strip 94.0%; the hero (47%) and the
+grid (77%) are the next two versions. Dark-mode + small-window launch
+checks pass (no contrast failures; nav scrolls at short heights).
+
+Tests: the M2 dashboard pins, the V0.6.69 lights pins, and the
+dialog-lifecycle pin updated to the new architecture (same protective
+intent); 74 + 152 + 45 passed across the touched suites, `ruff check .`
+green. Pre-existing unrelated failures (QueuePureShapes, AuditService)
+confirmed failing on the pre-commit tree too.
+
 ## V0.6.76 — visual-fidelity pass 1/N: the theme foundation re-measured against the approved reference (per-zone warm grounds, the reference's measured type scale + radii, new shell/pill/status/card QSS rules, window-control glyphs)
 
 The ELIXIR_VISUAL_FIDELITY_CORRECTION_SPEC (this session's brief) sets a

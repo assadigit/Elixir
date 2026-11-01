@@ -109,6 +109,18 @@ _EXPERIMENTAL_TOOLS: tuple[tuple[str, str, str, str], ...] = (
     ("hallucination_audit", "shield", "Hallucination Audit", "Check bullets against source text"),
 )
 
+# V0.6.77 (visual-fidelity pass): the actions that left the reference top
+# bar / sidebar — the header Merge link (retired with the reference chrome)
+# and the Audio group (the reference sidebar and Quick Tools grid carry
+# only the nine core tools). Hidden \u2260 removed: they live here AND on
+# the full tools page ("View all tools \u2192").
+_MORE_TOOLS: tuple[tuple[str, str, str, str], ...] = (
+    ("merge", "copy", "Merge Books", "Combine summaries + keypoints from multiple book conversions"),
+    ("tts_service", "audio-lines", "TTS Service", "Text \u2192 natural speech audio"),
+    ("podcast_maker", "mic", "Podcast Maker", "Script \u2192 multi-voice podcast audio"),
+    ("transcribe", "headphones", "Transcribe Service", "Video/audio \u2192 text transcript + summary"),
+)
+
 
 class AboutSystemDialog(QDialog):
     """Modal About + System diagnostics dialog."""
@@ -117,6 +129,11 @@ class AboutSystemDialog(QDialog):
     # the hidden experimental destinations — the window connects this to
     # its switch_to_page facade (the dialog never touches the stack).
     open_page = Signal(str)
+
+    # V0.6.77: emitted with a tool key ("merge" or an audio tool) when the
+    # user opens one of the "More tools & actions" rows — the window routes
+    # it (merge -> the existing merge flow; audio -> the convert dispatch).
+    open_tool = Signal(str)
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -190,6 +207,35 @@ class AboutSystemDialog(QDialog):
             row.addWidget(open_btn)
             el.addLayout(row)
         root.addWidget(exp_gb)
+
+        # ── More tools & actions (V0.6.77 — the reference top bar /
+        # sidebar carry only the core set; these stay reachable here) ──
+        more_gb = QGroupBox("More tools & actions")
+        ml = QVBoxLayout(more_gb)
+        ml.setSpacing(6)
+        more_note = QLabel(
+            "Actions that left the compact header and sidebar — also on the "
+            "full tools page (Quick Tools \u2192 View all tools)."
+        )
+        more_note.setObjectName("Caption")
+        more_note.setWordWrap(True)
+        ml.addWidget(more_note)
+        for tool_key, glyph, label, blurb in _MORE_TOOLS:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+            glyph_lbl = QLabel()
+            glyph_lbl.setPixmap(icon(glyph, p.icon, 16).pixmap(16, 16))
+            row.addWidget(glyph_lbl)
+            row.addWidget(QLabel(f"<b>{label}</b> — {blurb}"), 1)
+            open_btn = QPushButton("Open")
+            open_btn.setObjectName("Compact")
+            open_btn.clicked.connect(
+                lambda checked=False, k=tool_key: self.open_tool.emit(k)
+            )
+            row.addWidget(open_btn)
+            ml.addLayout(row)
+        root.addWidget(more_gb)
 
         # ── System paths ────────────────────────────────────────────────
         paths_gb = QGroupBox("System paths")

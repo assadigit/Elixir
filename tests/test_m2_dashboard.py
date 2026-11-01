@@ -100,27 +100,40 @@ _TOOL_TITLES = {entry[0]: entry[1] for entry in _module_const(_TOOLDASH, "TOOL_C
 
 class TestSidebarIAPin:
     def test_exact_groups_and_labels(self):
-        assert [g for g, _items in _NAV_GROUPS] == [None, "Processing", "Utilities", "Audio"]
+        """V0.6.77 (visual-fidelity pass): the reference rail — Home, ONE
+        "Tools" group with the nine core tools in the reference order,
+        then the Settings/About footer. The Audio group left the rail
+        (AUDIO_KEYS pins the relocation; the tools stay reachable via
+        View-all-tools + About & System)."""
+        assert [g for g, _items in _NAV_GROUPS] == [None, "Tools"]
         assert [lbl for _k, _i, lbl in _NAV_GROUPS[0][1]] == ["Home"]
         assert [lbl for _k, _i, lbl in _NAV_GROUPS[1][1]] == [
+            "Full Conversion",
             "Summarization",
             "Document → Markdown",
             "Translation",
-        ]
-        assert [lbl for _k, _i, lbl in _NAV_GROUPS[2][1]] == [
             "Markdown Styler",
             "Packets of Knowledge",
             "OCR Service",
             "PDF/DOCX Cutter",
             "Image Extractor",
         ]
-        # decision Q1: the Audio group is IN (TTS, Podcast, Transcribe).
-        assert [lbl for _k, _i, lbl in _NAV_GROUPS[3][1]] == [
-            "TTS Service",
-            "Podcast Maker",
-            "Transcribe Service",
-        ]
         assert [lbl for _k, _i, lbl in _NAV_FOOTER] == ["Settings", "About"]
+        # the rail width matches the reference measurement (265 px)
+        assert _module_const(_SIDEBAR, "SIDEBAR_WIDTH") == 265
+
+    def test_audio_tools_relocated_not_removed(self):
+        """V0.6.77: the Audio group left the primary rail (the approved
+        reference carries only the nine core tools) — the keys are pinned
+        in AUDIO_KEYS and the tools stay routable + listed in About."""
+        audio = _module_const(_SIDEBAR, "AUDIO_KEYS")
+        assert set(audio) == {"tts_service", "podcast_maker", "transcribe"}
+        for key in audio:
+            assert key not in _NAV_KEYS
+            assert key in _TOOL_TITLES, f"{key} vanished from TOOL_CARDS (hidden \u2260 removed)"
+        about = _strip_comments(_src(_ABOUT))
+        for key in audio:
+            assert f'("{key}"' in about, f"About & System 'more tools' row for {key} missing"
 
     def test_every_tool_label_is_the_exact_toolcards_title(self):
         """No renames: every sidebar tool label equals its TOOL_CARDS title
@@ -232,20 +245,53 @@ class TestHeaderReduction:
         code = _strip_comments(_src(_APP))
         assert "wizard_btn" not in code, "decision Q7: the header wizard button is removed"
 
-    def test_llm_lights_locked_to_mini(self):
+    def test_reference_top_bar_chrome(self):
+        """V0.6.77 (visual-fidelity pass): the reference top bar — the
+        backend pill + labelled Settings + divider + theme toggle + the
+        WORKING frameless window controls; the brand/subtitle/Merge link/
+        LLM lights/About button are all retired from the bar."""
         code = _strip_comments(_src(_APP))
-        assert "set_budget(0)" in code, "the header lights must be mini-locked (decision Q3)"
-        # the full lights live in About & System, fed by the same poll loop
-        about = _strip_comments(_src(_ABOUT))
-        assert "build_status_lights" in about
-        assert "apply_llm_statuses" in code, "the poll loop must feed both sinks"
+        assert 'setObjectName("BackendPill")' in code
+        assert "self._refresh_backend_pill" in code, "the pill must track the poll verdict"
+        assert 'setObjectName("TopBarAction")' in code
+        assert 'setObjectName("VDivider")' in code
+        for ctrl, meth in (
+            ("min_btn", "showMinimized"),
+            ("max_btn", "_toggle_maximize"),
+            ("close_btn", "close"),
+        ):
+            assert f"self.{ctrl}.clicked.connect(self.{meth})" in code, (
+                f"{ctrl} must be a working control (wired to {meth})"
+            )
+        assert "FramelessWindowHint" in code, "the reference's integrated chrome"
+        assert "startSystemMove" in code and "startSystemResize" in code, (
+            "native drag + edge resize must be wired"
+        )
+        # the brand belongs to the sidebar now, not the bar
+        assert "load_brand_logo" not in code
+        assert "build_status_lights" not in code, "the pill replaced the header lights"
 
-    def test_merge_kept_in_header(self):
-        """The documented Merge decision: the compact header link stays (a
-        real cross-output action; keeps the W-b12 threading pins green)."""
+    def test_merge_moved_to_about_system(self):
+        """V0.6.77: the reference top bar retired the header Merge link;
+        the (unchanged) merge flow lives on in About & System's 'More
+        tools & actions' section, routed by the window."""
         code = _strip_comments(_src(_APP))
-        assert 'QPushButton("📚  Merge")' in code
-        assert "_open_merge_dialog" in code
+        about = _strip_comments(_src(_ABOUT))
+        assert "_open_merge_dialog" in code, "the merge flow itself is untouched"
+        assert '("merge", "copy", "Merge Books"' in about
+        assert "open_tool = Signal(str)" in about
+        assert "dlg.open_tool.connect(self._on_about_tool_requested)" in code
+
+    def test_status_strip_pins(self):
+        """V0.6.77: the persistent bottom strip — a REAL theme selector
+        and a status word driven by the wizard lifecycle (never a
+        hardcoded 'Ready')."""
+        code = _strip_comments(_src(_APP))
+        assert 'setObjectName("StatusStrip")' in code
+        assert 'setObjectName("StatusThemeBtn")' in code
+        assert "_show_theme_menu" in code, "the selector must actually switch themes"
+        assert 'set_status("Converting…")' in code
+        assert "conversion_complete.connect" in code
 
 
 # ════════════════════════════════════════════════════════════════════════════

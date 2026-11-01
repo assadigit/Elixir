@@ -344,7 +344,7 @@ def _qss(p: Palette) -> str:
         border: 1px solid {p.border};
         border-radius: {RADIUS.shell}px;
     }}
-    QWidget#WindowBackdrop {{
+    QWidget#WindowBackdrop, QFrame#WindowBackdrop {{
         background-color: {p.bg_backdrop};
         border: none;
     }}
@@ -364,11 +364,53 @@ def _qss(p: Palette) -> str:
         color: {p.text_on_accent};
     }}
     /* The persistent bottom status strip (reference ~56 px, full inner
-       width, hairline top border, cream surface). */
+       width, hairline top border, cream surface). It owns the shell's
+       rounded BOTTOM corners (the sidebar owns the top-left, the header
+       the top-right). */
     QFrame#StatusStrip {{
         background-color: {p.bg_header};
         border: none;
         border-top: 1px solid {p.border};
+        border-bottom-left-radius: {RADIUS.shell}px;
+        border-bottom-right-radius: {RADIUS.shell}px;
+    }}
+    /* Maximized: the floating shell goes edge-to-edge — square corners,
+       no hairline (set via the dynamic property in ElixirWindow). */
+    QFrame#AppShell[maximized="true"] {{
+        border: none;
+        border-radius: 0;
+    }}
+    QFrame#SidebarRail[maximized="true"] {{
+        border-top-left-radius: 0;
+    }}
+    QFrame#TopBar[maximized="true"] {{
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }}
+    QFrame#StatusStrip[maximized="true"] {{
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }}
+    /* The top bar's labelled Settings action (gear + word). */
+    QPushButton#TopBarAction {{
+        background-color: transparent;
+        color: {p.text_secondary};
+        border: none;
+        border-radius: {RADIUS.sm}px;
+        padding: 6px 10px;
+        font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
+        outline: none;
+    }}
+    QPushButton#TopBarAction:hover {{
+        background-color: {p.bg_elevated};
+        color: {p.text_primary};
+    }}
+    /* The reference's subtle vertical divider between the theme control
+       and the window controls (also used by the status strip). */
+    QFrame#VDivider {{
+        background-color: {p.border};
+        border: none;
+        min-width: 1px; max-width: 1px;
     }}
     QFrame#SidebarBrandCard {{
         background-color: {p.bg_surface};
