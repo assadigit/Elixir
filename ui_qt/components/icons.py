@@ -8,8 +8,9 @@ icon assets and keeps the app a single, self-contained Python package.
 Usage::
 
     from ui_qt.components.icons import icon, pixmap
+    from ui_qt.theme import theme_manager
 
-    gear = icon("settings", color="#D4A574", size=20)
+    gear = icon("settings", color=theme_manager.palette.icon, size=20)
     btn.setIcon(gear)
 
     # or a pixmap for labels / custom painting
@@ -193,6 +194,19 @@ ICONS: dict[str, str] = {
     "zap": (
         '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'
     ),
+    # M1 (UI/UX redesign): navigation + audio-group glyphs for the M2
+    # sidebar/hero/grid (Lucide, same 24×24 stroke family as the rest).
+    "home": (
+        '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
+        '<path d="M9 22V12h6v10"/>'
+    ),
+    "headphones": (
+        '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>'
+    ),
+    "audio-lines": (
+        '<path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/>'
+        '<path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/>'
+    ),
 }
 
 
@@ -249,8 +263,14 @@ def icon(name: str, color: str = "#E8EAED", size: int = 20) -> QIcon:
 
 
 def icon_for_mode(name: str, is_dark: bool, size: int = 20) -> QIcon:
-    """Convenience: pick a sensible default colour for the active mode."""
-    return icon(name, "#E8EAED" if is_dark else "#1A1D23", size)
+    """Convenience: render with the palette's default ``icon`` tint for the mode.
+
+    M1: uses the spec §3 `icon` token (via ``PALETTES``) instead of the old
+    neutral-gray literals, so mode-default icons track the approved palette.
+    """
+    from ui_qt.theme import PALETTES
+
+    return icon(name, PALETTES["dark" if is_dark else "light"].icon, size)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
