@@ -31,6 +31,25 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.73 — CI's ruff gate is green again: the one pre-existing B023 (a closure over the loop-reassigned scheduler step) is bound as a default argument, exactly the pattern the neighbouring wrapper already used
+
+`core/tts/_vibevoice_subprocess.py`'s GPU scheduler patch defined
+`_gpu_step` closing over `_orig_step`, which the enclosing loop
+reassigns — B023: the wrapper could call whichever `step()` a LATER
+iteration left behind instead of the one it captured. The fix binds it
+as a default argument (`_step=_orig_step`), matching the
+`_sched=scheduler` binding the neighbouring `_gpu_safe_set_timesteps`
+wrapper already used. Zero runtime-visible change for the single
+scheduler in practice — this is the lint/correctness hygiene commit.
+
+`ruff check .` on the whole tree: **All checks passed** (was 1 error,
+pre-existing since before the M3 session — CI's Lint job had been red
+on every push all day). No new installer built: V0.6.72's
+`Elixir-Setup-0.6.72.exe` remains the current user download; this bump
+is repo hygiene only, recorded per the every-change-gets-a-version
+policy.
+
+
 ## V0.6.72 — the selftest now guards the image assets: a packaging regression that drops the hero or the brand-card panorama fails the installer build instead of silently shipping a text-only UI
 
 Follows V0.6.71's asset audit. Both image assets load through

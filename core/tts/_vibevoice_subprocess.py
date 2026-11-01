@@ -1048,9 +1048,15 @@ def main():
                             _orig_step = scheduler.step
                             if not getattr(_orig_step, "_vv_gpu_step", False):
 
-                                def _gpu_step(*args, _sched=scheduler, **kwargs):
+                                # V0.6.73: _step bound as a default arg for
+                                # the same reason as _sched above — B023: a
+                                # closure over the loop-reassigned
+                                # _orig_step would call whichever step()
+                                # a LATER iteration left behind, not the
+                                # one this wrapper captured.
+                                def _gpu_step(*args, _sched=scheduler, _step=_orig_step, **kwargs):
                                     with torch.device("cuda"):
-                                        return _orig_step(*args, **kwargs)
+                                        return _step(*args, **kwargs)
 
                                 _gpu_step._vv_gpu_step = True
                                 scheduler.step = _gpu_step
