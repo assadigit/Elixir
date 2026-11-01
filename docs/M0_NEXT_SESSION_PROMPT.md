@@ -1,5 +1,16 @@
 # Next Session Prompt — Elixir Session 4: M3 Polish + Regression
 
+> **RESTART NOTE (2026-11-01, wrap-up session):** the first Session-4
+> attempt ran out of context BEFORE Step 1 — no QA matrix was walked, no
+> findings recorded, no `theme.py` edits, no screenshots, no version
+> bump. Nothing was lost or half-done: the wrap-up session verified the
+> working tree clean at `88bfd6f` (VERSION 0.6.70), `main` in sync with
+> `origin/main`, the push path confirmed working ("Everything
+> up-to-date"), and no stashes or stray milestone branches. The user
+> re-confirmed that pushes are expected (Rule 7 stands). Execute the M3
+> mission below from Step 1 as written — do not hunt for phantom prior
+> work; there is none.
+
 > This is the ROLLING next-session prompt (the M2 dashboard prompt it
 > replaced is preserved in git history at commit `9ba8e20^` / the M2
 > close commit). Repo: https://github.com/assadigit/elixir · branch
