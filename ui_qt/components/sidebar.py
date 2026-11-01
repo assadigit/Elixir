@@ -136,7 +136,7 @@ class SidebarBrandCard(QFrame):
         self._pm_key: tuple | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 12, 0, 0)
+        root.setContentsMargins(0, 20, 0, 0)
         root.setSpacing(0)
 
         # ── leaf glyph + the two-line brand text ──────────────────────
@@ -149,9 +149,11 @@ class SidebarBrandCard(QFrame):
 
         text = QVBoxLayout()
         text.setSpacing(0)
-        line1 = QLabel("Knowledge,")
-        line1.setObjectName("ToolTitle")
-        text.addWidget(line1)
+        # V0.6.79: the reference's card text — a dark-sage bold lead line
+        # over the muted second line (measured #52614D / #8A8F86).
+        self._line1 = QLabel("Knowledge,")
+        self._line1.setObjectName("TaglineLead")
+        text.addWidget(self._line1)
         self._line2 = QLabel("distilled into clarity.")
         text.addWidget(self._line2)
         row.addLayout(text, 1)
@@ -189,6 +191,10 @@ class SidebarBrandCard(QFrame):
             f"font-size: {FONT.sidebar}px; font-weight: {WEIGHT.regular};"
             f"color: {p.text_secondary}; background: transparent;"
         )
+        self._line1.setStyleSheet(
+            f"font-size: {FONT.tool}px; font-weight: {WEIGHT.semibold};"
+            f"color: {p.sage}; background: transparent;"
+        )
 
     def _apply_art(self) -> None:
         """Composite the landscape as a full-bleed bottom strip.
@@ -211,7 +217,7 @@ class SidebarBrandCard(QFrame):
         from app_paths import bundle_dir
 
         p = theme_manager.palette
-        scrim = 0.45 if not p.is_dark else 0.55
+        scrim = 0.38 if not p.is_dark else 0.55
         w = self._art.width() or max(1, self.width() - 2)
         key = (w, p.bg_surface, scrim)
         if key == self._pm_key:
@@ -318,10 +324,10 @@ class Sidebar(QFrame):
         #    moved out of the top bar into the rail) ──────────────────
         brand_row = QWidget()
         bl = QHBoxLayout(brand_row)
-        bl.setContentsMargins(18, 26, 16, 12)
+        bl.setContentsMargins(18, 28, 16, 30)
         bl.setSpacing(10)
         self._brand_leaf = QLabel()
-        self._brand_leaf.setFixedSize(26, 26)
+        self._brand_leaf.setFixedSize(34, 34)
         bl.addWidget(self._brand_leaf, 0, Qt.AlignmentFlag.AlignVCenter)
         self._brand_word = QLabel("Elixir")
         self._brand_word.setObjectName("BrandWord")
@@ -332,17 +338,32 @@ class Sidebar(QFrame):
         # ── scrollable grouped nav ────────────────────────────────────
         nav_host = QWidget()
         nav = QVBoxLayout(nav_host)
-        nav.setContentsMargins(16, 2, 16, 10)
-        nav.setSpacing(2)
+        nav.setContentsMargins(16, 2, 16, 6)
+        nav.setSpacing(1)
         for group_label, items in NAV_GROUPS:
             if group_label is not None:
-                nav.addSpacing(16)
+                nav.addSpacing(32)
                 nav.addWidget(SectionLabel(group_label))
+                nav.addSpacing(12)
             for key, icon_name, label in items:
-                item = SidebarNavItem(icon_name, label)
+                # V0.6.79: Home — the reference's roomier 44 px selected pill.
+                item = SidebarNavItem(icon_name, label, tall=(key == "home"))
                 item.clicked.connect(lambda k=key: self.navigate.emit(k))
                 self._items[key] = item
                 nav.addWidget(item)
+        # V0.6.79: the reference's divider + Settings/About sit a fixed
+        # ~46 px below the LAST TOOL (not bottom-pinned) — the tagline
+        # card below owns the bottom anchoring.
+        nav.addSpacing(50)
+        divider = QFrame()
+        divider.setObjectName("Divider")
+        nav.addWidget(divider)
+        nav.addSpacing(36)
+        for key, icon_name, label in NAV_FOOTER:
+            item = SidebarNavItem(icon_name, label)
+            item.clicked.connect(lambda k=key: self.navigate.emit(k))
+            self._items[key] = item
+            nav.addWidget(item)
         nav.addStretch()
 
         scroll = QScrollArea()
@@ -357,23 +378,6 @@ class Sidebar(QFrame):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll, 1)
-
-        # ── divider + pinned footer (Settings / About) ────────────────
-        divider_wrap = QVBoxLayout()
-        divider_wrap.setContentsMargins(16, 10, 16, 0)
-        divider = QFrame()
-        divider.setObjectName("Divider")
-        divider_wrap.addWidget(divider)
-        root.addLayout(divider_wrap)
-        footer = QVBoxLayout()
-        footer.setContentsMargins(16, 8, 16, 2)
-        footer.setSpacing(2)
-        for key, icon_name, label in NAV_FOOTER:
-            item = SidebarNavItem(icon_name, label)
-            item.clicked.connect(lambda k=key: self.navigate.emit(k))
-            self._items[key] = item
-            footer.addWidget(item)
-        root.addLayout(footer)
 
         # ── the brand moment (approved reference, sidebar bottom) ─────
         # M3 asset audit: hills panorama + leaf + the brand line.  Lives

@@ -91,7 +91,7 @@ FONT = _ns(
     sidebar=13,  # sidebar nav labels, medium weight (reference ~13px)
     section=20,  # dashboard section headings ("Quick Tools", cap ~16px)
     hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
-    brand=22,  # sidebar "Elixir" wordmark (reference band ~45px)
+    brand=32,  # sidebar "Elixir" wordmark (reference ink ~32px)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
@@ -519,7 +519,7 @@ def _qss(p: Palette) -> str:
     }}
     QLabel#SidebarGroup {{
         font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
-        color: {p.text_muted};
+        color: {p.text_secondary};
         letter-spacing: 0.8px;
     }}
     QLabel#BrandWord {{

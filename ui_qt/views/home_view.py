@@ -181,7 +181,7 @@ class _HeroCard(QFrame):
         # reference's filled geometric washes, not outline arcs) ───────
         painter.setPen(Qt.PenStyle.NoPen)
         cx, cy = w * 0.72, h * 0.34
-        for dia, alpha in ((h * 1.62, 26), (h * 1.14, 22), (h * 0.70, 18)):
+        for dia, alpha in ((h * 1.62, 34), (h * 1.14, 28), (h * 0.70, 22)):
             ac = QColor(p.sage)
             ac.setAlpha(alpha)
             painter.setBrush(ac)
@@ -293,6 +293,7 @@ class HomeView(QWidget):
 
         heading = QLabel("Turn documents into clear, structured knowledge.")
         heading.setObjectName("Hero")
+        self._hero_heading = heading
         heading.setWordWrap(True)
         # V0.6.78: the reference's text block is ~540 px wide at the
         # 1536×1024 viewport — capping the wrap width guarantees the
@@ -308,6 +309,7 @@ class HomeView(QWidget):
             "Books, articles and documents — summarized, organized and ready for you to explore."
         )
         support.setObjectName("Support")
+        self._hero_support = support
         support.setWordWrap(True)
         support.setMaximumWidth(520)
         text_col.addWidget(support)
@@ -556,14 +558,47 @@ class HomeView(QWidget):
         # V0.6.78: the hero keeps the reference's wide/shallow proportion
         # (~29% of the content width — 340 px at the 1180 px reference
         # content run), clamped 230–340 so narrow windows still breathe.
-        hero_h = max(230, min(340, round(self.width() * 0.29)))
+        hero_h = max(240, min(340, round(self.width() * 0.29)))
         if getattr(self, "_hero", None) is not None and self._hero.minimumHeight() != hero_h:
             self._hero.setMinimumHeight(hero_h)
+        # V0.6.79 (spec P2): at narrow content runs the hero's typography
+        # scales DOWN with the width (never below 55% — the hierarchy is
+        # preserved; a 41 px headline cannot fit a 217 px column, which
+        # clipped "documents" at the 560 px minimum window).
+        self._scale_hero_typography()
         # Spec §7: the illustration yields at narrow widths so the hero
         # text keeps its room (re-compositing when the size bucket
         # changes); spec §6: the grid reflows with width.
         self._apply_hero_pixmap()
         self._relayout_quick_grid()
+
+    def _scale_hero_typography(self) -> None:
+        """Scale the hero's display type with the available width (the
+        reference's 41/22 px at the 1180 px content run, down to 55% at
+        the 560 px minimum window) — and re-cap the wrap widths so the
+        words always fit their column."""
+        from ui_qt.theme import FONT
+
+        scale = max(0.55, min(1.0, self.width() / 1180))
+        hero_px = max(22, round(FONT.hero * scale))
+        support_px = max(13, round(FONT.body_lg * scale))
+        if getattr(self, "_hero_heading", None) is None:
+            return
+        if getattr(self, "_hero_scale", None) == (hero_px, support_px):
+            return
+        self._hero_scale = (hero_px, support_px)
+        self._hero_heading.setStyleSheet(
+            f"font-size: {hero_px}px; font-weight: 600;"
+            f"color: {theme_manager.palette.text_primary}; background: transparent;"
+        )
+        self._hero_support.setStyleSheet(
+            f"font-size: {support_px}px; color: {theme_manager.palette.text_secondary};"
+            f" background: transparent;"
+        )
+        # never wider than the column the layout can actually offer
+        col = max(160, self.width() - 90)
+        self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
+        self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
 
     # ══════════════════════════════════════════════════════════════════════
     # Theme refresh (the M0 §6 gap list — the M2 surfaces join the

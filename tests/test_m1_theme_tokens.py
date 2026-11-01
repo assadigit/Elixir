@@ -227,7 +227,7 @@ class TestQssTemplatePins:
         assert font["sidebar"] == 13
         assert font["body_lg"] == 22
         assert font["eyebrow"] == 14
-        assert font["brand"] == 22
+        assert font["brand"] == 32
 
     def test_qss_has_dashboard_label_rules_and_hero_cta(self):
         code = _strip_comments(_src(_THEME))

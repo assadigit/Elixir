@@ -36,7 +36,7 @@ from ui_qt.theme import RADIUS, theme_manager
 # V0.6.77 (visual-fidelity pass): the reference's measured rhythm —
 # ~37 px nav rows, ~120 px tool cards, 18 px nav glyphs, 26 px card
 # glyphs, a ~36 px circular arrow affordance.
-_NAV_ITEM_HEIGHT = 37
+_NAV_ITEM_HEIGHT = 36
 _ICON_SIZE_NAV = 18
 _ICON_SIZE_TOOL = 26
 _ARROW_SIZE = 18
@@ -75,14 +75,28 @@ class SidebarNavItem(QWidget):
 
     clicked = Signal()
 
-    def __init__(self, icon_name: str, label: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        icon_name: str,
+        label: str,
+        tall: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._icon_name = icon_name
         self._active = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setObjectName("SidebarNavItem")
-        self.setFixedHeight(_NAV_ITEM_HEIGHT)
+        # A plain QWidget paints app-stylesheet backgrounds ONLY with this
+        # attribute — without it the pale-sage active pill silently
+        # vanishes inside any real parent (the V0.6.79 overlay catch; a
+        # direct widget grab hides the bug, a window render exposes it).
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # V0.6.79: the reference's Home pill is ~45 px against the ~37 px
+        # tool rows — the tall variant is the selected destination's
+        # slightly roomier pill.
+        self.setFixedHeight(44 if tall else _NAV_ITEM_HEIGHT)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 2, 12, 2)
@@ -108,6 +122,11 @@ class SidebarNavItem(QWidget):
         self._active = bool(active)
         self.setProperty("active", self._active)
         self._apply_style()
+        # The QSS property selector ([active="true"]) only re-evaluates on
+        # a style repolish — without these two lines the pale-sage pill
+        # never paints (the V0.6.79 overlay catch).
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     # ── styling ─────────────────────────────────────────────────────────
     def _apply_style(self) -> None:

@@ -31,6 +31,45 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.79 — visual-fidelity pass 4/N: the sidebar's measured rhythm + the responsive/polish sweep (the reference's brand row, tall Home pill, and footer placement; the Home-pill WA_StyledBackground catch; responsive hero typography + top bar for the 560 px minimum window)
+
+The polish commit of the visual-fidelity pass.
+
+- **The sidebar, re-measured to the reference's pixel rhythm**: the
+  brand row (34 px leaf + the larger 32 px wordmark at the reference's
+  offsets), Home as the reference's roomier 44 px selected pill
+  against the 36 px tool rows, the reference's gaps (brand → Home,
+  TOOLS label, 37 px tool pitch), and — the structural catch — the
+  divider + Settings/About now sit a fixed ~50 px below the LAST TOOL
+  (they were bottom-pinned, which dragged them ~76 px too low); only
+  the tagline card owns the bottom anchoring, exactly as the reference
+  composes it. Result: every sidebar band lands within 1–4 px of the
+  reference (Home ink 137..151 vs 141..160; Settings 656..671 vs
+  652..671; About 693..708 vs 692..712; tagline art 881..931 vs
+  884..932).
+- **The Home-pill bug**: the pale-sage active pill silently failed to
+  paint in any real window render — a plain QWidget does not paint
+  app-stylesheet backgrounds without ``WA_StyledBackground`` (a direct
+  widget grab hides the bug; a window render exposes it). Fixed, plus
+  the missing style repolish on ``set_active``.
+- **Colour corrections from overlay sampling**: the TOOLS label and
+  the tagline's lead line now match the reference's measured tones
+  (#545458 / dark sage), the backend pill gained the reference's
+  chevron, the status strip's left inset moved to the reference's 36 px,
+  and the hero's sage washes strengthened.
+- **Responsive behaviour (spec P2)**: the hero's display type scales
+  down with the available width (41/22 px at the reference run to 55%
+  at the minimum window — a fixed 41 px headline clipped "documents" at
+  560 px) with a 240 px hero floor so the stacked text + CTA always
+  fit; the top bar drops the Settings word below ~940 px and the pill's
+  name below ~800 px (dot + chevron remain; tooltips carry the full
+  status), so no control ever clips at the 560×400 minimum.
+
+Dark-mode, 900×640, and 560×400 offscreen checks pass (no
+contrast failures, no clipped controls, CTA visible at minimum).
+Region similarity (≤8/255): sidebar 76.6% (from 74.9%), overall 72.3%.
+155 tests passed across the touched suites; `ruff check .` green.
+
 ## V0.6.78 — visual-fidelity pass 3/N: the reference's hero + Quick Tools grid (the wide/shallow hero with the measured two-line typography + play/label/arrow capsule + ink-cropped still-life over soft sage washes; the single-heading nine-card grid with the pale arrow affordances and the dark-green Full Conversion Wizard feature card)
 
 The dashboard content commit of the visual-fidelity pass.

@@ -342,7 +342,13 @@ class ElixirWindow(QMainWindow):
         painter.end()
         self.backend_pill.setIconSize(QSize(14, 14))
         self.backend_pill.setIcon(QIcon(pm))
-        self.backend_pill.setText(name if client else "Local LLM")
+        # V0.6.79: the reference's chevron — the pill reads as a selector.
+        # At narrow widths the name drops (dot + chevron; tooltip carries
+        # the full status) so the bar never clips.
+        if getattr(self, "_pill_icon_only", False):
+            self.backend_pill.setText("\u25be")
+        else:
+            self.backend_pill.setText((name if client else "Local LLM") + "  \u25be")
         tip = [f"Backend: {name} — {'running' if online else 'not running'}."]
         if self._llm_last_statuses:
             tip.append("All clients: " + "; ".join(
@@ -406,7 +412,7 @@ class ElixirWindow(QMainWindow):
         strip.setFixedHeight(56)
         self._status_strip = strip
         lay = QHBoxLayout(strip)
-        lay.setContentsMargins(24, 0, 20, 0)
+        lay.setContentsMargins(36, 0, 20, 0)
         lay.setSpacing(8)
 
         self._status_dot = QLabel()
@@ -1035,6 +1041,36 @@ class ElixirWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
+        # V0.6.79 (spec P0/P2): the top bar carries its controls "only as
+        # needed by available width" — the Settings action drops its word
+        # below ~900 px and the backend pill drops its name below ~760 px
+        # (the dot + chevron stay; the tooltip carries the full name).
+        self._adapt_top_bar_to_width()
+
+    def _adapt_top_bar_to_width(self) -> None:
+        try:
+            w = self.width()
+            settings_icon_only = w < 940
+            pill_icon_only = w < 800
+            p = theme_manager.palette
+            if settings_icon_only:
+                if self.settings_btn.text():
+                    self.settings_btn.setText("")
+                    self.settings_btn.setIcon(icon("settings", p.text_secondary, 17))
+                    self.settings_btn.setToolTip("Open settings")
+            elif not self.settings_btn.text():
+                self.settings_btn.setText("Settings")
+                self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
+                self.settings_btn.setToolTip("Open settings")
+            if pill_icon_only:
+                if self.backend_pill.text():
+                    self._pill_icon_only = True
+                    self._refresh_backend_pill()
+            elif getattr(self, "_pill_icon_only", False):
+                self._pill_icon_only = False
+                self._refresh_backend_pill()
+        except Exception:
+            logger.debug("top-bar width adaptation failed", exc_info=True)
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
