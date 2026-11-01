@@ -31,6 +31,63 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.71 — the assets build: the hero illustration and the sidebar brand card reach a Windows installer for the first time, and the top bar finally matches its own stylesheet rule (M3 asset audit, user report "no image assets in the UI")
+
+> **Versioning policy change (user instruction, M3 session):** the user
+> asked for **a version bump with every change** so any build can be
+> identified by its version. This supersedes the V0.6.70 note's §8 Q8
+> one-bump-per-milestone cadence from here on: M3's changes ship as
+> V0.6.71+ one bump per change, not a single M3 bump.
+
+**Why the user saw no image assets in V0.6.70 (the honest timeline).**
+The `Elixir-Setup-0.6.70.exe` the user ran was published 2026-11-01
+13:21 UTC from the 13:08 tree (`a51f901`). The hero-visibility fix
+(`4faf3da`, 13:26) and the sidebar brand card (`84cce8f`, 17:13) landed
+on `main` **after** that build was cut — and neither carried a version
+bump, so no artifact ever contained them. In the user's build the only
+image asset was the hero, hidden below a 900 px content width; at
+windowed laptop sizes that meant literally zero images in the UI. The
+assets were never "unfindable" and the display code was never broken —
+the delivery was: the fixes lived only on `main` with nothing to
+download. This entry is the fix for that.
+
+**What's in this build (first Windows installer with the assets):**
+
+- **Hero illustration at mid widths** (`4faf3da`): the old binary
+  hide-below-900px rule left the whole 760–899 px band — the 3-column
+  grid band — with no visual at all. The illustration now shows 200 px
+  wide there, 260 px at wide widths, and hides only below 760 px
+  (spec §7 narrow rule).
+- **The sidebar-bottom brand card** (`84cce8f`): the approved
+  reference's brand moment — leaf glyph + "Knowledge, distilled into
+  clarity." over the supplied `assets/botanical_landscape.png`
+  panorama, composited onto the card surface with a scrim so it reads
+  as a quiet watermark in light theme and a dusk landscape in dark.
+  Hides on rails shorter than 520 px (it never displaces navigation).
+- **Top bar matches its own stylesheet rule** (this bump): the bar was
+  built as a plain `QWidget` while the QSS targets `QFrame#TopBar` —
+  the rule never matched, so the bar's background came from the
+  QPalette fallback and its intended `border-bottom` hairline never
+  rendered at all. The bar is now a `QFrame`: the QSS is the source of
+  truth for its background, and the 1 px hairline under the top bar
+  finally draws. (A probe artifact initially read as "invisible dark
+  mode icons" — re-verified with the real launch order, palette
+  fallback covered the background, so the only user-visible delta is
+  the hairline. Honest record, not a silent revert.)
+
+**Verification (offscreen, real launch order — `theme_manager.apply()`
+before the window, as `run()` does):** 1280×800 and 1440×900 in both
+themes — hero pixmap loaded, visible, 1,506–1,577 unique colors in its
+rendered region; brand card visible, 289–298 unique colors; top-bar
+background exactly `bg_window` in both themes; toolbar icon buttons
+luma spread ≈ 200 (clearly visible) in both themes. 560×400 hides both
+images by design (spec §7). A VLM pass on the styled renders: hero
+seamless in light, "conditional pass" in dark (the illustration's
+bright paper glow is high-contrast against charcoal — a taste call for
+the user's QA verdict, recorded as an M3 finding, not unilaterally
+redesigned); brand card intentional in both themes; no layout defects.
+
+
 ## V0.6.70 — the dashboard ships: the fixed sidebar replaces the tab bar, the Full Conversion hero owns the primary entry, compact Quick Tools replace the 4×3 card grid, and the experimental four move behind About & System (M2 — on the M1 visual foundation)
 
 > **Versioning note (user decision §8 Q8):** V0.6.70 is the dashboard

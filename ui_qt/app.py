@@ -35,6 +35,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -123,7 +124,14 @@ class ElixirWindow(QMainWindow):
     # Top bar
     # ══════════════════════════════════════════════════════════════════════
     def _build_top_bar(self) -> QWidget:
-        bar = QWidget()
+        # V0.6.71 (M3 finding F2): QFrame, not QWidget — the QSS rule is
+        # QFrame#TopBar, and a plain QWidget never matches it (and ignores
+        # app-stylesheet backgrounds without WA_StyledBackground anyway).
+        # The mismatch left the bar on the platform-default light grey in
+        # BOTH themes, so in dark mode the near-white text_primary toolbar
+        # icons (theme / info / settings) rendered light-on-light —
+        # invisible on the user's Windows dark-mode run.
+        bar = QFrame()
         bar.setObjectName("TopBar")
         bar.setFixedHeight(48)  # V13.31.0: was 38 — more breathing room per user request
         lay = QHBoxLayout(bar)
