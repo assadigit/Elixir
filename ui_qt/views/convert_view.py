@@ -272,8 +272,12 @@ class ConvertView(QWidget):
                     if hasattr(parent, attr_name) and inner is getattr(parent, attr_name):
                         tw.setCurrentIndex(i)
                         # Briefly highlight the tab (Q17: instant + highlight)
+                        # M1 de-hardcode: old amber literal → the active accent token.
                         tw.tabBar().setTabTextColor(
-                            i, __import__("PySide6.QtGui", fromlist=["QColor"]).QColor("#D8AA78")
+                            i,
+                            __import__("PySide6.QtGui", fromlist=["QColor"]).QColor(
+                                theme_manager.palette.accent
+                            ),
                         )
                         from PySide6.QtCore import QTimer
 

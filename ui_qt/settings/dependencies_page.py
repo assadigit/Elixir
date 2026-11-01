@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from core.system.dependency_checker import DependencyStatus
+from ui_qt.theme import rgba, theme_manager
 
 # ── Animated status dot ───────────────────────────────────────────────────
 
@@ -62,13 +63,17 @@ class StatusDot(QLabel):
             self._start_pulse()
 
     def _color(self) -> str:
-        """Return the color for this dot's status."""
+        """Return the color for this dot's status.
+
+        M1 de-hardcode: Tailwind literals → palette semantic tokens.
+        """
+        p = theme_manager.palette
         if self._status.is_ok:
-            return "#22c55e"  # green-500
+            return p.success
         elif self._status.is_optional_missing:
-            return "#9ca3af"  # gray-400
+            return p.text_muted
         else:
-            return "#ef4444"  # red-500
+            return p.error
 
     def _start_pulse(self) -> None:
         """Start a pulsing opacity animation (the 'beeping' effect)."""
@@ -145,22 +150,27 @@ class DependencyRow(QWidget):
         elif status.path:
             status_text += f"  ·  {status.path}"
         status_label = QLabel(status_text)
-        status_label.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+        status_label.setStyleSheet(
+            f"font-size: 11px; color: {theme_manager.palette.text_secondary}; background: transparent;"
+        )
         info_col.addWidget(status_label)
 
         lay.addLayout(info_col, 1)
 
         # Category badge
         cat_label = QLabel(status.category)
+        # M1 de-hardcode: #aaa + black tint → muted text + surface-subtle.
         cat_label.setStyleSheet(
-            "font-size: 10px; color: #aaa; background: rgba(0,0,0,0.05);"
-            "padding: 2px 8px; border-radius: 8px;"
+            f"font-size: 10px; color: {theme_manager.palette.text_muted}; "
+            f"background: {theme_manager.palette.bg_elevated};"
+            f"padding: 2px 8px; border-radius: 8px;"
         )
         lay.addWidget(cat_label)
 
         # Required/optional badge
         req_label = QLabel("required" if status.required else "optional")
-        req_color = "#666" if status.required else "#aaa"
+        _p = theme_manager.palette
+        req_color = _p.text_secondary if status.required else _p.text_muted
         req_label.setStyleSheet(f"font-size: 10px; color: {req_color}; background: transparent;")
         lay.addWidget(req_label)
 
@@ -183,9 +193,10 @@ class DependenciesSection(QGroupBox):
 
         # Summary bar
         self.summary_label = QLabel("Checking dependencies…")
+        # M1 de-hardcode: neutral black tint → the spec surface-subtle token.
         self.summary_label.setStyleSheet(
-            "font-size: 13px; font-weight: 600; padding: 8px 12px;"
-            "background: rgba(0,0,0,0.03); border-radius: 6px;"
+            f"font-size: 13px; font-weight: 600; padding: 8px 12px;"
+            f"background: {theme_manager.palette.bg_elevated}; border-radius: 6px;"
         )
         outer.addWidget(self.summary_label)
 
@@ -251,15 +262,18 @@ class DependenciesSection(QGroupBox):
         # sees the dialog is alive (was a 30s blank freeze before).
         checking_label = QLabel("⏳  Checking dependencies…")
         checking_label.setStyleSheet(
-            "font-size: 13px; padding: 16px; color: #888; background: transparent;"
+            f"font-size: 13px; padding: 16px; color: {theme_manager.palette.text_secondary};"
+            f" background: transparent;"
         )
         self._content_layout.addWidget(checking_label)
         self._content_layout.addStretch()
         self.summary_label.setText("⏳  Checking dependencies…")
+        # M1 de-hardcode: Tailwind blue literals → info token tint.
+        _ip = theme_manager.palette
         self.summary_label.setStyleSheet(
-            "font-size: 13px; font-weight: 600; padding: 8px 12px;"
-            "background: rgba(59,130,246,0.1); border-radius: 6px;"
-            "color: #2563eb;"
+            f"font-size: 13px; font-weight: 600; padding: 8px 12px;"
+            f"background: {rgba(_ip.info, 0.12)}; border-radius: 6px;"
+            f"color: {_ip.info};"
         )
 
         # Re-entrant guard: don't stack workers.
@@ -325,9 +339,9 @@ class DependenciesSection(QGroupBox):
             # Category header
             header = QLabel(f"  {cat_label}")
             header.setStyleSheet(
-                "font-size: 11px; font-weight: 700; color: #888;"
-                "text-transform: uppercase; letter-spacing: 1px;"
-                "padding: 8px 4px 4px 4px; background: transparent;"
+                f"font-size: 11px; font-weight: 700; color: {theme_manager.palette.text_secondary};"
+                f"text-transform: uppercase; letter-spacing: 1px;"
+                f"padding: 8px 4px 4px 4px; background: transparent;"
             )
             self._content_layout.addWidget(header)
 
@@ -349,10 +363,12 @@ class DependenciesSection(QGroupBox):
             self.summary_label.setText(
                 f"✅  All required dependencies connected ({required_ok}/{required_total})"
             )
+            # M1 de-hardcode: Tailwind green literals → success token tint.
+            _sp = theme_manager.palette
             self.summary_label.setStyleSheet(
-                "font-size: 13px; font-weight: 600; padding: 8px 12px;"
-                "background: rgba(34,197,94,0.1); border-radius: 6px;"
-                "color: #16a34a;"
+                f"font-size: 13px; font-weight: 600; padding: 8px 12px;"
+                f"background: {rgba(_sp.success, 0.14)}; border-radius: 6px;"
+                f"color: {_sp.success};"
             )
         else:
             missing = required_total - required_ok
@@ -360,10 +376,12 @@ class DependenciesSection(QGroupBox):
                 f"⚠️  {missing} required dependency(ies) missing "
                 f"({required_ok}/{required_total} connected)"
             )
+            # M1 de-hardcode: Tailwind red literals → error token tint.
+            _ep = theme_manager.palette
             self.summary_label.setStyleSheet(
-                "font-size: 13px; font-weight: 600; padding: 8px 12px;"
-                "background: rgba(239,68,68,0.1); border-radius: 6px;"
-                "color: #dc2626;"
+                f"font-size: 13px; font-weight: 600; padding: 8px 12px;"
+                f"background: {rgba(_ep.error, 0.14)}; border-radius: 6px;"
+                f"color: {_ep.error};"
             )
 
     def _on_check_failed(self, err: str) -> None:
@@ -379,17 +397,20 @@ class DependenciesSection(QGroupBox):
         self._dots.clear()
 
         err_label = QLabel(f"❌  Dependency check failed: {err}")
+        # M1 de-hardcode: Tailwind red literal → error token.
         err_label.setStyleSheet(
-            "font-size: 13px; padding: 16px; color: #dc2626; background: transparent;"
+            f"font-size: 13px; padding: 16px; color: {theme_manager.palette.error};"
+            f" background: transparent;"
         )
         err_label.setWordWrap(True)
         self._content_layout.addWidget(err_label)
         self._content_layout.addStretch()
         self.summary_label.setText("❌  Check failed")
+        _fp = theme_manager.palette
         self.summary_label.setStyleSheet(
-            "font-size: 13px; font-weight: 600; padding: 8px 12px;"
-            "background: rgba(239,68,68,0.1); border-radius: 6px;"
-            "color: #dc2626;"
+            f"font-size: 13px; font-weight: 600; padding: 8px 12px;"
+            f"background: {rgba(_fp.error, 0.14)}; border-radius: 6px;"
+            f"color: {_fp.error};"
         )
 
     def save(self) -> None:

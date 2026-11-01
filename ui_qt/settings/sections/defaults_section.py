@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QComboBox, QGroupBox, QLabel, QPushButton, QWidget
 from controller import Controller
 from ui_qt.components.icons import icon
 from ui_qt.settings.widgets import labeled_checkbox, make_form
+from ui_qt.theme import theme_manager
 
 from .helpers import _badge, _get_ollama_models, _refresh_models_async
 
@@ -135,7 +136,7 @@ class DefaultsSection(QGroupBox):
         # V18.20.4.5 (W-b11): stored on self so the async refresh can
         # disable/re-enable it while a fetch is in flight.
         self.refresh_btn = QPushButton("  Refresh Ollama models")
-        self.refresh_btn.setIcon(icon("refresh", "#B8915A", 15))
+        self.refresh_btn.setIcon(icon("refresh", theme_manager.palette.icon, 15))
         self.refresh_btn.clicked.connect(self._refresh_models)
         f.addRow("", self.refresh_btn)
 

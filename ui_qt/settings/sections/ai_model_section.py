@@ -23,6 +23,7 @@ from controller import Controller
 from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.icons import icon
 from ui_qt.settings.widgets import labeled_line, make_form
+from ui_qt.theme import theme_manager
 
 from .helpers import _populate_models, _refresh_models_async
 
@@ -50,7 +51,7 @@ class AiLocalModelSection(QGroupBox):
             "Best for RTX 3060 12GB with Gemma 4 12B."
         )
         local_desc.setWordWrap(True)
-        local_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0 6px 0;")
+        local_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;")
         f.addRow("", local_desc)
 
         # ── backend picker ──────────────────────────────────────────────
@@ -90,7 +91,7 @@ class AiLocalModelSection(QGroupBox):
         # V18.20.4.5 (W-b11): stored on self so the async refresh can
         # disable/re-enable it while a fetch is in flight.
         self.refresh_btn = QPushButton("  Refresh models")
-        self.refresh_btn.setIcon(icon("refresh", "#B8915A", 15))
+        self.refresh_btn.setIcon(icon("refresh", theme_manager.palette.icon, 15))
         self.refresh_btn.clicked.connect(self._refresh_models)
         f.addRow("", self.refresh_btn)
 

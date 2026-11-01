@@ -46,6 +46,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_qt.theme import theme_manager
+
 
 class TokenCostDialog(QDialog):
     """Pre-conversion token cost estimation dialog.
@@ -206,15 +208,18 @@ class TokenCostDialog(QDialog):
             # Caption: "for N selected chapter(s)"
             caption = QLabel(f"for {selected_count} selected chapter(s)")
             caption.setAlignment(Qt.AlignCenter)
+            # M1 de-hardcode: the old app-blue literal → the active accent token.
             caption.setStyleSheet(
-                "color: #5B9BD5; font-size: 12px; font-weight: bold; padding-bottom: 4px;"
+                f"color: {theme_manager.palette.accent}; font-size: 12px;"
+                f" font-weight: bold; padding-bottom: 4px;"
             )
             lay.addWidget(caption)
 
             # SECONDARY: full book (muted, smaller)
             if full_total and full_total != selected_total:
                 secondary = QLabel(
-                    f"<span style='color: #999;'>Full book (~{full_chapters} chapters): "
+                    f"<span style='color: {theme_manager.palette.text_muted};'>"
+                    f"Full book (~{full_chapters} chapters): "
                     f"{full_total:,} tokens</span>"
                 )
                 secondary.setAlignment(Qt.AlignCenter)
@@ -228,7 +233,7 @@ class TokenCostDialog(QDialog):
                 if len(titles) > 3:
                     titles_str += f"  ·  (+{len(titles) - 3} more)"
                 titles_label = QLabel(f"<i>{titles_str}</i>")
-                titles_label.setStyleSheet("color: #666; font-size: 10px; padding: 4px 8px;")
+                titles_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 10px; padding: 4px 8px;")
                 titles_label.setWordWrap(True)
                 titles_label.setAlignment(Qt.AlignCenter)
                 lay.addWidget(titles_label)
@@ -379,7 +384,10 @@ class TokenCostDialog(QDialog):
                 "⚠️ This is a large conversion. If using a cloud API, "
                 "this may cost significant tokens. Proceed with caution."
             )
-            warning.setStyleSheet("color: #e67e22; font-size: 11px;")
+            # M1 de-hardcode: orange literal → warning token.
+            warning.setStyleSheet(
+                f"color: {theme_manager.palette.warning}; font-size: 11px;"
+            )
             warning.setWordWrap(True)
             lay.addWidget(warning)
 

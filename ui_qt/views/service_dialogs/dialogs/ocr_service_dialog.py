@@ -36,6 +36,7 @@ from controller import Controller
 from core.llm.model_taxonomy import VISION_MODEL_KEYWORDS
 from core.system.timeouts import HTTP_FETCH_TIMEOUT_S, LLM_REQUEST_TIMEOUT_S, SLOW_LLM_TIMEOUT_S
 from ui_qt.components.simple_worker import SimpleWorker
+from ui_qt.theme import theme_manager
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
     _confirm_close_with_running_worker,
@@ -255,9 +256,10 @@ class OcrServiceDialog(BaseServiceDialog):
         self.test_result_label = _QL("")
         self.test_result_label.setWordWrap(True)
         self.test_result_label.setTextFormat(Qt.RichText)
+        # M1 de-hardcode: neutral black tint → the spec surface-subtle token.
         self.test_result_label.setStyleSheet(
-            "padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px; "
-            "font-family: monospace; font-size: 11px; max-height: 120px;"
+            f"padding: 8px; background: {theme_manager.palette.bg_elevated}; border-radius: 4px; "
+            f"font-family: monospace; font-size: 11px; max-height: 120px;"
         )
         self.test_result_label.setVisible(False)
         test_lay.addWidget(self.test_result_label)

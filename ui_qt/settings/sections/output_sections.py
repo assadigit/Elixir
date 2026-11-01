@@ -28,6 +28,7 @@ from ui_qt.settings.widgets import (
     labeled_spin,
     make_form,
 )
+from ui_qt.theme import theme_manager
 
 
 class AiOutputSelectionSection(QGroupBox):
@@ -202,7 +203,7 @@ class OutputSegmentationSection(QGroupBox):
         }
         self.strat_desc_label = QLabel(_STRAT_DESC.get(self.strategy_combo.currentText(), ""))
         self.strat_desc_label.setWordWrap(True)
-        self.strat_desc_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
+        self.strat_desc_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
         f.addRow("", self.strat_desc_label)
         self.strategy_combo.currentTextChanged.connect(
             lambda txt: self.strat_desc_label.setText(_STRAT_DESC.get(txt, ""))
@@ -327,8 +328,9 @@ class OutputKeywordsSection(QGroupBox):
         self.preview_label = QLabel()
         self.preview_label.setObjectName("Caption")
         self.preview_label.setWordWrap(True)
+        # M1 de-hardcode: neutral black tint → the spec surface-subtle token.
         self.preview_label.setStyleSheet(
-            "font-size: 11px; padding: 8px; background: rgba(0,0,0,0.03);border-radius: 4px;"
+            f"font-size: 11px; padding: 8px; background: {theme_manager.palette.bg_elevated};border-radius: 4px;"
         )
         layout.addWidget(self.preview_label)
 

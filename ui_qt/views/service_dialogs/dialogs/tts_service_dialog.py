@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from controller import Controller
 from ui_qt.components.simple_worker import SimpleWorker
+from ui_qt.theme import rgba, theme_manager
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
     _confirm_close_with_running_worker,
@@ -162,7 +163,7 @@ def _show_cpu_tts_warning_modal(parent) -> bool:
             "<pre>pip uninstall -y torch torchvision torchaudio\n"
             "pip install torch --index-url "
             "https://download.pytorch.org/whl/cu126</pre>"
-            "<p style='color:#888;font-size:small;'>(On Windows, "
+            f"<p style='color:{theme_manager.palette.text_secondary};font-size:small;'>(On Windows, "
             "<code>pip install torch</code> gives the CPU build by default "
             "— you must specify the CUDA index URL.)</p>"
             "<p><b>Continue on CPU anyway?</b> (VibeVoice will crash on CPU; "
@@ -586,23 +587,30 @@ class TtsServiceDialog(BaseServiceDialog):
                 self.gpu_status_lbl.setText(
                     f"✅ GPU: {name} ({vram} MB) · torch.cuda=True · cu={cuda_tag}"
                 )
+                # M1 de-hardcode: bootstrap banner literals → success token tint.
+                _p = theme_manager.palette
                 self.gpu_status_lbl.setStyleSheet(
-                    "padding: 4px 8px; border-radius: 4px; font-size: 11px;"
-                    " background: #d4edda; color: #155724; border: 1px solid #c3e6cb;"
+                    f"padding: 4px 8px; border-radius: 4px; font-size: 11px;"
+                    f" background: {rgba(_p.success, 0.16)}; color: {_p.success};"
+                    f" border: 1px solid {rgba(_p.success, 0.45)};"
                 )
             else:
                 self.gpu_status_lbl.setText(
                     f"❌ GPU: NOT available · torch.cuda=False · cu={cuda_tag}"
                 )
+                _p = theme_manager.palette
                 self.gpu_status_lbl.setStyleSheet(
-                    "padding: 4px 8px; border-radius: 4px; font-size: 11px;"
-                    " background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;"
+                    f"padding: 4px 8px; border-radius: 4px; font-size: 11px;"
+                    f" background: {rgba(_p.error, 0.16)}; color: {_p.error};"
+                    f" border: 1px solid {rgba(_p.error, 0.45)};"
                 )
         except Exception as e:
             self.gpu_status_lbl.setText(f"❌ GPU: torch error — {e}")
+            _p = theme_manager.palette
             self.gpu_status_lbl.setStyleSheet(
-                "padding: 4px 8px; border-radius: 4px; font-size: 11px;"
-                " background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;"
+                f"padding: 4px 8px; border-radius: 4px; font-size: 11px;"
+                f" background: {rgba(_p.error, 0.16)}; color: {_p.error};"
+                f" border: 1px solid {rgba(_p.error, 0.45)};"
             )
 
     # ── V11.46.1: CPU-TTS guardrail (warn + confirm, not hard-block) ──────

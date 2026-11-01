@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from ui_qt.components.icons import icon
 from ui_qt.settings.widgets import make_form
+from ui_qt.theme import theme_manager
 
 
 def _detect_tesseract() -> str:
@@ -156,7 +157,7 @@ class AboutSystemDialog(QDialog):
         head.addStretch()
         self.refresh_btn = QPushButton("  Refresh")
         self.refresh_btn.setObjectName("Compact")
-        self.refresh_btn.setIcon(icon("refresh", "#B8915A", 14))
+        self.refresh_btn.setIcon(icon("refresh", theme_manager.palette.icon, 14))
         self.refresh_btn.clicked.connect(self._scan)
         head.addWidget(self.refresh_btn)
         dl.addLayout(head)

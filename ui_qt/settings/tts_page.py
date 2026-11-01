@@ -50,6 +50,7 @@ from core.tts.voices import (
 from ui_qt.components.file_picker_row import FilePickerRow
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings.widgets import make_form
+from ui_qt.theme import theme_manager
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +474,7 @@ class TtsEnginesSection(QGroupBox):
         self.neutts_dot = QLabel("●")
         self.neutts_dot.setFixedSize(20, 20)
         self.neutts_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.neutts_dot.setStyleSheet("font-size: 20px; color: #999;")
+        self.neutts_dot.setStyleSheet(f"font-size: 20px; color: {theme_manager.palette.text_muted};")
         conn_row.addWidget(self.neutts_dot)
         self.neutts_label = QLabel("NeuTTS-Air")
         conn_row.addWidget(self.neutts_label)
@@ -484,7 +485,7 @@ class TtsEnginesSection(QGroupBox):
         self.kokoro_dot = QLabel("●")
         self.kokoro_dot.setFixedSize(20, 20)
         self.kokoro_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.kokoro_dot.setStyleSheet("font-size: 20px; color: #999;")
+        self.kokoro_dot.setStyleSheet(f"font-size: 20px; color: {theme_manager.palette.text_muted};")
         conn_row.addWidget(self.kokoro_dot)
         self.kokoro_label = QLabel("Kokoro")
         conn_row.addWidget(self.kokoro_label)
@@ -513,8 +514,12 @@ class TtsEnginesSection(QGroupBox):
         self._recheck()
 
     def _set_dot(self, label: QLabel, ok: bool) -> None:
-        """Turn a connectivity dot green (ok) or red (not ok)."""
-        color = "#22c55e" if ok else "#ef4444"  # green-500 / red-500
+        """Turn a connectivity dot green (ok) or red (not ok).
+
+        M1 de-hardcode: Tailwind literals → palette semantic tokens.
+        """
+        p = theme_manager.palette
+        color = p.success if ok else p.error
         label.setStyleSheet(f"font-size: 20px; color: {color};")
 
     def _recheck(self, *args) -> None:

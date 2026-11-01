@@ -27,6 +27,7 @@ from core.tts.voices import (
     kokoro_voice_groups,
 )
 from ui_qt.settings.widgets import make_form
+from ui_qt.theme import theme_manager
 
 # ── Section 1: Format ─────────────────────────────────────────────────────
 
@@ -308,8 +309,9 @@ class PodcastPreviewSection(QGroupBox):
         self.estimate_label = QLabel("")
         self.estimate_label.setObjectName("Caption")
         self.estimate_label.setWordWrap(True)
+        # M1 de-hardcode: neutral black tint → the spec surface-subtle token.
         self.estimate_label.setStyleSheet(
-            "font-size: 12px; padding: 10px; background: rgba(0,0,0,0.03);border-radius: 4px;"
+            f"font-size: 12px; padding: 10px; background: {theme_manager.palette.bg_elevated};border-radius: 4px;"
         )
         f.addRow("Estimate", self.estimate_label)
 

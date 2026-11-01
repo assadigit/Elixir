@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from core.summarisation.prompt_manager import PromptManager
 from ui_qt.components.icons import icon
-from ui_qt.theme import theme_manager
+from ui_qt.theme import rgba, theme_manager
 
 # ════════════════════════════════════════════════════════════════════════════
 # Prompt contexts — every place in the app where a prompt is used
@@ -112,12 +112,16 @@ class PromptEditorDialog(QDialog):
         root.addLayout(header)
 
         # ── Variables hint ─────────────────────────────────────────────
+        # M1 de-hardcode: hardcoded blue chip tint + #888 span → info token
+        # tint + muted text token (works in both themes).
+        _chip = rgba(theme_manager.palette.info, 0.18)
+        _muted = theme_manager.palette.text_muted
         hint = QLabel(
-            "Variables: <code style='background:rgba(168,198,229,0.18);padding:1px 5px;border-radius:3px;'>{{heading}}</code> "
-            "<code style='background:rgba(168,198,229,0.18);padding:1px 5px;border-radius:3px;'>{{text}}</code> "
-            "<code style='background:rgba(168,198,229,0.18);padding:1px 5px;border-radius:3px;'>{{keypoints}}</code> "
-            "<code style='background:rgba(168,198,229,0.18);padding:1px 5px;border-radius:3px;'>{{language}}</code> "
-            "<span style='color: #888; font-size: 11px;'>&nbsp; — chapter heading, content, keypoints list, language instruction</span>"
+            f"Variables: <code style='background:{_chip};padding:1px 5px;border-radius:3px;'>{{{{heading}}}}</code> "
+            f"<code style='background:{_chip};padding:1px 5px;border-radius:3px;'>{{{{text}}}}</code> "
+            f"<code style='background:{_chip};padding:1px 5px;border-radius:3px;'>{{{{keypoints}}}}</code> "
+            f"<code style='background:{_chip};padding:1px 5px;border-radius:3px;'>{{{{language}}}}</code> "
+            f"<span style='color: {_muted}; font-size: 11px;'>&nbsp; — chapter heading, content, keypoints list, language instruction</span>"
         )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)

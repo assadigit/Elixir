@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_qt.theme import rgba, theme_manager
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
     _show_success_modal,
@@ -221,9 +222,12 @@ class PacketsToolDialog(BaseServiceDialog):
             "chapter boundaries for better results."
         )
         self.mode_warning_label.setWordWrap(True)
+        # M1 de-hardcode: amber banner literals → warning token tint.
+        _wp = theme_manager.palette
         self.mode_warning_label.setStyleSheet(
-            "QLabel { color: #cc8800; font-size: 11px; padding: 4px 8px; "
-            "background: #fff8e1; border: 1px solid #e6c200; border-radius: 3px; }"
+            f"QLabel {{ color: {_wp.warning}; font-size: 11px; padding: 4px 8px; "
+            f"background: {rgba(_wp.warning, 0.16)}; border: 1px solid {rgba(_wp.warning, 0.45)};"
+            f" border-radius: 3px; }}"
         )
         self.mode_warning_label.setVisible(False)
         layout.addWidget(self.mode_warning_label)

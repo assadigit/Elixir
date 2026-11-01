@@ -56,7 +56,7 @@ class ChapterSelectorDialog(QDialog):
         head.setContentsMargins(0, 0, 0, 0)
         head.setSpacing(8)
         self.detect_btn = QPushButton("  Detect chapters from TOC")
-        self.detect_btn.setIcon(icon("scan", "#B8915A", 15))
+        self.detect_btn.setIcon(icon("scan", theme_manager.palette.icon, 15))
         self.detect_btn.clicked.connect(self._on_detect)
         head.addWidget(self.detect_btn)
         head.addStretch()

@@ -536,7 +536,7 @@ class _LazyTabPlaceholder(QWidget):
         self._placeholder_lay.setSpacing(0)
         hint = QLabel("⏳  Loading…")
         hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet("color: #888; font-size: 13px; padding: 40px;")
+        hint.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 13px; padding: 40px;")
         self._placeholder_lay.addWidget(hint)
         self._placeholder_lay.addStretch()
 

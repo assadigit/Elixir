@@ -51,6 +51,7 @@ from core.podcast.script_generator import (
     generate_podcast_script,
 )
 from core.system.timeouts import UI_PROBE_TIMEOUT_S
+from ui_qt.theme import CODE_EDITOR, theme_manager
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,10 @@ class PodcastMakerView(QWidget):
 
         # V11.44.1: same-voice warning label
         self.voice_warning_label = QLabel("")
-        self.voice_warning_label.setStyleSheet("color: #e67e22; font-size: 12px;")
+        # M1 de-hardcode: orange literal → warning token.
+        self.voice_warning_label.setStyleSheet(
+            f"color: {theme_manager.palette.warning}; font-size: 12px;"
+        )
         self.voice_warning_label.setVisible(False)
         settings_layout.addWidget(self.voice_warning_label)
 
@@ -336,10 +340,13 @@ class PodcastMakerView(QWidget):
         self.live_log.setReadOnly(True)
         self.live_log.setMaximumHeight(200)
         self.live_log.setVisible(False)
+        # M1 de-hardcode: VS Code literals → the theme's CODE_EDITOR tokens
+        # (same values, same look — now centralised in ui_qt.theme).
+        _ce = CODE_EDITOR
         self.live_log.setStyleSheet(
-            "QPlainTextEdit { background: #1e1e1e; color: #d4d4d4; "
-            "font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; "
-            "border: 1px solid #3c3c3c; }"
+            f"QPlainTextEdit {{ background: {_ce.bg}; color: {_ce.text}; "
+            f"font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; "
+            f"border: 1px solid {_ce.border}; }}"
         )
         root.addWidget(self.live_log)
 

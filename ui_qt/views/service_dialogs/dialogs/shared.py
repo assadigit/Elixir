@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from ui_qt.components.modal_button_fit import fit_message_box_buttons
 from ui_qt.components.simple_worker import SimpleWorker
+from ui_qt.theme import CODE_EDITOR
 
 logger = logging.getLogger(__name__)
 
@@ -374,10 +375,13 @@ class BaseServiceDialog(QDialog):
         self.live_log.setReadOnly(True)
         self.live_log.setMaximumHeight(180)
         self.live_log.setVisible(False)
+        # M1 de-hardcode: VS Code literals → the theme's CODE_EDITOR tokens
+        # (same values, same look — now centralised in ui_qt.theme).
+        _ce = CODE_EDITOR
         self.live_log.setStyleSheet(
-            "QPlainTextEdit { background: #1e1e1e; color: #d4d4d4; "
-            "font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; "
-            "border: 1px solid #3c3c3c; }"
+            f"QPlainTextEdit {{ background: {_ce.bg}; color: {_ce.text}; "
+            f"font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; "
+            f"border: 1px solid {_ce.border}; }}"
         )
         root.addWidget(self.live_log)
 

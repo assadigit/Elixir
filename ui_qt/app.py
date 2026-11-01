@@ -40,7 +40,7 @@ from ui_qt.components.llm_lights import build_status_lights
 from ui_qt.components.modal_button_fit import install_modal_button_fit
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings import SettingsDialog
-from ui_qt.theme import theme_manager
+from ui_qt.theme import rgba, theme_manager
 from ui_qt.views.convert_view import ConvertView
 from ui_qt.views.output_scanner_view import OutputScannerView
 from ui_qt.views.quarantine_view import QuarantineView
@@ -681,7 +681,7 @@ class ElixirWindow(QMainWindow):
             self._drop_overlay = QLabel("📄  Drop a PDF here", self)
             self._drop_overlay.setAlignment(Qt.AlignCenter)
             self._drop_overlay.setStyleSheet(
-                f"QLabel {{ background-color: rgba(200, 128, 90, 0.12);"
+                f"QLabel {{ background-color: {rgba(p.accent, 0.12)};"
                 f" color: {p.accent}; border: 3px dashed {p.accent};"
                 f" border-radius: 16px; font-size: 16px; font-weight: 600; }}"
             )
@@ -1161,10 +1161,13 @@ class _StartupSplash(QWidget):
         self._app = app
         self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setObjectName("StartupSplash")
+        # M1 de-hardcode: the splash follows the persisted palette instead of
+        # fixed slate/amber values (ivory+forest in light, charcoal+sage in dark).
+        p = theme_manager.palette
         self.setStyleSheet(
-            "#StartupSplash { background: #23242b; "
-            "border: 1px solid #3a3d47; border-radius: 14px; } "
-            "QLabel { background: transparent; }"
+            f"#StartupSplash {{ background: {p.bg_window}; "
+            f"border: 1px solid {p.border}; border-radius: 14px; }} "
+            f"QLabel {{ background: transparent; }}"
         )
         lay = QVBoxLayout(self)
         lay.setContentsMargins(40, 30, 40, 26)
@@ -1178,7 +1181,7 @@ class _StartupSplash(QWidget):
 
         text = QLabel(self._TEXT)
         text.setAlignment(Qt.AlignCenter)
-        text.setStyleSheet("color: #eceef4; font-size: 15px; font-weight: 600;")
+        text.setStyleSheet(f"color: {p.text_primary}; font-size: 15px; font-weight: 600;")
         lay.addWidget(text, 0, Qt.AlignHCenter)
         self._text = text  # handle for tests/pinning (the label itself never changes)
 
@@ -1187,8 +1190,8 @@ class _StartupSplash(QWidget):
         bar.setTextVisible(False)
         bar.setFixedSize(230, 4)
         bar.setStyleSheet(
-            "QProgressBar { background: #3a3d47; border: none; border-radius: 2px; } "
-            "QProgressBar::chunk { background: #d8aa78; border-radius: 2px; }"
+            f"QProgressBar {{ background: {p.bg_elevated}; border: none; border-radius: 2px; }} "
+            f"QProgressBar::chunk {{ background: {p.accent}; border-radius: 2px; }}"
         )
         lay.addWidget(bar, 0, Qt.AlignHCenter)
 

@@ -45,6 +45,7 @@ from core.system.timeouts import UI_PROBE_TIMEOUT_S
 # is a Qt-free stdlib-only leaf — no import cycle).
 from core.transcribe.pipeline_log import HEARTBEAT_INTERVAL_MS
 from ui_qt.components.simple_worker import SimpleWorker
+from ui_qt.theme import theme_manager
 from ui_qt.views.service_dialogs.dialogs.shared import (
     BaseServiceDialog,
 )
@@ -1320,7 +1321,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
         trs = "".join(
             f'<tr><td style="padding:3px 10px 3px 0;">{icon}</td>'
             f'<td style="padding:3px 14px 3px 0;"><b>{html.escape(Path(p).name)}</b></td>'
-            f'<td style="padding:3px 0;color:#999;"><i>{desc}</i></td></tr>'
+            f'<td style="padding:3px 0;color:{theme_manager.palette.text_muted};"><i>{desc}</i></td></tr>'
             for icon, p, desc in rows
         )
         files_html = (
@@ -1346,7 +1347,7 @@ class TranscribeServiceDialog(BaseServiceDialog):
             f"{files_html}"
             f"{error_html}"
             f"{sub_error_html}"
-            f'<p style="color:#999;"><b>Output:</b> '
+            f'<p style="color:{theme_manager.palette.text_muted};"><b>Output:</b> '
             f"{html.escape(self.out_edit.text())}</p>"
             f"</div>",
         )

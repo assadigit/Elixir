@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -71,7 +72,7 @@ class Step7Advanced(WizardStep):
         }
         self.strat_desc_label = QLabel(_STRAT_DESC.get(self.state.segment_strategy, ""))
         self.strat_desc_label.setWordWrap(True)
-        self.strat_desc_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 8px;")
+        self.strat_desc_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 8px;")
         box_lay.addWidget(self.strat_desc_label)
         self.strat_combo.currentTextChanged.connect(
             lambda txt: self.strat_desc_label.setText(_STRAT_DESC.get(txt, ""))

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from ui_qt.components.llamacpp_config import LlamaCppConfigMixin
 from ui_qt.components.simple_worker import SimpleWorker
-from ui_qt.theme import theme_manager
+from ui_qt.theme import rgba, theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
 # V18.20.3.12 (F821) pattern, carried with the class: the
@@ -95,7 +95,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "gap-fill, judging. Choose where it runs."
         )
         arch_desc_top.setWordWrap(True)
-        arch_desc_top.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
+        arch_desc_top.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
         arch_lay.addWidget(arch_desc_top)
 
         self.arch_combo = QComboBox()
@@ -125,9 +125,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.arch_desc_label = QLabel("")
         self.arch_desc_label.setObjectName("Caption")
         self.arch_desc_label.setWordWrap(True)
+        # M1 de-hardcode: neutral gray + hardcoded blue tint → palette tokens.
+        _p = theme_manager.palette
         self.arch_desc_label.setStyleSheet(
-            "color: #555; font-size: 11px; padding: 6px 8px; "
-            "background: rgba(91,155,213,0.07); border-radius: 4px;"
+            f"color: {_p.text_secondary}; font-size: 11px; padding: 6px 8px; "
+            f"background: {rgba(_p.info, 0.07)}; border-radius: 4px;"
         )
         arch_lay.addWidget(self.arch_desc_label)
         host_lay.addWidget(arch_box)
@@ -143,7 +145,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "Refresh to detect installed models."
         )
         self.local_desc.setWordWrap(True)
-        self.local_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
+        self.local_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
         local_lay.addWidget(self.local_desc)
 
         # Local backend selector (Ollama / llama.cpp / LM Studio)
@@ -226,7 +228,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "(OpenRouter, OpenAI, 9Router, Groq, …)."
         )
         self.heavy_api_desc.setWordWrap(True)
-        self.heavy_api_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
+        self.heavy_api_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
         heavy_api_lay.addWidget(self.heavy_api_desc)
 
         from core.llm.cloud_client import CLOUD_PRESETS
@@ -543,8 +545,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.arch_desc_label.setText(descs.get(arch, ""))
 
         # Highlight the active local box border
+        # M1 de-hardcode: the old hardcoded blue is a selection semantic →
+        # the active accent token (forest light / sage dark).
         _active_style = (
-            "QGroupBox { font-weight: bold; border: 2px solid #5B9BD5; border-radius: 6px; }"
+            f"QGroupBox {{ font-weight: bold; border: 2px solid "
+            f"{theme_manager.palette.accent}; border-radius: 6px; }}"
         )
         if is_local:
             self.local_box.setStyleSheet(_active_style)
@@ -776,8 +781,10 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 # Add a lock label next to the spinbox (if not already there)
                 if self._workers_lock_label is None:
                     self._workers_lock_label = QLabel("🔒 1 (VRAM protection)")
+                    # M1 de-hardcode: terracotta-red literal → error token.
                     self._workers_lock_label.setStyleSheet(
-                        "color: #B0594F; font-size: 10px; font-weight: bold;"
+                        f"color: {theme_manager.palette.error}; "
+                        f"font-size: 10px; font-weight: bold;"
                     )
                     self._workers_lock_label.setToolTip(
                         "Max workers locked for VRAM thermal protection."

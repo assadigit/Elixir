@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushBu
 
 from controller import Controller
 from ui_qt.settings.widgets import labeled_line, make_form
+from ui_qt.theme import theme_manager
 from utils.provider_catalog import (  # V0.16 (Phase 3 / 3.2): Qt-free home
     load_custom_providers as _load_custom_providers,
 )
@@ -53,7 +54,7 @@ class AiApiSection(QGroupBox):
             "Paid, no GPU needed. Use a preset to quick-fill popular providers."
         )
         api_desc.setWordWrap(True)
-        api_desc.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0 6px 0;")
+        api_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;")
         f.addRow("", api_desc)
 
         # ── provider type dropdown ──────────────────────────────────────
