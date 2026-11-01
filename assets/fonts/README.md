@@ -1,31 +1,35 @@
-# Inter Font (optional, recommended)
+# Inter Font — bundled (M1 of the UI/UX redesign)
 
 This app is designed to use **Inter** — an open-source typeface that matches
-SF Pro's class and renders crisply at the compact 11px body size this UI uses.
+SF Pro's class and renders crisply at both the compact 11px dialog body size
+and the larger dashboard type of the approved redesign.
 
-## How to enable Inter
+## Status: BUNDLED (since the M1 visual-foundation milestone)
 
-1. Download these 4 files from the official Inter release
-   (https://github.com/rsms/inter/releases — look for the latest v4 release,
-   "Inter-x.x.zip", and extract the `Inter/static/` folder):
+The four production weights ship inside the app (decision §8 Q4 of the
+M0 recon report, user-approved):
 
-   - `Inter-Regular.ttf`
-   - `Inter-Medium.ttf`
-   - `Inter-SemiBold.ttf`
-   - `Inter-Bold.ttf`
+- `Inter-Regular.ttf` (400)
+- `Inter-Medium.ttf` (500)
+- `Inter-SemiBold.ttf` (600)
+- `Inter-Bold.ttf` (700)
+- `Inter-LICENSE.txt` — the SIL Open Font License 1.1 (keep with the fonts)
 
-   Direct links (replace `4.0` with the latest version if needed):
-   - https://github.com/rsms/inter/releases/download/v4.0/Inter-Regular.ttf
-   - https://github.com/rsms/inter/releases/download/v4.0/Inter-Medium.ttf
-   - https://github.com/rsms/inter/releases/download/v4.0/Inter-SemiBold.ttf
-   - https://github.com/rsms/inter/releases/download/v4.0/Inter-Bold.ttf
+Source: the official [Inter 4.1 release](https://github.com/rsms/inter/releases)
+(`extras/ttf/` static instances, byte-unmodified). `ui_qt/theme.py::
+load_inter()` registers them on startup and the QSS stack
+(`FONT_FAMILY` in `ui_qt/theme.py`) resolves `"Inter"` first — no settings
+change needed.
 
-2. Place the 4 `.ttf` files in **this folder** (`assets/fonts/`).
+The static instances carry the standard dual naming (legacy family
+"Inter Medium"/"Inter SemiBold" for pre-RIBBI weights + typographic family
+"Inter"); Qt's DirectWrite backend on Windows — the shipping platform —
+registers all four under the family **Inter** with the correct weights, so
+QSS `font-weight: 500/600` resolves as intended. On fontconfig platforms
+those two weights may register as separate families and match approximately
+(the visual fallback stack below still applies).
 
-3. Restart the app.  Inter is auto-detected and registered on startup — no
-   settings change needed.
-
-## If you don't install Inter
+## If Inter is somehow absent
 
 The app falls back transparently to:
 
@@ -33,4 +37,5 @@ The app falls back transparently to:
 
 (Segoe UI Variable is the default on Windows 11; Segoe UI on Windows 10.)
 The UI still looks clean and professional — Inter is an enhancement, not a
-requirement.
+requirement. `Vazirmatn-Regular/Bold.ttf` (also OFL) remain bundled for
+Persian/Arabic script coverage.
